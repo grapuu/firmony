@@ -37,6 +37,16 @@ for (const [w, h, dpr, mobile] of SIZES) {
   for (const path of PAGES) {
     const res = await page.goto(BASE + path, { waitUntil: 'networkidle' })
     await page.evaluate(() => document.fonts.ready)
+    // Scroll down the page and back, so that pictures that load when they come near are there.
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.documentElement.scrollHeight; y += 600) {
+        window.scrollTo(0, y)
+        await new Promise((resolve) => setTimeout(resolve, 60))
+      }
+      window.scrollTo(0, 0)
+    })
+    await page.waitForLoadState('networkidle')
+    await page.evaluate(() => Promise.race([new Promise((resolve) => setTimeout(resolve, 4000)), Promise.all([...document.images].filter((img) => img.getClientRects().length > 0).map((img) => (img.complete ? null : new Promise((resolve) => { img.onload = img.onerror = resolve }))))]))
     const [scroll, client] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth])
     const wide = await page.evaluate(() =>
       [...document.querySelectorAll('body *')]

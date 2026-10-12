@@ -95,6 +95,8 @@ export interface Art {
   alt: string
   width: number
   height: number
+  /** A smaller cut of the same picture for phones, with its width. */
+  small?: { src: string; width: number }
 }
 
 /** The plan the price list leads with: it has the outline of light and the white button. */
@@ -103,10 +105,15 @@ export const LEAD_PLAN: PlanId = 'rast'
 /** Where a picture can stand. Each section looks finished without its picture. */
 export type ArtSlot =
   | 'logo'
-  | 'heroLeft'
-  | 'heroRight'
+  | 'mark'
+  | 'aurora'
+  | 'phone'
+  | 'care'
+  | 'step1'
+  | 'step2'
+  | 'step3'
+  | 'step4'
   | 'ai'
-  | 'human'
   | 'docs'
   | 'deadlines'
   | 'overview'
@@ -116,29 +123,35 @@ export type ArtSlot =
   | 'fresh'
   | 'switching'
   | 'founder'
-  | 'final'
+
+/** One of his glass objects, cut square by scripts/art.py at 960 and 480 px; decorative, so without words. */
+const glass = (name: string): Art => ({ src: `/art/${name}.webp`, alt: '', width: 960, height: 960, small: { src: `/art/${name}-480.webp`, width: 480 } })
 
 /**
- * The pictures of the site: glossy 3D objects in iridescent glass on black, which the owner makes himself
- * (ChatGPT, from the builder's prompts), and his own photo beside his note. A picture on black is made
- * see-through before it goes in. Until one exists its place shows nothing, so no page carries a placeholder.
+ * The pictures of the site: glossy 3D objects in iridescent glass on black, which the owner made in ChatGPT
+ * from the builder's prompts (13 October 2026), made see-through by scripts/art.py; their sources are in
+ * art-src/. founder: his own photo beside his note, not made yet. A slot without a picture shows nothing.
  */
 export const ART: Record<ArtSlot, Art | null> = {
-  logo: null,
-  heroLeft: null,
-  heroRight: null,
-  ai: null,
-  human: null,
-  docs: null,
-  deadlines: null,
-  overview: null,
-  answers: null,
-  einvoice: null,
-  calc: null,
-  fresh: null,
-  switching: null,
+  logo: { src: '/art/logo-small.webp', alt: '', width: 128, height: 128 },
+  mark: { src: '/art/logo.webp', alt: '', width: 960, height: 960 },
+  aurora: { src: '/art/aurora.webp', alt: '', width: 1672, height: 941, small: { src: '/art/aurora-900.webp', width: 900 } },
+  phone: { src: '/art/phone.webp', alt: '', width: 1000, height: 660, small: { src: '/art/phone-560.webp', width: 560 } },
+  care: glass('embrace'),
+  step1: glass('door'),
+  step2: glass('bundle'),
+  step3: glass('bank'),
+  step4: glass('shield'),
+  ai: glass('orb'),
+  docs: glass('receipt'),
+  deadlines: glass('calendar'),
+  overview: glass('overview'),
+  answers: glass('chat'),
+  einvoice: glass('envelope'),
+  calc: glass('calculator'),
+  fresh: glass('sprout'),
+  switching: glass('key'),
   founder: null,
-  final: null,
 }
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */

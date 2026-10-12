@@ -17,8 +17,14 @@ the object disappears on any dark surface, and the outer edge fades out.
     public/art/share.png         what a link shows when it is sent to someone: the logo and the name, 1200 by 630
 
 `picture` finds what is on the black, centres it on a square and writes public/art/<name>.webp at the size
-given. A picture shown large needs twice its width on the page. Then its slot in `ART` (src/config.ts) gets
-its path and size. Nothing here is part of the site.
+given, and with `--small N` also public/art/<name>-<N>.webp for phones. A picture shown large needs twice its
+width on the page. Then its slot in `ART` (src/config.ts) gets its path and size.
+
+`whole` keeps the picture as it was composed (no centring): the aurora, and the phone whose beam has to land
+on the receipt. `--bottom 0.7` cuts it off at 70 % of its height and `--fade 0.6` lets it fade out from 60 %
+down to that cut, so that what lay below (the phone's own glass paper) is gone.
+
+Nothing here is part of the site.
 """
 import argparse
 import os
@@ -141,6 +147,24 @@ def logo(source):
     save(share(picture), os.path.join(ART, 'share.png'), format='PNG', optimize=True)
 
 
+def whole(source, width, bottom=1.0, fade=None):
+    """The picture as composed, made see-through, cut at `bottom` and faded out from `fade` down to the cut."""
+    picture = Image.open(source).convert('RGB')
+    if bottom < 1:
+        picture = picture.crop((0, 0, picture.width, round(picture.height * bottom)))
+    out = clear(picture)
+    if fade is not None:
+        rgba = numpy.asarray(out, dtype=numpy.float64)
+        height = rgba.shape[0]
+        top = fade / bottom * height
+        rows = numpy.clip((height - numpy.arange(height)) / max(1, height - top), 0, 1)
+        rows = rows * rows * (3 - 2 * rows)
+        rgba[..., 3] *= rows[:, None]
+        out = Image.fromarray(numpy.round(rgba).astype(numpy.uint8), 'RGBA')
+    height = round(out.height * width / out.width)
+    return out.resize((width, height), Image.LANCZOS)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cuts the owner's pictures for the site.")
     commands = parser.add_subparsers(dest='command', required=True)
@@ -150,12 +174,27 @@ def main():
     one.add_argument('name')
     one.add_argument('--size', type=int, default=800)
     one.add_argument('--cover', type=float, default=0.9)
+    one.add_argument('--small', type=int)
+    kept = commands.add_parser('whole')
+    kept.add_argument('source')
+    kept.add_argument('name')
+    kept.add_argument('--width', type=int, default=1600)
+    kept.add_argument('--small', type=int)
+    kept.add_argument('--bottom', type=float, default=1.0)
+    kept.add_argument('--fade', type=float)
     args = parser.parse_args()
+    os.makedirs(ART, exist_ok=True)
+    webp = dict(format='WEBP', quality=88, alpha_quality=70, method=6)
     if args.command == 'logo':
         logo(args.source)
+    elif args.command == 'whole':
+        for width, name in ((args.width, args.name), (args.small, f'{args.name}-{args.small}')):
+            if width:
+                save(whole(args.source, width, args.bottom, args.fade), os.path.join(ART, f'{name}.webp'), **webp)
     else:
-        os.makedirs(ART, exist_ok=True)
-        save(clear(framed(Image.open(args.source), args.cover, args.size)), os.path.join(ART, f'{args.name}.webp'), format='WEBP', quality=90, alpha_quality=60, method=6)
+        for size, name in ((args.size, args.name), (args.small, f'{args.name}-{args.small}')):
+            if size:
+                save(clear(framed(Image.open(args.source), args.cover, size)), os.path.join(ART, f'{name}.webp'), **webp)
 
 
 if __name__ == '__main__':

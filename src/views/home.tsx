@@ -28,10 +28,23 @@ export interface CalcState {
   invalid: boolean
 }
 
-/** One of the owner's pictures, or nothing while it does not exist. */
-export const Picture: FC<{ art: Art | null; className: string; eager?: boolean }> = ({ art, className, eager }) =>
+/**
+ * One of the owner's pictures, or nothing while it does not exist. `sizes` tells the browser how wide it is
+ * shown, so a phone takes the smaller cut.
+ */
+export const Picture: FC<{ art: Art | null; className: string; sizes?: string; eager?: boolean }> = ({ art, className, sizes, eager }) =>
   art ? (
-    <img class={className} src={art.src} alt={art.alt} width={art.width} height={art.height} loading={eager ? 'eager' : 'lazy'} decoding="async" />
+    <img
+      class={className}
+      src={art.src}
+      srcset={art.small ? `${art.small.src} ${art.small.width}w, ${art.src} ${art.width}w` : undefined}
+      sizes={art.small ? (sizes ?? '100vw') : undefined}
+      alt={art.alt}
+      width={art.width}
+      height={art.height}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+    />
   ) : null
 
 /** The bill a client would get from us: everything "v cene", nothing per document. */
@@ -64,118 +77,142 @@ const Receipt: FC = () => (
   </figure>
 )
 
+/** The light that runs through the page: his aurora, edge to edge. */
+const Aurora: FC<{ className: string }> = ({ className }) => (
+  <div class={className} aria-hidden="true">
+    <Picture art={ART.aurora} className="aurora__light" sizes="100vw" eager />
+  </div>
+)
+
 const Hero: FC = () => (
   <section class="hero" aria-labelledby="hero-title">
-    <div class="hero__glow" aria-hidden="true"></div>
+    <Aurora className="aurora aurora--hero" />
     <div class="hero__inner wrap">
-      <h1 id="hero-title" class="hero__title">
-        <span class="hero__line">{copy.hero.first}</span> <span class="hero__line hero__line--light">{copy.hero.second}</span>
-      </h1>
-      <p class="hero__lead">{copy.hero.lead}</p>
-      <p class="hero__price">{copy.hero.price}</p>
-      <div class="hero__actions">
-        <a class="btn btn--white" href="#zacat">
-          {copy.hero.cta}
-        </a>
-        <a class="btn btn--glass" href="#cennik">
-          {copy.hero.secondary}
-        </a>
+      <div class="hero__copy">
+        <h1 id="hero-title" class="hero__title">
+          <span class="hero__line">{copy.hero.first}</span> <span class="hero__line hero__line--light">{copy.hero.second}</span>
+        </h1>
+        <p class="hero__lead">{copy.hero.lead}</p>
+        <p class="hero__price">{copy.hero.price}</p>
+        <div class="hero__actions">
+          <a class="btn btn--white btn--large" href="#zacat">
+            {copy.hero.cta}
+          </a>
+          <a class="btn btn--glass btn--large" href="#cennik">
+            {copy.hero.secondary}
+          </a>
+        </div>
+        <p class="hero__note">{copy.hero.note}</p>
       </div>
-      <p class="hero__note">{copy.hero.note}</p>
-    </div>
-    <div class={`stage wrap${ART.heroLeft || ART.heroRight ? ' stage--art' : ''}`}>
-      <Picture art={ART.heroLeft} className="stage__art stage__art--left" eager />
-      <Receipt />
-      <Picture art={ART.heroRight} className="stage__art stage__art--right" eager />
-      <ul class="chips" aria-hidden="true">
-        {copy.hero.chips.map((chip, i) => (
-          <li class={`chip chip--${i + 1}`}>
-            <span class="chip__mark"></span>
-            <span class="chip__text">
-              <span class="chip__title">{chip.title}</span>
-              <span class="chip__sub">{chip.sub}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div class="scene">
+        <Picture art={ART.phone} className="scene__phone" sizes="(max-width: 900px) 92vw, 560px" eager />
+        <Receipt />
+        <ul class="chips" aria-hidden="true">
+          {copy.hero.chips.map((chip, i) => (
+            <li class={`chip chip--${i + 1}`}>
+              <span class="chip__mark"></span>
+              <span class="chip__text">
+                <span class="chip__title">{chip.title}</span>
+                <span class="chip__sub">{chip.sub}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   </section>
 )
 
-const Pains: FC = () => (
-  <section class="section pains" aria-labelledby="pains-title">
-    <div class="wrap">
-      <h2 id="pains-title" class="h2 pains__title">
-        {copy.pains.title}
-      </h2>
-      <ul class="pains__notes">
-        {copy.pains.items.map((item) => (
-          <li class="note">{item}</li>
-        ))}
-      </ul>
-      <p class="pains__close">
-        <span class="pains__first">{copy.pains.close.first}</span> {copy.pains.close.rest}
-      </p>
+const Care: FC = () => (
+  <section class="section care" aria-labelledby="care-title">
+    <div class="wrap care__inner">
+      <div class="care__art">
+        <Picture art={ART.care} className="care__object drift" sizes="(max-width: 900px) 70vw, 520px" />
+      </div>
+      <div class="care__copy">
+        <h2 id="care-title" class="display care__title">
+          {copy.pains.title}
+        </h2>
+        <ul class="worries">
+          {copy.pains.items.map((item) => (
+            <li class="worries__item">{item}</li>
+          ))}
+        </ul>
+        <p class="care__close">
+          <span class="care__first">{copy.pains.close.first}</span> {copy.pains.close.rest}
+        </p>
+      </div>
     </div>
   </section>
 )
 
-const How: FC = () => (
-  <section class="section" id="ako-to-funguje" aria-labelledby="how-title">
+const STEP_ART = [ART.step1, ART.step2, ART.step3, ART.step4] as const
+
+/** Four steps; on a wide screen their pictures stand still beside them and change as the steps go by. */
+const Story: FC = () => (
+  <section class="section story-section" id="ako-to-funguje" aria-labelledby="how-title">
     <div class="wrap">
-      <h2 id="how-title" class="h2 section__title">
+      <h2 id="how-title" class="display section__title">
         {copy.how.title}
       </h2>
-      <ol class="steps">
-        {copy.how.steps.map((step, i) => (
-          <li class="step">
-            <span class="step__num" aria-hidden="true">
-              {i + 1}
-            </span>
-            <h3 class="step__title">{step.title}</h3>
-            <p class="step__text">{step.text}</p>
-          </li>
-        ))}
-      </ol>
+      <div class="story">
+        <div class="story__visual" aria-hidden="true">
+          <div class="story__glow"></div>
+          {STEP_ART.map((art, i) => (
+            <Picture art={art} className={`story__frame story__frame--${i + 1}`} sizes="520px" />
+          ))}
+        </div>
+        <ol class="story__steps">
+          {copy.how.steps.map((step, i) => (
+            <li class={`story__step story__step--${i + 1}`}>
+              <Picture art={STEP_ART[i] ?? null} className="story__inline" sizes="200px" />
+              <span class="story__num" aria-hidden="true">
+                {i + 1}
+              </span>
+              <h3 class="story__title">{step.title}</h3>
+              <p class="story__text">{step.text}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   </section>
 )
 
-const People: FC = () => (
-  <section class="section people" aria-labelledby="people-title">
+/** The machine and the person, with the orb between them. */
+const Minds: FC = () => (
+  <section class="section minds-section" aria-labelledby="people-title">
     <div class="wrap">
-      <h2 id="people-title" class="h2 people__title">
+      <h2 id="people-title" class="display minds__title">
         {copy.people.title}
       </h2>
-      <div class="duo">
-        <article class="duo__card duo__card--ai">
-          <Picture art={ART.ai} className="duo__art" />
-          <h3 class="duo__title">{copy.people.ai.title}</h3>
-          <ul class="duo__list">
+      <div class="minds">
+        <div class="minds__side minds__side--ai">
+          <h3 class="minds__name">{copy.people.ai.title}</h3>
+          <ul class="minds__list">
             {copy.people.ai.items.map((item) => (
               <li>{item}</li>
             ))}
           </ul>
-        </article>
-        <span class="duo__plus" aria-hidden="true">
-          +
-        </span>
-        <article class="duo__card duo__card--human">
-          <Picture art={ART.human} className="duo__art" />
-          <h3 class="duo__title">{copy.people.human.title}</h3>
-          <ul class="duo__list">
+        </div>
+        <div class="minds__orb">
+          <Picture art={ART.ai} className="minds__object drift" sizes="(max-width: 900px) 60vw, 420px" />
+        </div>
+        <div class="minds__side minds__side--human">
+          <h3 class="minds__name">{copy.people.human.title}</h3>
+          <ul class="minds__list">
             {copy.people.human.items.map((item) => (
               <li>{item}</li>
             ))}
           </ul>
-        </article>
+        </div>
       </div>
-      <p class="people__close">{copy.people.close}</p>
+      <p class="minds__close">{copy.people.close}</p>
     </div>
   </section>
 )
 
-/** The bento: four wide tiles that can carry a picture, four small ones. */
+/** The bento: four wide tiles with a picture, four small ones. */
 const TILES: readonly { wide: boolean; art: Art | null }[] = [
   { wide: true, art: ART.docs },
   { wide: false, art: null },
@@ -192,7 +229,7 @@ const Included: FC = () => (
   <section class="section" aria-labelledby="included-title">
     <div class="wrap">
       <div class="section__head">
-        <h2 id="included-title" class="h2">
+        <h2 id="included-title" class="display">
           {copy.included.title}
         </h2>
         <p class="lead">{copy.included.lead}</p>
@@ -202,19 +239,21 @@ const Included: FC = () => (
           const tile = TILES[i] ?? { wide: false, art: null }
           return (
             <li class={`tile${tile.wide ? ' tile--wide' : ''}${tile.art ? ' tile--art' : ''}`}>
-              <h3 class="tile__title">{item.title}</h3>
-              <p class="tile__text">{item.text}</p>
-              {i === DEADLINES_TILE ? (
-                <dl class="deadlines">
-                  {copy.included.deadlines.map((row) => (
-                    <div class="deadlines__row">
-                      <dt>{row.what}</dt>
-                      <dd>{row.when}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-              <Picture art={tile.art} className="tile__art" />
+              <div class="tile__copy">
+                <h3 class="tile__title">{item.title}</h3>
+                <p class="tile__text">{item.text}</p>
+                {i === DEADLINES_TILE ? (
+                  <dl class="deadlines">
+                    {copy.included.deadlines.map((row) => (
+                      <div class="deadlines__row">
+                        <dt>{row.what}</dt>
+                        <dd>{row.when}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+              </div>
+              <Picture art={tile.art} className="tile__object" sizes="(max-width: 600px) 160px, 240px" />
             </li>
           )
         })}
@@ -224,18 +263,20 @@ const Included: FC = () => (
 )
 
 const Einvoice: FC = () => (
-  <section class="section section--tight" aria-labelledby="einvoice-title">
+  <section class="section" aria-labelledby="einvoice-title">
     <div class="wrap">
-      <div class={`einvoice${ART.einvoice ? ' einvoice--art' : ''}`}>
-        <h2 id="einvoice-title" class="h2 einvoice__title">
-          {copy.einvoice.title}
-        </h2>
-        <div class="einvoice__body">
-          <p>{copy.einvoice.text}</p>
+      <div class="einvoice">
+        <div class="einvoice__copy">
+          <h2 id="einvoice-title" class="display einvoice__title">
+            {copy.einvoice.title}
+          </h2>
+          <p class="einvoice__text">{copy.einvoice.text}</p>
           <p class="einvoice__ours">{copy.einvoice.ours}</p>
           <p class="small">{copy.einvoice.source}</p>
         </div>
-        <Picture art={ART.einvoice} className="einvoice__art" />
+        <div class="einvoice__art">
+          <Picture art={ART.einvoice} className="einvoice__object drift" sizes="(max-width: 900px) 60vw, 440px" />
+        </div>
       </div>
     </div>
   </section>
@@ -246,7 +287,7 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
     <div class="pricing__glow" aria-hidden="true"></div>
     <div class="wrap">
       <div class="section__head section__head--center">
-        <h2 id="pricing-title" class="h2">
+        <h2 id="pricing-title" class="display">
           {copy.pricing.title}
         </h2>
         <p class="lead">{copy.pricing.lead}</p>
@@ -340,12 +381,13 @@ const Calculator: FC<{ state: CalcState; carry: Carry }> = ({ state, carry }) =>
     <section class="section" id="kalkulacka" aria-labelledby="calc-title">
       <div class="wrap">
         <div class="section__head">
-          <h2 id="calc-title" class="h2">
+          <h2 id="calc-title" class="display">
             {copy.calc.title}
           </h2>
           <p class="lead">{copy.calc.lead}</p>
         </div>
         <div class="calc">
+          <Picture art={ART.calc} className="calc__object" sizes="(max-width: 900px) 140px, 260px" />
           <form class="calc__form" method="get" action="/#kalkulacka" novalidate>
             <CarryFields carry={carry} />
             <Field name="mesacne" label={copy.calc.monthly} value={state.values.monthly} placeholder="60" suffix="€" />
@@ -371,7 +413,6 @@ const Calculator: FC<{ state: CalcState; carry: Carry }> = ({ state, carry }) =>
             </button>
           </form>
           <div class="calc__result" role="status">
-            <Picture art={ART.calc} className="calc__art" />
             {state.invalid ? <p class="calc__message">{copy.calc.invalid}</p> : <Comparison result={!r || r.kind === 'empty' ? compare(EXAMPLE) : r} example={!r || r.kind === 'empty'} />}
           </div>
         </div>
@@ -383,25 +424,29 @@ const Calculator: FC<{ state: CalcState; carry: Carry }> = ({ state, carry }) =>
 const Paths: FC<{ carry: Carry }> = ({ carry }) => (
   <section class="section" aria-labelledby="paths-title">
     <div class="wrap">
-      <h2 id="paths-title" class="h2 section__title">
+      <h2 id="paths-title" class="display section__title">
         {copy.paths.title}
       </h2>
       <div class="paths">
         <div class="path path--fresh">
-          <Picture art={ART.fresh} className="path__art" />
-          <h3 class="path__title">{copy.paths.fresh.title}</h3>
-          <p class="path__text">{copy.paths.fresh.text}</p>
-          <a class="btn btn--glass path__cta" href={withCarry('/zacat', carry, { nova: '1' })}>
-            {copy.paths.fresh.cta}
-          </a>
+          <Picture art={ART.fresh} className="path__object" sizes="(max-width: 820px) 180px, 300px" />
+          <div class="path__copy">
+            <h3 class="path__title">{copy.paths.fresh.title}</h3>
+            <p class="path__text">{copy.paths.fresh.text}</p>
+            <a class="btn btn--glass path__cta" href={withCarry('/zacat', carry, { nova: '1' })}>
+              {copy.paths.fresh.cta}
+            </a>
+          </div>
         </div>
         <div class="path path--switching">
-          <Picture art={ART.switching} className="path__art" />
-          <h3 class="path__title">{copy.paths.switching.title}</h3>
-          <p class="path__text">{copy.paths.switching.text}</p>
-          <a class="btn btn--glass path__cta" href="#zacat">
-            {copy.paths.switching.cta}
-          </a>
+          <Picture art={ART.switching} className="path__object" sizes="(max-width: 820px) 180px, 300px" />
+          <div class="path__copy">
+            <h3 class="path__title">{copy.paths.switching.title}</h3>
+            <p class="path__text">{copy.paths.switching.text}</p>
+            <a class="btn btn--glass path__cta" href="#zacat">
+              {copy.paths.switching.cta}
+            </a>
+          </div>
         </div>
       </div>
     </div>
@@ -431,7 +476,7 @@ const Faq: FC = () => (
   <section class="section" id="otazky" aria-labelledby="faq-title">
     <div class="wrap faq">
       <div class="faq__head">
-        <h2 id="faq-title" class="h2">
+        <h2 id="faq-title" class="display">
           {copy.faq.title}
         </h2>
         <p class="faq__more">
@@ -486,27 +531,26 @@ export const StartForm: FC<{ carry: Carry; value?: string; error?: string; id?: 
 )
 
 const Final: FC<{ carry: Carry }> = ({ carry }) => (
-  <section class="section final" id="zacat" aria-labelledby="final-title">
-    <div class="wrap">
-      <div class="final__panel">
-        <Picture art={ART.final} className="final__art" />
-        <h2 id="final-title" class="final__title">
-          {copy.final.title}
-        </h2>
-        <p class="lead final__lead">{copy.final.lead}</p>
-        <StartForm carry={carry} id="ico-final" />
-        <a class="link" href={withCarry('/zacat', carry, { nova: '1' })}>
-          {copy.final.noCompany}
-        </a>
-        <div class="final__aside">
-          <p>
-            {copy.final.write}{' '}
-            <a class="link" href={`mailto:${BRAND.email}`}>
-              {BRAND.email}
-            </a>
-          </p>
-          <p>{copy.final.reply}</p>
-        </div>
+  <section class="final" id="zacat" aria-labelledby="final-title">
+    <Aurora className="aurora aurora--final" />
+    <div class="wrap final__inner">
+      <Picture art={ART.mark} className="final__mark drift" />
+      <h2 id="final-title" class="final__title">
+        {copy.final.title}
+      </h2>
+      <p class="lead final__lead">{copy.final.lead}</p>
+      <StartForm carry={carry} id="ico-final" />
+      <a class="link final__fresh" href={withCarry('/zacat', carry, { nova: '1' })}>
+        {copy.final.noCompany}
+      </a>
+      <div class="final__aside">
+        <p>
+          {copy.final.write}{' '}
+          <a class="link" href={`mailto:${BRAND.email}`}>
+            {BRAND.email}
+          </a>
+        </p>
+        <p>{copy.final.reply}</p>
       </div>
     </div>
   </section>
@@ -515,9 +559,9 @@ const Final: FC<{ carry: Carry }> = ({ carry }) => (
 export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => (
   <>
     <Hero />
-    <Pains />
-    <How />
-    <People />
+    <Care />
+    <Story />
+    <Minds />
     <Included />
     <Einvoice />
     <Pricing carry={carry} />

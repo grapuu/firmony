@@ -49,6 +49,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
       ) : (
         <link rel="icon" href="data:," />
       )}
+      <link rel="preload" href="/fonts/serif-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="preload" href="/fonts/host-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="stylesheet" href="/app.css" />
     </head>

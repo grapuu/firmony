@@ -21,7 +21,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   and `MAIL.from` say firmony.ai; when he does, those three change, and so do the test's `site`, the notes'
   firmony.ai, and `wrangler.jsonc` once a route is added.
 - Nothing is deployed. There is no GitHub repository and no Worker yet. The code is committed locally on `main`.
-- All checks pass: `npm test` (44 unit checks) and `npm run test:runtime` (53 checks in workerd).
+- All checks pass: `npm test` (47 unit checks) and `npm run test:runtime` (53 checks in workerd).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -106,40 +106,43 @@ above 2,5 % or accountant cost above 40 € a client.
 - Headers: CSP without anything inline or foreign, no framing, HSTS, `noindex` on `/zacat` and on any host but
   firmony.ai; http and www are redirected; a form is accepted only from our own pages and under 8 kB.
 
-## Design (the second one, built on the night of 12 to 13 October 2026)
+## Design (the third one, built on the night of 12 to 13 October 2026)
 
-The first design (plum, mist and coral, Literata) he called "odporná ... moc jednoduchý, obyčajný, jak z Wordu":
-the colours and the fonts not progressive and not modern. He asked for a redesign, research of Pennylane, Dougs,
-inFakt, Bench, CloudTalk and the French competition, and prompts for 3D pictures he makes in ChatGPT Pro. What
-the research took: Qonto's black stage with cinematic 3D objects and heavy type, CloudTalk's gradient light and
-glossy orb, Pennylane's and Dougs' clear prices. He was sent 20 prompts that night (glossy iridescent glass in
-#4F7CFF, #7C5CFF and #FF7AB6 on pure black, 1:1); their exact words were not kept.
+History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
+glass, Host Grotesk bold) "stále vyzerá tuctovo a obyčajne a toto musí byť naša pýcha a elita" (13 October,
+00:31), the night he sent his pictures. He gave no more direction than that: the third is the builder's call.
 
-- Black `#000` page. Light where we take care of something: azure `#4f7cff`, violet `#7c5cff`, pink `#ff7ab6`,
-  the colours of his glass objects, as glows behind things, the outline of the lead plan and the e-invoice
-  panel, the second line of the hero, the savings figure. Text `#bdb8d0`, small print `#8e89a6`, headings white.
-- Surfaces are glass: white at 6.5 to 2 % over black with a hairline of 10 %. Radii by rank: panels 32, cards
-  24, fields 14, buttons and chips round. The primary button is white with black words, the secondary glass.
-- Type: Host Grotesk (variable 300 to 800, self-hosted, latin and latin-ext, OFL), one family. Headlines 700
-  at about −0.04em, the hero 104 px on a wide screen; text 17 px. No capitals for labels, no monospace.
-- The one bright object is still the receipt in the hero ("Balík Štart ... Spolu 69 €"), white paper with
-  torn edges, tilted, lit violet from below; it is printed once when the page opens and three chips arrive
-  beside it ("Bloček zaúčtovaný", "E-faktúra prijatá", "Termín postrážený"); on a phone they stack under it.
-  That is the only motion, and it respects reduced motion.
-- The sections: the pains as four loose notes, tilted; the four steps on one line of light; AI and the
-  accountant as two glass panels joined by a lit "+"; what is included as a bento (four wide tiles that can
-  carry a picture, four small; the deadlines tile names two real deadlines); the e-invoice panel; the prices
-  (Rast leads, `LEAD_PLAN`); the comparison; the two ways in; the founder's note in large type; the questions
-  with a column that offers the email; a lit closing panel with the IČO.
-- Pictures (`ART` in src/config.ts, one slot per place; each section looks finished without its picture):
-  logo, heroLeft and heroRight (beside the receipt), ai, human, docs, deadlines, overview, answers (the wide
-  tiles), einvoice, calc, fresh, switching, founder (his photo), final. When a picture comes:
-  `python3 scripts/art.py picture <source> <name> --size 800` (it finds the object, centres it and makes the
-  black see-through), then the slot gets `{ src: '/art/<name>.webp', alt: '', width: 800, height: 800 }`.
-  The logo: `python3 scripts/art.py logo <source>` writes the logo, the favicon, the icons and the picture a
-  shared link shows; the slot `logo` is `/art/logo-small.webp` at 128 px, and with it the page links the icons.
-- His taste (memory): no monospace or tech labels, Robinhood's typography as the benchmark, no AI clichés,
-  image prompts instead of drawn pictures. Pages are checked at 1440, 390 and 320 px: nothing scrolls sideways.
+- His benchmark is Robinhood's typography (memory). Robinhood sets a serif display (Martina Plantijn) at
+  weight 400 and its headings in a sans at 400; nothing heavy. So: **Instrument Serif** (400 and italic,
+  OFL, self-hosted latin and latin-ext; every Slovak letter checked) for everything read as a statement:
+  the hero, every section title, prices, the savings figure, the founder's quote, the tile and step titles.
+  **Host Grotesk** for text, labels, buttons. Never bold serif, no capitals for labels, no monospace.
+  A specimen of eleven faces on black was compared that night (scratch); Newsreader was the runner-up.
+- Black `#000` page. Light: azure `#4f7cff`, violet `#7c5cff`, pink `#ff7ab6` (`--grad`), the colours of his
+  pictures: on "Vy rastite." (italic, the second line of the hero), the step numbers, the savings figure,
+  the border of the lead plan and the e-invoice panel, and as glows. Panels are near-black with a lit edge
+  (`--edge`: a hairline that catches light at the top). Text `#c2bdd4`, small print `#8f8aa6`.
+- Every section is built around one of his objects (`ART` in src/config.ts; sources in `art-src/`):
+  the hero: his phone above the paper receipt, its beam landing on the receipt's edge (the phone picture is
+  cut at 66 % of its height and faded from 55 %, so its own glass paper is gone: `scripts/art.py whole`),
+  his aurora full-bleed behind it (dimmed behind the words by a mask), and three chips;
+  "nie ste jediní": the embrace; "Ako to funguje": door, bundle, bank link, shield, one per step;
+  AI and the accountant: the orb between the two lists; the bento: receipt, calendar, chart, chat;
+  e-invoices: the envelope rising out of its panel; the comparison: the calculator on the panel's edge;
+  the two ways in: sprout (founding) and key (switching); the closing scene: the F over the aurora again.
+  The F is the logo (header, footer, favicon, icons, the picture a shared link shows). Not made yet: his
+  photo for the founder's note (`founder`), and the photos of people from the prompts.
+- Motion, CSS only: the receipt is printed when the page opens and the chips arrive; the objects breathe
+  (`.drift`, 9 s); the aurora drifts (28 s); and on a wide screen, where the browser can tie an animation
+  to scrolling (`animation-timeline: view()` with `timeline-scope`; Chrome, Edge), the pictures of the four
+  steps stand still beside them and change step by step while the step being read lights up. Elsewhere
+  each step shows its own picture. Reduced motion: nothing moves, the steps' pictures only fade.
+- Checked at 1440, 390 and 320 px: nothing scrolls sideways. `scripts/dev/look.mjs` scrolls through a page
+  first, so that pictures that load late are in its full-page shots; `scripts/dev/scroll.mjs` takes one
+  screen at a time at given scroll positions, which is how the steps are seen as they really are.
+- When he sends a picture: `python3 scripts/art.py picture <source> <name> --size 960 --small 480 --cover
+  0.92` (finds the object, centres it, makes the black see-through), then its slot in `ART`. `npm test`
+  fails when a picture or a font the pages name is missing.
 
 ## Before pushing
 

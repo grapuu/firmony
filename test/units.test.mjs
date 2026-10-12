@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { calc, config, copy, format, ico, planRows, rpo } from '../.wrangler/tmp/units-bundle.mjs'
 import { check, done } from './check.mjs'
 
@@ -25,6 +25,15 @@ check('a number stays with its unit', format.typeset('za 69 € a 30 dokladov') 
 check('the legal form stays whole', format.typeset('europio s. r. o.') === `europio s.${NB}r.${NB}o.`)
 check('a section stays with its number', format.typeset('podľa § 7a') === `podľa §${NB}7a`)
 check('a date stays whole', format.typeset('od 1. januára 2027').includes(`1.${NB}januára`))
+
+// The pictures: every file a page names is on disk, in both cuts, and the stylesheet's fonts are there too
+const publicDir = new URL('../public', import.meta.url).pathname
+const pictures = Object.values(config.ART).filter(Boolean).flatMap((art) => [art.src, art.small?.src].filter(Boolean))
+check('every picture a page names exists', pictures.length > 20 && pictures.every((src) => existsSync(publicDir + src)), pictures.filter((src) => !existsSync(publicDir + src)).join(' '))
+const css = readFileSync(publicDir + '/app.css', 'utf8')
+const fonts = [...css.matchAll(/url\((\/fonts\/[^)]+)\)/g)].map((m) => m[1])
+check('every font the stylesheet names exists', fonts.length >= 6 && fonts.every((src) => existsSync(publicDir + src)), fonts.join(' '))
+check('the icons the page links when the logo exists', ['/favicon.ico', '/art/icon-192.png', '/art/icon-180.png', '/art/share.png'].every((src) => existsSync(publicDir + src)))
 
 // The comparison
 check('money as typed', calc.readMoney('5,20') === 520 && calc.readMoney('60') === 6000 && calc.readMoney('1 200 €') === 120000 && calc.readMoney('') === 0)
