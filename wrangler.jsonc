@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "firmony",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-10-01",
+
+  // The stylesheet and the fonts are served straight from ./public.
+  "assets": { "directory": "./public" },
+
+  // Requests from the site, the outbox and the counters. The ID is the D1 database "firmony" in the owner's
+  // Cloudflare account, created in the EU jurisdiction (the privacy notice says the database is in the EU).
+  // The zeros are a placeholder until it exists: a deploy with them fails instead of creating a database elsewhere.
+  "d1_databases": [{ "binding": "DB", "database_name": "firmony", "database_id": "00000000-0000-0000-0000-000000000000" }],
+
+  // Email through Cloudflare's email service, from the domain once it is onboarded for sending.
+  "send_email": [{ "name": "EMAIL" }],
+
+  // Until the domain is bought the site is reachable at its workers.dev address, which tells search engines to
+  // stay away (X-Robots-Tag in src/index.tsx). The custom domain comes as a route once it is in the account.
+  "workers_dev": true,
+  "preview_urls": false,
+
+  // Every fifteen minutes: send what waits in the outbox, delete what the privacy notice says is deleted.
+  "triggers": { "crons": ["*/15 * * * *"] },
+
+  // Only what the code logs itself (error names). No record of individual requests, so no IP addresses or URLs
+  // end up in logs.
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } }
+}

@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "id": 19031841,
+      "dbModificationDate": "2026-02-01",
+      "identifiers": [{ "value": "57442452", "validFrom": "2026-01-31" }],
+      "fullNames": [{ "value": "europio s. r. o.", "validFrom": "2026-01-31" }],
+      "addresses": [
+        {
+          "validFrom": "2026-01-31",
+          "street": "K lesu",
+          "regNumber": 0,
+          "buildingNumber": "2218/39A",
+          "postalCodes": ["04018"],
+          "municipality": { "value": "Košice - mestská časť Krásna", "code": "SK0425599794", "codelistCode": "CL000025" },
+          "country": { "value": "Slovenská republika", "code": "703", "codelistCode": "CL000086" }
+        }
+      ],
+      "establishment": "2026-01-31",
+      "sourceRegister": {
+        "value": { "value": "Obchodný register", "code": "1", "codelistCode": "CL010112" },
+        "registrationOffices": [{ "value": "Mestský súd Košice", "validFrom": "2026-01-31" }],
+        "registrationNumbers": [{ "value": "Sro/64897/V", "validFrom": "2026-01-31" }]
+      }
+    }
+  ],
+  "license": "CC BY 4.0, Štatistický úrad Slovenskej republiky (shortened here)"
+}
