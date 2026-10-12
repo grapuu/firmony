@@ -32,6 +32,12 @@ export const copy = typesetAll({
     cta: 'Chcem začať',
     secondary: 'Pozrieť cenník',
     note: `Začíname ${BRAND.launch}. Stačí IČO a kontakt, je to nezáväzné.`,
+    /** What happens while the receipt is printed: three things we take off their hands. */
+    chips: [
+      { title: 'Bloček zaúčtovaný', sub: 'Káva s klientom, 4,80 €' },
+      { title: 'E-faktúra prijatá', sub: 'Rovno do účtovníctva' },
+      { title: 'Termín postrážený', sub: 'Priznanie k DPH je podané' },
+    ],
   },
 
   receipt: {
@@ -61,7 +67,10 @@ export const copy = typesetAll({
       'Na odpoveď čakáte týždeň a aj tak jej nerozumiete.',
       'Bojíte sa, že prehliadnete termín a príde pokuta.',
     ],
-    close: 'Nikoho nesúdime. Ak máte v papieroch neporiadok, dáme ho spolu do poriadku a odvtedy sa oň staráme my.',
+    close: {
+      first: 'Nikoho nesúdime.',
+      rest: 'Ak máte v papieroch neporiadok, dáme ho spolu do poriadku a odvtedy sa oň staráme my.',
+    },
   },
 
   how: {
@@ -99,6 +108,11 @@ export const copy = typesetAll({
       { title: 'Termíny', text: 'Podávame za vás a vopred vám povieme, čo a dokedy zaplatiť.' },
       { title: 'Mesačný prehľad', text: 'Koľko ste zarobili, koľko pôjde na dane a čo vás čaká.' },
       { title: 'Odpovede', text: `Na otázky odpovedáme ${REPLY_WITHIN}. Po slovensky, nie úradnícky.` },
+    ],
+    /** Two deadlines every s. r. o. lives with, shown in the tile about deadlines. */
+    deadlines: [
+      { what: 'Priznanie k DPH a kontrolný výkaz', when: 'do 25. dňa po skončení obdobia' },
+      { what: 'Daňové priznanie a závierka', when: 'do 31. marca' },
     ],
   },
 
@@ -165,6 +179,8 @@ export const copy = typesetAll({
 
   faq: {
     title: 'Otázky',
+    more: 'Nenašli ste, čo ste hľadali? Napíšte na',
+    reply: `odpovieme ${REPLY_WITHIN}.`,
     items: [
       {
         q: 'Kto mi bude viesť účtovníctvo?',

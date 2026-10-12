@@ -97,14 +97,48 @@ export interface Art {
   height: number
 }
 
+/** The plan the price list leads with: it has the outline of light and the white button. */
+export const LEAD_PLAN: PlanId = 'rast'
+
+/** Where a picture can stand. Each section looks finished without its picture. */
+export type ArtSlot =
+  | 'logo'
+  | 'heroLeft'
+  | 'heroRight'
+  | 'ai'
+  | 'human'
+  | 'docs'
+  | 'deadlines'
+  | 'overview'
+  | 'answers'
+  | 'einvoice'
+  | 'calc'
+  | 'fresh'
+  | 'switching'
+  | 'founder'
+  | 'final'
+
 /**
- * The pictures of the site. The owner makes them himself; until one exists its place shows nothing, so no page
- * carries a placeholder. founder: his own photo beside his note; fresh and switching: the two ways in.
+ * The pictures of the site: glossy 3D objects in iridescent glass on black, which the owner makes himself
+ * (ChatGPT, from the builder's prompts), and his own photo beside his note. A picture on black is made
+ * see-through before it goes in. Until one exists its place shows nothing, so no page carries a placeholder.
  */
-export const ART: { founder: Art | null; fresh: Art | null; switching: Art | null } = {
-  founder: null,
+export const ART: Record<ArtSlot, Art | null> = {
+  logo: null,
+  heroLeft: null,
+  heroRight: null,
+  ai: null,
+  human: null,
+  docs: null,
+  deadlines: null,
+  overview: null,
+  answers: null,
+  einvoice: null,
+  calc: null,
   fresh: null,
   switching: null,
+  founder: null,
+  final: null,
 }
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */

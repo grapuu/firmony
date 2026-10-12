@@ -1,5 +1,5 @@
 import type { Child, FC } from 'hono/jsx'
-import { BRAND } from '../config'
+import { ART, BRAND } from '../config'
 import { copy } from '../copy'
 
 export interface PageMeta {
@@ -15,7 +15,10 @@ export interface PageMeta {
 
 export const Wordmark: FC<{ href?: string; label?: string }> = ({ href = '/', label = copy.nav.home }) => (
   <a class="wordmark" href={href} aria-label={label}>
-    firmony<span class="wordmark__dot" aria-hidden="true">.</span>
+    {ART.logo ? <img class="wordmark__logo" src={ART.logo.src} alt="" width={ART.logo.width} height={ART.logo.height} /> : null}
+    <span class="wordmark__text">
+      firmony<span class="wordmark__dot" aria-hidden="true">.</span>
+    </span>
   </a>
 )
 
@@ -34,10 +37,19 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
       <meta property="og:description" content={meta.description} />
       <meta property="og:url" content={`${BRAND.origin}${meta.path}`} />
       <meta property="og:locale" content="sk_SK" />
-      <meta name="theme-color" content="#faf8ff" />
-      <link rel="icon" href="data:," />
-      <link rel="preload" href="/fonts/literata-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
-      <link rel="preload" href="/fonts/hanken-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+      <meta name="theme-color" content="#000000" />
+      <meta name="color-scheme" content="dark" />
+      {ART.logo ? (
+        <>
+          <link rel="icon" href="/favicon.ico" sizes="48x48" />
+          <link rel="icon" href="/art/icon-192.png" type="image/png" sizes="192x192" />
+          <link rel="apple-touch-icon" href="/art/icon-180.png" />
+          <meta property="og:image" content={`${BRAND.origin}/art/share.png`} />
+        </>
+      ) : (
+        <link rel="icon" href="data:," />
+      )}
+      <link rel="preload" href="/fonts/host-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="stylesheet" href="/app.css" />
     </head>
     <body>
@@ -52,7 +64,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
             <a href="/#cennik">{copy.nav.pricing}</a>
             <a href="/#otazky">{copy.nav.faq}</a>
           </nav>
-          <a class="btn btn--coral btn--small" href={meta.ctaHref ?? '/zacat'}>
+          <a class="btn btn--white btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
             {copy.nav.start}
           </a>
         </div>

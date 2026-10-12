@@ -1,4 +1,4 @@
-import type { FC } from 'hono/jsx'
+import type { Child, FC } from 'hono/jsx'
 import { PLANS, planById } from '../config'
 import { copy } from '../copy'
 import { formatEur, typeset } from '../format'
@@ -28,6 +28,14 @@ export type CompanyState =
   | { kind: 'busy'; ico: string }
   | { kind: 'fresh' }
 
+/** A page of the request: a soft light at its top and one narrow column. */
+const Page: FC<{ children: Child }> = ({ children }) => (
+  <section class="section page">
+    <div class="page__glow" aria-hidden="true"></div>
+    <div class="wrap narrow page__inner">{children}</div>
+  </section>
+)
+
 const ChosenPlan: FC<{ plan: string }> = ({ plan }) => {
   const chosen = planById(plan)
   if (!chosen) return null
@@ -43,19 +51,17 @@ const ChosenPlan: FC<{ plan: string }> = ({ plan }) => {
 
 /** The first step: the IČO, or the way in without a company. */
 export const StartIco: FC<{ carry: Carry; plan: string; value?: string; error?: string }> = ({ carry, plan, value, error }) => (
-  <section class="section page">
-    <div class="wrap narrow">
-      <h1 class="h1">{copy.start.title}</h1>
-      <p class="lead">{copy.start.lead}</p>
-      <ChosenPlan plan={plan} />
-      <StartForm carry={plan ? [...carry, ['balik', plan]] : carry} value={value} error={error} />
-      <p>
-        <a class="link" href={withCarry('/zacat', carry, plan ? { nova: '1', balik: plan } : { nova: '1' })}>
-          {copy.final.noCompany}
-        </a>
-      </p>
-    </div>
-  </section>
+  <Page>
+    <h1 class="h1">{copy.start.title}</h1>
+    <p class="lead">{copy.start.lead}</p>
+    <ChosenPlan plan={plan} />
+    <StartForm carry={plan ? [...carry, ['balik', plan]] : carry} value={value} error={error} />
+    <p class="page__more">
+      <a class="link" href={withCarry('/zacat', carry, plan ? { nova: '1', balik: plan } : { nova: '1' })}>
+        {copy.final.noCompany}
+      </a>
+    </p>
+  </Page>
 )
 
 const CompanyBlock: FC<{ state: CompanyState; carry: Carry; plan: string }> = ({ state, carry, plan }) => {
@@ -143,8 +149,7 @@ export const StartDetails: FC<{
   const manual = state.kind !== 'found'
   const fresh = state.kind === 'fresh'
   return (
-    <section class="section page">
-      <div class="wrap narrow">
+    <Page>
         <h1 class="h1">{fresh ? copy.start.freshTitle : copy.start.title}</h1>
         {fresh ? <p class="lead">{copy.start.freshLead}</p> : null}
         <CompanyBlock state={state} carry={carry} plan={values.plan} />
@@ -223,40 +228,35 @@ export const StartDetails: FC<{
           <p class="small">
             {copy.start.privacy} <a href="/pravne-informacie#ochrana-udajov">{copy.start.privacyLink}</a>.
           </p>
-          <button class="btn btn--coral details__submit" type="submit">
+          <button class="btn btn--white details__submit" type="submit">
             {copy.start.submit}
           </button>
         </form>
-      </div>
-    </section>
+    </Page>
   )
 }
 
 export const Thanks: FC = () => (
-  <section class="section page">
-    <div class="wrap narrow">
-      <h1 class="h1">{copy.thanks.title}</h1>
-      <p class="lead">{copy.thanks.lead}</p>
-      <p>{copy.thanks.next}</p>
-      <p>
-        <a class="link" href="/">
-          {copy.thanks.back}
-        </a>
-      </p>
-    </div>
-  </section>
+  <Page>
+    <h1 class="h1">{copy.thanks.title}</h1>
+    <p class="lead">{copy.thanks.lead}</p>
+    <p class="page__text">{copy.thanks.next}</p>
+    <p class="page__more">
+      <a class="btn btn--glass" href="/">
+        {copy.thanks.back}
+      </a>
+    </p>
+  </Page>
 )
 
 export const NotFound: FC = () => (
-  <section class="section page">
-    <div class="wrap narrow">
-      <h1 class="h1">{copy.notFound.title}</h1>
-      <p class="lead">{copy.notFound.lead}</p>
-      <p>
-        <a class="link" href="/">
-          {copy.notFound.back}
-        </a>
-      </p>
-    </div>
-  </section>
+  <Page>
+    <h1 class="h1">{copy.notFound.title}</h1>
+    <p class="lead">{copy.notFound.lead}</p>
+    <p class="page__more">
+      <a class="btn btn--glass" href="/">
+        {copy.notFound.back}
+      </a>
+    </p>
+  </Page>
 )

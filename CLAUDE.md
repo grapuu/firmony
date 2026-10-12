@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date at 00:30)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -14,8 +14,12 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Name: **Firmony** (firma + harmony), chosen by the builder on his "zhodnoť ty". firmony.ai and firmony.app were
   free at Websupport on 12 October 2026 (.ai 193,80 € for the first two years, then 96,90 € a year; .app 21,90 €
   a year); firmony.com is taken; a web search found no business of that name. He wanted .ai, .io, .com or .app and
-  nothing Slovak-sounding ("nie účtik alebo účtovník a bodka sk"). .io was advised against (its future is uncertain).
-  **Not bought yet**: buying is his. The name lives in `BRAND` (src/config.ts) and in the wordmark text.
+  nothing Slovak-sounding ("nie účtik alebo účtovník a bodka sk").
+- The domain, his word at 23:43: "Tak drahú doménu kupovať nebudeme. Maximálne to .io pretože to je lacnejšie"
+  (he had read the .ai price as 20 € a month). firmony.io was free at Websupport that night at 69,90 € a year;
+  .app is 21,90 €. **Not chosen and not bought**: buying is his. Until he names it, `BRAND.origin`, `BRAND.email`
+  and `MAIL.from` say firmony.ai; when he does, those three change, and so do the test's `site`, the notes'
+  firmony.ai, and `wrangler.jsonc` once a route is added.
 - Nothing is deployed. There is no GitHub repository and no Worker yet. The code is committed locally on `main`.
 - All checks pass: `npm test` (44 unit checks) and `npm run test:runtime` (53 checks in workerd).
 
@@ -102,15 +106,38 @@ above 2,5 % or accountant cost above 40 € a client.
 - Headers: CSP without anything inline or foreign, no framing, HSTS, `noindex` on `/zacat` and on any host but
   firmony.ai; http and www are redirected; a form is accepted only from our own pages and under 8 kB.
 
-## Design (the night of 12 October 2026)
+## Design (the second one, built on the night of 12 to 13 October 2026)
 
-- Palette: plum `#26143d` (text, dark sections), mist `#faf8ff` (page), lilac `#ece6ff` (soft sections),
-  coral `#ff6a55` (buttons, with plum text; `#e0412b` where coral is text on a light ground), lavender
-  `#bfaef3` (text on plum). Not the colours of Slovak incumbents (blue, green, orange).
-- Type: Literata (variable, optical size follows the font size; designed with Czech diacritics in mind) for
-  headlines and figures, Hanken Grotesk for everything else. Self-hosted, latin and latin-ext only.
-- The one bold object: the receipt in the hero ("Balík Štart ... Spolu 69 €", torn edges by a CSS mask), printed
-  line by line once when the page opens (respects reduced motion). Everything else is quiet: rules, no cards.
+The first design (plum, mist and coral, Literata) he called "odporná ... moc jednoduchý, obyčajný, jak z Wordu":
+the colours and the fonts not progressive and not modern. He asked for a redesign, research of Pennylane, Dougs,
+inFakt, Bench, CloudTalk and the French competition, and prompts for 3D pictures he makes in ChatGPT Pro. What
+the research took: Qonto's black stage with cinematic 3D objects and heavy type, CloudTalk's gradient light and
+glossy orb, Pennylane's and Dougs' clear prices. He was sent 20 prompts that night (glossy iridescent glass in
+#4F7CFF, #7C5CFF and #FF7AB6 on pure black, 1:1); their exact words were not kept.
+
+- Black `#000` page. Light where we take care of something: azure `#4f7cff`, violet `#7c5cff`, pink `#ff7ab6`,
+  the colours of his glass objects, as glows behind things, the outline of the lead plan and the e-invoice
+  panel, the second line of the hero, the savings figure. Text `#bdb8d0`, small print `#8e89a6`, headings white.
+- Surfaces are glass: white at 6.5 to 2 % over black with a hairline of 10 %. Radii by rank: panels 32, cards
+  24, fields 14, buttons and chips round. The primary button is white with black words, the secondary glass.
+- Type: Host Grotesk (variable 300 to 800, self-hosted, latin and latin-ext, OFL), one family. Headlines 700
+  at about −0.04em, the hero 104 px on a wide screen; text 17 px. No capitals for labels, no monospace.
+- The one bright object is still the receipt in the hero ("Balík Štart ... Spolu 69 €"), white paper with
+  torn edges, tilted, lit violet from below; it is printed once when the page opens and three chips arrive
+  beside it ("Bloček zaúčtovaný", "E-faktúra prijatá", "Termín postrážený"); on a phone they stack under it.
+  That is the only motion, and it respects reduced motion.
+- The sections: the pains as four loose notes, tilted; the four steps on one line of light; AI and the
+  accountant as two glass panels joined by a lit "+"; what is included as a bento (four wide tiles that can
+  carry a picture, four small; the deadlines tile names two real deadlines); the e-invoice panel; the prices
+  (Rast leads, `LEAD_PLAN`); the comparison; the two ways in; the founder's note in large type; the questions
+  with a column that offers the email; a lit closing panel with the IČO.
+- Pictures (`ART` in src/config.ts, one slot per place; each section looks finished without its picture):
+  logo, heroLeft and heroRight (beside the receipt), ai, human, docs, deadlines, overview, answers (the wide
+  tiles), einvoice, calc, fresh, switching, founder (his photo), final. When a picture comes:
+  `python3 scripts/art.py picture <source> <name> --size 800` (it finds the object, centres it and makes the
+  black see-through), then the slot gets `{ src: '/art/<name>.webp', alt: '', width: 800, height: 800 }`.
+  The logo: `python3 scripts/art.py logo <source>` writes the logo, the favicon, the icons and the picture a
+  shared link shows; the slot `logo` is `/art/logo-small.webp` at 128 px, and with it the page links the icons.
 - His taste (memory): no monospace or tech labels, Robinhood's typography as the benchmark, no AI clichés,
   image prompts instead of drawn pictures. Pages are checked at 1440, 390 and 320 px: nothing scrolls sideways.
 

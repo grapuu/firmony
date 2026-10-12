@@ -37,7 +37,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({
   ],
 }))
 
-const TYPES = { '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
+const TYPES = { '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
 
 createServer(async (req, res) => {
   try {
