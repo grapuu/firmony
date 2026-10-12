@@ -702,6 +702,17 @@ strong {
   }
 }
 
+/* On the narrowest phones the receipt keeps each line on one row. */
+@media (max-width: 380px) {
+  .receipt__paper {
+    padding: 30px 20px 36px;
+    font-size: 0.8125rem;
+  }
+  .receipt__sum {
+    font-size: 2.25rem;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   /* The one moment of motion: the receipt is printed when the page opens, then the chips arrive. */
   .receipt__paper {
