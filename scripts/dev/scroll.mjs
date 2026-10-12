@@ -15,7 +15,8 @@ mkdirSync(out, { recursive: true })
 const BASE = process.env.BASE ?? 'http://127.0.0.1:8787'
 const mobile = Number(width) < 600
 const browser = await chromium.launch()
-const context = await browser.newContext({ viewport: { width: Number(width), height: Number(height) }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile })
+// Still pictures by default (nothing half-way through its animation); MOTION=on shows the page as it moves.
+const context = await browser.newContext({ viewport: { width: Number(width), height: Number(height) }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, reducedMotion: process.env.MOTION === 'on' ? 'no-preference' : 'reduce' })
 const page = await context.newPage()
 await page.goto(BASE + path, { waitUntil: 'networkidle' })
 await page.evaluate(() => document.fonts.ready)

@@ -505,7 +505,8 @@ strong {
 .hero__title {
   color: var(--white);
   font-family: var(--serif);
-  font-size: clamp(3.5rem, 0.9rem + 7.2vw, 8.5rem);
+  /* As large as the width allows, and never so tall that the buttons leave a laptop's first screen. */
+  font-size: max(3.5rem, min(0.9rem + 7.2vw, 8.5rem, 12.5vh));
   font-weight: 400;
   letter-spacing: -0.025em;
   line-height: 0.92;
