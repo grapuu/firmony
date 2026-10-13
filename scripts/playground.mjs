@@ -4,12 +4,13 @@
 //   npx wrangler deploy --dry-run --outdir .wrangler/dist && node --no-warnings scripts/playground.mjs
 //
 // IČO 57442452 is found in the register, 35757442 makes the register fail, anything else is unknown.
-// What was "sent" is at /playground/mail.
+// What was "sent" is at /playground/mail. /app/ukazka signs in to the sample company of the client's app; a
+// document added there is "read" by a pretend reader as yesterday's café receipt.
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
-import { PRETEND_MAIL, registerAnswer } from '../test/pretend.mjs'
+import { PRETEND_MAIL, readerAnswer, registerAnswer } from '../test/pretend.mjs'
 
 const root = new URL('..', import.meta.url).pathname
 const dist = join(root, '.wrangler/dist')
@@ -19,6 +20,7 @@ const port = Number(process.env.PORT ?? 8787)
 // Written in the long-standing option names and converted, so the script survives Miniflare's own renames.
 const mf = new Miniflare(convertV4MiniflareOptions({
   d1Persist: join(root, '.wrangler/playground-d1'),
+  r2Persist: join(root, '.wrangler/playground-r2'),
   workers: [
     {
       name: 'firmony',
@@ -26,8 +28,12 @@ const mf = new Miniflare(convertV4MiniflareOptions({
       modules: [{ type: 'ESModule', path: join(dist, 'index.js') }],
       compatibilityDate: '2026-10-01',
       d1Databases: { DB: 'firmony-playground' },
+      r2Buckets: { FILES: 'firmony-files' },
+      bindings: { DEMO: '1', ANTHROPIC_API_KEY: 'pretend' },
       serviceBindings: { EMAIL: 'pretend-mail' },
       async outboundService(request) {
+        const read = await readerAnswer(request)
+        if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
         const answer = registerAnswer(request.url)
         if (answer) return new MfResponse(await answer.text(), { status: answer.status, headers: { 'content-type': 'application/json' } })
         return new MfResponse('unexpected request', { status: 599 })
@@ -37,7 +43,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({
   ],
 }))
 
-const TYPES = { '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
+const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
 
 createServer(async (req, res) => {
   try {

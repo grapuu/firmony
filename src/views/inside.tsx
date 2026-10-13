@@ -1,0 +1,249 @@
+// The client's app: the frame every page stands in (a column on the left on a computer, a bar of tabs at the
+// bottom of a phone), and the pages of signing in. The same white, blue and red as the site, his glass in tiles,
+// the warm half of a title in the red serif; less to read than anywhere else.
+import type { Child, FC } from 'hono/jsx'
+import { ART, BRAND, type Art } from '../config'
+import { app } from '../app/copy'
+import type { Who } from '../app/store'
+import { Picture, Tile } from './home'
+import { Wordmark } from './layout'
+
+export type Place = 'home' | 'payments' | 'documents' | 'messages'
+
+/** The head of every page of the app: its own stylesheet after the site's, and its one small script. */
+export const InsideHead: FC<{ title: string }> = ({ title }) => (
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/art/icon-180.png" />
+    <link rel="preload" href="/fonts/funnel-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+    <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/inside.css" />
+    <script src="/inside.js" defer></script>
+  </head>
+)
+
+/** A title of the app: the plain half in the blue sans, the warm half in the red serif on a line of its own. */
+export const Heading: FC<{ first: string; second?: string; small?: boolean; id?: string }> = ({ first, second, small, id }) => (
+  <h1 id={id} class={`ptitle${small ? ' ptitle--small' : ''}`}>
+    <span class="ptitle__sans">{first}</span>
+    {second ? (
+      <>
+        {' '}
+        <em class="ptitle__serif">{second}</em>
+      </>
+    ) : null}
+  </h1>
+)
+
+/** A short sentence after something was done: green when it went well, amber when something needs a look. */
+export const Flash: FC<{ text?: string | null; tone?: 'ok' | 'warn' | 'error' }> = ({ text, tone = 'ok' }) =>
+  text ? (
+    <p class={`flash flash--${tone}`} role="status">
+      {tone === 'ok' ? <span class="tick" aria-hidden="true" /> : null}
+      <span>{text}</span>
+    </p>
+  ) : null
+
+const NAV: { place: Place; href: string; label: string; art: Art | null }[] = [
+  { place: 'home', href: '/app', label: app.nav.home, art: ART.mark },
+  { place: 'payments', href: '/app/platby', label: app.nav.payments, art: ART.paperBank },
+  { place: 'documents', href: '/app/doklady', label: app.nav.documents, art: ART.paperReceipt },
+  { place: 'messages', href: '/app/spravy', label: app.nav.messages, art: ART.chat },
+]
+
+const Count: FC<{ n: number; tone?: 'amber' | 'blue' }> = ({ n, tone = 'amber' }) => (n > 0 ? <span class={`count count--${tone}`}>{n}</span> : null)
+
+/** The form every page carries for adding documents from anywhere: the button of the side and the tab of a phone. */
+const Pick: FC = () => (
+  <form id="pick" class="pick" method="post" action="/app/doklady" enctype="multipart/form-data" data-upload>
+    <label class="pick__label" for="pick-file">
+      {app.nav.add}
+    </label>
+    <input id="pick-file" class="pick__file" type="file" name="file" multiple accept="image/*,application/pdf,.pdf,.xml,text/xml,application/xml" />
+    <button class="btn btn--blue btn--small pick__send" type="submit">
+      {app.add.send}
+    </button>
+  </form>
+)
+
+export const Shell: FC<{ who: Who; place: Place | null; missing: number; unread: number; title: string; children: Child }> = ({ who, place, missing, unread, title, children }) => (
+  <html lang="sk">
+    <InsideHead title={`${title} | ${BRAND.name}`} />
+    <body class="inside">
+      <a class="skip" href="#obsah">
+        {app.skip}
+      </a>
+      <div class="shell">
+        <aside class="side" aria-label={app.nav.label}>
+          <div class="side__top">
+            <Wordmark href="/app" label={app.nav.home} />
+          </div>
+          <div class="side__company">
+            <span class="side__name">{who.company.name}</span>
+            <span class="side__plan">{app.nav.plan(planName(who.company.plan))}</span>
+          </div>
+          <nav class="side__nav">
+            {NAV.map((item) => (
+              <a class="side__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
+                <Tile art={item.art} size="sm" />
+                <span class="side__label">{item.label}</span>
+                {item.place === 'payments' ? <Count n={missing} /> : null}
+                {item.place === 'messages' ? <Count n={unread} tone="blue" /> : null}
+              </a>
+            ))}
+          </nav>
+          <a class="btn btn--blue side__add" href="/app/doklady#pridat" data-pick>
+            {app.nav.add}
+          </a>
+          <div class="side__foot">
+            <span class="side__user">{who.user.name}</span>
+            <span class="side__email">{who.user.email}</span>
+            <form method="post" action="/app/odhlasit">
+              <button class="side__out" type="submit">
+                {app.nav.signOut}
+              </button>
+            </form>
+          </div>
+        </aside>
+        <div class="stage">
+          <header class="bar">
+            <Wordmark href="/app" label={app.nav.home} />
+            <span class="bar__company">{who.company.name}</span>
+          </header>
+          <main id="obsah" class="content">
+            {children}
+          </main>
+        </div>
+      </div>
+      <nav class="tabs" aria-label={app.nav.label}>
+        {NAV.slice(0, 2).map((item) => (
+          <TabLink item={item} place={place} n={item.place === 'payments' ? missing : 0} />
+        ))}
+        <a class="tabs__add" href="/app/doklady#pridat" data-pick aria-label={app.nav.add}>
+          <span class="tabs__plus" aria-hidden="true">
+            +
+          </span>
+          <span class="tabs__label">{app.nav.addShort}</span>
+        </a>
+        {NAV.slice(2).map((item) => (
+          <TabLink item={item} place={place} n={item.place === 'messages' ? unread : 0} />
+        ))}
+      </nav>
+      <Pick />
+    </body>
+  </html>
+)
+
+const TabLink: FC<{ item: (typeof NAV)[number]; place: Place | null; n: number }> = ({ item, place, n }) => (
+  <a class="tabs__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
+    <span class="tabs__icon">
+      <Picture art={item.art} className="tabs__img" sizes="28px" />
+      {n > 0 ? <span class={`tabs__dot${item.place === 'messages' ? ' tabs__dot--blue' : ''}`}>{n}</span> : null}
+    </span>
+    <span class="tabs__label">{item.label}</span>
+  </a>
+)
+
+const PLAN_NAMES: Record<string, string> = { start: 'Štart', rast: 'Rast', firma: 'Firma' }
+export const planName = (id: string) => PLAN_NAMES[id] ?? id
+
+// ---------------------------------------------------------------------------------------------------------------
+// Signing in
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A page of its own for signing in: the wordmark, one card, and the way back to the site. */
+export const Door: FC<{ title: string; children: Child }> = ({ title, children }) => (
+  <html lang="sk">
+    <InsideHead title={`${title} | ${BRAND.name}`} />
+    <body class="inside inside--door">
+      <main id="obsah" class="door">
+        <div class="door__brand">
+          <Wordmark href="/" />
+        </div>
+        <div class="door__card">{children}</div>
+        <p class="door__foot">
+          {app.login.notClient}{' '}
+          <a class="link" href="/zacat">
+            {app.login.start}
+          </a>
+        </p>
+      </main>
+    </body>
+  </html>
+)
+
+export const LoginForm: FC<{ value?: string; error?: string }> = ({ value = '', error }) => (
+  <>
+    <Tile art={ART.key} size="lg" eager />
+    <Heading first={app.login.title} second={app.login.serif} small />
+    <p class="door__lead">{app.login.lead}</p>
+    <form class="door__form" method="post" action="/app/prihlasenie" novalidate>
+      <label class="field__label" for="email">
+        {app.login.email}
+      </label>
+      <input
+        id="email"
+        class="field__input"
+        type="email"
+        name="email"
+        value={value}
+        autocomplete="email"
+        inputmode="email"
+        aria-invalid={error ? 'true' : undefined}
+        aria-describedby={error ? 'email-error' : undefined}
+        autofocus
+      />
+      {error ? (
+        <p id="email-error" class="field__error">
+          {error}
+        </p>
+      ) : null}
+      <button class="btn btn--blue btn--large door__button" type="submit">
+        {app.login.button}
+      </button>
+    </form>
+  </>
+)
+
+export const LinkSent: FC = () => (
+  <>
+    <Tile art={ART.envelope} size="lg" eager />
+    <Heading first={app.login.sentTitle} second={app.login.sentSerif} small />
+    <p class="door__lead">{app.login.sentLead}</p>
+    <p class="door__note">{app.login.sentAgain}</p>
+    <a class="btn btn--line door__button" href="/app/prihlasenie">
+      {app.login.sentButton}
+    </a>
+  </>
+)
+
+export const Enter: FC<{ token: string }> = ({ token }) => (
+  <>
+    <Tile art={ART.key} size="lg" eager />
+    <Heading first={app.login.enterTitle} second={app.login.enterSerif} small />
+    <p class="door__lead">{app.login.enterLead}</p>
+    <form class="door__form" method="post" action="/app/vstup">
+      <input type="hidden" name="t" value={token} />
+      <button class="btn btn--blue btn--large door__button" type="submit">
+        {app.login.enterButton}
+      </button>
+    </form>
+  </>
+)
+
+export const Expired: FC<{ noCompany?: boolean }> = ({ noCompany }) => (
+  <>
+    <Tile art={ART.paperReturn} size="lg" eager />
+    <Heading first={app.login.expiredTitle} second={noCompany ? undefined : app.login.expiredSerif} small />
+    <p class="door__lead">{noCompany ? app.login.noCompany : app.login.expiredLead}</p>
+    <a class="btn btn--blue btn--large door__button" href="/app/prihlasenie">
+      {app.login.sentButton}
+    </a>
+  </>
+)

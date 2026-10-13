@@ -168,5 +168,45 @@ export const ART: Record<ArtSlot, Art | null> = {
   founder: null,
 }
 
+/**
+ * The client's app (13 October 2026): what it allows and how long things last. The model is Dougs' and
+ * Pennylane's: every payment on the company's account needs a document, and the client's only task is to add a
+ * document where one is missing. Everything else (reading it, pairing it with its payment, the deadlines) is ours.
+ */
+export const APP = {
+  /** How long a sign-in link works, and how long a browser stays signed in. */
+  linkMinutes: 20,
+  sessionDays: 30,
+  /** Sign-in links to one address in an hour, and sign-in requests from one connection in an hour. */
+  linksPerHour: 5,
+  signInsPerHour: 30,
+  /** A file a client adds: the largest, how many in one go, and what a request with files may weigh. */
+  fileBytes: 15_000_000,
+  filesAtOnce: 20,
+  uploadBytes: 60_000_000,
+  /** Files a company may add in a day (a thousand is far beyond any month of a young company). */
+  filesPerDay: 400,
+  /** A message to the accountant, and messages a company may send in an hour. */
+  messageChars: 4000,
+  messagesPerHour: 30,
+  /** The day of the next month by which we ask for a month's documents: the VAT return is due on the 25th. */
+  docsByDay: 10,
+  /** The address documents can be forwarded to: doklady-<code>@ the domain of the public mailbox. */
+  inboxPrefix: 'doklady-',
+} as const
+
+/**
+ * The reader of photographed and scanned documents: Claude, through Anthropic's API (secret ANTHROPIC_API_KEY).
+ * Without the key nothing is sent anywhere and the accountant reads the document. An e-invoice (XML) is read by
+ * our own code and never sent to the reader.
+ */
+export const READER = {
+  model: 'claude-haiku-5-5',
+  timeoutMs: 45_000,
+  /** The API takes a picture of up to 5 MB; a larger one goes to the accountant (the app makes phone photos smaller first). */
+  imageBytes: 5_000_000,
+  pdfBytes: 25_000_000,
+} as const
+
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
 export const PRIVACY_VERSION = '2026-10-12'

@@ -46,6 +46,142 @@ const MIGRATIONS: readonly string[][] = [
     )`,
     'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
   ],
+  // The client's app (13 October 2026): companies and who may see them, sign-in by an emailed link, the bank's
+  // payments, the documents, which document belongs to which payment, messages with the accountant, and a
+  // record of what changed. Whether a payment still needs a document is never stored: it is read from `links`
+  // and `exempt` every time (src/app/store.ts), so it cannot disagree with them.
+  [
+    `CREATE TABLE IF NOT EXISTS companies (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      ico TEXT,
+      vat_payer INTEGER NOT NULL DEFAULT 0,
+      plan TEXT NOT NULL,
+      inbox TEXT NOT NULL UNIQUE,
+      accountant TEXT,
+      demo INTEGER NOT NULL DEFAULT 0
+    )`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS members (
+      company_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (company_id, user_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS members_user ON members (user_id)',
+    `CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id)',
+    `CREATE TABLE IF NOT EXISTS login_links (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    )`,
+    `CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      iban TEXT NOT NULL,
+      bank TEXT,
+      balance_cents INTEGER,
+      balance_on TEXT,
+      UNIQUE (company_id, iban)
+    )`,
+    `CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      booked_on TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'EUR',
+      party TEXT,
+      party_iban TEXT,
+      vs TEXT,
+      ss TEXT,
+      ks TEXT,
+      note TEXT,
+      card INTEGER NOT NULL DEFAULT 0,
+      ref TEXT NOT NULL,
+      exempt TEXT,
+      exempt_note TEXT,
+      exempt_by TEXT,
+      UNIQUE (account_id, ref)
+    )`,
+    'CREATE INDEX IF NOT EXISTS payments_company ON payments (company_id, booked_on)',
+    `CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      added_by TEXT,
+      file_key TEXT,
+      file_type TEXT,
+      file_name TEXT,
+      file_bytes INTEGER,
+      file_hash TEXT,
+      status TEXT NOT NULL,
+      read_by TEXT,
+      read_tries INTEGER NOT NULL DEFAULT 0,
+      kind TEXT,
+      party TEXT,
+      party_ico TEXT,
+      party_iban TEXT,
+      number TEXT,
+      vs TEXT,
+      issued_on TEXT,
+      due_on TEXT,
+      total_cents INTEGER,
+      vat_cents INTEGER,
+      currency TEXT,
+      paid_privately INTEGER NOT NULL DEFAULT 0,
+      deleted_at INTEGER
+    )`,
+    'CREATE INDEX IF NOT EXISTS documents_company ON documents (company_id, created_at)',
+    'CREATE INDEX IF NOT EXISTS documents_hash ON documents (company_id, file_hash)',
+    `CREATE TABLE IF NOT EXISTS links (
+      document_id TEXT PRIMARY KEY,
+      payment_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      how TEXT NOT NULL,
+      by TEXT,
+      created_at INTEGER NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS links_payment ON links (payment_id)',
+    `CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      author TEXT,
+      side TEXT NOT NULL,
+      body TEXT NOT NULL,
+      payment_id TEXT,
+      seen_at INTEGER
+    )`,
+    'CREATE INDEX IF NOT EXISTS messages_company ON messages (company_id, created_at)',
+    `CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at INTEGER NOT NULL,
+      company_id TEXT,
+      user_id TEXT,
+      action TEXT NOT NULL,
+      subject TEXT,
+      detail TEXT
+    )`,
+  ],
 ]
 
 export const SCHEMA_VERSION = MIGRATIONS.length

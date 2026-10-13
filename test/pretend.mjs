@@ -30,3 +30,36 @@ export function registerAnswer(url, calls = []) {
   if (ico === '35757442') return new Response('busy', { status: 503 })
   return Response.json({ results: [], license: 'CC BY 4.0' })
 }
+
+/** Today in Bratislava, moved by a number of days, as YYYY-MM-DD. */
+function bratislavaDay(shift = 0) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.now() + shift * 86400000))
+}
+
+/**
+ * Anthropic's API as the reader of documents: whatever picture it is shown, it reads yesterday's receipt from a
+ * café for 12,40 €, which is what the sample company paid by card yesterday. A request without the key's header
+ * or for another model's tool is refused as the real API would.
+ */
+export async function readerAnswer(request, calls = []) {
+  if (!request.url.startsWith('https://api.anthropic.com/')) return null
+  const body = await request.json().catch(() => null)
+  calls.push(body)
+  if (!request.headers.get('x-api-key')) return Response.json({ type: 'error', error: { type: 'authentication_error' } }, { status: 401 })
+  const tool = body?.tools?.[0]?.name
+  return Response.json({
+    id: 'msg_pretend',
+    type: 'message',
+    role: 'assistant',
+    model: body?.model,
+    content: [
+      {
+        type: 'tool_use',
+        id: 'toolu_pretend',
+        name: tool,
+        input: { je_doklad: true, typ: 'blocek', druha_strana: 'Kaviareň Na rohu s. r. o.', ico_druhej_strany: '50123456', datum_vystavenia: bratislavaDay(-1), suma_celkom: '12.40', dph_celkom: '2.07', mena: 'EUR' },
+      },
+    ],
+    stop_reason: 'tool_use',
+  })
+}

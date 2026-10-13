@@ -1,0 +1,176 @@
+// Which document belongs to which payment, and which payments need no document. Pure functions: the database
+// work is in store.ts, and every rule here is checked in test/units.test.mjs.
+//
+// The rule, said plainly:
+// - A document and a payment can belong together only when the amounts are the same to the cent, the money went
+//   the right way (a receipt or a received invoice is paid out, an issued invoice is paid in), and the dates fit
+//   (a card receipt is settled at most a day before and five days after it was printed; an invoice is paid from
+//   fifteen days before it was issued to sixty days after it was due).
+// - Each sign that they belong together adds to a score: the same amount 50, the same variable symbol 40, the
+//   same account 30, a similar name 20, dates at most three days apart 10.
+// - They are paired without asking only when neither has any other candidate (two coffees at 2,50 € on one day
+//   are never guessed) and the score is at least 70. Otherwise a candidate of at least 50 is offered to the
+//   client, who confirms it with one tap.
+
+export type DocKind = 'receipt' | 'invoice_in' | 'invoice_out' | 'other'
+
+export interface MatchPayment {
+  id: string
+  bookedOn: string
+  amountCents: number
+  party: string | null
+  partyIban: string | null
+  vs: string | null
+}
+
+export interface MatchDocument {
+  id: string
+  kind: DocKind | null
+  issuedOn: string | null
+  dueOn: string | null
+  totalCents: number | null
+  party: string | null
+  partyIban: string | null
+  vs: string | null
+}
+
+export const AUTO_SCORE = 70
+export const SUGGEST_SCORE = 50
+
+/** Days from a to b, both YYYY-MM-DD. */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
+}
+
+/** A variable symbol as a number would read it: digits only, no leading zeros. */
+export function normalizeVs(vs: string | null | undefined): string {
+  return (vs ?? '').replace(/\D/g, '').replace(/^0+/, '')
+}
+
+export function normalizeIban(iban: string | null | undefined): string {
+  return (iban ?? '').replace(/\s/g, '').toUpperCase()
+}
+
+const LEGAL_FORMS = /\b(s\s*r\s*o|spol|a\s*s|k\s*s|v\s*o\s*s|sro|as|ltd|gmbh|inc|llc|se|ag|plc)\b/g
+const STOP = new Set(['slovakia', 'slovensko', 'bratislava', 'kosice', 'zilina', 'presov', 'nitra', 'trnava', 'banska', 'bystrica', 'platba', 'kartou', 'nakup', 'pos'])
+
+/** The words of a name that tell it apart: no accents, no legal form, no city, nothing shorter than four letters. */
+export function nameWords(name: string | null | undefined): string[] {
+  const plain = (name ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[.,]/g, ' ')
+    .replace(LEGAL_FORMS, ' ')
+  return [...new Set(plain.split(/[^a-z0-9]+/).filter((word) => word.length >= 4 && !STOP.has(word)))]
+}
+
+export function namesSimilar(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = nameWords(a)
+  const right = nameWords(b)
+  if (left.length === 0 || right.length === 0) return false
+  return left.some((word) => right.some((other) => word === other || (word.length >= 5 && other.length >= 5 && (word.startsWith(other) || other.startsWith(word)))))
+}
+
+/** Which way the money of a document goes: an issued invoice is paid in, everything else is paid out. */
+export function direction(kind: DocKind | null): 1 | -1 {
+  return kind === 'invoice_out' ? 1 : -1
+}
+
+/** Whether the dates of a document and a payment fit together. A document without a date fits any day. */
+export function datesFit(payment: MatchPayment, doc: MatchDocument): boolean {
+  if (!doc.issuedOn) return true
+  const days = daysBetween(doc.issuedOn, payment.bookedOn)
+  if (doc.kind === 'receipt') return days >= -1 && days <= 5
+  const dueDays = doc.dueOn ? Math.max(0, daysBetween(doc.issuedOn, doc.dueOn)) : 30
+  return days >= -15 && days <= Math.min(dueDays + 60, 180)
+}
+
+/** How surely a document belongs to a payment: 0 when it cannot. */
+export function score(payment: MatchPayment, doc: MatchDocument): number {
+  if (doc.totalCents === null || doc.totalCents <= 0) return 0
+  if (payment.amountCents !== direction(doc.kind) * doc.totalCents) return 0
+  if (!datesFit(payment, doc)) return 0
+  let points = 50
+  const vs = normalizeVs(doc.vs)
+  if (vs !== '' && vs === normalizeVs(payment.vs)) points += 40
+  const iban = normalizeIban(doc.partyIban)
+  if (iban !== '' && iban === normalizeIban(payment.partyIban)) points += 30
+  if (namesSimilar(doc.party, payment.party)) points += 20
+  if (doc.issuedOn && Math.abs(daysBetween(doc.issuedOn, payment.bookedOn)) <= 3) points += 10
+  return points
+}
+
+export interface Decision {
+  /** Pairs made without asking: [payment, document]. */
+  auto: [string, string][]
+  /** For a payment, the documents offered to the client, best first. */
+  suggest: Map<string, string[]>
+}
+
+/**
+ * Decides over payments that still need a document and documents that still need a payment. A pair is made only
+ * when it is each other's only candidate and sure enough; nothing else is guessed.
+ */
+export function decide(payments: readonly MatchPayment[], documents: readonly MatchDocument[]): Decision {
+  const byPayment = new Map<string, { doc: string; points: number }[]>()
+  const byDocument = new Map<string, string[]>()
+  for (const payment of payments) {
+    for (const doc of documents) {
+      const points = score(payment, doc)
+      if (points < SUGGEST_SCORE) continue
+      byPayment.set(payment.id, [...(byPayment.get(payment.id) ?? []), { doc: doc.id, points }])
+      byDocument.set(doc.id, [...(byDocument.get(doc.id) ?? []), payment.id])
+    }
+  }
+  const auto: [string, string][] = []
+  const suggest = new Map<string, string[]>()
+  for (const [paymentId, candidates] of byPayment) {
+    const only = candidates.length === 1 ? candidates[0] : undefined
+    if (only && only.points >= AUTO_SCORE && (byDocument.get(only.doc) ?? []).length === 1) {
+      auto.push([paymentId, only.doc])
+      continue
+    }
+    suggest.set(
+      paymentId,
+      [...candidates].sort((a, b) => b.points - a.points).map((candidate) => candidate.doc),
+    )
+  }
+  return { auto, suggest }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payments that need no document
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Why a payment needs no document from the client: a bank's own fee or interest, money moved between the
+ * company's own accounts, wages and what goes with them (the accountant makes their papers), a tax or another
+ * payment to the state, money put into the company or lent to it, or something else the client explains.
+ */
+export type Exempt = 'bank' | 'own' | 'payroll' | 'state' | 'capital' | 'other'
+export const EXEMPTS: readonly Exempt[] = ['bank', 'own', 'payroll', 'state', 'capital', 'other']
+
+export interface ExemptPayment {
+  amountCents: number
+  party: string | null
+  partyIban: string | null
+  note: string | null
+}
+
+/** The state's accounts are at the State Treasury, bank code 8180: taxes, social insurance, fees. */
+export function isStateIban(iban: string | null | undefined): boolean {
+  const normal = normalizeIban(iban)
+  return normal.startsWith('SK') && normal.slice(4, 8) === '8180'
+}
+
+const BANK_WORDS = /(poplatok|poplatky|vedenie (uctu|účtu)|úrok|urok|bankov[aá] poplatok|fee|charge|interest|kapitaliz)/i
+
+/** A payment that plainly needs no document, recognised without asking anybody; null when a person decides. */
+export function autoExempt(payment: ExemptPayment, ownIbans: readonly string[]): Exempt | null {
+  const iban = normalizeIban(payment.partyIban)
+  if (iban !== '' && ownIbans.some((own) => normalizeIban(own) === iban)) return 'own'
+  if (isStateIban(iban)) return 'state'
+  if (iban === '' && BANK_WORDS.test(`${payment.party ?? ''} ${payment.note ?? ''}`)) return 'bank'
+  return null
+}

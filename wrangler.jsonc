@@ -20,7 +20,12 @@
   "workers_dev": true,
   "preview_urls": false,
 
-  // Every fifteen minutes: send what waits in the outbox, delete what the privacy notice says is deleted.
+  // The client's documents (photos, PDFs, e-invoices), in the EU jurisdiction. The bucket "firmony-files" has to
+  // exist in the account before the first deploy that carries this line.
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "firmony-files", "jurisdiction": "eu" }],
+
+  // Every fifteen minutes: send what waits in the outbox, delete what the privacy notice says is deleted, read again
+  // a document whose reading was cut off.
   "triggers": { "crons": ["*/15 * * * *"] },
 
   // Only what the code logs itself (error names). No record of individual requests, so no IP addresses or URLs

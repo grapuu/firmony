@@ -2,19 +2,21 @@ import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
-import { BRAND, LIMITS, OPERATOR, PRIVACY_VERSION, REPLY_WITHIN, planById } from './config'
+import { APP, BRAND, LIMITS, OPERATOR, PRIVACY_VERSION, REPLY_WITHIN, planById } from './config'
 import { copy } from './copy'
 import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, withinLimit } from './db'
 import { typeset } from './format'
+import { connection, isLocal, later } from './http'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, type Company } from './rpo'
+import { appRoutes, appScheduled, type AppBindings } from './app/routes'
 import { Home, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
 import { NotFound, StartDetails, StartIco, Thanks, type CompanyState, type DetailsErrors, type DetailsValues, type Situation } from './views/start'
 
-export interface Bindings {
+export interface Bindings extends AppBindings {
   DB: D1Database
   /** Cloudflare's email service. Without it requests are still kept, and their emails wait in the outbox. */
   EMAIL?: Mailer
@@ -37,16 +39,28 @@ const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ')
 
+// The client's app adds one script of its own (public/inside.js: a file is sent as soon as it is picked, a photo
+// is made smaller first, a document being read is looked at again), and pictures of the documents it shows.
+const APP_CONTENT_SECURITY_POLICY = [
+  "default-src 'none'",
+  "style-src 'self'",
+  "font-src 'self'",
+  "img-src 'self' data: blob:",
+  "script-src 'self'",
+  "connect-src 'self'",
+  "form-action 'self'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+].join('; ')
+
+/** Where a client's files arrive: a request there may carry up to APP.uploadBytes. */
+const UPLOADS = /^\/app\/(doklady|platby\/[^/]+\/doklad|banka)$/
+
 const PERMISSIONS_POLICY = ['accelerometer', 'camera', 'display-capture', 'geolocation', 'gyroscope', 'microphone', 'payment', 'usb', 'browsing-topics']
   .map((feature) => `${feature}=()`)
   .join(', ')
 
 const CANONICAL_HOST = new URL(BRAND.origin).hostname
-
-/** A developer's own machine, where http and any host are fine. */
-function isLocal(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname.endsWith('.localhost') || hostname.endsWith('.test')
-}
 
 app.use('*', async (c, next) => {
   const url = new URL(c.req.url)
@@ -76,10 +90,11 @@ app.use('*', async (c, next) => {
     if (declared === undefined) return c.text('Length required', 411)
     const length = Number(declared)
     if (!Number.isInteger(length) || length < 0) return c.text('Bad request', 400)
-    if (length > LIMITS.formBytes) return c.text('Too large', 413)
+    if (length > (UPLOADS.test(url.pathname) ? APP.uploadBytes : LIMITS.formBytes)) return c.text('Too large', 413)
   }
   await next()
-  c.header('Content-Security-Policy', CONTENT_SECURITY_POLICY)
+  const inside = url.pathname === '/app' || url.pathname.startsWith('/app/')
+  if (!c.res.headers.has('Content-Security-Policy')) c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
   c.header('X-Frame-Options', 'DENY')
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -88,7 +103,7 @@ app.use('*', async (c, next) => {
   c.header('Permissions-Policy', PERMISSIONS_POLICY)
   c.header('Content-Language', 'sk')
   // Only the real domain is for search engines: not a preview address, not a form step.
-  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat')) c.header('X-Robots-Tag', 'noindex, nofollow')
+  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
   if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store')
   if (url.protocol === 'https:') c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
 })
@@ -110,21 +125,6 @@ function carryFrom(read: (name: string) => unknown): Carry {
   return out
 }
 
-/** Who a limit counts: an IPv6 address by its /64, anything else as it is. */
-function connection(c: Ctx): string {
-  const ip = c.req.header('cf-connecting-ip') ?? 'unknown'
-  if (!ip.includes(':')) return ip
-  return ip.toLowerCase().split(':').slice(0, 4).join(':')
-}
-
-function later(c: Ctx, work: Promise<unknown>): void {
-  const safe = work.catch((err) => console.error('a step after the answer failed', err instanceof Error ? err.name : 'error'))
-  try {
-    c.executionCtx.waitUntil(safe)
-  } catch {
-    // No execution context (a test): the work runs on by itself.
-  }
-}
 
 // ---------------------------------------------------------------------------
 // The home page, with the comparison when its form was sent
@@ -338,7 +338,9 @@ app.get('/pravne-informacie', (c) =>
   page(c, { title: `Právne informácie | ${BRAND.name}`, description: typeset(`Kto stojí za ${BRAND.name}, ako chránime osobné údaje a že nepoužívame cookies.`), path: '/pravne-informacie' }, <Legal />),
 )
 
-app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
+app.route('/app', appRoutes)
+
+app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /app', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
 
 app.get('/sitemap.xml', (c) => {
   const urls = ['/', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)
@@ -374,6 +376,11 @@ export default {
           console.error('outbox failed', err instanceof Error ? err.name : 'error')
         }
         await purge(env.DB)
+        try {
+          await appScheduled(env)
+        } catch (err) {
+          console.error('app schedule failed', err instanceof Error ? err.name : 'error')
+        }
       })(),
     )
   },

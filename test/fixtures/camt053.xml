@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <BkToCstmrStmt>
+    <GrpHdr><MsgId>STMT-2026-10-12</MsgId><CreDtTm>2026-10-12T22:00:00</CreDtTm></GrpHdr>
+    <Stmt>
+      <Id>2026-10-12-001</Id>
+      <Acct><Id><IBAN>SK31 1200 0000 1987 4263 7541</IBAN></Id><Ccy>EUR</Ccy></Acct>
+      <Bal><Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">5123.45</Amt><CdtDbtInd>CRDT</CdtDbtInd><Dt><Dt>2026-10-01</Dt></Dt></Bal>
+      <Bal><Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">4861.63</Amt><CdtDbtInd>CRDT</CdtDbtInd><Dt><Dt>2026-10-12</Dt></Dt></Bal>
+      <Ntry>
+        <Amt Ccy="EUR">12.40</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-12</Dt></BookgDt><ValDt><Dt>2026-10-12</Dt></ValDt>
+        <AcctSvcrRef>REF001</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls><RltdPties><Cdtr><Nm>KAVIAREN NA ROHU KOSICE</Nm></Cdtr></RltdPties></TxDtls></NtryDtls>
+        <AddtlNtryInf>Platba kartou KAVIAREN NA ROHU KOSICE</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">59.90</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-10</Dt></BookgDt>
+        <AcctSvcrRef>REF002</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>/VS2026118/SS/KS0308</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>Hostingový dom s. r. o.</Nm></Cdtr><CdtrAcct><Id><IBAN>SK8975000000000012345671</IBAN></Id></CdtrAcct></RltdPties>
+          <RmtInf><Ustrd>Faktúra 2026118</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">1200.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><DtTm>2026-10-07T09:12:00</DtTm></BookgDt>
+        <AcctSvcrRef>REF003</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <RltdPties><Dbtr><Nm>Ján &amp; syn s. r. o.</Nm></Dbtr><DbtrAcct><Id><IBAN>SK6807200002891987426353</IBAN></Id></DbtrAcct></RltdPties>
+          <RmtInf><Strd><CdtrRefInf><Ref>/VS20260005</Ref></CdtrRefInf></Strd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">4.50</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-03</Dt></BookgDt>
+        <AddtlNtryInf>Poplatok za vedenie účtu</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">33.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-02</Dt></BookgDt>
+        <AcctSvcrRef>REF005</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>/VS1700000000/SS/KS</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>Finančná správa SR</Nm></Cdtr><CdtrAcct><Id><IBAN>SK3681800000007000123456</IBAN></Id></CdtrAcct></RltdPties>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">80.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>PDNG</Sts>
+        <BookgDt><Dt>2026-10-12</Dt></BookgDt>
+        <AcctSvcrRef>REF006</AcctSvcrRef>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">25.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-01</Dt></BookgDt>
+        <AcctSvcrRef>REF007</AcctSvcrRef>
+        <NtryDtls>
+          <TxDtls><AmtDtls><TxAmt><Amt Ccy="EUR">10.00</Amt></TxAmt></AmtDtls><RltdPties><Cdtr><Nm>Prvý dodávateľ</Nm></Cdtr></RltdPties></TxDtls>
+          <TxDtls><AmtDtls><TxAmt><Amt Ccy="EUR">15.00</Amt></TxAmt></AmtDtls><RltdPties><Cdtr><Nm>Druhý dodávateľ</Nm></Cdtr></RltdPties></TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

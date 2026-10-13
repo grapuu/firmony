@@ -48,7 +48,7 @@ export const Picture: FC<{ art: Art | null; className: string; sizes?: string; e
 const Tick: FC = () => <span class="tick" aria-hidden="true"></span>
 
 /** One of his glass icons in a rounded tile, the way CloudTalk sets its icons. */
-const Tile: FC<{ art: Art | null; size?: 'sm' | 'md' | 'lg'; eager?: boolean }> = ({ art, size = 'md', eager }) => (
+export const Tile: FC<{ art: Art | null; size?: 'sm' | 'md' | 'lg'; eager?: boolean }> = ({ art, size = 'md', eager }) => (
   <span class={`tile tile--${size}`} aria-hidden="true">
     <Picture art={art} className="tile__img" sizes={size === 'lg' ? '88px' : size === 'md' ? '64px' : '40px'} eager={eager} />
   </span>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>
+  <cbc:ID>2026118</cbc:ID>
+  <cbc:IssueDate>2026-09-30</cbc:IssueDate>
+  <cbc:DueDate>2026-10-14</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0245">36123456</cbc:EndpointID>
+      <cac:PartyName><cbc:Name>Hostingový dom</cbc:Name></cac:PartyName>
+      <cac:PartyLegalEntity><cbc:RegistrationName>Hostingový dom s. r. o.</cbc:RegistrationName><cbc:CompanyID>36123456</cbc:CompanyID></cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0245">57442452</cbc:EndpointID>
+      <cac:PartyLegalEntity><cbc:RegistrationName>Ukážková firma s. r. o.</cbc:RegistrationName><cbc:CompanyID>57442452</cbc:CompanyID></cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>
+    <cbc:PaymentID>2026118</cbc:PaymentID>
+    <cac:PayeeFinancialAccount><cbc:ID>SK89 7500 0000 0000 1234 5671</cbc:ID></cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+  <cac:TaxTotal><cbc:TaxAmount currencyID="EUR">9.98</cbc:TaxAmount></cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="EUR">49.92</cbc:LineExtensionAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">59.90</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="EUR">59.90</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+</Invoice>

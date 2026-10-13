@@ -29,7 +29,7 @@ export function typeset(text: string): string {
       .replace(/(^|[\s(„"' ])([vszkouaiVSZKOUAI]) /g, `$1$2${NBSP}`)
       .replace(/(^|[\s(„"' ])([vszkouaiVSZKOUAI]) /g, `$1$2${NBSP}`)
       // A number and what it counts: "69 €", "30 dokladov", "20 %".
-      .replace(/(\d) (€|%|Kč|dokladov|dokladmi|ľudí|ľudia|osôb|mesiacov|mesiace|mesiac|dní|dni|hodín|minút|minúty|rokov|roky)/g, `$1${NBSP}$2`)
+      .replace(/(\d) (€|%|Kč|dokladov|dokladmi|doklady|doklad|ľudí|ľudia|osôb|mesiacov|mesiace|mesiac|dní|dni|hodín|minút|minúty|rokov|roky)/g, `$1${NBSP}$2`)
       // Thousands written with a space.
       .replace(/(\d) (\d{3})(?!\d)/g, `$1${NBSP}$2`)
       // Abbreviations and dates that must not break.
