@@ -1,25 +1,26 @@
 // Every visible text of the site, in Slovak, typeset once (src/format.ts). Prices and limits come from
 // src/config.ts, so a text can never say another figure than the plans have.
-import { BRAND, CLOSING_PRICE, OPERATOR, PLANS, REPLY_WITHIN, type Plan } from './config'
+import { APP, BRAND, CLOSING_PRICE, OPERATOR, ORDER, PAYROLL_PRICE, PLANS, REPLY_WITHIN, type Plan } from './config'
 import { formatEur, typeset, typesetAll } from './format'
 
 const start = PLANS[0] as Plan
+const largest = PLANS[PLANS.length - 1] as Plan
 const eur = (euros: number) => formatEur(euros * 100)
 
 /** What a plan's rows say: whom it is for, documents, VAT, payroll. */
 export function planRows(plan: Plan): { forWhom: string; docs: string; vat: string; people: string } {
   return {
-    forWhom: typeset(plan.id === 'start' ? 'Pre firmy, ktoré nie sú platiteľmi DPH.' : plan.id === 'rast' ? 'Pre platiteľov DPH.' : 'Pre firmy so zamestnancami.'),
-    docs: typeset(`do ${plan.docs} dokladov`),
+    forWhom: typeset(plan.id === 'start' ? 'Pre firmy, ktoré nie sú platiteľmi DPH.' : plan.id === 'rast' ? 'Pre platiteľov DPH.' : 'Pre firmy s väčším počtom dokladov.'),
+    docs: typeset(`do ${plan.docs} dokladov mesačne`),
     vat: typeset(plan.vatPayer ? 'mesačné priznanie, kontrolný a súhrnný výkaz' : 'priznania pri registrácii podľa § 7a'),
-    people: typeset(plan.people === 0 ? 'bez zamestnancov' : `do ${plan.people} ľudí`),
+    people: typeset(`${eur(PAYROLL_PRICE)} mesačne za človeka`),
   }
 }
 
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: účtovníctvo pre mladé firmy`,
-    description: `Postaráme sa o celé účtovníctvo Vašej s. r. o. Doklady stačí odfotiť. Zaúčtujeme ich, podáme priznanie k DPH aj daňové priznanie a postrážime termíny. Od ${eur(start.price)} mesačne, bez poplatkov za doklad.`,
+    description: `Postaráme sa o celé účtovníctvo Vašej s. r. o. Doklady stačí odfotiť. Zaúčtujeme ich, podáme priznanie k DPH aj daňové priznanie a postrážime termíny. Od ${eur(start.price)} mesačne podľa počtu dokladov.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
@@ -30,7 +31,7 @@ export const copy = typesetAll({
     first: 'Postaráme\u00a0sa o všetko.',
     second: 'Vy rastiete.',
     lead: 'Doklady odfotíte, všetko ostatné je na nás. Zaúčtujeme ich, podáme priznania a postrážime každý termín.',
-    price: `Od ${eur(start.price)} mesačne. Bez poplatkov za doklad.`,
+    price: `Od ${eur(start.price)} mesačne. Platíte podľa počtu dokladov.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
   },
@@ -65,8 +66,8 @@ export const copy = typesetAll({
 
   /** Four true figures, each with what it means. */
   stats: [
-    { value: eur(start.price), label: 'mesačne, všetko v cene' },
-    { value: eur(0), label: 'za doklad navyše' },
+    { value: eur(start.price), label: `mesačne za balík ${start.name}` },
+    { value: eur(0), label: 'za aplikáciu a e-faktúry' },
     { value: '1 deň', label: 'na odpoveď, po ľudsky' },
     { value: '1. 1. 2027', label: 'štart, e-faktúry v cene' },
   ],
@@ -79,15 +80,15 @@ export const copy = typesetAll({
 
   /** Everything in the price: pick one and see it. */
   services: {
-    first: 'Všetko v jednej cene.',
-    second: 'Nič navyše.',
+    first: 'Všetko, čo firma potrebuje.',
+    second: 'Na jednom mieste.',
     lead: 'Vyberte si a pozrite sa, ako to vyzerá.',
     example: 'Ilustračná ukážka',
     items: [
       { id: 'doklady', title: 'Doklady a banka', text: 'Zaúčtujeme každý doklad a spárujeme platby.' },
       { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za Vás.' },
       { id: 'efaktury', title: 'E-faktúry', text: 'Prijmeme ich za Vás. Povinné sú od 1. 1. 2027.' },
-      { id: 'mzdy', title: 'Mzdy', text: 'Výplaty, odvody a hlásenia pre Vašich ľudí.' },
+      { id: 'mzdy', title: 'Mzdy', text: `Výplaty, odvody a hlásenia, ${eur(PAYROLL_PRICE)} mesačne za človeka.` },
       { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
       { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
     ],
@@ -132,7 +133,7 @@ export const copy = typesetAll({
       title: 'Mzdy za október',
       rows: ['Výplatné pásky', 'Odvody do Sociálnej poisťovne', 'Zdravotné poistenie', 'Prehľad o preddavkoch na daň'],
       state: 'hotovo',
-      note: 'V balíkoch Rast a Firma.',
+      note: `${eur(PAYROLL_PRICE)} mesačne za človeka, v každom balíku.`,
     },
     deadlines: {
       title: 'Termíny',
@@ -170,20 +171,20 @@ export const copy = typesetAll({
 
   pricing: {
     first: 'Jasná cena.',
-    second: 'Žiadne poplatky za doklad.',
-    lead: 'Vyberte si podľa toho, či ste platiteľom DPH a koľko ľudí máte na mzde.',
+    second: 'Platíte podľa počtu dokladov.',
+    lead: 'Vyberte si podľa počtu dokladov za mesiac a podľa toho, či ste platiteľom DPH.',
     perMonth: 'mesačne',
     rows: { docs: 'Doklady', vat: 'DPH', people: 'Mzdy' },
     included: `V každom balíku: zaúčtovanie dokladov a platieb, e-faktúry, mesačný prehľad, stráženie termínov a odpovede ${REPLY_WITHIN}.`,
-    closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne.`,
+    closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne. Mzdy: ${eur(PAYROLL_PRICE)} mesačne za človeka.`,
     vat: 'Ceny sú bez DPH, DPH zatiaľ nepripočítavame.',
-    custom: 'Máte viac dokladov alebo ľudí? Pripravíme Vám ponuku na mieru.',
+    custom: `Viac ako ${largest.docs} dokladov mesačne? Pripravíme Vám ponuku na mieru.`,
   },
 
   /** What we promise, said once and plainly, next to the prices. */
   promises: [
     { title: 'Bez viazanosti', text: 'Mesačná výpovedná lehota.' },
-    { title: 'Doklady navyše zadarmo', text: 'Vyšší balík ponúkneme až po dvoch mesiacoch.' },
+    { title: 'Platíte podľa dokladov', text: 'Mesiac s viac dokladmi vyúčtujeme ako vyšší balík. Žiadne skryté poplatky.' },
     { title: 'Odpoveď do pracovného dňa', text: 'Po slovensky, nie úradnícky.' },
     { title: 'Účtovníctvo je Vaše', text: 'Keď odídete, všetko Vám odovzdáme.' },
   ],
@@ -200,13 +201,13 @@ export const copy = typesetAll({
     yes: 'Áno',
     people: 'Ľudia na mzde',
     button: 'Porovnať',
-    example: 'Príklad: paušál 60 €, 25 dokladov po 5,20 € a závierka 160 €.',
+    example: 'Príklad: paušál 60 €, 20 dokladov po 5,20 € a závierka 160 €.',
     empty: 'Zadajte svoje čísla a porovnáme ich s našou cenou.',
     today: 'Dnes zaplatíte ročne',
     save: 'Ušetríte ročne',
     more: 'S nami by ste ročne platili viac o',
-    custom: 'Pre firmu s takýmto počtom dokladov alebo ľudí pripravíme ponuku na mieru.',
-    note: `Porovnávame aj so závierkou za ${eur(CLOSING_PRICE)}.`,
+    custom: 'Pre firmu s takýmto počtom dokladov pripravíme ponuku na mieru.',
+    note: `Porovnávame aj so závierkou za ${eur(CLOSING_PRICE)} a mzdami za ${eur(PAYROLL_PRICE)} mesačne na človeka.`,
     invalid: 'Skontrolujte čísla. Sumy píšte v eurách, napríklad 60 alebo 5,20.',
   },
 
@@ -270,7 +271,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Čo ak budem mať viac dokladov, ako je v balíku?',
-        a: 'Za doklady navyše nič neplatíte. Ak ich budete mať viac dva mesiace po sebe, ponúkneme Vám vyšší balík.',
+        a: `Mesiac, v ktorom ich budete mať viac, vyúčtujeme ako vyšší balík. Pri viac ako ${largest.docs} dokladoch mesačne Vám pripravíme ponuku na mieru.`,
       },
       {
         q: 'Musím sa viazať?',
@@ -352,10 +353,74 @@ export const copy = typesetAll({
   },
 
   thanks: {
+    orderTitle: 'Ďakujeme. Pozrite sa do e-mailu.',
+    orderLead: 'Poslali sme Vám odkaz na zmluvu. Konateľ firmy ju uzavrie jedným kliknutím a hneď potom sa dostane do aplikácie.',
     title: 'Ďakujeme. Žiadosť máme.',
     lead: `Ozveme sa ${REPLY_WITHIN}. Potvrdenie sme Vám poslali na e-mail.`,
     next: 'Kým sa ozveme, pozrite sa do zmluvy so súčasnou účtovníčkou, aká dlhá je výpovedná lehota.',
     back: 'Späť na úvod',
+  },
+
+  /** The order a request becomes: the contract concluded online by a director the register names. */
+  order: {
+    title: 'Zmluva o vedení účtovníctva',
+    lead: 'Skontrolujte, prosím, údaje a uzavrite zmluvu. Môže ju uzavrieť konateľ firmy zapísaný v registri.',
+    summary: 'Hlavné body zmluvy',
+    rows: {
+      company: 'Firma',
+      plan: 'Balík',
+      price: 'Cena mesačne',
+      payroll: 'Mzdy',
+      closing: 'Závierka a daňové priznanie',
+      start: 'Začiatok',
+      invoices: 'Faktúry',
+      notice: 'Výpovedná lehota',
+      docs: 'Doklady',
+      answers: 'Odpovede',
+    },
+    noVat: 'bez DPH',
+    yearly: 'raz ročne',
+    startChosen: 'podľa voľby nižšie',
+    invoicesValue: 'mesačne vopred, splatnosť 14 dní',
+    noticeValue: 'jeden mesiac, bez viazanosti',
+    docsValue: `za mesiac do ${APP.docsByDay}. dňa nasledujúceho mesiaca`,
+    answersValue: REPLY_WITHIN,
+    plan: 'Balík',
+    start: 'Od kedy',
+    startHint: 'Ak meníte účtovníčku, vyberte mesiac po skončení jej výpovednej lehoty.',
+    director: 'Kto zmluvu uzatvára',
+    directorHint: 'Konatelia podľa Registra právnických osôb.',
+    directorName: 'Meno a priezvisko konateľa',
+    directorNameHint: 'Register teraz neodpovedá. Napíšte meno konateľa tak, ako je zapísané v obchodnom registri.',
+    agree: 'Súhlasím s obchodnými podmienkami vrátane zmluvy o spracúvaní osobných údajov. Som konateľ firmy a konám v jej mene.',
+    termsLink: 'Obchodné podmienky',
+    termsRead: 'Prečítať celé znenie',
+    submit: 'Uzavrieť zmluvu',
+    fine: 'Tlačidlom uzavriete zmluvu v mene firmy. Potvrdenie so znením podmienok Vám pošleme e-mailom.',
+    errors: {
+      summary: 'Niečo treba doplniť.',
+      director: 'Vyberte, prosím, konateľa.',
+      directorName: 'Zmluvu môže uzavrieť len konateľ. Napíšte, prosím, jeho meno a priezvisko.',
+      agree: 'Bez súhlasu s podmienkami zmluvu uzavrieť nemôžeme.',
+      start: 'Vyberte, prosím, od kedy.',
+      plan: 'Vyberte, prosím, balík.',
+      throttle: 'Z tohto pripojenia prišlo priveľa pokusov. Skúste to o hodinu.',
+      failed: 'Zmluvu sa nepodarilo uložiť. Skúste to, prosím, znova.',
+    },
+    doneTitle: 'Zmluva je uzavretá.',
+    doneLead: 'Potvrdenie so znením podmienok sme Vám poslali e-mailom. Vitajte vo Firmony.',
+    doneSigned: 'Uzavrel(a)',
+    toApp: 'Pokračovať do aplikácie',
+    signIn: 'Prihlásiť sa do aplikácie',
+    expiredTitle: 'Tento odkaz už neplatí.',
+    expiredLead: `Odkaz na zmluvu platí ${ORDER.days} dní. Napíšte nám a pošleme Vám nový.`,
+    clientTitle: 'Táto firma už u nás má zmluvu.',
+    clientLead: 'Prihláste sa do aplikácie e-mailom, s ktorým ste zmluvu uzavreli.',
+  },
+
+  terms: {
+    back: 'Späť na úvod',
+    contact: 'Otázky k podmienkam nám napíšte na',
   },
 
   notFound: {

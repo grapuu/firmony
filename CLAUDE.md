@@ -118,10 +118,21 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 
 ## Product decisions
 
-His (12 October 2026):
-- Plans per month without VAT: Štart 69 €, Rast 129 €, Firma 249 €. Annual closing and the corporate tax return:
-  149 € a year. Freelance accountants are paid 25, 40 and 70 € a client a month; nobody employed, no profit
-  shared with an accounting office.
+His (13 October 2026, 22:04, "ano" to the builder's price list after his "maržu musíme mať aspoň 60 percent,
+inak to nejde" and "účtovníčka nebude robiť za 25 eur ... bežne berú 50 až 100 eur za akéhokoľvek klienta"):
+- Plans per month without VAT, by documents a month: Štart 89 € (up to 20, not a VAT payer), Rast 169 € (up to 60,
+  VAT payer), Firma 329 € (up to 150). A month with more documents is billed as the next plan; above 150 a price is
+  agreed (an e-shop). Payroll 15 € a person a month on every plan. Annual closing and the corporate tax return:
+  249 € a year. Every figure in `PLANS`, `PAYROLL_PRICE` and `CLOSING_PRICE`.
+- The accountant (freelance, invoices us) is paid 28, 55 and 110 € a client a month, 5 € a person's payroll and
+  90 € a closing (`ACCOUNTANT_PAY`): about a third of the price, for the check, the returns and the answers, the app
+  doing the rest. In Slovakia nobody stamps or certifies an s. r. o.'s books (he had asked whether she would only
+  "dávať pečiatku"). Every plan, payroll and the closing leave at least 60 % after her pay, the bank, the digital
+  postman, the reading and a reserve of 2 % (`npm test` holds it: "every plan leaves at least 60 %"). Employing an
+  accountant pays from 60 to 100 clients each (about 2 300 € a month with levies).
+- The site says "Platíte podľa počtu dokladov" where it said "Bez poplatkov za doklad" and "Doklady navyše zadarmo".
+- Until then (12 October 2026): 69, 129 and 249 € with 30, 80 and 200 documents and payroll for 0, 2 and 5 people
+  inside, closing 149 €, accountants 25, 40 and 70 €; nobody employed, no profit shared with an accounting office.
 - Ads in young media and his own content; the brand is to "embrace" stressed young founders: "chceme ich objať
   a prijať, pomôžeme im, postaráme sa im o všetko a s nami môžu rásť".
 - Inspired by Pennylane, Dougs, inFakt, Bench and the Slovak CloudTalk. He asked to copy their designs and texts
@@ -131,9 +142,6 @@ His (12 October 2026):
   AI and human and its plain FAQ.
 
 The builder's proposals, shown on the site and his to change (in `PLANS`, `CLOSING_PRICE`, `REPLY_WITHIN`, copy):
-- Limits: Štart up to 30 documents, no payroll, not a VAT payer (§ 7a returns included); Rast up to 80 documents,
-  payroll for 2, VAT payer; Firma up to 200 documents, payroll for 5. More: an offer made to measure.
-- No fee for documents above the limit; two months above it and a larger plan is offered.
 - No lock-in: one month's notice. Answers within one working day.
 - Prices "bez DPH" with the sentence that VAT is not added while the company is not a VAT payer (europio is
   registered under § 7a only; crossing 50 000 € turnover makes it a payer, about June 2027 in the plan).

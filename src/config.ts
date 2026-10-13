@@ -38,30 +38,41 @@ export interface Plan {
   name: string
   /** Euro a month, without VAT. */
   price: number
-  /** Documents a month the plan is priced for. */
+  /** Documents a month the plan is priced for: a month with more is billed as the next plan. */
   docs: number
-  /** People on the payroll the plan covers (the director on a salary counts). */
-  people: number
   /** Whether the plan is for a VAT payer (monthly VAT return, control statement, recapitulative statement). */
   vatPayer: boolean
 }
 
 /**
- * The plans. Prices are the owner's (12 October 2026). The limits are the builder's proposal and his to change:
- * documents and people a plan is priced for, and that a VAT payer starts at Rast.
+ * The plans, by documents a month and VAT (his yes of 13 October 2026, 22:04, to a price list with at least 60 %
+ * margin; they were 69, 129 and 249 € with 30, 80 and 200 documents and payroll inside). A month with more documents
+ * than a plan is billed as the next plan; above the largest a price is agreed. Payroll is priced per person
+ * (PAYROLL_PRICE) on every plan.
  */
 export const PLANS: readonly Plan[] = [
-  { id: 'start', name: 'Štart', price: 69, docs: 30, people: 0, vatPayer: false },
-  { id: 'rast', name: 'Rast', price: 129, docs: 80, people: 2, vatPayer: true },
-  { id: 'firma', name: 'Firma', price: 249, docs: 200, people: 5, vatPayer: true },
+  { id: 'start', name: 'Štart', price: 89, docs: 20, vatPayer: false },
+  { id: 'rast', name: 'Rast', price: 169, docs: 60, vatPayer: true },
+  { id: 'firma', name: 'Firma', price: 329, docs: 150, vatPayer: true },
 ] as const
 
 export function planById(id: string | undefined): Plan | undefined {
   return PLANS.find((plan) => plan.id === id)
 }
 
-/** The annual closing and the corporate income tax return, once a year, for every plan. */
-export const CLOSING_PRICE = 149
+/** The annual closing and the corporate income tax return, once a year, for every plan (149 € until 13 October 2026). */
+export const CLOSING_PRICE = 249
+
+/** Payroll: euro a month for each person on it (the director on a salary counts), on every plan. */
+export const PAYROLL_PRICE = 15
+
+/**
+ * What a freelance accountant is paid (his yes of 13 October 2026, 22:04): a client a month by plan, a person's
+ * payroll a month, a closing. Her work is the check, the returns and the answers; the app does the rest. Shown on no
+ * page; with the prices above it leaves at least 60 % after her pay, the bank, the e-invoices, the reading and a
+ * reserve of 2 % for our own errors.
+ */
+export const ACCOUNTANT_PAY = { start: 28, rast: 55, firma: 110, payroll: 5, closing: 90 } as const
 
 /** How soon a request is answered, as the pages promise it. */
 export const REPLY_WITHIN = 'do jedného pracovného dňa'
@@ -257,3 +268,21 @@ export const READER = {
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
 export const PRIVACY_VERSION = '2026-10-12'
+
+/**
+ * The contract a client concludes online (13 October 2026). A request whose company the register knows as an
+ * s. r. o. becomes an order; its link goes by email to the address that was typed, and a director (konateľ) named
+ * in the register accepts the terms on the order's page. Bump TERMS_VERSION with every change of the terms
+ * (src/content/terms.ts): an accepted order keeps the version it accepted.
+ */
+export const TERMS_VERSION = '2026-10-13'
+
+export const ORDER = {
+  /** The link to an order works this many days. */
+  days: 30,
+  /** Acceptances tried from one connection in an hour. */
+  acceptsPerHour: 10,
+  /** The first month the service runs, and how many months a client can choose to start in. */
+  firstMonth: '2027-01',
+  startMonths: 6,
+} as const

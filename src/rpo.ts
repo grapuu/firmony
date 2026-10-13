@@ -11,6 +11,11 @@ export interface Company {
   ico: string
   name: string
   address: string
+  /** The register's own id of the entity, which its detail is asked by (the directors). */
+  rpoId: string | null
+  /** Where the company is registered, as a contract names it: "Obchodný register Mestského súdu Košice, oddiel
+   * Sro, vložka č. 64897/V". */
+  registerLine: string | null
   /** The register's word for the legal form, when it gives one. */
   legalForm: string | null
   isSro: boolean
@@ -33,11 +38,17 @@ interface RpoAddress extends Dated {
 }
 
 interface RpoResult {
+  id?: number | string
   identifiers?: ({ value?: string } & Dated)[]
   fullNames?: ({ value?: string } & Dated)[]
   addresses?: RpoAddress[]
   legalForms?: ({ value?: { value?: string; code?: string } } & Dated)[]
   termination?: string
+  sourceRegister?: {
+    value?: { value?: string }
+    registrationOffices?: ({ value?: string } & Dated)[]
+    registrationNumbers?: ({ value?: string } & Dated)[]
+  }
 }
 
 /** Of values over time, the one in force now: without an end, the latest start first. */
@@ -63,6 +74,20 @@ export function formatAddress(address: RpoAddress | undefined): string {
   return [street, address.street ? city : formatPostal(address.postalCodes?.[0])].filter(Boolean).join(', ')
 }
 
+/**
+ * "Obchodný register", "Mestský súd Košice" and "Sro/64897/V" as a contract writes them: "Obchodný register
+ * Mestského súdu Košice, oddiel Sro, vložka č. 64897/V". Null when the register names no court or number.
+ */
+export function registerLineOf(source: RpoResult['sourceRegister']): string | null {
+  const office = current(source?.registrationOffices)?.value?.trim()
+  const number = current(source?.registrationNumbers)?.value?.trim()
+  if (!office || !number) return null
+  const court = office.replace(/^Mestský súd\b/, 'Mestského súdu').replace(/^Okresný súd\b/, 'Okresného súdu')
+  const entry = /^([A-Za-z]+)\/(\d+)\/([A-Za-z])$/.exec(number)
+  const register = source?.value?.value?.trim() || 'Obchodný register'
+  return entry ? `${register} ${court}, oddiel ${entry[1]}, vložka č. ${entry[2]}/${entry[3]}` : `${register}, ${office}, ${number}`
+}
+
 const SRO = /\bs\.\s*r\.\s*o\.|\bspol\.\s*s\s*r\.\s*o\.|\bs\.r\.o\b/i
 
 /** The company the register knows under this IČO, read from its answer; null when it knows none. */
@@ -82,6 +107,8 @@ export function readCompany(ico: string, answer: unknown): Company | null {
     ico,
     name,
     address: formatAddress(current(result.addresses)),
+    rpoId: result.id === undefined || result.id === null ? null : String(result.id),
+    registerLine: registerLineOf(result.sourceRegister),
     legalForm,
     isSro: form?.code === '112' || /ručením obmedzeným/i.test(legalForm ?? '') || SRO.test(name),
     terminated: result.termination ?? null,
@@ -102,5 +129,54 @@ export async function lookupCompany(ico: string, fetcher: typeof fetch = fetch):
     return { found: readCompany(ico, await res.json()) }
   } catch {
     return { failed: true }
+  }
+}
+
+/** A director as the register names one: "Christian Juhás", "Konateľ". */
+export interface Director {
+  name: string
+  role: string
+}
+
+interface RpoPerson extends Dated {
+  stakeholderType?: { value?: string; code?: string }
+  personName?: { formatedName?: string; givenNames?: string[]; familyNames?: string[] }
+  fullName?: string
+}
+
+/**
+ * The directors in office, read from the register's detail of an entity (GET .../rpo/v1/entity/<id>, seen on
+ * 13 October 2026: `statutoryBodies`, each with `stakeholderType` "Konateľ" and `personName.formatedName`). One
+ * that has ended (`validTo` in the past) is left out.
+ */
+export function readDirectors(answer: unknown, today: string = new Date().toISOString().slice(0, 10)): Director[] {
+  const bodies = (answer as { statutoryBodies?: RpoPerson[] } | null)?.statutoryBodies
+  if (!Array.isArray(bodies)) return []
+  const out: Director[] = []
+  for (const body of bodies) {
+    if (body.validTo && body.validTo.slice(0, 10) < today) continue
+    const person = body.personName
+    const joined = [...(person?.givenNames ?? []), ...(person?.familyNames ?? [])].join(' ')
+    const name = (person?.formatedName || joined || body.fullName || '').replace(/\s+/g, ' ').trim()
+    if (name.length < 2 || out.some((d) => d.name === name)) continue
+    out.push({ name, role: body.stakeholderType?.value?.trim() || 'Konateľ' })
+  }
+  return out
+}
+
+export const RPO_ENTITY = 'https://api.statistics.sk/rpo/v1/entity'
+
+/** The directors of an entity, or null when the register does not answer within four seconds. */
+export async function lookupDirectors(rpoId: string, fetcher: typeof fetch = fetch): Promise<Director[] | null> {
+  if (!/^\d{1,12}$/.test(rpoId)) return null
+  try {
+    const res = await fetcher(`${RPO_ENTITY}/${rpoId}?showHistoricalData=false&showOrganizationUnits=false`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(4000),
+    })
+    if (!res.ok) return null
+    return readDirectors(await res.json())
+  } catch {
+    return null
   }
 }

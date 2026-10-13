@@ -1,0 +1,187 @@
+// The terms a client accepts when the contract is concluded online: the contract for keeping the accounts between
+// europio s. r. o. and a company, with the agreement on processing personal data (GDPR, art. 28) as its article 8.
+// A business-to-business contract under the Commercial Code (§ 269 ods. 2); written on 13 October 2026 and not yet
+// read by a lawyer. Every figure comes from src/config.ts. A point refers to another as "bod 2.6"; the unit checks
+// hold every such reference to a point that exists. Bump TERMS_VERSION with every change of the wording.
+import { APP, BRAND, OPERATOR, ORDER, PLANS, REPLY_WITHIN, TERMS_VERSION } from '../config'
+import { typeset } from '../format'
+
+export interface TermsSection {
+  title: string
+  points: string[]
+}
+
+const MONTHS_OF = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna', 'júla', 'augusta', 'septembra', 'októbra', 'novembra', 'decembra']
+
+/** "13. októbra 2026" for a YYYY-MM-DD. */
+export function longDate(day: string): string {
+  return `${Number(day.slice(8, 10))}. ${MONTHS_OF[Number(day.slice(5, 7)) - 1] ?? ''} ${day.slice(0, 4)}`
+}
+
+export const TERMS_TITLE = `Obchodné podmienky služby ${BRAND.name}`
+export const TERMS_SUBTITLE = `Zmluva o vedení účtovníctva medzi spoločnosťou ${OPERATOR.name} a klientom. Znenie z ${longDate(TERMS_VERSION)}.`
+
+const domain = new URL(BRAND.origin).hostname
+
+const SECTIONS: TermsSection[] = [
+  {
+    title: 'Zmluvné strany a uzavretie zmluvy',
+    points: [
+      `Službu ${BRAND.name} poskytuje spoločnosť ${OPERATOR.name}, so sídlom ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísaná ${OPERATOR.registeredIn} (ďalej „my“ alebo „poskytovateľ“).`,
+      'Klientom je obchodná spoločnosť, ktorá si službu objedná a v mene ktorej koná jej konateľ (ďalej „Vy“ alebo „klient“).',
+      'Zmluva vzniká, keď konateľ klienta na stránke objednávky potvrdí tieto podmienky tlačidlom „Uzavrieť zmluvu“. Zmluvu tvorí objednávka (firma, balík, cena a deň začiatku) a tieto podmienky. Potvrdenie s ich znením Vám pošleme e-mailom.',
+      'Zmluvu uzatvárajú podnikatelia pri svojej podnikateľskej činnosti a riadi sa Obchodným zákonníkom (§ 269 ods. 2). Predpisy na ochranu spotrebiteľa sa na ňu nevzťahujú.',
+    ],
+  },
+  {
+    title: 'Čo pre Vás robíme',
+    points: [
+      'Vedieme Vaše účtovníctvo v sústave podvojného účtovníctva podľa zákona č. 431/2002 Z. z. o účtovníctve, z dokladov, ktoré nám dodáte, a z pohybov na Vašich bankových účtoch.',
+      'Podľa objednaného balíka ďalej pripravujeme a podávame priznania k DPH, kontrolné a súhrnné výkazy, pri registrácii podľa § 7a zákona o DPH priznania za mesiace, v ktorých vznikne povinnosť ich podať, spracúvame mzdy, odvody a hlásenia za ľudí, ktorých nám nahlásite, a pripravujeme prehľady o preddavkoch na daň.',
+      'Raz ročne, za cenu podľa cenníka, zostavíme účtovnú závierku a pripravíme a podáme daňové priznanie k dani z príjmov právnickej osoby.',
+      `K službe patrí aplikácia ${BRAND.name}: pridávanie dokladov, prepojenie banky, vystavovanie faktúr, termíny a správy s účtovníčkou. Na otázky k Vášmu účtovníctvu odpovedáme ${REPLY_WITHIN}.`,
+      'Prácu vykonávajú naši účtovníci vrátane externých spolupracovníkov. Za ich prácu zodpovedáme, akoby sme ju vykonali sami. Doklady čítame aj pomocou umelej inteligencie a výsledok vždy kontroluje človek.',
+      'Nie sme daňoví poradcovia a daňové poradenstvo neposkytujeme. Služba nezahŕňa audit, znalecké posudky, zastupovanie v daňovej kontrole nad rámec predloženia podkladov, účtovníctvo za obdobia pred dňom začiatku ani opravu chýb z čias pred nami. Tieto práce urobíme len po dohode, za cenu dohodnutú vopred.',
+    ],
+  },
+  {
+    title: 'Čo potrebujeme od Vás',
+    points: [
+      `Doklady za každý mesiac nám dodáte najneskôr do ${APP.docsByDay}. dňa nasledujúceho mesiaca, cez aplikáciu alebo e-mailom. Doklady musia byť úplné, čitateľné a musia zodpovedať skutočnosti.`,
+      'Umožníte nám vidieť pohyby na účtoch firmy, a to prepojením banky v aplikácii alebo výpismi z banky.',
+      'Konateľ podpíše plnú moc, aby sme Vás mohli zastupovať pred finančnou správou, a ak spracúvame mzdy, aj pred Sociálnou poisťovňou a zdravotnými poisťovňami.',
+      'Bez zbytočného odkladu nám oznámite zmeny, ktoré sa týkajú účtovníctva a daní (napríklad registráciu pre DPH, nového zamestnanca alebo zmenu sídla), a na naše otázky odpoviete spravidla do piatich pracovných dní.',
+      'Za to, že doklady a údaje sú pravdivé a úplné, zodpovedáte Vy. Za vedenie účtovníctva podľa zákona zodpovedá účtovná jednotka, teda Vaša firma, aj keď ho vedieme my.',
+      'Ak doklady alebo informácie prídu neskoro alebo neúplné, podáme v termíne to, čo sa z dostupných podkladov podať dá, a upozorníme Vás na to. Za následky oneskorených alebo neúplných podkladov nezodpovedáme.',
+    ],
+  },
+  {
+    title: 'Cena a platby',
+    points: [
+      `Mesačná cena je cena Vášho balíka podľa cenníka na stránke ${domain} v deň uzavretia zmluvy a je uvedená v objednávke. Za mzdy sa k nej pripočíta cena za každého človeka podľa cenníka. Ceny sú bez DPH. Kým nie sme platiteľom DPH, DPH nepripočítavame; keď sa ním staneme, pripočítame ju v zákonnej sadzbe.`,
+      `Každý balík je určený pre počet dokladov za mesiac uvedený v cenníku. Mesiac, v ktorom ich bude viac, vyúčtujeme ako najbližší vyšší balík. Ak ich bude viac ako ${PLANS[PLANS.length - 1]?.docs ?? 0} za mesiac, dohodneme sa na cene; kým sa nedohodneme, účtujeme cenu najvyššieho balíka, a ak sa nedohodneme, môžeme zmluvu vypovedať.`,
+      'Cenu fakturujeme mesačne vopred so splatnosťou 14 dní, prevodom na účet uvedený na faktúre. Závierku a daňové priznanie fakturujeme po ich podaní.',
+      'Práce mimo balíka podľa bodu 2.6 fakturujeme podľa dohody.',
+      'Ak ste v omeškaní s platbou viac ako 30 dní, môžeme po upozornení e-mailom najmenej 10 dní vopred pozastaviť prácu až do zaplatenia. Za následky pozastavenia nezodpovedáme. Pri omeškaní môžeme požadovať úrok z omeškania podľa Obchodného zákonníka.',
+      'Ceny môžeme zmeniť. Zmenu oznámime e-mailom najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď má zmena nastať.',
+    ],
+  },
+  {
+    title: 'Začiatok a prechod od doterajšej účtovníčky',
+    points: [
+      'Služba začína dňom uvedeným v objednávke, vždy prvým dňom mesiaca. Účtovníctvo vedieme za obdobia od tohto dňa.',
+      'Ak prechádzate od inej účtovníčky alebo kancelárie, pripravíme Vám výpoveď a žiadosť o odovzdanie podkladov a prevezmeme počiatočné stavy. Za správnosť účtovníctva za obdobia pred dňom začiatku nezodpovedáme. Účtovnú závierku za rok pred dňom začiatku robí doterajšia účtovníčka, ak sa nedohodneme inak.',
+    ],
+  },
+  {
+    title: 'Zodpovednosť',
+    points: [
+      'Podania urobíme včas, ak máme podklady v termíne podľa bodu 3.1.',
+      'Ak Vám vznikne pokuta, úrok z omeškania alebo iná sankcia od úradov výlučne našou chybou, napríklad preto, že sme zmeškali termín, hoci sme mali všetky podklady včas, uhradíme Vám ju.',
+      'Zmluvné strany vzhľadom na § 379 Obchodného zákonníka považujú za škodu, ktorú mohli pri uzavretí zmluvy predvídať, najviac sumu rovnajúcu sa dvanásťnásobku mesačnej ceny Vášho balíka za jeden kalendárny rok. To neplatí pre škodu spôsobenú úmyselne.',
+      'Za škodu nezodpovedáme, ak ju spôsobili nepravdivé, neúplné alebo oneskorené doklady či informácie od Vás, Vaše rozhodnutia alebo výpadky bánk a štátnych systémov, ktoré sme nemohli ovplyvniť.',
+    ],
+  },
+  {
+    title: 'Aplikácia, Vaše údaje a mlčanlivosť',
+    points: [
+      'Prístup do aplikácie majú ľudia, ktorých pozvete. Za ich konanie v aplikácii zodpovedáte Vy. Prístup chráňte a podozrenie na jeho zneužitie nám hneď oznámte.',
+      'Doklady a účtovníctvo sú Vaše. Po skončení zmluvy Vám ich odovzdáme podľa bodu 10.4.',
+      'O všetkom, čo sa o Vás a Vašej firme dozvieme, zachovávame mlčanlivosť, aj po skončení zmluvy. Neplatí to tam, kde nám povinnosť ukladá zákon (bod 9.3).',
+      'Vaše doklady a údaje nepoužívame na trénovanie modelov umelej inteligencie a nikomu ich nedávame na iné účely.',
+    ],
+  },
+  {
+    title: 'Spracúvanie osobných údajov v mene klienta',
+    points: [
+      'Na dokladoch, v mzdách a v účtovníctve sú osobné údaje Vašich zamestnancov, obchodných partnerov a ďalších ľudí. Ich prevádzkovateľom ste Vy a my sme sprostredkovateľom podľa článku 28 nariadenia (EÚ) 2016/679 (GDPR). Tento článok je zmluvou o spracúvaní osobných údajov.',
+      'Predmetom a účelom spracúvania je vedenie účtovníctva, daní a miezd podľa zmluvy, po dobu jej trvania. Spracúvame identifikačné a kontaktné údaje, údaje na dokladoch a o platbách a pri mzdách pracovnoprávne a mzdové údaje vrátane údajov o pracovnej neschopnosti. Dotknutými osobami sú zamestnanci, konatelia a spoločníci a obchodní partneri, ktorí sú fyzickými osobami.',
+      'Údaje spracúvame len na Váš pokyn. Pokynom je táto zmluva a to, čo nám zadáte v aplikácii. Ak by bol pokyn v rozpore s právom, upozorníme Vás.',
+      'Ľudia, ktorí s údajmi pracujú, sú viazaní mlčanlivosťou. Údaje chránime primeranými opatreniami: šifrovaným spojením, prístupom len pre oprávnených ľudí a databázou a súbormi uloženými v Európskej únii.',
+      'Využívame ďalších sprostredkovateľov a dávate nám na to všeobecný súhlas: Cloudflare, Inc. (servery, databáza, súbory a e-maily, údaje uložené v Európskej únii), Anthropic, PBC (čítanie dokladov umelou inteligenciou v USA na základe štandardných zmluvných doložiek, bez použitia na trénovanie), Enable Banking Oy (čítanie pohybov na účtoch s Vaším súhlasom, Fínsko) a našich externých účtovníkov (Slovensko). O pridaní alebo výmene sprostredkovateľa Vás vopred informujeme e-mailom. Môžete namietať, a ak sa nedohodneme, zmluvu vypovedať.',
+      'Pomôžeme Vám pri vybavovaní žiadostí dotknutých osôb, pri zabezpečení údajov a pri oznamovaní porušenia ich ochrany. O porušení ochrany Vašich údajov Vás upovedomíme bez zbytočného odkladu, najneskôr do 48 hodín od jeho zistenia.',
+      'Na požiadanie Vám poskytneme informácie, ktoré preukazujú, že povinnosti sprostredkovateľa plníme, a po predchádzajúcej dohode umožníme primeranú kontrolu.',
+      'Po skončení zmluvy Vám údaje vrátime podľa bodu 10.4 a do 90 dní ich vymažeme, okrem tých, ktoré musíme uchovávať podľa zákona.',
+    ],
+  },
+  {
+    title: 'Ochrana pred legalizáciou príjmov z trestnej činnosti',
+    points: [
+      'Ako poskytovateľ účtovných služieb sme povinnou osobou podľa zákona č. 297/2008 Z. z. Pred začatím spolupráce a počas nej musíme identifikovať a overiť Vašu firmu, jej konateľa a konečných užívateľov výhod a poznať účel a povahu obchodného vzťahu.',
+      'Na identifikáciu stačí, keď konateľ podpíše plnú moc kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom). Inak Vás požiadame o iný spôsob, ktorý zákon pripúšťa. Bez identifikácie službu začať nemôžeme.',
+      'Ak to zákon vyžaduje, môžeme spoluprácu odmietnuť alebo ukončiť. Neobvyklú obchodnú operáciu sme povinní ohlásiť a o ohlásení Vás informovať nesmieme.',
+    ],
+  },
+  {
+    title: 'Trvanie a skončenie zmluvy',
+    points: [
+      'Zmluva sa uzatvára na dobu neurčitú.',
+      'Každá strana ju môže vypovedať aj bez udania dôvodu, a to e-mailom. Výpovedná lehota je jeden mesiac a začína plynúť prvým dňom mesiaca nasledujúceho po doručení výpovede.',
+      'Od zmluvy môžeme odstúpiť, ak ste v omeškaní s platbou viac ako 60 dní, ak nám ani po upozornení opakovane nedodávate doklady, alebo z dôvodov podľa bodu 9.3. Vy môžete od zmluvy odstúpiť, ak ani po upozornení opakovane porušujeme svoje povinnosti.',
+      'Po skončení zmluvy dokončíme práce za obdobia, za ktoré ste zaplatili, do 30 dní Vám odovzdáme doklady, účtovníctvo a jeho export v bežnom formáte, ukončíme prístupy do aplikácie a vzdáme sa plnej moci. Závierku za rok, v ktorom zmluva skončila, urobíme len po dohode.',
+    ],
+  },
+  {
+    title: 'Komunikácia a záverečné ustanovenia',
+    points: [
+      'Komunikujeme e-mailom a správami v aplikácii. E-mail poslaný na adresu z objednávky alebo na adresu, ktorú nám neskôr oznámite, sa považuje za doručený nasledujúci pracovný deň po odoslaní, ak sa nevráti ako nedoručiteľný.',
+      'Tieto podmienky môžeme zmeniť. Zmenu oznámime e-mailom najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď zmena nadobúda účinnosť; inak platí zmenené znenie.',
+      'Zmluva sa riadi právom Slovenskej republiky. Spory riešia súdy Slovenskej republiky.',
+      'Ak by niektoré ustanovenie bolo neplatné, ostatné platia ďalej a strany ho nahradia platným ustanovením s čo najbližším účelom.',
+    ],
+  },
+]
+
+/** The sections, typeset once, as the page and the confirmation show them. */
+export const TERMS: readonly TermsSection[] = SECTIONS.map((s) => ({ title: typeset(s.title), points: s.points.map((p) => typeset(p)) }))
+
+/** The terms as plain text for the email that confirms the contract: a durable copy of what was accepted. */
+export function termsText(): string {
+  const lines = [TERMS_TITLE, TERMS_SUBTITLE.replace(/ /g, ' '), '']
+  SECTIONS.forEach((section, i) => {
+    lines.push(`${i + 1}. ${section.title}`)
+    section.points.forEach((point, j) => lines.push(`${i + 1}.${j + 1} ${point}`))
+    lines.push('')
+  })
+  return lines.join('\n').trim()
+}
+
+/** Every "bod 2.6" in the terms, with whether such a point exists (the unit checks hold it). */
+export function termsReferences(): { ref: string; exists: boolean }[] {
+  const out: { ref: string; exists: boolean }[] = []
+  for (const section of SECTIONS) {
+    for (const point of section.points) {
+      for (const m of point.matchAll(/bod[ue]? (\d+)\.(\d+)/g)) {
+        const i = Number(m[1]) - 1
+        const j = Number(m[2]) - 1
+        out.push({ ref: `${m[1]}.${m[2]}`, exists: Boolean(SECTIONS[i]?.points[j]) })
+      }
+    }
+  }
+  return out
+}
+
+/** The first day of each month a client can choose to start in, from the next month and never before the launch. */
+export function startMonths(today: string): string[] {
+  let [y, m] = today.slice(0, 7).split('-').map(Number) as [number, number]
+  m += 1
+  if (m > 12) {
+    m = 1
+    y += 1
+  }
+  const [fy, fm] = ORDER.firstMonth.split('-').map(Number) as [number, number]
+  if (y < fy || (y === fy && m < fm)) {
+    y = fy
+    m = fm
+  }
+  const out: string[] = []
+  for (let k = 0; k < ORDER.startMonths; k++) {
+    out.push(`${y}-${String(m).padStart(2, '0')}-01`)
+    m += 1
+    if (m > 12) {
+      m = 1
+      y += 1
+    }
+  }
+  return out
+}

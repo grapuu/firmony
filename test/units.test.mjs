@@ -42,18 +42,26 @@ check('the icons the page links when the logo exists', ['/favicon.ico', '/art/ic
 check('money as typed', calc.readMoney('5,20') === 520 && calc.readMoney('60') === 6000 && calc.readMoney('1 200 €') === 120000 && calc.readMoney('') === 0)
 check('not money', calc.readMoney('abc') === null && calc.readMoney('1,234') === null && calc.readMoney('-5') === null)
 check('a count as typed', calc.readCount('25', 1000) === 25 && calc.readCount('', 1000) === 0 && calc.readCount('-1', 1000) === null && calc.readCount('2000', 1000) === null)
-const plan = (docs, people, vat) => calc.planFor(docs, people, vat)?.id ?? null
-check('a small company without VAT is Štart', plan(25, 0, false) === 'start')
-check('a VAT payer starts at Rast', plan(25, 0, true) === 'rast')
-check('more documents need a larger plan', plan(31, 0, false) === 'rast' && plan(81, 0, false) === 'firma')
-check('people on the payroll need a larger plan', plan(10, 1, false) === 'rast' && plan(10, 3, false) === 'firma')
-check('beyond the largest plan is made to measure', plan(201, 0, false) === null && plan(10, 6, true) === null)
+const plan = (docs, vat) => calc.planFor(docs, vat)?.id ?? null
+const [first, second, third] = config.PLANS
+check('a small company without VAT is Štart', plan(first.docs, false) === 'start')
+check('a VAT payer starts at Rast', plan(10, true) === 'rast')
+check('more documents need a larger plan', plan(first.docs + 1, false) === 'rast' && plan(second.docs + 1, false) === 'firma' && plan(second.docs + 1, true) === 'firma')
+const withPeople = calc.compare({ monthly: 10000, perDoc: 0, docs: 10, closing: 0, vatPayer: false, people: 2 })
+check('payroll is added for each person', withPeople.kind === 'compared' && withPeople.usYear === (first.price + 2 * config.PAYROLL_PRICE) * 1200 + config.CLOSING_PRICE * 100, JSON.stringify(withPeople))
+check('beyond the largest plan is made to measure', plan(third.docs + 1, false) === null && plan(third.docs + 1, true) === null)
 const example = calc.compare(calc.EXAMPLE)
-check('the worked example adds up', example.kind === 'compared' && example.todayYear === 244000 && example.usYear === 97700 && example.difference === 146300 && example.plan.id === 'start', JSON.stringify(example))
+check('the worked example adds up', example.kind === 'compared' && example.todayYear === 212800 && example.usYear === first.price * 1200 + config.CLOSING_PRICE * 100 && example.difference === 212800 - example.usYear && example.plan.id === 'start', JSON.stringify(example))
 check('nothing typed is nothing to compare', calc.compare({ monthly: 0, perDoc: 0, docs: 0, closing: 0, vatPayer: false, people: 0 }).kind === 'empty')
 const dearer = calc.compare({ monthly: 3000, perDoc: 0, docs: 10, closing: 0, vatPayer: false, people: 0 })
-check('being dearer is said as it is', dearer.kind === 'compared' && dearer.difference === 36000 - 97700)
-check('our year is twelve months and the closing', config.PLANS.every((p) => calc.compare({ monthly: 100, perDoc: 0, docs: p.docs, closing: 0, vatPayer: p.vatPayer, people: p.people }).usYear === p.price * 1200 + config.CLOSING_PRICE * 100))
+check('being dearer is said as it is', dearer.kind === 'compared' && dearer.difference === 36000 - (first.price * 1200 + config.CLOSING_PRICE * 100))
+check('our year is twelve months and the closing', config.PLANS.every((p) => calc.compare({ monthly: 100, perDoc: 0, docs: p.docs, closing: 0, vatPayer: p.vatPayer, people: 0 }).usYear === p.price * 1200 + config.CLOSING_PRICE * 100))
+// His word of 13 October 2026: at least 60 % margin. What a client costs besides the accountant (the bank, the
+// digital postman, the reading, the servers: estimates until the quotes come) and a reserve of 2 % for our errors.
+const TECH = { start: 4.25, rast: 4.33, firma: 6.52 }
+const margin = (price, cost) => (price - cost - 0.02 * price) / price
+check('every plan leaves at least 60 % after the accountant and the rest', config.PLANS.every((p) => margin(p.price, config.ACCOUNTANT_PAY[p.id] + TECH[p.id]) >= 0.6), config.PLANS.map((p) => margin(p.price, config.ACCOUNTANT_PAY[p.id] + TECH[p.id]).toFixed(3)).join(' '))
+check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_PRICE, config.ACCOUNTANT_PAY.payroll + 0.3) >= 0.6 && margin(config.CLOSING_PRICE, config.ACCOUNTANT_PAY.closing) >= 0.6)
 
 // The register
 const answer = JSON.parse(readFileSync(new URL('./fixtures/rpo-europio.json', import.meta.url), 'utf8'))

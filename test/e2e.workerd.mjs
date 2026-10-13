@@ -60,7 +60,7 @@ let res = await get('/')
 let page = await res.text()
 check('the home page answers', res.status === 200)
 check('it says the promise', page.includes('Postaráme sa o') && page.includes('Vy rastiete.'))
-check('it names the prices of all three plans', [69, 129, 249].every((p) => page.includes(`${p}${NB}€`)))
+check('it names the prices of all three plans', [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)))
 check('it runs no script at all', !/<script/i.test(page))
 check('it carries no inline style', !/ style=/i.test(page))
 const csp = res.headers.get('content-security-policy') ?? ''
@@ -68,12 +68,12 @@ check('the policy allows nothing inline and nothing foreign', csp.includes("scri
 check('no framing, no sniffing, HSTS', res.headers.get('x-frame-options') === 'DENY' && res.headers.get('x-content-type-options') === 'nosniff' && /max-age=31536000/.test(res.headers.get('strict-transport-security') ?? ''))
 check('the canonical address is the domain', page.includes('<link rel="canonical" href="https://firmony.ai/"'))
 check('the real domain is for search engines', res.headers.get('x-robots-tag') === null)
-check('the worked example is shown before anything is typed', page.includes(`2${NB}440${NB}€`) && page.includes(`977${NB}€`) && page.includes(`1${NB}463${NB}€`))
+check('the worked example is shown before anything is typed', page.includes(`2${NB}128${NB}€`) && page.includes(`1${NB}317${NB}€`) && page.includes(`811${NB}€`))
 
 // The comparison
 res = await get('/?mesacne=100&za-doklad=3&doklady=50&zavierka=200&dph=ano&ludia=1')
 page = await res.text()
-check('a comparison of typed numbers', page.includes(`3${NB}200${NB}€`) && page.includes('balík Rast') && page.includes(`1${NB}697${NB}€`) && page.includes(`1${NB}503${NB}€`))
+check('a comparison of typed numbers', page.includes(`3${NB}200${NB}€`) && page.includes('balík Rast') && page.includes(`2${NB}457${NB}€`) && page.includes(`743${NB}€`))
 res = await get('/?mesacne=abc')
 check('numbers that are none are said to be wrong', (await res.text()).includes('Skontrolujte čísla'))
 res = await get('/?mesacne=500&doklady=400')
