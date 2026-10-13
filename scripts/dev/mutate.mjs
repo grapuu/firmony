@@ -26,6 +26,7 @@ const RULES = [
   ['src/app/match.ts', '    if (theOne && (byDocument', '    if (false && theOne && (byDocument', 'the number of an invoice decides which of two of the same amount is paid'],
   ['src/app/bank.ts', '  if (present) {', '  if (false) {', 'the bank is told a person is at the screen'],
   ['src/app/bank.ts', '    if (!iban || !/^[A-Z]{2}\\d{2}[A-Z0-9]{10,30}$/.test(iban) || typeof account.uid !== \'string\') continue', "    if (typeof account.uid !== 'string') continue", 'an account without an IBAN (a card) is not the company\'s account'],
+  ['src/app/bank.ts', 'tried_at = CASE WHEN synced_at IS NULL THEN ? ELSE tried_at END WHERE id = ?`)', 'tried_at = CASE WHEN 0 THEN ? ELSE tried_at END WHERE id = ?`)', 'a first read that failed is tried again soon'],
   ['src/views/team.tsx', '          {p.bankLine ? <span>{p.bankLine}</span> : null}\n', '', 'the accountant sees the client\'s bank'],
 ]
 

@@ -954,12 +954,16 @@ res = await anna.get('/app')
 page = await res.text()
 check('and the overview says the payments stopped, with the way to renew', page.includes('vypršal') && page.includes('href="/app/banka/pripojit?banka=Tatra%20banka"'))
 bank.refuse(null)
-// Renewed: a new consent takes the accounts over, and the one that ended is no longer shown
+// Renewed: a new consent takes the accounts over, and the one that ended is no longer shown. Its first read fails
+// (the bank is down): it is tried again within a quarter of an hour, not in six.
+bank.fail(503)
 res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
 fromBankPage = new URL(new URL(res.headers.get('location') ?? 'https://x.test').searchParams.get('spat') ?? 'https://x.test')
 res = await anna.get(`${fromBankPage.pathname}${fromBankPage.search}`)
 await settle(800)
-const renewed = await db.prepare("SELECT id FROM bank_links WHERE company_id = 'co-a' AND status = 'active'").first()
+bank.fail(null)
+const renewed = await db.prepare("SELECT id, error, tried_at, synced_at FROM bank_links WHERE company_id = 'co-a' AND status = 'active'").first()
+check('a first read that failed is tried again within a quarter of an hour', renewed?.error?.startsWith('503') && renewed.synced_at === null && renewed.tried_at <= Math.floor(Date.now() / 1000) - 6 * 3600 + 900 && renewed.tried_at > Math.floor(Date.now() / 1000) - 6 * 3600, JSON.stringify(renewed))
 check('renewed, the account is read under the new consent', Boolean(renewed) && renewed.id !== bankLink?.id && (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-a'").first())?.link_id === renewed.id)
 res = await anna.get('/app/banka')
 check('and the ended one is not shown any more', !(await res.text()).includes('Prístup vypršal'))

@@ -371,7 +371,11 @@ export async function readLink(env: BankEnv, linkId: string, present: Present | 
     const status = err instanceof BankError ? err.status : 0
     const code = err instanceof BankError ? err.code : err instanceof Error ? err.name : 'error'
     const ended = err instanceof BankError && (status === 401 || (code !== null && ENDED.has(code)))
-    await db.prepare(`UPDATE bank_links SET ${ended ? "status = 'expired', " : ''}error = ? WHERE id = ?`).bind(`${status} ${code ?? ''}`.trim().slice(0, 200), link.id).run()
+    // A first read that failed is tried again within a quarter of an hour, not in six: the client waits for it.
+    await db
+      .prepare(`UPDATE bank_links SET ${ended ? "status = 'expired', " : ''}error = ?, tried_at = CASE WHEN synced_at IS NULL THEN ? ELSE tried_at END WHERE id = ?`)
+      .bind(`${status} ${code ?? ''}`.trim().slice(0, 200), now() - BANK.syncEverySeconds + 900, link.id)
+      .run()
     if (added > 0) await matchCompany(db, link.company_id)
     return ended ? { status: 'ended' } : { status: 'failed', why: `${status} ${code ?? ''}`.trim() }
   }

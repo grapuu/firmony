@@ -86,7 +86,7 @@ const fromBase64url = (text) => Buffer.from(text.replace(/-/g, '+').replace(/_/g
  * application's id as kid, its issuer and audience, at most a day long, signed with the application's key), knows
  * the banks of Slovakia, sends the client to a pretend bank that approves at once, and reads one business account
  * whose transactions and balance the caller gives. `refuse(code)` makes every read of an account answer 401 with
- * that code, as a consent that ended does.
+ * that code, as a consent that ended does; `fail(status)` makes it answer that status, as a bank that is down does.
  */
 export function pretendBank({ iban, transactions = () => [], balance = () => '0.00', approve = (back) => `https://pretend-bank.test/schvalit?spat=${encodeURIComponent(back)}`, extraAccount = null }) {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } })
@@ -95,6 +95,7 @@ export function pretendBank({ iban, transactions = () => [], balance = () => '0.
   const sessions = new Map()
   const calls = []
   let refusing = null
+  let failing = null
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   function tokenOk(request) {
     const [kind, token] = (request.headers.get('authorization') ?? '').split(' ')
@@ -149,6 +150,7 @@ export function pretendBank({ iban, transactions = () => [], balance = () => '0.
       const session = [...sessions.values()].find((s) => s.uids.includes(uid))
       if (!session || session.status !== 'AUTHORIZED') return json(404, { error: 'ACCOUNT_DOES_NOT_EXIST' })
       if (refusing) return json(401, { error: refusing })
+      if (failing) return json(failing, { error: 'ASPSP_ERROR' })
       if (read[2] === 'balances') return json(200, { balances: [{ name: 'Účtovný zostatok', balance_amount: { currency: 'EUR', amount: balance() }, balance_type: 'CLBD', reference_date: new Date().toISOString().slice(0, 10) }] })
       const from = url.searchParams.get('date_from') ?? '0000-00-00'
       const own = uid.startsWith('uid2-') ? [{ entry_reference: 'personal-1', transaction_amount: { currency: 'EUR', amount: '35.00' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: from, remittance_information: ['Potraviny'] }] : transactions()
@@ -166,5 +168,5 @@ export function pretendBank({ iban, transactions = () => [], balance = () => '0.
     }
     return json(404, { error: 'NOT_FOUND' })
   }
-  return { app, privateKey, publicKey, answer, calls, sessions, refuse: (code) => (refusing = code) }
+  return { app, privateKey, publicKey, answer, calls, sessions, refuse: (code) => (refusing = code), fail: (status) => (failing = status) }
 }

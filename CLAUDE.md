@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (177 unit checks) and `npm run test:runtime` (266 checks in workerd). The sixth
+- All checks pass: `npm test` (177 unit checks) and `npm run test:runtime` (267 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -319,7 +319,8 @@ service under PSD2; `src/app/bank.ts` is the only file that talks to it. Without
   `credit_debit_indicator`; the other side's name and IBAN; the Slovak symbols from `reference_number` and
   `remittance_information`; a card payment named by its merchant; the bank's balance (CLBD first). New payments
   pair at once, an invoice paid by its number says "Zaplatená". The schedule reads a consent every six hours
-  (`tried_at`, so a failed read waits too: PSD2 allows four reads a day without the client, RTS art. 36(5)); "Načítať
+  (`tried_at`, so a failed read waits too: PSD2 allows four reads a day without the client, RTS art. 36(5); a first
+  read that failed is tried again within a quarter of an hour, since the client waits for it); "Načítať
   teraz" (six an hour) sends the client's address and browser (`Psu-Ip-Address`, `Psu-User-Agent`), so the bank
   does not count it among the four. A 401 or a code that means the consent ended marks it expired.
 - The same payment from a statement and from the bank is one (`importEntries` in `store.ts`): another source's
@@ -470,10 +471,10 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # unit checks (177): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank
-npm run test:runtime     # the deployable bundle in workerd (266): the site, and the app end to end, the bank included
+npm run test:runtime     # the deployable bundle in workerd (267): the site, and the app end to end, the bank included
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (14, all held)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (15, all held)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
