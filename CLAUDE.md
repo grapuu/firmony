@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 23:50)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 23:55)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -102,7 +102,8 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 
 - From 23:03 (13 October 2026). His word: "ano makaj, nechcem ziadnu komunikaciu mailom nic take... vsetko v nasom
   uzamknutom ekosysteme": his yes to the client's declaration in the app, and nothing by email. He was told how it was
-  read (Product decisions) and "2 až 3 hodiny". Built, with all checks passing (units 218, runtime 366):
+  read (Product decisions) and "2 až 3 hodiny". Built and pushed at 23:55 (`6a6fb04`), with all checks passing
+  (units 218, runtime 366):
   - "Everything in the app" below: every email to a client or the team is a doorbell without content
     (`src/bell.ts`); the client's declaration for the law against money laundering at /app/vyhlasenie, first of
     four first steps; the contract and its terms in full at /app/zmluva (the email that carried them is gone); the
