@@ -146,8 +146,10 @@ into it, serif headlines with a modern sans, less text, larger pictures.
   phone drawn in CSS (titanium frame, bezel, island, buttons, glass) with Firmony on it, leaning back, five of
   his glass papers floating around it, near ones sharp and far ones blurred. Scrolling: the words go, the
   phone rises into the middle and levels, the papers fly one by one into it and each becomes a row of the app
-  (bloček, faktúra, výpis, e-faktúra, priznanie k DPH), the month's bars grow, "Všetko zaúčtované" appears,
-  and the phone steps aside (on a phone: upwards) for "Toto je celé vaše účtovníctvo." Every measure in the
+  (bloček, faktúra, výpis, e-faktúra, priznanie k DPH), each row lit for a moment as it is booked, the
+  month's bars grow, "Všetko zaúčtované" appears, a notification with his F comes down ("Priznanie k DPH za
+  október je podané."), and the phone steps aside (on a phone: upwards) for "Toto je celé vaše
+  účtovníctvo." The nearest paper at first is the envelope, the slip floats far away. Every measure in the
   phone is in `cqw` of `.hero__device`, and the app's parts have fixed heights, so a paper knows where its
   row is: its icon 37.4 widths left of the middle, rows 13 widths apart from 1.43 above it (`--ey`); if a
   part of the app changes height, those numbers change with it. One timeline (`--hero`, `view-timeline-inset:
@@ -156,7 +158,8 @@ into it, serif headlines with a modern sans, less text, larger pictures.
   promise, then the phone fully booked beside its words, two papers resting at its corners.
 - Then: the date, the hug read word by word in the serif, one month as the client sees it on dark stages
   (the machine reading a white slip with MD 513 / D 221 and the flag; a filed VAT return; a question to the
-  accountant and her answer as a conversation), the machine and the person, everything in one price as a
+  accountant and her answer as a conversation; each stage with a piece of his glass in a corner, left out
+  on phones, where it would cover the card), the machine and the person, everything in one price as a
   white receipt under a light, the prices (the lead plan framed in the glass's light, figures in the serif),
   the comparison, the two ways in, who is behind it, questions, and the close with his glass F in a glow.
 - The pages of the request and the legal page are black like the rest.
