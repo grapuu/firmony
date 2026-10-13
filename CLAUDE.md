@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date at 00:30)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 17:50)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,8 +23,15 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (49 unit checks) and `npm run test:runtime` (53 checks in workerd). The sixth
+- All checks pass: `npm test` (106 unit checks) and `npm run test:runtime` (114 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
+- **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
+  doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
+  stránka. A hlavne ten systém musí fungovať logicky a dokonale"). Built under `/app`, pushed (`90032d6`), not
+  deployed. What it is and how it works: "The client's app" below. A clickable copy with the sample company is the
+  artifact "Firmony aplikácia" (https://claude.ai/artifact/RiaH2Z4AzYHCM2EQw7EPhc, version 2), sent to him at about
+  17:20 with what to click. His message of 16:44 ended "Ešte som..." (cut off); he was asked to finish it and has
+  not answered yet.
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -40,7 +47,12 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 5. Email: Cloudflare Email Routing for firmony.ai, `ahoj@firmony.ai` forwarded to his mailbox; Email Service,
    firmony.ai onboarded for sending. Until then requests are kept and their emails wait in the outbox (retried
    every fifteen minutes, ten times).
-6. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
+6. For the client's app: an R2 bucket `firmony-files` in the **EU jurisdiction** (before the first deploy that
+   carries `r2_buckets`), and the secret `ANTHROPIC_API_KEY` on the Worker (an API key of an Anthropic account of
+   europio; without it every photo goes to the accountant). Before the first client: the privacy notice names
+   Anthropic (photos and PDFs of documents, read and not kept for training), R2 for the files, and what the app
+   keeps and how long (documents ten years by the accounting act, s. 35). Not written yet.
+7. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
    accountants to confirm 25/40/70 € a client), the trade licence "vedenie účtovníctva" added to europio, liability
    insurance, and a digital postman (Qvalia was the lead: ask for its per-client API price).
 
@@ -143,6 +155,56 @@ above 2,5 % or accountant cost above 40 € a client.
 - Headers: CSP without anything inline or foreign, no framing, HSTS, `noindex` on `/zacat` and on any host but
   firmony.ai; http and www are redirected; a form is accepted only from our own pages and under 8 kB.
 
+## The client's app (`src/app/`, views in `src/views/inside.tsx` and `inside-pages.tsx`; 13 October 2026)
+
+The model is Dougs' and Pennylane's: every payment on the company's account needs a document, and the client's only
+task is to add one where it is missing. Everything else (reading it, pairing it with its payment, the deadlines,
+filing) is ours. One amber thing in sight on every page: what is missing; when nothing is, the overview says
+"Všetko máme. Nemusíte nič robiť." in the panel of light of the site.
+
+- Signing in (`session.ts`): an email, a link valid for 20 minutes and once (`login_links`, a hash), then a
+  cookie `__Host-firmony` for 30 days (`sessions`, a hash; HttpOnly, Secure, SameSite Lax). The link opens a page
+  with one button (POST), so a mail scanner that opens links cannot use it up. The form answers the same for an
+  address we do not know. Accounts are made by us (`users`, `members`, `companies`); there is no sign-up.
+- Pages: `/app` (overview: what is missing, up to six payments; the month in figures; deadlines; adding
+  documents and the address for forwarding; the accountant), `/app/platby` (filters `hotove`, `vsetky`), a payment
+  (`/app/platby/:id`: send a document, confirm the one offered, pick one we have, or "no document needed" with a
+  reason; a question about it), `/app/doklady` (filter `bez-platby`), a document (what was read, its payment, "paid
+  from my own money", delete), `/app/spravy`. Desktop: a column on the left; phone: a bar on top and five tabs,
+  the middle one "+" for a document. Every page works without its script (`public/inside.js`: a file goes off as
+  soon as it is picked, a photo is made a JPEG of at most 2400 px first, files can be dropped on the card, a
+  document being read is looked at again, the address is copied).
+- Every query names the company of the session (`store.ts`). Whether a payment needs a document is never stored:
+  `exempt` and `links` decide it. A document belongs to one payment (`links.document_id` is the key); a payment may
+  have several documents.
+- Pairing (`match.ts`, the rule at its top): the same amount to the cent, the right direction (an issued invoice
+  is paid in), dates that fit (a receipt: a day before to five after; an invoice: fifteen days before it was
+  issued to sixty after it was due); a score of amount 50, symbol 40, account 30, name 20, three days 10. Paired
+  without asking only at 70 or more and when neither has another candidate; from 50 offered to the client.
+- No document needed by itself (`autoExempt`): a payment between the company's own accounts, to the State
+  Treasury (bank code 8180: taxes, social insurance, fees), and the bank's fee or interest (no account, words of a
+  fee). The client can pick: bank, own accounts, payroll, the state, money put in or lent, something else (with a
+  few words). The accountant is meant to check them (her side is not built).
+- Reading (`read.ts`, `xml.ts`): a file is what its first bytes say (JPEG, PNG, WebP, HEIC, PDF, XML), never its
+  name; the same file twice is kept once (`file_hash`), and on a payment's page the one we have is given to it. A
+  photo or a PDF goes to Claude (`READER` in config: claude-haiku-5-5, a tool with Slovak fields, every field
+  checked; 5 MB for a picture, 25 MB for a PDF); HEIC, a file too large, no key or no answer: "Prečíta ho
+  účtovníčka". An e-invoice (UBL 2.1, Peppol) and the bank's statement (camt.053; VS, SS and KS wherever banks put
+  them; a batch split; the closing balance kept) are read by our code. XML that declares entities is refused. The
+  schedule reads again what was cut off, three times.
+- Files are in R2 (`FILES`, `companies/<id>/documents/<doc>.<ext>`) and handed out only to their company
+  (`/app/subory/:id`: a picture or text in a sandbox, XML as text, a PDF with its viewer).
+- Messages go to us by email (`ahoj@firmony.ai`, "Správa od klienta"), with the payment they are about.
+- The sample company (`demo.ts`, "Ukážková firma s. r. o.", Martin Novák, dated from today) exists only at
+  `/app/ukazka` on a developer's machine with `DEMO=1`, which only the playground sets; the runtime test holds that
+  it is 404 on the Worker.
+- Not built yet: the accountant's side (her list of clients, documents to book, answering messages, checking what
+  the client marked), documents by email (an Email Worker for `doklady-<code>@`; the address is shown already),
+  the bank by open banking (the statement is uploaded by hand meanwhile), the digital postman, eKasa receipts by
+  their QR code, issuing invoices, more than one company for one person (a switch), deleting files at the end of
+  their ten years, thumbnails. Not seen in a real browser: a PDF opened by "Otvoriť originál" under its CSP; a
+  photo from an iPhone made smaller by the script (HEIC).
+
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
@@ -223,11 +285,19 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (49)
-npm run test:runtime     # the deployable bundle in workerd: pages, headers, the request end to end, the schedule
-node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register and email
+npm test                 # unit checks (106): pairing, statements, e-invoices, reading, texts, deadlines
+npm run test:runtime     # the deployable bundle in workerd (114): the site, and the app end to end
+node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
+node scripts/dev/mutate.mjs                         # takes the app's rules out one at a time (14, all held)
+node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
+
+The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
+pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
+the café payment. A fresh sample company: remove `.wrangler/playground-d1` and `.wrangler/playground-r2` before
+starting. `mutate.mjs` works in a copy in the system's temporary folder; replace its list with the next change's
+rules.
 
 In the playground IČO 57442452 is found (europio), 35757442 makes the register fail, anything else is unknown;
 `/playground/mail` shows what was "sent". To stop it: `pkill -f "node --no-warnings [s]cripts/playground"` in a
