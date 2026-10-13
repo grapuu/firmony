@@ -47,6 +47,16 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
      banku", the sample of a bank's sign-in, the bank linked, invoice 20260007 paid by the money it brought). What
      switches it on is his: item 9 of the list below.
 
+- At 21:16 he asked how to do Enable Banking ("claudfare potom ostatne, ale budujeme model ktory funguje a robi
+  miliony ... nebudujeme tu ruzove okuliare"). He was given the order: his own account in Enable Banking's
+  Control Panel now (accounts are not made for him), and an email asking their price per connected account (at
+  100, 1 000 and 5 000) and the contract for production, Czech banks included; the production application only
+  once the domain, the site on Cloudflare and the terms of service exist (they ask for those URLs). No public
+  price list was found on 13 October 2026. On the model he was told: proven abroad, but the millions come from
+  clients, not software (1 M€ of revenue is about 800 clients at 105 €; Slovakia is about 12 times smaller than
+  France, so millions of profit need Czechia and further), and what kills it is the cost of a client and
+  accountants who keep up (Bench).
+
 ## What he has to do before it is live (each a few clicks)
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
