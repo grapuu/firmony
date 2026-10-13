@@ -20,7 +20,9 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   .app is 21,90 €. **Not chosen and not bought**: buying is his. Until he names it, `BRAND.origin`, `BRAND.email`
   and `MAIL.from` say firmony.ai; when he does, those three change, and so do the test's `site`, the notes'
   firmony.ai, and `wrangler.jsonc` once a route is added.
-- Nothing is deployed. There is no GitHub repository and no Worker yet. The code is committed locally on `main`.
+- Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
+  from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
+  A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
 - All checks pass: `npm test` (49 unit checks) and `npm run test:runtime` (53 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 
@@ -28,8 +30,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
    nameservers to Cloudflare.
-2. GitHub: an empty private repository `firmony` under his account. Then the builder adds it to the session
-   (`add_repo`, access "push") and pushes.
+2. GitHub: done on 13 October 2026 (`grapuu/firmony`, private, `main` pushed).
 3. Cloudflare, D1: a database named `firmony`, location **EU jurisdiction**; its ID goes into `wrangler.jsonc`
    (the zeros there are a placeholder, so a deploy fails instead of creating a database outside the EU; the
    privacy notice says the database is in the EU).
@@ -123,7 +124,10 @@ elegant type in a pleasant red and the modern type in blue; his glass icons kept
 as CloudTalk sets its own ("okopíruj aj tie ikony, ako majú"); far less text; no phone; an opening like
 CloudTalk's or Tesla's; CloudTalk's structure, its fonts and its centred layout; the plans kept ("asi musí byť")
 but made premium. At 15:08: the motion stays ("sú pekné, to zanechaj"), done otherwise. The first look went out
-at about 16:00 (preview version 9).
+at about 16:00 (preview version 9). At 16:14 he accepted it, having seen it on a computer and not yet on a phone:
+"na počítači už to za mňa je celkom úroveň ... nechávame to v tomto stave". Asked whether Musk or Huang would
+accept it, he was told: the design would pass; what such people judge is proof (real clients and numbers, never
+invented), people (his real photo, an accountant with a name) and a finished thing (domain, email, live site).
 
 - Type: **Funnel Display** (The Funnel Project, OFL) for titles, figures and the name, 600, set tight
   (-0.035 to -0.045em): CloudTalk sets GT Pressura (Grilli Type, paid) at 500; this is the free face nearest to
