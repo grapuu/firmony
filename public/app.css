@@ -1343,6 +1343,26 @@ textarea {
   box-shadow: var(--shadow-lg);
 }
 
+.ui__card {
+  position: relative;
+}
+
+/* His glass beside the card's top corner, clear of what the card says: the same object as the feature's tile.
+   The card steps left to make room for it. */
+.ui:has(.ui__glass) {
+  padding-right: 56px;
+}
+
+.ui__glass {
+  position: absolute;
+  top: -40px;
+  right: -88px;
+  width: 124px;
+  rotate: 10deg;
+  filter: drop-shadow(0 18px 22px rgb(20 30 130 / 0.2));
+  pointer-events: none;
+}
+
 .ui--scan {
   grid-template-columns: 196px minmax(0, 1fr);
   align-items: center;
@@ -2911,6 +2931,20 @@ textarea {
     width: min(100%, 220px);
   }
 
+  .svc__stage {
+    padding-top: 76px;
+  }
+
+  .ui:has(.ui__glass) {
+    padding-right: 0;
+  }
+
+  .ui__glass {
+    top: -66px;
+    right: 6px;
+    width: 80px;
+  }
+
   .stats {
     gap: 10px;
   }
@@ -3172,7 +3206,8 @@ textarea {
   .hero__float-img,
   .flyer__img,
   .band__object,
-  .final__mark {
+  .final__mark,
+  .ui__glass {
     animation: bob 7s ease-in-out infinite alternate;
   }
 

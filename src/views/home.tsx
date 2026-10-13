@@ -282,11 +282,15 @@ const ScanPreview: FC = () => {
   )
 }
 
+/** His glass object over the top corner of a preview's card. */
+const Glass: FC<{ art: Art | null }> = ({ art }) => <Picture art={art} className="ui__glass" sizes="(max-width: 640px) 84px, 132px" />
+
 const FilePreview: FC = () => {
   const f = copy.services.file
   return (
     <div class="ui">
       <div class="card ui__card">
+        <Glass art={ART.paperInvoice} />
         <div class="card__top">
           <span>
             <span class="card__title">{f.doc}</span>
@@ -317,6 +321,7 @@ const InboxPreview: FC = () => {
   return (
     <div class="ui">
       <div class="card ui__card">
+        <Glass art={ART.paperEinvoice} />
         <div class="card__top">
           <span>
             <span class="card__title">{n.title}</span>
@@ -342,6 +347,7 @@ const PayrollPreview: FC = () => {
   return (
     <div class="ui">
       <div class="card ui__card">
+        <Glass art={ART.savings} />
         <div class="card__top">
           <span class="card__title">{p.title}</span>
           <span class="pill pill--ok">{p.state}</span>
@@ -365,6 +371,7 @@ const DeadlinesPreview: FC = () => {
   return (
     <div class="ui">
       <div class="card ui__card">
+        <Glass art={ART.paperReturn} />
         <div class="card__top">
           <span class="card__title">{d.title}</span>
         </div>
@@ -389,6 +396,7 @@ const AskPreview: FC = () => {
   return (
     <div class="ui">
       <div class="card ui__card chat">
+        <Glass art={ART.chat} />
         <div class="chat__head">
           <span class="chat__avatar" aria-hidden="true"></span>
           <span>
