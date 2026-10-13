@@ -20,8 +20,22 @@ const PAGES = [
   { path: '/', file: 'index.html' },
   { path: '/zacat', file: 'zacat.html' },
   { path: '/zacat?nova=1', file: 'nova-firma.html' },
+  { path: '/zacat/hotovo?zmluva=1', file: 'hotovo.html' },
   { path: '/pravne-informacie', file: 'pravne-informacie.html' },
+  { path: '/podmienky', file: 'podmienky.html' },
 ]
+
+// The contract online: a request for an s. r. o. the pretend register knows (europio, with its director) becomes an
+// order in the playground, and its page, reached by the link in the email, is copied as it stands.
+{
+  const body = new URLSearchParams({ ico: '57442452', mode: 'company', plan: 'rast', situation: 'switch', name: 'Christian Juhás', email: `nahlad-${Date.now()}@firmony.test`, phone: '', note: '' }).toString()
+  const sent = await fetch(`${base}/zacat`, { method: 'POST', body, redirect: 'manual', headers: { origin: base, 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(body)) } })
+  if (sent.status !== 303) throw new Error(`/zacat: ${sent.status}`)
+  const mails = await (await fetch(`${base}/playground/mail`)).json()
+  const link = JSON.stringify(mails).match(/\/objednavka\/[A-Za-z0-9_-]{43}/g)?.pop()
+  if (!link) throw new Error('no order link in the playground mail')
+  PAGES.push({ path: link, file: 'zmluva.html' })
+}
 
 /** Where an address of the live site leads in the copy, seen from the page `from`. */
 function local(href, from) {
@@ -31,6 +45,10 @@ function local(href, from) {
   if (path === '' || path === '/') return from === 'index.html' ? anchor || 'index.html' : `index.html${anchor}`
   if (path === '/zacat') return (query ?? '').includes('nova=1') ? `nova-firma.html${anchor}` : `zacat.html${anchor}`
   if (path === '/pravne-informacie') return `pravne-informacie.html${anchor}`
+  if (path === '/podmienky') return `podmienky.html${anchor}`
+  if (path === '/zacat/hotovo') return `hotovo.html${anchor}`
+  if (path.startsWith('/objednavka/')) return `zmluva.html${anchor}`
+  if (path === '/app/prihlasenie') return 'https://claude.ai/artifact/RiaH2Z4AzYHCM2EQw7EPhc'
   if (path.startsWith('/art/') || path.startsWith('/fonts/')) return path.slice(1)
   return href
 }
@@ -42,9 +60,10 @@ function rewrite(html, from) {
 }
 
 const SAYS = {
-  ico: 'Toto je náhľad: IČO sa tu nevyhľadáva. Na živom webe sa z registra načíta názov a sídlo firmy a pokračuje sa vyplnením údajov.',
+  ico: 'Toto je náhľad: IČO sa tu nevyhľadáva. Na živom webe sa z registra načíta názov a sídlo firmy a pokračuje sa vyplnením údajov; s. r. o. potom príde e-mailom odkaz na zmluvu online.',
   calc__form: 'Toto je náhľad: kalkulačka tu nepočíta. Na živom webe hneď ukáže porovnanie s Vašimi číslami.',
-  details: 'Toto je náhľad: nič sa neodosiela. Na živom webe príde potvrdenie e-mailom a ozveme sa do jedného pracovného dňa.',
+  details: 'Toto je náhľad: nič sa neodosiela. Na živom webe príde e-mail: firme, ktorú register pozná ako s. r. o., odkaz na zmluvu online, inak potvrdenie, a ozveme sa do jedného pracovného dňa.',
+  order: 'Toto je náhľad: zmluva sa tu neuzatvára. Na živom webe ju konateľ uzavrie týmto tlačidlom, príde mu e-mail s podmienkami a hneď sa otvorí aplikácia.',
 }
 
 const SCRIPT = `<script>
@@ -56,6 +75,12 @@ document.addEventListener('submit', function (event) {
   var note = form.querySelector('.preview-note');
   if (!note) { note = document.createElement('p'); note.className = 'preview-note'; note.setAttribute('role', 'status'); form.appendChild(note); }
   note.textContent = text;
+  if (form.classList.contains('ico')) {
+    var more = document.createElement('a');
+    more.href = 'zmluva.html';
+    more.textContent = ' Pozrieť, ako vyzerá zmluva online.';
+    note.appendChild(more);
+  }
 });
 </script>`
 
@@ -77,7 +102,9 @@ for (const page of PAGES) {
   const title = html.match(/<title>([^<]*)<\/title>/)?.[1] ?? 'Firmony'
   const [, bodyAttrs, bodyHtml] = html.match(/<body([^>]*)>([\s\S]*)<\/body>/)
   const bodyClass = bodyAttrs.match(/class="([^"]*)"/)?.[1] ?? ''
-  const body = rewrite(bodyHtml, page.file)
+  let body = rewrite(bodyHtml, page.file)
+  // The thanks after a request leads, in the copy, to the contract the email would carry.
+  if (page.file === 'hotovo.html') body = body.replace(/(<p class="lead">[\s\S]*?<\/p>)/, '$1<p class="page__text"><a class="link" href="zmluva.html">V náhľade: takto vyzerá zmluva online, na ktorú vedie odkaz v e-maile.</a></p>')
   for (const m of body.matchAll(/(?:src|href)="((?:art|fonts)\/[^"]+)"/g)) assets.add(m[1])
   for (const m of body.matchAll(/srcset="([^"]*)"/g)) for (const part of m[1].split(',')) assets.add(part.trim().split(/\s+/)[0])
   const style = `<style>\n${css}\n${EXTRA}</style>`

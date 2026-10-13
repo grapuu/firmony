@@ -93,6 +93,9 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
     approve and sign, with what is still missing in its section 8 (goAML registration, the client's declaration in
     the app, a lawyer's reading, the accountants bound to it in their contracts).
   - The rules of the order and of the papers were each taken out once (`scripts/dev/mutate.mjs`): 14 of 14 held.
+  - The previews: the site version 15 (the terms; the contract page, reached from the note under the IČO card and
+    from the thanks page), the app version 8 (Plná moc, Prechod, and "Nová firma" in the bar: Ateliér Nova with the
+    power of attorney first among its steps).
   - Nobody has read the terms, the power of attorney or the AML program for him; a lawyer should before the first
     client. Not built: the client's declaration for the AML identification (personal data of the director and the
     beneficial owners, politically exposed persons, the purpose), the record of a client's risk, an internal report

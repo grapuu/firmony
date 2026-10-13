@@ -48,6 +48,8 @@ const files = new Map([
   ['/app/spravy', 'spravy.html'],
   ['/app/firma', 'firma.html'],
   ['/app/banka', 'banka.html'],
+  ['/app/plna-moc', 'plna-moc.html'],
+  ['/app/prechod', 'prechod.html'],
   ['/app/faktury', 'faktury.html'],
   ['/app/faktury/nova', 'faktura-nova.html'],
   ['/app/faktury/demo-inv-1', 'faktura-1.html'],
@@ -126,7 +128,9 @@ function script(leads) {
     invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, odberateľ ju dostane e-mailom s QR kódom na platbu a keď ju zaplatí, sama sa označí ako zaplatená.',
     invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
     bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky alebo sa banka či účet odpojí.',
-    team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.'
+    team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.',
+    poa: 'Toto je náhľad: nič sa neposiela. V aplikácii sa podpísaná plná moc nahrá a účtovníčke príde správa, aby ju overila a podala na úrady.',
+    prechod: 'Toto je náhľad. V aplikácii sa to, čo napíšete, hneď doplní do listu.'
   };
   function note(form, text) {
     var p = form.querySelector('.preview-note');
@@ -135,6 +139,8 @@ function script(leads) {
   }
   function kind(form) {
     var a = form.getAttribute('data-action') || '';
+    if (a === '/app/plna-moc') return 'poa';
+    if (a === '/app/prechod') return 'prechod';
     if (/^\\/app\\/banka\\/.+\\/(nacitat|odpojit|odobrat)$/.test(a)) return 'bank';
     if (/^\\/app\\/faktury\\/[^/]+\\/(poslat|pripomenut)$/.test(a)) return 'invoiceMail';
     if (/^\\/app\\/faktury/.test(a)) return 'invoice';
@@ -179,7 +185,7 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a></div>`
 
 function rewrite(page, extra) {
   return page
@@ -301,7 +307,9 @@ await write('vsetko-mame.html', await html('/app'))
 {
   const body = new URLSearchParams({ firma: 'demo-company-2' })
   await call('/app/firma/prepnut', { method: 'POST', body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
-  await write('atelier.html', await html('/app'), { '/app/firma/prepnut': 'index.html' })
+  const atelier = new Map([['/app/plna-moc', 'plna-moc-atelier.html']])
+  await write('atelier.html', await html('/app'), { '/app/firma/prepnut': 'index.html' }, atelier)
+  await write('plna-moc-atelier.html', await html('/app/plna-moc'), {}, atelier)
   const back = new URLSearchParams({ firma: 'demo-company' })
   await call('/app/firma/prepnut', { method: 'POST', body: back, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
 }
@@ -386,5 +394,5 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', ...originals]
+const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'plna-moc-atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', ...originals]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))
