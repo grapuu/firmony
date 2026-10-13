@@ -268,6 +268,8 @@ function flashOf(c: Ctx): string | null {
       return t.bank.flash.odpojena
     case 'ucet-odobraty':
       return t.bank.flash.odobraty
+    case 'zmluva':
+      return t.contract.flash
     default:
       return null
   }

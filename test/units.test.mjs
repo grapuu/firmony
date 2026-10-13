@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { appCopy, bank, booking, calc, config, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, paybysquare, planRows, reader, rpo, teamStore, xml } from '../.wrangler/tmp/units-bundle.mjs'
+import { appCopy, bank, booking, calc, config, contractMail, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, orderLinkMail, paybysquare, planRows, reader, rpo, teamStore, terms, xml } from '../.wrangler/tmp/units-bundle.mjs'
 import { check, done } from './check.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
@@ -77,6 +77,32 @@ check('the name in force is the one without an end', renamed?.name === 'Nová s.
 check('an address without a street', rpo.formatAddress({ regNumber: 123, postalCodes: ['90001'], municipality: { value: 'Lozorno' } }) === 'Lozorno 123, 900 01')
 const ended = rpo.readCompany('22222222', { results: [{ identifiers: [{ value: '22222222' }], fullNames: [{ value: 'Koniec, a. s.' }], termination: '2025-01-01', legalForms: [{ value: { code: '121', value: 'Akciová spoločnosť' } }] }] })
 check('a company that ended says so, and an a. s. is no s. r. o.', ended?.terminated === '2025-01-01' && ended?.isSro === false)
+
+// The register's directors and the line of the register, for the contract
+check('the register line is written as a contract writes it', europio?.registerLine === 'Obchodný register Mestského súdu Košice, oddiel Sro, vložka č. 64897/V' && europio?.rpoId === '19031841', JSON.stringify(europio))
+check('a district court is in the genitive too', rpo.registerLineOf({ registrationOffices: [{ value: 'Okresný súd Žilina' }], registrationNumbers: [{ value: 'Sro/1234/L' }] }) === 'Obchodný register Okresného súdu Žilina, oddiel Sro, vložka č. 1234/L')
+check('without a court or a number there is no line', rpo.registerLineOf({ registrationOffices: [], registrationNumbers: [{ value: 'Sro/1/V' }] }) === null)
+const directors = rpo.readDirectors({ statutoryBodies: [
+  { stakeholderType: { value: 'Konateľ' }, personName: { formatedName: 'Christian Juhás' }, validFrom: '2026-01-31' },
+  { stakeholderType: { value: 'Konateľ' }, personName: { givenNames: ['Tomáš'], familyNames: ['Dvorský'] } },
+  { stakeholderType: { value: 'Konateľ' }, personName: { formatedName: 'Peter Starý' }, validTo: '2026-02-28' },
+  { stakeholderType: { value: 'Konateľ' }, personName: { formatedName: 'Christian Juhás' } },
+] }, '2026-10-13')
+check('the directors in office, each once, named as the register writes them', directors.map((d) => d.name).join('|') === 'Christian Juhás|Tomáš Dvorský' && directors[0].role === 'Konateľ', JSON.stringify(directors))
+check('an answer without directors gives none', rpo.readDirectors({}).length === 0 && rpo.readDirectors(null).length === 0)
+
+// The terms of the contract
+check('every point the terms refer to exists', terms.termsReferences().length >= 5 && terms.termsReferences().every((r) => r.exists), JSON.stringify(terms.termsReferences()))
+check('the terms name the company as the register has it', terms.termsText().includes(config.OPERATOR.registeredIn) && terms.termsText().includes(config.OPERATOR.companyId))
+check('the terms say a month above the limit is the next plan', terms.termsText().includes('vyúčtujeme ako najbližší vyšší balík') && terms.termsText().includes(`viac ako ${config.PLANS[config.PLANS.length - 1].docs} za mesiac`))
+check('the terms keep the cap on damages to what can be foreseen (§ 379)', terms.termsText().includes('§ 379 Obchodného zákonníka') && terms.termsText().includes('dvanásťnásobku'))
+check('the months to start in begin with the launch', terms.startMonths('2026-10-13').join(' ') === '2027-01-01 2027-02-01 2027-03-01 2027-04-01 2027-05-01 2027-06-01')
+check('after the launch they begin with the next month, over a new year', terms.startMonths('2027-11-20').slice(0, 3).join(' ') === '2027-12-01 2028-01-01 2028-02-01')
+check('a date is written in words', terms.longDate('2027-01-01') === '1. januára 2027')
+const linkMail = orderLinkMail('Zelený dvor s. r. o.', 'rast', 'https://firmony.ai/objednavka/abc', 30)
+check('the order email names the company, the plan and how long the link works', linkMail.body.includes('Firma: Zelený dvor s. r. o.') && linkMail.body.includes('Balík: Rast, 169 € mesačne bez DPH') && linkMail.body.includes('Odkaz platí 30 dní') && !/\u00a0/.test(linkMail.body))
+const doneMail = contractMail({ company: 'Zelený dvor s. r. o.', ico: '55 012 345', plan: 'rast', priceCents: 16900, startOn: '2027-02-01', signedBy: 'Tomáš Dvorský', at: '13. októbra 2026 o 22:40', inbox: 'doklady-abc@firmony.ai', link: 'https://firmony.ai/app/vstup?t=x' })
+check('the confirmation names what was agreed and carries the terms', doneMail.body.includes('Začiatok: 1. februára 2027') && doneMail.body.includes('Uzavrel(a): Tomáš Dvorský') && doneMail.body.includes('11.4 ') && doneMail.body.includes(config.TERMS_VERSION))
 
 // The texts say the figures of the plans
 const start = config.PLANS[0]

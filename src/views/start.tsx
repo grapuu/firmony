@@ -235,10 +235,11 @@ export const StartDetails: FC<{
   )
 }
 
-export const Thanks: FC = () => (
+/** After a request; when it became an order, the link to the contract waits in the mailbox. */
+export const Thanks: FC<{ order?: boolean }> = ({ order }) => (
   <Page>
-    <h1 class="h1">{copy.thanks.title}</h1>
-    <p class="lead">{copy.thanks.lead}</p>
+    <h1 class="h1">{order ? copy.thanks.orderTitle : copy.thanks.title}</h1>
+    <p class="lead">{order ? copy.thanks.orderLead : copy.thanks.lead}</p>
     <p class="page__text">{copy.thanks.next}</p>
     <p class="page__more">
       <a class="btn btn--line" href="/">

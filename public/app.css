@@ -2726,6 +2726,150 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+/* The order: the contract concluded online ---------------------------------------------------------------- */
+
+.reading {
+  max-width: calc(760px + 2 * var(--gutter));
+}
+
+/* The main points in a bordered table, as his contracts open: what binds the company, in one look. */
+.summary {
+  margin-top: 28px;
+}
+
+.summary__title {
+  margin-bottom: 10px;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.summary__table {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  background: var(--white);
+  font-size: 0.9375rem;
+}
+
+.summary__table th,
+.summary__table td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.summary__table tr:first-child th,
+.summary__table tr:first-child td {
+  border-top: 0;
+}
+
+.summary__table th {
+  width: 38%;
+  background: var(--mist);
+  color: var(--soft);
+  font-weight: 500;
+}
+
+.summary__table td {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* The price and the start follow what is chosen below; without :has() every one of them stands. */
+.summary__plan,
+.summary__start {
+  display: none;
+}
+
+.order:has(#plan-start:checked) .summary__plan--start,
+.order:has(#plan-rast:checked) .summary__plan--rast,
+.order:has(#plan-firma:checked) .summary__plan--firma,
+.order:has(#start-0:checked) .summary__start--0,
+.order:has(#start-1:checked) .summary__start--1,
+.order:has(#start-2:checked) .summary__start--2,
+.order:has(#start-3:checked) .summary__start--3,
+.order:has(#start-4:checked) .summary__start--4,
+.order:has(#start-5:checked) .summary__start--5 {
+  display: table-row;
+}
+
+@supports not selector(:has(*)) {
+  .summary__plan,
+  .summary__start {
+    display: table-row;
+  }
+}
+
+.choice__options--list {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.agree {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.agree input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--blue);
+}
+
+.agree input[aria-invalid='true'] {
+  outline: 2px solid var(--red-ink);
+  outline-offset: 2px;
+}
+
+/* The terms, numbered as the contract refers to them. */
+.terms__section h2 {
+  margin-top: 48px;
+}
+
+.terms__points {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.terms__points li {
+  display: grid;
+  grid-template-columns: 3.2em minmax(0, 1fr);
+  gap: 8px;
+  color: var(--soft);
+  line-height: 1.65;
+}
+
+.terms__number {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .terms__points li {
+    grid-template-columns: 2.6em minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .summary__table th {
+    width: 42%;
+  }
+}
+
 /* Narrower screens --------------------------------------------------------------------------------------- */
 
 /* Between a laptop and a tablet the title takes two lines, and the coins would stand in them. */

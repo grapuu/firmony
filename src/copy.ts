@@ -301,6 +301,7 @@ export const copy = typesetAll({
     company: 'Spoločnosť',
     contact: 'Kontakt',
     calc: 'Kalkulačka',
+    terms: 'Obchodné podmienky',
     legal: 'Právne informácie',
     privacy: 'Ochrana údajov',
     cookies: 'Bez cookies a bez sledovania',

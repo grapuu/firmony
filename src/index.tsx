@@ -2,17 +2,23 @@ import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
-import { APP, BRAND, LIMITS, OPERATOR, PRIVACY_VERSION, REPLY_WITHIN, planById } from './config'
+import { APP, BRAND, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById } from './config'
 import { copy } from './copy'
-import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, withinLimit } from './db'
+import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, withinLimit } from './db'
 import { typeset } from './format'
-import { connection, isLocal, later } from './http'
+import { connection, isLocal, later, siteOrigin } from './http'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
-import { lookupCompany, type Company } from './rpo'
+import { lookupCompany, lookupDirectors, type Company } from './rpo'
 import { appRoutes, appScheduled, xmlResponse, type AppBindings } from './app/routes'
 import { invoiceByToken, invoiceLines } from './app/invoices'
-import { getCompany } from './app/store'
+import { getCompany, userByEmail } from './app/store'
+import { newLink, newToken, startSession } from './app/session'
+import { inboxCode } from './team/store'
+import { acceptStatements, acceptedAs, inboxAddress, isClient, newOrderStatement, orderByToken, type Order } from './order'
+import { contractMail, orderLinkMail, ownerContractMail } from './order-mail'
+import { startMonths } from './content/terms'
+import { OrderDone, OrderGone, OrderPage, TermsPage, type OrderErrors, type OrderValues } from './views/order'
 import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
@@ -111,7 +117,7 @@ app.use('*', async (c, next) => {
   c.header('Permissions-Policy', PERMISSIONS_POLICY)
   c.header('Content-Language', 'sk')
   // Only the real domain is for search engines: not a preview address, not a form step.
-  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
+  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || url.pathname.startsWith('/objednavka') || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
   if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store')
   if (url.protocol === 'https:') c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
 })
@@ -267,6 +273,28 @@ app.post('/zacat', async (c) => {
   const id = crypto.randomUUID()
   const companyName = company?.name ?? (values.company || null)
   const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
+  // A confirmation goes to the address that was typed, at most twice a day, and carries nothing a stranger could
+  // have typed into the form: the company only as the register names it. A company the register knows as an
+  // s. r. o. in business, and not yet a client, gets the contract in it: a director concludes it on the order's page.
+  const confirm = await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)
+  let orderToken: string | null = null
+  let orderStatement: D1PreparedStatement | null = null
+  if (confirm && ico && company && company.isSro && !company.terminated && !(await isClient(db, ico))) {
+    const directors = company.rpoId ? await lookupDirectors(company.rpoId) : null
+    orderToken = newToken()
+    orderStatement = await newOrderStatement(db, orderToken, {
+      requestId: id,
+      ico,
+      company: company.name,
+      address: company.address || null,
+      registerLine: company.registerLine,
+      directors,
+      plan: planById(plan)?.id ?? 'start',
+      person: values.name,
+      email: values.email,
+      phone: values.phone || null,
+    })
+  }
   const statements = [
     insertRequestStatement(db, {
       id,
@@ -300,14 +328,16 @@ app.post('/zacat', async (c) => {
         `Telefón: ${values.phone || '-'}`,
         `Poznámka: ${values.note || '-'}`,
         `Zdroj: ${source ?? '-'}`,
+        `Zmluva online: ${orderToken ? 'odkaz poslaný klientovi' : 'nie (firma nie je v registri ako s. r. o., už je klientom alebo bez IČO)'}`,
         '',
         `Odoslané ${slovakTime(now())}.`,
       ].join('\n'),
     }),
   ]
-  // A confirmation goes to the address that was typed, at most twice a day, and carries nothing a stranger could
-  // have typed into the form: the company only as the register names it.
-  if (await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)) {
+  if (orderToken && orderStatement && company) {
+    const mail = orderLinkMail(company.name, planById(plan)?.id ?? 'start', `${siteOrigin(c)}/objednavka/${orderToken}`, ORDER.days)
+    statements.push(orderStatement, queueStatement(db, { key: `client:${id}`, to: values.email, subject: mail.subject, body: mail.body }))
+  } else if (confirm) {
     statements.push(
       queueStatement(db, {
         key: `client:${id}`,
@@ -333,10 +363,128 @@ app.post('/zacat', async (c) => {
   }
   await db.batch(statements)
   later(c, flushOutbox(db, c.env.EMAIL))
-  return c.redirect('/zacat/hotovo', 303)
+  return c.redirect(orderToken ? '/zacat/hotovo?zmluva=1' : '/zacat/hotovo', 303)
 })
 
-app.get('/zacat/hotovo', (c) => page(c, { ...startMeta, title: `${copy.thanks.title} | ${BRAND.name}`, path: '/zacat/hotovo' }, <Thanks />))
+app.get('/zacat/hotovo', (c) => {
+  const order = c.req.query('zmluva') === '1'
+  return page(c, { ...startMeta, title: `${order ? copy.thanks.orderTitle : copy.thanks.title} | ${BRAND.name}`, path: '/zacat/hotovo' }, <Thanks order={order} />)
+})
+
+// ---------------------------------------------------------------------------
+// The order: the contract concluded online by a director the register names
+// ---------------------------------------------------------------------------
+
+const orderMeta = (title: string): PageMeta => ({ title: `${title} | ${BRAND.name}`, description: copy.meta.description, path: '/objednavka', noindex: true })
+
+/** Today in Bratislava, YYYY-MM-DD. */
+const bratislavaToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date())
+
+/** The page an order that cannot be concluded any more shows instead of its form, or null when it can be. */
+const orderMissing = (c: Ctx) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: '/objednavka', noindex: true }, <NotFound />, 404)
+
+async function orderClosed(c: Ctx, order: Order) {
+  if (order.status === 'accepted') return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} />)
+  if (order.status === 'expired') return page(c, orderMeta(copy.order.expiredTitle), <OrderGone kind="expired" />, 410)
+  if (await isClient(c.env.DB, order.ico)) return page(c, orderMeta(copy.order.clientTitle), <OrderGone kind="client" />, 409)
+  return null
+}
+
+app.get('/objednavka/:token', async (c) => {
+  await ensureSchema(c.env.DB)
+  const token = c.req.param('token')
+  const order = await orderByToken(c.env.DB, token)
+  if (!order) return orderMissing(c)
+  const closed = await orderClosed(c, order)
+  if (closed) return closed
+  const months = startMonths(bratislavaToday())
+  const directors = order.directors ?? []
+  const values: OrderValues = {
+    plan: planById(order.plan)?.id ?? 'start',
+    start: months[0] ?? '',
+    director: directors.length === 1 ? (directors[0]?.name ?? '') : '',
+    directorName: '',
+    agree: false,
+  }
+  return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} />)
+})
+
+app.post('/objednavka/:token', async (c) => {
+  const db = c.env.DB
+  await ensureSchema(db)
+  const token = c.req.param('token')
+  const order = await orderByToken(db, token)
+  if (!order) return orderMissing(c)
+  const closed = await orderClosed(c, order)
+  if (closed) return closed
+  const body = await c.req.parseBody()
+  const months = startMonths(bratislavaToday())
+  const values: OrderValues = {
+    plan: field(body.plan, 10),
+    start: field(body.start, 10),
+    director: field(body.director, 160),
+    directorName: field(body.directorName, 160).replace(/\s+/g, ' '),
+    agree: body.agree === '1',
+  }
+  const errors: OrderErrors = {}
+  const plan = planById(values.plan)
+  if (!plan) errors.plan = copy.order.errors.plan
+  if (!months.includes(values.start)) errors.start = copy.order.errors.start
+  const directors = order.directors ?? []
+  let signedBy = ''
+  if (directors.length > 0) {
+    // Only a director the register named in office: the name is taken as the register writes it.
+    const chosen = directors.find((d) => d.name === values.director)
+    if (chosen) signedBy = chosen.name
+    else errors.director = copy.order.errors.director
+  } else if (values.directorName.length >= 5 && values.directorName.includes(' ')) signedBy = values.directorName
+  else errors.directorName = copy.order.errors.directorName
+  if (!values.agree) errors.agree = copy.order.errors.agree
+  const form = (status: 422 | 429 | 500, extra: OrderErrors = {}) =>
+    page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{ ...errors, ...extra }} />, status)
+  if (Object.keys(errors).length > 0 || !plan) return form(422, { form: copy.order.errors.summary })
+  if (!(await withinLimit(db, 'order', connection(c), ORDER.acceptsPerHour, 3600))) return form(429, { form: copy.order.errors.throttle })
+
+  const existing = await userByEmail(db, order.email)
+  const companyId = crypto.randomUUID()
+  const userId = existing?.id ?? crypto.randomUUID()
+  let inbox = inboxCode()
+  for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
+  const accepted = acceptStatements(db, order, { plan: plan.id, startOn: values.start, signedBy, ipHash: await sha256Hex(`order:${connection(c)}`) }, { companyId, userId, existingUser: Boolean(existing), inbox })
+  await db.batch(accepted.statements)
+  if (!(await acceptedAs(db, order.id, companyId))) {
+    // Concluded a moment ago by another click, or the link ran out while the form was open.
+    const again = await orderByToken(db, token)
+    return (again && (await orderClosed(c, again))) || form(500, { form: copy.order.errors.failed })
+  }
+
+  const login = await newLink(db, userId, TEAM.welcomeDays * 24 * 60)
+  const facts = {
+    company: order.company,
+    ico: formatIco(order.ico),
+    plan: plan.id,
+    priceCents: plan.price * 100,
+    startOn: values.start,
+    signedBy,
+    at: slovakTime(now()),
+    inbox: inboxAddress(inbox),
+    link: `${siteOrigin(c)}/app/vstup?t=${login.token}`,
+  }
+  const toClient = contractMail(facts)
+  const toUs = ownerContractMail({ ...facts, email: order.email, requestPerson: order.person })
+  await db.batch([
+    login.statement,
+    queueStatement(db, { key: `contract:${order.id}`, to: order.email, subject: toClient.subject, body: toClient.body }),
+    queueStatement(db, { key: `contract-owner:${order.id}`, to: BRAND.email, subject: toUs.subject, body: toUs.body }),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  const where = await startSession(c, db, userId, companyId)
+  return c.redirect(where ? '/app?ok=zmluva' : '/app/prihlasenie', 303)
+})
+
+app.get('/podmienky', (c) =>
+  page(c, { title: `Obchodné podmienky | ${BRAND.name}`, description: typeset(`Obchodné podmienky služby ${BRAND.name}: zmluva o vedení účtovníctva a o spracúvaní osobných údajov.`), path: '/podmienky' }, <TermsPage />),
+)
 
 // ---------------------------------------------------------------------------
 // The rest
@@ -368,10 +516,10 @@ app.get('/f/:token/xml', async (c) => {
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
 
-app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /app', 'Disallow: /ucto', 'Disallow: /f/', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
+app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /objednavka', 'Disallow: /app', 'Disallow: /ucto', 'Disallow: /f/', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
 
 app.get('/sitemap.xml', (c) => {
-  const urls = ['/', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)
+  const urls = ['/', '/podmienky', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)
   c.header('Content-Type', 'application/xml; charset=utf-8')
   return c.body(['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', ...urls, '</urlset>', ''].join('\n'))
 })

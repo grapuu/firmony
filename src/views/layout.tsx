@@ -90,6 +90,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
             <nav class="foot__col" aria-label={copy.footer.company}>
               <p class="foot__head">{copy.footer.company}</p>
               <a href="/#kto-sme">{copy.nav.about}</a>
+              <a href="/podmienky">{copy.footer.terms}</a>
               <a href="/pravne-informacie">{copy.footer.legal}</a>
               <a href="/pravne-informacie#ochrana-udajov">{copy.footer.privacy}</a>
               <a href="/pravne-informacie#cookies">{copy.footer.cookies}</a>

@@ -109,18 +109,6 @@ export async function isClient(db: D1Database, ico: string): Promise<boolean> {
   return Boolean(await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL AND demo = 0').bind(ico).first())
 }
 
-/** A name as the register writes it and as a person types it compare the same: case, accents and spaces aside. */
-export function sameName(a: string, b: string): boolean {
-  const plain = (s: string) =>
-    s
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-      .toLowerCase()
-      .replace(/[^a-z]+/g, ' ')
-      .trim()
-  return plain(a) !== '' && plain(a) === plain(b)
-}
-
 export interface Acceptance {
   plan: PlanId
   startOn: string

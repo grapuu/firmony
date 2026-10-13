@@ -66,7 +66,7 @@ const Summary: FC<{ order: Order; months: string[] }> = ({ order, months }) => (
           <tr class={`summary__plan summary__plan--${plan.id}`}>
             <th scope="row">{o.rows.price}</th>
             <td>
-              <strong>{formatEur(plan.price * 100)}</strong> {o.noVat}, {o.rows.plan.toLowerCase()} {plan.name} {typeset(`do ${plan.docs} dokladov`)}
+              <strong>{formatEur(plan.price * 100)}</strong> {o.noVat}, {o.rows.plan.toLowerCase()} {plan.name}, {typeset(`do ${plan.docs} dokladov mesačne`)}
             </td>
           </tr>
         ))}

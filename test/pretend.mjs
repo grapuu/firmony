@@ -22,12 +22,45 @@ export default class extends WorkerEntrypoint {
 
 const europio = readFileSync(new URL('./fixtures/rpo-europio.json', import.meta.url), 'utf8')
 
+// A second company, made up, with two directors in office and one whose office ended: the order's page lets only
+// those in office conclude the contract.
+const ZELENY = {
+  id: 19099999,
+  identifiers: [{ value: '55012345', validFrom: '2025-03-01' }],
+  fullNames: [{ value: 'Zelený dvor s. r. o.', validFrom: '2025-03-01' }],
+  addresses: [{ validFrom: '2025-03-01', street: 'Mlynská', regNumber: 0, buildingNumber: '12', postalCodes: ['04001'], municipality: { value: 'Košice - mestská časť Staré Mesto' }, country: { value: 'Slovenská republika' } }],
+  establishment: '2025-03-01',
+  sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2025-03-01' }], registrationNumbers: [{ value: 'Sro/58123/V', validFrom: '2025-03-01' }] },
+}
+
+/** The register's detail of an entity (GET .../rpo/v1/entity/<id>), with its directors, as seen on 13 October 2026. */
+const ENTITIES = {
+  19031841: {
+    id: 19031841,
+    statutoryBodies: [{ stakeholderType: { value: 'Konateľ', code: '3', codelistCode: 'CL010113' }, personName: { formatedName: 'Christian Juhás', familyNames: ['Juhás'], givenNames: ['Christian'] }, validFrom: '2026-01-31' }],
+  },
+  19099999: {
+    id: 19099999,
+    statutoryBodies: [
+      { stakeholderType: { value: 'Konateľ', code: '3' }, personName: { formatedName: 'Mgr. Lucia Zelená', familyNames: ['Zelená'], givenNames: ['Lucia'] }, validFrom: '2025-03-01' },
+      { stakeholderType: { value: 'Konateľ', code: '3' }, personName: { familyNames: ['Dvorský'], givenNames: ['Tomáš'] }, validFrom: '2025-03-01' },
+      { stakeholderType: { value: 'Konateľ', code: '3' }, personName: { formatedName: 'Peter Starý' }, validFrom: '2025-03-01', validTo: '2026-02-28' },
+    ],
+  },
+}
+
 /** The register's answer for a request the Worker sends, or null when the request is not for the register. */
 export function registerAnswer(url, calls = []) {
+  if (url.startsWith('https://api.statistics.sk/rpo/v1/entity/')) {
+    const id = new URL(url).pathname.split('/').pop()
+    calls.push(`entity:${id}`)
+    return ENTITIES[id] ? Response.json(ENTITIES[id]) : new Response('not found', { status: 404 })
+  }
   if (!url.startsWith('https://api.statistics.sk/rpo/v1/search')) return null
   const ico = new URL(url).searchParams.get('identifier')
   calls.push(ico)
   if (ico === '57442452') return new Response(europio, { headers: { 'content-type': 'application/json' } })
+  if (ico === '55012345') return Response.json({ results: [ZELENY], license: 'CC BY 4.0' })
   if (ico === '35757442') return new Response('busy', { status: 503 })
   return Response.json({ results: [], license: 'CC BY 4.0' })
 }

@@ -616,6 +616,9 @@ export const app = typesetAll({
         ].join('\n'),
     },
   },
+  contract: {
+    flash: 'Zmluva je uzavretá. Vitajte vo Firmony.',
+  },
   search: {
     label: 'Hľadať',
     placeholder: 'Partner, suma alebo symbol',
