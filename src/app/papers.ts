@@ -2,11 +2,12 @@
 // may file for it (plná moc). Kept in R2 beside the documents, under the company, and handed out only to the company
 // and to the team that keeps it. A file is what its first bytes say: a PDF (signed or scanned), a photo of the signed
 // paper, or the container a qualified signature makes (ASiC-E from slovensko.sk's signer, ASiC-S from some others).
-import { APP } from '../config'
+import { APP, ENDING } from '../config'
 import { now } from '../db'
 import { eventStatement } from './store'
 
-export type PaperKind = 'poa'
+/** The power of attorney the client signs (poa), and what the accountant hands over when the contract ends. */
+export type PaperKind = 'poa' | 'handover'
 
 export interface PaperType {
   ext: string
@@ -46,6 +47,39 @@ export function sniffPaper(bytes: Uint8Array): PaperType | null {
   return null
 }
 
+const ZIP: PaperType = { ext: 'zip', type: 'application/zip', inline: false }
+const XML: PaperType = { ext: 'xml', type: 'application/xml', inline: false }
+const TEXT: PaperType = { ext: 'txt', type: 'text/plain', inline: false }
+const OLE: PaperType = { ext: 'xls', type: 'application/vnd.ms-excel', inline: false }
+
+/** What an accounting program exports a ZIP as: a spreadsheet or a document of an office suite, or a ZIP itself. */
+const ZIPPED = new Set(['zip', 'xlsx', 'docx', 'ods', 'odt', 'asice', 'asics'])
+
+/**
+ * What the accountant may hand over, by its bytes: a PDF (the ledgers and statements), a picture of a paper, any ZIP
+ * (an export of the accounting program, a spreadsheet), XML, plain text such as CSV, and an old Excel or Word file.
+ * The name gives only the ending of a file the bytes have already let in; every one of them is downloaded, never shown.
+ */
+export function sniffHandover(bytes: Uint8Array, name: string): PaperType | null {
+  const ending = name.match(/\.([A-Za-z0-9]{1,5})$/)?.[1]?.toLowerCase() ?? ''
+  const paper = sniffPaper(bytes)
+  if (paper) return paper.inline ? { ...paper, inline: false } : paper
+  if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) return ZIPPED.has(ending) ? { ...ZIP, ext: ending } : ZIP
+  if (bytes.length >= 8 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) return ending === 'doc' ? { ...OLE, ext: 'doc', type: 'application/msword' } : OLE
+  const head = bytes.subarray(0, 65536)
+  if (head.includes(0)) return null
+  let textual: string
+  try {
+    textual = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(head.length < bytes.length ? head.subarray(0, head.lastIndexOf(0x0a) + 1 || head.length) : head)
+  } catch {
+    // Windows-1250 text, as Slovak programs write CSV: no NUL bytes, and printable.
+    textual = String.fromCharCode(...head.subarray(0, 512))
+    if (/[\x00-\x08\x0e-\x1f]/.test(textual)) return null
+  }
+  if (/^\uFEFF?\s*</.test(textual)) return XML
+  return ending === 'csv' ? { ...TEXT, ext: 'csv', type: 'text/csv' } : TEXT
+}
+
 export function paperTypeOf(type: string): PaperType | null {
   return [PDF, JPEG, PNG, WEBP, ASICE, ASICS].find((t) => t.type === type) ?? null
 }
@@ -70,7 +104,7 @@ const str = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 function paperOf(row: Row): Paper {
   return {
     id: String(row.id),
-    kind: 'poa',
+    kind: row.kind === 'handover' ? 'handover' : 'poa',
     createdAt: Number(row.created_at ?? 0),
     createdBy: str(row.created_by),
     createdByName: str(row.created_by_name),
@@ -142,14 +176,14 @@ export async function keepPaper(
 ): Promise<Kept> {
   if (!file || file.bytes.byteLength === 0) return { ok: false, reason: 'none' }
   if (file.bytes.byteLength > APP.fileBytes) return { ok: false, reason: 'large' }
-  const type = sniffPaper(file.bytes)
+  const type = kind === 'handover' ? sniffHandover(file.bytes, file.name) : sniffPaper(file.bytes)
   if (!type) return { ok: false, reason: 'type' }
   if (!files) return { ok: false, reason: 'storage' }
   const count = await db.prepare('SELECT COUNT(*) AS n FROM company_files WHERE company_id = ? AND kind = ?').bind(who.company, kind).first<{ n: number }>()
-  if ((count?.n ?? 0) >= 20) return { ok: false, reason: 'many' }
+  if ((count?.n ?? 0) >= (kind === 'handover' ? ENDING.handoverFiles : 20)) return { ok: false, reason: 'many' }
   const id = crypto.randomUUID()
   const key = `companies/${who.company}/papers/${id}.${type.ext}`
-  const base = file.name.replace(/\.[A-Za-z0-9]{1,6}$/, '').replace(/[^\p{L}\p{N} ._-]/gu, '_').trim().slice(0, 80) || 'plna-moc'
+  const base = file.name.replace(/\.[A-Za-z0-9]{1,6}$/, '').replace(/[^\p{L}\p{N} ._-]/gu, '_').trim().slice(0, 80) || (kind === 'handover' ? 'uctovnictvo' : 'plna-moc')
   const name = `${base}.${type.ext}`
   await files.put(key, file.bytes, { httpMetadata: { contentType: type.type } })
   await db.batch([
@@ -171,7 +205,8 @@ export function checkPaperStatement(db: D1Database, company: string, id: string,
 export async function paperResponse(files: R2Bucket | undefined, paper: Paper): Promise<Response | null> {
   const object = files ? await files.get(paper.r2Key) : null
   if (!object) return null
-  const type = paperTypeOf(paper.fileType)
+  // What the accountant hands over is downloaded, whatever it is; a power of attorney is shown when a browser can.
+  const type = paper.kind === 'handover' ? null : paperTypeOf(paper.fileType)
   const inline = type?.inline ?? false
   const name = paper.fileName.replace(/[^\p{L}\p{N}._ -]/gu, '_')
   const pdf = paper.fileType === 'application/pdf'

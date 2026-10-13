@@ -4,7 +4,7 @@
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, ART, BRAND, PLANS, TEAM } from '../config'
+import { APP, ART, BRAND, ENDING, PLANS, TEAM } from '../config'
 import { ensureSchema, now } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
@@ -13,13 +13,14 @@ import { bell, ringStatement } from '../bell'
 import { lookupCompany } from '../rpo'
 import { dayOfText, isCategory, supplierKey, type PaidBy } from '../app/booking'
 import { getInvoice, invoiceLines } from '../app/invoices'
-import { readableName, signed, whenName } from '../app/copy'
+import { app, dayName, readableName, signed, whenName } from '../app/copy'
+import { endingOf } from '../app/ending'
 import { linksOf } from '../app/bank'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
-import { checkPaperStatement, getPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
-import { LEVELS, checkDeclarationStatement, decideStatement, declarationStateOf, latestDeclaration, reportStatements, reportsOf, riskStatements, risksOf, suggestedLevel, type Level } from '../app/aml'
+import { checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
+import { LEVELS, checkDeclarationStatement, decideStatement, declarationStateOf, latestDeclaration, noticeEndsOn, reportStatements, reportsOf, riskStatements, risksOf, suggestedLevel, type Level } from '../app/aml'
 import { AmlPage } from '../views/aml'
 import { currentWho, newLink, startSession } from '../app/session'
 import {
@@ -68,6 +69,7 @@ import { team as t } from './copy'
 import {
   bookingQueue,
   canSee,
+  endedCompanies,
   exportCsv,
   exportRows,
   getRequest,
@@ -191,6 +193,14 @@ function flashOf(c: Ctx): string | null {
       return t.aml.reportSent
     case 'posudene':
       return t.aml.decidedFlash
+    case 'koniec':
+      return t.end.flash
+    case 'koniec-zruseny':
+      return t.end.cancelled
+    case 'odovzdane':
+      return t.handover.flash
+    case 'odstranene':
+      return t.handover.removed
     default:
       return null
   }
@@ -206,14 +216,19 @@ async function accountantsList(db: D1Database): Promise<{ id: string; name: stri
 
 teamRoutes.get('/', async (c) => {
   const who = c.get('who')
-  const rows = await teamClients(c.env.DB, who.user, demoOn(c))
-  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} now={now()} flash={flashOf(c)} />)
+  const [rows, ended] = await Promise.all([teamClients(c.env.DB, who.user, demoOn(c)), isAdmin(who.user) ? endedCompanies(c.env.DB) : Promise.resolve([])])
+  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} ended={ended} now={now()} flash={flashOf(c)} />)
 })
 
-async function clientPage(c: Ctx, company: Company, extra: { error?: string; draft?: string } = {}, status: ContentfulStatusCode = 200) {
+async function clientPage(
+  c: Ctx,
+  company: Company,
+  extra: { error?: string; draft?: string; end?: { day: string; reason: string; errors: { day?: string; reason?: string; form?: string } }; handoverError?: string } = {},
+  status: ContentfulStatusCode = 200,
+) {
   const who = c.get('who')
   const db = c.env.DB
-  const [members, queue, toCheck, missing, messages, rules, accountants, papers, declared, risks, reports] = await Promise.all([
+  const [members, queue, toCheck, missing, messages, rules, accountants, papers, declared, risks, reports, handover] = await Promise.all([
     membersOf(db, company.id),
     bookingQueue(db, who.user, true, company.id),
     paymentsToCheck(db, company.id),
@@ -225,6 +240,7 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
     latestDeclaration(db, company.id),
     risksOf(db, company.id),
     reportsOf(db, company.id, { id: who.user.id, admin: isAdmin(who.user) }),
+    papersOf(db, company.id, 'handover'),
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
@@ -255,16 +271,19 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
       declaration={declarationStateOf(declared)}
       risk={risks[0]?.level ?? null}
       openReports={reports.filter((r) => r.decision === null).length}
+      handover={handover}
+      ending={endingOf(company, day)}
+      earliestEnd={noticeEndsOn(day)}
       {...extra}
     />,
     status,
   )
 }
 
-/** The company of the address, when the user may see it. */
-async function companyParam(c: Ctx): Promise<Company | null> {
+/** The company of the address, when the user may see it; `ended` lets the administrator see one whose data are deleted. */
+async function companyParam(c: Ctx, ended = false): Promise<Company | null> {
   const id = c.req.param('id') ?? ''
-  return ID.test(id) ? teamCompany(c.env.DB, c.get('who').user, id) : null
+  return ID.test(id) ? teamCompany(c.env.DB, c.get('who').user, id, ended) : null
 }
 
 teamRoutes.get('/klienti/novy', async (c) => {
@@ -477,6 +496,119 @@ teamRoutes.post('/klienti/:id/plna-moc/:file/overit', async (c) => {
 })
 
 // ---------------------------------------------------------------------------------------------------------------
+// The end of a contract from our side (point 10.2 and 10.3 of the terms), and the books handed over at its end
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The day a contract the administrator ends: today or later; the reason stays with the team (the event). */
+teamRoutes.post('/klienti/:id/koniec', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company || !isAdmin(who.user)) return missingPage(c)
+  const body = await c.req.parseBody()
+  const dayText = typeof body.den === 'string' ? body.den.trim().slice(0, 20) : ''
+  const reason = typeof body.dovod === 'string' ? body.dovod.replace(/\r\n?/g, '\n').trim().slice(0, 1000) : ''
+  const today = dayOf(now())
+  const day = dayOfText(dayText)
+  const errors: { day?: string; reason?: string; form?: string } = {}
+  if (!day || day < today) errors.day = t.end.errors.day
+  if (reason === '') errors.reason = t.end.errors.reason
+  if (company.noticeSide === 'client' || (company.endsOn && company.endsOn < today)) errors.form = t.end.errors.running
+  if (Object.keys(errors).length > 0 || !day) return clientPage(c, company, { end: { day: dayText, reason, errors }, error: errors.form }, 422)
+  const db = c.env.DB
+  // Set while the contract still runs and the client has not given notice; an end we set before can be moved.
+  const [set] = await db.batch([
+    db
+      .prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'firmony', ends_on = ? WHERE id = ? AND (notice_side IS NULL OR notice_side = 'firmony') AND (ends_on IS NULL OR ends_on >= ?)")
+      .bind(now(), who.user.id, day, company.id, today),
+  ])
+  if ((set?.meta?.changes ?? 0) === 0) return clientPage(c, company, { end: { day: dayText, reason, errors: {} }, error: t.end.errors.running }, 409)
+  const ending = endingOf({ endsOn: day, noticeSide: 'firmony' }, today)
+  const id = crypto.randomUUID()
+  const plain = (d: string) => dayName(d)
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: t.end.message(plain(day), plain(ending?.intakeUntil ?? day), plain(ending?.handoverBy ?? day), plain(ending?.accessUntil ?? day)), payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'contract.ended', subject: id, detail: { endsOn: day, reason } }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/ucto/klienti/${company.id}?ok=koniec#zmluva`, 303)
+})
+
+teamRoutes.post('/klienti/:id/koniec/zrusit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company || !isAdmin(who.user)) return missingPage(c)
+  const db = c.env.DB
+  const [back] = await db.batch([
+    db
+      .prepare("UPDATE companies SET notice_at = NULL, notice_by = NULL, notice_side = NULL, ends_on = NULL WHERE id = ? AND notice_side = 'firmony' AND ends_on >= ?")
+      .bind(company.id, dayOf(now())),
+  ])
+  if ((back?.meta?.changes ?? 0) === 0) return c.redirect(`/ucto/klienti/${company.id}#zmluva`, 303)
+  const id = crypto.randomUUID()
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: t.end.messageCancel, payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'contract.ended.cancelled', subject: id }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/ucto/klienti/${company.id}?ok=koniec-zruseny#zmluva`, 303)
+})
+
+/** The books handed over: the files go to the client's page, with a message that says where they are. */
+teamRoutes.post('/klienti/:id/odovzdanie', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody({ all: true })
+  const raw = body.file
+  const files = (Array.isArray(raw) ? raw : [raw]).filter((f): f is File => typeof f === 'object' && f !== null && 'arrayBuffer' in f && (f as File).size > 0)
+  if (files.length === 0) return clientPage(c, company, { handoverError: t.handover.errors.none }, 422)
+  if (files.length > ENDING.handoverAtOnce) return clientPage(c, company, { handoverError: t.handover.errors.atOnce }, 422)
+  const db = c.env.DB
+  const names: string[] = []
+  for (const file of files) {
+    const kept = await keepPaper(db, c.env.FILES, { company: company.id, user: who.user.id }, 'handover', { name: (file.name || 'uctovnictvo').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) })
+    if (!kept.ok) {
+      if (names.length > 0) break
+      return clientPage(c, company, { handoverError: t.handover.errors[kept.reason] }, kept.reason === 'storage' ? 503 : 422)
+    }
+    names.push(kept.paper.name)
+  }
+  const id = crypto.randomUUID()
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: app.ending.handedOver(names.join(', ')), payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'handover.sent', subject: id, detail: { files: names.length } }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/ucto/klienti/${company.id}?ok=odovzdane#odovzdanie`, 303)
+})
+
+teamRoutes.get('/klienti/:id/odovzdanie/:file', async (c) => {
+  const company = await companyParam(c)
+  const id = c.req.param('file')
+  const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
+  const answer = paper?.kind === 'handover' ? await paperResponse(c.env.FILES, paper) : null
+  return answer ?? missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/odovzdanie/:file/odstranit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  const id = c.req.param('file')
+  const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
+  if (!company || !paper || paper.kind !== 'handover') return missingPage(c)
+  const db = c.env.DB
+  await db.batch([
+    db.prepare("DELETE FROM company_files WHERE id = ? AND company_id = ? AND kind = 'handover'").bind(paper.id, company.id),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'handover.removed', subject: paper.id }),
+  ])
+  if (c.env.FILES) await c.env.FILES.delete(paper.r2Key)
+  return c.redirect(`/ucto/klienti/${company.id}?ok=odstranene#odovzdanie`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
 // Identification and risk under the law against money laundering (aml.ts): the client's declaration and its check,
 // the risk, and the internal reports with the designated person's decision. The client never sees any of it but the
 // declaration it gave; a report is seen by its author and by the administrator, who is the designated person.
@@ -496,13 +628,13 @@ async function amlPage(c: Ctx, company: Company, extra: { error?: string; draft?
 }
 
 teamRoutes.get('/klienti/:id/aml', async (c) => {
-  const company = await companyParam(c)
+  const company = await companyParam(c, true)
   return company ? amlPage(c, company) : missingPage(c)
 })
 
 teamRoutes.post('/klienti/:id/aml/overit', async (c) => {
   const who = c.get('who')
-  const company = await companyParam(c)
+  const company = await companyParam(c, true)
   if (!company) return missingPage(c)
   const body = await c.req.parseBody()
   const id = typeof body.vyhlasenie === 'string' && ID.test(body.vyhlasenie) ? body.vyhlasenie : ''
@@ -515,7 +647,7 @@ teamRoutes.post('/klienti/:id/aml/overit', async (c) => {
 
 teamRoutes.post('/klienti/:id/aml/riziko', async (c) => {
   const who = c.get('who')
-  const company = await companyParam(c)
+  const company = await companyParam(c, true)
   if (!company) return missingPage(c)
   const body = await c.req.parseBody()
   const level = typeof body.uroven === 'string' && (LEVELS as readonly string[]).includes(body.uroven) ? (body.uroven as Level) : null
@@ -528,7 +660,7 @@ teamRoutes.post('/klienti/:id/aml/riziko', async (c) => {
 
 teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
   const who = c.get('who')
-  const company = await companyParam(c)
+  const company = await companyParam(c, true)
   if (!company) return missingPage(c)
   const body = await c.req.parseBody()
   const text = typeof body.text === 'string' ? body.text.replace(/\r\n?/g, '\n').trim() : ''
@@ -545,7 +677,7 @@ teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
 
 teamRoutes.post('/klienti/:id/aml/oznamenie/:report', async (c) => {
   const who = c.get('who')
-  const company = await companyParam(c)
+  const company = await companyParam(c, true)
   if (!company || !isAdmin(who.user)) return missingPage(c)
   const report = c.req.param('report')
   const body = await c.req.parseBody()

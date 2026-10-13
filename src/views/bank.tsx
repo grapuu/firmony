@@ -24,6 +24,9 @@ export interface BankPageProps {
   today: string
   flash?: string | null
   error?: string | null
+  /** Until the contract's last day a bank can be linked; ten days past it no statement is taken either. */
+  open?: boolean
+  intake?: boolean
 }
 
 const pickHref = (bank: string) => `/app/banka/pripojit?banka=${encodeURIComponent(bank)}`
@@ -119,7 +122,7 @@ const BankList: FC<{ banks: Aspsp[] }> = ({ banks }) => (
   </>
 )
 
-export const BankPage: FC<BankPageProps> = ({ ready, links, banks, owner, today, flash, error }) => {
+export const BankPage: FC<BankPageProps> = ({ ready, links, banks, owner, today, flash, error, open = true, intake = true }) => {
   // Once a bank is linked, another one is a choice for later, folded away.
   const linked = links.some((l) => l.status === 'active')
   return (
@@ -140,7 +143,7 @@ export const BankPage: FC<BankPageProps> = ({ ready, links, banks, owner, today,
           ))}
         </div>
       ) : null}
-      {linked && ready && banks ? (
+      {!open ? null : linked && ready && banks ? (
         <section class="info bankpick" id="prepojit">
           <details class="more">
             <summary class="more__summary">{b.pickAnother}</summary>
@@ -157,24 +160,26 @@ export const BankPage: FC<BankPageProps> = ({ ready, links, banks, owner, today,
           {!ready ? <p class="info__lead">{b.off}</p> : banks === null ? <p class="info__lead">{b.unreachable}</p> : <BankList banks={banks} />}
         </section>
       )}
-      <section class="bankfile" aria-labelledby="vypis">
-        <Tile art={ART.paperBank} size="md" />
-        <div class="bankfile__text">
-          <h2 id="vypis" class="bankfile__title">
-            {ready ? b.statementTitle : app.payments.statementTitle}
-          </h2>
-          <p>{ready ? b.statementLead : app.payments.statementLead}</p>
-        </div>
-        <form class="bankfile__form" method="post" action="/app/banka" enctype="multipart/form-data" data-upload>
-          <label class="btn btn--line" for="vypis-file">
-            {app.payments.statementButton}
-          </label>
-          <input id="vypis-file" class="add__file" type="file" name="file" accept=".xml,text/xml,application/xml" />
-          <button class="btn btn--line add__send" type="submit">
-            {app.add.send}
-          </button>
-        </form>
-      </section>
+      {intake ? (
+        <section class="bankfile" aria-labelledby="vypis">
+          <Tile art={ART.paperBank} size="md" />
+          <div class="bankfile__text">
+            <h2 id="vypis" class="bankfile__title">
+              {ready ? b.statementTitle : app.payments.statementTitle}
+            </h2>
+            <p>{ready ? b.statementLead : app.payments.statementLead}</p>
+          </div>
+          <form class="bankfile__form" method="post" action="/app/banka" enctype="multipart/form-data" data-upload>
+            <label class="btn btn--line" for="vypis-file">
+              {app.payments.statementButton}
+            </label>
+            <input id="vypis-file" class="add__file" type="file" name="file" accept=".xml,text/xml,application/xml" />
+            <button class="btn btn--line add__send" type="submit">
+              {app.add.send}
+            </button>
+          </form>
+        </section>
+      ) : null}
     </>
   )
 }

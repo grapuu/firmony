@@ -4972,3 +4972,113 @@ select.field__input {
   color: var(--soft);
   font-size: 0.8125rem;
 }
+
+/* The end of a contract: one line above every page from the day it has a last day, amber while it still runs and
+   when the last month's documents are still taken, red ink when only the download is left. */
+.endline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.endline--ended {
+  background: var(--red-soft);
+  color: var(--red-ink);
+}
+
+.endline__text {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.endline__link {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+/* After the end: the card for adding documents says why nothing more is taken, and so do a payment and the invoices. */
+.add--closed .add__main {
+  justify-items: start;
+}
+
+.need__closed,
+.closednote {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--amber-soft);
+  color: var(--ink);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.need__closed {
+  margin: 0;
+}
+
+/* What follows the last day, in Firma a nastavenia, and the books handed over under the download. */
+.kv--end {
+  justify-self: stretch;
+  margin: 0;
+}
+
+.info .kv--end div {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.info .kv--end dt {
+  flex: 1 1 14em;
+}
+
+.info .kv--end dd {
+  flex: 0 1 auto;
+  margin-left: auto;
+  overflow-wrap: normal;
+}
+
+.info__subtitle {
+  margin: 22px 0 4px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* The team: the end from our side, folded away, and the handover. */
+.end-form {
+  margin-top: 6px;
+}
+
+.handover__list {
+  margin-top: 8px;
+}
+
+.ended-list {
+  margin-top: 36px;
+}
+
+.hello--ended {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.hello__lead {
+  max-width: 40em;
+  color: var(--soft);
+  font-size: 1rem;
+  line-height: 1.5;
+}

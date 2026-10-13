@@ -51,10 +51,11 @@ export async function remindAll(env: AppBindings, ms: number, origin: string = B
   const to = `${day.slice(0, 7)}-01`
   const companies = await db
     .prepare(
-      `SELECT c.id, c.name FROM companies c WHERE c.closed_at IS NULL AND c.demo = 0
+      `SELECT c.id, c.name FROM companies c WHERE c.closed_at IS NULL AND c.demo = 0 AND (c.ends_on IS NULL OR c.ends_on >= ?)
          AND EXISTS (SELECT 1 FROM payments p WHERE p.company_id = c.id AND ${MISSING} ${kind === 'monthly' ? 'AND p.booked_on >= ? AND p.booked_on < ?' : ''})`,
     )
-    .bind(...(kind === 'monthly' ? [from, to] : []))
+    // A contract that ended is reminded of nothing more, but for the documents of its last month (point 10.4).
+    .bind(...(kind === 'monthly' ? [from, from, to] : [day]))
     .all<{ id: string; name: string }>()
   const statements: D1PreparedStatement[] = []
   const by = `${APP.docsByDay}. ${Number(day.slice(5, 7))}.`
@@ -84,7 +85,8 @@ export async function remindBankRenewals(env: AppBindings, ms: number, origin: s
   const links = await db
     .prepare(
       `SELECT l.id, l.bank, l.valid_until, c.id AS company_id, c.name AS company FROM bank_links l JOIN companies c ON c.id = l.company_id
-       WHERE l.status = 'active' AND l.valid_until IS NOT NULL AND l.valid_until > ? AND l.valid_until < ? AND c.demo = 0 AND c.closed_at IS NULL`,
+       WHERE l.status = 'active' AND l.valid_until IS NOT NULL AND l.valid_until > ? AND l.valid_until < ? AND c.demo = 0 AND c.closed_at IS NULL
+         AND (c.ends_on IS NULL OR c.ends_on >= date(l.valid_until, 'unixepoch'))`,
     )
     .bind(ts, ts + BANK.renewDays * 86400)
     .all<{ id: string; bank: string; valid_until: number; company_id: string; company: string }>()

@@ -5,6 +5,7 @@
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { check, done } from './check.mjs'
 import { readFileSync } from 'node:fs'
+import { crc32 } from 'node:zlib'
 import { PRETEND_MAIL, pretendBank, readerAnswer, registerAnswer } from './pretend.mjs'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -1274,6 +1275,189 @@ page = await res.text()
 check('the terms are public, numbered and for search engines', res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-10-4"') && !(res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 res = await get('/sitemap.xml')
 check('the sitemap names the terms', (await res.text()).includes('/podmienky'))
+
+// ---------------------------------------------------------------------------------------------------------------
+// The end of a contract (point 10.4 of the terms): ended from our side, the last month's documents for ten days, the
+// books handed over in the app, everything to download, and the company's data deleted ninety days after the end
+// ---------------------------------------------------------------------------------------------------------------
+
+await anna.post('/app/firma/prepnut', { firma: 'co-a' })
+const shiftDay = (from, n) => {
+  const d = new Date(`${from}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+res = await acc.post('/ucto/klienti/co-a/koniec', { den: skDay(endsOn), dovod: 'Neposiela doklady.' })
+check('only the administrator ends a contract from our side', res.status === 404 && (await db.prepare("SELECT ends_on FROM companies WHERE id = 'co-a'").first())?.ends_on === null)
+res = await admin.get('/ucto/klienti/co-a')
+page = (await res.text()).replace(/ /g, ' ')
+check('the administrator finds it on the client\'s page, the earliest day of our notice named', page.includes('action="/ucto/klienti/co-a/koniec"') && page.includes(`najskôr ${skDay(endsOn).split('. ')[0]}.`))
+res = await admin.post('/ucto/klienti/co-a/koniec', { den: skDay(day(-1)), dovod: 'Neposiela doklady.' })
+check('a day already past is refused', res.status === 422)
+res = await admin.post('/ucto/klienti/co-a/koniec', { den: skDay(endsOn), dovod: '' })
+check('so is an end without its reason', res.status === 422 && (await res.text()).includes('Napíšte, prečo zmluvu ukončujeme.'))
+const beforeEnd = (await sent()).length
+res = await admin.post('/ucto/klienti/co-a/koniec', { den: skDay(endsOn), dovod: 'Klient opakovane neposiela doklady.' })
+await settle()
+const endedRow = await db.prepare("SELECT notice_side, notice_by, ends_on FROM companies WHERE id = 'co-a'").first()
+check('the administrator ends it, from our side, on the day given', res.status === 303 && endedRow?.notice_side === 'firmony' && endedRow.notice_by === bossRow?.id && endedRow.ends_on === endsOn, JSON.stringify(endedRow))
+const endMsg = await db.prepare("SELECT body, side FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
+check('the client is told in the app what follows, never why', endMsg?.side === 'firmony' && endMsg.body.includes('ukončujeme') && endMsg.body.includes('stiahnete') && !endMsg.body.includes('neposiela'))
+check('the reason stays with the team, on record', JSON.parse((await db.prepare("SELECT detail FROM events WHERE action = 'contract.ended' AND company_id = 'co-a'").first())?.detail ?? '{}').reason === 'Klient opakovane neposiela doklady.')
+const endBells = (await sent()).slice(beforeEnd).filter((m) => m.to === 'anna@firma-a.test' || m.to === 'jan@firma-a.test')
+check('the client is rung, and the bell says nothing of it', endBells.length > 0 && endBells.every((m) => !m.text.includes('ukončujeme') && !m.text.includes('Firma A')))
+res = await anna.get('/app/firma')
+page = (await res.text()).replace(/ /g, ' ')
+check('the client reads that we ended it, what follows, and finds the download', page.includes('Zmluvu sme ukončili') && page.includes('Posledný deň zmluvy') && page.includes('Stiahnuť doklady a údaje') && page.includes('/app/export?rok=') && !page.includes('action="/app/firma/vypoved/spat"'))
+res = await anna.get('/app')
+check('a line above every page says when the contract ends', (await res.text()).replace(/ /g, ' ').includes('Zmluva skončí'))
+res = await anna.post('/app/firma/vypoved/spat', {})
+check('the client cannot take our end back', (await db.prepare("SELECT ends_on FROM companies WHERE id = 'co-a'").first())?.ends_on === endsOn)
+res = await anna.post('/app/firma/vypoved', { potvrdit: '1' })
+check('nor give a notice of its own over it', (await db.prepare("SELECT notice_side FROM companies WHERE id = 'co-a'").first())?.notice_side === 'firmony')
+res = await admin.post('/ucto/klienti/co-a/koniec/zrusit', {})
+const cancelled = await db.prepare("SELECT notice_side, ends_on FROM companies WHERE id = 'co-a'").first()
+check('the administrator takes it back while it runs, and the client reads it', res.status === 303 && cancelled?.ends_on === null && cancelled.notice_side === null && (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('rušíme'))
+
+// The last month: ten days past the last day documents are still taken, but nothing new is issued and no bank linked
+const setEnd = (onDay) => db.prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'firmony', ends_on = ? WHERE id = 'co-a'").bind(nowS, bossRow?.id ?? '', onDay).run()
+await setEnd(day(-3))
+res = await anna.get('/app')
+page = (await res.text()).replace(/ /g, ' ')
+check('after the last day the line says until when the last month\'s documents are taken', page.includes('Zmluva skončila') && page.includes('berieme do'))
+const invoicesBefore = (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE company_id = 'co-a'").first())?.n
+res = await anna.post('/app/faktury', invoiceForm({}))
+check('no invoice is issued after the last day', res.status === 409 && (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE company_id = 'co-a'").first())?.n === invoicesBefore)
+res = await anna.get('/app/faktury')
+page = (await res.text()).replace(/ /g, ' ')
+check('the invoices say so, and offer no new one', page.includes('nové faktúry tu už nevystavíte') && !page.includes('href="/app/faktury/nova"'))
+res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
+check('no bank is linked after the last day', res.status === 303 && res.headers.get('location') === '/app/banka?chyba=koniec')
+const docsBefore = (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n
+res = await appPost('/app/doklady', {}, { files: [{ name: 'posledny.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7, 6, 5]) }] })
+check('the last month\'s documents are still taken', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1)
+
+// Past the ten days: only the download is left; the data are not deleted before their ninety days
+await setEnd(day(-20))
+await tick(Date.now())
+await settle(300)
+check('twenty days past the end nothing is deleted yet', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first())?.purged_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1)
+res = await appPost('/app/doklady', {}, { files: [{ name: 'neskoro.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 1, 1, 1, 1]) }] })
+page = (await res.text()).replace(/ /g, ' ')
+check('ten days past the last day no document is taken, and the page says why', res.status === 409 && page.includes('Doklady už neprijímame') && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1)
+res = await anna.get('/app/doklady')
+page = await res.text()
+check('the page for documents offers no upload, only the download', !page.includes('method="post" action="/app/doklady"') && !page.includes('data-pick') && page.includes('href="/app/firma#stiahnut"'))
+res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'neskoro.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% neskoro\n%%EOF\n') }] }))
+check('nor by email: the sender is told the contract ended', res.status === 400 && (await res.text()).includes('skončila'))
+res = await anna.get('/app/platby')
+check('nor a statement', !(await res.text()).includes('action="/app/banka"'))
+res = await anna.get('/app')
+page = (await res.text()).replace(/ /g, ' ')
+check('the line says until when to download, and leads there', page.includes('si stiahnite do') && page.includes('href="/app/firma#stiahnut"'))
+
+// Everything of the company, a year at a time
+/** The files of a ZIP as an unzipper reads them, each checked against its local header and its sum. */
+function unzip(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const end = bytes.length - 22
+  if (end < 0 || view.getUint32(end, true) !== 0x06054b50) return null
+  const files = []
+  let at = view.getUint32(end + 16, true)
+  for (let i = 0; i < view.getUint16(end + 10, true); i++) {
+    const crcAt = view.getUint32(at + 16, true)
+    const size = view.getUint32(at + 24, true)
+    const nameLength = view.getUint16(at + 28, true)
+    const offset = view.getUint32(at + 42, true)
+    const name = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + nameLength))
+    const start = offset + 30 + view.getUint16(offset + 26, true) + view.getUint16(offset + 28, true)
+    const data = bytes.subarray(start, start + size)
+    files.push({ name, data, ok: view.getUint32(offset, true) === 0x04034b50 && crc32(data) === crcAt })
+    at += 46 + nameLength
+  }
+  return files
+}
+res = await anna.get(`/app/export?rok=${year}`)
+const archive = res.status === 200 ? unzip(new Uint8Array(await res.arrayBuffer())) : null
+check('a year\'s archive downloads as a ZIP, under the company\'s IČO', res.status === 200 && res.headers.get('content-type') === 'application/zip' && (res.headers.get('content-disposition') ?? '').includes(`firmony-57442452-${year}.zip`) && res.headers.get('cache-control') === 'private, no-store')
+check('every file in it reads, every sum right', archive !== null && archive.length > 6 && archive.every((f) => f.ok), archive?.map((f) => f.name).join(' | '))
+const named = (name) => archive?.find((f) => f.name === name)
+const text = (f) => new TextDecoder().decode(f?.data ?? new Uint8Array())
+check('it holds what it says: the lists, the messages, the contract', ['citajte.txt', 'doklady.csv', 'platby.csv', 'faktury.csv', 'spravy.txt', 'zmluva.txt'].every((n) => named(n)))
+const bom = (f) => f?.data[0] === 0xef && f.data[1] === 0xbb && f.data[2] === 0xbf
+check('the lists open in Slovak Excel', bom(named('platby.csv')) && bom(named('doklady.csv')) && text(named('platby.csv')).startsWith('Dátum;') && text(named('platby.csv')).includes('KAVIAREN NA ROHU KOSICE'))
+const ublFile = archive?.find((f) => /^faktury\/\d{8}\.xml$/.test(f.name))
+check('the issued invoices are e-invoices', Boolean(ublFile) && text(ublFile).includes('urn:oasis:names:specification:ubl:schema:xsd:Invoice-2'))
+const docFile = archive?.find((f) => f.name.startsWith('doklady/') && f.name.endsWith('.pdf'))
+check('the documents are the originals as they came, named in plain letters', Boolean(docFile) && text(docFile).startsWith('%PDF') && archive.filter((f) => f.name.startsWith('doklady/')).every((f) => /^[\x20-\x7e]+$/.test(f.name)))
+check('the list of documents names each file as it stands in the archive', archive.filter((f) => f.name.startsWith('doklady/')).every((f) => text(named('doklady.csv')).includes(f.name)))
+check('the contract is in it with its terms', text(named('zmluva.txt')).includes('Firma A s. r. o.') && text(named('zmluva.txt')).includes('10.4 '))
+const ownFiles = await db
+  .prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a' AND deleted_at IS NULL AND file_key IS NOT NULL AND substr(COALESCE(issued_on, date(created_at, 'unixepoch')), 1, 4) = ?")
+  .bind(year)
+  .first()
+check('the company\'s own documents, every one, and no other company\'s', archive?.filter((f) => f.name.startsWith('doklady/')).length === ownFiles?.n && !archive.some((f) => text(f).includes('Firma B s. r. o.')), `${archive?.filter((f) => f.name.startsWith('doklady/')).length} of ${ownFiles?.n}`)
+res = await anna.get('/app/export?rok=1999')
+check('a year without anything is not found', res.status === 404)
+check('the download is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'export.downloaded' AND company_id = 'co-a'").first())?.n === 1)
+
+// The books handed over: by the accountant, in the app (the client has read what was written before)
+await anna.get('/app/spravy')
+const ledger = new TextEncoder().encode('%PDF-1.4\n% Hlavna kniha 2026\n%%EOF\n')
+const beforeHand = (await sent()).length
+res = await acc.upload('/ucto/klienti/co-a/odovzdanie', { name: 'Hlavná kniha 2026.pdf', type: 'application/pdf', bytes: ledger })
+await settle()
+const handed = await db.prepare("SELECT id, file_name, r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'handover'").first()
+check('the accountant hands the books over in the app', res.status === 303 && handed?.file_name === 'Hlavná kniha 2026.pdf')
+check('the client reads where they are, and is rung without a word of it', (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('Hlavná kniha 2026.pdf') && (await sent()).slice(beforeHand).some((m) => m.to === 'anna@firma-a.test' && !m.text.includes('Hlavná')))
+res = await acc.upload('/ucto/klienti/co-a/odovzdanie', { name: 'kniha.pdf', type: 'application/pdf', bytes: new Uint8Array([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0, 4, 0]) })
+check('a program is not handed over, whatever it is called', res.status === 422)
+res = await anna.get('/app/firma')
+check('the client finds the books under the download', (await res.text()).includes(`/app/odovzdanie/${handed?.id}`))
+res = await anna.get(`/app/odovzdanie/${handed?.id}`)
+check('and downloads them, never shown in the browser', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && new Uint8Array(await res.arrayBuffer()).length === ledger.length)
+res = await get(`/app/odovzdanie/${handed?.id}`, { headers: { cookie: (await signIn('boris@firma-b.test')).cookie } })
+check('nobody of another company gets them', res.status === 404)
+res = await admin.get('/ucto')
+page = await res.text()
+check('the list no longer asks for the handover once it was made', !page.includes('Odovzdanie mešká'))
+
+// Ninety days past the last day the company's data are deleted; the identification stays five years
+await setEnd(day(-91))
+const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").all()
+await tick(Date.now())
+await settle(500)
+const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
+check('the schedule deletes the company\'s data after its ninety days', typeof purgedRow?.purged_at === 'number' && typeof purgedRow.closed_at === 'number' && purgedRow.name === 'Firma A s. r. o.')
+const leftover = await db
+  .prepare(
+    `SELECT (SELECT COUNT(*) FROM documents WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payments WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM messages WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa') AS n`,
+  )
+  .first()
+check('documents, payments, messages, invoices, accounts, people and the handover are gone', leftover?.n === 0, JSON.stringify(leftover))
+const objects = await files.list({ prefix: 'companies/co-a/' })
+check('and so are their files, all but the power of attorney', objects.objects.every((o) => poaKept.results.some((p) => p.r2_key === o.key)) && poaKept.results.every((p) => objects.objects.some((o) => o.key === p.r2_key)), objects.objects.map((o) => o.key).join(' '))
+check('the declaration, the risk and the reports stay, as the law wants', (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n > 0 && (await db.prepare("SELECT COUNT(*) AS n FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").first())?.n === poaKept.results.length)
+check('a person who belonged to the company alone is gone; one in another company stays', (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'jan@firma-a.test'").first())?.n === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE id = 'u-a'").first())?.n === 1)
+res = await anna.get('/app')
+check('the client is no longer in it', !(await res.text()).includes('Firma A s. r. o.'))
+res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'po.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n%%EOF\n') }] }))
+check('its address for documents no longer exists', res.status === 400)
+res = await admin.get('/ucto')
+page = await res.text()
+check('the administrator finds it among the clients that ended, with what the law keeps', page.includes('Skončení klienti') && page.includes('href="/ucto/klienti/co-a/aml"'))
+res = await admin.get('/ucto/klienti/co-a/aml')
+check('and opens its identification', res.status === 200 && (await res.text()).replace(/\u00a0/g, ' ').includes('Identifikácia a riziko'))
+res = await acc.get('/ucto/klienti/co-a/aml')
+check('an accountant does not', res.status === 404)
+res = await admin.get('/ucto/klienti/co-a')
+check('nor does anybody open its page of work', res.status === 404)
+await db.prepare("UPDATE companies SET ends_on = ? WHERE id = 'co-a'").bind(shiftDay(day(0), -5 * 366)).run()
+await tick(Date.now())
+await settle(500)
+check('five years past the end the rest goes too', (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE id = 'co-a'").first())?.n === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n === 0 && (await files.list({ prefix: 'companies/co-a/' })).objects.length === 0)
 
 await mf.dispose()
 done('runtime')

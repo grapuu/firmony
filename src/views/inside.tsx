@@ -3,7 +3,8 @@
 // the warm half of a title in the red serif; less to read than anywhere else.
 import type { Child, FC } from 'hono/jsx'
 import { ART, BRAND, type Art } from '../config'
-import { app } from '../app/copy'
+import { app, dayName } from '../app/copy'
+import type { Ending } from '../app/ending'
 import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
@@ -86,10 +87,34 @@ export interface ShellProps {
   /** Every company of the user, to switch between them; one company shows no switch. */
   companies: { id: string; name: string }[]
   title: string
+  /** The contract's end, once it has a last day: a line above every page says what follows. */
+  ending?: Ending | null
   children: Child
 }
 
-export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, title, children }) => (
+/** Above every page from the day the contract has a last day: when it ends, and what is left to do after it. */
+const EndBanner: FC<{ ending: Ending }> = ({ ending }) => {
+  const e = app.ending
+  const text =
+    ending.phase === 'ending'
+      ? e.banner.ending(dayName(ending.endsOn))
+      : ending.phase === 'closing'
+        ? e.banner.closing(dayName(ending.endsOn), dayName(ending.intakeUntil))
+        : e.banner.ended(dayName(ending.endsOn), dayName(ending.accessUntil))
+  return (
+    <p class={`endline endline--${ending.phase}`} role="status">
+      <span class="endline__text">{text}</span>
+      <a class="endline__link" href={ending.phase === 'ending' ? '/app/firma#zmluva' : '/app/firma#stiahnut'}>
+        {ending.phase === 'ending' ? e.next : e.download}
+      </a>
+    </p>
+  )
+}
+
+export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, title, ending = null, children }) => {
+  // Ten days past the last day nothing more is taken: the buttons for a document lead to the page that says so.
+  const intake = !ending || ending.phase !== 'ended'
+  return (
   <html lang="sk">
     <InsideHead title={`${title} | ${BRAND.name}`} />
     <body class="inside">
@@ -135,9 +160,11 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
               </a>
             ))}
           </nav>
-          <a class="btn btn--blue side__add" href="/app/doklady#pridat" data-pick>
-            {app.nav.add}
-          </a>
+          {intake ? (
+            <a class="btn btn--blue side__add" href="/app/doklady#pridat" data-pick>
+              {app.nav.add}
+            </a>
+          ) : null}
           <div class="side__foot">
             <a class="side__team" href="/app/firma" aria-current={place === 'company' ? 'page' : undefined}>
               {app.nav.settings}
@@ -187,6 +214,7 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
             </BarMenu>
           </header>
           <main id="obsah" class="content">
+            {ending ? <EndBanner ending={ending} /> : null}
             {children}
           </main>
         </div>
@@ -195,7 +223,7 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
         {TABS.slice(0, 2).map((item) => (
           <TabLink item={item} place={place} n={item.place === 'payments' ? missing : 0} />
         ))}
-        <a class="tabs__add" href="/app/doklady#pridat" data-pick aria-label={app.nav.add}>
+        <a class="tabs__add" href="/app/doklady#pridat" data-pick={intake ? true : undefined} aria-label={app.nav.add}>
           <span class="tabs__plus" aria-hidden="true">
             +
           </span>
@@ -205,10 +233,11 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
           <TabLink item={item} place={place} n={item.place === 'messages' ? unread : 0} />
         ))}
       </nav>
-      <Pick />
+      {intake ? <Pick /> : null}
     </body>
   </html>
-)
+  )
+}
 
 /** On a phone the column on the left is gone: the bar's menu holds who is signed in, the switch and signing out. */
 export const BarMenu: FC<{ label: string; user: { name: string; email: string }; children?: Child }> = ({ label, user, children }) => (

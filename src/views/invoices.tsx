@@ -16,7 +16,7 @@ const t = app.invoices
 
 const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill--blue', overdue: 'pill--amber', paid: 'pill--ok' }
 
-export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null }> = ({ invoices, today, flash }) => {
+export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null }> = ({ invoices, today, flash, closed = null }) => {
   const month = today.slice(0, 7)
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + i.totalCents, 0)
   const unpaid = sum((i) => stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue')
@@ -29,19 +29,24 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
           <Heading first={t.title} second={t.serif} />
           <p class="phead__lead">{t.lead}</p>
         </div>
-        <a class="btn btn--blue" href="/app/faktury/nova">
-          {t.add}
-        </a>
+        {closed ? null : (
+          <a class="btn btn--blue" href="/app/faktury/nova">
+            {t.add}
+          </a>
+        )}
       </header>
       <Flash text={flash} />
+      {closed ? <p class="closednote">{closed}</p> : null}
       {invoices.length === 0 ? (
         <section class="nothing">
           <Tile art={ART.paperInvoice} size="lg" />
           <p class="nothing__title">{t.empty}</p>
           <p class="nothing__lead">{t.emptyLead}</p>
-          <a class="btn btn--blue" href="/app/faktury/nova">
-            {t.add}
-          </a>
+          {closed ? null : (
+            <a class="btn btn--blue" href="/app/faktury/nova">
+              {t.add}
+            </a>
+          )}
         </section>
       ) : (
         <>

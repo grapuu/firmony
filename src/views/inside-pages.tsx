@@ -131,7 +131,30 @@ export function whenName(seconds: number, nowSeconds: number): string {
 }
 
 /** The card for adding documents: a button that opens the camera or the files, a place to drop them, the email. */
-export const AddCard: FC<{ inbox: string; id?: string; wide?: boolean; action?: string; title?: string; lead?: string; button?: string }> = ({ inbox, id = 'pridat', wide, action = '/app/doklady', title = app.add.title, lead = app.add.lead, button = app.add.button }) => (
+export const AddCard: FC<{ inbox: string; id?: string; wide?: boolean; action?: string; title?: string; lead?: string; button?: string; closed?: string | null }> = ({
+  inbox,
+  id = 'pridat',
+  wide,
+  action = '/app/doklady',
+  title = app.add.title,
+  lead = app.add.lead,
+  button = app.add.button,
+  closed = null,
+}) =>
+  closed ? (
+    <section class={`add add--closed${wide ? ' add--wide' : ''}`} id={id} aria-labelledby={`${id}-title`}>
+      <div class="add__main">
+        <Tile art={ART.paperReceipt} size="md" />
+        <h2 id={`${id}-title`} class="add__title">
+          {app.ending.closedTitle}
+        </h2>
+        <p class="add__lead">{closed}</p>
+        <a class="btn btn--line" href="/app/firma#stiahnut">
+          {app.ending.download}
+        </a>
+      </div>
+    </section>
+  ) : (
   <section class={`add${wide ? ' add--wide' : ''}`} id={id} aria-labelledby={`${id}-title`} data-drop>
     <div class="add__main">
       <Tile art={ART.paperReceipt} size="md" />
@@ -163,7 +186,7 @@ export const AddCard: FC<{ inbox: string; id?: string; wide?: boolean; action?: 
       </p>
     </div>
   </section>
-)
+  )
 
 // ---------------------------------------------------------------------------------------------------------------
 // Prehľad
@@ -191,6 +214,8 @@ export interface OverviewProps {
   /** Whether the bank can be linked, and what the overview says about a consent that ends. */
   bankReady?: boolean
   bankNotice?: BankNotice
+  /** Ten days past the contract's last day no document is taken, and this says why. */
+  closed?: string | null
 }
 
 export interface FirstStepsState {
@@ -257,10 +282,21 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps
 export const Overview: FC<OverviewProps> = (props) => {
   const { missing, missingCount } = props
   const calm = missingCount === 0 && props.paymentsCount > 0
+  // Ten days past the contract's last day nothing more is asked of the client: only the download is left.
+  const ended = Boolean(props.closed)
   return (
     <div class="over">
       <div class="over__main">
-        {calm ? (
+        {ended ? (
+          <section class="hello hello--ended" aria-labelledby="stav">
+            <p class="hello__name">{app.home.hello(props.firstName)}</p>
+            <Heading id="stav" first={app.ending.overTitle} second={app.ending.overSerif} />
+            <p class="hello__lead">{props.closed}</p>
+            <a class="btn btn--blue" href="/app/firma#stiahnut">
+              {app.ending.download}
+            </a>
+          </section>
+        ) : calm ? (
           <section class="calm" aria-labelledby="stav">
             <div class="calm__text">
               <p class="calm__hello">{app.home.hello(props.firstName)}</p>
@@ -283,8 +319,8 @@ export const Overview: FC<OverviewProps> = (props) => {
         )}
         <Flash text={props.flash} />
         <BankNoticeBar notice={props.bankNotice ?? null} today={props.today} />
-        {props.steps ? <FirstSteps steps={props.steps} bankReady={props.bankReady} /> : null}
-        {props.paymentsCount === 0 ? (
+        {props.steps && !ended ? <FirstSteps steps={props.steps} bankReady={props.bankReady} /> : null}
+        {ended ? null : props.paymentsCount === 0 ? (
           props.steps ? null : <p class="over__empty">{app.home.noPaymentsLead}</p>
         ) : missingCount > 0 ? (
           <section class="feedcard" aria-labelledby="chyba">
@@ -336,27 +372,29 @@ export const Overview: FC<OverviewProps> = (props) => {
             </div>
           </dl>
         </section>
-        <section class="dates" aria-labelledby="terminy">
-          <h2 id="terminy" class="sect">
-            {app.home.deadlines}
-          </h2>
-          <p class="sect__lead">{app.home.deadlinesLead}</p>
-          <ul class="dates__list">
-            {props.deadlines.map((d) => (
-              <li class="date">
-                <span class="date__day">
-                  <span class="date__num">{Number(d.day.slice(8, 10))}.</span>
-                  <span class="date__month">{dayName(d.day, props.today).replace(/^\d+\.\s/, '')}</span>
-                </span>
-                <span class="date__what">{d.label}</span>
-                <span class={`pill pill--${d.tone}`}>{d.state}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {ended ? null : (
+          <section class="dates" aria-labelledby="terminy">
+            <h2 id="terminy" class="sect">
+              {app.home.deadlines}
+            </h2>
+            <p class="sect__lead">{app.home.deadlinesLead}</p>
+            <ul class="dates__list">
+              {props.deadlines.map((d) => (
+                <li class="date">
+                  <span class="date__day">
+                    <span class="date__num">{Number(d.day.slice(8, 10))}.</span>
+                    <span class="date__month">{dayName(d.day, props.today).replace(/^\d+\.\s/, '')}</span>
+                  </span>
+                  <span class="date__what">{d.label}</span>
+                  <span class={`pill pill--${d.tone}`}>{d.state}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
       <aside class="over__side">
-        <AddCard inbox={props.inbox} />
+        {ended ? null : <AddCard inbox={props.inbox} />}
         <section class="mate" aria-labelledby="ucto">
           <div class="mate__who">
             <Tile art={ART.chat} size="md" />
@@ -425,7 +463,9 @@ export const PaymentsPage: FC<{
   search?: string
   /** The bank, when it can be linked: linked (and when it was read), or the way to link it. */
   bank?: { links: BankLinkView[]; today: string } | null
-}> = ({ filter, payments, missingCount, suggested, flash, warn, search = '', bank }) => (
+  /** Ten days past the contract's last day no statement is taken. */
+  closed?: boolean
+}> = ({ filter, payments, missingCount, suggested, flash, warn, search = '', bank, closed = false }) => (
   <>
     <header class="phead">
       <Heading first={app.payments.title} />
@@ -478,15 +518,17 @@ export const PaymentsPage: FC<{
         </h2>
         <p>{bank ? app.bank.statementLead : app.payments.statementLead}</p>
       </div>
-      <form class="bankfile__form" method="post" action="/app/banka" enctype="multipart/form-data" data-upload>
-        <label class="btn btn--line" for="vypis-file">
-          {app.payments.statementButton}
-        </label>
-        <input id="vypis-file" class="add__file" type="file" name="file" accept=".xml,text/xml,application/xml" />
-        <button class="btn btn--line add__send" type="submit">
-          {app.add.send}
-        </button>
-      </form>
+      {closed ? null : (
+        <form class="bankfile__form" method="post" action="/app/banka" enctype="multipart/form-data" data-upload>
+          <label class="btn btn--line" for="vypis-file">
+            {app.payments.statementButton}
+          </label>
+          <input id="vypis-file" class="add__file" type="file" name="file" accept=".xml,text/xml,application/xml" />
+          <button class="btn btn--line add__send" type="submit">
+            {app.add.send}
+          </button>
+        </form>
+      )}
     </section>
   </>
 )
@@ -505,9 +547,14 @@ export interface PaymentPageProps {
   error?: string | null
   exemptValue?: string
   noteValue?: string
+  /** Ten days past the contract's last day: no document is taken, and this says why. */
+  closed?: string | null
 }
 
-const UploadForm: FC<{ p: Payment; label: string; line?: boolean }> = ({ p, label, line }) => (
+const UploadForm: FC<{ p: Payment; label: string; line?: boolean; closed?: string | null }> = ({ p, label, line, closed }) =>
+  closed ? (
+    <p class="need__closed">{closed}</p>
+  ) : (
   <form class="need__form" method="post" action={`/app/platby/${p.id}/doklad`} enctype="multipart/form-data" data-upload>
     <label class={`btn ${line ? 'btn--line' : 'btn--blue btn--large'} need__button`} for={`doklad-${p.id}`}>
       {label}
@@ -517,9 +564,9 @@ const UploadForm: FC<{ p: Payment; label: string; line?: boolean }> = ({ p, labe
       {app.add.send}
     </button>
   </form>
-)
+  )
 
-export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose, today, flash, error, exemptValue, noteValue }) => {
+export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose, today, flash, error, exemptValue, noteValue, closed = null }) => {
   const docsTotal = docs.reduce((sum, d) => sum + (d.totalCents ?? 0), 0)
   const allRead = docs.length > 0 && docs.every((d) => d.status === 'read' && d.totalCents !== null)
   const differs = allRead && docsTotal !== Math.abs(p.amountCents)
@@ -550,7 +597,7 @@ export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose,
                 </h2>
               </div>
               <p class="need__lead">{app.payment.missingLead}</p>
-              <UploadForm p={p} label={app.payment.upload} />
+              <UploadForm p={p} label={app.payment.upload} closed={closed} />
               {suggestions.length > 0 ? (
                 <div class="suggest">
                   <p class="suggest__title">{app.payment.suggestTitle}</p>
@@ -631,7 +678,7 @@ export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose,
                 </div>
               ))}
               {differs ? <p class="flag">{app.payment.differs(formatEur(docsTotal), formatEur(Math.abs(p.amountCents)))}</p> : null}
-              <UploadForm p={p} label={app.payment.uploadMore} line />
+              <UploadForm p={p} label={app.payment.uploadMore} line closed={closed} />
             </section>
           ) : (
             <section class="have have--exempt" aria-labelledby="stav">
@@ -726,7 +773,15 @@ export function groupIban(iban: string): string {
 // Doklady
 // ---------------------------------------------------------------------------------------------------------------
 
-export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: string; flash?: string | null; problems: string[]; search?: string }> = ({ filter, docs, inbox, flash, problems, search = '' }) => (
+export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: string; flash?: string | null; problems: string[]; search?: string; closed?: string | null }> = ({
+  filter,
+  docs,
+  inbox,
+  flash,
+  problems,
+  search = '',
+  closed = null,
+}) => (
   <>
     <header class="phead">
       <Heading first={app.documents.title} />
@@ -736,7 +791,7 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
     {problems.map((text) => (
       <Flash text={text} tone="warn" />
     ))}
-    <AddCard inbox={inbox} wide />
+    <AddCard inbox={inbox} wide closed={closed} />
     <div class="listbar">
       <nav class="filters" aria-label={app.documents.title}>
         {(['all', 'loose'] as const).map((f) => (

@@ -4,7 +4,8 @@
 //   npx wrangler deploy --dry-run --outdir .wrangler/dist && node --no-warnings scripts/playground.mjs
 //
 // IČO 57442452 is found in the register, 35757442 makes the register fail, anything else is unknown.
-// What was "sent" is at /playground/mail. /app/ukazka signs in to the sample company of the client's app; a
+// What was "sent" is at /playground/mail. /playground/koniec?dni=20 puts the sample company twenty days past the
+// last day of its contract (&zrusit=1 takes it back). /app/ukazka signs in to the sample company of the client's app; a
 // document added there is "read" by a pretend reader as yesterday's café receipt.
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
@@ -81,6 +82,23 @@ createServer(async (req, res) => {
 <p style="display:flex;gap:10px;margin-top:24px"><a href="${esc(back)}" style="padding:12px 18px;border-radius:10px;background:#1c2ef0;color:#fff;text-decoration:none;font-weight:600">Povoliť prístup</a>
 <a href="${esc(cancel)}" style="padding:12px 18px;border-radius:10px;border:1px solid #ccc;color:#111;text-decoration:none">Zrušiť</a></p>
 </main></body></html>`)
+    }
+    if (url.pathname === '/playground/koniec') {
+      // The end of a contract as a client sees it some days after (the team's form takes no day in the past):
+      // ?firma=<id>&dni=<days since the last day>, or &zrusit=1 to run on as before.
+      const db = await mf.getD1Database('DB')
+      const company = url.searchParams.get('firma') ?? 'demo-company'
+      if (url.searchParams.get('zrusit') === '1') {
+        await db.prepare('UPDATE companies SET notice_at = NULL, notice_by = NULL, notice_side = NULL, ends_on = NULL WHERE id = ?').bind(company).run()
+      } else {
+        const days = Number(url.searchParams.get('dni') ?? '0') || 0
+        await db
+          .prepare("UPDATE companies SET notice_at = ?, notice_by = 'demo-admin', notice_side = 'firmony', ends_on = ? WHERE id = ?")
+          .bind(Math.floor(Date.now() / 1000), bratislavaDay(-days), company)
+          .run()
+      }
+      res.writeHead(303, { location: '/app' })
+      return res.end()
     }
     if (url.pathname === '/playground/mail') {
       const mailer = await mf.getWorker('pretend-mail')

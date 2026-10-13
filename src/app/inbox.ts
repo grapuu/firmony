@@ -7,6 +7,7 @@ import PostalMime from 'postal-mime'
 import { APP, BRAND } from '../config'
 import { now, withinLimit } from '../db'
 import { app as t } from './copy'
+import { intakeOpen } from './ending'
 import { keepFilesFor, type NewFile } from './intake'
 import { sniff } from './read'
 import type { AppBindings } from './routes'
@@ -31,7 +32,7 @@ export interface Mail {
   setReject(reason: string): void
 }
 
-export type Received = 'unknown' | 'too-large' | 'too-many' | 'unreadable' | 'added' | 'known' | 'empty'
+export type Received = 'unknown' | 'ended' | 'too-large' | 'too-many' | 'unreadable' | 'added' | 'known' | 'empty'
 
 /** Takes the documents of one email. What has to be read afterwards is handed to `later`. */
 export async function receiveMail(env: AppBindings, mail: Mail, later: (work: Promise<unknown>) => void): Promise<Received> {
@@ -40,6 +41,11 @@ export async function receiveMail(env: AppBindings, mail: Mail, later: (work: Pr
   if (!company) {
     mail.setReject('Táto adresa neexistuje.')
     return 'unknown'
+  }
+  // Ten days past the contract's last day the address takes nothing more (point 10.4 of the terms).
+  if (!intakeOpen(company, new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date()))) {
+    mail.setReject('Zmluva s Firmony skončila a doklady už neprijímame.')
+    return 'ended'
   }
   if (mail.rawSize > APP.mailBytes) {
     mail.setReject('E-mail je príliš veľký. Pošlite doklady po jednom alebo ich pridajte v aplikácii.')

@@ -31,8 +31,10 @@ export interface Company {
   signedBy: string | null
   termsVersion: string | null
   startOn: string | null
-  /** A notice given in the app: when, and the last day of the contract. */
+  /** The end of the contract: when it was set, by whom, from which side (the client's notice, or ours), and its last day. */
   noticeAt: number | null
+  noticeBy: string | null
+  noticeSide: 'client' | 'firmony' | null
   endsOn: string | null
 }
 
@@ -128,7 +130,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 /** The columns of a company with its accountant's name, over the aliases c and acc. */
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
-  c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.ends_on`
+  c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on`
 
 export function companyOf(row: Row): Company {
   return {
@@ -156,6 +158,8 @@ export function companyOf(row: Row): Company {
     termsVersion: str(row.terms_version),
     startOn: str(row.start_on),
     noticeAt: num(row.notice_at),
+    noticeBy: str(row.notice_by),
+    noticeSide: row.notice_side === 'firmony' ? 'firmony' : row.notice_at ? 'client' : null,
     endsOn: str(row.ends_on),
   }
 }
@@ -200,7 +204,7 @@ function paymentOf(row: Row): Payment {
   }
 }
 
-const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
+export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how`

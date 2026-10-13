@@ -4,7 +4,7 @@
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, BANK, BRAND, TEAM } from '../config'
+import { APP, BANK, BRAND, ENDING, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
@@ -31,7 +31,10 @@ import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
-import { remindAll, remindBankRenewals } from './remind'
+import { remindAll, remindBankRenewals, bratislava } from './remind'
+import { endingOf, intakeOpen, serviceOpen } from './ending'
+import { exportYear, exportYears } from './export'
+import { purgeEnded } from './purge'
 import { currentWho, endSession, linkUsable, newLink, newToken, startSession, switchStatement, useLink } from './session'
 import {
   afterReading,
@@ -107,6 +110,9 @@ export function inboxAddress(company: Company): string {
 }
 
 const today = () => dayOf(now())
+
+/** What the pages for adding a document say ten days past the contract's last day, and null before. */
+const closedIntake = (company: Company): string | null => (intakeOpen(company, today()) ? null : t.ending.noIntakeLead(dayName(company.endsOn ?? today())))
 
 // ---------------------------------------------------------------------------------------------------------------
 // Signing in
@@ -221,7 +227,7 @@ async function shell(c: Ctx, place: Place | null, title: string, node: unknown, 
   const [missing, unread, companies] = await Promise.all([countMissing(c.env.DB, who.company.id), unseenFromFirmony(c.env.DB, who.company.id), companiesOf(c.env.DB, who.user.id)])
   return render(
     c,
-    <Shell who={who} place={place} missing={missing} unread={unread} companies={companies} title={title}>
+    <Shell who={who} place={place} missing={missing} unread={unread} companies={companies} title={title} ending={endingOf(who.company, today())}>
       {node as never}
     </Shell>,
     status,
@@ -328,7 +334,7 @@ appRoutes.get('/', async (c) => {
     switching: started?.situation === 'switch',
   }
   const ready = bankReady(c.env)
-  const bankNotice = ready ? noticeOf(await linksOf(db, company)) : null
+  const bankNotice = ready && serviceOpen(who.company, day) ? noticeOf(await linksOf(db, company)) : null
   return shell(
     c,
     'home',
@@ -352,6 +358,7 @@ appRoutes.get('/', async (c) => {
       me={who.user.id}
       bankReady={ready}
       bankNotice={bankNotice}
+      closed={closedIntake(who.company)}
     />,
   )
 })
@@ -369,8 +376,13 @@ appRoutes.get('/platby', async (c) => {
   const filter = search ? 'all' : q === 'hotove' ? 'done' : q === 'vsetky' ? 'all' : 'missing'
   const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, filter, 400, search), countMissing(db, who.company.id)])
   const suggested = await suggestions(db, who.company.id, payments)
-  const bank = bankReady(c.env) ? { links: await linksOf(db, who.company.id), today: today() } : null
-  return shell(c, 'payments', t.payments.title, <PaymentsPage filter={filter} payments={payments} missingCount={missingCount} suggested={new Set(suggested.keys())} flash={flashOf(c)} search={search} bank={bank} />)
+  const bank = bankReady(c.env) && serviceOpen(who.company, today()) ? { links: await linksOf(db, who.company.id), today: today() } : null
+  return shell(
+    c,
+    'payments',
+    t.payments.title,
+    <PaymentsPage filter={filter} payments={payments} missingCount={missingCount} suggested={new Set(suggested.keys())} flash={flashOf(c)} search={search} bank={bank} closed={closedIntake(who.company) !== null} />,
+  )
 })
 
 async function paymentPage(c: Ctx, id: string, extra: { error?: string; exemptValue?: string; noteValue?: string } = {}, status: ContentfulStatusCode = 200) {
@@ -385,7 +397,7 @@ async function paymentPage(c: Ctx, id: string, extra: { error?: string; exemptVa
     c,
     'payments',
     t.payments.title,
-    <PaymentPage p={p} docs={docs} suggestions={offered} loose={loose.filter((d) => !offeredIds.has(d.id))} today={today()} flash={flashOf(c)} {...extra} />,
+    <PaymentPage p={p} docs={docs} suggestions={offered} loose={loose.filter((d) => !offeredIds.has(d.id))} today={today()} flash={flashOf(c)} closed={closedIntake(who.company)} {...extra} />,
     status,
   )
 }
@@ -476,17 +488,19 @@ appRoutes.get('/doklady', async (c) => {
   const search = (c.req.query('hladat') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
   const filter = !search && c.req.query('filter') === 'bez-platby' ? 'loose' : 'all'
   const docs = await listDocuments(c.env.DB, who.company.id, filter, 400, search)
-  return shell(c, 'documents', t.documents.title, <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} />)
+  return shell(c, 'documents', t.documents.title, <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} closed={closedIntake(who.company)} />)
 })
 
 async function documentsWithProblems(c: Ctx, problems: string[], status: ContentfulStatusCode, flash: string | null = null) {
   const who = c.get('who')
   const docs = await listDocuments(c.env.DB, who.company.id, 'all')
-  return shell(c, 'documents', t.documents.title, <DocumentsPage filter="all" docs={docs} inbox={inboxAddress(who.company)} flash={flash} problems={problems} />, status)
+  return shell(c, 'documents', t.documents.title, <DocumentsPage filter="all" docs={docs} inbox={inboxAddress(who.company)} flash={flash} problems={problems} closed={closedIntake(who.company)} />, status)
 }
 
 appRoutes.post('/doklady', async (c) => {
   const who = c.get('who')
+  // Ten days past the last day: the page's card says that nothing more is taken.
+  if (!intakeOpen(who.company, today())) return documentsWithProblems(c, [], 409)
   if (!c.env.FILES) return documentsWithProblems(c, [t.documents.noStorage], 503)
   if ((await filesToday(c.env.DB, who.company.id)) >= APP.filesPerDay) return documentsWithProblems(c, [t.documents.perDay], 429)
   const taken = await takeFiles(c)
@@ -501,6 +515,7 @@ appRoutes.post('/platby/:id/doklad', async (c) => {
   const id = c.req.param('id')
   const p = ID.test(id) ? await getPayment(c.env.DB, who.company.id, id) : null
   if (!p) return shell(c, 'payments', t.errors.notFound, <Missing />, 404)
+  if (!intakeOpen(who.company, today())) return paymentPage(c, id, {}, 409)
   if (!c.env.FILES) return paymentPage(c, id, { error: t.documents.noStorage }, 503)
   if ((await filesToday(c.env.DB, who.company.id)) >= APP.filesPerDay) return paymentPage(c, id, { error: t.documents.perDay }, 429)
   const taken = await takeFiles(c)
@@ -517,10 +532,11 @@ appRoutes.post('/banka', async (c) => {
   const body = await c.req.parseBody()
   const file = body.file
   const db = c.env.DB
-  const bad = async () => {
+  const bad = async (warn: string = t.payments.statementBad, status: ContentfulStatusCode = 422) => {
     const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, 'all'), countMissing(db, who.company.id)])
-    return shell(c, 'payments', t.payments.title, <PaymentsPage filter="all" payments={payments} missingCount={missingCount} suggested={new Set()} warn={t.payments.statementBad} />, 422)
+    return shell(c, 'payments', t.payments.title, <PaymentsPage filter="all" payments={payments} missingCount={missingCount} suggested={new Set()} warn={warn} closed={closedIntake(who.company) !== null} />, status)
   }
+  if (!intakeOpen(who.company, today())) return bad(t.ending.noIntake(dayName(who.company.endsOn ?? today())), 409)
   if (typeof file !== 'object' || file === null || !('arrayBuffer' in file) || file.size === 0 || file.size > APP.fileBytes) return bad()
   const statements = readStatement(new TextDecoder().decode(await file.arrayBuffer()))
   if (!statements || statements.every((s) => !s.iban)) return bad()
@@ -545,6 +561,8 @@ function bankError(c: Ctx): string | null {
       return t.bank.flash.vyprsalo
     case 'vela':
       return t.bank.flash.vela
+    case 'koniec':
+      return t.ending.noBank(dayName(c.get('who').company.endsOn ?? today()))
     default:
       return null
   }
@@ -558,7 +576,7 @@ async function bankPage(c: Ctx, error: string | null = null, status: ContentfulS
     c,
     'payments',
     t.bank.title,
-    <BankPage ready={ready} links={links} banks={banks} owner={who.role === 'owner'} today={today()} flash={flashOf(c)} error={error ?? bankError(c)} />,
+    <BankPage ready={ready} links={links} banks={banks} owner={who.role === 'owner'} today={today()} flash={flashOf(c)} error={error ?? bankError(c)} open={serviceOpen(who.company, today())} intake={intakeOpen(who.company, today())} />,
     status,
   )
 }
@@ -572,6 +590,7 @@ appRoutes.get('/banka', (c) => bankPage(c))
 appRoutes.get('/banka/pripojit', async (c) => {
   const who = c.get('who')
   if (!bankReady(c.env)) return c.redirect('/app/banka', 303)
+  if (!serviceOpen(who.company, today())) return c.redirect('/app/banka?chyba=koniec', 303)
   const site = c.req.header('sec-fetch-site')
   if (site && site !== 'same-origin' && site !== 'none') return c.redirect('/app/banka', 303)
   if (!(await withinLimit(c.env.DB, 'bank-start', who.company.id, 20, 3600))) return c.redirect('/app/banka?chyba=vela', 303)
@@ -754,10 +773,21 @@ appRoutes.post('/spravy', async (c) => {
 // The company: its details, its people, the reminders, switching to another one of the same user
 // ---------------------------------------------------------------------------------------------------------------
 
-async function companyPage(c: Ctx, extra: { invite?: { name: string; email: string }; errors?: { name?: string; email?: string; form?: string; notice?: string } } = {}, status: ContentfulStatusCode = 200) {
+async function companyPage(
+  c: Ctx,
+  extra: { invite?: { name: string; email: string }; errors?: { name?: string; email?: string; form?: string; notice?: string }; download?: string } = {},
+  status: ContentfulStatusCode = 200,
+) {
   const who = c.get('who')
   const db = c.env.DB
-  const [people, companies, papers, declared] = await Promise.all([peopleOf(db, who.company.id), companiesOf(db, who.user.id), papersOf(db, who.company.id, 'poa'), latestDeclaration(db, who.company.id)])
+  const [people, companies, papers, declared, years, handover] = await Promise.all([
+    peopleOf(db, who.company.id),
+    companiesOf(db, who.user.id),
+    papersOf(db, who.company.id, 'poa'),
+    latestDeclaration(db, who.company.id),
+    exportYears(db, who.company.id),
+    papersOf(db, who.company.id, 'handover'),
+  ])
   const me = people.find((p) => p.id === who.user.id) ?? { ...who.user, role: who.role }
   return shell(
     c,
@@ -776,6 +806,10 @@ async function companyPage(c: Ctx, extra: { invite?: { name: string; email: stri
       declaration={declarationStateOf(declared)}
       today={today()}
       noticeEnd={noticeEndsOn(today())}
+      ending={endingOf(who.company, today())}
+      years={years}
+      handover={handover}
+      downloadError={extra.download ?? null}
     />,
     status,
   )
@@ -985,7 +1019,7 @@ appRoutes.post('/firma/vypoved', async (c) => {
   const db = c.env.DB
   const end = noticeEndsOn(today())
   // Given once: a second click, or a second person at the same moment, changes nothing and writes nothing.
-  const [given] = await db.batch([db.prepare('UPDATE companies SET notice_at = ?, notice_by = ?, ends_on = ? WHERE id = ? AND notice_at IS NULL').bind(now(), who.user.id, end, who.company.id)])
+  const [given] = await db.batch([db.prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'client', ends_on = ? WHERE id = ? AND notice_at IS NULL").bind(now(), who.user.id, end, who.company.id)])
   if ((given?.meta?.changes ?? 0) === 0) return c.redirect('/app/firma#zmluva', 303)
   const id = crypto.randomUUID()
   await db.batch([
@@ -1006,7 +1040,9 @@ appRoutes.post('/firma/vypoved/spat', async (c) => {
   const db = c.env.DB
   // Taken back while the contract still runs (point 10.2 of the terms: we agree to it in advance).
   const [back] = await db.batch([
-    db.prepare('UPDATE companies SET notice_at = NULL, notice_by = NULL, ends_on = NULL WHERE id = ? AND notice_at IS NOT NULL AND ends_on >= ?').bind(who.company.id, today()),
+    db
+      .prepare("UPDATE companies SET notice_at = NULL, notice_by = NULL, notice_side = NULL, ends_on = NULL WHERE id = ? AND notice_at IS NOT NULL AND notice_side = 'client' AND ends_on >= ?")
+      .bind(who.company.id, today()),
   ])
   if ((back?.meta?.changes ?? 0) === 0) return c.redirect('/app/firma#zmluva', 303)
   const id = crypto.randomUUID()
@@ -1020,6 +1056,38 @@ appRoutes.post('/firma/vypoved/spat', async (c) => {
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect('/app/firma?ok=vypoved-spat#zmluva', 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Everything of the company to download, a year at a time (export.ts), and the books the accountant handed over
+// ---------------------------------------------------------------------------------------------------------------
+
+appRoutes.get('/export', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const year = c.req.query('rok') ?? ''
+  if (!/^\d{4}$/.test(year) || !(await exportYears(db, who.company.id)).includes(year)) return shell(c, 'company', t.errors.notFound, <Missing />, 404)
+  if (!(await withinLimit(db, 'export', who.company.id, ENDING.exportsPerHour, 3600))) return companyPage(c, { download: t.download.throttle }, 429)
+  const row = await db.prepare('SELECT o.plan, o.price_cents, o.accepted_at, o.signed_by, o.start_on FROM orders o JOIN companies co ON co.order_id = o.id WHERE co.id = ?').bind(who.company.id).first<{ plan: string; price_cents: number | null; accepted_at: number | null; signed_by: string | null; start_on: string | null }>()
+  const order = row ? { plan: row.plan, priceCents: row.price_cents, acceptedAt: row.accepted_at, signedBy: row.signed_by, startOn: row.start_on } : null
+  await db.batch([eventStatement(db, { company: who.company.id, user: who.user.id, action: 'export.downloaded', subject: year })])
+  const archive = await exportYear(c.env, who.company, year, order, dayName(today()).replace(/\u00a0/g, ' '))
+  return new Response(archive.body, {
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${archive.name}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+})
+
+appRoutes.get('/odovzdanie/:id', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const paper = ID.test(id) ? await getPaper(c.env.DB, who.company.id, id) : null
+  const answer = paper?.kind === 'handover' ? await paperResponse(c.env.FILES, paper) : null
+  return answer ?? c.notFound()
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1101,15 +1169,19 @@ async function recentCustomers(db: D1Database, company: string): Promise<{ id: s
   return recent
 }
 
-appRoutes.get('/faktury', async (c) => {
+async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const invoices = await listInvoices(c.env.DB, who.company.id)
-  return shell(c, 'invoices', ti.title, <InvoicesPage invoices={invoices} today={today()} flash={flashOf(c)} />)
-})
+  const closed = serviceOpen(who.company, today()) ? null : t.ending.noInvoices(dayName(who.company.endsOn ?? today()))
+  return shell(c, 'invoices', ti.title, <InvoicesPage invoices={invoices} today={today()} flash={flashOf(c)} closed={closed} />, status)
+}
+
+appRoutes.get('/faktury', (c) => invoicesPage(c))
 
 appRoutes.get('/faktury/nova', async (c) => {
   const who = c.get('who')
   const day = today()
+  if (!serviceOpen(who.company, day)) return invoicesPage(c, 409)
   const due = new Date(`${day}T12:00:00Z`)
   due.setUTCDate(due.getUTCDate() + who.company.invoiceDueDays)
   const values: InvoiceValues = {
@@ -1154,6 +1226,8 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
   const vatPayer = who.company.vatPayer
   const values = invoiceValuesFrom(body, vatPayer)
   const action = typeof body.akcia === 'string' ? body.akcia : 'koncept'
+  // After the contract's last day a draft can only be thrown away: nothing new is issued or kept here.
+  if (!serviceOpen(who.company, today()) && !(action === 'zahodit' && draftId)) return invoicesPage(c, 409)
   if (action === 'zahodit' && draftId) {
     await db.batch([
       db.prepare("DELETE FROM invoice_lines WHERE invoice_id = ? AND EXISTS (SELECT 1 FROM invoices WHERE id = ? AND company_id = ? AND status = 'draft')").bind(draftId, draftId, who.company.id),
@@ -1344,6 +1418,11 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await readDue(env)
   } catch (err) {
     console.error('reading the banks failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    await purgeEnded(env, bratislava(at).day)
+  } catch (err) {
+    console.error('deleting ended companies failed', err instanceof Error ? err.name : 'error')
   }
   const stuck = await db
     .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")

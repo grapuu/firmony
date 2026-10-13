@@ -135,7 +135,8 @@ function script(leads) {
     poa: 'Toto je náhľad: nič sa neposiela. V aplikácii sa podpísaná plná moc nahrá a účtovníčka ju overí a podá na úrady.',
     decl: 'Toto je náhľad: nič sa neposiela. V aplikácii sa údaje uložia a účtovníčka ich porovná s obchodným registrom a s plnou mocou.',
     notice: 'Toto je náhľad: nič sa nevypovedá. V aplikácii sa výpoveď uloží, objaví sa v správach a do konca lehoty ju môžete vziať späť.',
-    prechod: 'Toto je náhľad. V aplikácii sa to, čo napíšete, hneď doplní do listu.'
+    prechod: 'Toto je náhľad. V aplikácii sa to, čo napíšete, hneď doplní do listu.',
+    download: 'Toto je náhľad: nič sa nesťahuje. V aplikácii sa stiahne súbor ZIP: originály dokladov, prehľady pre Excel, faktúry ako e-faktúry, správy a zmluva.'
   };
   function note(form, text) {
     var p = form.querySelector('.preview-note');
@@ -180,6 +181,14 @@ function script(leads) {
       input.click();
     });
   });
+  document.querySelectorAll('a[download]').forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      var box = link.closest('li') || link.parentNode, p = box.querySelector('.preview-note');
+      if (!p) { p = document.createElement('p'); p.className = 'preview-note'; p.setAttribute('role', 'status'); box.appendChild(p); }
+      p.textContent = says.download;
+    });
+  });
   document.querySelectorAll('[data-copy]').forEach(function (button) {
     button.hidden = false;
     button.addEventListener('click', function () {
@@ -192,7 +201,7 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a><a href="koniec.html">Koniec zmluvy</a></div>`
 
 function rewrite(page, extra) {
   return page
@@ -401,6 +410,25 @@ ${BAR}
   await writeFile(join(out, 'banka-schvalenie.html'), sample)
 }
 
+// The end of a contract, as the client sees it twenty days after its last day (only the download is left), and the
+// team's page of that client with the handover. Then the contract runs on, for what follows.
+{
+  await call('/playground/koniec?dni=20')
+  const ending = new Map([
+    ['/app', 'koniec.html'],
+    ['/app/firma', 'koniec-firma.html'],
+    ['/app/doklady', 'koniec-doklady.html'],
+    ['/app/faktury', 'koniec-faktury.html'],
+  ])
+  for (const [path, file] of ending) await write(file, await html(path), {}, ending)
+  const martin = cookie
+  cookie = ''
+  await call('/ucto/ukazka')
+  await write('ucto-klient-koniec.html', await html('/ucto/klienti/demo-company'), {}, new Map([['/ucto/klienti/demo-company', 'ucto-klient-koniec.html']]))
+  cookie = martin
+  await call('/playground/koniec?zrusit=1')
+}
+
 // Signing in, last: signing out ends the session.
 await call('/app/odhlasit', { method: 'POST', headers: { 'content-length': '0' } })
 cookie = ''
@@ -412,5 +440,5 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'plna-moc-atelier.html', 'vyhlasenie-atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', ...originals]
+const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'plna-moc-atelier.html', 'vyhlasenie-atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', 'koniec.html', 'koniec-firma.html', 'koniec-doklady.html', 'koniec-faktury.html', 'ucto-klient-koniec.html', ...originals]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))

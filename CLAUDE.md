@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 23:55)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at about 02:00)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (218 unit checks) and `npm run test:runtime` (366 checks in workerd). The sixth
+- All checks pass: `npm test` (238 unit checks) and `npm run test:runtime` (420 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -97,8 +97,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
     from the thanks page), the app version 8 (Plná moc, Prechod, and "Nová firma" in the bar: Ateliér Nova with the
     power of attorney first among its steps).
   - Nobody has read the terms, the power of attorney or the AML program for him; a lawyer should before the first
-    client. Not built: deleting a closed client's data after 90 days (the terms and the privacy notice promise it;
-    it is done by hand until then).
+    client. (Deleting a closed client's data after 90 days is built since the night of 14 October: below.)
 
 - From 23:03 (13 October 2026). His word: "ano makaj, nechcem ziadnu komunikaciu mailom nic take... vsetko v nasom
   uzamknutom ekosysteme": his yes to the client's declaration in the app, and nothing by email. He was told how it was
@@ -117,6 +116,20 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   - The previews: the app version 9 (Kto stojí za firmou, Zmluva, the notice in Firma; "Nová firma" in the bar opens
     Eva's empty declaration; the team's Identifikácia a riziko from both clients' pages), the site version 16 (the
     FAQ "Ako spolu budeme komunikovať?", the terms with every notice in the app).
+
+- From 23:56 (13 October 2026). He asked whether people will download the app from the App Store ("za to sú
+  poplatky u Apple") and said "Jasné, dobre, pusť sa na to" to the next step he was offered: what happens when a
+  contract ends. He was told: no store, no download and no fee to Apple or Google: Firmony is a web app that goes
+  on the phone's home screen from the browser (Safari: Zdieľať, Pridať na plochu; Chrome: Inštalovať aplikáciu),
+  and an app in the stores could come later if ever wanted; and, for the end, "asi 3 hodiny". Built and pushed at
+  about 02:00 on 14 October (commit named in "The end of a contract" below), all checks passing (units 238, runtime
+  420): the administrator ends a contract from our side, the last month's documents are taken ten days past the last
+  day, the accountant hands the books over in the app, everything downloads as a ZIP a year, and ninety days past the
+  end the schedule deletes the company's data, the identification five years later. The AML program doc (rev 25)
+  says so, and a doubled sentence in its section 3 was put right. The previews: the app version 10 ("Koniec
+  zmluvy" in its bar: the overview, Firma, Doklady and Faktúry twenty days past the end, and the team's client page
+  with the handover; "Stiahnuť ZIP" says in the preview what the app downloads), the site version 17 (the terms and
+  the privacy notice of the end, the FAQ "Musím sa viazať?").
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -397,7 +410,7 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
   `notice_by`, `ends_on` = the last day of the month after the notice, `noticeEndsOn`; once); it stands in the
   messages as the client's ("Vypovedám zmluvu ..."), the team is rung, the list and the client page say "Končí ...".
   Until that day the owner can take it back (point 10.2 of the terms: we agree to that in advance), which is in the
-  messages too. What happens at the end (the access closed, the books handed over) is done by hand.
+  messages too. What happens at the end is "The end of a contract" below.
 - The terms (`TERMS_VERSION` stays 2026-10-13: nobody has accepted them): 1.3 the contract and its terms are in the
   app, 3.1 documents in the app or by forwarding to the company's address, 4.5, 4.6, 8.5 and 11.2 notices in the
   app, 9.2 the director fills in the declaration in the app and reports its changes there, 10.2 notice in the app
@@ -407,6 +420,61 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
   given in the app.
 - Not built: notices the team gives in the app (a price change, a change of the terms: by a message today), an
   acknowledgement of training of the accountants, a periodic check that a declaration is up to date.
+
+### The end of a contract (14 October 2026; `src/app/ending.ts`, `src/app/export.ts`, `src/zip.ts`, `src/app/purge.ts`)
+
+What Bench did not do (its customers were locked out when it shut, December 2024) and what point 10.4 of the terms
+promises: the client takes everything along, the books are handed over in the app, and nothing of the company stays
+with us longer than the law wants. Every figure is in `ENDING` (`src/config.ts`).
+
+- The last day: the client's notice in Firma a nastavenia (the end of the month after it, as before), or ours. The
+  administrator's form on the team's client page ("Ukončiť zmluvu z našej strany", folded under "Zmluva a plná moc"):
+  a day, today or later, the earliest of a notice under 10.2 named (an earlier one is for 10.3 or an agreement),
+  and a reason that stays in the event `contract.ended` and never reaches the client. The client gets a message in
+  the app that says the day and what follows (and a doorbell); the administrator can take it back while it runs
+  (`contract.ended.cancelled`, a message). `companies.notice_side` says whose end it is ('client' or 'firmony'):
+  the client takes back only its own notice and cannot give one over ours. An accountant cannot end a contract.
+- After it (`endingOf`, phases): until the last day "ending" (a line above every page: "Zmluva skončí ...", and in
+  Firma a nastavenia the four days: the last day, documents until, the handover by, the download until); from the
+  next day no invoice is issued (a draft can be thrown away), no bank is linked and no renewal of a consent asked
+  for; for ten more days ("closing", `ENDING.intakeDays`) the last month's documents and statements still come in,
+  by the app, by email and from the bank; then ("ended") nothing more is taken: the upload, the "+" on a phone and
+  the statement form are gone, the address for documents answers the sender that the contract ended, the bank is
+  read no more, no reminder goes out (the monthly one only for the last month), and the overview says "Spolupráca
+  skončila. Ďakujeme, že ste boli s nami." with the download. The line above every page turns red then.
+- The download (Firma a nastavenia, "Stiahnuť doklady a údaje", `#stiahnut`, there always, not only at the end): a
+  ZIP a year (`/app/export?rok=`, any member, ten an hour, `export.downloaded` in the events), streamed and stored
+  without compression (`src/zip.ts`, names in plain ASCII, CRC-32 checked by the tests against Node's zlib):
+  `citajte.txt`; `doklady/` the originals as they came, named by day, partner and number; `doklady.csv` (what was
+  read, the category, the account, booked, the payment, the file's name in the archive); `platby.csv` (whether a
+  document is there, or why none is needed); `faktury/<number>.xml` the issued invoices as e-invoices and
+  `faktury.csv`; `spravy.txt`; `zmluva.txt` with the terms. The CSVs are for Slovak Excel (BOM, ';', "12,40").
+  Past 65 000 files or 4 GB the rest is named in `CHYBAJUCE-SUBORY.txt` (no ZIP64).
+- The handover (the team's client page, "Odovzdanie účtovníctva", shown once there is a last day): the accountant
+  uploads up to ten files at a time (`company_files` kind 'handover'; PDF, pictures, any ZIP such as an export of
+  Pohoda or an .xlsx, XML, CSV or text, an old .xls; anything with NUL bytes that is no such file is refused,
+  `sniffHandover`); the client gets a message naming them and finds them under the download (`/app/odovzdanie/:id`,
+  always downloaded, never shown). The list of clients says "Odovzdať do ..." until something is handed over, red
+  ("Odovzdanie mešká") past the thirty days. A file uploaded by mistake can be removed.
+- The deletion (`purgeEnded` from the schedule, three companies a run): ninety days past the last day the files go
+  (everything under the company's prefix in R2 but the power of attorney's) and then, in one batch, the documents,
+  links, payments, accounts, the bank's consents (closed at Enable Banking first), invoices and their lines,
+  messages, the email that came in, the suppliers' rules, the handover, the sessions and members, and the accounts
+  of the company's people who belong to no other company and no team; the company row keeps its name, register
+  data and contract and gets `purged_at` and `closed_at` (event `company.purged`). A person who belongs to no
+  company and no team (an owner removed them) is forgotten at every run (`forgetLonely`). Five years past the last
+  day (`recordsFloor`) the rest goes: the power of attorney, the declarations, the risk, the reports, the order, the
+  events and the company row. The administrator finds ended companies at the foot of /ucto ("Skončení klienti") and
+  opens their Identifikácia a riziko for those five years; nobody opens their page of work; an accountant sees none.
+- The terms (8.8 and 10.4) and the privacy notice say all of it (`TERMS_VERSION` stays 2026-10-13: nobody has
+  accepted them). The site's FAQ "Musím sa viazať?" says that the books are handed over in the app and that
+  everything can be downloaded there for 90 days after the end.
+- In the playground: `/playground/koniec?dni=20` puts the sample company twenty days past its last day (the team's
+  form takes no day in the past), `&zrusit=1` takes it back; the app's preview has "Koniec zmluvy" in its bar.
+- Checked: 24 rules taken out once (`scripts/dev/mutate.mjs`), 24 held. Not checked by a test: the bank read stopping (no
+  consent is active at that point of the runtime test), reminders after the end, the closing of the consent at the
+  bank during the deletion. Not built: a credit note or a closing for the year the contract ended (by agreement,
+  by hand), ending many contracts at once.
 
 ### Invoices the client issues (step 3, 13 October 2026; `src/app/invoices.ts`, `src/views/invoices.tsx`)
 
@@ -687,11 +755,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (218): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration
-npm run test:runtime     # the deployable bundle in workerd (366): the site, the order, and the app end to end
+npm test                 # unit checks (238): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end
+npm run test:runtime     # the deployable bundle in workerd (420): the site, the order, and the app end to end, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (26)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (24)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 

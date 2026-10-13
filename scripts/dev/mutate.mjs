@@ -13,36 +13,34 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // The client's declaration (aml.ts, /app/vyhlasenie)
-  ['src/app/aml.ts', "  if (v.truthful !== '1') errors.truthful = words.truthful\n", '', 'without the statement nothing is taken'],
-  ['src/app/aml.ts', "    if (rc !== '' && !birthNumberValid(rc)) errors[`${prefix}rc`] = words.rc\n", '', 'a birth number that cannot be one is refused'],
-  ['src/app/aml.ts', '  if (whole % 11n === 0n) return true\n', '  return true\n', 'a birth number has its check digit'],
-  ['src/app/aml.ts', "  if (kuv && kuv !== 'self' && owners.length === 0) errors.owners = words.owners\n", '', 'other owners are asked for when the director is not the only one'],
-  ['src/app/aml.ts', "  if (v.abroad === '1' && (v.abroadWhere ?? '').length < 2) errors.abroadWhere = words.abroadWhere\n", '', 'partners outside the EU are named'],
-  ['src/app/aml.ts', '  const last = new Date(Date.UTC(y, m + 1, 0))', '  const last = new Date(Date.UTC(y, m, 0))', 'a notice ends on the last day of the month after it'],
-  ['src/app/routes.tsx', "  if (who.role !== 'owner') return declarationPage(c, null, 403)\n", '', 'only the owner gives the declaration'],
-  ['src/views/declaration.tsx', '    {!owner ? (', '    {false ? (', 'a member sees nothing of the declaration'],
-  ['src/views/declaration.tsx', '(rc ? maskBirthNumber(rc) :', '(rc ? rc :', 'the owner reads the birth number cut short'],
-  ['src/views/inside-pages.tsx', "    { done: steps.declaration, href: '/app/vyhlasenie', text: s.declaration, optional: false },\n", '', 'the declaration is a first step'],
-  ['src/app/routes.tsx', 'steps={steps.declaration && steps.poa && steps.payments && steps.upload ? null : steps}', 'steps={steps.poa && steps.payments && steps.upload ? null : steps}', 'the first steps stay until the declaration is given'],
-  ['src/app/routes.tsx', "ringStatement(db, 'declaration', made.id, company.accountantEmail ?? BRAND.email,", "ringStatement(db, 'declaration', made.id, BRAND.email,", 'the accountant who keeps the company is rung of its declaration'],
-  // The team: the check, the risk, the reports
-  ['src/app/aml.ts', ' AND checked_at IS NULL\n         AND id = (SELECT id FROM declarations WHERE company_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1)', ' AND checked_at IS NULL\n         AND ? IS NOT NULL', 'only the newest declaration is checked'],
-  ['src/app/aml.ts', "WHERE id = ? AND company_id = ? AND checked_at IS NULL\n", "WHERE id = ? AND company_id = ?\n", 'a declaration is checked once'],
-  ['src/team/routes.tsx', "typeof body.uroven === 'string' && (LEVELS as readonly string[]).includes(body.uroven)", "typeof body.uroven === 'string'", 'a level that is none is not kept'],
-  ['src/team/routes.tsx', '  if (!company || !isAdmin(who.user)) return missingPage(c)\n  const report', '  if (!company) return missingPage(c)\n  const report', 'only the designated person decides'],
-  ['src/app/aml.ts', " WHERE id = ? AND company_id = ? AND decided_at IS NULL')", " WHERE id = ? AND company_id = ?')", 'a report is decided once'],
-  ['src/app/aml.ts', 'AND (? = 1 OR r.created_by = ?)', 'AND (? = 1 OR ? IS NOT NULL)', 'an accountant reads only her own reports'],
-  ['src/team/routes.tsx', "  if (note === '') return amlPage(c, company, { error: t.aml.errors.note }, 422)\n", '', 'a decision needs its reasons'],
-  ['src/team/routes.tsx', `"SELECT email FROM users WHERE team = 'admin'"`, `"SELECT email FROM users WHERE team = 'nobody'"`, 'the designated person is rung of a report'],
-  // The notice
-  ['src/app/routes.tsx', "  if (body.potvrdit !== '1') return companyPage(c, { errors: { notice: t.notice.must } }, 422)\n", '', 'without the tick no notice is given'],
-  ['src/app/routes.tsx', "WHERE id = ? AND notice_at IS NULL').bind(now(), who.user.id, end, who.company.id)", "WHERE id = ?').bind(now(), who.user.id, end, who.company.id)", 'notice is given once'],
-  ['src/app/routes.tsx', "appRoutes.post('/firma/vypoved', async (c) => {\n  const who = c.get('who')\n  if (who.role !== 'owner') return companyPage(c, { errors: { notice: t.notice.onlyOwner } }, 403)\n", "appRoutes.post('/firma/vypoved', async (c) => {\n  const who = c.get('who')\n", 'only the owner gives notice'],
-  // Doorbells
-  ['src/app/routes.tsx', "    ...(unread ? [] : [ringStatement(db, 'message',", "    ...(false ? [] : [ringStatement(db, 'message',", 'the team is rung once for what it has not read'],
-  ['src/team/routes.tsx', '  if (unread) return []\n', '', 'the client is rung once for what she has not read'],
-  ['src/app/remind.ts', "kind === 'weekly' ? day : day.slice(0, 7), person.email, ring", "`${company.id}:${kind === 'weekly' ? day : day.slice(0, 7)}`, person.email, ring", 'a reminder rings a person once, whatever her companies'],
+  // The end of a contract (ending.ts), and what is refused after it
+  ['src/app/ending.ts', "    phase: today <= endsOn ? 'ending' :", "    phase: today < endsOn ? 'ending' :", 'a contract runs through its last day'],
+  ['src/app/ending.ts', "today <= intakeUntil ? 'closing' : 'ended'", "today < intakeUntil ? 'closing' : 'ended'", 'the last month is taken through its tenth day'],
+  ['src/app/ending.ts', '!company.endsOn || today <= addDays(company.endsOn, ENDING.intakeDays)', 'true', 'documents are refused ten days past the end'],
+  ['src/app/routes.tsx', "  if (!serviceOpen(who.company, today()) && !(action === 'zahodit' && draftId)) return invoicesPage(c, 409)\n", '', 'no invoice is issued after the last day'],
+  ['src/app/routes.tsx', "  if (!serviceOpen(who.company, today())) return c.redirect('/app/banka?chyba=koniec', 303)\n", '', 'no bank is linked after the last day'],
+  ['src/app/inbox.ts', "  if (!intakeOpen(company, new Intl", "  if (false && !intakeOpen(company, new Intl", 'no email is taken past the intake'],
+  ['src/views/inside.tsx', "  const intake = !ending || ending.phase !== 'ended'", '  const intake = true', 'the buttons for a document go once nothing is taken'],
+  // Ending it from our side
+  ['src/team/routes.tsx', "  if (!company || !isAdmin(who.user)) return missingPage(c)\n  const body = await c.req.parseBody()\n  const dayText", "  if (!company) return missingPage(c)\n  const body = await c.req.parseBody()\n  const dayText", 'only the administrator ends a contract'],
+  ['src/team/routes.tsx', '  if (!day || day < today) errors.day = t.end.errors.day', '  if (!day) errors.day = t.end.errors.day', 'a day already past is refused'],
+  ['src/team/routes.tsx', "  if (reason === '') errors.reason = t.end.errors.reason\n", '', 'an end needs its reason'],
+  ['src/app/routes.tsx', "WHERE id = ? AND notice_at IS NOT NULL AND notice_side = 'client' AND ends_on >= ?", 'WHERE id = ? AND notice_at IS NOT NULL AND ends_on >= ?', 'the client cannot take our end back'],
+  // The download
+  ['src/app/export.ts', 'const csv = (rows: (string | number | null)[][]) => `\\uFEFF${', 'const csv = (rows: (string | number | null)[][]) => `${', 'the lists open in Slovak Excel'],
+  ['src/app/export.ts', "         WHERE d.company_id = ? AND d.deleted_at IS NULL AND substr(", "         WHERE ? IS NOT NULL AND d.deleted_at IS NULL AND substr(", 'the archive holds the company\'s own documents'],
+  ['src/app/routes.tsx', "  if (!/^\\d{4}$/.test(year) || !(await exportYears(db, who.company.id)).includes(year)) return", "  if (!/^\\d{4}$/.test(year)) return", 'a year without anything is not found'],
+  ['src/zip.ts', '    const crc = crc32(data)\n', '    const crc = 0\n', 'every sum in the archive is right'],
+  ['src/zip.ts', "    .replace(/[\\u0300-\\u036f]/g, '')\n", '', 'names in the archive lose their accents'],
+  ['src/app/papers.ts', '  if (head.includes(0)) return null\n', '', 'a program is not handed over'],
+  // The deletion
+  ['src/app/purge.ts', '.bind(purgeFloor(today), ENDING.perRun)', '.bind(today, ENDING.perRun)', 'data are deleted only ninety days after the end'],
+  ['src/app/purge.ts', `db.prepare("DELETE FROM company_files WHERE company_id = ? AND kind <> 'poa'").bind(companyId),`, `db.prepare("DELETE FROM company_files WHERE company_id = ?").bind(companyId),`, 'the power of attorney stays'],
+  ['src/app/purge.ts', "`companies/${companyId}/papers/`, new Set(kept.results.map((r) => r.r2_key))", "`companies/${companyId}/papers/`", 'the file of the power of attorney stays'],
+  ['src/app/purge.ts', "WHERE u.team IS NULL AND NOT EXISTS (SELECT 1 FROM members m WHERE m.user_id = u.id)'", "WHERE u.team IS NULL'", 'a person in another company keeps her account'],
+  ['src/team/store.ts', '.bind(id, ended && isAdmin(user) ? 1 : 0)', '.bind(id, ended ? 1 : 0)', 'only the administrator opens an ended company'],
+  ['src/team/store.ts', 'WHERE c.id = ? AND (c.closed_at IS NULL OR (? = 1 AND c.purged_at IS NOT NULL))', 'WHERE c.id = ? AND (1 = 1 OR (? = 1 AND c.purged_at IS NOT NULL))', 'the page of work of an ended company is gone'],
+  ['src/app/purge.ts', "      db.prepare('DELETE FROM declarations WHERE company_id = ?').bind(id),\n", '', 'five years past the end the identification goes'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { aml, appCopy, bank, bells, booking, calc, config, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, orderLinkMail, papers, paybysquare, planRows, reader, rpo, teamStore, terms, xml } from '../.wrangler/tmp/units-bundle.mjs'
+import { aml, appCopy, bank, bells, booking, calc, config, copy, decodePayBySquare, deadlines, demo, ending, format, ico, invoices, match, orderLinkMail, papers, paybysquare, planRows, reader, rpo, teamStore, terms, xml, zip } from '../.wrangler/tmp/units-bundle.mjs'
+import { crc32 as nodeCrc32 } from 'node:zlib'
 import { check, done } from './check.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
@@ -398,5 +399,85 @@ docx.set(new TextEncoder().encode('[Content'), 30)
 check('another ZIP (a Word file, a folder) is no paper', papers.sniffPaper(docx) === null && papers.sniffPaper(zipWith('application/zip-whatever-else-xx')) === null)
 check('a PDF, a photo and a PNG are papers; a text is not', papers.sniffPaper(demo.demoPdf(100, 100, [{ text: 'x' }]))?.type === 'application/pdf' && papers.sniffPaper(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1]))?.ext === 'jpg' && papers.sniffPaper(new TextEncoder().encode('Plnomocenstvo podpisane')) === null)
 check('where the power of attorney stands', papers.poaStateOf([]) === 'missing' && papers.poaStateOf([{ checkedAt: null }]) === 'waiting' && papers.poaStateOf([{ checkedAt: null }, { checkedAt: 5 }]) === 'checked')
+
+// The archive a client downloads: a ZIP every unzipper reads, its names plain, its sums right
+/** The files of a ZIP, read from its central directory as an unzipper reads them, each checked against its local header. */
+function unzip(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const end = bytes.length - 22
+  if (view.getUint32(end, true) !== 0x06054b50) return null
+  const count = view.getUint16(end + 10, true)
+  let at = view.getUint32(end + 16, true)
+  const files = []
+  for (let i = 0; i < count; i++) {
+    if (view.getUint32(at, true) !== 0x02014b50) return null
+    const crc = view.getUint32(at + 16, true)
+    const size = view.getUint32(at + 24, true)
+    const nameLength = view.getUint16(at + 28, true)
+    const offset = view.getUint32(at + 42, true)
+    const name = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + nameLength))
+    if (view.getUint32(offset, true) !== 0x04034b50 || view.getUint16(offset + 8, true) !== 0 || view.getUint32(offset + 14, true) !== crc) return null
+    const start = offset + 30 + view.getUint16(offset + 26, true) + view.getUint16(offset + 28, true)
+    const data = bytes.subarray(start, start + size)
+    files.push({ name, data, crc, time: view.getUint16(at + 12, true), date: view.getUint16(at + 14, true), sumOk: nodeCrc32(data) === crc })
+    at += 46 + nameLength
+  }
+  return files
+}
+async function zipped(entries, note) {
+  return new Uint8Array(await new Response(zip.zipStream(entries, note)).arrayBuffer())
+}
+{
+  const enc = new TextEncoder()
+  const at = Date.UTC(2026, 9, 13, 21, 4, 10) / 1000
+  const bytes = await zipped([
+    { name: 'citajte.txt', when: at, data: async () => enc.encode('Ahoj') },
+    { name: 'doklady/2026-10-11 Kaviareň Mlyn/č. 12.jpg', when: at, data: async () => new Uint8Array([1, 2, 3, 4, 5]) },
+    { name: 'doklady/2026-10-11 Kaviareň Mlyn/č. 12.jpg', when: at, data: async () => new Uint8Array([9]) },
+    { name: 'doklady/zmazany.pdf', when: at, data: async () => null },
+    { name: 'prazdny.txt', when: at, data: async () => new Uint8Array(0) },
+  ])
+  const files = unzip(bytes)
+  check('the archive is a ZIP an unzipper reads, every sum right', files !== null && files.length === 4 && files.every((f) => f.sumOk), files?.map((f) => f.name).join(' | '))
+  check('names in the archive are plain ASCII, without accents', files?.[1]?.name === 'doklady/2026-10-11 Kaviaren Mlyn/c. 12.jpg' && files.every((f) => /^[\x20-\x7e]+$/.test(f.name)), files?.[1]?.name)
+  check('a second file of the same name is "(2)", and a file that is gone is left out', files?.[2]?.name === 'doklady/2026-10-11 Kaviaren Mlyn/c. 12 (2).jpg' && !files.some((f) => f.name.includes('zmazany')))
+  check('what a file holds is what was put in, an empty one too', new TextDecoder().decode(files?.[0]?.data) === 'Ahoj' && files?.[2]?.data.length === 1 && files?.[3]?.data.length === 0)
+  // 21:04:10 UTC on 13 October is 23:04:10 in Bratislava (summer time)
+  check('a file is dated by the wall time in Bratislava', files?.[0]?.time === ((23 << 11) | (4 << 5) | 5) && files?.[0]?.date === (((2026 - 1980) << 9) | (10 << 5) | 13))
+  check('a name cannot climb out of the archive', zip.zipName('../../etc/passwd') === '_/_/etc/passwd' && zip.zipName('a//b') === 'a/b' && zip.zipName('.htaccess') === '_htaccess')
+}
+
+// The end of a contract: the last day, ten days for the last month's documents, thirty for the handover, ninety to download
+{
+  const c = { endsOn: '2026-12-31', noticeSide: 'client' }
+  const e = (day) => ending.endingOf(c, day)
+  check('a contract with a last day runs until it, then takes the last documents for ten days, then only gives',
+    e('2026-12-31')?.phase === 'ending' && e('2027-01-01')?.phase === 'closing' && e('2027-01-10')?.phase === 'closing' && e('2027-01-11')?.phase === 'ended')
+  check('the handover is due thirty days after the end, and access lasts ninety', e('2027-01-01')?.handoverBy === '2027-01-30' && e('2027-01-01')?.accessUntil === '2027-03-31' && e('2027-01-01')?.intakeUntil === '2027-01-10')
+  check('a contract without a last day has no end', ending.endingOf({ endsOn: null, noticeSide: null }, '2027-01-01') === null && ending.serviceOpen({ endsOn: null }, '2030-01-01') && ending.intakeOpen({ endsOn: null }, '2030-01-01'))
+  check('invoices and a new bank end with the last day, documents ten days later', ending.serviceOpen(c, '2026-12-31') && !ending.serviceOpen(c, '2027-01-01') && ending.intakeOpen(c, '2027-01-10') && !ending.intakeOpen(c, '2027-01-11'))
+  check('the days the schedule compares with: ten days for intake, ninety to delete, five years to forget', ending.intakeFloor('2027-01-10') === '2026-12-31' && ending.purgeFloor('2027-04-01') === '2027-01-01' && ending.purgeFloor('2027-03-31') === '2026-12-31' && ending.recordsFloor('2032-01-01') === '2027-01-01')
+  check('the side that ended it is kept', ending.endingOf({ endsOn: '2026-12-31', noticeSide: 'firmony' }, '2026-11-01')?.side === 'firmony' && e('2026-11-01')?.side === 'client')
+  check('a day moves over months and leap years', ending.addDays('2028-02-28', 1) === '2028-02-29' && ending.addDays('2027-02-28', 1) === '2027-03-01' && ending.addDays('2026-12-31', 90) === '2027-03-31')
+}
+
+// What the accountant hands over: an export of the accounting program, ledgers, a spreadsheet; always downloaded
+{
+  const enc = new TextEncoder()
+  const pdf = papers.sniffHandover(demo.demoPdf(100, 100, [{ text: 'Hlavna kniha' }]), 'hlavna-kniha.pdf')
+  check('a PDF of the ledger is handed over and downloaded, not shown', pdf?.ext === 'pdf' && pdf.inline === false)
+  const xlsx = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0])
+  check('a spreadsheet and a ZIP keep their ending; another ending of a ZIP is a ZIP', papers.sniffHandover(xlsx, 'Súvaha.xlsx')?.ext === 'xlsx' && papers.sniffHandover(xlsx, 'export.zip')?.ext === 'zip' && papers.sniffHandover(xlsx, 'virus.exe')?.ext === 'zip')
+  check('a CSV and a text are text; XML is XML', papers.sniffHandover(enc.encode('Dátum;Suma\r\n2026-12-31;12,40\r\n'), 'dennik.csv')?.ext === 'csv' && papers.sniffHandover(enc.encode('<?xml version="1.0"?><dataPack/>'), 'pohoda.xml')?.ext === 'xml' && papers.sniffHandover(enc.encode('Poznámky'), 'readme')?.ext === 'txt')
+  check('a program or anything with NUL bytes is refused, whatever it is called', papers.sniffHandover(new Uint8Array([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0]), 'kniha.pdf') === null && papers.sniffHandover(new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0]), 'x.csv') === null)
+  check('an old Excel file is one', papers.sniffHandover(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0]), 'kniha.xls')?.ext === 'xls')
+}
+
+// The terms say what the code does after the end
+{
+  const text = terms.termsText().replace(/ /g, ' ')
+  check('the terms promise ten days for the last month, thirty for the handover, ninety to download, then deleting', /10\.4 .*10 dní po jej skončení.*Do 30 dní.*90 dní po skončení zmluvy.*bodu 8\.8/.test(text) && /8\.8 .*po uplynutí 90 dní od skončenia ich vymažeme.*päť rokov/.test(text))
+  check('the figures of the terms are the config\'s', config.ENDING.intakeDays === 10 && config.ENDING.handoverDays === 30 && config.ENDING.keepDays === 90 && config.ENDING.recordsYears === 5)
+}
 
 done('units')

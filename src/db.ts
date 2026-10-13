@@ -78,7 +78,9 @@ const MIGRATIONS: readonly string[][] = [
       start_on TEXT,
       notice_at INTEGER,
       notice_by TEXT,
-      ends_on TEXT
+      notice_side TEXT,
+      ends_on TEXT,
+      purged_at INTEGER
     )`,
     `CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,

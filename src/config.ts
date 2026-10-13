@@ -218,6 +218,27 @@ export const APP = {
 } as const
 
 /**
+ * The end of a contract (point 10.4 of the terms): the last month's documents and payments are taken for ten days
+ * past the last day (the day the monthly reminder asks them by), the books are handed over in the app within 30, and
+ * everything can be downloaded for 90. Then the company's data are deleted, all but the contract, the power of
+ * attorney and the identification, which the law against money laundering keeps for five years after the end
+ * (s. 19 of Act No. 297/2008 Z. z.); after those five years they go too.
+ */
+export const ENDING = {
+  intakeDays: 10,
+  handoverDays: 30,
+  keepDays: 90,
+  recordsYears: 5,
+  /** Companies whose data the schedule deletes in one run (each is a few hundred statements and the files). */
+  perRun: 3,
+  /** Files of the handover a company keeps, and handover files in one form. */
+  handoverFiles: 30,
+  handoverAtOnce: 10,
+  /** Downloads of a year's archive by a company in an hour. */
+  exportsPerHour: 10,
+} as const
+
+/**
  * The bank by open banking: Enable Banking (Enable Banking Oy, Finland, an account information service under
  * PSD2) reads a company's accounts with the consent the client gives at the bank itself. The application's id is
  * the variable ENABLE_BANKING_APP and its private key the secret ENABLE_BANKING_KEY; without both, statements are

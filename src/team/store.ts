@@ -37,6 +37,8 @@ export interface ClientRow {
   declaration: DeclarationState
   /** Internal reports about the client that the designated person has not decided yet. */
   openReports: number
+  /** Files handed over at the end of the contract. */
+  handover: number
 }
 
 export async function teamClients(db: D1Database, user: User, demo: boolean): Promise<ClientRow[]> {
@@ -51,7 +53,8 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
          (SELECT CASE WHEN m.side = 'client' THEN m.created_at END FROM messages m WHERE m.company_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS waiting,
          ${POA_STATE_SQL} AS poa,
          ${DECLARATION_STATE_SQL} AS declaration,
-         ${OPEN_REPORTS_SQL} AS open_reports
+         ${OPEN_REPORTS_SQL} AS open_reports,
+         (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover') AS handover
        FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id
        WHERE ${v.sql}
        ORDER BY c.name COLLATE NOCASE`,
@@ -68,12 +71,27 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
     poa: row.poa === 'checked' ? 'checked' : row.poa === 'waiting' ? 'waiting' : 'missing',
     declaration: row.declaration === 'checked' ? 'checked' : row.declaration === 'waiting' ? 'waiting' : 'missing',
     openReports: Number(row.open_reports ?? 0),
+    handover: Number(row.handover ?? 0),
   }))
 }
 
-/** A company somebody of the team may see, or null. */
-export async function teamCompany(db: D1Database, user: User, id: string): Promise<Company | null> {
-  const row = await db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.id = ? AND c.closed_at IS NULL`).bind(id).first<Row>()
+/** Companies whose data were deleted after their contract, for the administrator: what the law keeps of them. */
+export async function endedCompanies(db: D1Database): Promise<{ id: string; name: string; ico: string | null; endsOn: string; purgedAt: number }[]> {
+  const rows = await db
+    .prepare('SELECT id, name, ico, ends_on, purged_at FROM companies WHERE purged_at IS NOT NULL AND demo = 0 ORDER BY ends_on DESC LIMIT 200')
+    .all<{ id: string; name: string; ico: string | null; ends_on: string; purged_at: number }>()
+  return rows.results.map((r) => ({ id: r.id, name: r.name, ico: r.ico, endsOn: r.ends_on, purgedAt: r.purged_at }))
+}
+
+/**
+ * A company somebody of the team may see, or null. A company whose data were deleted after its contract is seen only
+ * by an administrator, and only where `ended` says so: what the law keeps of it (the identification and the risk).
+ */
+export async function teamCompany(db: D1Database, user: User, id: string, ended = false): Promise<Company | null> {
+  const row = await db
+    .prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.id = ? AND (c.closed_at IS NULL OR (? = 1 AND c.purged_at IS NOT NULL))`)
+    .bind(id, ended && isAdmin(user) ? 1 : 0)
+    .first<Row>()
   const company = row ? companyOf(row) : null
   return company && canSee(user, company) ? company : null
 }

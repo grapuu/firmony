@@ -6,6 +6,7 @@
 // This file is the only one that talks to Enable Banking.
 import { BANK } from '../config'
 import { now, sha256Hex } from '../db'
+import { intakeFloor } from './ending'
 import { newToken } from './session'
 import { accountFor, balanceStatement, eventStatement, importEntries, matchCompany } from './store'
 import { fingerprint, symbols, toCents, type Entry } from './xml'
@@ -252,6 +253,11 @@ export async function unlink(env: BankEnv, company: string, user: string, linkId
   return true
 }
 
+/** Ends a consent at the bank (when a company's data are deleted). */
+export async function closeSession(env: BankEnv, sessionId: string): Promise<void> {
+  await call(env, 'DELETE', `/sessions/${encodeURIComponent(sessionId)}`)
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Reading the accounts
 // ---------------------------------------------------------------------------------------------------------------
@@ -325,9 +331,13 @@ export type Read = { status: 'read'; added: number } | { status: 'ended' } | { s
  */
 export async function readLink(env: BankEnv, linkId: string, present: Present | null = null): Promise<Read> {
   const db = env.DB
+  // A company whose contract ended more than ten days ago is read no more (point 10.4 of the terms).
   const link = await db
-    .prepare("SELECT id, company_id, valid_until, synced_at FROM bank_links WHERE id = ? AND status = 'active'")
-    .bind(linkId)
+    .prepare(
+      `SELECT l.id, l.company_id, l.valid_until, l.synced_at FROM bank_links l JOIN companies c ON c.id = l.company_id
+       WHERE l.id = ? AND l.status = 'active' AND c.closed_at IS NULL AND (c.ends_on IS NULL OR c.ends_on >= ?)`,
+    )
+    .bind(linkId, intakeFloor(bratislavaDay(now())))
     .first<{ id: string; company_id: string; valid_until: number | null; synced_at: number | null }>()
   if (!link) return { status: 'none' }
   // Every try counts against the bank's four a day, so a failed one waits its six hours as well.
@@ -400,8 +410,12 @@ export async function readDue(env: BankEnv): Promise<number> {
   ])
   if (!bankReady(env)) return 0
   const due = await db
-    .prepare("SELECT id FROM bank_links WHERE status = 'active' AND (tried_at IS NULL OR tried_at < ?) ORDER BY COALESCE(tried_at, 0) LIMIT ?")
-    .bind(ts - BANK.syncEverySeconds, BANK.linksPerRun)
+    .prepare(
+      `SELECT l.id FROM bank_links l JOIN companies c ON c.id = l.company_id
+       WHERE l.status = 'active' AND (l.tried_at IS NULL OR l.tried_at < ?) AND c.closed_at IS NULL AND (c.ends_on IS NULL OR c.ends_on >= ?)
+       ORDER BY COALESCE(l.tried_at, 0) LIMIT ?`,
+    )
+    .bind(ts - BANK.syncEverySeconds, intakeFloor(bratislavaDay(ts)), BANK.linksPerRun)
     .all<{ id: string }>()
   let read = 0
   for (const row of due.results) {

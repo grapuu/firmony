@@ -1,8 +1,9 @@
 // Firma a nastavenia: the company's details as we keep them, its address for documents, its people (an owner
 // invites a partner or a colleague), the reminders, the app on the phone, the other companies, signing out.
 import type { FC } from 'hono/jsx'
-import { app, dayName } from '../app/copy'
-import type { PoaState } from '../app/papers'
+import { app, dayName, whenName } from '../app/copy'
+import type { Ending } from '../app/ending'
+import type { Paper, PoaState } from '../app/papers'
 import type { DeclarationState } from '../app/aml'
 import type { Company, Person } from '../app/store'
 import { Flash, Heading, planName } from './inside'
@@ -24,17 +25,64 @@ export interface CompanyPageProps {
   today: string
   /** The last day of the contract if notice were given today. */
   noticeEnd: string
+  /** The contract's end, once it has a last day. */
+  ending: Ending | null
+  /** The years there is anything to download, the newest first, and the books the accountant handed over. */
+  years: string[]
+  handover: Paper[]
+  downloadError?: string | null
 }
 
 const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
 
+/** What follows the contract's last day, in four lines (point 10.4 of the terms). */
+const AfterEnd: FC<{ ending: Ending }> = ({ ending }) => {
+  const e = app.ending
+  return (
+    <>
+      <dl class="kv kv--end">
+        <div>
+          <dt>{e.last}</dt>
+          <dd>{dayName(ending.endsOn)}</dd>
+        </div>
+        <div>
+          <dt>{e.intake}</dt>
+          <dd>{e.intakeValue(dayName(ending.intakeUntil))}</dd>
+        </div>
+        <div>
+          <dt>{e.handover}</dt>
+          <dd>{e.handoverValue(dayName(ending.handoverBy))}</dd>
+        </div>
+        <div>
+          <dt>{e.access}</dt>
+          <dd>
+            <a class="link" href="#stiahnut">
+              {e.accessValue(dayName(ending.accessUntil))}
+            </a>
+          </dd>
+        </div>
+      </dl>
+      <p class="info__source">{e.kept}</p>
+    </>
+  )
+}
+
 /** The notice: given (with taking it back while the contract runs), or the way to give it, folded away. */
-const Notice: FC<{ company: Company; owner: boolean; today: string; end: string; error?: string }> = ({ company, owner, today, end, error }) => {
+const Notice: FC<{ company: Company; owner: boolean; today: string; end: string; ending: Ending | null; error?: string }> = ({ company, owner, today, end, ending, error }) => {
   const n = app.notice
+  if (ending && ending.side === 'firmony') {
+    return (
+      <div class="notice-box notice-box--given">
+        <p class="notice-box__text">{n.byUs(dayName(ending.endsOn))}</p>
+        <AfterEnd ending={ending} />
+      </div>
+    )
+  }
   if (company.noticeAt && company.endsOn) {
     return (
       <div class="notice-box notice-box--given">
         <p class="notice-box__text">{n.given(dayName(dayOf(company.noticeAt)), dayName(company.endsOn))}</p>
+        {ending ? <AfterEnd ending={ending} /> : null}
         {owner && company.endsOn >= today ? (
           <form method="post" action="/app/firma/vypoved/spat">
             <button class="btn btn--line btn--small" type="submit">
@@ -72,7 +120,54 @@ const Notice: FC<{ company: Company; owner: boolean; today: string; end: string;
 
 const c = app.company
 
-export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd }) => {
+/** Everything of the company, a year at a time, and the books the accountant handed over at the end. */
+const Download: FC<{ years: string[]; handover: Paper[]; today: string; error?: string | null }> = ({ years, handover, today, error }) => {
+  const d = app.download
+  return (
+    <section class="info" id="stiahnut" aria-labelledby="stiahnut-t">
+      <h2 id="stiahnut-t" class="info__title">
+        {d.title}
+      </h2>
+      <p class="info__lead">{d.lead}</p>
+      {error ? <p class="field__error">{error}</p> : null}
+      {years.length === 0 ? (
+        <p class="info__empty">{d.empty}</p>
+      ) : (
+        <ul class="plain">
+          {years.map((year) => (
+            <li class="plain__row plain__row--person">
+              <span class="plain__name">{d.year(year)}</span>
+              <a class="btn btn--line btn--small" href={`/app/export?rok=${year}`} download>
+                {d.button}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {handover.length > 0 ? (
+        <>
+          <h3 class="info__subtitle">{d.handover}</h3>
+          <p class="info__source">{d.handoverLead}</p>
+          <ul class="plain">
+            {handover.map((paper) => (
+              <li class="plain__row plain__row--two">
+                <a class="link plain__name" href={`/app/odovzdanie/${paper.id}`} download>
+                  {paper.fileName}
+                </a>
+                <span class="plain__sub">
+                  <span>{whenName(paper.createdAt, today)}</span>
+                  {paper.createdByName ? <span>{paper.createdByName}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </section>
+  )
+}
+
+export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, downloadError }) => {
   const owner = me.role === 'owner'
   const others = companies.filter((other) => other.id !== company.id)
   return (
@@ -181,8 +276,10 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
               </a>
               . {app.contract.switchingLead}
             </p>
-            <Notice company={company} owner={owner} today={today} end={noticeEnd} error={errors.notice} />
+            <Notice company={company} owner={owner} today={today} end={noticeEnd} ending={ending} error={errors.notice} />
           </section>
+
+          <Download years={years} handover={handover} today={today} error={downloadError} />
 
           <section class="info" id="doklady-emailom" aria-labelledby="mail-t">
             <h2 id="mail-t" class="info__title">

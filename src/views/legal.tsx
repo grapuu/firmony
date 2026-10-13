@@ -153,7 +153,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          `Údaje o zmluve, plnú moc a záznamy z identifikácie klienta 5 rokov od skončenia zmluvy, ako ukladá zákon č. 297/2008 Z. z.; faktúry za naše služby 10 rokov. Pri e-mailoch, ktoré prídu na adresu firmy pre doklady, uchovávame odosielateľa a predmet ${RETENTION.outboxDays} dní a prílohy ako doklady firmy. Doklady a ostatné údaje firmy jej po skončení zmluvy odovzdáme a do 90 dní vymažeme, okrem tých, ktoré musíme uchovávať podľa zákona.`,
+          `Údaje o zmluve, plnú moc a záznamy z identifikácie klienta (vyhlásenie, riziko a vnútorné oznámenia) 5 rokov od skončenia zmluvy, ako ukladá zákon č. 297/2008 Z. z., a potom ich vymažeme; faktúry za naše služby 10 rokov. Pri e-mailoch, ktoré prídu na adresu firmy pre doklady, uchovávame odosielateľa a predmet ${RETENTION.outboxDays} dní a prílohy ako doklady firmy. Doklady a ostatné údaje firmy si firma po skončení zmluvy stiahne v aplikácii a po uplynutí 90 dní od skončenia ich vymažeme, spolu s prístupmi ľudí, ktorí už k žiadnej inej firme nepatria.`,
         )}
       </p>
 

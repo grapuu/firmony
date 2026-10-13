@@ -275,7 +275,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou, a všetky podklady Vám odovzdáme.',
+        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete, ešte 90 dní po skončení zmluvy.',
       },
       {
         q: 'Ako spolu budeme komunikovať?',

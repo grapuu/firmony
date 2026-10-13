@@ -101,7 +101,7 @@ const SECTIONS: TermsSection[] = [
       'Využívame ďalších sprostredkovateľov a dávate nám na to všeobecný súhlas: Cloudflare, Inc. (servery, databáza, súbory a e-maily, údaje uložené v Európskej únii), Anthropic, PBC (čítanie dokladov umelou inteligenciou v USA na základe štandardných zmluvných doložiek, bez použitia na trénovanie), Enable Banking Oy (čítanie pohybov na účtoch s Vaším súhlasom, Fínsko) a našich externých účtovníkov (Slovensko). O pridaní alebo výmene sprostredkovateľa Vás vopred informujeme v aplikácii. Môžete namietať, a ak sa nedohodneme, zmluvu vypovedať.',
       'Pomôžeme Vám pri vybavovaní žiadostí dotknutých osôb, pri zabezpečení údajov a pri oznamovaní porušenia ich ochrany. O porušení ochrany Vašich údajov Vás upovedomíme bez zbytočného odkladu, najneskôr do 48 hodín od jeho zistenia.',
       'Na požiadanie Vám poskytneme informácie, ktoré preukazujú, že povinnosti sprostredkovateľa plníme, a po predchádzajúcej dohode umožníme primeranú kontrolu.',
-      'Po skončení zmluvy Vám údaje vrátime podľa bodu 10.4 a do 90 dní ich vymažeme, okrem tých, ktoré musíme uchovávať podľa zákona.',
+      'Po skončení zmluvy Vám údaje vrátime podľa bodu 10.4 a po uplynutí 90 dní od skončenia ich vymažeme. Ponecháme len zmluvu, plnú moc a údaje z Vašej identifikácie podľa bodu 9.1, ktoré musíme uchovávať päť rokov od skončenia zmluvy, a potom ich vymažeme tiež.',
     ],
   },
   {
@@ -118,7 +118,7 @@ const SECTIONS: TermsSection[] = [
       'Zmluva sa uzatvára na dobu neurčitú.',
       'Každá strana ju môže vypovedať aj bez udania dôvodu: Vy v aplikácii v časti Firma a nastavenia, my správou v aplikácii. Výpovedná lehota je jeden mesiac a začína plynúť prvým dňom mesiaca nasledujúceho po doručení výpovede. Výpoveď, ktorú ste podali v aplikácii, tam môžete do konca výpovednej lehoty vziať späť; s takým späťvzatím vopred súhlasíme.',
       'Od zmluvy môžeme odstúpiť, ak ste v omeškaní s platbou viac ako 60 dní, ak nám ani po upozornení opakovane nedodávate doklady, alebo z dôvodov podľa bodu 9.3. Vy môžete od zmluvy odstúpiť, ak ani po upozornení opakovane porušujeme svoje povinnosti.',
-      'Po skončení zmluvy dokončíme práce za obdobia, za ktoré ste zaplatili, do 30 dní Vám odovzdáme doklady, účtovníctvo a jeho export v bežnom formáte, ukončíme prístupy do aplikácie a vzdáme sa plnej moci. Závierku za rok, v ktorom zmluva skončila, urobíme len po dohode.',
+      'Po skončení zmluvy dokončíme práce za obdobia, za ktoré ste zaplatili; doklady a platby za posledný mesiac zmluvy prijímame ešte 10 dní po jej skončení. Do 30 dní od skončenia Vám v aplikácii odovzdáme účtovníctvo a jeho export v bežnom formáte a vzdáme sa plnej moci. Všetky doklady, platby, faktúry a správy si v aplikácii stiahnete kedykoľvek, za každý rok ako jeden súbor, a to až 90 dní po skončení zmluvy; potom prístup do aplikácie skončí a údaje vymažeme podľa bodu 8.8. Doklady a účtovníctvo ste povinní uchovávať Vy. Závierku za rok, v ktorom zmluva skončila, urobíme len po dohode.',
     ],
   },
   {

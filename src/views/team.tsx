@@ -10,6 +10,7 @@ import type { Exempt } from '../app/match'
 import type { Company, Doc, Message, Payment, User } from '../app/store'
 import type { Paper, PoaState } from '../app/papers'
 import type { DeclarationState, Level } from '../app/aml'
+import { addDays, endingOf, type Ending } from '../app/ending'
 import { team as t } from '../team/copy'
 import type { ClientRow, QueueDoc, Request, Rule, TeamMember, Thread, ToCheck } from '../team/store'
 import { Tile } from './home'
@@ -120,7 +121,15 @@ const Badge: FC<{ n: number; tone: 'amber' | 'blue' | 'grey' }> = ({ n, tone }) 
 // Klienti
 // ---------------------------------------------------------------------------------------------------------------
 
-export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash?: string | null }> = ({ user, rows, now, flash }) => {
+export interface EndedCompany {
+  id: string
+  name: string
+  ico: string | null
+  endsOn: string
+  purgedAt: number
+}
+
+export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompany[]; now: number; flash?: string | null }> = ({ user, rows, ended = [], now, flash }) => {
   const sum = (pick: (row: ClientRow) => number) => rows.reduce((total, row) => total + pick(row), 0)
   const waiting = rows.filter((row) => row.waiting !== null).length
   const admin = user.team === 'admin'
@@ -169,7 +178,10 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash
             {admin ? <span role="columnheader">{t.clients.columns.accountant}</span> : null}
           </div>
           {rows.map((row) => {
-            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked' && row.declaration === 'checked' && row.openReports === 0
+            const ending = endingOf(row.company, dayOf(now))
+            // Past the last day the books are owed to the client: within thirty days, then it is late.
+            const owed = ending && ending.phase !== 'ending' && row.handover === 0 ? (dayOf(now) > ending.handoverBy ? 'late' : 'due') : null
+            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked' && row.declaration === 'checked' && row.openReports === 0 && owed === null
             return (
               <a class={`tbl__row${done ? ' tbl__row--done' : ''}`} role="row" href={`/ucto/klienti/${row.company.id}`}>
                 <span class="tbl__company" role="cell">
@@ -183,7 +195,8 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash
                     {row.declaration === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.declaration}`}>{t.aml.state[row.declaration]}</span>}
                     {row.poa === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.poa}`}>{t.client.poaState[row.poa]}</span>}
                     {row.openReports > 0 ? <span class="tbl__flag tbl__flag--report">{t.client.reportsOpen(row.openReports)}</span> : null}
-                    {row.company.endsOn ? <span class="tbl__flag tbl__flag--ends">{t.client.ends(dayName(row.company.endsOn))}</span> : null}
+                    {ending ? <span class="tbl__flag tbl__flag--ends">{ending.phase === 'ending' ? t.client.ends(dayName(ending.endsOn)) : t.client.ended(dayName(ending.endsOn))}</span> : null}
+                    {owed && ending ? <span class={`tbl__flag ${owed === 'late' ? 'tbl__flag--report' : 'tbl__flag--ends'}`}>{owed === 'late' ? t.client.handoverLate : t.client.handoverDue(dayName(ending.handoverBy))}</span> : null}
                   </span>
                 </span>
                 <span class="tbl__num" role="cell" data-label={t.clients.columns.book}>
@@ -209,6 +222,29 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash
           })}
         </div>
       )}
+      {admin && ended.length > 0 ? (
+        <section class="info ended-list" aria-labelledby="skonceni-t">
+          <h2 id="skonceni-t" class="info__title">
+            {t.ended.title}
+          </h2>
+          <p class="info__lead">{t.ended.lead}</p>
+          <ul class="plain">
+            {ended.map((company) => (
+              <li class="plain__row plain__row--two">
+                <a class="link plain__name" href={`/ucto/klienti/${company.id}/aml`}>
+                  {company.name}
+                </a>
+                <span class="plain__sub">
+                  {company.ico ? <span>{company.ico}</span> : null}
+                  <span>{t.client.ended(dayName(company.endsOn))}</span>
+                  <span>{t.ended.purged(dayName(dayOf(company.purgedAt)))}</span>
+                  <span>{t.ended.until(dayName(`${Number(company.endsOn.slice(0, 4)) + 5}${company.endsOn.slice(4)}`))}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <p class="sr">{dayOf(now)}</p>
     </>
   )
@@ -242,6 +278,13 @@ export interface ClientPageProps {
   declaration: DeclarationState
   risk: Level | null
   openReports: number
+  /** The books handed over at the end, the contract's end once it has a last day, and the earliest end we can give. */
+  handover: Paper[]
+  ending: Ending | null
+  earliestEnd: string
+  /** The form to end the contract from our side, as it was sent, with what is wrong with it. */
+  end?: { day: string; reason: string; errors: { day?: string; reason?: string; form?: string } }
+  handoverError?: string
 }
 
 const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
@@ -250,16 +293,22 @@ const RISK_PILL: Record<Level, string> = { low: 'pill--ok', standard: 'pill--blu
 
 /** The contract as it was concluded, the identification and the risk, and the power of attorney with what the
  * accountant does with it. */
-const ContractCard: FC<{ company: Company; papers: Paper[]; poa: PoaState; declaration: DeclarationState; risk: Level | null; openReports: number; now: number }> = ({
-  company: c,
-  papers,
-  poa,
-  declaration,
-  risk,
-  openReports,
-  now,
-}) => {
+const ContractCard: FC<{
+  company: Company
+  papers: Paper[]
+  poa: PoaState
+  declaration: DeclarationState
+  risk: Level | null
+  openReports: number
+  now: number
+  admin: boolean
+  ending: Ending | null
+  earliestEnd: string
+  end?: ClientPageProps['end']
+}> = ({ company: c, papers, poa, declaration, risk, openReports, now, admin, ending, earliestEnd, end }) => {
   const today = dayOf(now)
+  // Our end can be set while the client has not given notice and the contract runs; it can be moved or taken back.
+  const canEnd = admin && (!ending || (ending.side === 'firmony' && ending.phase === 'ending'))
   return (
     <section class="info" id="zmluva" aria-labelledby="zmluva-t">
       <h2 id="zmluva-t" class="info__title">
@@ -269,7 +318,21 @@ const ContractCard: FC<{ company: Company; papers: Paper[]; poa: PoaState; decla
         {c.contractAt && c.signedBy ? t.client.contractOnline(dayName(dayOf(c.contractAt), today), c.signedBy, app.contract.termsVersion(c.termsVersion ?? '')) : t.client.contractOffline}
         {c.startOn ? ` ${t.client.start(dayName(c.startOn, today))}` : ''}
       </p>
-      {c.noticeAt && c.endsOn ? <p class="notice-box notice-box--given notice-box__text">{t.client.endsLead(dayName(dayOf(c.noticeAt), today), dayName(c.endsOn, today))}</p> : null}
+      {ending && c.noticeAt ? (
+        <div class="notice-box notice-box--given">
+          <p class="notice-box__text">
+            {ending.side === 'firmony' ? t.client.endedByUs(dayName(dayOf(c.noticeAt), today), dayName(ending.endsOn, today)) : t.client.endsLead(dayName(dayOf(c.noticeAt), today), dayName(ending.endsOn, today))}
+          </p>
+          <p class="notice-box__text">{t.client.afterEnd(dayName(ending.intakeUntil, today), dayName(ending.handoverBy, today), dayName(addDays(ending.accessUntil, 1), today))}</p>
+          {admin && ending.side === 'firmony' && ending.phase === 'ending' ? (
+            <form method="post" action={`/ucto/klienti/${c.id}/koniec/zrusit`}>
+              <button class="btn btn--line btn--small" type="submit">
+                {t.end.cancel}
+              </button>
+            </form>
+          ) : null}
+        </div>
+      ) : null}
       <p class="pills">
         <span class={`pill ${POA_PILL[declaration]}`}>{t.aml.state[declaration]}</span>
         {risk ? <span class={`pill ${RISK_PILL[risk]}`}>{`${t.aml.risk}: ${t.aml.levels[risk].toLowerCase()}`}</span> : null}
@@ -310,6 +373,90 @@ const ContractCard: FC<{ company: Company; papers: Paper[]; poa: PoaState; decla
           </ul>
         </>
       )}
+      {canEnd ? (
+        <details class="more more--quiet end-form" open={Boolean(end)}>
+          <summary class="more__summary">{t.end.title}</summary>
+          <form class="more__body stack" method="post" action={`/ucto/klienti/${c.id}/koniec`} novalidate>
+            <p class="info__lead">{t.end.lead(dayName(earliestEnd, today))}</p>
+            <div class="field">
+              <label class="field__label" for="koniec-den">
+                {t.end.day}
+              </label>
+              <input
+                id="koniec-den"
+                class="field__input"
+                name="den"
+                value={end?.day ?? (ending ? textDay(ending.endsOn) : textDay(earliestEnd))}
+                maxlength={20}
+                placeholder={t.end.dayHint}
+                autocomplete="off"
+                aria-invalid={end?.errors.day ? 'true' : undefined}
+              />
+              {end?.errors.day ? <p class="field__error">{end.errors.day}</p> : null}
+            </div>
+            <div class="field">
+              <label class="field__label" for="koniec-dovod">
+                {t.end.reason}
+              </label>
+              <textarea id="koniec-dovod" class="field__input field__area" name="dovod" rows={3} maxlength={1000} aria-invalid={end?.errors.reason ? 'true' : undefined}>
+                {end?.reason ?? ''}
+              </textarea>
+              {end?.errors.reason ? <p class="field__error">{end.errors.reason}</p> : null}
+            </div>
+            <button class="btn btn--line stack__submit" type="submit">
+              {t.end.button}
+            </button>
+          </form>
+        </details>
+      ) : null}
+    </section>
+  )
+}
+
+/** The books handed over at the end of the contract: uploaded here, shown to the client in Firma a nastavenia. */
+const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; now: number; error?: string }> = ({ company: c, handover, ending, now, error }) => {
+  const today = dayOf(now)
+  return (
+    <section class="info" id="odovzdanie" aria-labelledby="odovzdanie-t">
+      <h2 id="odovzdanie-t" class="info__title">
+        {t.handover.title}
+      </h2>
+      <p class="info__lead">{t.handover.lead}</p>
+      <p class="pills">
+        {handover.length > 0 ? null : <span class={`pill ${today > ending.handoverBy ? 'pill--red' : 'pill--amber'}`}>{today > ending.handoverBy ? t.client.handoverLate : t.client.handoverDue(dayName(ending.handoverBy, today))}</span>}
+      </p>
+      {error ? <p class="field__error">{error}</p> : null}
+      {handover.length === 0 ? (
+        <p class="info__empty">{t.handover.none}</p>
+      ) : (
+        <ul class="plain handover__list">
+          {handover.map((paper) => (
+            <li class="plain__row plain__row--two">
+              <a class="link plain__name" href={`/ucto/klienti/${c.id}/odovzdanie/${paper.id}`}>
+                {paper.fileName}
+              </a>
+              <span class="plain__sub">
+                <span>{whenName(paper.createdAt, now)}</span>
+                {paper.createdByName ? <span>{paper.createdByName}</span> : null}
+              </span>
+              <form class="plain__action" method="post" action={`/ucto/klienti/${c.id}/odovzdanie/${paper.id}/odstranit`}>
+                <button class="btn btn--text btn--small" type="submit">
+                  {t.handover.remove}
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form class="stack" method="post" action={`/ucto/klienti/${c.id}/odovzdanie`} enctype="multipart/form-data">
+        <label class="field__label" for="odovzdanie-subory">
+          {t.handover.files}
+        </label>
+        <input id="odovzdanie-subory" class="field__input" type="file" name="file" multiple />
+        <button class="btn btn--blue stack__submit" type="submit">
+          {t.handover.button}
+        </button>
+      </form>
     </section>
   )
 }
@@ -337,7 +484,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           {c.address ? <span>{c.address}</span> : null}
           <span>{c.accountantName ?? t.clients.nobody}</span>
           {p.bankLine ? <span>{p.bankLine}</span> : null}
-          {c.endsOn ? <span class="pill pill--amber">{t.client.ends(dayName(c.endsOn))}</span> : null}
+          {p.ending ? <span class="pill pill--amber">{p.ending.phase === 'ending' ? t.client.ends(dayName(p.ending.endsOn)) : t.client.ended(dayName(p.ending.endsOn))}</span> : null}
         </p>
       </header>
       <Flash text={p.flash} />
@@ -460,7 +607,20 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           </section>
         </div>
         <aside class="pgrid__side">
-          <ContractCard company={c} papers={p.papers} poa={p.poa} declaration={p.declaration} risk={p.risk} openReports={p.openReports} now={p.now} />
+          <ContractCard
+            company={c}
+            papers={p.papers}
+            poa={p.poa}
+            declaration={p.declaration}
+            risk={p.risk}
+            openReports={p.openReports}
+            now={p.now}
+            admin={admin}
+            ending={p.ending}
+            earliestEnd={p.earliestEnd}
+            end={p.end}
+          />
+          {p.ending ? <HandoverCard company={c} handover={p.handover} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
           <section class="info" id="udaje" aria-labelledby="udaje-t">
             <h2 id="udaje-t" class="info__title">
               {t.client.details}
