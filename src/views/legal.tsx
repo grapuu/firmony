@@ -13,7 +13,6 @@ const Mail: FC = () => <a href={`mailto:${BRAND.email}`}>{BRAND.email}</a>
 /** Who runs Firmony, how personal data are handled, and that there are no cookies. */
 export const Legal: FC = () => (
   <section class="section page">
-    <div class="page__glow" aria-hidden="true"></div>
     <div class="wrap narrow page__inner legal">
       <h1 class="h1">Právne informácie</h1>
 

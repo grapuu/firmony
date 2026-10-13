@@ -25,11 +25,13 @@ check('a number stays with its unit', format.typeset('za 69 € a 30 dokladov') 
 check('the legal form stays whole', format.typeset('europio s. r. o.') === `europio s.${NB}r.${NB}o.`)
 check('a section stays with its number', format.typeset('podľa § 7a') === `podľa §${NB}7a`)
 check('a date stays whole', format.typeset('od 1. januára 2027').includes(`1.${NB}januára`))
+check('a date in figures stays whole', format.typeset('do 25. 11. 2026').includes(`25.${NB}11.${NB}2026`) && format.typeset('do 25. 11.').includes(`25.${NB}11.`))
+check('the register link searches the company by its IČO', config.REGISTER_URL === 'https://www.orsr.sk/hladaj_ico.asp?ICO=57442452&SID=0', config.REGISTER_URL)
 
 // The pictures: every file a page names is on disk, in both cuts, and the stylesheet's fonts are there too
 const publicDir = new URL('../public', import.meta.url).pathname
 const pictures = Object.values(config.ART).filter(Boolean).flatMap((art) => [art.src, art.small?.src].filter(Boolean))
-check('every picture a page names exists', pictures.length > 20 && pictures.every((src) => existsSync(publicDir + src)), pictures.filter((src) => !existsSync(publicDir + src)).join(' '))
+check('every picture a page names exists', pictures.length >= 5 && pictures.every((src) => existsSync(publicDir + src)), pictures.filter((src) => !existsSync(publicDir + src)).join(' '))
 const css = readFileSync(publicDir + '/app.css', 'utf8')
 const fonts = [...css.matchAll(/url\((\/fonts\/[^)]+)\)/g)].map((m) => m[1])
 check('every font the stylesheet names exists', fonts.length >= 6 && fonts.every((src) => existsSync(publicDir + src)), fonts.join(' '))

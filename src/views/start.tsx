@@ -31,7 +31,6 @@ export type CompanyState =
 /** A page of the request: a soft light at its top and one narrow column. */
 const Page: FC<{ children: Child }> = ({ children }) => (
   <section class="section page">
-    <div class="page__glow" aria-hidden="true"></div>
     <div class="wrap narrow page__inner">{children}</div>
   </section>
 )
@@ -228,7 +227,7 @@ export const StartDetails: FC<{
           <p class="small">
             {copy.start.privacy} <a href="/pravne-informacie#ochrana-udajov">{copy.start.privacyLink}</a>.
           </p>
-          <button class="btn btn--white details__submit" type="submit">
+          <button class="btn btn--blue btn--large details__submit" type="submit">
             {copy.start.submit}
           </button>
         </form>
@@ -242,7 +241,7 @@ export const Thanks: FC = () => (
     <p class="lead">{copy.thanks.lead}</p>
     <p class="page__text">{copy.thanks.next}</p>
     <p class="page__more">
-      <a class="btn btn--glass" href="/">
+      <a class="btn btn--line" href="/">
         {copy.thanks.back}
       </a>
     </p>
@@ -254,7 +253,7 @@ export const NotFound: FC = () => (
     <h1 class="h1">{copy.notFound.title}</h1>
     <p class="lead">{copy.notFound.lead}</p>
     <p class="page__more">
-      <a class="btn btn--glass" href="/">
+      <a class="btn btn--line" href="/">
         {copy.notFound.back}
       </a>
     </p>

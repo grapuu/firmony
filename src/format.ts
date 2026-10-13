@@ -38,6 +38,10 @@ export function typeset(text: string): string {
       .replace(/č\. (\d)/g, `č.${NBSP}$1`)
       .replace(/Z\. z\./g, `Z.${NBSP}z.`)
       .replace(/(\d)\. (januára|februára|marca|apríla|mája|júna|júla|augusta|septembra|októbra|novembra|decembra)/g, `$1.${NBSP}$2`)
+      // A date in figures: "25. 11." and "24. 11. 2026".
+      .replace(/(\d{1,2})\. (\d{1,2})\.( \d{4})?/g, (_m, day: string, month: string, year?: string) => `${day}.${NBSP}${month}.${year ? NBSP + year.trim() : ''}`)
+      // "IČO 57 442 452": the number stays with its name.
+      .replace(/IČO (\d)/g, `IČO${NBSP}$1`)
   )
 }
 

@@ -99,58 +99,43 @@ export interface Art {
   small?: { src: string; width: number }
 }
 
-/** The plan the price list leads with: it has the outline of light and the white button. */
+/** The plan the price list leads with: it has the blue outline and the blue button. */
 export const LEAD_PLAN: PlanId = 'rast'
 
-/** Where a picture can stand. Each section looks finished without its picture. */
-export type ArtSlot =
-  | 'logo'
-  | 'mark'
-  | 'aurora'
-  | 'phone'
-  | 'care'
-  | 'step1'
-  | 'step2'
-  | 'step3'
-  | 'step4'
-  | 'ai'
-  | 'docs'
-  | 'deadlines'
-  | 'overview'
-  | 'answers'
-  | 'einvoice'
-  | 'calc'
-  | 'fresh'
-  | 'switching'
-  | 'founder'
+/** Where anybody can check that the company exists: the Business Register's search by IČO. */
+export const REGISTER_URL = `https://www.orsr.sk/hladaj_ico.asp?ICO=${OPERATOR.companyId.replace(/\s/g, '')}&SID=0`
 
-/** One of his glass objects, cut square by scripts/art.py at 960 and 480 px; decorative, so without words. */
+/** Where a picture can stand. Every section is finished without its picture; a picture makes it richer. */
+export type ArtSlot = 'logo' | 'mark' | 'envelope' | 'calc' | 'seed' | 'plant' | 'tree' | 'chip' | 'lens' | 'rocket' | 'key' | 'seal' | 'founder'
+
+/** One of his first glass objects, made for black: cut square at 960 and 480 px, black made see-through. */
 const glass = (name: string): Art => ({ src: `/art/${name}.webp`, alt: '', width: 960, height: 960, small: { src: `/art/${name}-480.webp`, width: 480 } })
 
 /**
- * The pictures of the site: glossy 3D objects in iridescent glass on black, which the owner made in ChatGPT
- * from the builder's prompts (13 October 2026), made see-through by scripts/art.py; their sources are in
- * art-src/. founder: his own photo beside his note, not made yet. A slot without a picture shows nothing.
+ * The pictures of the site: 3D glass icons he makes in ChatGPT, never realistic photographs (his word of
+ * 13 October 2026, 01:52: "realistické fotky generovať nebudem, to vyzerá úboho").
+ * - His first set (13 October 2026, iridescent glass made for black; sources in art-src/): the F (`mark`,
+ *   and the browser's and a shared link's icons), the envelope of the e-invoice band and the calculator
+ *   of the comparison, all on black.
+ * - The second set (prompts of 13 October 2026, 01:57; the same glass in the blue of the brand, on a
+ *   transparent background, for the white parts): seed, plant and tree for the three plans, chip and lens
+ *   for the machine and the person, rocket and key for the two ways in, seal for the company.
+ * - founder: his own photo beside his note, a real one.
+ * A slot without a picture shows nothing.
  */
 export const ART: Record<ArtSlot, Art | null> = {
   logo: { src: '/art/logo-small.webp', alt: '', width: 128, height: 128 },
   mark: { src: '/art/logo.webp', alt: '', width: 960, height: 960 },
-  aurora: { src: '/art/aurora.webp', alt: '', width: 1672, height: 941, small: { src: '/art/aurora-900.webp', width: 900 } },
-  phone: { src: '/art/phone.webp', alt: '', width: 1000, height: 660, small: { src: '/art/phone-560.webp', width: 560 } },
-  care: glass('embrace'),
-  step1: glass('door'),
-  step2: glass('bundle'),
-  step3: glass('bank'),
-  step4: glass('shield'),
-  ai: glass('orb'),
-  docs: glass('receipt'),
-  deadlines: glass('calendar'),
-  overview: glass('overview'),
-  answers: glass('chat'),
-  einvoice: glass('envelope'),
+  envelope: glass('envelope'),
   calc: glass('calculator'),
-  fresh: glass('sprout'),
-  switching: glass('key'),
+  seed: null,
+  plant: null,
+  tree: null,
+  chip: null,
+  lens: null,
+  rocket: null,
+  key: null,
+  seal: null,
   founder: null,
 }
 

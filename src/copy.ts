@@ -1,6 +1,6 @@
 // Every visible text of the site, in Slovak, typeset once (src/format.ts). Prices and limits come from
 // src/config.ts, so a text can never say another figure than the plans have.
-import { BRAND, CLOSING_PRICE, PLANS, REPLY_WITHIN, type Plan } from './config'
+import { BRAND, CLOSING_PRICE, OPERATOR, PLANS, REPLY_WITHIN, type Plan } from './config'
 import { formatEur, typeset, typesetAll } from './format'
 
 const start = PLANS[0] as Plan
@@ -9,11 +9,19 @@ const eur = (euros: number) => formatEur(euros * 100)
 /** What a plan's rows say: whom it is for, documents, VAT, payroll. */
 export function planRows(plan: Plan): { forWhom: string; docs: string; vat: string; people: string } {
   return {
-    forWhom: typeset(plan.id === 'start' ? 'Firmy, ktoré nie sú platiteľom DPH' : plan.id === 'rast' ? 'Platitelia DPH' : 'Firmy so zamestnancami'),
+    forWhom: typeset(plan.id === 'start' ? 'Pre firmy, ktoré nie sú platiteľom DPH.' : plan.id === 'rast' ? 'Pre platiteľov DPH.' : 'Pre firmy so zamestnancami.'),
     docs: typeset(`do ${plan.docs} dokladov`),
     vat: typeset(plan.vatPayer ? 'mesačné priznanie, kontrolný a súhrnný výkaz' : 'priznania pri registrácii podľa § 7a'),
     people: typeset(plan.people === 0 ? 'bez zamestnancov' : `do ${plan.people} ľudí`),
   }
+}
+
+/** One paper of the pile in the opening: what it is, its main line, and a figure or a date. */
+export interface Paper {
+  kind: 'receipt' | 'invoice' | 'statement' | 'einvoice' | 'reminder' | 'warning'
+  label: string
+  title: string
+  meta: string
 }
 
 export const copy = typesetAll({
@@ -22,65 +30,113 @@ export const copy = typesetAll({
     description: `Postaráme sa o celé účtovníctvo vašej s. r. o. Doklady stačí odfotiť, my zaúčtujeme, podáme DPH aj priznanie a postrážime termíny. Od ${eur(start.price)} mesačne, bez poplatkov za doklad.`,
   },
   skip: 'Preskočiť na obsah',
-  nav: { how: 'Ako to funguje', pricing: 'Cenník', faq: 'Otázky', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
+  nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
   hero: {
     first: 'Postaráme sa o všetko.',
     second: 'Vy rastite.',
-    lead: 'Firmony je účtovníctvo pre mladé firmy. Doklady stačí odfotiť a zvyšok urobíme my: zaúčtujeme ich, podáme DPH aj daňové priznanie a postrážime každý termín.',
+    lead: 'Účtovníctvo pre mladé s. r. o. Doklady stačí odfotiť, zvyšok urobíme my: zaúčtujeme, podáme DPH aj daňové priznanie a postrážime každý termín.',
     price: `Od ${eur(start.price)} mesačne. Bez poplatkov za doklad.`,
     cta: 'Chcem začať',
     secondary: 'Pozrieť cenník',
     note: `Začíname ${BRAND.launch}. Stačí IČO a kontakt, je to nezáväzné.`,
-    /** What happens while the receipt is printed: three things we take off their hands. */
-    chips: [
-      { title: 'Bloček zaúčtovaný', sub: 'Káva s klientom, 4,80 €' },
-      { title: 'E-faktúra prijatá', sub: 'Rovno do účtovníctva' },
-      { title: 'Termín postrážený', sub: 'Priznanie k DPH je podané' },
-    ],
   },
 
-  receipt: {
-    label: `Čo dostanete v balíku ${start.name}`,
-    title: `Balík ${start.name}`,
-    sub: 'mesačne',
-    lines: [
-      ['Zaúčtovanie dokladov', 'v cene'],
-      ['Párovanie platieb z banky', 'v cene'],
-      ['DPH podľa § 7a', 'v cene'],
-      ['Prijímanie e-faktúr', 'v cene'],
-      ['Mesačný prehľad daní', 'v cene'],
-      ['Strážime termíny', 'v cene'],
-      ['Poplatok za doklad', eur(0)],
-    ],
-    total: 'Spolu',
-    totalValue: eur(start.price),
-    vat: 'Bez DPH.',
-    thanks: 'Ďakujeme, že ste s nami.',
-  },
-
-  pains: {
-    title: 'Ak vás účtovníctvo stresuje, nie ste jediní.',
-    items: [
-      'Bločky v peňaženke, faktúry v maile a termíny v hlave.',
-      'Neviete, koľko vám na konci roka zoberú dane.',
-      'Na odpoveď čakáte týždeň a aj tak jej nerozumiete.',
-      'Bojíte sa, že prehliadnete termín a príde pokuta.',
-    ],
-    close: {
-      first: 'Nikoho nesúdime.',
-      rest: 'Ak máte v papieroch neporiadok, dáme ho spolu do poriadku a odvtedy sa oň staráme my.',
+  /** The pile of papers the opening starts with, and the order it ends in. */
+  settle: {
+    papers: [
+      { kind: 'receipt', label: 'Bloček', title: 'Kaviareň, 2 espresso', meta: '4,80 €' },
+      { kind: 'invoice', label: 'Faktúra 2026041', title: 'Odberateľ: Váš klient s. r. o.', meta: '1 200,00 €' },
+      { kind: 'statement', label: 'Výpis z účtu', title: 'Október 2026', meta: '23 pohybov' },
+      { kind: 'einvoice', label: 'E-faktúra', title: 'Webhosting na rok', meta: '14,90 €' },
+      { kind: 'reminder', label: 'Pripomienka', title: 'Priznanie k DPH', meta: 'do 25. 11.' },
+      { kind: 'reminder', label: 'Pripomienka', title: 'Kontrolný výkaz', meta: 'do 25. 11.' },
+      { kind: 'warning', label: 'Upomienka', title: 'Neuhradená faktúra 2026037', meta: 'po splatnosti' },
+      { kind: 'warning', label: 'Pošta', title: '14 neprečítaných e-mailov s faktúrami', meta: '' },
+    ] as Paper[],
+    ledger: {
+      label: 'Ukážka mesiaca vašej firmy vo Firmony',
+      month: 'Október 2026',
+      company: 'Vaša firma s. r. o.',
+      rows: [
+        { what: 'Bloček, kaviareň', amount: '4,80 €', state: 'zaúčtované' },
+        { what: 'Faktúra 2026041', amount: '1 200,00 €', state: 'zaúčtovaná' },
+        { what: 'Výpis z účtu, október', amount: '23 platieb', state: 'spárovaný' },
+        { what: 'E-faktúra, webhosting', amount: '14,90 €', state: 'prijatá' },
+        { what: 'Priznanie k DPH', amount: 'október', state: 'podané' },
+        { what: 'Kontrolný výkaz', amount: 'október', state: 'podaný' },
+      ],
+      foot: 'Všetko zaúčtované a podané.',
+      count: '6 z 6',
     },
+    title: 'Toto je celé vaše účtovníctvo.',
+    text: 'Doklady posielate, ako sa vám hodí. My ich zaúčtujeme, podáme, čo treba, a postrážime každý termín. Vy viete, na čom ste.',
   },
 
-  how: {
-    title: 'Ako to funguje',
-    steps: [
-      { title: 'Ozvete sa nám', text: `Vyplníte IČO a kontakt. ${capitalize(REPLY_WITHIN)} sa vám ozveme a všetko vysvetlíme po ľudsky.` },
-      { title: 'Prechod vybavíme za vás', text: `Podpíšete zmluvu a plnú moc. Podklady si od doterajšej účtovníčky vyžiadame sami a od ${BRAND.launch} to preberáme.` },
-      { title: 'Doklady posielate, ako sa vám hodí', text: 'Bloček odfotíte v mobile, faktúru prepošlete e-mailom a e-faktúry nám prídu samy. Bankový účet prepojíte raz.' },
-      { title: 'My zaúčtujeme a podáme', text: 'Doklady roztriedi umelá inteligencia, účtovníčka všetko skontroluje a podá. Každý mesiac dostanete prehľad: koľko ste zarobili a koľko pôjde na dane.' },
-    ],
+  /** Read line by line as it scrolls by: the hug of the brand. */
+  embrace: {
+    text: 'Ak vás účtovníctvo stresuje, nie ste jediní. Nikoho nesúdime. Ak máte v papieroch neporiadok, dáme ho spolu do poriadku a odvtedy sa oň staráme my.',
+  },
+
+  month: {
+    title: 'Jeden mesiac s Firmony.',
+    lead: 'Takto vyzerá účtovníctvo, keď ho nemusíte riešiť.',
+    example: 'Ilustračný príklad',
+    /** What the machine reads off a slip, and what it proposes. The entry is the Slovak chart of accounts. */
+    snap: {
+      title: 'Odfotíte. AI prečíta.',
+      text: 'Bloček odfotíte v mobile, faktúru prepošlete e-mailom, e-faktúry prídu samy. Umelá inteligencia z nich vytiahne obchodníka, dátum aj sumu a navrhne zaúčtovanie.',
+      slip: {
+        shop: 'Kaviareň',
+        when: '14. 10. 2026, 8:42',
+        item: '2× espresso',
+        pay: 'Platba kartou',
+        total: 'Spolu',
+        sum: '4,80 €',
+      },
+      read: 'Prečítané z bločku',
+      fields: [
+        ['Obchodník', 'Kaviareň'],
+        ['Dátum', '14. 10. 2026'],
+        ['Suma', '4,80 €'],
+        ['Platba', 'kartou'],
+        ['Druh', 'reprezentácia'],
+      ] as [string, string][],
+      entry: 'Návrh zaúčtovania',
+      debit: ['MD 513', 'Náklady na reprezentáciu'],
+      credit: ['D 221', 'Bankové účty'],
+      flag: 'Reprezentácia nie je daňový výdavok.',
+      toast: 'Zaúčtované',
+      toastSub: 'Skontroluje účtovníčka',
+    },
+    file: {
+      title: 'Účtovníčka skontroluje a podá.',
+      text: 'Každý návrh skontroluje človek. Účtovníčka podá priznania a výkazy za vás a termíny strážime my, nie vy.',
+      doc: 'Priznanie k DPH',
+      period: 'Obdobie: október 2026',
+      status: 'Podané',
+      rows: [
+        ['Daň na úhradu', '1 220,15 €'],
+        ['Splatnosť', '25. 11. 2026'],
+        ['Kontrolný výkaz', 'podaný'],
+      ] as [string, string][],
+      checked: 'Skontrolovala účtovníčka',
+      when: '24. 11. 2026, 9:41',
+    },
+    know: {
+      title: 'Viete, na čom ste.',
+      text: 'Každý mesiac dostanete prehľad: koľko ste zarobili, koľko si odložiť na dane a čo vás čaká. Bez tabuliek a bez úradníčiny.',
+      month: 'Október 2026',
+      stats: [
+        ['Príjmy', '8 420 €'],
+        ['Výdavky', '3 115 €'],
+        ['Zisk', '5 305 €'],
+      ] as [string, string][],
+      bars: ['máj', 'jún', 'júl', 'aug', 'sep', 'okt'],
+      tax: 'Odložte si na dane',
+      taxValue: '530 €',
+      next: 'Ďalší termín: 25. 12., priznanie k DPH',
+    },
   },
 
   people: {
@@ -96,30 +152,37 @@ export const copy = typesetAll({
     close: 'Preto vieme byť rýchli a mať férovú cenu.',
   },
 
-  included: {
-    title: 'Čo všetko za vás urobíme',
-    lead: 'Jedna mesačná cena. Nemusíte rozmýšľať, čo je navyše.',
-    items: [
-      { title: 'Zaúčtovanie dokladov', text: 'Faktúry, bločky aj výpisy z banky. Za doklad neplatíte nič navyše.' },
-      { title: 'DPH a výkazy', text: 'Priznanie k DPH, kontrolný a súhrnný výkaz. Aj keď ste registrovaní len podľa § 7a.' },
-      { title: 'Závierka a daňové priznanie', text: `Raz ročne za ${eur(CLOSING_PRICE)}, aby ste vedeli dopredu, koľko to bude.` },
-      { title: 'Mzdy a odvody', text: 'Pre konateľa aj zamestnancov v balíkoch Rast a Firma.' },
-      { title: 'E-faktúry', text: 'Od roku 2027 ich musí vedieť prijať každá firma. U nás to máte v cene.' },
-      { title: 'Termíny', text: 'Podávame za vás a vopred vám povieme, čo a dokedy zaplatiť.' },
-      { title: 'Mesačný prehľad', text: 'Koľko ste zarobili, koľko pôjde na dane a čo vás čaká.' },
-      { title: 'Odpovede', text: `Na otázky odpovedáme ${REPLY_WITHIN}. Po slovensky, nie úradnícky.` },
-    ],
-    /** Two deadlines every s. r. o. lives with, shown in the tile about deadlines. */
-    deadlines: [
-      { what: 'Priznanie k DPH a kontrolný výkaz', when: 'do 25. dňa po skončení obdobia' },
-      { what: 'Daňové priznanie a závierka', when: 'do 31. marca' },
+  /** The bill a client would get from us: everything in the price, nothing per document. */
+  receipt: {
+    title: 'Všetko v jednej cene.',
+    lead: 'Nemusíte rozmýšľať, čo je navyše. Nič.',
+    label: `Čo dostanete v balíku ${start.name}`,
+    head: `Balík ${start.name}`,
+    sub: 'mesačne',
+    lines: [
+      ['Zaúčtovanie dokladov a banky', 'v cene'],
+      ['DPH podľa § 7a', 'v cene'],
+      ['Prijímanie e-faktúr', 'v cene'],
+      ['Mesačný prehľad', 'v cene'],
+      ['Strážené termíny', 'v cene'],
+      [`Odpovede ${REPLY_WITHIN}`, 'v cene'],
+      ['Poplatok za doklad', eur(0)],
+    ] as [string, string][],
+    total: 'Spolu',
+    totalValue: eur(start.price),
+    vat: 'Bez DPH.',
+    thanks: 'Ďakujeme, že ste s nami.',
+    notes: [
+      `Platitelia DPH a mzdy v balíkoch Rast a Firma.`,
+      `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne.`,
     ],
   },
 
   einvoice: {
+    date: '1. 1. 2027',
     title: `Od ${BRAND.launch} musí každá firma vedieť prijať e-faktúru.`,
     text: 'Faktúry medzi firmami budú chodiť cez certifikovaných digitálnych poštárov. Prijímať ich musí aj firma, ktorá nie je platiteľom DPH, a platitelia DPH ich budú musieť aj vystavovať.',
-    ours: 'S Firmony máte prijímanie e-faktúr v cene každého balíka a faktúry nám prídu rovno do účtovníctva.',
+    ours: 'S Firmony máte prijímanie e-faktúr v cene každého balíka. Faktúry nám prídu rovno do účtovníctva.',
     source: 'Zákon o DPH, § 85o, vložený zákonom č. 385/2025 Z. z.',
   },
 
@@ -133,6 +196,14 @@ export const copy = typesetAll({
     vat: 'Ceny sú bez DPH. DPH zatiaľ nepripočítavame, lebo nie sme jej platiteľom.',
     custom: 'Máte viac dokladov alebo ľudí? Pripravíme vám ponuku na mieru.',
   },
+
+  /** What we promise, said once and plainly, next to the prices. */
+  promises: [
+    { title: 'Bez viazanosti', text: 'Zmluvu môžete vypovedať s mesačnou výpovednou lehotou.' },
+    { title: 'Doklady navyše zadarmo', text: 'Ak ich budete mať viac dva mesiace po sebe, ponúkneme vyšší balík.' },
+    { title: 'Odpoveď do jedného dňa', text: `Na otázky odpovedáme ${REPLY_WITHIN}. Po slovensky, nie úradnícky.` },
+    { title: 'Účtovníctvo je vaše', text: 'Keď odídete, odovzdáme vám všetky doklady aj celé účtovníctvo.' },
+  ],
 
   calc: {
     title: 'Koľko ušetríte?',
@@ -157,7 +228,7 @@ export const copy = typesetAll({
   },
 
   paths: {
-    title: 'Či firmu len zakladáte, alebo už beží',
+    title: 'Či firmu len zakladáte, alebo už beží.',
     fresh: {
       title: 'Zakladáte s. r. o.',
       text: 'Od prvého dňa budete mať v účtovníctve poriadok. Povieme vám, čo treba pri štarte vybaviť, a postrážime prvé termíny.',
@@ -165,16 +236,31 @@ export const copy = typesetAll({
     },
     switching: {
       title: 'Meníte účtovníčku',
-      text: `Prechod vybavíme za vás. Pri mesačnej výpovednej lehote stačí poslať výpoveď v novembri a od ${BRAND.launch} začneme my.`,
+      text: `Prechod vybavíme za vás: podpíšete zmluvu a plnú moc, podklady si od doterajšej účtovníčky vyžiadame sami. Pri mesačnej výpovednej lehote stačí poslať výpoveď v novembri a od ${BRAND.launch} začneme my.`,
       cta: 'Chcem prejsť',
     },
   },
 
   founder: {
+    title: 'Kto za nami stojí',
     quote:
       'Keď som si založil firmu, najviac nervov ma nestálo podnikanie, ale papiere okolo neho. Termíny, priznania, pravidlá, ktorým som nerozumel, a pocit, že som na to sám. Firmony robíme, aby to mladé firmy mali inak: aby sa o ne niekto postaral a ony mohli rásť.',
     name: 'Christian Juhás',
     role: 'zakladateľ Firmony',
+  },
+
+  /** The company behind the service, as the register has it, and how to reach it. */
+  company: {
+    title: `${BRAND.name} je služba spoločnosti`,
+    seat: 'Sídlo',
+    ico: 'IČO',
+    dic: 'DIČ',
+    register: 'Zápis',
+    verify: 'Overiť v Obchodnom registri',
+    contact: 'Kontakt',
+    email: 'E-mail',
+    phone: 'Telefón',
+    reply: `Odpovedáme ${REPLY_WITHIN}.`,
   },
 
   faq: {
@@ -226,8 +312,15 @@ export const copy = typesetAll({
 
   footer: {
     tagline: 'Účtovníctvo pre mladé firmy.',
+    service: 'Služba',
+    company: 'Spoločnosť',
+    contact: 'Kontakt',
+    calc: 'Kalkulačka',
     legal: 'Právne informácie',
     privacy: 'Ochrana údajov',
+    cookies: 'Bez cookies a bez sledovania',
+    reply: `Odpovedáme ${REPLY_WITHIN}.`,
+    imprint: `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísanej v Obchodnom registri Mestského súdu Košice, oddiel Sro, vložka č. 64897/V. Ceny sú uvedené bez DPH.`,
     rights: '© 2026 europio s. r. o.',
   },
 
@@ -287,7 +380,3 @@ export const copy = typesetAll({
     back: 'Späť na úvod',
   },
 })
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}

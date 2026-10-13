@@ -21,7 +21,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   and `MAIL.from` say firmony.ai; when he does, those three change, and so do the test's `site`, the notes'
   firmony.ai, and `wrangler.jsonc` once a route is added.
 - Nothing is deployed. There is no GitHub repository and no Worker yet. The code is committed locally on `main`.
-- All checks pass: `npm test` (47 unit checks) and `npm run test:runtime` (53 checks in workerd).
+- All checks pass: `npm test` (49 unit checks) and `npm run test:runtime` (53 checks in workerd).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -106,49 +106,57 @@ above 2,5 % or accountant cost above 40 € a client.
 - Headers: CSP without anything inline or foreign, no framing, HSTS, `noindex` on `/zacat` and on any host but
   firmony.ai; http and www are redirected; a form is accepted only from our own pages and under 8 kB.
 
-## Design (the third one, built on the night of 12 to 13 October 2026)
+## Design (the fourth one, built on the night of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
-glass, Host Grotesk bold) "stále vyzerá tuctovo a obyčajne a toto musí byť naša pýcha a elita" (13 October,
-00:31), the night he sent his pictures. He gave no more direction than that: the third is the builder's call.
+glass, Host Grotesk bold) "tuctové"; the third (black, his iridescent glass objects in every section,
+Instrument Serif headlines) "nie najhoršie ... stále nie elita" at 01:10 and at 01:25 "tuctová web stránka z
+umelej inteligencie". He asked what the heads of Apple, Coca-Cola, Palantir and Tesla would say, and at 01:51
+what Thiel, Musk and Huang would want on the site of a startup they invested in. The answers he was given: one
+idea and calm (Apple), the product itself (Tesla, Musk), seriousness instead of toys (Palantir), an own colour,
+type and sentence (Coca-Cola), one sharp truth with a why-now (Thiel: e-invoices from 1 January 2027), and the
+technology shown working (Huang: the machine reading a slip).
 
-- His benchmark is Robinhood's typography (memory). Robinhood sets a serif display (Martina Plantijn) at
-  weight 400 and its headings in a sans at 400; nothing heavy. So: **Instrument Serif** (400 and italic,
-  OFL, self-hosted latin and latin-ext; every Slovak letter checked) for everything read as a statement:
-  the hero, every section title, prices, the savings figure, the founder's quote, the tile and step titles.
-  **Host Grotesk** for text, labels, buttons. Never bold serif, no capitals for labels, no monospace.
-  A specimen of eleven faces on black was compared that night (scratch); Newsreader was the runner-up.
-- Black `#000` page. Light: azure `#4f7cff`, violet `#7c5cff`, pink `#ff7ab6` (`--grad`), the colours of his
-  pictures: on "Vy rastite." (italic, the second line of the hero), the step numbers, the savings figure,
-  the border of the lead plan and the e-invoice panel, and as glows. Panels are near-black with a lit edge
-  (`--edge`: a hairline that catches light at the top). Text `#c2bdd4`, small print `#8f8aa6`.
-- Every section is built around one of his objects (`ART` in src/config.ts; sources in `art-src/`):
-  the hero: his phone above the paper receipt, its beam landing on the receipt's edge (the phone picture is
-  cut at 66 % of its height and faded from 55 %, so its own glass paper is gone: `scripts/art.py whole`),
-  his aurora full-bleed behind it (dimmed behind the words by a mask), and three chips;
-  "nie ste jediní": the embrace; "Ako to funguje": door, bundle, bank link, shield, one per step;
-  AI and the accountant: the orb between the two lists; the bento: receipt, calendar, chart, chat;
-  e-invoices: the envelope rising out of its panel; the comparison: the calculator on the panel's edge;
-  the two ways in: sprout (founding) and key (switching); the closing scene: the F over the aurora again.
-  The F is the logo (header, footer, favicon, icons, the picture a shared link shows). Not made yet: his
-  photo for the founder's note (`founder`), and the photos of people from the prompts.
-- Motion, CSS only: the receipt is printed when the page opens and the chips arrive; the objects breathe
-  (`.drift`, 9 s); the aurora drifts (28 s); and on a wide screen, where the browser can tie an animation
-  to scrolling (`animation-timeline: view()` with `timeline-scope`; Chrome, Edge), the pictures of the four
-  steps stand still beside them and change step by step while the step being read lights up. Elsewhere
-  each step shows its own picture. Reduced motion: nothing moves, the steps' pictures only fade.
-- Checked at 1440, 390 and 320 px: nothing scrolls sideways. `scripts/dev/look.mjs` scrolls through a page
-  first, so that pictures that load late are in its full-page shots; `scripts/dev/scroll.mjs` takes one
-  screen at a time at given scroll positions, which is how the steps are seen as they really are.
-- When he sends a picture: `python3 scripts/art.py picture <source> <name> --size 960 --small 480 --cover
-  0.92` (finds the object, centres it, makes the black see-through), then its slot in `ART`. `npm test`
-  fails when a picture or a font the pages name is missing.
+- Pictures, his words of 01:51 and 01:52: no realistic photographs made by AI ("to vyzerá úboho"); their own
+  real photos later; 3D icons that are playful, modern and top quality are welcome, his glass ones included.
+  His founder photo must be a real one.
+- Type: **Geist** (Vercel's, OFL, variable 100 to 900, self-hosted latin and latin-ext, Slovak carons checked)
+  for everything, set large and tight for statements (700, -0.045 to -0.055em) and plainly for reading;
+  **Instrument Serif italic** once, for the founder's own words. A specimen of six sans faces was compared
+  (Geist, Inter Display, Onest, Schibsted Grotesk, Hanken Grotesk, Instrument Sans).
+- Colour: black, white, Apple-like greys (`--mist` #f5f5f7, `--ink` #1d1d1f, `--gray` #6e6e73) and one
+  ultramarine, the colour of the brand (`--blue` #2a3bff; `--blue-night` #7682ff for blue on black). The
+  amber and red of the nagging notifications are their only other colours.
+- The idea, from the name (firma + harmony): the page opens at night on a pile of papers and nagging
+  notifications around the promise; scrolling, the pile flies into one month in order (a ledger: six rows,
+  each ticked) and the night lifts like dawn into a white page; the header turns from dark to light with it.
+  CSS only: a named view timeline on `.settle` (`view-timeline-inset: 0`, or the page's scroll padding shifts
+  it by the header), `timeline-scope` on body for the header, each paper flying from its place (`--x0`,
+  `--y0`, `--r0`) to its row (`--lx`, `--ly`, `--i`, `--row`). Without scroll timelines (Firefox, older
+  Safari) or with reduced motion: the pile is the first screen and the ledger the next, still. On a phone
+  only the four notifications nag, above and below the words; on a short phone none.
+- Then: the date (1. 1. 2027, the e-invoice duty, black band with his glass envelope), the hug read line by
+  line ("Ak vás účtovníctvo stresuje ..."), one month as the client sees it (the machine reading a slip with
+  the entry it proposes, MD 513 / D 221 and the flag that representation is no tax expense; a filed VAT
+  return; a month at a glance), the machine and the person, everything in one price as a receipt that prints,
+  the prices with four promises, the comparison (his glass calculator on its black result), the two ways in,
+  who is behind it (the founder's note and the company as the register has it, with a link to check it in
+  the Business Register, e-mail and telephone), questions, and the close in black with his glass F.
+- Icons to come (prompts given at 01:57, one chat, same glass in the brand's blue, transparent background):
+  seed, plant, tree (Štart, Rast, Firma), chip and lens (the machine and the person), rocket and key (the two
+  ways in), seal (the company). Slots in `ART`; a slot without a picture shows nothing. When one comes:
+  check that it has a real transparent background (his first set was cut from black), cut it square and
+  save 960 and 480 px WebP with alpha, then its slot.
+- The pages of the request and the legal page are white.
+- `scripts/dev/preview.mjs <folder>` makes a static copy of the pages for the owner's artifact (relative
+  addresses, the stylesheet inlined, the forms stopped with a note); it was published as "Firmony" on
+  13 October 2026 and is republished from the same file path.
 
 ## Before pushing
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks
+npm test                 # unit checks (49)
 npm run test:runtime     # the deployable bundle in workerd: pages, headers, the request end to end, the schedule
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register and email
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
