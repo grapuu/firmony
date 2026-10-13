@@ -16,14 +16,6 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
   }
 }
 
-/** One paper of the pile in the opening: what it is, its main line, and a figure or a date. */
-export interface Paper {
-  kind: 'receipt' | 'invoice' | 'statement' | 'einvoice' | 'reminder' | 'warning'
-  label: string
-  title: string
-  meta: string
-}
-
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: účtovníctvo pre mladé firmy`,
@@ -35,42 +27,40 @@ export const copy = typesetAll({
   hero: {
     first: 'Postaráme sa o všetko.',
     second: 'Vy rastite.',
-    lead: 'Účtovníctvo pre mladé s. r. o. Doklady stačí odfotiť, zvyšok urobíme my: zaúčtujeme, podáme DPH aj daňové priznanie a postrážime každý termín.',
+    lead: 'Účtovníctvo pre mladé s. r. o. Doklady odfotíte, všetko ostatné je na nás.',
     price: `Od ${eur(start.price)} mesačne. Bez poplatkov za doklad.`,
     cta: 'Chcem začať',
     secondary: 'Pozrieť cenník',
     note: `Začíname ${BRAND.launch}. Stačí IČO a kontakt, je to nezáväzné.`,
   },
 
-  /** The pile of papers the opening starts with, and the order it ends in. */
-  settle: {
-    papers: [
-      { kind: 'receipt', label: 'Bloček', title: 'Kaviareň, 2 espresso', meta: '4,80 €' },
-      { kind: 'invoice', label: 'Faktúra 2026041', title: 'Odberateľ: Váš klient s. r. o.', meta: '1 200,00 €' },
-      { kind: 'statement', label: 'Výpis z účtu', title: 'Október 2026', meta: '23 pohybov' },
-      { kind: 'einvoice', label: 'E-faktúra', title: 'Webhosting na rok', meta: '14,90 €' },
-      { kind: 'reminder', label: 'Pripomienka', title: 'Priznanie k DPH', meta: 'do 25. 11.' },
-      { kind: 'reminder', label: 'Pripomienka', title: 'Kontrolný výkaz', meta: 'do 25. 11.' },
-      { kind: 'warning', label: 'Upomienka', title: 'Neuhradená faktúra 2026037', meta: 'po splatnosti' },
-      { kind: 'warning', label: 'Pošta', title: '14 neprečítaných e-mailov s faktúrami', meta: '' },
-    ] as Paper[],
-    ledger: {
-      label: 'Ukážka mesiaca vašej firmy vo Firmony',
-      month: 'Október 2026',
-      company: 'Vaša firma s. r. o.',
-      rows: [
-        { what: 'Bloček, kaviareň', amount: '4,80 €', state: 'zaúčtované' },
-        { what: 'Faktúra 2026041', amount: '1 200,00 €', state: 'zaúčtovaná' },
-        { what: 'Výpis z účtu, október', amount: '23 platieb', state: 'spárovaný' },
-        { what: 'E-faktúra, webhosting', amount: '14,90 €', state: 'prijatá' },
-        { what: 'Priznanie k DPH', amount: 'október', state: 'podané' },
-        { what: 'Kontrolný výkaz', amount: 'október', state: 'podaný' },
-      ],
-      foot: 'Všetko zaúčtované a podané.',
-      count: '6 z 6',
-    },
+  /** The app in the opening's phone: one month of a young company, everything booked. An illustration. */
+  app: {
+    label: 'Ukážka aplikácie Firmony: október vašej firmy, všetko zaúčtované',
+    time: '9:41',
+    month: 'Október 2026',
+    company: 'Vaša firma',
+    initials: 'VF',
+    profit: 'Zisk za október',
+    profitValue: '5 305 €',
+    tax: 'Odložte si na dane',
+    taxValue: '530 €',
+    status: 'Všetko zaúčtované',
+    deadline: 'DPH do 25. 11.',
+    docs: 'Doklady',
+    count: '5 nových',
+    rows: [
+      { title: 'Bloček', sub: 'Kaviareň', amount: '4,80 €', state: 'zaúčtované' },
+      { title: 'Faktúra 2026041', sub: 'Váš klient s. r. o.', amount: '+1 200 €', state: 'zaúčtovaná' },
+      { title: 'Výpis z účtu', sub: 'Október, 23 platieb', amount: 'spárovaný', state: '' },
+      { title: 'E-faktúra', sub: 'Webhosting', amount: '14,90 €', state: 'prijatá' },
+      { title: 'Priznanie k DPH', sub: 'Podané 24. 11.', amount: '1 220 €', state: 'podané' },
+    ],
+    snap: 'Odfotiť doklad',
+    /** What the left side says once the papers are in. */
     title: 'Toto je celé vaše účtovníctvo.',
-    text: 'Doklady posielate, ako sa vám hodí. My ich zaúčtujeme, podáme, čo treba, a postrážime každý termín. Vy viete, na čom ste.',
+    text: 'Doklady pošlete, ako sa vám hodí. My ich zaúčtujeme, podáme, čo treba, a postrážime každý termín. Vy viete, na čom ste.',
+    example: 'Ilustračná ukážka',
   },
 
   /** Read line by line as it scrolls by: the hug of the brand. */
@@ -123,19 +113,16 @@ export const copy = typesetAll({
       checked: 'Skontrolovala účtovníčka',
       when: '24. 11. 2026, 9:41',
     },
-    know: {
-      title: 'Viete, na čom ste.',
-      text: 'Každý mesiac dostanete prehľad: koľko ste zarobili, koľko si odložiť na dane a čo vás čaká. Bez tabuliek a bez úradníčiny.',
-      month: 'Október 2026',
-      stats: [
-        ['Príjmy', '8 420 €'],
-        ['Výdavky', '3 115 €'],
-        ['Zisk', '5 305 €'],
-      ] as [string, string][],
-      bars: ['máj', 'jún', 'júl', 'aug', 'sep', 'okt'],
-      tax: 'Odložte si na dane',
-      taxValue: '530 €',
-      next: 'Ďalší termín: 25. 12., priznanie k DPH',
+    /** A question to the accountant and her answer: Slovak tax law, said plainly (§ 22 ZDP: 1 700 €). */
+    ask: {
+      title: 'Pýtate sa, odpovedáme po ľudsky.',
+      text: `Na otázky odpovedá vaša účtovníčka, ${REPLY_WITHIN}. Bez úradníčiny a bez čakania na termín.`,
+      who: 'Vaša účtovníčka',
+      online: 'odpovedá do jedného pracovného dňa',
+      question: 'Môžem si dať do nákladov nový notebook?',
+      answer: 'Áno, ak ho používate na podnikanie. Ak stál do 1 700 €, ide rovno do nákladov. Drahší sa odpisuje niekoľko rokov. Pošlite mi faktúru a zaúčtujem ho.',
+      thanks: 'Super, ďakujem!',
+      typing: 'Píše odpoveď',
     },
   },
 

@@ -13,7 +13,7 @@ export interface PageMeta {
   ctaHref?: string
 }
 
-/** The name, set in the site's own type, with the blue full stop. */
+/** The name, set in the site's own type, with a full stop in the light of the glass. */
 export const Wordmark: FC<{ href?: string; label?: string }> = ({ href = '/', label = copy.nav.home }) => (
   <a class="wordmark" href={href} aria-label={label}>
     firmony<span class="wordmark__dot" aria-hidden="true">.</span>
@@ -47,6 +47,8 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
         <link rel="icon" href="data:," />
       )}
       <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+      <link rel="preload" href="/fonts/news-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+      <link rel="preload" href="/fonts/news-latin-italic.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="stylesheet" href="/app.css" />
     </head>
     <body class={meta.path === '/' ? 'is-home' : 'is-page'}>
@@ -62,7 +64,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
             <a href="/#kto-sme">{copy.nav.about}</a>
             <a href="/#otazky">{copy.nav.faq}</a>
           </nav>
-          <a class="btn btn--blue btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
+          <a class="btn btn--white btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
             {copy.nav.start}
           </a>
         </div>

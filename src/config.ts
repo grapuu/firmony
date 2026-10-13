@@ -106,7 +106,26 @@ export const LEAD_PLAN: PlanId = 'rast'
 export const REGISTER_URL = `https://www.orsr.sk/hladaj_ico.asp?ICO=${OPERATOR.companyId.replace(/\s/g, '')}&SID=0`
 
 /** Where a picture can stand. Every section is finished without its picture; a picture makes it richer. */
-export type ArtSlot = 'logo' | 'mark' | 'envelope' | 'calc' | 'seed' | 'plant' | 'tree' | 'chip' | 'lens' | 'rocket' | 'key' | 'seal' | 'founder'
+export type ArtSlot =
+  | 'logo'
+  | 'mark'
+  | 'envelope'
+  | 'calc'
+  | 'seed'
+  | 'plant'
+  | 'tree'
+  | 'chip'
+  | 'lens'
+  | 'rocket'
+  | 'key'
+  | 'seal'
+  | 'chat'
+  | 'paperReceipt'
+  | 'paperInvoice'
+  | 'paperBank'
+  | 'paperEinvoice'
+  | 'paperReturn'
+  | 'founder'
 
 /** One of his glass objects, cut square at 960 and 480 px (the first set made see-through from black). */
 const glass = (name: string): Art => ({ src: `/art/${name}.webp`, alt: '', width: 960, height: 960, small: { src: `/art/${name}-480.webp`, width: 480 } })
@@ -136,6 +155,13 @@ export const ART: Record<ArtSlot, Art | null> = {
   rocket: glass('rocket'),
   key: glass('key'),
   seal: glass('seal'),
+  chat: glass('chat'),
+  /* The papers that fly into the phone in the opening, each the icon of its row there. */
+  paperReceipt: glass('receipt'),
+  paperInvoice: glass('bundle'),
+  paperBank: glass('bank'),
+  paperEinvoice: glass('envelope'),
+  paperReturn: glass('calendar'),
   founder: null,
 }
 

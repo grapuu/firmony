@@ -62,7 +62,7 @@ document.addEventListener('submit', function (event) {
 /** What the artifact's frame needs on top of the site's own stylesheet. */
 const EXTRA = `
 .top { top: env(safe-area-inset-top, 0px); }
-.preview-note { flex-basis: 100%; margin: 14px 0 0; color: var(--bright); font-size: 0.9375rem; line-height: 1.5; }
+.preview-note { flex-basis: 100%; margin: 14px 0 0; color: var(--soft); font-size: 0.9375rem; line-height: 1.5; }
 `
 
 const css = (await readFile(join(root, 'public/app.css'), 'utf8')).replace(/url\(\/(fonts|art)\//g, 'url($1/')

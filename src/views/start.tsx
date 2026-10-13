@@ -227,7 +227,7 @@ export const StartDetails: FC<{
           <p class="small">
             {copy.start.privacy} <a href="/pravne-informacie#ochrana-udajov">{copy.start.privacyLink}</a>.
           </p>
-          <button class="btn btn--blue btn--large details__submit" type="submit">
+          <button class="btn btn--white btn--large details__submit" type="submit">
             {copy.start.submit}
           </button>
         </form>
@@ -241,7 +241,7 @@ export const Thanks: FC = () => (
     <p class="lead">{copy.thanks.lead}</p>
     <p class="page__text">{copy.thanks.next}</p>
     <p class="page__more">
-      <a class="btn btn--line" href="/">
+      <a class="btn btn--ghost" href="/">
         {copy.thanks.back}
       </a>
     </p>
@@ -253,7 +253,7 @@ export const NotFound: FC = () => (
     <h1 class="h1">{copy.notFound.title}</h1>
     <p class="lead">{copy.notFound.lead}</p>
     <p class="page__more">
-      <a class="btn btn--line" href="/">
+      <a class="btn btn--ghost" href="/">
         {copy.notFound.back}
       </a>
     </p>
