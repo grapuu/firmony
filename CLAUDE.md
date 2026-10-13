@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 01:35)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 00:40)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -122,7 +122,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   contract ends. He was told: no store, no download and no fee to Apple or Google: Firmony is a web app that goes
   on the phone's home screen from the browser (Safari: Zdieľať, Pridať na plochu; Chrome: Inštalovať aplikáciu),
   and an app in the stores could come later if ever wanted; and, for the end, "asi 3 hodiny". Built and pushed at
-  01:31 on 14 October (`8eb3c82`), all checks passing (units 238, runtime 420): the administrator ends a contract from our side, the last month's documents are taken ten days past the last
+  00:36 on 14 October (`8eb3c82`), all checks passing (units 238, runtime 420): the administrator ends a contract from our side, the last month's documents are taken ten days past the last
   day, the accountant hands the books over in the app, everything downloads as a ZIP a year, and ninety days past the
   end the schedule deletes the company's data, the identification five years later. The AML program doc (rev 25)
   says so, and a doubled sentence in its section 3 was put right. The previews: the app version 10 ("Koniec
