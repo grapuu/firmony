@@ -142,11 +142,11 @@ technology shown working (Huang: the machine reading a slip).
   the prices with four promises, the comparison (his glass calculator on its black result), the two ways in,
   who is behind it (the founder's note and the company as the register has it, with a link to check it in
   the Business Register, e-mail and telephone), questions, and the close in black with his glass F.
-- Icons to come (prompts given at 01:57, one chat, same glass in the brand's blue, transparent background):
-  seed, plant, tree (Štart, Rast, Firma), chip and lens (the machine and the person), rocket and key (the two
-  ways in), seal (the company). Slots in `ART`; a slot without a picture shows nothing. When one comes:
-  check that it has a real transparent background (his first set was cut from black), cut it square and
-  save 960 and 480 px WebP with alpha, then its slot.
+- His second set of icons (prompts of 01:57, sent at 02:04; the same glass in the brand's blue, real
+  transparent backgrounds; sources in art-src/icons/, cut by `scripts/art.py icon`, which only trims,
+  centres and scales them premultiplied): seed, plant, tree (Štart, Rast, Firma), chip and lens (the machine
+  and the person), rocket and key (the two ways in), seal (the company). They come in as they reach the
+  screen and tilt when their card is pointed at.
 - The pages of the request and the legal page are white.
 - `scripts/dev/preview.mjs <folder>` makes a static copy of the pages for the owner's artifact (relative
   addresses, the stylesheet inlined, the forms stopped with a note); it was published as "Firmony" on

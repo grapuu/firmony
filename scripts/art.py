@@ -20,6 +20,11 @@ the object disappears on any dark surface, and the outer edge fades out.
 given, and with `--small N` also public/art/<name>-<N>.webp for phones. A picture shown large needs twice its
 width on the page. Then its slot in `ART` (src/config.ts) gets its path and size.
 
+`icon` is for a picture that comes with a transparent background already (his second set, 13 October 2026, the
+same glass in the brand's blue for the white parts): it is not made see-through again, only cut to what is in
+it, centred on a square that it fills to `--cover`, and scaled with its colours premultiplied by their opacity,
+so that no dark edge appears on white.
+
 `whole` keeps the picture as it was composed (no centring): the aurora, and the phone whose beam has to land
 on the receipt. `--bottom 0.7` cuts it off at 70 % of its height and `--fade 0.6` lets it fade out from 60 %
 down to that cut, so that what lay below (the phone's own glass paper) is gone.
@@ -165,6 +170,19 @@ def whole(source, width, bottom=1.0, fade=None):
     return out.resize((width, height), Image.LANCZOS)
 
 
+def icon(source, cover, size):
+    """A picture with its own transparency: cut to its subject, centred on a square, scaled premultiplied."""
+    picture = Image.open(source).convert('RGBA')
+    alpha = numpy.asarray(picture)[..., 3]
+    rows = numpy.where(alpha.max(axis=1) > 8)[0]
+    cols = numpy.where(alpha.max(axis=0) > 8)[0]
+    subject = picture.crop((cols[0], rows[0], cols[-1] + 1, rows[-1] + 1))
+    side = round(max(subject.size) / cover)
+    square = Image.new('RGBA', (side, side), (0, 0, 0, 0))
+    square.paste(subject, ((side - subject.width) // 2, (side - subject.height) // 2))
+    return square.convert('RGBa').resize((size, size), Image.LANCZOS).convert('RGBA')
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cuts the owner's pictures for the site.")
     commands = parser.add_subparsers(dest='command', required=True)
@@ -175,6 +193,12 @@ def main():
     one.add_argument('--size', type=int, default=800)
     one.add_argument('--cover', type=float, default=0.9)
     one.add_argument('--small', type=int)
+    own = commands.add_parser('icon')
+    own.add_argument('source')
+    own.add_argument('name')
+    own.add_argument('--size', type=int, default=960)
+    own.add_argument('--cover', type=float, default=0.9)
+    own.add_argument('--small', type=int)
     kept = commands.add_parser('whole')
     kept.add_argument('source')
     kept.add_argument('name')
@@ -187,6 +211,10 @@ def main():
     webp = dict(format='WEBP', quality=88, alpha_quality=70, method=6)
     if args.command == 'logo':
         logo(args.source)
+    elif args.command == 'icon':
+        for size, name in ((args.size, args.name), (args.small, f'{args.name}-{args.small}')):
+            if size:
+                save(icon(args.source, args.cover, size), os.path.join(ART, f'{name}.webp'), format='WEBP', quality=88, alpha_quality=92, method=6)
     elif args.command == 'whole':
         for width, name in ((args.width, args.name), (args.small, f'{args.name}-{args.small}')):
             if width:

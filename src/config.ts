@@ -108,7 +108,7 @@ export const REGISTER_URL = `https://www.orsr.sk/hladaj_ico.asp?ICO=${OPERATOR.c
 /** Where a picture can stand. Every section is finished without its picture; a picture makes it richer. */
 export type ArtSlot = 'logo' | 'mark' | 'envelope' | 'calc' | 'seed' | 'plant' | 'tree' | 'chip' | 'lens' | 'rocket' | 'key' | 'seal' | 'founder'
 
-/** One of his first glass objects, made for black: cut square at 960 and 480 px, black made see-through. */
+/** One of his glass objects, cut square at 960 and 480 px (the first set made see-through from black). */
 const glass = (name: string): Art => ({ src: `/art/${name}.webp`, alt: '', width: 960, height: 960, small: { src: `/art/${name}-480.webp`, width: 480 } })
 
 /**
@@ -128,14 +128,14 @@ export const ART: Record<ArtSlot, Art | null> = {
   mark: { src: '/art/logo.webp', alt: '', width: 960, height: 960 },
   envelope: glass('envelope'),
   calc: glass('calculator'),
-  seed: null,
-  plant: null,
-  tree: null,
-  chip: null,
-  lens: null,
-  rocket: null,
-  key: null,
-  seal: null,
+  seed: glass('seed'),
+  plant: glass('plant'),
+  tree: glass('tree'),
+  chip: glass('chip'),
+  lens: glass('lens'),
+  rocket: glass('rocket'),
+  key: glass('key'),
+  seal: glass('seal'),
   founder: null,
 }
 
