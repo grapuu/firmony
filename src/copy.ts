@@ -152,7 +152,7 @@ export const copy = typesetAll({
       ['Prijímanie e-faktúr', 'v cene'],
       ['Mesačný prehľad', 'v cene'],
       ['Strážené termíny', 'v cene'],
-      [`Odpovede ${REPLY_WITHIN}`, 'v cene'],
+      ['Odpovede na vaše otázky', 'v cene'],
       ['Poplatok za doklad', eur(0)],
     ] as [string, string][],
     total: 'Spolu',

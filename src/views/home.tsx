@@ -311,7 +311,7 @@ const AskScreen: FC = () => {
 }
 
 const MOMENTS = [
-  { id: 'scan', text: copy.month.snap, Screen: ScanScreen, art: ART.paperReceipt },
+  { id: 'scan', text: copy.month.snap, Screen: ScanScreen, art: ART.paperInvoice },
   { id: 'file', text: copy.month.file, Screen: FileScreen, art: ART.seal },
   { id: 'ask', text: copy.month.ask, Screen: AskScreen, art: ART.chat },
 ] as const

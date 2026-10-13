@@ -950,7 +950,8 @@ a {
   background: rgb(255 255 255 / 0.8);
 }
 
-/* The papers: his glass, around the phone. Without motion two of them rest at its corners. */
+/* The papers: his glass, around the phone. Without motion two of them rest at its corners: the e-invoice and
+   the return. */
 .flyers {
   position: absolute;
   inset: 0;
@@ -979,13 +980,13 @@ a {
   object-fit: contain;
 }
 
+.flyer--1,
 .flyer--2,
-.flyer--3,
-.flyer--4 {
+.flyer--3 {
   display: none;
 }
 
-.flyer--1 {
+.flyer--4 {
   --rx: -58cqw;
   --ry: -84cqw;
   --rr: -12deg;
@@ -1092,6 +1093,11 @@ a {
 
 .section {
   padding-block: var(--space);
+}
+
+/* On black, two paddings in a row read as a hole: the second section starts sooner. */
+.section + .section {
+  padding-top: calc(var(--space) * 0.55);
 }
 
 .head {
@@ -3181,9 +3187,9 @@ a {
     /* The five papers: where each floats (x, y from the middle of the phone, its tilt, its size, how far
        away it is), and the row it becomes: the icons stand 37.4 widths left of the middle, the first at
        1.43 widths above it, each next 13 widths lower. */
+    .flyer--1,
     .flyer--2,
-    .flyer--3,
-    .flyer--4 {
+    .flyer--3 {
       display: block;
     }
 
@@ -3195,12 +3201,12 @@ a {
 
     .flyer--1 {
       --i: 1;
-      --sx: -132cqw;
-      --sy: -98cqw;
-      --sr: -14deg;
-      --ss: 1.1;
-      --sb: 0px;
-      --so: 1;
+      --sx: -186cqw;
+      --sy: -36cqw;
+      --sr: -8deg;
+      --ss: 0.7;
+      --sb: 3px;
+      --so: 0.7;
       animation-range: contain 7% contain 25%;
     }
 
@@ -3228,12 +3234,12 @@ a {
 
     .flyer--4 {
       --i: 4;
-      --sx: -186cqw;
-      --sy: -36cqw;
-      --sr: -8deg;
-      --ss: 0.7;
-      --sb: 3px;
-      --so: 0.7;
+      --sx: -132cqw;
+      --sy: -98cqw;
+      --sr: -14deg;
+      --ss: 1.1;
+      --sb: 0px;
+      --so: 1;
       animation-range: contain 28% contain 46%;
     }
 
@@ -3401,10 +3407,10 @@ a {
       margin-top: 10px;
     }
 
-    .flyer--1 { --sx: -56cqw; --sy: -92cqw; --ss: 0.66; }
+    .flyer--1 { --sx: -68cqw; --sy: -36cqw; --ss: 0.5; }
     .flyer--2 { --sx: 60cqw; --sy: -104cqw; --ss: 0.58; }
     .flyer--3 { --sx: 66cqw; --sy: -44cqw; --ss: 0.5; }
-    .flyer--4 { --sx: -68cqw; --sy: -36cqw; --ss: 0.5; }
+    .flyer--4 { --sx: -56cqw; --sy: -92cqw; --ss: 0.66; }
     .flyer--5 { --sx: 52cqw; --sy: 8cqw; --ss: 0.62; }
   }
 }

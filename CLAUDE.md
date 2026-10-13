@@ -21,7 +21,8 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   and `MAIL.from` say firmony.ai; when he does, those three change, and so do the test's `site`, the notes'
   firmony.ai, and `wrangler.jsonc` once a route is added.
 - Nothing is deployed. There is no GitHub repository and no Worker yet. The code is committed locally on `main`.
-- All checks pass: `npm test` (49 unit checks) and `npm run test:runtime` (53 checks in workerd).
+- All checks pass: `npm test` (49 unit checks) and `npm run test:runtime` (53 checks in workerd). The fifth
+  design is committed (13 October 2026, afternoon).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -89,8 +90,8 @@ above 2,5 % or accountant cost above 40 € a client.
 - `src/config.ts` holds every fact: brand, company, plans, limits, retention, pictures (`ART`, empty until he
   makes them). `src/copy.ts` holds every text, typeset once (`src/format.ts`: a one-letter word never ends a
   line, a number stays with its unit, "s. r. o.", "§ 7a", dates).
-- Pages: `/` (hero with the receipt, the pains, how it works, AI and the accountant, what is included,
-  e-invoices, prices, the comparison, two ways in, the founder's note, questions, the closing form),
+- Pages: `/` (the opening with the phone, the e-invoice date, the hug, one month, AI and the accountant,
+  everything in one price, prices, the comparison, two ways in, who is behind it, questions, the closing form),
   `/zacat` (the IČO, then the details; `?balik=`, `?nova=1`), `/zacat/hotovo`, `/pravne-informacie` (company,
   privacy, cookies), robots, sitemap, `/healthz`.
 - The comparison is a GET form (`mesacne`, `za-doklad`, `doklady`, `zavierka`, `dph`, `ludia`) computed on the
@@ -106,51 +107,57 @@ above 2,5 % or accountant cost above 40 € a client.
 - Headers: CSP without anything inline or foreign, no framing, HSTS, `noindex` on `/zacat` and on any host but
   firmony.ai; http and www are redirected; a form is accepted only from our own pages and under 8 kB.
 
-## Design (the fourth one, built on the night of 13 October 2026)
+## Design (the fifth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
 glass, Host Grotesk bold) "tuctové"; the third (black, his iridescent glass objects in every section,
 Instrument Serif headlines) "nie najhoršie ... stále nie elita" at 01:10 and at 01:25 "tuctová web stránka z
-umelej inteligencie". He asked what the heads of Apple, Coca-Cola, Palantir and Tesla would say, and at 01:51
-what Thiel, Musk and Huang would want on the site of a startup they invested in. The answers he was given: one
-idea and calm (Apple), the product itself (Tesla, Musk), seriousness instead of toys (Palantir), an own colour,
-type and sentence (Coca-Cola), one sharp truth with a why-now (Thiel: e-invoices from 1 January 2027), and the
-technology shown working (Huang: the machine reading a slip).
+umelej inteligencie"; the fourth (night turning into a white day, a pile of papers flying into a ledger, Geist
+only, his glass icons in the white parts) at 14:09 "nie je to zlé, ale úprimne, nebral by CEO Apple, Nvidia,
+Tesla ... je to slabé". He asked what the heads of Apple, Coca-Cola, Palantir and Tesla would say, and what
+Thiel, Musk and Huang would want on the site of a startup they invested in. The answers he was given: one idea
+and calm (Apple), the product itself (Tesla, Musk), seriousness instead of toys (Palantir), an own colour, type
+and sentence (Coca-Cola), one sharp truth with a why-now (Thiel: e-invoices from 1 January 2027), and the
+technology shown working (Huang: the machine reading a slip). At 14:12 he was told the plan of the fifth:
+black and filmic like Apple's and Robinhood's product pages, one large phone with the app, glass papers flying
+into it, serif headlines with a modern sans, less text, larger pictures.
 
 - Pictures, his words of 01:51 and 01:52: no realistic photographs made by AI ("to vyzerá úboho"); their own
   real photos later; 3D icons that are playful, modern and top quality are welcome, his glass ones included.
-  His founder photo must be a real one.
-- Type: **Geist** (Vercel's, OFL, variable 100 to 900, self-hosted latin and latin-ext, Slovak carons checked)
-  for everything, set large and tight for statements (700, -0.045 to -0.055em) and plainly for reading;
-  **Instrument Serif italic** once, for the founder's own words. A specimen of six sans faces was compared
-  (Geist, Inter Display, Onest, Schibsted Grotesk, Hanken Grotesk, Instrument Sans).
-- Colour: black, white, Apple-like greys (`--mist` #f5f5f7, `--ink` #1d1d1f, `--gray` #6e6e73) and one
-  ultramarine, the colour of the brand (`--blue` #2a3bff; `--blue-night` #7682ff for blue on black). The
-  amber and red of the nagging notifications are their only other colours.
-- The idea, from the name (firma + harmony): the page opens at night on a pile of papers and nagging
-  notifications around the promise; scrolling, the pile flies into one month in order (a ledger: six rows,
-  each ticked) and the night lifts like dawn into a white page; the header turns from dark to light with it.
-  CSS only: a named view timeline on `.settle` (`view-timeline-inset: 0`, or the page's scroll padding shifts
-  it by the header), `timeline-scope` on body for the header, each paper flying from its place (`--x0`,
-  `--y0`, `--r0`) to its row (`--lx`, `--ly`, `--i`, `--row`). Without scroll timelines (Firefox, older
-  Safari) or with reduced motion: the pile is the first screen and the ledger the next, still. On a phone
-  only the four notifications nag, above and below the words; on a short phone none.
-- Then: the date (1. 1. 2027, the e-invoice duty, black band with his glass envelope), the hug read line by
-  line ("Ak vás účtovníctvo stresuje ..."), one month as the client sees it (the machine reading a slip with
-  the entry it proposes, MD 513 / D 221 and the flag that representation is no tax expense; a filed VAT
-  return; a month at a glance), the machine and the person, everything in one price as a receipt that prints,
-  the prices with four promises, the comparison (his glass calculator on its black result), the two ways in,
-  who is behind it (the founder's note and the company as the register has it, with a link to check it in
-  the Business Register, e-mail and telephone), questions, and the close in black with his glass F.
-- His second set of icons (prompts of 01:57, sent at 02:04; the same glass in the brand's blue, real
-  transparent backgrounds; sources in art-src/icons/, cut by `scripts/art.py icon`, which only trims,
-  centres and scales them premultiplied): seed, plant, tree (Štart, Rast, Firma), chip and lens (the machine
-  and the person), rocket and key (the two ways in), seal (the company). They come in as they reach the
-  screen and tilt when their card is pointed at.
-- The pages of the request and the legal page are white.
+  His founder photo must be a real one. At 14:12 he was asked for seven more objects in the same style: a
+  receipt, an invoice sheet, a stack of coins, a calendar page with a tick, an envelope with a document, a
+  bank card, a glass letter F. When they come: `scripts/art.py icon`, then the papers in `ART`
+  (`paperReceipt` and `paperBank` first: the curled slip and the card on a chain do not read as documents).
+- Type: **Newsreader** (Production Type, OFL) for every headline and large figure, light (300 to 350) and
+  set tight; the italic for the second line of the opening and the founder's words. Its files are cut from
+  the variable font with `fontTools.varLib.instancer`: optical size pinned at 60, weights 300 to 500, which
+  took the four files from 461 kB to 175 kB. **Geist** for everything read and every interface.
+- Colour: black (`--black`), Apple's greys on black (`--text` #f5f5f7, `--soft` #a1a1a6, `--dim` #86868b),
+  hairlines of white at 6 to 22 %, and the light of his glass as the one accent: `--iris` (blue #98a8ff,
+  violet #b88dff, pink #ff9dcf) on the opening's second line, the lead plan's frame and what a client saves;
+  `--accent` #8e9bff for links and ticks. Green only for "booked" inside the app, amber for the flag on a
+  slip. The date of the e-invoice band is brushed metal (white to grey).
+- The opening (`.hero`, 300vh, its stage sticky): the promise centred at the top, and below it the top of a
+  phone drawn in CSS (titanium frame, bezel, island, buttons, glass) with Firmony on it, leaning back, five of
+  his glass papers floating around it, near ones sharp and far ones blurred. Scrolling: the words go, the
+  phone rises into the middle and levels, the papers fly one by one into it and each becomes a row of the app
+  (bloček, faktúra, výpis, e-faktúra, priznanie k DPH), the month's bars grow, "Všetko zaúčtované" appears,
+  and the phone steps aside (on a phone: upwards) for "Toto je celé vaše účtovníctvo." Every measure in the
+  phone is in `cqw` of `.hero__device`, and the app's parts have fixed heights, so a paper knows where its
+  row is: its icon 37.4 widths left of the middle, rows 13 widths apart from 1.43 above it (`--ey`); if a
+  part of the app changes height, those numbers change with it. One timeline (`--hero`, `view-timeline-inset:
+  0`), each piece with its own range; `--pw` makes the phone as large as the screen's height allows, `--peek`
+  says how much of it shows under the words at first. Without scroll timelines or with reduced motion: the
+  promise, then the phone fully booked beside its words, two papers resting at its corners.
+- Then: the date, the hug read word by word in the serif, one month as the client sees it on dark stages
+  (the machine reading a white slip with MD 513 / D 221 and the flag; a filed VAT return; a question to the
+  accountant and her answer as a conversation), the machine and the person, everything in one price as a
+  white receipt under a light, the prices (the lead plan framed in the glass's light, figures in the serif),
+  the comparison, the two ways in, who is behind it, questions, and the close with his glass F in a glow.
+- The pages of the request and the legal page are black like the rest.
 - `scripts/dev/preview.mjs <folder>` makes a static copy of the pages for the owner's artifact (relative
   addresses, the stylesheet inlined, the forms stopped with a note); it was published as "Firmony" on
-  13 October 2026 and is republished from the same file path.
+  13 October 2026 and is republished from the same file path (version 5 is the fifth design).
 
 ## Before pushing
 
