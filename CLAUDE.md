@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 20:30)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 20:15)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -43,7 +43,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
      about 21:00): **done at about 19:45**, "Invoices the client issues" below; the artifact (version 5) has them,
      and its bar has "Faktúra u odberateľa", the page a customer opens.
   4. The bank by open banking (Enable Banking), switched on by his registration (he was told about midnight):
-     **done at about 20:30**, "The bank by open banking" below; the artifact (version 6) has it (Platby, "Prepojiť
+     **done at about 20:15**, "The bank by open banking" below; the artifact (version 6) has it (Platby, "Prepojiť
      banku", the sample of a bank's sign-in, the bank linked, invoice 20260007 paid by the money it brought). What
      switches it on is his: item 9 of the list below.
 
