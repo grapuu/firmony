@@ -124,10 +124,15 @@ into it, serif headlines with a modern sans, less text, larger pictures.
 
 - Pictures, his words of 01:51 and 01:52: no realistic photographs made by AI ("to vyzerá úboho"); their own
   real photos later; 3D icons that are playful, modern and top quality are welcome, his glass ones included.
-  His founder photo must be a real one. At 14:12 he was asked for seven more objects in the same style: a
-  receipt, an invoice sheet, a stack of coins, a calendar page with a tick, an envelope with a document, a
-  bank card, a glass letter F. When they come: `scripts/art.py icon`, then the papers in `ART`
-  (`paperReceipt` and `paperBank` first: the curled slip and the card on a chain do not read as documents).
+  His founder photo must be a real one. At 14:12 he was asked for seven more objects in the same style and
+  sent them at 14:51 (sources in art-src/icons/): a slip, an invoice with a tick, a bank card, an envelope
+  with a document, a calendar with a tick (the five papers of the opening, and the slip also beside the
+  machine reading it; the envelope also in the e-invoice band), a stack of coins (what a client saves, in the
+  comparison) and the F (`scripts/art.py logo`, which lays a see-through F on black first: the mark of the
+  close, the notification in the phone, the favicon, the home-screen icons and the shared link's picture,
+  whose name is set in Geist with the accent's full stop). Every picture on the site is now his blue glass
+  except the chat bubbles of the first set. The pictures nothing showed any more were removed from
+  `public/art/`; their sources stay in art-src/.
 - Type: **Newsreader** (Production Type, OFL) for every headline and large figure, light (300 to 350) and
   set tight; the italic for the second line of the opening and the founder's words. Its files are cut from
   the variable font with `fontTools.varLib.instancer`: optical size pinned at 60, weights 300 to 500, which

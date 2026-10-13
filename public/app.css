@@ -1128,14 +1128,14 @@ a {
 }
 
 .embrace__text {
-  max-width: calc(1100px + 2 * var(--gutter));
+  padding-right: calc(var(--gutter) + clamp(0px, 10vw, 160px));
   font-family: var(--serif);
   font-weight: 350;
   font-size: clamp(2.125rem, 4.6vw, 4.25rem);
   line-height: 1.12;
   letter-spacing: -0.022em;
   color: var(--text);
-  text-wrap: pretty;
+  text-wrap: balance;
 }
 
 /* Sections ----------------------------------------------------------------------------------------------- */
@@ -1229,11 +1229,17 @@ a {
 
 .moment__object {
   position: absolute;
-  top: -14px;
-  right: -14px;
-  z-index: -1;
-  width: clamp(110px, 12vw, 172px);
+  top: clamp(14px, 2vw, 28px);
+  right: clamp(14px, 2vw, 28px);
+  z-index: 1;
+  width: clamp(96px, 10vw, 150px);
   pointer-events: none;
+}
+
+/* The slip of glass stands where the paper slip does not: top left. */
+.moment--scan .moment__object {
+  left: clamp(14px, 2vw, 28px);
+  right: auto;
 }
 
 .month__example {
@@ -2336,7 +2342,7 @@ a {
   z-index: -1;
   width: min(1100px, 160vw);
   height: 760px;
-  translate: -50% -30%;
+  translate: -50% 0;
   background: radial-gradient(closest-side, rgb(80 92 255 / 0.32), rgb(150 96 255 / 0.12) 50%, rgb(0 0 0 / 0) 100%);
   pointer-events: none;
 }
@@ -2865,10 +2871,9 @@ a {
     border-radius: 26px;
   }
 
+  /* On a phone the stage is the width of its card: the glass would cover it. */
   .moment__object {
-    width: 96px;
-    top: -10px;
-    right: -10px;
+    display: none;
   }
 
   .receipt__paper {
