@@ -4,10 +4,11 @@
 import type { Child, FC } from 'hono/jsx'
 import { APP, ART, BRAND, PLANS, type Art } from '../config'
 import { formatEur } from '../format'
-import { EXEMPT_NAMES, dayName, dayShort, readableName, signed } from '../app/copy'
+import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../app/copy'
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
 import type { Exempt } from '../app/match'
 import type { Company, Doc, Message, Payment, User } from '../app/store'
+import type { Paper, PoaState } from '../app/papers'
 import { team as t } from '../team/copy'
 import type { ClientRow, QueueDoc, Request, Rule, TeamMember, Thread, ToCheck } from '../team/store'
 import { Tile } from './home'
@@ -167,7 +168,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash
             {admin ? <span role="columnheader">{t.clients.columns.accountant}</span> : null}
           </div>
           {rows.map((row) => {
-            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null
+            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked'
             return (
               <a class={`tbl__row${done ? ' tbl__row--done' : ''}`} role="row" href={`/ucto/klienti/${row.company.id}`}>
                 <span class="tbl__company" role="cell">
@@ -178,6 +179,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash
                   <span class="tbl__sub">
                     <span>{t.clients.plan(planName(row.company.plan))}</span>
                     <span>{row.company.vatPayer ? t.clients.vat : t.clients.noVat}</span>
+                    {row.poa === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.poa}`}>{t.client.poaState[row.poa]}</span>}
                   </span>
                 </span>
                 <span class="tbl__num" role="cell" data-label={t.clients.columns.book}>
@@ -229,6 +231,57 @@ export interface ClientPageProps {
   draft?: string
   /** How the client's bank stands, in a line. */
   bankLine?: string | null
+  /** The power of attorney the client uploaded, the newest first. */
+  papers: Paper[]
+  poa: PoaState
+}
+
+const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
+
+/** The contract as it was concluded, and the power of attorney with what the accountant does with it. */
+const ContractCard: FC<{ company: Company; papers: Paper[]; poa: PoaState; now: number }> = ({ company: c, papers, poa, now }) => {
+  const today = dayOf(now)
+  return (
+    <section class="info" id="zmluva" aria-labelledby="zmluva-t">
+      <h2 id="zmluva-t" class="info__title">
+        {t.client.contract}
+      </h2>
+      <p class="info__lead">
+        {c.contractAt && c.signedBy ? t.client.contractOnline(dayName(dayOf(c.contractAt), today), c.signedBy, app.contract.termsVersion(c.termsVersion ?? '')) : t.client.contractOffline}
+        {c.startOn ? ` ${t.client.start(dayName(c.startOn, today))}` : ''}
+      </p>
+      <p>
+        <span class={`pill ${POA_PILL[poa]}`}>{t.client.poaState[poa]}</span>
+      </p>
+      {papers.length === 0 ? (
+        <p class="info__empty">{t.client.poaMissing}</p>
+      ) : (
+        <>
+          {poa === 'checked' ? null : <p class="info__lead">{t.client.poaLead(c.signedBy)}</p>}
+          <ul class="plain">
+            {papers.map((paper) => (
+              <li class="plain__row plain__row--two">
+                <a class="link plain__name" href={`/ucto/klienti/${c.id}/plna-moc/${paper.id}`}>
+                  {paper.fileName}
+                </a>
+                <span class="plain__sub">
+                  <span>{t.client.poaAdded(whenName(paper.createdAt, now), paper.createdByName)}</span>
+                  <span>{paper.checkedAt ? t.client.poaChecked(dayName(dayOf(paper.checkedAt), today), paper.checkedByName) : t.client.poaWaits}</span>
+                </span>
+                {paper.checkedAt === null && poa !== 'checked' ? (
+                  <form class="plain__action" method="post" action={`/ucto/klienti/${c.id}/plna-moc/${paper.id}/overit`}>
+                    <button class="btn btn--blue btn--small" type="submit">
+                      {t.client.poaCheck}
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  )
 }
 
 export const ClientPage: FC<ClientPageProps> = (p) => {
@@ -267,6 +320,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
         </a>
         <a href="#spravy">{t.client.messages}</a>
         <a href="#chyba">{t.clients.missing}</a>
+        <a href="#zmluva">{t.client.poaState[p.poa]}</a>
         <a href="#udaje">{t.client.details}</a>
       </nav>
       <div class="pgrid pgrid--wide">
@@ -375,6 +429,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           </section>
         </div>
         <aside class="pgrid__side">
+          <ContractCard company={c} papers={p.papers} poa={p.poa} now={p.now} />
           <section class="info" id="udaje" aria-labelledby="udaje-t">
             <h2 id="udaje-t" class="info__title">
               {t.client.details}

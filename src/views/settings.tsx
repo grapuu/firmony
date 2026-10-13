@@ -1,9 +1,11 @@
 // Firma a nastavenia: the company's details as we keep them, its address for documents, its people (an owner
 // invites a partner or a colleague), the reminders, the app on the phone, the other companies, signing out.
 import type { FC } from 'hono/jsx'
-import { app } from '../app/copy'
+import { app, dayName } from '../app/copy'
+import type { PoaState } from '../app/papers'
 import type { Company, Person } from '../app/store'
 import { Flash, Heading, planName } from './inside'
+import { dayOf } from './inside-pages'
 
 export interface CompanyPageProps {
   company: Company
@@ -14,11 +16,15 @@ export interface CompanyPageProps {
   invite: { name: string; email: string }
   errors: { name?: string; email?: string; form?: string }
   flash?: string | null
+  /** Where the power of attorney stands. */
+  poa: PoaState
 }
+
+const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
 
 const c = app.company
 
-export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash }) => {
+export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa }) => {
   const owner = me.role === 'owner'
   const others = companies.filter((other) => other.id !== company.id)
   return (
@@ -76,6 +82,47 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
               <a class="link" href="/app/spravy">
                 {app.home.write}
               </a>
+            </p>
+          </section>
+
+          <section class="info" id="zmluva" aria-labelledby="zmluva-t">
+            <h2 id="zmluva-t" class="info__title">
+              {app.contract.title}
+            </h2>
+            <dl class="kv">
+              <div>
+                <dt>{app.contract.label}</dt>
+                <dd class="kv__long">{company.contractAt && company.signedBy ? app.contract.concluded(dayName(dayOf(company.contractAt)), company.signedBy) : app.contract.offline}</dd>
+              </div>
+              {company.startOn ? (
+                <div>
+                  <dt>{app.contract.start}</dt>
+                  <dd>{dayName(company.startOn)}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>{app.contract.terms}</dt>
+                <dd>
+                  <a class="link" href="/podmienky">
+                    {company.termsVersion ? app.contract.termsVersion(company.termsVersion) : app.contract.terms}
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt>{app.contract.poa}</dt>
+                <dd class="kv__long">
+                  <span class={`pill ${POA_PILL[poa]}`}>{app.poa.state[poa]}</span>{' '}
+                  <a class="link" href="/app/plna-moc">
+                    {app.contract.poaOpen}
+                  </a>
+                </dd>
+              </div>
+            </dl>
+            <p class="info__source">
+              <a class="link" href="/app/prechod">
+                {app.contract.switching}
+              </a>
+              . {app.contract.switchingLead}
             </p>
           </section>
 

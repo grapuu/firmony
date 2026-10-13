@@ -3953,6 +3953,168 @@ select.field__input {
   font-size: 0.8125rem;
 }
 
+/* A paper to sign: the power of attorney, the notice to the former accountant. Set as a document on the sheet,
+   with lines to write on where we do not know what goes there. */
+.deed {
+  gap: 18px;
+  line-height: 1.62;
+}
+
+.deed__title {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+
+.deed__block {
+  display: grid;
+  gap: 6px;
+}
+
+.deed__label {
+  color: var(--soft);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.deed__name {
+  color: var(--ink);
+}
+
+.deed__grants {
+  color: var(--ink);
+  font-weight: 600;
+  text-align: center;
+}
+
+.deed__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.deed__blank {
+  display: inline-block;
+  min-width: 7em;
+  height: 1.1em;
+  border-bottom: 1px dotted var(--soft);
+  vertical-align: baseline;
+}
+
+.deed__blank--wide {
+  min-width: 12em;
+}
+
+.deed__place {
+  margin-top: 8px;
+}
+
+.deed__place--right {
+  text-align: right;
+}
+
+.deed__signs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+  margin-top: 4px;
+}
+
+.deed__signs--one {
+  grid-template-columns: minmax(0, 0.5fr);
+  justify-content: end;
+}
+
+.deed__sign {
+  display: grid;
+  align-content: end;
+  gap: 2px;
+}
+
+.deed__signlabel {
+  color: var(--soft);
+  font-size: 0.8125rem;
+}
+
+.deed__line {
+  height: 52px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--text);
+}
+
+.deed__signname {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.deed__signof {
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.deed__parties {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.deed__party--to {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--mist);
+}
+
+.deed__subject {
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* Where the power of attorney stands, beside the sheet. */
+.poastate {
+  border-left: 4px solid var(--amber);
+}
+
+.poastate--waiting {
+  border-left-color: var(--blue);
+}
+
+.poastate--checked {
+  border-left-color: var(--green);
+}
+
+.poastate__text {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.poa__form {
+  flex-wrap: wrap;
+}
+
+.poa__files {
+  margin-top: 8px;
+  color: var(--soft);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* A client whose power of attorney is not checked yet, in the accountant's list. */
+.tbl__flag--missing {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.tbl__flag--waiting {
+  color: var(--blue);
+  font-weight: 600;
+}
+
 /* The customer's page of an invoice. */
 .inside--public {
   background: var(--canvas);
@@ -4019,6 +4181,11 @@ select.field__input {
     position: static;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
+
+  /* A paper to sign: what to do with it comes before the long sheet on a narrow screen. */
+  .invoice--side-first .invoice__side {
+    order: -1;
+  }
 }
 
 @media (max-width: 760px) {
@@ -4080,6 +4247,19 @@ select.field__input {
   .sheet__table th:not(:first-child, :last-child),
   .sheet__table td:not(:first-child, :last-child) {
     display: none;
+  }
+
+  .deed__signs,
+  .deed__parties {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deed__signs--one {
+    justify-content: stretch;
+  }
+
+  .deed__place--right {
+    text-align: left;
   }
 
   .sheet__lineinfo {
@@ -4384,4 +4564,8 @@ select.field__input {
 
 .bankpick .more__summary {
   padding-top: 0;
+}
+
+.plain__action {
+  margin-top: 6px;
 }

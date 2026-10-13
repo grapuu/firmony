@@ -184,7 +184,7 @@ export interface OverviewProps {
   last: Message | null
   now: number
   flash?: string | null
-  /** The first steps of a new company, until the first three are done. */
+  /** The first steps of a new company, until the three that matter are done. */
   steps?: FirstStepsState | null
   /** Who is signed in: a message of another person of the company carries that person's name. */
   me?: string
@@ -194,19 +194,28 @@ export interface OverviewProps {
 }
 
 export interface FirstStepsState {
+  /** The power of attorney is uploaded: without it we file nothing for the company. */
+  poa: boolean
   payments: boolean
   upload: boolean
   email: boolean
   people: boolean
+  /** The company changes accountants (what its request said): the notice to the former one is offered. */
+  switching: boolean
 }
 
-/** A new company's first steps, as Dougs and Pennylane open their apps: three that matter, two for later. */
+/**
+ * A new company's first steps, as Dougs and Pennylane open their apps: three that matter (the power of attorney,
+ * the bank, the first document), the rest for later.
+ */
 const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps, bankReady }) => {
   const s = app.start.steps
   const list = [
+    { done: steps.poa, href: '/app/plna-moc', text: s.poa, optional: false },
     bankReady ? { done: steps.payments, href: '/app/banka#prepojit', text: s.bank, optional: false } : { done: steps.payments, href: '/app/platby#vypis', text: s.payments, optional: false },
     { done: steps.upload, href: '/app/doklady#pridat', text: s.upload, optional: false },
-    { done: steps.email, href: '/app/firma#doklady-emailom', text: s.email, optional: false },
+    ...(steps.switching ? [{ done: false, href: '/app/prechod', text: s.switching, optional: true }] : []),
+    { done: steps.email, href: '/app/firma#doklady-emailom', text: s.email, optional: true },
     { done: steps.people, href: '/app/firma#ludia', text: s.people, optional: true },
     { done: false, href: '/app/firma#mobil', text: s.phone, optional: true },
   ]

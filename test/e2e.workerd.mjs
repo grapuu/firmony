@@ -405,6 +405,18 @@ async function signIn(email) {
 }
 const as = (cookie) => ({
   get: (path) => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.30', cookie } }),
+  async upload(path, file) {
+    const form = new FormData()
+    form.append('file', new Blob([file.bytes], { type: file.type ?? 'application/octet-stream' }), file.name)
+    const encoded = new Request('https://x/', { method: 'POST', body: form })
+    const body = new Uint8Array(await encoded.arrayBuffer())
+    return mf.dispatchFetch(`${site}${path}`, {
+      method: 'POST',
+      body,
+      redirect: 'manual',
+      headers: { 'content-type': encoded.headers.get('content-type'), 'content-length': String(body.length), 'cf-connecting-ip': '203.0.113.30', origin: site, cookie },
+    })
+  },
   post(path, fields) {
     const body = new URLSearchParams(fields).toString()
     return mf.dispatchFetch(`${site}${path}`, {
@@ -697,9 +709,76 @@ check('a search that finds nothing says so', /nič nenašli/.test(await res.text
 // A new company is shown its first steps
 res = await peter.get('/app')
 page = await res.text()
-check('a new company is shown its first steps, the bank first', page.includes('Začíname') && page.includes('href="/app/banka#prepojit"') && page.includes('href="/app/firma#doklady-emailom"'))
+check(
+  'a new company is shown its first steps, the power of attorney and the bank first',
+  page.includes('Začíname') && page.indexOf('href="/app/plna-moc"') > 0 && page.indexOf('href="/app/plna-moc"') < page.indexOf('href="/app/banka#prepojit"') && page.includes('href="/app/firma#doklady-emailom"'),
+)
+check('a company that is founded is not offered the notice to a former accountant', !page.includes('href="/app/prechod"'))
 res = await anna.get('/app')
-check('one that is under way is not', !(await res.text()).includes('Začíname'))
+page = await res.text()
+check('a company with payments and documents but no power of attorney is still shown its first steps', page.includes('Začíname') && page.includes('href="/app/plna-moc"'))
+
+// The power of attorney: a paper of the company's own to sign, the signed file back, the accountant's check
+res = await anna.get('/app/plna-moc')
+page = await res.text()
+check(
+  'the power of attorney is the company\'s own paper, ready to sign',
+  res.status === 200 && page.includes('Plnomocenstvo') && page.includes('Firma A s. r. o.') && page.replace(/\u00a0/g, ' ').includes('IČO 57 442 452') && page.includes('europio s. r. o.') && page.includes('Čakáme na podpis') && page.includes('action="/app/plna-moc"'),
+)
+res = await anna.upload('/app/plna-moc', { name: 'plna-moc.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('podpisane perom') })
+check('a file is taken by what it is, not by its name', res.status === 422 && (await res.text()).includes('nevieme otvoriť'))
+const asice = (() => {
+  const type = 'application/vnd.etsi.asic-e+zip'
+  const head = new Uint8Array(30)
+  head.set([0x50, 0x4b, 0x03, 0x04, 0x0a, 0x00])
+  const view = new DataView(head.buffer)
+  view.setUint32(18, type.length, true)
+  view.setUint32(22, type.length, true)
+  view.setUint16(26, 8, true)
+  return new Uint8Array([...head, ...new TextEncoder().encode(`mimetype${type}`), 0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])
+})()
+const beforePoa = (await sent()).length
+res = await anna.upload('/app/plna-moc', { name: 'plnomocenstvo.asice', bytes: asice })
+check('the container from the eID signer is taken', res.status === 303 && res.headers.get('location') === '/app/plna-moc?ok=plna-moc', res.status)
+await settle()
+check('and the accountant is told to check it', (await sent()).slice(beforePoa).some((m) => m.to === 'lucia@firmony.test' && m.subject === 'Plná moc od klienta: Firma A s. r. o.' && m.text.includes('/ucto/klienti/co-a#zmluva')))
+const poaRow = await db.prepare("SELECT id, file_type, file_name, r2_key, checked_at FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").first()
+check('it is kept as what it is, under the company', poaRow?.file_type === 'application/vnd.etsi.asic-e+zip' && poaRow.file_name === 'plnomocenstvo.asice' && poaRow.r2_key.startsWith('companies/co-a/papers/') && poaRow.checked_at === null)
+res = await anna.get(`/app/plna-moc/${poaRow?.id}`)
+check('the client downloads it back, never shown as a page', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && res.headers.get('content-type') === 'application/octet-stream')
+res = await peter.get(`/app/plna-moc/${poaRow?.id}`)
+check('another company does not get it', res.status === 404)
+res = await anna.get('/app/plna-moc?ok=plna-moc')
+check('the page then says that we check it', (await res.text()).includes('Overujeme ju'))
+const signedPdf = new Uint8Array([...new TextEncoder().encode('%PDF-1.7\n'), ...new Uint8Array(40_000).fill(32)])
+res = await anna.upload('/app/plna-moc', { name: 'plna moc podpisana.pdf', type: 'application/pdf', bytes: signedPdf })
+check('a signed PDF of real size arrives too, under a name of ours', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM company_files WHERE company_id = 'co-a' AND file_name = 'plna moc podpisana.pdf' AND file_type = 'application/pdf'").first())?.n === 1, res.status)
+res = await anna.get('/app')
+check('a company with its power of attorney, its payments and documents is no longer shown its first steps', !(await res.text()).includes('Začíname'))
+res = await acc.get('/ucto')
+check('the accountant\'s list says it waits for her', (await res.text()).includes('Plná moc na overenie'))
+res = await acc.get('/ucto/klienti/co-a')
+page = await res.text()
+check('her client\'s page has it with the button to mark it', page.includes(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`) && page.includes('plnomocenstvo.asice'))
+res = await acc.get(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}`)
+check('and she opens it', res.status === 200)
+res = await admin.post(`/ucto/klienti/co-b/plna-moc/${poaRow?.id}/overit`, {})
+check('a paper is checked only under its own company', res.status === 404 && (await db.prepare('SELECT checked_at FROM company_files WHERE id = ?').bind(poaRow?.id ?? '').first())?.checked_at === null)
+res = await acc.post(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`, {})
+const poaChecked = await db.prepare('SELECT checked_at, checked_by FROM company_files WHERE id = ?').bind(poaRow?.id ?? '').first()
+check('the accountant marks it checked and filed, on record', res.status === 303 && poaChecked?.checked_by === lucia?.id && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'poa.checked'").first())?.n === 1)
+res = await acc.post(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`, {})
+check('twice is once', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'poa.checked'").first())?.n === 1)
+res = await anna.get('/app/firma')
+page = await res.text()
+check('the client sees it on the company\'s page, with the notice for the former accountant', page.includes('Máme ju') && page.includes('href="/app/prechod"'))
+
+// The notice to the former accountant, filled in from what was typed
+res = await anna.get(`/app/prechod?komu=${encodeURIComponent('Účtovníctvo Nová s. r. o.')}&od=${encodeURIComponent('1. 3. 2025')}&do=${encodeURIComponent('31. 12. 2026')}`)
+page = (await res.text()).replace(/\u00a0/g, ' ')
+check('the notice is the company\'s, to whom it was typed, with the days in words', res.status === 200 && page.includes('Firma A s. r. o.') && page.includes('Účtovníctvo Nová s. r. o.') && page.includes('zo dňa 1. marca 2025') && page.includes('ku dňu 31. decembra 2026') && page.includes('odvolávame plnomocenstvo'))
+res = await anna.get(`/app/prechod?od=${encodeURIComponent('32. 1. 2025')}`)
+check('a day that does not exist is said so', res.status === 422 && (await res.text()).includes(`v${NB}tvare`))
 
 // Reminders: on Monday at nine, and on the 5th before the deadline; never to somebody who turned them off
 /** The moment in Bratislava of a day at 9:05, in milliseconds. */
@@ -1023,6 +1102,16 @@ check('we are told of the contract', (await sent()).some((m) => m.to === 'ahoj@f
 res = await get('/app?ok=zmluva', { headers: { cookie: contractCookie } })
 page = await res.text()
 check('the new client lands in the app, welcomed', res.status === 200 && page.includes('Zmluva je uzavretá') && page.includes('Zelený dvor'))
+check('with the power of attorney first, and the notice for the former accountant, which the request said', page.includes('Začíname') && page.includes('href="/app/plna-moc"') && page.includes('href="/app/prechod"'))
+res = await get('/app/plna-moc', { headers: { cookie: contractCookie } })
+page = (await res.text()).replace(/\u00a0/g, ' ')
+check(
+  'the power of attorney names the director who concluded the contract, and the register',
+  page.includes('v mene ktorej koná Tomáš Dvorský, konateľ') && page.includes('zapísaná v Obchodnom registri Mestského súdu Košice, oddiel Sro, vložka č. 58123/V') && page.includes('IČO 55 012 345'),
+)
+res = await get('/app/firma', { headers: { cookie: contractCookie } })
+page = (await res.text()).replace(/\u00a0/g, ' ')
+check('the company page says when and by whom the contract was concluded', page.includes('Uzavretá online') && page.includes('Uzavrel(a) Tomáš Dvorský, konateľ') && page.includes('Čakáme na podpis'))
 res = await post(orderLink, { plan: 'firma', start: months[2], director: 'Mgr. Lucia Zelená', agree: '1' }, { ip: '198.51.100.21' })
 page = await res.text()
 check('the same contract cannot be concluded twice', res.status === 200 && page.includes('Zmluva je uzavretá') && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 1 && (await db.prepare("SELECT plan FROM orders WHERE ico = '55012345'").first())?.plan === 'rast')

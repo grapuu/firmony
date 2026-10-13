@@ -87,6 +87,21 @@ export const team = typesetAll({
     ruleNoDeduct: 'DPH sa neodpočíta',
     owner: 'majiteľ',
     member: 'člen',
+    contract: 'Zmluva a plná moc',
+    contractOnline: (when: string, who: string, version: string) => typeset(`Uzavretá online ${when}, ${who}. Obchodné podmienky: ${version}.`),
+    contractOffline: 'Zmluva nebola uzavretá online.',
+    start: (day: string) => typeset(`Začiatok ${day}.`),
+    poaMissing: 'Plnú moc klient ešte nenahral. V aplikácii ju má medzi prvými krokmi.',
+    poaLead: (director: string | null) =>
+      typeset(
+        `Skontrolujte, že ju podpísal ${director ? `konateľ ${director}` : 'konateľ z obchodného registra'}, a podajte ju na finančnú správu a do poisťovní. Potom ju označte ako overenú.`,
+      ),
+    poaCheck: 'Overená a podaná',
+    poaChecked: (when: string, who: string | null) => typeset(who ? `Overená ${when}, ${who}` : `Overená ${when}`),
+    poaAdded: (when: string, who: string | null) => typeset(who ? `${when}, ${who}` : when),
+    poaWaits: 'Na overenie',
+    poaFlash: 'Plnú moc sme označili ako overenú.',
+    poaState: { missing: 'Plná moc chýba', waiting: 'Plná moc na overenie', checked: 'Plná moc overená' },
   },
   book: {
     title: 'Zaúčtovať doklad',

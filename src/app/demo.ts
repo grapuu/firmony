@@ -9,6 +9,7 @@
 // Everything is dated from today, so it always looks current. Every document has its original: a small PDF made
 // here from its own figures, so that "Otvoriť originál" opens something that says what the form says.
 // It exists only where the Worker is told so (DEMO=1 on a developer's own machine: src/app/routes.tsx).
+import { TERMS_VERSION } from '../config'
 import { now } from '../db'
 import { eventStatement, insertPaymentStatement, messageStatement } from './store'
 
@@ -264,6 +265,22 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
     )
   }
 
+  // Martin signed the power of attorney with his eID when Ukážková firma started, and Lucia checked and filed it.
+  // Eva has not signed hers yet: Ateliér Nova shows it among its first steps.
+  const poaKey = `companies/${c1}/papers/demo-poa-1.pdf`
+  const poaPdf = demoPdf(420, 595, [
+    { text: 'Plnomocenstvo', size: 15, bold: true },
+    { text: 'Splnomocniteľ: Ukážková firma s. r. o., Hlavná 1, 040 01 Košice', gap: 14 },
+    { text: 'v mene ktorej koná Martin Novák, konateľ' },
+    { text: 'udeľuje plnomocenstvo', gap: 10 },
+    { text: 'Splnomocnenec: europio s. r. o., K lesu 2218/39A, 040 18 Košice', gap: 10 },
+    { text: 'na zastupovanie pri správe daní, pred Sociálnou poisťovňou,', gap: 10 },
+    { text: 'zdravotnými poisťovňami a v registri účtovných závierok.' },
+    { text: 'Podpísané kvalifikovaným elektronickým podpisom: Martin Novák', gap: 18 },
+  ])
+  if (files) await files.put(poaKey, poaPdf, { httpMetadata: { contentType: 'application/pdf' } })
+  const startOf = (days: number) => `${shift(today, days).slice(0, 7)}-01`
+
   await db.batch([
     // The team: Christian runs it, Lucia and Jana keep the books.
     user(DEMO.admin, 'spravca@firmony.test', 'Christian Juhás', 'admin'),
@@ -273,11 +290,18 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
     user(DEMO.user, DEMO.email, 'Martin Novák', null),
     user(DEMO.secondUser, 'eva@firmony.test', 'Eva Kollárová', null),
     db
-      .prepare('INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo, note) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?)')
-      .bind(c1, ts - 40 * 86400, 'Ukážková firma s. r. o.', 'Hlavná 1, 040 01 Košice', 'rast', 'k7m2qx4d', DEMO.accountant, 'Martin chce mať prehľad o DPH do 20. v mesiaci.'),
+      .prepare(
+        'INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo, note, contract_at, terms_version, signed_by, start_on) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?, ?, ?, ?, ?)',
+      )
+      .bind(c1, ts - 40 * 86400, 'Ukážková firma s. r. o.', 'Hlavná 1, 040 01 Košice', 'rast', 'k7m2qx4d', DEMO.accountant, 'Martin chce mať prehľad o DPH do 20. v mesiaci.', ts - 41 * 86400, TERMS_VERSION, 'Martin Novák', startOf(-40)),
     db
-      .prepare('INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo) VALUES (?, ?, ?, ?, 0, ?, ?, ?, 1)')
-      .bind(c2, ts - 30 * 86400, 'Ateliér Nova s. r. o.', 'Mlynská 8, 040 01 Košice', 'start', 'n8w3pa5t', DEMO.accountant2),
+      .prepare('INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo, contract_at, terms_version, signed_by, start_on) VALUES (?, ?, ?, ?, 0, ?, ?, ?, 1, ?, ?, ?, ?)')
+      .bind(c2, ts - 30 * 86400, 'Ateliér Nova s. r. o.', 'Mlynská 8, 040 01 Košice', 'start', 'n8w3pa5t', DEMO.accountant2, ts - 31 * 86400, TERMS_VERSION, 'Eva Kollárová', startOf(-30)),
+    db
+      .prepare(
+        "INSERT INTO company_files (id, company_id, kind, created_at, created_by, file_name, file_type, file_size, r2_key, checked_at, checked_by) VALUES ('demo-poa-1', ?, 'poa', ?, ?, 'plnomocenstvo-podpisane.pdf', 'application/pdf', ?, ?, ?, ?)",
+      )
+      .bind(c1, ts - 39 * 86400, DEMO.user, poaPdf.byteLength, poaKey, ts - 38 * 86400, DEMO.accountant),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)").bind(c1, DEMO.user, ts - 40 * 86400),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)").bind(c2, DEMO.secondUser, ts - 30 * 86400),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'member', ?, ?)").bind(c2, DEMO.user, ts - 29 * 86400, DEMO.secondUser),

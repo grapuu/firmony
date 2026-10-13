@@ -13,6 +13,8 @@ import { Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '..
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
 import { BankPage } from '../views/bank'
+import { PoaPage, SwitchPage } from '../views/papers'
+import { getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
 import { checkValues, getInvoice, invoiceLines, linesOf, listInvoices, plainIban, saveInvoiceStatements, totalsOf, ublOf, type Errors as InvoiceErrors, type InvoiceValues, type Line, type LineInput, type StoredInvoice } from './invoices'
 import { dayOfText, textDay } from './booking'
@@ -298,13 +300,22 @@ appRoutes.get('/', async (c) => {
       .prepare(
         `SELECT EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'upload') AS upload,
                 EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'email') AS email,
-                (SELECT COUNT(*) FROM members WHERE company_id = ?1) AS people`,
+                EXISTS (SELECT 1 FROM company_files WHERE company_id = ?1 AND kind = 'poa') AS poa,
+                (SELECT COUNT(*) FROM members WHERE company_id = ?1) AS people,
+                (SELECT r.situation FROM companies co JOIN requests r ON r.id = co.request_id WHERE co.id = ?1) AS situation`,
       )
       .bind(company)
-      .first<{ upload: number; email: number; people: number }>(),
+      .first<{ upload: number; email: number; poa: number; people: number; situation: string | null }>(),
   ])
   const suggested = await suggestions(db, company, missingAll)
-  const steps = { payments: (counts?.n ?? 0) > 0, upload: started?.upload === 1, email: started?.email === 1, people: (started?.people ?? 1) > 1 }
+  const steps = {
+    poa: started?.poa === 1,
+    payments: (counts?.n ?? 0) > 0,
+    upload: started?.upload === 1,
+    email: started?.email === 1,
+    people: (started?.people ?? 1) > 1,
+    switching: started?.situation === 'switch',
+  }
   const ready = bankReady(c.env)
   const bankNotice = ready ? noticeOf(await linksOf(db, company)) : null
   return shell(
@@ -326,7 +337,7 @@ appRoutes.get('/', async (c) => {
       last={messages[0] ?? null}
       now={now()}
       flash={flashOf(c)}
-      steps={steps.payments && steps.upload && steps.email ? null : steps}
+      steps={steps.poa && steps.payments && steps.upload ? null : steps}
       me={who.user.id}
       bankReady={ready}
       bankNotice={bankNotice}
@@ -744,13 +755,13 @@ appRoutes.post('/spravy', async (c) => {
 async function companyPage(c: Ctx, extra: { invite?: { name: string; email: string }; errors?: { name?: string; email?: string; form?: string } } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const db = c.env.DB
-  const [people, companies] = await Promise.all([peopleOf(db, who.company.id), companiesOf(db, who.user.id)])
+  const [people, companies, papers] = await Promise.all([peopleOf(db, who.company.id), companiesOf(db, who.user.id), papersOf(db, who.company.id, 'poa')])
   const me = people.find((p) => p.id === who.user.id) ?? { ...who.user, role: who.role }
   return shell(
     c,
     'company',
     t.company.title,
-    <CompanyPage company={who.company} people={people} me={me} companies={companies} inbox={inboxAddress(who.company)} invite={extra.invite ?? { name: '', email: '' }} errors={extra.errors ?? {}} flash={flashOf(c)} />,
+    <CompanyPage company={who.company} people={people} me={me} companies={companies} inbox={inboxAddress(who.company)} invite={extra.invite ?? { name: '', email: '' }} errors={extra.errors ?? {}} flash={flashOf(c)} poa={poaStateOf(papers)} />,
     status,
   )
 }
@@ -822,6 +833,79 @@ appRoutes.post('/firma/prepnut', async (c) => {
   const company = typeof body.firma === 'string' && ID.test(body.firma) ? body.firma : ''
   await c.env.DB.batch([switchStatement(c.env.DB, who.session, who.user.id, company)])
   return c.redirect('/app', 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The papers of the start: the power of attorney for us, the notice to the former accountant (papers.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+async function poaPage(c: Ctx, error: string | null = null, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const papers = await papersOf(c.env.DB, who.company.id, 'poa')
+  return shell(
+    c,
+    'company',
+    t.poa.title,
+    <PoaPage company={who.company} papers={papers} state={poaStateOf(papers)} today={today()} now={now()} flash={c.req.query('ok') === 'plna-moc' ? t.poa.flash : null} error={error} />,
+    status,
+  )
+}
+
+appRoutes.get('/plna-moc', (c) => poaPage(c))
+
+appRoutes.post('/plna-moc', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  if (!(await withinLimit(db, 'poa', who.company.id, 10, 3600))) return poaPage(c, t.messages.throttle, 429)
+  const body = await c.req.parseBody()
+  const raw = body.file
+  const file = typeof raw === 'object' && raw !== null && 'arrayBuffer' in raw && raw.size > 0 ? raw : null
+  if (!file) return poaPage(c, t.poa.none, 422)
+  if (file.size > APP.fileBytes) return poaPage(c, t.poa.large, 422)
+  const company = who.company
+  const kept = await keepPaper(db, c.env.FILES, { company: company.id, user: who.user.id }, 'poa', { name: (file.name || 'plna-moc').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) }, (paper) => [
+    queueStatement(db, {
+      key: `poa:${paper.id}`,
+      to: company.accountantEmail ?? BRAND.email,
+      subject: t.poa.mailSubject(company.name),
+      body: t.poa.mailBody(who.user.name, company.name, paper.name, `${siteOrigin(c)}/ucto/klienti/${company.id}#zmluva`),
+    }),
+  ])
+  if (!kept.ok) {
+    const answer = { none: [t.poa.none, 422], large: [t.poa.large, 422], type: [t.poa.refused, 422], many: [t.poa.many, 409], storage: [t.poa.noStorage, 503] } as const
+    const [text, code] = answer[kept.reason]
+    return poaPage(c, text, code)
+  }
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/app/plna-moc?ok=plna-moc', 303)
+})
+
+/** A paper's own file, to the company it belongs to: shown, or downloaded when it is a signature container. */
+appRoutes.get('/plna-moc/:id', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const paper = ID.test(id) ? await getPaper(c.env.DB, who.company.id, id) : null
+  const answer = paper ? await paperResponse(c.env.FILES, paper) : null
+  return answer ?? c.notFound()
+})
+
+/** The notice to the former accountant: what is typed in the side's form goes only into this page's address. */
+appRoutes.get('/prechod', async (c) => {
+  const who = c.get('who')
+  const q = (name: string, max: number) => (c.req.query(name) ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+  const values = { to: q('komu', 120), toAddress: q('adresa', 160), since: q('od', 20), until: q('do', 20) }
+  const since = dayOfText(values.since)
+  const until = dayOfText(values.until)
+  const errors: { since?: string; until?: string } = {}
+  if (since === null) errors.since = t.switching.dayHint
+  if (until === null) errors.until = t.switching.dayHint
+  return shell(
+    c,
+    'company',
+    t.switching.title,
+    <SwitchPage company={who.company} values={values} since={since ? dayName(since) : null} until={until ? dayName(until) : null} errors={errors} />,
+    since === null || until === null ? 422 : 200,
+  )
 })
 
 // ---------------------------------------------------------------------------------------------------------------

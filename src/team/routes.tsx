@@ -17,6 +17,7 @@ import { linksOf } from '../app/bank'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
+import { checkPaperStatement, getPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
 import { currentWho, newLink, startSession } from '../app/session'
 import {
   checkStatement,
@@ -177,6 +178,8 @@ function flashOf(c: Ctx): string | null {
       return t.newClient.createdMail
     case 'tim':
       return t.people.added
+    case 'plna-moc':
+      return t.client.poaFlash
     default:
       return null
   }
@@ -199,7 +202,7 @@ teamRoutes.get('/', async (c) => {
 async function clientPage(c: Ctx, company: Company, extra: { error?: string; draft?: string } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const db = c.env.DB
-  const [members, queue, toCheck, missing, messages, rules, accountants] = await Promise.all([
+  const [members, queue, toCheck, missing, messages, rules, accountants, papers] = await Promise.all([
     membersOf(db, company.id),
     bookingQueue(db, who.user, true, company.id),
     paymentsToCheck(db, company.id),
@@ -207,6 +210,7 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
     listMessages(db, company.id),
     rulesOf(db, company.id),
     isAdmin(who.user) ? accountantsList(db) : Promise.resolve([]),
+    papersOf(db, company.id, 'poa'),
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
@@ -232,6 +236,8 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
       month={day.slice(0, 7)}
       flash={flashOf(c)}
       bankLine={bankLine}
+      papers={papers}
+      poa={poaStateOf(papers)}
       {...extra}
     />,
     status,
@@ -425,6 +431,30 @@ teamRoutes.get('/klienti/:id/export', async (c) => {
       'Cache-Control': 'private, no-store',
     },
   })
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The client's power of attorney: its file, and the mark that it was checked and filed
+// ---------------------------------------------------------------------------------------------------------------
+
+teamRoutes.get('/klienti/:id/plna-moc/:file', async (c) => {
+  const company = await companyParam(c)
+  const id = c.req.param('file')
+  const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
+  const answer = paper ? await paperResponse(c.env.FILES, paper) : null
+  return answer ?? missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/plna-moc/:file/overit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  const id = c.req.param('file')
+  const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
+  if (!company || !paper) return missingPage(c)
+  const db = c.env.DB
+  const [checked] = await db.batch([checkPaperStatement(db, company.id, paper.id, who.user.id)])
+  if ((checked?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'poa.checked', subject: paper.id })])
+  return c.redirect(`/ucto/klienti/${company.id}?ok=plna-moc#zmluva`, 303)
 })
 
 // ---------------------------------------------------------------------------------------------------------------

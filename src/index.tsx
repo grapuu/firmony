@@ -67,7 +67,7 @@ const APP_CONTENT_SECURITY_POLICY = [
 ].join('; ')
 
 /** Where a client's files arrive: a request there may carry up to APP.uploadBytes. */
-const UPLOADS = /^\/app\/(doklady|platby\/[^/]+\/doklad|banka)$/
+const UPLOADS = /^\/app\/(doklady|platby\/[^/]+\/doklad|banka|plna-moc)$/
 
 const PERMISSIONS_POLICY = ['accelerometer', 'camera', 'display-capture', 'geolocation', 'gyroscope', 'microphone', 'payment', 'usb', 'browsing-topics']
   .map((feature) => `${feature}=()`)

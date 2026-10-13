@@ -13,21 +13,22 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  ['src/app/routes.tsx', "  if (site && site !== 'same-origin' && site !== 'none') return c.redirect('/app/banka', 303)\n", '', 'another site cannot send a client off to the bank'],
-  ['src/app/bank.ts', "  if (tx.status && tx.status !== 'BOOK') return null\n", '', 'only what is booked is a payment'],
-  ['src/app/store.ts', '      if (twin >= 0) {', '      if (false) {', 'a payment a statement brought is not brought twice by the bank'],
-  ['src/app/store.ts', '        others.splice(twin, 1)\n', '', 'one payment of a statement stands for one of the bank'],
-  ['src/app/store.ts', '    if (!mine.has(entry.ref)) {', '    if (true) {', 'a payment already read takes no other payment\'s place'],
-  ['src/app/bank.ts', "(tried_at IS NULL OR tried_at < ?)", '(1 OR ?)', 'the bank is read every six hours, never more often'],
-  ['src/app/bank.ts', '    const ended = err instanceof BankError && (status === 401 || (code !== null && ENDED.has(code)))', '    const ended = false', 'a consent the bank says is over is marked so'],
-  ['src/app/bank.ts', 'l.validUntil - at < BANK.renewDays * 86400', 'l.validUntil - at < 0', 'a consent that ends soon is said on the overview'],
-  ['src/app/remind.ts', '          key: `bank-renew:${link.id}:${owner.id}`,', '          key: `bank-renew:${link.id}:${owner.id}:${Math.random()}`,', 'the renewal is asked for once'],
-  ['src/app/bank.ts', "  if (link.session_id && bankReady(env)) await call(env, 'DELETE', `/sessions/${encodeURIComponent(link.session_id)}`).catch(() => null)\n", '', 'an unlinked consent is closed at the bank'],
-  ['src/app/match.ts', '    if (theOne && (byDocument', '    if (false && theOne && (byDocument', 'the number of an invoice decides which of two of the same amount is paid'],
-  ['src/app/bank.ts', '  if (present) {', '  if (false) {', 'the bank is told a person is at the screen'],
-  ['src/app/bank.ts', '    if (!iban || !/^[A-Z]{2}\\d{2}[A-Z0-9]{10,30}$/.test(iban) || typeof account.uid !== \'string\') continue', "    if (typeof account.uid !== 'string') continue", 'an account without an IBAN (a card) is not the company\'s account'],
-  ['src/app/bank.ts', 'tried_at = CASE WHEN synced_at IS NULL THEN ? ELSE tried_at END WHERE id = ?`)', 'tried_at = CASE WHEN 0 THEN ? ELSE tried_at END WHERE id = ?`)', 'a first read that failed is tried again soon'],
-  ['src/views/team.tsx', '          {p.bankLine ? <span>{p.bankLine}</span> : null}\n', '', 'the accountant sees the client\'s bank'],
+  // The order with the contract online
+  ['src/index.tsx', "    if (chosen) signedBy = chosen.name\n    else errors.director = copy.order.errors.director\n", '    signedBy = values.director\n', 'only a director the register names concludes the contract'],
+  ['src/index.tsx', '  if (!values.agree) errors.agree = copy.order.errors.agree\n', '', 'without agreeing to the terms nothing is concluded'],
+  ['src/index.tsx', '  if (!months.includes(values.start)) errors.start = copy.order.errors.start\n', '', 'the first month is one of those offered'],
+  ['src/index.tsx', ' && !(await isClient(db, ico))) {', ') {', 'a company that is a client gets no second contract'],
+  // The power of attorney and the notice
+  ['src/app/papers.ts', "'Content-Disposition': `${inline ? 'inline' : 'attachment'}", "'Content-Disposition': `${'inline'}", 'a signature container is downloaded, never shown'],
+  ['src/app/papers.ts', 'WHERE f.id = ? AND f.company_id = ?`,', 'WHERE f.id = ? AND (f.company_id = ? OR 1)`,', 'a paper is only its own company\'s'],
+  ['src/app/papers.ts', " AND checked_at IS NULL').bind(now(), user, id, company)", "').bind(now(), user, id, company)", 'a paper is checked once'],
+  ['src/app/routes.tsx', '      to: company.accountantEmail ?? BRAND.email,', '      to: BRAND.email,', 'the accountant who keeps the company is told of its power of attorney'],
+  ['src/app/routes.tsx', 'steps={steps.poa && steps.payments && steps.upload ? null : steps}', 'steps={steps.payments && steps.upload ? null : steps}', 'the first steps stay until the power of attorney is there'],
+  ['src/views/inside-pages.tsx', "    { done: steps.poa, href: '/app/plna-moc', text: s.poa, optional: false },\n", '', 'the power of attorney is a first step'],
+  ['src/views/inside-pages.tsx', '    ...(steps.switching ? [', '    ...(true ? [', 'the notice to a former accountant is offered only to who changes accountants'],
+  ['src/index.tsx', '|banka|plna-moc)$/', '|banka)$/', 'a signed power of attorney of real size can be uploaded'],
+  ['src/app/routes.tsx', '  if (since === null) errors.since = t.switching.dayHint\n', '', 'a day that does not exist is said so'],
+  ['src/views/team.tsx', "                    {row.poa === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.poa}`}>{t.client.poaState[row.poa]}</span>}\n", '', 'the accountant\'s list says whose power of attorney waits'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

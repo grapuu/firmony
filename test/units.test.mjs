@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { appCopy, bank, booking, calc, config, contractMail, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, orderLinkMail, paybysquare, planRows, reader, rpo, teamStore, terms, xml } from '../.wrangler/tmp/units-bundle.mjs'
+import { appCopy, bank, booking, calc, config, contractMail, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, orderLinkMail, papers, paybysquare, planRows, reader, rpo, teamStore, terms, xml } from '../.wrangler/tmp/units-bundle.mjs'
 import { check, done } from './check.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
@@ -344,5 +344,25 @@ for (const type of ['pkcs8', 'pkcs1']) {
 const pdf = new TextDecoder().decode(demo.demoPdf(226, 360, [{ text: 'Papiernictvo Pero (Košice)', bold: true }, { text: 'SPOLU 8,90 EUR' }]))
 const xrefAt = Number(pdf.match(/startxref\n(\d+)/)?.[1])
 check('a sample original is a PDF whose table of contents is where it says', pdf.startsWith('%PDF-1.4') && pdf.slice(xrefAt, xrefAt + 4) === 'xref' && pdf.includes('(Papiernictvo Pero \\(Kosice\\)) Tj'))
+
+// The power of attorney is what its bytes say: a signature container, a PDF or a photo, never what it is called
+/** The start of a ZIP whose first entry is "mimetype" holding a type, with an extra field of some length. */
+function zipWith(type, extra = 0) {
+  const head = new Uint8Array(30)
+  head.set([0x50, 0x4b, 0x03, 0x04, 0x0a, 0x00])
+  const view = new DataView(head.buffer)
+  view.setUint32(18, type.length, true)
+  view.setUint32(22, type.length, true)
+  view.setUint16(26, 8, true)
+  view.setUint16(28, extra, true)
+  return new Uint8Array([...head, ...new TextEncoder().encode('mimetype'), ...new Uint8Array(extra), ...new TextEncoder().encode(type), 0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])
+}
+check('a container from the eID signer is an ASiC-E, downloaded and not shown', papers.sniffPaper(zipWith('application/vnd.etsi.asic-e+zip'))?.ext === 'asice' && papers.sniffPaper(zipWith('application/vnd.etsi.asic-e+zip')).inline === false)
+check('so is an ASiC-S, and one whose entry has an extra field', papers.sniffPaper(zipWith('application/vnd.etsi.asic-s+zip'))?.ext === 'asics' && papers.sniffPaper(zipWith('application/vnd.etsi.asic-e+zip', 4))?.ext === 'asice')
+const docx = zipWith('application/vnd.etsi.asic-e+zip')
+docx.set(new TextEncoder().encode('[Content'), 30)
+check('another ZIP (a Word file, a folder) is no paper', papers.sniffPaper(docx) === null && papers.sniffPaper(zipWith('application/zip-whatever-else-xx')) === null)
+check('a PDF, a photo and a PNG are papers; a text is not', papers.sniffPaper(demo.demoPdf(100, 100, [{ text: 'x' }]))?.type === 'application/pdf' && papers.sniffPaper(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1]))?.ext === 'jpg' && papers.sniffPaper(new TextEncoder().encode('Plnomocenstvo podpisane')) === null)
+check('where the power of attorney stands', papers.poaStateOf([]) === 'missing' && papers.poaStateOf([{ checkedAt: null }]) === 'waiting' && papers.poaStateOf([{ checkedAt: null }, { checkedAt: 5 }]) === 'checked')
 
 done('units')
