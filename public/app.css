@@ -950,6 +950,55 @@ a {
   background: rgb(255 255 255 / 0.8);
 }
 
+/* A notification, as the phone shows one: it comes down only where the opening moves. */
+.app__note {
+  position: absolute;
+  left: 3cqw;
+  right: 3cqw;
+  top: 12.5cqw;
+  z-index: 2;
+  display: none;
+  grid-template-columns: 8cqw minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2.6cqw;
+  padding: 3cqw 3.4cqw;
+  border: 0.25cqw solid rgb(255 255 255 / 0.1);
+  border-radius: 6cqw;
+  background: rgb(42 42 50 / 0.8);
+  box-shadow: 0 3cqw 8cqw rgb(0 0 0 / 0.55);
+  -webkit-backdrop-filter: blur(4cqw) saturate(160%);
+  backdrop-filter: blur(4cqw) saturate(160%);
+}
+
+.app__note-icon {
+  width: 8cqw;
+  height: 8cqw;
+  border-radius: 2cqw;
+  background: #000;
+}
+
+.app__note-text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.app__note-text strong {
+  font-size: 3cqw;
+  font-weight: 650;
+}
+
+.app__note-text span {
+  color: rgb(255 255 255 / 0.82);
+  font-size: 2.85cqw;
+}
+
+.app__note-when {
+  align-self: start;
+  color: rgb(255 255 255 / 0.5);
+  font-size: 2.5cqw;
+}
+
 /* The papers: his glass, around the phone. Without motion two of them rest at its corners: the e-invoice and
    the return. */
 .flyers {
@@ -2976,9 +3025,40 @@ a {
 }
 
 @keyframes row-in {
-  from {
+  0% {
     opacity: 0;
     translate: -3cqw 0;
+    background-color: rgb(142 155 255 / 0.24);
+  }
+
+  45% {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  100% {
+    background-color: rgb(142 155 255 / 0);
+  }
+}
+
+@keyframes note-down {
+  0% {
+    opacity: 0;
+    translate: 0 -16cqw;
+    scale: 0.9;
+  }
+
+  30%,
+  72% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+
+  100% {
+    opacity: 0;
+    translate: 0 -16cqw;
+    scale: 0.9;
   }
 }
 
@@ -3260,11 +3340,18 @@ a {
       animation-timeline: --hero;
     }
 
-    .app__row--1 { animation-range: contain 23% contain 27%; }
-    .app__row--2 { animation-range: contain 30% contain 34%; }
-    .app__row--3 { animation-range: contain 37% contain 41%; }
-    .app__row--4 { animation-range: contain 44% contain 48%; }
-    .app__row--5 { animation-range: contain 51% contain 55%; }
+    .app__row--1 { animation-range: contain 23% contain 31%; }
+    .app__row--2 { animation-range: contain 30% contain 38%; }
+    .app__row--3 { animation-range: contain 37% contain 45%; }
+    .app__row--4 { animation-range: contain 44% contain 52%; }
+    .app__row--5 { animation-range: contain 51% contain 59%; }
+
+    .app__note {
+      display: grid;
+      animation: note-down linear both;
+      animation-timeline: --hero;
+      animation-range: contain 54% contain 70%;
+    }
 
     .app__count {
       animation: fade-in linear both;
@@ -3376,7 +3463,7 @@ a {
   @supports (animation-timeline: view()) {
     .hero__stage {
       --pw: min(330px, calc((100svh - 136px) * 0.4615), 72vw);
-      --peek: clamp(96px, calc(100svh - 600px), 30svh);
+      --peek: clamp(96px, calc(100svh - 600px), 46svh);
       --aside-x: 0px;
       --aside-y: calc(var(--ph) * -0.36);
     }

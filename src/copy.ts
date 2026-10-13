@@ -57,6 +57,8 @@ export const copy = typesetAll({
       { title: 'Priznanie k DPH', sub: 'Podané 24. 11.', amount: '1 220 €', state: 'podané' },
     ],
     snap: 'Odfotiť doklad',
+    /** The notification that comes down when the last paper is in. */
+    note: { app: 'Firmony', text: 'Priznanie k DPH za október je podané.', when: 'teraz' },
     /** What the left side says once the papers are in. */
     title: 'Toto je celé vaše účtovníctvo.',
     text: 'Doklady pošlete, ako sa vám hodí. My ich zaúčtujeme, podáme, čo treba, a postrážime každý termín. Vy viete, na čom ste.',

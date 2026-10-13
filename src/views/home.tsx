@@ -115,6 +115,14 @@ const Phone: FC = () => {
           </ul>
           <span class="app__snap">{a.snap}</span>
           <span class="app__home"></span>
+          <span class="app__note">
+            <Picture art={ART.logo} className="app__note-icon" eager />
+            <span class="app__note-text">
+              <strong>{a.note.app}</strong>
+              <span>{a.note.text}</span>
+            </span>
+            <span class="app__note-when">{a.note.when}</span>
+          </span>
         </div>
       </div>
     </figure>
