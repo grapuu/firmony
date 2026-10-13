@@ -8,7 +8,7 @@ import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
 
-export type Place = 'home' | 'payments' | 'documents' | 'messages' | 'company'
+export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'messages' | 'company'
 
 /** The head of every page of the app: its own stylesheet after the site's, and its one small script. */
 export const InsideHead: FC<{ title: string }> = ({ title }) => (
@@ -53,12 +53,15 @@ export const Flash: FC<{ text?: string | null; tone?: 'ok' | 'warn' | 'error' }>
     </p>
   ) : null
 
-const NAV: { place: Place; href: string; label: string; art: Art | null }[] = [
-  { place: 'home', href: '/app', label: app.nav.home, art: ART.mark },
-  { place: 'payments', href: '/app/platby', label: app.nav.payments, art: ART.paperBank },
-  { place: 'documents', href: '/app/doklady', label: app.nav.documents, art: ART.paperReceipt },
-  { place: 'messages', href: '/app/spravy', label: app.nav.messages, art: ART.chat },
+const NAV: { place: Place; href: string; label: string; art: Art | null; tab: boolean }[] = [
+  { place: 'home', href: '/app', label: app.nav.home, art: ART.mark, tab: true },
+  { place: 'payments', href: '/app/platby', label: app.nav.payments, art: ART.paperBank, tab: true },
+  { place: 'documents', href: '/app/doklady', label: app.nav.documents, art: ART.paperReceipt, tab: true },
+  // Invoices are issued now and then: on a phone they are in the bar's menu, the tabs keep what is done daily.
+  { place: 'invoices', href: '/app/faktury', label: app.invoices.nav, art: ART.paperInvoice, tab: false },
+  { place: 'messages', href: '/app/spravy', label: app.nav.messages, art: ART.chat, tab: true },
 ]
+const TABS = NAV.filter((item) => item.tab)
 
 const Count: FC<{ n: number; tone?: 'amber' | 'blue' }> = ({ n, tone = 'amber' }) => (n > 0 ? <span class={`count count--${tone}`}>{n}</span> : null)
 
@@ -157,6 +160,9 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
           <header class="bar">
             <Wordmark href="/app" label={app.nav.home} />
             <BarMenu label={who.company.name} user={who.user}>
+              <a class="barmenu__item" href="/app/faktury">
+                {app.invoices.nav}
+              </a>
               <a class="barmenu__item" href="/app/firma">
                 {app.nav.settings}
               </a>
@@ -186,7 +192,7 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
         </div>
       </div>
       <nav class="tabs" aria-label={app.nav.label}>
-        {NAV.slice(0, 2).map((item) => (
+        {TABS.slice(0, 2).map((item) => (
           <TabLink item={item} place={place} n={item.place === 'payments' ? missing : 0} />
         ))}
         <a class="tabs__add" href="/app/doklady#pridat" data-pick aria-label={app.nav.add}>
@@ -195,7 +201,7 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
           </span>
           <span class="tabs__label">{app.nav.addShort}</span>
         </a>
-        {NAV.slice(2).map((item) => (
+        {TABS.slice(2).map((item) => (
           <TabLink item={item} place={place} n={item.place === 'messages' ? unread : 0} />
         ))}
       </nav>

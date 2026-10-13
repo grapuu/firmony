@@ -178,6 +178,41 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
     { id: 'demo-doc-22', company: c2, arrived: 13, source: 'upload', addedBy: DEMO.secondUser, kind: 'invoice_out', party: 'Kaviareň Zrnko s. r. o.', ico: '52987654', number: '2026003', vs: '2026003', issued: -14, due: 0, total: 85000, category: 'sales', proposal: 'ai', booked: { by: DEMO.accountant2, daysAgo: 11 } },
   ]
 
+  /** An invoice of Ukážková firma with its lines, and the document it is (booked, when it was issued). */
+  const sampleInvoice = (inv: { id: string; seq: number | null; customer: string; address: string; email: string | null; issued: number; due: number; lines: [string, number, string, number][]; sent: boolean }) => {
+    const lines = inv.lines.map(([description, milli, unit, cents], i) => ({ position: i + 1, description, milli, unit, cents, base: Math.round((milli * cents) / 1000) }))
+    const base = lines.reduce((sum, l) => sum + l.base, 0)
+    const vat = Math.round((base * 23) / 100)
+    const number = inv.seq === null ? null : `2026${String(inv.seq).padStart(4, '0')}`
+    const docId = `demo-doc-${inv.id.slice(5)}`
+    const token = `demo${inv.id.replace(/-/g, '')}`.padEnd(43, 'x').slice(0, 43)
+    return [
+      db
+        .prepare(
+          `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number, customer_name, customer_address, customer_email,
+             issued_on, delivered_on, due_on, base_cents, vat_cents, total_cents, iban, token, document_id, sent_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          inv.id, c1, ts + inv.issued * 86400, DEMO.user, number ? 'issued' : 'draft', number ? 2026 : null, inv.seq, number, inv.customer, inv.address, inv.email,
+          day(inv.issued), day(inv.issued), day(inv.due), base, vat, base + vat, 'SK3112000000198742637541', token, number ? docId : null, inv.sent ? ts + inv.issued * 86400 + 600 : null,
+        ),
+      ...lines.map((l) =>
+        db.prepare('INSERT INTO invoice_lines (invoice_id, position, description, quantity_milli, unit, unit_cents, vat_rate, base_cents) VALUES (?, ?, ?, ?, ?, ?, 23, ?)').bind(inv.id, l.position, l.description, l.milli, l.unit, l.cents, l.base),
+      ),
+      ...(number
+        ? [
+            db
+              .prepare(
+                `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, booked_at, booked_by, invoice_id)
+                 VALUES (?, ?, ?, 'issued', ?, 'read', 'issued', 'invoice_out', ?, ?, ?, ?, ?, ?, ?, 'EUR', 'sales', ?, ?, ?)`,
+              )
+              .bind(docId, c1, ts + inv.issued * 86400, DEMO.user, inv.customer, number, number, day(inv.issued), day(inv.due), base + vat, vat, ts + (inv.issued + 1) * 86400, DEMO.accountant, inv.id),
+          ]
+        : []),
+    ]
+  }
+
   const docStatements: D1PreparedStatement[] = []
   for (const d of docs) {
     let file: { key: string; name: string; bytes: number } | null = null
@@ -275,6 +310,12 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
       .bind(DEMO.secondUser, ts - 20 * 86400, DEMO.accountant2, DEMO.secondAccount),
 
     ...docStatements,
+    // Invoices Martin issued in Firmony: one paid, one past its due date, one draft.
+    ...sampleInvoice({ id: 'demo-inv-1', seq: 6, customer: 'Agentúra Smer s. r. o.', address: 'Štúrova 20, 811 02 Bratislava', email: 'faktury@smer.test', issued: -5, due: 9, lines: [['Návrh webu, október', 1000, 'ks', 96000]], sent: true }),
+    ...sampleInvoice({ id: 'demo-inv-2', seq: 7, customer: 'Kníhkupectvo Na korze s. r. o.', address: 'Hlavná 48, 040 01 Košice', email: 'obchod@nakorze.test', issued: -30, due: -16, lines: [['Grafický návrh plagátu', 2000, 'ks', 20000], ['Úprava pre sociálne siete', 3000, 'hod', 3500]], sent: true }),
+    ...sampleInvoice({ id: 'demo-inv-3', seq: null, customer: 'Mestská knižnica Košice', address: 'Hlavná 48, 040 01 Košice', email: null, issued: 0, due: 14, lines: [['Workshop o online marketingu', 4000, 'hod', 4500]], sent: false }),
+    pay(c1, DEMO.account, 'demo-12', -1, 118080, 'Agentúra Smer s. r. o.', { iban: 'SK1702000000003012345678', vs: '20260006', note: 'Faktúra 20260006' }),
+    link(c1, DEMO.account, 'demo-doc-inv-1', 'demo-12', 'auto', null),
     link(c1, DEMO.account, 'demo-doc-1', 'demo-4', 'auto', null),
     link(c1, DEMO.account, 'demo-doc-2', 'demo-5', 'auto', null),
     link(c1, DEMO.account, 'demo-doc-3', 'demo-6', 'auto', null),

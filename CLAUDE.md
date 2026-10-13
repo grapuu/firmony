@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 19:00)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 19:45)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (134 unit checks) and `npm run test:runtime` (170 checks in workerd). The sixth
+- All checks pass: `npm test` (164 unit checks) and `npm run test:runtime` (237 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -39,7 +39,9 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   2. For the client (about 21:30): **done at about 19:00**: documents forwarded by email, reminders by email,
      first steps after signing in, the company's page (inviting a partner), the app on the phone's home screen,
      search; "The client's app" below has each.
-  3. Issuing invoices, also as e-invoices, marked paid by themselves when the payment comes (about 23:00).
+  3. Issuing invoices, also as e-invoices, marked paid by themselves when the payment comes (he was told
+     about 21:00): **done at about 19:45**, "Invoices the client issues" below; the artifact (version 5) has them,
+     and its bar has "Faktúra u odberateľa", the page a customer opens.
   4. The bank by open banking (Enable Banking), switched on by his registration (about midnight).
 
 ## What he has to do before it is live (each a few clicks)
@@ -212,12 +214,10 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
 - The sample company (`demo.ts`, "Ukážková firma s. r. o.", Martin Novák, dated from today) exists only at
   `/app/ukazka` on a developer's machine with `DEMO=1`, which only the playground sets; the runtime test holds that
   it is 404 on the Worker.
-- Not built yet: the accountant's side (her list of clients, documents to book, answering messages, checking what
-  the client marked), documents by email (an Email Worker for `doklady-<code>@`; the address is shown already),
-  the bank by open banking (the statement is uploaded by hand meanwhile), the digital postman, eKasa receipts by
-  their QR code, issuing invoices, more than one company for one person (a switch), deleting files at the end of
-  their ten years, thumbnails. Not seen in a real browser: a PDF opened by "Otvoriť originál" under its CSP; a
-  photo from an iPhone made smaller by the script (HEIC).
+- Not built yet: the bank by open banking (the statement is uploaded by hand meanwhile), the digital postman,
+  eKasa receipts by their QR code, deleting files at the end of their ten years, thumbnails. Not seen in a real
+  browser: a PDF opened by "Otvoriť originál" under its CSP; a photo from an iPhone made smaller by the script
+  (HEIC).
 
 ### What the client's app got on the evening of 13 October 2026 (step 2)
 
@@ -241,6 +241,43 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
 - Payments and documents have a search (party, note, symbol, amount; "12,40" finds the amount); a search looks
   through everything, whatever tab was open.
 - A message of another person of the company carries that person's name, not "Vy".
+
+### Invoices the client issues (step 3, 13 October 2026; `src/app/invoices.ts`, `src/views/invoices.tsx`)
+
+What SuperFaktúra, Fakturoid and Pennylane give, made for this pipe: an invoice issued here is a document of the
+company at once, so the payment that pays it pairs with it by its variable symbol and the invoice says "Zaplatená"
+by itself.
+
+- Faktúry (/app/faktury, in the column; on a phone in the bar's menu): what waits to be paid, what is overdue,
+  what was paid this month, and every invoice with its state (Koncept, Nezaplatená, Po splatnosti, Zaplatená).
+- The form (/app/faktury/nova): the customer by IČO from the register ("Doplniť z registra"), or one of the
+  customers of earlier invoices (up to six, each once: `?odberatel=<id>`); days typed the Slovak way; lines with
+  quantity, unit, price and, for a VAT payer, 23, 19, 5 or 0 %; the account (the company's own, else its first
+  bank account); a note. "Uložiť koncept" keeps a draft without a number; "Vystaviť faktúru" gives the next
+  number. An IBAN is checked by its check digits (mod 97).
+- The number: the year and its order in the company's year, `20260001`, which is also the variable symbol;
+  counted in the same statement that writes the invoice (`saveInvoiceStatements`: one `MAX(seq) + 1` for the
+  number and the order), and `UNIQUE (company_id, number)` refuses a second one. An issued invoice is never
+  changed or deleted (an error is put right by a credit note, which the accountant writes for now); a draft is.
+  VAT is counted per rate from the sum of the lines (`totalsOf`), as the VAT Act counts it.
+- An invoice's page is the invoice as paper (`InvoiceSheet`, the same for the client, the customer, print and the
+  accountant's booking screen): with the QR code every Slovak bank's app reads (PAY by square 1.2, written by the
+  library `bysquare` 4.0.2, drawn as one SVG path by `uqr` 0.1.3; `src/app/paybysquare.ts`): the account, the
+  amount, the variable symbol, the due day and the beneficiary's name, so the money arrives with the number that
+  pairs it. Not on a paid invoice. Beside it: send to the customer (an email with the link and the account; a
+  reply goes to the person who sent it; without the customer's email, one typed there, which is kept), remind an
+  overdue one (never a paid one), print or save as PDF, the e-invoice, "Vystaviť podobnú" (`?podla=<id>`: the
+  customer and the lines, today's days), the payment, and the customer's link.
+- The customer's page (/f/<token>, no sign-in, `noindex`, a draft's token opens nothing): the invoice, the QR
+  code, the e-invoice to download, how to save a PDF; "Faktúra je zaplatená. Ďakujeme." once it is.
+- The e-invoice (`ublOf`): UBL 2.1, Peppol BIS Billing 3.0 (EN 16931), each side addressed by its DIČ under EAS
+  0245; S for a rate above nought, E with its reason for 0 % (Slovakia has no zero rate at home), O for a seller
+  who is no VAT payer, without a rate or either side's VAT identifier (BR-O-02); a discount keeps its price
+  positive and its quantity negative (BR-27). Read back by our own reader as issued by us, and by the customer's
+  as received, with its sums (unit checks).
+- Not built yet: a credit note, an invoice in another currency, an advance invoice, recurring invoices sent by
+  themselves, the e-invoice sent through a digital postman, invoice numbering of the company's own pattern, the
+  company's logo on the invoice.
 
 ## The accountants' side (`src/team/`, views in `src/views/team.tsx`; 13 October 2026, from 17:48)
 
@@ -367,11 +404,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (106): pairing, statements, e-invoices, reading, texts, deadlines
-npm run test:runtime     # the deployable bundle in workerd (114): the site, and the app end to end
+npm test                 # unit checks (164): pairing, statements, e-invoices, reading, invoices, PAY by square
+npm run test:runtime     # the deployable bundle in workerd (237): the site, and the app end to end
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs                         # takes this change's rules out one at a time (18, see its list)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (17, all held)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 

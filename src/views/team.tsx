@@ -14,6 +14,8 @@ import { Tile } from './home'
 import { BarMenu, Flash, Heading, InsideHead, planName } from './inside'
 import { dayOf, groupIban, whenName } from './inside-pages'
 import { Wordmark } from './layout'
+import { InvoiceSheet } from './invoices'
+import type { Line, StoredInvoice } from '../app/invoices'
 
 export type TeamPlace = 'clients' | 'queue' | 'inbox' | 'requests' | 'people'
 
@@ -659,6 +661,8 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
 export interface BookPageProps {
   d: Doc
   company: Company
+  /** An invoice the client issued in Firmony: its sheet is the original. */
+  invoice?: { invoice: StoredInvoice; lines: Line[] } | null
   values: BookValues
   payment: Payment | null
   candidates: Payment[]
@@ -679,7 +683,7 @@ const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: 
   </div>
 )
 
-export const BookPage: FC<BookPageProps> = ({ d, company, values, payment, candidates, paidBy, queueLeft, now, errors, flash }) => {
+export const BookPage: FC<BookPageProps> = ({ d, company, invoice, values, payment, candidates, paidBy, queueLeft, now, errors, flash }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const cents = (text: string) => {
     const m = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(text.replace(/\s/g, ''))
@@ -723,7 +727,11 @@ export const BookPage: FC<BookPageProps> = ({ d, company, values, payment, candi
       {d.status === 'manual' ? <p class="flag">{t.book.manual}</p> : null}
       <div class="book">
         <div class="book__orig">
-          {d.fileKey ? (
+          {invoice ? (
+            <div class="book__sheet">
+              <InvoiceSheet invoice={invoice.invoice} lines={invoice.lines} seller={company} pay={false} />
+            </div>
+          ) : d.fileKey ? (
             image ? (
               <a class="book__img" href={`/ucto/subory/${d.id}`}>
                 <img src={`/ucto/subory/${d.id}`} alt={t.book.open} />

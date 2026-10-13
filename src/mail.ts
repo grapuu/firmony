@@ -15,10 +15,12 @@ export interface Message {
   to: string
   subject: string
   body: string
+  /** Where a reply goes: our public mailbox unless said otherwise (an invoice is answered to the company that issued it). */
+  replyTo?: string | null
 }
 
 export function queueStatement(db: D1Database, message: Message): D1PreparedStatement {
-  const replyTo = message.to.toLowerCase() === BRAND.email.toLowerCase() ? null : BRAND.email
+  const replyTo = message.replyTo !== undefined ? message.replyTo : message.to.toLowerCase() === BRAND.email.toLowerCase() ? null : BRAND.email
   return db
     .prepare('INSERT OR IGNORE INTO outbox (id, recipient, reply_to, subject, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(message.key, message.to, replyTo, message.subject, message.body, now())

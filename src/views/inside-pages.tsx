@@ -904,6 +904,10 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
                 {app.document.original}
               </a>
             )
+          ) : d.invoiceId ? (
+            <a class="btn btn--line orig__open" href={`/app/faktury/${d.invoiceId}`}>
+              {app.invoices.actions.open}
+            </a>
           ) : null}
           <details class="more more--quiet">
             <summary class="more__summary">{app.document.delete}</summary>

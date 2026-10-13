@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { appCopy, booking, calc, config, copy, deadlines, demo, format, ico, match, planRows, reader, rpo, teamStore, xml } from '../.wrangler/tmp/units-bundle.mjs'
+import { appCopy, booking, calc, config, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, paybysquare, planRows, reader, rpo, teamStore, xml } from '../.wrangler/tmp/units-bundle.mjs'
 import { check, done } from './check.mjs'
 
 const NB = ' '
@@ -219,6 +219,60 @@ check('a cell never splits the row', teamStore.csvCell('a;b\nc') === 'a,b c')
 check('cents as Slovak Excel reads them', teamStore.csvMoney(1240) === '12,40' && teamStore.csvMoney(-5) === '-0,05' && teamStore.csvMoney(100000) === '1000,00' && teamStore.csvMoney(null) === '')
 check('a client who did not pay is told apart from a receipt paid in cash', teamStore.paidByOf({ paidPrivately: false, kind: 'invoice_in' }, false) === 'unpaid' && teamStore.paidByOf({ paidPrivately: false, kind: 'receipt' }, false) === 'cash' && teamStore.paidByOf({ paidPrivately: true, kind: 'receipt' }, false) === 'private' && teamStore.paidByOf({ paidPrivately: true, kind: 'receipt' }, true) === 'bank')
 check('an inbox code is eight letters and digits that cannot be mistaken', /^[a-hjkmnp-z2-9]{8}$/.test(teamStore.inboxCode()))
+
+// Invoices the client issues
+check('an amount typed the Slovak way', invoices.centsOf('12,40') === 1240 && invoices.centsOf('1 200') === 120000 && invoices.centsOf('1 200,5 €') === 120050 && invoices.centsOf('12.5') === 1250 && invoices.centsOf('-5') === -500)
+check('an empty amount is none, a wrong one is no amount', invoices.centsOf(' ') === null && Number.isNaN(invoices.centsOf('12,345')) && Number.isNaN(invoices.centsOf('dvanásť')))
+check('a quantity in thousandths', invoices.milliOf('2,5') === 2500 && invoices.milliOf('0,25') === 250 && invoices.milliOf('3') === 3000 && invoices.milliOf('') === null && Number.isNaN(invoices.milliOf('-1')))
+check('a line is quantity times price, to the cent', invoices.lineBase(2500, 3333) === 8333 && invoices.lineBase(1000, 4500) === 4500)
+const sums = invoices.totalsOf([{ baseCents: 40000, vatRate: 23 }, { baseCents: 10500, vatRate: 23 }, { baseCents: 1000, vatRate: 5 }], true)
+check('VAT is counted per rate, the highest rate first', JSON.stringify(sums.rates) === JSON.stringify([{ rate: 23, base: 50500, vat: 11615 }, { rate: 5, base: 1000, vat: 50 }]) && sums.base === 51500 && sums.vat === 11665 && sums.total === 63165, JSON.stringify(sums))
+check('VAT is rounded once per rate, not per line', invoices.totalsOf([{ baseCents: 3, vatRate: 23 }, { baseCents: 3, vatRate: 23 }], true).vat === 1)
+check('a company that is no VAT payer adds no VAT', JSON.stringify(invoices.totalsOf([{ baseCents: 40000, vatRate: 23 }], false)) === JSON.stringify({ base: 40000, vat: 0, total: 40000, rates: [{ rate: 0, base: 40000, vat: 0 }] }))
+check('an invoice number is the year and its order, and its variable symbol', invoices.invoiceNumber(2026, 1) === '20260001' && invoices.invoiceNumber(2026, 123) === '20260123' && invoices.invoiceNumber(2026, 10000) === '202610000')
+check('an IBAN is known with or without spaces', invoices.isIban('SK31 1200 0000 1987 4263 7541') && invoices.isIban('sk3112000000198742637541') && !invoices.isIban('1234/0900') && invoices.plainIban('sk31 1200 0000 1987 4263 7541') === 'SK3112000000198742637541')
+check('an IBAN with a typo is caught by its check digits', !invoices.isIban('SK31 1200 0000 1987 4263 7542') && !invoices.isIban('SK13 1200 0000 1987 4263 7541') && invoices.isIban('CZ65 0800 0000 1920 0014 5399') && invoices.isIban('DE89 3704 0044 0532 0130 00'))
+const lineMessages = { line: (n) => `riadok ${n}`, none: 'žiadny riadok' }
+const form = (lines) => ({ customerName: 'Agentúra Smer s. r. o.', customerAddress: '', customerIco: '', customerDic: '', customerIcdph: '', customerEmail: '', issued: '1. 10. 2026', delivered: '1. 10. 2026', due: '15. 10. 2026', iban: '', note: '', lines })
+const blank = { description: '', quantity: '', unit: 'ks', price: '', vat: '23' }
+const readLines = invoices.linesOf(form([{ description: 'Návrh loga', quantity: '', unit: 'ks', price: '400', vat: '23' }, blank, { description: 'Konzultácia', quantity: '2,5', unit: 'hod', price: '35', vat: '5' }]), true, lineMessages)
+check("empty lines are left out and the rest numbered again", readLines.error === null && readLines.lines.length === 2 && readLines.lines[1].position === 2 && readLines.lines[0].quantityMilli === 1000 && readLines.lines[1].baseCents === 8750)
+check('a line without a description, a price or with a rate that is none names its number', invoices.linesOf(form([{ ...blank, description: 'A', price: '10' }, { ...blank, description: 'B', price: 'x' }]), true, lineMessages).error === 'riadok 2' && invoices.linesOf(form([{ ...blank, description: 'A', price: '10', vat: '7' }]), true, lineMessages).error === 'riadok 1' && invoices.linesOf(form([{ ...blank, price: '10' }]), true, lineMessages).error === 'riadok 1')
+check('an invoice without a line is refused', invoices.linesOf(form([blank, blank]), true, lineMessages).error === 'žiadny riadok')
+check('a company that is no VAT payer writes no rate, and a unit that is none is dropped', JSON.stringify(invoices.linesOf(form([{ ...blank, description: 'A', price: '10', vat: '7', unit: 'sud' }]), false, lineMessages).lines.map((l) => [l.vatRate, l.unit])) === JSON.stringify([[0, null]]))
+const valueMessages = { customerName: 'name', customerEmail: 'email', customerIco: 'ico', issued: 'issued', delivered: 'delivered', due: 'due', iban: 'iban', lines: 'lines', form: 'form' }
+const errorsOf = (changes) => Object.keys(invoices.checkValues({ ...form([]), ...changes }, booking.dayOfText, valueMessages)).join(',')
+check('a correct invoice has no error', errorsOf({}) === '')
+check('a due day before the day of issue is refused', errorsOf({ due: '30. 9. 2026' }) === 'due')
+check('a customer, an email, an IČO, an IBAN and the days are checked', errorsOf({ customerName: 'A', customerEmail: 'x@', customerIco: '123', iban: 'SK12', issued: 'zajtra', delivered: '' }) === 'customerName,customerEmail,customerIco,issued,delivered,iban')
+check('an invoice is a draft, paid, overdue or waiting', invoices.stateOf({ status: 'draft', paidOn: null, dueOn: '2026-10-01' }, '2026-10-13') === 'draft' && invoices.stateOf({ status: 'issued', paidOn: '2026-10-12', dueOn: '2026-10-01' }, '2026-10-13') === 'paid' && invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-10-12' }, '2026-10-13') === 'overdue' && invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-10-13' }, '2026-10-13') === 'unpaid')
+
+// The e-invoice is read back as the invoice it is, by us and by the customer
+const seller = { id: 'c', createdAt: 0, name: 'Ukážková firma s. r. o.', ico: '57442452', dic: '2122222222', icdph: 'SK2122222222', address: 'Hlavná 1, 811 01 Bratislava', registerLine: null, vatPayer: true, plan: 'rast', inbox: 'abc', accountantId: null, accountantName: null, accountantEmail: null, note: null, demo: false, invoiceIban: null, invoiceDueDays: 14, invoiceFooter: null }
+const stored = { id: 'i', number: '20260006', status: 'issued', customerName: 'Smer & <Syn> s. r. o.', customerIco: '50123456', customerDic: '2120000000', customerIcdph: 'SK2120000000', customerAddress: 'Námestie 2, Košice', customerEmail: null, issuedOn: '2026-10-01', deliveredOn: '2026-10-01', dueOn: '2026-10-15', note: 'Ďakujeme.', baseCents: 0, vatCents: 0, totalCents: 0, token: 't', documentId: null, iban: 'SK31 1200 0000 1987 4263 7541', sentAt: null, remindedAt: null, createdAt: 0, createdByName: null, paidOn: null }
+const ublLines = readLines.lines.concat([{ position: 3, description: 'Zľava', quantityMilli: 1000, unit: 'ks', unitCents: -1000, vatRate: 23, baseCents: -1000 }])
+const issuedUbl = invoices.ublOf(stored, ublLines, seller)
+const ours = xml.readInvoice(issuedUbl, seller.ico)
+const theirs = xml.readInvoice(issuedUbl, stored.customerIco)
+check('our e-invoice reads back as issued by us, to its customer', ours?.kind === 'invoice_out' && ours.party === stored.customerName && ours.partyIco === '50123456' && ours.number === '20260006' && ours.vs === '20260006', JSON.stringify(ours))
+check('with its sums and days', ours?.totalCents === 39000 + 8750 + Math.round(39000 * 0.23) + Math.round(8750 * 0.05) && ours.vatCents === Math.round(39000 * 0.23) + Math.round(8750 * 0.05) && ours.issuedOn === '2026-10-01' && ours.dueOn === '2026-10-15', JSON.stringify(ours))
+check('the customer reads it as received, from us, with our account', theirs?.kind === 'invoice_in' && theirs.party === seller.name && theirs.partyIco === seller.ico && theirs.partyIban === 'SK3112000000198742637541', JSON.stringify(theirs))
+check('a discount keeps its price positive and its quantity negative', issuedUbl.includes('<cbc:InvoicedQuantity unitCode="C62">-1</cbc:InvoicedQuantity><cbc:LineExtensionAmount currencyID="EUR">-10.00</cbc:LineExtensionAmount>') && issuedUbl.includes('<cbc:PriceAmount currencyID="EUR">10.00</cbc:PriceAmount>'))
+check('a Slovak company is addressed by its DIČ in Peppol', issuedUbl.includes('<cbc:EndpointID schemeID="0245">2122222222</cbc:EndpointID>') && issuedUbl.includes('<cbc:EndpointID schemeID="0245">2120000000</cbc:EndpointID>'))
+check('rates above nought are standard, VAT identifiers of both sides are there', issuedUbl.includes('<cbc:ID>S</cbc:ID><cbc:Percent>23</cbc:Percent>') && issuedUbl.includes('SK2122222222') && issuedUbl.includes('SK2120000000'))
+const noVat = invoices.ublOf({ ...stored, customerName: 'Kníhkupectvo' }, invoices.linesOf(form([{ ...blank, description: 'Kniha', price: '20' }]), false, lineMessages).lines, { ...seller, vatPayer: false })
+check('a seller who is no VAT payer writes O with its reason, no rate and no VAT identifier', noVat.includes('<cbc:ID>O</cbc:ID><cbc:TaxExemptionReason>') && !noVat.includes('<cbc:Percent>') && !noVat.includes('SK2122222222') && !noVat.includes('SK2120000000') && xml.readInvoice(noVat, seller.ico)?.totalCents === 2000)
+const exempt = invoices.ublOf(stored, [{ position: 1, description: 'Školenie', quantityMilli: 1000, unit: null, unitCents: 5000, vatRate: 0, baseCents: 5000 }], seller)
+check('a VAT payer\'s supply at nought is exempt, with its reason', exempt.includes('<cbc:ID>E</cbc:ID><cbc:Percent>0</cbc:Percent><cbc:TaxExemptionReason>Oslobodené od DPH</cbc:TaxExemptionReason>'))
+
+// PAY by square: what a bank's app reads from the QR code on an invoice
+const square = paybysquare.payBySquare({ iban: 'SK31 1200 0000 1987 4263 7541', amountCents: 118080, vs: '20260006', due: '2026-10-15', name: 'Ukážková firma s. r. o.', note: 'Faktúra 20260006' })
+const paid = square ? decodePayBySquare(square).payments[0] : null
+check('a bank reads the account, the amount, the symbol and the due day', paid?.bankAccounts[0].iban === 'SK3112000000198742637541' && paid.amount === 1180.8 && paid.currencyCode === 'EUR' && paid.variableSymbol === '20260006' && paid.paymentDueDate === '20261015', JSON.stringify(paid))
+check('and whom it pays, without accents that some banks cannot show', paid?.beneficiary?.name === 'Ukazkova firma s. r. o.' && paid.paymentNote === 'Faktura 20260006', JSON.stringify(paid?.beneficiary))
+check('no QR code without something to pay or with an account that is no IBAN', paybysquare.payBySquare({ iban: 'SK3112000000198742637541', amountCents: 0, vs: '1', due: null, name: 'A', note: '' }) === null && paybysquare.payBySquare({ iban: 'SK3112000000198742637542', amountCents: 100, vs: '1', due: null, name: 'A', note: '' }) === null)
+const picture = paybysquare.qrPicture(square ?? 'x')
+check('the QR code is one path inside a quiet zone of four modules', picture.size >= 29 && (picture.size - 8 - 21) % 4 === 0 && /^(M\d+ \d+h\d+v1h-\d+z)+$/.test(picture.path) && picture.path.startsWith('M4 4h7'), picture.path.slice(0, 40))
 
 // The originals of the sample documents are real PDFs
 const pdf = new TextDecoder().decode(demo.demoPdf(226, 360, [{ text: 'Papiernictvo Pero (Košice)', bold: true }, { text: 'SPOLU 8,90 EUR' }]))

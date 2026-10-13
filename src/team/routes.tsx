@@ -11,6 +11,7 @@ import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
 import { lookupCompany } from '../rpo'
 import { dayOfText, isCategory, supplierKey, type PaidBy } from '../app/booking'
+import { getInvoice, invoiceLines } from '../app/invoices'
 import { readableName, signed } from '../app/copy'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
@@ -483,10 +484,11 @@ async function bookPage(c: Ctx, found: { doc: Doc; company: Company }, extra: { 
   const who = c.get('who')
   const db = c.env.DB
   const { doc, company } = found
-  const [payment, candidates, queue] = await Promise.all([
+  const [payment, candidates, queue, invoice] = await Promise.all([
     doc.paymentId ? getPayment(db, company.id, doc.paymentId) : Promise.resolve(null),
     candidatesFor(db, company.id, doc),
     bookingQueue(db, who.user, true, company.id),
+    doc.invoiceId ? getInvoice(db, company.id, doc.invoiceId) : Promise.resolve(null),
   ])
   return shell(
     c,
@@ -495,6 +497,7 @@ async function bookPage(c: Ctx, found: { doc: Doc; company: Company }, extra: { 
     <BookPage
       d={doc}
       company={company}
+      invoice={invoice ? { invoice, lines: await invoiceLines(db, invoice.id) } : null}
       values={extra.values ?? valuesOf(doc, company.vatPayer)}
       payment={payment}
       candidates={candidates}

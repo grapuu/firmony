@@ -156,6 +156,12 @@
       })
     })
 
+    // An invoice: printed, or saved as a PDF from the print dialog.
+    document.querySelectorAll('[data-print]').forEach(function (button) {
+      button.hidden = false
+      button.addEventListener('click', function () { window.print() })
+    })
+
     // A document being read: the parts of the page that show it are fetched again until it is read.
     var tries = 0
     function look() {

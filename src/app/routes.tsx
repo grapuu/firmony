@@ -8,18 +8,24 @@ import { APP, BRAND, TEAM } from '../config'
 import { ensureSchema, now, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
-import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf } from '../views/inside-pages'
+import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
 import { Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
+import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
+import { checkValues, getInvoice, invoiceLines, linesOf, listInvoices, plainIban, saveInvoiceStatements, totalsOf, ublOf, type Errors as InvoiceErrors, type InvoiceValues, type Line, type LineInput, type StoredInvoice } from './invoices'
+import { dayOfText, textDay } from './booking'
+import { lookupCompany } from '../rpo'
+import { normalizeIco } from '../ico'
+import { formatEur, formatEurExact } from '../format'
 import { team as tt } from '../team/copy'
-import { app as t, monthName } from './copy'
+import { app as t, dayName, monthName } from './copy'
 import { deadlinesFor, nextMonth } from './deadlines'
 import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll } from './remind'
-import { currentWho, endSession, linkUsable, newLink, startSession, switchStatement, useLink } from './session'
+import { currentWho, endSession, linkUsable, newLink, newToken, startSession, switchStatement, useLink } from './session'
 import {
   afterReading,
   clearExemptStatement,
@@ -234,6 +240,16 @@ function flashOf(c: Ctx): string | null {
       return t.company.removed
     case 'pripomienky':
       return t.company.remindersSaved
+    case 'vystavena':
+      return t.invoices.issuedFlash
+    case 'koncept':
+      return t.invoices.saved
+    case 'koncept-zahodeny':
+      return t.invoices.deleted
+    case 'poslana':
+      return t.invoices.actions.sentFlash
+    case 'pripomenuta':
+      return t.invoices.actions.remindedFlash
     default:
       return null
   }
@@ -673,6 +689,308 @@ appRoutes.post('/firma/prepnut', async (c) => {
   await c.env.DB.batch([switchStatement(c.env.DB, who.session, who.user.id, company)])
   return c.redirect('/app', 303)
 })
+
+// ---------------------------------------------------------------------------------------------------------------
+// Faktúry
+// ---------------------------------------------------------------------------------------------------------------
+
+const ti = t.invoices
+
+function emptyLine(vatPayer: boolean): LineInput {
+  return { description: '', quantity: '1', unit: 'ks', price: '', vat: vatPayer ? '23' : '0' }
+}
+
+/** The account an invoice is paid to: the one set for invoices, else the company's account we know. */
+async function invoiceIban(db: D1Database, company: Company): Promise<string> {
+  if (company.invoiceIban) return groupIban(company.invoiceIban)
+  const row = await db.prepare('SELECT iban FROM accounts WHERE company_id = ? ORDER BY rowid LIMIT 1').bind(company.id).first<{ iban: string }>()
+  return row ? groupIban(row.iban) : ''
+}
+
+function invoiceValuesFrom(body: Record<string, unknown>, vatPayer: boolean): InvoiceValues {
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const rows = Math.min(Math.max(Number.parseInt(text('riadky', 3), 10) || 3, 1), 30)
+  return {
+    customerName: text('meno', 200),
+    customerAddress: text('adresa', 300),
+    customerIco: text('ico', 12),
+    customerDic: text('dic', 12),
+    customerIcdph: text('icdph', 14),
+    customerEmail: text('email', 200),
+    issued: text('vystavena', 16),
+    delivered: text('dodana', 16),
+    due: text('splatna', 16),
+    iban: text('iban', 42),
+    note: typeof body.poznamka === 'string' ? body.poznamka.replace(/\r\n?/g, '\n').trim().slice(0, 1000) : '',
+    lines: Array.from({ length: rows }, (_, i) => ({
+      description: text(`r${i}-popis`, 300),
+      quantity: text(`r${i}-mnozstvo`, 10),
+      unit: text(`r${i}-jednotka`, 8),
+      price: text(`r${i}-cena`, 14),
+      vat: text(`r${i}-dph`, 3) || (vatPayer ? '23' : '0'),
+    })),
+  }
+}
+
+function previewLines(values: InvoiceValues, vatPayer: boolean): Line[] {
+  // What the sums show while a form is filled: every line that can be read.
+  const readable = { ...values, lines: values.lines.filter((l) => l.description.trim() !== '' || l.price.trim() !== '') }
+  return readable.lines.flatMap((line) => linesOf({ ...readable, lines: [line] }, vatPayer, { line: () => 'x', none: 'x' }).lines)
+}
+
+function invoiceForm(c: Ctx, id: string | null, values: InvoiceValues, errors: InvoiceErrors = {}, status: ContentfulStatusCode = 200, found: string | null = null, recent: { id: string; name: string }[] = []) {
+  const who = c.get('who')
+  return shell(c, 'invoices', id ? ti.form.editTitle : ti.form.title, <InvoiceFormPage id={id} values={values} vatPayer={who.company.vatPayer} errors={errors} found={found} preview={previewLines(values, who.company.vatPayer)} recent={recent} />, status)
+}
+
+/** The lines of a stored invoice as the form shows them, with an empty one to go on. */
+function inputLines(lines: Line[], vatPayer: boolean): LineInput[] {
+  return [
+    ...lines.map((l) => ({ description: l.description, quantity: String(l.quantityMilli / 1000).replace('.', ','), unit: l.unit ?? 'ks', price: `${(l.unitCents / 100).toFixed(2).replace('.', ',')}`, vat: String(l.vatRate) })),
+    emptyLine(vatPayer),
+  ]
+}
+
+/** The customers of the company's latest invoices, each once, for a new invoice to start from. */
+async function recentCustomers(db: D1Database, company: string): Promise<{ id: string; name: string }[]> {
+  const rows = await db
+    .prepare("SELECT id, customer_name FROM invoices WHERE company_id = ? AND status = 'issued' ORDER BY created_at DESC LIMIT 40")
+    .bind(company)
+    .all<{ id: string; customer_name: string }>()
+  const seen = new Set<string>()
+  const recent: { id: string; name: string }[] = []
+  for (const row of rows.results) {
+    const key = row.customer_name.toLocaleLowerCase('sk').replace(/\s+/g, ' ').trim()
+    if (seen.has(key)) continue
+    seen.add(key)
+    recent.push({ id: row.id, name: row.customer_name })
+    if (recent.length === 6) break
+  }
+  return recent
+}
+
+appRoutes.get('/faktury', async (c) => {
+  const who = c.get('who')
+  const invoices = await listInvoices(c.env.DB, who.company.id)
+  return shell(c, 'invoices', ti.title, <InvoicesPage invoices={invoices} today={today()} flash={flashOf(c)} />)
+})
+
+appRoutes.get('/faktury/nova', async (c) => {
+  const who = c.get('who')
+  const day = today()
+  const due = new Date(`${day}T12:00:00Z`)
+  due.setUTCDate(due.getUTCDate() + who.company.invoiceDueDays)
+  const values: InvoiceValues = {
+    customerName: '',
+    customerAddress: '',
+    customerIco: '',
+    customerDic: '',
+    customerIcdph: '',
+    customerEmail: '',
+    issued: textDay(day),
+    delivered: textDay(day),
+    due: textDay(due.toISOString().slice(0, 10)),
+    iban: await invoiceIban(c.env.DB, who.company),
+    note: '',
+    lines: [emptyLine(who.company.vatPayer), emptyLine(who.company.vatPayer), emptyLine(who.company.vatPayer)],
+  }
+  // "Vystaviť podobnú" starts from an earlier invoice of the company, its customer and its lines; a customer of an
+  // earlier invoice starts from that customer alone. The days are today's, as on any new invoice.
+  const like = c.req.query('podla') ?? ''
+  const from = like || (c.req.query('odberatel') ?? '')
+  const earlier = ID.test(from) ? await getInvoice(c.env.DB, who.company.id, from) : null
+  if (earlier) {
+    values.customerName = earlier.customerName
+    values.customerAddress = earlier.customerAddress ?? ''
+    values.customerIco = earlier.customerIco ?? ''
+    values.customerDic = earlier.customerDic ?? ''
+    values.customerIcdph = earlier.customerIcdph ?? ''
+    values.customerEmail = earlier.customerEmail ?? ''
+    if (like) {
+      values.note = earlier.note ?? ''
+      values.lines = inputLines(await invoiceLines(c.env.DB, earlier.id), who.company.vatPayer)
+    }
+  }
+  return invoiceForm(c, null, values, {}, 200, null, earlier ? [] : await recentCustomers(c.env.DB, who.company.id))
+})
+
+/** A new invoice, or a draft saved again: looked up in the register, a line added, kept as a draft, or issued. */
+async function saveInvoice(c: Ctx, draftId: string | null) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const vatPayer = who.company.vatPayer
+  const values = invoiceValuesFrom(body, vatPayer)
+  const action = typeof body.akcia === 'string' ? body.akcia : 'koncept'
+  if (action === 'zahodit' && draftId) {
+    await db.batch([
+      db.prepare("DELETE FROM invoice_lines WHERE invoice_id = ? AND EXISTS (SELECT 1 FROM invoices WHERE id = ? AND company_id = ? AND status = 'draft')").bind(draftId, draftId, who.company.id),
+      db.prepare("DELETE FROM invoices WHERE id = ? AND company_id = ? AND status = 'draft'").bind(draftId, who.company.id),
+      eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoice.draft.deleted', subject: draftId }),
+    ])
+    return c.redirect('/app/faktury?ok=koncept-zahodeny', 303)
+  }
+  if (action === 'riadok') {
+    values.lines.push(emptyLine(vatPayer))
+    return invoiceForm(c, draftId, values)
+  }
+  if (action === 'register') {
+    const ico = normalizeIco(values.customerIco)
+    if (!ico) return invoiceForm(c, draftId, values, { customerIco: ti.errors.customerIco }, 422)
+    const answer = await lookupCompany(ico)
+    if ('found' in answer && answer.found) {
+      values.customerIco = ico
+      values.customerName = answer.found.name
+      values.customerAddress = answer.found.address ?? values.customerAddress
+      return invoiceForm(c, draftId, values, {}, 200, `${ti.form.found} ${answer.found.name}`)
+    }
+    return invoiceForm(c, draftId, values, {}, 200, ti.form.notFound)
+  }
+  const issue = action === 'vystavit'
+  const errors = checkValues(values, dayOfText, { ...ti.errors, lines: ti.errors.lines, form: ti.errors.form })
+  const { lines, error } = linesOf(values, vatPayer, { line: ti.errors.line, none: ti.errors.lines })
+  if (error && (issue || error !== ti.errors.lines)) errors.lines = error
+  const totals = totalsOf(lines, vatPayer)
+  if (issue && !errors.lines && totals.total <= 0) errors.lines = ti.errors.lines
+  // A draft needs only somebody to be issued to; an invoice needs everything.
+  const blocking = issue ? errors : { customerName: errors.customerName, lines: errors.lines }
+  if (Object.values(blocking).some(Boolean)) return invoiceForm(c, draftId, values, issue ? errors : blocking, 422)
+  const issued = dayOfText(values.issued) || today()
+  const delivered = dayOfText(values.delivered) || issued
+  const due = dayOfText(values.due) || issued
+  const id = draftId ?? crypto.randomUUID()
+  const documentId = crypto.randomUUID()
+  try {
+    await db.batch([
+      ...saveInvoiceStatements(db, {
+        id,
+        company: who.company.id,
+        user: who.user.id,
+        issue,
+        values,
+        lines,
+        totals,
+        issued,
+        delivered,
+        due,
+        token: newToken(),
+        iban: values.iban ? plainIban(values.iban) : null,
+        documentId,
+      }),
+      eventStatement(db, { company: who.company.id, user: who.user.id, action: issue ? 'invoice.issued' : 'invoice.draft', subject: id, detail: { total: totals.total } }),
+    ])
+  } catch (err) {
+    console.error('an invoice failed', err instanceof Error ? err.name : 'error')
+    return invoiceForm(c, draftId, values, { form: ti.errors.form }, 409)
+  }
+  if (issue) later(c, (async () => {
+    await afterReading(db, who.company.id, documentId)
+    await matchCompany(db, who.company.id)
+  })())
+  return c.redirect(`/app/faktury/${id}?ok=${issue ? 'vystavena' : 'koncept'}`, 303)
+}
+
+appRoutes.post('/faktury', (c) => saveInvoice(c, null))
+
+async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const invoice = ID.test(id) ? await getInvoice(db, who.company.id, id) : null
+  if (!invoice) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  const lines = await invoiceLines(db, invoice.id)
+  if (invoice.status === 'draft') {
+    const values: InvoiceValues = {
+      customerName: invoice.customerName,
+      customerAddress: invoice.customerAddress ?? '',
+      customerIco: invoice.customerIco ?? '',
+      customerDic: invoice.customerDic ?? '',
+      customerIcdph: invoice.customerIcdph ?? '',
+      customerEmail: invoice.customerEmail ?? '',
+      issued: textDay(invoice.issuedOn),
+      delivered: textDay(invoice.deliveredOn),
+      due: textDay(invoice.dueOn),
+      iban: invoice.iban ? groupIban(invoice.iban) : '',
+      note: invoice.note ?? '',
+      lines: inputLines(lines, who.company.vatPayer),
+    }
+    return invoiceForm(c, invoice.id, values, {}, status)
+  }
+  return shell(
+    c,
+    'invoices',
+    `${ti.sheet.title} ${invoice.number}`,
+    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} {...extra} />,
+    status,
+  )
+}
+
+appRoutes.get('/faktury/:id', (c) => invoicePage(c, c.req.param('id')))
+
+appRoutes.post('/faktury/:id', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const draft = ID.test(id) ? await getInvoice(c.env.DB, who.company.id, id) : null
+  if (!draft) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  if (draft.status !== 'draft') return c.redirect(`/app/faktury/${id}`, 303)
+  return saveInvoice(c, id)
+})
+
+/** Sends the invoice to its customer, or reminds them of it; a reply goes to the person who sent it. */
+async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const invoice = ID.test(id) ? await getInvoice(db, who.company.id, id) : null
+  if (!invoice || invoice.status !== 'issued' || !invoice.number) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  // An invoice issued without the customer's email is sent to one typed beside it, which is kept with it.
+  if (!invoice.customerEmail) {
+    const body = await c.req.parseBody()
+    const typed = typeof body.email === 'string' ? body.email.trim().slice(0, 200) : ''
+    if (!EMAIL.test(typed)) return invoicePage(c, id, { error: ti.actions.badEmail }, 422)
+    await db.prepare('UPDATE invoices SET customer_email = ? WHERE id = ? AND company_id = ? AND customer_email IS NULL').bind(typed, invoice.id, who.company.id).run()
+    invoice.customerEmail = typed
+  }
+  // A paid invoice is never reminded, whatever is posted.
+  if (reminder && invoice.paidOn) return c.redirect(`/app/faktury/${invoice.id}`, 303)
+  if (!(await withinLimit(db, 'invoice-mail', who.company.id, 30, 3600))) return invoicePage(c, id, { error: t.messages.throttle }, 429)
+  const link = `${siteOrigin(c)}/f/${invoice.token}`
+  const total = formatEurExact(invoice.totalCents).replace(/ /g, ' ')
+  const due = dayName(invoice.dueOn).replace(/ /g, ' ')
+  const iban = invoice.iban ? groupIban(invoice.iban) : null
+  await db.batch([
+    queueStatement(db, {
+      key: `invoice:${reminder ? 'remind' : 'send'}:${invoice.id}:${now()}`,
+      to: invoice.customerEmail,
+      replyTo: who.user.email,
+      subject: reminder ? ti.mail.reminderSubject(invoice.number, who.company.name) : ti.mail.subject(invoice.number, who.company.name),
+      body: reminder ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link) : ti.mail.body(who.company.name, invoice.number, total, due, iban, link, invoice.note),
+    }),
+    db.prepare(`UPDATE invoices SET ${reminder ? 'reminded_at' : 'sent_at'} = ? WHERE id = ? AND company_id = ?`).bind(now(), invoice.id, who.company.id),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: reminder ? 'invoice.reminded' : 'invoice.sent', subject: invoice.id }),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/app/faktury/${invoice.id}?ok=${reminder ? 'pripomenuta' : 'poslana'}`, 303)
+}
+
+appRoutes.post('/faktury/:id/poslat', (c) => mailInvoice(c, c.req.param('id'), false))
+appRoutes.post('/faktury/:id/pripomenut', (c) => mailInvoice(c, c.req.param('id'), true))
+
+appRoutes.get('/faktury/:id/xml', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const invoice = ID.test(id) ? await getInvoice(c.env.DB, who.company.id, id) : null
+  if (!invoice || invoice.status !== 'issued') return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  return xmlResponse(invoice, await invoiceLines(c.env.DB, invoice.id), who.company)
+})
+
+export function xmlResponse(invoice: StoredInvoice, lines: Line[], seller: Company): Response {
+  return new Response(ublOf(invoice, lines, seller), {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="faktura-${invoice.number ?? 'koncept'}.xml"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+}
 
 appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Missing />, 404) : c.redirect('/app/prihlasenie', 303)))
 

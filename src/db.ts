@@ -245,6 +245,7 @@ const MIGRATIONS: readonly string[][] = [
       base_cents INTEGER NOT NULL,
       vat_cents INTEGER NOT NULL,
       total_cents INTEGER NOT NULL,
+      iban TEXT,
       token TEXT NOT NULL UNIQUE,
       document_id TEXT,
       sent_at INTEGER,

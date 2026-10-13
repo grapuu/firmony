@@ -47,6 +47,13 @@ const files = new Map([
   ['/app/doklady?filter=bez-platby', 'doklady-bez-platby.html'],
   ['/app/spravy', 'spravy.html'],
   ['/app/firma', 'firma.html'],
+  ['/app/faktury', 'faktury.html'],
+  ['/app/faktury/nova', 'faktura-nova.html'],
+  ['/app/faktury/demo-inv-1', 'faktura-1.html'],
+  ['/app/faktury/demo-inv-2', 'faktura-2.html'],
+  ['/app/faktury/demo-inv-3', 'faktura-3.html'],
+  ['/app/faktury/nova?podla=demo-inv-1', 'faktura-podobna-1.html'],
+  ['/app/faktury/nova?podla=demo-inv-2', 'faktura-podobna-2.html'],
   ['/app/prihlasenie', 'prihlasenie.html'],
   ['/app/prihlasenie/poslane', 'prihlasenie-poslane.html'],
 ])
@@ -56,6 +63,21 @@ payments.forEach((p, i) => files.set(p.path, `platba-${i + 1}.html`))
 const docsPage = await html('/app/doklady')
 const docs = [...new Set([...docsPage.matchAll(/href="(\/app\/doklady\/[A-Za-z0-9-]+)"/g)].map((m) => m[1]))]
 docs.forEach((path, i) => files.set(path, `doklad-${i + 1}.html`))
+
+// A new invoice offers the customers of earlier ones; each leads to the form with that customer.
+const newInvoice = await html('/app/faktury/nova')
+;[...new Set([...newInvoice.matchAll(/href="(\/app\/faktury\/nova\?odberatel=[A-Za-z0-9-]+)"/g)].map((m) => m[1]))].forEach((path, i) => files.set(path, `faktura-nova-${i + 1}.html`))
+// The page a customer opens from the email, and the e-invoices to download.
+const tokens = { 'demo-inv-1': 'demodemoinv1'.padEnd(43, 'x'), 'demo-inv-2': 'demodemoinv2'.padEnd(43, 'x') }
+files.set(`/f/${tokens['demo-inv-2']}`, 'faktura-odberatel.html')
+files.set(`/f/${tokens['demo-inv-1']}`, 'faktura-odberatel-zaplatena.html')
+const xmls = [
+  ['/app/faktury/demo-inv-1/xml', 'faktura-20260006.xml'],
+  ['/app/faktury/demo-inv-2/xml', 'faktura-20260007.xml'],
+]
+for (const [path, file] of xmls) files.set(path, file)
+files.set(`/f/${tokens['demo-inv-2']}/xml`, 'faktura-20260007.xml')
+files.set(`/f/${tokens['demo-inv-1']}/xml`, 'faktura-20260006.xml')
 
 const find = (name) => payments.find((p) => p.name.toLowerCase().includes(name))
 const cafe = find('kaviaren')
@@ -98,6 +120,8 @@ function script(leads) {
     other: 'Toto je náhľad: nič sa neukladá. V aplikácii sa to hneď uloží.',
     book: 'Toto je náhľad: nič sa neukladá. V aplikácii sa doklad zaúčtuje a hneď sa otvorí ďalší.',
     export: 'Toto je náhľad. V aplikácii sa stiahne súbor CSV pre účtovný program.',
+    invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, odberateľ ju dostane e-mailom s QR kódom na platbu a keď zaplatí, označí sa sama.',
+    invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
     team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.'
   };
   function note(form, text) {
@@ -107,6 +131,8 @@ function script(leads) {
   }
   function kind(form) {
     var a = form.getAttribute('data-action') || '';
+    if (/^\\/app\\/faktury\\/[^/]+\\/(poslat|pripomenut)$/.test(a)) return 'invoiceMail';
+    if (/^\\/app\\/faktury/.test(a)) return 'invoice';
     if (/^\\/ucto\\/doklady\\//.test(a)) return 'book';
     if (/\\/export$/.test(a)) return 'export';
     if (/^\\/ucto\\//.test(a)) return 'team';
@@ -123,7 +149,8 @@ function script(leads) {
   });
   document.addEventListener('submit', function (event) {
     event.preventDefault();
-    var form = event.target, lead = leads[form.getAttribute('data-action') + (form.dovod ? '' : '')];
+    var form = event.target, which = event.submitter && event.submitter.value;
+    var lead = leads[form.getAttribute('data-action') + '|' + which] || leads[form.getAttribute('data-action')];
     if (lead) { location.href = lead; return; }
     note(form, says[kind(form)]);
   });
@@ -147,10 +174,12 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a></div>`
 
 function rewrite(page, extra) {
   return page
+    .replaceAll(`href="${base}/`, 'href="/')
+    .replaceAll(base, 'https://firmony.ai')
     .replace(/<script src="\/inside\.js" defer><\/script>/, '')
     .replace(/<iframe class="book__pdf" src="([^"]+)"[^>]*><\/iframe>/g, '<div class="book__img book__img--preview"><img src="$1" alt=""></div>')
     .replace(/<form([^>]*?) action="([^"]*)"/g, (_, attrs, action) => `<form${attrs} data-action="${action}" action="#"`)
@@ -182,13 +211,15 @@ const leads = {
   [`${fuel.path}/bez-dokladu`]: 'platba-tankovanie-netreba.html',
   '/app/prihlasenie': 'prihlasenie-poslane.html',
   '/app/firma/prepnut': 'atelier.html',
+  '/app/faktury/demo-inv-3|vystavit': 'faktura-vystavena.html',
 }
 
 // The first state: three payments without a document.
 for (const [path, file] of files) {
-  if (path.startsWith('/app/prihlasenie')) continue
+  if (path.startsWith('/app/prihlasenie') || file.endsWith('.xml')) continue
   await write(file, await html(path), leads)
 }
+for (const [path, file] of xmls) await writeFile(join(out, file), await html(path))
 
 // Then what a client does, and the pages that follow.
 async function upload(paymentPath) {
@@ -270,6 +301,31 @@ await write('vsetko-mame.html', await html('/app'))
   await call('/app/firma/prepnut', { method: 'POST', body: back, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
 }
 
+// The draft invoice issued as it stands: it takes the next number and is a document of the company at once.
+{
+  const draft = await html('/app/faktury/demo-inv-3')
+  const unescape = (text) => text.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+  const form = new URLSearchParams()
+  for (const m of draft.matchAll(/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/g)) form.set(m[1], unescape(m[2]))
+  for (const m of draft.matchAll(/<select[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
+    const chosen = m[2].match(/<option value="([^"]*)" selected/) ?? m[2].match(/<option value="([^"]*)"/)
+    if (chosen) form.set(m[1], unescape(chosen[1]))
+  }
+  for (const m of draft.matchAll(/<textarea[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/textarea>/g)) form.set(m[1], unescape(m[2]))
+  form.set('akcia', 'vystavit')
+  const issued = await call('/app/faktury/demo-inv-3', { method: 'POST', body: form, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+  if (issued.status !== 303) throw new Error(`issuing the draft: ${issued.status}`)
+  const page = await html('/app/faktury/demo-inv-3?ok=vystavena')
+  const token = page.match(/\/f\/([A-Za-z0-9_-]{43})/)?.[1]
+  if (!token) throw new Error('the issued draft has no link for its customer')
+  files.set(`/f/${token}`, 'faktura-odberatel-3.html')
+  files.set(`/f/${token}/xml`, 'faktura-20260008.xml')
+  files.set('/app/faktury/demo-inv-3/xml', 'faktura-20260008.xml')
+  await writeFile(join(out, 'faktura-20260008.xml'), await html('/app/faktury/demo-inv-3/xml'))
+  await write('faktura-odberatel-3.html', await html(`/f/${token}`))
+  await write('faktura-vystavena.html', page)
+}
+
 // Signing in, last: signing out ends the session.
 await call('/app/odhlasit', { method: 'POST', headers: { 'content-length': '0' } })
 cookie = ''
@@ -281,5 +337,5 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', ...originals]
+const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', ...originals]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))

@@ -1,7 +1,8 @@
 // Takes the rules of the last change out one at a time, in a copy of the repository, and says which check
 // fails without each. A rule that no check misses is a rule nothing holds.
 //
-//   node scripts/dev/mutate.mjs
+//   node scripts/dev/mutate.mjs              every rule of the list
+//   node scripts/dev/mutate.mjs number QR    only the rules whose description has one of these words
 //
 // The list is the last change's; replace it for the next one. Each rule is a file, the text that holds it, and
 // what it becomes without it. The copy is in the scratch folder of the system (never the repository itself), so
@@ -12,19 +13,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  ['src/app/inbox.ts', '  if (!m || m[2] !== domain) return null', '  if (!m) return null', "a company's address is on our domain only"],
-  ['src/app/inbox.ts', "    if (kind !== 'pdf' && kind !== 'xml' && bytes.length < APP.mailImageMin) continue\n", '', 'a logo in a signature is no document'],
-  ['src/app/inbox.ts', "    if (attachment.related) continue\n    const content", '    const content', 'a picture inside the text is no document'],
-  ['src/app/routes.tsx', "  if (who.role !== 'owner') return companyPage(c, { invite, errors: { form: t.company.onlyOwner } }, 403)\n", '', 'only an owner invites'],
-  ['src/app/routes.tsx', "  if (who.role !== 'owner') return companyPage(c, { errors: { form: t.company.onlyOwner } }, 403)\n", '', 'only an owner removes'],
-  ['src/app/routes.tsx', "AND role <> 'owner' AND user_id <> ?", "AND role <> 'owner' AND (user_id <> ? OR 1)", 'an owner does not remove herself'],
-  ['src/app/routes.tsx', "  if (existing && (await db.prepare('SELECT 1 AS x FROM members WHERE company_id = ? AND user_id = ?').bind(who.company.id, existing.id).first())) {", '  if (false) {', 'somebody in the company is not invited again'],
-  ['src/app/routes.tsx', "  const filter = search ? 'all' : q === 'hotove'", "  const filter = q === 'hotove'", 'a search looks through every payment'],
-  ['src/app/routes.tsx', '      steps={steps.payments && steps.upload && steps.email ? null : steps}', '      steps={steps}', 'the first steps go once they are done'],
-  ['src/app/remind.ts', '  if (b.hour !== 9 || b.minute >= 15) return null', '  if (b.minute >= 15) return null', 'reminders go at nine'],
-  ['src/app/remind.ts', 'await membersOf(db, company.id, true)', 'await membersOf(db, company.id)', 'reminders go only to who wants them'],
-  ['src/app/remind.ts', "          key: `remind:${kind}:${company.id}:${person.id}:${kind === 'weekly' ? day : day.slice(0, 7)}`,", '          key: `remind:${kind}:${company.id}:${person.id}:${Math.random()}`,', 'a reminder goes once'],
-  ['src/app/intake.ts', "    const existing = seen.has(hash) ? 'this-request' : await documentByHash(db, company.id, hash)", '    const existing = null', 'the same file is kept once, by email too'],
+  ['src/app/invoices.ts', '    const rate = vatPayer ? line.vatRate : 0', '    const rate = line.vatRate', 'a company that is no VAT payer adds no VAT'],
+  ['src/app/invoices.ts', '  return rest === 1\n', '  return true\n', 'an IBAN with a typo is refused'],
+  ['src/app/invoices.ts', "WHERE i.token = ? AND i.status = 'issued'", 'WHERE i.token = ?', "a draft's link opens nothing"],
+  ['src/app/invoices.ts', 'FROM invoices WHERE company_id = ?2 AND year = ?6) AS next', 'FROM invoices WHERE year = ?6) AS next', 'every company numbers its own invoices'],
+  ['src/app/invoices.ts', "printf('%d%04d', ?6, next.seq)", "printf('%d%04d', ?6, 1)", 'the next invoice takes the next number'],
+  ['src/app/invoices.ts', 'WHERE i.company_id = ? AND i.id = ?', 'WHERE (i.company_id = ? OR 1) AND i.id = ?', "another company's invoice is never seen or copied"],
+  ['src/app/invoices.ts', '  const vatId = (icdph: string | null) => (seller.vatPayer ? icdph : null)', '  const vatId = (icdph: string | null) => icdph', 'a seller who is no VAT payer writes no VAT identifier'],
+  ['src/app/invoices.ts', "(rate > 0 ? 'S' : 'E')", "(rate > 0 ? 'S' : 'Z')", 'a supply at nought is exempt'],
+  ['src/app/invoices.ts', '(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000', 'line.quantityMilli / 1000', 'a discount keeps its price positive'],
+  ['src/app/paybysquare.ts', '          amount: order.amountCents / 100,', '          amount: order.amountCents,', 'the QR code pays the amount in euros'],
+  ['src/app/routes.tsx', "  if (draft.status !== 'draft') return c.redirect(`/app/faktury/${id}`, 303)\n", '', 'an issued invoice is never changed'],
+  ['src/app/routes.tsx', '  if (reminder && invoice.paidOn) return c.redirect(`/app/faktury/${invoice.id}`, 303)\n', '', 'a paid invoice is never reminded'],
+  ['src/app/routes.tsx', '      replyTo: who.user.email,\n', '', 'a reply goes to whoever sent the invoice'],
+  ['src/app/routes.tsx', '    if (seen.has(key)) continue\n', '', 'the customers of earlier invoices, each once'],
+  ['src/app/routes.tsx', '    if (like) {\n      values.note', '    if (true) {\n      values.note', 'a customer of an earlier invoice comes without its lines'],
+  ['src/app/routes.tsx', '    if (!EMAIL.test(typed)) return invoicePage(c, id, { error: ti.actions.badEmail }, 422)\n', '', 'a typed email that is none is refused'],
+  ['src/views/invoices.tsx', '<InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={!invoice.paidOn} />', '<InvoiceSheet invoice={invoice} lines={lines} seller={seller} />', 'a paid invoice carries no QR code to pay it twice'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname
@@ -38,8 +43,10 @@ const run = (command) => {
     return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? ''}` }
   }
 }
+const only = process.argv.slice(2)
 let held = 0
-for (const [file, from, to, what] of RULES) {
+const chosen = RULES.filter(([, , , what]) => only.length === 0 || only.some((word) => what.includes(word)))
+for (const [file, from, to, what] of chosen) {
   const path = join(copy, file)
   const original = readFileSync(path, 'utf8')
   if (!original.includes(from) || from === to) {
@@ -58,4 +65,4 @@ for (const [file, from, to, what] of RULES) {
   }
 }
 rmSync(copy, { recursive: true, force: true })
-console.log(`${held} of ${RULES.length} rules held`)
+console.log(`${held} of ${chosen.length} rules held`)

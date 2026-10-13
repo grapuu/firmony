@@ -10,7 +10,10 @@ import { connection, isLocal, later } from './http'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, type Company } from './rpo'
-import { appRoutes, appScheduled, type AppBindings } from './app/routes'
+import { appRoutes, appScheduled, xmlResponse, type AppBindings } from './app/routes'
+import { invoiceByToken, invoiceLines } from './app/invoices'
+import { getCompany } from './app/store'
+import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
 import { Home, type CalcState, type Carry } from './views/home'
@@ -97,7 +100,7 @@ app.use('*', async (c, next) => {
     if (length > (UPLOADS.test(url.pathname) ? APP.uploadBytes : LIMITS.formBytes)) return c.text('Too large', 413)
   }
   await next()
-  const inside = /^\/(app|ucto)(\/|$)/.test(url.pathname)
+  const inside = /^\/(app|ucto|f)(\/|$)/.test(url.pathname)
   if (!c.res.headers.has('Content-Security-Policy')) c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
   // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
@@ -343,10 +346,29 @@ app.get('/pravne-informacie', (c) =>
   page(c, { title: `Právne informácie | ${BRAND.name}`, description: typeset(`Kto stojí za ${BRAND.name}, ako chránime osobné údaje a že nepoužívame cookies.`), path: '/pravne-informacie' }, <Legal />),
 )
 
+// The page of an issued invoice that its customer opens from the email, and its e-invoice: no sign-in, the token
+// of 32 random bytes is the key, and nothing of it is for search engines.
+app.get('/f/:token', async (c) => {
+  await ensureSchema(c.env.DB)
+  const found = await invoiceByToken(c.env.DB, c.req.param('token'))
+  const seller = found ? await getCompany(c.env.DB, found.company) : null
+  if (!found || !seller) return c.notFound()
+  const lines = await invoiceLines(c.env.DB, found.invoice.id)
+  return c.html(html`<!doctype html>${(<PublicInvoicePage invoice={found.invoice} lines={lines} seller={seller} token={c.req.param('token')} />)}`)
+})
+
+app.get('/f/:token/xml', async (c) => {
+  await ensureSchema(c.env.DB)
+  const found = await invoiceByToken(c.env.DB, c.req.param('token'))
+  const seller = found ? await getCompany(c.env.DB, found.company) : null
+  if (!found || !seller) return c.notFound()
+  return xmlResponse(found.invoice, await invoiceLines(c.env.DB, found.invoice.id), seller)
+})
+
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
 
-app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /app', 'Disallow: /ucto', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
+app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /app', 'Disallow: /ucto', 'Disallow: /f/', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
 
 app.get('/sitemap.xml', (c) => {
   const urls = ['/', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)

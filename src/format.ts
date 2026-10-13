@@ -3,15 +3,18 @@
 const NBSP = ' '
 
 /** Euro from cents, the Slovak way: "69 €", "1 852,80 €". Whole euros are printed without decimals. */
-export function formatEur(cents: number): string {
+export function formatEur(cents: number, exact = false): string {
   const negative = cents < 0
   const abs = Math.abs(Math.round(cents))
   const euros = Math.floor(abs / 100)
   const rest = abs % 100
   const whole = String(euros).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)
-  const text = rest === 0 ? whole : `${whole},${String(rest).padStart(2, '0')}`
+  const text = rest === 0 && !exact ? whole : `${whole},${String(rest).padStart(2, '0')}`
   return `${negative ? '−' : ''}${text}${NBSP}€`
 }
+
+/** An amount as an invoice writes it: always with its cents, "120,00 €". */
+export const formatEurExact = (cents: number): string => formatEur(cents, true)
 
 /** A whole number with a space between thousands: "1 300". */
 export function formatCount(n: number): string {
