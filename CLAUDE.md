@@ -122,7 +122,8 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   contract ends. He was told: no store, no download and no fee to Apple or Google: Firmony is a web app that goes
   on the phone's home screen from the browser (Safari: Zdieľať, Pridať na plochu; Chrome: Inštalovať aplikáciu),
   and an app in the stores could come later if ever wanted; and, for the end, "asi 3 hodiny". Built and pushed at
-  00:36 on 14 October (`8eb3c82`), all checks passing (units 238, runtime 420): the administrator ends a contract from our side, the last month's documents are taken ten days past the last
+  00:36 on 14 October (`8eb3c82`), all checks passing (units 238, runtime 420): the administrator ends a contract
+  from our side, the last month's documents are taken ten days past the last
   day, the accountant hands the books over in the app, everything downloads as a ZIP a year, and ninety days past the
   end the schedule deletes the company's data, the identification five years later. The AML program doc (rev 25)
   says so, and a doubled sentence in its section 3 was put right. The previews: the app version 10 ("Koniec
