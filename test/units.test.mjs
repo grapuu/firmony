@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { appCopy, booking, calc, config, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, paybysquare, planRows, reader, rpo, teamStore, xml } from '../.wrangler/tmp/units-bundle.mjs'
+import { appCopy, bank, booking, calc, config, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, paybysquare, planRows, reader, rpo, teamStore, xml } from '../.wrangler/tmp/units-bundle.mjs'
 import { check, done } from './check.mjs'
+import { createVerify, generateKeyPairSync } from 'node:crypto'
 
 const NB = ' '
 
@@ -115,6 +116,13 @@ check('two documents for one payment: offered, not chosen', decided.auto.length 
 decided = match.decide([pay({ party: 'POS 4410' })], [doc()])
 check('a likely document that is not sure enough is offered', decided.auto.length === 0 && decided.suggest.get('p')?.[0] === 'd')
 check('nothing is offered when nothing fits', match.decide([pay()], [doc({ totalCents: 999 })]).suggest.size === 0)
+const monthly = (id, vs) => doc({ id, kind: 'invoice_out', issuedOn: '2026-10-01', dueOn: '2026-10-15', party: 'Agentúra Smer s. r. o.', vs, totalCents: 50000 })
+decided = match.decide([pay({ id: 'p1', amountCents: 50000, bookedOn: '2026-10-12', party: 'Agentura Smer', vs: '20260002' })], [monthly('d1', '20260001'), monthly('d2', '20260002')])
+check('of two invoices for the same amount, the payment with the number of one pays that one', decided.auto.length === 1 && decided.auto[0][1] === 'd2', JSON.stringify(decided))
+decided = match.decide([pay({ id: 'p1', amountCents: 50000, bookedOn: '2026-10-12', party: 'Agentura Smer', vs: null })], [monthly('d1', '20260001'), monthly('d2', '20260002')])
+check('without a number it is offered, not chosen', decided.auto.length === 0 && decided.suggest.get('p1')?.length === 2)
+decided = match.decide([pay({ id: 'p1', amountCents: 50000, bookedOn: '2026-10-12', vs: '20260002' }), pay({ id: 'p2', amountCents: 50000, bookedOn: '2026-10-13', vs: '0020260002' })], [monthly('d1', '20260001'), monthly('d2', '20260002')])
+check('two payments with the same number: neither is chosen', decided.auto.length === 0)
 
 check('a payment between two accounts of the company needs no document', match.autoExempt({ amountCents: -100000, party: 'Firma', partyIban: 'SK31 1200 0000 1987 4263 7541', note: null }, ['SK3112000000198742637541']) === 'own')
 check('a payment to the State Treasury needs none', match.autoExempt({ amountCents: -3300, party: 'Finančná správa SR', partyIban: 'SK3681800000007000123456', note: null }, []) === 'state' && match.isStateIban('SK36 8180 0000 0070 0012 3456'))
@@ -273,6 +281,30 @@ check('and whom it pays, without accents that some banks cannot show', paid?.ben
 check('no QR code without something to pay or with an account that is no IBAN', paybysquare.payBySquare({ iban: 'SK3112000000198742637541', amountCents: 0, vs: '1', due: null, name: 'A', note: '' }) === null && paybysquare.payBySquare({ iban: 'SK3112000000198742637542', amountCents: 100, vs: '1', due: null, name: 'A', note: '' }) === null)
 const picture = paybysquare.qrPicture(square ?? 'x')
 check('the QR code is one path inside a quiet zone of four modules', picture.size >= 29 && (picture.size - 8 - 21) % 4 === 0 && /^(M\d+ \d+h\d+v1h-\d+z)+$/.test(picture.path) && picture.path.startsWith('M4 4h7'), picture.path.slice(0, 40))
+
+// The bank by open banking: what a transaction of Enable Banking becomes, and the token its API is called with
+const tx = (extra) => bank.entryOf({ entry_reference: 'r1', transaction_amount: { currency: 'EUR', amount: '12.40' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: '2026-10-12', ...extra })
+check('money out is negative, money in positive, whatever sign the bank wrote', tx({}).amountCents === -1240 && tx({ credit_debit_indicator: 'CRDT' }).amountCents === 1240 && tx({ transaction_amount: { currency: 'EUR', amount: '-12.40' }, credit_debit_indicator: undefined }).amountCents === -1240)
+check('only what is booked is a payment', tx({ status: 'PDNG' }) === null && tx({ status: 'RJCT' }) === null && tx({ transaction_amount: { amount: '0.00' } }) === null)
+const paidIn = tx({ credit_debit_indicator: 'CRDT', debtor: { name: 'europio s. r. o.' }, debtor_account: { iban: 'sk52 0200 0000 0047 1234 5670' }, creditor: { name: 'Ukážková firma' }, remittance_information: ['/VS20260007/SS/KS0308', 'Faktura 20260007'] })
+check('money in names who sent it, and the Slovak symbols are read', paidIn.party === 'europio s. r. o.' && paidIn.partyIban === 'SK5202000000004712345670' && paidIn.vs === '20260007' && paidIn.ks === '0308', JSON.stringify(paidIn))
+const byCard = tx({ remittance_information: ['Platba kartou BILLA KOSICE'], bank_transaction_code: { code: 'CCRD' } })
+check('a card payment is named by its merchant', byCard.card && byCard.party === 'BILLA KOSICE', JSON.stringify(byCard))
+check('a transaction without a reference gets a steady one', tx({ entry_reference: undefined }).ref === tx({ entry_reference: undefined }).ref && tx({ entry_reference: undefined }).ref.startsWith('h:'))
+check('the day is the booking day, else the value day', tx({ booking_date: undefined, value_date: '2026-10-11' }).bookedOn === '2026-10-11' && tx({ booking_date: undefined }) === null)
+check('the balance is the closing one, else the booked one', JSON.stringify(bank.balanceOf({ balances: [{ balance_type: 'ITAV', balance_amount: { amount: '9.00' } }, { balance_type: 'CLBD', balance_amount: { amount: '1234.56' }, reference_date: '2026-10-13' }] })) === JSON.stringify({ cents: 123456, on: '2026-10-13' }) && bank.balanceOf({ balances: [] }) === null)
+const soonLink = { id: 'l', bank: 'Tatra banka', status: 'active', createdAt: 0, validUntil: 1_000_000 + 5 * 86400, syncedAt: null, error: null, accounts: [] }
+check('the overview asks to renew ten days before a consent ends, and says when it ended', bank.noticeOf([soonLink], 1_000_000)?.kind === 'renew' && bank.noticeOf([{ ...soonLink, validUntil: 1_000_000 + 30 * 86400 }], 1_000_000) === null && bank.noticeOf([{ ...soonLink, status: 'expired' }], 1_000_000)?.kind === 'ended')
+for (const type of ['pkcs8', 'pkcs1']) {
+  const pair = generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type, format: 'pem' } })
+  const pasted = type === 'pkcs1' ? pair.privateKey.replace(/\n/g, '\\n') : pair.privateKey
+  const token = await bank.bearer({ ENABLE_BANKING_APP: `app-${type}`, ENABLE_BANKING_KEY: pasted }, 1_800_000_000)
+  const [h, p, sig] = token.split('.')
+  const header = JSON.parse(Buffer.from(h, 'base64url').toString())
+  const payload = JSON.parse(Buffer.from(p, 'base64url').toString())
+  const valid = createVerify('RSA-SHA256').update(`${h}.${p}`).verify(pair.publicKey, Buffer.from(sig, 'base64url'))
+  check(`the token for Enable Banking is signed with the application's key (${type === 'pkcs1' ? 'PKCS#1 pasted on one line' : 'PKCS#8'})`, valid && header.alg === 'RS256' && header.kid === `app-${type}` && payload.iss === 'enablebanking.com' && payload.aud === 'api.enablebanking.com' && payload.exp - payload.iat === 3600)
+}
 
 // The originals of the sample documents are real PDFs
 const pdf = new TextDecoder().decode(demo.demoPdf(226, 360, [{ text: 'Papiernictvo Pero (Košice)', bold: true }, { text: 'SPOLU 8,90 EUR' }]))

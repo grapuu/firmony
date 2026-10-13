@@ -72,7 +72,7 @@ function day(value: string | null): string | null {
 }
 
 /** A short, steady fingerprint of a text (FNV-1a), for a reference the bank did not give. */
-function fingerprint(value: string): string {
+export function fingerprint(value: string): string {
   let hash = 0x811c9dc5
   for (let i = 0; i < value.length; i++) {
     hash ^= value.charCodeAt(i)

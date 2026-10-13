@@ -26,6 +26,16 @@ export function dayName(day: string, today?: string): string {
   return typeset(today && today.slice(0, 4) === year ? `${d}. ${m}` : `${d}. ${m} ${year}`)
 }
 
+/** A moment as a person says it, in Bratislava: "dnes o 14:05", "včera o 9:40", "12. októbra o 14:05". */
+export function whenName(seconds: number, today: string): string {
+  const at = new Date(seconds * 1000)
+  const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(at)
+  const time = new Intl.DateTimeFormat('sk-SK', { timeZone: 'Europe/Bratislava', hour: 'numeric', minute: '2-digit' }).format(at)
+  const yesterday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.parse(`${today}T12:00:00Z`) - 86400000))
+  const name = day === today ? 'dnes' : day === yesterday ? 'včera' : dayName(day, today)
+  return typeset(`${name} o ${time}`)
+}
+
 /** "13. 10." for the lists, where space is short. */
 export function dayShort(day: string): string {
   return `${Number(day.slice(8, 10))}. ${Number(day.slice(5, 7))}.`
@@ -122,12 +132,12 @@ export const app = typesetAll({
     doneSerif: 'Nemusíte nič robiť.',
     doneLead: 'Ku každej platbe máme doklad. Keď pribudne nová, uvidíte ju tu.',
     noPayments: 'Zatiaľ tu nie sú žiadne platby.',
-    noPaymentsLead: 'Keď prepojíme vašu banku alebo pridáte výpis z banky, platby sa objavia tu. Doklady môžete pridávať už teraz.',
+    noPaymentsLead: 'Keď prepojíte banku alebo pridáte výpis z banky, platby sa objavia tu. Doklady môžete pridávať už teraz.',
     month: (name: string) => typeset(`${name.charAt(0).toUpperCase()}${name.slice(1)} v číslach`),
     in: 'Prišlo na účet',
     out: 'Odišlo z účtu',
     balance: 'Na účte',
-    balanceOn: (day: string) => typeset(`podľa výpisu z ${day}`),
+    balanceOn: (day: string) => typeset(`k ${day}`),
     noBalance: 'Pribudne s výpisom',
     deadlines: 'Termíny',
     deadlinesLead: 'Všetko podávame za vás. Od vás potrebujeme len doklady.',
@@ -291,6 +301,7 @@ export const app = typesetAll({
     optional: 'Keď budete chcieť',
     steps: {
       payments: { title: 'Pridajte výpis z banky', lead: 'Súbor XML z internet bankingu. Platby sa objavia a doklady k nim priradíme sami.', link: 'Pridať výpis' },
+      bank: { title: 'Prepojte banku', lead: 'Platby sa potom načítajú samy, štyrikrát denne. Prihlásite sa vo svojej banke.', link: 'Prepojiť banku' },
       upload: { title: 'Odfoťte prvý bloček', lead: 'Alebo nahrajte faktúru. Prečítame ju a priradíme k platbe.', link: 'Pridať doklad' },
       email: { title: 'Preposielajte faktúry z e-mailu', lead: 'Na vašu adresu pre doklady. Dá sa nastaviť, aby sa preposielali samy.', link: 'Ako na to' },
       people: { title: 'Pozvite spoločníka', lead: 'Aj on bude môcť pridávať doklady a písať účtovníčke.', link: 'Pozvať' },
@@ -536,6 +547,73 @@ export const app = typesetAll({
       lead: 'Faktúru vystavila firma cez Firmony.',
       paid: 'Faktúra je zaplatená. Ďakujeme.',
       print: 'Uložiť ako PDF: v prehliadači Tlačiť (Ctrl+P), potom Uložiť ako PDF.',
+    },
+  },
+  bank: {
+    title: 'Banka',
+    serif: 'Platby prídu samy.',
+    lead: 'Prepojte účet firmy a platby sa budú načítavať samy, štyrikrát denne. Doklady k nim priradíme ako doteraz.',
+    pickTitle: 'Prepojiť banku',
+    pickAnother: 'Prepojiť ďalšiu banku',
+    pickLead: 'Vyberte svoju banku. Prihlásite sa v nej ako vždy a povolíte čítanie pohybov na účtoch firmy. Platiť ani nič meniť nemôžeme.',
+    pickFoot: 'Prepojenie zabezpečuje Enable Banking, poskytovateľ s licenciou na čítanie účtov podľa smernice PSD2. Súhlas platí 180 dní, potom ho jedným klikom obnovíte.',
+    off: 'Priame prepojenie s bankou zapíname. Dovtedy pridávajte výpis z internet bankingu, platby sa nezdvoja ani potom.',
+    unreachable: 'Zoznam bánk sa teraz nepodarilo načítať. Skúste to o chvíľu.',
+    linked: 'Prepojená',
+    ended: 'Prístup vypršal',
+    read: (when: string) => typeset(`Naposledy načítané ${when}`),
+    notYet: 'Platby sa práve načítavajú.',
+    until: (day: string) => typeset(`Prístup platí do ${day}`),
+    endedLead: 'Platby sa z tejto banky nenačítavajú. Obnovte prístup, trvá to minútu.',
+    failed: 'Posledné načítanie sa nepodarilo. Skúsime to znova sami.',
+    renew: 'Obnoviť prístup',
+    readNow: 'Načítať teraz',
+    unlink: 'Odpojiť banku',
+    unlinkLead: 'Platby, ktoré už máme, zostanú. Nové sa načítavať prestanú.',
+    accounts: 'Účty',
+    balance: (amount: string, day: string) => typeset(`Zostatok ${amount} k ${day}`),
+    notCompany: 'Toto nie je účet firmy',
+    notCompanyLead: 'Ak ste v banke povolili aj súkromný účet, odoberte ho. Vymažeme jeho platby, ktoré prišli z banky.',
+    statementTitle: 'Alebo pridajte výpis',
+    statementLead: 'Ak banku prepojiť nechcete, pridajte výpis z internet bankingu vo formáte XML (camt.053). Platby, ktoré už máme, sa nezdvoja.',
+    onlyOwner: 'Toto môže urobiť len majiteľ firmy.',
+    flash: {
+      pripojena: (n: number) => typeset(n === 0 ? 'Banka je prepojená, ale nedala nám žiadny účet s IBAN. Skúste to znova a v banke vyberte účet firmy.' : `Banka je prepojená${n > 1 ? `, ${n} ${plural(n, 'účet', 'účty', 'účtov')}` : ''}. Platby sa načítavajú.`),
+      zrusene: 'Prepojenie ste v banke zrušili. Nič sa nestalo, skúsiť to môžete kedykoľvek.',
+      neplatne: 'Prepojenie sa nepodarilo dokončiť, odkaz z banky už neplatí. Skúste to znova.',
+      chyba: 'Banka teraz neodpovedá. Skúste to o chvíľu.',
+      nacitane: (n: number) => typeset(n === 0 ? 'Načítané. Nové platby nie sú.' : `Načítané. ${plural(n, 'Pribudla', 'Pribudli', 'Pribudlo')} ${n} ${plural(n, 'platba', 'platby', 'platieb')}.`),
+      vyprsalo: 'Prístup k banke vypršal. Obnovte ho.',
+      odpojena: 'Banka je odpojená. Platby, ktoré už máme, zostávajú.',
+      odobraty: 'Účet sme odobrali a jeho platby z banky vymazali.',
+      vela: 'Teraz sme načítavali veľa razy. Skúste to o hodinu, platby sa načítajú aj samy.',
+    },
+    notice: {
+      renew: (bank: string, day: string) => typeset(`Prístup k banke ${bank} vyprší ${day}. Obnovte ho, nech platby chodia ďalej.`),
+      ended: (bank: string) => typeset(`Prístup k banke ${bank} vypršal a platby sa nenačítavajú.`),
+      go: 'Obnoviť prístup',
+    },
+    card: {
+      title: 'Prepojte banku',
+      lead: 'Platby sa budú načítavať samy, štyrikrát denne. Výpisy už nebudete potrebovať.',
+      go: 'Prepojiť banku',
+      linked: (bank: string) => typeset(`${bank} je prepojená`),
+      manage: 'Spravovať',
+    },
+    mail: {
+      renewSubject: (bank: string) => `${BRAND.name}: obnovte prístup k banke ${bank}`,
+      renewBody: (name: string, company: string, bank: string, day: string, link: string) =>
+        [
+          `Dobrý deň, ${name},`,
+          '',
+          `prístup Firmony k banke ${bank} pre firmu ${company} vyprší ${day}. Banky ho dávajú najviac na 180 dní.`,
+          '',
+          `Obnovíte ho za minútu: kliknite na „Obnoviť prístup“ a prihláste sa vo svojej banke ako vždy. ${link}`,
+          '',
+          'Kým ho neobnovíte, platby z banky sa nenačítajú a budeme vás prosiť o výpisy.',
+          '',
+          BRAND.name,
+        ].join('\n'),
     },
   },
   search: {

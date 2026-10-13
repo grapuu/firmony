@@ -1,9 +1,9 @@
 // Reminders by email, the way Dougs and Pennylane send them: on Monday morning to a company that has payments
 // without a document, and on the 5th of the month before the deadline for documents (the 10th). Only to people who
 // did not turn them off, never for the sample companies, and once: each email has a key in the outbox.
-import { APP, BRAND } from '../config'
+import { APP, BANK, BRAND } from '../config'
 import { flushOutbox, queueStatement } from '../mail'
-import { app as t, monthName, readableName, signed } from './copy'
+import { app as t, dayName, monthName, readableName, signed } from './copy'
 import type { AppBindings } from './routes'
 import { MISSING, listPayments, membersOf } from './store'
 
@@ -71,6 +71,45 @@ export async function remindAll(env: AppBindings, ms: number, origin: string = B
           to: person.email,
           subject,
           body: t.remind.body(name, company.name, intro, lines, missing.length - lines.length, `${origin}/app/platby`, `${origin}/app/firma#pripomienky`),
+        }),
+      )
+    }
+  }
+  for (let i = 0; i < statements.length; i += 50) await db.batch(statements.slice(i, i + 50))
+  if (statements.length > 0) await flushOutbox(db, env.EMAIL, 50)
+  return statements.length
+}
+
+/**
+ * The owners of a company whose consent at the bank ends within ten days are asked once, at nine in the morning,
+ * to renew it: a bank gives it for 180 days at most, and without it the payments stop coming.
+ */
+export async function remindBankRenewals(env: AppBindings, ms: number, origin: string = BRAND.origin): Promise<number> {
+  const b = bratislava(ms)
+  if (b.hour !== 9 || b.minute >= 15) return 0
+  const db = env.DB
+  const ts = Math.floor(ms / 1000)
+  const links = await db
+    .prepare(
+      `SELECT l.id, l.bank, l.valid_until, c.id AS company_id, c.name AS company FROM bank_links l JOIN companies c ON c.id = l.company_id
+       WHERE l.status = 'active' AND l.valid_until IS NOT NULL AND l.valid_until > ? AND l.valid_until < ? AND c.demo = 0 AND c.closed_at IS NULL`,
+    )
+    .bind(ts, ts + BANK.renewDays * 86400)
+    .all<{ id: string; bank: string; valid_until: number; company_id: string; company: string }>()
+  const statements: D1PreparedStatement[] = []
+  for (const link of links.results) {
+    const until = dayName(bratislava(link.valid_until * 1000).day)
+    const owners = await db
+      .prepare("SELECT u.id, u.name, u.email FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ? AND m.role = 'owner'")
+      .bind(link.company_id)
+      .all<{ id: string; name: string; email: string }>()
+    for (const owner of owners.results) {
+      statements.push(
+        queueStatement(db, {
+          key: `bank-renew:${link.id}:${owner.id}`,
+          to: owner.email,
+          subject: t.bank.mail.renewSubject(link.bank),
+          body: t.bank.mail.renewBody(owner.name.split(/\s+/)[0] ?? owner.name, link.company, link.bank, until, `${origin}/app/banka`),
         }),
       )
     }

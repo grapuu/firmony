@@ -13,23 +13,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  ['src/app/invoices.ts', '    const rate = vatPayer ? line.vatRate : 0', '    const rate = line.vatRate', 'a company that is no VAT payer adds no VAT'],
-  ['src/app/invoices.ts', '  return rest === 1\n', '  return true\n', 'an IBAN with a typo is refused'],
-  ['src/app/invoices.ts', "WHERE i.token = ? AND i.status = 'issued'", 'WHERE i.token = ?', "a draft's link opens nothing"],
-  ['src/app/invoices.ts', 'FROM invoices WHERE company_id = ?2 AND year = ?6) AS next', 'FROM invoices WHERE year = ?6) AS next', 'every company numbers its own invoices'],
-  ['src/app/invoices.ts', "printf('%d%04d', ?6, next.seq)", "printf('%d%04d', ?6, 1)", 'the next invoice takes the next number'],
-  ['src/app/invoices.ts', 'WHERE i.company_id = ? AND i.id = ?', 'WHERE (i.company_id = ? OR 1) AND i.id = ?', "another company's invoice is never seen or copied"],
-  ['src/app/invoices.ts', '  const vatId = (icdph: string | null) => (seller.vatPayer ? icdph : null)', '  const vatId = (icdph: string | null) => icdph', 'a seller who is no VAT payer writes no VAT identifier'],
-  ['src/app/invoices.ts', "(rate > 0 ? 'S' : 'E')", "(rate > 0 ? 'S' : 'Z')", 'a supply at nought is exempt'],
-  ['src/app/invoices.ts', '(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000', 'line.quantityMilli / 1000', 'a discount keeps its price positive'],
-  ['src/app/paybysquare.ts', '          amount: order.amountCents / 100,', '          amount: order.amountCents,', 'the QR code pays the amount in euros'],
-  ['src/app/routes.tsx', "  if (draft.status !== 'draft') return c.redirect(`/app/faktury/${id}`, 303)\n", '', 'an issued invoice is never changed'],
-  ['src/app/routes.tsx', '  if (reminder && invoice.paidOn) return c.redirect(`/app/faktury/${invoice.id}`, 303)\n', '', 'a paid invoice is never reminded'],
-  ['src/app/routes.tsx', '      replyTo: who.user.email,\n', '', 'a reply goes to whoever sent the invoice'],
-  ['src/app/routes.tsx', '    if (seen.has(key)) continue\n', '', 'the customers of earlier invoices, each once'],
-  ['src/app/routes.tsx', '    if (like) {\n      values.note', '    if (true) {\n      values.note', 'a customer of an earlier invoice comes without its lines'],
-  ['src/app/routes.tsx', '    if (!EMAIL.test(typed)) return invoicePage(c, id, { error: ti.actions.badEmail }, 422)\n', '', 'a typed email that is none is refused'],
-  ['src/views/invoices.tsx', '<InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={!invoice.paidOn} />', '<InvoiceSheet invoice={invoice} lines={lines} seller={seller} />', 'a paid invoice carries no QR code to pay it twice'],
+  ['src/app/routes.tsx', "  if (site && site !== 'same-origin' && site !== 'none') return c.redirect('/app/banka', 303)\n", '', 'another site cannot send a client off to the bank'],
+  ['src/app/bank.ts', "  if (tx.status && tx.status !== 'BOOK') return null\n", '', 'only what is booked is a payment'],
+  ['src/app/store.ts', '      if (twin >= 0) {', '      if (false) {', 'a payment a statement brought is not brought twice by the bank'],
+  ['src/app/store.ts', '        others.splice(twin, 1)\n', '', 'one payment of a statement stands for one of the bank'],
+  ['src/app/store.ts', '    if (!mine.has(entry.ref)) {', '    if (true) {', 'a payment already read takes no other payment\'s place'],
+  ['src/app/bank.ts', "(tried_at IS NULL OR tried_at < ?)", '(1 OR ?)', 'the bank is read every six hours, never more often'],
+  ['src/app/bank.ts', '    const ended = err instanceof BankError && (status === 401 || (code !== null && ENDED.has(code)))', '    const ended = false', 'a consent the bank says is over is marked so'],
+  ['src/app/bank.ts', 'l.validUntil - at < BANK.renewDays * 86400', 'l.validUntil - at < 0', 'a consent that ends soon is said on the overview'],
+  ['src/app/remind.ts', '          key: `bank-renew:${link.id}:${owner.id}`,', '          key: `bank-renew:${link.id}:${owner.id}:${Math.random()}`,', 'the renewal is asked for once'],
+  ['src/app/bank.ts', "  if (link.session_id && bankReady(env)) await call(env, 'DELETE', `/sessions/${encodeURIComponent(link.session_id)}`).catch(() => null)\n", '', 'an unlinked consent is closed at the bank'],
+  ['src/app/match.ts', '    if (theOne && (byDocument', '    if (false && theOne && (byDocument', 'the number of an invoice decides which of two of the same amount is paid'],
+  ['src/app/bank.ts', '  if (present) {', '  if (false) {', 'the bank is told a person is at the screen'],
+  ['src/app/bank.ts', '    if (!iban || !/^[A-Z]{2}\\d{2}[A-Z0-9]{10,30}$/.test(iban) || typeof account.uid !== \'string\') continue', "    if (typeof account.uid !== 'string') continue", 'an account without an IBAN (a card) is not the company\'s account'],
+  ['src/views/team.tsx', '          {p.bankLine ? <span>{p.bankLine}</span> : null}\n', '', 'the accountant sees the client\'s bank'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

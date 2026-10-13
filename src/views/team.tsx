@@ -227,6 +227,8 @@ export interface ClientPageProps {
   flash?: string | null
   error?: string | null
   draft?: string
+  /** How the client's bank stands, in a line. */
+  bankLine?: string | null
 }
 
 export const ClientPage: FC<ClientPageProps> = (p) => {
@@ -251,6 +253,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           ) : null}
           {c.address ? <span>{c.address}</span> : null}
           <span>{c.accountantName ?? t.clients.nobody}</span>
+          {p.bankLine ? <span>{p.bankLine}</span> : null}
         </p>
       </header>
       <Flash text={p.flash} />

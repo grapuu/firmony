@@ -127,8 +127,10 @@ const MIGRATIONS: readonly string[][] = [
       valid_until INTEGER,
       status TEXT NOT NULL,
       synced_at INTEGER,
+      tried_at INTEGER,
       error TEXT
     )`,
+    'CREATE INDEX IF NOT EXISTS bank_links_company ON bank_links (company_id, status)',
     `CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL,

@@ -673,13 +673,50 @@ export async function accountFor(db: D1Database, company: string, iban: string, 
   return account?.id ?? null
 }
 
-/** Adds payments that are not known yet; the same payment brought twice (two statements, the bank's feed) is one. */
+/**
+ * Adds payments that are not known yet; the same payment brought twice is one. Twice from one source (two
+ * statements, two reads of the bank) it carries the same reference. From the other source (a statement added
+ * before the bank was linked, or after) it carries another, so it is known by its day, its amount and, where both
+ * have them, its symbol and the other side's account; each payment known that way stands for one entry only, so
+ * two coffees of the same price on one day stay two.
+ */
 export async function importEntries(db: D1Database, company: string, accountId: string, entries: Entry[], source: string): Promise<{ added: number; known: number; exempt: number }> {
   const out = { added: 0, known: 0, exempt: 0 }
   const own = (await db.prepare('SELECT iban FROM accounts WHERE company_id = ?').bind(company).all<{ iban: string }>()).results.map((r) => r.iban)
+  const days = entries.map((e) => e.bookedOn).sort()
+  const others =
+    days.length === 0
+      ? []
+      : (
+          await db
+            .prepare('SELECT ref, booked_on, amount_cents, vs, party_iban FROM payments WHERE account_id = ? AND company_id = ? AND source <> ? AND booked_on BETWEEN ? AND ?')
+            .bind(accountId, company, source, days[0], days[days.length - 1])
+            .all<{ ref: string; booked_on: string; amount_cents: number; vs: string | null; party_iban: string | null }>()
+        ).results
+  const mine = new Set(
+    days.length === 0
+      ? []
+      : (
+          await db
+            .prepare('SELECT ref FROM payments WHERE account_id = ? AND company_id = ? AND source = ? AND booked_on BETWEEN ? AND ?')
+            .bind(accountId, company, source, days[0], days[days.length - 1])
+            .all<{ ref: string }>()
+        ).results.map((r) => r.ref),
+  )
+  const sameAs = (e: Entry, p: (typeof others)[number]) =>
+    p.booked_on === e.bookedOn && p.amount_cents === e.amountCents && (!p.vs || !e.vs || p.vs === e.vs) && (!p.party_iban || !e.partyIban || p.party_iban === e.partyIban)
   const fresh: D1PreparedStatement[] = []
   const reasons: (string | null)[] = []
   for (const entry of entries) {
+    // Known from this source by its reference: the insert below leaves it, and it takes no other payment's place.
+    if (!mine.has(entry.ref)) {
+      const twin = others.findIndex((p) => sameAs(entry, p))
+      if (twin >= 0) {
+        others.splice(twin, 1)
+        out.known++
+        continue
+      }
+    }
     const reason = autoExempt(entry, own)
     reasons.push(reason)
     fresh.push(insertPaymentStatement(db, company, accountId, entry, reason, source))

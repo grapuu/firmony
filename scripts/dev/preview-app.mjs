@@ -47,6 +47,7 @@ const files = new Map([
   ['/app/doklady?filter=bez-platby', 'doklady-bez-platby.html'],
   ['/app/spravy', 'spravy.html'],
   ['/app/firma', 'firma.html'],
+  ['/app/banka', 'banka.html'],
   ['/app/faktury', 'faktury.html'],
   ['/app/faktury/nova', 'faktura-nova.html'],
   ['/app/faktury/demo-inv-1', 'faktura-1.html'],
@@ -89,6 +90,8 @@ if (!cafe || !fuel || !office) throw new Error('the sample company is not fresh:
 function local(href, extra) {
   const [pathAndQuery, hash] = href.split('#')
   const anchor = hash ? `#${hash}` : ''
+  // Every bank of the list leads to the same sample of a bank's sign-in.
+  if (pathAndQuery.startsWith('/app/banka/pripojit')) return 'banka-schvalenie.html'
   const file = extra.get(pathAndQuery) ?? files.get(pathAndQuery) ?? files.get(pathAndQuery.split('?')[0])
   if (file) return file + anchor
   if (pathAndQuery.startsWith('/art/') || pathAndQuery.startsWith('/fonts/')) return pathAndQuery.slice(1)
@@ -122,6 +125,7 @@ function script(leads) {
     export: 'Toto je náhľad. V aplikácii sa stiahne súbor CSV pre účtovný program.',
     invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, odberateľ ju dostane e-mailom s QR kódom na platbu a keď zaplatí, označí sa sama.',
     invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
+    bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky, alebo sa banka či účet odpojí.',
     team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.'
   };
   function note(form, text) {
@@ -131,6 +135,7 @@ function script(leads) {
   }
   function kind(form) {
     var a = form.getAttribute('data-action') || '';
+    if (/^\\/app\\/banka\\/.+\\/(nacitat|odpojit|odobrat)$/.test(a)) return 'bank';
     if (/^\\/app\\/faktury\\/[^/]+\\/(poslat|pripomenut)$/.test(a)) return 'invoiceMail';
     if (/^\\/app\\/faktury/.test(a)) return 'invoice';
     if (/^\\/ucto\\/doklady\\//.test(a)) return 'book';
@@ -174,7 +179,7 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a></div>`
 
 function rewrite(page, extra) {
   return page
@@ -326,6 +331,50 @@ await write('vsetko-mame.html', await html('/app'))
   await write('faktura-vystavena.html', page)
 }
 
+// The bank linked by open banking, last of what the client does: the sample of the bank's sign-in, the bank's page
+// after it, and invoice 20260007, which the money from the bank has paid by itself.
+{
+  const start = await call('/app/banka/pripojit?banka=Tatra%20banka')
+  const signInAtBank = new URL(start.headers.get('location') ?? '')
+  const back = new URL(signInAtBank.searchParams.get('spat') ?? '')
+  const linked = await call(`${back.pathname}${back.search}`)
+  if (linked.status !== 303) throw new Error(`linking the bank: ${linked.status}`)
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  await write('banka-prepojena.html', await html(linked.headers.get('location') ?? '/app/banka'))
+  await write('faktura-2-zaplatena.html', await html('/app/faktury/demo-inv-2'))
+  const sample = `<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prihlásenie v banke (ukážka)</title>
+<style>
+${css}
+${EXTRA_CSS}
+.bankdemo { display: grid; place-items: center; min-height: 100vh; padding: 24px 16px; background: var(--mist); }
+.bankdemo__card { display: grid; gap: 14px; width: min(100%, 440px); padding: 28px; border: 1px solid var(--line); border-radius: 18px; background: var(--white); box-shadow: var(--shadow); }
+.bankdemo__card p { margin: 0; color: var(--text); line-height: 1.55; }
+.bankdemo__small { color: var(--soft) !important; font-size: 0.875rem; }
+.bankdemo__card h1 { margin: 0; color: var(--ink); font-size: 1.375rem; }
+.bankdemo__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+</style>
+</head>
+<body class="inside">
+<main class="bankdemo">
+<div class="bankdemo__card">
+<p class="bankdemo__small">Takto to vyzerá vo vašej banke (ukážka). Prihlásite sa ako vždy, aj potvrdením v mobile.</p>
+<h1>Povoliť prístup k účtom?</h1>
+<p>Firmony cez Enable Banking chce 180 dní čítať pohyby a zostatok na podnikateľskom účte SK31 1200 0000 1987 4263 7541. Platiť ani nič meniť nemôže.</p>
+<div class="bankdemo__actions"><a class="btn btn--blue" href="banka-prepojena.html">Povoliť prístup</a><a class="btn btn--line" href="banka.html">Zrušiť</a></div>
+</div>
+</main>
+${BAR}
+</body>
+</html>
+`
+  await writeFile(join(out, 'banka-schvalenie.html'), sample)
+}
+
 // Signing in, last: signing out ends the session.
 await call('/app/odhlasit', { method: 'POST', headers: { 'content-length': '0' } })
 cookie = ''
@@ -337,5 +386,5 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', ...originals]
+const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', ...originals]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))

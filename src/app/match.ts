@@ -11,6 +11,8 @@
 // - They are paired without asking only when neither has any other candidate (two coffees at 2,50 € on one day
 //   are never guessed) and the score is at least 70. Otherwise a candidate of at least 50 is offered to the
 //   client, who confirms it with one tap.
+// - One exception: a variable symbol that names exactly one of the candidates, which no other candidate payment
+//   carries, decides (an invoice issued every month for the same amount is paid by the payment with its number).
 
 export type DocKind = 'receipt' | 'invoice_in' | 'invoice_out' | 'other'
 
@@ -125,10 +127,22 @@ export function decide(payments: readonly MatchPayment[], documents: readonly Ma
   }
   const auto: [string, string][] = []
   const suggest = new Map<string, string[]>()
+  const paymentOf = new Map(payments.map((p) => [p.id, p]))
+  const documentOf = new Map(documents.map((d) => [d.id, d]))
+  const sameVs = (paymentId: string, docId: string) => {
+    const vs = normalizeVs(documentOf.get(docId)?.vs)
+    return vs !== '' && vs === normalizeVs(paymentOf.get(paymentId)?.vs)
+  }
   for (const [paymentId, candidates] of byPayment) {
     const only = candidates.length === 1 ? candidates[0] : undefined
     if (only && only.points >= AUTO_SCORE && (byDocument.get(only.doc) ?? []).length === 1) {
       auto.push([paymentId, only.doc])
+      continue
+    }
+    const named = candidates.filter((candidate) => candidate.points >= AUTO_SCORE && sameVs(paymentId, candidate.doc))
+    const theOne = named.length === 1 ? named[0] : undefined
+    if (theOne && (byDocument.get(theOne.doc) ?? []).filter((other) => sameVs(other, theOne.doc)).length === 1) {
+      auto.push([paymentId, theOne.doc])
       continue
     }
     suggest.set(

@@ -1,6 +1,8 @@
 // The pages of the client's app. One thing is asked of the client, and every page leads to it: a document where
 // a payment has none. Everything else is shown so that nobody has to wonder whether it is in order.
 import type { FC } from 'hono/jsx'
+import type { BankLinkView, BankNotice } from '../app/bank'
+import { BankCard, BankNoticeBar } from './bank'
 import { APP, ART, type Art } from '../config'
 import { formatEur } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, monthName, readableName, signed } from '../app/copy'
@@ -186,6 +188,9 @@ export interface OverviewProps {
   steps?: FirstStepsState | null
   /** Who is signed in: a message of another person of the company carries that person's name. */
   me?: string
+  /** Whether the bank can be linked, and what the overview says about a consent that ends. */
+  bankReady?: boolean
+  bankNotice?: BankNotice
 }
 
 export interface FirstStepsState {
@@ -196,10 +201,10 @@ export interface FirstStepsState {
 }
 
 /** A new company's first steps, as Dougs and Pennylane open their apps: three that matter, two for later. */
-const FirstSteps: FC<{ steps: FirstStepsState }> = ({ steps }) => {
+const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps, bankReady }) => {
   const s = app.start.steps
   const list = [
-    { done: steps.payments, href: '/app/platby#vypis', text: s.payments, optional: false },
+    bankReady ? { done: steps.payments, href: '/app/banka#prepojit', text: s.bank, optional: false } : { done: steps.payments, href: '/app/platby#vypis', text: s.payments, optional: false },
     { done: steps.upload, href: '/app/doklady#pridat', text: s.upload, optional: false },
     { done: steps.email, href: '/app/firma#doklady-emailom', text: s.email, optional: false },
     { done: steps.people, href: '/app/firma#ludia', text: s.people, optional: true },
@@ -265,7 +270,8 @@ export const Overview: FC<OverviewProps> = (props) => {
           </section>
         )}
         <Flash text={props.flash} />
-        {props.steps ? <FirstSteps steps={props.steps} /> : null}
+        <BankNoticeBar notice={props.bankNotice ?? null} today={props.today} />
+        {props.steps ? <FirstSteps steps={props.steps} bankReady={props.bankReady} /> : null}
         {props.paymentsCount === 0 ? (
           props.steps ? null : <p class="over__empty">{app.home.noPaymentsLead}</p>
         ) : missingCount > 0 ? (
@@ -397,7 +403,17 @@ const SearchForm: FC<{ action: string; value: string }> = ({ action, value }) =>
   </form>
 )
 
-export const PaymentsPage: FC<{ filter: 'missing' | 'done' | 'all'; payments: Payment[]; missingCount: number; suggested: Set<string>; flash?: string | null; warn?: string | null; search?: string }> = ({ filter, payments, missingCount, suggested, flash, warn, search = '' }) => (
+export const PaymentsPage: FC<{
+  filter: 'missing' | 'done' | 'all'
+  payments: Payment[]
+  missingCount: number
+  suggested: Set<string>
+  flash?: string | null
+  warn?: string | null
+  search?: string
+  /** The bank, when it can be linked: linked (and when it was read), or the way to link it. */
+  bank?: { links: BankLinkView[]; today: string } | null
+}> = ({ filter, payments, missingCount, suggested, flash, warn, search = '', bank }) => (
   <>
     <header class="phead">
       <Heading first={app.payments.title} />
@@ -441,13 +457,14 @@ export const PaymentsPage: FC<{ filter: 'missing' | 'done' | 'all'; payments: Pa
         </section>
       ))
     )}
+    {bank ? <BankCard links={bank.links} today={bank.today} /> : null}
     <section class="bankfile" aria-labelledby="vypis">
       <Tile art={ART.paperBank} size="md" />
       <div class="bankfile__text">
         <h2 id="vypis" class="bankfile__title">
-          {app.payments.statementTitle}
+          {bank ? app.bank.statementTitle : app.payments.statementTitle}
         </h2>
-        <p>{app.payments.statementLead}</p>
+        <p>{bank ? app.bank.statementLead : app.payments.statementLead}</p>
       </div>
       <form class="bankfile__form" method="post" action="/app/banka" enctype="multipart/form-data" data-upload>
         <label class="btn btn--line" for="vypis-file">

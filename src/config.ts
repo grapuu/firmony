@@ -202,6 +202,35 @@ export const APP = {
   mailImageMin: 12_000,
 } as const
 
+/**
+ * The bank by open banking: Enable Banking (Enable Banking Oy, Finland, an account information service under
+ * PSD2) reads a company's accounts with the consent the client gives at the bank itself. The application's id is
+ * the variable ENABLE_BANKING_APP and its private key the secret ENABLE_BANKING_KEY; without both, statements are
+ * uploaded by hand as before.
+ */
+export const BANK = {
+  api: 'https://api.enablebanking.com',
+  country: 'SK',
+  /** How long a consent is asked for, held to what the bank allows: 180 days is the most PSD2 allows today. */
+  consentDays: 180,
+  /** Reads while nobody is looking: PSD2 allows four a day (RTS art. 36(5)), so one every six hours. */
+  syncEverySeconds: 6 * 3600,
+  /** How far back the first read goes, and how far each later one looks back for bookings that came late. */
+  firstDays: 90,
+  overlapDays: 5,
+  /** Pages of transactions read at most for one account in one read. */
+  pages: 20,
+  /** Links read in one run of the schedule, and how long one call to the API may take. */
+  linksPerRun: 10,
+  timeoutMs: 15_000,
+  /** A pending consent that never came back from the bank is forgotten after an hour. */
+  pendingSeconds: 3600,
+  /** The owner is reminded to renew the consent this many days before it ends. */
+  renewDays: 10,
+  /** Reads a client starts in an hour ("Načítať teraz"), while the client is present. */
+  readsPerHour: 6,
+} as const
+
 /** The people of Firmony: who becomes the first administrator, and how long a welcome link works. */
 export const TEAM = {
   /** Whoever signs in with this address while nobody of the team exists becomes the first administrator. */

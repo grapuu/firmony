@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 19:45)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 20:30)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (164 unit checks) and `npm run test:runtime` (237 checks in workerd). The sixth
+- All checks pass: `npm test` (177 unit checks) and `npm run test:runtime` (266 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -42,7 +42,10 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   3. Issuing invoices, also as e-invoices, marked paid by themselves when the payment comes (he was told
      about 21:00): **done at about 19:45**, "Invoices the client issues" below; the artifact (version 5) has them,
      and its bar has "Faktúra u odberateľa", the page a customer opens.
-  4. The bank by open banking (Enable Banking), switched on by his registration (about midnight).
+  4. The bank by open banking (Enable Banking), switched on by his registration (he was told about midnight):
+     **done at about 20:30**, "The bank by open banking" below; the artifact (version 6) has it (Platby, "Prepojiť
+     banku", the sample of a bank's sign-in, the bank linked, invoice 20260007 paid by the money it brought). What
+     switches it on is his: item 9 of the list below.
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -71,6 +74,18 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 8. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
    accountants to confirm 25/40/70 € a client), the trade licence "vedenie účtovníctva" added to europio, liability
    insurance, and a digital postman (Qvalia was the lead: ask for its per-client API price).
+9. The bank by open banking (read on 13 October 2026 in Enable Banking's documentation, Control Panel and linked
+   accounts): an account for europio in its Control Panel (enablebanking.com); an application for **Production**
+   with the redirect URL `https://firmony.ai/app/banka/navrat` (and the workers.dev one while there is no domain),
+   a description, a data protection email (`ahoj@firmony.ai`), the privacy policy URL
+   (`https://firmony.ai/pravne-informacie#ochrana-udajov`) and a terms of service URL (**not written yet**: the
+   service's terms are owed before this); "generate in the browser" saves the private key as `<application id>.pem`.
+   A new production application is "Inactive"; "Activate by linking accounts" with europio's own account makes it
+   active in restricted mode, in which only accounts linked to it can be read, until a contract is signed (then
+   clients' accounts; the price is theirs to quote). On the Worker: the variable `ENABLE_BANKING_APP` (the id, the
+   file's name without `.pem`) and the secret `ENABLE_BANKING_KEY` (the whole text of the file; PKCS#8 and PKCS#1
+   both work, also pasted on one line). Before the first client: the privacy notice names Enable Banking Oy
+   (Finland) as the service that reads the accounts with the client's consent.
 
 ## Product decisions
 
@@ -214,8 +229,8 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
 - The sample company (`demo.ts`, "Ukážková firma s. r. o.", Martin Novák, dated from today) exists only at
   `/app/ukazka` on a developer's machine with `DEMO=1`, which only the playground sets; the runtime test holds that
   it is 404 on the Worker.
-- Not built yet: the bank by open banking (the statement is uploaded by hand meanwhile), the digital postman,
-  eKasa receipts by their QR code, deleting files at the end of their ten years, thumbnails. Not seen in a real
+- Not built yet: the digital postman, eKasa receipts by their QR code, deleting files at the end of their ten
+  years, thumbnails. Not seen in a real
   browser: a PDF opened by "Otvoriť originál" under its CSP; a photo from an iPhone made smaller by the script
   (HEIC).
 
@@ -278,6 +293,56 @@ by itself.
 - Not built yet: a credit note, an invoice in another currency, an advance invoice, recurring invoices sent by
   themselves, the e-invoice sent through a digital postman, invoice numbering of the company's own pattern, the
   company's logo on the invoice.
+
+### The bank by open banking (step 4, 13 October 2026; `src/app/bank.ts`, `src/views/bank.tsx`)
+
+What Pennylane and Dougs do: the client picks the bank, signs in there and allows reading; the payments then arrive by
+themselves and pair with their documents. Enable Banking (Enable Banking Oy, Finland) is the account information
+service under PSD2; `src/app/bank.ts` is the only file that talks to it. Without `ENABLE_BANKING_APP` and
+`ENABLE_BANKING_KEY` nothing of it shows and the statement upload is as before.
+
+- Every call carries a token the application signs with its key (RS256, `kid` the application's id, `iss`
+  enablebanking.com, `aud` api.enablebanking.com, an hour long; kept for the isolate). The key may be PKCS#8 or
+  PKCS#1 (`pkcs8Of` wraps it), with "\n" written out or not.
+- Banka (/app/banka; Platby has a card that links there, the first steps' first step is "Prepojte banku"): the
+  banks of Slovakia that read a business's accounts (`GET /aspsps?country=SK&psu_type=business&service=AIS`, kept
+  six hours), each a link (not a form: the page's rules let a form lead only to our pages) to
+  `/app/banka/pripojit?banka=`, refused when `Sec-Fetch-Site` says another site sent it, 20 an hour per company.
+  It writes a pending consent with a hash of its state and sends the client to the bank (`POST /auth`, 180 days or
+  the bank's most, `psu_type` business, `language` sk). Back at `/app/banka/navrat` the state must be a pending
+  consent of this person in this company younger than an hour; the code becomes a session (`POST /sessions`), each
+  account with an IBAN becomes the company's (`accounts.link_id`, `remote_id`; a card without one does not), and a
+  consent the new one took every account from is closed at the bank (`DELETE /sessions/<id>`). Cancelled at the
+  bank (`error=`), the pending consent is forgotten.
+- Reading (`readLink`): every account of a consent, from 90 days back the first time and from five days before the
+  last read afterwards (late bookings), all pages; only what is booked (`status` BOOK); the amount's direction from
+  `credit_debit_indicator`; the other side's name and IBAN; the Slovak symbols from `reference_number` and
+  `remittance_information`; a card payment named by its merchant; the bank's balance (CLBD first). New payments
+  pair at once, an invoice paid by its number says "Zaplatená". The schedule reads a consent every six hours
+  (`tried_at`, so a failed read waits too: PSD2 allows four reads a day without the client, RTS art. 36(5)); "Načítať
+  teraz" (six an hour) sends the client's address and browser (`Psu-Ip-Address`, `Psu-User-Agent`), so the bank
+  does not count it among the four. A 401 or a code that means the consent ended marks it expired.
+- The same payment from a statement and from the bank is one (`importEntries` in `store.ts`): another source's
+  payment of the same day and amount, and of the same symbol and other account where both have them, stands for one
+  entry; a payment already read from the same source takes no other's place (so two coffees stay two, whatever
+  order the bank gives them in).
+- Pairing (`match.ts`): a variable symbol that names exactly one candidate, which no other candidate payment
+  carries, decides, so of two invoices of the same amount the payment with the number of one pays that one.
+- Renewing: ten days before the end the overview says so with "Obnoviť prístup" (`noticeOf`), and the owners get one
+  email at nine (`remindBankRenewals`, key `bank-renew:<consent>:<owner>`); ended, the overview says the payments
+  stopped. Renewing is linking again: the new consent takes the accounts over, the ended one is not shown.
+- An owner can unlink (closed at the bank, the payments stay) and take out an account that is not the company's (a
+  personal one allowed at the bank by mistake): read no more, and the payments the bank brought for it that no
+  document hangs on are removed.
+- The accountant's page of a client says in its head line whether the bank is linked and when it was read.
+- The sample: the playground has a pretend Enable Banking (`pretendBank` in `test/pretend.mjs`: it checks the token
+  as the real API does, knows ten Slovak banks, approves at `/playground/banka`), whose account is the sample
+  company's: the café of yesterday arrives once, the money for invoice 20260007 pays it, a card payment at BILLA and
+  a fee arrive.
+- Not seen against the real API: anything (no application exists). Read in its reference: the token, `/aspsps`,
+  `/auth`, `/sessions`, transactions with `continuation_key`, balances, `DELETE /sessions`. Not read: the exact
+  codes of its errors (`ErrorResponse` was cut off in the reference), whether a bank needs `auth_method`, how long
+  an account's `uid` lasts beyond its session.
 
 ## The accountants' side (`src/team/`, views in `src/views/team.tsx`; 13 October 2026, from 17:48)
 
@@ -404,19 +469,20 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (164): pairing, statements, e-invoices, reading, invoices, PAY by square
-npm run test:runtime     # the deployable bundle in workerd (237): the site, and the app end to end
+npm test                 # unit checks (177): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank
+npm run test:runtime     # the deployable bundle in workerd (266): the site, and the app end to end, the bank included
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (17, all held)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (14, all held)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
 The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?ako=uctovnicka` (Lucia).
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
-the café payment. A fresh sample company: remove `.wrangler/playground-d1` and `.wrangler/playground-r2` before
-starting. `mutate.mjs` works in a copy in the system's temporary folder; replace its list with the next change's
+the café payment. The bank: /app/banka, a bank of the list, "Povoliť prístup" on /playground/banka, and the pretend
+Enable Banking's payments arrive (invoice 20260007 becomes paid). A fresh sample company: remove
+`.wrangler/playground-d1` and `.wrangler/playground-r2` before starting. `mutate.mjs` works in a copy in the system's temporary folder; replace its list with the next change's
 rules.
 
 In the playground IČO 57442452 is found (europio), 35757442 makes the register fail, anything else is unknown;

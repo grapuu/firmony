@@ -4,14 +4,16 @@
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, BRAND, TEAM } from '../config'
-import { ensureSchema, now, withinLimit } from '../db'
+import { APP, BANK, BRAND, TEAM } from '../config'
+import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
 import { Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
+import { BankPage } from '../views/bank'
+import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
 import { checkValues, getInvoice, invoiceLines, linesOf, listInvoices, plainIban, saveInvoiceStatements, totalsOf, ublOf, type Errors as InvoiceErrors, type InvoiceValues, type Line, type LineInput, type StoredInvoice } from './invoices'
 import { dayOfText, textDay } from './booking'
 import { lookupCompany } from '../rpo'
@@ -24,7 +26,7 @@ import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
-import { remindAll } from './remind'
+import { remindAll, remindBankRenewals } from './remind'
 import { currentWho, endSession, linkUsable, newLink, newToken, startSession, switchStatement, useLink } from './session'
 import {
   afterReading,
@@ -73,6 +75,10 @@ export interface AppBindings {
   ANTHROPIC_API_KEY?: string
   /** "1" only in the playground: the sample company at /app/ukazka. Never set on the live Worker. */
   DEMO?: string
+  /** Enable Banking: the application's id (a variable) and its private key (a secret, PEM). Without both the bank is
+   * not offered and statements are uploaded by hand. */
+  ENABLE_BANKING_APP?: string
+  ENABLE_BANKING_KEY?: string
 }
 
 /** A signed-in client: a session in a company the user is still a member of. */
@@ -250,6 +256,18 @@ function flashOf(c: Ctx): string | null {
       return t.invoices.actions.sentFlash
     case 'pripomenuta':
       return t.invoices.actions.remindedFlash
+    case 'banka-pripojena':
+      return t.bank.flash.pripojena(n)
+    case 'banka-bez-uctu':
+      return t.bank.flash.pripojena(0)
+    case 'banka-nacitane':
+      return t.bank.flash.nacitane(n)
+    case 'banka-nic':
+      return t.bank.flash.nacitane(0)
+    case 'banka-odpojena':
+      return t.bank.flash.odpojena
+    case 'ucet-odobraty':
+      return t.bank.flash.odobraty
     default:
       return null
   }
@@ -285,6 +303,8 @@ appRoutes.get('/', async (c) => {
   ])
   const suggested = await suggestions(db, company, missingAll)
   const steps = { payments: (counts?.n ?? 0) > 0, upload: started?.upload === 1, email: started?.email === 1, people: (started?.people ?? 1) > 1 }
+  const ready = bankReady(c.env)
+  const bankNotice = ready ? noticeOf(await linksOf(db, company)) : null
   return shell(
     c,
     'home',
@@ -306,6 +326,8 @@ appRoutes.get('/', async (c) => {
       flash={flashOf(c)}
       steps={steps.payments && steps.upload && steps.email ? null : steps}
       me={who.user.id}
+      bankReady={ready}
+      bankNotice={bankNotice}
     />,
   )
 })
@@ -323,7 +345,8 @@ appRoutes.get('/platby', async (c) => {
   const filter = search ? 'all' : q === 'hotove' ? 'done' : q === 'vsetky' ? 'all' : 'missing'
   const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, filter, 400, search), countMissing(db, who.company.id)])
   const suggested = await suggestions(db, who.company.id, payments)
-  return shell(c, 'payments', t.payments.title, <PaymentsPage filter={filter} payments={payments} missingCount={missingCount} suggested={new Set(suggested.keys())} flash={flashOf(c)} search={search} />)
+  const bank = bankReady(c.env) ? { links: await linksOf(db, who.company.id), today: today() } : null
+  return shell(c, 'payments', t.payments.title, <PaymentsPage filter={filter} payments={payments} missingCount={missingCount} suggested={new Set(suggested.keys())} flash={flashOf(c)} search={search} bank={bank} />)
 })
 
 async function paymentPage(c: Ctx, id: string, extra: { error?: string; exemptValue?: string; noteValue?: string } = {}, status: ContentfulStatusCode = 200) {
@@ -479,6 +502,115 @@ appRoutes.post('/banka', async (c) => {
   if (!statements || statements.every((s) => !s.iban)) return bad()
   const result = await importStatements(db, who.company.id, who.user.id, statements)
   return c.redirect(`/app/platby?filter=vsetky&ok=vypis&n=${result.added}&k=${result.known}`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The bank by open banking (bank.ts): linked at the bank itself, read four times a day, renewed with one click
+// ---------------------------------------------------------------------------------------------------------------
+
+/** What went wrong on the way to the bank or back, by a key in the address. */
+function bankError(c: Ctx): string | null {
+  switch (c.req.query('chyba')) {
+    case 'zrusene':
+      return t.bank.flash.zrusene
+    case 'neplatne':
+      return t.bank.flash.neplatne
+    case 'banka':
+      return t.bank.flash.chyba
+    case 'vyprsalo':
+      return t.bank.flash.vyprsalo
+    case 'vela':
+      return t.bank.flash.vela
+    default:
+      return null
+  }
+}
+
+async function bankPage(c: Ctx, error: string | null = null, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const ready = bankReady(c.env)
+  const [links, banks] = await Promise.all([linksOf(c.env.DB, who.company.id), ready ? listBanks(c.env).catch(() => null) : Promise.resolve([])])
+  return shell(
+    c,
+    'payments',
+    t.bank.title,
+    <BankPage ready={ready} links={links} banks={banks} owner={who.role === 'owner'} today={today()} flash={flashOf(c)} error={error ?? bankError(c)} />,
+    status,
+  )
+}
+
+appRoutes.get('/banka', (c) => bankPage(c))
+
+/**
+ * To the bank's own sign-in. A link and not a form, because the pages' rules let a form lead only to our own pages,
+ * and only from our own pages: another site cannot send a signed-in client off to the bank.
+ */
+appRoutes.get('/banka/pripojit', async (c) => {
+  const who = c.get('who')
+  if (!bankReady(c.env)) return c.redirect('/app/banka', 303)
+  const site = c.req.header('sec-fetch-site')
+  if (site && site !== 'same-origin' && site !== 'none') return c.redirect('/app/banka', 303)
+  if (!(await withinLimit(c.env.DB, 'bank-start', who.company.id, 20, 3600))) return c.redirect('/app/banka?chyba=vela', 303)
+  try {
+    const url = await startLink(c.env, { company: who.company.id, user: who.user.id, bank: (c.req.query('banka') ?? '').slice(0, 200), redirect: `${siteOrigin(c)}/app/banka/navrat` })
+    return url ? c.redirect(url, 302) : c.redirect('/app/banka', 303)
+  } catch (err) {
+    console.error('linking a bank failed', err instanceof Error ? err.message : 'error')
+    return c.redirect('/app/banka?chyba=banka', 303)
+  }
+})
+
+/** Back from the bank: the consent becomes the company's, and its accounts are read at once. */
+appRoutes.get('/banka/navrat', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const code = c.req.query('code') ?? ''
+  const state = c.req.query('state') ?? ''
+  if (c.req.query('error')) {
+    // Cancelled at the bank: the pending consent is forgotten.
+    if (/^[A-Za-z0-9_-]{43}$/.test(state)) await db.prepare("DELETE FROM bank_links WHERE state = ? AND company_id = ? AND status = 'pending'").bind(await sha256Hex(state), who.company.id).run()
+    return c.redirect('/app/banka?chyba=zrusene', 303)
+  }
+  if (!bankReady(c.env) || code === '' || code.length > 2000 || !/^[A-Za-z0-9_-]{43}$/.test(state)) return c.redirect('/app/banka?chyba=neplatne', 303)
+  try {
+    const done = await finishLink(c.env, { company: who.company.id, user: who.user.id, code, state })
+    if (!done) return c.redirect('/app/banka?chyba=neplatne', 303)
+    later(c, readLink(c.env, done.link).catch(() => null))
+    return c.redirect(done.accounts > 0 ? `/app/banka?ok=banka-pripojena&n=${done.accounts}` : '/app/banka?ok=banka-bez-uctu', 303)
+  } catch (err) {
+    console.error('finishing a bank link failed', err instanceof Error ? err.message : 'error')
+    return c.redirect('/app/banka?chyba=banka', 303)
+  }
+})
+
+/** Read now, while the client is at the screen: the bank does not count that among its four a day. */
+appRoutes.post('/banka/:id/nacitat', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const link = ID.test(id) ? await db.prepare("SELECT id FROM bank_links WHERE id = ? AND company_id = ? AND status = 'active'").bind(id, who.company.id).first() : null
+  if (!link || !bankReady(c.env)) return c.redirect('/app/banka', 303)
+  if (!(await withinLimit(db, 'bank-read', who.company.id, BANK.readsPerHour, 3600))) return c.redirect('/app/banka?chyba=vela', 303)
+  const result = await readLink(c.env, id, { ip: c.req.header('cf-connecting-ip') ?? '', agent: c.req.header('user-agent') ?? '' })
+  if (result.status === 'read') return c.redirect(result.added > 0 ? `/app/banka?ok=banka-nacitane&n=${result.added}` : '/app/banka?ok=banka-nic', 303)
+  return c.redirect(result.status === 'ended' ? '/app/banka?chyba=vyprsalo' : '/app/banka?chyba=banka', 303)
+})
+
+appRoutes.post('/banka/:id/odpojit', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return bankPage(c, t.bank.onlyOwner, 403)
+  const id = c.req.param('id')
+  if (ID.test(id)) await unlink(c.env, who.company.id, who.user.id, id)
+  return c.redirect('/app/banka?ok=banka-odpojena', 303)
+})
+
+/** An account that is not the company's, given at the bank by mistake: read no more, its payments from the bank gone. */
+appRoutes.post('/banka/ucet/:id/odobrat', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return bankPage(c, t.bank.onlyOwner, 403)
+  const id = c.req.param('id')
+  const done = ID.test(id) ? await dropAccount(c.env.DB, who.company.id, who.user.id, id) : false
+  return c.redirect(done ? '/app/banka?ok=ucet-odobraty' : '/app/banka', 303)
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1004,8 +1136,14 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
   const ts = now()
   try {
     await remindAll(env, at)
+    await remindBankRenewals(env, at)
   } catch (err) {
     console.error('reminders failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    await readDue(env)
+  } catch (err) {
+    console.error('reading the banks failed', err instanceof Error ? err.name : 'error')
   }
   const stuck = await db
     .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")

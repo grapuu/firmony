@@ -5,11 +5,14 @@
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { check, done } from './check.mjs'
 import { readFileSync } from 'node:fs'
-import { PRETEND_MAIL, readerAnswer, registerAnswer } from './pretend.mjs'
+import { PRETEND_MAIL, pretendBank, readerAnswer, registerAnswer } from './pretend.mjs'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 const lookups = []
 const readings = []
+// The bank of Firma A: what it holds is set by the part of the test that reads it.
+const bankFeed = { transactions: [], balance: '0.00' }
+const bank = pretendBank({ iban: 'SK3112000000198742637541', transactions: () => bankFeed.transactions, balance: () => bankFeed.balance, extraAccount: 'SK7311000000002934567890' })
 const mf = new Miniflare(
   convertV4MiniflareOptions({
     unsafeTriggerHandlers: true,
@@ -21,9 +24,11 @@ const mf = new Miniflare(
         compatibilityDate: '2026-10-01',
         d1Databases: { DB: 'firmony-e2e' },
         r2Buckets: { FILES: 'firmony-e2e-files' },
-        bindings: { ANTHROPIC_API_KEY: 'pretend' },
+        bindings: { ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
+          const banked = await bank.answer(request)
+          if (banked) return new MfResponse(await banked.text(), { status: banked.status, headers: { 'content-type': 'application/json' } })
           const read = await readerAnswer(request, readings)
           if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
           const answer = registerAnswer(request.url, lookups)
@@ -692,7 +697,7 @@ check('a search that finds nothing says so', /nič nenašli/.test(await res.text
 // A new company is shown its first steps
 res = await peter.get('/app')
 page = await res.text()
-check('a new company is shown its first steps', page.includes('Začíname') && page.includes('href="/app/platby#vypis"') && page.includes('href="/app/firma#doklady-emailom"'))
+check('a new company is shown its first steps, the bank first', page.includes('Začíname') && page.includes('href="/app/banka#prepojit"') && page.includes('href="/app/firma#doklady-emailom"'))
 res = await anna.get('/app')
 check('one that is under way is not', !(await res.text()).includes('Začíname'))
 
@@ -847,6 +852,121 @@ const before9 = (await sent()).length
 res = await peter.post(`/app/faktury/${peterId}/poslat`, { email: 'uctaren@europio.test' })
 await settle()
 check('a typed email gets the invoice and stays with it', res.status === 303 && (await sent()).slice(before9).some((m) => m.to === 'uctaren@europio.test') && (await db.prepare('SELECT customer_email FROM invoices WHERE id = ?').bind(peterId ?? '').first())?.customer_email === 'uctaren@europio.test')
+
+// The bank by open banking: linked at the bank itself, read by itself, renewed, ended
+await anna.post('/app/firma/prepnut', { firma: 'co-a' })
+bankFeed.balance = '1234.56'
+bankFeed.transactions = [
+  // What the statement already brought (the café of yesterday): not brought twice.
+  { entry_reference: 'eb-1', transaction_amount: { currency: 'EUR', amount: '12.40' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(-1), remittance_information: ['Platba kartou KAVIAREN NA ROHU KOSICE'], bank_transaction_code: { code: 'CCRD' } },
+  // The money for the first invoice, with its number as the symbol.
+  { entry_reference: 'eb-2', transaction_amount: { currency: 'EUR', amount: '120.00' }, credit_debit_indicator: 'CRDT', status: 'BOOK', booking_date: day(0), debtor: { name: 'europio s. r. o.' }, debtor_account: { iban: 'SK5202000000004712345670' }, remittance_information: [`/VS${year}0001/SS/KS0308`] },
+  { entry_reference: 'eb-3', transaction_amount: { currency: 'EUR', amount: '23.85' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), remittance_information: ['Nakup BILLA KOSICE'], merchant_category_code: '5411' },
+  // Waiting at the bank: not ours yet.
+  { entry_reference: 'eb-4', transaction_amount: { currency: 'EUR', amount: '80.00' }, credit_debit_indicator: 'DBIT', status: 'PDNG', booking_date: day(0), remittance_information: ['Rezervacia'] },
+  // Two coffees of one price on one day stay two.
+  { entry_reference: 'eb-5', transaction_amount: { currency: 'EUR', amount: '2.50' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), remittance_information: ['Platba kartou AUTOMAT KAVA'], bank_transaction_code: { code: 'CCRD' } },
+  { entry_reference: 'eb-6', transaction_amount: { currency: 'EUR', amount: '2.50' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), remittance_information: ['Platba kartou AUTOMAT KAVA'], bank_transaction_code: { code: 'CCRD' } },
+]
+// One of the two coffees of today came with a statement before the bank was linked.
+await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, card, ref) VALUES ('pa-kava', 'co-a', 'acc-a', ?, ?, -250, 'AUTOMAT KAVA', 1, 'a-kava')").bind(nowS, day(0)).run()
+res = await anna.get('/app/banka')
+page = await res.text()
+check('the bank page offers the banks of Slovakia', res.status === 200 && page.includes('Tatra banka') && page.includes('href="/app/banka/pripojit?banka=Tatra%20banka"'))
+res = await mf.dispatchFetch(`${site}/app/banka/pripojit?banka=Tatra%20banka`, { redirect: 'manual', headers: { cookie: annaCookie, 'cf-connecting-ip': '203.0.113.30', 'sec-fetch-site': 'cross-site' } })
+check('another site cannot send a client off to the bank', res.status === 303 && res.headers.get('location') === '/app/banka')
+res = await anna.get('/app/banka/pripojit?banka=Neexistujúca%20banka')
+check('a bank that is none leads nowhere', res.status === 303 && res.headers.get('location') === '/app/banka')
+// Cancelled at the bank
+res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
+let toBank = new URL(res.headers.get('location') ?? 'https://x.test')
+let fromBankPage = new URL(toBank.searchParams.get('spat') ?? 'https://x.test')
+res = await anna.get(`/app/banka/navrat?error=access_denied&state=${fromBankPage.searchParams.get('state')}`)
+check('cancelled at the bank, nothing is linked and nothing waits', res.headers.get('location') === '/app/banka?chyba=zrusene' && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-a'").first())?.n === 0)
+// Linked
+res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
+toBank = new URL(res.headers.get('location') ?? 'https://x.test')
+fromBankPage = new URL(toBank.searchParams.get('spat') ?? 'https://x.test')
+check('a bank is linked at the bank itself, and comes back to us', res.status === 302 && toBank.origin === 'https://pretend-bank.test' && fromBankPage.origin === site && fromBankPage.pathname === '/app/banka/navrat' && /^[A-Za-z0-9_-]{43}$/.test(fromBankPage.searchParams.get('state') ?? ''))
+check('Enable Banking was asked with a token signed by our key', bank.calls.some((c) => c.method === 'POST' && c.path === '/auth'))
+res = await peter.get(`${fromBankPage.pathname}${fromBankPage.search}`)
+check('nobody else can finish another person\'s link', res.headers.get('location') === '/app/banka?chyba=neplatne')
+res = await anna.get(`${fromBankPage.pathname}${fromBankPage.search}`)
+await settle(1200)
+check('back from the bank, its accounts are the company\'s, the card without an IBAN is not', res.status === 303 && res.headers.get('location') === '/app/banka?ok=banka-pripojena&n=2', res.headers.get('location'))
+const bankLink = await db.prepare("SELECT id, status, valid_until, synced_at FROM bank_links WHERE company_id = 'co-a' AND status = 'active'").first()
+check('the consent holds for 180 days', Boolean(bankLink) && bankLink.valid_until > nowS + 179 * 86400 && bankLink.valid_until < nowS + 181 * 86400)
+res = await anna.get(`${fromBankPage.pathname}${fromBankPage.search}`)
+check('the same answer from the bank links nothing twice', res.headers.get('location') === '/app/banka?chyba=neplatne' && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-a'").first())?.n === 1)
+const fromBank = (await db.prepare("SELECT ref FROM payments WHERE company_id = 'co-a' AND source = 'bank' ORDER BY ref").all()).results.map((r) => r.ref)
+check('the payments are read at once: what is booked, and nothing a statement already brought', JSON.stringify(fromBank) === JSON.stringify(['eb-2', 'eb-3', 'eb-6', 'personal-1']), JSON.stringify(fromBank))
+const paidFirst = await db.prepare("SELECT p.vs FROM links l JOIN payments p ON p.id = l.payment_id JOIN invoices i ON i.document_id = l.document_id WHERE i.id = ?").bind(firstId ?? '').first()
+check('the money for an invoice marks it paid by itself', paidFirst?.vs === `${year}0001`)
+check('the balance is the bank\'s', (await db.prepare("SELECT balance_cents FROM accounts WHERE id = 'acc-a'").first())?.balance_cents === 123456)
+res = await anna.get('/app/platby')
+page = await res.text()
+check('the payments page says the bank is linked', page.includes('Tatra banka je prepojená') && page.includes('Naposledy načítané'))
+res = await acc.get('/ucto/klienti/co-a')
+check('the accountant sees that the client\'s bank is linked and read', /Tatra banka prepojená, načítané dnes/.test(await res.text()))
+// Read now, while the client is there: nothing twice, whatever order the bank gives them in, and the bank is told
+// a person is present
+bankFeed.transactions.reverse()
+const callsBefore = bank.calls.length
+res = await anna.post(`/app/banka/${bankLink?.id}/nacitat`, {})
+check('read now: nothing twice', res.headers.get('location') === '/app/banka?ok=banka-nic', res.headers.get('location'))
+check('and the bank is told who is at the screen, so it does not count among its four', bank.calls.slice(callsBefore).filter((c) => c.path.startsWith('/accounts/')).every((c) => c.present === '203.0.113.30'))
+const afterRead = bank.calls.length
+res = await peter.post(`/app/banka/${bankLink?.id}/nacitat`, {})
+check('another company cannot read it', res.headers.get('location') === '/app/banka' && bank.calls.length === afterRead)
+// An account that is not the company's
+const personal = await db.prepare("SELECT id FROM accounts WHERE company_id = 'co-a' AND iban = 'SK7311000000002934567890'").first()
+res = await anna.post(`/app/banka/ucet/${personal?.id}/odobrat`, {})
+check('an account that is not the company\'s goes, with what the bank brought for it', res.headers.get('location') === '/app/banka?ok=ucet-odobraty' && (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE ref = 'personal-1'").first())?.n === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE id = ?").bind(personal?.id ?? '').first())?.n === 0)
+// The schedule reads a consent every six hours, never more often
+let callsNow = bank.calls.length
+await tick(Date.now())
+await settle(500)
+check('the schedule does not read a consent read a moment ago', bank.calls.length === callsNow)
+await db.prepare('UPDATE bank_links SET tried_at = ? WHERE id = ?').bind(nowS - 7 * 3600, bankLink?.id ?? '').run()
+bankFeed.transactions.push({ entry_reference: 'eb-7', transaction_amount: { currency: 'EUR', amount: '15.00' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), creditor: { name: 'Papiernictvo Pero' }, remittance_information: ['Kancelarske potreby'] })
+await tick(Date.now())
+await settle(800)
+check('six hours later it reads it, and what is new arrives', bank.calls.length > callsNow && (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE ref = 'eb-7'").first())?.n === 1)
+// The renewal is asked for ten days before the consent ends
+await db.prepare('UPDATE bank_links SET valid_until = ? WHERE id = ?').bind(nowS + 5 * 86400, bankLink?.id ?? '').run()
+const before10 = (await sent()).length
+await tick(nineFive(day(1)))
+await settle(500)
+const renewMail = (await sent()).slice(before10).find((m) => m.subject.includes('obnovte prístup k banke'))
+check('ten days before it ends, the owner is asked to renew the consent, once', renewMail?.to === 'anna@firma-a.test' && renewMail.text.includes('/app/banka'))
+await tick(nineFive(day(2)))
+await settle(300)
+check('and only once', (await sent()).slice(before10).filter((m) => m.subject.includes('obnovte prístup k banke')).length === 1)
+res = await anna.get('/app')
+check('the overview says it too', (await res.text()).includes('Obnoviť prístup'))
+// A consent the bank says is over
+bank.refuse('EXPIRED_SESSION')
+await db.prepare('UPDATE bank_links SET tried_at = ? WHERE id = ?').bind(nowS - 7 * 3600, bankLink?.id ?? '').run()
+await tick(Date.now())
+await settle(500)
+check('a consent the bank says is over is marked so', (await db.prepare('SELECT status FROM bank_links WHERE id = ?').bind(bankLink?.id ?? '').first())?.status === 'expired')
+res = await anna.get('/app')
+page = await res.text()
+check('and the overview says the payments stopped, with the way to renew', page.includes('vypršal') && page.includes('href="/app/banka/pripojit?banka=Tatra%20banka"'))
+bank.refuse(null)
+// Renewed: a new consent takes the accounts over, and the one that ended is no longer shown
+res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
+fromBankPage = new URL(new URL(res.headers.get('location') ?? 'https://x.test').searchParams.get('spat') ?? 'https://x.test')
+res = await anna.get(`${fromBankPage.pathname}${fromBankPage.search}`)
+await settle(800)
+const renewed = await db.prepare("SELECT id FROM bank_links WHERE company_id = 'co-a' AND status = 'active'").first()
+check('renewed, the account is read under the new consent', Boolean(renewed) && renewed.id !== bankLink?.id && (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-a'").first())?.link_id === renewed.id)
+res = await anna.get('/app/banka')
+check('and the ended one is not shown any more', !(await res.text()).includes('Prístup vypršal'))
+// Unlinked: closed at the bank, the payments stay
+const paymentsBefore = (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE company_id = 'co-a'").first())?.n
+res = await anna.post(`/app/banka/${renewed?.id}/odpojit`, {})
+check('unlinked, the consent is closed at the bank and its payments stay', res.headers.get('location') === '/app/banka?ok=banka-odpojena' && (await db.prepare('SELECT status FROM bank_links WHERE id = ?').bind(renewed?.id ?? '').first())?.status === 'revoked' && bank.calls.at(-1)?.method === 'DELETE' && (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE company_id = 'co-a'").first())?.n === paymentsBefore && (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-a'").first())?.link_id === null)
 
 await mf.dispose()
 done('runtime')

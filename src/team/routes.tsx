@@ -12,7 +12,8 @@ import { flushOutbox, queueStatement } from '../mail'
 import { lookupCompany } from '../rpo'
 import { dayOfText, isCategory, supplierKey, type PaidBy } from '../app/booking'
 import { getInvoice, invoiceLines } from '../app/invoices'
-import { readableName, signed } from '../app/copy'
+import { readableName, signed, whenName } from '../app/copy'
+import { linksOf } from '../app/bank'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
@@ -209,6 +210,10 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
+  const banks = await linksOf(db, company.id)
+  const active = banks.find((l) => l.status === 'active')
+  const ended = banks.find((l) => l.status === 'expired')
+  const bankLine = active ? (active.syncedAt ? t.client.bank(active.bank, whenName(active.syncedAt, day)) : t.client.bankWaiting(active.bank)) : ended ? t.client.bankEnded(ended.bank) : t.client.noBank
   return shell(
     c,
     'clients',
@@ -226,6 +231,7 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
       now={now()}
       month={day.slice(0, 7)}
       flash={flashOf(c)}
+      bankLine={bankLine}
       {...extra}
     />,
     status,
