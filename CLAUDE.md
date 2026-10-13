@@ -123,7 +123,7 @@ elegant type in a pleasant red and the modern type in blue; his glass icons kept
 as CloudTalk sets its own ("okopíruj aj tie ikony, ako majú"); far less text; no phone; an opening like
 CloudTalk's or Tesla's; CloudTalk's structure, its fonts and its centred layout; the plans kept ("asi musí byť")
 but made premium. At 15:08: the motion stays ("sú pekné, to zanechaj"), done otherwise. The first look went out
-at about 16:20 (preview version 9).
+at about 16:00 (preview version 9).
 
 - Type: **Funnel Display** (The Funnel Project, OFL) for titles, figures and the name, 600, set tight
   (-0.035 to -0.045em): CloudTalk sets GT Pressura (Grilli Type, paid) at 500; this is the free face nearest to
@@ -166,7 +166,8 @@ at about 16:20 (preview version 9).
   the price as CloudTalk's interactive list (six cards with a radio each, the checked one white with a blue
   check; the light panel beside them shows the picked one: the machine reading a torn slip under its beam with
   MD 513 / D 221 and the flag, the filed VAT return, e-invoices received, payroll, deadlines with the missing
-  slip, the question to the accountant), switched by `:has()` with no script; the machine and the person as
+  slip, the question to the accountant, each but the slip with its glass beside the card's top corner),
+  switched by `:has()` with no script; the machine and the person as
   two cards tinted blue and rose; the e-invoice date as a panel of light with the envelope; the prices as one
   sheet of three columns whose six rows stand level (`subgrid`, the list's lines `display: contents`), the lead
   plan lit from above with a blue-to-red bar and a blue price; the comparison; two ways in; who is behind it
@@ -177,7 +178,8 @@ at about 16:20 (preview version 9).
   in Funnel Display, blue with a red full stop.
 - `scripts/dev/preview.mjs <folder>` makes a static copy of the pages for the owner's artifact (relative
   addresses, the stylesheet inlined, the forms stopped with a note); published as "Firmony" on 13 October 2026
-  and republished from the same file path (version 9 is the first of the sixth design).
+  and republished from the same file path (version 9 is the first of the sixth design; version 11, of 16:10,
+  adds the glass beside the previews).
 
 ## Before pushing
 
