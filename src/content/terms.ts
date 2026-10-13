@@ -29,7 +29,7 @@ const SECTIONS: TermsSection[] = [
     points: [
       `Službu ${BRAND.name} poskytuje spoločnosť ${OPERATOR.name}, so sídlom ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísaná ${OPERATOR.registeredIn} (ďalej „my“ alebo „poskytovateľ“).`,
       'Klientom je obchodná spoločnosť, ktorá si službu objedná a v mene ktorej koná jej konateľ (ďalej „Vy“ alebo „klient“).',
-      'Zmluva vzniká, keď konateľ klienta na stránke objednávky potvrdí tieto podmienky tlačidlom „Uzavrieť zmluvu“. Zmluvu tvorí objednávka (firma, balík, cena a deň začiatku) a tieto podmienky. Potvrdenie s ich znením Vám pošleme e-mailom.',
+      `Zmluva vzniká, keď konateľ klienta na stránke objednávky potvrdí tieto podmienky tlačidlom „Uzavrieť zmluvu“. Zmluvu tvorí objednávka (firma, balík, cena a deň začiatku) a tieto podmienky. Zmluvu aj podmienky v znení, s ktorým bola uzavretá, nájdete v aplikácii ${BRAND.name}, kde si ich môžete kedykoľvek pozrieť, uložiť a vytlačiť.`,
       'Zmluvu uzatvárajú podnikatelia pri svojej podnikateľskej činnosti a riadi sa Obchodným zákonníkom (§ 269 ods. 2). Predpisy na ochranu spotrebiteľa sa na ňu nevzťahujú.',
     ],
   },
@@ -47,7 +47,7 @@ const SECTIONS: TermsSection[] = [
   {
     title: 'Čo potrebujeme od Vás',
     points: [
-      `Doklady za každý mesiac nám dodáte najneskôr do ${APP.docsByDay}. dňa nasledujúceho mesiaca, cez aplikáciu alebo e-mailom. Doklady musia byť úplné, čitateľné a musia zodpovedať skutočnosti.`,
+      `Doklady za každý mesiac nám dodáte najneskôr do ${APP.docsByDay}. dňa nasledujúceho mesiaca, v aplikácii alebo preposlaním na adresu Vašej firmy pre doklady, ktorú v aplikácii nájdete. Doklady musia byť úplné, čitateľné a musia zodpovedať skutočnosti.`,
       'Umožníte nám vidieť pohyby na účtoch firmy, a to prepojením banky v aplikácii alebo výpismi z banky.',
       'Konateľ podpíše plnú moc, aby sme Vás mohli zastupovať pred finančnou správou, a ak spracúvame mzdy, aj pred Sociálnou poisťovňou a zdravotnými poisťovňami.',
       'Bez zbytočného odkladu nám oznámite zmeny, ktoré sa týkajú účtovníctva a daní (napríklad registráciu pre DPH, nového zamestnanca alebo zmenu sídla), a na naše otázky odpoviete spravidla do piatich pracovných dní.',
@@ -62,8 +62,8 @@ const SECTIONS: TermsSection[] = [
       `Každý balík je určený pre počet dokladov za mesiac uvedený v cenníku. Mesiac, v ktorom ich bude viac, vyúčtujeme ako najbližší vyšší balík. Ak ich bude viac ako ${PLANS[PLANS.length - 1]?.docs ?? 0} za mesiac, dohodneme sa na cene; kým sa nedohodneme, účtujeme cenu najvyššieho balíka, a ak sa nedohodneme, môžeme zmluvu vypovedať.`,
       'Cenu fakturujeme mesačne vopred so splatnosťou 14 dní, prevodom na účet uvedený na faktúre. Závierku a daňové priznanie fakturujeme po ich podaní.',
       'Práce mimo balíka podľa bodu 2.6 fakturujeme podľa dohody.',
-      'Ak ste v omeškaní s platbou viac ako 30 dní, môžeme po upozornení e-mailom najmenej 10 dní vopred pozastaviť prácu až do zaplatenia. Za následky pozastavenia nezodpovedáme. Pri omeškaní môžeme požadovať úrok z omeškania podľa Obchodného zákonníka.',
-      'Ceny môžeme zmeniť. Zmenu oznámime e-mailom najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď má zmena nastať.',
+      'Ak ste v omeškaní s platbou viac ako 30 dní, môžeme po upozornení v aplikácii najmenej 10 dní vopred pozastaviť prácu až do zaplatenia. Za následky pozastavenia nezodpovedáme. Pri omeškaní môžeme požadovať úrok z omeškania podľa Obchodného zákonníka.',
+      'Ceny môžeme zmeniť. Zmenu oznámime v aplikácii najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď má zmena nastať.',
     ],
   },
   {
@@ -98,7 +98,7 @@ const SECTIONS: TermsSection[] = [
       'Predmetom a účelom spracúvania je vedenie účtovníctva, daní a miezd podľa zmluvy, po dobu jej trvania. Spracúvame identifikačné a kontaktné údaje, údaje na dokladoch a o platbách a pri mzdách pracovnoprávne a mzdové údaje vrátane údajov o pracovnej neschopnosti. Dotknutými osobami sú zamestnanci, konatelia a spoločníci a obchodní partneri, ktorí sú fyzickými osobami.',
       'Údaje spracúvame len na Váš pokyn. Pokynom je táto zmluva a to, čo nám zadáte v aplikácii. Ak by bol pokyn v rozpore s právom, upozorníme Vás.',
       'Ľudia, ktorí s údajmi pracujú, sú viazaní mlčanlivosťou. Údaje chránime primeranými opatreniami: šifrovaným spojením, prístupom len pre oprávnených ľudí a databázou a súbormi uloženými v Európskej únii.',
-      'Využívame ďalších sprostredkovateľov a dávate nám na to všeobecný súhlas: Cloudflare, Inc. (servery, databáza, súbory a e-maily, údaje uložené v Európskej únii), Anthropic, PBC (čítanie dokladov umelou inteligenciou v USA na základe štandardných zmluvných doložiek, bez použitia na trénovanie), Enable Banking Oy (čítanie pohybov na účtoch s Vaším súhlasom, Fínsko) a našich externých účtovníkov (Slovensko). O pridaní alebo výmene sprostredkovateľa Vás vopred informujeme e-mailom. Môžete namietať, a ak sa nedohodneme, zmluvu vypovedať.',
+      'Využívame ďalších sprostredkovateľov a dávate nám na to všeobecný súhlas: Cloudflare, Inc. (servery, databáza, súbory a e-maily, údaje uložené v Európskej únii), Anthropic, PBC (čítanie dokladov umelou inteligenciou v USA na základe štandardných zmluvných doložiek, bez použitia na trénovanie), Enable Banking Oy (čítanie pohybov na účtoch s Vaším súhlasom, Fínsko) a našich externých účtovníkov (Slovensko). O pridaní alebo výmene sprostredkovateľa Vás vopred informujeme v aplikácii. Môžete namietať, a ak sa nedohodneme, zmluvu vypovedať.',
       'Pomôžeme Vám pri vybavovaní žiadostí dotknutých osôb, pri zabezpečení údajov a pri oznamovaní porušenia ich ochrany. O porušení ochrany Vašich údajov Vás upovedomíme bez zbytočného odkladu, najneskôr do 48 hodín od jeho zistenia.',
       'Na požiadanie Vám poskytneme informácie, ktoré preukazujú, že povinnosti sprostredkovateľa plníme, a po predchádzajúcej dohode umožníme primeranú kontrolu.',
       'Po skončení zmluvy Vám údaje vrátime podľa bodu 10.4 a do 90 dní ich vymažeme, okrem tých, ktoré musíme uchovávať podľa zákona.',
@@ -108,7 +108,7 @@ const SECTIONS: TermsSection[] = [
     title: 'Ochrana pred legalizáciou príjmov z trestnej činnosti',
     points: [
       'Ako poskytovateľ účtovných služieb sme povinnou osobou podľa zákona č. 297/2008 Z. z. Pred začatím spolupráce a počas nej musíme identifikovať a overiť Vašu firmu, jej konateľa a konečných užívateľov výhod a poznať účel a povahu obchodného vzťahu.',
-      'Na identifikáciu stačí, keď konateľ podpíše plnú moc kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom). Inak Vás požiadame o iný spôsob, ktorý zákon pripúšťa. Bez identifikácie službu začať nemôžeme.',
+      'Konateľ nám v aplikácii vyplní údaje o sebe, o konečných užívateľoch výhod a o činnosti firmy a ich zmeny nám tam bez zbytočného odkladu oznámi. Jeho totožnosť overíme z plnej moci podpísanej kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom); inak Vás požiadame o iný spôsob, ktorý zákon pripúšťa. Bez identifikácie službu začať nemôžeme.',
       'Ak to zákon vyžaduje, môžeme spoluprácu odmietnuť alebo ukončiť. Neobvyklú obchodnú operáciu sme povinní ohlásiť a o ohlásení Vás informovať nesmieme.',
     ],
   },
@@ -116,7 +116,7 @@ const SECTIONS: TermsSection[] = [
     title: 'Trvanie a skončenie zmluvy',
     points: [
       'Zmluva sa uzatvára na dobu neurčitú.',
-      'Každá strana ju môže vypovedať aj bez udania dôvodu, a to e-mailom. Výpovedná lehota je jeden mesiac a začína plynúť prvým dňom mesiaca nasledujúceho po doručení výpovede.',
+      'Každá strana ju môže vypovedať aj bez udania dôvodu: Vy v aplikácii v časti Firma a nastavenia, my správou v aplikácii. Výpovedná lehota je jeden mesiac a začína plynúť prvým dňom mesiaca nasledujúceho po doručení výpovede. Výpoveď, ktorú ste podali v aplikácii, tam môžete do konca výpovednej lehoty vziať späť; s takým späťvzatím vopred súhlasíme.',
       'Od zmluvy môžeme odstúpiť, ak ste v omeškaní s platbou viac ako 60 dní, ak nám ani po upozornení opakovane nedodávate doklady, alebo z dôvodov podľa bodu 9.3. Vy môžete od zmluvy odstúpiť, ak ani po upozornení opakovane porušujeme svoje povinnosti.',
       'Po skončení zmluvy dokončíme práce za obdobia, za ktoré ste zaplatili, do 30 dní Vám odovzdáme doklady, účtovníctvo a jeho export v bežnom formáte, ukončíme prístupy do aplikácie a vzdáme sa plnej moci. Závierku za rok, v ktorom zmluva skončila, urobíme len po dohode.',
     ],
@@ -124,8 +124,8 @@ const SECTIONS: TermsSection[] = [
   {
     title: 'Komunikácia a záverečné ustanovenia',
     points: [
-      'Komunikujeme e-mailom a správami v aplikácii. E-mail poslaný na adresu z objednávky alebo na adresu, ktorú nám neskôr oznámite, sa považuje za doručený nasledujúci pracovný deň po odoslaní, ak sa nevráti ako nedoručiteľný.',
-      'Tieto podmienky môžeme zmeniť. Zmenu oznámime e-mailom najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď zmena nadobúda účinnosť; inak platí zmenené znenie.',
+      'Komunikujeme správami v aplikácii a všetko, čo si podľa zmluvy oznamujeme, si oznamujeme tam. O novej správe Vás upozorníme e-mailom na adresu, ktorou sa prihlasujete; upozornenie obsah správy nenesie. Správa sa považuje za doručenú nasledujúci pracovný deň po tom, ako bola v aplikácii zverejnená.',
+      'Tieto podmienky môžeme zmeniť. Zmenu oznámime v aplikácii najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď zmena nadobúda účinnosť; inak platí zmenené znenie.',
       'Zmluva sa riadi právom Slovenskej republiky. Spory riešia súdy Slovenskej republiky.',
       'Ak by niektoré ustanovenie bolo neplatné, ostatné platia ďalej a strany ho nahradia platným ustanovením s čo najbližším účelom.',
     ],
@@ -135,7 +135,7 @@ const SECTIONS: TermsSection[] = [
 /** The sections, typeset once, as the page and the confirmation show them. */
 export const TERMS: readonly TermsSection[] = SECTIONS.map((s) => ({ title: typeset(s.title), points: s.points.map((p) => typeset(p)) }))
 
-/** The terms as plain text for the email that confirms the contract: a durable copy of what was accepted. */
+/** The terms as plain text, numbered as the contract refers to them (the unit checks read them this way). */
 export function termsText(): string {
   const lines = [TERMS_TITLE, TERMS_SUBTITLE.replace(/ /g, ' '), '']
   SECTIONS.forEach((section, i) => {

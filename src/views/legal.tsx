@@ -81,7 +81,12 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          'V aplikácii pre klientov: meno a e-mail ľudí firmy, ktorí sa do nej prihlasujú, záznamy o prihlásení, správy s účtovníčkou, nastavenie pripomienok a záznam o tom, kto čo urobil (napríklad kto pridal doklad). Ďalej plnú moc, ktorú konateľ podpíše, a údaje potrebné na identifikáciu firmy, jej konateľa a konečných užívateľov výhod podľa zákona č. 297/2008 Z. z. o ochrane pred legalizáciou príjmov z trestnej činnosti.',
+          'V aplikácii pre klientov: meno a e-mail ľudí firmy, ktorí sa do nej prihlasujú, záznamy o prihlásení, správy s účtovníčkou, nastavenie pripomienok a záznam o tom, kto čo urobil (napríklad kto pridal doklad). Všetko vybavujeme v aplikácii: e-mail posielame len s odkazom na prihlásenie alebo ako upozornenie, že v aplikácii niečo čaká, a správy, doklady ani zmluvu v ňom neposielame.',
+        )}
+      </p>
+      <p>
+        {t(
+          'Kvôli zákonu č. 297/2008 Z. z. o ochrane pred legalizáciou príjmov z trestnej činnosti: plnú moc, ktorú konateľ podpíše, a údaje, ktoré konateľ vyplní v aplikácii o sebe a o konečných užívateľoch výhod (meno, rodné číslo alebo dátum narodenia, trvalý pobyt, štátnu príslušnosť, druh a číslo dokladu totožnosti a to, či ide o politicky exponovanú osobu), o činnosti firmy a o pôvode jej peňazí, a to, ako sme ich overili a do akého rizika sme firmu zaradili. V aplikácii ich vidí len majiteľ firmy a u nás ľudia, ktorí ich overujú.',
         )}
       </p>
       <p>

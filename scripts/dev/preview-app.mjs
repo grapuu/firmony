@@ -50,6 +50,9 @@ const files = new Map([
   ['/app/banka', 'banka.html'],
   ['/app/plna-moc', 'plna-moc.html'],
   ['/app/prechod', 'prechod.html'],
+  ['/app/vyhlasenie', 'vyhlasenie.html'],
+  ['/app/vyhlasenie?zmenit=1', 'vyhlasenie-zmenit.html'],
+  ['/app/zmluva', 'zmluva.html'],
   ['/app/faktury', 'faktury.html'],
   ['/app/faktury/nova', 'faktura-nova.html'],
   ['/app/faktury/demo-inv-1', 'faktura-1.html'],
@@ -129,7 +132,9 @@ function script(leads) {
     invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
     bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky alebo sa banka či účet odpojí.',
     team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.',
-    poa: 'Toto je náhľad: nič sa neposiela. V aplikácii sa podpísaná plná moc nahrá a účtovníčke príde správa, aby ju overila a podala na úrady.',
+    poa: 'Toto je náhľad: nič sa neposiela. V aplikácii sa podpísaná plná moc nahrá a účtovníčka ju overí a podá na úrady.',
+    decl: 'Toto je náhľad: nič sa neposiela. V aplikácii sa údaje uložia a účtovníčka ich porovná s obchodným registrom a s plnou mocou.',
+    notice: 'Toto je náhľad: nič sa nevypovedá. V aplikácii sa výpoveď uloží, objaví sa v správach a do konca lehoty ju môžete vziať späť.',
     prechod: 'Toto je náhľad. V aplikácii sa to, čo napíšete, hneď doplní do listu.'
   };
   function note(form, text) {
@@ -141,6 +146,8 @@ function script(leads) {
     var a = form.getAttribute('data-action') || '';
     if (a === '/app/plna-moc') return 'poa';
     if (a === '/app/prechod') return 'prechod';
+    if (a === '/app/vyhlasenie') return 'decl';
+    if (/^\\/app\\/firma\\/vypoved/.test(a)) return 'notice';
     if (/^\\/app\\/banka\\/.+\\/(nacitat|odpojit|odobrat)$/.test(a)) return 'bank';
     if (/^\\/app\\/faktury\\/[^/]+\\/(poslat|pripomenut)$/.test(a)) return 'invoiceMail';
     if (/^\\/app\\/faktury/.test(a)) return 'invoice';
@@ -263,6 +270,8 @@ const teamFiles = new Map([
   ['/ucto/klienti/novy?ziadost=demo-req-2', 'ucto-novy-klient-2.html'],
   ['/ucto/klienti/demo-company', 'ucto-klient-1.html'],
   ['/ucto/klienti/demo-company-2', 'ucto-klient-2.html'],
+  ['/ucto/klienti/demo-company/aml', 'ucto-aml-1.html'],
+  ['/ucto/klienti/demo-company-2/aml', 'ucto-aml-2.html'],
   ['/ucto/doklady/demo-doc-3', 'ucto-doklad-zauctovany.html'],
 ])
 const queuePage = await html('/ucto/doklady')
@@ -307,11 +316,20 @@ await write('vsetko-mame.html', await html('/app'))
 {
   const body = new URLSearchParams({ firma: 'demo-company-2' })
   await call('/app/firma/prepnut', { method: 'POST', body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
-  const atelier = new Map([['/app/plna-moc', 'plna-moc-atelier.html']])
+  const atelier = new Map([
+    ['/app/plna-moc', 'plna-moc-atelier.html'],
+    ['/app/vyhlasenie', 'vyhlasenie-atelier.html'],
+  ])
   await write('atelier.html', await html('/app'), { '/app/firma/prepnut': 'index.html' }, atelier)
   await write('plna-moc-atelier.html', await html('/app/plna-moc'), {}, atelier)
   const back = new URLSearchParams({ firma: 'demo-company' })
   await call('/app/firma/prepnut', { method: 'POST', body: back, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+  // Eva, who owns Ateliér Nova, has not said yet who stands behind it: her empty declaration.
+  const martin = cookie
+  cookie = ''
+  await call('/app/ukazka?ako=eva')
+  await write('vyhlasenie-atelier.html', await html('/app/vyhlasenie'), {}, atelier)
+  cookie = martin
 }
 
 // The draft invoice issued as it stands: it takes the next number and is a document of the company at once.
@@ -394,5 +412,5 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'plna-moc-atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', ...originals]
+const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'plna-moc-atelier.html', 'vyhlasenie-atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', ...originals]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))

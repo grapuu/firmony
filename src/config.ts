@@ -213,6 +213,8 @@ export const APP = {
   mailNotesPerDay: 5,
   /** An image in an email smaller than this is a logo or a signature, not a photographed document. */
   mailImageMin: 12_000,
+  /** The declaration for the law against money laundering, sent in an hour (each send is a version kept for years). */
+  declarationsPerHour: 10,
 } as const
 
 /**

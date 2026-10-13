@@ -3329,14 +3329,18 @@ select.field__input {
 }
 
 .first__bar--1 {
-  --done: 33.3%;
+  --done: 25%;
 }
 
 .first__bar--2 {
-  --done: 66.6%;
+  --done: 50%;
 }
 
 .first__bar--3 {
+  --done: 75%;
+}
+
+.first__bar--4 {
   --done: 100%;
 }
 
@@ -4568,4 +4572,403 @@ select.field__input {
 
 .plain__action {
   margin-top: 6px;
+}
+
+/* Kto stojí za firmou: the client's declaration for the law against money laundering. The beneficial owners are
+   asked only when somebody else owns the company, the countries only when there are partners outside the EU, and
+   a second and third owner only once the one before has a name; without :has() everything simply shows. */
+.decl {
+  display: grid;
+  gap: 16px;
+}
+
+.decl__part {
+  gap: 16px;
+}
+
+.yesno {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.yesno__legend {
+  padding: 0;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.yesno__lead {
+  max-width: 44em;
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.yesno__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.yesno__option {
+  position: relative;
+}
+
+.yesno__option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.yesno__option span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 72px;
+  min-height: 42px;
+  justify-content: center;
+  padding: 0 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--text);
+  font-weight: 600;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.yesno__option:hover span {
+  border-color: var(--blue-line);
+}
+
+.yesno__option input:checked + span {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.yesno__option input:focus-visible + span,
+.decl__choice input:focus-visible + span {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.decl__kuv {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.decl__kuv .field__error {
+  grid-column: 1 / -1;
+}
+
+.decl__choice {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+
+.decl__choice input {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  margin: 0;
+  transform: translateY(-50%);
+  accent-color: var(--blue);
+}
+
+.decl__choice span {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  height: 100%;
+  padding: 10px 14px 10px 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  color: var(--ink);
+  font-weight: 600;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.decl__choice:hover span {
+  border-color: var(--blue-line);
+}
+
+.decl__choice input:checked + span {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.decl__owners {
+  display: grid;
+  gap: 14px;
+}
+
+.decl__ownerslead {
+  color: var(--soft);
+  font-size: 0.9375rem;
+}
+
+.decl__ownerslead strong {
+  color: var(--ink);
+}
+
+.decl__owner {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--mist);
+}
+
+.decl__ownertitle {
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.decl__owner .field__input {
+  background-color: var(--white);
+}
+
+.decl__where {
+  display: grid;
+}
+
+.decl__end {
+  gap: 14px;
+}
+
+.tickbox--top {
+  align-items: flex-start;
+  line-height: 1.5;
+}
+
+.tickbox--top input {
+  margin-top: 2px;
+}
+
+.decl__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.decl:has(.decl__choice--self input:checked) .decl__owners,
+.decl:not(:has(.decl__kuv input:checked)) .decl__owners,
+.decl:not(:has(input[name='abroad'][value='1']:checked)) .decl__where {
+  display: none;
+}
+
+.decl__owner:not(.decl__owner--wrong):has(input[name$='Name']:placeholder-shown) + .decl__owner:not(.decl__owner--wrong),
+.decl__owner:not(.decl__owner--wrong):has(input[name$='Name']:placeholder-shown) + .decl__owner + .decl__owner:not(.decl__owner--wrong) {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .decl__kuv {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .decl__owner {
+    padding: 14px;
+  }
+}
+
+/* The contract inside the app: the main points in a bordered box, then the terms, on one sheet to save or print. */
+.contract {
+  gap: 22px;
+}
+
+.contract__sub {
+  color: var(--soft);
+  text-align: center;
+}
+
+.contract__points {
+  display: grid;
+  gap: 6px;
+  padding: 16px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+.contract__heading {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.contract__section {
+  display: grid;
+  gap: 2px;
+}
+
+.contract .terms__points {
+  margin-top: 8px;
+}
+
+.contract .terms__points li {
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* The notice in Firma a nastavenia: folded away until it is wanted, amber once it is given. */
+.notice-box {
+  margin-top: 4px;
+}
+
+.notice-box--given {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--amber-soft);
+}
+
+.notice-box__text {
+  color: var(--ink);
+  font-size: 0.9375rem;
+}
+
+/* Identifikácia a riziko (the team): a card's title with its state beside it, what deserves a second look in red
+   ink, and the internal reports, each a card, amber until the designated person has decided. */
+.pill--red {
+  background: var(--red-soft);
+  color: var(--red-ink);
+}
+
+.info__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.aml__sub {
+  margin-top: 6px;
+  color: var(--soft);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.aml__flag,
+.info .kv dd.aml__flag {
+  color: var(--red-ink);
+}
+
+.aml__suggest {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.reports {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.report--open {
+  border-color: #f3d9a6;
+  background: var(--amber-soft);
+}
+
+.report__by {
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.report__body {
+  color: var(--ink);
+  white-space: pre-line;
+}
+
+.report__decision {
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.report__decide .field__input {
+  background: var(--white);
+}
+
+.report__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tbl__flag--report {
+  color: var(--red-ink);
+  font-weight: 600;
+}
+
+.tbl__flag--ends {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.risks {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.risks__row {
+  display: grid;
+  gap: 2px;
+}
+
+.risks__who {
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.risks__note {
+  color: var(--soft);
+  font-size: 0.8125rem;
 }

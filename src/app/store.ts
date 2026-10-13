@@ -31,6 +31,9 @@ export interface Company {
   signedBy: string | null
   termsVersion: string | null
   startOn: string | null
+  /** A notice given in the app: when, and the last day of the contract. */
+  noticeAt: number | null
+  endsOn: string | null
 }
 
 export type Team = 'accountant' | 'admin'
@@ -125,7 +128,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 /** The columns of a company with its accountant's name, over the aliases c and acc. */
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
-  c.contract_at, c.signed_by, c.terms_version, c.start_on`
+  c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.ends_on`
 
 export function companyOf(row: Row): Company {
   return {
@@ -152,6 +155,8 @@ export function companyOf(row: Row): Company {
     signedBy: str(row.signed_by),
     termsVersion: str(row.terms_version),
     startOn: str(row.start_on),
+    noticeAt: num(row.notice_at),
+    endsOn: str(row.ends_on),
   }
 }
 

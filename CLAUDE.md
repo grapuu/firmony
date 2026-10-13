@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 23:00)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 23:50)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (198 unit checks) and `npm run test:runtime` (319 checks in workerd). The sixth
+- All checks pass: `npm test` (218 unit checks) and `npm run test:runtime` (366 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -97,10 +97,25 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
     from the thanks page), the app version 8 (Plná moc, Prechod, and "Nová firma" in the bar: Ateliér Nova with the
     power of attorney first among its steps).
   - Nobody has read the terms, the power of attorney or the AML program for him; a lawyer should before the first
-    client. Not built: the client's declaration for the AML identification (personal data of the director and the
-    beneficial owners, politically exposed persons, the purpose), the record of a client's risk, an internal report
-    of an unusual operation, deleting a closed client's data after 90 days (the terms and the privacy notice promise
-    it; it is done by hand until then).
+    client. Not built: deleting a closed client's data after 90 days (the terms and the privacy notice promise it;
+    it is done by hand until then).
+
+- From 23:03 (13 October 2026). His word: "ano makaj, nechcem ziadnu komunikaciu mailom nic take... vsetko v nasom
+  uzamknutom ekosysteme": his yes to the client's declaration in the app, and nothing by email. He was told how it was
+  read (Product decisions) and "2 až 3 hodiny". Built, with all checks passing (units 218, runtime 366):
+  - "Everything in the app" below: every email to a client or the team is a doorbell without content
+    (`src/bell.ts`); the client's declaration for the law against money laundering at /app/vyhlasenie, first of
+    four first steps; the contract and its terms in full at /app/zmluva (the email that carried them is gone); the
+    notice given and taken back in Firma a nastavenia; the terms and the privacy notice say so.
+  - The team's "Identifikácia a riziko" (/ucto/klienti/:id/aml): the declaration in full, its check, the risk, the
+    internal reports with the designated person's decision ("The accountants' side" below).
+  - The AML program doc is brought up to date (in-app declaration and reports, no email; the two items of its section
+    8 checked) and the app names the highest risk "Zvýšené", as the program and the law do.
+  - 26 rules taken out once (`scripts/dev/mutate.mjs`): 26 held (one, a reminder once for a person, after its set
+    was taken out: the outbox key holds it).
+  - The previews: the app version 9 (Kto stojí za firmou, Zmluva, the notice in Firma; "Nová firma" in the bar opens
+    Eva's empty declaration; the team's Identifikácia a riziko from both clients' pages), the site version 16 (the
+    FAQ "Ako spolu budeme komunikovať?", the terms with every notice in the app).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -142,7 +157,8 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
    file's name without `.pem`) and the secret `ENABLE_BANKING_KEY` (the whole text of the file; PKCS#8 and PKCS#1
    both work, also pasted on one line). The privacy notice names Enable Banking Oy (Finland) as the service that
    reads the accounts with the client's consent (since 13 October 2026); the terms of service are at /podmienky.
-10. AML (Act No. 297/2008 Z. z.): approve and sign the program (his doc above), register europio in the Financial
+10. AML (Act No. 297/2008 Z. z.): approve and sign the program (his doc above; the client's declaration, the risk
+   and the internal reports are in the app since the night of 13 October), register europio in the Financial
    Intelligence Unit's goAML, and have a lawyer confirm that a power of attorney signed with eID verifies the director's
    identity without a meeting. The trade "Vedenie účtovníctva" comes first (item 8).
 
@@ -170,6 +186,14 @@ inak to nejde" and "účtovníčka nebude robiť za 25 eur ... bežne berú 50 a
   structure and arguments were taken: Dougs' clear prices and reassurance, inFakt's two ways in (founding or
   switching), Bench's "no judgment" about messy books, Pennylane's e-invoicing banner, CloudTalk's parallel of
   AI and human and its plain FAQ.
+
+His (13 October 2026, 23:03): "nechcem žiadnu komunikáciu mailom nič také ... všetko v našom uzamknutom ekosystéme".
+Read as, and he was told so before the work started: messages, documents, data, the contract and every notice live
+only in the app; an email to a client or to the team is a doorbell with a link and nothing else (`src/bell.ts`).
+What still carries words, because it cannot be otherwise: the sign-in link (the key to the door), an invitation to a
+company or to the team (who invites, so it is not taken for phishing), an invoice a client sends to its own customer
+(who has no account), and the two emails to somebody who is not a client yet (the confirmation of a request, the link
+to the contract). The documents' own address (`doklady-<code>@`) takes email in: that is a way in, not communication.
 
 The builder's proposals, shown on the site and his to change (in `PLANS`, `CLOSING_PRICE`, `REPLY_WITHIN`, copy):
 - No lock-in: one month's notice. Answers within one working day.
@@ -340,6 +364,49 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
   through everything, whatever tab was open.
 - A message of another person of the company carries that person's name, not "Vy".
 
+### Everything in the app (13 October 2026, from 23:03; `src/bell.ts`, `src/app/aml.ts`, `src/views/declaration.tsx`, `src/views/contract.tsx`)
+
+- Doorbells (`src/bell.ts`): `bell.*` makes the subject and the body ("Dobrý deň," a lead, the link, "Na tento e-mail
+  neodpovedajte, všetko vybavíte v aplikácii Firmony."), and `ringStatement(db, kind, about, to, bell)` queues it
+  once (outbox key `bell:<kind>:<about>:<email>`). No bell takes a message, an amount, a name or a company: the unit
+  check calls every one with links only. A new message rings the other side only when nothing of that side was
+  unread before it (`seen_at`): five messages before anybody looked are one email; the client's side rings every
+  member, the team's side the company's accountant (else `ahoj@`). Reminders (weekly, monthly) ring a person once,
+  whatever number of her companies miss documents. Rung: the answer, a returned "no document needed", the
+  reminder of missing documents, the bank's renewal, the contract (with the sign-in link), the welcome; for the
+  team a client's message, a power of attorney, a declaration, a notice, a new contract, a request from the site,
+  an internal report (every administrator).
+- Kto stojí za firmou (/app/vyhlasenie; `src/app/aml.ts`): the owner gives the director's name, birth number (else
+  the date of birth), permanent address, nationality, the identity document and its number, whether a politically
+  exposed person; who the beneficial owners are (only me, me and others, others; up to three others with their
+  share or control); what the company does, where its money comes from, the turnover expected, cash over 10 000 €
+  at once, partners outside the EU and where; and ticks that it is true and that changes are reported here. A
+  birth number is checked (nine digits before 1954, else divisible by 11 or the old rule with 0; a day that exists).
+  Every send is a new row of `declarations` (none is changed or removed: five years, s. 19); the page shows the
+  newest with birth numbers cut to their last four digits and the document number to its last three; "Zmeniť
+  údaje" opens the form from it. A member who is no owner is told only where it stands (403 on a POST). The
+  owners' blocks show only when somebody else owns the company, a second and third owner only once the one before
+  has a name, the countries only when there are partners outside the EU (`:has()`, all shown without it).
+- The first steps are four that matter: the declaration, the power of attorney, the bank (or a statement), the first
+  document (`first__bar--0..4`).
+- The contract (/app/zmluva): the main points (company, plan and its price that day from `orders`, payroll, the
+  closing, the start, when and by whom it was concluded, the notice period, the end once notice was given) and the
+  terms in full, numbered (`bod-<a>-<p>`), with "Uložiť ako PDF alebo vytlačiť". Firma a nastavenia links it.
+- The notice (Firma a nastavenia, #zmluva; folded away): the owner ticks and gives it (`companies.notice_at`,
+  `notice_by`, `ends_on` = the last day of the month after the notice, `noticeEndsOn`; once); it stands in the
+  messages as the client's ("Vypovedám zmluvu ..."), the team is rung, the list and the client page say "Končí ...".
+  Until that day the owner can take it back (point 10.2 of the terms: we agree to that in advance), which is in the
+  messages too. What happens at the end (the access closed, the books handed over) is done by hand.
+- The terms (`TERMS_VERSION` stays 2026-10-13: nobody has accepted them): 1.3 the contract and its terms are in the
+  app, 3.1 documents in the app or by forwarding to the company's address, 4.5, 4.6, 8.5 and 11.2 notices in the
+  app, 9.2 the director fills in the declaration in the app and reports its changes there, 10.2 notice in the app
+  and taking it back, 11.1 we communicate by messages in the app, a doorbell carries no content, and a message
+  counts as delivered the next working day. The privacy notice says what the declaration keeps, who sees it and that
+  email only rings. The site's FAQ has "Ako spolu budeme komunikovať?", and "Musím sa viazať?" says that notice is
+  given in the app.
+- Not built: notices the team gives in the app (a price change, a change of the terms: by a message today), an
+  acknowledgement of training of the accountants, a periodic check that a declaration is up to date.
+
 ### Invoices the client issues (step 3, 13 October 2026; `src/app/invoices.ts`, `src/views/invoices.tsx`)
 
 What SuperFaktúra, Fakturoid and Pennylane give, made for this pipe: an invoice issued here is a document of the
@@ -446,8 +513,9 @@ bind the company, and the app opens at once. Here the person is a director (kona
 - Accepting (`acceptStatements`): one batch whose first statement closes the order only while it is open and in time,
   and whose others (the company with `contract_at`, `terms_version`, `signed_by`, `start_on`, `register_line`; the user;
   the owner's membership; the event `contract.accepted`; the request marked `client`) run only when that statement
-  found it (`EXISTS` on the order's id, company and time). Then the sign-in link (7 days), the contract mail with the
-  terms in full (`contractMail`), the note to us (`ownerContractMail`), and the browser is signed in (`/app?ok=zmluva`).
+  found it (`EXISTS` on the order's id, company and time). Then a doorbell with the sign-in link (7 days) to the
+  client and one to us (`bell.contract`, `bell.teamContract`; the terms are read in the app at /app/zmluva since the
+  night of 13 October), and the browser is signed in (`/app?ok=zmluva`).
   An accepted order shows what was agreed; one that ran out answers 410.
 - The terms (`/podmienky`, `TERMS_VERSION` 2026-10-13): 11 articles, numbered as the contract refers to them
   (`bod-<article>-<point>`), the processing on the client's behalf as article 8 (art. 28 GDPR), AML as article 9.
@@ -516,10 +584,23 @@ on one screen, a document booked on one screen with its original beside the form
   is emailed to the company's accountant, or to ahoj@ while it has none.
 - A request from the site becomes a client in one form (`?ziadost=`): company, person, plan, accountant, VAT, and
   a welcome email with a sign-in link valid for `TEAM.welcomeDays` (7) days and the address for forwarding.
+- Identifikácia a riziko (/ucto/klienti/:id/aml, `src/views/aml.tsx`): the client's newest declaration in full
+  (birth numbers and the document number as given; what deserves a look in red), "Totožnosť a údaje overené"
+  (only the newest version, once: `checkDeclarationStatement`, event `declaration.checked`), the risk (nízke,
+  štandardné, zvýšené, the declaration's suggestion preselected by `suggestedLevel`: a politically exposed person,
+  or cash and partners outside the EU together, is zvýšené; one of them štandardné; a note why; every setting kept
+  in `risks`), and the internal reports (`reports`): anybody of the team writes one, every administrator is rung, an
+  accountant sees her own and the administrator all, and only the administrator, the designated person, decides
+  ("Ohlásené cez goAML" or "Neohlásiť", with reasons, once). The client never sees a report (s. 18). The client
+  page has a button to it, the state of the identification, the risk and the open reports; the list flags "Údaje
+  chýbajú / na overenie", open reports (red) and "Končí ...", and a client is "done" only with the identification
+  checked and no open report. The members' emails are text, not links to write from.
 - The sample team: /ucto/ukazka in the playground signs in as the administrator (Christian Juhás),
   `?ako=uctovnicka` as Lucia Horváthová, who keeps Ukážková firma; Jana Kováčová keeps Ateliér Nova s. r. o.
   (Eva Kollárová, with Martin Novák as her partner, so Martin's app shows the switch between the two companies).
   Every sample document has its original, a small PDF made from its own figures (`demoPdf` in `src/app/demo.ts`).
+  Martin's declaration (a date of birth, no birth number) is checked by Lucia, risk nízke; Eva has none (her
+  overview shows it first, `/app/ukazka?ako=eva` signs her in), and Jana has an open report about Ateliér Nova.
 - On a phone the column is a menu in the bar (`BarMenu`): who is signed in, the switch, signing out.
 - Not built yet on this side: the VAT return and the control statement as XML, deadlines of every client on one
   screen, the closing, booking the bank's own payments (a fee, a tax) as entries, a log of who changed what on the
@@ -605,11 +686,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (198): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers
-npm run test:runtime     # the deployable bundle in workerd (319): the site, the order, and the app end to end
+npm test                 # unit checks (218): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration
+npm run test:runtime     # the deployable bundle in workerd (366): the site, the order, and the app end to end
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (14, all held)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (26)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 

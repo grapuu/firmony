@@ -194,6 +194,8 @@ export interface OverviewProps {
 }
 
 export interface FirstStepsState {
+  /** The declaration for the law against money laundering is given: without it we may not start. */
+  declaration: boolean
   /** The power of attorney is uploaded: without it we file nothing for the company. */
   poa: boolean
   payments: boolean
@@ -205,12 +207,13 @@ export interface FirstStepsState {
 }
 
 /**
- * A new company's first steps, as Dougs and Pennylane open their apps: three that matter (the power of attorney,
- * the bank, the first document), the rest for later.
+ * A new company's first steps, as Dougs and Pennylane open their apps: four that matter (who stands behind the
+ * company, the power of attorney, the bank, the first document), the rest for later.
  */
 const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps, bankReady }) => {
   const s = app.start.steps
   const list = [
+    { done: steps.declaration, href: '/app/vyhlasenie', text: s.declaration, optional: false },
     { done: steps.poa, href: '/app/plna-moc', text: s.poa, optional: false },
     bankReady ? { done: steps.payments, href: '/app/banka#prepojit', text: s.bank, optional: false } : { done: steps.payments, href: '/app/platby#vypis', text: s.payments, optional: false },
     { done: steps.upload, href: '/app/doklady#pridat', text: s.upload, optional: false },
@@ -227,7 +230,7 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps
           {app.start.title}
         </h2>
         <p class="first__lead">{app.start.lead}</p>
-        <span class={`first__bar first__bar--${done}`} role="img" aria-label={`${done} / 3`} />
+        <span class={`first__bar first__bar--${done}`} role="img" aria-label={`${done} / 4`} />
       </header>
       <ul class="first__list">
         {list.map((step) => (

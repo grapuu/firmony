@@ -302,6 +302,36 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
         "INSERT INTO company_files (id, company_id, kind, created_at, created_by, file_name, file_type, file_size, r2_key, checked_at, checked_by) VALUES ('demo-poa-1', ?, 'poa', ?, ?, 'plnomocenstvo-podpisane.pdf', 'application/pdf', ?, ?, ?, ?)",
       )
       .bind(c1, ts - 39 * 86400, DEMO.user, poaPdf.byteLength, poaKey, ts - 38 * 86400, DEMO.accountant),
+    // Martin told us who stands behind Ukážková firma when it started (no birth number in the sample: a date of birth
+    // instead), Lucia checked it and put the company in the low risk. Eva has not filled hers in; Jana has reported
+    // something about Ateliér Nova that Christian, the designated person, has not decided yet.
+    db
+      .prepare('INSERT INTO declarations (id, company_id, created_at, created_by, data, checked_at, checked_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(
+        'demo-declaration-1',
+        c1,
+        ts - 40 * 86400 + 3600,
+        DEMO.user,
+        JSON.stringify({
+          director: { name: 'Martin Novák', birthNumber: '', birthDate: '1991-04-17', address: 'Moyzesova 12, 040 01 Košice', nationality: 'slovenská', pep: false, idKind: 'op', idNumber: 'HK123456' },
+          kuv: 'self',
+          owners: [],
+          activity: 'Vývoj webových aplikácií pre malé firmy',
+          income: 'Platby od zákazníkov za služby',
+          turnover: '50-200',
+          cash: false,
+          abroad: false,
+          abroadWhere: '',
+        }),
+        ts - 38 * 86400,
+        DEMO.accountant,
+      ),
+    db
+      .prepare("INSERT INTO risks (id, company_id, created_at, created_by, level, note) VALUES ('demo-risk-1', ?, ?, ?, 'low', ?)")
+      .bind(c1, ts - 38 * 86400 + 60, DEMO.accountant, 'Konateľ je jediný spoločník, firma nepracuje s hotovosťou ani s partnermi mimo EÚ.'),
+    db
+      .prepare("INSERT INTO reports (id, company_id, created_at, created_by, body) VALUES ('demo-report-1', ?, ?, ?, ?)")
+      .bind(c2, ts - 2 * 86400, DEMO.accountant2, 'Na účet firmy prišli tri vklady hotovosti po 9 800 € za jeden týždeň. Klientka sa k nim v správach nevyjadrila.'),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)").bind(c1, DEMO.user, ts - 40 * 86400),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)").bind(c2, DEMO.secondUser, ts - 30 * 86400),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'member', ?, ?)").bind(c2, DEMO.user, ts - 29 * 86400, DEMO.secondUser),

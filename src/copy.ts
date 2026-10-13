@@ -275,7 +275,11 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete vypovedať s mesačnou výpovednou lehotou a všetky podklady Vám odovzdáme.',
+        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou, a všetky podklady Vám odovzdáme.',
+      },
+      {
+        q: 'Ako spolu budeme komunikovať?',
+        a: 'Všetko vybavíme v aplikácii: správy s účtovníčkou, doklady, zmluvu aj plnú moc. Nič sa nestratí v e-mailoch a Vaše údaje neležia v cudzích schránkach. E-mail Vám príde len ako upozornenie, že na Vás niečo čaká.',
       },
       {
         q: 'Ako môžete mať takúto cenu?',
@@ -397,7 +401,7 @@ export const copy = typesetAll({
     termsLink: 'Obchodné podmienky',
     termsRead: 'Prečítať celé znenie',
     submit: 'Uzavrieť zmluvu',
-    fine: 'Tlačidlom uzavriete zmluvu v mene firmy. Potvrdenie so znením podmienok Vám pošleme e-mailom.',
+    fine: 'Tlačidlom uzavriete zmluvu v mene firmy. Zmluvu aj obchodné podmienky potom nájdete v aplikácii, kde vybavíme všetko ostatné.',
     errors: {
       summary: 'Niečo treba doplniť.',
       director: 'Vyberte, prosím, konateľa.',
@@ -409,7 +413,7 @@ export const copy = typesetAll({
       failed: 'Zmluvu sa nepodarilo uložiť. Skúste to, prosím, znova.',
     },
     doneTitle: 'Zmluva je uzavretá.',
-    doneLead: 'Potvrdenie so znením podmienok sme Vám poslali e-mailom. Vitajte vo Firmony.',
+    doneLead: 'Zmluvu aj obchodné podmienky nájdete v aplikácii, kde vybavíme všetko ostatné. Vitajte vo Firmony.',
     doneSigned: 'Uzavrel(a)',
     toApp: 'Pokračovať do aplikácie',
     signIn: 'Prihlásiť sa do aplikácie',

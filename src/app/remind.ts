@@ -1,11 +1,13 @@
-// Reminders by email, the way Dougs and Pennylane send them: on Monday morning to a company that has payments
-// without a document, and on the 5th of the month before the deadline for documents (the 10th). Only to people who
-// did not turn them off, never for the sample companies, and once: each email has a key in the outbox.
+// Reminders, the way Dougs and Pennylane send them: on Monday morning to a company that has payments without a
+// document, and on the 5th of the month before the deadline for documents (the 10th). Only to people who did not
+// turn them off, never for the sample companies, and once: each email has a key in the outbox. Each is a doorbell
+// (src/bell.ts): it says that documents are missing and links to the app, and names no payment, amount or partner.
 import { APP, BANK, BRAND } from '../config'
-import { flushOutbox, queueStatement } from '../mail'
-import { app as t, dayName, monthName, readableName, signed } from './copy'
+import { flushOutbox } from '../mail'
+import { bell, ringStatement } from '../bell'
+import { monthName } from './copy'
 import type { AppBindings } from './routes'
-import { MISSING, listPayments, membersOf } from './store'
+import { MISSING, membersOf } from './store'
 
 /** The parts of a moment in Bratislava. */
 export function bratislava(ms: number): { day: string; weekday: number; date: number; hour: number; minute: number } {
@@ -57,22 +59,12 @@ export async function remindAll(env: AppBindings, ms: number, origin: string = B
   const statements: D1PreparedStatement[] = []
   const by = `${APP.docsByDay}. ${Number(day.slice(5, 7))}.`
   const monthWord = monthName(`${month}-01`)
+  // One doorbell for a person, whatever number of companies of theirs miss documents: it names none of them, and its
+  // key names the person and the day (or the month), never the company, so the outbox keeps one.
+  const ring = kind === 'weekly' ? bell.missing(`${origin}/app/platby`, `${origin}/app/firma#pripomienky`) : bell.monthly(monthWord, by, `${origin}/app/platby`, `${origin}/app/firma#pripomienky`)
   for (const company of companies.results) {
-    const missing = (await listPayments(db, company.id, 'missing', 200)).filter((p) => kind === 'weekly' || (p.bookedOn >= from && p.bookedOn < to))
-    if (missing.length === 0) continue
-    const lines = missing.slice(0, 10).map((p) => `${Number(p.bookedOn.slice(8, 10))}. ${Number(p.bookedOn.slice(5, 7))}. ${p.party ? readableName(p.party) : (p.note ?? '')}, ${signed(p.amountCents)}`)
     for (const person of await membersOf(db, company.id, true)) {
-      const subject = kind === 'weekly' ? t.remind.weeklySubject(missing.length) : t.remind.monthlySubject(monthWord, by)
-      const intro = kind === 'weekly' ? t.remind.weeklyIntro(company.name) : t.remind.monthlyIntro(monthWord, by)
-      const name = person.name.split(/\s+/)[0] ?? person.name
-      statements.push(
-        queueStatement(db, {
-          key: `remind:${kind}:${company.id}:${person.id}:${kind === 'weekly' ? day : day.slice(0, 7)}`,
-          to: person.email,
-          subject,
-          body: t.remind.body(name, company.name, intro, lines, missing.length - lines.length, `${origin}/app/platby`, `${origin}/app/firma#pripomienky`),
-        }),
-      )
+      statements.push(ringStatement(db, `remind-${kind}`, kind === 'weekly' ? day : day.slice(0, 7), person.email, ring))
     }
   }
   for (let i = 0; i < statements.length; i += 50) await db.batch(statements.slice(i, i + 50))
@@ -98,20 +90,12 @@ export async function remindBankRenewals(env: AppBindings, ms: number, origin: s
     .all<{ id: string; bank: string; valid_until: number; company_id: string; company: string }>()
   const statements: D1PreparedStatement[] = []
   for (const link of links.results) {
-    const until = dayName(bratislava(link.valid_until * 1000).day)
     const owners = await db
       .prepare("SELECT u.id, u.name, u.email FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ? AND m.role = 'owner'")
       .bind(link.company_id)
       .all<{ id: string; name: string; email: string }>()
     for (const owner of owners.results) {
-      statements.push(
-        queueStatement(db, {
-          key: `bank-renew:${link.id}:${owner.id}`,
-          to: owner.email,
-          subject: t.bank.mail.renewSubject(link.bank),
-          body: t.bank.mail.renewBody(owner.name.split(/\s+/)[0] ?? owner.name, link.company, link.bank, until, `${origin}/app/banka`),
-        }),
-      )
+      statements.push(ringStatement(db, 'bank-renew', link.id, owner.email, bell.bank(`${origin}/app/banka`)))
     }
   }
   for (let i = 0; i < statements.length; i += 50) await db.batch(statements.slice(i, i + 50))

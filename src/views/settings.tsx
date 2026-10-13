@@ -3,6 +3,7 @@
 import type { FC } from 'hono/jsx'
 import { app, dayName } from '../app/copy'
 import type { PoaState } from '../app/papers'
+import type { DeclarationState } from '../app/aml'
 import type { Company, Person } from '../app/store'
 import { Flash, Heading, planName } from './inside'
 import { dayOf } from './inside-pages'
@@ -14,17 +15,64 @@ export interface CompanyPageProps {
   companies: { id: string; name: string }[]
   inbox: string
   invite: { name: string; email: string }
-  errors: { name?: string; email?: string; form?: string }
+  errors: { name?: string; email?: string; form?: string; notice?: string }
   flash?: string | null
   /** Where the power of attorney stands. */
   poa: PoaState
+  /** Where the declaration for the law against money laundering stands. */
+  declaration: DeclarationState
+  today: string
+  /** The last day of the contract if notice were given today. */
+  noticeEnd: string
 }
 
 const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
 
+/** The notice: given (with taking it back while the contract runs), or the way to give it, folded away. */
+const Notice: FC<{ company: Company; owner: boolean; today: string; end: string; error?: string }> = ({ company, owner, today, end, error }) => {
+  const n = app.notice
+  if (company.noticeAt && company.endsOn) {
+    return (
+      <div class="notice-box notice-box--given">
+        <p class="notice-box__text">{n.given(dayName(dayOf(company.noticeAt)), dayName(company.endsOn))}</p>
+        {owner && company.endsOn >= today ? (
+          <form method="post" action="/app/firma/vypoved/spat">
+            <button class="btn btn--line btn--small" type="submit">
+              {n.withdraw}
+            </button>
+          </form>
+        ) : null}
+        {error ? <p class="field__error">{error}</p> : null}
+      </div>
+    )
+  }
+  return (
+    <details class="more more--quiet notice-box" open={Boolean(error)}>
+      <summary class="more__summary">{n.title}</summary>
+      <div class="more__body">
+        {owner ? (
+          <form class="stack" method="post" action="/app/firma/vypoved" novalidate>
+            <p class="info__lead">{n.lead(dayName(end))}</p>
+            <label class="tickbox tickbox--top">
+              <input type="checkbox" name="potvrdit" value="1" aria-invalid={error ? 'true' : undefined} />
+              <span>{n.confirm}</span>
+            </label>
+            {error ? <p class="field__error">{error}</p> : null}
+            <button class="btn btn--line stack__submit" type="submit">
+              {n.button}
+            </button>
+          </form>
+        ) : (
+          <p class="info__lead">{n.onlyOwner}</p>
+        )}
+      </div>
+    </details>
+  )
+}
+
 const c = app.company
 
-export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa }) => {
+export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd }) => {
   const owner = me.role === 'owner'
   const others = companies.filter((other) => other.id !== company.id)
   return (
@@ -103,8 +151,17 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
               <div>
                 <dt>{app.contract.terms}</dt>
                 <dd>
-                  <a class="link" href="/podmienky">
-                    {company.termsVersion ? app.contract.termsVersion(company.termsVersion) : app.contract.terms}
+                  <a class="link" href="/app/zmluva">
+                    {company.termsVersion ? app.contract.termsVersion(company.termsVersion) : app.contract.open}
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt>{app.contract.declaration}</dt>
+                <dd class="kv__long">
+                  <span class={`pill ${POA_PILL[declaration]}`}>{app.declaration.state[declaration]}</span>{' '}
+                  <a class="link" href="/app/vyhlasenie">
+                    {app.contract.poaOpen}
                   </a>
                 </dd>
               </div>
@@ -124,6 +181,7 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
               </a>
               . {app.contract.switchingLead}
             </p>
+            <Notice company={company} owner={owner} today={today} end={noticeEnd} error={errors.notice} />
           </section>
 
           <section class="info" id="doklady-emailom" aria-labelledby="mail-t">

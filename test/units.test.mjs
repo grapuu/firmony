@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { appCopy, bank, booking, calc, config, contractMail, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, orderLinkMail, papers, paybysquare, planRows, reader, rpo, teamStore, terms, xml } from '../.wrangler/tmp/units-bundle.mjs'
+import { aml, appCopy, bank, bells, booking, calc, config, copy, decodePayBySquare, deadlines, demo, format, ico, invoices, match, orderLinkMail, papers, paybysquare, planRows, reader, rpo, teamStore, terms, xml } from '../.wrangler/tmp/units-bundle.mjs'
 import { check, done } from './check.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
@@ -101,8 +101,42 @@ check('after the launch they begin with the next month, over a new year', terms.
 check('a date is written in words', terms.longDate('2027-01-01') === '1. januára 2027')
 const linkMail = orderLinkMail('Zelený dvor s. r. o.', 'rast', 'https://firmony.ai/objednavka/abc', 30)
 check('the order email names the company, the plan and how long the link works', linkMail.body.includes('Firma: Zelený dvor s. r. o.') && linkMail.body.includes('Balík: Rast, 169 € mesačne bez DPH') && linkMail.body.includes('Odkaz platí 30 dní') && !/\u00a0/.test(linkMail.body))
-const doneMail = contractMail({ company: 'Zelený dvor s. r. o.', ico: '55 012 345', plan: 'rast', priceCents: 16900, startOn: '2027-02-01', signedBy: 'Tomáš Dvorský', at: '13. októbra 2026 o 22:40', inbox: 'doklady-abc@firmony.ai', link: 'https://firmony.ai/app/vstup?t=x' })
-check('the confirmation names what was agreed and carries the terms', doneMail.body.includes('Začiatok: 1. februára 2027') && doneMail.body.includes('Uzavrel(a): Tomáš Dvorský') && doneMail.body.includes('11.4 ') && doneMail.body.includes(config.TERMS_VERSION))
+// His word of 13 October 2026: everything in the app. The terms say every notice is given there, and none by email.
+const termsPlain = terms.termsText()
+check('the terms give every notice in the app', termsPlain.includes('Komunikujeme správami v aplikácii') && termsPlain.includes('Vy v aplikácii v časti Firma a nastavenia') && termsPlain.includes('nájdete v aplikácii'))
+check('and none of them by email', !/e-mailom (najmenej|vopred)|a to e-mailom|Potvrdenie s ich znením|alebo e-mailom|informujeme e-mailom/.test(termsPlain), termsPlain.match(/[^.]*e-mail[^.]*\./g)?.join(' | '))
+check('a notice given in the app can be taken back, with our consent given in advance', termsPlain.includes('môžete do konca výpovednej lehoty vziať späť; s takým späťvzatím vopred súhlasíme'))
+
+// Every email to a client or the team is a doorbell: its link and its fixed words, and nothing that was typed.
+const sample = 'https://firmony.ai/app/x'
+const rung = Object.entries(bells.bell).map(([kind, make]) => [kind, make.length === 4 ? make('október 2026', '10. 11.', sample, sample) : make(sample, sample)])
+check('every doorbell links into the app and says to answer there', rung.length >= 12 && rung.every(([, b]) => b.subject.startsWith('Firmony: ') && b.body.includes(sample) && b.body.includes('Na tento e-mail neodpovedajte')), rung.map(([k]) => k).join(' '))
+check('a doorbell is short and plain', rung.every(([, b]) => b.body.split('\n').length <= 10 && !/ |undefined|null/.test(b.body + b.subject)), rung.find(([, b]) => b.body.split('\n').length > 10 || / |undefined|null/.test(b.body + b.subject))?.[0])
+
+// What the law against money laundering asks of a client (aml.ts)
+check('a birth number with its check digit, with or without the slash', aml.birthNumberValid('780123/0008') && aml.birthNumberValid('7801230008') && aml.birthNumberValid('9053120010') && aml.birthNumberValid('0407150007'))
+check('a wrong check digit, month or day is no birth number', !aml.birthNumberValid('7801230009') && !aml.birthNumberValid('7813230008') && !aml.birthNumberValid('8552300009') && !aml.birthNumberValid('78012300') && !aml.birthNumberValid('abc'))
+check('nine digits only before 1954', aml.birthNumberValid('530101123') && !aml.birthNumberValid('600101123'))
+check('a birth number is shown by its last four digits', aml.maskBirthNumber('780123/0008') === '******/0008' && aml.maskBirthNumber('12') === '')
+check('a date of birth typed the Slovak way', aml.birthDateOf('7. 3. 1994', '2026-10-13') === '1994-03-07' && aml.birthDateOf('17.4.1991', '2026-10-13') === '1991-04-17' && aml.birthDateOf('', '2026-10-13') === '')
+check('a day that does not exist, a child or nobody alive is no date of birth', aml.birthDateOf('31. 2. 1990', '2026-10-13') === null && aml.birthDateOf('1. 1. 2020', '2026-10-13') === null && aml.birthDateOf('1. 1. 1890', '2026-10-13') === null && aml.birthDateOf('1990', '2026-10-13') === null)
+check('a notice ends on the last day of the month after it', aml.noticeEndsOn('2026-10-13') === '2026-11-30' && aml.noticeEndsOn('2026-10-31') === '2026-11-30' && aml.noticeEndsOn('2026-12-05') === '2027-01-31' && aml.noticeEndsOn('2027-12-31') === '2028-01-31' && aml.noticeEndsOn('2028-01-10') === '2028-02-29')
+const words = appCopy.app.declaration.errors
+const full = { name: 'Martin Novák', rc: '780123/0008', dob: '', address: 'Moyzesova 12, 040 01 Košice', nationality: 'slovenská', idKind: 'op', idNumber: 'hk 123456', pep: '0', kuv: 'self', activity: 'Weby pre malé firmy', income: 'Platby od zákazníkov', turnover: '50-200', cash: '0', abroad: '0', abroadWhere: '', truthful: '1' }
+const given = aml.checkDeclaration(full, '2026-10-13', words)
+check('a whole declaration is taken as it was given', given.declaration !== null && Object.keys(given.errors).length === 0 && given.declaration.director.birthNumber === '780123/0008' && given.declaration.director.idNumber === 'HK123456' && given.declaration.owners.length === 0, JSON.stringify(given.errors))
+const wrongs = (over) => Object.keys(aml.checkDeclaration({ ...full, ...over }, '2026-10-13', words).errors).sort().join(' ')
+check('without the statement nothing is taken', wrongs({ truthful: '' }) === 'truthful' && aml.checkDeclaration({ ...full, truthful: '' }, '2026-10-13', words).declaration === null)
+check('a birth number or a date of birth, one of them valid', wrongs({ rc: '7801230009' }) === 'rc' && wrongs({ rc: '' }) === 'dob' && wrongs({ rc: '', dob: '17. 4. 1991' }) === '' && wrongs({ rc: '', dob: '30. 2. 1991' }) === 'dob')
+check('every question is answered, not presumed', wrongs({ pep: '', cash: '', abroad: '', kuv: '', turnover: 'vela' }) === 'abroad cash kuv pep turnover' && wrongs({ idKind: 'x' }) === 'idNumber' && wrongs({ idNumber: '12' }) === 'idNumber')
+check('partners outside the EU are named', wrongs({ abroad: '1' }) === 'abroadWhere' && wrongs({ abroad: '1', abroadWhere: 'USA' }) === '')
+const owner = { o1Name: 'Jana Nováková', o1Rc: '', o1Dob: '2. 5. 1990', o1Address: 'Hlavná 5, 040 01 Košice', o1Nationality: 'slovenská', o1Share: '50 %' }
+check('other owners are asked for when the director is not the only one', wrongs({ kuv: 'with' }) === 'owners' && wrongs({ kuv: 'others', ...owner }) === '' && wrongs({ kuv: 'with', ...owner, o1Share: '' }) === 'o1share' && wrongs({ kuv: 'with', ...owner, o1Dob: '' }) === 'o1dob')
+check('an owner given while the director is the only one is not kept', aml.checkDeclaration({ ...full, ...owner }, '2026-10-13', words).declaration?.owners.length === 0 && aml.checkDeclaration({ ...full, kuv: 'with', ...owner, o1Pep: '1' }, '2026-10-13', words).declaration?.owners[0]?.pep === true)
+const asGiven = aml.valuesOfDeclaration(given.declaration)
+check('a declaration opens again in the form as it was given, without the statement', aml.checkDeclaration({ ...asGiven, truthful: '1' }, '2026-10-13', words).declaration?.director.name === 'Martin Novák' && asGiven.truthful === '')
+const plain = given.declaration
+check('the risk the declaration points to', aml.suggestedLevel(plain) === 'low' && aml.suggestedLevel({ ...plain, cash: true }) === 'standard' && aml.suggestedLevel({ ...plain, cash: true, abroad: true }) === 'high' && aml.suggestedLevel({ ...plain, director: { ...plain.director, pep: true } }) === 'high' && aml.suggestedLevel({ ...plain, owners: [{ pep: true }] }) === 'high')
 
 // The texts say the figures of the plans
 const start = config.PLANS[0]

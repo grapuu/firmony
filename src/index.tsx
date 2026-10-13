@@ -15,8 +15,9 @@ import { invoiceByToken, invoiceLines } from './app/invoices'
 import { getCompany, userByEmail } from './app/store'
 import { newLink, newToken, startSession } from './app/session'
 import { inboxCode } from './team/store'
-import { acceptStatements, acceptedAs, inboxAddress, isClient, newOrderStatement, orderByToken, type Order } from './order'
-import { contractMail, orderLinkMail, ownerContractMail } from './order-mail'
+import { acceptStatements, acceptedAs, isClient, newOrderStatement, orderByToken, type Order } from './order'
+import { orderLinkMail } from './order-mail'
+import { bell, ringStatement } from './bell'
 import { startMonths } from './content/terms'
 import { OrderDone, OrderGone, OrderPage, TermsPage, type OrderErrors, type OrderValues } from './views/order'
 import { PublicInvoicePage } from './views/invoices'
@@ -219,11 +220,6 @@ const SITUATIONS: readonly Situation[] = ['switch', 'fresh', 'other']
 const field = (value: unknown, max: number): string => (typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim().slice(0, max) : '')
 
 const planName = (id: string) => planById(id)?.name ?? copy.start.planUnsure
-const situationName = (id: Situation) => copy.start.situations[id]
-
-function slovakTime(seconds: number): string {
-  return new Intl.DateTimeFormat('sk-SK', { timeZone: 'Europe/Bratislava', dateStyle: 'long', timeStyle: 'short' }).format(new Date(seconds * 1000))
-}
 
 app.post('/zacat', async (c) => {
   const body = await c.req.parseBody()
@@ -311,28 +307,8 @@ app.post('/zacat', async (c) => {
       source,
       privacyVersion: PRIVACY_VERSION,
     }),
-    queueStatement(db, {
-      key: `owner:${id}`,
-      to: BRAND.email,
-      subject: `Nová žiadosť: ${companyName ?? values.name}`,
-      body: [
-        `Nová žiadosť z webu ${BRAND.name}`,
-        '',
-        `Firma: ${companyName ?? 'zatiaľ žiadna'}${company ? ' (z registra)' : companyName ? ' (napísaná ručne)' : ''}`,
-        `IČO: ${ico ? formatIco(ico).replace(/ /g, ' ') : '-'}`,
-        `Sídlo: ${company?.address ?? '-'}`,
-        `Balík: ${planName(plan)}`,
-        `Čo potrebuje: ${situationName(situation)}`,
-        `Meno: ${values.name}`,
-        `E-mail: ${values.email}`,
-        `Telefón: ${values.phone || '-'}`,
-        `Poznámka: ${values.note || '-'}`,
-        `Zdroj: ${source ?? '-'}`,
-        `Zmluva online: ${orderToken ? 'odkaz poslaný klientovi' : 'nie (firma nie je v registri ako s. r. o., už je klientom alebo bez IČO)'}`,
-        '',
-        `Odoslané ${slovakTime(now())}.`,
-      ].join('\n'),
-    }),
+    // To us a doorbell only: who asked and what is in /ucto/ziadosti, behind the sign-in.
+    ringStatement(db, 'request', id, BRAND.email, bell.teamRequest(`${siteOrigin(c)}/ucto/ziadosti`)),
   ]
   if (orderToken && orderStatement && company) {
     const mail = orderLinkMail(company.name, planById(plan)?.id ?? 'start', `${siteOrigin(c)}/objednavka/${orderToken}`, ORDER.days)
@@ -458,24 +434,12 @@ app.post('/objednavka/:token', async (c) => {
     return (again && (await orderClosed(c, again))) || form(500, { form: copy.order.errors.failed })
   }
 
+  // The client gets a doorbell with the sign-in link: the contract and its terms are read in the app (/app/zmluva).
   const login = await newLink(db, userId, TEAM.welcomeDays * 24 * 60)
-  const facts = {
-    company: order.company,
-    ico: formatIco(order.ico),
-    plan: plan.id,
-    priceCents: plan.price * 100,
-    startOn: values.start,
-    signedBy,
-    at: slovakTime(now()),
-    inbox: inboxAddress(inbox),
-    link: `${siteOrigin(c)}/app/vstup?t=${login.token}`,
-  }
-  const toClient = contractMail(facts)
-  const toUs = ownerContractMail({ ...facts, email: order.email, requestPerson: order.person })
   await db.batch([
     login.statement,
-    queueStatement(db, { key: `contract:${order.id}`, to: order.email, subject: toClient.subject, body: toClient.body }),
-    queueStatement(db, { key: `contract-owner:${order.id}`, to: BRAND.email, subject: toUs.subject, body: toUs.body }),
+    ringStatement(db, 'contract', order.id, order.email, bell.contract(`${siteOrigin(c)}/app/vstup?t=${login.token}`)),
+    ringStatement(db, 'contract-team', order.id, BRAND.email, bell.teamContract(`${siteOrigin(c)}/ucto/klienti/${companyId}`)),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   const where = await startSession(c, db, userId, companyId)

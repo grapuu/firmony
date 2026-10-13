@@ -3,7 +3,7 @@
 // terms there. Accepting creates the company, the person's account and their membership in one batch, keeps who
 // accepted which version when, and is done once: the UPDATE that closes the order is the first statement of the
 // batch and the rest only happens when it found the order open.
-import { APP, BRAND, ORDER, TERMS_VERSION, planById, type PlanId } from './config'
+import { ORDER, TERMS_VERSION, planById, type PlanId } from './config'
 import { now, sha256Hex } from './db'
 import type { Director } from './rpo'
 
@@ -163,9 +163,4 @@ export function acceptStatements(db: D1Database, order: Order, a: Acceptance, id
 /** Whether the order was accepted by the acceptance that wrote this company (read after the batch). */
 export async function acceptedAs(db: D1Database, orderId: string, companyId: string): Promise<boolean> {
   return Boolean(await db.prepare("SELECT 1 AS x FROM orders WHERE id = ? AND company_id = ? AND status = 'accepted'").bind(orderId, companyId).first())
-}
-
-/** The address documents can be forwarded to. */
-export function inboxAddress(inbox: string): string {
-  return `${APP.inboxPrefix}${inbox}@${BRAND.email.split('@')[1]}`
 }

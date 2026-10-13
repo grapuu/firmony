@@ -75,7 +75,10 @@ const MIGRATIONS: readonly string[][] = [
       contract_at INTEGER,
       terms_version TEXT,
       signed_by TEXT,
-      start_on TEXT
+      start_on TEXT,
+      notice_at INTEGER,
+      notice_by TEXT,
+      ends_on TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
@@ -116,6 +119,37 @@ const MIGRATIONS: readonly string[][] = [
       checked_by TEXT
     )`,
     'CREATE INDEX IF NOT EXISTS company_files_company ON company_files (company_id, kind)',
+    `CREATE TABLE IF NOT EXISTS declarations (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT NOT NULL,
+      data TEXT NOT NULL,
+      checked_at INTEGER,
+      checked_by TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS declarations_company ON declarations (company_id, created_at)',
+    `CREATE TABLE IF NOT EXISTS risks (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT NOT NULL,
+      level TEXT NOT NULL,
+      note TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS risks_company ON risks (company_id, created_at)',
+    `CREATE TABLE IF NOT EXISTS reports (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT NOT NULL,
+      body TEXT NOT NULL,
+      decided_at INTEGER,
+      decided_by TEXT,
+      decision TEXT,
+      decision_note TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS reports_company ON reports (company_id, created_at)',
     `CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       created_at INTEGER NOT NULL,

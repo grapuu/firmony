@@ -9,6 +9,7 @@ import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app
 import type { Exempt } from '../app/match'
 import type { Company, Doc, Message, Payment, User } from '../app/store'
 import type { Paper, PoaState } from '../app/papers'
+import type { DeclarationState, Level } from '../app/aml'
 import { team as t } from '../team/copy'
 import type { ClientRow, QueueDoc, Request, Rule, TeamMember, Thread, ToCheck } from '../team/store'
 import { Tile } from './home'
@@ -168,7 +169,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash
             {admin ? <span role="columnheader">{t.clients.columns.accountant}</span> : null}
           </div>
           {rows.map((row) => {
-            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked'
+            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked' && row.declaration === 'checked' && row.openReports === 0
             return (
               <a class={`tbl__row${done ? ' tbl__row--done' : ''}`} role="row" href={`/ucto/klienti/${row.company.id}`}>
                 <span class="tbl__company" role="cell">
@@ -179,7 +180,10 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; now: number; flash
                   <span class="tbl__sub">
                     <span>{t.clients.plan(planName(row.company.plan))}</span>
                     <span>{row.company.vatPayer ? t.clients.vat : t.clients.noVat}</span>
+                    {row.declaration === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.declaration}`}>{t.aml.state[row.declaration]}</span>}
                     {row.poa === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.poa}`}>{t.client.poaState[row.poa]}</span>}
+                    {row.openReports > 0 ? <span class="tbl__flag tbl__flag--report">{t.client.reportsOpen(row.openReports)}</span> : null}
+                    {row.company.endsOn ? <span class="tbl__flag tbl__flag--ends">{t.client.ends(dayName(row.company.endsOn))}</span> : null}
                   </span>
                 </span>
                 <span class="tbl__num" role="cell" data-label={t.clients.columns.book}>
@@ -234,12 +238,27 @@ export interface ClientPageProps {
   /** The power of attorney the client uploaded, the newest first. */
   papers: Paper[]
   poa: PoaState
+  /** The identification under the law against money laundering, the client's risk, and reports not decided yet. */
+  declaration: DeclarationState
+  risk: Level | null
+  openReports: number
 }
 
 const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
 
-/** The contract as it was concluded, and the power of attorney with what the accountant does with it. */
-const ContractCard: FC<{ company: Company; papers: Paper[]; poa: PoaState; now: number }> = ({ company: c, papers, poa, now }) => {
+const RISK_PILL: Record<Level, string> = { low: 'pill--ok', standard: 'pill--blue', high: 'pill--red' }
+
+/** The contract as it was concluded, the identification and the risk, and the power of attorney with what the
+ * accountant does with it. */
+const ContractCard: FC<{ company: Company; papers: Paper[]; poa: PoaState; declaration: DeclarationState; risk: Level | null; openReports: number; now: number }> = ({
+  company: c,
+  papers,
+  poa,
+  declaration,
+  risk,
+  openReports,
+  now,
+}) => {
   const today = dayOf(now)
   return (
     <section class="info" id="zmluva" aria-labelledby="zmluva-t">
@@ -249,6 +268,17 @@ const ContractCard: FC<{ company: Company; papers: Paper[]; poa: PoaState; now: 
       <p class="info__lead">
         {c.contractAt && c.signedBy ? t.client.contractOnline(dayName(dayOf(c.contractAt), today), c.signedBy, app.contract.termsVersion(c.termsVersion ?? '')) : t.client.contractOffline}
         {c.startOn ? ` ${t.client.start(dayName(c.startOn, today))}` : ''}
+      </p>
+      {c.noticeAt && c.endsOn ? <p class="notice-box notice-box--given notice-box__text">{t.client.endsLead(dayName(dayOf(c.noticeAt), today), dayName(c.endsOn, today))}</p> : null}
+      <p class="pills">
+        <span class={`pill ${POA_PILL[declaration]}`}>{t.aml.state[declaration]}</span>
+        {risk ? <span class={`pill ${RISK_PILL[risk]}`}>{`${t.aml.risk}: ${t.aml.levels[risk].toLowerCase()}`}</span> : null}
+        {openReports > 0 ? <span class="pill pill--amber">{t.client.reportsOpen(openReports)}</span> : null}
+      </p>
+      <p>
+        <a class="btn btn--line btn--small" href={`/ucto/klienti/${c.id}/aml`}>
+          {t.client.amlOpen}
+        </a>
       </p>
       <p>
         <span class={`pill ${POA_PILL[poa]}`}>{t.client.poaState[poa]}</span>
@@ -307,6 +337,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           {c.address ? <span>{c.address}</span> : null}
           <span>{c.accountantName ?? t.clients.nobody}</span>
           {p.bankLine ? <span>{p.bankLine}</span> : null}
+          {c.endsOn ? <span class="pill pill--amber">{t.client.ends(dayName(c.endsOn))}</span> : null}
         </p>
       </header>
       <Flash text={p.flash} />
@@ -320,7 +351,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
         </a>
         <a href="#spravy">{t.client.messages}</a>
         <a href="#chyba">{t.clients.missing}</a>
-        <a href="#zmluva">{t.client.poaState[p.poa]}</a>
+        <a href="#zmluva">{p.declaration === 'checked' ? t.client.poaState[p.poa] : t.aml.state[p.declaration]}</a>
         <a href="#udaje">{t.client.details}</a>
       </nav>
       <div class="pgrid pgrid--wide">
@@ -429,7 +460,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           </section>
         </div>
         <aside class="pgrid__side">
-          <ContractCard company={c} papers={p.papers} poa={p.poa} now={p.now} />
+          <ContractCard company={c} papers={p.papers} poa={p.poa} declaration={p.declaration} risk={p.risk} openReports={p.openReports} now={p.now} />
           <section class="info" id="udaje" aria-labelledby="udaje-t">
             <h2 id="udaje-t" class="info__title">
               {t.client.details}
@@ -492,9 +523,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
               {p.members.map((m) => (
                 <li class="plain__row plain__row--two">
                   <span class="plain__name">{m.name}</span>
-                  <a class="link plain__mail" href={`mailto:${m.email}`}>
-                    {m.email}
-                  </a>
+                  <span class="plain__mail">{m.email}</span>
                 </li>
               ))}
             </ul>

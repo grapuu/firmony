@@ -13,22 +13,36 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // The order with the contract online
-  ['src/index.tsx', "    if (chosen) signedBy = chosen.name\n    else errors.director = copy.order.errors.director\n", '    signedBy = values.director\n', 'only a director the register names concludes the contract'],
-  ['src/index.tsx', '  if (!values.agree) errors.agree = copy.order.errors.agree\n', '', 'without agreeing to the terms nothing is concluded'],
-  ['src/index.tsx', '  if (!months.includes(values.start)) errors.start = copy.order.errors.start\n', '', 'the first month is one of those offered'],
-  ['src/index.tsx', ' && !(await isClient(db, ico))) {', ') {', 'a company that is a client gets no second contract'],
-  // The power of attorney and the notice
-  ['src/app/papers.ts', "'Content-Disposition': `${inline ? 'inline' : 'attachment'}", "'Content-Disposition': `${'inline'}", 'a signature container is downloaded, never shown'],
-  ['src/app/papers.ts', 'WHERE f.id = ? AND f.company_id = ?`,', 'WHERE f.id = ? AND (f.company_id = ? OR 1)`,', 'a paper is only its own company\'s'],
-  ['src/app/papers.ts', " AND checked_at IS NULL').bind(now(), user, id, company)", "').bind(now(), user, id, company)", 'a paper is checked once'],
-  ['src/app/routes.tsx', '      to: company.accountantEmail ?? BRAND.email,', '      to: BRAND.email,', 'the accountant who keeps the company is told of its power of attorney'],
-  ['src/app/routes.tsx', 'steps={steps.poa && steps.payments && steps.upload ? null : steps}', 'steps={steps.payments && steps.upload ? null : steps}', 'the first steps stay until the power of attorney is there'],
-  ['src/views/inside-pages.tsx', "    { done: steps.poa, href: '/app/plna-moc', text: s.poa, optional: false },\n", '', 'the power of attorney is a first step'],
-  ['src/views/inside-pages.tsx', '    ...(steps.switching ? [', '    ...(true ? [', 'the notice to a former accountant is offered only to who changes accountants'],
-  ['src/index.tsx', '|banka|plna-moc)$/', '|banka)$/', 'a signed power of attorney of real size can be uploaded'],
-  ['src/app/routes.tsx', '  if (since === null) errors.since = t.switching.dayHint\n', '', 'a day that does not exist is said so'],
-  ['src/views/team.tsx', "                    {row.poa === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.poa}`}>{t.client.poaState[row.poa]}</span>}\n", '', 'the accountant\'s list says whose power of attorney waits'],
+  // The client's declaration (aml.ts, /app/vyhlasenie)
+  ['src/app/aml.ts', "  if (v.truthful !== '1') errors.truthful = words.truthful\n", '', 'without the statement nothing is taken'],
+  ['src/app/aml.ts', "    if (rc !== '' && !birthNumberValid(rc)) errors[`${prefix}rc`] = words.rc\n", '', 'a birth number that cannot be one is refused'],
+  ['src/app/aml.ts', '  if (whole % 11n === 0n) return true\n', '  return true\n', 'a birth number has its check digit'],
+  ['src/app/aml.ts', "  if (kuv && kuv !== 'self' && owners.length === 0) errors.owners = words.owners\n", '', 'other owners are asked for when the director is not the only one'],
+  ['src/app/aml.ts', "  if (v.abroad === '1' && (v.abroadWhere ?? '').length < 2) errors.abroadWhere = words.abroadWhere\n", '', 'partners outside the EU are named'],
+  ['src/app/aml.ts', '  const last = new Date(Date.UTC(y, m + 1, 0))', '  const last = new Date(Date.UTC(y, m, 0))', 'a notice ends on the last day of the month after it'],
+  ['src/app/routes.tsx', "  if (who.role !== 'owner') return declarationPage(c, null, 403)\n", '', 'only the owner gives the declaration'],
+  ['src/views/declaration.tsx', '    {!owner ? (', '    {false ? (', 'a member sees nothing of the declaration'],
+  ['src/views/declaration.tsx', '(rc ? maskBirthNumber(rc) :', '(rc ? rc :', 'the owner reads the birth number cut short'],
+  ['src/views/inside-pages.tsx', "    { done: steps.declaration, href: '/app/vyhlasenie', text: s.declaration, optional: false },\n", '', 'the declaration is a first step'],
+  ['src/app/routes.tsx', 'steps={steps.declaration && steps.poa && steps.payments && steps.upload ? null : steps}', 'steps={steps.poa && steps.payments && steps.upload ? null : steps}', 'the first steps stay until the declaration is given'],
+  ['src/app/routes.tsx', "ringStatement(db, 'declaration', made.id, company.accountantEmail ?? BRAND.email,", "ringStatement(db, 'declaration', made.id, BRAND.email,", 'the accountant who keeps the company is rung of its declaration'],
+  // The team: the check, the risk, the reports
+  ['src/app/aml.ts', ' AND checked_at IS NULL\n         AND id = (SELECT id FROM declarations WHERE company_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1)', ' AND checked_at IS NULL\n         AND ? IS NOT NULL', 'only the newest declaration is checked'],
+  ['src/app/aml.ts', "WHERE id = ? AND company_id = ? AND checked_at IS NULL\n", "WHERE id = ? AND company_id = ?\n", 'a declaration is checked once'],
+  ['src/team/routes.tsx', "typeof body.uroven === 'string' && (LEVELS as readonly string[]).includes(body.uroven)", "typeof body.uroven === 'string'", 'a level that is none is not kept'],
+  ['src/team/routes.tsx', '  if (!company || !isAdmin(who.user)) return missingPage(c)\n  const report', '  if (!company) return missingPage(c)\n  const report', 'only the designated person decides'],
+  ['src/app/aml.ts', " WHERE id = ? AND company_id = ? AND decided_at IS NULL')", " WHERE id = ? AND company_id = ?')", 'a report is decided once'],
+  ['src/app/aml.ts', 'AND (? = 1 OR r.created_by = ?)', 'AND (? = 1 OR ? IS NOT NULL)', 'an accountant reads only her own reports'],
+  ['src/team/routes.tsx', "  if (note === '') return amlPage(c, company, { error: t.aml.errors.note }, 422)\n", '', 'a decision needs its reasons'],
+  ['src/team/routes.tsx', `"SELECT email FROM users WHERE team = 'admin'"`, `"SELECT email FROM users WHERE team = 'nobody'"`, 'the designated person is rung of a report'],
+  // The notice
+  ['src/app/routes.tsx', "  if (body.potvrdit !== '1') return companyPage(c, { errors: { notice: t.notice.must } }, 422)\n", '', 'without the tick no notice is given'],
+  ['src/app/routes.tsx', "WHERE id = ? AND notice_at IS NULL').bind(now(), who.user.id, end, who.company.id)", "WHERE id = ?').bind(now(), who.user.id, end, who.company.id)", 'notice is given once'],
+  ['src/app/routes.tsx', "appRoutes.post('/firma/vypoved', async (c) => {\n  const who = c.get('who')\n  if (who.role !== 'owner') return companyPage(c, { errors: { notice: t.notice.onlyOwner } }, 403)\n", "appRoutes.post('/firma/vypoved', async (c) => {\n  const who = c.get('who')\n", 'only the owner gives notice'],
+  // Doorbells
+  ['src/app/routes.tsx', "    ...(unread ? [] : [ringStatement(db, 'message',", "    ...(false ? [] : [ringStatement(db, 'message',", 'the team is rung once for what it has not read'],
+  ['src/team/routes.tsx', '  if (unread) return []\n', '', 'the client is rung once for what she has not read'],
+  ['src/app/remind.ts', "kind === 'weekly' ? day : day.slice(0, 7), person.email, ring", "`${company.id}:${kind === 'weekly' ? day : day.slice(0, 7)}`, person.email, ring", 'a reminder rings a person once, whatever her companies'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

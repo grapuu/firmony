@@ -5,6 +5,7 @@ import { CATEGORIES, entryFor, type Category, type PaidBy } from '../app/booking
 import { COMPANY_COLUMNS, DOC_FROM, MISSING, companyOf, docOf, type Company, type Doc, type Team, type User } from '../app/store'
 import type { DocKind } from '../app/match'
 import { POA_STATE_SQL, type PoaState } from '../app/papers'
+import { DECLARATION_STATE_SQL, OPEN_REPORTS_SQL, type DeclarationState } from '../app/aml'
 
 type Row = Record<string, unknown>
 
@@ -32,6 +33,10 @@ export interface ClientRow {
   waiting: number | null
   /** Where the client's power of attorney stands. */
   poa: PoaState
+  /** Where the client's declaration for the law against money laundering stands. */
+  declaration: DeclarationState
+  /** Internal reports about the client that the designated person has not decided yet. */
+  openReports: number
 }
 
 export async function teamClients(db: D1Database, user: User, demo: boolean): Promise<ClientRow[]> {
@@ -44,7 +49,9 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
          (SELECT COUNT(*) FROM documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL AND d.status = 'reading') AS reading,
          (SELECT COUNT(*) FROM payments p WHERE p.company_id = c.id AND p.exempt IS NOT NULL AND p.checked_at IS NULL AND p.exempt_by <> 'auto') AS to_check,
          (SELECT CASE WHEN m.side = 'client' THEN m.created_at END FROM messages m WHERE m.company_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS waiting,
-         ${POA_STATE_SQL} AS poa
+         ${POA_STATE_SQL} AS poa,
+         ${DECLARATION_STATE_SQL} AS declaration,
+         ${OPEN_REPORTS_SQL} AS open_reports
        FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id
        WHERE ${v.sql}
        ORDER BY c.name COLLATE NOCASE`,
@@ -59,6 +66,8 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
     toCheck: Number(row.to_check ?? 0),
     waiting: typeof row.waiting === 'number' ? row.waiting : null,
     poa: row.poa === 'checked' ? 'checked' : row.poa === 'waiting' ? 'waiting' : 'missing',
+    declaration: row.declaration === 'checked' ? 'checked' : row.declaration === 'waiting' ? 'waiting' : 'missing',
+    openReports: Number(row.open_reports ?? 0),
   }))
 }
 

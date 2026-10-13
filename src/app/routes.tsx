@@ -14,14 +14,17 @@ import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
 import { BankPage } from '../views/bank'
 import { PoaPage, SwitchPage } from '../views/papers'
+import { DeclarationPage } from '../views/declaration'
+import { ContractPage } from '../views/contract'
 import { getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
+import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
+import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
 import { checkValues, getInvoice, invoiceLines, linesOf, listInvoices, plainIban, saveInvoiceStatements, totalsOf, ublOf, type Errors as InvoiceErrors, type InvoiceValues, type Line, type LineInput, type StoredInvoice } from './invoices'
 import { dayOfText, textDay } from './booking'
 import { lookupCompany } from '../rpo'
 import { normalizeIco } from '../ico'
 import { formatEur, formatEurExact } from '../format'
-import { team as tt } from '../team/copy'
 import { app as t, dayName, monthName } from './copy'
 import { deadlinesFor, nextMonth } from './deadlines'
 import { DEMO, seedDemo } from './demo'
@@ -181,7 +184,9 @@ appRoutes.get('/ukazka', async (c) => {
   const db = c.env.DB
   await ensureSchema(db)
   await seedDemo(db, today(), c.env.FILES)
-  await startSession(c, db, DEMO.user, DEMO.company)
+  // ?ako=eva signs in the owner of the second sample company, which is new: its first steps, its empty declaration.
+  if (c.req.query('ako') === 'eva') await startSession(c, db, DEMO.secondUser, DEMO.second)
+  else await startSession(c, db, DEMO.user, DEMO.company)
   return c.redirect('/app', 303)
 })
 
@@ -272,6 +277,10 @@ function flashOf(c: Ctx): string | null {
       return t.bank.flash.odobraty
     case 'zmluva':
       return t.contract.flash
+    case 'vypoved':
+      return t.notice.flash
+    case 'vypoved-spat':
+      return t.notice.withdrawn
     default:
       return null
   }
@@ -299,16 +308,18 @@ appRoutes.get('/', async (c) => {
     db
       .prepare(
         `SELECT EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'upload') AS upload,
+                EXISTS (SELECT 1 FROM declarations WHERE company_id = ?1) AS declaration,
                 EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'email') AS email,
                 EXISTS (SELECT 1 FROM company_files WHERE company_id = ?1 AND kind = 'poa') AS poa,
                 (SELECT COUNT(*) FROM members WHERE company_id = ?1) AS people,
                 (SELECT r.situation FROM companies co JOIN requests r ON r.id = co.request_id WHERE co.id = ?1) AS situation`,
       )
       .bind(company)
-      .first<{ upload: number; email: number; poa: number; people: number; situation: string | null }>(),
+      .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null }>(),
   ])
   const suggested = await suggestions(db, company, missingAll)
   const steps = {
+    declaration: started?.declaration === 1,
     poa: started?.poa === 1,
     payments: (counts?.n ?? 0) > 0,
     upload: started?.upload === 1,
@@ -337,7 +348,7 @@ appRoutes.get('/', async (c) => {
       last={messages[0] ?? null}
       now={now()}
       flash={flashOf(c)}
-      steps={steps.poa && steps.payments && steps.upload ? null : steps}
+      steps={steps.declaration && steps.poa && steps.payments && steps.upload ? null : steps}
       me={who.user.id}
       bankReady={ready}
       bankNotice={bankNotice}
@@ -728,21 +739,12 @@ appRoutes.post('/spravy', async (c) => {
   const paymentId = typeof body.platba === 'string' && ID.test(body.platba) ? body.platba : null
   const payment = paymentId ? await getPayment(db, who.company.id, paymentId) : null
   const id = crypto.randomUUID()
+  // The team is rung once for what it has not read yet: a second message before anybody looked rings nothing.
+  const unread = await db.prepare("SELECT 1 AS x FROM messages WHERE company_id = ? AND side = 'client' AND seen_at IS NULL LIMIT 1").bind(who.company.id).first()
   await db.batch([
     messageStatement(db, { id, company: who.company.id, author: who.user.id, side: 'client', body: text, payment: payment?.id ?? null }),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'message.sent', subject: id }),
-    queueStatement(db, {
-      key: `message:${id}`,
-      to: who.company.accountantEmail ?? BRAND.email,
-      subject: tt.mail.toTeamSubject(who.company.name),
-      body: tt.mail.toTeamBody(
-        who.user.name,
-        who.company.name,
-        text,
-        payment ? `${payment.bookedOn}, ${(payment.amountCents / 100).toFixed(2).replace('.', ',')} €, ${payment.party ?? payment.note ?? ''}` : null,
-        `${siteOrigin(c)}/ucto/klienti/${who.company.id}#spravy`,
-      ),
-    }),
+    ...(unread ? [] : [ringStatement(db, 'message', id, who.company.accountantEmail ?? BRAND.email, bell.teamMessage(`${siteOrigin(c)}/ucto/klienti/${who.company.id}#spravy`))]),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect('/app/spravy?ok=poslane#posledna', 303)
@@ -752,16 +754,29 @@ appRoutes.post('/spravy', async (c) => {
 // The company: its details, its people, the reminders, switching to another one of the same user
 // ---------------------------------------------------------------------------------------------------------------
 
-async function companyPage(c: Ctx, extra: { invite?: { name: string; email: string }; errors?: { name?: string; email?: string; form?: string } } = {}, status: ContentfulStatusCode = 200) {
+async function companyPage(c: Ctx, extra: { invite?: { name: string; email: string }; errors?: { name?: string; email?: string; form?: string; notice?: string } } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const db = c.env.DB
-  const [people, companies, papers] = await Promise.all([peopleOf(db, who.company.id), companiesOf(db, who.user.id), papersOf(db, who.company.id, 'poa')])
+  const [people, companies, papers, declared] = await Promise.all([peopleOf(db, who.company.id), companiesOf(db, who.user.id), papersOf(db, who.company.id, 'poa'), latestDeclaration(db, who.company.id)])
   const me = people.find((p) => p.id === who.user.id) ?? { ...who.user, role: who.role }
   return shell(
     c,
     'company',
     t.company.title,
-    <CompanyPage company={who.company} people={people} me={me} companies={companies} inbox={inboxAddress(who.company)} invite={extra.invite ?? { name: '', email: '' }} errors={extra.errors ?? {}} flash={flashOf(c)} poa={poaStateOf(papers)} />,
+    <CompanyPage
+      company={who.company}
+      people={people}
+      me={me}
+      companies={companies}
+      inbox={inboxAddress(who.company)}
+      invite={extra.invite ?? { name: '', email: '' }}
+      errors={extra.errors ?? {}}
+      flash={flashOf(c)}
+      poa={poaStateOf(papers)}
+      declaration={declarationStateOf(declared)}
+      today={today()}
+      noticeEnd={noticeEndsOn(today())}
+    />,
     status,
   )
 }
@@ -777,7 +792,7 @@ appRoutes.post('/firma/pozvat', async (c) => {
     email: typeof body.email === 'string' ? body.email.trim().slice(0, 200) : '',
   }
   if (who.role !== 'owner') return companyPage(c, { invite, errors: { form: t.company.onlyOwner } }, 403)
-  const errors: { name?: string; email?: string; form?: string } = {}
+  const errors: { name?: string; email?: string; form?: string; notice?: string } = {}
   if (invite.name.length < 2) errors.name = t.company.badName
   if (!EMAIL.test(invite.email)) errors.email = t.company.badEmail
   if (Object.keys(errors).length > 0) return companyPage(c, { invite, errors }, 422)
@@ -864,12 +879,7 @@ appRoutes.post('/plna-moc', async (c) => {
   if (file.size > APP.fileBytes) return poaPage(c, t.poa.large, 422)
   const company = who.company
   const kept = await keepPaper(db, c.env.FILES, { company: company.id, user: who.user.id }, 'poa', { name: (file.name || 'plna-moc').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) }, (paper) => [
-    queueStatement(db, {
-      key: `poa:${paper.id}`,
-      to: company.accountantEmail ?? BRAND.email,
-      subject: t.poa.mailSubject(company.name),
-      body: t.poa.mailBody(who.user.name, company.name, paper.name, `${siteOrigin(c)}/ucto/klienti/${company.id}#zmluva`),
-    }),
+    ringStatement(db, 'poa', paper.id, company.accountantEmail ?? BRAND.email, bell.teamPoa(`${siteOrigin(c)}/ucto/klienti/${company.id}#zmluva`)),
   ])
   if (!kept.ok) {
     const answer = { none: [t.poa.none, 422], large: [t.poa.large, 422], type: [t.poa.refused, 422], many: [t.poa.many, 409], storage: [t.poa.noStorage, 503] } as const
@@ -906,6 +916,110 @@ appRoutes.get('/prechod', async (c) => {
     <SwitchPage company={who.company} values={values} since={since ? dayName(since) : null} until={until ? dayName(until) : null} errors={errors} />,
     since === null || until === null ? 422 : 200,
   )
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Kto stojí za firmou: the declaration the law against money laundering asks for (aml.ts). The owner of the company
+// fills it in and sees it; a member is told only where it stands. Every version is kept; the team checks the newest.
+// ---------------------------------------------------------------------------------------------------------------
+
+async function declarationPage(c: Ctx, form: { values: DeclarationValues; errors: DeclarationErrors; error?: string } | null = null, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const stored = await latestDeclaration(c.env.DB, who.company.id)
+  const owner = who.role === 'owner'
+  const fresh: DeclarationValues = { name: who.company.signedBy ?? who.user.name, nationality: 'slovenská' }
+  return shell(
+    c,
+    'company',
+    t.declaration.title,
+    <DeclarationPage
+      state={declarationStateOf(stored)}
+      stored={owner ? stored : null}
+      owner={owner}
+      editing={form !== null || c.req.query('zmenit') === '1' || !stored}
+      values={form?.values ?? (stored ? valuesOfDeclaration(stored.data) : fresh)}
+      errors={form?.errors ?? {}}
+      now={now()}
+      flash={c.req.query('ok') === 'vyhlasenie' ? t.declaration.flash : null}
+      error={form?.error ?? null}
+    />,
+    status,
+  )
+}
+
+appRoutes.get('/vyhlasenie', (c) => declarationPage(c))
+
+appRoutes.post('/vyhlasenie', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return declarationPage(c, null, 403)
+  const db = c.env.DB
+  const values = valuesFrom(await c.req.parseBody())
+  if (!(await withinLimit(db, 'declaration', who.company.id, APP.declarationsPerHour, 3600))) return declarationPage(c, { values, errors: {}, error: t.declaration.errors.throttle }, 429)
+  const { declaration, errors } = checkDeclaration(values, today(), t.declaration.errors)
+  if (!declaration) return declarationPage(c, { values, errors }, 422)
+  const company = who.company
+  const made = declarationStatements(db, company.id, who.user.id, declaration)
+  await db.batch([...made.statements, ringStatement(db, 'declaration', made.id, company.accountantEmail ?? BRAND.email, bell.teamDeclaration(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml`))])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/app/vyhlasenie?ok=vyhlasenie', 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The contract inside the app: what was agreed and the terms in full; and the notice, given and taken back here
+// ---------------------------------------------------------------------------------------------------------------
+
+appRoutes.get('/zmluva', async (c) => {
+  const who = c.get('who')
+  const row = await c.env.DB.prepare('SELECT o.plan, o.price_cents, o.accepted_at, o.signed_by, o.start_on, o.terms_version FROM orders o JOIN companies co ON co.order_id = o.id WHERE co.id = ?')
+    .bind(who.company.id)
+    .first<{ plan: string; price_cents: number | null; accepted_at: number | null; signed_by: string | null; start_on: string | null; terms_version: string | null }>()
+  const order = row ? { plan: row.plan, priceCents: row.price_cents, acceptedAt: row.accepted_at, signedBy: row.signed_by, startOn: row.start_on, termsVersion: row.terms_version } : null
+  return shell(c, 'company', t.contractPage.title, <ContractPage company={who.company} order={order} />)
+})
+
+appRoutes.post('/firma/vypoved', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return companyPage(c, { errors: { notice: t.notice.onlyOwner } }, 403)
+  const body = await c.req.parseBody()
+  if (body.potvrdit !== '1') return companyPage(c, { errors: { notice: t.notice.must } }, 422)
+  const db = c.env.DB
+  const end = noticeEndsOn(today())
+  // Given once: a second click, or a second person at the same moment, changes nothing and writes nothing.
+  const [given] = await db.batch([db.prepare('UPDATE companies SET notice_at = ?, notice_by = ?, ends_on = ? WHERE id = ? AND notice_at IS NULL').bind(now(), who.user.id, end, who.company.id)])
+  if ((given?.meta?.changes ?? 0) === 0) return c.redirect('/app/firma#zmluva', 303)
+  const id = crypto.randomUUID()
+  await db.batch([
+    messageStatement(db, { id, company: who.company.id, author: who.user.id, side: 'client', body: t.notice.message(dayName(end)), payment: null }),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'contract.notice', subject: id, detail: { endsOn: end } }),
+    ringStatement(db, 'notice', id, BRAND.email, bell.teamNotice(`${siteOrigin(c)}/ucto/klienti/${who.company.id}#zmluva`)),
+    ...(who.company.accountantEmail && who.company.accountantEmail.toLowerCase() !== BRAND.email.toLowerCase()
+      ? [ringStatement(db, 'notice', id, who.company.accountantEmail, bell.teamNotice(`${siteOrigin(c)}/ucto/klienti/${who.company.id}#zmluva`))]
+      : []),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/app/firma?ok=vypoved#zmluva', 303)
+})
+
+appRoutes.post('/firma/vypoved/spat', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return companyPage(c, { errors: { notice: t.notice.onlyOwner } }, 403)
+  const db = c.env.DB
+  // Taken back while the contract still runs (point 10.2 of the terms: we agree to it in advance).
+  const [back] = await db.batch([
+    db.prepare('UPDATE companies SET notice_at = NULL, notice_by = NULL, ends_on = NULL WHERE id = ? AND notice_at IS NOT NULL AND ends_on >= ?').bind(who.company.id, today()),
+  ])
+  if ((back?.meta?.changes ?? 0) === 0) return c.redirect('/app/firma#zmluva', 303)
+  const id = crypto.randomUUID()
+  await db.batch([
+    messageStatement(db, { id, company: who.company.id, author: who.user.id, side: 'client', body: t.notice.messageBack, payment: null }),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'contract.notice.withdrawn', subject: id }),
+    ringStatement(db, 'notice', id, BRAND.email, bell.teamNotice(`${siteOrigin(c)}/ucto/klienti/${who.company.id}#zmluva`)),
+    ...(who.company.accountantEmail && who.company.accountantEmail.toLowerCase() !== BRAND.email.toLowerCase()
+      ? [ringStatement(db, 'notice', id, who.company.accountantEmail, bell.teamNotice(`${siteOrigin(c)}/ucto/klienti/${who.company.id}#zmluva`))]
+      : []),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/app/firma?ok=vypoved-spat#zmluva', 303)
 })
 
 // ---------------------------------------------------------------------------------------------------------------

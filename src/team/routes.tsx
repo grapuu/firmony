@@ -9,6 +9,7 @@ import { ensureSchema, now } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
+import { bell, ringStatement } from '../bell'
 import { lookupCompany } from '../rpo'
 import { dayOfText, isCategory, supplierKey, type PaidBy } from '../app/booking'
 import { getInvoice, invoiceLines } from '../app/invoices'
@@ -18,6 +19,8 @@ import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
 import { checkPaperStatement, getPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
+import { LEVELS, checkDeclarationStatement, decideStatement, declarationStateOf, latestDeclaration, reportStatements, reportsOf, riskStatements, risksOf, suggestedLevel, type Level } from '../app/aml'
+import { AmlPage } from '../views/aml'
 import { currentWho, newLink, startSession } from '../app/session'
 import {
   checkStatement,
@@ -180,6 +183,14 @@ function flashOf(c: Ctx): string | null {
       return t.people.added
     case 'plna-moc':
       return t.client.poaFlash
+    case 'overene':
+      return t.aml.checkedFlash
+    case 'riziko':
+      return t.aml.riskSaved
+    case 'oznamenie':
+      return t.aml.reportSent
+    case 'posudene':
+      return t.aml.decidedFlash
     default:
       return null
   }
@@ -202,7 +213,7 @@ teamRoutes.get('/', async (c) => {
 async function clientPage(c: Ctx, company: Company, extra: { error?: string; draft?: string } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const db = c.env.DB
-  const [members, queue, toCheck, missing, messages, rules, accountants, papers] = await Promise.all([
+  const [members, queue, toCheck, missing, messages, rules, accountants, papers, declared, risks, reports] = await Promise.all([
     membersOf(db, company.id),
     bookingQueue(db, who.user, true, company.id),
     paymentsToCheck(db, company.id),
@@ -211,6 +222,9 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
     rulesOf(db, company.id),
     isAdmin(who.user) ? accountantsList(db) : Promise.resolve([]),
     papersOf(db, company.id, 'poa'),
+    latestDeclaration(db, company.id),
+    risksOf(db, company.id),
+    reportsOf(db, company.id, { id: who.user.id, admin: isAdmin(who.user) }),
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
@@ -238,6 +252,9 @@ async function clientPage(c: Ctx, company: Company, extra: { error?: string; dra
       bankLine={bankLine}
       papers={papers}
       poa={poaStateOf(papers)}
+      declaration={declarationStateOf(declared)}
+      risk={risks[0]?.level ?? null}
+      openReports={reports.filter((r) => r.decision === null).length}
       {...extra}
     />,
     status,
@@ -325,11 +342,7 @@ teamRoutes.post('/klienti', async (c) => {
   if (values.request) statements.push(db.prepare("UPDATE requests SET status = 'client' WHERE id = ?").bind(values.request))
   if (values.welcome) {
     const { token, statement } = await newLink(db, userId, TEAM.welcomeDays * 24 * 60)
-    const address = `${APP.inboxPrefix}${inbox}@${BRAND.email.split('@')[1]}`
-    statements.push(
-      statement,
-      queueStatement(db, { key: `welcome:${companyId}`, to: values.email, subject: t.newClient.welcomeSubject, body: t.newClient.welcomeBody(values.person, values.name, `${siteOrigin(c)}/app/vstup?t=${token}`, address) }),
-    )
+    statements.push(statement, ringStatement(db, 'welcome', companyId, values.email, bell.welcome(`${siteOrigin(c)}/app/vstup?t=${token}`)))
   }
   await db.batch(statements)
   if (values.welcome) later(c, flushOutbox(db, c.env.EMAIL))
@@ -354,17 +367,23 @@ teamRoutes.post('/klienti/:id/spravy', async (c) => {
   await db.batch([
     messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: null }),
     eventStatement(db, { company: company.id, user: who.user.id, action: 'message.answered', subject: id }),
-    ...(await mailToClient(c, company, id, who.user, text)),
+    ...(await ringClient(c, company, id)),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}?ok=odpoved#spravy`, 303)
 })
 
-/** An email to every member of a client's company that a message from the team waits in the app. */
-async function mailToClient(c: Ctx, company: Company, messageId: string, from: User, text: string): Promise<D1PreparedStatement[]> {
+/**
+ * A doorbell to every member of a client's company that a message from the team waits in the app (src/bell.ts: it
+ * carries nothing of the message). Rung once for what the company has not read yet: called before the new message
+ * is written, it rings nothing while an earlier one is still unread.
+ */
+async function ringClient(c: Ctx, company: Company, messageId: string): Promise<D1PreparedStatement[]> {
   const db = c.env.DB
+  const unread = await db.prepare("SELECT 1 AS x FROM messages WHERE company_id = ? AND side = 'firmony' AND seen_at IS NULL LIMIT 1").bind(company.id).first()
+  if (unread) return []
   const members = await membersOf(db, company.id)
-  return members.map((m) => queueStatement(db, { key: `answer:${messageId}:${m.id}`, to: m.email, subject: t.mail.toClientSubject, body: t.mail.toClientBody(from.name, text, `${siteOrigin(c)}/app/spravy`) }))
+  return members.map((m) => ringStatement(db, 'answer', messageId, m.email, bell.answer(`${siteOrigin(c)}/app/spravy`)))
 }
 
 teamRoutes.post('/klienti/:id/pripomenut', async (c) => {
@@ -380,7 +399,7 @@ teamRoutes.post('/klienti/:id/pripomenut', async (c) => {
   await db.batch([
     messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: null }),
     eventStatement(db, { company: company.id, user: who.user.id, action: 'client.reminded', subject: id, detail: { payments: missing.length } }),
-    ...(await mailToClient(c, company, id, who.user, text)),
+    ...(await ringClient(c, company, id)),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}?ok=pripomenute#chyba`, 303)
@@ -458,6 +477,89 @@ teamRoutes.post('/klienti/:id/plna-moc/:file/overit', async (c) => {
 })
 
 // ---------------------------------------------------------------------------------------------------------------
+// Identification and risk under the law against money laundering (aml.ts): the client's declaration and its check,
+// the risk, and the internal reports with the designated person's decision. The client never sees any of it but the
+// declaration it gave; a report is seen by its author and by the administrator, who is the designated person.
+// ---------------------------------------------------------------------------------------------------------------
+
+async function amlPage(c: Ctx, company: Company, extra: { error?: string; draft?: string } = {}, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const [stored, risks, reports] = await Promise.all([latestDeclaration(db, company.id), risksOf(db, company.id), reportsOf(db, company.id, { id: who.user.id, admin: isAdmin(who.user) })])
+  return shell(
+    c,
+    'clients',
+    t.aml.title,
+    <AmlPage user={who.user} company={company} stored={stored} risks={risks} suggested={stored ? suggestedLevel(stored.data) : null} reports={reports} now={now()} flash={flashOf(c)} {...extra} />,
+    status,
+  )
+}
+
+teamRoutes.get('/klienti/:id/aml', async (c) => {
+  const company = await companyParam(c)
+  return company ? amlPage(c, company) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/aml/overit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const id = typeof body.vyhlasenie === 'string' && ID.test(body.vyhlasenie) ? body.vyhlasenie : ''
+  const db = c.env.DB
+  // Only the newest declaration, and only once: an older one opened in another tab is never checked in its place.
+  const [checked] = await db.batch([checkDeclarationStatement(db, company.id, id, who.user.id)])
+  if ((checked?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'declaration.checked', subject: id })])
+  return c.redirect(`/ucto/klienti/${company.id}/aml?ok=overene#udaje`, 303)
+})
+
+teamRoutes.post('/klienti/:id/aml/riziko', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const level = typeof body.uroven === 'string' && (LEVELS as readonly string[]).includes(body.uroven) ? (body.uroven as Level) : null
+  if (!level) return c.redirect(`/ucto/klienti/${company.id}/aml#riziko`, 303)
+  const note = typeof body.poznamka === 'string' ? body.poznamka.replace(/\r\n?/g, '\n').trim().slice(0, 1000) : ''
+  const db = c.env.DB
+  await db.batch(riskStatements(db, company.id, who.user.id, level, note || null))
+  return c.redirect(`/ucto/klienti/${company.id}/aml?ok=riziko#riziko`, 303)
+})
+
+teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = typeof body.text === 'string' ? body.text.replace(/\r\n?/g, '\n').trim() : ''
+  if (text === '') return amlPage(c, company, { error: t.aml.errors.body }, 422)
+  if (text.length > APP.messageChars) return amlPage(c, company, { error: t.aml.errors.long, draft: text.slice(0, APP.messageChars) }, 422)
+  const db = c.env.DB
+  const made = reportStatements(db, company.id, who.user.id, text)
+  // Every administrator is the designated person's door: a doorbell that names neither the client nor the report.
+  const admins = await db.prepare("SELECT email FROM users WHERE team = 'admin'").all<{ email: string }>()
+  await db.batch([...made.statements, ...admins.results.map((admin) => ringStatement(db, 'report', made.id, admin.email, bell.teamReport(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml#oznamenia`)))])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/ucto/klienti/${company.id}/aml?ok=oznamenie#oznamenia`, 303)
+})
+
+teamRoutes.post('/klienti/:id/aml/oznamenie/:report', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company || !isAdmin(who.user)) return missingPage(c)
+  const report = c.req.param('report')
+  const body = await c.req.parseBody()
+  const decision = body.rozhodnutie === 'reported' ? 'reported' : body.rozhodnutie === 'not' ? 'not' : null
+  const note = typeof body.poznamka === 'string' ? body.poznamka.replace(/\r\n?/g, '\n').trim().slice(0, 1000) : ''
+  if (!decision || !ID.test(report)) return c.redirect(`/ucto/klienti/${company.id}/aml#oznamenia`, 303)
+  if (note === '') return amlPage(c, company, { error: t.aml.errors.note }, 422)
+  const db = c.env.DB
+  const [decided] = await db.batch([decideStatement(db, company.id, report, who.user.id, decision, note)])
+  if ((decided?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'report.decided', subject: report, detail: { decision } })])
+  return c.redirect(`/ucto/klienti/${company.id}/aml?ok=posudene#oznamenia`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
 // Payments: what the client marked as needing no document
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -488,7 +590,7 @@ teamRoutes.post('/platby/:id/kontrola', async (c) => {
     clearExemptStatement(db, company.id, payment.id),
     messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: payment.id }),
     eventStatement(db, { company: company.id, user: who.user.id, action: 'exempt.returned', subject: payment.id }),
-    ...(await mailToClient(c, company, id, who.user, text)),
+    ...(await ringClient(c, company, id)),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}?ok=vratene#kontrola`, 303)
