@@ -157,6 +157,10 @@ check('another connection is not held', res.status === 303)
 res = await get('/pravne-informacie')
 page = await res.text()
 check('the legal page names the company and the data authority', res.status === 200 && page.includes('Mestského súdu Košice') && page.includes('Úrad na ochranu osobných údajov'))
+check(
+  'the privacy notice names who reads documents and accounts, and how long a contract is kept',
+  page.includes('Anthropic, PBC') && page.includes('Enable Banking Oy') && page.replace(/\u00a0/g, ' ').includes('5 rokov od skončenia zmluvy') && page.includes('href="/podmienky#clanok-8"'),
+)
 res = await get('/robots.txt')
 check('robots keeps the form out and names the sitemap', (await res.text()).includes('Disallow: /zacat'))
 res = await get('/sitemap.xml')

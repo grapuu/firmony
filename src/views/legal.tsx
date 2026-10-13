@@ -74,10 +74,37 @@ export const Legal: FC = () => (
         )}
       </p>
 
+      <p>
+        {t(
+          'Keď uzavriete zmluvu: meno konateľa, ktorý ju uzavrel, e-mail, na ktorý sme poslali odkaz na zmluvu, čas uzavretia, znenie obchodných podmienok a odtlačok (hash) adresy pripojenia, z ktorého bola uzavretá.',
+        )}
+      </p>
+      <p>
+        {t(
+          'V aplikácii pre klientov: meno a e-mail ľudí firmy, ktorí sa do nej prihlasujú, záznamy o prihlásení, správy s účtovníčkou, nastavenie pripomienok a záznam o tom, kto čo urobil (napríklad kto pridal doklad). Ďalej plnú moc, ktorú konateľ podpíše, a údaje potrebné na identifikáciu firmy, jej konateľa a konečných užívateľov výhod podľa zákona č. 297/2008 Z. z. o ochrane pred legalizáciou príjmov z trestnej činnosti.',
+        )}
+      </p>
+      <p>
+        {t(
+          'Doklady, výpisy, faktúry a mzdy firmy obsahujú aj osobné údaje jej zamestnancov a obchodných partnerov. Tie spracúvame ako sprostredkovateľ v mene firmy, ktorá je ich prevádzkovateľom, podľa článku 8 ',
+        )}
+        <a href="/podmienky#clanok-8">obchodných podmienok</a>.
+      </p>
+
       <h3 class="h4">Prečo a na akom základe</h3>
       <p>
         {t(
           'Aby sme Vám odpovedali a pripravili ponuku. Ak žiadate za seba, ide o kroky pred uzavretím zmluvy na Vašu žiadosť (článok 6 ods. 1 písm. b) GDPR). Ak žiadate za firmu, ide o náš oprávnený záujem odpovedať jej zástupcovi (článok 6 ods. 1 písm. f) GDPR).',
+        )}
+      </p>
+      <p>
+        {t(
+          'Zmluvu plníme s firmou. Údaje jej konateľa a ľudí, ktorí ju v aplikácii zastupujú, spracúvame na základe nášho oprávneného záujmu plniť zmluvu s firmou a vedieť preukázať, kto a kedy ju uzavrel (článok 6 ods. 1 písm. f) GDPR).',
+        )}
+      </p>
+      <p>
+        {t(
+          'Identifikovať klienta a uchovávať o tom záznamy nám ukladá zákon č. 297/2008 Z. z. a uchovávať faktúry za naše služby zákon o účtovníctve (článok 6 ods. 1 písm. c) GDPR).',
         )}
       </p>
       <p>
@@ -89,7 +116,22 @@ export const Legal: FC = () => (
       <h3 class="h4">Komu údaje odovzdávame</h3>
       <p>
         {t(
-          'Cloudflare, Inc. nám ako sprostredkovateľ poskytuje servery, databázu a odosielanie e-mailov. Databázu máme v Európskej únii. Cloudflare je zapojený do rámca na ochranu údajov medzi EÚ a USA (Data Privacy Framework).',
+          'Cloudflare, Inc. nám ako sprostredkovateľ poskytuje servery, databázu, úložisko súborov a odosielanie e-mailov. Databázu aj súbory máme v Európskej únii. Cloudflare je zapojený do rámca na ochranu údajov medzi EÚ a USA (Data Privacy Framework).',
+        )}
+      </p>
+      <p>
+        {t(
+          'Fotky a PDF dokladov číta umelá inteligencia spoločnosti Anthropic, PBC (USA), aby z nich vypísala údaje. Prenos do USA chránia štandardné zmluvné doložky Európskej komisie a Anthropic doklady nepoužíva na trénovanie modelov.',
+        )}
+      </p>
+      <p>
+        {t(
+          'Ak firma prepojí banku, pohyby na jej účtoch číta s jej súhlasom Enable Banking Oy (Fínsko), poskytovateľ služby informovania o platobnom účte. Účtovníctvo vedú naši externí účtovníci na Slovensku, viazaní mlčanlivosťou.',
+        )}
+      </p>
+      <p>
+        {t(
+          'Na základe plnej moci podávame v mene firmy priznania, výkazy a hlásenia finančnej správe, Sociálnej poisťovni a zdravotným poisťovniam. Ak to vyžaduje zákon č. 297/2008 Z. z., údaje odovzdáme Finančnej spravodajskej jednotke.',
         )}
       </p>
       <p>
@@ -102,6 +144,11 @@ export const Legal: FC = () => (
       <p>
         {t(
           `Žiadosti ${RETENTION.requestDays / 365 === 1 ? '12 mesiacov' : `${RETENTION.requestDays} dní`} od odoslania, ak z nich nevznikne zmluva. Odoslané e-maily ${RETENTION.outboxDays} dní. Odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
+        )}
+      </p>
+      <p>
+        {t(
+          `Údaje o zmluve, plnú moc a záznamy z identifikácie klienta 5 rokov od skončenia zmluvy, ako ukladá zákon č. 297/2008 Z. z.; faktúry za naše služby 10 rokov. Pri e-mailoch, ktoré prídu na adresu firmy pre doklady, uchovávame odosielateľa a predmet ${RETENTION.outboxDays} dní a prílohy ako doklady firmy. Doklady a ostatné údaje firmy jej po skončení zmluvy odovzdáme a do 90 dní vymažeme, okrem tých, ktoré musíme uchovávať podľa zákona.`,
         )}
       </p>
 

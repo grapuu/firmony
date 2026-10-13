@@ -267,7 +267,7 @@ export const READER = {
 } as const
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
-export const PRIVACY_VERSION = '2026-10-12'
+export const PRIVACY_VERSION = '2026-10-13'
 
 /**
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an

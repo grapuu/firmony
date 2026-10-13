@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 20:15)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 23:00)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (177 unit checks) and `npm run test:runtime` (267 checks in workerd). The sixth
+- All checks pass: `npm test` (198 unit checks) and `npm run test:runtime` (319 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -76,6 +76,29 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   December for February and March, new companies in any month. His word at 21:40: "budeme mať najlepší produkt,
   najlepší marketing a zdominujeme to tu."
 
+- From 21:49 to 23:00 (13 October 2026). His "ano zacni" to the onboarding with the contract online, after
+  "účtovníčka nebude robiť za 25 eur" and, for the price list, "ak príde eshop čo má 100 000 dokladov mesačne bude mať
+  rovnakú cenu" and "maržu musíme mať aspoň 60 percent"; his "ano" at 22:04 to the new price list (Product decisions).
+  Built and pushed, each with all checks passing:
+  - `0e218dd`: the price list by documents a month, payroll and the closing apart, the accountants' pay, a unit check
+    that every plan leaves at least 60 %.
+  - `86f91d2`: the contract concluded online by a director the register names ("The order and the contract online"
+    below), the terms of service at /podmienky.
+  - `578f1c7`: the power of attorney to sign and upload, the accountant's check, the notice to the former accountant,
+    the new first steps ("The power of attorney and the notice" below).
+  - The privacy notice names what the app and the contract process (Anthropic, Enable Banking, the accountants, the
+    authorities, the AML records; `PRIVACY_VERSION` 2026-10-13).
+  - The AML program ("Program vlastnej činnosti", § 20 of Act No. 297/2008 Z. z.) is his doc "Program proti praniu
+    špinavých peňazí" (https://claude.ai/code/artifact/8ea0b7dd-211f-495e-ab08-744e5796b0d1), a draft for him to
+    approve and sign, with what is still missing in its section 8 (goAML registration, the client's declaration in
+    the app, a lawyer's reading, the accountants bound to it in their contracts).
+  - The rules of the order and of the papers were each taken out once (`scripts/dev/mutate.mjs`): 14 of 14 held.
+  - Nobody has read the terms, the power of attorney or the AML program for him; a lawyer should before the first
+    client. Not built: the client's declaration for the AML identification (personal data of the director and the
+    beneficial owners, politically exposed persons, the purpose), the record of a client's risk, an internal report
+    of an unusual operation, deleting a closed client's data after 90 days (the terms and the privacy notice promise
+    it; it is done by hand until then).
+
 ## What he has to do before it is live (each a few clicks)
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
@@ -96,25 +119,29 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
    europio; without it every photo goes to the accountant). Before the first client: the privacy notice names
    Anthropic (photos and PDFs of documents, read and not kept for training), R2 for the files, and what the app
    keeps and how long (documents ten years by the accounting act, s. 35), and the email that arrives at a
-   company's address (sender and subject kept 90 days, the attachments as documents). Not written yet.
+   company's address (sender and subject kept 90 days, the attachments as documents). Written on 13 October 2026
+   (`PRIVACY_VERSION` 2026-10-13), with Enable Banking, the accountants and the AML records.
 7. The first administrator: once email works, he signs in at /app/prihlasenie with `ahoj@firmony.ai`
    (`TEAM.bootstrapEmail`): while nobody of the team exists, that address becomes the administrator
    ("Christian Juhás"). Then he adds accountants on /ucto/tim; each signs in with her own email.
 8. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
-   accountants to confirm 25/40/70 € a client), the trade licence "vedenie účtovníctva" added to europio, liability
+   accountants to confirm 28/55/110 € a client, 5 € a payroll and 90 € a closing), the trade licence "vedenie účtovníctva" added to europio, liability
    insurance, and a digital postman (Qvalia was the lead: ask for its per-client API price).
 9. The bank by open banking (read on 13 October 2026 in Enable Banking's documentation, Control Panel and linked
    accounts): an account for europio in its Control Panel (enablebanking.com); an application for **Production**
    with the redirect URL `https://firmony.ai/app/banka/navrat` (and the workers.dev one while there is no domain),
    a description, a data protection email (`ahoj@firmony.ai`), the privacy policy URL
-   (`https://firmony.ai/pravne-informacie#ochrana-udajov`) and a terms of service URL (**not written yet**: the
-   service's terms are owed before this); "generate in the browser" saves the private key as `<application id>.pem`.
+   (`https://firmony.ai/pravne-informacie#ochrana-udajov`) and the terms of service URL
+   (`https://firmony.ai/podmienky`); "generate in the browser" saves the private key as `<application id>.pem`.
    A new production application is "Inactive"; "Activate by linking accounts" with europio's own account makes it
    active in restricted mode, in which only accounts linked to it can be read, until a contract is signed (then
    clients' accounts; the price is theirs to quote). On the Worker: the variable `ENABLE_BANKING_APP` (the id, the
    file's name without `.pem`) and the secret `ENABLE_BANKING_KEY` (the whole text of the file; PKCS#8 and PKCS#1
-   both work, also pasted on one line). Before the first client: the privacy notice names Enable Banking Oy
-   (Finland) as the service that reads the accounts with the client's consent.
+   both work, also pasted on one line). The privacy notice names Enable Banking Oy (Finland) as the service that
+   reads the accounts with the client's consent (since 13 October 2026); the terms of service are at /podmienky.
+10. AML (Act No. 297/2008 Z. z.): approve and sign the program (his doc above), register europio in the Financial
+   Intelligence Unit's goAML, and have a lawyer confirm that a power of attorney signed with eID verifies the director's
+   identity without a meeting. The trade "Vedenie účtovníctva" comes first (item 8).
 
 ## Product decisions
 
@@ -181,7 +208,7 @@ on Crete, the sites of Matax, Bezúčto and Keepi, TASR on Digitoo, Enable Banki
 - For marketing later: since 17 August 2026 an s. r. o. is founded only through a notary or an advocate, and
   over 24 000 companies were founded by mid-September 2026 (95 % s. r. o.); Dougs wins clients at founding.
 
-## The pricing with every cost (13 October 2026, 21:45; proposals, his to decide)
+## The pricing with every cost (13 October 2026, 21:45; superseded at 22:04 by the price list under Product decisions, kept for the reasoning)
 
 Per client and month, from the prices and the accountants' pay he set; what is not known yet is an assumption, to
 be replaced by the quotes: Enable Banking 2 € an account, the digital postman 2 €, servers and email 0,20 €,
@@ -398,6 +425,58 @@ service under PSD2; `src/app/bank.ts` is the only file that talks to it. Without
   codes of its errors (`ErrorResponse` was cut off in the reference), whether a bank needs `auth_method`, how long
   an account's `uid` lasts beyond its session.
 
+## The order and the contract online (`src/order.ts`, `src/order-mail.ts`, `src/views/order.tsx`, `src/content/terms.ts`; 13 October 2026)
+
+What Dougs and Pennylane do at the end of their sign-up: the contract is concluded on a page, by the person who may
+bind the company, and the app opens at once. Here the person is a director (konateľ) the register names.
+
+- A request for an s. r. o. the register knows, that is not ended and not a client yet, becomes an order (`orders`,
+  30 days, `ORDER.days`); the email to the typed address carries the link `/objednavka/<token>` (a hash of the token
+  is kept) and nothing a stranger could type (`orderLinkMail`). The directors in office are read from the register's
+  entity (`lookupDirectors` in `src/rpo.ts`: `statutoryBodies`, those whose `validTo` passed are left out; four
+  seconds at most). A company that is a client, or whose register cannot be asked, gets the old confirmation.
+- The order page: the company from the register (name, seat, IČO, the register line in the genitive), the main points
+  in a bordered table (price of the chosen plan, payroll, closing, start, invoices, notice, documents, answers; the rows
+  follow the radios by `:has()`), the plan, the first month (`ORDER.firstMonth` 2027-01 and the five after it,
+  `startMonths`), the director picked from the register's list (typed, with a space, when the register named nobody),
+  the box for the terms, "Uzavrieť zmluvu". `noindex`, 10 acceptances an hour per connection.
+- Accepting (`acceptStatements`): one batch whose first statement closes the order only while it is open and in time,
+  and whose others (the company with `contract_at`, `terms_version`, `signed_by`, `start_on`, `register_line`; the user;
+  the owner's membership; the event `contract.accepted`; the request marked `client`) run only when that statement
+  found it (`EXISTS` on the order's id, company and time). Then the sign-in link (7 days), the contract mail with the
+  terms in full (`contractMail`), the note to us (`ownerContractMail`), and the browser is signed in (`/app?ok=zmluva`).
+  An accepted order shows what was agreed; one that ran out answers 410.
+- The terms (`/podmienky`, `TERMS_VERSION` 2026-10-13): 11 articles, numbered as the contract refers to them
+  (`bod-<article>-<point>`), the processing on the client's behalf as article 8 (art. 28 GDPR), AML as article 9.
+  A unit check holds every "bod x.y" reference to a point that exists. The builder's draft; no lawyer has read it.
+
+## The power of attorney and the notice (`src/app/papers.ts`, `src/views/papers.tsx`; 13 October 2026)
+
+- `/app/plna-moc`: the power of attorney as the company's own paper (`PoaSheet`): the company from the register and
+  the contract (the director who concluded it, else a line to write on), europio with Christian Juhás, the scope (tax
+  administration under s. 9 of the Tax Procedure Code, the Social Insurance Agency and the health insurers, the
+  register of financial statements, taking the books over from the former accountant), substitution, indefinite term.
+  Beside it: what stands (`poaStateOf`: missing, waiting, checked), how to sign with eID (save as PDF, sign in
+  slovensko.sk's D.Signer, an .asice comes out), the upload, the files, and signing on paper. On a phone the side
+  comes first (`invoice--side-first`).
+- An upload (`POST /app/plna-moc`, in `UPLOADS`, 10 an hour) is what its bytes say (`sniffPaper`): PDF, JPEG, PNG,
+  WebP, or an ASiC-E/ASiC-S container ("mimetype" as the ZIP's first entry); R2 `companies/<id>/papers/<file>.<ext>`,
+  a row in `company_files` (kind `poa`), the event `poa.added`, and an email to the company's accountant (else to
+  ahoj@) with the link to the client's page. A container is downloaded, never shown (`paperResponse`).
+- The team: the client's page has "Zmluva a plná moc" (`ContractCard`: when, by whom, which terms, from when; each
+  file with "Overená a podaná", which records who checked it, once, and `poa.checked`); the list of clients says
+  "Plná moc chýba" or "na overenie", and a client is "done" only with it checked.
+- The first steps (`FirstSteps`): the power of attorney, the bank (or a statement), the first document are the three
+  that matter; then the notice for a company whose request said it changes accountants, the email forwarding, a
+  partner, the phone. They stay until the three are done.
+- `/app/prechod`: the notice to the former accountant and the request to hand over the books (`LetterSheet`): the six
+  kinds of records to hand over, the revocation of her power of attorney, signed by the director; the form beside it
+  fills in to whom, her address, the day of the contract and the last day (in the page's address only, nothing kept).
+- The company page has "Zmluva a plná moc": the contract, its start, the terms' version, where the power of attorney
+  stands, the notice.
+- The sample: Martin's power of attorney (a PDF) checked by Lucia; Eva's not signed, so Ateliér Nova shows the first
+  steps and "Plná moc chýba".
+
 ## The accountants' side (`src/team/`, views in `src/views/team.tsx`; 13 October 2026, from 17:48)
 
 What Pennylane and Dougs give the accountant, for the work behind the client's app: every client's work counted
@@ -500,7 +579,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
   `--tile-n`, `--fly-n`) and every landing is reckoned from them (`--lx`, `--ly`, `--ls`); a paper's start is a
   share of the panel's width (`--p`, in `cqw`) and a height from the card's top. Without the flight the card
   stands finished, two papers beside it.
-- Then: four figures in light cards (69 €, 0 €, 1 deň, 1. 1. 2027); the hug, lit word by word; everything in
+- Then: four figures in light cards (89 €, 0 €, 1 deň, 1. 1. 2027); the hug, lit word by word; everything in
   the price as CloudTalk's interactive list (six cards with a radio each, the checked one white with a blue
   check; the light panel beside them shows the picked one: the machine reading a torn slip under its beam with
   MD 513 / D 221 and the flag, the filed VAT return, e-invoices received, payroll, deadlines with the missing
@@ -523,11 +602,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (177): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank
-npm run test:runtime     # the deployable bundle in workerd (267): the site, and the app end to end, the bank included
+npm test                 # unit checks (198): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers
+npm run test:runtime     # the deployable bundle in workerd (319): the site, the order, and the app end to end
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (15, all held)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (14, all held)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
