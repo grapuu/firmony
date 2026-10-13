@@ -40,9 +40,9 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 PUBLIC = os.path.join(ROOT, 'public')
 ART = os.path.join(PUBLIC, 'art')
-FONT = os.path.join(PUBLIC, 'fonts', 'host-latin.woff2')
+FONT = os.path.join(PUBLIC, 'fonts', 'geist-latin.woff2')
 NAME = 'firmony'
-PINK = (255, 122, 182)
+ACCENT = (142, 155, 255)
 
 # How much of its square the picture's larger side takes.
 LOGO_COVER = 0.88
@@ -110,7 +110,7 @@ def save(image, path, **options):
 
 
 def wordmark(height):
-    """The name as the header sets it, bold and tight, with its pink full stop. On black, `height` px of type."""
+    """The name as the header sets it, bold and tight, with its full stop in the light of the glass. On black."""
     font = ImageFont.truetype(FONT, height)
     font.set_variation_by_axes([700])
     tracking = -0.05 * height
@@ -121,7 +121,7 @@ def wordmark(height):
     line = Image.new('RGB', (width + height, ascent + descent), (0, 0, 0))
     draw = ImageDraw.Draw(line)
     for i, (letter, start) in enumerate(zip(text, starts)):
-        draw.text((height // 2 + start, 0), letter, font=font, fill=PINK if i == len(NAME) else (255, 255, 255))
+        draw.text((height // 2 + start, 0), letter, font=font, fill=ACCENT if i == len(NAME) else (255, 255, 255))
     return line.crop(line.getbbox())
 
 
@@ -139,7 +139,12 @@ def share(source):
 
 
 def logo(source):
-    picture = Image.open(source).convert('RGB')
+    picture = Image.open(source)
+    if picture.mode in ('RGBA', 'LA'):
+        # A logo with its own transparency is laid on black first, so that its glow fades as it was drawn.
+        ground = Image.new('RGBA', picture.size, (0, 0, 0, 255))
+        picture = Image.alpha_composite(ground, picture.convert('RGBA'))
+    picture = picture.convert('RGB')
     left, _, right, _ = subject(picture)
     print(f'source {picture.width} x {picture.height}, the logo in it is {right - left} px wide')
     os.makedirs(ART, exist_ok=True)

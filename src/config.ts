@@ -110,7 +110,7 @@ export type ArtSlot =
   | 'logo'
   | 'mark'
   | 'envelope'
-  | 'calc'
+  | 'savings'
   | 'seed'
   | 'plant'
   | 'tree'
@@ -127,26 +127,29 @@ export type ArtSlot =
   | 'paperReturn'
   | 'founder'
 
-/** One of his glass objects, cut square at 960 and 480 px (the first set made see-through from black). */
+/** One of his glass objects, cut square at 960 and 480 px. */
 const glass = (name: string): Art => ({ src: `/art/${name}.webp`, alt: '', width: 960, height: 960, small: { src: `/art/${name}-480.webp`, width: 480 } })
 
 /**
  * The pictures of the site: 3D glass icons he makes in ChatGPT, never realistic photographs (his word of
- * 13 October 2026, 01:52: "realistické fotky generovať nebudem, to vyzerá úboho").
- * - His first set (13 October 2026, iridescent glass made for black; sources in art-src/): the F (`mark`,
- *   and the browser's and a shared link's icons), the envelope of the e-invoice band and the calculator
- *   of the comparison, all on black.
- * - The second set (prompts of 13 October 2026, 01:57; the same glass in the blue of the brand, on a
- *   transparent background, for the white parts): seed, plant and tree for the three plans, chip and lens
- *   for the machine and the person, rocket and key for the two ways in, seal for the company.
+ * 13 October 2026, 01:52: "realistické fotky generovať nebudem, to vyzerá úboho"). All of them are the same
+ * glass in the blue of the brand with pink light on its edges, on a transparent background (sources in
+ * art-src/icons/, cut by `scripts/art.py icon`; the F by `scripts/art.py logo`):
+ * - the second set (prompts of 01:57, sent at 02:04): seed, plant and tree for the three plans, chip and lens
+ *   for the machine and the person, rocket and key for the two ways in, seal for the company;
+ * - the third (asked for at 14:12, sent at 14:51): the F (`mark`, the notification in the phone, the
+ *   browser's and a shared link's icons), and the papers of a month: a slip, an invoice with a tick, a bank
+ *   card, an envelope with a document (also the e-invoice band's), a calendar with a tick, and a stack of
+ *   coins for what a client saves.
+ * - chat (the question to the accountant) is still of the first set, iridescent glass made for black.
  * - founder: his own photo beside his note, a real one.
  * A slot without a picture shows nothing.
  */
 export const ART: Record<ArtSlot, Art | null> = {
   logo: { src: '/art/logo-small.webp', alt: '', width: 128, height: 128 },
   mark: { src: '/art/logo.webp', alt: '', width: 960, height: 960 },
-  envelope: glass('envelope'),
-  calc: glass('calculator'),
+  envelope: glass('mail'),
+  savings: glass('coins'),
   seed: glass('seed'),
   plant: glass('plant'),
   tree: glass('tree'),
@@ -157,11 +160,11 @@ export const ART: Record<ArtSlot, Art | null> = {
   seal: glass('seal'),
   chat: glass('chat'),
   /* The papers that fly into the phone in the opening, each the icon of its row there. */
-  paperReceipt: glass('receipt'),
-  paperInvoice: glass('bundle'),
-  paperBank: glass('bank'),
-  paperEinvoice: glass('envelope'),
-  paperReturn: glass('calendar'),
+  paperReceipt: glass('slip'),
+  paperInvoice: glass('doc'),
+  paperBank: glass('card'),
+  paperEinvoice: glass('mail'),
+  paperReturn: glass('deadline'),
   founder: null,
 }
 

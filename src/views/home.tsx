@@ -319,7 +319,7 @@ const AskScreen: FC = () => {
 }
 
 const MOMENTS = [
-  { id: 'scan', text: copy.month.snap, Screen: ScanScreen, art: ART.paperInvoice },
+  { id: 'scan', text: copy.month.snap, Screen: ScanScreen, art: ART.paperReceipt },
   { id: 'file', text: copy.month.file, Screen: FileScreen, art: ART.seal },
   { id: 'ask', text: copy.month.ask, Screen: AskScreen, art: ART.chat },
 ] as const
@@ -575,7 +575,7 @@ const Calculator: FC<{ state: CalcState; carry: Carry }> = ({ state, carry }) =>
             </button>
           </form>
           <div class="calc__result" role="status">
-            <Picture art={ART.calc} className="calc__object" sizes="(max-width: 960px) 120px, 180px" />
+            <Picture art={ART.savings} className="calc__object" sizes="(max-width: 960px) 120px, 180px" />
             {state.invalid ? <p class="calc__message">{copy.calc.invalid}</p> : <Comparison result={!r || r.kind === 'empty' ? compare(EXAMPLE) : r} example={!r || r.kind === 'empty'} />}
           </div>
         </div>
