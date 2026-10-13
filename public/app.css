@@ -103,7 +103,7 @@
   --gutter: clamp(16px, 3.4vw, 32px);
   --max: 1216px;
   --wide: 1376px;
-  --space: clamp(96px, 10.5vw, 160px);
+  --space: clamp(88px, 9.4vw, 140px);
   --top-h: 72px;
   --r-panel: 32px;
   --r-card: 22px;
@@ -590,10 +590,11 @@ textarea {
 }
 
 .hero__panel {
+  --pad-x: clamp(28px, 4.6vw, 72px);
   grid-column: 1 / -1;
   grid-row: 1;
   min-height: clamp(560px, calc(100svh - var(--top-h) - var(--below) - 24px), 720px);
-  padding: clamp(44px, 5.6vw, 84px) clamp(28px, 4.6vw, 72px) 64px;
+  padding: clamp(44px, 5.6vw, 84px) var(--pad-x) 64px;
   background-image:
     radial-gradient(34% 52% at 82% 10%, rgb(132 184 255 / 0.85) 0%, rgb(132 184 255 / 0) 100%),
     radial-gradient(46% 64% at 102% 104%, rgb(255 66 94 / 0.95) 0%, rgb(255 66 94 / 0) 100%),
@@ -602,10 +603,12 @@ textarea {
     linear-gradient(155deg, #1424e0 0%, #1e30f2 46%, #3a2ef0 76%, #612ee2 100%);
 }
 
+/* The words keep to the left of the card, whatever the height of the screen; the glass has the right of the
+   panel to itself. */
 .hero__copy {
   position: relative;
   z-index: 1;
-  max-width: min(760px, 100%);
+  max-width: min(760px, calc(100% + var(--pad-x) - var(--card-r) - var(--card-w) - 32px));
 }
 
 .hero__tag {
@@ -762,6 +765,7 @@ textarea {
   font-weight: 500;
   letter-spacing: -0.012em;
   color: var(--ink);
+  text-wrap: balance;
 }
 
 .hero__actions {
@@ -2120,6 +2124,19 @@ textarea {
   margin-top: 10px;
 }
 
+@media (hover: hover) {
+  .path {
+    transition:
+      translate 0.3s var(--ease),
+      box-shadow 0.3s var(--ease);
+  }
+
+  .path:hover {
+    translate: 0 -3px;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
 /* Who we are --------------------------------------------------------------------------------------------- */
 
 .about__grid {
@@ -2691,6 +2708,13 @@ textarea {
 
 /* Narrower screens --------------------------------------------------------------------------------------- */
 
+/* Between a laptop and a tablet the title takes two lines, and the coins would stand in them. */
+@media (min-width: 861px) and (max-width: 1180px) {
+  .hero__float--2 {
+    display: none;
+  }
+}
+
 @media (max-width: 1080px) {
   .top__nav {
     display: none;
@@ -2698,11 +2722,6 @@ textarea {
 
   .hero__grid {
     --card-w: 384px;
-  }
-
-  .hero__float--2 {
-    right: 36%;
-    top: 5%;
   }
 
   .svc {
@@ -3247,7 +3266,7 @@ textarea {
 @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
   @supports (animation-timeline: view()) {
     .flow__track {
-      height: 250vh;
+      height: 235vh;
       view-timeline: --month block;
       view-timeline-inset: 0px;
     }

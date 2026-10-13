@@ -21,8 +21,8 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   and `MAIL.from` say firmony.ai; when he does, those three change, and so do the test's `site`, the notes'
   firmony.ai, and `wrangler.jsonc` once a route is added.
 - Nothing is deployed. There is no GitHub repository and no Worker yet. The code is committed locally on `main`.
-- All checks pass: `npm test` (49 unit checks) and `npm run test:runtime` (53 checks in workerd). The fifth
-  design is committed (13 October 2026, afternoon).
+- All checks pass: `npm test` (49 unit checks) and `npm run test:runtime` (53 checks in workerd). The sixth
+  design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -90,8 +90,9 @@ above 2,5 % or accountant cost above 40 € a client.
 - `src/config.ts` holds every fact: brand, company, plans, limits, retention, pictures (`ART`, empty until he
   makes them). `src/copy.ts` holds every text, typeset once (`src/format.ts`: a one-letter word never ends a
   line, a number stays with its unit, "s. r. o.", "§ 7a", dates).
-- Pages: `/` (the opening with the phone, the e-invoice date, the hug, one month, AI and the accountant,
-  everything in one price, prices, the comparison, two ways in, who is behind it, questions, the closing form),
+- Pages: `/` (the opening with the card on the IČO, one month, four figures, the hug, everything in one price,
+  AI and the accountant, the e-invoice date, prices, the comparison, two ways in, who is behind it, questions,
+  the closing form),
   `/zacat` (the IČO, then the details; `?balik=`, `?nova=1`), `/zacat/hotovo`, `/pravne-informacie` (company,
   privacy, cookies), robots, sitemap, `/healthz`.
 - The comparison is a GET form (`mesacne`, `za-doklad`, `doklady`, `zavierka`, `dph`, `ludia`) computed on the
@@ -107,65 +108,76 @@ above 2,5 % or accountant cost above 40 € a client.
 - Headers: CSP without anything inline or foreign, no framing, HSTS, `noindex` on `/zacat` and on any host but
   firmony.ai; http and www are redirected; a form is accepted only from our own pages and under 8 kB.
 
-## Design (the fifth one, built on the afternoon of 13 October 2026)
+## Design (the sixth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
 glass, Host Grotesk bold) "tuctové"; the third (black, his iridescent glass objects in every section,
 Instrument Serif headlines) "nie najhoršie ... stále nie elita" at 01:10 and at 01:25 "tuctová web stránka z
 umelej inteligencie"; the fourth (night turning into a white day, a pile of papers flying into a ledger, Geist
-only, his glass icons in the white parts) at 14:09 "nie je to zlé, ale úprimne, nebral by CEO Apple, Nvidia,
-Tesla ... je to slabé". He asked what the heads of Apple, Coca-Cola, Palantir and Tesla would say, and what
-Thiel, Musk and Huang would want on the site of a startup they invested in. The answers he was given: one idea
-and calm (Apple), the product itself (Tesla, Musk), seriousness instead of toys (Palantir), an own colour, type
-and sentence (Coca-Cola), one sharp truth with a why-now (Thiel: e-invoices from 1 January 2027), and the
-technology shown working (Huang: the machine reading a slip). At 14:12 he was told the plan of the fifth:
-black and filmic like Apple's and Robinhood's product pages, one large phone with the app, glass papers flying
-into it, serif headlines with a modern sans, less text, larger pictures.
+only) at 14:09 "nie je to zlé, ale úprimne, nebral by CEO Apple, Nvidia, Tesla ... je to slabé". The fifth
+(black and filmic like Apple's and Robinhood's product pages, one large phone drawn in CSS with the app on it,
+his glass papers flying into it, Newsreader headlines with Geist) at 15:07: "nechutné ... neprehľadné ... čisto
+vygenerované umelou inteligenciou ... kvantum textu, vyzerá to lacno, ten telefón je úplne od veci". What he
+asked for instead, with screenshots of CloudTalk and Tesla: more white ("nechaj biely"), blue and red; the
+elegant type in a pleasant red and the modern type in blue; his glass icons kept, made clear and modern and set
+as CloudTalk sets its own ("okopíruj aj tie ikony, ako majú"); far less text; no phone; an opening like
+CloudTalk's or Tesla's; CloudTalk's structure, its fonts and its centred layout; the plans kept ("asi musí byť")
+but made premium. At 15:08: the motion stays ("sú pekné, to zanechaj"), done otherwise. The first look went out
+at about 16:20 (preview version 9).
 
-- Pictures, his words of 01:51 and 01:52: no realistic photographs made by AI ("to vyzerá úboho"); their own
-  real photos later; 3D icons that are playful, modern and top quality are welcome, his glass ones included.
-  His founder photo must be a real one. At 14:12 he was asked for seven more objects in the same style and
-  sent them at 14:51 (sources in art-src/icons/): a slip, an invoice with a tick, a bank card, an envelope
-  with a document, a calendar with a tick (the five papers of the opening, and the slip also beside the
-  machine reading it; the envelope also in the e-invoice band), a stack of coins (what a client saves, in the
-  comparison) and the F (`scripts/art.py logo`, which lays a see-through F on black first: the mark of the
-  close, the notification in the phone, the favicon, the home-screen icons and the shared link's picture,
-  whose name is set in Geist with the accent's full stop). Every picture on the site is now his blue glass
-  except the chat bubbles of the first set. The pictures nothing showed any more were removed from
-  `public/art/`; their sources stay in art-src/.
-- Type: **Newsreader** (Production Type, OFL) for every headline and large figure, light (300 to 350) and
-  set tight; the italic for the second line of the opening and the founder's words. Its files are cut from
-  the variable font with `fontTools.varLib.instancer`: optical size pinned at 60, weights 300 to 500, which
-  took the four files from 461 kB to 175 kB. **Geist** for everything read and every interface.
-- Colour: black (`--black`), Apple's greys on black (`--text` #f5f5f7, `--soft` #a1a1a6, `--dim` #86868b),
-  hairlines of white at 6 to 22 %, and the light of his glass as the one accent: `--iris` (blue #98a8ff,
-  violet #b88dff, pink #ff9dcf) on the opening's second line, the lead plan's frame and what a client saves;
-  `--accent` #8e9bff for links and ticks. Green only for "booked" inside the app, amber for the flag on a
-  slip. The date of the e-invoice band is brushed metal (white to grey).
-- The opening (`.hero`, 300vh, its stage sticky): the promise centred at the top, and below it the top of a
-  phone drawn in CSS (titanium frame, bezel, island, buttons, glass) with Firmony on it, leaning back, five of
-  his glass papers floating around it, near ones sharp and far ones blurred. Scrolling: the words go, the
-  phone rises into the middle and levels, the papers fly one by one into it and each becomes a row of the app
-  (bloček, faktúra, výpis, e-faktúra, priznanie k DPH), each row lit for a moment as it is booked, the
-  month's bars grow, "Všetko zaúčtované" appears, a notification with his F comes down ("Priznanie k DPH za
-  október je podané."), and the phone steps aside (on a phone: upwards) for "Toto je celé vaše
-  účtovníctvo." The nearest paper at first is the envelope, the slip floats far away. Every measure in the
-  phone is in `cqw` of `.hero__device`, and the app's parts have fixed heights, so a paper knows where its
-  row is: its icon 37.4 widths left of the middle, rows 13 widths apart from 1.43 above it (`--ey`); if a
-  part of the app changes height, those numbers change with it. One timeline (`--hero`, `view-timeline-inset:
-  0`), each piece with its own range; `--pw` makes the phone as large as the screen's height allows, `--peek`
-  says how much of it shows under the words at first. Without scroll timelines or with reduced motion: the
-  promise, then the phone fully booked beside its words, two papers resting at its corners.
-- Then: the date, the hug read word by word in the serif, one month as the client sees it on dark stages
-  (the machine reading a white slip with MD 513 / D 221 and the flag; a filed VAT return; a question to the
-  accountant and her answer as a conversation; each stage with a piece of his glass in a corner, left out
-  on phones, where it would cover the card), the machine and the person, everything in one price as a
-  white receipt under a light, the prices (the lead plan framed in the glass's light, figures in the serif),
-  the comparison, the two ways in, who is behind it, questions, and the close with his glass F in a glow.
-- The pages of the request and the legal page are black like the rest.
+- Type: **Funnel Display** (The Funnel Project, OFL) for titles, figures and the name, 600, set tight
+  (-0.035 to -0.045em): CloudTalk sets GT Pressura (Grilli Type, paid) at 500; this is the free face nearest to
+  it. **Figtree** (Erik Kennedy, OFL) for everything read and every interface, for CloudTalk's Silka (paid).
+  **Newsreader italic** (opsz pinned at 60, weights 300 to 500) for the warm half of a title, set a tenth larger
+  than the sans so that the two stand level. The files come from `@fontsource-variable/funnel-display` and
+  `figtree` (devDependencies), latin and latin-ext, 18 to 20 kB each; Geist and Newsreader's upright are gone.
+- Colour (`:root` in `public/app.css`): white page; `--mist` #f5f6fb for the light panels; hairlines `--line`
+  #e5e8f1; `--ink` #0d1330 for figures and names, `--text` and two greys leaning to the blue. **Blue** #1c2ef0
+  (7.8 to 1 on white) for every title's sans half, every button and link; **red** #e1344c for the serif half
+  (large type only, 4.4 to 1; `--red-ink` #c0233a for small red text). Green only for "booked", amber for the
+  flag on a slip. The panels of light (the opening, the e-invoice band, the close) are one sky of blue, violet
+  and red in radial gradients, each lit from another side, with film grain (an SVG feTurbulence data URI at
+  20 %, overlay), as CloudTalk lays it over its own; on them the type is white and the serif a light rose
+  (#ffb9c6).
+- Titles: `.title` with `.title__sans` (blue) and `.title__serif` (red italic, its own line), centred over each
+  section (`.head--center`), as CloudTalk centres its sections. His glass icons stand in `.tile`s: rounded
+  squares (radius 30 % of the side) of white to a faint blue with a touch of pink in one corner, a hairline,
+  40, 56 or 84 px; the glass fills 84 % of it.
+- The opening (`.hero`): CloudTalk's composition. A panel of light (radius 32, up to 720 px high) with a pill
+  "Účtovníctvo pre mladé s. r. o.", the promise in white ("Postaráme sa" held together by a no-break space, so
+  the line breaks before "o všetko"; "Vy rastite." in the rose serif) and the lead; three of his glass objects
+  float in its right part (the invoice, the coins, the slip), each bobbing and drifting up at its own pace as
+  the page scrolls. The white card where a client starts (the F in a tile, "Začnite s IČO vašej firmy", the IČO
+  field and its button in one row, "Ešte nemám firmu") lies over the panel's lower right edge: the grid has a
+  second row of 124 px and the card spans both. Under the panel on the left: the price line and "Pozrieť
+  cenník", "Ako to funguje". The words keep left of the card at every height (`--pad-x`, `--card-w`,
+  `--card-r`). On a tablet the card comes under the panel and overlaps it by 96 px; on a phone the glass is one
+  invoice in the top corner, and none below 380 px. The opening arrives once (words, card, glass) on load.
+- One month (`.flow`, "Vy pošlete doklady. My urobíme zvyšok."): a white card of October as CloudTalk shows a
+  feed (head, five rows each with its icon in a tile, title, amount and a green pill, and "Všetko zaúčtované")
+  on a light panel. Where scroll timelines exist and the screen is at least 700 px high, the track is 235vh and
+  the stage sticky: the five glass papers float beside the card (above it in a panel under 900 px, two of them
+  coming in from the sides) and fly one by one into the icon of their row, which lights as it is booked; then
+  the foot appears. The card's measures are numbers on `.flow__panel` (`--head-n`, `--row-n`, `--pad-n`,
+  `--tile-n`, `--fly-n`) and every landing is reckoned from them (`--lx`, `--ly`, `--ls`); a paper's start is a
+  share of the panel's width (`--p`, in `cqw`) and a height from the card's top. Without the flight the card
+  stands finished, two papers beside it.
+- Then: four figures in light cards (69 €, 0 €, 1 deň, 1. 1. 2027); the hug, lit word by word; everything in
+  the price as CloudTalk's interactive list (six cards with a radio each, the checked one white with a blue
+  check; the light panel beside them shows the picked one: the machine reading a torn slip under its beam with
+  MD 513 / D 221 and the flag, the filed VAT return, e-invoices received, payroll, deadlines with the missing
+  slip, the question to the accountant), switched by `:has()` with no script; the machine and the person as
+  two cards tinted blue and rose; the e-invoice date as a panel of light with the envelope; the prices as one
+  sheet of three columns whose six rows stand level (`subgrid`, the list's lines `display: contents`), the lead
+  plan lit from above with a blue-to-red bar and a blue price; the comparison; two ways in; who is behind it
+  (his words in the red serif); questions; the close as a panel of light with his glass F; a white footer.
+- The pages of the request and the legal page are white with a faint blue light at their top.
+- Pictures: `scripts/art.py logo art-src/icons/f.png` cuts the glass F from its own transparency: the logo
+  files see-through, the favicon see-through, the phone icons and the shared link's picture on white, the name
+  in Funnel Display, blue with a red full stop.
 - `scripts/dev/preview.mjs <folder>` makes a static copy of the pages for the owner's artifact (relative
-  addresses, the stylesheet inlined, the forms stopped with a note); it was published as "Firmony" on
-  13 October 2026 and is republished from the same file path (version 5 is the fifth design).
+  addresses, the stylesheet inlined, the forms stopped with a note); published as "Firmony" on 13 October 2026
+  and republished from the same file path (version 9 is the first of the sixth design).
 
 ## Before pushing
 

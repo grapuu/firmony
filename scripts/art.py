@@ -7,7 +7,8 @@ The pictures are glossy 3D objects in iridescent glass on pure black, made by th
 see-through before it goes in (`clear`): every pixel as opaque as its brightest colour, so the black around
 the object disappears on any dark surface, and the outer edge fades out.
 
-`logo` takes the logo on black, at the highest resolution there is, and writes every file that shows it:
+`logo` takes the glass F with its own transparency (art-src/icons/f.png) and writes every file that shows it;
+the icons a phone shows on a square of its own and the picture of a shared link are on white, as the site is:
 
     public/art/logo.webp         where it stands alone
     public/art/logo-small.webp   next to the name, in the header and the footer
@@ -40,9 +41,12 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 PUBLIC = os.path.join(ROOT, 'public')
 ART = os.path.join(PUBLIC, 'art')
-FONT = os.path.join(PUBLIC, 'fonts', 'geist-latin.woff2')
+FONT = os.path.join(PUBLIC, 'fonts', 'funnel-latin.woff2')
 NAME = 'firmony'
-ACCENT = (142, 155, 255)
+# The blue of the name and the red of its full stop, as the header sets them (the sixth design).
+BLUE = (28, 46, 240)
+RED = (225, 52, 76)
+WHITE = (255, 255, 255)
 
 # How much of its square the picture's larger side takes.
 LOGO_COVER = 0.88
@@ -110,51 +114,59 @@ def save(image, path, **options):
 
 
 def wordmark(height):
-    """The name as the header sets it, bold and tight, with its full stop in the light of the glass. On black."""
+    """The name as the header sets it: Funnel Display, tight, in blue, its full stop in red. On white."""
     font = ImageFont.truetype(FONT, height)
-    font.set_variation_by_axes([700])
-    tracking = -0.05 * height
+    font.set_variation_by_axes([650])
+    tracking = -0.045 * height
     text = NAME + '.'
     starts = [font.getlength(text[:i]) + i * tracking for i in range(len(text))]
     width = round(starts[-1] + font.getlength(text[-1]))
     ascent, descent = font.getmetrics()
-    line = Image.new('RGB', (width + height, ascent + descent), (0, 0, 0))
-    draw = ImageDraw.Draw(line)
+    line = Image.new('RGB', (width + height, ascent + descent), WHITE)
+    # The letters and the full stop are drawn as masks of their own: with the tight tracking the y reaches over
+    # where the full stop begins, so a colour cut by position would tint its tail.
+    name, dot = Image.new('L', line.size, 0), Image.new('L', line.size, 0)
     for i, (letter, start) in enumerate(zip(text, starts)):
-        draw.text((height // 2 + start, 0), letter, font=font, fill=ACCENT if i == len(NAME) else (255, 255, 255))
-    return line.crop(line.getbbox())
+        ImageDraw.Draw(dot if i == len(NAME) else name).text((height // 2 + start, 0), letter, font=font, fill=255)
+    line.paste(Image.new('RGB', line.size, BLUE), (0, 0), name)
+    line.paste(Image.new('RGB', line.size, RED), (0, 0), dot)
+    ink = Image.new('L', line.size, 0)
+    ink.paste(name, (0, 0), name)
+    ink.paste(dot, (0, 0), dot)
+    return line.crop(ink.getbbox())
 
 
-def share(source):
-    """The logo above the name, in the middle of a black sheet: it survives a platform that cuts it to a square."""
-    sheet = Image.new('RGB', (1200, 630), (0, 0, 0))
-    mark = framed(source, 1, 300)
+def share(mark):
+    """The glass F above the name, in the middle of a white sheet: it survives a platform that cuts it to a square."""
+    sheet = Image.new('RGBA', (1200, 630), WHITE + (255,))
+    mark = mark.resize((300, 300), Image.LANCZOS)
     mark = mark.crop(mark.getbbox())
     name = wordmark(96)
-    gap = 40
+    gap = 36
     top = (sheet.height - (mark.height + gap + name.height)) // 2
-    sheet.paste(mark, ((sheet.width - mark.width) // 2, top))
+    sheet.alpha_composite(mark, ((sheet.width - mark.width) // 2, top))
     sheet.paste(name, ((sheet.width - name.width) // 2, top + mark.height + gap))
-    return sheet
+    return sheet.convert('RGB')
+
+
+def on_white(picture):
+    """A see-through picture laid on white, for the icons a phone or a browser shows on a square of its own."""
+    ground = Image.new('RGBA', picture.size, WHITE + (255,))
+    return Image.alpha_composite(ground, picture).convert('RGB')
 
 
 def logo(source):
-    picture = Image.open(source)
-    if picture.mode in ('RGBA', 'LA'):
-        # A logo with its own transparency is laid on black first, so that its glow fades as it was drawn.
-        ground = Image.new('RGBA', picture.size, (0, 0, 0, 255))
-        picture = Image.alpha_composite(ground, picture.convert('RGBA'))
-    picture = picture.convert('RGB')
-    left, _, right, _ = subject(picture)
-    print(f'source {picture.width} x {picture.height}, the logo in it is {right - left} px wide')
+    """The glass F, which comes with its own transparency (art-src/icons/f.png), and everything made from it.
+    The tab of a browser keeps it see-through; the icons a phone lays on a square of its own, and the picture of
+    a shared link, have it on white, as the site is."""
     os.makedirs(ART, exist_ok=True)
-    save(clear(framed(picture, LOGO_COVER, 960)), os.path.join(ART, 'logo.webp'), format='WEBP', quality=92, alpha_quality=60, method=6)
-    save(clear(framed(picture, LOGO_COVER, 128)), os.path.join(ART, 'logo-small.webp'), format='WEBP', quality=92, alpha_quality=60, method=6)
-    icons = {size: framed(picture, ICON_COVER, size) for size in (16, 32, 48, 180, 192)}
+    save(icon(source, LOGO_COVER, 960), os.path.join(ART, 'logo.webp'), format='WEBP', quality=92, alpha_quality=80, method=6)
+    save(icon(source, LOGO_COVER, 128), os.path.join(ART, 'logo-small.webp'), format='WEBP', quality=92, alpha_quality=80, method=6)
+    icons = {size: icon(source, ICON_COVER, size) for size in (16, 32, 48, 180, 192)}
     save(icons[48], os.path.join(PUBLIC, 'favicon.ico'), format='ICO', sizes=[(16, 16), (32, 32), (48, 48)], append_images=[icons[16], icons[32]])
-    save(icons[192], os.path.join(ART, 'icon-192.png'), format='PNG', optimize=True)
-    save(icons[180], os.path.join(ART, 'icon-180.png'), format='PNG', optimize=True)
-    save(share(picture), os.path.join(ART, 'share.png'), format='PNG', optimize=True)
+    save(on_white(icons[192]), os.path.join(ART, 'icon-192.png'), format='PNG', optimize=True)
+    save(on_white(icons[180]), os.path.join(ART, 'icon-180.png'), format='PNG', optimize=True)
+    save(share(icon(source, 1, 600)), os.path.join(ART, 'share.png'), format='PNG', optimize=True)
 
 
 def whole(source, width, bottom=1.0, fade=None):
