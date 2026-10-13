@@ -42,8 +42,8 @@ function rewrite(html, from) {
 }
 
 const SAYS = {
-  ico: 'Toto je náhľad: IČO sa tu nevyhľadáva. Na živom webe sa načíta názov a sídlo firmy z registra a pokračuje sa na údaje.',
-  calc__form: 'Toto je náhľad: kalkulačka tu nepočíta. Na živom webe hneď ukáže porovnanie s vašimi číslami.',
+  ico: 'Toto je náhľad: IČO sa tu nevyhľadáva. Na živom webe sa z registra načíta názov a sídlo firmy a pokračuje sa vyplnením údajov.',
+  calc__form: 'Toto je náhľad: kalkulačka tu nepočíta. Na živom webe hneď ukáže porovnanie s Vašimi číslami.',
   details: 'Toto je náhľad: nič sa neodosiela. Na živom webe príde potvrdenie e-mailom a ozveme sa do jedného pracovného dňa.',
 }
 

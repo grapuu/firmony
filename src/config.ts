@@ -20,6 +20,8 @@ export const OPERATOR = {
   companyId: '57 442 452',
   taxId: '2122734449',
   register: 'Obchodný register Mestského súdu Košice, oddiel Sro, vložka č. 64897/V',
+  /** The same, as a sentence says where the company is registered: "zapísaná v Obchodnom registri ...". */
+  registeredIn: 'v Obchodnom registri Mestského súdu Košice, oddiel Sro, vložka č. 64897/V',
   phone: '+421 907 178 695',
   phoneHref: 'tel:+421907178695',
 } as const

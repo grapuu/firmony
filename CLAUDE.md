@@ -440,7 +440,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
   40, 56 or 84 px; the glass fills 84 % of it.
 - The opening (`.hero`): CloudTalk's composition. A panel of light (radius 32, up to 720 px high) with a pill
   "Účtovníctvo pre mladé s. r. o.", the promise in white ("Postaráme sa" held together by a no-break space, so
-  the line breaks before "o všetko"; "Vy rastite." in the rose serif) and the lead; three of his glass objects
+  the line breaks before "o všetko"; "Vy rastiete." in the rose serif (it was "Vy rastite.", which is no Slovak form: the imperative is "rasťte", and the statement fits the pair "Vy pošlete doklady. My urobíme zvyšok.")) and the lead; three of his glass objects
   float in its right part (the invoice, the coins, the slip), each bobbing and drifting up at its own pace as
   the page scrolls. The white card where a client starts (the F in a tile, "Začnite s IČO vašej firmy", the IČO
   field and its button in one row, "Ešte nemám firmu") lies over the panel's lower right edge: the grid has a

@@ -118,14 +118,14 @@ function script(leads) {
   var leads = ${JSON.stringify(leads)};
   var says = {
     upload: 'Toto je náhľad: nič sa neposiela. V aplikácii sa doklad hneď nahrá, prečíta a priradí k platbe.',
-    banka: 'Toto je náhľad. V aplikácii sa z výpisu doplnia platby a sami sa spárujú s dokladmi.',
-    message: 'Toto je náhľad: správa sa neposiela. V aplikácii príde účtovníčke a odpovie do jedného pracovného dňa.',
+    banka: 'Toto je náhľad. V aplikácii sa z výpisu doplnia platby a samy sa spárujú s dokladmi.',
+    message: 'Toto je náhľad: správa sa neposiela. V aplikácii príde účtovníčke, ktorá odpovie do jedného pracovného dňa.',
     other: 'Toto je náhľad: nič sa neukladá. V aplikácii sa to hneď uloží.',
     book: 'Toto je náhľad: nič sa neukladá. V aplikácii sa doklad zaúčtuje a hneď sa otvorí ďalší.',
     export: 'Toto je náhľad. V aplikácii sa stiahne súbor CSV pre účtovný program.',
-    invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, odberateľ ju dostane e-mailom s QR kódom na platbu a keď zaplatí, označí sa sama.',
+    invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, odberateľ ju dostane e-mailom s QR kódom na platbu a keď ju zaplatí, sama sa označí ako zaplatená.',
     invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
-    bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky, alebo sa banka či účet odpojí.',
+    bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky alebo sa banka či účet odpojí.',
     team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.'
   };
   function note(form, text) {
@@ -362,7 +362,7 @@ ${EXTRA_CSS}
 <body class="inside">
 <main class="bankdemo">
 <div class="bankdemo__card">
-<p class="bankdemo__small">Takto to vyzerá vo vašej banke (ukážka). Prihlásite sa ako vždy, aj potvrdením v mobile.</p>
+<p class="bankdemo__small">Takto to vyzerá vo Vašej banke (ukážka). Prihlásite sa ako vždy, aj potvrdením v mobile.</p>
 <h1>Povoliť prístup k účtom?</h1>
 <p>Firmony cez Enable Banking chce 180 dní čítať pohyby a zostatok na podnikateľskom účte SK31 1200 0000 1987 4263 7541. Platiť ani nič meniť nemôže.</p>
 <div class="bankdemo__actions"><a class="btn btn--blue" href="banka-prepojena.html">Povoliť prístup</a><a class="btn btn--line" href="banka.html">Zrušiť</a></div>

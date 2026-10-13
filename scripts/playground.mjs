@@ -77,7 +77,7 @@ createServer(async (req, res) => {
 <main style="max-width:420px;margin:48px auto;padding:28px;background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.08)">
 <p style="margin:0 0 6px;color:#666;font-size:14px">Ukážka prihlásenia v banke</p>
 <h1 style="margin:0 0 16px;font-size:22px">Povoliť prístup k účtom?</h1>
-<p style="line-height:1.5">Firmony (cez Enable Banking) chce čítať pohyby a zostatok na vašom podnikateľskom účte SK31 1200 0000 1987 4263 7541 počas 180 dní. Platiť ani nič meniť nemôže.</p>
+<p style="line-height:1.5">Firmony (cez Enable Banking) chce čítať pohyby a zostatok na Vašom podnikateľskom účte SK31 1200 0000 1987 4263 7541 počas 180 dní. Platiť ani nič meniť nemôže.</p>
 <p style="display:flex;gap:10px;margin-top:24px"><a href="${esc(back)}" style="padding:12px 18px;border-radius:10px;background:#1c2ef0;color:#fff;text-decoration:none;font-weight:600">Povoliť prístup</a>
 <a href="${esc(cancel)}" style="padding:12px 18px;border-radius:10px;border:1px solid #ccc;color:#111;text-decoration:none">Zrušiť</a></p>
 </main></body></html>`)

@@ -9,7 +9,7 @@ const eur = (euros: number) => formatEur(euros * 100)
 /** What a plan's rows say: whom it is for, documents, VAT, payroll. */
 export function planRows(plan: Plan): { forWhom: string; docs: string; vat: string; people: string } {
   return {
-    forWhom: typeset(plan.id === 'start' ? 'Pre firmy, ktoré nie sú platiteľom DPH.' : plan.id === 'rast' ? 'Pre platiteľov DPH.' : 'Pre firmy so zamestnancami.'),
+    forWhom: typeset(plan.id === 'start' ? 'Pre firmy, ktoré nie sú platiteľmi DPH.' : plan.id === 'rast' ? 'Pre platiteľov DPH.' : 'Pre firmy so zamestnancami.'),
     docs: typeset(`do ${plan.docs} dokladov`),
     vat: typeset(plan.vatPayer ? 'mesačné priznanie, kontrolný a súhrnný výkaz' : 'priznania pri registrácii podľa § 7a'),
     people: typeset(plan.people === 0 ? 'bez zamestnancov' : `do ${plan.people} ľudí`),
@@ -19,7 +19,7 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: účtovníctvo pre mladé firmy`,
-    description: `Postaráme sa o celé účtovníctvo vašej s. r. o. Doklady stačí odfotiť, my zaúčtujeme, podáme DPH aj priznanie a postrážime termíny. Od ${eur(start.price)} mesačne, bez poplatkov za doklad.`,
+    description: `Postaráme sa o celé účtovníctvo Vašej s. r. o. Doklady stačí odfotiť. Zaúčtujeme ich, podáme priznanie k DPH aj daňové priznanie a postrážime termíny. Od ${eur(start.price)} mesačne, bez poplatkov za doklad.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
@@ -28,8 +28,8 @@ export const copy = typesetAll({
     tag: 'Účtovníctvo pre mladé s. r. o.',
     /** "Postaráme sa" is kept together, so that the line breaks before "o všetko". */
     first: 'Postaráme\u00a0sa o všetko.',
-    second: 'Vy rastite.',
-    lead: 'Doklady odfotíte, všetko ostatné je na nás. Zaúčtujeme, podáme a postrážime každý termín.',
+    second: 'Vy rastiete.',
+    lead: 'Doklady odfotíte, všetko ostatné je na nás. Zaúčtujeme ich, podáme priznania a postrážime každý termín.',
     price: `Od ${eur(start.price)} mesačne. Bez poplatkov za doklad.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
@@ -37,7 +37,7 @@ export const copy = typesetAll({
 
   /** The card in the opening where a client starts: the IČO. */
   card: {
-    title: 'Začnite s IČO vašej firmy',
+    title: 'Začnite s IČO Vašej firmy',
     text: 'Názov a sídlo doplníme z registra. Je to nezáväzné.',
     fine: `Ozveme sa ${REPLY_WITHIN}.`,
   },
@@ -46,13 +46,13 @@ export const copy = typesetAll({
   flow: {
     first: 'Vy pošlete doklady.',
     second: 'My urobíme zvyšok.',
-    lead: 'Bloček odfotíte, faktúru prepošlete. Umelá inteligencia ich prečíta, účtovníčka skontroluje a podá.',
-    label: 'Ukážka: október vašej firmy vo Firmony, všetko zaúčtované',
+    lead: 'Bloček odfotíte, faktúru prepošlete. Umelá inteligencia ich prečíta, účtovníčka všetko skontroluje a podá priznania.',
+    label: 'Ukážka: október Vašej firmy vo Firmony, všetko zaúčtované',
     month: 'Október 2026',
     company: 'Vaša firma',
     count: '5 dokladov',
     rows: [
-      { title: 'Bloček', sub: 'Kaviareň, 14. 10.', amount: '4,80 €', state: 'Zaúčtované' },
+      { title: 'Bloček', sub: 'Kaviareň, 14. 10.', amount: '4,80 €', state: 'Zaúčtovaný' },
       { title: 'Faktúra 2026041', sub: 'Váš klient s. r. o.', amount: '+1 200 €', state: 'Zaúčtovaná' },
       { title: 'Výpis z účtu', sub: '23 platieb', amount: '', state: 'Spárovaný' },
       { title: 'E-faktúra', sub: 'Webhosting', amount: '14,90 €', state: 'Prijatá' },
@@ -73,7 +73,7 @@ export const copy = typesetAll({
 
   /** The hug of the brand, read word by word. */
   statement: {
-    first: 'Ak vás účtovníctvo stresuje, nie ste jediní.',
+    first: 'Ak Vás účtovníctvo stresuje, nie ste jediní.',
     second: 'Spolu to dáme do poriadku.',
   },
 
@@ -85,9 +85,9 @@ export const copy = typesetAll({
     example: 'Ilustračná ukážka',
     items: [
       { id: 'doklady', title: 'Doklady a banka', text: 'Zaúčtujeme každý doklad a spárujeme platby.' },
-      { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za vás.' },
-      { id: 'efaktury', title: 'E-faktúry', text: 'Prijímame ich za vás, povinné od 1. 1. 2027.' },
-      { id: 'mzdy', title: 'Mzdy', text: 'Výplaty, odvody a hlásenia pre vašich ľudí.' },
+      { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za Vás.' },
+      { id: 'efaktury', title: 'E-faktúry', text: 'Prijmeme ich za Vás. Povinné sú od 1. 1. 2027.' },
+      { id: 'mzdy', title: 'Mzdy', text: 'Výplaty, odvody a hlásenia pre Vašich ľudí.' },
       { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
       { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
     ],
@@ -158,7 +158,7 @@ export const copy = typesetAll({
     first: 'Rýchlosť stroja.',
     second: 'Istota človeka.',
     ai: { title: 'Umelá inteligencia', items: ['prečíta bloček aj faktúru', 'navrhne zaúčtovanie', 'spáruje platby z banky'] },
-    human: { title: 'Vaša účtovníčka', items: ['všetko skontroluje', 'podá priznania a výkazy', 'odpovie na vaše otázky'] },
+    human: { title: 'Vaša účtovníčka', items: ['všetko skontroluje', 'podá priznania a výkazy', 'odpovie na Vaše otázky'] },
   },
 
   einvoice: {
@@ -174,28 +174,28 @@ export const copy = typesetAll({
     lead: 'Vyberte si podľa toho, či ste platiteľom DPH a koľko ľudí máte na mzde.',
     perMonth: 'mesačne',
     rows: { docs: 'Doklady', vat: 'DPH', people: 'Mzdy' },
-    included: `V každom balíku: zaúčtovanie dokladov a banky, e-faktúry, mesačný prehľad, termíny a odpovede ${REPLY_WITHIN}.`,
+    included: `V každom balíku: zaúčtovanie dokladov a platieb, e-faktúry, mesačný prehľad, stráženie termínov a odpovede ${REPLY_WITHIN}.`,
     closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne.`,
     vat: 'Ceny sú bez DPH, DPH zatiaľ nepripočítavame.',
-    custom: 'Máte viac dokladov alebo ľudí? Pripravíme ponuku na mieru.',
+    custom: 'Máte viac dokladov alebo ľudí? Pripravíme Vám ponuku na mieru.',
   },
 
   /** What we promise, said once and plainly, next to the prices. */
   promises: [
     { title: 'Bez viazanosti', text: 'Mesačná výpovedná lehota.' },
     { title: 'Doklady navyše zadarmo', text: 'Vyšší balík ponúkneme až po dvoch mesiacoch.' },
-    { title: 'Odpoveď do jedného dňa', text: 'Po slovensky, nie úradnícky.' },
-    { title: 'Účtovníctvo je vaše', text: 'Keď odídete, všetko vám odovzdáme.' },
+    { title: 'Odpoveď do pracovného dňa', text: 'Po slovensky, nie úradnícky.' },
+    { title: 'Účtovníctvo je Vaše', text: 'Keď odídete, všetko Vám odovzdáme.' },
   ],
 
   calc: {
     title: 'Koľko ušetríte?',
-    lead: 'Zadajte, koľko dnes platíte svojej účtovníčke. Sumy bez DPH.',
+    lead: 'Napíšte, koľko dnes platíte svojej účtovníčke. Sumy uvádzajte bez DPH.',
     monthly: 'Mesačný paušál',
     perDoc: 'Poplatok za doklad',
     docs: 'Dokladov mesačne',
     closing: 'Závierka a priznanie ročne',
-    vat: 'Ste platiteľ DPH?',
+    vat: 'Ste platiteľom DPH?',
     no: 'Nie',
     yes: 'Áno',
     people: 'Ľudia na mzde',
@@ -215,12 +215,12 @@ export const copy = typesetAll({
     second: 'alebo už beží?',
     fresh: {
       title: 'Zakladáte s. r. o.',
-      text: 'Od prvého dňa poriadok v účtovníctve. Povieme vám, čo pri štarte vybaviť.',
+      text: 'Od prvého dňa poriadok v účtovníctve. Povieme Vám, čo treba pri štarte vybaviť.',
       cta: 'Zakladám firmu',
     },
     switching: {
       title: 'Meníte účtovníčku',
-      text: 'Prechod vybavíme za vás. Podklady si od doterajšej účtovníčky vyžiadame sami.',
+      text: 'Prechod vybavíme za Vás. Podklady si od doterajšej účtovníčky vyžiadame sami.',
       cta: 'Chcem prejsť',
     },
   },
@@ -254,11 +254,11 @@ export const copy = typesetAll({
     items: [
       {
         q: 'Kto mi bude viesť účtovníctvo?',
-        a: 'Účtovníčka s praxou, ktorá bude mať vašu firmu na starosti. Rutinnú prácu za ňu urobí umelá inteligencia, ona všetko skontroluje, podá a odpovie vám.',
+        a: 'Účtovníčka s praxou, ktorá bude mať Vašu firmu na starosti. Rutinnú prácu za ňu urobí umelá inteligencia. Ona všetko skontroluje, podá priznania a odpovie na Vaše otázky.',
       },
       {
         q: 'Ako prejdem od súčasnej účtovníčky?',
-        a: 'Pozrite sa do zmluvy, aká dlhá je výpovedná lehota. Pri mesačnej stačí poslať výpoveď v novembri. Podklady si od nej vyžiadame my, vy podpíšete len plnú moc.',
+        a: 'Pozrite sa do zmluvy, aká dlhá je výpovedná lehota. Pri mesačnej lehote stačí poslať výpoveď v novembri. Podklady si od nej vyžiadame my, Vy podpíšete len plnú moc.',
       },
       {
         q: 'Kto urobí závierku za rok 2026?',
@@ -270,27 +270,27 @@ export const copy = typesetAll({
       },
       {
         q: 'Čo ak budem mať viac dokladov, ako je v balíku?',
-        a: 'Za doklady navyše nič neplatíte. Ak ich budete mať viac dva mesiace po sebe, ponúkneme vám vyšší balík.',
+        a: 'Za doklady navyše nič neplatíte. Ak ich budete mať viac dva mesiace po sebe, ponúkneme Vám vyšší balík.',
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete vypovedať s mesačnou výpovednou lehotou a všetky podklady vám odovzdáme.',
+        a: 'Nie. Zmluvu môžete vypovedať s mesačnou výpovednou lehotou a všetky podklady Vám odovzdáme.',
       },
       {
         q: 'Ako môžete mať takúto cenu?',
-        a: 'Rutinu za nás robí umelá inteligencia a nemáme drahú kanceláriu. Platíte za prácu, ktorú za vás niekto naozaj urobí, nie za papiere.',
+        a: 'Rutinu za nás robí umelá inteligencia a nemáme drahú kanceláriu. Platíte za prácu, ktorú za Vás niekto naozaj urobí, nie za papiere.',
       },
     ],
   },
 
   final: {
     title: 'Poďme do toho spolu.',
-    lead: `Stačí IČO vašej firmy. Ozveme sa ${REPLY_WITHIN}.`,
-    label: 'IČO vašej firmy',
+    lead: `Stačí IČO Vašej firmy. Ozveme sa ${REPLY_WITHIN}.`,
+    label: 'IČO Vašej firmy',
     placeholder: '8 číslic',
     button: 'Pokračovať',
     noCompany: 'Ešte nemám firmu',
-    write: 'Radšej napíšete?',
+    write: 'Chcete nám radšej napísať?',
     reply: `Odpovieme ${REPLY_WITHIN}.`,
   },
 
@@ -304,12 +304,12 @@ export const copy = typesetAll({
     privacy: 'Ochrana údajov',
     cookies: 'Bez cookies a bez sledovania',
     reply: `Odpovedáme ${REPLY_WITHIN}.`,
-    imprint: `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísanej v Obchodnom registri Mestského súdu Košice, oddiel Sro, vložka č. 64897/V. Ceny sú uvedené bez DPH.`,
+    imprint: `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísanej ${OPERATOR.registeredIn}. Ceny sú uvedené bez DPH.`,
     rights: '© 2026 europio s. r. o.',
   },
 
   start: {
-    title: 'Začnime vašou firmou',
+    title: 'Začnime Vašou firmou',
     lead: 'Zadajte IČO. Názov a sídlo doplníme z Registra právnických osôb.',
     chosen: 'Vybraný balík',
     perMonth: 'mesačne',
@@ -317,13 +317,13 @@ export const copy = typesetAll({
     other: 'Zadať iné IČO',
     source: 'Údaje z Registra právnických osôb, Štatistický úrad SR, licencia CC BY 4.0.',
     terminated: 'Register vedie túto firmu ako zaniknutú. Ak je to omyl, napíšte nám do poznámky.',
-    notSro: 'Firmony je zatiaľ pre s. r. o. Ak máte inú formu, napíšte nám do poznámky a ozveme sa.',
+    notSro: 'Firmony je zatiaľ pre s. r. o. Ak má Vaša firma inú právnu formu, napíšte nám to do poznámky a ozveme sa.',
     badIco: 'IČO má 8 číslic. Skontrolujte ho, prosím.',
     wrongIco: 'Toto IČO v registri nie je a nevyzerá správne. Skontrolujte ho, prosím.',
     failed: 'Register práve neodpovedá. Napíšte názov firmy sami, overíme ho neskôr.',
     busy: 'Z tohto pripojenia prišlo veľa vyhľadávaní. Napíšte názov firmy sami.',
     freshTitle: 'Zakladáte firmu',
-    freshLead: 'Napíšte nám, ako ste ďaleko. Ozveme sa a všetko prejdeme spolu.',
+    freshLead: 'Napíšte nám, ako ďaleko ste so založením. Ozveme sa a všetko prejdeme spolu.',
     companyName: 'Názov firmy',
     companyNameFresh: 'Názov firmy, ak ho už máte',
     plan: 'Balík',
@@ -335,8 +335,8 @@ export const copy = typesetAll({
     phone: 'Telefón',
     optional: 'nepovinné',
     note: 'Poznámka',
-    notePlaceholder: 'Napríklad koľko máte dokladov mesačne alebo dokedy máte výpovednú lehotu.',
-    privacy: 'Údaje použijeme len na to, aby sme vám odpovedali a pripravili ponuku.',
+    notePlaceholder: 'Napríklad koľko dokladov máte mesačne alebo dokedy trvá Vaša výpovedná lehota.',
+    privacy: 'Údaje použijeme len na to, aby sme Vám odpovedali a pripravili ponuku.',
     privacyLink: 'Ako s nimi zaobchádzame',
     submit: 'Odoslať žiadosť',
     errors: {
@@ -353,7 +353,7 @@ export const copy = typesetAll({
 
   thanks: {
     title: 'Ďakujeme. Žiadosť máme.',
-    lead: `Ozveme sa ${REPLY_WITHIN}. Potvrdenie sme vám poslali na e-mail.`,
+    lead: `Ozveme sa ${REPLY_WITHIN}. Potvrdenie sme Vám poslali na e-mail.`,
     next: 'Kým sa ozveme, pozrite sa do zmluvy so súčasnou účtovníčkou, aká dlhá je výpovedná lehota.',
     back: 'Späť na úvod',
   },

@@ -62,7 +62,7 @@ export const Legal: FC = () => (
       </h2>
       <p>
         {t(
-          `Prevádzkovateľom je ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}. S otázkou alebo žiadosťou o vaše údaje nám napíšte na `,
+          `Prevádzkovateľom je ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}. S otázkou alebo so žiadosťou týkajúcou sa Vašich údajov nám napíšte na `,
         )}
         <Mail />.
       </p>
@@ -70,14 +70,14 @@ export const Legal: FC = () => (
       <h3 class="h4">Aké údaje spracúvame</h3>
       <p>
         {t(
-          'Keď vyplníte formulár: IČO, názov a sídlo firmy z Registra právnických osôb, vaše meno, e-mail, telefón a poznámku, ak ich uvediete, zvolený balík a to, z akej kampane alebo odkazu ste prišli, ak to bolo v adrese stránky. Kalkulačka na úvodnej stránke nič neukladá.',
+          'Keď vyplníte formulár: IČO, názov a sídlo firmy z Registra právnických osôb, Vaše meno, e-mail, telefón a poznámku, ak ich uvediete, zvolený balík a to, z akej kampane alebo z akého odkazu ste prišli, ak to bolo v adrese stránky. Kalkulačka na úvodnej stránke nič neukladá.',
         )}
       </p>
 
       <h3 class="h4">Prečo a na akom základe</h3>
       <p>
         {t(
-          'Aby sme vám odpovedali a pripravili ponuku. Ak žiadate za seba, ide o kroky pred uzavretím zmluvy na vašu žiadosť (článok 6 ods. 1 písm. b) GDPR). Ak žiadate za firmu, ide o náš oprávnený záujem odpovedať jej zástupcovi (článok 6 ods. 1 písm. f) GDPR).',
+          'Aby sme Vám odpovedali a pripravili ponuku. Ak žiadate za seba, ide o kroky pred uzavretím zmluvy na Vašu žiadosť (článok 6 ods. 1 písm. b) GDPR). Ak žiadate za firmu, ide o náš oprávnený záujem odpovedať jej zástupcovi (článok 6 ods. 1 písm. f) GDPR).',
         )}
       </p>
       <p>
@@ -108,17 +108,17 @@ export const Legal: FC = () => (
       <h3 class="h4">Vaše práva</h3>
       <p>
         {t(
-          'Máte právo na prístup k údajom, ich opravu, vymazanie, obmedzenie spracúvania a prenosnosť, a právo namietať proti spracúvaniu na základe oprávneného záujmu. Stačí napísať na ',
+          'Máte právo na prístup k údajom, ich opravu, vymazanie, obmedzenie spracúvania a prenosnosť a tiež právo namietať proti spracúvaniu na základe oprávneného záujmu. Stačí napísať na ',
         )}
         <Mail />.{' '}
-        {t(`Ak si myslíte, že s údajmi nezaobchádzame správne, môžete podať návrh na ${AUTHORITIES.data.name}, ${AUTHORITIES.data.address}, `)}
+        {t(`Ak si myslíte, že s údajmi nezaobchádzame správne, môžete sa obrátiť na ${AUTHORITIES.data.name}, ${AUTHORITIES.data.address}, `)}
         <a href={AUTHORITIES.data.website}>dataprotection.gov.sk</a>.
       </p>
 
       <h3 class="h4" id="cookies">
         Cookies
       </h3>
-      <p>{t('Táto stránka nepoužíva cookies ani nástroje na sledovanie návštevnosti.')}</p>
+      <p>{t('Webová stránka nepoužíva cookies ani nástroje na sledovanie návštevnosti. Aplikácia pre klientov používa jedno nevyhnutné cookie, ktoré slúži na prihlásenie.')}</p>
 
       <p class="small">{`Platné od ${effective}.`}</p>
     </div>

@@ -208,7 +208,7 @@ export function ublOf(invoice: StoredInvoice, lines: Line[], seller: Company): s
   // EN 16931: S is a rate above nought, E a supply exempt from VAT (Slovakia has no zero rate at home), O a seller
   // who is no VAT payer; E and O carry the reason, O carries no rate and no VAT identifier of either side (BR-O-02).
   const category = (rate: number) => (seller.vatPayer ? (rate > 0 ? 'S' : 'E') : 'O')
-  const reason = (rate: number) => (category(rate) === 'O' ? 'Dodávateľ nie je platiteľ DPH' : category(rate) === 'E' ? 'Oslobodené od DPH' : null)
+  const reason = (rate: number) => (category(rate) === 'O' ? 'Dodávateľ nie je platiteľom DPH' : category(rate) === 'E' ? 'Oslobodené od DPH' : null)
   const taxCategory = (rate: number) =>
     `<cac:TaxCategory><cbc:ID>${category(rate)}</cbc:ID>${seller.vatPayer ? `<cbc:Percent>${rate}</cbc:Percent>` : ''}${reason(rate) ? `<cbc:TaxExemptionReason>${reason(rate)}</cbc:TaxExemptionReason>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`
   const vatId = (icdph: string | null) => (seller.vatPayer ? icdph : null)

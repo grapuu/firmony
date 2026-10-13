@@ -40,7 +40,7 @@
       box.innerHTML = '<span class="progress__text"></span><span class="progress__bar"><span class="progress__fill"></span></span>'
       form.appendChild(box)
     }
-    box.querySelector('.progress__text').textContent = total === 1 ? 'Posielam doklad…' : 'Posielam ' + Math.min(done + 1, total) + ' z ' + total + '…'
+    box.querySelector('.progress__text').textContent = total === 1 ? 'Odosiela sa doklad…' : 'Odosiela sa ' + Math.min(done + 1, total) + ' z ' + total + '…'
     box.querySelector('.progress__fill').style.width = Math.round((done / total) * 100) + '%'
   }
 

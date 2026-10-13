@@ -290,7 +290,7 @@ app.post('/zacat', async (c) => {
       body: [
         `Nová žiadosť z webu ${BRAND.name}`,
         '',
-        `Firma: ${companyName ?? 'zatiaľ nemá'}${company ? ' (z registra)' : companyName ? ' (napísaná ručne)' : ''}`,
+        `Firma: ${companyName ?? 'zatiaľ žiadna'}${company ? ' (z registra)' : companyName ? ' (napísaná ručne)' : ''}`,
         `IČO: ${ico ? formatIco(ico).replace(/ /g, ' ') : '-'}`,
         `Sídlo: ${company?.address ?? '-'}`,
         `Balík: ${planName(plan)}`,
@@ -299,7 +299,7 @@ app.post('/zacat', async (c) => {
         `E-mail: ${values.email}`,
         `Telefón: ${values.phone || '-'}`,
         `Poznámka: ${values.note || '-'}`,
-        `Odkiaľ prišiel: ${source ?? '-'}`,
+        `Zdroj: ${source ?? '-'}`,
         '',
         `Odoslané ${slovakTime(now())}.`,
       ].join('\n'),
@@ -312,7 +312,7 @@ app.post('/zacat', async (c) => {
       queueStatement(db, {
         key: `client:${id}`,
         to: values.email,
-        subject: `${BRAND.name}: vašu žiadosť máme`,
+        subject: `${BRAND.name}: Vašu žiadosť máme`,
         body: [
           'Dobrý deň,',
           '',
@@ -321,12 +321,12 @@ app.post('/zacat', async (c) => {
           ...(company ? [`Firma: ${company.name}`] : []),
           `Balík: ${planName(plan)}`,
           '',
-          'Ak vám medzitým niečo napadne, stačí odpovedať na tento e-mail.',
+          'Ak Vám medzitým niečo napadne, stačí odpovedať na tento e-mail.',
           '',
           'Christian Juhás',
           BRAND.name,
           '',
-          `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, zapísanej v registri: ${OPERATOR.register}.`,
+          `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, zapísanej ${OPERATOR.registeredIn}.`,
         ].join('\n'),
       }),
     )
@@ -343,7 +343,7 @@ app.get('/zacat/hotovo', (c) => page(c, { ...startMeta, title: `${copy.thanks.ti
 // ---------------------------------------------------------------------------
 
 app.get('/pravne-informacie', (c) =>
-  page(c, { title: `Právne informácie | ${BRAND.name}`, description: typeset(`Kto stojí za ${BRAND.name}, ako chránime osobné údaje a že nepoužívame cookies.`), path: '/pravne-informacie' }, <Legal />),
+  page(c, { title: `Právne informácie | ${BRAND.name}`, description: typeset(`Kto stojí za ${BRAND.name} a ako chránime osobné údaje.`), path: '/pravne-informacie' }, <Legal />),
 )
 
 // The page of an issued invoice that its customer opens from the email, and its e-invoice: no sign-in, the token
