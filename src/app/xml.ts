@@ -2,6 +2,7 @@
 // (ISO 20022 camt.053, which every Slovak bank's internet banking exports) and an e-invoice (UBL 2.1, the form
 // Peppol carries, which the digital postman delivers from 1 January 2027).
 import { XMLParser } from 'fast-xml-parser'
+import type { Category } from './booking'
 import type { DocKind } from './match'
 
 const LISTS = new Set(['Stmt', 'Ntry', 'TxDtls', 'Bal', 'Ustrd', 'Strd', 'PartyIdentification', 'PartyLegalEntity', 'PaymentMeans', 'TaxTotal', 'PartyTaxScheme'])
@@ -210,6 +211,8 @@ export interface Reading {
   totalCents: number | null
   vatCents: number | null
   currency: string | null
+  /** What it is for, as the reader judged it; an e-invoice says nothing of it. */
+  category?: Category | null
 }
 
 function partyOf(node: unknown): { name: string | null; ids: string[] } {

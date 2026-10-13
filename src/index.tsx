@@ -11,6 +11,7 @@ import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, type Company } from './rpo'
 import { appRoutes, appScheduled, type AppBindings } from './app/routes'
+import { teamRoutes } from './team/routes'
 import { Home, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
@@ -48,6 +49,7 @@ const APP_CONTENT_SECURITY_POLICY = [
   "img-src 'self' data: blob:",
   "script-src 'self'",
   "connect-src 'self'",
+  "frame-src 'self'",
   "form-action 'self'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
@@ -93,10 +95,11 @@ app.use('*', async (c, next) => {
     if (length > (UPLOADS.test(url.pathname) ? APP.uploadBytes : LIMITS.formBytes)) return c.text('Too large', 413)
   }
   await next()
-  const inside = url.pathname === '/app' || url.pathname.startsWith('/app/')
+  const inside = /^\/(app|ucto)(\/|$)/.test(url.pathname)
   if (!c.res.headers.has('Content-Security-Policy')) c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
-  c.header('X-Frame-Options', 'DENY')
+  // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
+  if (!c.res.headers.has('X-Frame-Options')) c.header('X-Frame-Options', 'DENY')
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
   c.header('Cross-Origin-Opener-Policy', 'same-origin')
   c.header('Cross-Origin-Resource-Policy', 'same-origin')
@@ -339,8 +342,9 @@ app.get('/pravne-informacie', (c) =>
 )
 
 app.route('/app', appRoutes)
+app.route('/ucto', teamRoutes)
 
-app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /app', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
+app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /app', 'Disallow: /ucto', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
 
 app.get('/sitemap.xml', (c) => {
   const urls = ['/', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)

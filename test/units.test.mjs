@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { appCopy, calc, config, copy, deadlines, format, ico, match, planRows, reader, rpo, xml } from '../.wrangler/tmp/units-bundle.mjs'
+import { appCopy, booking, calc, config, copy, deadlines, demo, format, ico, match, planRows, reader, rpo, teamStore, xml } from '../.wrangler/tmp/units-bundle.mjs'
 import { check, done } from './check.mjs'
 
 const NB = ' '
@@ -185,5 +185,44 @@ walkApp(appCopy.app)
 walkApp(appCopy.EXEMPT_NAMES)
 check('the app has no dash and no straight quote', appTexts.every((t) => !/[–—]/.test(t) && !/ - /.test(t) && !/"/.test(t)), appTexts.find((t) => /[–—"]/.test(t) || / - /.test(t)))
 check('in the app no one-letter word ends a line', appTexts.every((t) => !/(^|\s)[vszkouaiVSZKOUAI] /.test(t)), appTexts.find((t) => /(^|\s)[vszkouaiVSZKOUAI] /.test(t)))
+
+
+// Booking: the entry a document is booked with
+const entry = (args) => JSON.stringify(booking.entryFor({ vatCents: null, vatPayer: false, vatDeduct: false, paidBy: 'bank', ...args }).map((l) => [l.md, l.d, l.cents, l.what]))
+check('a received invoice of a VAT payer: the cost and the VAT against the supplier', entry({ kind: 'invoice_in', category: 'services', totalCents: 8640, vatCents: 1616, vatPayer: true, vatDeduct: true }) === JSON.stringify([['518', '321', 7024, 'cost'], ['343', '321', 1616, 'vat']]))
+check('a company that is no VAT payer books the whole amount', entry({ kind: 'invoice_in', category: 'services', totalCents: 8640, vatCents: 1616, vatPayer: false, vatDeduct: true }) === JSON.stringify([['518', '321', 8640, 'cost']]))
+check('VAT that is not deducted stays in the cost', entry({ kind: 'receipt', category: 'representation', totalCents: 1240, vatCents: 207, vatPayer: true, vatDeduct: false }) === JSON.stringify([['513', '221', 1240, 'cost']]))
+check('a receipt paid from the owner\'s own money is owed to him', entry({ kind: 'receipt', category: 'material', totalCents: 890, paidBy: 'private' }) === JSON.stringify([['501', '365', 890, 'cost']]))
+check('a receipt paid in cash comes from the cash box', entry({ kind: 'receipt', category: 'fuel', totalCents: 6418, paidBy: 'cash' }) === JSON.stringify([['501', '211', 6418, 'cost']]))
+check('an issued invoice of a VAT payer: revenue and the VAT owed', entry({ kind: 'invoice_out', category: 'sales', totalCents: 123000, vatCents: 23000, vatPayer: true }) === JSON.stringify([['311', '602', 100000, 'revenue'], ['311', '343', 23000, 'vat']]))
+check('an account the accountant chose wins over the category', entry({ kind: 'invoice_in', category: 'services', totalCents: 1000, account: '501' }) === JSON.stringify([['501', '321', 1000, 'cost']]))
+check('an account that is no account is ignored', entry({ kind: 'invoice_in', category: 'services', totalCents: 1000, account: 'abc' }) === JSON.stringify([['518', '321', 1000, 'cost']]))
+check('nothing is proposed without an amount, a category, or for revenue on a cost', entry({ kind: 'invoice_in', category: null, totalCents: 1000 }) === '[]' && entry({ kind: 'invoice_in', category: 'services', totalCents: null }) === '[]' && entry({ kind: 'invoice_in', category: 'sales', totalCents: 1000 }) === '[]' && entry({ kind: 'other', category: 'services', totalCents: 1000 }) === '[]')
+check('VAT larger than the amount is held to the amount', entry({ kind: 'invoice_in', category: 'services', totalCents: 1000, vatCents: 5000, vatPayer: true, vatDeduct: true }) === JSON.stringify([['518', '321', 0, 'cost'], ['343', '321', 1000, 'vat']]))
+check('an issued invoice is offered revenue only', JSON.stringify(booking.categoriesFor('invoice_out')) === JSON.stringify(['sales', 'sales_goods']) && !booking.categoriesFor('receipt').includes('sales'))
+check('a supplier is known by its IČO', booking.supplierKey('36 123 456', 'Hostingový dom s. r. o.') === 'ico:36123456')
+check('or by the words of its name, whatever their order', booking.supplierKey(null, 'Papiernictvo Pero') !== null && booking.supplierKey(null, 'Papiernictvo Pero') === booking.supplierKey('', 'PERO papiernictvo'), booking.supplierKey(null, 'Papiernictvo Pero'))
+check('or by nothing', booking.supplierKey(null, null) === null)
+const docA = { kind: 'receipt', totalCents: 1240, number: null, party: 'Kaviareň Na rohu', partyIco: '50123456', issuedOn: '2026-10-12' }
+check('the same receipt twice is a suspected duplicate', booking.sameDocument(docA, { ...docA }))
+check('the same number and amount is one', booking.sameDocument({ ...docA, number: '2026/118', partyIco: null, party: 'A' }, { ...docA, number: '2026118', partyIco: null, party: 'B' }))
+check('another amount, another day, or another number is not', !booking.sameDocument(docA, { ...docA, totalCents: 1250 }) && !booking.sameDocument(docA, { ...docA, issuedOn: '2026-10-11' }) && !booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '2' }))
+check('a day typed the Slovak way', booking.dayOfText('11. 10. 2026') === '2026-10-11' && booking.dayOfText('1.2.2027') === '2027-02-01' && booking.dayOfText('2026-10-11') === '2026-10-11')
+check('a day that does not exist is none', booking.dayOfText('31. 2. 2026') === null && booking.dayOfText('zajtra') === null && booking.dayOfText('11. 10. 1999') === null)
+check('an empty day is empty', booking.dayOfText('  ') === '')
+check('a day written back the Slovak way', booking.textDay('2026-10-01') === '1. 10. 2026')
+
+// The export for the accountant's program
+check('a cell that Excel would run is made text', teamStore.csvCell('=HYPERLINK("x")') === `"'=HYPERLINK(""x"")"` && teamStore.csvCell('+421') === "'+421" && teamStore.csvCell('@a') === "'@a")
+check('a negative amount stays a number', teamStore.csvCell('-12,40') === '-12,40')
+check('a cell never splits the row', teamStore.csvCell('a;b\nc') === 'a,b c')
+check('cents as Slovak Excel reads them', teamStore.csvMoney(1240) === '12,40' && teamStore.csvMoney(-5) === '-0,05' && teamStore.csvMoney(100000) === '1000,00' && teamStore.csvMoney(null) === '')
+check('a client who did not pay is told apart from a receipt paid in cash', teamStore.paidByOf({ paidPrivately: false, kind: 'invoice_in' }, false) === 'unpaid' && teamStore.paidByOf({ paidPrivately: false, kind: 'receipt' }, false) === 'cash' && teamStore.paidByOf({ paidPrivately: true, kind: 'receipt' }, false) === 'private' && teamStore.paidByOf({ paidPrivately: true, kind: 'receipt' }, true) === 'bank')
+check('an inbox code is eight letters and digits that cannot be mistaken', /^[a-hjkmnp-z2-9]{8}$/.test(teamStore.inboxCode()))
+
+// The originals of the sample documents are real PDFs
+const pdf = new TextDecoder().decode(demo.demoPdf(226, 360, [{ text: 'Papiernictvo Pero (Košice)', bold: true }, { text: 'SPOLU 8,90 EUR' }]))
+const xrefAt = Number(pdf.match(/startxref\n(\d+)/)?.[1])
+check('a sample original is a PDF whose table of contents is where it says', pdf.startsWith('%PDF-1.4') && pdf.slice(xrefAt, xrefAt + 4) === 'xref' && pdf.includes('(Papiernictvo Pero \\(Kosice\\)) Tj'))
 
 done('units')

@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 17:50)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 13 October at 19:00)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,15 +23,23 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (106 unit checks) and `npm run test:runtime` (114 checks in workerd). The sixth
+- All checks pass: `npm test` (134 unit checks) and `npm run test:runtime` (170 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
   stránka. A hlavne ten systém musí fungovať logicky a dokonale"). Built under `/app`, pushed (`90032d6`), not
   deployed. What it is and how it works: "The client's app" below. A clickable copy with the sample company is the
-  artifact "Firmony aplikácia" (https://claude.ai/artifact/RiaH2Z4AzYHCM2EQw7EPhc, version 2), sent to him at about
-  17:20 with what to click. His message of 16:44 ended "Ešte som..." (cut off); he was asked to finish it and has
-  not answered yet.
+  artifact "Firmony aplikácia" (https://claude.ai/artifact/RiaH2Z4AzYHCM2EQw7EPhc), sent to him at about 17:20 with
+  what to click.
+- **The whole structure, from 17:48** (his word: "Nič som nechcel dopísať. Potrebujem, aby sme to nejak dokončili
+  a ešte raz musíš okopírovať tú štruktúru a to, čo ľudia milujú ... a dorob to celé, nech to už vytvorí štruktúru
+  a vieme postupovať ďalej"). He was sent four steps with a time for each, and a message after each:
+  1. The accountants' side and his administration (about 20:00): **done at about 19:00**, "The accountants'
+     side" below; the artifact (version 3) has both sides, the bar at its bottom switches between them.
+  2. For the client (about 21:30): documents forwarded by email, reminders by email, first steps after signing
+     in, the company's settings, inviting a partner, the app on the phone's home screen.
+  3. Issuing invoices, also as e-invoices, marked paid by themselves when the payment comes (about 23:00).
+  4. The bank by open banking (Enable Banking), switched on by his registration (about midnight).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -52,7 +60,10 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
    europio; without it every photo goes to the accountant). Before the first client: the privacy notice names
    Anthropic (photos and PDFs of documents, read and not kept for training), R2 for the files, and what the app
    keeps and how long (documents ten years by the accounting act, s. 35). Not written yet.
-7. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
+7. The first administrator: once email works, he signs in at /app/prihlasenie with `ahoj@firmony.ai`
+   (`TEAM.bootstrapEmail`): while nobody of the team exists, that address becomes the administrator
+   ("Christian Juhás"). Then he adds accountants on /ucto/tim; each signs in with her own email.
+8. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
    accountants to confirm 25/40/70 € a client), the trade licence "vedenie účtovníctva" added to europio, liability
    insurance, and a digital postman (Qvalia was the lead: ask for its per-client API price).
 
@@ -205,6 +216,51 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
   their ten years, thumbnails. Not seen in a real browser: a PDF opened by "Otvoriť originál" under its CSP; a
   photo from an iPhone made smaller by the script (HEIC).
 
+## The accountants' side (`src/team/`, views in `src/views/team.tsx`; 13 October 2026, from 17:48)
+
+What Pennylane and Dougs give the accountant, for the work behind the client's app: every client's work counted
+on one screen, a document booked on one screen with its original beside the form, the next one a click away.
+
+- Who: `users.team` is 'admin' or 'accountant' (null for a client). The same sign-in by link for everybody;
+  somebody of the team without a company lands on /ucto, one who also has a company of their own lands in it and
+  has "Účtovníctvo pre tím" in the column (and "Moja firma" on the team side). An accountant sees the companies
+  whose `accountant_id` is hers (`canSee`, `visible` in `src/team/store.ts`); the administrator sees all, makes
+  clients (/ucto/klienti/novy), reads the requests from the site (/ucto/ziadosti) and adds the team (/ucto/tim,
+  an email with the sign-in page goes to the new person). A client at any /ucto address gets a plain "not found"
+  page; anything a user may not see answers 404. Every POST is checked like the rest of the site (origin, length).
+- Klienti (/ucto): a table with what waits at each client (to book, to check, an unanswered message, payments
+  without a document at the client) and four figures above it; a client with nothing waiting has a green tick.
+- A client (/ucto/klienti/:id): to book, payments the client marked "no document needed" (OK, or "Vrátiť
+  klientovi", which clears the mark and writes to the client with the payment), the messages with a reply box
+  (the client is emailed "Firmony: máte novú správu"), payments without a document with "Pripomenúť klientovi"
+  (a message listing them, and an email), the company's data (DIČ, IČ DPH, VAT payer, the note for the team; plan
+  and accountant for the administrator), its people, the CSV for the accountant's program by month (UTF-8 with
+  BOM, ';', amounts as "12,40", no cell that Excel would run), and the suppliers' rules.
+- Booking (/ucto/doklady and /ucto/doklady/:id): the queue of all her clients, oldest first. One screen: the
+  original (a photo, or a PDF framed beside the form; a phone gets the link), the form (kind, what it is for as a
+  category with its account, supplier, IČO, number, dates typed "11. 10. 2026", amounts, VAT, VS, another account),
+  "Odpočítať DPH" for a VAT payer, "Zapamätať pre dodávateľa", and the entry it makes, MD and D, live from the form
+  (`entryFor` in `src/app/booking.ts`: a received invoice against 321, a receipt against 221 from the company's
+  account, 365 when the owner paid it himself, 211 from cash; VAT on 343 only when it is deducted; an issued
+  invoice 311 against 602 or 604 and 343). "Zaúčtovať a ďalší" books and opens the client's next document;
+  "Uložiť bez zaúčtovania"; "Zahodiť doklad" (a duplicate, or what is no document); a booked one can be changed
+  or unbooked, and is never deleted, by the client or the team. The reader proposes the category (`kategoria`);
+  a supplier's rule wins over it and is applied at once to the supplier's other waiting documents. The same
+  document sent twice (same number and amount, or same supplier, day and amount) is marked "Možný duplikát" and is
+  never paired by itself. A payment can be given to a document from its best candidates.
+- Messages (/ucto/spravy): the clients whose last message is theirs, the longest waiting first. A client's message
+  is emailed to the company's accountant, or to ahoj@ while it has none.
+- A request from the site becomes a client in one form (`?ziadost=`): company, person, plan, accountant, VAT, and
+  a welcome email with a sign-in link valid for `TEAM.welcomeDays` (7) days and the address for forwarding.
+- The sample team: /ucto/ukazka in the playground signs in as the administrator (Christian Juhás),
+  `?ako=uctovnicka` as Lucia Horváthová, who keeps Ukážková firma; Jana Kováčová keeps Ateliér Nova s. r. o.
+  (Eva Kollárová, with Martin Novák as her partner, so Martin's app shows the switch between the two companies).
+  Every sample document has its original, a small PDF made from its own figures (`demoPdf` in `src/app/demo.ts`).
+- On a phone the column is a menu in the bar (`BarMenu`): who is signed in, the switch, signing out.
+- Not built yet on this side: the VAT return and the control statement as XML, deadlines of every client on one
+  screen, the closing, booking the bank's own payments (a fee, a tax) as entries, a log of who changed what on the
+  pages (the events are recorded), assigning many clients at once, search in the queue.
+
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
@@ -289,10 +345,11 @@ npm test                 # unit checks (106): pairing, statements, e-invoices, r
 npm run test:runtime     # the deployable bundle in workerd (114): the site, and the app end to end
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs                         # takes the app's rules out one at a time (14, all held)
+node scripts/dev/mutate.mjs                         # takes this change's rules out one at a time (18, see its list)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
+The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?ako=uctovnicka` (Lucia).
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
 the café payment. A fresh sample company: remove `.wrangler/playground-d1` and `.wrangler/playground-r2` before

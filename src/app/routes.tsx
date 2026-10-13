@@ -4,27 +4,32 @@
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, BRAND } from '../config'
+import { APP, BRAND, TEAM } from '../config'
 import { ensureSchema, now, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf } from '../views/inside-pages'
 import { Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
+import { team as tt } from '../team/copy'
 import { app as t, monthName } from './copy'
 import { deadlinesFor, nextMonth } from './deadlines'
 import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { FILE_TYPES, fileHash, readDocument, sniff, type FileKind } from './read'
-import { currentWho, endSession, linkUsable, newLink, startSession, useLink } from './session'
+import { currentWho, endSession, linkUsable, newLink, startSession, switchStatement, useLink } from './session'
 import {
+  afterReading,
   clearExemptStatement,
+  companiesOf,
   countMissing,
+  getCompany,
   deleteDocumentStatements,
   documentByHash,
   documentsOfPayment,
   eventStatement,
   exemptStatement,
   filesToday,
+  firstCompanyOf,
   getDocument,
   getPayment,
   importStatements,
@@ -60,7 +65,10 @@ export interface AppBindings {
   DEMO?: string
 }
 
-type Env = { Bindings: AppBindings; Variables: { who: Who } }
+/** A signed-in client: a session in a company the user is still a member of. */
+export type ClientWho = Who & { company: Company; role: string }
+
+type Env = { Bindings: AppBindings; Variables: { who: ClientWho } }
 type Ctx = Context<Env>
 
 export const appRoutes = new Hono<Env>()
@@ -99,7 +107,19 @@ appRoutes.post('/prihlasenie', async (c) => {
     return render(c, <Door title={t.login.title}>{<LoginForm value={email} error={t.login.throttle} />}</Door>, 429)
   }
   // The same answer whether the address is ours or not: the form tells nobody who is a client.
-  const user = await userByEmail(db, email)
+  let user = await userByEmail(db, email)
+  if (!user && email.toLowerCase() === TEAM.bootstrapEmail.toLowerCase()) {
+    // The first administrator: whoever receives the email of the public mailbox, while nobody of the team exists.
+    const anyone = await db.prepare('SELECT 1 AS x FROM users WHERE team IS NOT NULL LIMIT 1').first()
+    if (!anyone) {
+      const id = crypto.randomUUID()
+      await db.batch([
+        db.prepare("INSERT INTO users (id, created_at, email, name, team) VALUES (?, ?, ?, ?, 'admin')").bind(id, now(), TEAM.bootstrapEmail, TEAM.bootstrapName),
+        eventStatement(db, { company: null, user: id, action: 'team.bootstrap' }),
+      ])
+      user = await userByEmail(db, email)
+    }
+  }
   if (user && (await withinLimit(db, 'link', user.email.toLowerCase(), APP.linksPerHour, 3600))) {
     const { token, statement } = await newLink(db, user.id)
     const link = `${siteOrigin(c)}/app/vstup?t=${token}`
@@ -126,8 +146,9 @@ appRoutes.post('/vstup', async (c) => {
   await ensureSchema(db)
   const user = await useLink(db, token)
   if (!user) return render(c, <Door title={t.login.expiredTitle}>{<Expired />}</Door>, 410)
-  if (!(await startSession(c, db, user))) return render(c, <Door title={t.login.expiredTitle}>{<Expired noCompany />}</Door>, 403)
-  return c.redirect('/app', 303)
+  const to = await startSession(c, db, user)
+  if (!to) return render(c, <Door title={t.login.expiredTitle}>{<Expired noCompany />}</Door>, 403)
+  return c.redirect(to, 303)
 })
 
 appRoutes.post('/odhlasit', async (c) => {
@@ -141,7 +162,7 @@ appRoutes.get('/ukazka', async (c) => {
   if (c.env.DEMO !== '1' || !isLocal(new URL(c.req.url).hostname)) return c.notFound()
   const db = c.env.DB
   await ensureSchema(db)
-  await seedDemo(db, today())
+  await seedDemo(db, today(), c.env.FILES)
   await startSession(c, db, DEMO.user, DEMO.company)
   return c.redirect('/app', 303)
 })
@@ -153,20 +174,31 @@ appRoutes.get('/ukazka', async (c) => {
 appRoutes.use('*', async (c, next) => {
   await ensureSchema(c.env.DB)
   const who = await currentWho(c, c.env.DB)
-  if (!who) {
-    if (c.req.method === 'GET' || c.req.method === 'HEAD') return c.redirect('/app/prihlasenie', 303)
-    return c.text('Forbidden', 403)
+  const reads = c.req.method === 'GET' || c.req.method === 'HEAD'
+  if (!who) return reads ? c.redirect('/app/prihlasenie', 303) : c.text('Forbidden', 403)
+  if (!who.company || !who.role) {
+    // Somebody of the team works on the other side; one who also has a company of their own is taken into it.
+    if (who.user.team) {
+      const own = await firstCompanyOf(c.env.DB, who.user.id)
+      if (own && reads) {
+        await c.env.DB.batch([switchStatement(c.env.DB, who.session, who.user.id, own)])
+        return c.redirect(new URL(c.req.url).pathname, 303)
+      }
+      return reads ? c.redirect('/ucto', 303) : c.text('Forbidden', 403)
+    }
+    await endSession(c, c.env.DB)
+    return reads ? c.redirect('/app/prihlasenie', 303) : c.text('Forbidden', 403)
   }
-  c.set('who', who)
+  c.set('who', who as ClientWho)
   await next()
 })
 
 async function shell(c: Ctx, place: Place | null, title: string, node: unknown, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
-  const [missing, unread] = await Promise.all([countMissing(c.env.DB, who.company.id), unseenFromFirmony(c.env.DB, who.company.id)])
+  const [missing, unread, companies] = await Promise.all([countMissing(c.env.DB, who.company.id), unseenFromFirmony(c.env.DB, who.company.id), companiesOf(c.env.DB, who.user.id)])
   return render(
     c,
-    <Shell who={who} place={place} missing={missing} unread={unread} title={title}>
+    <Shell who={who} place={place} missing={missing} unread={unread} companies={companies} title={title}>
       {node as never}
     </Shell>,
     status,
@@ -233,7 +265,7 @@ appRoutes.get('/', async (c) => {
       today={day}
       deadlines={deadlinesFor(who.company, day, new Map(byMonth.results.map((r) => [r.month, r.n])))}
       inbox={inboxAddress(who.company)}
-      accountant={who.company.accountant}
+      accountant={who.company.accountantName}
       last={messages[0] ?? null}
       now={now()}
       flash={flashOf(c)}
@@ -358,6 +390,7 @@ async function keepFiles(c: Ctx, files: Taken['files'], payment: string | null):
   const out = { added: 0, known: [] as string[] }
   if (!bucket) return out
   const toRead: string[] = []
+  const readNow: string[] = []
   const statements: D1PreparedStatement[] = []
   const seen = new Set<string>()
   for (const file of files) {
@@ -379,6 +412,7 @@ async function keepFiles(c: Ctx, files: Taken['files'], payment: string | null):
       reading = readInvoice(new TextDecoder().decode(file.bytes), who.company.ico)
       status = reading ? 'read' : 'manual'
       readBy = reading ? 'xml' : 'person: not an invoice'
+      if (reading) readNow.push(id)
     } else toRead.push(id)
     statements.push(
       insertDocumentStatement(db, { id, company: who.company.id, source: 'upload', addedBy: who.user.id, fileKey: key, fileType: FILE_TYPES[file.kind], fileName: file.name, fileBytes: file.bytes.length, fileHash: hash, reading, readBy, status }),
@@ -388,6 +422,7 @@ async function keepFiles(c: Ctx, files: Taken['files'], payment: string | null):
     out.added++
   }
   if (statements.length > 0) await db.batch(statements)
+  for (const id of readNow) await afterReading(db, who.company.id, id)
   if (out.added > 0) later(c, readAll(c.env, who.company, toRead, payment === null || files.some((f) => f.kind === 'xml')))
   return out
 }
@@ -411,8 +446,10 @@ export async function readOne(env: AppBindings, company: Company, id: string): P
   const bytes = new Uint8Array(await object.arrayBuffer())
   const kind = sniff(bytes)
   const result = kind ? await readDocument(env.ANTHROPIC_API_KEY, { kind, bytes }, company) : { manual: 'unknown file' }
-  if ('reading' in result) await db.batch([readingStatement(db, company.id, id, result.reading, result.by), eventStatement(db, { company: company.id, user: null, action: 'document.read', subject: id, detail: { by: result.by } })])
-  else await db.batch([manualStatement(db, company.id, id, result.manual), eventStatement(db, { company: company.id, user: null, action: 'document.manual', subject: id, detail: { why: result.manual } })])
+  if ('reading' in result) {
+    await db.batch([readingStatement(db, company.id, id, result.reading, result.by), eventStatement(db, { company: company.id, user: null, action: 'document.read', subject: id, detail: { by: result.by } })])
+    await afterReading(db, company.id, id)
+  } else await db.batch([manualStatement(db, company.id, id, result.manual), eventStatement(db, { company: company.id, user: null, action: 'document.manual', subject: id, detail: { why: result.manual } })])
 }
 
 appRoutes.get('/doklady', async (c) => {
@@ -534,13 +571,14 @@ appRoutes.get('/subory/:id', async (c) => {
   const type = row.file_type === 'application/xml' ? 'text/plain; charset=utf-8' : (row.file_type ?? 'application/octet-stream')
   const name = (row.file_name ?? 'doklad').replace(/[^\p{L}\p{N}._ -]/gu, '_')
   // A picture or a text runs nothing (sandbox); a PDF needs the browser's own viewer, which a sandbox would stop.
-  const policy = type === 'application/pdf' ? "default-src 'none'; object-src 'self'; frame-ancestors 'none'" : "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+  const policy = type === 'application/pdf' ? "default-src 'none'; object-src 'self'; frame-ancestors 'self'" : "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
   return new Response(object.body, {
     headers: {
       'Content-Type': type,
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
       'Cache-Control': 'private, no-store',
       'Content-Security-Policy': policy,
+      'X-Frame-Options': type === 'application/pdf' ? 'SAMEORIGIN' : 'DENY',
     },
   })
 })
@@ -556,7 +594,7 @@ async function messagesPage(c: Ctx, extra: { error?: string; draft?: string } = 
   const about = [...new Set(messages.map((m) => m.paymentId).filter((id): id is string => Boolean(id)))]
   const payments = new Map((await Promise.all(about.map((id) => getPayment(db, who.company.id, id)))).filter((p) => p !== null).map((p) => [p.id, p]))
   if (status === 200) await db.batch([seenStatement(db, who.company.id)])
-  return shell(c, 'messages', t.messages.title, <MessagesPage messages={messages} accountant={who.company.accountant} now={now()} payments={payments} flash={flashOf(c)} {...extra} />, status)
+  return shell(c, 'messages', t.messages.title, <MessagesPage messages={messages} accountant={who.company.accountantName} now={now()} payments={payments} flash={flashOf(c)} {...extra} />, status)
 }
 
 appRoutes.get('/spravy', (c) => messagesPage(c))
@@ -577,13 +615,31 @@ appRoutes.post('/spravy', async (c) => {
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'message.sent', subject: id }),
     queueStatement(db, {
       key: `message:${id}`,
-      to: BRAND.email,
-      subject: `Správa od klienta: ${who.company.name}`,
-      body: [`${who.user.name} (${who.company.name}) napísal(a):`, '', text, '', payment ? `K platbe ${payment.bookedOn}, ${(payment.amountCents / 100).toFixed(2)} €, ${payment.party ?? ''}` : '', `Odpovedať: ${siteOrigin(c)}/app/spravy`].join('\n'),
+      to: who.company.accountantEmail ?? BRAND.email,
+      subject: tt.mail.toTeamSubject(who.company.name),
+      body: tt.mail.toTeamBody(
+        who.user.name,
+        who.company.name,
+        text,
+        payment ? `${payment.bookedOn}, ${(payment.amountCents / 100).toFixed(2).replace('.', ',')} €, ${payment.party ?? payment.note ?? ''}` : null,
+        `${siteOrigin(c)}/ucto/klienti/${who.company.id}#spravy`,
+      ),
     }),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect('/app/spravy?ok=poslane#posledna', 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The company: switching to another one of the same user
+// ---------------------------------------------------------------------------------------------------------------
+
+appRoutes.post('/firma/prepnut', async (c) => {
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const company = typeof body.firma === 'string' && ID.test(body.firma) ? body.firma : ''
+  await c.env.DB.batch([switchStatement(c.env.DB, who.session, who.user.id, company)])
+  return c.redirect('/app', 303)
 })
 
 appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Missing />, 404) : c.redirect('/app/prihlasenie', 303)))
@@ -597,17 +653,17 @@ export async function appScheduled(env: AppBindings): Promise<void> {
   const db = env.DB
   const ts = now()
   const stuck = await db
-    .prepare(
-      `SELECT d.id AS doc_id, d.read_tries, c.id AS company_id, c.name, c.ico, c.vat_payer, c.plan, c.inbox, c.accountant, c.demo
-       FROM documents d JOIN companies c ON c.id = d.company_id
-       WHERE d.status = 'reading' AND d.deleted_at IS NULL AND d.created_at < ? ORDER BY d.created_at LIMIT 20`,
-    )
+    .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")
     .bind(ts - 120)
-    .all<Record<string, unknown>>()
+    .all<{ id: string; company_id: string; read_tries: number }>()
   for (const row of stuck.results) {
-    const company: Company = { id: String(row.company_id), name: String(row.name), ico: (row.ico as string | null) ?? null, vatPayer: row.vat_payer === 1, plan: String(row.plan), inbox: String(row.inbox), accountant: (row.accountant as string | null) ?? null, demo: row.demo === 1 }
-    if (Number(row.read_tries ?? 0) >= 3) await db.batch([manualStatement(db, company.id, String(row.doc_id), 'three tries')])
-    else await readOne(env, company, String(row.doc_id))
+    const company = await getCompany(db, row.company_id)
+    if (!company) continue
+    if (row.read_tries >= 3) await db.batch([manualStatement(db, company.id, row.id, 'three tries')])
+    else {
+      await readOne(env, company, row.id)
+      await matchCompany(db, company.id)
+    }
   }
   await db.batch([
     db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(ts),

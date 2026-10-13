@@ -57,7 +57,7 @@ export async function readerAnswer(request, calls = []) {
         type: 'tool_use',
         id: 'toolu_pretend',
         name: tool,
-        input: { je_doklad: true, typ: 'blocek', druha_strana: 'Kaviareň Na rohu s. r. o.', ico_druhej_strany: '50123456', datum_vystavenia: bratislavaDay(-1), suma_celkom: '12.40', dph_celkom: '2.07', mena: 'EUR' },
+        input: { je_doklad: true, typ: 'blocek', druha_strana: 'Kaviareň Na rohu s. r. o.', ico_druhej_strany: '50123456', datum_vystavenia: bratislavaDay(-1), suma_celkom: '12.40', dph_celkom: '2.07', mena: 'EUR', kategoria: 'representation' },
       },
     ],
     stop_reason: 'tool_use',

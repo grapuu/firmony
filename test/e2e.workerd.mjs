@@ -356,7 +356,7 @@ res = await appPost('/app/spravy', { sprava: 'Dobrý deň,\nčo s touto platbou?
 check('a message is sent', res.status === 303 && res.headers.get('location') === '/app/spravy?ok=poslane#posledna')
 await settle()
 const toUs = (await sent()).filter((m) => m.to === 'ahoj@firmony.ai' && m.subject.includes('Firma A')).pop()
-check('and we are told, with the payment it is about', Boolean(toUs) && toUs.text.includes('čo s touto platbou?') && toUs.text.includes('-64.18'))
+check('and we are told, with the payment it is about', Boolean(toUs) && toUs.text.includes('čo s touto platbou?') && toUs.text.includes('-64,18'))
 res = await appPost('/app/spravy', { sprava: 'Cudzia platba', platba: 'pb-1' })
 check('a message cannot point at another company\'s payment', (await db.prepare("SELECT payment_id FROM messages WHERE body = 'Cudzia platba'").first())?.payment_id === null)
 res = await appGet('/app/spravy')
@@ -381,6 +381,199 @@ jar = signedIn
 res = await appGet('/app')
 check('the old cookie opens nothing', res.status === 303 && res.headers.get('location') === '/app/prihlasenie')
 check('every change is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-a'").first())?.n >= 10)
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// The accountants' side
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Signs a browser in by the link in its email, from a connection of its own. */
+async function signIn(email) {
+  const n = (await sent()).length
+  await post('/app/prihlasenie', { email }, { ip: '203.0.113.30' })
+  await settle()
+  const mail = (await sent()).slice(n).filter((m) => m.to.toLowerCase() === email.toLowerCase()).pop()
+  const t = mail?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
+  const r = await post('/app/vstup', { t }, { ip: '203.0.113.30' })
+  return { cookie: (r.headers.get('set-cookie') ?? '').split(';')[0], location: r.headers.get('location'), mail }
+}
+const as = (cookie) => ({
+  get: (path) => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.30', cookie } }),
+  post(path, fields) {
+    const body = new URLSearchParams(fields).toString()
+    return mf.dispatchFetch(`${site}${path}`, {
+      method: 'POST',
+      body,
+      redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(body)), 'cf-connecting-ip': '203.0.113.30', origin: site, cookie },
+    })
+  },
+})
+const skDay = (d) => `${Number(d.slice(8, 10))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
+
+res = await get('/ucto')
+check('the team side sends a stranger to sign in', res.status === 303 && res.headers.get('location') === '/app/prihlasenie')
+res = await get('/ucto/ukazka')
+check('the sample team does not exist on the live Worker', res.status === 404)
+
+// The first administrator: whoever reads the public mailbox, while the team is empty
+const boss = await signIn('ahoj@firmony.ai')
+const bossRow = await db.prepare("SELECT id, team, name FROM users WHERE email = 'ahoj@firmony.ai'").first()
+check('the public mailbox becomes the first administrator', bossRow?.team === 'admin' && bossRow.name === 'Christian Juhás' && boss.location === '/ucto')
+const admin = as(boss.cookie)
+res = await admin.get('/ucto')
+page = await res.text()
+check('the administrator sees every client', res.status === 200 && page.includes('Firma A s. r. o.') && page.includes('Firma B s. r. o.'))
+check('the team side runs no inline script either', !/<script>/.test(page) && !/ style=/i.test(page) && (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
+res = await admin.get('/app')
+check('somebody of the team without a company of their own is sent to the team side', res.status === 303 && res.headers.get('location') === '/ucto')
+
+// A client is no one there
+const annaCookie = (await signIn('anna@firma-a.test')).cookie
+const anna = as(annaCookie)
+for (const path of ['/ucto', '/ucto/doklady', '/ucto/klienti/co-a', '/ucto/ziadosti', `/ucto/subory/${cafeDoc?.id}`]) {
+  res = await anna.get(path)
+  check(`a client gets nothing at ${path.replace(/\/[0-9a-f-]{36}$/, '/…')}`, res.status === 404)
+}
+res = await anna.post('/ucto/klienti/co-a/spravy', { sprava: 'ja som účtovníčka' })
+check('nor can a client answer as the team', res.status === 404 && (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE body = 'ja som účtovníčka'").first())?.n === 0)
+
+// The administrator adds an accountant and gives her Firma A
+res = await admin.post('/ucto/tim', { name: 'Lucia Horváthová', email: 'lucia@firmony.test', rola: 'accountant' })
+await settle()
+const lucia = await db.prepare("SELECT id, team FROM users WHERE email = 'lucia@firmony.test'").first()
+check('an accountant is added and told how to sign in', res.status === 303 && lucia?.team === 'accountant' && (await sent()).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('/app/prihlasenie')))
+res = await admin.post('/ucto/klienti/co-a/udaje', { dic: '2121234567', icdph: '', poznamka: 'Chce prehľad do 20.', plan: 'rast', uctovnicka: lucia?.id ?? '' })
+const coA = await db.prepare("SELECT accountant_id, dic, plan, note FROM companies WHERE id = 'co-a'").first()
+check('a client is given to her', res.status === 303 && coA?.accountant_id === lucia?.id && coA.dic === '2121234567' && coA.plan === 'rast' && coA.note === 'Chce prehľad do 20.')
+
+// The accountant sees her own clients and nothing else
+const luc = await signIn('lucia@firmony.test')
+const acc = as(luc.cookie)
+check('an accountant signs in to the team side', luc.location === '/ucto')
+res = await acc.get('/ucto')
+page = await res.text()
+check('she sees her client and not the others', page.includes('Firma A s. r. o.') && !page.includes('Firma B s. r. o.'))
+for (const path of ['/ucto/klienti/co-b', '/ucto/doklady/db-1', '/ucto/subory/db-1', '/ucto/ziadosti', '/ucto/tim', '/ucto/klienti/novy']) {
+  res = await acc.get(path)
+  check(`an accountant gets nothing at ${path}`, res.status === 404)
+}
+res = await acc.post('/ucto/platby/pb-1/kontrola', { ok: '1' })
+check('nor can she touch a payment of another accountant', res.status === 404)
+
+// Booking: the reader's proposal, an entry, a rule for the supplier
+res = await acc.get(`/ucto/doklady/${cafeDoc?.id}`)
+page = await res.text()
+check('a document waits with the reader\'s proposal and the entry it makes', res.status === 200 && page.includes('Návrh od AI') && page.includes('513') && page.includes('221'), page.match(/entry__table[\s\S]{0,300}/)?.[0])
+res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, { akcia: 'dalsi', kind: 'receipt', category: 'representation', party: 'Kaviareň Na rohu s. r. o.', ico: '50123456', number: '', vs: '', issued: skDay(day(-1)), due: '', total: '12,40', vat: '2,07', account: '', remember: '1' })
+const booked = await db.prepare('SELECT booked_at, booked_by, category, vat_deduct, issued_on FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first()
+check('booked by her, with what she chose', res.status === 303 && Boolean(booked?.booked_at) && booked.booked_by === lucia?.id && booked.category === 'representation' && booked.vat_deduct === 0 && booked.issued_on === day(-1), JSON.stringify(booked))
+check('and the supplier is remembered', (await db.prepare("SELECT category FROM supplier_rules WHERE company_id = 'co-a' AND key = 'ico:50123456'").first())?.category === 'representation')
+res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, { akcia: 'ulozit', kind: 'receipt', category: 'representation', party: 'x', total: '12,40', vat: '99,00', issued: '31. 2. 2026' })
+page = await res.text()
+check('a wrong date or VAT is said, and nothing changes', res.status === 422 && page.includes('Dátum píšte ako') && page.includes('DPH musí byť') && (await db.prepare('SELECT party FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first())?.party === 'Kaviareň Na rohu s. r. o.')
+res = await anna.post(`/app/doklady/${cafeDoc?.id}/zmazat`, {})
+check('a client cannot delete a booked document', (await db.prepare('SELECT deleted_at FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first())?.deleted_at === null)
+
+// The same receipt sent again: a suspected duplicate, proposed by the rule, and thrown away
+jar = annaCookie
+res = await appPost('/app/doklady', {}, { files: [{ name: 'znova.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 5, 5, 5, 5, 5]) }] })
+await settle(600)
+const twin = await db.prepare("SELECT d.id, d.duplicate_of, d.proposal, d.category, l.payment_id FROM documents d LEFT JOIN links l ON l.document_id = d.id WHERE d.file_name = 'znova.jpg'").first()
+check('the same receipt again is a suspected duplicate, proposed by the rule, and paired with nothing', twin?.duplicate_of === cafeDoc?.id && twin.proposal === 'rule' && twin.category === 'representation' && twin.payment_id === null, JSON.stringify(twin))
+res = await acc.get(`/ucto/doklady/${twin?.id}`)
+page = await res.text()
+check('the accountant is told so, and can open the other one', /Možno ide o.duplikát/.test(page) && page.includes(`/ucto/doklady/${cafeDoc?.id}`) && page.includes('Podľa pravidla'))
+res = await acc.post(`/ucto/doklady/${twin?.id}`, { akcia: 'zahodit' })
+check('a duplicate is thrown away', res.status === 303 && Boolean((await db.prepare('SELECT deleted_at FROM documents WHERE id = ?').bind(twin?.id ?? '').first())?.deleted_at))
+res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, { akcia: 'zahodit' })
+check('a booked document is not thrown away', (await db.prepare('SELECT deleted_at FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first())?.deleted_at === null)
+
+// The export for her accounting program
+res = await acc.get(`/ucto/klienti/co-a/export?mesiac=${day(-1).slice(0, 7)}`)
+const csvBytes = new Uint8Array(await res.arrayBuffer())
+const csv = new TextDecoder().decode(csvBytes)
+check('booked documents of a month as CSV for Slovak Excel', res.status === 200 && (res.headers.get('content-type') ?? '').startsWith('text/csv') && csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf && csv.includes('Kaviareň Na rohu s. r. o.;50123456;12,40;2,07;10,33;Reprezentácia;513;221'), csv.split('\r\n')[1])
+res = await acc.get('/ucto/klienti/co-b/export')
+check('never of a client that is not hers', res.status === 404)
+
+// A payment the client says needs no document: checked, or handed back with a message
+await db.prepare("UPDATE payments SET exempt = 'other', exempt_note = 'Bloček sa stratil', exempt_by = 'u-a' WHERE id = 'pa-fuel'").run()
+res = await acc.get('/ucto/klienti/co-a')
+page = await res.text()
+check('she sees what the client marked', page.includes('Bloček sa stratil') && page.includes('Vrátiť klientovi'))
+const before2 = (await sent()).length
+res = await acc.post('/ucto/platby/pa-fuel/kontrola', { ok: '0' })
+await settle()
+const back = await db.prepare("SELECT exempt FROM payments WHERE id = 'pa-fuel'").first()
+const backMsg = await db.prepare("SELECT body, author, side FROM messages WHERE payment_id = 'pa-fuel' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
+check('handed back, it needs a document again, with a message from her', back?.exempt === null && backMsg?.side === 'firmony' && backMsg.author === lucia?.id && backMsg.body.includes('64,18'))
+check('and the client is told by email', (await sent()).slice(before2).some((m) => m.to === 'anna@firma-a.test' && m.subject === 'Firmony: máte novú správu'))
+
+// Messages: what waits for an answer, and the answer
+res = await acc.get('/ucto/spravy')
+page = await res.text()
+check('a client\'s message waits for her', page.includes('Firma A s. r. o.') || page.includes('Všetkým klientom ste odpovedali'))
+jar = annaCookie
+res = await appPost('/app/spravy', { sprava: 'Bloček naozaj nemám.' })
+await settle()
+check('a client\'s message now goes to her own accountant', (await sent()).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('Bloček naozaj nemám.') && m.text.includes('/ucto/klienti/co-a#spravy')))
+res = await acc.get('/ucto/spravy')
+check('and waits in her inbox', (await res.text()).includes('Bloček naozaj nemám.'))
+res = await acc.post('/ucto/klienti/co-a/spravy', { sprava: 'Rozumiem, zaúčtujeme ho podľa výpisu.' })
+await settle()
+res = await acc.get('/ucto/spravy')
+check('answered, nothing waits', (await res.text()).includes('Všetkým klientom ste odpovedali'))
+jar = annaCookie
+res = await appGet('/app/spravy')
+check('the client reads the answer under her name', (await res.text()).includes('Lucia Horváthová'))
+
+// A request from the site becomes a client in one form, with a welcome email that signs in
+await db.prepare("INSERT INTO requests (id, created_at, ico, company, plan, situation, name, email, privacy_version) VALUES ('req-x', ?, NULL, 'Nová firma s. r. o.', 'rast', 'fresh', 'Peter Nový', 'peter@nova-firma.test', 'v1')").bind(nowS).run()
+res = await admin.get('/ucto/ziadosti')
+check('the administrator sees the request', (await res.text()).includes('Nová firma s. r. o.'))
+res = await admin.get('/ucto/klienti/novy?ziadost=req-x')
+page = await res.text()
+check('the form starts from the request', page.includes('value="Nová firma s. r. o."') && page.includes('value="peter@nova-firma.test"') && page.includes('value="Peter Nový"'))
+res = await acc.post('/ucto/klienti', { name: 'Iná s. r. o.', person: 'Ina', email: 'ina@ina.test', plan: 'start' })
+check('an accountant cannot make a client', res.status === 404 && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE name = 'Iná s. r. o.'").first())?.n === 0)
+res = await admin.post('/ucto/klienti', { ico: '57442452', name: 'Duplicitná', person: 'X Y', email: 'x@y.test', plan: 'start' })
+check('a company that is already ours is not made twice', res.status === 422 && /už.u.nás je/.test(await res.text()))
+const before3 = (await sent()).length
+res = await admin.post('/ucto/klienti', { ico: '', name: 'Nová firma s. r. o.', address: '', person: 'Peter Nový', email: 'peter@nova-firma.test', plan: 'rast', uctovnicka: lucia?.id ?? '', uvitat: '1', ziadost: 'req-x', akcia: 'zalozit' })
+await settle()
+const made = await db.prepare("SELECT c.id, c.accountant_id, c.plan, c.inbox, m.role FROM companies c JOIN members m ON m.company_id = c.id JOIN users u ON u.id = m.user_id WHERE c.name = 'Nová firma s. r. o.' AND u.email = 'peter@nova-firma.test'").first()
+check('the client, the person and the membership are made at once', res.status === 303 && made?.accountant_id === lucia?.id && made.plan === 'rast' && made.role === 'owner' && /^[a-z2-9]{8}$/.test(made.inbox))
+check('the request is marked as a client', (await db.prepare("SELECT status FROM requests WHERE id = 'req-x'").first())?.status === 'client')
+const welcome = (await sent()).slice(before3).find((m) => m.to === 'peter@nova-firma.test')
+const welcomeToken = welcome?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
+check('a welcome email with the address for documents', Boolean(welcome) && welcome.subject === 'Vitajte vo Firmony' && welcome.text.includes(`doklady-${made?.inbox}@firmony.ai`))
+res = await post('/app/vstup', { t: welcomeToken }, { ip: '203.0.113.31' })
+const peter = as((res.headers.get('set-cookie') ?? '').split(';')[0])
+check('its link signs the new client in', res.status === 303 && res.headers.get('location') === '/app')
+res = await peter.get('/app')
+check('into his new company', (await res.text()).includes('Nová firma s. r. o.'))
+
+// A person in two companies switches between them, and only between his own
+await db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('co-b', 'u-a', 'member', ?)").bind(nowS).run()
+res = await anna.get('/app')
+page = await res.text()
+check('a person in two companies is offered the switch', page.includes('action="/app/firma/prepnut"') && page.includes('Firma B s. r. o.'))
+res = await anna.post('/app/firma/prepnut', { firma: 'co-b' })
+res = await anna.get('/app')
+check('and is in the other one', (await res.text()).includes('Firma B s. r. o.'))
+res = await anna.post('/app/firma/prepnut', { firma: made?.id ?? '' })
+res = await anna.get('/app/platby')
+page = await res.text()
+check('never in a company she is no member of: she stays where she was', res.status === 200 && page.includes('Firma B s. r. o.') && !page.includes('Nová firma s. r. o.'))
+
+// The public mailbox makes an administrator only while the team is empty
+await db.prepare("UPDATE users SET email = 'christian@europio.test' WHERE id = ?").bind(bossRow?.id ?? '').run()
+await post('/app/prihlasenie', { email: 'ahoj@firmony.ai' }, { ip: '203.0.113.32' })
+await settle()
+check('once a team exists, the public mailbox makes nobody an administrator', (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'ahoj@firmony.ai'").first())?.n === 0)
+await db.prepare("UPDATE users SET email = 'ahoj@firmony.ai' WHERE id = ?").bind(bossRow?.id ?? '').run()
+check('the team\'s work is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action IN ('document.booked', 'document.discarded', 'exempt.returned', 'message.answered', 'company.created', 'team.added', 'team.bootstrap')").first())?.n >= 7)
 
 await mf.dispose()
 done('runtime')

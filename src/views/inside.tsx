@@ -4,7 +4,7 @@
 import type { Child, FC } from 'hono/jsx'
 import { ART, BRAND, type Art } from '../config'
 import { app } from '../app/copy'
-import type { Who } from '../app/store'
+import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
 
@@ -72,7 +72,18 @@ const Pick: FC = () => (
   </form>
 )
 
-export const Shell: FC<{ who: Who; place: Place | null; missing: number; unread: number; title: string; children: Child }> = ({ who, place, missing, unread, title, children }) => (
+export interface ShellProps {
+  who: Who & { company: Company }
+  place: Place | null
+  missing: number
+  unread: number
+  /** Every company of the user, to switch between them; one company shows no switch. */
+  companies: { id: string; name: string }[]
+  title: string
+  children: Child
+}
+
+export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, title, children }) => (
   <html lang="sk">
     <InsideHead title={`${title} | ${BRAND.name}`} />
     <body class="inside">
@@ -84,10 +95,30 @@ export const Shell: FC<{ who: Who; place: Place | null; missing: number; unread:
           <div class="side__top">
             <Wordmark href="/app" label={app.nav.home} />
           </div>
-          <div class="side__company">
-            <span class="side__name">{who.company.name}</span>
-            <span class="side__plan">{app.nav.plan(planName(who.company.plan))}</span>
-          </div>
+          {companies.length > 1 ? (
+            <details class="side__company side__company--switch">
+              <summary class="side__summary">
+                <span class="side__name">{who.company.name}</span>
+                <span class="side__plan">{app.nav.plan(planName(who.company.plan))}</span>
+              </summary>
+              <div class="side__switch">
+                <p class="side__switchlabel">{app.nav.switch}</p>
+                {companies.map((other) => (
+                  <form method="post" action="/app/firma/prepnut">
+                    <input type="hidden" name="firma" value={other.id} />
+                    <button class="side__other" type="submit" aria-current={other.id === who.company.id ? 'true' : undefined}>
+                      {other.name}
+                    </button>
+                  </form>
+                ))}
+              </div>
+            </details>
+          ) : (
+            <div class="side__company">
+              <span class="side__name">{who.company.name}</span>
+              <span class="side__plan">{app.nav.plan(planName(who.company.plan))}</span>
+            </div>
+          )}
           <nav class="side__nav">
             {NAV.map((item) => (
               <a class="side__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
@@ -102,6 +133,11 @@ export const Shell: FC<{ who: Who; place: Place | null; missing: number; unread:
             {app.nav.add}
           </a>
           <div class="side__foot">
+            {who.user.team ? (
+              <a class="side__team" href="/ucto">
+                {app.nav.team}
+              </a>
+            ) : null}
             <span class="side__user">{who.user.name}</span>
             <span class="side__email">{who.user.email}</span>
             <form method="post" action="/app/odhlasit">
@@ -114,7 +150,26 @@ export const Shell: FC<{ who: Who; place: Place | null; missing: number; unread:
         <div class="stage">
           <header class="bar">
             <Wordmark href="/app" label={app.nav.home} />
-            <span class="bar__company">{who.company.name}</span>
+            <BarMenu label={who.company.name} user={who.user}>
+              {companies.length > 1 ? (
+                <>
+                  <p class="barmenu__label">{app.nav.switch}</p>
+                  {companies.map((other) => (
+                    <form method="post" action="/app/firma/prepnut">
+                      <input type="hidden" name="firma" value={other.id} />
+                      <button class="barmenu__item" type="submit" aria-current={other.id === who.company.id ? 'true' : undefined}>
+                        {other.name}
+                      </button>
+                    </form>
+                  ))}
+                </>
+              ) : null}
+              {who.user.team ? (
+                <a class="barmenu__item" href="/ucto">
+                  {app.nav.team}
+                </a>
+              ) : null}
+            </BarMenu>
           </header>
           <main id="obsah" class="content">
             {children}
@@ -138,6 +193,27 @@ export const Shell: FC<{ who: Who; place: Place | null; missing: number; unread:
       <Pick />
     </body>
   </html>
+)
+
+/** On a phone the column on the left is gone: the bar's menu holds who is signed in, the switch and signing out. */
+export const BarMenu: FC<{ label: string; user: { name: string; email: string }; children?: Child }> = ({ label, user, children }) => (
+  <details class="barmenu">
+    <summary class="barmenu__summary">
+      <span class="barmenu__name">{label}</span>
+    </summary>
+    <div class="barmenu__panel">
+      {children}
+      <p class="barmenu__who">
+        <span class="barmenu__user">{user.name}</span>
+        <span class="barmenu__email">{user.email}</span>
+      </p>
+      <form method="post" action="/app/odhlasit">
+        <button class="barmenu__item barmenu__item--out" type="submit">
+          {app.nav.signOut}
+        </button>
+      </form>
+    </div>
+  </details>
 )
 
 const TabLink: FC<{ item: (typeof NAV)[number]; place: Place | null; n: number }> = ({ item, place, n }) => (

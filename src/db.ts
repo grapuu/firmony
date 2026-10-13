@@ -46,40 +46,53 @@ const MIGRATIONS: readonly string[][] = [
     )`,
     'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
   ],
-  // The client's app (13 October 2026): companies and who may see them, sign-in by an emailed link, the bank's
-  // payments, the documents, which document belongs to which payment, messages with the accountant, and a
-  // record of what changed. Whether a payment still needs a document is never stored: it is read from `links`
-  // and `exempt` every time (src/app/store.ts), so it cannot disagree with them.
+  // The client's app and the accountants' side (13 October 2026). Nothing of this step has reached a live database
+  // yet (no Worker exists), so it was rewritten in place that evening; once deployed, it is never edited again.
+  // Whether a payment still needs a document is never stored: it is read from `links` and `exempt` every time
+  // (src/app/store.ts), so it cannot disagree with them.
   [
     `CREATE TABLE IF NOT EXISTS companies (
       id TEXT PRIMARY KEY,
       created_at INTEGER NOT NULL,
       name TEXT NOT NULL,
       ico TEXT,
+      dic TEXT,
+      icdph TEXT,
+      address TEXT,
+      register_line TEXT,
       vat_payer INTEGER NOT NULL DEFAULT 0,
       plan TEXT NOT NULL,
       inbox TEXT NOT NULL UNIQUE,
-      accountant TEXT,
-      demo INTEGER NOT NULL DEFAULT 0
+      accountant_id TEXT,
+      request_id TEXT,
+      note TEXT,
+      demo INTEGER NOT NULL DEFAULT 0,
+      closed_at INTEGER,
+      invoice_iban TEXT,
+      invoice_due_days INTEGER NOT NULL DEFAULT 14,
+      invoice_footer TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       created_at INTEGER NOT NULL,
       email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-      name TEXT NOT NULL
+      name TEXT NOT NULL,
+      team TEXT,
+      reminders INTEGER NOT NULL DEFAULT 1
     )`,
     `CREATE TABLE IF NOT EXISTS members (
       company_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       role TEXT NOT NULL,
       created_at INTEGER NOT NULL,
+      invited_by TEXT,
       PRIMARY KEY (company_id, user_id)
     )`,
     'CREATE INDEX IF NOT EXISTS members_user ON members (user_id)',
     `CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
-      company_id TEXT NOT NULL,
+      company_id TEXT,
       created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL
     )`,
@@ -98,7 +111,23 @@ const MIGRATIONS: readonly string[][] = [
       bank TEXT,
       balance_cents INTEGER,
       balance_on TEXT,
+      link_id TEXT,
+      remote_id TEXT,
       UNIQUE (company_id, iban)
+    )`,
+    `CREATE TABLE IF NOT EXISTS bank_links (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      bank TEXT NOT NULL,
+      country TEXT NOT NULL,
+      state TEXT NOT NULL UNIQUE,
+      session_id TEXT,
+      valid_until INTEGER,
+      status TEXT NOT NULL,
+      synced_at INTEGER,
+      error TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY,
@@ -116,9 +145,12 @@ const MIGRATIONS: readonly string[][] = [
       note TEXT,
       card INTEGER NOT NULL DEFAULT 0,
       ref TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'statement',
       exempt TEXT,
       exempt_note TEXT,
       exempt_by TEXT,
+      checked_at INTEGER,
+      checked_by TEXT,
       UNIQUE (account_id, ref)
     )`,
     'CREATE INDEX IF NOT EXISTS payments_company ON payments (company_id, booked_on)',
@@ -147,6 +179,14 @@ const MIGRATIONS: readonly string[][] = [
       total_cents INTEGER,
       vat_cents INTEGER,
       currency TEXT,
+      category TEXT,
+      proposal TEXT,
+      vat_deduct INTEGER,
+      account TEXT,
+      booked_at INTEGER,
+      booked_by TEXT,
+      duplicate_of TEXT,
+      invoice_id TEXT,
       paid_privately INTEGER NOT NULL DEFAULT 0,
       deleted_at INTEGER
     )`,
@@ -161,6 +201,17 @@ const MIGRATIONS: readonly string[][] = [
       created_at INTEGER NOT NULL
     )`,
     'CREATE INDEX IF NOT EXISTS links_payment ON links (payment_id)',
+    `CREATE TABLE IF NOT EXISTS supplier_rules (
+      company_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      name TEXT,
+      category TEXT NOT NULL,
+      vat_deduct INTEGER NOT NULL,
+      uses INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT,
+      PRIMARY KEY (company_id, key)
+    )`,
     `CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL,
@@ -172,6 +223,55 @@ const MIGRATIONS: readonly string[][] = [
       seen_at INTEGER
     )`,
     'CREATE INDEX IF NOT EXISTS messages_company ON messages (company_id, created_at)',
+    `CREATE TABLE IF NOT EXISTS invoices (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      status TEXT NOT NULL,
+      year INTEGER,
+      seq INTEGER,
+      number TEXT,
+      customer_name TEXT NOT NULL,
+      customer_ico TEXT,
+      customer_dic TEXT,
+      customer_icdph TEXT,
+      customer_address TEXT,
+      customer_email TEXT,
+      issued_on TEXT NOT NULL,
+      delivered_on TEXT NOT NULL,
+      due_on TEXT NOT NULL,
+      note TEXT,
+      base_cents INTEGER NOT NULL,
+      vat_cents INTEGER NOT NULL,
+      total_cents INTEGER NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      document_id TEXT,
+      sent_at INTEGER,
+      reminded_at INTEGER,
+      UNIQUE (company_id, number)
+    )`,
+    'CREATE INDEX IF NOT EXISTS invoices_company ON invoices (company_id, created_at)',
+    `CREATE TABLE IF NOT EXISTS invoice_lines (
+      invoice_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      quantity_milli INTEGER NOT NULL,
+      unit TEXT,
+      unit_cents INTEGER NOT NULL,
+      vat_rate INTEGER NOT NULL,
+      base_cents INTEGER NOT NULL,
+      PRIMARY KEY (invoice_id, position)
+    )`,
+    `CREATE TABLE IF NOT EXISTS inbound_mail (
+      id TEXT PRIMARY KEY,
+      company_id TEXT,
+      received_at INTEGER NOT NULL,
+      sender TEXT,
+      subject TEXT,
+      files INTEGER NOT NULL,
+      status TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       at INTEGER NOT NULL,
@@ -181,6 +281,7 @@ const MIGRATIONS: readonly string[][] = [
       subject TEXT,
       detail TEXT
     )`,
+    'CREATE INDEX IF NOT EXISTS events_company ON events (company_id, at)',
   ],
 ]
 

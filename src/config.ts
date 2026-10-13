@@ -195,6 +195,15 @@ export const APP = {
   inboxPrefix: 'doklady-',
 } as const
 
+/** The people of Firmony: who becomes the first administrator, and how long a welcome link works. */
+export const TEAM = {
+  /** Whoever signs in with this address while nobody of the team exists becomes the first administrator. */
+  bootstrapEmail: BRAND.email,
+  bootstrapName: 'Christian Juhás',
+  /** The link in the email that welcomes a new client works this many days, once. */
+  welcomeDays: 7,
+} as const
+
 /**
  * The reader of photographed and scanned documents: Claude, through Anthropic's API (secret ANTHROPIC_API_KEY).
  * Without the key nothing is sent anywhere and the accountant reads the document. An e-invoice (XML) is read by

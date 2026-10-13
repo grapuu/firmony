@@ -2,6 +2,7 @@
 // Claude's (Anthropic's API, READER in config.ts); an e-invoice is read by our own code (xml.ts). Without the key,
 // or when the reader cannot say, the document goes to the accountant, and the client is told only that.
 import { READER } from '../config'
+import { CATEGORIES, CATEGORY_IDS, isCategory } from './booking'
 import { toCents, type Reading } from './xml'
 import type { DocKind } from './match'
 
@@ -54,6 +55,11 @@ const TOOL = {
       suma_celkom: { type: 'string', description: 'Celková suma na úhradu s DPH, s desatinnou bodkou, napríklad 12.40.' },
       dph_celkom: { type: 'string', description: 'Celková DPH, s desatinnou bodkou.' },
       mena: { type: 'string', description: 'Kód meny, napríklad EUR.' },
+      kategoria: {
+        type: 'string',
+        enum: CATEGORY_IDS,
+        description: `Na čo výdavok bol, alebo pri faktúre vydanej za čo: ${CATEGORY_IDS.map((id) => `${id} (${CATEGORIES[id].hint})`).join('; ')}.`,
+      },
     },
     required: ['je_doklad'],
   },
@@ -87,6 +93,7 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
     totalCents: total !== null && total > 0 ? total : null,
     vatCents: vat !== null && vat >= 0 ? vat : null,
     currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null,
+    category: isCategory(input.kategoria) ? input.kategoria : null,
   }
 }
 

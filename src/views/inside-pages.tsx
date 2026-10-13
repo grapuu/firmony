@@ -298,7 +298,7 @@ export const Overview: FC<OverviewProps> = (props) => {
           {props.last ? (
             <a class="mate__last" href="/app/spravy#posledna">
               <span class="mate__lastwho">
-                {props.last.side === 'firmony' ? (props.accountant ?? app.home.accountant) : app.messages.you}, {whenName(props.last.createdAt, props.now)}
+                {props.last.side === 'firmony' ? (props.last.authorName ?? props.accountant ?? app.home.accountant) : app.messages.you}, {whenName(props.last.createdAt, props.now)}
               </span>
               <span class="mate__lasttext">{props.last.body}</span>
             </a>
@@ -874,7 +874,7 @@ export const MessagesPage: FC<{ messages: Message[]; accountant: string | null; 
                   <p class="msg__body">{m.body}</p>
                 </div>
                 <p class="msg__meta">
-                  {m.side === 'client' ? app.messages.you : (accountant ?? app.home.accountant)}, {whenName(m.createdAt, now)}
+                  {m.side === 'client' ? app.messages.you : (m.authorName ?? accountant ?? app.home.accountant)}, {whenName(m.createdAt, now)}
                 </p>
               </li>
             )

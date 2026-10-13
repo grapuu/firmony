@@ -69,6 +69,9 @@ export const app = typesetAll({
     signOut: 'Odhlásiť sa',
     plan: (name: string) => typeset(`Balík ${name}`),
     unread: 'nové správy',
+    switch: 'Prepnúť na firmu',
+    team: 'Účtovníctvo pre tím',
+    settings: 'Firma a nastavenia',
   },
   login: {
     title: 'Prihlásenie',
@@ -248,7 +251,7 @@ export const app = typesetAll({
     vat: 'Z toho DPH',
     vs: 'Variabilný symbol',
     iban: 'Platiť na účet',
-    source: { upload: 'Nahrali ste ho', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra' },
+    source: { upload: 'Nahrali ste ho', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra', issued: 'Vystavili ste ju vo Firmony' },
     original: 'Otvoriť originál',
     payment: 'Platba',
     noPayment: 'Zatiaľ k nemu nemáme platbu.',

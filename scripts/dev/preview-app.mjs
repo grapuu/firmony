@@ -12,6 +12,7 @@
 // under itself what the live app does instead.
 import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 const out = process.argv[2]
 const photo = process.argv[3]
@@ -93,7 +94,10 @@ function script(leads) {
     upload: 'Toto je náhľad: nič sa neposiela. V aplikácii sa doklad hneď nahrá, prečíta a priradí k platbe.',
     banka: 'Toto je náhľad. V aplikácii sa z výpisu doplnia platby a sami sa spárujú s dokladmi.',
     message: 'Toto je náhľad: správa sa neposiela. V aplikácii príde účtovníčke a odpovie do jedného pracovného dňa.',
-    other: 'Toto je náhľad: nič sa neukladá. V aplikácii sa to hneď uloží.'
+    other: 'Toto je náhľad: nič sa neukladá. V aplikácii sa to hneď uloží.',
+    book: 'Toto je náhľad: nič sa neukladá. V aplikácii sa doklad zaúčtuje a hneď sa otvorí ďalší.',
+    export: 'Toto je náhľad. V aplikácii sa stiahne súbor CSV pre účtovný program.',
+    team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.'
   };
   function note(form, text) {
     var p = form.querySelector('.preview-note');
@@ -102,6 +106,9 @@ function script(leads) {
   }
   function kind(form) {
     var a = form.getAttribute('data-action') || '';
+    if (/^\\/ucto\\/doklady\\//.test(a)) return 'book';
+    if (/\\/export$/.test(a)) return 'export';
+    if (/^\\/ucto\\//.test(a)) return 'team';
     if (/\\/banka$/.test(a)) return 'banka';
     if (form.querySelector('input[type=file]')) return 'upload';
     if (/\\/spravy$/.test(a)) return 'message';
@@ -139,11 +146,12 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad aplikácie s ukážkovými údajmi.</span><a href="vsetko-mame.html">Prehľad, keď nič nechýba</a><a href="index.html">Späť na začiatok</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a></div>`
 
 function rewrite(page, extra) {
   return page
     .replace(/<script src="\/inside\.js" defer><\/script>/, '')
+    .replace(/<iframe class="book__pdf" src="([^"]+)"[^>]*><\/iframe>/g, '<div class="book__img book__img--preview"><img src="$1" alt=""></div>')
     .replace(/<form([^>]*?) action="([^"]*)"/g, (_, attrs, action) => `<form${attrs} data-action="${action}" action="#"`)
     .replace(/(href|src)="(\/[^"]*)"/g, (_, attr, href) => `${attr}="${local(href.replace(/&amp;/g, '&'), extra)}"`)
     .replace(/srcset="([^"]*)"/g, (_, set) => `srcset="${set.replace(/(^|,\s*)\/(art\/)/g, '$1$2')}"`)
@@ -194,6 +202,51 @@ const body = new URLSearchParams({ dovod: 'other', poznamka: 'Tankovanie služob
 const res = await call(`${fuel.path}/bez-dokladu`, { method: 'POST', body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
 if (res.status !== 303) throw new Error(`no document: ${res.status}`)
 await write('platba-tankovanie-netreba.html', await html(`${fuel.path}?ok=netreba`))
+
+// The accountants' side, signed in as the sample administrator, as the client left things: the café receipt waits
+// to be booked with its photo, and the fuel waits to be checked.
+const clientCookie = cookie
+cookie = ''
+await call('/ucto/ukazka')
+const teamFiles = new Map([
+  ['/ucto', 'ucto.html'],
+  ['/ucto/doklady', 'ucto-doklady.html'],
+  ['/ucto/spravy', 'ucto-spravy.html'],
+  ['/ucto/ziadosti', 'ucto-ziadosti.html'],
+  ['/ucto/tim', 'ucto-tim.html'],
+  ['/ucto/klienti/novy', 'ucto-novy-klient.html'],
+  ['/ucto/klienti/novy?ziadost=demo-req-1', 'ucto-novy-klient-1.html'],
+  ['/ucto/klienti/novy?ziadost=demo-req-2', 'ucto-novy-klient-2.html'],
+  ['/ucto/klienti/demo-company', 'ucto-klient-1.html'],
+  ['/ucto/klienti/demo-company-2', 'ucto-klient-2.html'],
+  ['/ucto/doklady/demo-doc-3', 'ucto-doklad-zauctovany.html'],
+])
+const queuePage = await html('/ucto/doklady')
+;[...new Set([...queuePage.matchAll(/href="(\/ucto\/doklady\/[A-Za-z0-9-]+)"/g)].map((m) => m[1]))].forEach((path, i) => teamFiles.set(path, `ucto-doklad-${i + 1}.html`))
+for (const [path, file] of teamFiles) files.set(path, file)
+// The originals: a photo as it is, a PDF as a picture of its page.
+const originals = []
+for (const [path] of teamFiles) {
+  if (!path.startsWith('/ucto/doklady/')) continue
+  const page = await html(path)
+  for (const m of page.matchAll(/(?:src|href)="\/ucto\/subory\/([A-Za-z0-9-]+)"/g)) {
+    if (files.has(`/ucto/subory/${m[1]}`)) continue
+    const res = await call(`/ucto/subory/${m[1]}`)
+    const bytes = Buffer.from(await res.arrayBuffer())
+    await mkdir(join(out, 'subory'), { recursive: true })
+    if ((res.headers.get('content-type') ?? '').includes('pdf')) {
+      await writeFile(join(out, 'subory', `${m[1]}.pdf`), bytes)
+      execFileSync('pdftoppm', ['-png', '-r', '144', '-singlefile', join(out, 'subory', `${m[1]}.pdf`), join(out, 'subory', m[1])])
+      files.set(`/ucto/subory/${m[1]}`, `subory/${m[1]}.png`)
+    } else {
+      await writeFile(join(out, 'subory', `${m[1]}.jpg`), bytes)
+      files.set(`/ucto/subory/${m[1]}`, `subory/${m[1]}.jpg`)
+    }
+    originals.push(files.get(`/ucto/subory/${m[1]}`))
+  }
+}
+for (const [path, file] of teamFiles) await write(file, await html(path))
+cookie = clientCookie
 // A second photo for the office supplies: a different file, so that it is not taken for the first one again.
 const second = Buffer.concat([await readFile(photo), Buffer.from([0])])
 {
@@ -217,5 +270,5 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...files.values(), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html']
+const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', ...originals]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))

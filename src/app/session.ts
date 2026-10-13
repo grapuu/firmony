@@ -1,11 +1,12 @@
-// Signing in without a password: a link to the address the company gave us, valid for twenty minutes and for one
-// use, and then a cookie for thirty days. The database keeps only hashes of both, so neither can be read back
-// out of it.
+// Signing in without a password: a link to the address we know, valid for twenty minutes (a welcome link for a few
+// days) and for one use, and then a cookie for thirty days. The database keeps only hashes of both, so neither can
+// be read back out of it. A session is a user's, and is in one of their companies at a time; somebody of the team
+// alone has a session in no company.
 import type { Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { APP } from '../config'
 import { now, sha256Hex } from '../db'
-import { eventStatement, firstCompanyOf, whoBySession, type Who } from './store'
+import { eventStatement, firstCompanyOf, userById, whoBySession, type Who } from './store'
 
 /** On https the cookie's name binds it to this host and to https alone (the __Host- prefix). */
 export function cookieName(c: Context): string {
@@ -27,12 +28,12 @@ export async function currentWho(c: Context, db: D1Database): Promise<Who | null
 }
 
 /** A link for signing in: written down as a hash, handed back as the token for the email. */
-export async function newLink(db: D1Database, user: string): Promise<{ token: string; statement: D1PreparedStatement }> {
+export async function newLink(db: D1Database, user: string, minutes: number = APP.linkMinutes): Promise<{ token: string; statement: D1PreparedStatement }> {
   const token = newToken()
   const ts = now()
   return {
     token,
-    statement: db.prepare('INSERT INTO login_links (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(await sha256Hex(token), user, ts, ts + APP.linkMinutes * 60),
+    statement: db.prepare('INSERT INTO login_links (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(await sha256Hex(token), user, ts, ts + minutes * 60),
   }
 }
 
@@ -53,19 +54,31 @@ export async function linkUsable(db: D1Database, token: string): Promise<boolean
   return Boolean(row)
 }
 
-/** Signs a browser in to the user's company and sets its cookie. False when the user has no company. */
-export async function startSession(c: Context, db: D1Database, user: string, company?: string): Promise<boolean> {
-  const companyId = company ?? (await firstCompanyOf(db, user))
-  if (!companyId) return false
+/**
+ * Signs a browser in and sets its cookie: in the company given, or the user's first one, or in none for somebody of
+ * the team. Where it leads afterwards, or null when the user has nowhere to go (no company and no team).
+ */
+export async function startSession(c: Context, db: D1Database, userId: string, company?: string): Promise<string | null> {
+  const user = await userById(db, userId)
+  if (!user) return null
+  const companyId = company ?? (await firstCompanyOf(db, userId))
+  if (!companyId && !user.team) return null
   const token = newToken()
   const ts = now()
   await db.batch([
-    db.prepare('INSERT INTO sessions (id, user_id, company_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').bind(await sha256Hex(token), user, companyId, ts, ts + APP.sessionDays * 86400),
-    eventStatement(db, { company: companyId, user, action: 'signed.in' }),
+    db.prepare('INSERT INTO sessions (id, user_id, company_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').bind(await sha256Hex(token), userId, companyId, ts, ts + APP.sessionDays * 86400),
+    eventStatement(db, { company: companyId, user: userId, action: 'signed.in' }),
   ])
   const secure = new URL(c.req.url).protocol === 'https:'
   setCookie(c, cookieName(c), token, { path: '/', httpOnly: true, secure, sameSite: 'Lax', maxAge: APP.sessionDays * 86400 })
-  return true
+  return companyId ? '/app' : '/ucto'
+}
+
+/** Moves a session to another company of the same user; nothing happens unless the user is its member. */
+export function switchStatement(db: D1Database, session: string, user: string, company: string): D1PreparedStatement {
+  return db
+    .prepare('UPDATE sessions SET company_id = ?1 WHERE id = ?2 AND user_id = ?3 AND EXISTS (SELECT 1 FROM members m JOIN companies c ON c.id = m.company_id AND c.closed_at IS NULL WHERE m.user_id = ?3 AND m.company_id = ?1)')
+    .bind(company, session, user)
 }
 
 export async function endSession(c: Context, db: D1Database): Promise<void> {
