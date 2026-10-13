@@ -67,6 +67,40 @@ The builder's proposals, shown on the site and his to change (in `PLANS`, `CLOSI
   registered under § 7a only; crossing 50 000 € turnover makes it a payer, about June 2027 in the plan).
 - The founder's note on the home page is written in his name and has to be read by him.
 
+## The key, as read on 13 October 2026 (his question at 16:24: what did the French and the Americans have, what is missing here)
+
+He asked what system to build behind the site to be the fastest, cheapest, most efficient and easiest, and what
+the key of the winners abroad is. He wants .io for the domain (CloudTalk has one), bought later, after a talk
+about marketing. What was found (sources: Dealroom on Pennylane, Pennylane's PDP page, Digitiz and independant.io
+on Dougs, Dougs' 2025 retrospective, Outsource Accelerator and ICAEW on Bench, The Next Web on Rillet, Reuters
+on Crete, the sites of Matax, Bezúčto and Keepi, TASR on Digitoo, Enable Banking's Slovak page, podnikajte.sk):
+- The winners sell "the client does nothing": documents and the bank flow in by themselves, software posts them,
+  a person checks and answers. Dougs (an online firm, our model): 14 000 clients in 2023, "plus de 49 000" in
+  2026, 49 to 159 € a month, bank sync, app, photographed receipts, real-time dashboard, unlimited questions,
+  company formation free with accounting; criticised for hard-to-reach people on complex matters, changing
+  contacts and errors found late. Pennylane (software for client and accountant): 4 500 firms, 350 000 SMEs,
+  €75M at €2B in April 2025; its certified e-invoicing platform is free for its clients; Dougs was among the
+  first nine certified platforms (December 2025).
+- Bench (over $100M raised) shut down abruptly in December 2024: late bookkeeping, proprietary software, no
+  export; customers locked out in tax season. Rillet ($1B, August 2026): AI agents keep the ledger, accountants
+  review. Crete (Thrive, June 2025): $500M to buy accounting firms and give them AI.
+- Slovakia has DIY software (Bezúčto 19,99 € a month for an s. r. o., Keepi, KROS, Pohoda), AI for offices
+  (Digitoo, 2023: 70 % less time per invoice) and offices with photo and email delivery (Matax: 90, 160 and 400 €
+  a month, closing from 200 €, no app or bank link on its site). Nobody joins a person who does it for you with a
+  system where everything flows in. Firmony is 19 to 38 % cheaper than Matax.
+- The Slovak edge from 1 January 2027: e-invoices arrive as data through a digital postman, the bank through open
+  banking (Enable Banking lists SLSP, VÚB, Tatra, ČSOB, Poštová, 365.bank), and an eKasa receipt's QR code points
+  to the receipt in the Financial Administration's database ("Over doklad"). Whether that may be used at scale is
+  to be checked.
+- Proposed, not yet decided by him: phase 1 by 1 January 2027 is the pipe (a client app: photo, email forwarding,
+  eKasa QR, e-invoices and bank by themselves, "missing document" per payment, VAT due and when, messages with the
+  accountant) and an accountant's cockpit (AI proposes MD/D, VAT and the control statement line; she confirms;
+  bank matched; VAT return and control statement as XML; every client's deadlines on one screen). The ledger and
+  the closing stay in a certified program (Pohoda or Omega) until there are hundreds of clients. First piece
+  offered: intake (email, photo, eKasa QR) with AI posting proposals, tried on europio's documents.
+- For marketing later: since 17 August 2026 an s. r. o. is founded only through a notary or an advocate, and
+  over 24 000 companies were founded by mid-September 2026 (95 % s. r. o.); Dougs wins clients at founding.
+
 ## The economics (the evening of 12 October 2026, scratch model; base case)
 
 ARPU 105 €, variable cost 41,83 € (accountant 34, tech 6, payment fee 1,83), contribution 63,17 € (60 %).
