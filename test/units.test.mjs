@@ -72,7 +72,7 @@ check('a company that ended says so, and an a. s. is no s. r. o.', ended?.termin
 // The texts say the figures of the plans
 const start = config.PLANS[0]
 check('the hero names the lowest price', copy.hero.price.includes(format.formatEur(start.price * 100)))
-check('the receipt totals the lowest price', copy.receipt.totalValue === format.formatEur(start.price * 100))
+check('the first figure is the lowest price', copy.stats[0].value === format.formatEur(start.price * 100))
 check('the closing price is the config one', copy.pricing.closing.includes(format.formatEur(config.CLOSING_PRICE * 100)))
 check('every plan row is filled', config.PLANS.every((p) => Object.values(planRows(p)).every((v) => typeof v === 'string' && v.length > 0)))
 const texts = []

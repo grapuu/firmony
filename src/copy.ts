@@ -25,85 +25,88 @@ export const copy = typesetAll({
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
   hero: {
-    first: 'Postaráme sa o všetko.',
+    tag: 'Účtovníctvo pre mladé s. r. o.',
+    /** "Postaráme sa" is kept together, so that the line breaks before "o všetko". */
+    first: 'Postaráme\u00a0sa o všetko.',
     second: 'Vy rastite.',
-    lead: 'Účtovníctvo pre mladé s. r. o. Doklady odfotíte, všetko ostatné je na nás.',
+    lead: 'Doklady odfotíte, všetko ostatné je na nás. Zaúčtujeme, podáme a postrážime každý termín.',
     price: `Od ${eur(start.price)} mesačne. Bez poplatkov za doklad.`,
-    cta: 'Chcem začať',
     secondary: 'Pozrieť cenník',
-    note: `Začíname ${BRAND.launch}. Stačí IČO a kontakt, je to nezáväzné.`,
+    how: 'Ako to funguje',
   },
 
-  /** The app in the opening's phone: one month of a young company, everything booked. An illustration. */
-  app: {
-    label: 'Ukážka aplikácie Firmony: október vašej firmy, všetko zaúčtované',
-    time: '9:41',
+  /** The card in the opening where a client starts: the IČO. */
+  card: {
+    title: 'Začnite s IČO vašej firmy',
+    text: 'Názov a sídlo doplníme z registra. Je to nezáväzné.',
+    fine: `Ozveme sa ${REPLY_WITHIN}.`,
+  },
+
+  /** One month, as the papers fly into it while the page is scrolled. An illustration. */
+  flow: {
+    first: 'Vy pošlete doklady.',
+    second: 'My urobíme zvyšok.',
+    lead: 'Bloček odfotíte, faktúru prepošlete. Umelá inteligencia ich prečíta, účtovníčka skontroluje a podá.',
+    label: 'Ukážka: október vašej firmy vo Firmony, všetko zaúčtované',
     month: 'Október 2026',
     company: 'Vaša firma',
-    initials: 'VF',
-    profit: 'Zisk za október',
-    profitValue: '5 305 €',
-    tax: 'Odložte si na dane',
-    taxValue: '530 €',
-    status: 'Všetko zaúčtované',
-    deadline: 'DPH do 25. 11.',
-    docs: 'Doklady',
-    count: '5 nových',
+    count: '5 dokladov',
     rows: [
-      { title: 'Bloček', sub: 'Kaviareň', amount: '4,80 €', state: 'zaúčtované' },
-      { title: 'Faktúra 2026041', sub: 'Váš klient s. r. o.', amount: '+1 200 €', state: 'zaúčtovaná' },
-      { title: 'Výpis z účtu', sub: 'Október, 23 platieb', amount: 'spárovaný', state: '' },
-      { title: 'E-faktúra', sub: 'Webhosting', amount: '14,90 €', state: 'prijatá' },
-      { title: 'Priznanie k DPH', sub: 'Podané 24. 11.', amount: '1 220 €', state: 'podané' },
+      { title: 'Bloček', sub: 'Kaviareň, 14. 10.', amount: '4,80 €', state: 'Zaúčtované' },
+      { title: 'Faktúra 2026041', sub: 'Váš klient s. r. o.', amount: '+1 200 €', state: 'Zaúčtovaná' },
+      { title: 'Výpis z účtu', sub: '23 platieb', amount: '', state: 'Spárovaný' },
+      { title: 'E-faktúra', sub: 'Webhosting', amount: '14,90 €', state: 'Prijatá' },
+      { title: 'Priznanie k DPH', sub: 'Za október', amount: '1 220 €', state: 'Podané' },
     ],
-    snap: 'Odfotiť doklad',
-    /** The notification that comes down when the last paper is in. */
-    note: { app: 'Firmony', text: 'Priznanie k DPH za október je podané.', when: 'teraz' },
-    /** What the left side says once the papers are in. */
-    title: 'Toto je celé vaše účtovníctvo.',
-    text: 'Doklady pošlete, ako sa vám hodí. My ich zaúčtujeme, podáme, čo treba, a postrážime každý termín. Vy viete, na čom ste.',
+    foot: 'Všetko zaúčtované',
+    footSub: 'Skontrolovala účtovníčka, 24. 11.',
     example: 'Ilustračná ukážka',
   },
 
-  /** Read line by line as it scrolls by: the hug of the brand. */
-  embrace: {
-    text: 'Ak vás účtovníctvo stresuje, nie ste jediní. Nikoho nesúdime. Ak máte v papieroch neporiadok, dáme ho spolu do poriadku a odvtedy sa oň staráme my.',
+  /** Four true figures, each with what it means. */
+  stats: [
+    { value: eur(start.price), label: 'mesačne, všetko v cene' },
+    { value: eur(0), label: 'za doklad navyše' },
+    { value: '1 deň', label: 'na odpoveď, po ľudsky' },
+    { value: '1. 1. 2027', label: 'štart, e-faktúry v cene' },
+  ],
+
+  /** The hug of the brand, read word by word. */
+  statement: {
+    first: 'Ak vás účtovníctvo stresuje, nie ste jediní.',
+    second: 'Spolu to dáme do poriadku.',
   },
 
-  month: {
-    title: 'Jeden mesiac s Firmony.',
-    lead: 'Takto vyzerá účtovníctvo, keď ho nemusíte riešiť.',
-    example: 'Ilustračný príklad',
+  /** Everything in the price: pick one and see it. */
+  services: {
+    first: 'Všetko v jednej cene.',
+    second: 'Nič navyše.',
+    lead: 'Vyberte si a pozrite sa, ako to vyzerá.',
+    example: 'Ilustračná ukážka',
+    items: [
+      { id: 'doklady', title: 'Doklady a banka', text: 'Zaúčtujeme každý doklad a spárujeme platby.' },
+      { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za vás.' },
+      { id: 'efaktury', title: 'E-faktúry', text: 'Prijímame ich za vás, povinné od 1. 1. 2027.' },
+      { id: 'mzdy', title: 'Mzdy', text: 'Výplaty, odvody a hlásenia pre vašich ľudí.' },
+      { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
+      { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
+    ],
     /** What the machine reads off a slip, and what it proposes. The entry is the Slovak chart of accounts. */
-    snap: {
-      title: 'Odfotíte. AI prečíta.',
-      text: 'Bloček odfotíte v mobile, faktúru prepošlete e-mailom, e-faktúry prídu samy. Umelá inteligencia z nich vytiahne obchodníka, dátum aj sumu a navrhne zaúčtovanie.',
-      slip: {
-        shop: 'Kaviareň',
-        when: '14. 10. 2026, 8:42',
-        item: '2× espresso',
-        pay: 'Platba kartou',
-        total: 'Spolu',
-        sum: '4,80 €',
-      },
+    scan: {
+      slip: { shop: 'Kaviareň', when: '14. 10. 2026, 8:42', item: '2× espresso', pay: 'Platba kartou', total: 'Spolu', sum: '4,80 €' },
       read: 'Prečítané z bločku',
       fields: [
         ['Obchodník', 'Kaviareň'],
         ['Dátum', '14. 10. 2026'],
         ['Suma', '4,80 €'],
-        ['Platba', 'kartou'],
         ['Druh', 'reprezentácia'],
       ] as [string, string][],
       entry: 'Návrh zaúčtovania',
       debit: ['MD 513', 'Náklady na reprezentáciu'],
       credit: ['D 221', 'Bankové účty'],
       flag: 'Reprezentácia nie je daňový výdavok.',
-      toast: 'Zaúčtované',
-      toastSub: 'Skontroluje účtovníčka',
     },
     file: {
-      title: 'Účtovníčka skontroluje a podá.',
-      text: 'Každý návrh skontroluje človek. Účtovníčka podá priznania a výkazy za vás a termíny strážime my, nie vy.',
       doc: 'Priznanie k DPH',
       period: 'Obdobie: október 2026',
       status: 'Podané',
@@ -115,83 +118,74 @@ export const copy = typesetAll({
       checked: 'Skontrolovala účtovníčka',
       when: '24. 11. 2026, 9:41',
     },
+    inbox: {
+      title: 'Prijaté e-faktúry',
+      via: 'cez digitálneho poštára',
+      rows: [
+        ['Webhosting', '14,90 €'],
+        ['Telefón a internet', '29,00 €'],
+        ['Coworking', '120,00 €'],
+      ] as [string, string][],
+      state: 'zaúčtovaná',
+    },
+    payroll: {
+      title: 'Mzdy za október',
+      rows: ['Výplatné pásky', 'Odvody do Sociálnej poisťovne', 'Zdravotné poistenie', 'Prehľad o preddavkoch na daň'],
+      state: 'hotovo',
+      note: 'V balíkoch Rast a Firma.',
+    },
+    deadlines: {
+      title: 'Termíny',
+      rows: [
+        ['25. 11.', 'Priznanie k DPH', 'podané'],
+        ['25. 11.', 'Kontrolný výkaz', 'podaný'],
+        ['30. 11.', 'Prehľad o preddavkoch na daň', 'pripravený'],
+      ] as [string, string, string][],
+      missing: 'Chýba jeden bloček z októbra. Pošlete nám ho, prosím?',
+    },
     /** A question to the accountant and her answer: Slovak tax law, said plainly (§ 22 ZDP: 1 700 €). */
     ask: {
-      title: 'Pýtate sa, odpovedáme po ľudsky.',
-      text: `Na otázky odpovedá vaša účtovníčka, ${REPLY_WITHIN}. Bez úradníčiny a bez čakania na termín.`,
       who: 'Vaša účtovníčka',
       online: 'odpovedá do jedného pracovného dňa',
       question: 'Môžem si dať do nákladov nový notebook?',
-      answer: 'Áno, ak ho používate na podnikanie. Ak stál do 1 700 €, ide rovno do nákladov. Drahší sa odpisuje niekoľko rokov. Pošlite mi faktúru a zaúčtujem ho.',
+      answer: 'Áno, ak ho používate na podnikanie. Do 1 700 € ide rovno do nákladov, drahší sa odpisuje. Pošlite mi faktúru.',
       thanks: 'Super, ďakujem!',
-      typing: 'Píše odpoveď',
     },
   },
 
-  people: {
-    title: 'Rutinu robí umelá inteligencia. Za každým číslom stojí človek.',
-    ai: {
-      title: 'Umelá inteligencia',
-      items: ['prečíta bloček aj faktúru', 'roztriedi doklady a navrhne zaúčtovanie', 'spáruje platby z banky', 'postráži termíny a pripomenie, čo chýba'],
-    },
-    human: {
-      title: 'Vaša účtovníčka',
-      items: ['všetko skontroluje', 'podá priznania a výkazy', 'odpovie na vaše otázky', 'poradí, keď firma rastie'],
-    },
-    close: 'Preto vieme byť rýchli a mať férovú cenu.',
-  },
-
-  /** The bill a client would get from us: everything in the price, nothing per document. */
-  receipt: {
-    title: 'Všetko v jednej cene.',
-    lead: 'Nemusíte rozmýšľať, čo je navyše. Nič.',
-    label: `Čo dostanete v balíku ${start.name}`,
-    head: `Balík ${start.name}`,
-    sub: 'mesačne',
-    lines: [
-      ['Zaúčtovanie dokladov a banky', 'v cene'],
-      ['DPH podľa § 7a', 'v cene'],
-      ['Prijímanie e-faktúr', 'v cene'],
-      ['Mesačný prehľad', 'v cene'],
-      ['Strážené termíny', 'v cene'],
-      ['Odpovede na vaše otázky', 'v cene'],
-      ['Poplatok za doklad', eur(0)],
-    ] as [string, string][],
-    total: 'Spolu',
-    totalValue: eur(start.price),
-    vat: 'Bez DPH.',
-    thanks: 'Ďakujeme, že ste s nami.',
-    notes: [
-      `Platitelia DPH a mzdy v balíkoch Rast a Firma.`,
-      `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne.`,
-    ],
+  /** The machine and the person. */
+  duo: {
+    first: 'Rýchlosť stroja.',
+    second: 'Istota človeka.',
+    ai: { title: 'Umelá inteligencia', items: ['prečíta bloček aj faktúru', 'navrhne zaúčtovanie', 'spáruje platby z banky'] },
+    human: { title: 'Vaša účtovníčka', items: ['všetko skontroluje', 'podá priznania a výkazy', 'odpovie na vaše otázky'] },
   },
 
   einvoice: {
     date: '1. 1. 2027',
     title: `Od ${BRAND.launch} musí každá firma vedieť prijať e-faktúru.`,
-    text: 'Faktúry medzi firmami budú chodiť cez certifikovaných digitálnych poštárov. Prijímať ich musí aj firma, ktorá nie je platiteľom DPH, a platitelia DPH ich budú musieť aj vystavovať.',
-    ours: 'S Firmony máte prijímanie e-faktúr v cene každého balíka. Faktúry nám prídu rovno do účtovníctva.',
+    text: 'S Firmony je to v cene každého balíka. Faktúry nám prídu rovno do účtovníctva.',
     source: 'Zákon o DPH, § 85o, vložený zákonom č. 385/2025 Z. z.',
   },
 
   pricing: {
-    title: 'Jasná cena. Žiadne poplatky za doklad.',
+    first: 'Jasná cena.',
+    second: 'Žiadne poplatky za doklad.',
     lead: 'Vyberte si podľa toho, či ste platiteľom DPH a koľko ľudí máte na mzde.',
     perMonth: 'mesačne',
     rows: { docs: 'Doklady', vat: 'DPH', people: 'Mzdy' },
-    included: `V každom balíku: zaúčtovanie dokladov a banky, prijímanie e-faktúr, mesačný prehľad, strážené termíny a odpovede ${REPLY_WITHIN}.`,
+    included: `V každom balíku: zaúčtovanie dokladov a banky, e-faktúry, mesačný prehľad, termíny a odpovede ${REPLY_WITHIN}.`,
     closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne.`,
-    vat: 'Ceny sú bez DPH. DPH zatiaľ nepripočítavame, lebo nie sme jej platiteľom.',
-    custom: 'Máte viac dokladov alebo ľudí? Pripravíme vám ponuku na mieru.',
+    vat: 'Ceny sú bez DPH, DPH zatiaľ nepripočítavame.',
+    custom: 'Máte viac dokladov alebo ľudí? Pripravíme ponuku na mieru.',
   },
 
   /** What we promise, said once and plainly, next to the prices. */
   promises: [
-    { title: 'Bez viazanosti', text: 'Zmluvu môžete vypovedať s mesačnou výpovednou lehotou.' },
-    { title: 'Doklady navyše zadarmo', text: 'Ak ich budete mať viac dva mesiace po sebe, ponúkneme vyšší balík.' },
-    { title: 'Odpoveď do jedného dňa', text: `Na otázky odpovedáme ${REPLY_WITHIN}. Po slovensky, nie úradnícky.` },
-    { title: 'Účtovníctvo je vaše', text: 'Keď odídete, odovzdáme vám všetky doklady aj celé účtovníctvo.' },
+    { title: 'Bez viazanosti', text: 'Mesačná výpovedná lehota.' },
+    { title: 'Doklady navyše zadarmo', text: 'Vyšší balík ponúkneme až po dvoch mesiacoch.' },
+    { title: 'Odpoveď do jedného dňa', text: 'Po slovensky, nie úradnícky.' },
+    { title: 'Účtovníctvo je vaše', text: 'Keď odídete, všetko vám odovzdáme.' },
   ],
 
   calc: {
@@ -217,15 +211,16 @@ export const copy = typesetAll({
   },
 
   paths: {
-    title: 'Či firmu len zakladáte, alebo už beží.',
+    first: 'Zakladáte firmu,',
+    second: 'alebo už beží?',
     fresh: {
       title: 'Zakladáte s. r. o.',
-      text: 'Od prvého dňa budete mať v účtovníctve poriadok. Povieme vám, čo treba pri štarte vybaviť, a postrážime prvé termíny.',
+      text: 'Od prvého dňa poriadok v účtovníctve. Povieme vám, čo pri štarte vybaviť.',
       cta: 'Zakladám firmu',
     },
     switching: {
       title: 'Meníte účtovníčku',
-      text: `Prechod vybavíme za vás: podpíšete zmluvu a plnú moc, podklady si od doterajšej účtovníčky vyžiadame sami. Pri mesačnej výpovednej lehote stačí poslať výpoveď v novembri a od ${BRAND.launch} začneme my.`,
+      text: 'Prechod vybavíme za vás. Podklady si od doterajšej účtovníčky vyžiadame sami.',
       cta: 'Chcem prejsť',
     },
   },
@@ -233,7 +228,7 @@ export const copy = typesetAll({
   founder: {
     title: 'Kto za nami stojí',
     quote:
-      'Keď som si založil firmu, najviac nervov ma nestálo podnikanie, ale papiere okolo neho. Termíny, priznania, pravidlá, ktorým som nerozumel, a pocit, že som na to sám. Firmony robíme, aby to mladé firmy mali inak: aby sa o ne niekto postaral a ony mohli rásť.',
+      'Keď som si založil firmu, najviac nervov ma nestálo podnikanie, ale papiere okolo neho. Firmony robíme, aby sa o mladé firmy niekto postaral a ony mohli rásť.',
     name: 'Christian Juhás',
     role: 'zakladateľ Firmony',
   },
@@ -254,7 +249,7 @@ export const copy = typesetAll({
 
   faq: {
     title: 'Otázky',
-    more: 'Nenašli ste, čo ste hľadali? Napíšte na',
+    more: 'Nenašli ste odpoveď? Napíšte na',
     reply: `odpovieme ${REPLY_WITHIN}.`,
     items: [
       {
@@ -290,7 +285,7 @@ export const copy = typesetAll({
 
   final: {
     title: 'Poďme do toho spolu.',
-    lead: `Stačí IČO vašej firmy. Údaje doplníme z registra, vy pridáte kontakt a ${REPLY_WITHIN} sa vám ozveme.`,
+    lead: `Stačí IČO vašej firmy. Ozveme sa ${REPLY_WITHIN}.`,
     label: 'IČO vašej firmy',
     placeholder: '8 číslic',
     button: 'Pokračovať',

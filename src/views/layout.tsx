@@ -13,10 +13,13 @@ export interface PageMeta {
   ctaHref?: string
 }
 
-/** The name, set in the site's own type, with a full stop in the light of the glass. */
+/** His glass F beside the name, set in the blue sans, with a full stop in the red of the serif. */
 export const Wordmark: FC<{ href?: string; label?: string }> = ({ href = '/', label = copy.nav.home }) => (
   <a class="wordmark" href={href} aria-label={label}>
-    firmony<span class="wordmark__dot" aria-hidden="true">.</span>
+    {ART.logo ? <img class="wordmark__mark" src={ART.logo.src} width={ART.logo.width} height={ART.logo.height} alt="" /> : null}
+    <span class="wordmark__name" aria-hidden="true">
+      firmony<span class="wordmark__dot">.</span>
+    </span>
   </a>
 )
 
@@ -35,7 +38,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
       <meta property="og:description" content={meta.description} />
       <meta property="og:url" content={`${BRAND.origin}${meta.path}`} />
       <meta property="og:locale" content="sk_SK" />
-      <meta name="theme-color" content="#000000" />
+      <meta name="theme-color" content="#ffffff" />
       {ART.logo ? (
         <>
           <link rel="icon" href="/favicon.ico" sizes="48x48" />
@@ -46,8 +49,8 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
       ) : (
         <link rel="icon" href="data:," />
       )}
-      <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
-      <link rel="preload" href="/fonts/news-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+      <link rel="preload" href="/fonts/funnel-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+      <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="preload" href="/fonts/news-latin-italic.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="stylesheet" href="/app.css" />
     </head>
@@ -64,7 +67,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
             <a href="/#kto-sme">{copy.nav.about}</a>
             <a href="/#otazky">{copy.nav.faq}</a>
           </nav>
-          <a class="btn btn--white btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
+          <a class="btn btn--blue btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
             {copy.nav.start}
           </a>
         </div>
