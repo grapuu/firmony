@@ -8,7 +8,7 @@ import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
 
-export type Place = 'home' | 'payments' | 'documents' | 'messages'
+export type Place = 'home' | 'payments' | 'documents' | 'messages' | 'company'
 
 /** The head of every page of the app: its own stylesheet after the site's, and its one small script. */
 export const InsideHead: FC<{ title: string }> = ({ title }) => (
@@ -20,6 +20,9 @@ export const InsideHead: FC<{ title: string }> = ({ title }) => (
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/art/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="Firmony" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="preload" href="/fonts/funnel-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
     <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
     <link rel="stylesheet" href="/app.css" />
@@ -133,6 +136,9 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
             {app.nav.add}
           </a>
           <div class="side__foot">
+            <a class="side__team" href="/app/firma" aria-current={place === 'company' ? 'page' : undefined}>
+              {app.nav.settings}
+            </a>
             {who.user.team ? (
               <a class="side__team" href="/ucto">
                 {app.nav.team}
@@ -151,6 +157,9 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
           <header class="bar">
             <Wordmark href="/app" label={app.nav.home} />
             <BarMenu label={who.company.name} user={who.user}>
+              <a class="barmenu__item" href="/app/firma">
+                {app.nav.settings}
+              </a>
               {companies.length > 1 ? (
                 <>
                   <p class="barmenu__label">{app.nav.switch}</p>

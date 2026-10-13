@@ -34,10 +34,11 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - **The whole structure, from 17:48** (his word: "Nič som nechcel dopísať. Potrebujem, aby sme to nejak dokončili
   a ešte raz musíš okopírovať tú štruktúru a to, čo ľudia milujú ... a dorob to celé, nech to už vytvorí štruktúru
   a vieme postupovať ďalej"). He was sent four steps with a time for each, and a message after each:
-  1. The accountants' side and his administration (about 20:00): **done at about 19:00**, "The accountants'
-     side" below; the artifact (version 3) has both sides, the bar at its bottom switches between them.
-  2. For the client (about 21:30): documents forwarded by email, reminders by email, first steps after signing
-     in, the company's settings, inviting a partner, the app on the phone's home screen.
+  1. The accountants' side and his administration (about 20:00): **done at 18:37** (`b4e7e1e`), "The
+     accountants' side" below; the artifact (version 3) has both sides, the bar at its bottom switches them.
+  2. For the client (about 21:30): **done at about 19:00**: documents forwarded by email, reminders by email,
+     first steps after signing in, the company's page (inviting a partner), the app on the phone's home screen,
+     search; "The client's app" below has each.
   3. Issuing invoices, also as e-invoices, marked paid by themselves when the payment comes (about 23:00).
   4. The bank by open banking (Enable Banking), switched on by his registration (about midnight).
 
@@ -52,14 +53,16 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 4. Cloudflare, Workers & Pages, Create, Import a repository: `firmony`, production branch `main`. It is then live
    at its workers.dev address (which answers `noindex`). With the domain in the account: a route
    `{ "pattern": "firmony.ai", "custom_domain": true }` (and www) in `wrangler.jsonc`.
-5. Email: Cloudflare Email Routing for firmony.ai, `ahoj@firmony.ai` forwarded to his mailbox; Email Service,
-   firmony.ai onboarded for sending. Until then requests are kept and their emails wait in the outbox (retried
+5. Email: Cloudflare Email Routing for firmony.ai: a rule `ahoj@firmony.ai` forwarded to his mailbox, and the
+   catch-all rule "Send to a Worker", `firmony` (it takes `doklady-<code>@`, documents by email, and refuses any
+   other address); Email Service, firmony.ai onboarded for sending. Until then requests are kept and their emails wait in the outbox (retried
    every fifteen minutes, ten times).
 6. For the client's app: an R2 bucket `firmony-files` in the **EU jurisdiction** (before the first deploy that
    carries `r2_buckets`), and the secret `ANTHROPIC_API_KEY` on the Worker (an API key of an Anthropic account of
    europio; without it every photo goes to the accountant). Before the first client: the privacy notice names
    Anthropic (photos and PDFs of documents, read and not kept for training), R2 for the files, and what the app
-   keeps and how long (documents ten years by the accounting act, s. 35). Not written yet.
+   keeps and how long (documents ten years by the accounting act, s. 35), and the email that arrives at a
+   company's address (sender and subject kept 90 days, the attachments as documents). Not written yet.
 7. The first administrator: once email works, he signs in at /app/prihlasenie with `ahoj@firmony.ai`
    (`TEAM.bootstrapEmail`): while nobody of the team exists, that address becomes the administrator
    ("Christian Juhás"). Then he adds accountants on /ucto/tim; each signs in with her own email.
@@ -215,6 +218,29 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
   their QR code, issuing invoices, more than one company for one person (a switch), deleting files at the end of
   their ten years, thumbnails. Not seen in a real browser: a PDF opened by "Otvoriť originál" under its CSP; a
   photo from an iPhone made smaller by the script (HEIC).
+
+### What the client's app got on the evening of 13 October 2026 (step 2)
+
+- Documents by email (`src/app/inbox.ts`, the Worker's `email` handler): mail to `doklady-<code>@` the domain of
+  `BRAND.email` is parsed (postal-mime 2.7.6); each attachment is what its bytes say (a photo, a PDF, an
+  e-invoice), a picture inside the text or smaller than `APP.mailImageMin` (a logo) is skipped, the same file twice
+  is one document, and they are read and paired like an upload (`src/app/intake.ts`, shared with the pages). An
+  email without a document leaves the client a short note in the messages, five a day at most. An unknown address,
+  a code on another domain and a message over 25 MB are refused; at most 100 files a day by email. `inbound_mail`
+  keeps sender, subject and the outcome for 90 days. Tested through Miniflare's `/cdn-cgi/local/email`.
+- Reminders (`src/app/remind.ts`, from the schedule with its `scheduledTime`): Monday 9:00 in Bratislava to a
+  company with payments without a document, and the 5th at 9:00 for the past month's documents (due on the
+  10th); never for the sample companies, only to people with `users.reminders`, once (the outbox key).
+- The overview of a new company shows "Začíname" (statement, first photo, forwarding, a partner, the phone) until
+  the first three are done.
+- Firma a nastavenia (/app/firma, `src/views/settings.tsx`): the company's data as we keep them, the address for
+  documents with how to forward automatically, its people (an owner invites a partner or a colleague with a link
+  valid 7 days, and removes a member), reminders on or off, the app on the home screen, the other companies,
+  signing out. On a phone the bar's menu has it, the switch and signing out.
+- The app can be added to a phone's home screen (`public/manifest.webmanifest`, `icon-512.png`).
+- Payments and documents have a search (party, note, symbol, amount; "12,40" finds the amount); a search looks
+  through everything, whatever tab was open.
+- A message of another person of the company carries that person's name, not "Vy".
 
 ## The accountants' side (`src/team/`, views in `src/views/team.tsx`; 13 October 2026, from 17:48)
 

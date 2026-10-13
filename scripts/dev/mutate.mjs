@@ -1,4 +1,4 @@
-// Takes the rules of the client's app out one at a time, in a copy of the repository, and says which check
+// Takes the rules of the last change out one at a time, in a copy of the repository, and says which check
 // fails without each. A rule that no check misses is a rule nothing holds.
 //
 //   node scripts/dev/mutate.mjs
@@ -12,24 +12,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  ['src/team/routes.tsx', '  if (!who.user.team) {\n', '  if (false) {\n', 'a client gets nothing on the team side'],
-  ['src/team/store.ts', "user.team === 'admin' || (user.team === 'accountant' && company.accountantId === user.id)", "user.team === 'admin' || user.team === 'accountant'", 'an accountant opens only her own clients'],
-  ['src/team/store.ts', "const own = isAdmin(user) ? '' : 'AND c.accountant_id = ?'", "const own = isAdmin(user) ? '' : 'AND (c.accountant_id = ? OR 1)'", 'an accountant lists only her own clients'],
-  ['src/team/routes.tsx', "teamRoutes.post('/klienti', async (c) => {\n  const who = c.get('who')\n  if (!isAdmin(who.user)) return missingPage(c)", "teamRoutes.post('/klienti', async (c) => {\n  const who = c.get('who')", 'only an administrator makes a client'],
-  ['src/team/routes.tsx', "teamRoutes.get('/ziadosti', async (c) => {\n  const who = c.get('who')\n  if (!isAdmin(who.user)) return missingPage(c)", "teamRoutes.get('/ziadosti', async (c) => {\n  const who = c.get('who')", 'only an administrator reads the requests'],
-  ['src/team/routes.tsx', '  if (!demoOn(c)) return c.notFound()', '  if (false) return c.notFound()', 'the sample team exists only in the playground'],
-  ['src/team/routes.tsx', "if (values.request) statements.push(db.prepare(\"UPDATE requests SET status = 'client' WHERE id = ?\").bind(values.request))", '', 'a request that became a client says so'],
-  ['src/team/routes.tsx', 'newLink(db, userId, TEAM.welcomeDays * 24 * 60)', 'newLink(db, userId, 0)', 'the welcome link lasts days'],
-  ['src/team/routes.tsx', '    if (doc.bookedAt) return c.redirect(`/ucto/doklady/${doc.id}`, 303)\n', '', 'a booked document is not thrown away by the team'],
-  ['src/app/store.ts', "WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND booked_at IS NULL", "WHERE id = ? AND company_id = ? AND deleted_at IS NULL", 'a booked document is not deleted'],
-  ['src/app/store.ts', 'const twin = rows.results.map(docOf).find((other) => sameDocument(self, other))', 'const twin = rows.results.map(docOf).find(() => false)', 'the same document twice is a suspected duplicate'],
-  ['src/app/store.ts', "WHERE id = ?3 AND company_id = ?1 AND booked_at IS NULL AND EXISTS", "WHERE id = ?3 AND company_id = ?1 AND booked_at IS NULL AND 0 AND EXISTS", "a supplier's rule is proposed for its next documents"],
-  ['src/app/routes.tsx', "    if (!anyone) {\n", '    if (true) {\n', 'the public mailbox makes an administrator only while the team is empty'],
-  ['src/app/routes.tsx', 'who.company.accountantEmail ?? BRAND.email', 'BRAND.email', "a client's message goes to her accountant"],
-  ['src/app/session.ts', 'WHERE id = ?2 AND user_id = ?3 AND EXISTS (SELECT 1 FROM members m', 'WHERE id = ?2 AND user_id = ?3 AND 1 OR EXISTS (SELECT 1 FROM members m', 'a person switches only to her own companies'],
-  ['src/team/store.ts', "if (/^[=+\\-@\\t]/.test(text) && !/^-\\d+(?:,\\d+)?$/.test(text)) text = `'${text}`", '', 'a CSV cell never runs in Excel'],
-  ['src/app/booking.ts', "  const split = vatPayer && args.vatDeduct && vat > 0\n", '  const split = vat > 0\n', 'VAT is split out only when it is deducted'],
-  ['src/app/booking.ts', "const contra = kind === 'invoice_in' ? '321' : paidBy === 'private' ? '365'", "const contra = kind === 'invoice_in' ? '321' : paidBy === 'private' ? '221'", "what the owner paid is owed to him"],
+  ['src/app/inbox.ts', '  if (!m || m[2] !== domain) return null', '  if (!m) return null', "a company's address is on our domain only"],
+  ['src/app/inbox.ts', "    if (kind !== 'pdf' && kind !== 'xml' && bytes.length < APP.mailImageMin) continue\n", '', 'a logo in a signature is no document'],
+  ['src/app/inbox.ts', "    if (attachment.related) continue\n    const content", '    const content', 'a picture inside the text is no document'],
+  ['src/app/routes.tsx', "  if (who.role !== 'owner') return companyPage(c, { invite, errors: { form: t.company.onlyOwner } }, 403)\n", '', 'only an owner invites'],
+  ['src/app/routes.tsx', "  if (who.role !== 'owner') return companyPage(c, { errors: { form: t.company.onlyOwner } }, 403)\n", '', 'only an owner removes'],
+  ['src/app/routes.tsx', "AND role <> 'owner' AND user_id <> ?", "AND role <> 'owner' AND (user_id <> ? OR 1)", 'an owner does not remove herself'],
+  ['src/app/routes.tsx', "  if (existing && (await db.prepare('SELECT 1 AS x FROM members WHERE company_id = ? AND user_id = ?').bind(who.company.id, existing.id).first())) {", '  if (false) {', 'somebody in the company is not invited again'],
+  ['src/app/routes.tsx', "  const filter = search ? 'all' : q === 'hotove'", "  const filter = q === 'hotove'", 'a search looks through every payment'],
+  ['src/app/routes.tsx', '      steps={steps.payments && steps.upload && steps.email ? null : steps}', '      steps={steps}', 'the first steps go once they are done'],
+  ['src/app/remind.ts', '  if (b.hour !== 9 || b.minute >= 15) return null', '  if (b.minute >= 15) return null', 'reminders go at nine'],
+  ['src/app/remind.ts', 'await membersOf(db, company.id, true)', 'await membersOf(db, company.id)', 'reminders go only to who wants them'],
+  ['src/app/remind.ts', "          key: `remind:${kind}:${company.id}:${person.id}:${kind === 'weekly' ? day : day.slice(0, 7)}`,", '          key: `remind:${kind}:${company.id}:${person.id}:${Math.random()}`,', 'a reminder goes once'],
+  ['src/app/intake.ts', "    const existing = seen.has(hash) ? 'this-request' : await documentByHash(db, company.id, hash)", '    const existing = null', 'the same file is kept once, by email too'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

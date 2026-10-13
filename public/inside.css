@@ -3269,3 +3269,232 @@ select.field__input {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Začíname: a new company's first steps on the overview. ------------------------------------------------ */
+
+.first {
+  display: grid;
+  gap: 4px;
+  padding: 22px 24px 10px;
+  border: 1px solid var(--blue-line);
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(70% 140% at 100% 0%, rgb(195 203 255 / 0.45) 0%, rgb(195 203 255 / 0) 60%),
+    var(--white);
+  box-shadow: var(--shadow);
+}
+
+.first__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 16px;
+}
+
+.first__title {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.first__lead {
+  grid-column: 1;
+  color: var(--soft);
+  font-size: 0.9375rem;
+}
+
+/* How far: three short bars, filled as the first three steps are done. */
+.first__bar {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  width: 96px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--blue) 0 var(--done, 0%), var(--mist-2) var(--done, 0%) 100%);
+}
+
+.first__bar--1 {
+  --done: 33.3%;
+}
+
+.first__bar--2 {
+  --done: 66.6%;
+}
+
+.first__bar--3 {
+  --done: 100%;
+}
+
+.first__list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.first__step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.first__mark {
+  width: 22px;
+  height: 22px;
+}
+
+.first__mark--open {
+  border: 2px solid var(--blue-line);
+  border-radius: 50%;
+}
+
+.first__text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.first__name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.first__sub {
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.first__step--done .first__name {
+  color: var(--soft);
+}
+
+.first__step--later .first__mark--open {
+  border-style: dashed;
+}
+
+/* Searching a list: beside the filters, under them on a phone. */
+.listbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 20px;
+}
+
+.listbar .filters {
+  margin-bottom: 0;
+}
+
+.search {
+  display: flex;
+  flex: 0 1 380px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9375rem;
+}
+
+.search__input:focus {
+  border-color: var(--blue);
+  outline: none;
+  box-shadow: 0 0 0 4px rgb(28 46 240 / 0.12);
+}
+
+.search__clear {
+  color: var(--blue);
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Firma a nastavenia. */
+.plain__row--person {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.plain__who {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.plain__you {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.invite {
+  margin-top: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.invite__title {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 0.9375rem;
+}
+
+.side__team[aria-current='page'] {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .listbar {
+    display: grid;
+  }
+
+  .search {
+    flex-basis: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .first {
+    padding: 20px 18px 6px;
+  }
+
+  .first__step {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .first__step > .pill,
+  .first__go {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .plain__row--person {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .plain__row--person form {
+    grid-column: 1 / -1;
+  }
+}

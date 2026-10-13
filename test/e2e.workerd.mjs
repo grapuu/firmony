@@ -12,6 +12,7 @@ const lookups = []
 const readings = []
 const mf = new Miniflare(
   convertV4MiniflareOptions({
+    unsafeTriggerHandlers: true,
     workers: [
       {
         name: 'firmony',
@@ -574,6 +575,167 @@ await settle()
 check('once a team exists, the public mailbox makes nobody an administrator', (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'ahoj@firmony.ai'").first())?.n === 0)
 await db.prepare("UPDATE users SET email = 'ahoj@firmony.ai' WHERE id = ?").bind(bossRow?.id ?? '').run()
 check('the team\'s work is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action IN ('document.booked', 'document.discarded', 'exempt.returned', 'message.answered', 'company.created', 'team.added', 'team.bootstrap')").first())?.n >= 7)
+
+// Documents by email: the company's own address
+function rawMail({ to, subject = 'Faktúra 2026117', attachments = [] }) {
+  const b = 'hranica-1'
+  const parts = [`--${b}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nDobrý deň, v prílohe posielame faktúru.\r\n`]
+  for (const a of attachments) {
+    parts.push(`--${b}\r\nContent-Type: ${a.type}; name="${a.name}"\r\nContent-Disposition: ${a.inline ? 'inline' : 'attachment'}; filename="${a.name}"\r\n${a.inline ? 'Content-ID: <logo@dodavatel>\r\n' : ''}Content-Transfer-Encoding: base64\r\n\r\n${Buffer.from(a.bytes).toString('base64').replace(/.{76}/g, '$&\r\n')}\r\n`)
+  }
+  return [
+    'From: Kvetinárstvo Lúka <faktury@kvety.test>',
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+    `Message-ID: <${crypto.randomUUID()}@kvety.test>`,
+    'Date: Tue, 13 Oct 2026 18:00:00 +0200',
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${b}"`,
+    '',
+    ...parts,
+    `--${b}--`,
+    '',
+  ].join('\r\n')
+}
+const sendMail = (to, raw) => mf.dispatchFetch(`http://localhost/cdn-cgi/local/email?from=${encodeURIComponent('faktury@kvety.test')}&to=${encodeURIComponent(to)}`, { method: 'POST', body: raw })
+const pdfBytes = new TextEncoder().encode('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n')
+const logo = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array(300).fill(3)])
+const mailBefore = (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n
+const readsBefore = readings.length
+res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes }, { name: 'logo.png', type: 'image/png', bytes: logo, inline: true }] }))
+await res.arrayBuffer()
+await settle(800)
+const mailed = await db.prepare("SELECT source, file_name, file_type, status, added_by FROM documents WHERE company_id = 'co-a' AND source = 'email'").all()
+check('an email to the company\'s address brings its PDF in, and not the logo of the signature', res.status === 200 && mailed.results.length === 1 && mailed.results[0].file_name === 'faktura-2026117.pdf' && mailed.results[0].file_type === 'application/pdf' && mailed.results[0].added_by === null, JSON.stringify(mailed.results))
+check('and the reader reads it', readings.length === readsBefore + 1 && readings.at(-1)?.messages?.[0]?.content?.[0]?.type === 'document' && mailed.results[0]?.status !== 'reading')
+check('the email is on record without its text', (await db.prepare("SELECT sender, subject, files, status FROM inbound_mail WHERE company_id = 'co-a' ORDER BY received_at DESC LIMIT 1").first())?.subject === 'Faktúra 2026117')
+res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
+await res.arrayBuffer()
+check('the same document by email again is not kept twice', (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === mailBefore + 1)
+res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', subject: 'Odkaz na faktúru' }))
+await res.arrayBuffer()
+const note = await db.prepare("SELECT body, side, author FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
+check('an email without a document leaves the client a note', note?.side === 'firmony' && note.author === null && note.body.includes('Odkaz na faktúru') && note.body.includes('faktury@kvety.test'))
+// A newsletter with a large picture inside its text: no document
+{
+  const big = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array(20000).fill(5)])
+  const raw = [
+    'From: Novinky <novinky@kvety.test>',
+    'To: doklady-aaaa11@firmony.ai',
+    'Subject: Jesenna ponuka',
+    `Message-ID: <${crypto.randomUUID()}@kvety.test>`,
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/related; boundary="rel"',
+    '',
+    '--rel',
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    '<p>Ponuka <img src="cid:banner@kvety"></p>',
+    '--rel',
+    'Content-Type: image/png',
+    'Content-ID: <banner@kvety>',
+    'Content-Disposition: inline; filename="banner.png"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(big).toString('base64').replace(/.{76}/g, '$&\r\n'),
+    '--rel--',
+    '',
+  ].join('\r\n')
+  res = await sendMail('doklady-aaaa11@firmony.ai', raw)
+  await res.arrayBuffer()
+  check('a picture inside the text of an email is no document', (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE file_name = 'banner.png'").first())?.n === 0)
+}
+res = await sendMail('doklady-zzzzzz@firmony.ai', rawMail({ to: 'doklady-zzzzzz@firmony.ai', attachments: [{ name: 'f.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
+check('an address nobody has is refused', res.status === 400 && (await res.text()).includes('neexistuje'))
+res = await sendMail('doklady-aaaa11@elsewhere.test', rawMail({ to: 'doklady-aaaa11@elsewhere.test', attachments: [{ name: 'f.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
+check('so is the right code at another domain', res.status === 400)
+
+// The company and its settings: people, an invitation, reminders
+res = await anna.post('/app/firma/prepnut', { firma: 'co-a' })
+res = await anna.get('/app/firma')
+page = await res.text()
+check('the company page shows its details, its address for documents and its people', res.status === 200 && page.includes('doklady-aaaa11@firmony.ai') && page.includes('Anna Malá') && page.includes('action="/app/firma/pozvat"'))
+check('and the app can go on the home screen', page.includes('rel="manifest" href="/manifest.webmanifest"') && (res.headers.get('content-security-policy') ?? '').includes("manifest-src 'self'"))
+const before4 = (await sent()).length
+res = await anna.post('/app/firma/pozvat', { meno: 'Ján Spoločník', email: 'jan@firma-a.test' })
+await settle()
+const jan = await db.prepare("SELECT u.id, m.role, m.invited_by FROM users u JOIN members m ON m.user_id = u.id AND m.company_id = 'co-a' WHERE u.email = 'jan@firma-a.test'").first()
+check('an owner invites a partner', res.status === 303 && jan?.role === 'member' && jan.invited_by === 'u-a')
+const invitation = (await sent()).slice(before4).find((m) => m.to === 'jan@firma-a.test')
+const invToken = invitation?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
+check('who gets an email with a link that lasts days', Boolean(invitation) && invitation.subject.includes('Firma A s. r. o.') && invitation.text.includes('Anna Malá'))
+res = await post('/app/vstup', { t: invToken }, { ip: '203.0.113.33' })
+const janSession = as((res.headers.get('set-cookie') ?? '').split(';')[0])
+check('and is in the company with it', res.status === 303 && (await (await janSession.get('/app')).text()).includes('Firma A s. r. o.'))
+res = await anna.post('/app/firma/pozvat', { meno: 'Ján Spoločník', email: 'JAN@firma-a.test' })
+check('somebody who is in already is not invited twice', res.status === 409)
+res = await janSession.post('/app/firma/pozvat', { meno: 'Cudzí', email: 'cudzi@x.test' })
+check('a member who is no owner invites nobody', res.status === 403 && (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'cudzi@x.test'").first())?.n === 0)
+res = await janSession.post('/app/firma/ludia/u-a/odobrat', {})
+check('nor removes anybody', res.status === 403 && (await db.prepare("SELECT COUNT(*) AS n FROM members WHERE company_id = 'co-a' AND user_id = 'u-a'").first())?.n === 1)
+res = await anna.post('/app/firma/ludia/u-a/odobrat', {})
+check('an owner does not remove herself', (await db.prepare("SELECT COUNT(*) AS n FROM members WHERE company_id = 'co-a' AND user_id = 'u-a'").first())?.n === 1)
+res = await anna.post(`/app/firma/ludia/${jan?.id}/odobrat`, {})
+check('an owner removes a member', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM members WHERE company_id = 'co-a' AND user_id = ?").bind(jan?.id ?? '').first())?.n === 0)
+res = await janSession.get('/app')
+check('whose session then opens nothing', res.status === 303 && res.headers.get('location') === '/app/prihlasenie')
+
+// Searching
+res = await anna.get(`/app/platby?hladat=${encodeURIComponent('Finančná')}`)
+page = await res.text()
+check('a search finds a payment by its party, whatever tab was open', page.includes('Finančná správa SR') && !page.includes('Cerpacia Stanica'), page.match(/row__title">[^<]*/g)?.join(' '))
+res = await anna.get('/app/platby?hladat=64,18')
+check('and by its amount', (await res.text()).includes('Cerpacia Stanica'))
+res = await anna.get('/app/doklady?hladat=neexistuje')
+check('a search that finds nothing says so', /nič nenašli/.test(await res.text()))
+
+// A new company is shown its first steps
+res = await peter.get('/app')
+page = await res.text()
+check('a new company is shown its first steps', page.includes('Začíname') && page.includes('href="/app/platby#vypis"') && page.includes('href="/app/firma#doklady-emailom"'))
+res = await anna.get('/app')
+check('one that is under way is not', !(await res.text()).includes('Začíname'))
+
+// Reminders: on Monday at nine, and on the 5th before the deadline; never to somebody who turned them off
+/** The moment in Bratislava of a day at 9:05, in milliseconds. */
+function nineFive(day) {
+  for (const utc of [6, 7, 8, 9]) {
+    const ms = Date.parse(`${day}T${String(utc).padStart(2, '0')}:05:00Z`)
+    const hour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', hour: '2-digit', hourCycle: 'h23' }).format(new Date(ms))
+    if (hour === '09') return ms
+  }
+  throw new Error('no nine o\'clock')
+}
+const nextWeekday = (from, weekday) => {
+  const d = new Date(`${from}T12:00:00Z`)
+  do d.setUTCDate(d.getUTCDate() + 1)
+  while (d.getUTCDay() !== weekday || d.getUTCDate() === 5)
+  return d.toISOString().slice(0, 10)
+}
+const tick = async (ms) => (await mf.dispatchFetch(`http://localhost/cdn-cgi/local/scheduled?time=${ms}`)).text()
+const monday = nextWeekday(day(0), 1)
+const before5 = (await sent()).length
+await tick(nineFive(monday) + 3 * 3600 * 1000)
+await settle(300)
+check('nothing is reminded at noon', (await sent()).slice(before5).filter((m) => m.subject.includes('chýba doklad')).length === 0)
+await tick(nineFive(monday))
+await settle(500)
+const weekly = (await sent()).slice(before5).filter((m) => m.subject.includes('chýba doklad'))
+check('on Monday at nine the people of a company with missing documents are reminded', weekly.some((m) => m.to === 'anna@firma-a.test' && m.text.includes('Cerpacia Stanica') && m.text.includes('/app/firma#pripomienky')) && weekly.some((m) => m.to === 'boris@firma-b.test'), weekly.map((m) => m.to).join(' '))
+check('a company with nothing missing is not', !weekly.some((m) => m.to === 'peter@nova-firma.test'))
+await tick(nineFive(monday))
+await settle(300)
+check('and only once', (await sent()).slice(before5).filter((m) => m.subject.includes('chýba doklad')).length === weekly.length)
+res = await anna.post('/app/firma/pripomienky', { poslane: '1' })
+check('a person turns reminders off', res.status === 303 && (await db.prepare("SELECT reminders FROM users WHERE id = 'u-a'").first())?.reminders === 0)
+const [y5, m5] = day(0).slice(0, 7).split('-').map(Number)
+const fifth = m5 === 12 ? `${y5 + 1}-01-05` : `${y5}-${String(m5 + 1).padStart(2, '0')}-05`
+const before6 = (await sent()).length
+await tick(nineFive(fifth))
+await settle(500)
+const monthly = (await sent()).slice(before6)
+check('on the 5th the deadline for a month\'s documents is reminded', monthly.some((m) => m.to === 'boris@firma-b.test' && m.subject.includes('do 10.')), monthly.map((m) => `${m.to}: ${m.subject}`).join(' | '))
+check('never to somebody who turned reminders off', !monthly.some((m) => m.to === 'anna@firma-a.test'))
 
 await mf.dispose()
 done('runtime')

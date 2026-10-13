@@ -1,0 +1,16 @@
+{
+  "name": "Firmony",
+  "short_name": "Firmony",
+  "description": "Účtovníctvo pre mladé s. r. o.: doklady, platby a účtovníčka v jednej aplikácii.",
+  "lang": "sk",
+  "id": "/app",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/art/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/art/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

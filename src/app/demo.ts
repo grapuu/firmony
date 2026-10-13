@@ -174,7 +174,7 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
     { id: 'demo-doc-8', company: c1, arrived: 1, source: 'email', kind: 'invoice_in', party: '', issued: -3, total: 0, manual: true, fileName: 'sken-faktury.pdf', original: { party: 'Kvetinárstvo Lúka', number: '2026117', total: 4500, vat: 841, item: 'Kvety na otvorenie kancelarie' } },
     { id: 'demo-doc-9', company: c1, arrived: 0, source: 'upload', addedBy: DEMO.user, kind: 'invoice_in', party: 'Hostingový dom s. r. o.', ico: '36123456', iban: 'SK8975000000000012345671', number: '2026118', vs: '2026118', issued: -12, due: -2, total: 5990, vat: 1120, category: 'services', proposal: 'rule', deduct: true, duplicateOf: 'demo-doc-1', fileName: 'faktura-hosting.pdf' },
     // Ateliér Nova.
-    { id: 'demo-doc-21', company: c2, arrived: 4, source: 'email', kind: 'invoice_in', party: 'Websupport s. r. o.', ico: '36421928', number: 'VF2026104418', vs: '2026104418', issued: -5, due: 9, total: 1290, vat: 241, category: 'services', proposal: 'ai' },
+    { id: 'demo-doc-21', company: c2, arrived: 4, source: 'upload', addedBy: DEMO.secondUser, kind: 'invoice_in', party: 'Websupport s. r. o.', ico: '36421928', number: 'VF2026104418', vs: '2026104418', issued: -5, due: 9, total: 1290, vat: 241, category: 'services', proposal: 'ai' },
     { id: 'demo-doc-22', company: c2, arrived: 13, source: 'upload', addedBy: DEMO.secondUser, kind: 'invoice_out', party: 'Kaviareň Zrnko s. r. o.', ico: '52987654', number: '2026003', vs: '2026003', issued: -14, due: 0, total: 85000, category: 'sales', proposal: 'ai', booked: { by: DEMO.accountant2, daysAgo: 11 } },
   ]
 

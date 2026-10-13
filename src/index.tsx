@@ -11,6 +11,7 @@ import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, type Company } from './rpo'
 import { appRoutes, appScheduled, type AppBindings } from './app/routes'
+import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
 import { Home, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
@@ -50,6 +51,7 @@ const APP_CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "connect-src 'self'",
   "frame-src 'self'",
+  "manifest-src 'self'",
   "form-action 'self'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
@@ -370,7 +372,17 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+  /** Email to a company's address for documents (src/app/inbox.ts). */
+  async email(message: ForwardableEmailMessage, env: Bindings, ctx: ExecutionContext) {
+    await ensureSchema(env.DB)
+    try {
+      await receiveMail(env, message, (work) => ctx.waitUntil(work.catch((err) => console.error('reading an email failed', err instanceof Error ? err.name : 'error'))))
+    } catch (err) {
+      console.error('an email failed', err instanceof Error ? err.name : 'error')
+      message.setReject('Doklady sa nepodarilo prijať. Skúste to znova o chvíľu.')
+    }
+  },
+  async scheduled(event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
     ctx.waitUntil(
       (async () => {
         await ensureSchema(env.DB)
@@ -381,7 +393,7 @@ export default {
         }
         await purge(env.DB)
         try {
-          await appScheduled(env)
+          await appScheduled(env, event.scheduledTime)
         } catch (err) {
           console.error('app schedule failed', err instanceof Error ? err.name : 'error')
         }

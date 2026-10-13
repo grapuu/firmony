@@ -193,6 +193,13 @@ export const APP = {
   docsByDay: 10,
   /** The address documents can be forwarded to: doklady-<code>@ the domain of the public mailbox. */
   inboxPrefix: 'doklady-',
+  /** An email to that address: the largest Cloudflare delivers, files taken from email in a day, notes about email
+   * without a document in a day (anybody who knows the address can write to it). */
+  mailBytes: 25 * 1024 * 1024,
+  mailFilesPerDay: 100,
+  mailNotesPerDay: 5,
+  /** An image in an email smaller than this is a logo or a signature, not a photographed document. */
+  mailImageMin: 12_000,
 } as const
 
 /** The people of Firmony: who becomes the first administrator, and how long a welcome link works. */

@@ -182,6 +182,59 @@ export interface OverviewProps {
   last: Message | null
   now: number
   flash?: string | null
+  /** The first steps of a new company, until the first three are done. */
+  steps?: FirstStepsState | null
+  /** Who is signed in: a message of another person of the company carries that person's name. */
+  me?: string
+}
+
+export interface FirstStepsState {
+  payments: boolean
+  upload: boolean
+  email: boolean
+  people: boolean
+}
+
+/** A new company's first steps, as Dougs and Pennylane open their apps: three that matter, two for later. */
+const FirstSteps: FC<{ steps: FirstStepsState }> = ({ steps }) => {
+  const s = app.start.steps
+  const list = [
+    { done: steps.payments, href: '/app/platby#vypis', text: s.payments, optional: false },
+    { done: steps.upload, href: '/app/doklady#pridat', text: s.upload, optional: false },
+    { done: steps.email, href: '/app/firma#doklady-emailom', text: s.email, optional: false },
+    { done: steps.people, href: '/app/firma#ludia', text: s.people, optional: true },
+    { done: false, href: '/app/firma#mobil', text: s.phone, optional: true },
+  ]
+  const done = list.filter((step) => !step.optional && step.done).length
+  return (
+    <section class="first" aria-labelledby="zaciname">
+      <header class="first__head">
+        <h2 id="zaciname" class="first__title">
+          {app.start.title}
+        </h2>
+        <p class="first__lead">{app.start.lead}</p>
+        <span class={`first__bar first__bar--${done}`} role="img" aria-label={`${done} / 3`} />
+      </header>
+      <ul class="first__list">
+        {list.map((step) => (
+          <li class={`first__step${step.done ? ' first__step--done' : ''}${step.optional ? ' first__step--later' : ''}`}>
+            <span class={step.done ? 'tick tick--green first__mark' : 'first__mark first__mark--open'} aria-hidden="true" />
+            <span class="first__text">
+              <span class="first__name">{step.text.title}</span>
+              <span class="first__sub">{step.optional && !step.done ? `${app.start.optional}. ${step.text.lead}` : step.text.lead}</span>
+            </span>
+            {step.done ? (
+              <span class="pill pill--ok">{app.start.done}</span>
+            ) : (
+              <a class={`btn ${step.optional ? 'btn--text' : 'btn--line'} btn--small first__go`} href={step.href}>
+                {step.text.link}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 export const Overview: FC<OverviewProps> = (props) => {
@@ -212,8 +265,9 @@ export const Overview: FC<OverviewProps> = (props) => {
           </section>
         )}
         <Flash text={props.flash} />
+        {props.steps ? <FirstSteps steps={props.steps} /> : null}
         {props.paymentsCount === 0 ? (
-          <p class="over__empty">{app.home.noPaymentsLead}</p>
+          props.steps ? null : <p class="over__empty">{app.home.noPaymentsLead}</p>
         ) : missingCount > 0 ? (
           <section class="feedcard" aria-labelledby="chyba">
             <header class="feedcard__head">
@@ -298,7 +352,7 @@ export const Overview: FC<OverviewProps> = (props) => {
           {props.last ? (
             <a class="mate__last" href="/app/spravy#posledna">
               <span class="mate__lastwho">
-                {props.last.side === 'firmony' ? (props.last.authorName ?? props.accountant ?? app.home.accountant) : app.messages.you}, {whenName(props.last.createdAt, props.now)}
+                {props.last.side === 'firmony' ? (props.last.authorName ?? props.accountant ?? app.home.accountant) : props.last.author && props.last.author !== props.me ? (props.last.authorName ?? app.messages.you) : app.messages.you}, {whenName(props.last.createdAt, props.now)}
               </span>
               <span class="mate__lasttext">{props.last.body}</span>
             </a>
@@ -325,7 +379,25 @@ function byMonth<T>(items: T[], dayOfItem: (item: T) => string): [string, T[]][]
   return [...groups]
 }
 
-export const PaymentsPage: FC<{ filter: 'missing' | 'done' | 'all'; payments: Payment[]; missingCount: number; suggested: Set<string>; flash?: string | null; warn?: string | null }> = ({ filter, payments, missingCount, suggested, flash, warn }) => (
+/** A search over a list: every word must be found; a number finds that amount. */
+const SearchForm: FC<{ action: string; value: string }> = ({ action, value }) => (
+  <form class="search" method="get" action={action} role="search">
+    <label class="sr" for="hladat">
+      {app.search.label}
+    </label>
+    <input id="hladat" class="search__input" type="search" name="hladat" value={value} maxlength={80} placeholder={app.search.placeholder} autocomplete="off" />
+    <button class="btn btn--line btn--small search__button" type="submit">
+      {app.search.button}
+    </button>
+    {value ? (
+      <a class="search__clear" href={action}>
+        {app.search.clear}
+      </a>
+    ) : null}
+  </form>
+)
+
+export const PaymentsPage: FC<{ filter: 'missing' | 'done' | 'all'; payments: Payment[]; missingCount: number; suggested: Set<string>; flash?: string | null; warn?: string | null; search?: string }> = ({ filter, payments, missingCount, suggested, flash, warn, search = '' }) => (
   <>
     <header class="phead">
       <Heading first={app.payments.title} />
@@ -333,15 +405,20 @@ export const PaymentsPage: FC<{ filter: 'missing' | 'done' | 'all'; payments: Pa
     </header>
     <Flash text={flash} />
     <Flash text={warn} tone="warn" />
-    <nav class="filters" aria-label={app.payments.title}>
-      {(['missing', 'done', 'all'] as const).map((f) => (
-        <a class="filters__item" href={f === 'missing' ? '/app/platby' : `/app/platby?filter=${f === 'done' ? 'hotove' : 'vsetky'}`} aria-current={filter === f ? 'page' : undefined}>
-          {app.payments.filters[f]}
-          {f === 'missing' && missingCount > 0 ? <span class="count count--amber">{missingCount}</span> : null}
-        </a>
-      ))}
-    </nav>
-    {payments.length === 0 ? (
+    <div class="listbar">
+      <nav class="filters" aria-label={app.payments.title}>
+        {(['missing', 'done', 'all'] as const).map((f) => (
+          <a class="filters__item" href={f === 'missing' ? '/app/platby' : `/app/platby?filter=${f === 'done' ? 'hotove' : 'vsetky'}`} aria-current={filter === f && !search ? 'page' : undefined}>
+            {app.payments.filters[f]}
+            {f === 'missing' && missingCount > 0 ? <span class="count count--amber">{missingCount}</span> : null}
+          </a>
+        ))}
+      </nav>
+      <SearchForm action="/app/platby" value={search} />
+    </div>
+    {payments.length === 0 && search ? (
+      <p class="over__empty">{app.search.none(search)}</p>
+    ) : payments.length === 0 ? (
       filter === 'missing' ? (
         <section class="nothing">
           <Tile art={ART.seal} size="lg" />
@@ -620,7 +697,7 @@ export function groupIban(iban: string): string {
 // Doklady
 // ---------------------------------------------------------------------------------------------------------------
 
-export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: string; flash?: string | null; problems: string[] }> = ({ filter, docs, inbox, flash, problems }) => (
+export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: string; flash?: string | null; problems: string[]; search?: string }> = ({ filter, docs, inbox, flash, problems, search = '' }) => (
   <>
     <header class="phead">
       <Heading first={app.documents.title} />
@@ -631,16 +708,19 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
       <Flash text={text} tone="warn" />
     ))}
     <AddCard inbox={inbox} wide />
-    <nav class="filters" aria-label={app.documents.title}>
-      {(['all', 'loose'] as const).map((f) => (
-        <a class="filters__item" href={f === 'all' ? '/app/doklady' : '/app/doklady?filter=bez-platby'} aria-current={filter === f ? 'page' : undefined}>
-          {app.documents.filters[f]}
-        </a>
-      ))}
-    </nav>
+    <div class="listbar">
+      <nav class="filters" aria-label={app.documents.title}>
+        {(['all', 'loose'] as const).map((f) => (
+          <a class="filters__item" href={f === 'all' ? '/app/doklady' : '/app/doklady?filter=bez-platby'} aria-current={filter === f && !search ? 'page' : undefined}>
+            {app.documents.filters[f]}
+          </a>
+        ))}
+      </nav>
+      <SearchForm action="/app/doklady" value={search} />
+    </div>
     <div data-part="docs" data-live={docs.some((d) => d.status === 'reading') ? '1' : undefined}>
       {docs.length === 0 ? (
-        <p class="over__empty">{filter === 'loose' ? app.documents.emptyLoose : app.documents.empty}</p>
+        <p class="over__empty">{search ? app.search.none(search) : filter === 'loose' ? app.documents.emptyLoose : app.documents.empty}</p>
       ) : (
         byMonth(docs, (d) => dayOf(d.createdAt)).map(([month, items]) => (
           <section class="month" aria-label={monthName(`${month}-01`, true)}>
@@ -846,7 +926,7 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
 // Správy
 // ---------------------------------------------------------------------------------------------------------------
 
-export const MessagesPage: FC<{ messages: Message[]; accountant: string | null; now: number; payments: Map<string, Payment>; flash?: string | null; error?: string | null; draft?: string }> = ({ messages, accountant, now, payments, flash, error, draft }) => (
+export const MessagesPage: FC<{ messages: Message[]; accountant: string | null; now: number; payments: Map<string, Payment>; flash?: string | null; error?: string | null; draft?: string; me?: string }> = ({ messages, accountant, now, payments, flash, error, draft, me }) => (
   <>
     <header class="phead">
       <Heading first={app.messages.title} />
@@ -874,7 +954,7 @@ export const MessagesPage: FC<{ messages: Message[]; accountant: string | null; 
                   <p class="msg__body">{m.body}</p>
                 </div>
                 <p class="msg__meta">
-                  {m.side === 'client' ? app.messages.you : (m.authorName ?? accountant ?? app.home.accountant)}, {whenName(m.createdAt, now)}
+                  {m.side === 'client' ? (m.author && m.author !== me ? (m.authorName ?? app.messages.you) : app.messages.you) : (m.authorName ?? accountant ?? app.home.accountant)}, {whenName(m.createdAt, now)}
                 </p>
               </li>
             )

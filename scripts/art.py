@@ -15,6 +15,7 @@ the icons a phone shows on a square of its own and the picture of a shared link 
     public/favicon.ico           the tab of a browser: 16, 32 and 48 px
     public/art/icon-192.png      search results and Android
     public/art/icon-180.png      the home screen of an iPhone
+    public/art/icon-512.png      the app on the home screen of an Android phone (public/manifest.webmanifest)
     public/art/share.png         what a link shows when it is sent to someone: the logo and the name, 1200 by 630
 
 `picture` finds what is on the black, centres it on a square and writes public/art/<name>.webp at the size
@@ -162,10 +163,11 @@ def logo(source):
     os.makedirs(ART, exist_ok=True)
     save(icon(source, LOGO_COVER, 960), os.path.join(ART, 'logo.webp'), format='WEBP', quality=92, alpha_quality=80, method=6)
     save(icon(source, LOGO_COVER, 128), os.path.join(ART, 'logo-small.webp'), format='WEBP', quality=92, alpha_quality=80, method=6)
-    icons = {size: icon(source, ICON_COVER, size) for size in (16, 32, 48, 180, 192)}
+    icons = {size: icon(source, ICON_COVER, size) for size in (16, 32, 48, 180, 192, 512)}
     save(icons[48], os.path.join(PUBLIC, 'favicon.ico'), format='ICO', sizes=[(16, 16), (32, 32), (48, 48)], append_images=[icons[16], icons[32]])
     save(on_white(icons[192]), os.path.join(ART, 'icon-192.png'), format='PNG', optimize=True)
     save(on_white(icons[180]), os.path.join(ART, 'icon-180.png'), format='PNG', optimize=True)
+    save(on_white(icons[512]), os.path.join(ART, 'icon-512.png'), format='PNG', optimize=True)
     save(share(icon(source, 1, 600)), os.path.join(ART, 'share.png'), format='PNG', optimize=True)
 
 

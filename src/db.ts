@@ -361,12 +361,13 @@ export function insertRequestStatement(db: D1Database, r: NewRequest): D1Prepare
     .bind(r.id, now(), r.ico, r.company, r.address, r.companySource, r.plan, r.situation, r.name, r.email, r.phone, r.note, r.source, r.privacyVersion)
 }
 
-/** What the privacy notice promises: requests a year, sent email ninety days, counters two days. */
+/** What the privacy notice promises: requests a year, sent and received email ninety days, counters two days. */
 export async function purge(db: D1Database): Promise<void> {
   const ts = now()
   await db.batch([
     db.prepare('DELETE FROM requests WHERE created_at < ?').bind(ts - RETENTION.requestDays * 86400),
     db.prepare('DELETE FROM outbox WHERE created_at < ?').bind(ts - RETENTION.outboxDays * 86400),
+    db.prepare('DELETE FROM inbound_mail WHERE received_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM throttle WHERE expires_at < ?').bind(ts),
   ])
 }

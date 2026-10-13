@@ -46,6 +46,7 @@ const files = new Map([
   ['/app/doklady', 'doklady.html'],
   ['/app/doklady?filter=bez-platby', 'doklady-bez-platby.html'],
   ['/app/spravy', 'spravy.html'],
+  ['/app/firma', 'firma.html'],
   ['/app/prihlasenie', 'prihlasenie.html'],
   ['/app/prihlasenie/poslane', 'prihlasenie-poslane.html'],
 ])
@@ -180,6 +181,7 @@ const leads = {
   [`${office.path}/doklad`]: 'platba-potreby-hotovo.html',
   [`${fuel.path}/bez-dokladu`]: 'platba-tankovanie-netreba.html',
   '/app/prihlasenie': 'prihlasenie-poslane.html',
+  '/app/firma/prepnut': 'atelier.html',
 }
 
 // The first state: three payments without a document.
@@ -259,6 +261,15 @@ const second = Buffer.concat([await readFile(photo), Buffer.from([0])])
 await write('platba-potreby-hotovo.html', await html(`${office.path}?ok=priradene`))
 await write('vsetko-mame.html', await html('/app'))
 
+// The second company of the same person: a new one, which is shown its first steps.
+{
+  const body = new URLSearchParams({ firma: 'demo-company-2' })
+  await call('/app/firma/prepnut', { method: 'POST', body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+  await write('atelier.html', await html('/app'), { '/app/firma/prepnut': 'index.html' })
+  const back = new URLSearchParams({ firma: 'demo-company' })
+  await call('/app/firma/prepnut', { method: 'POST', body: back, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+}
+
 // Signing in, last: signing out ends the session.
 await call('/app/odhlasit', { method: 'POST', headers: { 'content-length': '0' } })
 cookie = ''
@@ -270,5 +281,5 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', ...originals]
+const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', ...originals]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))

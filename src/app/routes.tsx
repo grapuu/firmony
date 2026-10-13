@@ -10,12 +10,15 @@ import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf } from '../views/inside-pages'
 import { Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
+import { CompanyPage } from '../views/settings'
 import { team as tt } from '../team/copy'
 import { app as t, monthName } from './copy'
 import { deadlinesFor, nextMonth } from './deadlines'
 import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
-import { FILE_TYPES, fileHash, readDocument, sniff, type FileKind } from './read'
+import { sniff } from './read'
+import { keepFilesFor, readOne, type NewFile } from './intake'
+import { remindAll } from './remind'
 import { currentWho, endSession, linkUsable, newLink, startSession, switchStatement, useLink } from './session'
 import {
   afterReading,
@@ -42,6 +45,7 @@ import {
   matchCompany,
   messageStatement,
   monthFigures,
+  peopleOf,
   privatelyStatement,
   readingStatement,
   seenStatement,
@@ -224,6 +228,12 @@ function flashOf(c: Ctx): string | null {
       return t.messages.sent
     case 'vypis':
       return t.payments.statementDone(n, k)
+    case 'pozvanka':
+      return t.company.invited
+    case 'odobraty':
+      return t.company.removed
+    case 'pripomienky':
+      return t.company.remindersSaved
     default:
       return null
   }
@@ -239,7 +249,7 @@ appRoutes.get('/', async (c) => {
   const company = who.company.id
   const day = today()
   const month = day.slice(0, 7)
-  const [missingAll, figures, messages, counts, byMonth] = await Promise.all([
+  const [missingAll, figures, messages, counts, byMonth, started] = await Promise.all([
     listPayments(db, company, 'missing', 200),
     monthFigures(db, company, `${month}-01`, `${nextMonth(month)}-01`),
     listMessages(db, company, 1),
@@ -248,8 +258,17 @@ appRoutes.get('/', async (c) => {
       .prepare(`SELECT substr(p.booked_on, 1, 7) AS month, COUNT(*) AS n FROM payments p WHERE p.company_id = ? AND p.exempt IS NULL AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id) GROUP BY 1`)
       .bind(company)
       .all<{ month: string; n: number }>(),
+    db
+      .prepare(
+        `SELECT EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'upload') AS upload,
+                EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'email') AS email,
+                (SELECT COUNT(*) FROM members WHERE company_id = ?1) AS people`,
+      )
+      .bind(company)
+      .first<{ upload: number; email: number; people: number }>(),
   ])
   const suggested = await suggestions(db, company, missingAll)
+  const steps = { payments: (counts?.n ?? 0) > 0, upload: started?.upload === 1, email: started?.email === 1, people: (started?.people ?? 1) > 1 }
   return shell(
     c,
     'home',
@@ -269,6 +288,8 @@ appRoutes.get('/', async (c) => {
       last={messages[0] ?? null}
       now={now()}
       flash={flashOf(c)}
+      steps={steps.payments && steps.upload && steps.email ? null : steps}
+      me={who.user.id}
     />,
   )
 })
@@ -281,10 +302,12 @@ appRoutes.get('/platby', async (c) => {
   const who = c.get('who')
   const db = c.env.DB
   const q = c.req.query('filter')
-  const filter = q === 'hotove' ? 'done' : q === 'vsetky' ? 'all' : 'missing'
-  const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, filter), countMissing(db, who.company.id)])
+  const search = (c.req.query('hladat') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+  // A search looks through every payment, whatever tab was open.
+  const filter = search ? 'all' : q === 'hotove' ? 'done' : q === 'vsetky' ? 'all' : 'missing'
+  const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, filter, 400, search), countMissing(db, who.company.id)])
   const suggested = await suggestions(db, who.company.id, payments)
-  return shell(c, 'payments', t.payments.title, <PaymentsPage filter={filter} payments={payments} missingCount={missingCount} suggested={new Set(suggested.keys())} flash={flashOf(c)} />)
+  return shell(c, 'payments', t.payments.title, <PaymentsPage filter={filter} payments={payments} missingCount={missingCount} suggested={new Set(suggested.keys())} flash={flashOf(c)} search={search} />)
 })
 
 async function paymentPage(c: Ctx, id: string, extra: { error?: string; exemptValue?: string; noteValue?: string } = {}, status: ContentfulStatusCode = 200) {
@@ -344,10 +367,8 @@ appRoutes.post('/platby/:id/zrusit', async (c) => {
 // Files: a client's documents, and the bank's statement
 // ---------------------------------------------------------------------------------------------------------------
 
-const EXTENSIONS: Record<FileKind, string> = { jpeg: 'jpg', png: 'png', webp: 'webp', heic: 'heic', pdf: 'pdf', xml: 'xml' }
-
 interface Taken {
-  files: { name: string; kind: FileKind; bytes: Uint8Array }[]
+  files: NewFile[]
   problems: string[]
 }
 
@@ -379,84 +400,20 @@ async function takeFiles(c: Ctx): Promise<Taken> {
   return out
 }
 
-/**
- * Keeps the files and writes the documents down; a document sent on a payment's page belongs to that payment.
- * A file that was sent before is not kept twice: on a payment's page the document we have is given to it.
- */
-async function keepFiles(c: Ctx, files: Taken['files'], payment: string | null): Promise<{ added: number; known: string[] }> {
+/** Keeps the files of a form; whatever is to be read is read after the answer. */
+async function keepFiles(c: Ctx, files: NewFile[], payment: string | null): Promise<{ added: number; known: string[] }> {
   const who = c.get('who')
-  const db = c.env.DB
-  const bucket = c.env.FILES
-  const out = { added: 0, known: [] as string[] }
-  if (!bucket) return out
-  const toRead: string[] = []
-  const readNow: string[] = []
-  const statements: D1PreparedStatement[] = []
-  const seen = new Set<string>()
-  for (const file of files) {
-    const hash = await fileHash(file.bytes)
-    const existing = seen.has(hash) ? 'this-request' : await documentByHash(db, who.company.id, hash)
-    if (existing) {
-      if (payment && existing !== 'this-request') statements.push(linkStatement(db, who.company.id, payment, existing, 'client', who.user.id))
-      else out.known.push(file.name)
-      continue
-    }
-    seen.add(hash)
-    const id = crypto.randomUUID()
-    const key = `companies/${who.company.id}/documents/${id}.${EXTENSIONS[file.kind]}`
-    await bucket.put(key, file.bytes, { httpMetadata: { contentType: FILE_TYPES[file.kind] } })
-    let reading: Reading | null = null
-    let status: 'reading' | 'read' | 'manual' = 'reading'
-    let readBy: string | null = null
-    if (file.kind === 'xml') {
-      reading = readInvoice(new TextDecoder().decode(file.bytes), who.company.ico)
-      status = reading ? 'read' : 'manual'
-      readBy = reading ? 'xml' : 'person: not an invoice'
-      if (reading) readNow.push(id)
-    } else toRead.push(id)
-    statements.push(
-      insertDocumentStatement(db, { id, company: who.company.id, source: 'upload', addedBy: who.user.id, fileKey: key, fileType: FILE_TYPES[file.kind], fileName: file.name, fileBytes: file.bytes.length, fileHash: hash, reading, readBy, status }),
-      eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.added', subject: id, detail: { kind: file.kind, bytes: file.bytes.length, payment } }),
-    )
-    if (payment) statements.push(linkStatement(db, who.company.id, payment, id, 'client', who.user.id))
-    out.added++
-  }
-  if (statements.length > 0) await db.batch(statements)
-  for (const id of readNow) await afterReading(db, who.company.id, id)
-  if (out.added > 0) later(c, readAll(c.env, who.company, toRead, payment === null || files.some((f) => f.kind === 'xml')))
-  return out
-}
-
-/** Has every new document read, then pairs what can be paired. */
-async function readAll(env: AppBindings, company: Company, ids: string[], match: boolean): Promise<void> {
-  for (const id of ids) await readOne(env, company, id)
-  if (match || ids.length > 0) await matchCompany(env.DB, company.id)
-}
-
-export async function readOne(env: AppBindings, company: Company, id: string): Promise<void> {
-  const db = env.DB
-  const row = await db.prepare("SELECT file_key, file_type FROM documents WHERE id = ? AND company_id = ? AND status = 'reading' AND deleted_at IS NULL").bind(id, company.id).first<{ file_key: string | null; file_type: string | null }>()
-  if (!row) return
-  await db.prepare('UPDATE documents SET read_tries = read_tries + 1 WHERE id = ?').bind(id).run()
-  const object = row.file_key && env.FILES ? await env.FILES.get(row.file_key) : null
-  if (!object) {
-    await db.batch([manualStatement(db, company.id, id, 'no file')])
-    return
-  }
-  const bytes = new Uint8Array(await object.arrayBuffer())
-  const kind = sniff(bytes)
-  const result = kind ? await readDocument(env.ANTHROPIC_API_KEY, { kind, bytes }, company) : { manual: 'unknown file' }
-  if ('reading' in result) {
-    await db.batch([readingStatement(db, company.id, id, result.reading, result.by), eventStatement(db, { company: company.id, user: null, action: 'document.read', subject: id, detail: { by: result.by } })])
-    await afterReading(db, company.id, id)
-  } else await db.batch([manualStatement(db, company.id, id, result.manual), eventStatement(db, { company: company.id, user: null, action: 'document.manual', subject: id, detail: { why: result.manual } })])
+  const { kept, work } = await keepFilesFor(c.env, who.company, { user: who.user.id, source: 'upload' }, files, payment)
+  if (work) later(c, work)
+  return kept
 }
 
 appRoutes.get('/doklady', async (c) => {
   const who = c.get('who')
-  const filter = c.req.query('filter') === 'bez-platby' ? 'loose' : 'all'
-  const docs = await listDocuments(c.env.DB, who.company.id, filter)
-  return shell(c, 'documents', t.documents.title, <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} />)
+  const search = (c.req.query('hladat') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+  const filter = !search && c.req.query('filter') === 'bez-platby' ? 'loose' : 'all'
+  const docs = await listDocuments(c.env.DB, who.company.id, filter, 400, search)
+  return shell(c, 'documents', t.documents.title, <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} />)
 })
 
 async function documentsWithProblems(c: Ctx, problems: string[], status: ContentfulStatusCode, flash: string | null = null) {
@@ -594,7 +551,7 @@ async function messagesPage(c: Ctx, extra: { error?: string; draft?: string } = 
   const about = [...new Set(messages.map((m) => m.paymentId).filter((id): id is string => Boolean(id)))]
   const payments = new Map((await Promise.all(about.map((id) => getPayment(db, who.company.id, id)))).filter((p) => p !== null).map((p) => [p.id, p]))
   if (status === 200) await db.batch([seenStatement(db, who.company.id)])
-  return shell(c, 'messages', t.messages.title, <MessagesPage messages={messages} accountant={who.company.accountantName} now={now()} payments={payments} flash={flashOf(c)} {...extra} />, status)
+  return shell(c, 'messages', t.messages.title, <MessagesPage messages={messages} accountant={who.company.accountantName} now={now()} payments={payments} flash={flashOf(c)} me={who.user.id} {...extra} />, status)
 }
 
 appRoutes.get('/spravy', (c) => messagesPage(c))
@@ -631,8 +588,83 @@ appRoutes.post('/spravy', async (c) => {
 })
 
 // ---------------------------------------------------------------------------------------------------------------
-// The company: switching to another one of the same user
+// The company: its details, its people, the reminders, switching to another one of the same user
 // ---------------------------------------------------------------------------------------------------------------
+
+async function companyPage(c: Ctx, extra: { invite?: { name: string; email: string }; errors?: { name?: string; email?: string; form?: string } } = {}, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const [people, companies] = await Promise.all([peopleOf(db, who.company.id), companiesOf(db, who.user.id)])
+  const me = people.find((p) => p.id === who.user.id) ?? { ...who.user, role: who.role }
+  return shell(
+    c,
+    'company',
+    t.company.title,
+    <CompanyPage company={who.company} people={people} me={me} companies={companies} inbox={inboxAddress(who.company)} invite={extra.invite ?? { name: '', email: '' }} errors={extra.errors ?? {}} flash={flashOf(c)} />,
+    status,
+  )
+}
+
+appRoutes.get('/firma', (c) => companyPage(c))
+
+appRoutes.post('/firma/pozvat', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const invite = {
+    name: typeof body.meno === 'string' ? body.meno.trim().slice(0, 120) : '',
+    email: typeof body.email === 'string' ? body.email.trim().slice(0, 200) : '',
+  }
+  if (who.role !== 'owner') return companyPage(c, { invite, errors: { form: t.company.onlyOwner } }, 403)
+  const errors: { name?: string; email?: string; form?: string } = {}
+  if (invite.name.length < 2) errors.name = t.company.badName
+  if (!EMAIL.test(invite.email)) errors.email = t.company.badEmail
+  if (Object.keys(errors).length > 0) return companyPage(c, { invite, errors }, 422)
+  if (!(await withinLimit(db, 'invite', who.company.id, 10, 3600))) return companyPage(c, { invite, errors: { form: t.messages.throttle } }, 429)
+  const existing = await userByEmail(db, invite.email)
+  if (existing && (await db.prepare('SELECT 1 AS x FROM members WHERE company_id = ? AND user_id = ?').bind(who.company.id, existing.id).first())) {
+    return companyPage(c, { invite, errors: { email: t.company.already } }, 409)
+  }
+  const id = existing?.id ?? crypto.randomUUID()
+  const { token, statement } = await newLink(db, id, TEAM.welcomeDays * 24 * 60)
+  await db.batch([
+    ...(existing ? [] : [db.prepare('INSERT INTO users (id, created_at, email, name) VALUES (?, ?, ?, ?)').bind(id, now(), invite.email, invite.name)]),
+    db.prepare("INSERT OR IGNORE INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'member', ?, ?)").bind(who.company.id, id, now(), who.user.id),
+    statement,
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'member.invited', subject: id }),
+    queueStatement(db, {
+      key: `invite:${who.company.id}:${id}:${now()}`,
+      to: invite.email,
+      subject: t.company.inviteSubject(who.company.name),
+      body: t.company.inviteBody(existing?.name ?? invite.name, who.user.name, who.company.name, `${siteOrigin(c)}/app/vstup?t=${token}`),
+    }),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/app/firma?ok=pozvanka#ludia', 303)
+})
+
+appRoutes.post('/firma/ludia/:id/odobrat', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  if (who.role !== 'owner') return companyPage(c, { errors: { form: t.company.onlyOwner } }, 403)
+  const [removed] = await db.batch([
+    db.prepare("DELETE FROM members WHERE company_id = ? AND user_id = ? AND role <> 'owner' AND user_id <> ?").bind(who.company.id, id, who.user.id),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'member.removed', subject: id }),
+  ])
+  return c.redirect((removed?.meta?.changes ?? 0) > 0 ? '/app/firma?ok=odobraty#ludia' : '/app/firma#ludia', 303)
+})
+
+appRoutes.post('/firma/pripomienky', async (c) => {
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const on = body.zapnut === '1'
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET reminders = ? WHERE id = ?').bind(on ? 1 : 0, who.user.id),
+    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: on ? 'reminders.on' : 'reminders.off' }),
+  ])
+  return c.redirect('/app/firma?ok=pripomienky#pripomienky', 303)
+})
 
 appRoutes.post('/firma/prepnut', async (c) => {
   const who = c.get('who')
@@ -649,9 +681,14 @@ appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Mis
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Every fifteen minutes: documents whose reading was cut off are read again (three times at most), old sessions go. */
-export async function appScheduled(env: AppBindings): Promise<void> {
+export async function appScheduled(env: AppBindings, at: number = Date.now()): Promise<void> {
   const db = env.DB
   const ts = now()
+  try {
+    await remindAll(env, at)
+  } catch (err) {
+    console.error('reminders failed', err instanceof Error ? err.name : 'error')
+  }
   const stuck = await db
     .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")
     .bind(ts - 120)

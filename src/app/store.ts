@@ -319,6 +319,22 @@ export async function membersOf(db: D1Database, company: string, onlyReminders =
   return rows.results.map((row) => userOf(row))
 }
 
+export interface Person extends User {
+  role: string
+}
+
+/** The people of a company with their role, the owners first. */
+export async function peopleOf(db: D1Database, company: string): Promise<Person[]> {
+  const rows = await db
+    .prepare(
+      `SELECT u.id, u.name, u.email, u.team, u.reminders, m.role FROM members m JOIN users u ON u.id = m.user_id
+       WHERE m.company_id = ? ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at`,
+    )
+    .bind(company)
+    .all<Row>()
+  return rows.results.map((row) => ({ ...userOf(row), role: String(row.role) }))
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Payments
 // ---------------------------------------------------------------------------------------------------------------
