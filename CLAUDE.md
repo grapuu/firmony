@@ -56,6 +56,25 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   clients, not software (1 M€ of revenue is about 800 clients at 105 €; Slovakia is about 12 times smaller than
   France, so millions of profit need Czechia and further), and what kills it is the cost of a client and
   accountants who keep up (Bench).
+- From 21:18 to 21:44 (13 October 2026). He asked for the grammar everywhere ("Vás s malým v aj Vám ... všade
+  chyby tieto") and for the pricing with every cost; then whether the price list belongs on the web, how onboarding
+  and the contract are done, and whether a person is needed. The texts were corrected and pushed (`8b1be32`: polite
+  forms with a capital V, "Vy rastiete." for "Vy rastite.", agreement and gender, "platiteľom DPH", the register
+  entry in the locative, the legal page names the app's sign-in cookie); both previews were republished (the site
+  version 12, the app version 7). He did not open an Enable Banking account ("účet si nevytváram, načo") and wrote
+  to them himself at 21:26 from juhasgr@gmail.com (the price per account at 100, 1 000 and 5 000, the production
+  contract, Czech banks); the account waits for their answer and is due in November. He wants to be ready in
+  December ("ideálne ak v decembri by sme boli ready"). He was told: the free trade "Vedenie účtovníctva" is
+  announced online at slovensko.sk with eID, free (7 € in person), the certificate comes within 3 days and the
+  accounting may be kept from the day of the announcement; the commercial register entry costs 50 € and since
+  17 August 2026 (Act No. 29/2026 Z. z.) only an advocate or a notary may represent the company in it (about 100 to
+  200 € and one to two weeks; whether the change of the business object needs a notarial form was not read in the
+  Act); as a seller of accounting europio is an obliged person under Act No. 297/2008 Z. z. (goAML within 30 days
+  of the trade, an AML program that the builder writes, the client identified at onboarding), which has nothing to
+  do with employing anybody. He feared that November is too tight for winning clients; he was told that 1 January
+  is only the best moment for those who switch: 5 to 10 firms of his own circle for January, marketing from
+  December for February and March, new companies in any month. His word at 21:40: "budeme mať najlepší produkt,
+  najlepší marketing a zdominujeme to tu."
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -153,6 +172,22 @@ on Crete, the sites of Matax, Bezúčto and Keepi, TASR on Digitoo, Enable Banki
   offered: intake (email, photo, eKasa QR) with AI posting proposals, tried on europio's documents.
 - For marketing later: since 17 August 2026 an s. r. o. is founded only through a notary or an advocate, and
   over 24 000 companies were founded by mid-September 2026 (95 % s. r. o.); Dougs wins clients at founding.
+
+## The pricing with every cost (13 October 2026, 21:45; proposals, his to decide)
+
+Per client and month, from the prices and the accountants' pay he set; what is not known yet is an assumption, to
+be replaced by the quotes: Enable Banking 2 € an account, the digital postman 2 €, servers and email 0,20 €,
+reading by Claude under 1 cent a document (Haiku 5.5 at $0.10 and $0.50 a million tokens, three tries), a reserve
+for our own errors of 2 % of the price, nothing for collecting (our own invoice paid by transfer and paired by the
+bank link; Stripe would take 0,83 to 2,09 € by SEPA and 1,77 to 5,73 € by card). What is left: Štart 38,37 €
+(56 %), Rast 82,09 € (64 %), Firma 167,50 € (67 %); with the closing (149 €, 100 € of it the accountant's) 42,46,
+86,18 and 171,59 €. A client won costs 250 € and about 40 € of an accountant's time for the opening balances, so
+Štart pays back in 6,8 months, Rast in 3,4 and Firma in 1,7. A mix of 50/40/10 % is 111 € a client and 72,86 €
+left (66 %); a million of revenue a year is about 750 clients. Proposed to him: keep the prices; take payroll out
+of the plans as 15 € a person a month (10 € to the accountant), since at 10 € a head paid on top Rast leaves
+62 € and Firma 120 €; say in the contract that 23 % VAT is added once europio is a VAT payer (Štart's 69 € becomes
+84,87 € for a client who is not one); invoice monthly by transfer. The real risks are the accountants' pay (to be
+confirmed in his calls) and the cost of winning a client, not the software.
 
 ## The economics (the evening of 12 October 2026, scratch model; base case)
 
@@ -442,7 +477,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
   "Účtovníctvo pre mladé s. r. o.", the promise in white ("Postaráme sa" held together by a no-break space, so
   the line breaks before "o všetko"; "Vy rastiete." in the rose serif (it was "Vy rastite.", which is no Slovak form: the imperative is "rasťte", and the statement fits the pair "Vy pošlete doklady. My urobíme zvyšok.")) and the lead; three of his glass objects
   float in its right part (the invoice, the coins, the slip), each bobbing and drifting up at its own pace as
-  the page scrolls. The white card where a client starts (the F in a tile, "Začnite s IČO vašej firmy", the IČO
+  the page scrolls. The white card where a client starts (the F in a tile, "Začnite s IČO Vašej firmy", the IČO
   field and its button in one row, "Ešte nemám firmu") lies over the panel's lower right edge: the grid has a
   second row of 124 px and the card spans both. Under the panel on the left: the price line and "Pozrieť
   cenník", "Ako to funguje". The words keep left of the card at every height (`--pad-x`, `--card-w`,
