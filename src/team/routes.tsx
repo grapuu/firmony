@@ -75,8 +75,11 @@ import { VatCard, VatPage, type VatForm } from '../views/vat'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
-import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, prevPeriod, vatOf, type VatData } from '../app/vat'
+import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, type VatData } from '../app/vat'
 import { returnXml, statementXml } from '../app/vat-xml'
+import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
+import { MARKED_KINDS } from './deadlines'
+import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
 import {
   docPreview,
   docsAround,
@@ -313,6 +316,10 @@ function flashOf(c: Ctx): string | null {
       return t.ledger.flashes.removed
     case 'kniha-ps':
       return t.ledger.flashes.opening
+    case 'oznacene':
+      return t.deadlines.flashes.marked
+    case 'neoznacene':
+      return t.deadlines.flashes.unmarked
     default:
       return null
   }
@@ -330,6 +337,59 @@ teamRoutes.get('/', async (c) => {
   const who = c.get('who')
   const [rows, ended] = await Promise.all([teamClients(c.env.DB, who.user, demoOn(c)), isAdmin(who.user) ? endedCompanies(c.env.DB) : Promise.resolve([])])
   return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} ended={ended} now={now()} flash={flashOf(c)} />)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Every client's deadlines on one screen
+// ---------------------------------------------------------------------------------------------------------------
+
+teamRoutes.get('/terminy', async (c) => {
+  const who = c.get('who')
+  const admin = isAdmin(who.user)
+  const today = dayOf(now())
+  const kto = c.req.query('kto')
+  const side: DueFilter = kto === 'my' ? 'ours' : kto === 'klient' ? 'client' : 'all'
+  const accountants = admin ? await accountantsList(c.env.DB) : []
+  const asked = c.req.query('uctovnicka') ?? ''
+  // Only the administrator chooses whose clients; an accountant sees her own whatever the address says.
+  const accountant = admin && (asked === 'none' || accountants.some((a) => a.id === asked)) ? asked : ''
+  const { dues } = await teamDeadlines(c.env.DB, who.user, demoOn(c), today, { accountant: accountant || null })
+  return shell(
+    c,
+    'deadlines',
+    t.deadlines.title,
+    <DeadlinesPage user={who.user} dues={dues} today={today} side={side} done={c.req.query('hotove') === '1'} accountant={accountant} accountants={accountants} flash={flashOf(c)} />,
+  )
+})
+
+/** Where a form of the deadlines goes back to: the screen with its filters, or a client's page; nothing else. */
+const BACK = /^\/ucto\/(?:terminy|klienti\/[A-Za-z0-9-]{1,64})(?:\?[A-Za-z0-9=&_-]{0,200})?$/
+
+// A filing the app does not make yet (the recapitulative statement, the closing), marked as filed elsewhere, or the mark taken back.
+teamRoutes.post('/klienti/:id/podane', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const kind = body.druh === MARKED_KINDS.summary ? MARKED_KINDS.summary : body.druh === MARKED_KINDS.closing ? MARKED_KINDS.closing : null
+  const period = typeof body.obdobie === 'string' ? body.obdobie : ''
+  // A statement of a period that has ended, a closing of a year that has.
+  const valid =
+    kind === MARKED_KINDS.summary
+      ? isPeriod(period) && periodRange(period).to < today
+      : kind === MARKED_KINDS.closing
+        ? /^\d{4}$/.test(period) && Number(period) < Number(today.slice(0, 4)) && Number(period) >= 2000
+        : false
+  if (!kind || !valid) return c.text('Bad request', 400)
+  const undo = body.zrusit === '1'
+  await db.batch([
+    undo ? unmarkFilingStatement(db, company.id, kind, period) : markFilingStatement(db, company.id, kind, period, who.user.id, today, now()),
+    eventStatement(db, { company: company.id, user: who.user.id, action: undo ? 'filing.unmarked' : 'filing.marked', subject: `${kind}:${period}` }),
+  ])
+  const back = typeof body.spat === 'string' && BACK.test(body.spat) ? body.spat : '/ucto/terminy'
+  return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=${undo ? 'neoznacene' : 'oznacene'}`, 303)
 })
 
 async function clientPage(
@@ -362,7 +422,14 @@ async function clientPage(
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
-  const [banks, vat, books, statements] = await Promise.all([linksOf(db, company.id), vatSummary(db, company, day), booksOf(db, company), statementsOf(db, company.id, 6)])
+  const [banks, vat, books, statements, due] = await Promise.all([
+    linksOf(db, company.id),
+    vatSummary(db, company, day),
+    booksOf(db, company),
+    statementsOf(db, company.id, 6),
+    // The company was checked against the user above; the sample companies count here as well.
+    teamDeadlines(db, who.user, true, day, { company: company.id }),
+  ])
   const active = banks.find((l) => l.status === 'active')
   const ended = banks.find((l) => l.status === 'expired')
   const mailed = statements.find((st) => st.source === 'email')
@@ -403,6 +470,7 @@ async function clientPage(
       earliestEnd={noticeEndsOn(day)}
       vat={<VatCard company={company} view={vat.view} needs7a={vat.needs7a} today={day} />}
       ledger={<LedgerCard company={company} tb={trialBalance(books, Number(day.slice(0, 4)), Number(day.slice(5, 7)))} waiting={blockingCount(books, day)} />}
+      deadlines={<DeadlinesCard dues={due.dues} today={day} companyId={company.id} />}
       statements={statements}
       {...extra}
     />,

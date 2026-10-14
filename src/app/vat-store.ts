@@ -162,16 +162,12 @@ export function rowsOf(json: unknown): Rows {
 /** The columns of a filing as stored, without the period and the company: what `prev` keeps of the one replaced. */
 const FILING_COLUMNS = ['filed_at', 'filed_on', 'filed_by', 'rows', 'kv_rows', 'pay_cents', 'refund_cents', 'due_on', 'kind', 'fast', 'carried', 'kv', 'found_on', 'prev'] as const
 
-/** The returns marked as filed, the newest period first. */
-export async function filedReturns(db: D1Database, company: string): Promise<FiledReturn[]> {
-  const rows = await db
-    .prepare(
-      `SELECT v.period, ${FILING_COLUMNS.map((c) => `v.${c}`).join(', ')}, u.name AS filed_by_name
-         FROM vat_returns v LEFT JOIN users u ON u.id = v.filed_by WHERE v.company_id = ? ORDER BY v.period DESC`,
-    )
-    .bind(company)
-    .all<Record<string, unknown>>()
-  return rows.results.map((r) => ({
+/** The columns a filing is read with (vat_returns aliased v, the person who filed it u). */
+export const FILED_SELECT = `v.company_id, v.period, ${FILING_COLUMNS.map((c) => `v.${c}`).join(', ')}, u.name AS filed_by_name`
+
+/** A filing as stored. */
+export function filedReturnOf(r: Record<string, unknown>): FiledReturn {
+  return {
     period: String(r.period),
     filedAt: Number(r.filed_at),
     filedOn: String(r.filed_on),
@@ -189,7 +185,16 @@ export async function filedReturns(db: D1Database, company: string): Promise<Fil
     foundOn: typeof r.found_on === 'string' ? r.found_on : null,
     prev: typeof r.prev === 'string' ? r.prev : null,
     raw: JSON.stringify(Object.fromEntries(FILING_COLUMNS.map((c) => [c, r[c] ?? null]))),
-  }))
+  }
+}
+
+/** The returns marked as filed, the newest period first. */
+export async function filedReturns(db: D1Database, company: string): Promise<FiledReturn[]> {
+  const rows = await db
+    .prepare(`SELECT ${FILED_SELECT} FROM vat_returns v LEFT JOIN users u ON u.id = v.filed_by WHERE v.company_id = ? ORDER BY v.period DESC`)
+    .bind(company)
+    .all<Record<string, unknown>>()
+  return rows.results.map(filedReturnOf)
 }
 
 /** The periods filed, with the day each was filed: what vat.ts needs to place a late document. */
@@ -204,9 +209,15 @@ const secondsOf = (day: string): number => Math.floor(Date.parse(`${day}T00:00:0
  * every one the accountant put in a period by hand. A superset: vat.ts decides which period each is.
  */
 export async function docsAround(db: D1Database, company: string, first: string, last: string): Promise<Doc[]> {
+  const rows = await docsAroundStatement(db, company, first, last).all<Record<string, unknown>>()
+  return rows.results.map(docOf)
+}
+
+/** The query of `docsAround`, for a batch of several companies at once (the team's screen of deadlines). */
+export function docsAroundStatement(db: D1Database, company: string, first: string, last: string): D1PreparedStatement {
   const from = periodRange(first).from
   const to = periodRange(last).to
-  const rows = await db
+  return db
     .prepare(
       `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM}
         WHERE d.company_id = ?1 AND d.deleted_at IS NULL AND (d.kind IS NULL OR d.kind IN ('receipt', 'invoice_in', 'invoice_out'))
@@ -217,8 +228,6 @@ export async function docsAround(db: D1Database, company: string, first: string,
         ORDER BY COALESCE(d.supplied_on, d.issued_on), d.created_at`,
     )
     .bind(company, addDays(from, -62), to, secondsOf(from) - 86_400, secondsOf(to) + 2 * 86_400)
-    .all<Record<string, unknown>>()
-  return rows.results.map(docOf)
 }
 
 /** The rows whose amounts differ from what was filed (rows 36 and 37 belong to a supplementary return alone). */
@@ -429,7 +438,7 @@ export function unfileStatement(db: D1Database, company: string, filed: FiledRet
 }
 
 /** The first period of ours: not before the registration took effect, nor before our contract started. */
-export function firstPeriod(company: Company): string | null {
+export function firstPeriod(company: Pick<Company, 'vatQuarterly' | 'vatSince' | 'startOn'>): string | null {
   const quarterly = company.vatQuarterly
   const starts = [company.vatSince, company.startOn].filter((day): day is string => Boolean(day)).map((day) => periodOf(day, quarterly))
   return starts.length > 0 ? (starts.sort()[starts.length - 1] ?? null) : null
@@ -500,8 +509,9 @@ export function viewOf(company: Company, period: string, docs: Doc[], filed: Fil
   const before = prevPeriod(period)
   const previous = company.vatStatus === 'payer' && !mine && first !== null && before >= first && !filed.some((f) => f.period === before) ? before : null
   const blocked = issues.length > 0 || previous !== null || result.issues.some((i) => i.level === 'block')
-  // A person registered under § 7a files a return only for a month in which it owes tax.
-  const nothingToFile = company.vatStatus !== 'payer' && result.nothing
+  // A person registered under § 7a files a return only for a month in which it owes tax; that it owes none is known
+  // only once every document of the month is booked (one not booked yet may be the service bought from abroad).
+  const nothingToFile = company.vatStatus !== 'payer' && result.nothing && !result.issues.some((i) => i.code === 'unbooked')
   const state: PeriodState = mine ? (changed.length > 0 || kvChanged > 0 ? 'changed' : 'filed') : running ? 'running' : nothingToFile ? 'none' : blocked ? 'blocked' : 'ready'
   return { period, state, result, filed: mine, changed, kvChanged, companyIssues: issues, previous, carried, running, deadline: filingDeadline(period) }
 }
@@ -580,7 +590,12 @@ export async function taxPaid(db: D1Database, companyId: string, filed: FiledRet
     )
     .bind(companyId)
     .all<{ vs: string; paid: number; last: string }>()
-  const bySymbol = new Map(rows.results.map((r) => [r.vs, r]))
+  return paidByPeriod(filed, rows.results)
+}
+
+/** What was paid towards each filed period, from the payments summed by their symbol (without zeros in front). */
+export function paidByPeriod(filed: FiledReturn[], bySymbolRows: readonly { vs: string; paid: number; last: string }[]): Map<string, TaxPaid> {
+  const bySymbol = new Map(bySymbolRows.map((r) => [r.vs, r]))
   const out = new Map<string, TaxPaid>()
   for (const f of filed) {
     const row = bySymbol.get(vatSymbol(f.period))

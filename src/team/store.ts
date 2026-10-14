@@ -20,7 +20,7 @@ export function canSee(user: User, company: Pick<Company, 'accountantId'>): bool
 }
 
 /** The SQL that limits companies (alias c) to what a user of the team may see. */
-function visible(user: User, demo: boolean): { sql: string; binds: unknown[] } {
+export function visible(user: User, demo: boolean): { sql: string; binds: unknown[] } {
   const own = isAdmin(user) ? '' : 'AND c.accountant_id = ?'
   return { sql: `c.closed_at IS NULL ${own} ${demo ? '' : 'AND c.demo = 0'}`, binds: isAdmin(user) ? [] : [user.id] }
 }

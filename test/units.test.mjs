@@ -18,6 +18,8 @@ import {
   invoices,
   ledger,
   ledgerStore,
+  dues,
+  dueViews,
   match,
   orderLinkMail,
   papers,
@@ -2582,6 +2584,248 @@ async function zipped(entries, note) {
     general.slice(0, 300),
   )
   check('the open items as a file', plain(ledger.saldoCsv(books, '2026-10-14')).includes('311;20260001;Zákazník s. r. o.;2026-09-10;2026-09-24;246,00;0,00;246,00;20'))
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Every client's deadlines on one screen (the team's /ucto/terminy)
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const co = (fields = {}) => ({
+    id: 'c1',
+    name: 'Firma s. r. o.',
+    createdAt: Date.parse('2026-01-05T10:00:00Z') / 1000,
+    icdph: 'SK2120000007',
+    address: 'Hlavná 1, 040 01 Košice',
+    taxOffice: 'Košice',
+    vatStatus: 'payer',
+    vatQuarterly: false,
+    vatSince: null,
+    startOn: '2026-09-01',
+    endsOn: null,
+    noticeSide: null,
+    taxAccount: null,
+    vatCarry: 0,
+    ...fields,
+  })
+  const doc = (fields = {}) => ({
+    id: 'd1',
+    companyId: 'c1',
+    createdAt: Date.parse('2026-09-20T10:00:00Z') / 1000,
+    kind: 'invoice_out',
+    number: '20260001',
+    party: 'Zákazník s. r. o.',
+    partyIco: '12345679',
+    issuedOn: '2026-09-18',
+    dueOn: null,
+    totalCents: 12300,
+    vatCents: 2300,
+    currency: 'EUR',
+    category: 'sales',
+    vatDeduct: null,
+    bookedAt: 1,
+    vat: { mode: 'domestic', lines: [{ rate: 23, base: 10000, vat: 2300, deduct: 0 }], suppliedOn: null, vatId: null, corrects: null, period: null },
+    partyVatId: null,
+    suppliedOn: null,
+    foreign: null,
+    correctsHint: null,
+    linesHint: [],
+    ...fields,
+  })
+  const euService = (fields = {}) =>
+    doc({
+      id: 'eu1',
+      party: 'Kunde GmbH',
+      partyIco: null,
+      partyVatId: 'DE123456789',
+      totalCents: 100000,
+      vatCents: 0,
+      vat: { mode: 'eu_service', lines: [{ rate: 0, base: 100000, vat: 0, deduct: 0 }], suppliedOn: null, vatId: 'DE123456789', corrects: null, period: null },
+      ...fields,
+    })
+  const filedOf = (period, fields = {}) => ({
+    period,
+    filedAt: 0,
+    filedOn: vat.filingDeadline(period),
+    filedBy: null,
+    filedByName: null,
+    rows: { ...vat.emptyRows(), r03: 10000, r04: 2300, r17: 2300, r32: 2300, r35: 2300 },
+    kvRows: 1,
+    payCents: 2300,
+    refundCents: 0,
+    dueOn: vat.filingDeadline(period),
+    kind: 'R',
+    fast: false,
+    carried: 0,
+    kv: null,
+    foundOn: null,
+    prev: null,
+    raw: '{}',
+    ...fields,
+  })
+  /** A period filed as its documents stand: the rows and the control statement are the period's now. */
+  const filedFrom = (company, period, docs, fields = {}) => {
+    const r = vatStore.viewOf(company, period, docs, [], vat.filingDeadline(period)).result
+    const kv = vat.kvFileOf(r.kv)
+    return filedOf(period, { rows: r.rows, payCents: r.rows.r35, kv: r.statement ? { kind: 'R', full: kv, sent: kv } : null, ...fields })
+  }
+  /** The deadlines of a company on a day, from its documents and returns, as the store hands them over. */
+  const run = (company, today, { docs = [], filed = [], paid = new Map(), filings = new Set(), missing = new Map(), handover = 0 } = {}) =>
+    dues.deadlinesOf(company, { views: dues.vatWindow(company, today).map((p) => vatStore.viewOf(company, p, docs, filed, today)), filed, paid, filings, missing, handover }, today)
+  const find = (list, kind, period) => list.find((d) => d.kind === kind && (period === undefined || d.period === period))
+
+  // The holidays a deadline moves past (Act No. 241/1993 Z. z. as amended by Act No. 261/2025 Z. z.)
+  check(
+    '17 November is a working day from 2025, 8 May and 15 September in 2026 alone, 1 September since 2024',
+    vat.isWorkingDay('2026-11-17') &&
+      vat.isWorkingDay('2025-11-17') &&
+      !vat.isWorkingDay('2023-11-17') &&
+      vat.isWorkingDay('2026-05-08') &&
+      vat.isWorkingDay('2026-09-15') &&
+      !vat.isWorkingDay('2027-09-15') &&
+      !vat.isWorkingDay('2028-05-08') &&
+      vat.isWorkingDay('2026-09-01') &&
+      !vat.isWorkingDay('2026-12-24') &&
+      !vat.isWorkingDay('2027-01-06'),
+  )
+  check('the next working day of a weekend and of Easter', vat.workingDayFrom('2026-10-25') === '2026-10-26' && vat.workingDayFrom('2029-03-31') === '2029-04-03' && vat.workingDayFrom('2026-10-14') === '2026-10-14')
+  check('the closing is due on 31 March, or the next working day', dues.closingDeadline(2026) === '2027-03-31' && dues.closingDeadline(2028) === '2029-04-03' && dues.closingDeadline(2029) === '2030-04-01')
+
+  // Which VAT periods are worked out
+  check('the periods that ended in the last four months, not before our first', dues.vatWindow(co({ startOn: '2026-01-01' }), '2026-10-14').join() === '2026-06,2026-07,2026-08,2026-09')
+  check('none before the contract started, nor before the registration', dues.vatWindow(co({ startOn: '2026-09-01' }), '2026-10-14').join() === '2026-09' && dues.vatWindow(co({ startOn: null, vatSince: '2026-08-10' }), '2026-10-14').join() === '2026-08,2026-09')
+  check('a quarterly payer: the last two quarters', dues.vatWindow(co({ startOn: '2026-01-01', vatQuarterly: true }), '2026-10-14').join() === '2026-Q2,2026-Q3')
+  check(
+    'nothing for a company not registered, nor for one whose contract starts later, nor after its last month',
+    dues.vatWindow(co({ vatStatus: 'none' }), '2026-10-14').length === 0 &&
+      dues.vatWindow(co({ startOn: '2027-01-01' }), '2026-10-14').length === 0 &&
+      dues.vatWindow(co({ startOn: '2026-01-01', endsOn: '2026-07-31' }), '2026-10-14').join() === '2026-06,2026-07',
+  )
+
+  // The VAT return of a period, as the VAT page has it
+  let list = run(co(), '2026-10-14', { docs: [doc()] })
+  let item = find(list, 'vat', '2026-09')
+  check('a period ready to be filed, by the 26th (the 25th is a Sunday)', item?.state === 'ready' && item.day === '2026-10-26' && !item.late, JSON.stringify(item))
+  check('the period that runs is ahead of it, its return by the 25th of the next month', find(list, 'vat', '2026-10')?.state === 'running' && find(list, 'vat', '2026-10')?.day === '2026-11-25')
+  item = find(run(co({ taxOffice: null }), '2026-10-14', { docs: [doc(), doc({ id: 'd2', bookedAt: null })] }), 'vat', '2026-09')
+  check('blocked, with how many things keep it back', item?.state === 'blocked' && item.count === 2, JSON.stringify(item))
+  item = find(run(co(), '2026-10-27', { docs: [doc()] }), 'vat', '2026-09')
+  check('past its deadline and not filed it is late', item?.state === 'ready' && item.late)
+  list = run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])] })
+  check('filed, it is done, and its tax is the client\'s to pay', find(list, 'vat', '2026-09')?.state === 'done' && find(list, 'vatPay', '2026-09')?.state === 'open' && find(list, 'vatPay', '2026-09')?.cents === 2300 && find(list, 'vatPay', '2026-09')?.late)
+  list = run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-20' }]]) })
+  check('paid, the tax is done too', find(list, 'vatPay', '2026-09')?.state === 'done')
+  check(
+    '§ 7a: 5 € or less is not paid, and nothing is filed for a month without tax',
+    !find(run(co({ vatStatus: 'reg7a' }), '2026-10-14', { filed: [filedOf('2026-09', { payCents: 450 })] }), 'vatPay') && !find(run(co({ vatStatus: 'reg7a' }), '2026-10-14'), 'vat'),
+  )
+  check(
+    '§ 7a: a month with a document not booked is not "nothing to file" until it is booked',
+    vatStore.viewOf(co({ vatStatus: 'reg7a' }), '2026-09', [doc({ kind: 'invoice_in', bookedAt: null, vat: null })], [], '2026-10-14').state === 'blocked' &&
+      vatStore.viewOf(co({ vatStatus: 'reg7a' }), '2026-09', [doc({ kind: 'invoice_in', vat: { mode: 'none', lines: [], suppliedOn: null, vatId: null, corrects: null, period: null } })], [], '2026-10-14').state === 'none',
+  )
+  // Changed after filing: corrective before the deadline, supplementary after it
+  const twice = [doc(), doc({ id: 'd2', number: '20260002', issuedOn: '2026-09-28' })]
+  item = find(run(co(), '2026-10-21', { docs: twice, filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vatFix', '2026-09')
+  check('changed before the deadline: a corrective return by it', item?.fix === 'O' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
+  item = find(run(co(), '2026-11-03', { docs: twice, filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vatFix', '2026-09')
+  check('after it: a supplementary return by the end of the month after today', item?.fix === 'D' && item.day === '2026-12-31' && !item.late, JSON.stringify(item))
+  // A payer's older periods never filed
+  list = run(co({ startOn: '2026-03-01' }), '2026-10-14', { docs: [doc()], filed: [filedOf('2026-03'), filedOf('2026-05')] })
+  check(
+    'periods of ours older than the ones worked out and never filed are overdue',
+    list.filter((d) => d.kind === 'vat' && d.state === 'open').map((d) => d.period).join() === '2026-04' && find(list, 'vat', '2026-04')?.late,
+    list.map((d) => `${d.kind}:${d.period}:${d.state}`).join(' '),
+  )
+
+  // The recapitulative statement
+  list = run(co(), '2026-10-14', { docs: [doc(), euService()] })
+  item = find(list, 'summary')
+  check('a service to another member state: the recapitulative statement of the period, by its deadline', item?.period === '2026-09' && item.day === '2026-10-26' && item.state === 'open', JSON.stringify(item))
+  check('marked as filed, it is done', find(run(co(), '2026-10-14', { docs: [doc(), euService()], filings: new Set(['sv:2026-09']) }), 'summary')?.state === 'done')
+  item = find(run(co({ vatStatus: 'reg7a', startOn: '2026-01-01' }), '2026-10-14', { docs: [euService({ issuedOn: '2026-08-10', createdAt: Date.parse('2026-08-11T10:00:00Z') / 1000 })] }), 'summary')
+  check('§ 7a: for the calendar quarter', item?.period === '2026-Q3' && item.day === '2026-10-26' && item.state === 'open', JSON.stringify(item))
+  item = find(run(co({ vatStatus: 'reg7a', startOn: '2026-01-01' }), '2026-12-15', { docs: [euService({ issuedOn: '2026-10-10', createdAt: Date.parse('2026-10-11T10:00:00Z') / 1000 })] }), 'summary')
+  check('while its quarter runs, it runs', item?.period === '2026-Q4' && item.state === 'running' && item.day === '2027-01-25', JSON.stringify(item))
+
+  // The client's documents
+  list = run(co({ vatStatus: 'none' }), '2026-10-14', { missing: new Map([['2026-09', 3], ['2026-10', 2]]) })
+  check('documents of a month by the 10th of the next, late past it', find(list, 'docs', '2026-09')?.day === '2026-10-10' && find(list, 'docs', '2026-09')?.late && find(list, 'docs', '2026-09')?.count === 3)
+  check('the month that runs is not late', find(list, 'docs', '2026-10')?.state === 'running' && !find(list, 'docs', '2026-10')?.late)
+  check('nothing is asked once the contract stopped taking documents', !find(run(co({ vatStatus: 'none', endsOn: '2026-08-31' }), '2026-10-14', { missing: new Map([['2026-08', 3]]) }), 'docs'))
+
+  // The closing
+  check(
+    'the closing of last year by 31 March: ours when we kept the books at its end',
+    find(run(co({ vatStatus: 'none', startOn: '2026-06-01' }), '2027-01-05'), 'closing', '2026')?.day === '2027-03-31' &&
+      !find(run(co({ vatStatus: 'none', startOn: '2027-01-01' }), '2027-01-05'), 'closing') &&
+      !find(run(co({ vatStatus: 'none', startOn: '2026-06-01', endsOn: '2026-12-31' }), '2027-01-05'), 'closing') &&
+      Boolean(find(run(co({ vatStatus: 'none', startOn: '2026-06-01', endsOn: '2027-01-31' }), '2027-01-05'), 'closing')),
+  )
+  check('a company made by the team counts from the day it was made', Boolean(find(run(co({ vatStatus: 'none', startOn: null }), '2027-02-01'), 'closing', '2026')))
+  check(
+    'late past its day, done once marked',
+    find(run(co({ vatStatus: 'none' }), '2027-04-02'), 'closing')?.late && find(run(co({ vatStatus: 'none' }), '2027-04-02', { filings: new Set(['closing:2026']) }), 'closing')?.state === 'done',
+  )
+  check(
+    'what is done is never late, whatever its day',
+    find(run(co({ vatStatus: 'none' }), '2027-04-02', { filings: new Set(['closing:2026']) }), 'closing')?.late === false &&
+      find(run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vat', '2026-09')?.late === false,
+  )
+
+  // The handover at the end
+  check(
+    'the books handed over within thirty days of the end',
+    find(run(co({ vatStatus: 'none', endsOn: '2026-09-30' }), '2026-10-14'), 'handover')?.day === '2026-10-30' &&
+      find(run(co({ vatStatus: 'none', endsOn: '2026-10-20' }), '2026-10-14'), 'handover')?.state === 'running' &&
+      find(run(co({ vatStatus: 'none', endsOn: '2026-09-30' }), '2026-10-14', { handover: 2 }), 'handover')?.state === 'done',
+  )
+
+  // What is shown, and in which group
+  check(
+    'what still runs is shown once it is 45 days near, what can be done now always',
+    !find(run(co({ vatStatus: 'none', endsOn: '2027-01-31' }), '2026-10-14'), 'handover') && find(run(co({ vatStatus: 'none', startOn: '2026-01-01' }), '2027-01-02'), 'closing')?.day === '2027-03-31',
+  )
+  check(
+    'what was done stays 45 days',
+    Boolean(find(run(co(), '2026-11-14', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-20' }]]) }), 'vatPay', '2026-09')) &&
+      !find(run(co(), '2026-12-14', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-20' }]]) }), 'vatPay', '2026-09'),
+  )
+  check(
+    'the groups',
+    dues.groupOf({ state: 'open', late: true, day: '2026-10-10' }, '2026-10-14') === 'late' &&
+      dues.groupOf({ state: 'ready', late: false, day: '2026-10-21' }, '2026-10-14') === 'week' &&
+      dues.groupOf({ state: 'ready', late: false, day: '2026-11-10' }, '2026-10-14') === 'month' &&
+      dues.groupOf({ state: 'running', late: false, day: '2026-11-25' }, '2026-10-14') === 'later' &&
+      dues.groupOf({ state: 'done', late: false, day: '2026-10-10' }, '2026-10-14') === 'done',
+  )
+  const figs = dues.dueFigures(run(co(), '2026-10-21', { docs: [doc()], missing: new Map([['2026-09', 1]]) }), '2026-10-21')
+  check('the figures: late, within a week, ready, the client\'s', figs.late === 1 && figs.week === 1 && figs.ready === 1 && figs.client === 1, JSON.stringify(figs))
+
+  // In words, and where each is done
+  const row = (fields) => ({ companyId: 'c1', period: '2026-09', day: '2026-10-26', state: 'open', late: false, count: 0, cents: 0, fix: null, company: { id: 'c1', vatStatus: 'payer' }, ...fields })
+  check(
+    'what it is, in words',
+    plain(dueViews.dueWhat(row({ kind: 'vat' }))) === 'DPH a kontrolný výkaz za september 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'vat', company: { id: 'c1', vatStatus: 'reg7a' } }))) === 'Priznanie k DPH za september 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'vatFix', fix: 'D' }))) === 'Dodatočné priznanie k DPH za september 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'summary', period: '2026-Q3' }))) === 'Súhrnný výkaz za 3. štvrťrok 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'closing', period: '2026' }))) === 'Účtovná závierka a daňové priznanie za rok 2026',
+  )
+  check(
+    'where it stands, in words',
+    plain(dueViews.dueState(row({ kind: 'docs', count: 3 }))) === 'Chýbajú 3 doklady' &&
+      plain(dueViews.dueState(row({ kind: 'vatPay', cents: 123456 }))) === 'Na úhradu 1 234,56 €' &&
+      plain(dueViews.dueState(row({ kind: 'vat', state: 'blocked', count: 2 }))) === 'Treba vyriešiť: 2' &&
+      plain(dueViews.dueState(row({ kind: 'summary', state: 'done' }))) === 'Podaný',
+  )
+  check(
+    'where it is done: the period on the VAT page, a quarter of § 7a by its first month',
+    dueViews.dueHref(row({ kind: 'vat' })) === '/ucto/klienti/c1/dph?obdobie=2026-09' &&
+      dueViews.dueHref(row({ kind: 'summary', period: '2026-Q3', company: { id: 'c1', vatStatus: 'reg7a' } })) === '/ucto/klienti/c1/dph?obdobie=2026-07' &&
+      dueViews.dueHref(row({ kind: 'docs' })) === '/ucto/klienti/c1#chyba',
+  )
+  check('the filters in the address', dueViews.deadlinesHref({ side: 'ours', done: true, accountant: '' }) === '/ucto/terminy?kto=my&hotove=1' && dueViews.deadlinesHref({ side: 'all', done: false, accountant: '' }) === '/ucto/terminy')
 }
 
 done('units')

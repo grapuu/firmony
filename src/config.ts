@@ -319,6 +319,24 @@ export const TEAM = {
 } as const
 
 /**
+ * Every client's deadlines on one screen (the team's /ucto/terminy, src/team/deadlines.ts): how far ahead a deadline
+ * is shown, how long what was done stays listed, and which VAT periods are worked out from the documents.
+ */
+export const DEADLINES = {
+  /** What still runs (a period, a month, a contract) is shown once its deadline is this many days ahead or nearer;
+   *  what can be done now always is. */
+  aheadDays: 45,
+  /** What was done is listed (when asked for) while its deadline is at most this many days past. */
+  doneDays: 45,
+  /** The VAT periods worked out in full: the ones that ended in the last four months (a quarterly payer's last two). */
+  vatMonths: 4,
+  /** A payer's periods older than those, never filed, are listed as overdue without being worked out: at most this many. */
+  olderPeriods: 24,
+  /** Companies whose documents are read in one batch. */
+  batch: 40,
+} as const
+
+/**
  * The reader of photographed and scanned documents: Claude, through Anthropic's API (secret ANTHROPIC_API_KEY).
  * Without the key nothing is sent anywhere and the accountant reads the document. An e-invoice (XML) is read by
  * our own code and never sent to the reader.

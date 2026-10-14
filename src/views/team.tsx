@@ -26,15 +26,19 @@ import { Wordmark } from './layout'
 import { InvoiceSheet } from './invoices'
 import type { Line, StoredInvoice } from '../app/invoices'
 
-export type TeamPlace = 'clients' | 'queue' | 'inbox' | 'requests' | 'people'
+export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'people'
 
 const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean }[] = [
   { place: 'clients', href: '/ucto', label: t.nav.clients, short: t.nav.short.clients, art: ART.tree },
+  { place: 'deadlines', href: '/ucto/terminy', label: t.nav.deadlines, short: t.nav.short.deadlines, art: ART.paperReturn },
   { place: 'queue', href: '/ucto/doklady', label: t.nav.queue, short: t.nav.short.queue, art: ART.paperInvoice },
   { place: 'inbox', href: '/ucto/spravy', label: t.nav.inbox, short: t.nav.short.inbox, art: ART.chat },
   { place: 'requests', href: '/ucto/ziadosti', label: t.nav.requests, short: t.nav.short.requests, art: ART.envelope, admin: true },
   { place: 'people', href: '/ucto/tim', label: t.nav.people, short: t.nav.short.people, art: ART.lens, admin: true },
 ]
+
+/** A phone's tab bar holds five places; the others are in the bar's menu. */
+const TABS = 5
 
 export interface TeamShellProps {
   user: User
@@ -93,6 +97,11 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
             <header class="bar">
               <Wordmark href="/ucto" label={t.nav.clients} />
               <BarMenu label={user.team ? t.nav.role[user.team] : t.nav.label} user={user}>
+                {items.slice(TABS).map((item) => (
+                  <a class="barmenu__item" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
+                    {item.label}
+                  </a>
+                ))}
                 {ownCompany ? (
                   <a class="barmenu__item" href="/app">
                     {t.nav.own}
@@ -106,7 +115,7 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
           </div>
         </div>
         <nav class="tabs tabs--team" aria-label={t.nav.label}>
-          {items.slice(0, 5).map((item) => (
+          {items.slice(0, TABS).map((item) => (
             <a class="tabs__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
               <span class="tabs__icon">
                 {item.art ? <img class="tabs__img" src={item.art.small?.src ?? item.art.src} alt="" width="30" height="30" /> : null}
@@ -305,6 +314,8 @@ export interface ClientPageProps {
   vat?: Child
   /** The books in short (views/ledger.tsx). */
   ledger?: Child
+  /** The client's deadlines (views/deadlines.tsx). */
+  deadlines?: Child
   /** The newest statements of the bank, and every one that waits (app/statements.ts). */
   statements?: StatementView[]
   /** The company's details as they were sent, with what is wrong with them. */
@@ -625,6 +636,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           </a>
         ) : null}
         <a href="#zmluva">{p.declaration === 'checked' ? t.client.poaState[p.poa] : t.aml.state[p.declaration]}</a>
+        <a href="#terminy">{t.deadlines.title}</a>
         <a href={`/ucto/klienti/${c.id}/dph`}>{t.client.vatCard}</a>
         <a href={`/ucto/klienti/${c.id}/kniha`}>{t.ledger.card}</a>
         <a href="#udaje">{t.client.details}</a>
@@ -750,6 +762,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
             end={p.end}
           />
           {p.ending ? <HandoverCard company={c} handover={p.handover} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
+          {p.deadlines ?? null}
           {p.vat ?? null}
           {p.ledger ?? null}
           <section class="info" id="udaje" aria-labelledby="udaje-t">

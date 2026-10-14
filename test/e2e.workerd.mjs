@@ -206,7 +206,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 5)
+check('health says the schema', (await res.json()).schema === 6)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -2922,6 +2922,159 @@ check(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Every client's deadlines on one screen: the VAT periods as the VAT page has them, one never filed, the
+// recapitulative statement marked as filed and taken back, the client's documents, the closing of last year
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const MONTHS = ['január', 'február', 'marec', 'apríl', 'máj', 'jún', 'júl', 'august', 'september', 'október', 'november', 'december']
+  const monthBack = (n) => {
+    const d = new Date(`${day(0).slice(0, 7)}-15T12:00:00Z`)
+    d.setUTCMonth(d.getUTCMonth() - n)
+    return d.toISOString().slice(0, 7)
+  }
+  const nameOf = (month) => `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`
+  /** The rows of the screen, each as its text, with the client's name in it. */
+  const rowsOf = (html) => [...html.matchAll(/<li class="due[^"]*">([\s\S]*?)<\/li>/g)].map((m) => plain(m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')))
+  const rowOf = (html, ...words) => rowsOf(html).find((r) => words.every((w) => r.includes(w)))
+  const last = monthBack(1)
+  const year = Number(day(0).slice(0, 4))
+  const at = Math.floor(Date.parse(`${last}-12T10:00:00Z`) / 1000)
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, start_on, icdph, tax_office) VALUES ('co-t', ?, 'Termíny s. r. o.', '50999992', 'Hlavná 10, 040 01 Košice', 1, 'rast', 'terminy1', ?, ?, 'SK2120999992', 'Košice')",
+      )
+      .bind(nowS, lucia?.id ?? '', `${monthBack(6)}-01`),
+    db
+      .prepare("INSERT INTO companies (id, created_at, name, ico, vat_payer, plan, inbox, accountant_id, start_on) VALUES ('co-t2', ?, 'Závierka s. r. o.', '50999993', 0, 'start', 'terminy2', ?, ?)")
+      .bind(nowS, lucia?.id ?? '', `${year - 1}-01-01`),
+    // Every month of ours filed but the fifth one back, which the screen works out no more: it is overdue as it is.
+    ...[6, 4, 3, 2].map((n) =>
+      db
+        .prepare("INSERT INTO vat_returns (company_id, period, filed_at, filed_on, filed_by, rows, kv_rows, pay_cents, refund_cents, due_on, kind) VALUES ('co-t', ?, ?, ?, ?, '{}', 0, 0, 0, ?, 'R')")
+        .bind(monthBack(n), nowS, day(-1), lucia?.id ?? '', day(-1)),
+    ),
+    // Last month: an invoice issued at home and a service supplied to Germany, both booked, and a payment without a document.
+    db
+      .prepare(
+        "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_ico, number, vs, issued_on, total_cents, vat_cents, currency, category, booked_at, booked_by) VALUES ('t-out', 'co-t', ?, 'upload', 'read', 'test', 'invoice_out', 'Odberateľ s. r. o.', '12345679', '2026T01', '2026T01', ?, 12300, 2300, 'EUR', 'sales', ?, ?)",
+      )
+      .bind(at, `${last}-12`, at, lucia?.id ?? ''),
+    db
+      .prepare(
+        `INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_vat_id, number, issued_on, total_cents, vat_cents, currency, category, booked_at, booked_by, vat_mode, vat_lines)
+         VALUES ('t-eu', 'co-t', ?, 'upload', 'read', 'test', 'invoice_out', 'Kunde GmbH', 'DE123456789', '2026T02', ?, 100000, 0, 'EUR', 'sales', ?, ?, 'eu_service', '[{"rate":0,"base":100000,"vat":0,"deduct":0}]')`,
+      )
+      .bind(at, `${last}-14`, at, lucia?.id ?? ''),
+    db.prepare("INSERT INTO accounts (id, company_id, iban, ledger) VALUES ('acc-t', 'co-t', 'SK6809000000000999999992', '221.001')"),
+    db
+      .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pt-1', 'co-t', 'acc-t', ?, ?, -4500, 'Papiernictvo', 't1')")
+      .bind(nowS, `${last}-20`),
+  ])
+
+  res = await acc.get('/ucto')
+  page = await res.text()
+  check('the team finds its deadlines in the column', page.includes('href="/ucto/terminy"') && page.includes('Termíny'))
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('the screen of deadlines answers, without a script or a style of its own', res.status === 200 && !/<script>/.test(page) && !/ style=/i.test(page) && page.includes('Čo kedy podať.'))
+  check(
+    'last month is ready to be filed, as its VAT page says',
+    Boolean(rowOf(page, 'Termíny s. r. o.', `DPH a kontrolný výkaz za ${nameOf(last)}`, 'Pripravené na podanie')),
+    rowsOf(page).filter((r) => r.includes('Termíny s. r. o.')).join(' | '),
+  )
+  check('a month of ours never filed, older than the ones worked out, is overdue', Boolean(rowOf(page, 'Termíny s. r. o.', `DPH a kontrolný výkaz za ${nameOf(monthBack(5))}`, 'Nepodané', 'po termíne')))
+  check('the months filed are not asked for', !rowOf(page, 'Termíny s. r. o.', `za ${nameOf(monthBack(3))}`))
+  const sv = rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)
+  check('the service supplied to Germany asks for the recapitulative statement, to be filed in eDane', Boolean(sv) && sv.includes('Podať v eDane') && sv.includes('Označiť ako podané'), sv)
+  check("the client's documents of last month, the client's to bring", Boolean(rowOf(page, 'Termíny s. r. o.', `Doklady za ${nameOf(last)}`, 'Chýba 1 doklad', 'Úloha klienta')))
+  check(`the closing of ${year - 1} is ours: the books were ours at its end`, Boolean(rowOf(page, 'Závierka s. r. o.', `Účtovná závierka a daňové priznanie za rok ${year - 1}`, 'Pripraviť a podať')))
+  check("the accountant sees her own clients' deadlines and nobody else's", !page.includes('Firma B s. r. o.'))
+  check('each leads to where it is done', page.includes(`/ucto/klienti/co-t/dph?obdobie=${last}`) && page.includes('/ucto/klienti/co-t#chyba'))
+  res = await acc.get('/ucto/klienti/co-t')
+  page = plain(await res.text())
+  check(
+    "the client's page has its own deadlines, and a mark made there comes back to it",
+    page.includes('id="terminy"') && Boolean(rowOf(page, `DPH a kontrolný výkaz za ${nameOf(last)}`, 'Pripravené na podanie')) && page.includes('name="spat" value="/ucto/klienti/co-t"'),
+  )
+
+  res = await acc.get('/ucto/terminy?kto=my')
+  page = plain(await res.text())
+  check('ours alone: no documents of the client', !rowOf(page, 'Doklady za') && Boolean(rowOf(page, 'Termíny s. r. o.', 'DPH a kontrolný výkaz')))
+  res = await acc.get('/ucto/terminy?kto=klient')
+  page = plain(await res.text())
+  check("the client's alone: no filing of ours", Boolean(rowOf(page, 'Doklady za')) && !rowOf(page, 'DPH a kontrolný výkaz'))
+
+  // The recapitulative statement filed in eDane and marked here; the mark taken back.
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last, spat: '/ucto/terminy?kto=my' })
+  check(
+    'marked as filed: kept once, on record, and back to the screen as it was',
+    res.status === 303 &&
+      res.headers.get('location') === '/ucto/terminy?kto=my&ok=oznacene' &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.n === 1 &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'filing.marked'").first())?.n === 1,
+  )
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last })
+  check('marked again, it stays one', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 1)
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('then it is no longer open', !rowOf(page, 'Súhrnný výkaz za'))
+  res = await acc.get('/ucto/terminy?hotove=1')
+  page = plain(await res.text())
+  const svDone = rowOf(page, 'Termíny s. r. o.', 'Súhrnný výkaz za')
+  check('among what is done it can be taken back', Boolean(svDone) && svDone.includes('Podaný') && svDone.includes('Zrušiť označenie'), svDone)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last, zrusit: '1', spat: 'https://evil.example/' })
+  check(
+    'taken back, it is open again; a way back to elsewhere is not followed',
+    res.headers.get('location') === '/ucto/terminy?ok=neoznacene' && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0,
+  )
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: day(0).slice(0, 7) })
+  check('a period that has not ended cannot be marked', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'priznanie', obdobie: last })
+  check('nor anything but what the app does not file itself', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'closing', obdobie: String(year) })
+  check('nor the closing of a year that runs', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-b/podane', { druh: 'closing', obdobie: String(year - 1) })
+  check("nor anything of a client that is not hers", res.status === 404)
+  res = await mf.dispatchFetch(`${site}/ucto/klienti/co-t/podane`, {
+    method: 'POST',
+    body: `druh=sv&obdobie=${last}`,
+    redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example', cookie: luc.cookie, 'cf-connecting-ip': '203.0.113.30' },
+  })
+  check('nor from another site', res.status === 403 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0)
+  res = await acc.post('/ucto/klienti/co-t2/podane', { druh: 'closing', obdobie: String(year - 1) })
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('the closing marked as filed is no longer open', res.status === 200 && !rowOf(page, 'Závierka s. r. o.'))
+
+  // The administrator sees everybody's, and chooses an accountant's.
+  res = await admin.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('the administrator sees every client, with its accountant', Boolean(rowOf(page, 'Termíny s. r. o.', 'Lucia Horváthová')))
+  check("on a phone, the place that does not fit the administrator's five tabs is in the bar's menu", page.includes('<a class="barmenu__item" href="/ucto/tim"'))
+  res = await admin.get(`/ucto/terminy?uctovnicka=${lucia?.id}`)
+  check("one accountant's clients", Boolean(rowOf(plain(await res.text()), 'Termíny s. r. o.')))
+  res = await admin.get('/ucto/terminy?uctovnicka=none')
+  check('the clients of nobody', res.status === 200 && !rowOf(plain(await res.text()), 'Termíny s. r. o.'))
+  res = await acc.get('/ucto/terminy?uctovnicka=none')
+  check('an accountant sees her own whatever the address says', Boolean(rowOf(plain(await res.text()), 'Termíny s. r. o.')))
+  res = await anna.get('/ucto/terminy')
+  check('a client gets nothing there', res.status === 404)
+
+  // What this part made goes, so that what follows finds things as before.
+  await db.batch([
+    db.prepare("DELETE FROM documents WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM payments WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM accounts WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM vat_returns WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM filings WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM companies WHERE id IN ('co-t', 'co-t2')"),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // The order: a request for a company the register knows as an s. r. o. becomes a contract concluded online by a
 // director the register names (Zelený dvor s. r. o.: two directors in office, one whose office ended).
 // ---------------------------------------------------------------------------------------------------------------
@@ -3319,6 +3472,8 @@ check('the list no longer asks for the handover once it was made', !page.include
 // Ninety days past the last day the company's data are deleted; the identification stays five years
 await setEnd(day(-91))
 const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").all()
+// A recapitulative statement marked as filed while the contract ran.
+await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES ('co-a', 'sv', '2026-01', ?, ?, NULL)").bind(day(-120), nowS).run()
 await tick(Date.now())
 await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
@@ -3329,10 +3484,10 @@ const leftover = await db
        + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
        + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL)
-       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') AS n`,
+       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') AS n`,
   )
   .first()
-check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
+check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the filings marked, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
 const objects = await files.list({ prefix: 'companies/co-a/' })
 check(
   'and so are their files, all but the power of attorney',

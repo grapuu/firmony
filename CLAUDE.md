@@ -188,6 +188,18 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   preview is version 13 (the sample company's bank sends its statements by email; "Banka" and "Nový účet" in its bar;
   every bank's steps; the next statement paying invoice 20260007; Fio linked; Lucia's statement to check).
 
+- From 15:17 (14 October 2026), a new session continued the order of 10:53 on its own branch,
+  `claude/firmony-deadlines-closing-payroll`, with pull requests that the builder never merges (`main` stays his to
+  merge; nothing is deployed). The priorities it was given: (1) every client's deadlines on one screen, (2) the closing
+  and the corporate income tax return, (3) payroll, (4) the digital postman, (5) eKasa receipts, (6) the gaps these
+  notes list. The domain and the product for investors stay his, not decided. Its report, milestone by milestone, with
+  what each leans on and what a professional should read: `PROGRESS.md`. Built first: "Every client's deadlines" under
+  the accountants' side (all checks passing: units 504, runtime 582; 32 rules taken out once, every one held, one only
+  after a check was added for it: what is done is never late). Found on the way and put right: the days off a deadline
+  moves past (Act No. 261/2025 Z. z.: 17 November is a working day since 1 November 2025, 8 May and 15 September in
+  2026), and a month of a person registered under § 7a whose documents are not all booked was said to have nothing to
+  file.
+
 ## What he has to do before it is live (each a few clicks)
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
@@ -807,9 +819,9 @@ on one screen, a document booked on one screen with its original beside the form
   Martin's declaration (a date of birth, no birth number) is checked by Lucia, risk nízke; Eva has none (her
   overview shows it first, `/app/ukazka?ako=eva` signs her in), and Jana has an open report about Ateliér Nova.
 - On a phone the column is a menu in the bar (`BarMenu`): who is signed in, the switch, signing out.
-- Not built yet on this side: deadlines of every client on one screen, the closing, a log of who changed what on
-  the pages (the events are recorded), assigning many clients at once, search in the queue. (The bank's own payments
-  are booked since 14 October: "The books".)
+- Not built yet on this side: the closing, a log of who changed what on the pages (the events are recorded),
+  assigning many clients at once, search in the queue. (The bank's own payments are booked since 14 October: "The
+  books"; every client's deadlines are on one screen since the afternoon of 14 October: "Every client's deadlines".)
 
 ### VAT: the return and the control statement (14 October 2026; `src/app/vat.ts`, `vat-xml.ts`, `vat-store.ts`, `vat-form.ts`, views in `src/views/vat.tsx` and `taxes.tsx`)
 
@@ -838,14 +850,17 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   The period is the tax day's; goods from the EU fall due on the 15th of the next month; a deduction from a Slovak
   supplier stays in its period when the document came by that period's deadline, else goes to the period it came,
   and never into a period filed before it came (`periodOfDoc`). Deadlines are the 25th, moved past weekends and
-  Slovak days off (Easter computed). `workOut` gives the rows (01 to 37), the control statement (A.1, B.1, B.2,
+  Slovak days off (Easter computed; `isWorkingDay` and `workingDayFrom`, the days off as Act No. 241/1993 Z. z. stands
+  after Act No. 261/2025 Z. z., read on slov-lex.sk on 14 October 2026: 1 September is no day off since 2024, 17 November
+  none since 1 November 2025, 8 May and 15 September none in 2026 alone). `workOut` gives the rows (01 to 37), the control statement (A.1, B.1, B.2,
   B.3.1 or B.3.2 from 3 000 € deducted from receipts, C.1, C.2, D.2), which documents make each row, and the
   issues: blocking (unbooked, no lines, a rate that is none, another currency without euro amounts, a Slovak
   supplier without IČ DPH, a credit note without the invoice it corrects, a number over 32 characters) and
   warnings (proposed, the recapitulative statement, § 7a cases, before the registration). Row 34 is the excess
   deduction carried from the month before, at most row 32. The control statement is not filed for a nil return
   nor for one of goods to the EU and exports alone without a deduction. A person registered under § 7a files the
-  return only for a month with tax, no control statement, and does not pay 5 € or less. A company that is not
+  return only for a month with tax (and a month has none only once every document of it is booked: until then it is
+  "Treba vyriešiť", not "Nepodáva sa"), no control statement, and does not pay 5 € or less. A company that is not
   registered and buys a service from abroad is told, on its page and on the document, that it must register under
   § 7a first, whatever the amount.
 - The files (`vat-xml.ts`): the return as the eForm writes it (every element present, amounts with two decimals,
@@ -960,6 +975,51 @@ the books; worked out from what the app holds, never typed twice.
   statements, payroll's entries, another currency than the euro, a cash book of its own, a log of each change of a
   booked document beyond the events.
 
+### Every client's deadlines (14 October 2026, from 15:17; `src/team/deadlines.ts`, `deadlines-store.ts`, views in `src/views/deadlines.tsx`)
+
+What Pennylane's cockpit gives the accountant: every client's deadlines on one screen, each with where it stands and
+the place it is done. Nothing of it is stored but the marks of what the app does not file itself: every deadline is
+worked out from what the app holds every time, so it cannot disagree with the VAT page, the payments or the contract.
+
+- What is listed, and what each leans on (`deadlinesOf`, pure; the rule is at the top of the file): the VAT return and
+  the control statement of a period, with the VAT page's own state (`viewOf`: ready, blocked with how many things keep
+  it back, running, filed) and deadline; a payer's period of ours older than the four months worked out and never filed,
+  overdue as it is ("Obdobie sme neprepočítali"); a period filed and changed since, a corrective return before its
+  deadline or a supplementary one after it by the end of the month after today (§ 16 of the Tax Procedure Code, until
+  the accountant names the day of finding); the recapitulative statement of a period with goods or services supplied
+  to another member state (§ 80 of the VAT Act, within 25 days after the period: the payer's period, the calendar
+  quarter of a person registered under § 7a; read in the Financial Directorate's methodical guidance to § 80 and
+  dauc.sk), which the app does not prepare yet and the accountant marks as filed; the VAT a filed return asks the client
+  to pay, until the bank shows it paid; the client's documents of a month by the 10th, while payments of it have none
+  and the intake is open; the closing and the corporate income tax return of the year that ended last, by 31 March or
+  the next working day (§ 49(1) of the Income Tax Act; an extension by notice under § 49(3) is not recorded yet), only
+  when the books were ours at the year's end and the contract did not end in it (points 5.2 and 10.4 of the terms),
+  marked as filed until the app files it itself; the handover at the end of a contract, within its thirty days.
+- Which VAT periods are worked out (`vatWindow`): those that ended in the last four months (a quarterly payer's last two
+  quarters), none before our first period (`firstPeriod`) nor after the contract's last month. What still runs is shown
+  once its deadline is 45 days near (`DEADLINES.aheadDays`); what can be done now always (a supplementary return may be
+  due in two months); what was done for 45 days (`doneDays`), when asked for.
+- The screen (`/ucto/terminy`, "Termíny" second in the column and the tabs; the administrator's sixth place, Tím, goes
+  to the bar's menu on a phone): four figures (overdue, within a week, ready to be filed, the client's), filters by whose
+  it is (`?kto=my|klient`), done ones on demand (`?hotove=1`), the administrator's choice of an accountant
+  (`?uctovnicka=<id>|none`; an accountant sees her own whatever the address says); the groups Po termíne, Do 7 dní, Do
+  mesiaca, Neskôr, Hotové; each row the day (red when late, with how many days), what it is, the client, whose, the
+  accountant (for the administrator), its state as a pill and the link where it is done (the period on the VAT page,
+  the client's missing documents, the books, the handover). The client's page has its own as "Termíny" in the side
+  column (open ones), with the jump bar's link.
+- Loaded in a fixed number of queries whatever the number of clients (`teamDeadlines`): the companies, the returns
+  filed, the VAT paid by symbol, the payments without a document by month and the marks, each one statement over the
+  companies the user sees (no list of ids: D1 binds at most 100 values), and the documents of each VAT company's periods
+  worked out, forty companies in one batch (a batch is one call to D1, read on 14 October 2026). At hundreds of clients
+  it reads every VAT company's last four months: measure it on the first real month.
+- The marks (`filings`, schema step 6: company, kind, period, day, who; once): "Označiť ako podané" and "Zrušiť
+  označenie" on the row (`POST /ucto/klienti/:id/podane`, kinds `sv` and `closing`, only a period or a year that has
+  ended, events `filing.marked` and `filing.unmarked`; the way back only to the screen or a client's page). The deletion
+  at the end of a contract deletes them with the rest.
+- Checked: 32 rules taken out once (`scripts/dev/mutate.mjs`), every one held (one after its check was added). Not
+  built: the recapitulative statement itself (its XML), an extension of the closing's deadline, payroll's deadlines
+  (they come with payroll), the deadline of the motor vehicle tax and of advances on the income tax.
+
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
@@ -1040,17 +1100,18 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (466): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books
-npm run test:runtime     # the deployable bundle in workerd (552): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, to the deletion
+npm test                 # unit checks (504): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines
+npm run test:runtime     # the deployable bundle in workerd (582): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (31)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (32)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
 The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?ako=uctovnicka` (Lucia). VAT:
 `/ucto/klienti/demo-company/dph`; September of the sample company is ready to be filed. The books:
-`/ucto/klienti/demo-company/kniha`.
+`/ucto/klienti/demo-company/kniha`. Every client's deadlines: `/ucto/terminy` (the sample company's September, its
+recapitulative statement, both companies' documents of the month).
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
 the café payment. The bank: /app/banka shows the sample company's bank sending its statements by email;

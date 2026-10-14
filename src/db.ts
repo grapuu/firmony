@@ -470,6 +470,21 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE bank_links ADD COLUMN token TEXT',
     'ALTER TABLE companies ADD COLUMN bank_setup TEXT',
   ],
+  // Every client's deadlines on one screen (src/team/deadlines.ts). What the app does not file itself yet is marked
+  // here as filed once the accountant filed it elsewhere, so that its deadline does not stay open: the recapitulative
+  // statement (kind 'sv', the period of the VAT return it belongs to, or the quarter of a person registered under § 7a)
+  // and the annual closing with the corporate income tax return (kind 'closing', the year). One row a filing.
+  [
+    `CREATE TABLE IF NOT EXISTS filings (
+      company_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      period TEXT NOT NULL,
+      filed_on TEXT NOT NULL,
+      filed_at INTEGER NOT NULL,
+      filed_by TEXT,
+      PRIMARY KEY (company_id, kind, period)
+    )`,
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

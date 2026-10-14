@@ -6270,3 +6270,131 @@ select.field__input {
     padding-left: 8px;
   }
 }
+
+/* Termíny (the team): every client's deadlines in groups by how soon they come. A row is the day, what it is with the
+   client under it, where it stands, and the mark for what the app does not file itself yet. Overdue is the one red
+   thing on the screen. */
+.count--red {
+  background: var(--red-soft);
+  color: var(--red-ink);
+}
+
+.fig__value--late,
+.date__num--late {
+  color: var(--red-ink);
+}
+
+.dues__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-bottom: 26px;
+}
+
+.dues__bar .filters {
+  margin-bottom: 0;
+}
+
+.dues__done {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.dues__who {
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
+
+.dues__who .field__input {
+  flex: 0 1 220px;
+}
+
+.dues {
+  margin-bottom: 18px;
+}
+
+.dues__list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.due {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.due__text {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.due__what {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.due__what:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.due__sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.due__late {
+  color: var(--red-ink);
+  font-weight: 600;
+}
+
+.due__act:empty {
+  display: none;
+}
+
+.due--done .due__what,
+.due--done .date__num {
+  color: var(--soft);
+}
+
+/* In the side column of a client's page the state and the mark go under the text, as on a phone. */
+.dues__list--card {
+  margin-bottom: 14px;
+}
+
+.dues__list--card .due {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.dues__list--card .due > .pill,
+.dues__list--card .due > .due__act {
+  grid-column: 2;
+  justify-self: start;
+}
+
+@media (max-width: 700px) {
+  .due {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .due > .pill,
+  .due > .due__act {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .dues__who {
+    margin-left: 0;
+  }
+}
