@@ -1,0 +1,669 @@
+// The VAT return (daňové priznanie k DPH) and the control statement (kontrolný výkaz) of one period, worked out
+// from the company's booked documents. Pure functions: what is stored and shown is in store.ts and the team's
+// pages, the files the Financial Administration takes are written by vat-xml.ts, and every rule here is checked in
+// test/units.test.mjs against the official schemas (test/xsd).
+//
+// The rules follow the forms as they stand (read on 14 October 2026 in the Financial Administration's eForm
+// packages): DPHv25, the return for periods from 1 July 2025 (vzor MF/007833/2025-731, with its poučenie), and
+// KVDPHv25, the control statement for periods from 1 January 2025 (the control statement ends on 1 July 2030, when
+// e-invoices report themselves). Rates since 1 January 2025: 23 % basic (§ 27(1)), 19 % (§ 27(2)) and 5 %
+// (§ 27(3)) reduced; the form's rows take them in that order: 19 % first, then 5 %, then 23 %.
+//
+// What is built, said plainly, and what is left to the accountant (the page lists it as such, never silently):
+// - Supplies at home with Slovak VAT (rows 01 to 04; A.1 to a business, D.2 to a consumer), received invoices and
+//   receipts with VAT deducted (rows 18 to 21; B.2, B.3.1 or B.3.2), services and goods from abroad on which the
+//   company pays the VAT itself (rows 05 to 10b with the deduction; B.1), supplies of goods to the EU, exports and
+//   exempt supplies (rows 13 to 15), corrective invoices (rows 24, 25 and 28; C.1, C.2), the result (rows 17, 32,
+//   33, 35). A company registered only under § 7a files the return alone, with no deduction (rows 05 to 10b, 17,
+//   32, 35) and no control statement.
+// - Not built: supplies with domestic reverse charge (A.2: construction, metals, phones), takings of an eKasa till
+//   (D.1), imports (rows 11c to 12e, 22 to 23c), triangular trade (rows 11 to 12b), bad debts (§ 25a, § 53b), the
+//   coefficient (§ 50), supplementary returns and statements (dodatočné, with correction codes), the recapitulative
+//   statement (súhrnný výkaz) and documents in another currency without their euro amounts.
+import { CATEGORIES, type Category } from './booking'
+import type { DocKind } from './match'
+
+/**
+ * How VAT falls on a document. Received: `domestic` (a Slovak payer charged VAT), `reverse` (a service, or goods
+ * with the place of supply at home, from a foreign person: the company pays the VAT, § 69(2) and (3)),
+ * `acquisition` (goods from another member state, § 11). Issued: `domestic` (Slovak VAT charged), `eu_goods`
+ * (§ 43), `eu_service` (the place of supply is in another member state and the customer pays the VAT, § 15(1)),
+ * `export` (§ 47), `exempt` (§ 28 to 42), `outside` (the place of supply is outside the EU). `none`: no VAT to
+ * report at all (a supplier who is no payer, an exempt purchase, or a company not registered).
+ */
+export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'eu_goods' | 'eu_service' | 'export' | 'exempt' | 'outside' | 'none'
+
+export const RECEIVED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'none']
+export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'eu_goods', 'eu_service', 'export', 'exempt', 'outside', 'none']
+export const RATES = [23, 19, 5] as const
+
+export function isVatMode(value: unknown): value is VatMode {
+  return typeof value === 'string' && (RECEIVED_MODES.includes(value as VatMode) || ISSUED_MODES.includes(value as VatMode))
+}
+
+/** One rate of a document, in cents: the base, its VAT and, on a received document, the VAT deducted from it. */
+export interface VatLine {
+  rate: number
+  base: number
+  vat: number
+  deduct: number
+}
+
+/** What the accountant confirmed about a document's VAT (stored with it), or what is proposed until she does. */
+export interface VatData {
+  mode: VatMode
+  lines: VatLine[]
+  /** The day of supply (dátum dodania), YYYY-MM-DD; the day of issue when the document names none. */
+  suppliedOn: string | null
+  /** The other side's VAT number (IČ DPH) as the document gives it: SK2020000000, IE6388047V. */
+  vatId: string | null
+  /** The number of the invoice this one corrects (opravná faktúra): its lines are then differences, a credit note's negative. */
+  corrects: string | null
+  /** The period the accountant put it in, when it is not the one the dates give. */
+  period: string | null
+}
+
+export type VatStatus = 'payer' | 'reg7a' | 'none'
+
+export interface VatCompany {
+  status: VatStatus
+  /** A payer may file for a calendar quarter; a person registered under § 7a always files for a month. */
+  quarterly: boolean
+  /** The day the registration took effect; documents before it are not the return's. */
+  since: string | null
+}
+
+export interface VatDoc {
+  id: string
+  kind: DocKind | null
+  number: string | null
+  party: string | null
+  partyIco: string | null
+  /** What the reader or the e-invoice gave, for a proposal: the other side's VAT number, the day of supply, the
+   *  invoice a corrective one corrects and the base and VAT of each rate. */
+  partyVatId?: string | null
+  suppliedOn?: string | null
+  corrects?: string | null
+  lines?: { rate: number; base: number; vat: number }[]
+  issuedOn: string | null
+  /** The day the document reached us (Bratislava): a deduction cannot be claimed before it. */
+  receivedOn: string
+  totalCents: number | null
+  vatCents: number | null
+  currency: string | null
+  category: Category | null
+  vatDeduct: boolean | null
+  /** The reader's word that the supplier is based abroad. */
+  foreign?: boolean | null
+  booked: boolean
+  /** What is stored; null until the accountant confirms a proposal. */
+  vat: VatData | null
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Periods
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The period a day falls in: "2027-01" for a month, "2027-Q1" for a quarter. */
+export function periodOf(day: string, quarterly: boolean): string {
+  const year = day.slice(0, 4)
+  const month = Number(day.slice(5, 7))
+  return quarterly ? `${year}-Q${Math.ceil(month / 3)}` : `${year}-${String(month).padStart(2, '0')}`
+}
+
+export function isPeriod(text: string | null | undefined): text is string {
+  return typeof text === 'string' && /^\d{4}-(0[1-9]|1[0-2]|Q[1-4])$/.test(text)
+}
+
+export const isQuarter = (period: string): boolean => period.includes('Q')
+
+/** The first and the last day of a period. */
+export function periodRange(period: string): { from: string; to: string } {
+  const year = Number(period.slice(0, 4))
+  const first = isQuarter(period) ? (Number(period.slice(6)) - 1) * 3 + 1 : Number(period.slice(5, 7))
+  const last = isQuarter(period) ? first + 2 : first
+  const lastDay = new Date(Date.UTC(year, last, 0)).getUTCDate()
+  return { from: `${year}-${String(first).padStart(2, '0')}-01`, to: `${year}-${String(last).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}` }
+}
+
+export function nextPeriod(period: string): string {
+  const year = Number(period.slice(0, 4))
+  if (isQuarter(period)) {
+    const q = Number(period.slice(6))
+    return q === 4 ? `${year + 1}-Q1` : `${year}-Q${q + 1}`
+  }
+  const m = Number(period.slice(5, 7))
+  return m === 12 ? `${year + 1}-01` : `${year}-${String(m + 1).padStart(2, '0')}`
+}
+
+export function prevPeriod(period: string): string {
+  const year = Number(period.slice(0, 4))
+  if (isQuarter(period)) {
+    const q = Number(period.slice(6))
+    return q === 1 ? `${year - 1}-Q4` : `${year}-Q${q - 1}`
+  }
+  const m = Number(period.slice(5, 7))
+  return m === 1 ? `${year - 1}-12` : `${year}-${String(m - 1).padStart(2, '0')}`
+}
+
+const addDays = (day: string, days: number): string => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
+
+/** Easter Sunday of a year (the Gregorian computus, Meeus/Jones/Butcher). */
+export function easter(year: number): string {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** Days off in Slovakia that a deadline on the 25th can meet (dni pracovného pokoja), besides weekends. */
+const FIXED_DAYS_OFF = ['01-01', '01-06', '05-01', '05-08', '07-05', '08-29', '09-15', '11-01', '11-17', '12-24', '12-25', '12-26']
+
+export function isWorkingDay(day: string): boolean {
+  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
+  if (weekday === 0 || weekday === 6) return false
+  if (FIXED_DAYS_OFF.includes(day.slice(5))) return false
+  const sunday = easter(Number(day.slice(0, 4)))
+  return day !== addDays(sunday, -2) && day !== addDays(sunday, 1)
+}
+
+/**
+ * The last day to file the return and the control statement and to pay: 25 days after the period (§ 78(1),
+ * § 78a(7)), moved to the next working day when it falls on a weekend or a day off (§ 27(2) of the Tax Procedure Code).
+ */
+export function filingDeadline(period: string): string {
+  let day = addDays(periodRange(period).to, 25)
+  while (!isWorkingDay(day)) day = addDays(day, 1)
+  return day
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// What a document is, for VAT
+// ---------------------------------------------------------------------------------------------------------------
+
+export const isIssued = (kind: DocKind | null): boolean => kind === 'invoice_out'
+export const isReceived = (kind: DocKind | null): boolean => kind === 'receipt' || kind === 'invoice_in'
+
+/** A VAT number's country: "SK" of SK2020000000, "EL" of EL123456789; null when it is no VAT number. */
+export function vatCountry(vatId: string | null | undefined): string | null {
+  const plain = (vatId ?? '').replace(/[\s.-]/g, '').toUpperCase()
+  const m = /^([A-Z]{2})[A-Z0-9]{2,13}$/.exec(plain)
+  return m ? (m[1] ?? null) : null
+}
+
+/** A VAT number written the way the forms take it: no spaces, capitals. */
+export const plainVatId = (vatId: string | null | undefined): string | null => {
+  const plain = (vatId ?? '').replace(/[\s.-]/g, '').toUpperCase()
+  return plain === '' ? null : plain
+}
+
+/** A Slovak VAT number: SK and ten digits. */
+export const isSkVatId = (vatId: string | null | undefined): boolean => /^SK\d{10}$/.test(plainVatId(vatId) ?? '')
+
+/** The member states' prefixes (Greece's is EL); a VAT number with another prefix is from a third country. */
+const EU = new Set(['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'EL', 'ES', 'FI', 'FR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK', 'XI'])
+export const isEuVatId = (vatId: string | null | undefined): boolean => {
+  const country = vatCountry(vatId)
+  return country !== null && EU.has(country)
+}
+
+/**
+ * The rate a document's VAT was charged at, from its total and its VAT: 23, 19 or 5 when one of them gives that VAT
+ * (to a cent, or half a per cent of a receipt's many lines rounded one by one); null when it is none of them, which
+ * is a document with more rates for the accountant to split.
+ */
+export function rateOf(totalCents: number, vatCents: number): number | null {
+  const base = totalCents - vatCents
+  if (base <= 0 || vatCents <= 0) return null
+  let best: { rate: number; off: number } | null = null
+  for (const rate of RATES) {
+    const off = Math.abs(vatCents - Math.round((base * rate) / 100))
+    if (off <= Math.max(1, Math.round(vatCents * 0.005)) && (!best || off < best.off)) best = { rate, off }
+  }
+  return best?.rate ?? null
+}
+
+const vatAt = (base: number, rate: number): number => Math.round((base * rate) / 100)
+
+/** Whether VAT on a received document is deducted, when the accountant has not said: the category's default. */
+function deducts(doc: VatDoc): boolean {
+  if (doc.vatDeduct !== null) return doc.vatDeduct
+  return doc.category ? (CATEGORIES[doc.category]?.deduct ?? true) : true
+}
+
+/**
+ * What is proposed for a document until the accountant confirms it: the mode from who issued it and to whom, and
+ * its lines from what the document breaks down by rate (an e-invoice always does), or else from its total and VAT.
+ * A company that is not registered reports nothing; a person registered under § 7a reports only what it buys from
+ * abroad, without a deduction. A corrective invoice keeps the signs it was read with (a credit note's are minus).
+ */
+export function proposeVat(doc: VatDoc, company: VatCompany): VatData | null {
+  if (!isIssued(doc.kind) && !isReceived(doc.kind)) return null
+  const vatId = plainVatId(doc.partyVatId)
+  const base: VatData = { mode: 'none', lines: [], suppliedOn: doc.suppliedOn ?? doc.issuedOn, vatId, corrects: doc.corrects ?? null, period: null }
+  const total = doc.totalCents ?? 0
+  const vat = doc.vatCents ?? 0
+  const euro = (doc.currency ?? 'EUR') === 'EUR'
+  const abroad = vatCountry(vatId) !== null && vatCountry(vatId) !== 'SK'
+  const hinted = (doc.lines ?? []).filter((line) => line.base !== 0 || line.vat !== 0)
+  if (company.status === 'none') return (abroad || Boolean(doc.foreign)) && isReceived(doc.kind) ? { ...base, mode: 'reverse' } : base
+  if (isIssued(doc.kind)) {
+    if (company.status !== 'payer') return base
+    const lines = hinted.length > 0 ? hinted.map((line) => ({ ...line, deduct: 0 })) : linesOf(total, vat).map((line) => ({ ...line, deduct: 0 }))
+    if (lines.some((line) => line.rate > 0)) return { ...base, mode: 'domestic', lines: lines.filter((line) => line.rate > 0 || line.base !== 0) }
+    const mode: VatMode = abroad && isEuVatId(vatId) ? 'eu_service' : abroad ? 'outside' : 'exempt'
+    const untaxed = lines.reduce((sum, line) => sum + line.base, 0) || total
+    return { ...base, mode, lines: untaxed !== 0 ? [{ rate: 0, base: untaxed, vat: 0, deduct: 0 }] : [] }
+  }
+  const deduct = company.status === 'payer' && deducts(doc)
+  if (Boolean(doc.foreign) || abroad || !euro) {
+    // The supplier charged no Slovak VAT: the company pays it on the whole base, at the basic rate unless the accountant says otherwise.
+    const amount = hinted.length > 0 ? hinted.reduce((sum, line) => sum + line.base, 0) : total
+    if (!euro || amount === 0) return { ...base, mode: 'reverse' }
+    const tax = vatAt(amount, 23)
+    return { ...base, mode: 'reverse', lines: [{ rate: 23, base: amount, vat: tax, deduct: deduct ? tax : 0 }] }
+  }
+  if (company.status !== 'payer') return base
+  const lines = (hinted.length > 0 ? hinted : linesOf(total, vat)).filter((line) => line.rate > 0)
+  if (lines.length === 0) return vat > 0 ? { ...base, mode: 'domestic' } : base
+  return { ...base, mode: 'domestic', lines: lines.map((line) => ({ rate: line.rate, base: line.base, vat: line.vat, deduct: deduct ? line.vat : 0 })) }
+}
+
+/** One line from a document's total and VAT when one rate gives that VAT; none when it takes more rates (or none at all). */
+function linesOf(total: number, vat: number): { rate: number; base: number; vat: number }[] {
+  if (vat === 0) return total !== 0 ? [{ rate: 0, base: total, vat: 0 }] : []
+  const rate = rateOf(total, vat)
+  return rate ? [{ rate, base: total - vat, vat }] : []
+}
+
+/** A document's VAT as it counts: what the accountant confirmed, or the proposal (said as such). */
+export function vatOf(doc: VatDoc, company: VatCompany): { data: VatData; proposed: boolean } | null {
+  if (doc.vat) return { data: doc.vat, proposed: false }
+  const proposal = proposeVat(doc, company)
+  return proposal ? { data: proposal, proposed: true } : null
+}
+
+/**
+ * The day a document's VAT falls due (vznik daňovej povinnosti, or the right to deduct): the day of supply, or of
+ * issue when it names none. Goods acquired from another member state fall due on the 15th of the month after the
+ * acquisition, or on the day of the invoice when it was issued before then (§ 20(1)).
+ */
+export function taxDay(doc: VatDoc, data: VatData): string {
+  const supplied = data.suppliedOn ?? doc.issuedOn ?? doc.receivedOn
+  if (data.mode !== 'acquisition') return supplied
+  const fifteenth = `${periodOf(addDays(`${supplied.slice(0, 7)}-28`, 7), false)}-15`
+  if (!doc.issuedOn || doc.issuedOn >= fifteenth) return fifteenth
+  // An invoice issued before the goods were acquired does not bring the tax before the acquisition itself.
+  return doc.issuedOn > supplied ? doc.issuedOn : supplied
+}
+
+/**
+ * The period a document is reported in. What is supplied, or bought from abroad, belongs to the period of its tax
+ * day. A deduction from a Slovak supplier belongs there too when the document had reached us by that period's
+ * deadline (§ 51(1)(a)); otherwise it moves to the period the document came in, and past a period already filed
+ * when it came. The accountant may name another period.
+ */
+export function periodOfDoc(doc: VatDoc, data: VatData, company: VatCompany, filed: ReadonlyMap<string, string> = new Map()): string {
+  if (data.period) return data.period
+  const quarterly = company.status === 'payer' && company.quarterly
+  const natural = periodOf(taxDay(doc, data), quarterly)
+  if (!isReceived(doc.kind) || data.mode !== 'domestic') return natural
+  let period = doc.receivedOn > filingDeadline(natural) ? periodOf(doc.receivedOn, quarterly) : natural
+  // A period filed before the document came is closed to it: the deduction goes into the next open one.
+  for (let guard = 0; guard < 24; guard++) {
+    const filedOn = filed.get(period)
+    if (!filedOn || filedOn > doc.receivedOn) break
+    period = nextPeriod(period)
+  }
+  return period
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The return
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The rows of the return as the schema names them, in its order. */
+export const ROWS = [
+  'r01', 'r01a', 'r02', 'r02a', 'r03', 'r04', 'r05', 'r05a', 'r06', 'r06a', 'r07', 'r08', 'r09', 'r09a', 'r09b', 'r10', 'r10a', 'r10b',
+  'r11', 'r11a', 'r11b', 'r11c', 'r11d', 'r11e', 'r12', 'r12a', 'r12b', 'r12c', 'r12d', 'r12e', 'r13', 'r14', 'r15', 'r16', 'r17',
+  'r18', 'r18a', 'r19', 'r20', 'r20a', 'r21', 'r22', 'r22a', 'r23', 'r23a', 'r23b', 'r23c', 'r24', 'r25', 'r26', 'r27', 'r28', 'r29',
+  'r30', 'r31', 'r32', 'r33', 'r34', 'r35', 'r36', 'r37',
+] as const
+export type Row = (typeof ROWS)[number]
+export type Rows = Record<Row, number>
+
+/** The base and tax rows of each kind of supply, by rate. */
+const SUPPLY_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r01', tax: 'r02' }, 5: { base: 'r01a', tax: 'r02a' }, 23: { base: 'r03', tax: 'r04' } }
+const ACQUISITION_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r05', tax: 'r06' }, 5: { base: 'r05a', tax: 'r06a' }, 23: { base: 'r07', tax: 'r08' } }
+const REVERSE_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r09', tax: 'r10' }, 5: { base: 'r09a', tax: 'r10a' }, 23: { base: 'r09b', tax: 'r10b' } }
+const DEDUCT_ROWS: Record<number, Row> = { 19: 'r18', 5: 'r18a', 23: 'r19' }
+const DOMESTIC_DEDUCT_ROWS: Record<number, Row> = { 19: 'r20', 5: 'r20a', 23: 'r21' }
+const TAX_ROWS: readonly Row[] = ['r02', 'r02a', 'r04', 'r06', 'r06a', 'r08', 'r10', 'r10a', 'r10b', 'r12', 'r12a', 'r12b', 'r12c', 'r12d', 'r12e', 'r16']
+
+// ---------------------------------------------------------------------------------------------------------------
+// The control statement
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface KvA1 { odb: string | null; f: string; den: string; z: number; d: number; s: number; doc: string }
+export interface KvB1 { dod: string | null; f: string; den: string; z: number; d: number; s: number; o: number; doc: string }
+export interface KvB2 { dod: string; f: string; den: string; z: number; d: number; s: number; o: number; doc: string }
+export interface KvB3 { z: number; d: number; o: number }
+export interface KvB32 extends KvB3 { dod: string }
+export interface KvC1 { odb: string | null; fo: string; fp: string; zr: number; dr: number; s: number; doc: string }
+export interface KvC2 { dod: string | null; fo: string; fp: string; zr: number; dr: number; s: number; or: number; doc: string }
+export interface KvD2 { z: number; d: number; zzn: number; dzn: number }
+
+export interface Kv {
+  a1: KvA1[]
+  b1: KvB1[]
+  b2: KvB2[]
+  b31: KvB3 | null
+  b32: KvB32[]
+  c1: KvC1[]
+  c2: KvC2[]
+  d2: KvD2 | null
+}
+
+/** B.3.1 holds the simplified invoices' totals while the VAT deducted from them is under 3 000 €; from 3 000 € B.3.2, by supplier. */
+export const B3_LIMIT = 300_000
+
+// ---------------------------------------------------------------------------------------------------------------
+// The period's result
+// ---------------------------------------------------------------------------------------------------------------
+
+export type IssueCode =
+  | 'unbooked'
+  | 'proposed'
+  | 'mode'
+  | 'lines'
+  | 'rate'
+  | 'currency'
+  | 'supplierVatId'
+  | 'simplifiedVatId'
+  | 'number'
+  | 'corrects'
+  | 'needs7a'
+  | 'summary'
+  | 'deduct7a'
+  | 'domestic7a'
+  | 'mismatch'
+  | 'before'
+
+export interface Issue {
+  /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
+  level: 'block' | 'warn'
+  code: IssueCode
+  doc: string | null
+}
+
+export interface PeriodResult {
+  period: string
+  rows: Rows
+  kv: Kv
+  /** Which documents make each row and each part of the control statement. */
+  sources: Map<string, Set<string>>
+  /** The documents the period holds, with the VAT they count with. */
+  docs: { doc: VatDoc; data: VatData; proposed: boolean }[]
+  issues: Issue[]
+  /** Nothing to report: a payer files the return with "nevznikla daňová povinnosť". */
+  nothing: boolean
+  /** A payer files the control statement; a person registered under § 7a does not. */
+  statement: boolean
+}
+
+export const emptyRows = (): Rows => Object.fromEntries(ROWS.map((row) => [row, 0])) as Rows
+
+/** An invoice's number as the control statement takes it: as printed, without spaces; "0" when there is none. */
+export function kvNumber(number: string | null | undefined): string {
+  const plain = (number ?? '').replace(/\s+/g, '')
+  return plain === '' ? '0' : plain
+}
+
+/**
+ * Works out a period: the documents it holds, the rows of the return, the parts of the control statement and what
+ * keeps them from being filed. `docs` are all the company's documents that may fall in it (booked or not);
+ * `filed` names the periods already filed, with the day each was filed.
+ */
+export function workOut(company: VatCompany, period: string, docs: VatDoc[], filed: ReadonlyMap<string, string> = new Map()): PeriodResult {
+  const rows = emptyRows()
+  const kv: Kv = { a1: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }
+  const sources = new Map<string, Set<string>>()
+  const issues: Issue[] = []
+  const held: PeriodResult['docs'] = []
+  const payer = company.status === 'payer'
+  const add = (row: Row, cents: number, doc: string) => {
+    if (cents === 0) return
+    rows[row] += cents
+    const set = sources.get(row) ?? new Set<string>()
+    set.add(doc)
+    sources.set(row, set)
+  }
+  const note = (part: string, doc: string) => {
+    const set = sources.get(part) ?? new Set<string>()
+    set.add(doc)
+    sources.set(part, set)
+  }
+  const issue = (level: Issue['level'], code: IssueCode, doc: string | null) => {
+    if (!issues.some((i) => i.code === code && i.doc === doc)) issues.push({ level, code, doc })
+  }
+  const simplified: { doc: VatDoc; line: VatLine; vatId: string | null }[] = []
+  const d2: KvD2 = { z: 0, d: 0, zzn: 0, dzn: 0 }
+  let consumers = false
+
+  for (const doc of docs) {
+    // A document nobody has read yet may well be the period's: it keeps the period from being filed until it is.
+    if (doc.kind === null && !doc.booked) {
+      if (periodOf(doc.issuedOn ?? doc.receivedOn, payer && company.quarterly) === period) issue('block', 'unbooked', doc.id)
+      continue
+    }
+    const counted = vatOf(doc, company)
+    if (!counted) continue
+    const { data, proposed } = counted
+    if (periodOfDoc(doc, data, company, filed) !== period) continue
+    if (company.since && taxDay(doc, data) < company.since) {
+      issue('warn', 'before', doc.id)
+      continue
+    }
+    held.push({ doc, data, proposed })
+    if (!doc.booked) {
+      issue('block', 'unbooked', doc.id)
+      continue
+    }
+    if (proposed && data.mode !== 'none') issue('warn', 'proposed', doc.id)
+    const issued = isIssued(doc.kind)
+    const correction = data.corrects !== null && data.corrects !== ''
+    const vatId = plainVatId(data.vatId)
+    const number = kvNumber(doc.number)
+    const den = taxDay(doc, data)
+    if ((doc.currency ?? 'EUR') !== 'EUR' && data.mode !== 'none' && data.lines.length === 0) issue('block', 'currency', doc.id)
+    if (company.status === 'none') {
+      if (isReceived(doc.kind) && (data.mode === 'reverse' || data.mode === 'acquisition')) issue('warn', 'needs7a', doc.id)
+      continue
+    }
+    if (data.mode === 'none' || data.mode === 'outside') continue
+    if (data.mode === 'eu_service') {
+      issue('warn', 'summary', doc.id)
+      continue
+    }
+    if (company.status === 'reg7a' && !(isReceived(doc.kind) && (data.mode === 'reverse' || data.mode === 'acquisition'))) {
+      issue('warn', 'domestic7a', doc.id)
+      continue
+    }
+    const taxed = data.mode === 'domestic' || data.mode === 'reverse' || data.mode === 'acquisition'
+    if (data.lines.length === 0) {
+      issue('block', 'lines', doc.id)
+      continue
+    }
+    // A rate that is no Slovak one, or VAT on a supply that has none, is a mistake to put right first.
+    if (data.lines.some((line) => line.rate !== 0 && !RATES.includes(line.rate as (typeof RATES)[number]))) {
+      issue('block', 'rate', doc.id)
+      continue
+    }
+    if (!taxed && data.lines.some((line) => line.vat !== 0)) {
+      issue('block', 'mismatch', doc.id)
+      continue
+    }
+    if (correction && number === '0') issue('block', 'number', doc.id)
+    if (number.length > 32) issue('block', 'number', doc.id)
+    if (data.mode === 'eu_goods' && issued) issue('warn', 'summary', doc.id)
+    const business = Boolean(vatId || doc.partyIco)
+
+    for (const line of data.lines) {
+      const deduct = payer ? line.deduct : 0
+      if (!payer && line.deduct !== 0) issue('warn', 'deduct7a', doc.id)
+      if (taxed && line.rate === 0) {
+        // The exempt part of a supply goes to row 13; an exempt purchase, or one from abroad, is not reported.
+        if (issued && data.mode === 'domestic') add('r13', line.base, doc.id)
+        continue
+      }
+      if (issued) {
+        if (data.mode === 'domestic') {
+          if (correction) {
+            add('r24', line.base, doc.id)
+            add('r25', line.vat, doc.id)
+          } else {
+            const target = SUPPLY_ROWS[line.rate]
+            if (target) {
+              add(target.base, line.base, doc.id)
+              add(target.tax, line.vat, doc.id)
+            }
+          }
+          if (!business) {
+            consumers = true
+            if (line.rate === 23) {
+              d2.z += line.base
+              d2.d += line.vat
+            } else {
+              d2.zzn += line.base
+              d2.dzn += line.vat
+            }
+            note('D2', doc.id)
+          } else if (correction) {
+            kv.c1.push({ odb: vatId, fo: number, fp: kvNumber(data.corrects), zr: line.base, dr: line.vat, s: line.rate, doc: doc.id })
+            note('C1', doc.id)
+          } else {
+            kv.a1.push({ odb: vatId, f: number, den, z: line.base, d: line.vat, s: line.rate, doc: doc.id })
+            note('A1', doc.id)
+          }
+        } else {
+          // Supplies without Slovak VAT: their bases (and the corrections of them) in rows 13 to 15.
+          add('r13', line.base, doc.id)
+          if (data.mode === 'eu_goods') add('r14', line.base, doc.id)
+          if (data.mode === 'export') add('r15', line.base, doc.id)
+        }
+        continue
+      }
+      // Received.
+      if (data.mode === 'domestic') {
+        if (!payer) continue
+        if (correction) {
+          add('r28', -deduct, doc.id)
+          kv.c2.push({ dod: vatId, fo: number, fp: kvNumber(data.corrects), zr: line.base, dr: line.vat, s: line.rate, or: deduct, doc: doc.id })
+          note('C2', doc.id)
+          continue
+        }
+        if (deduct === 0) continue
+        add(DEDUCT_ROWS[line.rate] as Row, deduct, doc.id)
+        add(DOMESTIC_DEDUCT_ROWS[line.rate] as Row, deduct, doc.id)
+        if (doc.kind === 'receipt') {
+          simplified.push({ doc, line: { ...line, deduct }, vatId })
+          note('B3', doc.id)
+        } else if (vatId && isSkVatId(vatId)) {
+          kv.b2.push({ dod: vatId, f: number, den, z: line.base, d: line.vat, s: line.rate, o: deduct, doc: doc.id })
+          note('B2', doc.id)
+        } else {
+          issue('block', 'supplierVatId', doc.id)
+        }
+        continue
+      }
+      // Reverse charge and acquisitions: the company pays the VAT, and (a payer) deducts it.
+      if (correction) {
+        add('r24', line.base, doc.id)
+        add('r25', line.vat, doc.id)
+        if (payer) {
+          add('r28', -deduct, doc.id)
+          kv.c2.push({ dod: vatId, fo: number, fp: kvNumber(data.corrects), zr: line.base, dr: line.vat, s: line.rate, or: deduct, doc: doc.id })
+          note('C2', doc.id)
+        }
+        continue
+      }
+      const target = (data.mode === 'acquisition' ? ACQUISITION_ROWS : REVERSE_ROWS)[line.rate]
+      if (target) {
+        add(target.base, line.base, doc.id)
+        add(target.tax, line.vat, doc.id)
+      }
+      if (payer) {
+        add(DEDUCT_ROWS[line.rate] as Row, deduct, doc.id)
+        kv.b1.push({ dod: vatId, f: number, den, z: line.base, d: line.vat, s: line.rate, o: deduct, doc: doc.id })
+        note('B1', doc.id)
+      }
+    }
+  }
+
+  // B.3: simplified invoices as one total, or by supplier once the VAT deducted from them reaches 3 000 €.
+  if (simplified.length > 0) {
+    const total = simplified.reduce((sum, s) => ({ z: sum.z + s.line.base, d: sum.d + s.line.vat, o: sum.o + s.line.deduct }), { z: 0, d: 0, o: 0 })
+    if (total.o < B3_LIMIT) kv.b31 = total
+    else {
+      const bySupplier = new Map<string, KvB32>()
+      for (const s of simplified) {
+        const dod = s.vatId && isSkVatId(s.vatId) ? s.vatId : null
+        if (!dod) {
+          issue('block', 'simplifiedVatId', s.doc.id)
+          continue
+        }
+        const row = bySupplier.get(dod) ?? { dod, z: 0, d: 0, o: 0 }
+        row.z += s.line.base
+        row.d += s.line.vat
+        row.o += s.line.deduct
+        bySupplier.set(dod, row)
+      }
+      kv.b32 = [...bySupplier.values()]
+    }
+  }
+  if (consumers) kv.d2 = d2
+
+  // The result: row 17 is the tax, rows 32 to 35 what it comes to.
+  rows.r17 = TAX_ROWS.reduce((sum, row) => sum + rows[row], 0)
+  const result = rows.r17 - rows.r18 - rows.r18a - rows.r19 + rows.r25 + rows.r27 + rows.r28 + rows.r29 - rows.r30 - rows.r31
+  if (payer) {
+    if (result > 0) rows.r32 = result
+    if (result < 0) rows.r33 = -result
+    rows.r35 = Math.max(0, rows.r32 - rows.r34)
+  } else if (company.status === 'reg7a') {
+    rows.r32 = result
+    rows.r35 = Math.max(0, rows.r32 - rows.r34)
+  }
+  const nothing = ROWS.every((row) => rows[row] === 0)
+  return {
+    period,
+    rows,
+    kv,
+    sources,
+    docs: held,
+    issues: issues.sort((a, b) => (a.level === b.level ? 0 : a.level === 'block' ? -1 : 1)),
+    nothing,
+    statement: payer,
+  }
+}
+
+/** The amount to pay for a period (row 35) and the excess deduction to be refunded (row 33), in cents. */
+export function outcome(rows: Rows): { pay: number; refund: number } {
+  return { pay: Math.max(0, rows.r35), refund: Math.max(0, rows.r33) }
+}
+
+/** Whether the control statement has anything in it beyond the company's own details. */
+export function kvRows(kv: Kv): number {
+  return kv.a1.length + kv.b1.length + kv.b2.length + (kv.b31 ? 1 : 0) + kv.b32.length + kv.c1.length + kv.c2.length + (kv.d2 ? 1 : 0)
+}

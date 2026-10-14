@@ -25,6 +25,7 @@
     "@fontsource-variable/newsreader": "^5.3.0",
     "esbuild": "0.28.1",
     "typescript": "^7.0.2",
-    "wrangler": "^4.147.0"
+    "wrangler": "^4.147.0",
+    "xmllint-wasm": "5.3.0"
   }
 }

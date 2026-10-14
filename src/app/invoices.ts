@@ -389,12 +389,13 @@ export function saveInvoiceStatements(
           db
             .prepare(
               `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs,
-                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id)
+                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines)
                SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, number,
-                 issued_on, due_on, total_cents, vat_cents, 'EUR', 'sales', id
+                 issued_on, due_on, total_cents, vat_cents, 'EUR', 'sales', id, customer_icdph, delivered_on, ?
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )
-            .bind(args.documentId, args.id, args.company),
+            // Its VAT by rate, exactly as the invoice sums it: what the return proposes until the accountant confirms it.
+            .bind(args.documentId, JSON.stringify(args.totals.rates.map((r) => ({ rate: r.rate, base: r.base, vat: r.vat, deduct: 0 }))), args.id, args.company),
           db.prepare("UPDATE invoices SET document_id = ? WHERE id = ? AND company_id = ? AND status = 'issued'").bind(args.documentId, args.id, args.company),
         ]
       : []),

@@ -4,6 +4,8 @@
 import { now } from '../db'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
+import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
+import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
 
 export interface Company {
@@ -36,6 +38,16 @@ export interface Company {
   noticeBy: string | null
   noticeSide: 'client' | 'firmony' | null
   endsOn: string | null
+  /** How the company is registered for VAT: a payer (§ 4), a person registered under § 7a, or neither. */
+  vatStatus: VatStatus
+  /** A payer filing for a calendar quarter. */
+  vatQuarterly: boolean
+  /** The day the registration took effect. */
+  vatSince: string | null
+  /** The tax office the returns are addressed to, as the forms name it. */
+  taxOffice: TaxOffice | null
+  /** The number of the company's personal tax account (osobný účet daňovníka), to which VAT is paid. */
+  taxAccount: string | null
 }
 
 export type Team = 'accountant' | 'admin'
@@ -111,6 +123,14 @@ export interface Doc {
   paidPrivately: boolean
   paymentId: string | null
   how: string | null
+  /** The VAT the accountant confirmed (src/app/vat.ts); null until she does. */
+  vat: VatData | null
+  /** What the reader or the e-invoice said, for a proposal until then: the other side's VAT number, the day of supply, abroad. */
+  partyVatId: string | null
+  suppliedOn: string | null
+  foreign: boolean | null
+  correctsHint: string | null
+  linesHint: VatLine[]
 }
 
 export interface Message {
@@ -130,7 +150,8 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 /** The columns of a company with its accountant's name, over the aliases c and acc. */
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
-  c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on`
+  c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.tax_office, c.tax_account`
 
 export function companyOf(row: Row): Company {
   return {
@@ -161,6 +182,11 @@ export function companyOf(row: Row): Company {
     noticeBy: str(row.notice_by),
     noticeSide: row.notice_side === 'firmony' ? 'firmony' : row.notice_at ? 'client' : null,
     endsOn: str(row.ends_on),
+    vatStatus: row.vat_payer === 1 ? 'payer' : row.vat_7a === 1 ? 'reg7a' : 'none',
+    vatQuarterly: row.vat_payer === 1 && row.vat_quarterly === 1,
+    vatSince: str(row.vat_since),
+    taxOffice: isTaxOffice(row.tax_office) ? row.tax_office : null,
+    taxAccount: str(row.tax_account),
   }
 }
 
@@ -207,7 +233,7 @@ function paymentOf(row: Row): Payment {
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
-  d.paid_privately, l.payment_id, l.how`
+  d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party`
 export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
 
 export function docOf(row: Row): Doc {
@@ -246,8 +272,72 @@ export function docOf(row: Row): Doc {
     paidPrivately: row.paid_privately === 1,
     paymentId: str(row.payment_id),
     how: str(row.how),
+    vat: vatDataOf(row),
+    partyVatId: str(row.party_vat_id),
+    suppliedOn: str(row.supplied_on),
+    foreign: row.foreign_party === null || row.foreign_party === undefined ? null : row.foreign_party === 1,
+    correctsHint: str(row.corrects),
+    linesHint: isVatMode(row.vat_mode) ? [] : vatLinesOf(row.vat_lines),
   }
 }
+
+/** The VAT lines as stored: JSON of {rate, base, vat, deduct} in cents; anything else is no line. */
+export function vatLinesOf(json: unknown): VatLine[] {
+  if (typeof json !== 'string') return []
+  try {
+    const value = JSON.parse(json) as unknown
+    if (!Array.isArray(value)) return []
+    return value
+      .filter((line): line is Record<string, unknown> => Boolean(line) && typeof line === 'object')
+      .map((line) => ({ rate: Number(line.rate), base: Number(line.base), vat: Number(line.vat), deduct: Number(line.deduct ?? 0) }))
+      .filter((line) => [line.rate, line.base, line.vat, line.deduct].every(Number.isInteger))
+  } catch {
+    return []
+  }
+}
+
+function vatDataOf(row: Row): VatData | null {
+  if (!isVatMode(row.vat_mode)) return null
+  return {
+    mode: row.vat_mode,
+    lines: vatLinesOf(row.vat_lines),
+    suppliedOn: str(row.supplied_on),
+    vatId: str(row.party_vat_id),
+    corrects: str(row.corrects),
+    period: str(row.vat_period),
+  }
+}
+
+/** A document as the VAT return reads it. */
+export function vatDocOf(doc: Doc): VatDoc {
+  return {
+    id: doc.id,
+    kind: doc.kind,
+    number: doc.number,
+    party: doc.party,
+    partyIco: doc.partyIco,
+    partyVatId: doc.partyVatId,
+    suppliedOn: doc.suppliedOn,
+    corrects: doc.correctsHint,
+    lines: doc.linesHint,
+    issuedOn: doc.issuedOn,
+    receivedOn: bratislavaDay(doc.createdAt),
+    totalCents: doc.totalCents,
+    vatCents: doc.vatCents,
+    currency: doc.currency,
+    category: doc.category,
+    vatDeduct: doc.vatDeduct,
+    foreign: doc.foreign,
+    booked: doc.bookedAt !== null,
+    vat: doc.vat,
+  }
+}
+
+/** The VAT registration of a company, as the return reads it. */
+export const vatCompanyOf = (company: Company): VatCompany => ({ status: company.vatStatus, quarterly: company.vatQuarterly, since: company.vatSince })
+
+/** A moment's day in Bratislava, YYYY-MM-DD. */
+export const bratislavaDay = (seconds: number): string => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(seconds * 1000))
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is signed in
@@ -526,15 +616,28 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
   return db
     .prepare(
       `INSERT INTO documents (id, company_id, created_at, source, added_by, file_key, file_type, file_name, file_bytes, file_hash, status, read_by,
-         kind, party, party_ico, party_iban, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, proposal, invoice_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         kind, party, party_ico, party_iban, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, proposal, invoice_id,
+         party_vat_id, supplied_on, foreign_party, corrects, vat_lines)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       d.id, d.company, now(), d.source, d.addedBy, d.fileKey, d.fileType, d.fileName, d.fileBytes, d.fileHash, d.status, d.readBy,
       r?.kind ?? null, r?.party ?? null, r?.partyIco ?? null, r?.partyIban ?? null, r?.number ?? null, r?.vs ?? null,
       r?.issuedOn ?? null, r?.dueOn ?? null, r?.totalCents ?? null, r?.vatCents ?? null, r?.currency ?? null,
       r?.category ?? null, r?.category ? 'ai' : null, d.invoiceId ?? null,
+      ...vatHints(r),
     )
+}
+
+/** What a reading says for VAT, kept as hints until the accountant confirms the document's VAT. */
+function vatHints(r: Reading | null | undefined): (string | number | null)[] {
+  return [
+    r?.partyVatId ?? null,
+    r?.suppliedOn ?? null,
+    r?.foreign === true ? 1 : r?.foreign === false ? 0 : null,
+    r?.corrects ?? null,
+    r?.vatLines && r.vatLines.length > 0 ? JSON.stringify(r.vatLines.map((line) => ({ ...line, deduct: 0 }))) : null,
+  ]
 }
 
 /** Writes what the reader found; only while the document is still being read, so a second answer changes nothing. */
@@ -542,12 +645,14 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
   return db
     .prepare(
       `UPDATE documents SET status = 'read', read_by = ?, kind = ?, party = ?, party_ico = ?, party_iban = ?, number = ?, vs = ?,
-         issued_on = ?, due_on = ?, total_cents = ?, vat_cents = ?, currency = ?, category = ?, proposal = ?
+         issued_on = ?, due_on = ?, total_cents = ?, vat_cents = ?, currency = ?, category = ?, proposal = ?,
+         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?
        WHERE id = ? AND company_id = ? AND status = 'reading'`,
     )
     .bind(
       by, reading.kind, reading.party, reading.partyIco, reading.partyIban, reading.number, reading.vs, reading.issuedOn, reading.dueOn,
-      reading.totalCents, reading.vatCents, reading.currency, reading.category ?? null, reading.category ? 'ai' : null, doc, company,
+      reading.totalCents, reading.vatCents, reading.currency, reading.category ?? null, reading.category ? 'ai' : null,
+      ...vatHints(reading), doc, company,
     )
 }
 

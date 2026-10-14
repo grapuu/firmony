@@ -366,6 +366,35 @@ const MIGRATIONS: readonly string[][] = [
     )`,
     'CREATE INDEX IF NOT EXISTS events_company ON events (company_id, at)',
   ],
+  // VAT (14 October 2026): what a document's VAT is for the return and the control statement (src/app/vat.ts),
+  // how the company is registered and files, and the returns marked as filed.
+  [
+    'ALTER TABLE documents ADD COLUMN supplied_on TEXT',
+    'ALTER TABLE documents ADD COLUMN vat_mode TEXT',
+    'ALTER TABLE documents ADD COLUMN vat_lines TEXT',
+    'ALTER TABLE documents ADD COLUMN party_vat_id TEXT',
+    'ALTER TABLE documents ADD COLUMN corrects TEXT',
+    'ALTER TABLE documents ADD COLUMN vat_period TEXT',
+    'ALTER TABLE documents ADD COLUMN foreign_party INTEGER',
+    'ALTER TABLE companies ADD COLUMN vat_7a INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE companies ADD COLUMN vat_quarterly INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE companies ADD COLUMN vat_since TEXT',
+    'ALTER TABLE companies ADD COLUMN tax_office TEXT',
+    'ALTER TABLE companies ADD COLUMN tax_account TEXT',
+    `CREATE TABLE IF NOT EXISTS vat_returns (
+      company_id TEXT NOT NULL,
+      period TEXT NOT NULL,
+      filed_at INTEGER NOT NULL,
+      filed_on TEXT NOT NULL,
+      filed_by TEXT,
+      rows TEXT NOT NULL,
+      kv_rows INTEGER NOT NULL DEFAULT 0,
+      pay_cents INTEGER NOT NULL DEFAULT 0,
+      refund_cents INTEGER NOT NULL DEFAULT 0,
+      due_on TEXT NOT NULL,
+      PRIMARY KEY (company_id, period)
+    )`,
+  ],
 ]
 
 export const SCHEMA_VERSION = MIGRATIONS.length

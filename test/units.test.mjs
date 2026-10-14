@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { aml, appCopy, bank, bells, booking, calc, config, copy, decodePayBySquare, deadlines, demo, ending, format, ico, invoices, match, orderLinkMail, papers, paybysquare, planRows, reader, rpo, teamStore, terms, xml, zip } from '../.wrangler/tmp/units-bundle.mjs'
+import { aml, appCopy, bank, bells, booking, calc, config, copy, decodePayBySquare, deadlines, demo, ending, format, ico, invoices, match, orderLinkMail, papers, paybysquare, planRows, reader, rpo, teamStore, terms, vat, vatXml, xml, zip } from '../.wrangler/tmp/units-bundle.mjs'
+import { validateXML } from 'xmllint-wasm'
 import { crc32 as nodeCrc32 } from 'node:zlib'
 import { check, done } from './check.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
@@ -478,6 +479,179 @@ async function zipped(entries, note) {
   const text = terms.termsText().replace(/ /g, ' ')
   check('the terms promise ten days for the last month, thirty for the handover, ninety to download, then deleting', /10\.4 .*10 dní po jej skončení.*Do 30 dní.*90 dní po skončení zmluvy.*bodu 8\.8/.test(text) && /8\.8 .*po uplynutí 90 dní od skončenia ich vymažeme.*päť rokov/.test(text))
   check('the figures of the terms are the config\'s', config.ENDING.intakeDays === 10 && config.ENDING.handoverDays === 30 && config.ENDING.keepDays === 90 && config.ENDING.recordsYears === 5)
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// VAT: the return and the control statement, checked against the Financial Administration's own schemas
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const xsd = (name) => readFileSync(new URL(`./xsd/${name}`, import.meta.url), 'utf8')
+  const DPH_XSD = xsd('dph2025.xsd')
+  const KV_XSD = xsd('kv_dph_2025.xsd')
+  const valid = async (xml, schema, name) => {
+    const result = await validateXML({ xml: [{ fileName: `${name}.xml`, contents: xml }], schema: [{ fileName: `${name}.xsd`, contents: schema }] })
+    return { ok: result.valid, why: result.errors.map((e) => e.message).join(' | ') }
+  }
+
+  // Periods and the deadline
+  check('a month and a quarter of a day', vat.periodOf('2027-01-15', false) === '2027-01' && vat.periodOf('2027-05-31', true) === '2027-Q2' && vat.periodOf('2027-12-01', true) === '2027-Q4')
+  check('the days of a period', JSON.stringify(vat.periodRange('2027-Q1')) === JSON.stringify({ from: '2027-01-01', to: '2027-03-31' }) && vat.periodRange('2028-02').to === '2028-02-29' && vat.periodRange('2027-02').to === '2027-02-28')
+  check('the next and the previous period', vat.nextPeriod('2027-12') === '2028-01' && vat.prevPeriod('2027-01') === '2026-12' && vat.nextPeriod('2027-Q4') === '2028-Q1' && vat.prevPeriod('2027-Q1') === '2026-Q4')
+  check('Easter of known years', vat.easter(2025) === '2025-04-20' && vat.easter(2026) === '2026-04-05' && vat.easter(2027) === '2027-03-28' && vat.easter(2030) === '2030-04-21')
+  check('Good Friday and Easter Monday are no working days, nor a weekend or Christmas', !vat.isWorkingDay('2027-03-26') && !vat.isWorkingDay('2027-03-29') && !vat.isWorkingDay('2027-09-25') && !vat.isWorkingDay('2027-12-25') && vat.isWorkingDay('2027-12-27') && vat.isWorkingDay('2027-02-25'))
+  check('the return is due on the 25th of the next month, a quarter\'s on the 25th after it', vat.filingDeadline('2027-01') === '2027-02-25' && vat.filingDeadline('2027-Q1') === '2027-04-26', vat.filingDeadline('2027-Q1'))
+  check('a deadline on a Saturday moves to Monday', vat.filingDeadline('2027-08') === '2027-09-27', vat.filingDeadline('2027-08'))
+  check('a deadline on Christmas moves past both days of it and the weekend', vat.filingDeadline('2027-11') === '2027-12-27' && vat.filingDeadline('2026-11') === '2026-12-28', `${vat.filingDeadline('2027-11')} ${vat.filingDeadline('2026-11')}`)
+
+  // The rate of a document from its total and VAT
+  check('the rate of a receipt', vat.rateOf(1240, 232) === 23 && vat.rateOf(1190, 190) === 19 && vat.rateOf(1050, 50) === 5)
+  check('a receipt of many lines rounded one by one still finds its rate', vat.rateOf(123_456, 23_084) === 23)
+  check('two rates on one receipt are left to the accountant', vat.rateOf(2280, 280) === null && vat.rateOf(1000, 0) === null)
+  check('VAT numbers', vat.vatCountry('IE 6388047V') === 'IE' && vat.isEuVatId('EL123456789') && !vat.isEuVatId('GB123456789') && vat.isSkVatId('SK2020000000') && !vat.isSkVatId('SK202000000') && vat.plainVatId(' sk 2020-000-000 ') === 'SK2020000000')
+  check('an invoice number for the control statement', vat.kvNumber('1 - A/2021') === '1-A/2021' && vat.kvNumber('') === '0' && vat.kvNumber(null) === '0')
+
+  const payer = { status: 'payer', quarterly: false, since: null }
+  const reg7a = { status: 'reg7a', quarterly: false, since: null }
+  let n = 0
+  const doc = (fields) => ({
+    id: `d${++n}`, kind: 'invoice_in', number: `F${n}`, party: 'Dodávateľ s. r. o.', partyIco: '12345679', issuedOn: '2027-01-15', receivedOn: '2027-01-16',
+    totalCents: null, vatCents: null, currency: 'EUR', category: 'services', vatDeduct: null, booked: true, vat: null, ...fields,
+  })
+  const v = (mode, lines, extra = {}) => ({ mode, lines: lines.map(([rate, base, tax, deduct = 0]) => ({ rate, base, vat: tax, deduct })), suppliedOn: '2027-01-15', vatId: null, corrects: null, period: null, ...extra })
+
+  // Proposals
+  const receipt = vat.proposeVat(doc({ kind: 'receipt', totalCents: 1240, vatCents: 232, category: 'material' }), payer)
+  check('a receipt is proposed with its rate and the VAT deducted', receipt?.mode === 'domestic' && receipt.lines.length === 1 && receipt.lines[0].rate === 23 && receipt.lines[0].base === 1008 && receipt.lines[0].deduct === 232)
+  const lunch = vat.proposeVat(doc({ kind: 'receipt', totalCents: 1240, vatCents: 232, category: 'representation' }), payer)
+  check('representation is proposed without a deduction', lunch?.lines[0]?.deduct === 0)
+  const google = vat.proposeVat(doc({ party: 'Google Ireland Limited', partyVatId: 'IE6388047V', totalCents: 20000, vatCents: 0 }), payer)
+  check('a service from abroad is proposed as reverse charge at 23 % with the deduction', google?.mode === 'reverse' && google.lines[0].rate === 23 && google.lines[0].base === 20000 && google.lines[0].vat === 4600 && google.lines[0].deduct === 4600)
+  const google7a = vat.proposeVat(doc({ partyVatId: 'IE6388047V', totalCents: 20000, vatCents: 0 }), reg7a)
+  check('a person registered under § 7a pays it and deducts nothing', google7a?.mode === 'reverse' && google7a.lines[0].vat === 4600 && google7a.lines[0].deduct === 0)
+  check('a § 7a person reports nothing of what it buys at home', vat.proposeVat(doc({ totalCents: 12300, vatCents: 2300 }), reg7a)?.mode === 'none')
+  check('a company that is not registered reports nothing', vat.proposeVat(doc({ totalCents: 12300, vatCents: 2300 }), { status: 'none', quarterly: false, since: null })?.mode === 'none')
+  check('a bill in dollars waits for its euro amounts', (() => { const p = vat.proposeVat(doc({ currency: 'USD', totalCents: 2000, vatCents: 0 }), payer); return p?.mode === 'reverse' && p.lines.length === 0 })())
+  const einvoice = vat.proposeVat(doc({ totalCents: 13780, vatCents: 2780, lines: [{ rate: 23, base: 10000, vat: 2300 }, { rate: 5, base: 1000, vat: 50 }, { rate: 19, base: 0, vat: 0 }] }), payer)
+  check('an e-invoice brings its own lines by rate', einvoice?.lines.length === 2 && einvoice.lines[1].rate === 5 && einvoice.lines[1].deduct === 50)
+  const sold = vat.proposeVat(doc({ kind: 'invoice_out', partyVatId: 'CZ12345678', totalCents: 50000, vatCents: 0 }), payer)
+  check('an invoice without VAT to a business in the EU is proposed as a service there', sold?.mode === 'eu_service' && sold.lines[0].rate === 0 && sold.lines[0].base === 50000)
+  check('an invoice without VAT at home is proposed as exempt', vat.proposeVat(doc({ kind: 'invoice_out', totalCents: 50000, vatCents: 0 }), payer)?.mode === 'exempt')
+  check('documents of the kind "other" are no VAT', vat.proposeVat(doc({ kind: 'other', totalCents: 100, vatCents: 0 }), payer) === null)
+
+  // When a document is reported
+  const acq = (issuedOn) => vat.taxDay(doc({ issuedOn }), v('acquisition', [[23, 100, 23]], { suppliedOn: '2027-01-10' }))
+  check('goods from the EU fall due on the invoice when it came before the 15th of the next month, else on the 15th', acq('2027-01-12') === '2027-01-12' && acq('2027-02-20') === '2027-02-15' && acq('2027-02-14') === '2027-02-14' && acq('2027-01-05') === '2027-01-10')
+  const late = doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-27' })
+  const lateData = v('domestic', [[23, 1000, 230, 230]], { suppliedOn: '2027-01-20' })
+  check('a deduction belongs to the month of supply when the invoice came by its deadline', vat.periodOfDoc(doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-25' }), lateData, payer) === '2027-01')
+  check('an invoice that came after the deadline is deducted in the month it came', vat.periodOfDoc(late, lateData, payer) === '2027-02')
+  check('an invoice that came after its month was filed goes into the next open one', vat.periodOfDoc(doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-20' }), lateData, payer, new Map([['2027-01', '2027-02-18']])) === '2027-02')
+  check('what was sold stays in its month, filed or not', vat.periodOfDoc(doc({ kind: 'invoice_out', issuedOn: '2027-01-20', receivedOn: '2027-02-20' }), v('domestic', [[23, 1000, 230]], { suppliedOn: '2027-01-20' }), payer, new Map([['2027-01', '2027-02-18']])) === '2027-01')
+  check('the accountant may name the period', vat.periodOfDoc(late, { ...lateData, period: '2027-03' }, payer) === '2027-03')
+  check('a quarterly payer reports a quarter', vat.periodOfDoc(late, lateData, { ...payer, quarterly: true }) === '2027-Q1')
+
+  // A month of a payer with everything that is built
+  const filer = { name: 'Ukážková firma s. r. o.', icdph: 'SK2120000000', address: 'Hlavná 12, 811 01 Bratislava', taxOffice: 'Bratislava', status: 'payer' }
+  const month = [
+    doc({ kind: 'invoice_out', number: '20270001', partyVatId: 'SK2020000000', vat: v('domestic', [[23, 100000, 23000]], { vatId: 'SK2020000000' }) }),
+    doc({ kind: 'invoice_out', number: '20270002', partyIco: null, vat: v('domestic', [[19, 10000, 1900], [5, 20000, 1000]]) }),
+    doc({ kind: 'invoice_in', number: 'FA 2027/15', vat: v('domestic', [[23, 50000, 11500, 11500]], { vatId: 'SK2121212121' }) }),
+    doc({ kind: 'receipt', number: null, vat: v('domestic', [[23, 1008, 232, 232]]) }),
+    doc({ kind: 'invoice_in', number: '5123456789', party: 'Google Ireland Limited', vat: v('reverse', [[23, 20000, 4600, 4600]], { vatId: 'IE6388047V' }) }),
+    doc({ kind: 'invoice_in', number: 'R-77', issuedOn: '2027-01-12', vat: v('acquisition', [[23, 30000, 6900, 6900]], { vatId: 'DE123456789', suppliedOn: '2027-01-10' }) }),
+    doc({ kind: 'invoice_out', number: '20270003', vat: v('eu_service', [[0, 50000, 0]], { vatId: 'CZ12345678' }) }),
+    doc({ kind: 'invoice_out', number: '20270004', vat: v('eu_goods', [[0, 40000, 0]], { vatId: 'AT U12345678'.replace(' ', '') }) }),
+    doc({ kind: 'invoice_out', number: '20270005', vat: v('domestic', [[23, -10000, -2300]], { vatId: 'SK2020000000', corrects: '20261231' }) }),
+    doc({ kind: 'invoice_in', number: 'D-9', vat: v('domestic', [[23, -5000, -1150, -1150]], { vatId: 'SK2121212121', corrects: 'FA 2026/99' }) }),
+    doc({ kind: 'invoice_in', number: 'X', issuedOn: '2027-02-02', vat: v('domestic', [[23, 1000, 230, 230]], { vatId: 'SK2121212121', suppliedOn: '2027-02-02' }) }),
+  ]
+  const jan = vat.workOut(payer, '2027-01', month)
+  const r = jan.rows
+  check('sales at home by rate: 19 % in 01 and 02, 5 % in 01a and 02a, 23 % in 03 and 04', r.r01 === 10000 && r.r02 === 1900 && r.r01a === 20000 && r.r02a === 1000 && r.r03 === 100000 && r.r04 === 23000, JSON.stringify(r))
+  check('goods from the EU in 07 and 08, a service from abroad in 09b and 10b', r.r07 === 30000 && r.r08 === 6900 && r.r09b === 20000 && r.r10b === 4600)
+  check('supplies of goods to the EU in 13 and 14; a service sold to the EU is not in the return', r.r13 === 40000 && r.r14 === 40000 && r.r15 === 0)
+  check('the tax in 17 is the sum of the tax rows', r.r17 === 1900 + 1000 + 23000 + 6900 + 4600)
+  check('deductions in 19, of which from Slovak suppliers in 21', r.r19 === 11500 + 232 + 4600 + 6900 && r.r21 === 11500 + 232 && r.r18 === 0 && r.r20 === 0)
+  check('a credit note issued in 24 and 25, one received in 28', r.r24 === -10000 && r.r25 === -2300 && r.r28 === 1150)
+  const result = r.r17 - r.r19 + r.r25 + r.r28
+  check('the result is the payer\'s own liability, in 32 and 35', result > 0 && r.r32 === result && r.r35 === result && r.r33 === 0)
+  check('a document of February is not January\'s', !jan.docs.some((d) => d.doc.number === 'X'))
+  check('A.1 to a business, D.2 to consumers', jan.kv.a1.length === 1 && jan.kv.a1[0].odb === 'SK2020000000' && jan.kv.a1[0].den === '2027-01-15' && jan.kv.d2?.zzn === 30000 && jan.kv.d2.dzn === 2900 && jan.kv.d2.z === 0)
+  check('B.1 for both purchases from abroad, B.2 for the Slovak invoice, B.3.1 for the receipt', jan.kv.b1.length === 2 && jan.kv.b2.length === 1 && jan.kv.b2[0].f === 'FA2027/15' && jan.kv.b31?.o === 232)
+  check('C.1 and C.2 name the invoices they correct', jan.kv.c1[0]?.fp === '20261231' && jan.kv.c2[0]?.fp === 'FA2026/99' && jan.kv.c2[0].or === -1150)
+  check('a sale to the EU asks for the recapitulative statement', jan.issues.some((i) => i.code === 'summary'))
+  check('the month is ready to file', !jan.issues.some((i) => i.level === 'block'), JSON.stringify(jan.issues))
+  check('the rows the documents make are known', jan.sources.get('r19')?.size === 4 && jan.sources.get('A1')?.size === 1)
+
+  const returnXml = vatXml.returnXml(filer, '2027-01', r, { declaredOn: '2027-02-10', nothing: jan.nothing })
+  const returned = await valid(returnXml, DPH_XSD, 'dph')
+  check('the return is valid against dph2025.xsd', returned.ok, returned.why)
+  check('the return reads as the eForm writes it', returnXml.includes('<r03>1000.00</r03>') && returnXml.includes('<r24>-100.00</r24>') && returnXml.includes('<r33></r33>') && returnXml.includes('<mesiac>1</mesiac><stvrtrok></stvrtrok><rok>2027</rok>') && returnXml.includes('<platitel>1</platitel><registrovana>0</registrovana>') && returnXml.includes('<datumVyhlasenia>10.02.2027</datumVyhlasenia>') && returnXml.includes('<psc>81101</psc><obec>Bratislava</obec>'))
+  check('the rows come in the schema\'s order, the refund condition after row 32', /<r32>[\d.]+<\/r32>\n<splneniePodmienok>0<\/splneniePodmienok>\n<r33><\/r33>/.test(returnXml))
+  const kvXml = vatXml.statementXml(filer, '2027-01', jan.kv)
+  const kvValid = await valid(kvXml, KV_XSD, 'kv')
+  check('the control statement is valid against kv_dph_2025.xsd', kvValid.ok, kvValid.why)
+  check('the control statement is in its namespace with ISO dates', kvXml.includes('<KVDPH_2025 xmlns="https://ekr.financnasprava.sk/Formulare/XSD/kv_dph_2025.xsd">') && kvXml.includes('Den="2027-01-15"') && kvXml.includes('<Mesiac>1</Mesiac>') && kvXml.includes('<B31 Z="10.08" D="2.32" O="2.32"/>'))
+  check('the sections come in the schema\'s order', ['<A1', '<B1', '<B2', '<B31', '<C1', '<C2', '<D2'].map((tag) => kvXml.indexOf(tag)).every((at, i, all) => at > 0 && (i === 0 || at > all[i - 1])))
+
+  // A person registered under § 7a: the return alone, with what it pays on services from abroad
+  const europio = { ...filer, name: 'europio s. r. o.', icdph: 'SK2122734449', address: 'K lesu 2218/39A, 040 18 Košice', taxOffice: 'Košice', status: 'reg7a' }
+  const ads = [
+    doc({ number: '5200000001', vat: v('reverse', [[23, 10000, 2300, 2300]], { vatId: 'IE6388047V' }) }),
+    doc({ number: 'AN-1', vat: v('reverse', [[23, 4000, 920]], { vatId: null }) }),
+    doc({ kind: 'receipt', totalCents: 1240, vatCents: 232 }),
+  ]
+  const oct = vat.workOut(reg7a, '2027-01', ads)
+  check('§ 7a: the base and the tax in 09b and 10b, the tax to pay in 17, 32 and 35, no deduction', oct.rows.r09b === 14000 && oct.rows.r10b === 3220 && oct.rows.r17 === 3220 && oct.rows.r19 === 0 && oct.rows.r32 === 3220 && oct.rows.r35 === 3220, JSON.stringify(oct.rows))
+  check('§ 7a: a deduction entered by mistake is said and left out', oct.issues.some((i) => i.code === 'deduct7a'))
+  check('§ 7a: no control statement', !oct.statement && oct.kv.b1.length === 0)
+  const xml7a = vatXml.returnXml(europio, '2027-01', oct.rows, { declaredOn: '2027-02-10', nothing: false })
+  const valid7a = await valid(xml7a, DPH_XSD, 'dph7a')
+  check('§ 7a: the return is valid and says "iná osoba registrovaná pre daň", without a DIČ', valid7a.ok && xml7a.includes('<platitel>0</platitel><registrovana>1</registrovana>') && xml7a.includes('<dic></dic>') && xml7a.includes('<cislo>2122734449</cislo>') && xml7a.includes('<ulica>K lesu</ulica><cislo>2218/39A</cislo><psc>04018</psc><obec>Košice</obec>'), valid7a.why)
+  check('§ 7a: a credit note from abroad can make row 32 negative', vat.workOut(reg7a, '2027-01', [doc({ number: 'CN1', vat: v('reverse', [[23, -1000, -230]], { corrects: '5200000001' }) })]).rows.r32 === -230)
+
+  // Nothing in a month, a refund, a quarter
+  const empty = vat.workOut(payer, '2027-03', [])
+  const emptyXml = vatXml.returnXml(filer, '2027-03', empty.rows, { declaredOn: '2027-04-10', nothing: empty.nothing })
+  const emptyValid = await valid(emptyXml, DPH_XSD, 'empty')
+  check('a month without anything says so, and is valid', empty.nothing && emptyXml.includes('<nevzniklaPov>1</nevzniklaPov>') && emptyValid.ok, emptyValid.why)
+  const refund = vat.workOut(payer, '2027-01', [doc({ vat: v('domestic', [[23, 100000, 23000, 23000]], { vatId: 'SK2121212121' }) })])
+  check('more deducted than due is an excess deduction in 33, nothing in 32 or 35', refund.rows.r33 === 23000 && refund.rows.r32 === 0 && refund.rows.r35 === 0)
+  const refundXml = vatXml.returnXml(filer, '2027-01', refund.rows, { declaredOn: '2027-02-10', nothing: false })
+  check('an excess deduction is written as a positive amount in 33', refundXml.includes('<r32></r32>') && refundXml.includes('<r33>230.00</r33>') && (await valid(refundXml, DPH_XSD, 'refund')).ok)
+  const quarterly = { ...payer, quarterly: true }
+  const q1 = vat.workOut(quarterly, '2027-Q1', [doc({ kind: 'invoice_out', number: 'Q', issuedOn: '2027-03-31', vat: v('domestic', [[23, 1000, 230]], { suppliedOn: '2027-03-31' }) })])
+  const q1Xml = vatXml.returnXml(filer, '2027-Q1', q1.rows, { declaredOn: '2027-04-10', nothing: false })
+  const q1Kv = vatXml.statementXml(filer, '2027-Q1', q1.kv)
+  check('a quarter: I in the return, 1 in the control statement, both valid', q1.rows.r04 === 230 && q1Xml.includes('<mesiac></mesiac><stvrtrok>I</stvrtrok>') && q1Kv.includes('<Stvrtrok>1</Stvrtrok>') && (await valid(q1Xml, DPH_XSD, 'q1')).ok && (await valid(q1Kv, KV_XSD, 'q1kv')).ok)
+
+  // What keeps a period from being filed
+  const blocked = vat.workOut(payer, '2027-01', [
+    doc({ booked: false, vat: v('domestic', [[23, 1000, 230, 230]], { vatId: 'SK2121212121' }) }),
+    doc({ vat: v('domestic', [[23, 1000, 230, 230]]) }),
+    doc({ vat: v('domestic', [[21, 1000, 210, 210]], { vatId: 'SK2121212121' }) }),
+    doc({ vat: v('exempt', [[23, 1000, 230]]), kind: 'invoice_out' }),
+    doc({ vat: v('reverse', [], { vatId: 'US123' }), currency: 'USD' }),
+    doc({ kind: null, booked: false, issuedOn: '2027-01-03' }),
+  ])
+  const codes = blocked.issues.filter((i) => i.level === 'block').map((i) => i.code).sort().join(' ')
+  check('an unbooked document, a Slovak invoice without the supplier\'s VAT number, a rate that is none, VAT on an exempt supply, dollars without euros, an unread document', codes === 'currency lines mismatch rate supplierVatId unbooked unbooked', codes)
+  const big = vat.workOut(payer, '2027-01', [
+    doc({ kind: 'receipt', vat: v('domestic', [[23, 1_000_000, 230_000, 230_000]], { vatId: 'SK2020202020' }) }),
+    doc({ kind: 'receipt', vat: v('domestic', [[23, 400_000, 92_000, 92_000]], { vatId: 'SK2020202020' }) }),
+    doc({ kind: 'receipt', vat: v('domestic', [[23, 10_000, 2_300, 2_300]], { vatId: '' }) }),
+  ])
+  check('from 3 000 € deducted from receipts, B.3.2 by supplier; one without a VAT number stops it', big.kv.b31 === null && big.kv.b32.length === 1 && big.kv.b32[0].o === 322_000 && big.issues.some((i) => i.code === 'simplifiedVatId'))
+  check('a company registered later reports nothing from before', vat.workOut({ ...payer, since: '2027-01-20' }, '2027-01', [doc({ kind: 'invoice_out', issuedOn: '2027-01-10', vat: v('domestic', [[23, 1000, 230]], { suppliedOn: '2027-01-10' }) })]).rows.r04 === 0)
+  check('a company that is not registered and buys a service from abroad is told it must register', vat.workOut({ status: 'none', quarterly: false, since: null }, '2027-01', [doc({ partyVatId: 'IE6388047V', totalCents: 10000, vatCents: 0 })]).issues.some((i) => i.code === 'needs7a'))
+
+  // The address and the name as the forms take them
+  check('an address in its parts', JSON.stringify(vatXml.addressParts('K lesu 2218/39A, 040 18 Košice')) === JSON.stringify({ street: 'K lesu', number: '2218/39A', postal: '04018', city: 'Košice' }))
+  check('a village without streets', JSON.stringify(vatXml.addressParts('Lehota 123, 951 36')) === JSON.stringify({ street: '', number: '123', postal: '95136', city: 'Lehota' }))
+  check('amounts as the forms write them', vatXml.amount(123456) === '1234.56' && vatXml.amount(-5) === '-0.05' && vatXml.amount(0) === '0.00')
+  check('a long name in lines of the form', vatXml.nameLines('A '.repeat(80).trim()).length === 2 && vatXml.nameLines('europio s. r. o.').length === 1)
+  check('the tax offices are the eForm\'s nine', vatXml.TAX_OFFICES.length === 9 && vatXml.isTaxOffice('Košice') && !vatXml.isTaxOffice('Kosice'))
+  check('a name with an ampersand is escaped and still valid', await (async () => { const x = vatXml.statementXml({ ...filer, name: 'A & B s. r. o.' }, '2027-01', jan.kv); return x.includes('A &amp; B') && (await valid(x, KV_XSD, 'amp')).ok })())
 }
 
 done('units')

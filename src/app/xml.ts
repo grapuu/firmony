@@ -5,7 +5,7 @@ import { XMLParser } from 'fast-xml-parser'
 import type { Category } from './booking'
 import type { DocKind } from './match'
 
-const LISTS = new Set(['Stmt', 'Ntry', 'TxDtls', 'Bal', 'Ustrd', 'Strd', 'PartyIdentification', 'PartyLegalEntity', 'PaymentMeans', 'TaxTotal', 'PartyTaxScheme'])
+const LISTS = new Set(['Stmt', 'Ntry', 'TxDtls', 'Bal', 'Ustrd', 'Strd', 'PartyIdentification', 'PartyLegalEntity', 'PaymentMeans', 'TaxTotal', 'TaxSubtotal', 'PartyTaxScheme', 'BillingReference'])
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -213,9 +213,16 @@ export interface Reading {
   currency: string | null
   /** What it is for, as the reader judged it; an e-invoice says nothing of it. */
   category?: Category | null
+  /** For VAT (src/app/vat.ts), as far as the document says: the other side's VAT number, the day of supply,
+   *  that the supplier is abroad, the invoice a corrective one corrects, and the base and VAT of each rate. */
+  partyVatId?: string | null
+  suppliedOn?: string | null
+  foreign?: boolean | null
+  corrects?: string | null
+  vatLines?: { rate: number; base: number; vat: number }[] | null
 }
 
-function partyOf(node: unknown): { name: string | null; ids: string[] } {
+function partyOf(node: unknown): { name: string | null; ids: string[]; vatId: string | null; country: string | null } {
   const party = at(node, 'Party')
   const name = text(at(party, 'PartyLegalEntity', 'RegistrationName')) ?? text(at(party, 'PartyName', 'Name'))
   const ids = [
@@ -224,7 +231,14 @@ function partyOf(node: unknown): { name: string | null; ids: string[] } {
     text(at(party, 'PartyLegalEntity', 'CompanyID')),
     text(at(party, 'PartyTaxScheme', 'CompanyID')),
   ].filter((id): id is string => Boolean(id))
-  return { name, ids }
+  // The VAT number is the tax scheme's "VAT" entry (BT-31, BT-48): two letters and the number.
+  const vatId =
+    list(party && (party as Record<string, unknown>).PartyTaxScheme)
+      .filter((scheme) => (text(at(scheme, 'TaxScheme', 'ID')) ?? 'VAT') === 'VAT')
+      .map((scheme) => text(at(scheme, 'CompanyID'))?.replace(/\s/g, '').toUpperCase() ?? null)
+      .find((id): id is string => Boolean(id && /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(id))) ?? null
+  const country = text(at(party, 'PostalAddress', 'Country', 'IdentificationCode'))?.toUpperCase() ?? null
+  return { name, ids, vatId, country }
 }
 
 /** An IČO among a party's identifiers: eight digits, possibly behind a scheme ("0245:57442452"). */
@@ -250,7 +264,21 @@ export function readInvoice(xml: string, ourIco: string | null): Reading | null 
   const payable = at(invoice, 'LegalMonetaryTotal', 'PayableAmount')
   const vat = list((invoice as Record<string, unknown>).TaxTotal).map((total) => toCents(text(at(total, 'TaxAmount')))).find((cents) => cents !== null) ?? null
   const iban = text(at(means, 'PayeeFinancialAccount', 'ID'))
+  // The base and VAT of each rate, as the invoice itself sums them (BG-23); a credit note's are the amounts it takes back.
+  const sign = credit ? -1 : 1
+  const vatLines = list((invoice as Record<string, unknown>).TaxTotal)
+    .flatMap((total) => list((total as Record<string, unknown> | undefined)?.TaxSubtotal))
+    .map((sub) => ({ rate: Number(text(at(sub, 'TaxCategory', 'Percent')) ?? 'NaN'), base: toCents(text(at(sub, 'TaxableAmount'))), vat: toCents(text(at(sub, 'TaxAmount'))) }))
+    .filter((line): line is { rate: number; base: number; vat: number } => Number.isFinite(line.rate) && line.base !== null && line.vat !== null)
+    .map((line) => ({ rate: Math.round(line.rate), base: sign * line.base, vat: sign * line.vat }))
+  const supplied = day(text(at(invoice, 'TaxPointDate')) ?? text(at(invoice, 'Delivery', 'ActualDeliveryDate')) ?? text(at(invoice, 'InvoicePeriod', 'EndDate')))
+  const corrected = text(at(invoice, 'BillingReference', 'InvoiceDocumentReference', 'ID'))
   return {
+    partyVatId: other.vatId,
+    suppliedOn: supplied,
+    foreign: other.country ? other.country !== 'SK' : null,
+    corrects: credit ? corrected : null,
+    vatLines: vatLines.length > 0 ? vatLines : null,
     kind: credit ? 'other' : ours ? 'invoice_out' : 'invoice_in',
     party: other.name,
     partyIco: icoAmong(other.ids),

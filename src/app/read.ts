@@ -60,6 +60,23 @@ const TOOL = {
         enum: CATEGORY_IDS,
         description: `Na čo výdavok bol, alebo pri faktúre vydanej za čo: ${CATEGORY_IDS.map((id) => `${id} (${CATEGORIES[id].hint})`).join('; ')}.`,
       },
+      ic_dph_druhej_strany: { type: 'string', description: 'IČ DPH druhej strany, ak je na doklade: dve písmená štátu a číslo, napríklad SK2020000000 alebo IE6388047V.' },
+      datum_dodania: { type: 'string', description: 'Dátum dodania tovaru alebo služby, ak je na doklade uvedený osobitne. RRRR-MM-DD' },
+      sidlo_v_zahranici: { type: 'boolean', description: 'Či druhá strana sídli mimo Slovenska.' },
+      opravuje_fakturu: { type: 'string', description: 'Ak je to dobropis alebo opravná faktúra: číslo faktúry, ktorú opravuje.' },
+      dph_podla_sadzieb: {
+        type: 'array',
+        description: 'Základ dane a DPH pre každú sadzbu, ako sú na doklade rozpísané. Pri dobropise so znamienkom mínus.',
+        items: {
+          type: 'object',
+          properties: {
+            sadzba: { type: 'number', description: 'Sadzba v percentách: 23, 19, 5 alebo 0.' },
+            zaklad: { type: 'string', description: 'Základ dane s desatinnou bodkou.' },
+            dph: { type: 'string', description: 'DPH s desatinnou bodkou.' },
+          },
+          required: ['sadzba', 'zaklad', 'dph'],
+        },
+      },
     },
     required: ['je_doklad'],
   },
@@ -81,6 +98,7 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
   const ico = clean(input.ico_druhej_strany, 20)?.replace(/\s/g, '') ?? null
   const iban = clean(input.iban_druhej_strany, 40)?.replace(/\s/g, '').toUpperCase() ?? null
   const currency = clean(input.mena, 10)?.toUpperCase() ?? null
+  const vatId = clean(input.ic_dph_druhej_strany, 20)?.replace(/[\s.-]/g, '').toUpperCase() ?? null
   return {
     kind: KINDS[String(input.typ)] ?? 'other',
     party: clean(input.druha_strana),
@@ -94,7 +112,22 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
     vatCents: vat !== null && vat >= 0 ? vat : null,
     currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null,
     category: isCategory(input.kategoria) ? input.kategoria : null,
+    partyVatId: vatId && /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(vatId) ? vatId : null,
+    suppliedOn: isoDay(input.datum_dodania),
+    foreign: typeof input.sidlo_v_zahranici === 'boolean' ? input.sidlo_v_zahranici : null,
+    corrects: clean(input.opravuje_fakturu, 40),
+    vatLines: ratesOf(input.dph_podla_sadzieb),
   }
+}
+
+/** The reader's lines by rate, each checked: a rate of the Slovak ones and amounts that are amounts; null when none holds. */
+function ratesOf(value: unknown): { rate: number; base: number; vat: number }[] | null {
+  if (!Array.isArray(value)) return null
+  const lines = value
+    .map((line) => (line && typeof line === 'object' ? (line as Record<string, unknown>) : {}))
+    .map((line) => ({ rate: Number(line.sadzba), base: toCents(clean(line.zaklad, 20)), vat: toCents(clean(line.dph, 20)) }))
+    .filter((line): line is { rate: number; base: number; vat: number } => [23, 19, 5, 0].includes(line.rate) && line.base !== null && line.vat !== null)
+  return lines.length > 0 && lines.length <= 4 ? lines : null
 }
 
 function base64(bytes: Uint8Array): string {
