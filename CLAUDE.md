@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 10:30)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 10:27)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -144,7 +144,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   (corrective and supplementary returns and control statements, the carried excess, the box of § 79(2)). Also:
   an overview with nothing missing but a tax to pay says "Zostáva zaplatiť DPH." with a button to Dane, and the
   deadlines' lead says that the client pays the tax. All checks passing (units 388, runtime 457), 35 rules taken
-  out once and every one held. Pushed at about 10:30. The app preview is version 11 ("DPH" in its bar: September
+  out once and every one held. Pushed at 10:27 (`3d62898`). The app preview is version 11 ("DPH" in its bar: September
   ready, then filed; the client's Dane with the QR code; "Keď nič nechýba" now asks to pay the VAT).
 
 ## What he has to do before it is live (each a few clicks)
