@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 11:58)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 12:30)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -159,6 +159,20 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   (`62712e3`). The app preview is version 12 ("Účtovná kniha" in its bar, with every page of the books of the sample
   company).
 
+- At 12:15 (14 October 2026) he asked for Enable Banking's answer to be read (juhasgr@gmail.com; Deborah Katwikirize,
+  12:05 that day, with "Enable Banking | Startup Offer.pdf", read in the browser pane). The offer: we work under their
+  licence; building and testing with our own accounts costs nothing, paying starts at going live; a licensing fee of
+  1 500 € a month, for a startup 900 € in the first year (40 % off, 1 800 accounts included), 1 200 € in the second
+  (2 400 included), 1 500 € from the third (3 000 included); an account above them 0,50 € a month (up to 5 000),
+  0,30 € (to 50 000), 0,20 € (above); data fetched without limit; the whole EU (2 700 banks in 29 countries, Czechia
+  included). Whether the 0,50 € is only above the accounts included, and the contract's term, were not said. Against
+  our model (2 € an account, `TECH` in `test/units.test.mjs`): 900 € is 2 € an account at 450 accounts; with Štart
+  alone the 60 % holds from about 253 clients (the bank may cost 3,57 € a client there). Checked the same day:
+  GoCardless Bank Account Data takes no new signups ("New signups for Bank Account Data are currently disabled");
+  Tatra banka's Premium API (KROS, POHODA and Money S3 use it; it also reads accounts at other banks) publishes no
+  price. He was told: do not sign now; start January with statements uploaded in the app; switch the bank on at
+  about 250 clients or on better terms; a reply to them asking for no minimum fee in the first year was drafted.
+
 ## What he has to do before it is live (each a few clicks)
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
@@ -199,6 +213,8 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
    file's name without `.pem`) and the secret `ENABLE_BANKING_KEY` (the whole text of the file; PKCS#8 and PKCS#1
    both work, also pasted on one line). The privacy notice names Enable Banking Oy (Finland) as the service that
    reads the accounts with the client's consent (since 13 October 2026); the terms of service are at /podmienky.
+   Their price (14 October 2026): 900 € a month in the first year with 1 800 accounts included, then 1 200 € and
+   1 500 €; testing with our own accounts is free ("Where things stand", 12:15 on 14 October).
 10. AML (Act No. 297/2008 Z. z.): approve and sign the program (his doc above; the client's declaration, the risk
    and the internal reports are in the app since the night of 13 October), register europio in the Financial
    Intelligence Unit's goAML, and have a lawyer confirm that a power of attorney signed with eID verifies the director's
