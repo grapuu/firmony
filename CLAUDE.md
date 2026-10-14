@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 14:00)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 14:02)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -184,7 +184,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   "The bank without an aggregator" under the client's app. All checks passing (units 466, runtime 552); 31 rules
   taken out once and every one held (five only after a check was added for each: the yes that judges the next
   statements as they come, the accountant told of them, statements the bank sends and accounts a link reads never
-  asked for, the 3rd and no other day, a bank of once a month remembered). Pushed at 14:10 (`fc41ff6`). The app
+  asked for, the 3rd and no other day, a bank of once a month remembered). Pushed at 14:02 (`fc41ff6`). The app
   preview is version 13 (the sample company's bank sends its statements by email; "Banka" and "Nový účet" in its bar;
   every bank's steps; the next statement paying invoice 20260007; Fio linked; Lucia's statement to check).
 
