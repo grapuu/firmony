@@ -39,6 +39,7 @@ import {
   vat,
   vatForm,
   vatStore,
+  vatSummary,
   vatXml,
   xml,
   zip,
@@ -1474,6 +1475,8 @@ async function zipped(entries, note) {
     'goods from the EU fall due on the invoice when it came before the 15th of the next month, else on the 15th',
     acq('2027-01-12') === '2027-01-12' && acq('2027-02-20') === '2027-02-15' && acq('2027-02-14') === '2027-02-14' && acq('2027-01-05') === '2027-01-10',
   )
+  const toEu = (issuedOn) => vat.taxDay(doc({ kind: 'invoice_out', issuedOn }), v('eu_goods', [[0, 100, 0]], { suppliedOn: '2027-01-10' }))
+  check('goods supplied to the EU the same way (§ 19(8)): an invoice issued late falls in the month of the 15th', toEu('2027-01-12') === '2027-01-12' && toEu('2027-02-20') === '2027-02-15')
   const late = doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-27' })
   const lateData = v('domestic', [[23, 1000, 230, 230]], { suppliedOn: '2027-01-20' })
   check('a deduction belongs to the month of supply when the invoice came by its deadline', vat.periodOfDoc(doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-25' }), lateData, payer) === '2027-01')
@@ -2152,6 +2155,135 @@ async function zipped(entries, note) {
   )
 }
 
+// The recapitulative statement (súhrnný výkaz, § 80 of the VAT Act; the poučenie to SVDPHv20), and its file against the
+// eForm's own schema
+{
+  const SV_XSD = readFileSync(new URL('./xsd/svdph2020.xsd', import.meta.url), 'utf8')
+  const valid = async (xml) => {
+    const result = await validateXML({ xml: [{ fileName: 'sv.xml', contents: xml }], schema: [{ fileName: 'sv.xsd', contents: SV_XSD }] })
+    return { ok: result.valid, why: result.errors.map((e) => e.message).join(' | ') }
+  }
+  const payer = { status: 'payer', quarterly: false, since: null }
+  let n = 0
+  const sale = (vatId, base, mode = 'eu_service', fields = {}) => ({
+    id: `s${++n}`,
+    kind: 'invoice_out',
+    number: `2027000${n}`,
+    party: 'Kunde',
+    partyIco: null,
+    issuedOn: '2027-01-15',
+    receivedOn: '2027-01-15',
+    totalCents: base,
+    vatCents: 0,
+    currency: 'EUR',
+    category: 'sales',
+    vatDeduct: null,
+    booked: true,
+    vat: { mode, lines: [{ rate: 0, base, vat: 0, deduct: 0 }], suppliedOn: '2027-01-15', vatId, corrects: null, period: null },
+    ...fields,
+  })
+  const docs = [sale('DE123456789', 80000), sale('de 123 456 789', 20049), sale('CZ12345678', 1_000_050, 'eu_goods'), sale('EL094259216', 150)]
+  const { lines, issues } = vatSummary.summaryLines(payer, '2027-01', docs)
+  const rows = vatSummary.rowsOf(lines)
+  check(
+    "each customer's total by its VAT number, goods without a code and services with 2, in whole euros half up",
+    JSON.stringify(rows) ===
+      JSON.stringify([
+        { country: 'CZ', number: '12345678', euros: 10001, code: '' },
+        { country: 'DE', number: '123456789', euros: 1000, code: '2' },
+        { country: 'EL', number: '094259216', euros: 2, code: '2' },
+      ]) && issues.length === 0,
+    JSON.stringify(rows),
+  )
+  check('the total of the first page is the sum of the rows', vatSummary.totalOf(rows) === 11003)
+  check(
+    'a credit note lowers the customer in its own period, and nothing left is no row',
+    vatSummary.rowsOf(vatSummary.summaryLines(payer, '2027-01', [sale('DE123456789', 80000), sale('DE123456789', -80000, 'eu_service', { vat: { ...sale('x', 0).vat, vatId: 'DE123456789', lines: [{ rate: 0, base: -80000, vat: 0, deduct: 0 }], corrects: '20270001' } })]).lines).length === 0 &&
+      vatSummary.rowsOf(vatSummary.summaryLines(payer, '2027-01', [sale('DE123456789', -12350)]).lines)[0]?.euros === -124,
+  )
+  check(
+    'a customer without a VAT number of another member state keeps it back, and so does an invoice not booked',
+    vatSummary.summaryLines(payer, '2027-01', [sale(null, 1000), sale('SK2020000000', 1000), sale('US123456789', 1000)]).issues.filter((i) => i.code === 'svVatId').length === 3 &&
+      vatSummary.summaryLines(payer, '2027-01', [sale('DE123456789', 1000, 'eu_service', { booked: false })]).issues[0]?.code === 'unbooked',
+  )
+  check('what is not the period is not in it', vatSummary.summaryLines(payer, '2027-02', docs).lines.length === 0 && !vatSummary.summaryLines(payer, '2027-02', docs).due)
+  check(
+    '§ 7a: the calendar quarter; a quarterly payer the quarter, warned above 50 000 € of goods',
+    vatSummary.summaryPeriodOf('2027-02', { status: 'reg7a' }) === '2027-Q1' &&
+      vatSummary.summaryPeriodOf('2027-02', payer) === '2027-02' &&
+      vatSummary.summaryLines({ ...payer, quarterly: true }, '2027-Q1', [sale('CZ12345678', 5_000_100, 'eu_goods')]).issues.some((i) => i.code === 'svMonthly') &&
+      !vatSummary.summaryLines({ ...payer, quarterly: true }, '2027-Q1', [sale('CZ12345678', 5_000_000, 'eu_goods'), sale('DE123456789', 9_000_000)]).issues.some((i) => i.code === 'svMonthly'),
+  )
+
+  // States, and the corrections a change after filing asks for
+  const view = (filed, today, d = docs) => vatSummary.summaryView(payer, '2027-01', d, filed, 0, today)
+  check('the period running, then ready by the 25th', view(null, '2027-01-20').state === 'running' && view(null, '2027-02-03').state === 'ready' && view(null, '2027-02-03').plan?.kind === 'R' && view(null, '2027-02-03').deadline === '2027-02-25')
+  check('nothing supplied, nothing to file', view(null, '2027-02-03', []).state === 'none' && view(null, '2027-02-03', [sale('DE123456789', 1000, 'domestic')]).state === 'none')
+  check('supplies that came to nothing (an invoice and its credit note) leave nothing to file', view(null, '2027-02-03', [sale('DE123456789', 80000), sale('DE123456789', -80000)]).state === 'none')
+  check('the company without its VAT number keeps it back', vatSummary.summaryView(payer, '2027-01', docs, null, 1, '2027-02-03').state === 'blocked')
+  const filed = (fileRows) => ({ kind: 'R', filedOn: '2027-02-10', filedAt: 1, filedBy: null, rows: fileRows, sent: fileRows, prev: null })
+  check('filed as it stands', view(filed(rows), '2027-02-11').state === 'filed' && view(filed(null), '2027-02-11').state === 'filed')
+  const before = [rows[0], { ...rows[1], euros: 900 }, { country: 'AT', number: 'U12345678', euros: 300, code: '2' }]
+  check('changed before the deadline: a corrective statement with every row', view(filed(before), '2027-02-20').state === 'changed' && JSON.stringify(view(filed(before), '2027-02-20').plan) === JSON.stringify({ kind: 'O', rows }))
+  const late = view(filed(before), '2027-03-02').plan
+  check(
+    'after it: a supplementary one with the rows that change, a row that is no more at nought first',
+    late?.kind === 'D' &&
+      JSON.stringify(late.rows) ===
+        JSON.stringify([
+          { country: 'AT', number: 'U12345678', euros: 0, code: '2' },
+          { country: 'DE', number: '123456789', euros: 1000, code: '2' },
+          { country: 'EL', number: '094259216', euros: 2, code: '2' },
+        ]),
+    JSON.stringify(late),
+  )
+  check(
+    "a code put right is cancelled with the code 0 (the poučenie's example 13), a wrong VAT number keeps its code (example 10)",
+    JSON.stringify(vatSummary.svDiff([{ country: 'DK', number: '33333333', euros: 180000, code: '1' }], [{ country: 'DK', number: '33333333', euros: 180000, code: '' }])) ===
+      JSON.stringify([
+        { country: 'DK', number: '33333333', euros: 0, code: '0' },
+        { country: 'DK', number: '33333333', euros: 180000, code: '' },
+      ]) &&
+      JSON.stringify(vatSummary.svDiff([{ country: 'CZ', number: '222222222', euros: 80000, code: '2' }], [{ country: 'CZ', number: '122222222', euros: 80000, code: '2' }])) ===
+        JSON.stringify([
+          { country: 'CZ', number: '222222222', euros: 0, code: '2' },
+          { country: 'CZ', number: '122222222', euros: 80000, code: '2' },
+        ]) &&
+      JSON.stringify(vatSummary.svDiff([{ country: 'CZ', number: '102030405', euros: 40000, code: '' }], [{ country: 'CZ', number: '102030405', euros: 30000, code: '' }, { country: 'CZ', number: '102030405', euros: 10000, code: '2' }])) ===
+        JSON.stringify([
+          { country: 'CZ', number: '102030405', euros: 30000, code: '' },
+          { country: 'CZ', number: '102030405', euros: 10000, code: '2' },
+        ]),
+  )
+  check('changed while something keeps it back: no file until it is resolved', vatSummary.summaryView(payer, '2027-01', docs, filed(before), 1, '2027-03-02').plan === null)
+
+  // The file
+  const filer = { name: 'Termíny & spol. s. r. o.', icdph: 'SK2120999992', address: 'Hlavná 10, 040 01 Košice' }
+  const xml = vatXml.summaryXml(filer, '2027-01', rows, 'R', '2027-02-03')
+  let result = await valid(xml)
+  check('the regular statement is valid against the eForm form.471 schema', result.ok, result.why)
+  check(
+    'written as the eForm writes it: SK and ten digits, 1 and 0, the month without its nought, the rows, the total, the day in three numbers',
+    xml.includes('<identifikacneCislo><kodStatu>SK</kodStatu><dic>2120999992</dic></identifikacneCislo>') &&
+      xml.includes('<druhSV><riadny>1</riadny><opravny>0</opravny><dodatocny>0</dodatocny></druhSV>') &&
+      xml.includes('<obdobie><mesiac>1</mesiac><stvrtrok></stvrtrok><rok>2027</rok></obdobie>') &&
+      xml.includes('<zaznam><kodStatu>DE</kodStatu><idCislo>123456789</idCislo><hodnota>1000</hodnota><kod>2</kod></zaznam>') &&
+      xml.includes('<celkovaHodnota>11003</celkovaHodnota>') &&
+      xml.includes('<riadok>Termíny &amp; spol. s. r. o.</riadok>') &&
+      xml.includes('<datumVyhlasenia><den>3</den><mesiac>2</mesiac><rok>2027</rok></datumVyhlasenia>') &&
+      (xml.match(/<zaznam>/g) ?? []).length === 12 &&
+      (xml.match(/<zaznamCast2>/g) ?? []).length === 12,
+  )
+  const many = Array.from({ length: 13 }, (_, i) => ({ country: 'DE', number: String(100000000 + i), euros: 10, code: '2' }))
+  const two = vatXml.summaryXml(filer, '2027-Q1', many, 'D', '2027-05-03')
+  result = await valid(two)
+  check(
+    'a quarter as I to IV, a supplementary one, and thirteen rows on two pages',
+    result.ok && two.includes('<stvrtrok>I</stvrtrok>') && two.includes('<mesiac></mesiac>') && two.includes('<dodatocny>1</dodatocny>') && (two.match(/<strana>/g) ?? []).length === 2,
+    result.why,
+  )
+}
+
 // The books: the journal, the trial balance, the open items and the bank, worked out from documents and payments
 {
   const NB = ' '
@@ -2715,8 +2847,24 @@ async function zipped(entries, note) {
     return filedOf(period, { rows: r.rows, payCents: r.rows.r35, kv: r.statement ? { kind: 'R', full: kv, sent: kv } : null, ...fields })
   }
   /** The deadlines of a company on a day, from its documents and returns, as the store hands them over. */
-  const run = (company, today, { docs = [], filed = [], paid = new Map(), filings = new Set(), closings = [], missing = new Map(), handover = 0 } = {}) =>
-    dues.deadlinesOf(company, { views: dues.vatWindow(company, today).map((p) => vatStore.viewOf(company, p, docs, filed, today)), filed, paid, filings, closings, missing, handover }, today)
+  const run = (company, today, { docs = [], filed = [], paid = new Map(), filings = new Set(), svFiled = new Map(), closings = [], missing = new Map(), handover = 0 } = {}) => {
+    const window = dues.vatWindow(company, today)
+    const svPeriods = [...new Set(window.map((p) => vatSummary.summaryPeriodOf(p, { status: company.vatStatus })))]
+    return dues.deadlinesOf(
+      company,
+      {
+        views: window.map((p) => vatStore.viewOf(company, p, docs, filed, today)),
+        summaries: svPeriods.map((p) => vatStore.svViewOf(company, p, docs, svFiled.get(p) ?? null, today)),
+        filed,
+        paid,
+        filings,
+        closings,
+        missing,
+        handover,
+      },
+      today,
+    )
+  }
   const find = (list, kind, period) => list.find((d) => d.kind === kind && (period === undefined || d.period === period))
 
   // The holidays a deadline moves past (Act No. 241/1993 Z. z. as amended by Act No. 261/2025 Z. z.)
@@ -2793,10 +2941,19 @@ async function zipped(entries, note) {
   // The recapitulative statement
   list = run(co(), '2026-10-14', { docs: [doc(), euService()] })
   item = find(list, 'summary')
-  check('a service to another member state: the recapitulative statement of the period, by its deadline', item?.period === '2026-09' && item.day === '2026-10-26' && item.state === 'open', JSON.stringify(item))
-  check('marked as filed, it is done', find(run(co(), '2026-10-14', { docs: [doc(), euService()], filings: new Set(['sv:2026-09']) }), 'summary')?.state === 'done')
+  check('a service to another member state: the recapitulative statement of the period, ready by its deadline', item?.period === '2026-09' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
+  const svFiledOf = (rows, fields = {}) => ({ kind: 'R', filedOn: '2026-10-20', filedAt: 1, filedBy: null, rows, sent: rows ?? [], prev: null, ...fields })
+  const deRow = { country: 'DE', number: '123456789', euros: 1000, code: '2' }
+  check('filed as the books stand, it is done', find(run(co(), '2026-10-21', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([deRow])]]) }), 'summary')?.state === 'done')
+  item = find(run(co(), '2026-10-21', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([{ ...deRow, euros: 900 }])]]) }), 'summary')
+  check('changed after it was filed: a corrective statement by the deadline', item?.fix === 'O' && item.state === 'ready' && item.day === '2026-10-26', JSON.stringify(item))
+  item = find(run(co(), '2026-11-03', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([{ ...deRow, euros: 900 }])]]) }), 'summary')
+  check('after it a supplementary one: no deadline in § 80(8), so today, never late', item?.fix === 'D' && item.day === '2026-11-03' && !item.late, JSON.stringify(item))
+  item = find(run(co(), '2026-10-14', { docs: [doc(), euService({ partyVatId: null, vat: { ...euService().vat, vatId: 'SK2020000000' } })] }), 'summary')
+  check('a customer without a VAT number of another member state keeps it back', item?.state === 'blocked' && item.count === 1, JSON.stringify(item))
+  check('so does the company without its own VAT number, but not without a tax office (the statement names none)', find(run(co({ icdph: null }), '2026-10-14', { docs: [doc(), euService()] }), 'summary')?.state === 'blocked' && find(run(co({ taxOffice: null }), '2026-10-14', { docs: [doc(), euService()] }), 'summary')?.state === 'ready')
   item = find(run(co({ vatStatus: 'reg7a', startOn: '2026-01-01' }), '2026-10-14', { docs: [euService({ issuedOn: '2026-08-10', createdAt: Date.parse('2026-08-11T10:00:00Z') / 1000 })] }), 'summary')
-  check('§ 7a: for the calendar quarter', item?.period === '2026-Q3' && item.day === '2026-10-26' && item.state === 'open', JSON.stringify(item))
+  check('§ 7a: for the calendar quarter', item?.period === '2026-Q3' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
   item = find(run(co({ vatStatus: 'reg7a', startOn: '2026-01-01' }), '2026-12-15', { docs: [euService({ issuedOn: '2026-10-10', createdAt: Date.parse('2026-10-11T10:00:00Z') / 1000 })] }), 'summary')
   check('while its quarter runs, it runs', item?.period === '2026-Q4' && item.state === 'running' && item.day === '2027-01-25', JSON.stringify(item))
 
@@ -2888,9 +3045,10 @@ async function zipped(entries, note) {
       plain(dueViews.dueState(row({ kind: 'taxPay', state: 'done' }))) === 'Zaplatené',
   )
   check(
-    'where it is done: the period on the VAT page, a quarter of § 7a by its first month',
+    "where it is done: the period on the VAT page, a quarter of § 7a by its first month, a quarterly payer's quarter as it is",
     dueViews.dueHref(row({ kind: 'vat' })) === '/ucto/klienti/c1/dph?obdobie=2026-09' &&
-      dueViews.dueHref(row({ kind: 'summary', period: '2026-Q3', company: { id: 'c1', vatStatus: 'reg7a' } })) === '/ucto/klienti/c1/dph?obdobie=2026-07' &&
+      dueViews.dueHref(row({ kind: 'summary', period: '2026-Q3', company: { id: 'c1', vatStatus: 'reg7a' } })) === '/ucto/klienti/c1/dph?obdobie=2026-07#suhrnny' &&
+      dueViews.dueHref(row({ kind: 'summary', period: '2026-Q3', company: { id: 'c1', vatStatus: 'payer' } })) === '/ucto/klienti/c1/dph?obdobie=2026-Q3#suhrnny' &&
       dueViews.dueHref(row({ kind: 'docs' })) === '/ucto/klienti/c1#chyba' &&
       dueViews.dueHref(row({ kind: 'closing', period: '2026' })) === '/ucto/klienti/c1/zavierka?rok=2026' &&
       dueViews.dueHref(row({ kind: 'taxPay', period: '2026' })) === '/ucto/klienti/c1/zavierka?rok=2026',

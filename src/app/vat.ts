@@ -317,15 +317,16 @@ export function vatOf(doc: VatDoc, company: VatCompany): { data: VatData; propos
 
 /**
  * The day a document's VAT falls due (vznik daňovej povinnosti, or the right to deduct): the day of supply, or of
- * issue when it names none. Goods acquired from another member state fall due on the 15th of the month after the
- * acquisition, or on the day of the invoice when it was issued before then (§ 20(1)).
+ * issue when it names none. Goods acquired from another member state, and goods supplied to one free of tax, fall
+ * due on the 15th of the month after the acquisition or the supply, or on the day of the invoice when it was issued
+ * before then (§ 20(1), § 19(8)).
  */
 export function taxDay(doc: VatDoc, data: VatData): string {
   const supplied = data.suppliedOn ?? doc.issuedOn ?? doc.receivedOn
-  if (data.mode !== 'acquisition') return supplied
+  if (data.mode !== 'acquisition' && data.mode !== 'eu_goods') return supplied
   const fifteenth = `${periodOf(addDays(`${supplied.slice(0, 7)}-28`, 7), false)}-15`
   if (!doc.issuedOn || doc.issuedOn >= fifteenth) return fifteenth
-  // An invoice issued before the goods were acquired does not bring the tax before the acquisition itself.
+  // An invoice issued before the goods were acquired or supplied does not bring the tax before that.
   return doc.issuedOn > supplied ? doc.issuedOn : supplied
 }
 
@@ -531,6 +532,8 @@ export type IssueCode =
   | 'domestic7a'
   | 'mismatch'
   | 'before'
+  | 'svVatId'
+  | 'svMonthly'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */

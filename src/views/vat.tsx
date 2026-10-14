@@ -1,14 +1,16 @@
 // The team's VAT page of a client: the return and the control statement of one period as the books give them, what
 // keeps them from being filed (each with the document to open), the files the Financial Administration takes, and the
-// mark that they were filed, which sends the client what to pay. vat.ts works it all out; nothing here computes.
+// mark that they were filed, which sends the client what to pay; and the recapitulative statement of the period.
+// vat.ts and vat-summary.ts work it all out; nothing here computes.
 import type { FC } from 'hono/jsx'
-import { formatEurExact } from '../format'
+import { formatEur, formatEurExact } from '../format'
 import { dayName, dayShort, readableName } from '../app/copy'
 import { textDay } from '../app/booking'
 import type { Company, Doc, User } from '../app/store'
 import { ROWS, correctionKind, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
 import { FORM_RATES, type FormRate, type VatErrorCode, type VatErrors, type VatValues } from '../app/vat-form'
 import { payable, periodName, type FilingPlan, type PeriodState, type PeriodView } from '../app/vat-store'
+import { totalOf, wholeEuros, type SvRow, type SvState, type SvView } from '../app/vat-summary'
 import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
 
@@ -360,6 +362,139 @@ const StatusCard: FC<{ company: Company; view: PeriodView; plan: FilingPlan | nu
   )
 }
 
+const SV_PILL: Record<SvState, string> = { none: 'pill--grey', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', filed: 'pill--ok', changed: 'pill--amber' }
+
+/** Whole euros as the statement has them: "1 000 €", "−120 €". */
+const euros = (n: number) => formatEur(n * 100)
+
+const SvRows: FC<{ rows: SvRow[] }> = ({ rows }) => (
+  <ul class="plain">
+    {rows.map((row) => (
+      <li class="plain__row">
+        <span class="plain__name">
+          {row.country} {row.number}
+        </span>
+        <span class="plain__sub">
+          <span>{v.sv.code[row.code]}</span>
+          <span>{euros(row.euros)}</span>
+        </span>
+      </li>
+    ))}
+  </ul>
+)
+
+/**
+ * The recapitulative statement of the period (a quarter for a person registered under § 7a): each customer's row with
+ * its invoices, what keeps it back, its file and the mark, or the correction a change after the mark asks for.
+ */
+const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<string, Doc>; today: string }> = ({ company, period, sv, docs, today }) => {
+  if (sv.state === 'none' && !sv.filed) return null
+  const base = `/ucto/klienti/${company.id}/dph`
+  const s = v.sv
+  const blocks = sv.issues.filter((i) => i.level === 'block')
+  const monthly = sv.issues.some((i) => i.code === 'svMonthly')
+  const one = (i: Issue) => {
+    const d = i.doc ? docs.get(i.doc) : undefined
+    return (
+      <li class="vissue vissue--block">
+        <span class="vissue__text">
+          {d ? <span class="vissue__doc">{docLine(d)}</span> : null}
+          <span>{v.issue[i.code]}</span>
+        </span>
+        {i.doc ? (
+          <a class="btn btn--line btn--small" href={`/ucto/doklady/${i.doc}`}>
+            {v.open}
+          </a>
+        ) : null}
+      </li>
+    )
+  }
+  return (
+    <section class="info" id="suhrnny" aria-labelledby="suhrnny-t">
+      <header class="info__row">
+        <h2 id="suhrnny-t" class="info__title">
+          {s.title(periodName(sv.period))}
+        </h2>
+        <span class={`pill ${SV_PILL[sv.state]}`}>{s.state[sv.state]}</span>
+      </header>
+      <p class="info__lead">
+        {s.deadline(dayName(sv.deadline, today))}
+        {company.vatStatus === 'reg7a' ? ` ${s.lead7a}` : ''}
+      </p>
+      {sv.lines.length > 0 ? (
+        <ul class="plain">
+          {sv.lines.map((line) => (
+            <li class="plain__row plain__row--two">
+              <span class="plain__name">
+                {line.country} {line.number}
+              </span>
+              <span class="plain__sub">
+                <span>{s.code[line.code]}</span>
+                <span>{euros(wholeEuros(line.cents))}</span>
+              </span>
+              <details class="vrows__docs">
+                <summary>{v.docs(line.docs.length)}</summary>
+                <DocLinks ids={line.docs} docs={docs} />
+              </details>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {sv.rows.length > 0 ? <p class="info__source">{s.total(euros(totalOf(sv.rows)))}</p> : null}
+      {blocks.length > 0 || monthly ? (
+        <ul class="vissues">
+          {blocks.map(one)}
+          {monthly ? (
+            <li class="vissue vissue--warn">
+              <span class="vissue__text">{v.issue.svMonthly}</span>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+      {sv.filed ? (
+        <p class="vstatus__filed">
+          <span class="tick tick--green" aria-hidden="true" /> {s.filed(dayName(sv.filed.filedOn, today), sv.filed.filedByName ?? '', sv.filed.kind)}
+        </p>
+      ) : null}
+      {sv.state === 'running' ? <p class="info__lead">{s.running(dayName(periodRange(sv.period).to, today))}</p> : null}
+      {sv.state === 'changed' ? <p class="flag">{correctionKind(sv.period, today) === 'O' ? s.changedO : s.changedD}</p> : null}
+      {sv.plan && sv.plan.kind === 'D' ? (
+        <>
+          <p class="info__source">{s.sends}</p>
+          <SvRows rows={sv.plan.rows} />
+        </>
+      ) : null}
+      {(sv.state === 'blocked' || (sv.state === 'changed' && !sv.plan)) ? <p class="info__source">{s.blocked}</p> : null}
+      {sv.plan || sv.state === 'filed' ? (
+        <form class="vfile" method="get" action={`${base}/suhrnny-vykaz.xml`}>
+          <input type="hidden" name="obdobie" value={period} />
+          <div class="vstatus__files">
+            <button class="btn btn--blue" type="submit">
+              {s.download[sv.plan?.kind ?? sv.filed?.kind ?? 'R']}
+            </button>
+          </div>
+          {sv.plan ? (
+            <div class="stack vfile__mark">
+              <p class="info__lead">{s.markLead}</p>
+              <button class="btn btn--line stack__submit" type="submit" formaction={`${base}/suhrnny-vykaz/podane`} formmethod="post">
+                {sv.filed ? s.markCorrection : s.mark}
+              </button>
+            </div>
+          ) : null}
+        </form>
+      ) : null}
+      {sv.filed ? (
+        <form method="post" action={`${base}/suhrnny-vykaz/zrusit`}>
+          <input type="hidden" name="obdobie" value={period} />
+          <button class="btn btn--text" type="submit">
+            {sv.filed.prev ? s.unmarkCorrection : s.unmark}
+          </button>
+        </form>
+      ) : null}
+    </section>
+  )
+}
+
 export interface VatPageProps {
   user: User
   company: Company
@@ -372,6 +507,8 @@ export interface VatPageProps {
   needs7a: Doc[]
   /** What would be filed now (the files and the mark), or null when nothing can be. */
   plan: FilingPlan | null
+  /** The recapitulative statement of the period's statement period; null for a company that is not registered. */
+  summary: SvView | null
   today: string
   flash?: string | null
   error?: string | null
@@ -406,6 +543,7 @@ export const VatPage: FC<VatPageProps> = (p) => {
               <Issues company={c} view={p.view} docs={p.docs} />
               <RowsCard view={p.view} docs={p.docs} />
               <StatementCard company={c} view={p.view} docs={p.docs} />
+              {p.summary ? <SummaryCard company={c} period={p.view.period} sv={p.summary} docs={p.docs} today={p.today} /> : null}
               <p class="info__source vnotbuilt">{v.notBuilt}</p>
             </div>
             <aside class="pgrid__side">

@@ -4,7 +4,8 @@
 // the documents of each VAT company's last periods, many companies in one batch.
 import { DEADLINES } from '../config'
 import { COMPANY_COLUMNS, MISSING, companyOf, docOf, type Company, type Doc, type User } from '../app/store'
-import { FILED_SELECT, NOT_OTHER_TREASURY, docsAroundStatement, filedReturnOf, paidByPeriod, viewOf, type FiledReturn } from '../app/vat-store'
+import { FILED_SELECT, NOT_OTHER_TREASURY, SUMMARY_KIND, docsAroundStatement, filedReturnOf, paidByPeriod, svFiledOf, svViewOf, viewOf, type FiledReturn } from '../app/vat-store'
+import { summaryPeriodOf, type SvFiled } from '../app/vat-summary'
 import { payrollSettingsOf } from '../app/payroll-store'
 import { compareDues, deadlinesOf, vatWindow, type ClosingFact, type Due, type MarkedKind, type PayrollFact } from './deadlines'
 import { visible } from './store'
@@ -67,7 +68,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
           WHERE ${sql} AND ${MISSING} GROUP BY p.company_id, substr(p.booked_on, 1, 7)`,
       )
       .bind(...binds),
-    db.prepare(`SELECT f.company_id, f.kind, f.period FROM filings f JOIN companies c ON c.id = f.company_id WHERE ${sql}`).bind(...binds),
+    db.prepare(`SELECT f.company_id, f.kind, f.period, f.filed_on, f.filed_at, f.filed_by, f.data FROM filings f JOIN companies c ON c.id = f.company_id WHERE ${sql}`).bind(...binds),
     // The income tax of a year is paid with its own symbol, 170099 and the year (closing-store.ts).
     db
       .prepare(
@@ -119,19 +120,24 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
       paid: Number(r.paid ?? 0),
     })
   const filings = new Map<string, Set<string>>()
+  const summariesFiled = new Map<string, Map<string, SvFiled>>()
   for (const r of filingRows?.results ?? []) {
     const id = String(r.company_id)
     const set = filings.get(id) ?? new Set<string>()
     set.add(`${String(r.kind)}:${String(r.period)}`)
     filings.set(id, set)
+    if (r.kind === SUMMARY_KIND) summariesFiled.set(id, (summariesFiled.get(id) ?? new Map<string, SvFiled>()).set(String(r.period), svFiledOf(r)))
   }
 
-  // The documents of every VAT company's periods worked out, many companies in one batch.
+  // The documents of every VAT company's periods worked out, many companies in one batch; a person registered under
+  // § 7a from the start of the first one's quarter, which its recapitulative statement covers.
   const windows = companies.map((company) => ({ company, periods: vatWindow(company, today) })).filter((w) => w.periods.length > 0)
   const docs = new Map<string, Doc[]>()
   for (let i = 0; i < windows.length; i += DEADLINES.batch) {
     const chunk = windows.slice(i, i + DEADLINES.batch)
-    const results = await db.batch<Row>(chunk.map((w) => docsAroundStatement(db, w.company.id, w.periods[0] as string, w.periods[w.periods.length - 1] as string)))
+    const results = await db.batch<Row>(
+      chunk.map((w) => docsAroundStatement(db, w.company.id, summaryPeriodOf(w.periods[0] as string, { status: w.company.vatStatus }), w.periods[w.periods.length - 1] as string)),
+    )
     chunk.forEach((w, j) => docs.set(w.company.id, (results[j]?.results ?? []).map(docOf)))
   }
 
@@ -139,8 +145,11 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
   for (const company of companies) {
     const returns = filed.get(company.id) ?? []
     const held = docs.get(company.id) ?? []
+    const window = vatWindow(company, today)
+    const svFiled = summariesFiled.get(company.id) ?? new Map<string, SvFiled>()
     const facts = {
-      views: vatWindow(company, today).map((period) => viewOf(company, period, held, returns, today)),
+      views: window.map((period) => viewOf(company, period, held, returns, today)),
+      summaries: [...new Set(window.map((period) => summaryPeriodOf(period, { status: company.vatStatus })))].map((period) => svViewOf(company, period, held, svFiled.get(period) ?? null, today)),
       filed: returns,
       paid: paidByPeriod(returns, paid.get(company.id) ?? []),
       filings: filings.get(company.id) ?? new Set<string>(),

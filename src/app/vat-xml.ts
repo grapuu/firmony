@@ -1,7 +1,8 @@
-// The files the Financial Administration takes: the VAT return (DPHv25, the schema dph2025.xsd) and the control
-// statement (KVDPHv25, kv_dph_2025.xsd), written the way the official eForms write them, so that "Načítať zo
-// súboru" in eDane or in the personal internet zone opens them as they are. test/xsd holds both schemas, and the
-// unit checks validate every file written here against them.
+// The files the Financial Administration takes: the VAT return (DPHv25, the schema dph2025.xsd), the control
+// statement (KVDPHv25, kv_dph_2025.xsd) and the recapitulative statement (SVDPHv20, form.471.sk.xsd, kept as
+// svdph2020.xsd), written the way the official eForms write them, so that "Načítať zo súboru" in eDane or in the
+// personal internet zone opens them as they are. test/xsd holds the schemas, and the unit checks validate every file
+// written here against them.
 //
 // The return's elements are all present, empty when the row is not filled (the eForm writes it so); amounts have
 // two decimals and a full stop; a quarter is I to IV, a month 1 to 12; the declaration's date is DD.MM.YYYY. The
@@ -9,6 +10,7 @@
 // written empty.
 import { BRAND, OPERATOR } from '../config'
 import { ROWS, isQuarter, kvFileOf, type FilingKind, type Kv, type KvFile, type Rows, type VatStatus } from './vat'
+import { totalOf, type SvRow } from './vat-summary'
 
 /** The tax offices a return can be addressed to, as the eForm lists them. */
 export const TAX_OFFICES = ['Bratislava', 'Trnava', 'Trenčín', 'Nitra', 'Žilina', 'Banská Bystrica', 'Prešov', 'Košice', 'Úrad pre vybrané hospodárske subjekty'] as const
@@ -160,6 +162,49 @@ export function statementXml(filer: Filer, period: string, statement: Kv | KvFil
     ...lines,
     '</Transakcie>',
     '</KVDPH_2025>',
+    '',
+  ].join('\n')
+}
+
+/**
+ * The recapitulative statement of a period, as the eForm form.471 writes it: a month 1 to 12 or a quarter I to IV,
+ * the kind as 1 and 0, the name in four lines, the authorised person europio (as on the return), the declaration's
+ * day in three numbers without noughts, and twelve rows of part I and twelve empty rows of part II (call-off stock)
+ * to a page, as many pages as the rows need. A supplementary statement holds only the rows that change (vat-summary.ts).
+ */
+export function summaryXml(filer: Pick<Filer, 'name' | 'icdph' | 'address'>, period: string, rows: SvRow[], kind: FilingKind, declaredOn: string): string {
+  const a = addressParts(filer.address)
+  const el = (name: string, value: string) => `<${name}>${esc(value)}</${name}>`
+  const flag = (on: boolean) => (on ? '1' : '0')
+  const names = nameLines(filer.name, 100, 4)
+  const pages: string[] = []
+  for (let page = 0; page < Math.ceil(rows.length / 12); page++) {
+    const part1 = Array.from({ length: 12 }, (_, i) => rows[page * 12 + i]).map((row) =>
+      row ? `<zaznam>${el('kodStatu', row.country)}${el('idCislo', row.number)}${el('hodnota', String(row.euros))}${el('kod', row.code)}</zaznam>` : '<zaznam><kodStatu></kodStatu><idCislo></idCislo><hodnota></hodnota><kod></kod></zaznam>',
+    )
+    const part2 = Array.from({ length: 12 }, () => '<zaznamCast2><kodStatu></kodStatu><idCislo></idCislo><idCislo2></idCislo2><vratenieTovaru></vratenieTovaru><oprava></oprava></zaznamCast2>')
+    pages.push(`<strana>${part1.join('')}${part2.join('')}</strana>`)
+  }
+  return [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<dokument>',
+    '<hlavicka>',
+    `<identifikacneCislo>${el('kodStatu', 'SK')}${el('dic', filer.icdph.replace(/^SK/, ''))}</identifikacneCislo>`,
+    el('danovyUrad', ''),
+    `<druhSV>${el('riadny', flag(kind === 'R'))}${el('opravny', flag(kind === 'O'))}${el('dodatocny', flag(kind === 'D'))}</druhSV>`,
+    `<obdobie>${el('mesiac', isQuarter(period) ? '' : String(Number(period.slice(5, 7))))}${el('stvrtrok', isQuarter(period) ? (ROMAN[Number(period.slice(6)) - 1] ?? '') : '')}${el('rok', period.slice(0, 4))}</obdobie>`,
+    `<obchodneMeno>${[0, 1, 2, 3].map((i) => el('riadok', names[i] ?? '')).join('')}</obchodneMeno>`,
+    `<adresa>${el('ulica', cut(a.street, 28))}${el('cislo', cut(a.number, 14))}${el('psc', a.postal)}${el('obec', cut(a.city, 40))}${el('tel', '')}${el('email', '')}</adresa>`,
+    el('celkovaHodnota', String(totalOf(rows))),
+    el('konatel', OPERATOR.name),
+    el('konatelTel', OPERATOR.phone),
+    el('konatelEmail', BRAND.email),
+    `<datumVyhlasenia>${el('den', String(Number(declaredOn.slice(8, 10))))}${el('mesiac', String(Number(declaredOn.slice(5, 7))))}${el('rok', declaredOn.slice(0, 4))}</datumVyhlasenia>`,
+    '</hlavicka>',
+    '<telo>',
+    ...pages,
+    '</telo>',
+    '</dokument>',
     '',
   ].join('\n')
 }

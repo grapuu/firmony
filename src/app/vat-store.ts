@@ -3,6 +3,7 @@
 import { typeset } from '../format'
 import { now } from '../db'
 import { DOC_COLUMNS, DOC_FROM, docOf, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
+import { summaryView, type SvCode, type SvFiled, type SvRow, type SvView } from './vat-summary'
 import {
   correctionKind,
   emptyRows,
@@ -627,4 +628,91 @@ export function selfVatOf(data: VatData | null | undefined): { cents: number; de
   const cents = data.lines.reduce((sum, line) => sum + line.vat, 0)
   const deductCents = data.lines.reduce((sum, line) => sum + line.deduct, 0)
   return cents > 0 ? { cents, deduct: deductCents > 0, deductCents } : null
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The recapitulative statement (vat-summary.ts): marked as filed in `filings` (kind 'sv'), with what was filed
+// ---------------------------------------------------------------------------------------------------------------
+
+export const SUMMARY_KIND = 'sv'
+
+const SV_CODES: readonly string[] = ['', '0', '1', '2']
+
+/** Rows as stored, each checked again: a country, a number, whole euros, a code; anything else is no row. */
+function svRowsOf(value: unknown): SvRow[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object')
+    .filter((r) => typeof r.country === 'string' && /^[A-Z]{2}$/.test(r.country) && typeof r.number === 'string' && r.number.length <= 20 && Number.isInteger(r.euros) && SV_CODES.includes(String(r.code)))
+    .map((r) => ({ country: String(r.country), number: String(r.number), euros: Number(r.euros), code: String(r.code) as SvCode }))
+}
+
+function svFiledFrom(value: unknown, depth = 0): SvFiled | null {
+  if (!value || typeof value !== 'object' || depth > 20) return null
+  const v = value as Record<string, unknown>
+  const kind = v.kind === 'O' || v.kind === 'D' ? v.kind : 'R'
+  if (typeof v.filedOn !== 'string' || typeof v.filedAt !== 'number') return null
+  return {
+    kind,
+    filedOn: v.filedOn,
+    filedAt: v.filedAt,
+    filedBy: typeof v.filedBy === 'string' ? v.filedBy : null,
+    rows: Array.isArray(v.rows) ? svRowsOf(v.rows) : null,
+    sent: svRowsOf(v.sent),
+    prev: svFiledFrom(v.prev, depth + 1),
+  }
+}
+
+/** The statement filed as its row of `filings` holds it: the mark itself, and in `data` what was filed and before. */
+export function svFiledOf(row: Record<string, unknown>): SvFiled {
+  let data: unknown = null
+  try {
+    data = typeof row.data === 'string' ? JSON.parse(row.data) : null
+  } catch {
+    data = null
+  }
+  const parsed = svFiledFrom({ ...(data && typeof data === 'object' ? data : {}), filedOn: String(row.filed_on), filedAt: Number(row.filed_at), filedBy: typeof row.filed_by === 'string' ? row.filed_by : null })
+  return { ...(parsed as SvFiled), filedByName: typeof row.filed_by_name === 'string' ? row.filed_by_name : null }
+}
+
+/** A period's statement filed, or null. */
+export async function summaryFiled(db: D1Database, company: string, period: string): Promise<SvFiled | null> {
+  const row = await db
+    .prepare('SELECT f.filed_on, f.filed_at, f.filed_by, f.data, u.name AS filed_by_name FROM filings f LEFT JOIN users u ON u.id = f.filed_by WHERE f.company_id = ? AND f.kind = ? AND f.period = ?')
+    .bind(company, SUMMARY_KIND, period)
+    .first<Record<string, unknown>>()
+  return row ? svFiledOf(row) : null
+}
+
+/** The statement of a period as the company's books give it (the VAT number and the seat are its own to give). */
+export function svViewOf(company: Company, period: string, docs: Doc[], filed: SvFiled | null, today: string): SvView {
+  const blocks = companyIssues(company).filter((issue) => issue !== 'office').length
+  return summaryView(vatCompanyOf(company), period, docs.map(vatDocOf), filed, blocks, today)
+}
+
+const svData = (f: Pick<SvFiled, 'kind' | 'rows' | 'sent' | 'prev'>): Record<string, unknown> => ({ kind: f.kind, rows: f.rows, sent: f.sent, prev: f.prev ? { ...svData(f.prev), filedOn: f.prev.filedOn, filedAt: f.prev.filedAt, filedBy: f.prev.filedBy } : null })
+
+/**
+ * The statement marked as filed with what its file held: a first one once (the key is the company, the kind and the
+ * period), a correction only over the filing it was made against (its moment), which it keeps as the one before.
+ */
+export function fileSummaryStatement(db: D1Database, company: string, view: SvView, plan: NonNullable<SvView['plan']>, by: string, today: string): D1PreparedStatement {
+  const at = now()
+  const data = JSON.stringify(svData({ kind: plan.kind, rows: view.rows, sent: plan.rows, prev: view.filed }))
+  if (!view.filed)
+    return db
+      .prepare('INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by, data) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (company_id, kind, period) DO NOTHING')
+      .bind(company, SUMMARY_KIND, view.period, today, at, by, data)
+  return db
+    .prepare('UPDATE filings SET filed_on = ?, filed_at = ?, filed_by = ?, data = ? WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?')
+    .bind(today, at, by, data, company, SUMMARY_KIND, view.period, view.filed.filedAt)
+}
+
+/** A mark taken back: a correction gives way to the filing it replaced; a first filing is gone. */
+export function unfileSummaryStatement(db: D1Database, company: string, period: string, filed: SvFiled): D1PreparedStatement {
+  if (filed.prev)
+    return db
+      .prepare('UPDATE filings SET filed_on = ?, filed_at = ?, filed_by = ?, data = ? WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?')
+      .bind(filed.prev.filedOn, filed.prev.filedAt, filed.prev.filedBy, JSON.stringify(svData(filed.prev)), company, SUMMARY_KIND, period, filed.filedAt)
+  return db.prepare('DELETE FROM filings WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?').bind(company, SUMMARY_KIND, period, filed.filedAt)
 }

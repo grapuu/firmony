@@ -551,6 +551,9 @@ const MIGRATIONS: readonly string[][] = [
   // eKasa receipts (src/app/ekasa.ts, 14 October 2026): the receipt's identifier and the seller's verification code
   // as the reader wrote them, which tell one receipt from another.
   ['ALTER TABLE documents ADD COLUMN ekasa_uid TEXT', 'ALTER TABLE documents ADD COLUMN ekasa_okp TEXT'],
+  // The recapitulative statement (src/app/vat-summary.ts, 14 October 2026): what a statement marked as filed held
+  // (its rows, the rows its file sent, and the filing it replaced), so that a change after it asks for a correction.
+  ['ALTER TABLE filings ADD COLUMN data TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

@@ -13,8 +13,9 @@
 //   names that day, today counts.
 // - The recapitulative statement (súhrnný výkaz, § 80 of the VAT Act) of a period with goods or services supplied to
 //   another member state: within 25 days after the period (§ 80(9)), the payer's VAT period, or the calendar quarter
-//   of a person registered under § 7a (it supplies services). Firmony does not prepare it yet (the VAT page says so):
-//   it is filed in eDane and marked here as filed (`filings`).
+//   of a person registered under § 7a (it supplies services); its state is the VAT page's (app/vat-summary.ts), where
+//   its file is and where it is marked as filed. Filed and changed since: a corrective one by the same deadline, after
+//   it a supplementary one, for which § 80(8) sets no deadline (listed for today, never late).
 // - The VAT a filed return asks the client to pay, until the bank shows it paid with the period's symbol (the client's).
 // - The documents of a month, by the 10th of the next (APP.docsByDay), while payments of it have none (the client's);
 //   not once the contract's intake has closed.
@@ -38,6 +39,7 @@ import { closingDue } from '../app/closing'
 import { paydayOf } from '../app/payroll-store'
 import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod, workingDayFrom } from '../app/vat'
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
+import type { SvView } from '../app/vat-summary'
 
 export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'payroll' | 'payrollReports' | 'handover'
 
@@ -57,8 +59,9 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   taxPay: 'client',
 }
 
-/** Filings the app does not make yet, marked as filed by hand (`filings.kind`): the recapitulative statement, a month's payroll reports. */
-export const MARKED_KINDS = { summary: 'sv', payroll: 'mz' } as const
+/** Filings the app does not make yet, marked as filed by hand (`filings.kind`): a month's payroll reports. (The
+ *  recapitulative statement, kind 'sv', is marked on the VAT page with what was filed.) */
+export const MARKED_KINDS = { payroll: 'mz' } as const
 export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 
 /**
@@ -111,8 +114,10 @@ export interface DueFacts {
   /** Every return filed, the newest first. */
   filed: FiledReturn[]
   paid: Map<string, TaxPaid>
-  /** What was marked as filed outside the app, as `${kind}:${period}` ('sv:2027-01'). */
+  /** What was marked as filed outside the app, as `${kind}:${period}` ('mz:2027-01'). */
   filings: Set<string>
+  /** The recapitulative statements of the periods worked out (app/vat-store.ts, `svViewOf`). */
+  summaries?: SvView[]
   closings: ClosingFact[]
   payroll?: PayrollFact
   /** The payments without a document, by the month they were booked in (YYYY-MM). */
@@ -127,9 +132,6 @@ function nextMonth(month: string): string {
   const [y, m] = month.split('-').map(Number) as [number, number]
   return m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`
 }
-
-/** The calendar quarter of a month's period: "2027-02" is "2027-Q1". */
-export const quarterOf = (period: string): string => (isQuarter(period) ? period : `${period.slice(0, 4)}-Q${Math.ceil(Number(period.slice(5, 7)) / 3)}`)
 
 /** The year of a closing ours to do: we kept the books at its end (point 5.2 of the terms), and the contract did not end in it (point 10.4). */
 export function closingIsOurs(company: Pick<Company, 'startOn' | 'createdAt' | 'endsOn'>, year: number): boolean {
@@ -179,7 +181,6 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
         listed++
       }
     }
-    const summaries = new Set<string>()
     for (const view of facts.views) {
       const period = view.period
       const blocks = view.companyIssues.length + (view.previous ? 1 : 0) + view.result.issues.filter((i) => i.level === 'block').length
@@ -190,15 +191,15 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
         const fix = correctionKind(period, today)
         add({ kind: 'vatFix', period, day: fix === 'O' ? view.deadline : supplementaryDeadline(today), state: blocks > 0 ? 'blocked' : 'ready', count: blocks, fix })
       }
-      // A period with supplies to another member state has its recapitulative statement too (a person registered
-      // under § 7a files it for the calendar quarter).
-      if (view.result.issues.some((i) => i.code === 'summary')) {
-        const sv = company.vatStatus === 'reg7a' ? quarterOf(period) : period
-        if (summaries.has(sv)) continue
-        summaries.add(sv)
-        const done = facts.filings.has(`${MARKED_KINDS.summary}:${sv}`)
-        add({ kind: 'summary', period: sv, day: filingDeadline(sv), state: done ? 'done' : today <= periodRange(sv).to ? 'running' : 'open' })
-      }
+    }
+    // A period with supplies to another member state has its recapitulative statement too.
+    for (const sv of facts.summaries ?? []) {
+      const blocks = sv.issues.filter((i) => i.level === 'block').length
+      if (sv.state === 'none') continue
+      if (sv.state === 'changed') {
+        const fix = sv.plan?.kind === 'D' || (!sv.plan && correctionKind(sv.period, today) === 'D') ? 'D' : 'O'
+        add({ kind: 'summary', period: sv.period, day: fix === 'O' ? sv.deadline : today, state: sv.plan ? 'ready' : 'blocked', count: blocks, fix })
+      } else add({ kind: 'summary', period: sv.period, day: sv.deadline, state: sv.state === 'filed' ? 'done' : sv.state, count: blocks })
     }
     // The period that runs today: its return is ahead (a person registered under § 7a files only once it owes tax).
     const current = periodOf(today, quarterly)

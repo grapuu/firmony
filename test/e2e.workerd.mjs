@@ -206,7 +206,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 9)
+check('health says the schema', (await res.json()).schema === 10)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -2977,7 +2977,8 @@ check(
 
 // ---------------------------------------------------------------------------------------------------------------
 // Every client's deadlines on one screen: the VAT periods as the VAT page has them, one never filed, the
-// recapitulative statement marked as filed and taken back, the client's documents, the closing of last year
+// recapitulative statement filed from the VAT page, corrected and taken back, the client's documents, the closing of
+// last year, a mark of what the app does not file itself
 // ---------------------------------------------------------------------------------------------------------------
 {
   const plain = (text) => text.replace(/\u00a0/g, ' ')
@@ -3041,17 +3042,14 @@ check(
   check('a month of ours never filed, older than the ones worked out, is overdue', Boolean(rowOf(page, 'Termíny s. r. o.', `DPH a kontrolný výkaz za ${nameOf(monthBack(5))}`, 'Nepodané', 'po termíne')))
   check('the months filed are not asked for', !rowOf(page, 'Termíny s. r. o.', `za ${nameOf(monthBack(3))}`))
   const sv = rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)
-  check('the service supplied to Germany asks for the recapitulative statement, to be filed in eDane', Boolean(sv) && sv.includes('Podať v eDane') && sv.includes('Označiť ako podané'), sv)
+  check('the service supplied to Germany asks for the recapitulative statement, ready, its file on the VAT page', Boolean(sv) && sv.includes('Pripravené na podanie') && !sv.includes('Označiť ako podané'), sv)
   check("the client's documents of last month, the client's to bring", Boolean(rowOf(page, 'Termíny s. r. o.', `Doklady za ${nameOf(last)}`, 'Chýba 1 doklad', 'Úloha klienta')))
   check(`the closing of ${year - 1} is ours: the books were ours at its end`, Boolean(rowOf(page, 'Závierka s. r. o.', `Účtovná závierka a daňové priznanie za rok ${year - 1}`, 'Pripraviť a podať')))
   check("the accountant sees her own clients' deadlines and nobody else's", !page.includes('Firma B s. r. o.'))
-  check('each leads to where it is done', page.includes(`/ucto/klienti/co-t/dph?obdobie=${last}`) && page.includes('/ucto/klienti/co-t#chyba'))
+  check('each leads to where it is done', page.includes(`/ucto/klienti/co-t/dph?obdobie=${last}`) && page.includes(`/ucto/klienti/co-t/dph?obdobie=${last}#suhrnny`) && page.includes('/ucto/klienti/co-t#chyba'))
   res = await acc.get('/ucto/klienti/co-t')
   page = plain(await res.text())
-  check(
-    "the client's page has its own deadlines, and a mark made there comes back to it",
-    page.includes('id="terminy"') && Boolean(rowOf(page, `DPH a kontrolný výkaz za ${nameOf(last)}`, 'Pripravené na podanie')) && page.includes('name="spat" value="/ucto/klienti/co-t"'),
-  )
+  check("the client's page has its own deadlines", page.includes('id="terminy"') && Boolean(rowOf(page, `DPH a kontrolný výkaz za ${nameOf(last)}`, 'Pripravené na podanie')))
 
   res = await acc.get('/ucto/terminy?kto=my')
   page = plain(await res.text())
@@ -3060,40 +3058,109 @@ check(
   page = plain(await res.text())
   check("the client's alone: no filing of ours", Boolean(rowOf(page, 'Doklady za')) && !rowOf(page, 'DPH a kontrolný výkaz'))
 
-  // The recapitulative statement filed in eDane and marked here; the mark taken back.
-  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last, spat: '/ucto/terminy?kto=my' })
+  // The recapitulative statement: its file from the VAT page, against the eForm's own schema, marked as filed
+  const validXml = async (xml, schema) =>
+    (await validateXML({ xml: [{ fileName: 'x.xml', contents: xml }], schema: [{ fileName: schema, contents: readFileSync(new URL(`./xsd/${schema}`, import.meta.url), 'utf8') }] })).valid
+  const svPage = async () => plain(await (await acc.get(`/ucto/klienti/co-t/dph?obdobie=${last}`)).text())
+  page = await svPage()
   check(
-    'marked as filed: kept once, on record, and back to the screen as it was',
-    res.status === 303 &&
-      res.headers.get('location') === '/ucto/terminy?kto=my&ok=oznacene' &&
-      (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.n === 1 &&
-      (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'filing.marked'").first())?.n === 1,
+    "the VAT page has the period's recapitulative statement: the customer, the services' code, the value in whole euros",
+    page.includes(`Súhrnný výkaz za ${nameOf(last)}`) && page.includes('DE 123456789') && page.includes('Služby (kód 2)') && page.includes('1 000 €') && page.includes('Stiahnuť súhrnný výkaz (XML)'),
   )
-  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last })
-  check('marked again, it stays one', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 1)
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  let svXml = await res.text()
+  check(
+    "its file, as the eForm writes it and valid against the eForm's schema",
+    res.status === 200 &&
+      (res.headers.get('content-disposition') ?? '').includes(`SVDPH_SK2120999992_${last}.xml`) &&
+      svXml.includes('<zaznam><kodStatu>DE</kodStatu><idCislo>123456789</idCislo><hodnota>1000</hodnota><kod>2</kod></zaznam>') &&
+      svXml.includes('<celkovaHodnota>1000</celkovaHodnota>') &&
+      (await validXml(svXml, 'svdph2020.xsd')),
+  )
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  const svFiled = await db.prepare("SELECT filed_on, data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first()
+  check(
+    'marked as filed with what its file held',
+    res.status === 303 && (res.headers.get('location') ?? '').includes('ok=sv-podany') && JSON.parse(svFiled?.data ?? '{}').rows?.[0]?.euros === 1000 && JSON.parse(svFiled?.data ?? '{}').kind === 'R',
+    JSON.stringify(svFiled),
+  )
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  check('marked again, it stays one', (res.headers.get('location') ?? '').includes('ok=sv-uz') && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'vat.summary.filed'").first())?.n === 1)
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  check('the file of a statement filed is the one that was filed', res.status === 200 && (await res.text()).includes('<riadny>1</riadny>'))
+  check('a period without supplies to the EU shows no statement', !plain(await (await acc.get(`/ucto/klienti/co-t/dph?obdobie=${monthBack(2)}`)).text()).includes('Súhrnný výkaz za'))
   res = await acc.get('/ucto/terminy')
   page = plain(await res.text())
   check('then it is no longer open', !rowOf(page, 'Súhrnný výkaz za'))
   res = await acc.get('/ucto/terminy?hotove=1')
   page = plain(await res.text())
-  const svDone = rowOf(page, 'Termíny s. r. o.', 'Súhrnný výkaz za')
-  check('among what is done it can be taken back', Boolean(svDone) && svDone.includes('Podaný') && svDone.includes('Zrušiť označenie'), svDone)
-  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last, zrusit: '1', spat: 'https://evil.example/' })
+  check('it is among what is done', rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)?.includes('Podaný'))
+
+  // The invoice changed after the filing: a corrective statement before the deadline, a supplementary one after it
+  await db.prepare(`UPDATE documents SET vat_lines = '[{"rate":0,"base":120000,"vat":0,"deduct":0}]' WHERE id = 't-eu'`).run()
+  page = await svPage()
+  const fix = page.includes('Stiahnuť opravný súhrnný výkaz') ? 'O' : page.includes('Stiahnuť dodatočný súhrnný výkaz') ? 'D' : null
+  check('changed after it was filed, the page says so and offers the correction', page.includes('Zmenený po podaní') && fix !== null && page.includes('Označiť opravu ako podanú'))
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('so does the screen of deadlines', Boolean(rowOf(page, 'Termíny s. r. o.', `${fix === 'O' ? 'Opravný' : 'Dodatočný'} súhrnný výkaz za ${nameOf(last)}`)))
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  svXml = await res.text()
   check(
-    'taken back, it is open again; a way back to elsewhere is not followed',
+    'the correction: its kind, the row with its right value, valid',
+    (res.headers.get('content-disposition') ?? '').includes(`SVDPH_${fix}_SK2120999992_${last}.xml`) &&
+      svXml.includes(fix === 'O' ? '<opravny>1</opravny>' : '<dodatocny>1</dodatocny>') &&
+      svXml.includes('<hodnota>1200</hodnota>') &&
+      (await validXml(svXml, 'svdph2020.xsd')),
+  )
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  const corrected = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
+  check('the correction marked, over the statement it corrects', (res.headers.get('location') ?? '').includes('ok=sv-opraveny') && corrected.kind === fix && corrected.rows?.[0]?.euros === 1200 && corrected.prev?.rows?.[0]?.euros === 1000)
+  page = await svPage()
+  check('filed again as the books stand', page.includes(fix === 'O' ? 'Opravný podaný' : 'Dodatočný podaný') && page.includes('Zrušiť označenie opravy'))
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/zrusit', { obdobie: last })
+  const back = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
+  check('the correction taken back gives way to the statement it corrected', back.kind === 'R' && back.rows?.[0]?.euros === 1000 && back.prev === null && (await svPage()).includes('Zmenený po podaní'))
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/zrusit', { obdobie: last })
+  check('and that taken back, nothing is filed', (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'sv'").first())?.n === 0 && (await svPage()).includes('Pripravený'))
+  await db.prepare(`UPDATE documents SET vat_lines = '[{"rate":0,"base":100000,"vat":0,"deduct":0}]' WHERE id = 't-eu'`).run()
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: day(0).slice(0, 7) })
+  check('a period without supplies to the EU has no statement to mark', (res.headers.get('location') ?? '').includes('ok=sv-netreba') && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0)
+  res = await acc.post('/ucto/klienti/co-b/dph/suhrnny-vykaz/podane', { obdobie: last })
+  check("nor a statement of a client that is not hers", res.status === 404)
+
+  // What the app does not file itself (a month's payroll reports), marked as filed and taken back
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, spat: '/ucto/terminy?kto=my' })
+  check(
+    'marked as filed: kept once, on record, and back to the screen as it was',
+    res.status === 303 &&
+      res.headers.get('location') === '/ucto/terminy?kto=my&ok=oznacene' &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'mz' AND period = ?").bind(last).first())?.n === 1 &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'filing.marked'").first())?.n === 1,
+  )
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, spat: '/ucto/klienti/co-t' })
+  check(
+    "marked again from the client's page, it stays one, and back to that page",
+    res.headers.get('location') === '/ucto/klienti/co-t?ok=oznacene' && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 1,
+  )
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, zrusit: '1', spat: 'https://evil.example/' })
+  check(
+    'taken back; a way back to elsewhere is not followed',
     res.headers.get('location') === '/ucto/terminy?ok=neoznacene' && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0,
   )
-  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: day(0).slice(0, 7) })
-  check('a period that has not ended cannot be marked', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: day(0).slice(0, 7) })
+  check('a month that has not ended cannot be marked', res.status === 400)
   res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'priznanie', obdobie: last })
   check('nor anything but what the app does not file itself', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last })
+  check('nor the recapitulative statement, which the VAT page marks with what was filed', res.status === 400)
   res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'closing', obdobie: String(year - 1) })
   check('nor the closing, which its own page marks', res.status === 400)
-  res = await acc.post('/ucto/klienti/co-b/podane', { druh: 'sv', obdobie: last })
+  res = await acc.post('/ucto/klienti/co-b/podane', { druh: 'mz', obdobie: last })
   check("nor anything of a client that is not hers", res.status === 404)
   res = await mf.dispatchFetch(`${site}/ucto/klienti/co-t/podane`, {
     method: 'POST',
-    body: `druh=sv&obdobie=${last}`,
+    body: `druh=mz&obdobie=${last}`,
     redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example', cookie: luc.cookie, 'cf-connecting-ip': '203.0.113.30' },
   })

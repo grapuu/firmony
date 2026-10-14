@@ -103,7 +103,8 @@ import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
 import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
-import { returnXml, statementXml } from '../app/vat-xml'
+import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
+import { summaryPeriodOf, type SvView } from '../app/vat-summary'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
 import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
@@ -122,6 +123,10 @@ import {
   planFiling,
   selfVatOf,
   stripOf,
+  summaryFiled,
+  svViewOf,
+  fileSummaryStatement,
+  unfileSummaryStatement,
   taxAccountOf,
   taxIban,
   taxPaid,
@@ -337,6 +342,20 @@ function flashOf(c: Ctx): string | null {
       return t.vat.flashes.correctedKv
     case 'dph-netreba':
       return t.vat.flashes.notNeeded
+    case 'sv-podany':
+      return t.vat.sv.flashes.filed
+    case 'sv-opraveny':
+      return t.vat.sv.flashes.corrected
+    case 'sv-zruseny':
+      return t.vat.sv.flashes.unfiled
+    case 'sv-blokovane':
+      return t.vat.sv.flashes.blocked
+    case 'sv-bezi':
+      return t.vat.sv.flashes.running
+    case 'sv-uz':
+      return t.vat.sv.flashes.already
+    case 'sv-netreba':
+      return t.vat.sv.flashes.none
     case 'zavierka-ulozene':
       return t.closing.flashes.saved
     case 'zavierka-dan':
@@ -426,8 +445,8 @@ teamRoutes.get('/terminy', async (c) => {
 /** Where a form of the deadlines goes back to: the screen with its filters, or a client's page; nothing else. */
 const BACK = /^\/ucto\/(?:terminy|klienti\/[A-Za-z0-9-]{1,64})(?:\?[A-Za-z0-9=&_-]{0,200})?$/
 
-// A filing the app does not make yet (the recapitulative statement, a month's payroll reports), marked as filed
-// elsewhere, or the mark taken back. The closing has its own page, which marks it.
+// A filing the app does not make yet (a month's payroll reports), marked as filed elsewhere, or the mark taken back.
+// The closing and the recapitulative statement have their own pages, which mark them with what was filed.
 teamRoutes.post('/klienti/:id/podane', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
@@ -435,10 +454,10 @@ teamRoutes.post('/klienti/:id/podane', async (c) => {
   const db = c.env.DB
   const body = await c.req.parseBody()
   const today = dayOf(now())
-  const kind = body.druh === MARKED_KINDS.summary ? MARKED_KINDS.summary : body.druh === MARKED_KINDS.payroll ? MARKED_KINDS.payroll : null
+  const kind = body.druh === MARKED_KINDS.payroll ? MARKED_KINDS.payroll : null
   const period = typeof body.obdobie === 'string' ? body.obdobie : ''
-  // A statement of a period that has ended; payroll reports of a month that has.
-  if (!kind || !isPeriod(period) || periodRange(period).to >= today || (kind === MARKED_KINDS.payroll && period.includes('Q'))) return c.text('Bad request', 400)
+  // Payroll reports of a month that has ended.
+  if (!kind || !isPeriod(period) || periodRange(period).to >= today || period.includes('Q')) return c.text('Bad request', 400)
   const undo = body.zrusit === '1'
   await db.batch([
     undo ? unmarkFilingStatement(db, company.id, kind, period) : markFilingStatement(db, company.id, kind, period, who.user.id, today, now()),
@@ -1052,6 +1071,15 @@ function choicesOf(get: (name: string) => unknown): FilingChoices {
 /** A correction is made only from books that could be filed: nothing unbooked or unclear in the period. */
 const correctionBlocked = (view: PeriodView): boolean => view.state === 'changed' && (view.companyIssues.length > 0 || view.result.issues.some((i) => i.level === 'block'))
 
+/** The recapitulative statement of a VAT period's statement period (a quarter under § 7a), with its own documents. */
+async function svWithDocs(db: D1Database, company: Company, period: string, today: string): Promise<{ sv: SvView; docs: Doc[] }> {
+  const sv = summaryPeriodOf(period, { status: company.vatStatus })
+  const [docs, filed] = await Promise.all([docsAround(db, company.id, sv, sv), summaryFiled(db, company.id, sv)])
+  return { sv: svViewOf(company, sv, docs, filed, today), docs }
+}
+
+const svView = async (db: D1Database, company: Company, period: string, today: string): Promise<SvView> => (await svWithDocs(db, company, period, today)).sv
+
 /** The plan for a period, unless something keeps it from being filed. */
 function vatPlan(company: Company, view: PeriodView, filed: FiledReturn[], today: string, choices: FilingChoices): FilingPlan | null {
   if (correctionBlocked(view) || !company.icdph || !company.taxOffice || company.vatStatus === 'none') return null
@@ -1065,7 +1093,11 @@ teamRoutes.get('/klienti/:id/dph', async (c) => {
   const today = dayOf(now())
   const period = periodParam(company, c.req.query('obdobie'), today)
   const periods = stripOf(company, period, today)
-  const [docs, filed] = await Promise.all([docsAround(db, company.id, periods[0] ?? period, periods[periods.length - 1] ?? period), filedReturns(db, company.id)])
+  const [docs, filed, summary] = await Promise.all([
+    docsAround(db, company.id, periods[0] ?? period, periods[periods.length - 1] ?? period),
+    filedReturns(db, company.id),
+    company.vatStatus === 'none' ? null : svWithDocs(db, company, period, today),
+  ])
   const strip = periods.map((p) => viewOf(company, p, docs, filed, today))
   const view = strip.find((s) => s.period === period) ?? viewOf(company, period, docs, filed, today)
   // Not registered: what was bought from abroad in the periods shown asks for a registration under § 7a.
@@ -1080,21 +1112,23 @@ teamRoutes.get('/klienti/:id/dph', async (c) => {
       view={view}
       plan={vatPlan(company, view, filed, today, {})}
       strip={strip}
-      docs={new Map(docs.map((d) => [d.id, d]))}
+      docs={new Map([...docs, ...(summary?.docs ?? [])].map((d) => [d.id, d]))}
       needs7a={docs.filter((d) => needs.has(d.id))}
+      summary={summary?.sv ?? null}
       today={today}
       flash={flashOf(c)}
     />,
   )
 })
 
-/** The return or the control statement as a file, for "Načítať zo súboru" in eDane or on the portal. */
+/** The return, the control statement or the recapitulative statement as a file, for "Načítať zo súboru" in eDane or on the portal. */
 teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
   const company = await companyParam(c)
   const file = c.req.param('file')
-  if (!company || (file !== 'priznanie.xml' && file !== 'kontrolny-vykaz.xml')) return missingPage(c)
+  if (!company || (file !== 'priznanie.xml' && file !== 'kontrolny-vykaz.xml' && file !== 'suhrnny-vykaz.xml')) return missingPage(c)
   const today = dayOf(now())
   const period = periodParam(company, c.req.query('obdobie'), today)
+  if (file === 'suhrnny-vykaz.xml') return summaryFile(c, company, period, today)
   const { view, filed } = await vatView(c.env.DB, company, period, today)
   const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
   if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
@@ -1127,6 +1161,67 @@ teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
       'Cache-Control': 'private, no-store',
     },
   })
+})
+
+/**
+ * The recapitulative statement's file: what is to be filed now (a regular statement, or the correction of the one
+ * filed), or the one filed, with the day it was declared; none while the period runs or something keeps it back.
+ */
+async function summaryFile(c: Ctx, company: Company, period: string, today: string): Promise<Response> {
+  const sv = await svView(c.env.DB, company, period, today)
+  const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}#suhrnny`
+  const send = sv.plan ?? (sv.state === 'filed' && sv.filed ? { kind: sv.filed.kind, rows: sv.filed.sent } : null)
+  if (sv.state === 'running') return c.redirect(back.replace('#', '&ok=sv-bezi#'), 303)
+  if (sv.state === 'none') return c.redirect(back.replace('#', '&ok=sv-netreba#'), 303)
+  if (!send || !company.icdph) return c.redirect(back.replace('#', '&ok=sv-blokovane#'), 303)
+  const declaredOn = sv.state === 'filed' && sv.filed ? sv.filed.filedOn : today
+  const xml = summaryXml({ name: company.name, icdph: company.icdph, address: company.address }, sv.period, send.rows, send.kind, declaredOn)
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'vat.summary.downloaded', subject: sv.period, detail: { kind: send.kind } })])
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="SVDPH${send.kind === 'R' ? '' : `_${send.kind}`}_${company.icdph}_${sv.period}.xml"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+}
+
+/** The recapitulative statement marked as filed, with what its file held; a correction over the statement it corrects. */
+teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/podane', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const period = periodParam(company, body.obdobie, today)
+  const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
+  const db = c.env.DB
+  const sv = await svView(db, company, period, today)
+  if (sv.state === 'filed') return c.redirect(`${back}&ok=sv-uz#suhrnny`, 303)
+  if (sv.state === 'none') return c.redirect(`${back}&ok=sv-netreba#suhrnny`, 303)
+  if (sv.state === 'running') return c.redirect(`${back}&ok=sv-bezi#suhrnny`, 303)
+  if (!sv.plan) return c.redirect(`${back}&ok=sv-blokovane#suhrnny`, 303)
+  const [done] = await db.batch([fileSummaryStatement(db, company.id, sv, sv.plan, who.user.id, today)])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=sv-uz#suhrnny`, 303)
+  const correction = sv.filed !== null
+  await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: correction ? 'vat.summary.corrected' : 'vat.summary.filed', subject: sv.period, detail: { kind: sv.plan.kind, rows: sv.plan.rows.length } })])
+  return c.redirect(`${back}&ok=${correction ? 'sv-opraveny' : 'sv-podany'}#suhrnny`, 303)
+})
+
+/** A mark set by mistake taken back: a correction gives way to the statement it replaced. */
+teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/zrusit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const period = periodParam(company, body.obdobie, today)
+  const db = c.env.DB
+  const sv = summaryPeriodOf(period, { status: company.vatStatus })
+  const filed = await summaryFiled(db, company.id, sv)
+  const [gone] = filed ? await db.batch([unfileSummaryStatement(db, company.id, sv, filed)]) : []
+  if (filed && (gone?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'vat.summary.unfiled', subject: sv, detail: { kind: filed.kind } })])
+  return c.redirect(`/ucto/klienti/${company.id}/dph?obdobie=${period}&ok=sv-zruseny#suhrnny`, 303)
 })
 
 /**

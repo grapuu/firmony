@@ -13,31 +13,35 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // The codes of an eKasa receipt (src/app/ekasa.ts)
-  ['src/app/ekasa.ts', ".toUpperCase().replace(/^0-/, 'O-')", '.toUpperCase()', 'a nought for the letter O'],
-  ['src/app/ekasa.ts', "value.replace(/\\s/g, '').toUpperCase().replace", "value.replace(/\\s/g, '').replace", 'an identifier in capitals'],
-  ['src/app/ekasa.ts', 'return /^[A-Z]-[0-9A-F]{32}$/.test(plain) ? plain : null', 'return plain', 'an identifier of its form only'],
-  ['src/app/ekasa.ts', "test(hex) ? (hex.match(/.{8}/g) ?? []).join('-') : null", 'test(hex) ? hex : null', 'a verification code in its five blocks'],
-  ['src/app/ekasa.ts', "return /^[0-9A-F]{40}$/.test(hex) ? (hex.match(/.{8}/g) ?? []).join('-') : null", "return (hex.match(/.{8}/g) ?? []).join('-')", 'a verification code of its form only'],
-  ['src/app/ekasa.ts', 'const MISREAD = 4', 'const MISREAD = 0', 'a few characters read wrong'],
-  ['src/app/ekasa.ts', 'const MISREAD = 4', 'const MISREAD = 5', 'five characters wrong is another code'],
-  ['src/app/ekasa.ts', 'if (byUid === true || byOkp === true) return true', 'if (byUid === true) return true', 'either code agreeing is enough'],
-  ['src/app/ekasa.ts', '  if (byUid === false || byOkp === false) return false\n', '', 'codes that disagree are two receipts'],
-  // A duplicate (src/app/booking.ts, src/app/store.ts)
-  ['src/app/booking.ts', 'if (receipt !== null) return receipt', 'if (receipt === true) return true', 'two receipts of one number and amount stay two'],
-  ['src/app/booking.ts', 'if (receipt !== null) return receipt', 'if (receipt === false) return false', 'one receipt by its code, whatever amount was read'],
-  ['src/app/store.ts', 'OR d.ekasa_uid = ?5 OR d.ekasa_okp = ?6 ', '', 'a document with the exact code is looked at'],
-  ['src/app/store.ts', 'AND d.issued_on = ?8 AND (d.ekasa_uid IS NOT NULL OR d.ekasa_okp IS NOT NULL)', 'AND d.issued_on = ?8 AND 0', 'a coded receipt of the same day is looked at'],
-  ['src/app/store.ts', 'const twin = others.find((other) => !other.duplicateOf) ?? others[0]', 'const twin = others[0]', 'the twin is the original'],
-  ['src/app/store.ts', 'if (!self || (self.totalCents === null && !codes)) return null', 'if (!self || self.totalCents === null) return null', 'a receipt without an amount, by its code'],
-  ['src/app/store.ts', 'ORDER BY d.created_at DESC LIMIT 50', 'ORDER BY d.created_at LIMIT 50', 'the latest documents are looked at'],
-  // Read, kept and shown (src/app/read.ts, src/app/store.ts, src/views/team.tsx)
-  ['src/app/read.ts', 'ekasaUid: ekasaUid(input.ekasa_uid),', 'ekasaUid: null,', "the reader's identifier"],
-  ['src/app/read.ts', 'ekasaOkp: ekasaOkp(input.ekasa_okp),', 'ekasaOkp: null,', "the reader's verification code"],
-  ['src/app/store.ts', '      reading.ekasaUid ?? null,\n', '      null,\n', 'the identifier is stored'],
-  ['src/app/store.ts', '      reading.ekasaOkp ?? null,\n', '      null,\n', 'the verification code is stored'],
-  ['src/app/store.ts', 'ekasaUid: str(row.ekasa_uid),', 'ekasaUid: null,', 'the identifier is read back'],
-  ['src/views/team.tsx', '{d.ekasaUid || d.ekasaOkp ? (', '{false ? (', 'the accountant sees the code'],
+  // The recapitulative statement (src/app/vat-summary.ts)
+  ['src/app/vat-summary.ts', 'if (summaryPeriodOf(periodOfDoc(doc, data, company), company) !== period) continue', 'if (periodOfDoc(doc, data, company) !== period) continue', '§ 7a by the calendar quarter'],
+  ['src/app/vat-summary.ts', "const code = data.mode === 'eu_service' ? '2' : ''", "const code = '2'", 'goods without a code'],
+  ['src/app/vat-summary.ts', "if (!vatId || !country || country === 'SK' || !isEuVatId(vatId)) {", 'if (!vatId || !country) {', 'a VAT number of another member state'],
+  ['src/app/vat-summary.ts', '    due = true\n    if (!doc.booked) {', '    due = true\n    if (false) {', 'an invoice not booked keeps it back'],
+  ['src/app/vat-summary.ts', 'Math.sign(cents) * Math.round(Math.abs(cents) / 100)', 'Math.floor(cents / 100)', 'whole euros, half up'],
+  ['src/app/vat-summary.ts', '.filter((row) => row.euros !== 0)', '', 'nothing left is no row'],
+  ['src/app/vat-summary.ts', "code: row.code === '1' || (row.code === '2' && stays) ? '0' : row.code", 'code: row.code', 'a wrong code cancelled with 0'],
+  ['src/app/vat-summary.ts', 'const changed = now.filter((row) => before.get(key(row))?.euros !== row.euros)', 'const changed = now', 'only the rows that change'],
+  ['src/app/vat-summary.ts', '    const kind = correctionKind(period, today)\n', "    const kind = 'O' as const\n", 'after the deadline a supplementary statement'],
+  ['src/app/vat-summary.ts', "rows: kind === 'O' ? rows : svDiff(filed.rows, rows)", 'rows', 'a supplementary statement holds the difference'],
+  ['src/app/vat-summary.ts', 'if (filed.rows === null || sameRows(filed.rows, rows))', 'if (filed.rows === null)', 'filed as it stands'],
+  ['src/app/vat-summary.ts', 'if (!due || (!blocked && rows.length === 0))', 'if (!due)', 'supplies that came to nothing'],
+  ['src/app/vat-summary.ts', "  if (today <= periodRange(period).to) return { ...base, state: 'running', plan: null }\n", '', 'the period running'],
+  ['src/app/vat-summary.ts', "if (company.status === 'payer' && isQuarter(period) && goods > GOODS_LIMIT)", 'if (false)', 'a quarter of goods above 50 000 €'],
+  // The tax day (src/app/vat.ts), the file (src/app/vat-xml.ts), what is kept (src/app/vat-store.ts)
+  ['src/app/vat.ts', "if (data.mode !== 'acquisition' && data.mode !== 'eu_goods') return supplied", "if (data.mode !== 'acquisition') return supplied", 'goods to the EU fall due by § 19(8)'],
+  ['src/app/vat-xml.ts', "el('celkovaHodnota', String(totalOf(rows)))", "el('celkovaHodnota', '')", 'the total on the first page'],
+  ['src/app/vat-xml.ts', 'for (let page = 0; page < Math.ceil(rows.length / 12); page++)', 'for (let page = 0; page < 1; page++)', 'as many pages as the rows need'],
+  ['src/app/vat-xml.ts', "(ROMAN[Number(period.slice(6)) - 1] ?? '') : '')}${el('rok'", "period.slice(6) : '')}${el('rok'", 'a quarter as I to IV'],
+  ['src/app/vat-store.ts', '  if (filed.prev)\n', '  if (false)\n', 'a correction taken back gives way'],
+  ['src/app/vat-store.ts', 'prev: f.prev ? { ...svData(f.prev), filedOn: f.prev.filedOn, filedAt: f.prev.filedAt, filedBy: f.prev.filedBy } : null', 'prev: null', 'a correction keeps the statement it corrects'],
+  ['src/app/vat-store.ts', "companyIssues(company).filter((issue) => issue !== 'office').length", '0', "the company's VAT number"],
+  // The deadlines and the pages
+  ['src/team/deadlines.ts', "day: fix === 'O' ? sv.deadline : today", 'day: sv.deadline', 'a supplementary statement for today'],
+  ['src/team/routes.tsx', 'const send = sv.plan ?? (sv.state === \'filed\' && sv.filed ? { kind: sv.filed.kind, rows: sv.filed.sent } : null)', 'const send = sv.plan', 'the file of a statement filed'],
+  ['src/team/routes.tsx', "  if (sv.state === 'filed') return c.redirect(`${back}&ok=sv-uz#suhrnny`, 303)\n", '', 'filed once'],
+  ['src/views/vat.tsx', "if (sv.state === 'none' && !sv.filed) return null", 'if (false) return null', 'no statement without supplies'],
+  ['src/views/deadlines.tsx', 'return d.fix ? t.what.summaryFix[d.fix](periodName(period)) : t.what.summary(periodName(period))', 'return t.what.summary(periodName(period))', 'the correction named'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

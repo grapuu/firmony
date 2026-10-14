@@ -23,7 +23,7 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix'> & { company: 
     case 'vatFix':
       return t.what.vatFix[d.fix ?? 'O'](periodName(period))
     case 'summary':
-      return t.what.summary(periodName(period))
+      return d.fix ? t.what.summaryFix[d.fix](periodName(period)) : t.what.summary(periodName(period))
     case 'vatPay':
       return t.what.vatPay(periodName(period))
     case 'docs':
@@ -71,8 +71,8 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<Due
     case 'summary': {
       // A person registered under § 7a files it for a quarter; its VAT page goes by months: the quarter's first one.
       const period = d.period ?? ''
-      const month = period.includes('Q') ? `${period.slice(0, 4)}-${String((Number(period.slice(6)) - 1) * 3 + 1).padStart(2, '0')}` : period
-      return `${base}/dph?obdobie=${month}`
+      const month = period.includes('Q') && d.company.vatStatus === 'reg7a' ? `${period.slice(0, 4)}-${String((Number(period.slice(6)) - 1) * 3 + 1).padStart(2, '0')}` : period
+      return `${base}/dph?obdobie=${month}#suhrnny`
     }
     case 'docs':
       return `${base}#chyba`
@@ -91,6 +91,7 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<Due
 function noteOf(d: Due): string | null {
   if (d.kind === 'vatFix') return d.fix === 'D' ? t.note.fixD : t.note.fixO
   if (d.kind === 'vat' && d.state === 'open') return t.note.older
+  if (d.kind === 'summary' && d.fix === 'D') return t.note.summaryD
   if (d.kind === 'summary' && d.state !== 'done') return t.note.summary
   if (d.kind === 'payrollReports' && d.state !== 'done') return t.note.payrollReports
   return null
@@ -123,11 +124,10 @@ export function deadlinesHref(p: { side: DueFilter; done: boolean; accountant: s
 }
 
 const MarkForm: FC<{ d: DueRow; back: string }> = ({ d, back }) => {
-  if ((d.kind !== 'summary' && d.kind !== 'payrollReports') || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
-  const kind = d.kind === 'summary' ? MARKED_KINDS.summary : MARKED_KINDS.payroll
+  if (d.kind !== 'payrollReports' || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
   return (
     <form class="due__act" method="post" action={`/ucto/klienti/${d.company.id}/podane`}>
-      <input type="hidden" name="druh" value={kind} />
+      <input type="hidden" name="druh" value={MARKED_KINDS.payroll} />
       <input type="hidden" name="obdobie" value={d.period} />
       <input type="hidden" name="spat" value={back} />
       {d.state === 'done' ? <input type="hidden" name="zrusit" value="1" /> : null}

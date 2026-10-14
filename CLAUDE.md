@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 18:31)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 19:05)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -211,6 +211,10 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   Administration for a receipt by program is for a verifier under § 18(11) of Act No. 384/2025 Z. z., whose conditions
   FR SR has not published; whether europio becomes one is his decision, and a letter asking FR SR is drafted in
   `PROGRESS.md`. Built meanwhile: the reader reads a receipt's two codes, which tell one receipt from another.
+  Built fifth (until 19:05), a gap these notes listed: the recapitulative statement (súhrnný výkaz) under "VAT", as the
+  eForm's file from the issued invoices, with its corrective and supplementary statements (all checks passing: units
+  626, runtime 663; 26 rules taken out once, every one held). Found on the way: goods supplied to another member state
+  fall due by § 19(8) (the 15th of the next month, or the invoice's day before it), not on the day of supply.
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -869,7 +873,7 @@ on one screen, a document booked on one screen with its original beside the form
   client's deadlines are on one screen since the afternoon of 14 October: "Every client's deadlines"; the closing and
   the corporate income tax return since its evening: "The closing".)
 
-### VAT: the return and the control statement (14 October 2026; `src/app/vat.ts`, `vat-xml.ts`, `vat-store.ts`, `vat-form.ts`, views in `src/views/vat.tsx` and `taxes.tsx`)
+### VAT: the return and the control statement (14 October 2026; `src/app/vat.ts`, `vat-summary.ts`, `vat-xml.ts`, `vat-store.ts`, `vat-form.ts`, views in `src/views/vat.tsx` and `taxes.tsx`)
 
 What Pennylane's and Dougs' accountants have: the period worked out from the books, every blocker with the
 document to open, the files the tax office takes, and the client told what to pay. Nothing is sent to the
@@ -949,8 +953,30 @@ Financial Administration by us: the accountant loads the files in eDane or in th
 - The sample: Ukážková firma is a monthly payer from the month of its contract, with documents of every kind of
   September; `scratchpad/vatflow.mjs` of that session filed it in the playground, and a document moved into
   September afterwards showed the corrective flow (pictures at 1440, 390 and 320 px, nothing overflows).
+- The recapitulative statement (súhrnný výkaz; `src/app/vat-summary.ts`, since the evening of 14 October 2026), read
+  that day: § 80 of the VAT Act as in force from 1 January 2027 (static.slov-lex.sk), the poučenie to SVDPHv20 (measure
+  No. 405/2019 Z. z.) and the eForm form.471 itself (its schema `form.471.sk.xsd`, kept as `test/xsd/svdph2020.xsd`, and
+  its script, which shows how it writes the file). Each customer's total by its VAT number, from the issued invoices
+  of goods to the EU (`eu_goods`, no code) and of services there (`eu_service`, code 2), in the period the return counts
+  them (`periodOfDoc`; goods by § 19(8), the 15th of the next month or the invoice's day before it, `taxDay`), a credit
+  note in its own period (§ 80(7)), whole euros half up, the total of the first page the sum of the rows; the payer's
+  VAT period, the calendar quarter of a person registered under § 7a (§ 80(3)); a quarterly payer is warned once its
+  goods pass 50 000 € a quarter (monthly statements, § 80(2), are not made: a block). Blocked by an invoice not booked
+  or unread, a customer without a VAT number of another member state (`svVatId`), lines missing, and the company's own
+  VAT number or seat (not its tax office: the form names none). States: none, running, blocked, ready, filed, changed.
+  Its card on the VAT page (`#suhrnny`: the rows with their invoices, the total, the file `/dph/suhrnny-vykaz.xml`, the
+  mark `/dph/suhrnny-vykaz/podane`, taken back by `/dph/suhrnny-vykaz/zrusit`; the client is told nothing, no money is
+  in it); the file as the eForm writes it (the month without its nought, the quarter I to IV, 1 and 0, the name in four
+  lines, europio as the authorised person, twelve rows of part I and twelve empty rows of part II a page). Kept in
+  `filings` (kind `sv`, schema step 10's `data`: every row as filed, the rows sent, the filing replaced). Changed after
+  filing: a corrective statement with every row before the deadline, a supplementary one after it with only the rows
+  that change (§ 80(8): the right value; nought for a row that is no more; the code 0 for a row whose code was 1, or 2
+  while the customer stays under another, the poučenie's examples 10 to 14), which § 80(8) gives no deadline (the screen
+  lists it for today). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
+  call-off stock (part II), the monthly statements of a quarterly payer above 50 000 € of goods, a customer's VAT number
+  that comes later (§ 80(6), the period it is given).
 - Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, domestic reverse charge (A.2), eKasa takings
-  (D.1), bad debts (§ 25a, § 53b), the coefficient (§ 50), the recapitulative statement, documents in another
+  (D.1), bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
   Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
@@ -1043,7 +1069,8 @@ worked out from what the app holds every time, so it cannot disagree with the VA
   the accountant names the day of finding); the recapitulative statement of a period with goods or services supplied
   to another member state (§ 80 of the VAT Act, within 25 days after the period: the payer's period, the calendar
   quarter of a person registered under § 7a; read in the Financial Directorate's methodical guidance to § 80 and
-  dauc.sk), which the app does not prepare yet and the accountant marks as filed; the VAT a filed return asks the client
+  dauc.sk), in the state of its card on the VAT page (`svViewOf`), a correction as for the return (a supplementary
+  statement for today: § 80(8) names no deadline); the VAT a filed return asks the client
   to pay, until the bank shows it paid; the client's documents of a month by the 10th, while payments of it have none
   and the intake is open; the closing and the corporate income tax return of the year that ended last, by 31 March or
   the end of the month a notice moved it to, the next working day if that is a day off (§ 49(1) and (3) of the Income
@@ -1073,14 +1100,15 @@ worked out from what the app holds every time, so it cannot disagree with the VA
   worked out, forty companies in one batch (a batch is one call to D1, read on 14 October 2026). At hundreds of clients
   it reads every VAT company's last four months: measure it on the first real month.
 - The marks (`filings`, schema step 6: company, kind, period, day, who; once): "Označiť ako podané" and "Zrušiť
-  označenie" on the row (`POST /ucto/klienti/:id/podane`, the recapitulative statement alone (`sv`), only a period
-  that has ended, and a month's payroll reports (`mz`), events `filing.marked` and `filing.unmarked`; the way back
-  only to the screen or a client's page).
+  označenie" on the row (`POST /ucto/klienti/:id/podane`, a month's payroll reports (`mz`) of a month that has ended,
+  events `filing.marked` and `filing.unmarked`; the way back only to the screen or a client's page). The
+  recapitulative statement (`sv`) is marked on the VAT page with what was filed (schema step 10, `filings.data`) since
+  the evening of 14 October; its row on the screen leads there.
   The closing's mark moved to its own page and table on the evening of 14 October (schema step 7 moves any it finds).
   The deletion at the end of a contract deletes them with the rest.
 - Checked: 32 rules taken out once (`scripts/dev/mutate.mjs`), every one held (one after its check was added). Not
-  built: the recapitulative statement itself (its XML), the payroll reports as files, the deadline of the motor vehicle
-  tax and of each advance on the income tax (the closing says the advances' amount).
+  built: the payroll reports as files, the deadline of the motor vehicle tax and of each advance on the income tax
+  (the closing says the advances' amount).
 
 ### The closing (14 October 2026, from 16:03; `src/app/closing.ts`, `closing-form.ts`, `closing-xml.ts`, `closing-store.ts`, views in `src/views/closing.tsx`)
 
@@ -1299,11 +1327,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (603): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes
-npm run test:runtime     # the deployable bundle in workerd (647): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the closing, payroll, eKasa duplicates, to the deletion
+npm test                 # unit checks (626): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes, the recapitulative statement
+npm run test:runtime     # the deployable bundle in workerd (663): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the recapitulative statement, the closing, payroll, eKasa duplicates, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (22)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (26)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 

@@ -329,11 +329,79 @@ phone's browser, whose BarcodeDetector Chrome on Android has and Safari has not,
 CPU on every photo), the lookup itself once allowed, a receipt taken as data without a photo, and a client's own eKasa
 takings in the VAT return (row D.1 of the control statement, `CLAUDE.md`).
 
+## Milestone 5: the recapitulative statement (done, 14 October 2026; priority 6, a gap the notes listed)
+
+Why this gap first: a young Slovak company that sells services or goods to businesses in other member states (an IT
+company invoicing a German client is the typical one) files a recapitulative statement (súhrnný výkaz) every period it
+does; the app listed its deadline since milestone 1 but left the statement itself to the accountant ("Firmony ho
+zatiaľ nepripravuje"). It is a filing with a fixed form and every figure already in the books.
+
+What the accountant gets (the VAT page of the period, card "Súhrnný výkaz", `#suhrnny`):
+
+- Each customer's row worked out from the issued invoices: goods supplied to another member state without a code,
+  services with code 2, by the customer's VAT number, in whole euros (half up), each row with its invoices; the total.
+- What keeps it back, each with the document: an invoice not booked (or a document not read yet), a customer without a
+  VAT number of another member state, lines missing; the company's own VAT number or seat.
+- The file the Financial Administration takes (SVDPHv20, form.471), written as the eForm writes it and validated
+  against the eForm's own schema in both test suites; the mark that it was filed, with what the file held.
+- A change after filing (an invoice corrected, added or removed): before the deadline a corrective statement with every
+  row; after it a supplementary statement with only the rows that change, a row that is no more at nought, a wrong code
+  cancelled with the code 0. "Zrušiť označenie" takes a correction back to the statement it corrected.
+- A person registered under § 7a: the statement for the calendar quarter. A quarterly payer whose goods pass 50 000 € in
+  a quarter is stopped with the explanation (monthly statements are due; the app does not make them).
+- The screen of deadlines shows the statement in the state of its card (ready, blocked, running, done; a correction as
+  "Opravný" or "Dodatočný súhrnný výkaz") and leads to the card. The mark moved from the screen to the card (it now
+  keeps what was filed); the screen keeps the mark of the payroll reports.
+- Code: `src/app/vat-summary.ts` (the rules, pure), `summaryXml` in `src/app/vat-xml.ts`, the store in
+  `src/app/vat-store.ts` (`svViewOf`, `fileSummaryStatement`, `unfileSummaryStatement`), the card in
+  `src/views/vat.tsx`, routes `/ucto/klienti/:id/dph/suhrnny-vykaz.xml`, `/dph/suhrnny-vykaz/podane`,
+  `/dph/suhrnny-vykaz/zrusit`; schema step 10 (`filings.data`); the schema in `test/xsd/svdph2020.xsd`.
+
+What it leans on (read on 14 October 2026, in the original):
+
+- § 80 of Act No. 222/2004 Z. z. as in force from 1 January 2027 (static.slov-lex.sk): who files and for what period
+  (1) to (3), what the statement holds (4), the value in the period the tax fell due, whole euros half up (6), a
+  correction of the base in its own period (7), the corrective and the supplementary statement (8), 25 days after the
+  period (9). § 19(8): goods supplied to another member state fall due on the 15th of the next month, or on the day of
+  the invoice issued before it.
+- The poučenie to SVDPHv20 (measure No. 405/2019 Z. z., pfseform.financnasprava.sk), parts I to IV and examples 1 to 14
+  (the rows, the codes, the cancelling rows of a supplementary statement); the eForm form.471 (its schema
+  form.471.sk.xsd and its script, which shows the month written 1 to 12, the quarter I to IV, the kind as 1 and 0, the
+  twelve rows of each part to a page).
+
+Found on the way and put right:
+
+- Goods supplied to another member state were placed in the period of their day of supply; § 19(8) puts them in the
+  period of the 15th of the next month (or the invoice's day, if earlier). Only an invoice issued late changes period;
+  the return's row 14 and the statement now agree with the law.
+- The link from the screen of deadlines to a quarterly payer's statement went to a month its VAT page does not have.
+
+Checks: units 603 → 626, runtime 647 → 663, all passing, TypeScript clean. The card and the screen were looked at in the
+playground at 1440, 390 and 320 px (nothing overflows); the sample company's statement for September downloaded from
+the playground validates against the schema with `xmllint` too. 26 rules taken out once with `scripts/dev/mutate.mjs`:
+all held (three checks were written with the rules, before the run: an invoice and its credit note that cancel out,
+the company's own VAT number, the file of a statement already filed).
+
+For a professional to read:
+
+- `konatel` (the person authorised to file) names europio, as the VAT return's `opravnenaOsoba` does; to see on the
+  first real filing what eDane wants there.
+- A credit note is placed by its own day of supply, as the VAT return places it (§ 80(7) says: the period the
+  correction was notified to the customer); a credit note that carries the original supply's day would fall into the
+  original period. The accountant can name the period on the document.
+- An invoice issued before the goods were dispatched is taken to fall due on the dispatch, not on its own day (as the
+  app already did for acquisitions); § 19(8) read literally says the invoice's day.
+- A supplementary statement has no deadline in § 80(8); the screen lists it for today and never as late.
+
+What remains of it: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)), call-off
+stock (part II), the monthly statements of a quarterly payer above 50 000 € of goods, a customer's VAT number given
+later (§ 80(6)).
+
 ## Resources
 
 - One continuous session (milestone 1 from 15:17 to 16:03, milestone 2 to 17:22, milestone 3 to 17:57, milestone 4 to
-  18:31); repository work by shell and file tools, research by web search and the Financial Administration's own
+  18:31, milestone 5 to 19:05); repository work by shell and file tools, research by web search and the Financial Administration's own
   files (pfseform.financnasprava.sk, financnasprava.sk: the eForms, the eKasa interface's description) and
   slov-lex.sk. No paid external service was called, nothing was deployed, no production data exist. The test suites
   take about 3 s (units) and 50 s (runtime); a full mutation run of milestone 2 (52 rules) about 20 minutes, of
-  milestone 4 (22 rules) about 12, most rules failing the units first.
+  milestone 4 (22 rules) about 12, of milestone 5 (26 rules) about 9, most rules failing the units first.
