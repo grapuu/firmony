@@ -16,11 +16,28 @@ import { BankPage } from '../views/bank'
 import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
+import { TaxesPage } from '../views/taxes'
+import { filedReturns, taxPaid, type TaxPaid } from './vat-store'
 import { getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
 import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
-import { checkValues, getInvoice, invoiceLines, linesOf, listInvoices, plainIban, saveInvoiceStatements, totalsOf, ublOf, type Errors as InvoiceErrors, type InvoiceValues, type Line, type LineInput, type StoredInvoice } from './invoices'
+import {
+  checkValues,
+  getInvoice,
+  invoiceLines,
+  linesOf,
+  listInvoices,
+  plainIban,
+  saveInvoiceStatements,
+  totalsOf,
+  ublOf,
+  type Errors as InvoiceErrors,
+  type InvoiceValues,
+  type Line,
+  type LineInput,
+  type StoredInvoice,
+} from './invoices'
 import { dayOfText, textDay } from './booking'
 import { lookupCompany } from '../rpo'
 import { normalizeIco } from '../ico'
@@ -308,7 +325,9 @@ appRoutes.get('/', async (c) => {
     listMessages(db, company, 1),
     db.prepare('SELECT COUNT(*) AS n FROM payments WHERE company_id = ?').bind(company).first<{ n: number }>(),
     db
-      .prepare(`SELECT substr(p.booked_on, 1, 7) AS month, COUNT(*) AS n FROM payments p WHERE p.company_id = ? AND p.exempt IS NULL AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id) GROUP BY 1`)
+      .prepare(
+        `SELECT substr(p.booked_on, 1, 7) AS month, COUNT(*) AS n FROM payments p WHERE p.company_id = ? AND p.exempt IS NULL AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id) GROUP BY 1`,
+      )
       .bind(company)
       .all<{ month: string; n: number }>(),
     db
@@ -323,7 +342,8 @@ appRoutes.get('/', async (c) => {
       .bind(company)
       .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null }>(),
   ])
-  const suggested = await suggestions(db, company, missingAll)
+  const [suggested, filed] = await Promise.all([suggestions(db, company, missingAll), who.company.vatStatus === 'none' ? Promise.resolve([]) : filedReturns(db, company)])
+  const paid = filed.length > 0 ? await taxPaid(db, company, filed) : new Map<string, TaxPaid>()
   const steps = {
     declaration: started?.declaration === 1,
     poa: started?.poa === 1,
@@ -348,7 +368,7 @@ appRoutes.get('/', async (c) => {
       figures={figures}
       month={monthName(`${month}-01`)}
       today={day}
-      deadlines={deadlinesFor(who.company, day, new Map(byMonth.results.map((r) => [r.month, r.n])))}
+      deadlines={deadlinesFor(who.company, day, new Map(byMonth.results.map((r) => [r.month, r.n])), { filed, paid })}
       inbox={inboxAddress(who.company)}
       accountant={who.company.accountantName}
       last={messages[0] ?? null}
@@ -381,7 +401,16 @@ appRoutes.get('/platby', async (c) => {
     c,
     'payments',
     t.payments.title,
-    <PaymentsPage filter={filter} payments={payments} missingCount={missingCount} suggested={new Set(suggested.keys())} flash={flashOf(c)} search={search} bank={bank} closed={closedIntake(who.company) !== null} />,
+    <PaymentsPage
+      filter={filter}
+      payments={payments}
+      missingCount={missingCount}
+      suggested={new Set(suggested.keys())}
+      flash={flashOf(c)}
+      search={search}
+      bank={bank}
+      closed={closedIntake(who.company) !== null}
+    />,
   )
 })
 
@@ -410,7 +439,10 @@ appRoutes.post('/platby/:id/priradit', async (c) => {
   const body = await c.req.parseBody()
   const doc = typeof body.doklad === 'string' && ID.test(body.doklad) ? body.doklad : ''
   const db = c.env.DB
-  const [linked] = await db.batch([linkStatement(db, who.company.id, id, doc, 'client', who.user.id), eventStatement(db, { company: who.company.id, user: who.user.id, action: 'link.client', subject: id, detail: { doc } })])
+  const [linked] = await db.batch([
+    linkStatement(db, who.company.id, id, doc, 'client', who.user.id),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'link.client', subject: id, detail: { doc } }),
+  ])
   if ((linked?.meta?.changes ?? 0) === 0) return paymentPage(c, id, { error: t.errors.gone }, 409)
   return c.redirect(`/app/platby/${id}?ok=priradene`, 303)
 })
@@ -425,7 +457,10 @@ appRoutes.post('/platby/:id/bez-dokladu', async (c) => {
     return paymentPage(c, id, { error: reason ? t.payment.noNeedNoteMissing : t.payment.noNeedLead, exemptValue: reason ?? 'other', noteValue: note }, 422)
   }
   const db = c.env.DB
-  const [changed] = await db.batch([exemptStatement(db, who.company.id, id, reason, note || null, who.user.id), eventStatement(db, { company: who.company.id, user: who.user.id, action: 'exempt.client', subject: id, detail: { reason } })])
+  const [changed] = await db.batch([
+    exemptStatement(db, who.company.id, id, reason, note || null, who.user.id),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'exempt.client', subject: id, detail: { reason } }),
+  ])
   if ((changed?.meta?.changes ?? 0) === 0) return paymentPage(c, id, { error: t.errors.gone }, 409)
   return c.redirect(`/app/platby/${id}?ok=netreba`, 303)
 })
@@ -488,13 +523,24 @@ appRoutes.get('/doklady', async (c) => {
   const search = (c.req.query('hladat') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
   const filter = !search && c.req.query('filter') === 'bez-platby' ? 'loose' : 'all'
   const docs = await listDocuments(c.env.DB, who.company.id, filter, 400, search)
-  return shell(c, 'documents', t.documents.title, <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} closed={closedIntake(who.company)} />)
+  return shell(
+    c,
+    'documents',
+    t.documents.title,
+    <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} closed={closedIntake(who.company)} />,
+  )
 })
 
 async function documentsWithProblems(c: Ctx, problems: string[], status: ContentfulStatusCode, flash: string | null = null) {
   const who = c.get('who')
   const docs = await listDocuments(c.env.DB, who.company.id, 'all')
-  return shell(c, 'documents', t.documents.title, <DocumentsPage filter="all" docs={docs} inbox={inboxAddress(who.company)} flash={flash} problems={problems} closed={closedIntake(who.company)} />, status)
+  return shell(
+    c,
+    'documents',
+    t.documents.title,
+    <DocumentsPage filter="all" docs={docs} inbox={inboxAddress(who.company)} flash={flash} problems={problems} closed={closedIntake(who.company)} />,
+    status,
+  )
 }
 
 appRoutes.post('/doklady', async (c) => {
@@ -534,7 +580,13 @@ appRoutes.post('/banka', async (c) => {
   const db = c.env.DB
   const bad = async (warn: string = t.payments.statementBad, status: ContentfulStatusCode = 422) => {
     const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, 'all'), countMissing(db, who.company.id)])
-    return shell(c, 'payments', t.payments.title, <PaymentsPage filter="all" payments={payments} missingCount={missingCount} suggested={new Set()} warn={warn} closed={closedIntake(who.company) !== null} />, status)
+    return shell(
+      c,
+      'payments',
+      t.payments.title,
+      <PaymentsPage filter="all" payments={payments} missingCount={missingCount} suggested={new Set()} warn={warn} closed={closedIntake(who.company) !== null} />,
+      status,
+    )
   }
   if (!intakeOpen(who.company, today())) return bad(t.ending.noIntake(dayName(who.company.endsOn ?? today())), 409)
   if (typeof file !== 'object' || file === null || !('arrayBuffer' in file) || file.size === 0 || file.size > APP.fileBytes) return bad()
@@ -576,7 +628,17 @@ async function bankPage(c: Ctx, error: string | null = null, status: ContentfulS
     c,
     'payments',
     t.bank.title,
-    <BankPage ready={ready} links={links} banks={banks} owner={who.role === 'owner'} today={today()} flash={flashOf(c)} error={error ?? bankError(c)} open={serviceOpen(who.company, today())} intake={intakeOpen(who.company, today())} />,
+    <BankPage
+      ready={ready}
+      links={links}
+      banks={banks}
+      owner={who.role === 'owner'}
+      today={today()}
+      flash={flashOf(c)}
+      error={error ?? bankError(c)}
+      open={serviceOpen(who.company, today())}
+      intake={intakeOpen(who.company, today())}
+    />,
     status,
   )
 }
@@ -611,14 +673,21 @@ appRoutes.get('/banka/navrat', async (c) => {
   const state = c.req.query('state') ?? ''
   if (c.req.query('error')) {
     // Cancelled at the bank: the pending consent is forgotten.
-    if (/^[A-Za-z0-9_-]{43}$/.test(state)) await db.prepare("DELETE FROM bank_links WHERE state = ? AND company_id = ? AND status = 'pending'").bind(await sha256Hex(state), who.company.id).run()
+    if (/^[A-Za-z0-9_-]{43}$/.test(state))
+      await db
+        .prepare("DELETE FROM bank_links WHERE state = ? AND company_id = ? AND status = 'pending'")
+        .bind(await sha256Hex(state), who.company.id)
+        .run()
     return c.redirect('/app/banka?chyba=zrusene', 303)
   }
   if (!bankReady(c.env) || code === '' || code.length > 2000 || !/^[A-Za-z0-9_-]{43}$/.test(state)) return c.redirect('/app/banka?chyba=neplatne', 303)
   try {
     const done = await finishLink(c.env, { company: who.company.id, user: who.user.id, code, state })
     if (!done) return c.redirect('/app/banka?chyba=neplatne', 303)
-    later(c, readLink(c.env, done.link).catch(() => null))
+    later(
+      c,
+      readLink(c.env, done.link).catch(() => null),
+    )
     return c.redirect(done.accounts > 0 ? `/app/banka?ok=banka-pripojena&n=${done.accounts}` : '/app/banka?ok=banka-bez-uctu', 303)
   } catch (err) {
     console.error('finishing a bank link failed', err instanceof Error ? err.message : 'error')
@@ -689,7 +758,10 @@ appRoutes.post('/doklady/:id/sukromne', async (c) => {
   const body = await c.req.parseBody()
   const db = c.env.DB
   const paid = body.ano === '1'
-  await db.batch([privatelyStatement(db, who.company.id, id, paid), eventStatement(db, { company: who.company.id, user: who.user.id, action: paid ? 'document.private' : 'document.company', subject: id })])
+  await db.batch([
+    privatelyStatement(db, who.company.id, id, paid),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: paid ? 'document.private' : 'document.company', subject: id }),
+  ])
   return c.redirect(`/app/doklady/${id}`, 303)
 })
 
@@ -712,7 +784,9 @@ appRoutes.get('/subory/:id', async (c) => {
   const who = c.get('who')
   const id = c.req.param('id')
   const row = ID.test(id)
-    ? await c.env.DB.prepare('SELECT file_key, file_type, file_name FROM documents WHERE id = ? AND company_id = ? AND deleted_at IS NULL').bind(id, who.company.id).first<{ file_key: string | null; file_type: string | null; file_name: string | null }>()
+    ? await c.env.DB.prepare('SELECT file_key, file_type, file_name FROM documents WHERE id = ? AND company_id = ? AND deleted_at IS NULL')
+        .bind(id, who.company.id)
+        .first<{ file_key: string | null; file_type: string | null; file_name: string | null }>()
     : null
   const object = row?.file_key && c.env.FILES ? await c.env.FILES.get(row.file_key) : null
   if (!row || !object) return c.notFound()
@@ -742,7 +816,13 @@ async function messagesPage(c: Ctx, extra: { error?: string; draft?: string } = 
   const about = [...new Set(messages.map((m) => m.paymentId).filter((id): id is string => Boolean(id)))]
   const payments = new Map((await Promise.all(about.map((id) => getPayment(db, who.company.id, id)))).filter((p) => p !== null).map((p) => [p.id, p]))
   if (status === 200) await db.batch([seenStatement(db, who.company.id)])
-  return shell(c, 'messages', t.messages.title, <MessagesPage messages={messages} accountant={who.company.accountantName} now={now()} payments={payments} flash={flashOf(c)} me={who.user.id} {...extra} />, status)
+  return shell(
+    c,
+    'messages',
+    t.messages.title,
+    <MessagesPage messages={messages} accountant={who.company.accountantName} now={now()} payments={payments} flash={flashOf(c)} me={who.user.id} {...extra} />,
+    status,
+  )
 }
 
 appRoutes.get('/spravy', (c) => messagesPage(c))
@@ -816,6 +896,15 @@ async function companyPage(
 }
 
 appRoutes.get('/firma', (c) => companyPage(c))
+
+/** The VAT returns we filed for the company, and for a tax to pay everything a bank needs, the QR code included. */
+appRoutes.get('/dane', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const filed = await filedReturns(db, who.company.id)
+  const paid = await taxPaid(db, who.company.id, filed)
+  return shell(c, 'taxes', t.taxes.title, <TaxesPage company={who.company} filed={filed} paid={paid} today={today()} />)
+})
 
 appRoutes.post('/firma/pozvat', async (c) => {
   const who = c.get('who')
@@ -912,9 +1001,14 @@ appRoutes.post('/plna-moc', async (c) => {
   if (!file) return poaPage(c, t.poa.none, 422)
   if (file.size > APP.fileBytes) return poaPage(c, t.poa.large, 422)
   const company = who.company
-  const kept = await keepPaper(db, c.env.FILES, { company: company.id, user: who.user.id }, 'poa', { name: (file.name || 'plna-moc').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) }, (paper) => [
-    ringStatement(db, 'poa', paper.id, company.accountantEmail ?? BRAND.email, bell.teamPoa(`${siteOrigin(c)}/ucto/klienti/${company.id}#zmluva`)),
-  ])
+  const kept = await keepPaper(
+    db,
+    c.env.FILES,
+    { company: company.id, user: who.user.id },
+    'poa',
+    { name: (file.name || 'plna-moc').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) },
+    (paper) => [ringStatement(db, 'poa', paper.id, company.accountantEmail ?? BRAND.email, bell.teamPoa(`${siteOrigin(c)}/ucto/klienti/${company.id}#zmluva`))],
+  )
   if (!kept.ok) {
     const answer = { none: [t.poa.none, 422], large: [t.poa.large, 422], type: [t.poa.refused, 422], many: [t.poa.many, 409], storage: [t.poa.noStorage, 503] } as const
     const [text, code] = answer[kept.reason]
@@ -1019,7 +1113,9 @@ appRoutes.post('/firma/vypoved', async (c) => {
   const db = c.env.DB
   const end = noticeEndsOn(today())
   // Given once: a second click, or a second person at the same moment, changes nothing and writes nothing.
-  const [given] = await db.batch([db.prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'client', ends_on = ? WHERE id = ? AND notice_at IS NULL").bind(now(), who.user.id, end, who.company.id)])
+  const [given] = await db.batch([
+    db.prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'client', ends_on = ? WHERE id = ? AND notice_at IS NULL").bind(now(), who.user.id, end, who.company.id),
+  ])
   if ((given?.meta?.changes ?? 0) === 0) return c.redirect('/app/firma#zmluva', 303)
   const id = crypto.randomUUID()
   await db.batch([
@@ -1068,7 +1164,10 @@ appRoutes.get('/export', async (c) => {
   const year = c.req.query('rok') ?? ''
   if (!/^\d{4}$/.test(year) || !(await exportYears(db, who.company.id)).includes(year)) return shell(c, 'company', t.errors.notFound, <Missing />, 404)
   if (!(await withinLimit(db, 'export', who.company.id, ENDING.exportsPerHour, 3600))) return companyPage(c, { download: t.download.throttle }, 429)
-  const row = await db.prepare('SELECT o.plan, o.price_cents, o.accepted_at, o.signed_by, o.start_on FROM orders o JOIN companies co ON co.order_id = o.id WHERE co.id = ?').bind(who.company.id).first<{ plan: string; price_cents: number | null; accepted_at: number | null; signed_by: string | null; start_on: string | null }>()
+  const row = await db
+    .prepare('SELECT o.plan, o.price_cents, o.accepted_at, o.signed_by, o.start_on FROM orders o JOIN companies co ON co.order_id = o.id WHERE co.id = ?')
+    .bind(who.company.id)
+    .first<{ plan: string; price_cents: number | null; accepted_at: number | null; signed_by: string | null; start_on: string | null }>()
   const order = row ? { plan: row.plan, priceCents: row.price_cents, acceptedAt: row.accepted_at, signedBy: row.signed_by, startOn: row.start_on } : null
   await db.batch([eventStatement(db, { company: who.company.id, user: who.user.id, action: 'export.downloaded', subject: year })])
   const archive = await exportYear(c.env, who.company, year, order, dayName(today()).replace(/\u00a0/g, ' '))
@@ -1138,15 +1237,35 @@ function previewLines(values: InvoiceValues, vatPayer: boolean): Line[] {
   return readable.lines.flatMap((line) => linesOf({ ...readable, lines: [line] }, vatPayer, { line: () => 'x', none: 'x' }).lines)
 }
 
-function invoiceForm(c: Ctx, id: string | null, values: InvoiceValues, errors: InvoiceErrors = {}, status: ContentfulStatusCode = 200, found: string | null = null, recent: { id: string; name: string }[] = []) {
+function invoiceForm(
+  c: Ctx,
+  id: string | null,
+  values: InvoiceValues,
+  errors: InvoiceErrors = {},
+  status: ContentfulStatusCode = 200,
+  found: string | null = null,
+  recent: { id: string; name: string }[] = [],
+) {
   const who = c.get('who')
-  return shell(c, 'invoices', id ? ti.form.editTitle : ti.form.title, <InvoiceFormPage id={id} values={values} vatPayer={who.company.vatPayer} errors={errors} found={found} preview={previewLines(values, who.company.vatPayer)} recent={recent} />, status)
+  return shell(
+    c,
+    'invoices',
+    id ? ti.form.editTitle : ti.form.title,
+    <InvoiceFormPage id={id} values={values} vatPayer={who.company.vatPayer} errors={errors} found={found} preview={previewLines(values, who.company.vatPayer)} recent={recent} />,
+    status,
+  )
 }
 
 /** The lines of a stored invoice as the form shows them, with an empty one to go on. */
 function inputLines(lines: Line[], vatPayer: boolean): LineInput[] {
   return [
-    ...lines.map((l) => ({ description: l.description, quantity: String(l.quantityMilli / 1000).replace('.', ','), unit: l.unit ?? 'ks', price: `${(l.unitCents / 100).toFixed(2).replace('.', ',')}`, vat: String(l.vatRate) })),
+    ...lines.map((l) => ({
+      description: l.description,
+      quantity: String(l.quantityMilli / 1000).replace('.', ','),
+      unit: l.unit ?? 'ks',
+      price: `${(l.unitCents / 100).toFixed(2).replace('.', ',')}`,
+      vat: String(l.vatRate),
+    })),
     emptyLine(vatPayer),
   ]
 }
@@ -1289,10 +1408,14 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     console.error('an invoice failed', err instanceof Error ? err.name : 'error')
     return invoiceForm(c, draftId, values, { form: ti.errors.form }, 409)
   }
-  if (issue) later(c, (async () => {
-    await afterReading(db, who.company.id, documentId)
-    await matchCompany(db, who.company.id)
-  })())
+  if (issue)
+    later(
+      c,
+      (async () => {
+        await afterReading(db, who.company.id, documentId)
+        await matchCompany(db, who.company.id)
+      })(),
+    )
   return c.redirect(`/app/faktury/${id}?ok=${issue ? 'vystavena' : 'koncept'}`, 303)
 }
 
@@ -1437,8 +1560,5 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
       await matchCompany(db, company.id)
     }
   }
-  await db.batch([
-    db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(ts),
-    db.prepare('DELETE FROM login_links WHERE expires_at < ?').bind(ts - 86400),
-  ])
+  await db.batch([db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(ts), db.prepare('DELETE FROM login_links WHERE expires_at < ?').bind(ts - 86400)])
 }

@@ -5082,3 +5082,312 @@ select.field__input {
   font-size: 1rem;
   line-height: 1.5;
 }
+
+/* DPH: a client's return and control statement (the team), and the client's taxes -------------------------- */
+
+/* The periods side by side; the one shown is outlined in blue. */
+.periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.periods__item {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-width: 148px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--white);
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.periods__item:hover {
+  border-color: var(--blue-line);
+}
+
+.periods__item[aria-current='page'] {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue), var(--shadow-sm);
+}
+
+.periods__name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.vissues {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vissue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.vissue--warn {
+  background: var(--mist);
+  color: var(--text);
+}
+
+.vissue__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vissue__doc {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vissue .btn {
+  flex: none;
+}
+
+.vrows {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.vrows th {
+  padding: 0 12px 8px 0;
+  color: var(--dim);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.vrows td {
+  padding: 10px 12px 10px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  vertical-align: top;
+}
+
+.vrows .vrows__amount {
+  padding-right: 0;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.vrows__no {
+  width: 44px;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.vrows__what {
+  overflow-wrap: anywhere;
+}
+
+.vrows__changed td {
+  background: var(--amber-soft);
+}
+
+.vrows__docs summary {
+  margin-top: 4px;
+  color: var(--blue);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plain__row .vrows__docs {
+  flex-basis: 100%;
+}
+
+.vdocs {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.vdocs__more {
+  color: var(--dim);
+}
+
+.vstatus__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vstatus__blocked {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.vstatus__filed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.vnotbuilt {
+  padding: 0 4px;
+}
+
+/* The booking form's VAT: a panel of its own under the document's details. */
+.vatbox {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--mist);
+}
+
+.vatbox__title {
+  padding: 0 6px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.vatbox__note {
+  color: var(--blue);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.vatbox__warn {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.vatbox__goes {
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.vatlines {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.vatlines th {
+  padding: 0 10px 6px 0;
+  color: var(--dim);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.vatlines tbody th {
+  padding-top: 13px;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.vatlines td {
+  width: 40%;
+  padding: 4px 10px 4px 0;
+  vertical-align: top;
+}
+
+.vatlines td:last-child {
+  padding-right: 0;
+}
+
+.vatlines .field__input {
+  width: 100%;
+  min-height: 44px;
+}
+
+/* The client's taxes. */
+.taxrets {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+}
+
+.taxret__pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.taxret__qr {
+  width: 152px;
+}
+
+.taxret__qr svg {
+  width: 152px;
+  height: 152px;
+}
+
+.taxret__kv {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* On a narrow screen a period's state, its files and its filing come before the rows. */
+@media (max-width: 1080px) {
+  .pgrid--side-first .pgrid__side {
+    order: -1;
+  }
+}
+
+/* A part of the control statement keeps its whole name. */
+.vkv .plain__name {
+  overflow: visible;
+  white-space: normal;
+}
+
+@media (max-width: 560px) {
+  .vissue {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* The filing of a period: its choices, its files and the mark, in one form. */
+.vfile {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.vfile__mark {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.calm__pay {
+  margin-top: 20px;
+}

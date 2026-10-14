@@ -1,6 +1,7 @@
 // The accountants' side in the database. An accountant sees the companies she is assigned to; an administrator
 // sees all of them. Every function that reads a company's things is given the user and checks it.
 import { now } from '../db'
+import { selfVatOf } from '../app/vat-store'
 import { CATEGORIES, entryFor, type Category, type PaidBy } from '../app/booking'
 import { COMPANY_COLUMNS, DOC_FROM, MISSING, companyOf, docOf, type Company, type Doc, type Team, type User } from '../app/store'
 import type { DocKind } from '../app/match'
@@ -334,7 +335,7 @@ export function paidByOf(doc: Pick<Doc, 'paidPrivately' | 'kind'>, linked: boole
 export function exportCsv(rows: ExportRow[], vatPayer: boolean, headers: readonly string[], kinds: Record<DocKind, string>, paidNames: Record<PaidBy, string>): string {
   const lines = [headers.map(csvCell).join(';')]
   for (const { doc, paidOn, paidBy, bookedByName } of rows) {
-    const entry = entryFor({ kind: doc.kind, category: doc.category, totalCents: doc.totalCents, vatCents: doc.vatCents, vatPayer, vatDeduct: doc.vatDeduct ?? false, paidBy, account: doc.account })
+    const entry = entryFor({ kind: doc.kind, category: doc.category, totalCents: doc.totalCents, vatCents: doc.vatCents, vatPayer, vatDeduct: doc.vatDeduct ?? false, paidBy, account: doc.account, selfVat: selfVatOf(doc.vat) })
     const first = entry[0]
     const vat = entry.find((line) => line.what === 'vat')
     const base = doc.totalCents === null ? null : doc.totalCents - (doc.vatCents ?? 0)

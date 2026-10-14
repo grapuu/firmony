@@ -11,7 +11,8 @@
 // It exists only where the Worker is told so (DEMO=1 on a developer's own machine: src/app/routes.tsx).
 import { TERMS_VERSION } from '../config'
 import { now } from '../db'
-import { eventStatement, insertPaymentStatement, messageStatement } from './store'
+import { COMPANY_COLUMNS, DOC_COLUMNS, DOC_FROM, companyOf, docOf, eventStatement, insertPaymentStatement, messageStatement, vatCompanyOf, vatDocOf } from './store'
+import { proposeVat } from './vat'
 
 export const DEMO = {
   company: 'demo-company',
@@ -91,6 +92,9 @@ interface SampleDoc {
   deduct?: boolean
   booked?: { by: string; daysAgo: number }
   privately?: boolean
+  /** The other side's VAT number as the document gives it, and the reader's word that it is based abroad. */
+  vatId?: string
+  foreign?: boolean
   duplicateOf?: string
   /** The reader could not read it: only the file is known. */
   manual?: boolean
@@ -133,7 +137,8 @@ function originalOf(d: SampleDoc, today: string, buyer: string): { pdf: Uint8Arr
       { text: `Odberatel: ${d.kind === 'invoice_out' ? o.party : buyer}`, gap: 10 },
       { text: `${o.item}`, gap: 16 },
       { text: `Zaklad dane: ${euro(base)}`, gap: 8 },
-      { text: `DPH 23 %: ${euro(o.vat)}` },
+      { text: o.vat > 0 ? `DPH 23 %: ${euro(o.vat)}` : d.foreign ? 'Reverse charge: VAT to be accounted for by the recipient' : d.kind === 'invoice_out' ? 'Oslobodene od dane, dan plati odberatel' : 'Nie sme platitelia DPH' },
+      ...(d.vatId ? [{ text: `${d.kind === 'invoice_out' ? 'IC DPH odberatela' : 'IC DPH'}: ${d.vatId}` }] : []),
       { text: `Spolu na uhradu: ${euro(o.total)}`, size: 12, bold: true, gap: 4 },
       ...(d.iban ? [{ text: `IBAN: ${d.iban}`, gap: 12 }] : []),
       ...(d.vs ? [{ text: `Variabilny symbol: ${d.vs}` }] : []),
@@ -162,25 +167,37 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
       .bind(docId, how, by, ts, account, paymentRef, company)
   const user = (id: string, email: string, name: string, team: string | null) => db.prepare('INSERT INTO users (id, created_at, email, name, team) VALUES (?, ?, ?, ?, ?)').bind(id, ts - 60 * 86400, email, name, team)
 
+  // Days from today to a day of the month before: what the VAT return being filed now holds.
+  const lastMonth = shift(`${today.slice(0, 7)}-01`, -1).slice(0, 7)
+  const inLastMonth = (dayOfMonth: number) => Math.round((Date.parse(`${lastMonth}-${String(dayOfMonth).padStart(2, '0')}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000)
   const docs: SampleDoc[] = [
     // Ukážková firma: paired by themselves and booked.
-    { id: 'demo-doc-1', company: c1, arrived: 3, source: 'email', kind: 'invoice_in', party: 'Hostingový dom s. r. o.', ico: '36123456', iban: 'SK8975000000000012345671', number: '2026118', vs: '2026118', issued: -12, due: -2, total: 5990, vat: 1120, category: 'services', proposal: 'rule', deduct: true, booked: { by: DEMO.accountant, daysAgo: 2 } },
+    { id: 'demo-doc-1', company: c1, arrived: 3, source: 'email', kind: 'invoice_in', party: 'Hostingový dom s. r. o.', ico: '36123456', vatId: 'SK2020123456', iban: 'SK8975000000000012345671', number: '2026118', vs: '2026118', issued: -12, due: -2, total: 5990, vat: 1120, category: 'services', proposal: 'rule', deduct: true, booked: { by: DEMO.accountant, daysAgo: 2 } },
     { id: 'demo-doc-2', company: c1, arrived: 20, source: 'upload', addedBy: DEMO.user, kind: 'invoice_out', party: 'Digitálne štúdio Vlna s. r. o.', ico: '54123987', number: '20260005', vs: '20260005', issued: -21, due: -7, total: 123000, vat: 23000, category: 'sales', proposal: 'ai', booked: { by: DEMO.accountant, daysAgo: 19 } },
-    { id: 'demo-doc-3', company: c1, arrived: 9, source: 'email', kind: 'invoice_in', party: 'Coworking Nádvorie s. r. o.', ico: '51234567', iban: 'SK0809000000000123123123', number: 'FA1026', vs: '1026', issued: -9, due: -2, total: 15000, vat: 2805, category: 'services', proposal: 'rule', deduct: true, booked: { by: DEMO.accountant, daysAgo: 7 } },
-    { id: 'demo-doc-4', company: c1, arrived: 11, source: 'einvoice', kind: 'invoice_in', party: 'Mobilný operátor a. s.', ico: '35000001', iban: 'SK2111000000002612345678', number: '7781202610', vs: '7781202610', issued: -12, due: -2, total: 1999, vat: 374, category: 'services', proposal: 'ai', deduct: true, booked: { by: DEMO.accountant, daysAgo: 9 } },
+    { id: 'demo-doc-3', company: c1, arrived: 9, source: 'email', kind: 'invoice_in', party: 'Coworking Nádvorie s. r. o.', ico: '51234567', vatId: 'SK2121234567', iban: 'SK0809000000000123123123', number: 'FA1026', vs: '1026', issued: -9, due: -2, total: 15000, vat: 2805, category: 'services', proposal: 'rule', deduct: true, booked: { by: DEMO.accountant, daysAgo: 7 } },
+    { id: 'demo-doc-4', company: c1, arrived: 11, source: 'einvoice', kind: 'invoice_in', party: 'Mobilný operátor a. s.', ico: '35000001', vatId: 'SK2020000001', iban: 'SK2111000000002612345678', number: '7781202610', vs: '7781202610', issued: -12, due: -2, total: 1999, vat: 374, category: 'services', proposal: 'ai', deduct: true, booked: { by: DEMO.accountant, daysAgo: 9 } },
     { id: 'demo-doc-5', company: c1, arrived: 16, source: 'upload', addedBy: DEMO.user, kind: 'invoice_in', party: 'Grafické štúdio Linka', ico: '53456789', number: '1112026', vs: '1112026', issued: -18, due: -4, total: 32000, category: 'services', proposal: 'ai', deduct: false, booked: { by: DEMO.accountant, daysAgo: 14 } },
     // Ukážková firma: waiting for Lucia.
     { id: 'demo-doc-6', company: c1, arrived: 5, source: 'upload', addedBy: DEMO.user, kind: 'receipt', party: 'Papiernictvo Pero', issued: -5, total: 890, vat: 166, category: 'material', proposal: 'ai', deduct: true, privately: true },
-    { id: 'demo-doc-7', company: c1, arrived: 2, source: 'email', kind: 'invoice_in', party: 'Tlačiareň Farba s. r. o.', ico: '47654321', iban: 'SK4402000000003456789012', number: '2026-0412', vs: '20260412', issued: -2, due: 12, total: 8640, vat: 1616, category: 'services', proposal: 'ai', deduct: true },
+    { id: 'demo-doc-7', company: c1, arrived: 2, source: 'email', kind: 'invoice_in', party: 'Tlačiareň Farba s. r. o.', ico: '47654321', vatId: 'SK2023456789', iban: 'SK4402000000003456789012', number: '2026-0412', vs: '20260412', issued: -2, due: 12, total: 8640, vat: 1616, category: 'services', proposal: 'ai', deduct: true },
     { id: 'demo-doc-8', company: c1, arrived: 1, source: 'email', kind: 'invoice_in', party: '', issued: -3, total: 0, manual: true, fileName: 'sken-faktury.pdf', original: { party: 'Kvetinárstvo Lúka', number: '2026117', total: 4500, vat: 841, item: 'Kvety na otvorenie kancelarie' } },
-    { id: 'demo-doc-9', company: c1, arrived: 0, source: 'upload', addedBy: DEMO.user, kind: 'invoice_in', party: 'Hostingový dom s. r. o.', ico: '36123456', iban: 'SK8975000000000012345671', number: '2026118', vs: '2026118', issued: -12, due: -2, total: 5990, vat: 1120, category: 'services', proposal: 'rule', deduct: true, duplicateOf: 'demo-doc-1', fileName: 'faktura-hosting.pdf' },
+    { id: 'demo-doc-9', company: c1, arrived: 0, source: 'upload', addedBy: DEMO.user, kind: 'invoice_in', party: 'Hostingový dom s. r. o.', ico: '36123456', vatId: 'SK2020123456', iban: 'SK8975000000000012345671', number: '2026118', vs: '2026118', issued: -12, due: -2, total: 5990, vat: 1120, category: 'services', proposal: 'rule', deduct: true, duplicateOf: 'demo-doc-1', fileName: 'faktura-hosting.pdf' },
+    // Ukážková firma, the month before: what its VAT return holds, all of it booked. Advertising from Google in
+    // Ireland, on which the company pays the VAT itself and deducts it (B.1); a sale to a person who is not a business
+    // (D.2); a receipt for office supplies (B.3.1); a service to a Czech company, which the customer pays the VAT on.
+    { id: 'demo-doc-10', company: c1, arrived: -inLastMonth(5) - 1, source: 'email', kind: 'invoice_in', party: 'Google Ireland Limited', vatId: 'IE6388047V', foreign: true, number: '5432109876', issued: inLastMonth(4), due: inLastMonth(4), total: 4900, vat: 0, category: 'services', proposal: 'ai', deduct: true, booked: { by: DEMO.accountant, daysAgo: -inLastMonth(7) } },
+    { id: 'demo-doc-11', company: c1, arrived: -inLastMonth(18), source: 'upload', addedBy: DEMO.user, kind: 'invoice_out', party: 'Ján Kováč', number: '20260004', vs: '20260004', issued: inLastMonth(18), due: inLastMonth(28), total: 24600, vat: 4600, category: 'sales', proposal: 'ai', booked: { by: DEMO.accountant, daysAgo: -inLastMonth(20) } },
+    { id: 'demo-doc-12', company: c1, arrived: -inLastMonth(9), source: 'upload', addedBy: DEMO.user, kind: 'receipt', party: 'Kancelária Expres', issued: inLastMonth(8), total: 2460, vat: 460, category: 'material', proposal: 'ai', deduct: true, booked: { by: DEMO.accountant, daysAgo: -inLastMonth(11) } },
+    { id: 'demo-doc-13', company: c1, arrived: -inLastMonth(25), source: 'upload', addedBy: DEMO.user, kind: 'invoice_out', party: 'Digitální studio Brno s.r.o.', ico: '27654321', vatId: 'CZ27654321', number: '20260003', vs: '20260003', issued: inLastMonth(24), due: inLastMonth(28) + 14, total: 80000, vat: 0, category: 'sales', proposal: 'ai', booked: { by: DEMO.accountant, daysAgo: -inLastMonth(26) } },
     // Ateliér Nova.
-    { id: 'demo-doc-21', company: c2, arrived: 4, source: 'upload', addedBy: DEMO.secondUser, kind: 'invoice_in', party: 'Websupport s. r. o.', ico: '36421928', number: 'VF2026104418', vs: '2026104418', issued: -5, due: 9, total: 1290, vat: 241, category: 'services', proposal: 'ai' },
+    { id: 'demo-doc-21', company: c2, arrived: 4, source: 'upload', addedBy: DEMO.secondUser, kind: 'invoice_in', party: 'Websupport s. r. o.', ico: '36421928', vatId: 'SK2020222244', number: 'VF2026104418', vs: '2026104418', issued: -5, due: 9, total: 1290, vat: 241, category: 'services', proposal: 'ai' },
     { id: 'demo-doc-22', company: c2, arrived: 13, source: 'upload', addedBy: DEMO.secondUser, kind: 'invoice_out', party: 'Kaviareň Zrnko s. r. o.', ico: '52987654', number: '2026003', vs: '2026003', issued: -14, due: 0, total: 85000, category: 'sales', proposal: 'ai', booked: { by: DEMO.accountant2, daysAgo: 11 } },
+    // Ateliér Nova is not registered for VAT and paid for advertising on Instagram: a registration under § 7a is due.
+    { id: 'demo-doc-23', company: c2, arrived: 6, source: 'email', kind: 'invoice_in', party: 'Meta Platforms Ireland Limited', vatId: 'IE9692928F', foreign: true, number: 'FBADS-104-2026', issued: -7, due: -7, total: 3000, vat: 0, category: 'services', proposal: 'ai' },
   ]
 
   /** An invoice of Ukážková firma with its lines, and the document it is (booked, when it was issued). */
-  const sampleInvoice = (inv: { id: string; seq: number | null; customer: string; address: string; email: string | null; issued: number; due: number; lines: [string, number, string, number][]; sent: boolean }) => {
+  const sampleInvoice = (inv: { id: string; seq: number | null; customer: string; ico: string; address: string; email: string | null; issued: number; due: number; lines: [string, number, string, number][]; sent: boolean }) => {
     const lines = inv.lines.map(([description, milli, unit, cents], i) => ({ position: i + 1, description, milli, unit, cents, base: Math.round((milli * cents) / 1000) }))
     const base = lines.reduce((sum, l) => sum + l.base, 0)
     const vat = Math.round((base * 23) / 100)
@@ -190,12 +207,12 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
     return [
       db
         .prepare(
-          `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number, customer_name, customer_address, customer_email,
+          `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number, customer_name, customer_ico, customer_address, customer_email,
              issued_on, delivered_on, due_on, base_cents, vat_cents, total_cents, iban, token, document_id, sent_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
-          inv.id, c1, ts + inv.issued * 86400, DEMO.user, number ? 'issued' : 'draft', number ? 2026 : null, inv.seq, number, inv.customer, inv.address, inv.email,
+          inv.id, c1, ts + inv.issued * 86400, DEMO.user, number ? 'issued' : 'draft', number ? 2026 : null, inv.seq, number, inv.customer, inv.ico, inv.address, inv.email,
           day(inv.issued), day(inv.issued), day(inv.due), base, vat, base + vat, 'SK3112000000198742637541', token, number ? docId : null, inv.sent ? ts + inv.issued * 86400 + 600 : null,
         ),
       ...lines.map((l) =>
@@ -205,10 +222,10 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
         ? [
             db
               .prepare(
-                `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, booked_at, booked_by, invoice_id)
-                 VALUES (?, ?, ?, 'issued', ?, 'read', 'issued', 'invoice_out', ?, ?, ?, ?, ?, ?, ?, 'EUR', 'sales', ?, ?, ?)`,
+                `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, booked_at, booked_by, invoice_id)
+                 VALUES (?, ?, ?, 'issued', ?, 'read', 'issued', 'invoice_out', ?, ?, ?, ?, ?, ?, ?, ?, 'EUR', 'sales', ?, ?, ?)`,
               )
-              .bind(docId, c1, ts + inv.issued * 86400, DEMO.user, inv.customer, number, number, day(inv.issued), day(inv.due), base + vat, vat, ts + (inv.issued + 1) * 86400, DEMO.accountant, inv.id),
+              .bind(docId, c1, ts + inv.issued * 86400, DEMO.user, inv.customer, inv.ico, number, number, day(inv.issued), day(inv.due), base + vat, vat, ts + (inv.issued + 1) * 86400, DEMO.accountant, inv.id),
           ]
         : []),
     ]
@@ -229,8 +246,8 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
         .prepare(
           `INSERT INTO documents (id, company_id, created_at, source, added_by, file_key, file_type, file_name, file_bytes, status, read_by,
              kind, party, party_ico, party_iban, number, vs, issued_on, due_on, total_cents, vat_cents, currency,
-             category, proposal, vat_deduct, booked_at, booked_by, duplicate_of, paid_privately)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EUR', ?, ?, ?, ?, ?, ?, ?)`,
+             category, proposal, vat_deduct, booked_at, booked_by, duplicate_of, paid_privately, party_vat_id, foreign_party)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EUR', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           d.id,
@@ -261,6 +278,8 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
           d.booked?.by ?? null,
           d.duplicateOf ?? null,
           d.privately ? 1 : 0,
+          read ? (d.vatId ?? null) : null,
+          read && d.foreign !== undefined ? (d.foreign ? 1 : 0) : null,
         ),
     )
   }
@@ -291,7 +310,8 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
     user(DEMO.secondUser, 'eva@firmony.test', 'Eva Kollárová', null),
     db
       .prepare(
-        'INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo, note, contract_at, terms_version, signed_by, start_on) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?, ?, ?, ?, ?)',
+        `INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo, note, contract_at, terms_version, signed_by, start_on, dic, icdph, tax_office, tax_account)
+         VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?, ?, ?, ?, ?, '2120000007', 'SK2120000007', 'Košice', '7000123456')`,
       )
       .bind(c1, ts - 40 * 86400, 'Ukážková firma s. r. o.', 'Hlavná 1, 040 01 Košice', 'rast', 'k7m2qx4d', DEMO.accountant, 'Martin chce mať prehľad o DPH do 20. v mesiaci.', ts - 41 * 86400, TERMS_VERSION, 'Martin Novák', startOf(-40)),
     db
@@ -365,9 +385,9 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
 
     ...docStatements,
     // Invoices Martin issued in Firmony: one paid, one past its due date, one draft.
-    ...sampleInvoice({ id: 'demo-inv-1', seq: 6, customer: 'Agentúra Smer s. r. o.', address: 'Štúrova 20, 811 02 Bratislava', email: 'faktury@smer.test', issued: -5, due: 9, lines: [['Návrh webu, október', 1000, 'ks', 96000]], sent: true }),
-    ...sampleInvoice({ id: 'demo-inv-2', seq: 7, customer: 'Kníhkupectvo Na korze s. r. o.', address: 'Hlavná 48, 040 01 Košice', email: 'obchod@nakorze.test', issued: -30, due: -16, lines: [['Grafický návrh plagátu', 2000, 'ks', 20000], ['Úprava pre sociálne siete', 3000, 'hod', 3500]], sent: true }),
-    ...sampleInvoice({ id: 'demo-inv-3', seq: null, customer: 'Mestská knižnica Košice', address: 'Hlavná 48, 040 01 Košice', email: null, issued: 0, due: 14, lines: [['Workshop o online marketingu', 4000, 'hod', 4500]], sent: false }),
+    ...sampleInvoice({ id: 'demo-inv-1', seq: 6, customer: 'Agentúra Smer s. r. o.', ico: '50123456', address: 'Štúrova 20, 811 02 Bratislava', email: 'faktury@smer.test', issued: -5, due: 9, lines: [['Návrh webu, október', 1000, 'ks', 96000]], sent: true }),
+    ...sampleInvoice({ id: 'demo-inv-2', seq: 7, customer: 'Kníhkupectvo Na korze s. r. o.', ico: '47123456', address: 'Hlavná 48, 040 01 Košice', email: 'obchod@nakorze.test', issued: -30, due: -16, lines: [['Grafický návrh plagátu', 2000, 'ks', 20000], ['Úprava pre sociálne siete', 3000, 'hod', 3500]], sent: true }),
+    ...sampleInvoice({ id: 'demo-inv-3', seq: null, customer: 'Mestská knižnica Košice', ico: '00163252', address: 'Hlavná 48, 040 01 Košice', email: null, issued: 0, due: 14, lines: [['Workshop o online marketingu', 4000, 'hod', 4500]], sent: false }),
     pay(c1, DEMO.account, 'demo-12', -1, 118080, 'Agentúra Smer s. r. o.', { iban: 'SK1702000000003012345678', vs: '20260006', note: 'Faktúra 20260006' }),
     link(c1, DEMO.account, 'demo-doc-inv-1', 'demo-12', 'auto', null),
     link(c1, DEMO.account, 'demo-doc-1', 'demo-4', 'auto', null),
@@ -426,4 +446,16 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
 
     eventStatement(db, { company: c1, user: null, action: 'demo.seeded' }),
   ])
+
+  // What Lucia confirmed when she booked Ukážková firma's documents: their VAT as it was proposed.
+  const row = await db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.id = ?`).bind(c1).first<Record<string, unknown>>()
+  if (row) {
+    const company = vatCompanyOf(companyOf(row))
+    const booked = await db.prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.booked_at IS NOT NULL`).bind(c1).all<Record<string, unknown>>()
+    const confirmed = booked.results
+      .map(docOf)
+      .map((d) => ({ id: d.id, vat: proposeVat(vatDocOf(d), company) }))
+      .filter((d) => d.vat !== null)
+    if (confirmed.length > 0) await db.batch(confirmed.map((d) => db.prepare('UPDATE documents SET vat_mode = ?, vat_lines = ? WHERE id = ?').bind(d.vat?.mode ?? 'none', JSON.stringify(d.vat?.lines ?? []), d.id)))
+  }
 }

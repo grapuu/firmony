@@ -9,7 +9,7 @@ import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
 
-export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'messages' | 'company'
+export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'taxes' | 'messages' | 'company'
 
 /** The head of every page of the app: its own stylesheet after the site's, and its one small script. */
 export const InsideHead: FC<{ title: string }> = ({ title }) => (
@@ -60,6 +60,8 @@ const NAV: { place: Place; href: string; label: string; art: Art | null; tab: bo
   { place: 'documents', href: '/app/doklady', label: app.nav.documents, art: ART.paperReceipt, tab: true },
   // Invoices are issued now and then: on a phone they are in the bar's menu, the tabs keep what is done daily.
   { place: 'invoices', href: '/app/faktury', label: app.invoices.nav, art: ART.paperInvoice, tab: false },
+  // Taxes once a month, and only for a company registered for VAT: the column, and on a phone the bar's menu.
+  { place: 'taxes', href: '/app/dane', label: app.nav.taxes, art: ART.paperReturn, tab: false },
   { place: 'messages', href: '/app/spravy', label: app.nav.messages, art: ART.chat, tab: true },
 ]
 const TABS = NAV.filter((item) => item.tab)
@@ -151,7 +153,7 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
             </div>
           )}
           <nav class="side__nav">
-            {NAV.map((item) => (
+            {NAV.filter((item) => item.place !== 'taxes' || who.company.vatStatus !== 'none').map((item) => (
               <a class="side__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
                 <Tile art={item.art} size="sm" />
                 <span class="side__label">{item.label}</span>
@@ -190,6 +192,11 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
               <a class="barmenu__item" href="/app/faktury">
                 {app.invoices.nav}
               </a>
+              {who.company.vatStatus !== 'none' ? (
+                <a class="barmenu__item" href="/app/dane">
+                  {app.nav.taxes}
+                </a>
+              ) : null}
               <a class="barmenu__item" href="/app/firma">
                 {app.nav.settings}
               </a>

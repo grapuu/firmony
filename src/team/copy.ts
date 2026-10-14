@@ -31,6 +31,7 @@ export const team = typesetAll({
     done: 'Hotovo',
     waits: 'Čaká na odpoveď',
     vat: 'Platiteľ DPH',
+    vat7a: 'Registrovaná podľa § 7a',
     noVat: 'Neplatiteľ DPH',
     nobody: 'Bez účtovníčky',
     plan: (name: string) => typeset(`Balík ${name}`),
@@ -76,8 +77,21 @@ export const team = typesetAll({
     taxOffice: 'Daňový úrad',
     taxOfficeNone: 'Vyberte',
     taxAccount: 'Číslo osobného daňového účtu',
-    taxAccountHint: 'Z osobnej internetovej zóny klienta (bez predčíslia). Klient potom dostane presný príkaz na úhradu DPH aj s QR kódom.',
+    taxAccountHint: 'Z osobnej internetovej zóny klienta: základné číslo, celý účet alebo IBAN. Klient potom dostane presný príkaz na úhradu DPH aj s QR kódom.',
+    vatSinceHint: 'Napríklad 1. 1. 2027. Doklady spred tohto dňa do priznania nepôjdu.',
+    vatCarry: 'Nadmerný odpočet spred nás',
+    vatCarryHint: 'Ak posledné priznanie pred nami skončilo nadmerným odpočtom, ktorý sa nevracal hneď (§ 79 ods. 2), napíšte ho: odpočíta sa v našom prvom období. Inak nechajte prázdne.',
     vatOpen: 'DPH: priznanie a kontrolný výkaz',
+    vatCard: 'DPH',
+    detailsErrors: {
+      dic: 'DIČ má 10 číslic.',
+      icdph: 'IČ DPH píšte ako SK a 10 číslic.',
+      since: 'Dátum napíšte v tvare 1. 1. 2027.',
+      office: 'Vyberte daňový úrad zo zoznamu.',
+      account: 'Toto číslo osobného účtu nepoznáme. Odpíšte ho z osobnej internetovej zóny klienta: základné číslo, celý účet alebo IBAN.',
+      carry: 'Sumu napíšte v eurách, napríklad 120,50.',
+    },
+    detailsFix: 'Údaje sme neuložili: opravte, čo je označené.',
     plan: 'Balík',
     accountant: 'Účtovníčka',
     note: 'Poznámka o klientovi',
@@ -103,9 +117,7 @@ export const team = typesetAll({
     start: (day: string) => typeset(`Začiatok ${day}.`),
     poaMissing: 'Plnú moc klient ešte nenahral. V aplikácii ju má medzi prvými krokmi.',
     poaLead: (director: string | null) =>
-      typeset(
-        `Skontrolujte, že ju podpísal ${director ? `konateľ ${director}` : 'konateľ z obchodného registra'}, a podajte ju na finančnú správu a do poisťovní. Potom ju označte ako overenú.`,
-      ),
+      typeset(`Skontrolujte, že ju podpísal ${director ? `konateľ ${director}` : 'konateľ z obchodného registra'}, a podajte ju na finančnú správu a do poisťovní. Potom ju označte ako overenú.`),
     poaCheck: 'Overená a podaná',
     poaChecked: (when: string, who: string | null) => typeset(who ? `Overená ${when}, ${who}` : `Overená ${when}`),
     poaAdded: (when: string, who: string | null) => typeset(who ? `${when}, ${who}` : when),
@@ -114,8 +126,10 @@ export const team = typesetAll({
     poaState: { missing: 'Plná moc chýba', waiting: 'Plná moc na overenie', checked: 'Plná moc overená' },
     ends: (day: string) => typeset(`Končí ${day}`),
     ended: (day: string) => typeset(`Skončila ${day}`),
-    endsLead: (when: string, day: string) => typeset(`Klient vypovedal zmluvu ${when}. Skončí ${day}: dokončite práce za zaplatené obdobia a do 30 dní odovzdajte účtovníctvo nižšie (bod 10.4 podmienok).`),
-    endedByUs: (when: string, day: string) => typeset(`Zmluvu sme ukončili ${when}. Posledný deň je ${day}: dokončite práce za zaplatené obdobia a do 30 dní odovzdajte účtovníctvo nižšie (bod 10.4 podmienok).`),
+    endsLead: (when: string, day: string) =>
+      typeset(`Klient vypovedal zmluvu ${when}. Skončí ${day}: dokončite práce za zaplatené obdobia a do 30 dní odovzdajte účtovníctvo nižšie (bod 10.4 podmienok).`),
+    endedByUs: (when: string, day: string) =>
+      typeset(`Zmluvu sme ukončili ${when}. Posledný deň je ${day}: dokončite práce za zaplatené obdobia a do 30 dní odovzdajte účtovníctvo nižšie (bod 10.4 podmienok).`),
     afterEnd: (intake: string, handover: string, purge: string) =>
       typeset(`Doklady za posledný mesiac berie aplikácia do ${intake}. Účtovníctvo odovzdajte do ${handover}. Údaje firmy sa vymažú ${purge}; zmluva, plná moc a identifikácia zostanú päť rokov.`),
     handoverDue: (day: string) => typeset(`Odovzdať do ${day}`),
@@ -127,7 +141,9 @@ export const team = typesetAll({
   end: {
     title: 'Ukončiť zmluvu z našej strany',
     lead: (earliest: string) =>
-      typeset(`Pri výpovedi z našej strany zmluva skončí najskôr ${earliest} (bod 10.2 podmienok). Skôr len pri odstúpení podľa bodu 10.3 alebo dohodou s klientom. Klient dostane správu v aplikácii.`),
+      typeset(
+        `Pri výpovedi z našej strany zmluva skončí najskôr ${earliest} (bod 10.2 podmienok). Skôr len pri odstúpení podľa bodu 10.3 alebo dohodou s klientom. Klient dostane správu v aplikácii.`,
+      ),
     day: 'Posledný deň zmluvy',
     dayHint: 'Napríklad 31. 12. 2026',
     reason: 'Dôvod (vidí ho len tím)',
@@ -204,7 +220,8 @@ export const team = typesetAll({
     yes: 'áno',
     no: 'nie',
     risk: 'Riziko klienta',
-    riskLead: 'Zaradenie podľa programu: nízke, štandardné alebo zvýšené. Pri zvýšenom riziku platí zvýšená starostlivosť: súhlas konateľa so spoluprácou, pôvod peňazí klienta a mesačné sledovanie jeho platieb.',
+    riskLead:
+      'Zaradenie podľa programu: nízke, štandardné alebo zvýšené. Pri zvýšenom riziku platí zvýšená starostlivosť: súhlas konateľa so spoluprácou, pôvod peňazí klienta a mesačné sledovanie jeho platieb.',
     levels: { low: 'Nízke', standard: 'Štandardné', high: 'Zvýšené' },
     suggested: (level: string) => typeset(`Podľa údajov klienta navrhujeme: ${level.toLowerCase()}.`),
     riskNote: 'Prečo (nepovinné)',
@@ -322,6 +339,21 @@ export const team = typesetAll({
     vatGoesNowhere: 'Do priznania ani kontrolného výkazu nepôjde.',
     vatSumOff: (lines: string, total: string) => typeset(`Riadky DPH spolu ${lines}, doklad ${total}. Skontrolujte rozpis.`),
     vatForeign: (currency: string) => typeset(`Doklad je v ${currency}: sumy DPH napíšte v eurách, kurzom ECB z predchádzajúceho dňa pred dátumom dodania.`),
+    vatKindFirst: 'DPH navrhneme, keď vyberiete druh dokladu (bloček, prijatá alebo vydaná faktúra) a doklad uložíte.',
+    vatNoTaxHere: 'Pri tomto režime sa DPH neuvádza, len základ.',
+    vatErrors: {
+      amount: 'Sumu napíšte ako číslo, napríklad 12,40 alebo -12,40.',
+      base: 'K DPH doplňte aj základ.',
+      negative: 'Záporné sumy má len opravná faktúra: doplňte, ktorú faktúru opravuje.',
+      lines: 'Doplňte rozpis podľa sadzieb: aspoň jeden základ.',
+      id: 'IČ DPH píšte s kódom krajiny, napríklad SK2020000000 alebo IE6388047V.',
+      supplierId: 'Faktúra s odpočtom DPH potrebuje IČ DPH dodávateľa (SK a 10 číslic). Doplňte ho z faktúry; ak na nej nie je, DPH si odpočítať nemožno.',
+      noTax: 'Pri tomto režime sa DPH na doklade neuvádza: nechajte len základ.',
+      zeroOnly: 'Pri tomto režime patrí základ do riadku 0 %.',
+      mode: 'Tento režim k druhu dokladu nepatrí.',
+      date: 'Dátum napíšte v tvare 13. 10. 2026.',
+      period: 'Vyberte obdobie zo zoznamu.',
+    },
   },
   queue: {
     title: 'Na zaúčtovanie',
@@ -391,8 +423,7 @@ export const team = typesetAll({
     clients: (n: number) => typeset(`${n} ${plural(n, 'klient', 'klienti', 'klientov')}`),
     errors: { name: 'Doplňte meno.', email: 'Skontrolujte e-mail.' },
     inviteSubject: `${BRAND.name}: prístup pre tím`,
-    inviteBody: (name: string, link: string) =>
-      [`Dobrý deň, ${name},`, '', `máte prístup do ${BRAND.name} pre účtovníkov. Prihlásite sa svojím e-mailom tu:`, '', link, '', BRAND.name].join('\n'),
+    inviteBody: (name: string, link: string) => [`Dobrý deň, ${name},`, '', `máte prístup do ${BRAND.name} pre účtovníkov. Prihlásite sa svojím e-mailom tu:`, '', link, '', BRAND.name].join('\n'),
   },
   vat: {
     title: 'DPH',
@@ -405,7 +436,7 @@ export const team = typesetAll({
     deadline: (day: string) => typeset(`Podať a zaplatiť do ${day}`),
     ready: 'Pripravené na podanie',
     blocked: (n: number) => typeset(`Pred podaním treba vyriešiť: ${n}`),
-    filed: (day: string, who: string) => typeset(`Podané ${day}, ${who}`),
+    filed: (day: string, who: string, kind: 'R' | 'O' | 'D' = 'R') => typeset(`${kind === 'O' ? 'Opravné priznanie podané' : kind === 'D' ? 'Dodatočné priznanie podané' : 'Podané'} ${day}, ${who}`),
     nothing: 'V období nevznikla daňová povinnosť ani nárok na odpočítanie dane.',
     nothing7a: 'V období nič: osoba registrovaná podľa § 7a priznanie nepodáva.',
     toPay: (amount: string) => typeset(`Na úhradu ${amount}`),
@@ -424,7 +455,7 @@ export const team = typesetAll({
       simplifiedVatId: 'Odpočet z blokov dosiahol 3 000 €: kontrolný výkaz ich chce podľa IČ DPH dodávateľa a tento ho nemá.',
       number: 'Chýba číslo dokladu, alebo je dlhšie ako 32 znakov.',
       corrects: 'Chýba číslo opravovanej faktúry.',
-      needs7a: 'Firma kupuje služby zo zahraničia, ale nie je registrovaná pre DPH. Musí sa registrovať podľa § 7a a DPH z nich platiť.',
+      needs7a: 'Služba od zahraničného dodávateľa: firma, ktorá nie je registrovaná pre DPH, sa musí pred takým nákupom registrovať podľa § 7a a DPH z neho zaplatiť.',
       summary: 'Dodanie do EÚ: firma za obdobie podáva aj súhrnný výkaz. Ten Firmony zatiaľ nepripravuje, podajte ho ručne.',
       deduct7a: 'Osoba registrovaná podľa § 7a si DPH neodpočítava: odpočet sme nezapočítali.',
       domestic7a: 'Osoba registrovaná podľa § 7a uvádza len služby a tovar zo zahraničia; tento doklad sme vynechali.',
@@ -461,7 +492,7 @@ export const team = typesetAll({
       r10b: 'Daň platí príjemca (§ 69), 23 %: daň',
       r13: 'Oslobodené od dane: základ',
       r14: 'z toho dodanie tovaru do EÚ (§ 43)',
-      r15: 'z toho vývoz a služby k nemu (§ 46, 47, 48)',
+      r15: 'z toho vývoz a služby oslobodené podľa § 46, § 47 a § 48 ods. 8',
       r17: 'Daň celkom',
       r18: 'Odpočítanie dane, 19 %',
       r18a: 'Odpočítanie dane, 5 %',
@@ -474,10 +505,15 @@ export const team = typesetAll({
       r28: 'Oprava odpočítanej dane (§ 53)',
       r32: 'Vlastná daňová povinnosť',
       r33: 'Nadmerný odpočet',
+      r34: 'Odpočíta sa nadmerný odpočet z predchádzajúceho obdobia',
       r35: 'Vlastná daňová povinnosť na úhradu',
+      r36: 'Rozdiel oproti podanému priznaniu',
+      r37: 'Na vysporiadanie so štátom',
     } as Record<string, string>,
     statement: 'Kontrolný výkaz',
-    statementNone: 'Kontrolný výkaz bude prázdny: podáva sa len s údajmi o firme.',
+    statementNone: 'Kontrolný výkaz obsahuje len údaje o firme: v jeho častiach nie je čo uviesť, podáva sa však aj tak.',
+    statementNil: 'Kontrolný výkaz sa nepodáva: priznanie je nulové.',
+    statementGoods: 'Kontrolný výkaz sa nepodáva: priznanie obsahuje len dodanie tovaru do EÚ alebo vývoz, bez odpočítania dane.',
     statement7a: 'Osoba registrovaná podľa § 7a kontrolný výkaz nepodáva.',
     parts: {
       A1: 'A.1 Vystavené faktúry s DPH podnikateľom',
@@ -492,30 +528,112 @@ export const team = typesetAll({
     docs: (n: number) => typeset(`${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}`),
     download: 'Stiahnuť priznanie (XML)',
     downloadKv: 'Stiahnuť kontrolný výkaz (XML)',
+    downloadKind: { R: 'Stiahnuť priznanie (XML)', O: 'Stiahnuť opravné priznanie (XML)', D: 'Stiahnuť dodatočné priznanie (XML)' } as Record<'R' | 'O' | 'D', string>,
+    downloadKvKind: { R: 'Stiahnuť kontrolný výkaz (XML)', O: 'Stiahnuť opravný kontrolný výkaz (XML)', D: 'Stiahnuť dodatočný kontrolný výkaz (XML)' } as Record<'R' | 'O' | 'D', string>,
+    markCorrection: 'Označiť opravu ako podanú',
+    markCorrectionLead: 'Keď opravu podáte na finančnú správu, označte ju tu. Klientovi napíšeme, čo sa pre neho mení.',
+    fastQ: 'Nadmerný odpočet: vrátiť do 30 dní po lehote (§ 79 ods. 2)?',
+    fastYes: 'Áno, vrátiť do 30 dní',
+    fastYesHint: 'Firma za posledných 6 mesiacov nemala nedoplatky na daniach, clách a odvodoch spolu nad 1 000 €.',
+    fastNo: 'Nie',
+    fastNoHint: 'Odpočíta sa od dane za ďalšie obdobie a zvyšok sa vráti po ňom.',
+    found: 'Deň zistenia',
+    foundHint: 'Kedy sa zistilo, že priznanie treba opraviť. Od neho plynie lehota na podanie.',
+    settledQ: (label: string) => typeset(`Nadmerný odpočet za ${label} už finančná správa vrátila alebo sa odpočítal v ďalšom období?`),
+    settledYes: 'Áno',
+    settledNo: 'Ešte nie',
+    settlement: (r36: string, r37: string | null) => typeset(r37 ? `Riadok 36: ${r36}. Riadok 37: ${r37}.` : `Riadok 36: ${r36}. Riadok 37 sa nevypĺňa: so štátom sa nič nevysporiadava.`),
+    carried: (amount: string) => typeset(`Odpočítava sa nadmerný odpočet z predchádzajúceho obdobia: ${amount}.`),
+    previous: (label: string) => typeset(`Najprv treba podať priznanie za ${label}: jeho nadmerný odpočet sa môže odpočítať tu.`),
+    previousOpen: 'Otvoriť',
     downloadBlocked: 'Súbory pripravíme, keď bude všetko vyriešené.',
     markFiled: 'Označiť ako podané',
     markLead: 'Keď priznanie (a kontrolný výkaz) podáte na finančnú správu, označte ho tu. Klientovi pošleme do správ, koľko a kam zaplatiť.',
     unmark: 'Zrušiť označenie',
+    unmarkCorrection: 'Zrušiť označenie opravy',
     filedFlash: 'Označené ako podané. Klient dostal správu.',
     unfiledFlash: 'Označenie sme zrušili.',
     blockedFlash: 'Najprv vyriešte, čo bráni podaniu.',
-    changed: 'Od podania sa doklady obdobia zmenili a čísla už nesedia s podaným priznaním. Treba dodatočné priznanie (zatiaľ ručne v eDane).',
+    changedO: 'Od podania sa doklady obdobia zmenili. Lehota ešte neuplynula: podajte opravné priznanie, ktoré podané nahradí (§ 16 ods. 1 daňového poriadku).',
+    changedD: (day: string) =>
+      typeset(
+        `Od podania sa doklady obdobia zmenili a lehota uplynula: treba dodatočné priznanie. Podajte ho do ${day}; v tej istej lehote je splatná aj daň, ktorú pridáva (§ 16 ods. 2 daňového poriadku).`,
+      ),
+    changedKvO: 'Zmenil sa len kontrolný výkaz: pred uplynutím lehoty podajte opravný, ktorý podaný nahradí.',
+    changedKvD: 'Zmenil sa len kontrolný výkaz: podajte dodatočný s riadkami, ktoré sa menia (§ 78a ods. 12 zákona o DPH).',
+    correctionBlocked: 'Opravu pripravíme, keď bude všetko vyriešené.',
     changedRows: (rows: string) => typeset(`Zmenené riadky: ${rows}.`),
     periods: 'Obdobia',
     prev: 'Predchádzajúce',
     next: 'Nasledujúce',
-    notBuilt: 'Firmony zatiaľ nepripravuje: dovoz (r. 11c až 12e, 22 až 23c), trojstranný obchod, tuzemský prenos pri dodaní (A.2), tržby z eKasy (D.1), nevymožiteľné pohľadávky, koeficient, dodatočné priznanie a súhrnný výkaz. Ak sa niečo z toho firmy týka, doplňte to v eDane.',
-    clientMessage: (label: string, pay: string | null, refund: string | null, due: string, vs: string, account: string | null) =>
+    state: { filed: 'Podané', changed: 'Zmenené po podaní', running: 'Obdobie beží', blocked: 'Treba vyriešiť', ready: 'Pripravené', none: 'Nepodáva sa' },
+    running: (end: string) => typeset(`Obdobie ešte beží, končí ${end}. Priznanie sa podáva až po jeho skončení.`),
+    registration: 'Registrácia',
+    deadlineLabel: 'Podať a zaplatiť do',
+    result: 'Výsledok',
+    inPeriod: 'Doklady v období',
+    accountMissing: 'Doplňte v údajoch firmy číslo osobného daňového účtu klienta: potom mu k sume pošleme aj presný príkaz s QR kódom.',
+    more: (n: number) => typeset(`a ${n} ďalších`),
+    needs7aTitle: 'Nákupy zo zahraničia',
+    needs7aLead:
+      'Firma nie je registrovaná pre DPH, ale nakupuje služby od zahraničných dodávateľov (napríklad reklamu od Googlu či Mety alebo softvér). Pred takým nákupom sa musí registrovať podľa § 7a, a to bez ohľadu na sumu, a DPH z neho zaplatiť. Po registrácii to zmeňte v údajoch firmy.',
+    needs7aNone: 'Za posledné mesiace sme nič také nenašli.',
+    notBuilt:
+      'Firmony zatiaľ nepripravuje: dovoz (r. 11c až 12e, 22 až 23c), trojstranný obchod, tuzemský prenos pri dodaní (A.2), tržby z eKasy (D.1), nevymožiteľné pohľadávky, koeficient a súhrnný výkaz. Ak sa niečo z toho firmy týka, doplňte to v eDane.',
+    /** What the client reads when a return is filed: what to pay, by when and where, or what comes back. */
+    clientMessage: (m: {
+      label: string
+      kind: 'R' | 'O' | 'D'
+      left: string | null
+      paid: string | null
+      back: string | null
+      fast: boolean
+      over: string | null
+      due: string
+      vs: string
+      account: string | null
+    }) =>
       typeset(
         [
-          `Podali sme priznanie k DPH za ${label}.`,
-          pay
-            ? `Na úhradu: ${pay} do ${due}. Pošlite to na Váš osobný daňový účet${account ? ` ${account}` : ' (predčíslie 500240, kód banky 8180)'} s variabilným symbolom ${vs}. Príkaz s QR kódom nájdete v aplikácii v časti Dane.`
-            : refund
-              ? `Vyšiel nadmerný odpočet ${refund}: finančná správa ho vráti na účet firmy, nič neplatíte.`
+          m.kind === 'O'
+            ? `Podali sme opravné priznanie k DPH za ${m.label}: nahrádza to, ktoré sme podali predtým.`
+            : m.kind === 'D'
+              ? `Podali sme dodatočné priznanie k DPH za ${m.label}: po podaní sa zmenili doklady obdobia.`
+              : `Podali sme priznanie k DPH za ${m.label}.`,
+          m.left
+            ? [
+                m.paid ? `Zaplatených ${m.paid} sme započítali.` : null,
+                m.account
+                  ? `Na úhradu je ${m.left} do ${m.due}: na účet ${m.account} s variabilným symbolom ${m.vs}. V časti Dane je príkaz aj s QR kódom pre Vašu banku.`
+                  : `Na úhradu je ${m.left} do ${m.due}, s variabilným symbolom ${m.vs}, na Váš osobný daňový účet pre DPH. Pošlite nám, prosím, jeho číslo z osobnej internetovej zóny na financnasprava.sk; potom Vám v časti Dane pripravíme príkaz aj s QR kódom.`,
+              ]
+                .filter(Boolean)
+                .join(' ')
+            : m.back
+              ? m.kind === 'D'
+                ? `Finančná správa Vám vráti ${m.back}. Nič neplatíte.`
+                : m.fast
+                  ? `Vyšiel nadmerný odpočet ${m.back}: finančná správa ho vráti na účet firmy do 30 dní po lehote na podanie. Nič neplatíte.`
+                  : `Vyšiel nadmerný odpočet ${m.back}: odpočíta sa od DPH za ďalšie obdobie a zvyšok Vám finančná správa vráti na účet firmy. Nič neplatíte.`
               : 'Nič neplatíte.',
-        ].join(' '),
+          m.over ? `Zaplatili ste o ${m.over} viac, než za obdobie vyšlo. Preplatok finančná správa započíta s ďalšou daňou alebo ho vráti, postaráme sa o to.` : null,
+        ]
+          .filter(Boolean)
+          .join(' '),
       ),
+    clientUnfiled: (label: string) => typeset(`Predchádzajúcu správu o priznaní k DPH za ${label} rušíme: priznanie ešte nie je podané. Keď ho podáme, napíšeme Vám.`),
+    clientUnfiledCorrection: (label: string) =>
+      typeset(`Predchádzajúcu správu o oprave priznania k DPH za ${label} rušíme: oprava ešte nie je podaná a platí priznanie, ktoré sme podali predtým. V časti Dane je, čo z neho platiť.`),
+    flashes: {
+      filed: 'Označené ako podané. Klient má v správach, koľko a kam zaplatiť.',
+      corrected: 'Oprava je označená ako podaná. Klient má v správach, čo sa pre neho mení.',
+      correctedKv: 'Kontrolný výkaz je označený ako podaný. Klienta sa netýka, nič sme mu nepísali.',
+      unfiled: 'Označenie sme zrušili a klientovi sme to napísali.',
+      blocked: 'Najprv vyriešte, čo bráni podaniu.',
+      running: 'Obdobie ešte beží.',
+      already: 'Toto obdobie je už označené ako podané.',
+      notNeeded: 'Tento súbor teraz podávať netreba.',
+    },
   },
   errors: {
     notFound: 'Toto sme nenašli.',
@@ -525,5 +643,23 @@ export const team = typesetAll({
     messageEmpty: 'Napíšte, prosím, odpoveď.',
     messageLong: `Správa je pridlhá (najviac ${APP.messageChars} znakov).`,
   },
-  csv: ['Dátum dokladu', 'Druh', 'Číslo', 'Partner', 'IČO', 'Suma s DPH', 'DPH', 'Základ', 'Na čo', 'MD', 'D', 'Odpočet DPH', 'Dátum úhrady', 'Úhrada', 'Variabilný symbol', 'Zaúčtovala', 'Zaúčtované'],
+  csv: [
+    'Dátum dokladu',
+    'Druh',
+    'Číslo',
+    'Partner',
+    'IČO',
+    'Suma s DPH',
+    'DPH',
+    'Základ',
+    'Na čo',
+    'MD',
+    'D',
+    'Odpočet DPH',
+    'Dátum úhrady',
+    'Úhrada',
+    'Variabilný symbol',
+    'Zaúčtovala',
+    'Zaúčtované',
+  ],
 })

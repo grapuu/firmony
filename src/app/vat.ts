@@ -335,10 +335,67 @@ export function periodOfDoc(doc: VatDoc, data: VatData, company: VatCompany, fil
 
 /** The rows of the return as the schema names them, in its order. */
 export const ROWS = [
-  'r01', 'r01a', 'r02', 'r02a', 'r03', 'r04', 'r05', 'r05a', 'r06', 'r06a', 'r07', 'r08', 'r09', 'r09a', 'r09b', 'r10', 'r10a', 'r10b',
-  'r11', 'r11a', 'r11b', 'r11c', 'r11d', 'r11e', 'r12', 'r12a', 'r12b', 'r12c', 'r12d', 'r12e', 'r13', 'r14', 'r15', 'r16', 'r17',
-  'r18', 'r18a', 'r19', 'r20', 'r20a', 'r21', 'r22', 'r22a', 'r23', 'r23a', 'r23b', 'r23c', 'r24', 'r25', 'r26', 'r27', 'r28', 'r29',
-  'r30', 'r31', 'r32', 'r33', 'r34', 'r35', 'r36', 'r37',
+  'r01',
+  'r01a',
+  'r02',
+  'r02a',
+  'r03',
+  'r04',
+  'r05',
+  'r05a',
+  'r06',
+  'r06a',
+  'r07',
+  'r08',
+  'r09',
+  'r09a',
+  'r09b',
+  'r10',
+  'r10a',
+  'r10b',
+  'r11',
+  'r11a',
+  'r11b',
+  'r11c',
+  'r11d',
+  'r11e',
+  'r12',
+  'r12a',
+  'r12b',
+  'r12c',
+  'r12d',
+  'r12e',
+  'r13',
+  'r14',
+  'r15',
+  'r16',
+  'r17',
+  'r18',
+  'r18a',
+  'r19',
+  'r20',
+  'r20a',
+  'r21',
+  'r22',
+  'r22a',
+  'r23',
+  'r23a',
+  'r23b',
+  'r23c',
+  'r24',
+  'r25',
+  'r26',
+  'r27',
+  'r28',
+  'r29',
+  'r30',
+  'r31',
+  'r32',
+  'r33',
+  'r34',
+  'r35',
+  'r36',
+  'r37',
 ] as const
 export type Row = (typeof ROWS)[number]
 export type Rows = Record<Row, number>
@@ -355,14 +412,68 @@ const TAX_ROWS: readonly Row[] = ['r02', 'r02a', 'r04', 'r06', 'r06a', 'r08', 'r
 // The control statement
 // ---------------------------------------------------------------------------------------------------------------
 
-export interface KvA1 { odb: string | null; f: string; den: string; z: number; d: number; s: number; doc: string }
-export interface KvB1 { dod: string | null; f: string; den: string; z: number; d: number; s: number; o: number; doc: string }
-export interface KvB2 { dod: string; f: string; den: string; z: number; d: number; s: number; o: number; doc: string }
-export interface KvB3 { z: number; d: number; o: number }
-export interface KvB32 extends KvB3 { dod: string }
-export interface KvC1 { odb: string | null; fo: string; fp: string; zr: number; dr: number; s: number; doc: string }
-export interface KvC2 { dod: string | null; fo: string; fp: string; zr: number; dr: number; s: number; or: number; doc: string }
-export interface KvD2 { z: number; d: number; zzn: number; dzn: number }
+export interface KvA1 {
+  odb: string | null
+  f: string
+  den: string
+  z: number
+  d: number
+  s: number
+  doc: string
+}
+export interface KvB1 {
+  dod: string | null
+  f: string
+  den: string
+  z: number
+  d: number
+  s: number
+  o: number
+  doc: string
+}
+export interface KvB2 {
+  dod: string
+  f: string
+  den: string
+  z: number
+  d: number
+  s: number
+  o: number
+  doc: string
+}
+export interface KvB3 {
+  z: number
+  d: number
+  o: number
+}
+export interface KvB32 extends KvB3 {
+  dod: string
+}
+export interface KvC1 {
+  odb: string | null
+  fo: string
+  fp: string
+  zr: number
+  dr: number
+  s: number
+  doc: string
+}
+export interface KvC2 {
+  dod: string | null
+  fo: string
+  fp: string
+  zr: number
+  dr: number
+  s: number
+  or: number
+  doc: string
+}
+export interface KvD2 {
+  z: number
+  d: number
+  zzn: number
+  dzn: number
+}
 
 export interface Kv {
   a1: KvA1[]
@@ -418,7 +529,11 @@ export interface PeriodResult {
   issues: Issue[]
   /** Nothing to report: a payer files the return with "nevznikla daňová povinnosť". */
   nothing: boolean
-  /** A payer files the control statement; a person registered under § 7a does not. */
+  /**
+   * Whether the control statement is filed (§ 78a(1)): by a payer for every return, also when none of its parts has
+   * a line, except a nil return and one that holds only goods supplied to the EU (§ 43) or exported (§ 47) with no
+   * deduction. A person registered under § 7a never files one.
+   */
   statement: boolean
 }
 
@@ -433,9 +548,11 @@ export function kvNumber(number: string | null | undefined): string {
 /**
  * Works out a period: the documents it holds, the rows of the return, the parts of the control statement and what
  * keeps them from being filed. `docs` are all the company's documents that may fall in it (booked or not);
- * `filed` names the periods already filed, with the day each was filed.
+ * `filed` names the periods already filed, with the day each was filed; `carriedIn` is the excess deduction of the
+ * period before that was not refunded under § 79(2), which a payer deducts from this period's own liability (row 34,
+ * § 79(1); what it cannot deduct, the tax office refunds).
  */
-export function workOut(company: VatCompany, period: string, docs: VatDoc[], filed: ReadonlyMap<string, string> = new Map()): PeriodResult {
+export function workOut(company: VatCompany, period: string, docs: VatDoc[], filed: ReadonlyMap<string, string> = new Map(), carriedIn = 0): PeriodResult {
   const rows = emptyRows()
   const kv: Kv = { a1: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }
   const sources = new Map<string, Set<string>>()
@@ -464,7 +581,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
   for (const doc of docs) {
     // A document nobody has read yet may well be the period's: it keeps the period from being filed until it is.
     if (doc.kind === null && !doc.booked) {
-      if (periodOf(doc.issuedOn ?? doc.receivedOn, payer && company.quarterly) === period) issue('block', 'unbooked', doc.id)
+      if (company.status !== 'none' && periodOf(doc.issuedOn ?? doc.receivedOn, payer && company.quarterly) === period) issue('block', 'unbooked', doc.id)
       continue
     }
     const counted = vatOf(doc, company)
@@ -476,6 +593,12 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       continue
     }
     held.push({ doc, data, proposed })
+    if (company.status === 'none') {
+      // Nothing is filed; a service from abroad needs a registration under § 7a before it is received, booked or not
+      // (goods from the EU come under § 7, from 14 000 € a year).
+      if (isReceived(doc.kind) && data.mode === 'reverse') issue('warn', 'needs7a', doc.id)
+      continue
+    }
     if (!doc.booked) {
       issue('block', 'unbooked', doc.id)
       continue
@@ -487,10 +610,6 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     const number = kvNumber(doc.number)
     const den = taxDay(doc, data)
     if ((doc.currency ?? 'EUR') !== 'EUR' && data.mode !== 'none' && data.lines.length === 0) issue('block', 'currency', doc.id)
-    if (company.status === 'none') {
-      if (isReceived(doc.kind) && (data.mode === 'reverse' || data.mode === 'acquisition')) issue('warn', 'needs7a', doc.id)
-      continue
-    }
     if (data.mode === 'none' || data.mode === 'outside') continue
     if (data.mode === 'eu_service') {
       issue('warn', 'summary', doc.id)
@@ -640,12 +759,16 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
   if (payer) {
     if (result > 0) rows.r32 = result
     if (result < 0) rows.r33 = -result
+    // Row 34 may not be higher than row 32 (poučenie, point 49).
+    rows.r34 = Math.min(Math.max(0, carriedIn), rows.r32)
     rows.r35 = Math.max(0, rows.r32 - rows.r34)
   } else if (company.status === 'reg7a') {
     rows.r32 = result
     rows.r35 = Math.max(0, rows.r32 - rows.r34)
   }
   const nothing = ROWS.every((row) => rows[row] === 0)
+  // Goods to the EU and exports alone, with nothing deducted, need no control statement (the return's rows 14 and 15 are all of row 13).
+  const goodsOnly = ROWS.every((row) => rows[row] === 0 || row === 'r13' || row === 'r14' || row === 'r15') && rows.r13 === rows.r14 + rows.r15
   return {
     period,
     rows,
@@ -654,7 +777,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     docs: held,
     issues: issues.sort((a, b) => (a.level === b.level ? 0 : a.level === 'block' ? -1 : 1)),
     nothing,
-    statement: payer,
+    statement: payer && !nothing && !goodsOnly,
   }
 }
 
@@ -666,4 +789,134 @@ export function outcome(rows: Rows): { pay: number; refund: number } {
 /** Whether the control statement has anything in it beyond the company's own details. */
 export function kvRows(kv: Kv): number {
   return kv.a1.length + kv.b1.length + kv.b2.length + (kv.b31 ? 1 : 0) + kv.b32.length + kv.c1.length + kv.c2.length + (kv.d2 ? 1 : 0)
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The refund of an excess deduction, and corrections of a period already filed
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Whether an excess deduction of the period can be refunded at once (§ 79(2)): the payer files for a month and has
+ * been registered at least 12 calendar months before the end of that month. The third condition (no arrears of taxes,
+ * customs and insurance over 1 000 € in the six months before) is the accountant's to confirm.
+ */
+export function fastRefundAllowed(company: VatCompany, period: string): boolean {
+  if (company.status !== 'payer' || isQuarter(period) || !company.since) return false
+  const end = periodRange(period).to
+  const yearBefore = `${Number(end.slice(0, 4)) - 1}${end.slice(4)}`
+  return company.since <= yearBefore
+}
+
+/** R: the regular return; O: a corrective one, filed before the deadline in its place (§ 16(3) of the Tax Procedure
+ *  Code); D: a supplementary one, after the deadline (§ 16(1)). The control statement has the same three kinds. */
+export type FilingKind = 'R' | 'O' | 'D'
+
+/** The correction a filed period takes on a day: corrective while its deadline has not passed, supplementary after. */
+export const correctionKind = (period: string, day: string): 'O' | 'D' => (day <= filingDeadline(period) ? 'O' : 'D')
+
+/** A period's result as one figure: the own liability plus, an excess deduction minus (rows 32 and 33). */
+export const signedResult = (rows: Rows): number => rows.r32 - rows.r33
+
+export interface Settlement {
+  /** Row 36: the difference against the last result filed. */
+  r36: number
+  /** Row 37: what is to be settled with the state budget; null when nothing is (the row stays empty). */
+  r37: number | null
+  /** What the period comes to after the correction: in all to pay, and in all to be refunded. */
+  pay: number
+  refund: number
+}
+
+/**
+ * Rows 36 and 37 of a supplementary return, as the poučenie has them (points 51 and 52, read on 14 October 2026 in
+ * its 2021 text, which the 2025 form keeps): row 36 is the difference against the last result filed, plus when the own
+ * liability grows or an excess deduction shrinks, minus the other way; row 37 is what is to be settled with the state,
+ * the same as row 36 unless the excess deduction filed has been neither refunded nor deducted yet: then a liability
+ * that replaces it is paid in full (the poučenie's example: −60 becomes 760, row 36 +820, row 37 +760), and an excess
+ * deduction that only changes settles nothing.
+ */
+export function settle(prev: { rows: Rows; pay: number; refund: number }, rows: Rows, excessSettled: boolean): Settlement {
+  const before = signedResult(prev.rows)
+  const after = signedResult(rows)
+  const r36 = after - before
+  let refund = prev.refund
+  let r37: number | null
+  if (before < 0 && !excessSettled) {
+    // The excess deduction filed is still pending: it gives way to the new result rather than being settled.
+    refund = Math.max(0, refund + before)
+    r37 = after > 0 ? after : null
+    if (after < 0) refund -= after
+  } else r37 = r36 === 0 ? null : r36
+  let pay = prev.pay + (r37 ?? 0)
+  if (pay < 0) {
+    refund -= pay
+    pay = 0
+  }
+  return { r36, r37, pay, refund }
+}
+
+/** A correction code of the control statement: 1 takes back a line filed before, 2 brings a new or a right one. */
+export type KvCode = 1 | 2
+type Coded<T> = Omit<T, 'doc'> & { k?: KvCode }
+
+/** The control statement as it is filed: every part a list, each line with its correction code in a supplementary one. */
+export interface KvFile {
+  a1: Coded<KvA1>[]
+  b1: Coded<KvB1>[]
+  b2: Coded<KvB2>[]
+  b31: Coded<KvB3>[]
+  b32: Coded<KvB32>[]
+  c1: Coded<KvC1>[]
+  c2: Coded<KvC2>[]
+  d2: Coded<KvD2>[]
+}
+
+const KV_PARTS = ['a1', 'b1', 'b2', 'b31', 'b32', 'c1', 'c2', 'd2'] as const
+
+/** A period's control statement as a file: the lines without the documents they come from. */
+export function kvFileOf(kv: Kv): KvFile {
+  const plain = <T extends { doc: string }>(lines: T[]) => lines.map(({ doc: _doc, ...line }) => line)
+  return {
+    a1: plain(kv.a1),
+    b1: plain(kv.b1),
+    b2: plain(kv.b2),
+    b31: kv.b31 ? [{ ...kv.b31 }] : [],
+    b32: kv.b32.map((line) => ({ ...line })),
+    c1: plain(kv.c1),
+    c2: plain(kv.c2),
+    d2: kv.d2 ? [{ ...kv.d2 }] : [],
+  }
+}
+
+export const kvFileLines = (file: KvFile): number => KV_PARTS.reduce((sum, part) => sum + file[part].length, 0)
+
+/**
+ * A supplementary control statement: the lines filed before that are no longer right, with code 1 (repeated as they
+ * were filed), and the lines that are new or right now, with code 2; a line that stays as it was is not repeated
+ * (the schema's KodOpravyType). A total of B.3.1 or D.2 that changed is two lines, the old one and the new one.
+ */
+export function kvDiff(before: KvFile, now: KvFile): KvFile {
+  const out = { a1: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d2: [] } as unknown as Record<(typeof KV_PARTS)[number], { k?: KvCode }[]>
+  for (const part of KV_PARTS) {
+    const key = (line: object) =>
+      JSON.stringify(
+        Object.entries(line)
+          .filter(([name]) => name !== 'k')
+          .sort(([a], [b]) => a.localeCompare(b)),
+      )
+    const left = new Map<string, number>()
+    for (const line of now[part] as object[]) left.set(key(line), (left.get(key(line)) ?? 0) + 1)
+    const kept = new Map<string, number>()
+    for (const line of before[part] as object[]) {
+      const k = key(line)
+      if ((left.get(k) ?? 0) > (kept.get(k) ?? 0)) kept.set(k, (kept.get(k) ?? 0) + 1)
+      else out[part].push({ ...line, k: 1 })
+    }
+    for (const line of now[part] as object[]) {
+      const k = key(line)
+      if ((kept.get(k) ?? 0) > 0) kept.set(k, (kept.get(k) ?? 0) - 1)
+      else out[part].push({ ...line, k: 2 })
+    }
+  }
+  return out as unknown as KvFile
 }

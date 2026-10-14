@@ -8,7 +8,7 @@
 // control statement is in its schema's namespace, dates are YYYY-MM-DD, and an attribute is left out rather than
 // written empty.
 import { BRAND, OPERATOR } from '../config'
-import { ROWS, isQuarter, type Kv, type Rows, type VatStatus } from './vat'
+import { ROWS, isQuarter, kvFileOf, type FilingKind, type Kv, type KvFile, type Rows, type VatStatus } from './vat'
 
 /** The tax offices a return can be addressed to, as the eForm lists them. */
 export const TAX_OFFICES = ['Bratislava', 'Trnava', 'Trenčín', 'Nitra', 'Žilina', 'Banská Bystrica', 'Prešov', 'Košice', 'Úrad pre vybrané hospodárske subjekty'] as const
@@ -36,7 +36,10 @@ export function amount(cents: number): string {
 
 /** "K lesu 2218/39A, 040 18 Košice" in its parts; a village without streets is "Obec 12, 811 01". */
 export function addressParts(address: string | null): { street: string; number: string; postal: string; city: string } {
-  const parts = (address ?? '').split(',').map((part) => part.trim()).filter(Boolean)
+  const parts = (address ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
   const last = parts.length > 1 ? (parts[parts.length - 1] ?? '') : ''
   const postalCity = /^(\d{3})\s?(\d{2})(?:\s+(.+))?$/.exec(last)
   const first = (postalCity ? parts.slice(0, -1) : parts).join(', ')
@@ -73,9 +76,12 @@ const cut = (text: string, max: number) => text.slice(0, max)
 
 /**
  * The return of a period. `declaredOn` is the day the accountant makes it (the form's "dátum vyhlásenia");
- * the representative who files it under the power of attorney is europio.
+ * the representative who files it under the power of attorney is europio. A corrective return (O) is the whole
+ * return again; a supplementary one (D) is too, with the day the reason for it was found and rows 36 and 37 (vat.ts,
+ * `settle`). `fastRefund` marks that the payer meets the conditions of § 79(2) for an excess deduction.
  */
-export function returnXml(filer: Filer, period: string, rows: Rows, opts: { declaredOn: string; nothing: boolean; fastRefund?: boolean }): string {
+export function returnXml(filer: Filer, period: string, rows: Rows, opts: { declaredOn: string; nothing: boolean; fastRefund?: boolean; kind?: FilingKind; foundOn?: string | null }): string {
+  const kind = opts.kind ?? 'R'
   const a = addressParts(filer.address)
   const quarter = isQuarter(period) ? (ROMAN[Number(period.slice(6)) - 1] ?? '') : ''
   const month = isQuarter(period) ? '' : String(Number(period.slice(5, 7)))
@@ -91,7 +97,7 @@ export function returnXml(filer: Filer, period: string, rows: Rows, opts: { decl
     el('dic', ''),
     el('danovyUrad', filer.taxOffice),
     el('nevzniklaPov', flag(opts.nothing && filer.status === 'payer')),
-    `<typDP>${el('rdp', '1')}${el('odp', '0')}${el('ddp', '0')}${el('datumZisteniaDdp', '')}</typDP>`,
+    `<typDP>${el('rdp', flag(kind === 'R'))}${el('odp', flag(kind === 'O'))}${el('ddp', flag(kind === 'D'))}${el('datumZisteniaDdp', kind === 'D' && opts.foundOn ? textDay(opts.foundOn) : '')}</typDP>`,
     `<osoba>${el('platitel', flag(filer.status === 'payer'))}${el('registrovana', flag(filer.status === 'reg7a'))}${el('inaPovinna', '0')}${el('zdanitelna', '0')}${el('zastupca', '0')}${el('zastupca69aa', '0')}</osoba>`,
     `<zdanObd>${el('mesiac', month)}${el('stvrtrok', quarter)}${el('rok', period.slice(0, 4))}</zdanObd>`,
     `<meno>${nameLines(filer.name)
@@ -115,19 +121,24 @@ const attrs = (pairs: [string, string | number | null | undefined][]): string =>
     .map(([name, value]) => ` ${name}="${esc(String(value))}"`)
     .join('')
 
-/** The control statement of a period (a regular one: kód opravy is for a supplementary statement, which this is not). */
-export function statementXml(filer: Filer, period: string, kv: Kv): string {
+/**
+ * The control statement of a period: a regular one (R), a corrective one that replaces it before the deadline (O),
+ * or a supplementary one (D), whose lines carry their correction codes (KOpr; vat.ts, `kvDiff`).
+ */
+export function statementXml(filer: Filer, period: string, statement: Kv | KvFile, kind: FilingKind = 'R'): string {
+  const kv: KvFile = Array.isArray(statement.b31) ? (statement as KvFile) : kvFileOf(statement as Kv)
   const a = addressParts(filer.address)
   const money = (cents: number) => amount(cents)
+  const code = (k: number | undefined): [string, number | null] => ['KOpr', kind === 'D' && k ? k : null]
   const lines = [
-    ...kv.a1.map((r) => `<A1${attrs([['Odb', r.odb], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s]])}/>`),
-    ...kv.b1.map((r) => `<B1${attrs([['Dod', r.dod], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], ['O', money(r.o)]])}/>`),
-    ...kv.b2.map((r) => `<B2${attrs([['Dod', r.dod], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], ['O', money(r.o)]])}/>`),
-    ...(kv.b31 ? [`<B31${attrs([['Z', money(kv.b31.z)], ['D', money(kv.b31.d)], ['O', money(kv.b31.o)]])}/>`] : []),
-    ...kv.b32.map((r) => `<B32${attrs([['Dod', r.dod], ['Z', money(r.z)], ['D', money(r.d)], ['O', money(r.o)]])}/>`),
-    ...kv.c1.map((r) => `<C1${attrs([['Odb', r.odb], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', money(r.dr)], ['S', r.s]])}/>`),
-    ...kv.c2.map((r) => `<C2${attrs([['Dod', r.dod], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', money(r.dr)], ['S', r.s], ['OR', money(r.or)]])}/>`),
-    ...(kv.d2 ? [`<D2${attrs([['Z', money(kv.d2.z)], ['D', money(kv.d2.d)], ['ZZn', money(kv.d2.zzn)], ['DZn', money(kv.d2.dzn)]])}/>`] : []),
+    ...kv.a1.map((r) => `<A1${attrs([['Odb', r.odb], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], code(r.k)])}/>`),
+    ...kv.b1.map((r) => `<B1${attrs([['Dod', r.dod], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], ['O', money(r.o)], code(r.k)])}/>`),
+    ...kv.b2.map((r) => `<B2${attrs([['Dod', r.dod], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], ['O', money(r.o)], code(r.k)])}/>`),
+    ...kv.b31.map((r) => `<B31${attrs([['Z', money(r.z)], ['D', money(r.d)], ['O', money(r.o)], code(r.k)])}/>`),
+    ...kv.b32.map((r) => `<B32${attrs([['Dod', r.dod], ['Z', money(r.z)], ['D', money(r.d)], ['O', money(r.o)], code(r.k)])}/>`),
+    ...kv.c1.map((r) => `<C1${attrs([['Odb', r.odb], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', money(r.dr)], ['S', r.s], code(r.k)])}/>`),
+    ...kv.c2.map((r) => `<C2${attrs([['Dod', r.dod], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', money(r.dr)], ['S', r.s], ['OR', money(r.or)], code(r.k)])}/>`),
+    ...kv.d2.map((r) => `<D2${attrs([['Z', money(r.z)], ['D', money(r.d)], ['ZZn', money(r.zzn)], ['DZn', money(r.dzn)], code(r.k)])}/>`),
   ]
   const el = (name: string, value: string) => `<${name}>${esc(value)}</${name}>`
   return [
@@ -135,7 +146,7 @@ export function statementXml(filer: Filer, period: string, kv: Kv): string {
     '<KVDPH_2025 xmlns="https://ekr.financnasprava.sk/Formulare/XSD/kv_dph_2025.xsd">',
     '<Identifikacia>',
     el('IcDphPlatitela', filer.icdph),
-    el('Druh', 'R'),
+    el('Druh', kind),
     `<Obdobie>${el('Rok', period.slice(0, 4))}${isQuarter(period) ? el('Stvrtrok', period.slice(6)) : el('Mesiac', String(Number(period.slice(5, 7))))}</Obdobie>`,
     el('Nazov', filer.name.replace(/\s+/g, ' ').trim()),
     el('Stat', OPERATOR.country),

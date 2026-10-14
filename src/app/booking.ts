@@ -77,8 +77,10 @@ export interface EntryLine {
  * The entry a document is booked with. A received invoice goes to suppliers (321) and is paid from the bank by its
  * own entry; a receipt is booked against what paid it: the bank (221), the owner's own money (365, a debt of the
  * company to its owner) or the cash box (211). An issued invoice goes to customers (311). VAT is split out (343)
- * only for a VAT payer who deducts it, or on an issued invoice of a VAT payer. Nothing is proposed for a document
- * without an amount or a category, or of the kind "other".
+ * only for a VAT payer who deducts it, or on an issued invoice of a VAT payer. VAT the company pays itself on what it
+ * buys from abroad (§ 69, § 11) is owed to the state (343) and, deducted, is its own claim on the state (343 against
+ * 343); not deducted, it is part of the cost. Nothing is proposed for a document without an amount or a category,
+ * or of the kind "other".
  */
 export function entryFor(args: {
   kind: DocKind | null
@@ -90,6 +92,8 @@ export function entryFor(args: {
   paidBy: PaidBy
   /** An account the accountant chose instead of the category's. */
   account?: string | null
+  /** VAT the company pays itself on what it bought from abroad, and whether it deducts it. */
+  selfVat?: { cents: number; deduct: boolean } | null
 }): EntryLine[] {
   const { kind, category, totalCents, vatPayer, paidBy } = args
   if (!kind || kind === 'other' || !category || totalCents === null || totalCents <= 0) return []
@@ -108,12 +112,15 @@ export function entryFor(args: {
   if (info.revenue) return []
   const contra = kind === 'invoice_in' ? '321' : paidBy === 'private' ? '365' : paidBy === 'cash' ? '211' : '221'
   const split = vatPayer && args.vatDeduct && vat > 0
-  return split
+  const lines: EntryLine[] = split
     ? [
         { md: info.account, d: contra, cents: totalCents - vat, what: 'cost' },
         { md: '343', d: contra, cents: vat, what: 'vat' },
       ]
     : [{ md: info.account, d: contra, cents: totalCents, what: 'cost' }]
+  const self = args.selfVat
+  if (self && self.cents > 0) lines.push(self.deduct ? { md: '343', d: '343', cents: self.cents, what: 'vat' } : { md: info.account, d: '343', cents: self.cents, what: 'cost' })
+  return lines
 }
 
 /**

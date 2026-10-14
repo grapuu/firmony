@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 00:40)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 10:30)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (238 unit checks) and `npm run test:runtime` (420 checks in workerd). The sixth
+- All checks pass: `npm test` (388 unit checks) and `npm run test:runtime` (457 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -130,6 +130,22 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   zmluvy" in its bar: the overview, Firma, Doklady and Faktúry twenty days past the end, and the team's client page
   with the handover; "Stiahnuť ZIP" says in the preview what the app downloads), the site version 17 (the terms and
   the privacy notice of the end, the FAQ "Musím sa viazať?").
+
+- From 08:26 (14 October 2026). His word: "ano mozeme ist na to, nas workflow musi byt elitny a jasny aby sme
+  postupne urobili vsetko a boli sme skutocne best na trhu, nie len ruzove okluiare alebo na oko. ale skutocne." It
+  was his yes to step 1 of the order he was given that morning: (1) the VAT return and the control statement as XML
+  from the booked documents, (2) an export to Pohoda or Omega (about 3 hours), (3) every client's deadlines on one
+  screen (about 2 hours), (4) the digital postman once he picks a provider (about 4 hours), (5) eKasa receipts by
+  their QR code (about 2 hours), (6) in November europio's own documents, then two or three firms he knows. His, in
+  parallel: the domain, the trade licence, 3 to 5 accountants called, an email to Qvalia, a lawyer. He was told
+  "3 až 4 hodiny". Built: "VAT: the return and the control statement" under the accountants' side. Midway the
+  builder found that a period filed and then changed would have been offered as a regular return again, and that
+  row 34 (the excess deduction of the month before, § 79(1)) was never filled; both were built that morning
+  (corrective and supplementary returns and control statements, the carried excess, the box of § 79(2)). Also:
+  an overview with nothing missing but a tax to pay says "Zostáva zaplatiť DPH." with a button to Dane, and the
+  deadlines' lead says that the client pays the tax. All checks passing (units 388, runtime 457), 35 rules taken
+  out once and every one held. Pushed at about 10:30. The app preview is version 11 ("DPH" in its bar: September
+  ready, then filed; the client's Dane with the QR code; "Keď nič nechýba" now asks to pay the VAT).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -671,9 +687,93 @@ on one screen, a document booked on one screen with its original beside the form
   Martin's declaration (a date of birth, no birth number) is checked by Lucia, risk nízke; Eva has none (her
   overview shows it first, `/app/ukazka?ako=eva` signs her in), and Jana has an open report about Ateliér Nova.
 - On a phone the column is a menu in the bar (`BarMenu`): who is signed in, the switch, signing out.
-- Not built yet on this side: the VAT return and the control statement as XML, deadlines of every client on one
-  screen, the closing, booking the bank's own payments (a fee, a tax) as entries, a log of who changed what on the
-  pages (the events are recorded), assigning many clients at once, search in the queue.
+- Not built yet on this side: deadlines of every client on one screen, the closing, booking the bank's own payments
+  (a fee, a tax) as entries, a log of who changed what on the pages (the events are recorded), assigning many
+  clients at once, search in the queue.
+
+### VAT: the return and the control statement (14 October 2026; `src/app/vat.ts`, `vat-xml.ts`, `vat-store.ts`, `vat-form.ts`, views in `src/views/vat.tsx` and `taxes.tsx`)
+
+What Pennylane's and Dougs' accountants have: the period worked out from the books, every blocker with the
+document to open, the files the tax office takes, and the client told what to pay. Nothing is sent to the
+Financial Administration by us: the accountant loads the files in eDane or in the client's internet zone
+("Načítať zo súboru"), checks them, signs and sends them under the power of attorney, then marks them as filed here.
+
+- Read on 14 October 2026, and what each rule leans on: the eForm packages DPHv25 (the return for periods from
+  1 July 2025, vzor MF/007833/2025-731, with its poučenie and the eForm's own checks, among them `vypocet_r33_C3`:
+  row 33 is a positive amount) and KVDPHv25 (the control statement from 1 January 2025; it ends on 1 July 2030);
+  their schemas are in `test/xsd` (the KV schema's tabs made two spaces) and every file is validated against them
+  in both suites (`xmllint-wasm`). The poučenie of 2021 (mfsr.sk, `Poucenie_DP_DPH_2021.pdf`, points 49 to 52)
+  for rows 34, 36 and 37, read in the original with pdf.js; the 2025 form keeps those rows. Statutes in the
+  original on static.slov-lex.sk, in the versions in force from 1 January 2027: Act 222/2004 § 78a (the control
+  statement; its paragraph 1 has the two cases with no statement, paragraph 12 the corrective and the
+  supplementary one) and § 79 (the excess deduction: deducted in the next period, refunded at once under
+  paragraph 2), both as in 2026 but for a new paragraph of § 79 on interim measures; Act 563/2009 § 16 (a
+  corrective return before the deadline replaces the filed one; a supplementary one by the end of the month after
+  the finding, and the tax it adds is due then). The Financial Administration's answers 835490 (when the control
+  statement is filed), 082854 (A.1 to a customer without IČ DPH), 165311 (exempt supplies and supplies abroad);
+  podnikajte.sk 2026 for the variable symbol (1100MMRRRR, a quarter 11004QRRRR).
+- The engine (`vat.ts`, pure): a document's VAT is a mode (domestic, reverse charge, goods from the EU, goods to the
+  EU, a service to the EU, export, exempt, outside, none) and lines by rate (23, 19, 5 and 0 %) with base, tax and
+  deduction; until the accountant confirms it, it is proposed from the reader or the e-invoice (`proposeVat`).
+  The period is the tax day's; goods from the EU fall due on the 15th of the next month; a deduction from a Slovak
+  supplier stays in its period when the document came by that period's deadline, else goes to the period it came,
+  and never into a period filed before it came (`periodOfDoc`). Deadlines are the 25th, moved past weekends and
+  Slovak days off (Easter computed). `workOut` gives the rows (01 to 37), the control statement (A.1, B.1, B.2,
+  B.3.1 or B.3.2 from 3 000 € deducted from receipts, C.1, C.2, D.2), which documents make each row, and the
+  issues: blocking (unbooked, no lines, a rate that is none, another currency without euro amounts, a Slovak
+  supplier without IČ DPH, a credit note without the invoice it corrects, a number over 32 characters) and
+  warnings (proposed, the recapitulative statement, § 7a cases, before the registration). Row 34 is the excess
+  deduction carried from the month before, at most row 32. The control statement is not filed for a nil return
+  nor for one of goods to the EU and exports alone without a deduction. A person registered under § 7a files the
+  return only for a month with tax, no control statement, and does not pay 5 € or less. A company that is not
+  registered and buys a service from abroad is told, on its page and on the document, that it must register under
+  § 7a first, whatever the amount.
+- The files (`vat-xml.ts`): the return as the eForm writes it (every element present, amounts with two decimals,
+  the declaration's date DD.MM.YYYY, the representative europio in `opravnenaOsoba`), the control statement in its
+  namespace with ISO dates. Kinds R, O, D in both: `rdp`, `odp`, `ddp` with `datumZisteniaDdp`; `Druh` R, O, D,
+  and in a supplementary statement only the lines that change, a line taken back with `KOpr="1"` as it was filed
+  and a new or right one with `KOpr="2"` (`kvDiff`). The box of § 79(2) (`splneniePodmienok`) is offered for an
+  excess deduction of a monthly payer registered 12 months before the month's end, ticked by default, with the
+  third condition (no arrears over 1 000 € in six months) for the accountant to confirm.
+- A period's state (`vat-store.ts`, `viewOf`): running, blocked, ready, filed, changed after filing (rows or the
+  control statement), none (§ 7a with nothing). A payer's period waits until the one before it, of ours, is filed
+  (its excess deduction counts here). `planFiling` says what is filed now: ready, the regular return and statement;
+  changed before the deadline, a corrective return and statement in their place; after it, a supplementary return
+  with rows 36 and 37 (`settle`: the difference against the last result filed; row 37 the same, unless the excess
+  deduction filed has been neither refunded nor deducted, which the page asks, inferred from the next month being
+  filed or the 30 days of § 79(2) having passed) and a supplementary statement; only the statement when the
+  return's rows are as filed (then the client is told nothing). A correction waits while anything of the period
+  blocks. The day of finding is asked (between the filing and today) and sets the deadline.
+- Stored: the documents' VAT (`vat_mode`, `vat_lines`, `supplied_on`, `party_vat_id`, `corrects`, `vat_period`,
+  `foreign_party`), the company's registration (`vat_payer`, `vat_7a`, `vat_quarterly`, `vat_since`, `tax_office`,
+  `tax_account`, `vat_carry`: an excess deduction brought from before us, deducted in our first period), and
+  `vat_returns`: one row a period with what the Financial Administration knows of it now (the rows sent, the
+  statement as `{kind, full, sent}`, the kind, the box, what was carried in, the day of finding, the totals to pay
+  and to get back, the due day) and the filing it replaced in `prev`, so that "Zrušiť označenie" takes a
+  correction back to it and a first filing away. A correction replaces only the filing it was made against.
+  Schema step 3; it never reached a database, and was edited in place that day.
+- The team's pages: /ucto/klienti/:id/dph (six periods side by side, the status card first on a phone, what to
+  resolve, the rows with their documents, the control statement's parts, one form for the box, the day of finding,
+  the files and the mark), the files at `/dph/priznanie.xml` and `/dph/kontrolny-vykaz.xml` (DPH_, DPH_O_, DPH_D_
+  and KVDPH_ with the IČ DPH and the period), the booking form's VAT (`vatbox`: mode, day of supply, IČ DPH, the
+  invoice corrected, the period, base and tax by rate, where it goes), the client page's VAT card, and the company
+  details (registration, period, since, tax office, personal tax account as typed: a base number, the account with
+  its six-digit prefix, or the IBAN with its check digits; the excess deduction from before).
+- The client: the mark writes to the client in the app (a doorbell by email, nothing of the amount in it): the
+  kind filed, what is left to pay (payments with the period's symbol from the bank count), by when, to which account
+  (SKxx 8180 500240 and the personal account) and the symbol, or the excess deduction and when it comes back, or an
+  overpayment. /app/dane (for a registered company) lists every filed period with a PAY by square QR code for what
+  is left; the overview's deadlines say "Zaplatiť DPH za ..." until it is paid, and the deadlines' lead says that
+  we file and the client pays the tax.
+- The sample: Ukážková firma is a monthly payer from the month of its contract, with documents of every kind of
+  September; `scratchpad/vatflow.mjs` of that session filed it in the playground, and a document moved into
+  September afterwards showed the corrective flow (pictures at 1440, 390 and 320 px, nothing overflows).
+- Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, domestic reverse charge (A.2), eKasa takings
+  (D.1), bad debts (§ 25a, § 53b), the coefficient (§ 50), the recapitulative statement, documents in another
+  currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
+  return, a switch between monthly and quarterly periods, filing through an interface of the Financial
+  Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
+  in `opravnenaOsoba` (europio s. r. o., with its phone and email, is written today).
 
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
@@ -755,15 +855,16 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (238): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end
-npm run test:runtime     # the deployable bundle in workerd (420): the site, the order, and the app end to end, to the deletion
+npm test                 # unit checks (388): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT
+npm run test:runtime     # the deployable bundle in workerd (457): the site, the order, and the app end to end, VAT filed and corrected, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (24)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (35)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
-The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?ako=uctovnicka` (Lucia).
+The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?ako=uctovnicka` (Lucia). VAT:
+`/ucto/klienti/demo-company/dph`; September of the sample company is ready to be filed.
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
 the café payment. The bank: /app/banka, a bank of the list, "Povoliť prístup" on /playground/banka, and the pretend

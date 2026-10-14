@@ -6,6 +6,7 @@ import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'mi
 import { check, done } from './check.mjs'
 import { readFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
+import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, pretendBank, readerAnswer, registerAnswer } from './pretend.mjs'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -61,12 +62,18 @@ let res = await get('/')
 let page = await res.text()
 check('the home page answers', res.status === 200)
 check('it says the promise', page.includes('Postaráme sa o') && page.includes('Vy rastiete.'))
-check('it names the prices of all three plans', [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)))
+check(
+  'it names the prices of all three plans',
+  [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)),
+)
 check('it runs no script at all', !/<script/i.test(page))
 check('it carries no inline style', !/ style=/i.test(page))
 const csp = res.headers.get('content-security-policy') ?? ''
 check('the policy allows nothing inline and nothing foreign', csp.includes("script-src 'none'") && csp.includes("style-src 'self'") && csp.includes("frame-ancestors 'none'"))
-check('no framing, no sniffing, HSTS', res.headers.get('x-frame-options') === 'DENY' && res.headers.get('x-content-type-options') === 'nosniff' && /max-age=31536000/.test(res.headers.get('strict-transport-security') ?? ''))
+check(
+  'no framing, no sniffing, HSTS',
+  res.headers.get('x-frame-options') === 'DENY' && res.headers.get('x-content-type-options') === 'nosniff' && /max-age=31536000/.test(res.headers.get('strict-transport-security') ?? ''),
+)
 check('the canonical address is the domain', page.includes('<link rel="canonical" href="https://firmony.ai/"'))
 check('the real domain is for search engines', res.headers.get('x-robots-tag') === null)
 check('the worked example is shown before anything is typed', page.includes(`2${NB}128${NB}€`) && page.includes(`1${NB}317${NB}€`) && page.includes(`811${NB}€`))
@@ -107,7 +114,17 @@ res = await get('/zacat?nova=1')
 check('without a company the form asks how far they are', (await res.text()).includes('Zakladáte firmu'))
 
 // The request: sending it
-const good = { ico: '57442452', mode: 'company', plan: 'rast', situation: 'switch', name: 'Jana Nová', email: 'jana@example.sk', phone: '+421 900 123 456', note: 'Výpovedná lehota do konca novembra.', utm_source: 'startitup' }
+const good = {
+  ico: '57442452',
+  mode: 'company',
+  plan: 'rast',
+  situation: 'switch',
+  name: 'Jana Nová',
+  email: 'jana@example.sk',
+  phone: '+421 900 123 456',
+  note: 'Výpovedná lehota do konca novembra.',
+  utm_source: 'startitup',
+}
 res = await post('/zacat', good, { origin: 'https://evil.example' })
 check('a form from another site is refused', res.status === 403)
 res = await post('/zacat', { note: 'x'.repeat(9000) })
@@ -118,14 +135,30 @@ check('a wrong email is said at the field', res.status === 422 && page.includes(
 res = await post('/zacat', { ...good, company: 'Spam s. r. o. www.spam.example', seen: 'Spam' })
 check('a request for an s. r. o. the register knows lands on thanks with the contract on its way', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmluva=1')
 let row = await db.prepare('SELECT * FROM requests ORDER BY created_at DESC LIMIT 1').first()
-check('it is kept with the register\'s name, not the typed one', row?.company === 'europio s. r. o.' && row?.company_source === 'register' && row?.plan === 'rast' && row?.ico === '57442452', JSON.stringify(row))
+check(
+  "it is kept with the register's name, not the typed one",
+  row?.company === 'europio s. r. o.' && row?.company_source === 'register' && row?.plan === 'rast' && row?.ico === '57442452',
+  JSON.stringify(row),
+)
 check('it keeps where the visitor came from', row?.source === '{"utm_source":"startitup"}')
 await settle()
 let mail = await sent()
 const owner = mail.find((m) => m.to === 'ahoj@firmony.ai')
 const client = mail.find((m) => m.to === 'jana@example.sk')
-check('we are rung, and the request waits behind the sign-in', Boolean(owner) && owner.subject === 'Firmony: nová žiadosť z webu' && owner.text.includes('/ucto/ziadosti') && !owner.text.includes('Jana') && !owner.text.includes('+421') && !owner.text.includes('Výpovedná') && !owner.replyTo)
-check('the client gets a confirmation that replies to us', Boolean(client) && client.replyTo === 'ahoj@firmony.ai' && client.text.startsWith('Dobrý deň,') && client.text.includes('Firma: europio s. r. o.'))
+check(
+  'we are rung, and the request waits behind the sign-in',
+  Boolean(owner) &&
+    owner.subject === 'Firmony: nová žiadosť z webu' &&
+    owner.text.includes('/ucto/ziadosti') &&
+    !owner.text.includes('Jana') &&
+    !owner.text.includes('+421') &&
+    !owner.text.includes('Výpovedná') &&
+    !owner.replyTo,
+)
+check(
+  'the client gets a confirmation that replies to us',
+  Boolean(client) && client.replyTo === 'ahoj@firmony.ai' && client.text.startsWith('Dobrý deň,') && client.text.includes('Firma: europio s. r. o.'),
+)
 check('the confirmation repeats nothing a stranger typed', Boolean(client) && !client.text.includes('Výpovedná') && !client.text.includes('spam') && !client.text.includes('Jana'))
 check('both messages are marked sent', (await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE sent_at IS NOT NULL').first())?.n === 2)
 
@@ -195,15 +228,33 @@ check('newer requests stay', (await count()) >= 4)
 const day = (shift) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.now() + shift * 86400000))
 const nowS = Math.floor(Date.now() / 1000)
 await db.batch([
-  db.prepare("INSERT INTO companies (id, created_at, name, ico, vat_payer, plan, inbox) VALUES ('co-a', ?, 'Firma A s. r. o.', '57442452', 0, 'start', 'aaaa11'), ('co-b', ?, 'Firma B s. r. o.', '11111111', 0, 'start', 'bbbb22')").bind(nowS, nowS),
+  db
+    .prepare(
+      "INSERT INTO companies (id, created_at, name, ico, vat_payer, plan, inbox) VALUES ('co-a', ?, 'Firma A s. r. o.', '57442452', 0, 'start', 'aaaa11'), ('co-b', ?, 'Firma B s. r. o.', '11111111', 0, 'start', 'bbbb22')",
+    )
+    .bind(nowS, nowS),
   db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-a', ?, 'anna@firma-a.test', 'Anna Malá'), ('u-b', ?, 'boris@firma-b.test', 'Boris Veľký')").bind(nowS, nowS),
   db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('co-a', 'u-a', 'owner', ?), ('co-b', 'u-b', 'owner', ?)").bind(nowS, nowS),
   db.prepare("INSERT INTO accounts (id, company_id, iban) VALUES ('acc-a', 'co-a', 'SK3112000000198742637541'), ('acc-b', 'co-b', 'SK0809000000000123123123')"),
-  db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, card, ref) VALUES ('pa-cafe', 'co-a', 'acc-a', ?, ?, -1240, 'KAVIAREN NA ROHU KOSICE', 1, 'a1')").bind(nowS, day(-1)),
-  db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, party_iban, vs, ref) VALUES ('pa-host', 'co-a', 'acc-a', ?, '2026-10-10', -5990, 'Hostingový dom s. r. o.', 'SK8975000000000012345671', '2026118', 'a2')").bind(nowS),
-  db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pa-fuel', 'co-a', 'acc-a', ?, ?, -6418, 'CERPACIA STANICA', 'a3')").bind(nowS, day(-2)),
+  db
+    .prepare(
+      "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, card, ref) VALUES ('pa-cafe', 'co-a', 'acc-a', ?, ?, -1240, 'KAVIAREN NA ROHU KOSICE', 1, 'a1')",
+    )
+    .bind(nowS, day(-1)),
+  db
+    .prepare(
+      "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, party_iban, vs, ref) VALUES ('pa-host', 'co-a', 'acc-a', ?, '2026-10-10', -5990, 'Hostingový dom s. r. o.', 'SK8975000000000012345671', '2026118', 'a2')",
+    )
+    .bind(nowS),
+  db
+    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pa-fuel', 'co-a', 'acc-a', ?, ?, -6418, 'CERPACIA STANICA', 'a3')")
+    .bind(nowS, day(-2)),
   db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pb-1', 'co-b', 'acc-b', ?, ?, -1000, 'Obchod', 'b1')").bind(nowS, day(-1)),
-  db.prepare("INSERT INTO documents (id, company_id, created_at, source, file_key, file_type, status, kind, party, total_cents) VALUES ('db-1', 'co-b', ?, 'upload', 'companies/co-b/documents/db-1.jpg', 'image/jpeg', 'read', 'receipt', 'Obchod', 1000)").bind(nowS),
+  db
+    .prepare(
+      "INSERT INTO documents (id, company_id, created_at, source, file_key, file_type, status, kind, party, total_cents) VALUES ('db-1', 'co-b', ?, 'upload', 'companies/co-b/documents/db-1.jpg', 'image/jpeg', 'read', 'receipt', 'Obchod', 1000)",
+    )
+    .bind(nowS),
 ])
 const files = await mf.getR2Bucket('FILES')
 await files.put('companies/co-b/documents/db-1.jpg', new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]))
@@ -237,7 +288,10 @@ check('the sample company does not exist on the live Worker', res.status === 404
 res = await appGet('/app/prihlasenie')
 page = await res.text()
 check('signing in asks only for an email', res.status === 200 && page.includes('name="email"') && !page.includes('type="password"'))
-check('the app is not for search engines and may run its own script', (res.headers.get('x-robots-tag') ?? '').includes('noindex') && (res.headers.get('content-security-policy') ?? '').includes("script-src 'self'"))
+check(
+  'the app is not for search engines and may run its own script',
+  (res.headers.get('x-robots-tag') ?? '').includes('noindex') && (res.headers.get('content-security-policy') ?? '').includes("script-src 'self'"),
+)
 
 const before = (await sent()).length
 res = await appPost('/app/prihlasenie', { email: 'nikto@nikde.test' })
@@ -260,7 +314,11 @@ check('opening the link asks for one click and uses nothing up', res.status === 
 res = await appPost('/app/vstup', { t: token })
 const cookie = res.headers.get('set-cookie') ?? ''
 check('the click signs in', res.status === 303 && res.headers.get('location') === '/app')
-check('the cookie is bound to the host, https, unreadable by scripts', /^__Host-firmony=[A-Za-z0-9_-]{43};/.test(cookie) && /HttpOnly/i.test(cookie) && /Secure/i.test(cookie) && /SameSite=Lax/i.test(cookie) && /Path=\//.test(cookie), cookie)
+check(
+  'the cookie is bound to the host, https, unreadable by scripts',
+  /^__Host-firmony=[A-Za-z0-9_-]{43};/.test(cookie) && /HttpOnly/i.test(cookie) && /Secure/i.test(cookie) && /SameSite=Lax/i.test(cookie) && /Path=\//.test(cookie),
+  cookie,
+)
 jar = cookie.split(';')[0]
 res = await appPost('/app/vstup', { t: token })
 check('a link works once', res.status === 410)
@@ -269,7 +327,11 @@ res = await appGet('/app')
 page = await res.text()
 check('the overview says what is missing', res.status === 200 && page.includes('3 platbám chýbajú doklady') && page.includes('Firma A s. r. o.'), page.match(/ptitle__sans">[^<]*/)?.[0])
 check('it names the address for forwarding', page.includes('doklady-aaaa11@firmony.ai'))
-check('it runs its own script and nothing inline', /<script src="\/inside\.js" defer(="")?><\/script>/.test(page) && !/<script>/.test(page) && !/ style=/i.test(page), page.match(/<script[^>]*>/g)?.join(' '))
+check(
+  'it runs its own script and nothing inline',
+  /<script src="\/inside\.js" defer(="")?><\/script>/.test(page) && !/<script>/.test(page) && !/ style=/i.test(page),
+  page.match(/<script[^>]*>/g)?.join(' '),
+)
 
 // Nobody reaches another company
 res = await appGet('/app/platby/pb-1')
@@ -294,16 +356,32 @@ res = await appPost('/app/doklady', {}, { files: [photo] })
 check('a photo is taken', res.status === 303 && res.headers.get('location') === '/app/doklady?ok=pridane&n=1')
 await settle(600)
 let cafeDoc = await db.prepare("SELECT d.*, l.payment_id, l.how FROM documents d LEFT JOIN links l ON l.document_id = d.id WHERE d.company_id = 'co-a' AND d.file_name = 'blocek.jpg'").first()
-check('the reader read it', cafeDoc?.status === 'read' && cafeDoc.total_cents === 1240 && cafeDoc.party === 'Kaviareň Na rohu s. r. o.' && cafeDoc.read_by === 'claude-haiku-5-5', JSON.stringify(cafeDoc))
+check(
+  'the reader read it',
+  cafeDoc?.status === 'read' && cafeDoc.total_cents === 1240 && cafeDoc.party === 'Kaviareň Na rohu s. r. o.' && cafeDoc.read_by === 'claude-haiku-5-5',
+  JSON.stringify(cafeDoc),
+)
 check('and it was paired with the café payment without asking', cafeDoc?.payment_id === 'pa-cafe' && cafeDoc.how === 'auto')
-check('the reader was asked with the key, the picture and our tool', readings.length === 1 && readings[0].model === 'claude-haiku-5-5' && readings[0].messages[0].content[0].type === 'image' && readings[0].tool_choice?.name === 'zapis_doklad')
+check(
+  'the reader was asked with the key, the picture and our tool',
+  readings.length === 1 && readings[0].model === 'claude-haiku-5-5' && readings[0].messages[0].content[0].type === 'image' && readings[0].tool_choice?.name === 'zapis_doklad',
+)
 check('the file is kept in the company folder', Boolean(await files.head(cafeDoc?.file_key ?? 'none')) && String(cafeDoc?.file_key).startsWith('companies/co-a/documents/'))
 res = await appGet(`/app/subory/${cafeDoc?.id}`)
-check('its file is given to its company, as a picture and nothing else', res.status === 200 && res.headers.get('content-type') === 'image/jpeg' && (res.headers.get('content-security-policy') ?? '').includes('sandbox') && res.headers.get('cache-control') === 'private, no-store')
+check(
+  'its file is given to its company, as a picture and nothing else',
+  res.status === 200 &&
+    res.headers.get('content-type') === 'image/jpeg' &&
+    (res.headers.get('content-security-policy') ?? '').includes('sandbox') &&
+    res.headers.get('cache-control') === 'private, no-store',
+)
 await res.arrayBuffer()
 res = await appPost('/app/doklady', {}, { files: [photo] })
 page = await res.text()
-check('the same file sent again is not kept twice', res.status === 200 && page.includes('už máme') && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a' AND file_name = 'blocek.jpg'").first())?.n === 1)
+check(
+  'the same file sent again is not kept twice',
+  res.status === 200 && page.includes('už máme') && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a' AND file_name = 'blocek.jpg'").first())?.n === 1,
+)
 res = await appPost('/app/doklady', {}, { files: [{ name: 'faktura.jpg', type: 'image/jpeg', bytes: new TextEncoder().encode('<html><script>alert(1)</script></html>') }] })
 check('a file that only calls itself a photo is refused', res.status === 422 && (await res.text()).includes('nie je fotka'))
 
@@ -325,10 +403,22 @@ res = await appGet('/app/platby/pa-fuel')
 page = await res.text()
 check('belongs to it, and a different amount is pointed out', page.includes('Doklad k tejto platbe máme') && page.includes('Suma na doklade (12,40'), page.match(/need__title">[^<]*/)?.[0])
 res = await appPost(`/app/doklady/${(await db.prepare("SELECT id FROM documents WHERE file_name = 'tankovanie.jpg'").first())?.id}/odpojit`, { spat: '/app/platby/pa-fuel' })
-check('a wrong document is taken off again', res.status === 303 && res.headers.get('location') === '/app/platby/pa-fuel?ok=odpojene' && (await db.prepare("SELECT COUNT(*) AS n FROM links WHERE payment_id = 'pa-fuel'").first())?.n === 0)
+check(
+  'a wrong document is taken off again',
+  res.status === 303 && res.headers.get('location') === '/app/platby/pa-fuel?ok=odpojene' && (await db.prepare("SELECT COUNT(*) AS n FROM links WHERE payment_id = 'pa-fuel'").first())?.n === 0,
+)
 const tankovanie = (await db.prepare("SELECT id FROM documents WHERE file_name = 'tankovanie.jpg'").first())?.id
 res = await appPost('/app/platby/pa-host/priradit', { doklad: cafeDoc?.id ?? '' })
-check('a document that belongs to a payment is given to no other', res.status === 409 && (await db.prepare('SELECT payment_id FROM links WHERE document_id = ?').bind(cafeDoc?.id ?? '').first())?.payment_id === 'pa-cafe')
+check(
+  'a document that belongs to a payment is given to no other',
+  res.status === 409 &&
+    (
+      await db
+        .prepare('SELECT payment_id FROM links WHERE document_id = ?')
+        .bind(cafeDoc?.id ?? '')
+        .first()
+    )?.payment_id === 'pa-cafe',
+)
 res = await appPost('/app/doklady/x/odpojit', { spat: 'https://evil.example/' })
 check('going back never leaves the app', res.headers.get('location') === '/app/doklady/x?ok=odpojene')
 
@@ -341,7 +431,16 @@ res = await appPost('/app/platby/pa-fuel/bez-dokladu', { dovod: 'other', poznamk
 const fuelRow = await db.prepare("SELECT exempt, exempt_note, exempt_by FROM payments WHERE id = 'pa-fuel'").first()
 check('a payment that needs no document', res.status === 303 && fuelRow?.exempt === 'other' && fuelRow.exempt_note === 'Bloček sa stratil' && fuelRow.exempt_by === 'u-a')
 res = await appPost('/app/platby/pa-fuel/priradit', { doklad: tankovanie ?? '' })
-check('a payment that needs no document takes none', res.status === 409 && (await db.prepare('SELECT COUNT(*) AS n FROM links WHERE document_id = ?').bind(tankovanie ?? '').first())?.n === 0)
+check(
+  'a payment that needs no document takes none',
+  res.status === 409 &&
+    (
+      await db
+        .prepare('SELECT COUNT(*) AS n FROM links WHERE document_id = ?')
+        .bind(tankovanie ?? '')
+        .first()
+    )?.n === 0,
+)
 res = await appGet('/app')
 page = await res.text()
 check('with every payment in order the overview says so', page.includes('Všetko máme.') && page.includes('Nemusíte nič robiť.'), page.match(/ptitle__sans">[^<]*/)?.[0])
@@ -355,7 +454,15 @@ check('a statement adds its payments', res.status === 303 && res.headers.get('lo
 res = await appPost('/app/banka', {}, { files: [{ name: 'vypis.xml', type: 'application/xml', bytes: camtBytes }] })
 check('the same statement again adds nothing', res.headers.get('location') === '/app/platby?filter=vsetky&ok=vypis&n=0&k=7', res.headers.get('location'))
 const exempts = (await db.prepare("SELECT exempt, COUNT(*) AS n FROM payments WHERE company_id = 'co-a' AND exempt_by = 'auto' GROUP BY exempt ORDER BY exempt").all()).results
-check('the fee of the bank and the tax need no document, by themselves', JSON.stringify(exempts) === JSON.stringify([{ exempt: 'bank', n: 1 }, { exempt: 'state', n: 1 }]), JSON.stringify(exempts))
+check(
+  'the fee of the bank and the tax need no document, by themselves',
+  JSON.stringify(exempts) ===
+    JSON.stringify([
+      { exempt: 'bank', n: 1 },
+      { exempt: 'state', n: 1 },
+    ]),
+  JSON.stringify(exempts),
+)
 check('the balance of the account is kept', (await db.prepare("SELECT balance_cents FROM accounts WHERE id = 'acc-a'").first())?.balance_cents === 486163)
 res = await appPost('/app/banka', {}, { files: [{ name: 'vypis.xml', type: 'application/xml', bytes: readFileSync(new URL('./fixtures/ubl-invoice.xml', import.meta.url)) }] })
 check('a file that is no statement is said to be none', res.status === 422 && (await res.text()).includes('camt.053'))
@@ -367,9 +474,12 @@ res = await appPost('/app/spravy', { sprava: 'Dobrý deň,\nčo s touto platbou?
 check('a message is sent', res.status === 303 && res.headers.get('location') === '/app/spravy?ok=poslane#posledna')
 await settle()
 const toUs = (await sent()).filter((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: nová správa od klienta').pop()
-check('and we are rung, with nothing of the message in the email', Boolean(toUs) && toUs.text.includes('/ucto/klienti/co-a#spravy') && !toUs.text.includes('platbou') && !toUs.text.includes('64,18') && !toUs.text.includes('Firma A'))
+check(
+  'and we are rung, with nothing of the message in the email',
+  Boolean(toUs) && toUs.text.includes('/ucto/klienti/co-a#spravy') && !toUs.text.includes('platbou') && !toUs.text.includes('64,18') && !toUs.text.includes('Firma A'),
+)
 res = await appPost('/app/spravy', { sprava: 'Cudzia platba', platba: 'pb-1' })
-check('a message cannot point at another company\'s payment', (await db.prepare("SELECT payment_id FROM messages WHERE body = 'Cudzia platba'").first())?.payment_id === null)
+check("a message cannot point at another company's payment", (await db.prepare("SELECT payment_id FROM messages WHERE body = 'Cudzia platba'").first())?.payment_id === null)
 res = await appGet('/app/spravy')
 page = await res.text()
 check('the messages show, with the payment they are about', page.includes('čo s touto platbou?') && /K.platbe: Cerpacia Stanica/.test(page))
@@ -377,7 +487,10 @@ check('the messages show, with the payment they are about', page.includes('čo s
 // A session that has expired opens nothing
 const { createHash } = await import('node:crypto')
 const oldToken = 'A'.repeat(43)
-await db.prepare("INSERT INTO sessions (id, user_id, company_id, created_at, expires_at) VALUES (?, 'u-a', 'co-a', ?, ?)").bind(createHash('sha256').update(oldToken).digest('hex'), nowS - 40 * 86400, nowS - 10 * 86400).run()
+await db
+  .prepare("INSERT INTO sessions (id, user_id, company_id, created_at, expires_at) VALUES (?, 'u-a', 'co-a', ?, ?)")
+  .bind(createHash('sha256').update(oldToken).digest('hex'), nowS - 40 * 86400, nowS - 10 * 86400)
+  .run()
 const current = jar
 jar = `__Host-firmony=${oldToken}`
 res = await appGet('/app')
@@ -393,7 +506,6 @@ res = await appGet('/app')
 check('the old cookie opens nothing', res.status === 303 && res.headers.get('location') === '/app/prihlasenie')
 check('every change is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-a'").first())?.n >= 10)
 
-
 // ---------------------------------------------------------------------------------------------------------------
 // The accountants' side
 // ---------------------------------------------------------------------------------------------------------------
@@ -403,7 +515,10 @@ async function signIn(email) {
   const n = (await sent()).length
   await post('/app/prihlasenie', { email }, { ip: '203.0.113.30' })
   await settle()
-  const mail = (await sent()).slice(n).filter((m) => m.to.toLowerCase() === email.toLowerCase()).pop()
+  const mail = (await sent())
+    .slice(n)
+    .filter((m) => m.to.toLowerCase() === email.toLowerCase())
+    .pop()
   const t = mail?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
   const r = await post('/app/vstup', { t }, { ip: '203.0.113.30' })
   return { cookie: (r.headers.get('set-cookie') ?? '').split(';')[0], location: r.headers.get('location'), mail }
@@ -465,7 +580,10 @@ check('nor can a client answer as the team', res.status === 404 && (await db.pre
 res = await admin.post('/ucto/tim', { name: 'Lucia Horváthová', email: 'lucia@firmony.test', rola: 'accountant' })
 await settle()
 const lucia = await db.prepare("SELECT id, team FROM users WHERE email = 'lucia@firmony.test'").first()
-check('an accountant is added and told how to sign in', res.status === 303 && lucia?.team === 'accountant' && (await sent()).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('/app/prihlasenie')))
+check(
+  'an accountant is added and told how to sign in',
+  res.status === 303 && lucia?.team === 'accountant' && (await sent()).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('/app/prihlasenie')),
+)
 res = await admin.post('/ucto/klienti/co-a/udaje', { dic: '2121234567', icdph: '', poznamka: 'Chce prehľad do 20.', plan: 'rast', uctovnicka: lucia?.id ?? '' })
 const coA = await db.prepare("SELECT accountant_id, dic, plan, note FROM companies WHERE id = 'co-a'").first()
 check('a client is given to her', res.status === 303 && coA?.accountant_id === lucia?.id && coA.dic === '2121234567' && coA.plan === 'rast' && coA.note === 'Chce prehľad do 20.')
@@ -487,36 +605,112 @@ check('nor can she touch a payment of another accountant', res.status === 404)
 // Booking: the reader's proposal, an entry, a rule for the supplier
 res = await acc.get(`/ucto/doklady/${cafeDoc?.id}`)
 page = await res.text()
-check('a document waits with the reader\'s proposal and the entry it makes', res.status === 200 && page.includes('Návrh od AI') && page.includes('513') && page.includes('221'), page.match(/entry__table[\s\S]{0,300}/)?.[0])
-res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, { akcia: 'dalsi', kind: 'receipt', category: 'representation', party: 'Kaviareň Na rohu s. r. o.', ico: '50123456', number: '', vs: '', issued: skDay(day(-1)), due: '', total: '12,40', vat: '2,07', account: '', remember: '1' })
-const booked = await db.prepare('SELECT booked_at, booked_by, category, vat_deduct, issued_on FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first()
-check('booked by her, with what she chose', res.status === 303 && Boolean(booked?.booked_at) && booked.booked_by === lucia?.id && booked.category === 'representation' && booked.vat_deduct === 0 && booked.issued_on === day(-1), JSON.stringify(booked))
+check(
+  "a document waits with the reader's proposal and the entry it makes",
+  res.status === 200 && page.includes('Návrh od AI') && page.includes('513') && page.includes('221'),
+  page.match(/entry__table[\s\S]{0,300}/)?.[0],
+)
+res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, {
+  akcia: 'dalsi',
+  kind: 'receipt',
+  category: 'representation',
+  party: 'Kaviareň Na rohu s. r. o.',
+  ico: '50123456',
+  number: '',
+  vs: '',
+  issued: skDay(day(-1)),
+  due: '',
+  total: '12,40',
+  vat: '2,07',
+  account: '',
+  remember: '1',
+})
+const booked = await db
+  .prepare('SELECT booked_at, booked_by, category, vat_deduct, issued_on FROM documents WHERE id = ?')
+  .bind(cafeDoc?.id ?? '')
+  .first()
+check(
+  'booked by her, with what she chose',
+  res.status === 303 && Boolean(booked?.booked_at) && booked.booked_by === lucia?.id && booked.category === 'representation' && booked.vat_deduct === 0 && booked.issued_on === day(-1),
+  JSON.stringify(booked),
+)
 check('and the supplier is remembered', (await db.prepare("SELECT category FROM supplier_rules WHERE company_id = 'co-a' AND key = 'ico:50123456'").first())?.category === 'representation')
 res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, { akcia: 'ulozit', kind: 'receipt', category: 'representation', party: 'x', total: '12,40', vat: '99,00', issued: '31. 2. 2026' })
 page = await res.text()
-check('a wrong date or VAT is said, and nothing changes', res.status === 422 && page.includes(`Dátum napíšte v${NB}tvare`) && page.includes('DPH musí byť') && (await db.prepare('SELECT party FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first())?.party === 'Kaviareň Na rohu s. r. o.')
+check(
+  'a wrong date or VAT is said, and nothing changes',
+  res.status === 422 &&
+    page.includes(`Dátum napíšte v${NB}tvare`) &&
+    page.includes('DPH musí byť') &&
+    (
+      await db
+        .prepare('SELECT party FROM documents WHERE id = ?')
+        .bind(cafeDoc?.id ?? '')
+        .first()
+    )?.party === 'Kaviareň Na rohu s. r. o.',
+)
 res = await anna.post(`/app/doklady/${cafeDoc?.id}/zmazat`, {})
-check('a client cannot delete a booked document', (await db.prepare('SELECT deleted_at FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first())?.deleted_at === null)
+check(
+  'a client cannot delete a booked document',
+  (
+    await db
+      .prepare('SELECT deleted_at FROM documents WHERE id = ?')
+      .bind(cafeDoc?.id ?? '')
+      .first()
+  )?.deleted_at === null,
+)
 
 // The same receipt sent again: a suspected duplicate, proposed by the rule, and thrown away
 jar = annaCookie
 res = await appPost('/app/doklady', {}, { files: [{ name: 'znova.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 5, 5, 5, 5, 5]) }] })
 await settle(600)
 const twin = await db.prepare("SELECT d.id, d.duplicate_of, d.proposal, d.category, l.payment_id FROM documents d LEFT JOIN links l ON l.document_id = d.id WHERE d.file_name = 'znova.jpg'").first()
-check('the same receipt again is a suspected duplicate, proposed by the rule, and paired with nothing', twin?.duplicate_of === cafeDoc?.id && twin.proposal === 'rule' && twin.category === 'representation' && twin.payment_id === null, JSON.stringify(twin))
+check(
+  'the same receipt again is a suspected duplicate, proposed by the rule, and paired with nothing',
+  twin?.duplicate_of === cafeDoc?.id && twin.proposal === 'rule' && twin.category === 'representation' && twin.payment_id === null,
+  JSON.stringify(twin),
+)
 res = await acc.get(`/ucto/doklady/${twin?.id}`)
 page = await res.text()
 check('the accountant is told so, and can open the other one', /Možno ide o.duplikát/.test(page) && page.includes(`/ucto/doklady/${cafeDoc?.id}`) && page.includes('Podľa pravidla'))
 res = await acc.post(`/ucto/doklady/${twin?.id}`, { akcia: 'zahodit' })
-check('a duplicate is thrown away', res.status === 303 && Boolean((await db.prepare('SELECT deleted_at FROM documents WHERE id = ?').bind(twin?.id ?? '').first())?.deleted_at))
+check(
+  'a duplicate is thrown away',
+  res.status === 303 &&
+    Boolean(
+      (
+        await db
+          .prepare('SELECT deleted_at FROM documents WHERE id = ?')
+          .bind(twin?.id ?? '')
+          .first()
+      )?.deleted_at,
+    ),
+)
 res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, { akcia: 'zahodit' })
-check('a booked document is not thrown away', (await db.prepare('SELECT deleted_at FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first())?.deleted_at === null)
+check(
+  'a booked document is not thrown away',
+  (
+    await db
+      .prepare('SELECT deleted_at FROM documents WHERE id = ?')
+      .bind(cafeDoc?.id ?? '')
+      .first()
+  )?.deleted_at === null,
+)
 
 // The export for her accounting program
 res = await acc.get(`/ucto/klienti/co-a/export?mesiac=${day(-1).slice(0, 7)}`)
 const csvBytes = new Uint8Array(await res.arrayBuffer())
 const csv = new TextDecoder().decode(csvBytes)
-check('booked documents of a month as CSV for Slovak Excel', res.status === 200 && (res.headers.get('content-type') ?? '').startsWith('text/csv') && csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf && csv.includes('Kaviareň Na rohu s. r. o.;50123456;12,40;2,07;10,33;Reprezentácia;513;221'), csv.split('\r\n')[1])
+check(
+  'booked documents of a month as CSV for Slovak Excel',
+  res.status === 200 &&
+    (res.headers.get('content-type') ?? '').startsWith('text/csv') &&
+    csvBytes[0] === 0xef &&
+    csvBytes[1] === 0xbb &&
+    csvBytes[2] === 0xbf &&
+    csv.includes('Kaviareň Na rohu s. r. o.;50123456;12,40;2,07;10,33;Reprezentácia;513;221'),
+  csv.split('\r\n')[1],
+)
 res = await acc.get('/ucto/klienti/co-b/export')
 check('never of a client that is not hers', res.status === 404)
 
@@ -531,17 +725,25 @@ await settle()
 const back = await db.prepare("SELECT exempt FROM payments WHERE id = 'pa-fuel'").first()
 const backMsg = await db.prepare("SELECT body, author, side FROM messages WHERE payment_id = 'pa-fuel' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
 check('handed back, it needs a document again, with a message from her', back?.exempt === null && backMsg?.side === 'firmony' && backMsg.author === lucia?.id && backMsg.body.includes('64,18'))
-check('and the client is rung, with nothing of it in the email', (await sent()).slice(before2).some((m) => m.to === 'anna@firma-a.test' && m.subject === 'Firmony: máte novú správu' && m.text.includes('/app/spravy') && !m.text.includes('64,18') && !m.text.includes('Lucia')))
+check(
+  'and the client is rung, with nothing of it in the email',
+  (await sent())
+    .slice(before2)
+    .some((m) => m.to === 'anna@firma-a.test' && m.subject === 'Firmony: máte novú správu' && m.text.includes('/app/spravy') && !m.text.includes('64,18') && !m.text.includes('Lucia')),
+)
 
 // Messages: what waits for an answer, and the answer
 res = await acc.get('/ucto/spravy')
 page = await res.text()
-check('a client\'s message waits for her', page.includes('Firma A s. r. o.') || page.includes('Všetkým klientom ste odpovedali'))
+check("a client's message waits for her", page.includes('Firma A s. r. o.') || page.includes('Všetkým klientom ste odpovedali'))
 jar = annaCookie
 const before2b = (await sent()).length
 res = await appPost('/app/spravy', { sprava: 'Bloček naozaj nemám.' })
 await settle()
-check('a client\'s message now rings her own accountant, and says nothing of it', (await sent()).slice(before2b).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('/ucto/klienti/co-a#spravy') && !m.text.includes('Bloček')))
+check(
+  "a client's message now rings her own accountant, and says nothing of it",
+  (await sent()).slice(before2b).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('/ucto/klienti/co-a#spravy') && !m.text.includes('Bloček')),
+)
 res = await appPost('/app/spravy', { sprava: 'A ešte jedna vec.' })
 await settle()
 check('a second message before anybody looked rings nothing more', (await sent()).slice(before2b).filter((m) => m.to === 'lucia@firmony.test').length === 1)
@@ -549,7 +751,10 @@ res = await acc.get('/ucto/spravy')
 check('and waits in her inbox', (await res.text()).includes('A ešte jedna vec.'))
 res = await acc.post('/ucto/klienti/co-a/spravy', { sprava: 'Rozumiem, zaúčtujeme ho podľa výpisu.' })
 await settle()
-check('an answer while the client has not read the last message rings her no more', (await sent()).slice(before2).filter((m) => m.to === 'anna@firma-a.test' && m.subject === 'Firmony: máte novú správu').length === 1)
+check(
+  'an answer while the client has not read the last message rings her no more',
+  (await sent()).slice(before2).filter((m) => m.to === 'anna@firma-a.test' && m.subject === 'Firmony: máte novú správu').length === 1,
+)
 res = await acc.get('/ucto/spravy')
 check('answered, nothing waits', (await res.text()).includes('Všetkým klientom ste odpovedali'))
 jar = annaCookie
@@ -557,7 +762,12 @@ res = await appGet('/app/spravy')
 check('the client reads the answer under her name', (await res.text()).includes('Lucia Horváthová'))
 
 // A request from the site becomes a client in one form, with a welcome email that signs in
-await db.prepare("INSERT INTO requests (id, created_at, ico, company, plan, situation, name, email, privacy_version) VALUES ('req-x', ?, NULL, 'Nová firma s. r. o.', 'rast', 'fresh', 'Peter Nový', 'peter@nova-firma.test', 'v1')").bind(nowS).run()
+await db
+  .prepare(
+    "INSERT INTO requests (id, created_at, ico, company, plan, situation, name, email, privacy_version) VALUES ('req-x', ?, NULL, 'Nová firma s. r. o.', 'rast', 'fresh', 'Peter Nový', 'peter@nova-firma.test', 'v1')",
+  )
+  .bind(nowS)
+  .run()
 res = await admin.get('/ucto/ziadosti')
 check('the administrator sees the request', (await res.text()).includes('Nová firma s. r. o.'))
 res = await admin.get('/ucto/klienti/novy?ziadost=req-x')
@@ -568,14 +778,35 @@ check('an accountant cannot make a client', res.status === 404 && (await db.prep
 res = await admin.post('/ucto/klienti', { ico: '57442452', name: 'Duplicitná', person: 'X Y', email: 'x@y.test', plan: 'start' })
 check('a company that is already ours is not made twice', res.status === 422 && /už.u.nás je/.test(await res.text()))
 const before3 = (await sent()).length
-res = await admin.post('/ucto/klienti', { ico: '', name: 'Nová firma s. r. o.', address: '', person: 'Peter Nový', email: 'peter@nova-firma.test', plan: 'rast', uctovnicka: lucia?.id ?? '', uvitat: '1', ziadost: 'req-x', akcia: 'zalozit' })
+res = await admin.post('/ucto/klienti', {
+  ico: '',
+  name: 'Nová firma s. r. o.',
+  address: '',
+  person: 'Peter Nový',
+  email: 'peter@nova-firma.test',
+  plan: 'rast',
+  uctovnicka: lucia?.id ?? '',
+  uvitat: '1',
+  ziadost: 'req-x',
+  akcia: 'zalozit',
+})
 await settle()
-const made = await db.prepare("SELECT c.id, c.accountant_id, c.plan, c.inbox, m.role FROM companies c JOIN members m ON m.company_id = c.id JOIN users u ON u.id = m.user_id WHERE c.name = 'Nová firma s. r. o.' AND u.email = 'peter@nova-firma.test'").first()
-check('the client, the person and the membership are made at once', res.status === 303 && made?.accountant_id === lucia?.id && made.plan === 'rast' && made.role === 'owner' && /^[a-z2-9]{8}$/.test(made.inbox))
+const made = await db
+  .prepare(
+    "SELECT c.id, c.accountant_id, c.plan, c.inbox, m.role FROM companies c JOIN members m ON m.company_id = c.id JOIN users u ON u.id = m.user_id WHERE c.name = 'Nová firma s. r. o.' AND u.email = 'peter@nova-firma.test'",
+  )
+  .first()
+check(
+  'the client, the person and the membership are made at once',
+  res.status === 303 && made?.accountant_id === lucia?.id && made.plan === 'rast' && made.role === 'owner' && /^[a-z2-9]{8}$/.test(made.inbox),
+)
 check('the request is marked as a client', (await db.prepare("SELECT status FROM requests WHERE id = 'req-x'").first())?.status === 'client')
 const welcome = (await sent()).slice(before3).find((m) => m.to === 'peter@nova-firma.test')
 const welcomeToken = welcome?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
-check('a welcome doorbell with the sign-in link and nothing else', Boolean(welcome) && welcome.subject === 'Firmony: vitajte' && Boolean(welcomeToken) && !welcome.text.includes(`doklady-${made?.inbox}`) && !welcome.text.includes('Nová firma'))
+check(
+  'a welcome doorbell with the sign-in link and nothing else',
+  Boolean(welcome) && welcome.subject === 'Firmony: vitajte' && Boolean(welcomeToken) && !welcome.text.includes(`doklady-${made?.inbox}`) && !welcome.text.includes('Nová firma'),
+)
 res = await post('/app/vstup', { t: welcomeToken }, { ip: '203.0.113.31' })
 const peter = as((res.headers.get('set-cookie') ?? '').split(';')[0])
 check('its link signs the new client in', res.status === 303 && res.headers.get('location') === '/app')
@@ -596,19 +827,34 @@ page = await res.text()
 check('never in a company she is no member of: she stays where she was', res.status === 200 && page.includes('Firma B s. r. o.') && !page.includes('Nová firma s. r. o.'))
 
 // The public mailbox makes an administrator only while the team is empty
-await db.prepare("UPDATE users SET email = 'christian@europio.test' WHERE id = ?").bind(bossRow?.id ?? '').run()
+await db
+  .prepare("UPDATE users SET email = 'christian@europio.test' WHERE id = ?")
+  .bind(bossRow?.id ?? '')
+  .run()
 await post('/app/prihlasenie', { email: 'ahoj@firmony.ai' }, { ip: '203.0.113.32' })
 await settle()
 check('once a team exists, the public mailbox makes nobody an administrator', (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'ahoj@firmony.ai'").first())?.n === 0)
-await db.prepare("UPDATE users SET email = 'ahoj@firmony.ai' WHERE id = ?").bind(bossRow?.id ?? '').run()
-check('the team\'s work is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action IN ('document.booked', 'document.discarded', 'exempt.returned', 'message.answered', 'company.created', 'team.added', 'team.bootstrap')").first())?.n >= 7)
+await db
+  .prepare("UPDATE users SET email = 'ahoj@firmony.ai' WHERE id = ?")
+  .bind(bossRow?.id ?? '')
+  .run()
+check(
+  "the team's work is on record",
+  (
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM events WHERE action IN ('document.booked', 'document.discarded', 'exempt.returned', 'message.answered', 'company.created', 'team.added', 'team.bootstrap')")
+      .first()
+  )?.n >= 7,
+)
 
 // Documents by email: the company's own address
 function rawMail({ to, subject = 'Faktúra 2026117', attachments = [] }) {
   const b = 'hranica-1'
   const parts = [`--${b}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nDobrý deň, v prílohe posielame faktúru.\r\n`]
   for (const a of attachments) {
-    parts.push(`--${b}\r\nContent-Type: ${a.type}; name="${a.name}"\r\nContent-Disposition: ${a.inline ? 'inline' : 'attachment'}; filename="${a.name}"\r\n${a.inline ? 'Content-ID: <logo@dodavatel>\r\n' : ''}Content-Transfer-Encoding: base64\r\n\r\n${Buffer.from(a.bytes).toString('base64').replace(/.{76}/g, '$&\r\n')}\r\n`)
+    parts.push(
+      `--${b}\r\nContent-Type: ${a.type}; name="${a.name}"\r\nContent-Disposition: ${a.inline ? 'inline' : 'attachment'}; filename="${a.name}"\r\n${a.inline ? 'Content-ID: <logo@dodavatel>\r\n' : ''}Content-Transfer-Encoding: base64\r\n\r\n${Buffer.from(a.bytes).toString('base64').replace(/.{76}/g, '$&\r\n')}\r\n`,
+    )
   }
   return [
     'From: Kvetinárstvo Lúka <faktury@kvety.test>',
@@ -629,13 +875,33 @@ const pdfBytes = new TextEncoder().encode('%PDF-1.4\n1 0 obj << /Type /Catalog >
 const logo = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array(300).fill(3)])
 const mailBefore = (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n
 const readsBefore = readings.length
-res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes }, { name: 'logo.png', type: 'image/png', bytes: logo, inline: true }] }))
+res = await sendMail(
+  'doklady-aaaa11@firmony.ai',
+  rawMail({
+    to: 'doklady-aaaa11@firmony.ai',
+    attachments: [
+      { name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes },
+      { name: 'logo.png', type: 'image/png', bytes: logo, inline: true },
+    ],
+  }),
+)
 await res.arrayBuffer()
 await settle(800)
 const mailed = await db.prepare("SELECT source, file_name, file_type, status, added_by FROM documents WHERE company_id = 'co-a' AND source = 'email'").all()
-check('an email to the company\'s address brings its PDF in, and not the logo of the signature', res.status === 200 && mailed.results.length === 1 && mailed.results[0].file_name === 'faktura-2026117.pdf' && mailed.results[0].file_type === 'application/pdf' && mailed.results[0].added_by === null, JSON.stringify(mailed.results))
+check(
+  "an email to the company's address brings its PDF in, and not the logo of the signature",
+  res.status === 200 &&
+    mailed.results.length === 1 &&
+    mailed.results[0].file_name === 'faktura-2026117.pdf' &&
+    mailed.results[0].file_type === 'application/pdf' &&
+    mailed.results[0].added_by === null,
+  JSON.stringify(mailed.results),
+)
 check('and the reader reads it', readings.length === readsBefore + 1 && readings.at(-1)?.messages?.[0]?.content?.[0]?.type === 'document' && mailed.results[0]?.status !== 'reading')
-check('the email is on record without its text', (await db.prepare("SELECT sender, subject, files, status FROM inbound_mail WHERE company_id = 'co-a' ORDER BY received_at DESC LIMIT 1").first())?.subject === 'Faktúra 2026117')
+check(
+  'the email is on record without its text',
+  (await db.prepare("SELECT sender, subject, files, status FROM inbound_mail WHERE company_id = 'co-a' ORDER BY received_at DESC LIMIT 1").first())?.subject === 'Faktúra 2026117',
+)
 res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
 await res.arrayBuffer()
 check('the same document by email again is not kept twice', (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === mailBefore + 1)
@@ -681,7 +947,10 @@ check('so is the right code at another domain', res.status === 400)
 res = await anna.post('/app/firma/prepnut', { firma: 'co-a' })
 res = await anna.get('/app/firma')
 page = await res.text()
-check('the company page shows its details, its address for documents and its people', res.status === 200 && page.includes('doklady-aaaa11@firmony.ai') && page.includes('Anna Malá') && page.includes('action="/app/firma/pozvat"'))
+check(
+  'the company page shows its details, its address for documents and its people',
+  res.status === 200 && page.includes('doklady-aaaa11@firmony.ai') && page.includes('Anna Malá') && page.includes('action="/app/firma/pozvat"'),
+)
 check('and the app can go on the home screen', page.includes('rel="manifest" href="/manifest.webmanifest"') && (res.headers.get('content-security-policy') ?? '').includes("manifest-src 'self'"))
 const before4 = (await sent()).length
 res = await anna.post('/app/firma/pozvat', { meno: 'Ján Spoločník', email: 'jan@firma-a.test' })
@@ -703,7 +972,16 @@ check('nor removes anybody', res.status === 403 && (await db.prepare("SELECT COU
 res = await anna.post('/app/firma/ludia/u-a/odobrat', {})
 check('an owner does not remove herself', (await db.prepare("SELECT COUNT(*) AS n FROM members WHERE company_id = 'co-a' AND user_id = 'u-a'").first())?.n === 1)
 res = await anna.post(`/app/firma/ludia/${jan?.id}/odobrat`, {})
-check('an owner removes a member', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM members WHERE company_id = 'co-a' AND user_id = ?").bind(jan?.id ?? '').first())?.n === 0)
+check(
+  'an owner removes a member',
+  res.status === 303 &&
+    (
+      await db
+        .prepare("SELECT COUNT(*) AS n FROM members WHERE company_id = 'co-a' AND user_id = ?")
+        .bind(jan?.id ?? '')
+        .first()
+    )?.n === 0,
+)
 res = await janSession.get('/app')
 check('whose session then opens nothing', res.status === 303 && res.headers.get('location') === '/app/prihlasenie')
 
@@ -737,8 +1015,14 @@ check('a company with payments and documents but no power of attorney is still s
 res = await anna.get('/app/plna-moc')
 page = await res.text()
 check(
-  'the power of attorney is the company\'s own paper, ready to sign',
-  res.status === 200 && page.includes('Plnomocenstvo') && page.includes('Firma A s. r. o.') && page.replace(/\u00a0/g, ' ').includes('IČO 57 442 452') && page.includes('europio s. r. o.') && page.includes('Čakáme na podpis') && page.includes('action="/app/plna-moc"'),
+  "the power of attorney is the company's own paper, ready to sign",
+  res.status === 200 &&
+    page.includes('Plnomocenstvo') &&
+    page.includes('Firma A s. r. o.') &&
+    page.replace(/\u00a0/g, ' ').includes('IČO 57 442 452') &&
+    page.includes('europio s. r. o.') &&
+    page.includes('Čakáme na podpis') &&
+    page.includes('action="/app/plna-moc"'),
 )
 res = await anna.upload('/app/plna-moc', { name: 'plna-moc.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('podpisane perom') })
 check('a file is taken by what it is, not by its name', res.status === 422 && (await res.text()).includes('nevieme otvoriť'))
@@ -756,29 +1040,91 @@ const beforePoa = (await sent()).length
 res = await anna.upload('/app/plna-moc', { name: 'plnomocenstvo.asice', bytes: asice })
 check('the container from the eID signer is taken', res.status === 303 && res.headers.get('location') === '/app/plna-moc?ok=plna-moc', res.status)
 await settle()
-check('and the accountant is rung to check it', (await sent()).slice(beforePoa).some((m) => m.to === 'lucia@firmony.test' && m.subject === 'Firmony: plná moc na overenie' && m.text.includes('/ucto/klienti/co-a#zmluva') && !m.text.includes('Firma A') && !m.text.includes('plnomocenstvo.asice')))
+check(
+  'and the accountant is rung to check it',
+  (await sent())
+    .slice(beforePoa)
+    .some(
+      (m) =>
+        m.to === 'lucia@firmony.test' &&
+        m.subject === 'Firmony: plná moc na overenie' &&
+        m.text.includes('/ucto/klienti/co-a#zmluva') &&
+        !m.text.includes('Firma A') &&
+        !m.text.includes('plnomocenstvo.asice'),
+    ),
+)
 const poaRow = await db.prepare("SELECT id, file_type, file_name, r2_key, checked_at FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").first()
-check('it is kept as what it is, under the company', poaRow?.file_type === 'application/vnd.etsi.asic-e+zip' && poaRow.file_name === 'plnomocenstvo.asice' && poaRow.r2_key.startsWith('companies/co-a/papers/') && poaRow.checked_at === null)
+check(
+  'it is kept as what it is, under the company',
+  poaRow?.file_type === 'application/vnd.etsi.asic-e+zip' && poaRow.file_name === 'plnomocenstvo.asice' && poaRow.r2_key.startsWith('companies/co-a/papers/') && poaRow.checked_at === null,
+)
 res = await anna.get(`/app/plna-moc/${poaRow?.id}`)
-check('the client downloads it back, never shown as a page', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && res.headers.get('content-type') === 'application/octet-stream')
+check(
+  'the client downloads it back, never shown as a page',
+  res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && res.headers.get('content-type') === 'application/octet-stream',
+)
 res = await peter.get(`/app/plna-moc/${poaRow?.id}`)
 check('another company does not get it', res.status === 404)
 res = await anna.get('/app/plna-moc?ok=plna-moc')
 check('the page then says that we check it', (await res.text()).includes('Overujeme ju'))
 const signedPdf = new Uint8Array([...new TextEncoder().encode('%PDF-1.7\n'), ...new Uint8Array(40_000).fill(32)])
 res = await anna.upload('/app/plna-moc', { name: 'plna moc podpisana.pdf', type: 'application/pdf', bytes: signedPdf })
-check('a signed PDF of real size arrives too, under a name of ours', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM company_files WHERE company_id = 'co-a' AND file_name = 'plna moc podpisana.pdf' AND file_type = 'application/pdf'").first())?.n === 1, res.status)
+check(
+  'a signed PDF of real size arrives too, under a name of ours',
+  res.status === 303 &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM company_files WHERE company_id = 'co-a' AND file_name = 'plna moc podpisana.pdf' AND file_type = 'application/pdf'").first())?.n === 1,
+  res.status,
+)
 res = await anna.get('/app')
 check('with its power of attorney but no declaration, the first steps stay', (await res.text()).includes('href="/app/vyhlasenie"'))
 
 // Kto stojí za firmou: the declaration for the law against money laundering, given in the app by the owner
 res = await anna.get('/app/vyhlasenie')
 page = await res.text()
-check('the declaration asks who runs, owns and pays the company, starting from what we know', res.status === 200 && page.includes('Kto stojí za firmou') && page.includes('name="rc"') && page.includes('name="kuv"') && page.includes('name="o1Share"') && page.includes('Čakáme na údaje') && page.includes('value="Anna Malá"') && page.includes('value="slovenská"'))
-const decl = { name: 'Anna Malá', rc: '905312/0010', dob: '', address: 'Hlavná 5, 040 01 Košice', nationality: 'slovenská', idKind: 'op', idNumber: 'EA123456', pep: '0', kuv: 'with', o1Name: 'Ján Spoločník', o1Rc: '', o1Dob: '2. 5. 1988', o1Address: 'Mlynská 3, 040 01 Košice', o1Nationality: 'slovenská', o1Share: '40 %', activity: 'Predaj kvetov', income: 'Tržby od zákazníkov', turnover: 'do-50', cash: '1', abroad: '0', abroadWhere: '', truthful: '1' }
+check(
+  'the declaration asks who runs, owns and pays the company, starting from what we know',
+  res.status === 200 &&
+    page.includes('Kto stojí za firmou') &&
+    page.includes('name="rc"') &&
+    page.includes('name="kuv"') &&
+    page.includes('name="o1Share"') &&
+    page.includes('Čakáme na údaje') &&
+    page.includes('value="Anna Malá"') &&
+    page.includes('value="slovenská"'),
+)
+const decl = {
+  name: 'Anna Malá',
+  rc: '905312/0010',
+  dob: '',
+  address: 'Hlavná 5, 040 01 Košice',
+  nationality: 'slovenská',
+  idKind: 'op',
+  idNumber: 'EA123456',
+  pep: '0',
+  kuv: 'with',
+  o1Name: 'Ján Spoločník',
+  o1Rc: '',
+  o1Dob: '2. 5. 1988',
+  o1Address: 'Mlynská 3, 040 01 Košice',
+  o1Nationality: 'slovenská',
+  o1Share: '40 %',
+  activity: 'Predaj kvetov',
+  income: 'Tržby od zákazníkov',
+  turnover: 'do-50',
+  cash: '1',
+  abroad: '0',
+  abroadWhere: '',
+  truthful: '1',
+}
 res = await anna.post('/app/vyhlasenie', { ...decl, truthful: '' })
 page = (await res.text()).replace(/ /g, ' ')
-check('without the statement it is not taken, and what was typed stays', res.status === 422 && page.includes('Bez tohto vyhlásenia') && page.includes('value="Predaj kvetov"') && (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n === 0)
+check(
+  'without the statement it is not taken, and what was typed stays',
+  res.status === 422 &&
+    page.includes('Bez tohto vyhlásenia') &&
+    page.includes('value="Predaj kvetov"') &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n === 0,
+)
 res = await anna.post('/app/vyhlasenie', { ...decl, rc: '905312/0011' })
 check('a birth number that cannot be one is said at its field', res.status === 422 && (await res.text()).includes('Toto rodné číslo nie je platné'))
 const beforeDecl = (await sent()).length
@@ -787,12 +1133,27 @@ check('the owner gives it', res.status === 303 && res.headers.get('location') ==
 await settle()
 const declRow = await db.prepare("SELECT id, data, created_by, checked_at FROM declarations WHERE company_id = 'co-a'").first()
 const declData = JSON.parse(declRow?.data ?? '{}')
-check('it is kept as given, with who gave it', declRow?.created_by === 'u-a' && declData.director?.birthNumber === '905312/0010' && declData.owners?.[0]?.name === 'Ján Spoločník' && declData.owners?.[0]?.birthDate === '1988-05-02' && declData.cash === true && declRow.checked_at === null, declRow?.data)
+check(
+  'it is kept as given, with who gave it',
+  declRow?.created_by === 'u-a' &&
+    declData.director?.birthNumber === '905312/0010' &&
+    declData.owners?.[0]?.name === 'Ján Spoločník' &&
+    declData.owners?.[0]?.birthDate === '1988-05-02' &&
+    declData.cash === true &&
+    declRow.checked_at === null,
+  declRow?.data,
+)
 const declBell = (await sent()).slice(beforeDecl).find((m) => m.to === 'lucia@firmony.test')
-check('the accountant is rung, and the doorbell carries nothing of it', Boolean(declBell) && declBell.subject === 'Firmony: údaje klienta na overenie' && declBell.text.includes('/ucto/klienti/co-a/aml') && !/Anna|905312|Ján|Firma A|kvet/.test(declBell.text))
+check(
+  'the accountant is rung, and the doorbell carries nothing of it',
+  Boolean(declBell) && declBell.subject === 'Firmony: údaje klienta na overenie' && declBell.text.includes('/ucto/klienti/co-a/aml') && !/Anna|905312|Ján|Firma A|kvet/.test(declBell.text),
+)
 res = await anna.get('/app/vyhlasenie?ok=vyhlasenie')
 page = await res.text()
-check('the owner reads it back with the birth number cut short', page.includes('******/0010') && !page.includes('905312') && page.includes('Overujeme ich') && page.includes('href="/app/vyhlasenie?zmenit=1"'))
+check(
+  'the owner reads it back with the birth number cut short',
+  page.includes('******/0010') && !page.includes('905312') && page.includes('Overujeme ich') && page.includes('href="/app/vyhlasenie?zmenit=1"'),
+)
 res = await anna.get('/app/vyhlasenie?zmenit=1')
 check('and can change it, starting from what was given', (await res.text()).includes('value="Predaj kvetov"'))
 // A member who is no owner is told where it stands and nothing more, and gives nothing: no declaration, no notice
@@ -817,18 +1178,44 @@ check('a change is kept as a new version beside the old one', res.status === 303
 
 // The team checks it, puts the client in a risk, and reports what is unusual to the designated person
 res = await acc.get('/ucto')
-check('the accountant\'s list says the client\'s data wait for her', (await res.text()).includes('Údaje na overenie'))
+check("the accountant's list says the client's data wait for her", (await res.text()).includes('Údaje na overenie'))
 res = await acc.get('/ucto/klienti/co-a/aml')
 page = (await res.text()).replace(/ /g, ' ')
-check('she reads the declaration in full', res.status === 200 && page.includes('905312/0010') && page.includes('Ján Spoločník, 40 %') && page.includes('Predaj kvetov') && page.includes('EA123456') && page.includes('Totožnosť a údaje overené'))
+check(
+  'she reads the declaration in full',
+  res.status === 200 &&
+    page.includes('905312/0010') &&
+    page.includes('Ján Spoločník, 40 %') &&
+    page.includes('Predaj kvetov') &&
+    page.includes('EA123456') &&
+    page.includes('Totožnosť a údaje overené'),
+)
 check('with the risk it points to', page.includes('navrhujeme: štandardné'))
 res = await anna.get('/ucto/klienti/co-a/aml')
-check('a client gets nothing of the team\'s page', res.status === 404)
+check("a client gets nothing of the team's page", res.status === 404)
 check('she reads the newest version', page.includes('Hlavná 6, 040 01 Košice'))
 res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: declRow?.id ?? '' })
-check('an older version is never checked in place of the newest', (await db.prepare('SELECT checked_at FROM declarations WHERE id = ?').bind(declRow?.id ?? '').first())?.checked_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 0)
+check(
+  'an older version is never checked in place of the newest',
+  (
+    await db
+      .prepare('SELECT checked_at FROM declarations WHERE id = ?')
+      .bind(declRow?.id ?? '')
+      .first()
+  )?.checked_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 0,
+)
 res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: newest?.id ?? '' })
-check('she marks it checked, on record', res.status === 303 && (await db.prepare('SELECT checked_by FROM declarations WHERE id = ?').bind(newest?.id ?? '').first())?.checked_by === lucia?.id && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 1)
+check(
+  'she marks it checked, on record',
+  res.status === 303 &&
+    (
+      await db
+        .prepare('SELECT checked_by FROM declarations WHERE id = ?')
+        .bind(newest?.id ?? '')
+        .first()
+    )?.checked_by === lucia?.id &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 1,
+)
 res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: newest?.id ?? '' })
 check('twice is once', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 1)
 res = await anna.get('/app/vyhlasenie')
@@ -837,7 +1224,14 @@ res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'kriticke' })
 check('a level that is none is not kept', (await db.prepare("SELECT COUNT(*) AS n FROM risks WHERE company_id = 'co-a'").first())?.n === 0)
 res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'standard', poznamka: 'Hotovosť nad 10 000 €.' })
 const riskRow = await db.prepare("SELECT level, note, created_by FROM risks WHERE company_id = 'co-a'").first()
-check('the risk is set, with why, on record', res.status === 303 && riskRow?.level === 'standard' && riskRow.created_by === lucia?.id && riskRow.note === 'Hotovosť nad 10 000 €.' && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'risk.set'").first())?.n === 1)
+check(
+  'the risk is set, with why, on record',
+  res.status === 303 &&
+    riskRow?.level === 'standard' &&
+    riskRow.created_by === lucia?.id &&
+    riskRow.note === 'Hotovosť nad 10 000 €.' &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'risk.set'").first())?.n === 1,
+)
 res = await acc.post('/ucto/klienti/co-a/aml/oznamenie', { text: '  ' })
 check('an empty report is not taken', res.status === 422)
 const beforeRep = (await sent()).length
@@ -846,30 +1240,64 @@ await settle()
 const rep = await db.prepare("SELECT id, created_by, decided_at FROM reports WHERE company_id = 'co-a'").first()
 check('a report is kept and waits for the designated person', res.status === 303 && rep?.created_by === lucia?.id && rep.decided_at === null)
 const repMail = (await sent()).slice(beforeRep)
-check('the administrator is rung, the client is not, and the email says nothing of it', repMail.some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: interné oznámenie' && !m.text.includes('9 900') && !m.text.includes('Firma A')) && !repMail.some((m) => m.to === 'anna@firma-a.test'))
+check(
+  'the administrator is rung, the client is not, and the email says nothing of it',
+  repMail.some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: interné oznámenie' && !m.text.includes('9 900') && !m.text.includes('Firma A')) &&
+    !repMail.some((m) => m.to === 'anna@firma-a.test'),
+)
 res = await anna.get('/app/spravy')
 check('the client is never told of a report', !(await res.text()).includes('9 900'))
 res = await admin.post('/ucto/klienti/co-a/aml/oznamenie', { text: 'Poznámka správcu k tomu istému.' })
 res = await acc.get('/ucto/klienti/co-a/aml')
 page = await res.text()
-check('an accountant reads her own reports, not the others\'', page.includes('Tri vklady hotovosti') && !page.includes('Poznámka správcu'))
+check("an accountant reads her own reports, not the others'", page.includes('Tri vklady hotovosti') && !page.includes('Poznámka správcu'))
 res = await acc.post(`/ucto/klienti/co-a/aml/oznamenie/${rep?.id}`, { rozhodnutie: 'not', poznamka: 'Nič.' })
-check('only the designated person decides', res.status === 404 && (await db.prepare('SELECT decided_at FROM reports WHERE id = ?').bind(rep?.id ?? '').first())?.decided_at === null)
+check(
+  'only the designated person decides',
+  res.status === 404 &&
+    (
+      await db
+        .prepare('SELECT decided_at FROM reports WHERE id = ?')
+        .bind(rep?.id ?? '')
+        .first()
+    )?.decided_at === null,
+)
 res = await admin.get('/ucto')
-check('the administrator\'s list says reports wait', /oznámen\S* čak\S* na.posúdenie/.test((await res.text()).replace(/\u00a0/g, ' ')))
+check("the administrator's list says reports wait", /oznámen\S* čak\S* na.posúdenie/.test((await res.text()).replace(/\u00a0/g, ' ')))
 res = await admin.post(`/ucto/klienti/co-a/aml/oznamenie/${rep?.id}`, { rozhodnutie: 'not', poznamka: '' })
 check('a decision needs its reasons', res.status === 422)
 res = await admin.post(`/ucto/klienti/co-a/aml/oznamenie/${rep?.id}`, { rozhodnutie: 'not', poznamka: 'Tržby z jarmoku, doložené pokladničnými dokladmi.' })
-check('the designated person decides, on record', res.status === 303 && (await db.prepare('SELECT decision, decided_by FROM reports WHERE id = ?').bind(rep?.id ?? '').first())?.decision === 'not' && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'report.decided'").first())?.n === 1)
+check(
+  'the designated person decides, on record',
+  res.status === 303 &&
+    (
+      await db
+        .prepare('SELECT decision, decided_by FROM reports WHERE id = ?')
+        .bind(rep?.id ?? '')
+        .first()
+    )?.decision === 'not' &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'report.decided'").first())?.n === 1,
+)
 res = await admin.post(`/ucto/klienti/co-a/aml/oznamenie/${rep?.id}`, { rozhodnutie: 'reported', poznamka: 'Predsa.' })
-check('and decides once', (await db.prepare('SELECT decision FROM reports WHERE id = ?').bind(rep?.id ?? '').first())?.decision === 'not')
+check(
+  'and decides once',
+  (
+    await db
+      .prepare('SELECT decision FROM reports WHERE id = ?')
+      .bind(rep?.id ?? '')
+      .first()
+  )?.decision === 'not',
+)
 
 // The notice: given in the app by the owner, taken back while the contract runs
 const [ny, nm] = day(0).slice(0, 7).split('-').map(Number)
 const endsOn = new Date(Date.UTC(ny, nm + 1, 0)).toISOString().slice(0, 10)
 res = await anna.get('/app/firma')
 page = await res.text()
-check('the company page has the notice, folded away', page.includes('action="/app/firma/vypoved"') && page.includes('Výpoveď zmluvy') && page.includes('href="/app/zmluva"') && page.includes('href="/app/vyhlasenie"'))
+check(
+  'the company page has the notice, folded away',
+  page.includes('action="/app/firma/vypoved"') && page.includes('Výpoveď zmluvy') && page.includes('href="/app/zmluva"') && page.includes('href="/app/vyhlasenie"'),
+)
 res = await anna.post('/app/firma/vypoved', {})
 check('without the tick nothing is given', res.status === 422 && (await db.prepare("SELECT notice_at FROM companies WHERE id = 'co-a'").first())?.notice_at === null)
 const beforeNotice = (await sent()).length
@@ -878,47 +1306,86 @@ await settle()
 const noticed = await db.prepare("SELECT notice_at, notice_by, ends_on FROM companies WHERE id = 'co-a'").first()
 check('the owner gives notice, and the contract ends on the last day of the next month', res.status === 303 && noticed?.notice_by === 'u-a' && noticed.ends_on === endsOn, JSON.stringify(noticed))
 const noticeMsg = await db.prepare("SELECT body, side, author FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
-check('it stands in the messages, and the team is rung', noticeMsg?.side === 'client' && noticeMsg.author === 'u-a' && noticeMsg.body.startsWith('Vypovedám zmluvu') && (await sent()).slice(beforeNotice).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: výpoveď zmluvy') && (await sent()).slice(beforeNotice).some((m) => m.to === 'lucia@firmony.test' && m.subject === 'Firmony: výpoveď zmluvy'))
+check(
+  'it stands in the messages, and the team is rung',
+  noticeMsg?.side === 'client' &&
+    noticeMsg.author === 'u-a' &&
+    noticeMsg.body.startsWith('Vypovedám zmluvu') &&
+    (await sent()).slice(beforeNotice).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: výpoveď zmluvy') &&
+    (await sent()).slice(beforeNotice).some((m) => m.to === 'lucia@firmony.test' && m.subject === 'Firmony: výpoveď zmluvy'),
+)
 res = await anna.post('/app/firma/vypoved', { potvrdit: '1' })
 check('notice is given once', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'contract.notice' AND company_id = 'co-a'").first())?.n === 1)
 res = await anna.get('/app/firma')
 page = (await res.text()).replace(/ /g, ' ')
 check('the company page says when it ends, and offers to take it back', page.includes('Zmluvu ste vypovedali') && page.includes('action="/app/firma/vypoved/spat"'))
 res = await acc.get('/ucto')
-check('the accountant\'s list says the client is leaving', /Končí/.test(await res.text()))
+check("the accountant's list says the client is leaving", /Končí/.test(await res.text()))
 res = await anna.post('/app/firma/vypoved/spat', {})
 const back2 = await db.prepare("SELECT notice_at, ends_on FROM companies WHERE id = 'co-a'").first()
-check('taken back, the contract runs on, and it stands in the messages', res.status === 303 && back2?.notice_at === null && back2.ends_on === null && (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('beriem späť'))
+check(
+  'taken back, the contract runs on, and it stands in the messages',
+  res.status === 303 &&
+    back2?.notice_at === null &&
+    back2.ends_on === null &&
+    (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('beriem späť'),
+)
 
 // The contract inside the app: the terms in full, numbered, to save or print
 res = await anna.get('/app/zmluva')
 page = await res.text()
-check('the contract and its terms are in the app', res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-11-1"') && page.includes('Firma A s. r. o.') && page.includes('data-print'))
+check(
+  'the contract and its terms are in the app',
+  res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-11-1"') && page.includes('Firma A s. r. o.') && page.includes('data-print'),
+)
 
 res = await anna.get('/app')
 check('a company with its declaration, its power of attorney, its payments and documents is no longer shown its first steps', !(await res.text()).includes('Začíname'))
 res = await acc.get('/ucto')
-check('the accountant\'s list says it waits for her', (await res.text()).includes('Plná moc na overenie'))
+check("the accountant's list says it waits for her", (await res.text()).includes('Plná moc na overenie'))
 res = await acc.get('/ucto/klienti/co-a')
 page = await res.text()
-check('her client\'s page has it with the button to mark it', page.includes(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`) && page.includes('plnomocenstvo.asice'))
+check("her client's page has it with the button to mark it", page.includes(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`) && page.includes('plnomocenstvo.asice'))
 res = await acc.get(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}`)
 check('and she opens it', res.status === 200)
 res = await admin.post(`/ucto/klienti/co-b/plna-moc/${poaRow?.id}/overit`, {})
-check('a paper is checked only under its own company', res.status === 404 && (await db.prepare('SELECT checked_at FROM company_files WHERE id = ?').bind(poaRow?.id ?? '').first())?.checked_at === null)
+check(
+  'a paper is checked only under its own company',
+  res.status === 404 &&
+    (
+      await db
+        .prepare('SELECT checked_at FROM company_files WHERE id = ?')
+        .bind(poaRow?.id ?? '')
+        .first()
+    )?.checked_at === null,
+)
 res = await acc.post(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`, {})
-const poaChecked = await db.prepare('SELECT checked_at, checked_by FROM company_files WHERE id = ?').bind(poaRow?.id ?? '').first()
-check('the accountant marks it checked and filed, on record', res.status === 303 && poaChecked?.checked_by === lucia?.id && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'poa.checked'").first())?.n === 1)
+const poaChecked = await db
+  .prepare('SELECT checked_at, checked_by FROM company_files WHERE id = ?')
+  .bind(poaRow?.id ?? '')
+  .first()
+check(
+  'the accountant marks it checked and filed, on record',
+  res.status === 303 && poaChecked?.checked_by === lucia?.id && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'poa.checked'").first())?.n === 1,
+)
 res = await acc.post(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`, {})
 check('twice is once', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'poa.checked'").first())?.n === 1)
 res = await anna.get('/app/firma')
 page = await res.text()
-check('the client sees it on the company\'s page, with the notice for the former accountant', page.includes('Máme ju') && page.includes('href="/app/prechod"'))
+check("the client sees it on the company's page, with the notice for the former accountant", page.includes('Máme ju') && page.includes('href="/app/prechod"'))
 
 // The notice to the former accountant, filled in from what was typed
 res = await anna.get(`/app/prechod?komu=${encodeURIComponent('Účtovníctvo Nová s. r. o.')}&od=${encodeURIComponent('1. 3. 2025')}&do=${encodeURIComponent('31. 12. 2026')}`)
 page = (await res.text()).replace(/\u00a0/g, ' ')
-check('the notice is the company\'s, to whom it was typed, with the days in words', res.status === 200 && page.includes('Firma A s. r. o.') && page.includes('Účtovníctvo Nová s. r. o.') && page.includes('zo dňa 1. marca 2025') && page.includes('ku dňu 31. decembra 2026') && page.includes('odvolávame plnomocenstvo'))
+check(
+  "the notice is the company's, to whom it was typed, with the days in words",
+  res.status === 200 &&
+    page.includes('Firma A s. r. o.') &&
+    page.includes('Účtovníctvo Nová s. r. o.') &&
+    page.includes('zo dňa 1. marca 2025') &&
+    page.includes('ku dňu 31. decembra 2026') &&
+    page.includes('odvolávame plnomocenstvo'),
+)
 res = await anna.get(`/app/prechod?od=${encodeURIComponent('32. 1. 2025')}`)
 check('a day that does not exist is said so', res.status === 422 && (await res.text()).includes(`v${NB}tvare`))
 
@@ -930,7 +1397,7 @@ function nineFive(day) {
     const hour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', hour: '2-digit', hourCycle: 'h23' }).format(new Date(ms))
     if (hour === '09') return ms
   }
-  throw new Error('no nine o\'clock')
+  throw new Error("no nine o'clock")
 }
 const nextWeekday = (from, weekday) => {
   const d = new Date(`${from}T12:00:00Z`)
@@ -947,7 +1414,12 @@ check('nothing is reminded at noon', (await sent()).slice(before5).filter((m) =>
 await tick(nineFive(monday))
 await settle(500)
 const weekly = (await sent()).slice(before5).filter((m) => /chýba doklad|chýbajú doklady/.test(m.subject))
-check('on Monday at nine the people of a company with missing documents are rung', weekly.some((m) => m.to === 'anna@firma-a.test' && m.text.includes('/app/platby') && m.text.includes('/app/firma#pripomienky') && !m.text.includes('Cerpacia') && !m.text.includes('64,18')) && weekly.some((m) => m.to === 'boris@firma-b.test'), weekly.map((m) => m.to).join(' '))
+check(
+  'on Monday at nine the people of a company with missing documents are rung',
+  weekly.some((m) => m.to === 'anna@firma-a.test' && m.text.includes('/app/platby') && m.text.includes('/app/firma#pripomienky') && !m.text.includes('Cerpacia') && !m.text.includes('64,18')) &&
+    weekly.some((m) => m.to === 'boris@firma-b.test'),
+  weekly.map((m) => m.to).join(' '),
+)
 check('once for a person, whatever number of companies of hers miss documents', weekly.filter((m) => m.to === 'anna@firma-a.test').length === 1)
 check('a company with nothing missing is not', !weekly.some((m) => m.to === 'peter@nova-firma.test'))
 await tick(nineFive(monday))
@@ -961,7 +1433,11 @@ const before6 = (await sent()).length
 await tick(nineFive(fifth))
 await settle(500)
 const monthly = (await sent()).slice(before6)
-check('on the 5th the deadline for a month\'s documents is reminded', monthly.some((m) => m.to === 'boris@firma-b.test' && m.subject.includes('do 10.')), monthly.map((m) => `${m.to}: ${m.subject}`).join(' | '))
+check(
+  "on the 5th the deadline for a month's documents is reminded",
+  monthly.some((m) => m.to === 'boris@firma-b.test' && m.subject.includes('do 10.')),
+  monthly.map((m) => `${m.to}: ${m.subject}`).join(' | '),
+)
 check('never to somebody who turned reminders off', !monthly.some((m) => m.to === 'anna@firma-a.test'))
 
 // Invoices: issued in a minute, numbered in a row, sent, paid by themselves
@@ -970,27 +1446,63 @@ res = await anna.get('/app/faktury')
 check('a company without invoices is shown how to start', res.status === 200 && (await res.text()).includes('Zatiaľ ste nevystavili žiadnu faktúru'))
 res = await anna.get('/app/faktury/nova')
 page = await res.text()
-check('a new invoice starts from today and the company\'s account', page.includes(`value="${skDay(day(0))}"`) && page.includes('SK31 1200 0000 1987 4263 7541'))
+check("a new invoice starts from today and the company's account", page.includes(`value="${skDay(day(0))}"`) && page.includes('SK31 1200 0000 1987 4263 7541'))
 res = await anna.post('/app/faktury', { akcia: 'register', ico: '57442452', meno: '', riadky: '3' })
 page = await res.text()
 check('the customer is filled in from the register', page.includes('value="europio s. r. o."') || page.includes('europio s.'), page.match(/name="meno"[^>]*/)?.[0])
 res = await anna.post('/app/faktury', { akcia: 'vystavit', meno: 'europio s. r. o.', riadky: '3', vystavena: skDay(day(0)), dodana: skDay(day(0)), splatna: skDay(day(14)) })
 check('an invoice without a line is not issued', res.status === 422 && (await res.text()).includes('aspoň jednu položku'))
-const invoiceForm = (extra) => ({ akcia: 'vystavit', ico: '57442452', meno: 'europio s. r. o.', adresa: 'Hlavná 1, 040 01 Košice', email: 'fakturacia@europio.test', vystavena: skDay(day(0)), dodana: skDay(day(0)), splatna: skDay(day(14)), iban: 'SK31 1200 0000 1987 4263 7541', riadky: '3', 'r0-popis': 'Konzultácie', 'r0-mnozstvo': '2', 'r0-jednotka': 'hod', 'r0-cena': '60,00', ...extra })
+const invoiceForm = (extra) => ({
+  akcia: 'vystavit',
+  ico: '57442452',
+  meno: 'europio s. r. o.',
+  adresa: 'Hlavná 1, 040 01 Košice',
+  email: 'fakturacia@europio.test',
+  vystavena: skDay(day(0)),
+  dodana: skDay(day(0)),
+  splatna: skDay(day(14)),
+  iban: 'SK31 1200 0000 1987 4263 7541',
+  riadky: '3',
+  'r0-popis': 'Konzultácie',
+  'r0-mnozstvo': '2',
+  'r0-jednotka': 'hod',
+  'r0-cena': '60,00',
+  ...extra,
+})
 res = await anna.post('/app/faktury', invoiceForm({ 'r1-popis': 'Zlá', 'r1-cena': 'veľa' }))
 check('a line that cannot be read is pointed at', res.status === 422 && /Riadok 2/.test(await res.text()))
 res = await anna.post('/app/faktury', invoiceForm({}))
 const firstId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1]
-const first = await db.prepare('SELECT number, seq, status, total_cents, vat_cents, document_id, token FROM invoices WHERE id = ?').bind(firstId ?? '').first()
-check('an invoice is issued with the first number of the year', res.status === 303 && first?.number === `${year}0001` && first.status === 'issued' && first.total_cents === 12000 && first.vat_cents === 0, JSON.stringify(first))
-const invDoc = await db.prepare('SELECT kind, source, vs, total_cents, invoice_id FROM documents WHERE id = ?').bind(first?.document_id ?? '').first()
-check('and is a document of the company at once', invDoc?.kind === 'invoice_out' && invDoc.source === 'issued' && invDoc.vs === `${year}0001` && invDoc.total_cents === 12000 && invDoc.invoice_id === firstId)
+const first = await db
+  .prepare('SELECT number, seq, status, total_cents, vat_cents, document_id, token FROM invoices WHERE id = ?')
+  .bind(firstId ?? '')
+  .first()
+check(
+  'an invoice is issued with the first number of the year',
+  res.status === 303 && first?.number === `${year}0001` && first.status === 'issued' && first.total_cents === 12000 && first.vat_cents === 0,
+  JSON.stringify(first),
+)
+const invDoc = await db
+  .prepare('SELECT kind, source, vs, total_cents, invoice_id FROM documents WHERE id = ?')
+  .bind(first?.document_id ?? '')
+  .first()
+check(
+  'and is a document of the company at once',
+  invDoc?.kind === 'invoice_out' && invDoc.source === 'issued' && invDoc.vs === `${year}0001` && invDoc.total_cents === 12000 && invDoc.invoice_id === firstId,
+)
 res = await anna.get(`/app/faktury/${firstId}`)
 page = await res.text()
 check('its page is the invoice as paper', page.includes(`${year}0001`) && page.includes('europio s. r. o.') && /nie je platiteľom DPH/.test(page) && page.includes('120,00'))
 res = await anna.get(`/app/faktury/${firstId}/xml`)
 const ubl = await res.text()
-check('its e-invoice is UBL for Peppol', (res.headers.get('content-type') ?? '').startsWith('application/xml') && ubl.includes(`<cbc:ID>${year}0001</cbc:ID>`) && ubl.includes('<cbc:PayableAmount currencyID="EUR">120.00</cbc:PayableAmount>') && ubl.includes('<cbc:ID>O</cbc:ID>') && ubl.includes('billing:3.0'))
+check(
+  'its e-invoice is UBL for Peppol',
+  (res.headers.get('content-type') ?? '').startsWith('application/xml') &&
+    ubl.includes(`<cbc:ID>${year}0001</cbc:ID>`) &&
+    ubl.includes('<cbc:PayableAmount currencyID="EUR">120.00</cbc:PayableAmount>') &&
+    ubl.includes('<cbc:ID>O</cbc:ID>') &&
+    ubl.includes('billing:3.0'),
+)
 res = await get(`/f/${first?.token}`)
 page = await res.text()
 check('the customer opens it without signing in, and no search engine does', res.status === 200 && page.includes(`${year}0001`) && (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
@@ -1002,47 +1514,112 @@ const before7 = (await sent()).length
 res = await anna.post(`/app/faktury/${firstId}/poslat`, {})
 await settle()
 const invMail = (await sent()).slice(before7).find((m) => m.to === 'fakturacia@europio.test')
-check('sent to the customer, a reply goes to the person who sent it', res.status === 303 && Boolean(invMail) && invMail.replyTo === 'anna@firma-a.test' && invMail.text.includes(`/f/${first?.token}`) && invMail.subject.includes(`${year}0001`))
+check(
+  'sent to the customer, a reply goes to the person who sent it',
+  res.status === 303 && Boolean(invMail) && invMail.replyTo === 'anna@firma-a.test' && invMail.text.includes(`/f/${first?.token}`) && invMail.subject.includes(`${year}0001`),
+)
 res = await peter.get(`/app/faktury/${firstId}`)
 check('another company never sees it', res.status === 404)
 // Paid by itself: the money is on the account with the invoice's number as its symbol
-await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pa-inv', 'co-a', 'acc-a', ?, ?, 5000, 'europio s. r. o.', ?, 'inv-2')").bind(nowS, day(0), `${year}0002`).run()
+await db
+  .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pa-inv', 'co-a', 'acc-a', ?, ?, 5000, 'europio s. r. o.', ?, 'inv-2')")
+  .bind(nowS, day(0), `${year}0002`)
+  .run()
 res = await anna.post('/app/faktury', invoiceForm({ 'r0-popis': 'Zálohová konzultácia', 'r0-mnozstvo': '1', 'r0-cena': '50' }))
 const secondId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1]
 await settle(500)
-check('the next invoice takes the next number', (await db.prepare('SELECT number FROM invoices WHERE id = ?').bind(secondId ?? '').first())?.number === `${year}0002`)
+check(
+  'the next invoice takes the next number',
+  (
+    await db
+      .prepare('SELECT number FROM invoices WHERE id = ?')
+      .bind(secondId ?? '')
+      .first()
+  )?.number === `${year}0002`,
+)
 res = await anna.get(`/app/faktury/${secondId}`)
-check('and is paid by itself when its money is on the account', /Zaplatená/.test(await res.text()) && (await db.prepare("SELECT COUNT(*) AS n FROM links WHERE payment_id = 'pa-inv'").first())?.n === 1)
+check(
+  'and is paid by itself when its money is on the account',
+  /Zaplatená/.test(await res.text()) && (await db.prepare("SELECT COUNT(*) AS n FROM links WHERE payment_id = 'pa-inv'").first())?.n === 1,
+)
 // A draft: no number, changed, thrown away
 res = await anna.post('/app/faktury', { akcia: 'koncept', meno: 'Budúci odberateľ', riadky: '3' })
 const draftId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1]
-check('a draft has no number', res.status === 303 && (await db.prepare('SELECT number, status FROM invoices WHERE id = ?').bind(draftId ?? '').first())?.status === 'draft')
+check(
+  'a draft has no number',
+  res.status === 303 &&
+    (
+      await db
+        .prepare('SELECT number, status FROM invoices WHERE id = ?')
+        .bind(draftId ?? '')
+        .first()
+    )?.status === 'draft',
+)
 res = await anna.get('/app/faktury')
 page = await res.text()
 check('the list shows what is paid, what waits and the draft', page.includes('Koncept') && /Zaplatená/.test(page) && page.includes('Budúci odberateľ'))
 res = await anna.post(`/app/faktury/${draftId}`, { akcia: 'zahodit' })
-check('a draft is thrown away', res.status === 303 && (await db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE id = ?').bind(draftId ?? '').first())?.n === 0)
+check(
+  'a draft is thrown away',
+  res.status === 303 &&
+    (
+      await db
+        .prepare('SELECT COUNT(*) AS n FROM invoices WHERE id = ?')
+        .bind(draftId ?? '')
+        .first()
+    )?.n === 0,
+)
 res = await anna.post(`/app/faktury/${firstId}`, { akcia: 'zahodit' })
-check('an issued invoice never is', (await db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE id = ?').bind(firstId ?? '').first())?.n === 1)
+check(
+  'an issued invoice never is',
+  (
+    await db
+      .prepare('SELECT COUNT(*) AS n FROM invoices WHERE id = ?')
+      .bind(firstId ?? '')
+      .first()
+  )?.n === 1,
+)
 res = await acc.get(`/ucto/doklady/${first?.document_id}`)
 check('the accountant books it with the invoice beside the form', res.status === 200 && (await res.text()).includes('sheet__kind'))
 // A draft is issued under its own id, takes the next number, and is never changed after; its link opens nothing before
 res = await anna.post('/app/faktury', invoiceForm({ akcia: 'koncept' }))
 const laterId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1]
-const draftToken = (await db.prepare('SELECT token FROM invoices WHERE id = ?').bind(laterId ?? '').first())?.token
+const draftToken = (
+  await db
+    .prepare('SELECT token FROM invoices WHERE id = ?')
+    .bind(laterId ?? '')
+    .first()
+)?.token
 res = await get(`/f/${draftToken}`)
-check('a draft\'s link opens nothing', res.status === 404)
+check("a draft's link opens nothing", res.status === 404)
 res = await anna.post(`/app/faktury/${laterId}`, invoiceForm({}))
-const issuedDraft = await db.prepare('SELECT number, status, customer_name FROM invoices WHERE id = ?').bind(laterId ?? '').first()
+const issuedDraft = await db
+  .prepare('SELECT number, status, customer_name FROM invoices WHERE id = ?')
+  .bind(laterId ?? '')
+  .first()
 check('a draft is issued under its own id with the next number', res.status === 303 && issuedDraft?.status === 'issued' && issuedDraft.number === `${year}0003`, JSON.stringify(issuedDraft))
 res = await anna.post(`/app/faktury/${laterId}`, invoiceForm({ meno: 'Iný odberateľ' }))
-check('and is never changed after', res.status === 303 && (await db.prepare('SELECT customer_name FROM invoices WHERE id = ?').bind(laterId ?? '').first())?.customer_name === 'europio s. r. o.')
+check(
+  'and is never changed after',
+  res.status === 303 &&
+    (
+      await db
+        .prepare('SELECT customer_name FROM invoices WHERE id = ?')
+        .bind(laterId ?? '')
+        .first()
+    )?.customer_name === 'europio s. r. o.',
+)
 // The QR code a bank pays from: on an invoice that waits, not on one that is paid
 check('the email says the invoice carries a QR code for the bank', invMail.text.includes('QR kód'))
 res = await get(`/f/${first?.token}`)
 page = await res.text()
-check('the customer\'s page carries the QR code a bank pays from', page.includes('class="sheet__qr"') && /<path fill="#000000" d="M4 4h7/.test(page))
-const paidToken = (await db.prepare('SELECT token FROM invoices WHERE id = ?').bind(secondId ?? '').first())?.token
+check("the customer's page carries the QR code a bank pays from", page.includes('class="sheet__qr"') && /<path fill="#000000" d="M4 4h7/.test(page))
+const paidToken = (
+  await db
+    .prepare('SELECT token FROM invoices WHERE id = ?')
+    .bind(secondId ?? '')
+    .first()
+)?.token
 res = await get(`/f/${paidToken}`)
 page = await res.text()
 check('a paid invoice says so to its customer, without a QR code to pay it twice', page.includes('Faktúra je zaplatená') && !page.includes('sheet__qr'))
@@ -1053,7 +1630,10 @@ check('a paid invoice is never reminded', res.status === 303 && !(await sent()).
 // Another invoice like an earlier one, and the customers of earlier invoices
 res = await anna.get(`/app/faktury/nova?podla=${firstId}`)
 page = await res.text()
-check('"Vystaviť podobnú" starts from the customer and the lines of an earlier invoice, dated today', page.includes('value="Konzultácie"') && page.includes('value="fakturacia@europio.test"') && page.includes(`value="${skDay(day(0))}"`))
+check(
+  '"Vystaviť podobnú" starts from the customer and the lines of an earlier invoice, dated today',
+  page.includes('value="Konzultácie"') && page.includes('value="fakturacia@europio.test"') && page.includes(`value="${skDay(day(0))}"`),
+)
 res = await anna.get('/app/faktury/nova')
 page = await res.text()
 check('a new invoice offers the customers of earlier ones, each once', (page.match(/class="recent__item"/g) ?? []).length === 1 && page.includes('/app/faktury/nova?odberatel='))
@@ -1064,38 +1644,113 @@ res = await peter.get(`/app/faktury/nova?podla=${firstId}`)
 check('an invoice of another company starts nothing', res.status === 200 && !(await res.text()).includes('Konzultácie'))
 res = await peter.post('/app/faktury', invoiceForm({ email: '' }))
 const peterId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1]
-check('every company numbers its own invoices from one', res.status === 303 && (await db.prepare('SELECT number FROM invoices WHERE id = ?').bind(peterId ?? '').first())?.number === `${year}0001`)
+check(
+  'every company numbers its own invoices from one',
+  res.status === 303 &&
+    (
+      await db
+        .prepare('SELECT number FROM invoices WHERE id = ?')
+        .bind(peterId ?? '')
+        .first()
+    )?.number === `${year}0001`,
+)
 // Issued without the customer's email: sent to one typed beside it, which is kept with it
 res = await peter.get(`/app/faktury/${peterId}`)
-check('an invoice without the customer\'s email asks for one beside it', (await res.text()).includes('name="email"'))
+check("an invoice without the customer's email asks for one beside it", (await res.text()).includes('name="email"'))
 res = await peter.post(`/app/faktury/${peterId}/poslat`, { email: 'nie-je-email' })
-check('an email that is none is refused', res.status === 422 && (await db.prepare('SELECT customer_email FROM invoices WHERE id = ?').bind(peterId ?? '').first())?.customer_email === null)
+check(
+  'an email that is none is refused',
+  res.status === 422 &&
+    (
+      await db
+        .prepare('SELECT customer_email FROM invoices WHERE id = ?')
+        .bind(peterId ?? '')
+        .first()
+    )?.customer_email === null,
+)
 const before9 = (await sent()).length
 res = await peter.post(`/app/faktury/${peterId}/poslat`, { email: 'uctaren@europio.test' })
 await settle()
-check('a typed email gets the invoice and stays with it', res.status === 303 && (await sent()).slice(before9).some((m) => m.to === 'uctaren@europio.test') && (await db.prepare('SELECT customer_email FROM invoices WHERE id = ?').bind(peterId ?? '').first())?.customer_email === 'uctaren@europio.test')
+check(
+  'a typed email gets the invoice and stays with it',
+  res.status === 303 &&
+    (await sent()).slice(before9).some((m) => m.to === 'uctaren@europio.test') &&
+    (
+      await db
+        .prepare('SELECT customer_email FROM invoices WHERE id = ?')
+        .bind(peterId ?? '')
+        .first()
+    )?.customer_email === 'uctaren@europio.test',
+)
 
 // The bank by open banking: linked at the bank itself, read by itself, renewed, ended
 await anna.post('/app/firma/prepnut', { firma: 'co-a' })
 bankFeed.balance = '1234.56'
 bankFeed.transactions = [
   // What the statement already brought (the café of yesterday): not brought twice.
-  { entry_reference: 'eb-1', transaction_amount: { currency: 'EUR', amount: '12.40' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(-1), remittance_information: ['Platba kartou KAVIAREN NA ROHU KOSICE'], bank_transaction_code: { code: 'CCRD' } },
+  {
+    entry_reference: 'eb-1',
+    transaction_amount: { currency: 'EUR', amount: '12.40' },
+    credit_debit_indicator: 'DBIT',
+    status: 'BOOK',
+    booking_date: day(-1),
+    remittance_information: ['Platba kartou KAVIAREN NA ROHU KOSICE'],
+    bank_transaction_code: { code: 'CCRD' },
+  },
   // The money for the first invoice, with its number as the symbol.
-  { entry_reference: 'eb-2', transaction_amount: { currency: 'EUR', amount: '120.00' }, credit_debit_indicator: 'CRDT', status: 'BOOK', booking_date: day(0), debtor: { name: 'europio s. r. o.' }, debtor_account: { iban: 'SK5202000000004712345670' }, remittance_information: [`/VS${year}0001/SS/KS0308`] },
-  { entry_reference: 'eb-3', transaction_amount: { currency: 'EUR', amount: '23.85' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), remittance_information: ['Nakup BILLA KOSICE'], merchant_category_code: '5411' },
+  {
+    entry_reference: 'eb-2',
+    transaction_amount: { currency: 'EUR', amount: '120.00' },
+    credit_debit_indicator: 'CRDT',
+    status: 'BOOK',
+    booking_date: day(0),
+    debtor: { name: 'europio s. r. o.' },
+    debtor_account: { iban: 'SK5202000000004712345670' },
+    remittance_information: [`/VS${year}0001/SS/KS0308`],
+  },
+  {
+    entry_reference: 'eb-3',
+    transaction_amount: { currency: 'EUR', amount: '23.85' },
+    credit_debit_indicator: 'DBIT',
+    status: 'BOOK',
+    booking_date: day(0),
+    remittance_information: ['Nakup BILLA KOSICE'],
+    merchant_category_code: '5411',
+  },
   // Waiting at the bank: not ours yet.
   { entry_reference: 'eb-4', transaction_amount: { currency: 'EUR', amount: '80.00' }, credit_debit_indicator: 'DBIT', status: 'PDNG', booking_date: day(0), remittance_information: ['Rezervacia'] },
   // Two coffees of one price on one day stay two.
-  { entry_reference: 'eb-5', transaction_amount: { currency: 'EUR', amount: '2.50' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), remittance_information: ['Platba kartou AUTOMAT KAVA'], bank_transaction_code: { code: 'CCRD' } },
-  { entry_reference: 'eb-6', transaction_amount: { currency: 'EUR', amount: '2.50' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), remittance_information: ['Platba kartou AUTOMAT KAVA'], bank_transaction_code: { code: 'CCRD' } },
+  {
+    entry_reference: 'eb-5',
+    transaction_amount: { currency: 'EUR', amount: '2.50' },
+    credit_debit_indicator: 'DBIT',
+    status: 'BOOK',
+    booking_date: day(0),
+    remittance_information: ['Platba kartou AUTOMAT KAVA'],
+    bank_transaction_code: { code: 'CCRD' },
+  },
+  {
+    entry_reference: 'eb-6',
+    transaction_amount: { currency: 'EUR', amount: '2.50' },
+    credit_debit_indicator: 'DBIT',
+    status: 'BOOK',
+    booking_date: day(0),
+    remittance_information: ['Platba kartou AUTOMAT KAVA'],
+    bank_transaction_code: { code: 'CCRD' },
+  },
 ]
 // One of the two coffees of today came with a statement before the bank was linked.
-await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, card, ref) VALUES ('pa-kava', 'co-a', 'acc-a', ?, ?, -250, 'AUTOMAT KAVA', 1, 'a-kava')").bind(nowS, day(0)).run()
+await db
+  .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, card, ref) VALUES ('pa-kava', 'co-a', 'acc-a', ?, ?, -250, 'AUTOMAT KAVA', 1, 'a-kava')")
+  .bind(nowS, day(0))
+  .run()
 res = await anna.get('/app/banka')
 page = await res.text()
 check('the bank page offers the banks of Slovakia', res.status === 200 && page.includes('Tatra banka') && page.includes('href="/app/banka/pripojit?banka=Tatra%20banka"'))
-res = await mf.dispatchFetch(`${site}/app/banka/pripojit?banka=Tatra%20banka`, { redirect: 'manual', headers: { cookie: annaCookie, 'cf-connecting-ip': '203.0.113.30', 'sec-fetch-site': 'cross-site' } })
+res = await mf.dispatchFetch(`${site}/app/banka/pripojit?banka=Tatra%20banka`, {
+  redirect: 'manual',
+  headers: { cookie: annaCookie, 'cf-connecting-ip': '203.0.113.30', 'sec-fetch-site': 'cross-site' },
+})
 check('another site cannot send a client off to the bank', res.status === 303 && res.headers.get('location') === '/app/banka')
 res = await anna.get('/app/banka/pripojit?banka=Neexistujúca%20banka')
 check('a bank that is none leads nowhere', res.status === 303 && res.headers.get('location') === '/app/banka')
@@ -1104,58 +1759,115 @@ res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
 let toBank = new URL(res.headers.get('location') ?? 'https://x.test')
 let fromBankPage = new URL(toBank.searchParams.get('spat') ?? 'https://x.test')
 res = await anna.get(`/app/banka/navrat?error=access_denied&state=${fromBankPage.searchParams.get('state')}`)
-check('cancelled at the bank, nothing is linked and nothing waits', res.headers.get('location') === '/app/banka?chyba=zrusene' && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-a'").first())?.n === 0)
+check(
+  'cancelled at the bank, nothing is linked and nothing waits',
+  res.headers.get('location') === '/app/banka?chyba=zrusene' && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-a'").first())?.n === 0,
+)
 // Linked
 res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
 toBank = new URL(res.headers.get('location') ?? 'https://x.test')
 fromBankPage = new URL(toBank.searchParams.get('spat') ?? 'https://x.test')
-check('a bank is linked at the bank itself, and comes back to us', res.status === 302 && toBank.origin === 'https://pretend-bank.test' && fromBankPage.origin === site && fromBankPage.pathname === '/app/banka/navrat' && /^[A-Za-z0-9_-]{43}$/.test(fromBankPage.searchParams.get('state') ?? ''))
-check('Enable Banking was asked with a token signed by our key', bank.calls.some((c) => c.method === 'POST' && c.path === '/auth'))
+check(
+  'a bank is linked at the bank itself, and comes back to us',
+  res.status === 302 &&
+    toBank.origin === 'https://pretend-bank.test' &&
+    fromBankPage.origin === site &&
+    fromBankPage.pathname === '/app/banka/navrat' &&
+    /^[A-Za-z0-9_-]{43}$/.test(fromBankPage.searchParams.get('state') ?? ''),
+)
+check(
+  'Enable Banking was asked with a token signed by our key',
+  bank.calls.some((c) => c.method === 'POST' && c.path === '/auth'),
+)
 res = await peter.get(`${fromBankPage.pathname}${fromBankPage.search}`)
-check('nobody else can finish another person\'s link', res.headers.get('location') === '/app/banka?chyba=neplatne')
+check("nobody else can finish another person's link", res.headers.get('location') === '/app/banka?chyba=neplatne')
 res = await anna.get(`${fromBankPage.pathname}${fromBankPage.search}`)
 await settle(1200)
-check('back from the bank, its accounts are the company\'s, the card without an IBAN is not', res.status === 303 && res.headers.get('location') === '/app/banka?ok=banka-pripojena&n=2', res.headers.get('location'))
+check(
+  "back from the bank, its accounts are the company's, the card without an IBAN is not",
+  res.status === 303 && res.headers.get('location') === '/app/banka?ok=banka-pripojena&n=2',
+  res.headers.get('location'),
+)
 const bankLink = await db.prepare("SELECT id, status, valid_until, synced_at FROM bank_links WHERE company_id = 'co-a' AND status = 'active'").first()
 check('the consent holds for 180 days', Boolean(bankLink) && bankLink.valid_until > nowS + 179 * 86400 && bankLink.valid_until < nowS + 181 * 86400)
 res = await anna.get(`${fromBankPage.pathname}${fromBankPage.search}`)
-check('the same answer from the bank links nothing twice', res.headers.get('location') === '/app/banka?chyba=neplatne' && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-a'").first())?.n === 1)
+check(
+  'the same answer from the bank links nothing twice',
+  res.headers.get('location') === '/app/banka?chyba=neplatne' && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-a'").first())?.n === 1,
+)
 const fromBank = (await db.prepare("SELECT ref FROM payments WHERE company_id = 'co-a' AND source = 'bank' ORDER BY ref").all()).results.map((r) => r.ref)
-check('the payments are read at once: what is booked, and nothing a statement already brought', JSON.stringify(fromBank) === JSON.stringify(['eb-2', 'eb-3', 'eb-6', 'personal-1']), JSON.stringify(fromBank))
-const paidFirst = await db.prepare("SELECT p.vs FROM links l JOIN payments p ON p.id = l.payment_id JOIN invoices i ON i.document_id = l.document_id WHERE i.id = ?").bind(firstId ?? '').first()
+check(
+  'the payments are read at once: what is booked, and nothing a statement already brought',
+  JSON.stringify(fromBank) === JSON.stringify(['eb-2', 'eb-3', 'eb-6', 'personal-1']),
+  JSON.stringify(fromBank),
+)
+const paidFirst = await db
+  .prepare('SELECT p.vs FROM links l JOIN payments p ON p.id = l.payment_id JOIN invoices i ON i.document_id = l.document_id WHERE i.id = ?')
+  .bind(firstId ?? '')
+  .first()
 check('the money for an invoice marks it paid by itself', paidFirst?.vs === `${year}0001`)
-check('the balance is the bank\'s', (await db.prepare("SELECT balance_cents FROM accounts WHERE id = 'acc-a'").first())?.balance_cents === 123456)
+check("the balance is the bank's", (await db.prepare("SELECT balance_cents FROM accounts WHERE id = 'acc-a'").first())?.balance_cents === 123456)
 res = await anna.get('/app/platby')
 page = await res.text()
 check('the payments page says the bank is linked', page.includes('Tatra banka je prepojená') && page.includes('Naposledy načítané'))
 res = await acc.get('/ucto/klienti/co-a')
-check('the accountant sees that the client\'s bank is linked and read', /Tatra banka prepojená, načítané dnes/.test(await res.text()))
+check("the accountant sees that the client's bank is linked and read", /Tatra banka prepojená, načítané dnes/.test(await res.text()))
 // Read now, while the client is there: nothing twice, whatever order the bank gives them in, and the bank is told
 // a person is present
 bankFeed.transactions.reverse()
 const callsBefore = bank.calls.length
 res = await anna.post(`/app/banka/${bankLink?.id}/nacitat`, {})
 check('read now: nothing twice', res.headers.get('location') === '/app/banka?ok=banka-nic', res.headers.get('location'))
-check('and the bank is told who is at the screen, so it does not count among its four', bank.calls.slice(callsBefore).filter((c) => c.path.startsWith('/accounts/')).every((c) => c.present === '203.0.113.30'))
+check(
+  'and the bank is told who is at the screen, so it does not count among its four',
+  bank.calls
+    .slice(callsBefore)
+    .filter((c) => c.path.startsWith('/accounts/'))
+    .every((c) => c.present === '203.0.113.30'),
+)
 const afterRead = bank.calls.length
 res = await peter.post(`/app/banka/${bankLink?.id}/nacitat`, {})
 check('another company cannot read it', res.headers.get('location') === '/app/banka' && bank.calls.length === afterRead)
 // An account that is not the company's
 const personal = await db.prepare("SELECT id FROM accounts WHERE company_id = 'co-a' AND iban = 'SK7311000000002934567890'").first()
 res = await anna.post(`/app/banka/ucet/${personal?.id}/odobrat`, {})
-check('an account that is not the company\'s goes, with what the bank brought for it', res.headers.get('location') === '/app/banka?ok=ucet-odobraty' && (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE ref = 'personal-1'").first())?.n === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE id = ?").bind(personal?.id ?? '').first())?.n === 0)
+check(
+  "an account that is not the company's goes, with what the bank brought for it",
+  res.headers.get('location') === '/app/banka?ok=ucet-odobraty' &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE ref = 'personal-1'").first())?.n === 0 &&
+    (
+      await db
+        .prepare('SELECT COUNT(*) AS n FROM accounts WHERE id = ?')
+        .bind(personal?.id ?? '')
+        .first()
+    )?.n === 0,
+)
 // The schedule reads a consent every six hours, never more often
 let callsNow = bank.calls.length
 await tick(Date.now())
 await settle(500)
 check('the schedule does not read a consent read a moment ago', bank.calls.length === callsNow)
-await db.prepare('UPDATE bank_links SET tried_at = ? WHERE id = ?').bind(nowS - 7 * 3600, bankLink?.id ?? '').run()
-bankFeed.transactions.push({ entry_reference: 'eb-7', transaction_amount: { currency: 'EUR', amount: '15.00' }, credit_debit_indicator: 'DBIT', status: 'BOOK', booking_date: day(0), creditor: { name: 'Papiernictvo Pero' }, remittance_information: ['Kancelarske potreby'] })
+await db
+  .prepare('UPDATE bank_links SET tried_at = ? WHERE id = ?')
+  .bind(nowS - 7 * 3600, bankLink?.id ?? '')
+  .run()
+bankFeed.transactions.push({
+  entry_reference: 'eb-7',
+  transaction_amount: { currency: 'EUR', amount: '15.00' },
+  credit_debit_indicator: 'DBIT',
+  status: 'BOOK',
+  booking_date: day(0),
+  creditor: { name: 'Papiernictvo Pero' },
+  remittance_information: ['Kancelarske potreby'],
+})
 await tick(Date.now())
 await settle(800)
 check('six hours later it reads it, and what is new arrives', bank.calls.length > callsNow && (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE ref = 'eb-7'").first())?.n === 1)
 // The renewal is asked for ten days before the consent ends
-await db.prepare('UPDATE bank_links SET valid_until = ? WHERE id = ?').bind(nowS + 5 * 86400, bankLink?.id ?? '').run()
+await db
+  .prepare('UPDATE bank_links SET valid_until = ? WHERE id = ?')
+  .bind(nowS + 5 * 86400, bankLink?.id ?? '')
+  .run()
 const before10 = (await sent()).length
 await tick(nineFive(day(1)))
 await settle(500)
@@ -1168,10 +1880,21 @@ res = await anna.get('/app')
 check('the overview says it too', (await res.text()).includes('Obnoviť prístup'))
 // A consent the bank says is over
 bank.refuse('EXPIRED_SESSION')
-await db.prepare('UPDATE bank_links SET tried_at = ? WHERE id = ?').bind(nowS - 7 * 3600, bankLink?.id ?? '').run()
+await db
+  .prepare('UPDATE bank_links SET tried_at = ? WHERE id = ?')
+  .bind(nowS - 7 * 3600, bankLink?.id ?? '')
+  .run()
 await tick(Date.now())
 await settle(500)
-check('a consent the bank says is over is marked so', (await db.prepare('SELECT status FROM bank_links WHERE id = ?').bind(bankLink?.id ?? '').first())?.status === 'expired')
+check(
+  'a consent the bank says is over is marked so',
+  (
+    await db
+      .prepare('SELECT status FROM bank_links WHERE id = ?')
+      .bind(bankLink?.id ?? '')
+      .first()
+  )?.status === 'expired',
+)
 res = await anna.get('/app')
 page = await res.text()
 check('and the overview says the payments stopped, with the way to renew', page.includes('vypršal') && page.includes('href="/app/banka/pripojit?banka=Tatra%20banka"'))
@@ -1185,14 +1908,379 @@ res = await anna.get(`${fromBankPage.pathname}${fromBankPage.search}`)
 await settle(800)
 bank.fail(null)
 const renewed = await db.prepare("SELECT id, error, tried_at, synced_at FROM bank_links WHERE company_id = 'co-a' AND status = 'active'").first()
-check('a first read that failed is tried again within a quarter of an hour', renewed?.error?.startsWith('503') && renewed.synced_at === null && renewed.tried_at <= Math.floor(Date.now() / 1000) - 6 * 3600 + 900 && renewed.tried_at > Math.floor(Date.now() / 1000) - 6 * 3600, JSON.stringify(renewed))
-check('renewed, the account is read under the new consent', Boolean(renewed) && renewed.id !== bankLink?.id && (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-a'").first())?.link_id === renewed.id)
+check(
+  'a first read that failed is tried again within a quarter of an hour',
+  renewed?.error?.startsWith('503') && renewed.synced_at === null && renewed.tried_at <= Math.floor(Date.now() / 1000) - 6 * 3600 + 900 && renewed.tried_at > Math.floor(Date.now() / 1000) - 6 * 3600,
+  JSON.stringify(renewed),
+)
+check(
+  'renewed, the account is read under the new consent',
+  Boolean(renewed) && renewed.id !== bankLink?.id && (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-a'").first())?.link_id === renewed.id,
+)
 res = await anna.get('/app/banka')
 check('and the ended one is not shown any more', !(await res.text()).includes('Prístup vypršal'))
 // Unlinked: closed at the bank, the payments stay
 const paymentsBefore = (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE company_id = 'co-a'").first())?.n
 res = await anna.post(`/app/banka/${renewed?.id}/odpojit`, {})
-check('unlinked, the consent is closed at the bank and its payments stay', res.headers.get('location') === '/app/banka?ok=banka-odpojena' && (await db.prepare('SELECT status FROM bank_links WHERE id = ?').bind(renewed?.id ?? '').first())?.status === 'revoked' && bank.calls.at(-1)?.method === 'DELETE' && (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE company_id = 'co-a'").first())?.n === paymentsBefore && (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-a'").first())?.link_id === null)
+check(
+  'unlinked, the consent is closed at the bank and its payments stay',
+  res.headers.get('location') === '/app/banka?ok=banka-odpojena' &&
+    (
+      await db
+        .prepare('SELECT status FROM bank_links WHERE id = ?')
+        .bind(renewed?.id ?? '')
+        .first()
+    )?.status === 'revoked' &&
+    bank.calls.at(-1)?.method === 'DELETE' &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE company_id = 'co-a'").first())?.n === paymentsBefore &&
+    (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-a'").first())?.link_id === null,
+)
+
+// ---------------------------------------------------------------------------------------------------------------
+// VAT: the registration in the company's details, the booking form's VAT, a period's return and control statement
+// with their files, the mark that they were filed, and what the client then reads and pays
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/ /g, ' ')
+  const validXml = async (xml, schema) =>
+    (await validateXML({ xml: [{ fileName: 'x.xml', contents: xml }], schema: [{ fileName: schema, contents: readFileSync(new URL(`./xsd/${schema}`, import.meta.url), 'utf8') }] })).valid
+  // A period that has ended and holds nothing else of this test: the month before the last.
+  const monthBack = (n) => {
+    const d = new Date(`${day(0).slice(0, 7)}-15T12:00:00Z`)
+    d.setUTCMonth(d.getUTCMonth() - n)
+    return d.toISOString().slice(0, 7)
+  }
+  const old = monthBack(2)
+  const vs = `1100${old.slice(5, 7)}${old.slice(0, 4)}`
+  const details = (extra) => ({
+    dic: '2121234567',
+    icdph: 'SK2121234567',
+    dph_stav: 'payer',
+    dph_obdobie: 'month',
+    dph_od: '',
+    danovy_urad: 'Bratislava',
+    oud: '500240-1234567890/8180',
+    poznamka: 'Chce prehľad do 20.',
+    ...extra,
+  })
+
+  res = await acc.post('/ucto/klienti/co-a/udaje', details({ icdph: 'SK123' }))
+  page = plain(await res.text())
+  check(
+    'a VAT number that is none is said, and nothing is saved',
+    res.status === 422 &&
+      page.includes('IČ DPH píšte ako SK a 10 číslic.') &&
+      page.includes('value="SK123"') &&
+      (await db.prepare("SELECT vat_payer FROM companies WHERE id = 'co-a'").first())?.vat_payer === 0,
+  )
+  res = await acc.post('/ucto/klienti/co-a/udaje', details({ oud: '12-34' }))
+  check('so is a personal account that is none', res.status === 422 && plain(await res.text()).includes('Toto číslo osobného účtu nepoznáme'))
+  res = await acc.post('/ucto/klienti/co-a/udaje', details({ dph_prenos: 'veľa' }))
+  check('and an excess deduction from before that is no amount', res.status === 422 && plain(await res.text()).includes('Sumu napíšte v eurách'))
+  res = await acc.post('/ucto/klienti/co-a/udaje', details({}))
+  const coVat = await db.prepare("SELECT vat_payer, vat_7a, vat_quarterly, icdph, tax_office, tax_account, plan, accountant_id FROM companies WHERE id = 'co-a'").first()
+  check(
+    'the registration, the tax office and the personal account are saved, the account however it was typed',
+    res.status === 303 &&
+      coVat?.vat_payer === 1 &&
+      coVat.vat_7a === 0 &&
+      coVat.vat_quarterly === 0 &&
+      coVat.icdph === 'SK2121234567' &&
+      coVat.tax_office === 'Bratislava' &&
+      coVat.tax_account === '1234567890' &&
+      coVat.plan === 'rast' &&
+      coVat.accountant_id === lucia?.id,
+    JSON.stringify(coVat),
+  )
+
+  // Two documents of that month: an invoice issued and booked, and one received that waits.
+  const at = Math.floor(Date.parse(`${old}-20T10:00:00Z`) / 1000)
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_ico, number, vs, issued_on, total_cents, vat_cents, currency, category, booked_at, booked_by) VALUES ('vat-out', 'co-a', ?, 'upload', 'read', 'test', 'invoice_out', 'Odberateľ s. r. o.', '12345679', '2026901', '2026901', ?, 12300, 2300, 'EUR', 'sales', ?, ?)",
+      )
+      .bind(at, `${old}-12`, at, lucia?.id ?? ''),
+    db
+      .prepare(
+        "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_ico, party_vat_id, number, issued_on, total_cents, vat_cents, currency, category, vat_deduct) VALUES ('vat-in', 'co-a', ?, 'email', 'read', 'test', 'invoice_in', 'Dodávateľ s. r. o.', '36123456', 'SK2020123456', 'FA-77', ?, 6150, 1150, 'EUR', 'services', 1)",
+      )
+      .bind(at, `${old}-15`),
+  ])
+  res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
+  page = plain(await res.text())
+  check(
+    'the period says what keeps it from being filed: the seat, and a document not booked',
+    res.status === 200 && page.includes('Doplňte sídlo firmy.') && page.includes('Doklad z obdobia nie je zaúčtovaný.') && page.includes('Treba vyriešiť') && page.includes('/ucto/doklady/vat-in'),
+  )
+  res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}`)
+  check('and no file is made while it does', res.status === 303 && (res.headers.get('location') ?? '').includes('ok=dph-blokovane'))
+  await db.prepare("UPDATE companies SET address = 'Hlavná 1, 811 01 Bratislava' WHERE id = 'co-a'").run()
+
+  // Booking the received invoice: its VAT proposed, said wrong, then confirmed.
+  res = await acc.get('/ucto/doklady/vat-in')
+  page = plain(await res.text())
+  check(
+    'the booking form proposes the VAT and says where it goes',
+    page.includes('DPH v priznaní') &&
+      page.includes('Navrhnuté z dokladu.') &&
+      page.includes('name="dph_zaklad_23" value="50,00"') &&
+      page.includes('value="SK2020123456"') &&
+      page.includes('r. 19, r. 21, B.2'),
+  )
+  const bookIn = (extra) =>
+    acc.post('/ucto/doklady/vat-in', {
+      akcia: 'zauctovat',
+      kind: 'invoice_in',
+      category: 'services',
+      party: 'Dodávateľ s. r. o.',
+      ico: '36123456',
+      number: 'FA-77',
+      vs: '',
+      issued: skDay(`${old}-15`),
+      due: '',
+      total: '61,50',
+      vat: '11,50',
+      account: '',
+      deduct: '1',
+      dph: '1',
+      dph_rezim: 'domestic',
+      dph_dodanie: '',
+      dph_icdph: 'SK2020123456',
+      dph_opravuje: '',
+      dph_obdobie: '',
+      dph_zaklad_23: '50,00',
+      dph_dan_23: '11,50',
+      ...extra,
+    })
+  res = await bookIn({ dph_zaklad_23: '' })
+  page = plain(await res.text())
+  check(
+    'VAT without its base is said, and nothing is booked',
+    res.status === 422 && page.includes('K DPH doplňte aj základ.') && (await db.prepare("SELECT booked_at FROM documents WHERE id = 'vat-in'").first())?.booked_at === null,
+  )
+  res = await bookIn({ dph_icdph: '' })
+  check("nor a deduction without the supplier's VAT number", res.status === 422 && plain(await res.text()).includes('Faktúra s odpočtom DPH potrebuje IČ DPH dodávateľa'))
+  res = await bookIn({})
+  const inVat = await db.prepare("SELECT booked_at, vat_mode, vat_lines, party_vat_id FROM documents WHERE id = 'vat-in'").first()
+  check(
+    'booked with its VAT confirmed, the deduction in its line',
+    res.status === 303 &&
+      Boolean(inVat?.booked_at) &&
+      inVat.vat_mode === 'domestic' &&
+      inVat.vat_lines === JSON.stringify([{ rate: 23, base: 5000, vat: 1150, deduct: 1150 }]) &&
+      inVat.party_vat_id === 'SK2020123456',
+    JSON.stringify(inVat),
+  )
+
+  res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
+  page = plain(await res.text())
+  check(
+    'then the period is ready: 23 € on 100 € supplied, 11,50 € deducted, 11,50 € to pay',
+    page.includes('Pripravené') && page.includes('100,00 €') && page.includes('23,00 €') && page.includes('Na úhradu 11,50 €') && page.includes('DPH je len navrhnutá'),
+    page.slice(page.indexOf('Priznanie'), page.indexOf('Priznanie') + 400),
+  )
+  res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}`)
+  const returnFile = await res.text()
+  check(
+    'the return as a file the portal takes, valid against its schema',
+    res.status === 200 &&
+      (res.headers.get('content-disposition') ?? '').includes(`DPH_SK2121234567_${old}.xml`) &&
+      returnFile.includes('<r04>23.00</r04>') &&
+      returnFile.includes('<r21>11.50</r21>') &&
+      returnFile.includes('<r35>11.50</r35>') &&
+      returnFile.includes('<danovyUrad>Bratislava</danovyUrad>') &&
+      (await validXml(returnFile, 'dph2025.xsd')),
+    returnFile.slice(0, 300),
+  )
+  res = await acc.get(`/ucto/klienti/co-a/dph/kontrolny-vykaz.xml?obdobie=${old}`)
+  const kvFile = await res.text()
+  check(
+    'the control statement too: A.1 and B.2, valid',
+    res.status === 200 && kvFile.includes('<A1 F="2026901"') && kvFile.includes('<B2 Dod="SK2020123456" F="FA-77"') && (await validXml(kvFile, 'kv_dph_2025.xsd')),
+    kvFile,
+  )
+  res = await acc.get('/ucto/klienti/co-b/dph')
+  check('never of a client that is not hers', res.status === 404)
+
+  // Filed: once, with what was filed; the client is told in the app what to pay, where and with which symbol.
+  await db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = 'co-a' AND seen_at IS NULL").bind(nowS).run()
+  const beforeFile = (await sent()).length
+  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old })
+  await settle()
+  const filedRow = await db.prepare("SELECT pay_cents, refund_cents, kv_rows, filed_by FROM vat_returns WHERE company_id = 'co-a' AND period = ?").bind(old).first()
+  check(
+    'marked as filed, with what was filed',
+    res.status === 303 && filedRow?.pay_cents === 1150 && filedRow.refund_cents === 0 && filedRow.kv_rows === 2 && filedRow.filed_by === lucia?.id,
+    JSON.stringify(filedRow),
+  )
+  const filedMsg = plain((await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' AND side = 'firmony' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body ?? '')
+  check(
+    'the client is told what to pay, to which account and with which symbol',
+    filedMsg.includes('Na úhradu je 11,50 €') && filedMsg.includes(vs) && filedMsg.includes('8180 5002 4012 3456 7890'),
+    filedMsg,
+  )
+  check(
+    'and rung, with nothing of it in the email',
+    (await sent()).slice(beforeFile).some((m) => m.to === 'anna@firma-a.test' && m.text.includes('/app/spravy') && !m.text.includes('11,50')),
+  )
+  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old })
+  check(
+    'filed again, it stays one',
+    (res.headers.get('location') ?? '').includes('ok=dph-uz') && (await db.prepare("SELECT COUNT(*) AS n FROM vat_returns WHERE company_id = 'co-a'").first())?.n === 1,
+  )
+  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: day(0).slice(0, 7) })
+  check('a period that has not ended is not filed', (res.headers.get('location') ?? '').includes('ok=dph-bezi'))
+
+  // What the client reads and pays.
+  res = await anna.get('/app/dane')
+  page = plain(await res.text())
+  check(
+    'the client finds the tax with the account, the symbol and a QR code for the bank',
+    res.status === 200 && page.includes('11,50 €') && page.includes(vs) && page.includes('8180 5002 4012 3456 7890') && page.includes('PAY by square') && page.includes('<svg'),
+  )
+  res = await anna.get('/app')
+  check('the overview asks for it until it is paid', plain(await res.text()).includes('Zaplatiť DPH za'))
+  await db
+    .prepare(
+      "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pa-vat', 'co-a', 'acc-a', ?, ?, -1150, 'Finančné riaditeľstvo SR', ?, 'vat-1')",
+    )
+    .bind(nowS, day(0), `000${vs}`)
+    .run()
+  res = await anna.get('/app/dane')
+  check('paid with its symbol, zeros in front or not, it says so', plain(await res.text()).includes('Zaplatené'))
+  res = await anna.get('/app')
+  check('and the overview no longer asks', !plain(await res.text()).includes('Zaplaťte 11,50 €'))
+
+  // A document booked after filing changes the figures. The deadline has passed: a supplementary return with rows 36
+  // and 37, and a supplementary control statement with the new line alone.
+  await db
+    .prepare(
+      "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_ico, number, vs, issued_on, total_cents, vat_cents, currency, category, booked_at, booked_by) VALUES ('vat-late', 'co-a', ?, 'upload', 'read', 'test', 'invoice_out', 'Odberateľ s. r. o.', '12345679', '2026902', '2026902', ?, 24600, 4600, 'EUR', 'sales', ?, ?)",
+    )
+    .bind(at, `${old}-25`, nowS, lucia?.id ?? '')
+    .run()
+  res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
+  page = plain(await res.text())
+  check(
+    'a document booked after filing: the page says which rows changed, that a supplementary return is due, and its rows 36 and 37',
+    page.includes('Zmenené po podaní') &&
+      page.includes('Zmenené riadky: 03, 04, 17, 32, 35.') &&
+      page.includes('treba dodatočné priznanie') &&
+      page.includes('Stiahnuť dodatočné priznanie') &&
+      page.includes('Riadok 36: +46,00 €. Riadok 37: +46,00 €.'),
+    page.match(/Zmenené riadky[^.]*\./)?.[0],
+  )
+  // A correction is made only from books that could be filed: a document of the month not yet read keeps it back.
+  await db
+    .prepare("INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, issued_on) VALUES ('vat-unread', 'co-a', ?, 'upload', 'read', 'test', NULL, ?)")
+    .bind(at, `${old}-26`)
+    .run()
+  res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
+  page = plain(await res.text())
+  const heldBack = page.includes('Opravu pripravíme, keď bude všetko vyriešené.') && !page.includes('Stiahnuť dodatočné priznanie')
+  res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}`)
+  check('a correction waits while a document of the month is not booked', heldBack && (res.headers.get('location') ?? '').includes('ok=dph-blokovane'))
+  await db.prepare("DELETE FROM documents WHERE id = 'vat-unread'").run()
+  // Filed ten days ago, found yesterday: a day of finding before the filing would not be taken.
+  await db.prepare("UPDATE vat_returns SET filed_on = ? WHERE company_id = 'co-a'").bind(day(-10)).run()
+  const found = day(-1)
+  const dotted = `${found.slice(8, 10)}.${found.slice(5, 7)}.${found.slice(0, 4)}`
+  res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}&zistene=${encodeURIComponent(skDay(found))}`)
+  const dFile = await res.text()
+  check(
+    'the supplementary return: marked so, with the day of finding, the whole figures and rows 36 and 37, valid',
+    res.status === 200 &&
+      (res.headers.get('content-disposition') ?? '').includes(`DPH_D_SK2121234567_${old}.xml`) &&
+      dFile.includes('<ddp>1</ddp>') &&
+      dFile.includes(`<datumZisteniaDdp>${dotted}</datumZisteniaDdp>`) &&
+      dFile.includes('<r04>69.00</r04>') &&
+      dFile.includes('<r36>46.00</r36>') &&
+      dFile.includes('<r37>46.00</r37>') &&
+      (await validXml(dFile, 'dph2025.xsd')),
+    dFile.slice(0, 400),
+  )
+  res = await acc.get(`/ucto/klienti/co-a/dph/kontrolny-vykaz.xml?obdobie=${old}`)
+  const dKvFile = await res.text()
+  check(
+    'the supplementary control statement: the new line alone, with code 2, valid',
+    res.status === 200 &&
+      dKvFile.includes('<Druh>D</Druh>') &&
+      dKvFile.includes('F="2026902"') &&
+      dKvFile.includes('KOpr="2"') &&
+      !dKvFile.includes('F="2026901"') &&
+      !dKvFile.includes('<B2') &&
+      (await validXml(dKvFile, 'kv_dph_2025.xsd')),
+    dKvFile,
+  )
+  await db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = 'co-a' AND seen_at IS NULL").bind(nowS).run()
+  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old, zistene: skDay(found) })
+  await settle()
+  const dRow = await db.prepare("SELECT kind, pay_cents, found_on, due_on, prev FROM vat_returns WHERE company_id = 'co-a'").first()
+  const monthAfter = new Date(`${found.slice(0, 7)}-15T12:00:00Z`)
+  monthAfter.setUTCMonth(monthAfter.getUTCMonth() + 1)
+  check(
+    'marked as filed: the period now comes to 57,50 €, due by the end of the month after the finding',
+    res.status === 303 &&
+      (res.headers.get('location') ?? '').includes('ok=dph-opravene') &&
+      dRow?.kind === 'D' &&
+      dRow.pay_cents === 1150 + 4600 &&
+      dRow.found_on === found &&
+      dRow.due_on >= `${monthAfter.toISOString().slice(0, 7)}-28` &&
+      Boolean(dRow.prev),
+    JSON.stringify(dRow && { ...dRow, prev: Boolean(dRow.prev) }),
+  )
+  const dMsg = plain((await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' AND side = 'firmony' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body ?? '')
+  check(
+    'the client reads that a supplementary return was filed, and only the difference is asked for',
+    dMsg.includes('dodatočné priznanie') && dMsg.includes('Na úhradu je 46,00 €') && dMsg.includes('Zaplatených 11,50 €'),
+    dMsg,
+  )
+  res = await anna.get('/app/dane')
+  page = plain(await res.text())
+  check('the client sees what is left of it, with the QR code', page.includes('Dodatočné priznanie podané') && page.includes('Zaplatili ste už 11,50 € z 57,50 €') && page.includes('PAY by square'))
+  res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
+  page = plain(await res.text())
+  check('and the period stands filed again', page.includes('Podané') && !page.includes('Zmenené po podaní'))
+  res = await acc.get(`/ucto/klienti/co-a/dph/kontrolny-vykaz.xml?obdobie=${old}`)
+  check('its files are the ones filed', (await res.text()).includes('KOpr="2"'))
+
+  // Taken back: the supplementary return gives way to the return filed before it, then that goes too.
+  res = await acc.post('/ucto/klienti/co-a/dph/zrusit', { obdobie: old })
+  const restored = await db.prepare("SELECT kind, pay_cents, prev FROM vat_returns WHERE company_id = 'co-a'").first()
+  const undoneCorrection = plain((await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' AND side = 'firmony' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body ?? '')
+  check(
+    'the correction taken back: the return filed before it stands again, and the client is told',
+    res.status === 303 && restored?.kind === 'R' && restored.pay_cents === 1150 && restored.prev === null && undoneCorrection.includes('oprave') && undoneCorrection.includes('rušíme'),
+    JSON.stringify(restored) + undoneCorrection,
+  )
+  res = await acc.post('/ucto/klienti/co-a/dph/zrusit', { obdobie: old })
+  const undone = plain((await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' AND side = 'firmony' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body ?? '')
+  check(
+    'the first mark taken back too, and the client told it does not stand',
+    res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM vat_returns WHERE company_id = 'co-a'").first())?.n === 0 && undone.includes('rušíme'),
+    undone,
+  )
+  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old })
+  check('and set again with the new figures', (await db.prepare("SELECT pay_cents FROM vat_returns WHERE company_id = 'co-a'").first())?.pay_cents === 1150 + 4600)
+
+  // A client that is not registered and pays for advertising abroad owes a registration under § 7a.
+  await db
+    .prepare(
+      "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_vat_id, foreign_party, number, issued_on, total_cents, vat_cents, currency, category) VALUES ('vat-meta', 'co-b', ?, 'email', 'read', 'test', 'invoice_in', 'Meta Platforms Ireland Limited', 'IE9692928F', 1, 'FB-1', ?, 3000, 0, 'EUR', 'services')",
+    )
+    .bind(nowS, day(-1))
+    .run()
+  res = await admin.get('/ucto/klienti/co-b')
+  page = plain(await res.text())
+  check('a client that is not registered and buys a service from abroad is flagged for § 7a, before anybody books it', page.includes('Nákupy zo zahraničia') && page.includes('registrovať podľa § 7a'))
+  res = await admin.get('/ucto/doklady/vat-meta')
+  check('and so is the document itself', plain(await res.text()).includes('registrovať podľa § 7a'))
+
+  // What this part wrote to the client is read, and the advertising goes, so that what follows finds things as before.
+  await db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = 'co-a' AND side = 'firmony' AND seen_at IS NULL").bind(nowS).run()
+  await db.prepare("DELETE FROM documents WHERE id = 'vat-meta'").run()
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // The order: a request for a company the register knows as an s. r. o. becomes a contract concluded online by a
@@ -1207,12 +2295,33 @@ check('the thanks says the link is in the mailbox', (await res.text()).includes(
 await settle()
 const orderMail = (await sent()).find((m) => m.to === 'tomas@zelenydvor.test')
 const orderLink = orderMail?.text.match(/https:\/\/firmony\.ai(\/objednavka\/[A-Za-z0-9_-]{43})/)?.[1] ?? ''
-check('the email carries the link to the contract and the register\'s name', Boolean(orderLink) && orderMail.subject === 'Firmony: zmluva pre Zelený dvor s. r. o.' && orderMail.text.includes('Firma: Zelený dvor s. r. o.'), orderMail?.text)
+check(
+  "the email carries the link to the contract and the register's name",
+  Boolean(orderLink) && orderMail.subject === 'Firmony: zmluva pre Zelený dvor s. r. o.' && orderMail.text.includes('Firma: Zelený dvor s. r. o.'),
+  orderMail?.text,
+)
 const orderRow = await db.prepare("SELECT * FROM orders WHERE ico = '55012345'").first()
-check('the order keeps a hash of the link and the directors in office', Boolean(orderRow) && !orderLink.includes(orderRow.token) && JSON.parse(orderRow.directors).map((d) => d.name).join('|') === 'Mgr. Lucia Zelená|Tomáš Dvorský', orderRow?.directors)
+check(
+  'the order keeps a hash of the link and the directors in office',
+  Boolean(orderRow) &&
+    !orderLink.includes(orderRow.token) &&
+    JSON.parse(orderRow.directors)
+      .map((d) => d.name)
+      .join('|') === 'Mgr. Lucia Zelená|Tomáš Dvorský',
+  orderRow?.directors,
+)
 res = await get(orderLink)
 page = await res.text()
-check('the order page shows the main points and the directors in office', res.status === 200 && page.includes('Hlavné body zmluvy') && page.includes('Mgr. Lucia Zelená') && page.includes('Tomáš Dvorský') && !page.includes('Peter Starý') && page.includes(`169${NB}€`) && page.includes('vložka č.'))
+check(
+  'the order page shows the main points and the directors in office',
+  res.status === 200 &&
+    page.includes('Hlavné body zmluvy') &&
+    page.includes('Mgr. Lucia Zelená') &&
+    page.includes('Tomáš Dvorský') &&
+    !page.includes('Peter Starý') &&
+    page.includes(`169${NB}€`) &&
+    page.includes('vložka č.'),
+)
 check('the order page is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 const months = [...page.matchAll(/name="start" id="start-\d" value="(\d{4}-\d{2}-01)"/g)].map((m) => m[1])
 check('six months are offered, the launch the first of them at the earliest', months.length === 6 && months[0] >= '2027-01-01', months.join(' '))
@@ -1229,26 +2338,78 @@ res = await post(orderLink, { plan: 'rast', start: months[1], director: 'Tomáš
 check('a contract posted from another site is refused', res.status === 403)
 res = await post(orderLink, { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1' }, { ip: '198.51.100.21' })
 const contractCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
-check('the contract is concluded and the browser is signed in', res.status === 303 && res.headers.get('location') === '/app?ok=zmluva' && contractCookie.startsWith('__Host-firmony='), res.headers.get('location'))
+check(
+  'the contract is concluded and the browser is signed in',
+  res.status === 303 && res.headers.get('location') === '/app?ok=zmluva' && contractCookie.startsWith('__Host-firmony='),
+  res.headers.get('location'),
+)
 const madeCompany = await db.prepare("SELECT * FROM companies WHERE ico = '55012345'").first()
-check('the company is created with the contract on it', madeCompany?.name === 'Zelený dvor s. r. o.' && madeCompany?.plan === 'rast' && madeCompany?.vat_payer === 1 && madeCompany?.signed_by === 'Tomáš Dvorský' && madeCompany?.start_on === months[1] && Boolean(madeCompany?.terms_version) && Boolean(madeCompany?.contract_at) && madeCompany?.register_line === 'Obchodný register Mestského súdu Košice, oddiel Sro, vložka č. 58123/V', JSON.stringify(madeCompany))
-const madeOwner = await db.prepare('SELECT u.email, u.name, m.role FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ?').bind(madeCompany?.id ?? '').all()
-check('the person is its only owner, under the email the link went to', madeOwner.results.length === 1 && madeOwner.results[0].email === 'tomas@zelenydvor.test' && madeOwner.results[0].role === 'owner' && madeOwner.results[0].name === 'Tomáš Dvorský')
+check(
+  'the company is created with the contract on it',
+  madeCompany?.name === 'Zelený dvor s. r. o.' &&
+    madeCompany?.plan === 'rast' &&
+    madeCompany?.vat_payer === 1 &&
+    madeCompany?.signed_by === 'Tomáš Dvorský' &&
+    madeCompany?.start_on === months[1] &&
+    Boolean(madeCompany?.terms_version) &&
+    Boolean(madeCompany?.contract_at) &&
+    madeCompany?.register_line === 'Obchodný register Mestského súdu Košice, oddiel Sro, vložka č. 58123/V',
+  JSON.stringify(madeCompany),
+)
+const madeOwner = await db
+  .prepare('SELECT u.email, u.name, m.role FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ?')
+  .bind(madeCompany?.id ?? '')
+  .all()
+check(
+  'the person is its only owner, under the email the link went to',
+  madeOwner.results.length === 1 && madeOwner.results[0].email === 'tomas@zelenydvor.test' && madeOwner.results[0].role === 'owner' && madeOwner.results[0].name === 'Tomáš Dvorský',
+)
 const acceptedRow = await db.prepare("SELECT status, price_cents, signed_by, ip_hash, plan FROM orders WHERE ico = '55012345'").first()
-check('the order keeps who accepted what at which price, and no address', acceptedRow?.status === 'accepted' && acceptedRow?.price_cents === 16900 && acceptedRow?.plan === 'rast' && /^[0-9a-f]{64}$/.test(acceptedRow?.ip_hash ?? '') && !String(acceptedRow?.ip_hash).includes('198.51'))
+check(
+  'the order keeps who accepted what at which price, and no address',
+  acceptedRow?.status === 'accepted' &&
+    acceptedRow?.price_cents === 16900 &&
+    acceptedRow?.plan === 'rast' &&
+    /^[0-9a-f]{64}$/.test(acceptedRow?.ip_hash ?? '') &&
+    !String(acceptedRow?.ip_hash).includes('198.51'),
+)
 check('the request is marked as a client', (await db.prepare("SELECT status FROM requests WHERE ico = '55012345'").first())?.status === 'client')
-check('the contract is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'contract.accepted' AND company_id = ?").bind(madeCompany?.id ?? '').first())?.n === 1)
+check(
+  'the contract is on record',
+  (
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'contract.accepted' AND company_id = ?")
+      .bind(madeCompany?.id ?? '')
+      .first()
+  )?.n === 1,
+)
 await settle()
 const contractConfirmation = (await sent()).find((m) => m.to === 'tomas@zelenydvor.test' && m.subject === 'Firmony: zmluva je uzavretá')
-check('the confirmation is a doorbell with a sign-in link: the contract and its terms wait in the app', Boolean(contractConfirmation) && /\/app\/vstup\?t=[A-Za-z0-9_-]{43}/.test(contractConfirmation.text) && !contractConfirmation.text.includes('Obchodné podmienky služby') && !contractConfirmation.text.includes('Tomáš') && !contractConfirmation.text.includes('169'))
-check('we are rung of the contract', (await sent()).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: nová zmluva' && m.text.includes(`/ucto/klienti/${madeCompany?.id}`) && !m.text.includes('Zelený')))
+check(
+  'the confirmation is a doorbell with a sign-in link: the contract and its terms wait in the app',
+  Boolean(contractConfirmation) &&
+    /\/app\/vstup\?t=[A-Za-z0-9_-]{43}/.test(contractConfirmation.text) &&
+    !contractConfirmation.text.includes('Obchodné podmienky služby') &&
+    !contractConfirmation.text.includes('Tomáš') &&
+    !contractConfirmation.text.includes('169'),
+)
+check(
+  'we are rung of the contract',
+  (await sent()).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: nová zmluva' && m.text.includes(`/ucto/klienti/${madeCompany?.id}`) && !m.text.includes('Zelený')),
+)
 res = await get('/app?ok=zmluva', { headers: { cookie: contractCookie } })
 page = await res.text()
 check('the new client lands in the app, welcomed', res.status === 200 && page.includes('Zmluva je uzavretá') && page.includes('Zelený dvor'))
-check('with who stands behind it first, the power of attorney, and the notice for the former accountant, which the request said', page.includes('Začíname') && page.indexOf('href="/app/vyhlasenie"') > 0 && page.indexOf('href="/app/vyhlasenie"') < page.indexOf('href="/app/plna-moc"') && page.includes('href="/app/prechod"'))
+check(
+  'with who stands behind it first, the power of attorney, and the notice for the former accountant, which the request said',
+  page.includes('Začíname') && page.indexOf('href="/app/vyhlasenie"') > 0 && page.indexOf('href="/app/vyhlasenie"') < page.indexOf('href="/app/plna-moc"') && page.includes('href="/app/prechod"'),
+)
 res = await get('/app/zmluva', { headers: { cookie: contractCookie } })
 page = (await res.text()).replace(/\u00a0/g, ' ')
-check('the contract in the app names who concluded it and the price of that day', res.status === 200 && page.includes('Tomáš Dvorský, konateľ') && page.includes('169 € mesačne bez DPH') && page.includes('Obchodné podmienky služby Firmony'))
+check(
+  'the contract in the app names who concluded it and the price of that day',
+  res.status === 200 && page.includes('Tomáš Dvorský, konateľ') && page.includes('169 € mesačne bez DPH') && page.includes('Obchodné podmienky služby Firmony'),
+)
 res = await get('/app/plna-moc', { headers: { cookie: contractCookie } })
 page = (await res.text()).replace(/\u00a0/g, ' ')
 check(
@@ -1260,7 +2421,13 @@ page = (await res.text()).replace(/\u00a0/g, ' ')
 check('the company page says when and by whom the contract was concluded', page.includes('Uzavretá online') && page.includes('Uzavrel(a) Tomáš Dvorský, konateľ') && page.includes('Čakáme na podpis'))
 res = await post(orderLink, { plan: 'firma', start: months[2], director: 'Mgr. Lucia Zelená', agree: '1' }, { ip: '198.51.100.21' })
 page = await res.text()
-check('the same contract cannot be concluded twice', res.status === 200 && page.includes('Zmluva je uzavretá') && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 1 && (await db.prepare("SELECT plan FROM orders WHERE ico = '55012345'").first())?.plan === 'rast')
+check(
+  'the same contract cannot be concluded twice',
+  res.status === 200 &&
+    page.includes('Zmluva je uzavretá') &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 1 &&
+    (await db.prepare("SELECT plan FROM orders WHERE ico = '55012345'").first())?.plan === 'rast',
+)
 res = await post('/zacat', { ...zeleny, email: 'iny@zelenydvor.test' }, { ip: '198.51.100.22' })
 check('a company that is already a client gets no second contract by email', res.status === 303 && res.headers.get('location') === '/zacat/hotovo')
 res = await get('/objednavka/' + 'x'.repeat(43))
@@ -1272,7 +2439,10 @@ res = await get(`/objednavka/${europioOrderToken}`)
 check('a link that ran out says so', res.status === 410 && (await res.text()).includes('Tento odkaz už neplatí'))
 res = await get('/podmienky')
 page = await res.text()
-check('the terms are public, numbered and for search engines', res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-10-4"') && !(res.headers.get('x-robots-tag') ?? '').includes('noindex'))
+check(
+  'the terms are public, numbered and for search engines',
+  res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-10-4"') && !(res.headers.get('x-robots-tag') ?? '').includes('noindex'),
+)
 res = await get('/sitemap.xml')
 check('the sitemap names the terms', (await res.text()).includes('/podmienky'))
 
@@ -1291,7 +2461,10 @@ res = await acc.post('/ucto/klienti/co-a/koniec', { den: skDay(endsOn), dovod: '
 check('only the administrator ends a contract from our side', res.status === 404 && (await db.prepare("SELECT ends_on FROM companies WHERE id = 'co-a'").first())?.ends_on === null)
 res = await admin.get('/ucto/klienti/co-a')
 page = (await res.text()).replace(/ /g, ' ')
-check('the administrator finds it on the client\'s page, the earliest day of our notice named', page.includes('action="/ucto/klienti/co-a/koniec"') && page.includes(`najskôr ${skDay(endsOn).split('. ')[0]}.`))
+check(
+  "the administrator finds it on the client's page, the earliest day of our notice named",
+  page.includes('action="/ucto/klienti/co-a/koniec"') && page.includes(`najskôr ${skDay(endsOn).split('. ')[0]}.`),
+)
 res = await admin.post('/ucto/klienti/co-a/koniec', { den: skDay(day(-1)), dovod: 'Neposiela doklady.' })
 check('a day already past is refused', res.status === 422)
 res = await admin.post('/ucto/klienti/co-a/koniec', { den: skDay(endsOn), dovod: '' })
@@ -1300,15 +2473,32 @@ const beforeEnd = (await sent()).length
 res = await admin.post('/ucto/klienti/co-a/koniec', { den: skDay(endsOn), dovod: 'Klient opakovane neposiela doklady.' })
 await settle()
 const endedRow = await db.prepare("SELECT notice_side, notice_by, ends_on FROM companies WHERE id = 'co-a'").first()
-check('the administrator ends it, from our side, on the day given', res.status === 303 && endedRow?.notice_side === 'firmony' && endedRow.notice_by === bossRow?.id && endedRow.ends_on === endsOn, JSON.stringify(endedRow))
+check(
+  'the administrator ends it, from our side, on the day given',
+  res.status === 303 && endedRow?.notice_side === 'firmony' && endedRow.notice_by === bossRow?.id && endedRow.ends_on === endsOn,
+  JSON.stringify(endedRow),
+)
 const endMsg = await db.prepare("SELECT body, side FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
-check('the client is told in the app what follows, never why', endMsg?.side === 'firmony' && endMsg.body.includes('ukončujeme') && endMsg.body.includes('stiahnete') && !endMsg.body.includes('neposiela'))
-check('the reason stays with the team, on record', JSON.parse((await db.prepare("SELECT detail FROM events WHERE action = 'contract.ended' AND company_id = 'co-a'").first())?.detail ?? '{}').reason === 'Klient opakovane neposiela doklady.')
+check(
+  'the client is told in the app what follows, never why',
+  endMsg?.side === 'firmony' && endMsg.body.includes('ukončujeme') && endMsg.body.includes('stiahnete') && !endMsg.body.includes('neposiela'),
+)
+check(
+  'the reason stays with the team, on record',
+  JSON.parse((await db.prepare("SELECT detail FROM events WHERE action = 'contract.ended' AND company_id = 'co-a'").first())?.detail ?? '{}').reason === 'Klient opakovane neposiela doklady.',
+)
 const endBells = (await sent()).slice(beforeEnd).filter((m) => m.to === 'anna@firma-a.test' || m.to === 'jan@firma-a.test')
 check('the client is rung, and the bell says nothing of it', endBells.length > 0 && endBells.every((m) => !m.text.includes('ukončujeme') && !m.text.includes('Firma A')))
 res = await anna.get('/app/firma')
 page = (await res.text()).replace(/ /g, ' ')
-check('the client reads that we ended it, what follows, and finds the download', page.includes('Zmluvu sme ukončili') && page.includes('Posledný deň zmluvy') && page.includes('Stiahnuť doklady a údaje') && page.includes('/app/export?rok=') && !page.includes('action="/app/firma/vypoved/spat"'))
+check(
+  'the client reads that we ended it, what follows, and finds the download',
+  page.includes('Zmluvu sme ukončili') &&
+    page.includes('Posledný deň zmluvy') &&
+    page.includes('Stiahnuť doklady a údaje') &&
+    page.includes('/app/export?rok=') &&
+    !page.includes('action="/app/firma/vypoved/spat"'),
+)
 res = await anna.get('/app')
 check('a line above every page says when the contract ends', (await res.text()).replace(/ /g, ' ').includes('Zmluva skončí'))
 res = await anna.post('/app/firma/vypoved/spat', {})
@@ -1317,14 +2507,24 @@ res = await anna.post('/app/firma/vypoved', { potvrdit: '1' })
 check('nor give a notice of its own over it', (await db.prepare("SELECT notice_side FROM companies WHERE id = 'co-a'").first())?.notice_side === 'firmony')
 res = await admin.post('/ucto/klienti/co-a/koniec/zrusit', {})
 const cancelled = await db.prepare("SELECT notice_side, ends_on FROM companies WHERE id = 'co-a'").first()
-check('the administrator takes it back while it runs, and the client reads it', res.status === 303 && cancelled?.ends_on === null && cancelled.notice_side === null && (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('rušíme'))
+check(
+  'the administrator takes it back while it runs, and the client reads it',
+  res.status === 303 &&
+    cancelled?.ends_on === null &&
+    cancelled.notice_side === null &&
+    (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('rušíme'),
+)
 
 // The last month: ten days past the last day documents are still taken, but nothing new is issued and no bank linked
-const setEnd = (onDay) => db.prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'firmony', ends_on = ? WHERE id = 'co-a'").bind(nowS, bossRow?.id ?? '', onDay).run()
+const setEnd = (onDay) =>
+  db
+    .prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'firmony', ends_on = ? WHERE id = 'co-a'")
+    .bind(nowS, bossRow?.id ?? '', onDay)
+    .run()
 await setEnd(day(-3))
 res = await anna.get('/app')
 page = (await res.text()).replace(/ /g, ' ')
-check('after the last day the line says until when the last month\'s documents are taken', page.includes('Zmluva skončila') && page.includes('berieme do'))
+check("after the last day the line says until when the last month's documents are taken", page.includes('Zmluva skončila') && page.includes('berieme do'))
 const invoicesBefore = (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE company_id = 'co-a'").first())?.n
 res = await anna.post('/app/faktury', invoiceForm({}))
 check('no invoice is issued after the last day', res.status === 409 && (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE company_id = 'co-a'").first())?.n === invoicesBefore)
@@ -1335,20 +2535,30 @@ res = await anna.get('/app/banka/pripojit?banka=Tatra%20banka')
 check('no bank is linked after the last day', res.status === 303 && res.headers.get('location') === '/app/banka?chyba=koniec')
 const docsBefore = (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n
 res = await appPost('/app/doklady', {}, { files: [{ name: 'posledny.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7, 6, 5]) }] })
-check('the last month\'s documents are still taken', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1)
+check("the last month's documents are still taken", res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1)
 
 // Past the ten days: only the download is left; the data are not deleted before their ninety days
 await setEnd(day(-20))
 await tick(Date.now())
 await settle(300)
-check('twenty days past the end nothing is deleted yet', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first())?.purged_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1)
+check(
+  'twenty days past the end nothing is deleted yet',
+  (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first())?.purged_at === null &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1,
+)
 res = await appPost('/app/doklady', {}, { files: [{ name: 'neskoro.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 1, 1, 1, 1]) }] })
 page = (await res.text()).replace(/ /g, ' ')
-check('ten days past the last day no document is taken, and the page says why', res.status === 409 && page.includes('Doklady už neprijímame') && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1)
+check(
+  'ten days past the last day no document is taken, and the page says why',
+  res.status === 409 && page.includes('Doklady už neprijímame') && (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === docsBefore + 1,
+)
 res = await anna.get('/app/doklady')
 page = await res.text()
 check('the page for documents offers no upload, only the download', !page.includes('method="post" action="/app/doklady"') && !page.includes('data-pick') && page.includes('href="/app/firma#stiahnut"'))
-res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'neskoro.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% neskoro\n%%EOF\n') }] }))
+res = await sendMail(
+  'doklady-aaaa11@firmony.ai',
+  rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'neskoro.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% neskoro\n%%EOF\n') }] }),
+)
 check('nor by email: the sender is told the contract ended', res.status === 400 && (await res.text()).includes('skončila'))
 res = await anna.get('/app/platby')
 check('nor a statement', !(await res.text()).includes('action="/app/banka"'))
@@ -1379,24 +2589,46 @@ function unzip(bytes) {
 }
 res = await anna.get(`/app/export?rok=${year}`)
 const archive = res.status === 200 ? unzip(new Uint8Array(await res.arrayBuffer())) : null
-check('a year\'s archive downloads as a ZIP, under the company\'s IČO', res.status === 200 && res.headers.get('content-type') === 'application/zip' && (res.headers.get('content-disposition') ?? '').includes(`firmony-57442452-${year}.zip`) && res.headers.get('cache-control') === 'private, no-store')
+check(
+  "a year's archive downloads as a ZIP, under the company's IČO",
+  res.status === 200 &&
+    res.headers.get('content-type') === 'application/zip' &&
+    (res.headers.get('content-disposition') ?? '').includes(`firmony-57442452-${year}.zip`) &&
+    res.headers.get('cache-control') === 'private, no-store',
+)
 check('every file in it reads, every sum right', archive !== null && archive.length > 6 && archive.every((f) => f.ok), archive?.map((f) => f.name).join(' | '))
 const named = (name) => archive?.find((f) => f.name === name)
 const text = (f) => new TextDecoder().decode(f?.data ?? new Uint8Array())
-check('it holds what it says: the lists, the messages, the contract', ['citajte.txt', 'doklady.csv', 'platby.csv', 'faktury.csv', 'spravy.txt', 'zmluva.txt'].every((n) => named(n)))
+check(
+  'it holds what it says: the lists, the messages, the contract',
+  ['citajte.txt', 'doklady.csv', 'platby.csv', 'faktury.csv', 'spravy.txt', 'zmluva.txt'].every((n) => named(n)),
+)
 const bom = (f) => f?.data[0] === 0xef && f.data[1] === 0xbb && f.data[2] === 0xbf
-check('the lists open in Slovak Excel', bom(named('platby.csv')) && bom(named('doklady.csv')) && text(named('platby.csv')).startsWith('Dátum;') && text(named('platby.csv')).includes('KAVIAREN NA ROHU KOSICE'))
+check(
+  'the lists open in Slovak Excel',
+  bom(named('platby.csv')) && bom(named('doklady.csv')) && text(named('platby.csv')).startsWith('Dátum;') && text(named('platby.csv')).includes('KAVIAREN NA ROHU KOSICE'),
+)
 const ublFile = archive?.find((f) => /^faktury\/\d{8}\.xml$/.test(f.name))
 check('the issued invoices are e-invoices', Boolean(ublFile) && text(ublFile).includes('urn:oasis:names:specification:ubl:schema:xsd:Invoice-2'))
 const docFile = archive?.find((f) => f.name.startsWith('doklady/') && f.name.endsWith('.pdf'))
-check('the documents are the originals as they came, named in plain letters', Boolean(docFile) && text(docFile).startsWith('%PDF') && archive.filter((f) => f.name.startsWith('doklady/')).every((f) => /^[\x20-\x7e]+$/.test(f.name)))
-check('the list of documents names each file as it stands in the archive', archive.filter((f) => f.name.startsWith('doklady/')).every((f) => text(named('doklady.csv')).includes(f.name)))
+check(
+  'the documents are the originals as they came, named in plain letters',
+  Boolean(docFile) && text(docFile).startsWith('%PDF') && archive.filter((f) => f.name.startsWith('doklady/')).every((f) => /^[\x20-\x7e]+$/.test(f.name)),
+)
+check(
+  'the list of documents names each file as it stands in the archive',
+  archive.filter((f) => f.name.startsWith('doklady/')).every((f) => text(named('doklady.csv')).includes(f.name)),
+)
 check('the contract is in it with its terms', text(named('zmluva.txt')).includes('Firma A s. r. o.') && text(named('zmluva.txt')).includes('10.4 '))
 const ownFiles = await db
   .prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a' AND deleted_at IS NULL AND file_key IS NOT NULL AND substr(COALESCE(issued_on, date(created_at, 'unixepoch')), 1, 4) = ?")
   .bind(year)
   .first()
-check('the company\'s own documents, every one, and no other company\'s', archive?.filter((f) => f.name.startsWith('doklady/')).length === ownFiles?.n && !archive.some((f) => text(f).includes('Firma B s. r. o.')), `${archive?.filter((f) => f.name.startsWith('doklady/')).length} of ${ownFiles?.n}`)
+check(
+  "the company's own documents, every one, and no other company's",
+  archive?.filter((f) => f.name.startsWith('doklady/')).length === ownFiles?.n && !archive.some((f) => text(f).includes('Firma B s. r. o.')),
+  `${archive?.filter((f) => f.name.startsWith('doklady/')).length} of ${ownFiles?.n}`,
+)
 res = await anna.get('/app/export?rok=1999')
 check('a year without anything is not found', res.status === 404)
 check('the download is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'export.downloaded' AND company_id = 'co-a'").first())?.n === 1)
@@ -1409,13 +2641,20 @@ res = await acc.upload('/ucto/klienti/co-a/odovzdanie', { name: 'Hlavná kniha 2
 await settle()
 const handed = await db.prepare("SELECT id, file_name, r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'handover'").first()
 check('the accountant hands the books over in the app', res.status === 303 && handed?.file_name === 'Hlavná kniha 2026.pdf')
-check('the client reads where they are, and is rung without a word of it', (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('Hlavná kniha 2026.pdf') && (await sent()).slice(beforeHand).some((m) => m.to === 'anna@firma-a.test' && !m.text.includes('Hlavná')))
+check(
+  'the client reads where they are, and is rung without a word of it',
+  (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('Hlavná kniha 2026.pdf') &&
+    (await sent()).slice(beforeHand).some((m) => m.to === 'anna@firma-a.test' && !m.text.includes('Hlavná')),
+)
 res = await acc.upload('/ucto/klienti/co-a/odovzdanie', { name: 'kniha.pdf', type: 'application/pdf', bytes: new Uint8Array([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0, 4, 0]) })
 check('a program is not handed over, whatever it is called', res.status === 422)
 res = await anna.get('/app/firma')
 check('the client finds the books under the download', (await res.text()).includes(`/app/odovzdanie/${handed?.id}`))
 res = await anna.get(`/app/odovzdanie/${handed?.id}`)
-check('and downloads them, never shown in the browser', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && new Uint8Array(await res.arrayBuffer()).length === ledger.length)
+check(
+  'and downloads them, never shown in the browser',
+  res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && new Uint8Array(await res.arrayBuffer()).length === ledger.length,
+)
 res = await get(`/app/odovzdanie/${handed?.id}`, { headers: { cookie: (await signIn('boris@firma-b.test')).cookie } })
 check('nobody of another company gets them', res.status === 404)
 res = await admin.get('/ucto')
@@ -1428,22 +2667,37 @@ const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company
 await tick(Date.now())
 await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
-check('the schedule deletes the company\'s data after its ninety days', typeof purgedRow?.purged_at === 'number' && typeof purgedRow.closed_at === 'number' && purgedRow.name === 'Firma A s. r. o.')
+check("the schedule deletes the company's data after its ninety days", typeof purgedRow?.purged_at === 'number' && typeof purgedRow.closed_at === 'number' && purgedRow.name === 'Firma A s. r. o.')
 const leftover = await db
   .prepare(
     `SELECT (SELECT COUNT(*) FROM documents WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payments WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM messages WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
-       + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa') AS n`,
+       + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
+       + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL) AS n`,
   )
   .first()
-check('documents, payments, messages, invoices, accounts, people and the handover are gone', leftover?.n === 0, JSON.stringify(leftover))
+check('documents, payments, messages, invoices, accounts, people, the handover and the VAT filed are gone', leftover?.n === 0, JSON.stringify(leftover))
 const objects = await files.list({ prefix: 'companies/co-a/' })
-check('and so are their files, all but the power of attorney', objects.objects.every((o) => poaKept.results.some((p) => p.r2_key === o.key)) && poaKept.results.every((p) => objects.objects.some((o) => o.key === p.r2_key)), objects.objects.map((o) => o.key).join(' '))
-check('the declaration, the risk and the reports stay, as the law wants', (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n > 0 && (await db.prepare("SELECT COUNT(*) AS n FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").first())?.n === poaKept.results.length)
-check('a person who belonged to the company alone is gone; one in another company stays', (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'jan@firma-a.test'").first())?.n === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE id = 'u-a'").first())?.n === 1)
+check(
+  'and so are their files, all but the power of attorney',
+  objects.objects.every((o) => poaKept.results.some((p) => p.r2_key === o.key)) && poaKept.results.every((p) => objects.objects.some((o) => o.key === p.r2_key)),
+  objects.objects.map((o) => o.key).join(' '),
+)
+check(
+  'the declaration, the risk and the reports stay, as the law wants',
+  (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n > 0 &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").first())?.n === poaKept.results.length,
+)
+check(
+  'a person who belonged to the company alone is gone; one in another company stays',
+  (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'jan@firma-a.test'").first())?.n === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE id = 'u-a'").first())?.n === 1,
+)
 res = await anna.get('/app')
 check('the client is no longer in it', !(await res.text()).includes('Firma A s. r. o.'))
-res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'po.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n%%EOF\n') }] }))
+res = await sendMail(
+  'doklady-aaaa11@firmony.ai',
+  rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'po.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n%%EOF\n') }] }),
+)
 check('its address for documents no longer exists', res.status === 400)
 res = await admin.get('/ucto')
 page = await res.text()
@@ -1454,10 +2708,18 @@ res = await acc.get('/ucto/klienti/co-a/aml')
 check('an accountant does not', res.status === 404)
 res = await admin.get('/ucto/klienti/co-a')
 check('nor does anybody open its page of work', res.status === 404)
-await db.prepare("UPDATE companies SET ends_on = ? WHERE id = 'co-a'").bind(shiftDay(day(0), -5 * 366)).run()
+await db
+  .prepare("UPDATE companies SET ends_on = ? WHERE id = 'co-a'")
+  .bind(shiftDay(day(0), -5 * 366))
+  .run()
 await tick(Date.now())
 await settle(500)
-check('five years past the end the rest goes too', (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE id = 'co-a'").first())?.n === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n === 0 && (await files.list({ prefix: 'companies/co-a/' })).objects.length === 0)
+check(
+  'five years past the end the rest goes too',
+  (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE id = 'co-a'").first())?.n === 0 &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM declarations WHERE company_id = 'co-a'").first())?.n === 0 &&
+    (await files.list({ prefix: 'companies/co-a/' })).objects.length === 0,
+)
 
 await mf.dispose()
 done('runtime')

@@ -8,6 +8,10 @@ import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../a
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
 import type { Exempt } from '../app/match'
 import type { Company, Doc, Message, Payment, User } from '../app/store'
+import type { VatStatus } from '../app/vat'
+import { TAX_OFFICES } from '../app/vat-xml'
+import { VatFields, type VatForm } from './vat'
+import { moneyText } from '../app/vat-form'
 import type { Paper, PoaState } from '../app/papers'
 import type { DeclarationState, Level } from '../app/aml'
 import { addDays, endingOf, type Ending } from '../app/ending'
@@ -115,6 +119,8 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
   )
 }
 
+const vatLabel = (status: VatStatus) => (status === 'payer' ? t.clients.vat : status === 'reg7a' ? t.clients.vat7a : t.clients.noVat)
+
 const Badge: FC<{ n: number; tone: 'amber' | 'blue' | 'grey' }> = ({ n, tone }) => (n > 0 ? <span class={`count count--${tone}`}>{n}</span> : <span class="tbl__zero">0</span>)
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -191,17 +197,25 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompa
                   </span>
                   <span class="tbl__sub">
                     <span>{t.clients.plan(planName(row.company.plan))}</span>
-                    <span>{row.company.vatPayer ? t.clients.vat : t.clients.noVat}</span>
+                    <span>{vatLabel(row.company.vatStatus)}</span>
                     {row.declaration === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.declaration}`}>{t.aml.state[row.declaration]}</span>}
                     {row.poa === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.poa}`}>{t.client.poaState[row.poa]}</span>}
                     {row.openReports > 0 ? <span class="tbl__flag tbl__flag--report">{t.client.reportsOpen(row.openReports)}</span> : null}
                     {ending ? <span class="tbl__flag tbl__flag--ends">{ending.phase === 'ending' ? t.client.ends(dayName(ending.endsOn)) : t.client.ended(dayName(ending.endsOn))}</span> : null}
-                    {owed && ending ? <span class={`tbl__flag ${owed === 'late' ? 'tbl__flag--report' : 'tbl__flag--ends'}`}>{owed === 'late' ? t.client.handoverLate : t.client.handoverDue(dayName(ending.handoverBy))}</span> : null}
+                    {owed && ending ? (
+                      <span class={`tbl__flag ${owed === 'late' ? 'tbl__flag--report' : 'tbl__flag--ends'}`}>
+                        {owed === 'late' ? t.client.handoverLate : t.client.handoverDue(dayName(ending.handoverBy))}
+                      </span>
+                    ) : null}
                   </span>
                 </span>
                 <span class="tbl__num" role="cell" data-label={t.clients.columns.book}>
                   <Badge n={row.toBook} tone="amber" />
-                  {row.reading > 0 ? <span class="tbl__note">+{row.reading} {t.clients.reading.toLowerCase()}</span> : null}
+                  {row.reading > 0 ? (
+                    <span class="tbl__note">
+                      +{row.reading} {t.clients.reading.toLowerCase()}
+                    </span>
+                  ) : null}
                 </span>
                 <span class="tbl__num" role="cell" data-label={t.clients.columns.check}>
                   <Badge n={row.toCheck} tone="amber" />
@@ -285,7 +299,40 @@ export interface ClientPageProps {
   /** The form to end the contract from our side, as it was sent, with what is wrong with it. */
   end?: { day: string; reason: string; errors: { day?: string; reason?: string; form?: string } }
   handoverError?: string
+  /** The VAT of the period being filed now (views/vat.tsx). */
+  vat?: Child
+  /** The company's details as they were sent, with what is wrong with them. */
+  details?: { values: DetailsValues; errors: DetailsErrors }
 }
+
+/** The company's details as the form shows them. */
+export interface DetailsValues {
+  dic: string
+  icdph: string
+  status: VatStatus
+  quarterly: boolean
+  since: string
+  office: string
+  account: string
+  carry: string
+  note: string
+}
+
+export type DetailsErrors = Partial<Record<'dic' | 'icdph' | 'since' | 'office' | 'account' | 'carry', string>>
+
+export const detailsOf = (c: Company): DetailsValues => ({
+  dic: c.dic ?? '',
+  icdph: c.icdph ?? '',
+  status: c.vatStatus,
+  quarterly: c.vatQuarterly,
+  since: c.vatSince ? textDay(c.vatSince) : '',
+  office: c.taxOffice ?? '',
+  account: c.taxAccount ?? '',
+  carry: c.vatCarry > 0 ? moneyText(c.vatCarry) : '',
+  note: c.note ?? '',
+})
+
+const FieldError: FC<{ text?: string }> = ({ text }) => (text ? <p class="field__error">{text}</p> : null)
 
 const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
 
@@ -321,7 +368,9 @@ const ContractCard: FC<{
       {ending && c.noticeAt ? (
         <div class="notice-box notice-box--given">
           <p class="notice-box__text">
-            {ending.side === 'firmony' ? t.client.endedByUs(dayName(dayOf(c.noticeAt), today), dayName(ending.endsOn, today)) : t.client.endsLead(dayName(dayOf(c.noticeAt), today), dayName(ending.endsOn, today))}
+            {ending.side === 'firmony'
+              ? t.client.endedByUs(dayName(dayOf(c.noticeAt), today), dayName(ending.endsOn, today))
+              : t.client.endsLead(dayName(dayOf(c.noticeAt), today), dayName(ending.endsOn, today))}
           </p>
           <p class="notice-box__text">{t.client.afterEnd(dayName(ending.intakeUntil, today), dayName(ending.handoverBy, today), dayName(addDays(ending.accessUntil, 1), today))}</p>
           {admin && ending.side === 'firmony' && ending.phase === 'ending' ? (
@@ -423,7 +472,11 @@ const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; no
       </h2>
       <p class="info__lead">{t.handover.lead}</p>
       <p class="pills">
-        {handover.length > 0 ? null : <span class={`pill ${today > ending.handoverBy ? 'pill--red' : 'pill--amber'}`}>{today > ending.handoverBy ? t.client.handoverLate : t.client.handoverDue(dayName(ending.handoverBy, today))}</span>}
+        {handover.length > 0 ? null : (
+          <span class={`pill ${today > ending.handoverBy ? 'pill--red' : 'pill--amber'}`}>
+            {today > ending.handoverBy ? t.client.handoverLate : t.client.handoverDue(dayName(ending.handoverBy, today))}
+          </span>
+        )}
       </p>
       {error ? <p class="field__error">{error}</p> : null}
       {handover.length === 0 ? (
@@ -464,6 +517,8 @@ const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; no
 export const ClientPage: FC<ClientPageProps> = (p) => {
   const c = p.company
   const admin = p.user.team === 'admin'
+  const d = p.details?.values ?? detailsOf(c)
+  const de = p.details?.errors ?? {}
   return (
     <>
       <a class="back" href="/ucto">
@@ -472,7 +527,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
       <header class="phero">
         <p class="phero__kind phero__kind--row">
           <span>{t.clients.plan(planName(c.plan))}</span>
-          <span>{c.vatPayer ? t.clients.vat : t.clients.noVat}</span>
+          <span>{vatLabel(c.vatStatus)}</span>
         </p>
         <h1 class="phero__name">{c.name}</h1>
         <p class="phero__meta">
@@ -499,6 +554,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
         <a href="#spravy">{t.client.messages}</a>
         <a href="#chyba">{t.clients.missing}</a>
         <a href="#zmluva">{p.declaration === 'checked' ? t.client.poaState[p.poa] : t.aml.state[p.declaration]}</a>
+        <a href={`/ucto/klienti/${c.id}/dph`}>{t.client.vatCard}</a>
         <a href="#udaje">{t.client.details}</a>
       </nav>
       <div class="pgrid pgrid--wide">
@@ -621,6 +677,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
             end={p.end}
           />
           {p.ending ? <HandoverCard company={c} handover={p.handover} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
+          {p.vat ?? null}
           <section class="info" id="udaje" aria-labelledby="udaje-t">
             <h2 id="udaje-t" class="info__title">
               {t.client.details}
@@ -630,15 +687,61 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
               <label class="field__label" for="dic">
                 {t.client.dic}
               </label>
-              <input id="dic" class="field__input" name="dic" value={c.dic ?? ''} maxlength={12} inputmode="numeric" />
+              <input id="dic" class="field__input" name="dic" value={d.dic} maxlength={12} inputmode="numeric" aria-invalid={de.dic ? 'true' : undefined} />
+              <FieldError text={de.dic} />
               <label class="field__label" for="icdph">
                 {t.client.icdph}
               </label>
-              <input id="icdph" class="field__input" name="icdph" value={c.icdph ?? ''} maxlength={14} />
-              <label class="tickbox">
-                <input type="checkbox" name="dph" value="1" checked={c.vatPayer} />
-                <span>{t.client.vatPayer}</span>
+              <input id="icdph" class="field__input" name="icdph" value={d.icdph} maxlength={14} aria-invalid={de.icdph ? 'true' : undefined} />
+              <FieldError text={de.icdph} />
+              <label class="field__label" for="dph-stav">
+                {t.client.vatStatus}
               </label>
+              <select id="dph-stav" class="field__input" name="dph_stav">
+                {(['none', 'payer', 'reg7a'] as const).map((status) => (
+                  <option value={status} selected={d.status === status}>
+                    {t.client.vatStatuses[status]}
+                  </option>
+                ))}
+              </select>
+              <label class="field__label" for="dph-obdobie">
+                {t.client.vatQuarterly}
+              </label>
+              <select id="dph-obdobie" class="field__input" name="dph_obdobie">
+                <option value="month" selected={!d.quarterly}>
+                  {t.client.vatPeriods.month}
+                </option>
+                <option value="quarter" selected={d.quarterly}>
+                  {t.client.vatPeriods.quarter}
+                </option>
+              </select>
+              <label class="field__label" for="dph-od">
+                {t.client.vatSince}
+              </label>
+              <input id="dph-od" class="field__input" name="dph_od" value={d.since} maxlength={16} aria-invalid={de.since ? 'true' : undefined} />
+              {de.since ? <FieldError text={de.since} /> : <p class="field__hint">{t.client.vatSinceHint}</p>}
+              <label class="field__label" for="danovy-urad">
+                {t.client.taxOffice}
+              </label>
+              <select id="danovy-urad" class="field__input" name="danovy_urad" aria-invalid={de.office ? 'true' : undefined}>
+                <option value="">{t.client.taxOfficeNone}</option>
+                {TAX_OFFICES.map((office) => (
+                  <option value={office} selected={d.office === office}>
+                    {office}
+                  </option>
+                ))}
+              </select>
+              <FieldError text={de.office} />
+              <label class="field__label" for="oud">
+                {t.client.taxAccount}
+              </label>
+              <input id="oud" class="field__input" name="oud" value={d.account} maxlength={40} inputmode="numeric" aria-invalid={de.account ? 'true' : undefined} />
+              {de.account ? <FieldError text={de.account} /> : <p class="field__hint">{t.client.taxAccountHint}</p>}
+              <label class="field__label" for="dph-prenos">
+                {t.client.vatCarry}
+              </label>
+              <input id="dph-prenos" class="field__input" name="dph_prenos" value={d.carry} maxlength={16} inputmode="decimal" aria-invalid={de.carry ? 'true' : undefined} />
+              {de.carry ? <FieldError text={de.carry} /> : <p class="field__hint">{t.client.vatCarryHint}</p>}
               {admin ? (
                 <>
                   <label class="field__label" for="plan">
@@ -668,7 +771,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
                 {t.client.note}
               </label>
               <textarea id="poznamka" class="field__input field__area" name="poznamka" rows={3} maxlength={1000} placeholder={t.client.notePlaceholder}>
-                {c.note ?? ''}
+                {d.note}
               </textarea>
               <button class="btn btn--line" type="submit">
                 {t.client.save}
@@ -770,7 +873,15 @@ const QueueRow: FC<{ d: QueueDoc | Doc; company?: boolean }> = ({ d, company }) 
       <span class="row__end">
         <span class="row__amount">{d.totalCents !== null ? formatEur(d.totalCents) : ''}</span>
         <span class={`pill ${d.status === 'manual' || d.duplicateOf ? 'pill--amber' : d.proposal === 'rule' ? 'pill--ok' : 'pill--blue'}`}>
-          {d.status === 'manual' ? t.queue.pill.manual : d.duplicateOf ? t.queue.pill.duplicate : d.proposal === 'rule' ? t.queue.pill.rule : d.proposal === 'ai' ? t.queue.pill.ai : t.queue.pill.check}
+          {d.status === 'manual'
+            ? t.queue.pill.manual
+            : d.duplicateOf
+              ? t.queue.pill.duplicate
+              : d.proposal === 'rule'
+                ? t.queue.pill.rule
+                : d.proposal === 'ai'
+                  ? t.queue.pill.ai
+                  : t.queue.pill.check}
         </span>
       </span>
     </a>
@@ -899,7 +1010,7 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
     total: money(d.totalCents),
     vat: money(d.vatCents),
     category,
-    deduct: vatPayer && (d.vatDeduct ?? (category ? CATEGORIES[category as keyof typeof CATEGORIES]?.deduct ?? true : true)),
+    deduct: vatPayer && (d.vatDeduct ?? (category ? (CATEGORIES[category as keyof typeof CATEGORIES]?.deduct ?? true) : true)),
     remember: true,
     account: d.account ?? '',
   }
@@ -908,6 +1019,12 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
 export interface BookPageProps {
   d: Doc
   company: Company
+  /** How VAT falls on the document; null where the company reports none. */
+  vat?: VatForm | null
+  /** The document's kind has no VAT yet: it is proposed once the kind is saved. */
+  vatKindFirst?: boolean
+  /** A company that is not registered buys a service from abroad: a registration under § 7a is due. */
+  needs7a?: boolean
   /** An invoice the client issued in Firmony: its sheet is the original. */
   invoice?: { invoice: StoredInvoice; lines: Line[] } | null
   values: BookValues
@@ -920,7 +1037,16 @@ export interface BookPageProps {
   flash?: string | null
 }
 
-const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: string; type?: string; mode?: 'decimal' | 'numeric' | 'text'; wide?: boolean; max?: number }> = ({ name, label, value, error, type = 'text', mode, wide, max }) => (
+const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: string; type?: string; mode?: 'decimal' | 'numeric' | 'text'; wide?: boolean; max?: number }> = ({
+  name,
+  label,
+  value,
+  error,
+  type = 'text',
+  mode,
+  wide,
+  max,
+}) => (
   <div class={`fgrid__cell${wide ? ' fgrid__cell--wide' : ''}`}>
     <label class="field__label" for={`b-${name}`}>
       {label}
@@ -930,7 +1056,7 @@ const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: 
   </div>
 )
 
-export const BookPage: FC<BookPageProps> = ({ d, company, invoice, values, payment, candidates, paidBy, queueLeft, now, errors, flash }) => {
+export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, values, payment, candidates, paidBy, queueLeft, now, errors, flash }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const cents = (text: string) => {
     const m = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(text.replace(/\s/g, ''))
@@ -945,6 +1071,7 @@ export const BookPage: FC<BookPageProps> = ({ d, company, invoice, values, payme
     vatDeduct: values.deduct,
     paidBy,
     account: values.account || null,
+    selfVat: vat?.selfVat ?? null,
   })
   const paidName = { bank: t.book.paidBank, private: t.book.paidPrivate, cash: t.book.paidCash, unpaid: t.book.unpaid }[paidBy]
   return (
@@ -1056,6 +1183,8 @@ export const BookPage: FC<BookPageProps> = ({ d, company, invoice, values, payme
             <Field name="vs" label={t.book.vs} value={values.vs} mode="numeric" max={20} />
             <Field name="account" label={t.book.account} value={values.account} mode="numeric" max={6} />
           </div>
+          {vat ? <VatFields form={vat} /> : vatKindFirst ? <p class="vatbox__note">{t.book.vatKindFirst}</p> : null}
+          {needs7a ? <p class="flag">{t.vat.issue.needs7a}</p> : null}
           <div class="book__ticks">
             {company.vatPayer ? (
               <label class="tickbox">
@@ -1203,7 +1332,9 @@ export const RequestsPage: FC<{ requests: Request[]; now: number; flash?: string
               {r.note ? <p class="req__note">{r.note}</p> : null}
             </div>
             <div class="req__side">
-              <span class={`pill ${r.status === 'new' ? 'pill--amber' : r.status === 'client' ? 'pill--ok' : 'pill--grey'}`}>{t.requests.status[r.status as keyof typeof t.requests.status] ?? r.status}</span>
+              <span class={`pill ${r.status === 'new' ? 'pill--amber' : r.status === 'client' ? 'pill--ok' : 'pill--grey'}`}>
+                {t.requests.status[r.status as keyof typeof t.requests.status] ?? r.status}
+              </span>
               {r.status === 'new' || r.status === 'contacted' ? (
                 <div class="req__actions">
                   <a class="btn btn--blue btn--small" href={`/ucto/klienti/novy?ziadost=${r.id}`}>
@@ -1253,7 +1384,12 @@ export interface NewClientValues {
   request: string
 }
 
-export const NewClientPage: FC<{ values: NewClientValues; accountants: { id: string; name: string }[]; errors: Partial<Record<keyof NewClientValues | 'form', string>>; found?: string | null }> = ({ values, accountants, errors, found }) => (
+export const NewClientPage: FC<{ values: NewClientValues; accountants: { id: string; name: string }[]; errors: Partial<Record<keyof NewClientValues | 'form', string>>; found?: string | null }> = ({
+  values,
+  accountants,
+  errors,
+  found,
+}) => (
   <>
     <a class="back" href={values.request ? '/ucto/ziadosti' : '/ucto'}>
       {values.request ? t.requests.title : t.nav.clients}
@@ -1348,7 +1484,12 @@ export const NewClientPage: FC<{ values: NewClientValues; accountants: { id: str
   </>
 )
 
-export const PeoplePage: FC<{ people: TeamMember[]; values: { name: string; email: string; role: string }; errors: { name?: string; email?: string }; flash?: string | null }> = ({ people, values, errors, flash }) => (
+export const PeoplePage: FC<{ people: TeamMember[]; values: { name: string; email: string; role: string }; errors: { name?: string; email?: string }; flash?: string | null }> = ({
+  people,
+  values,
+  errors,
+  flash,
+}) => (
   <>
     <header class="phead">
       <Heading first={t.people.title} second={t.people.serif} />

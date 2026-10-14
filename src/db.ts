@@ -367,7 +367,10 @@ const MIGRATIONS: readonly string[][] = [
     'CREATE INDEX IF NOT EXISTS events_company ON events (company_id, at)',
   ],
   // VAT (14 October 2026): what a document's VAT is for the return and the control statement (src/app/vat.ts),
-  // how the company is registered and files, and the returns marked as filed.
+  // how the company is registered and files, and the returns marked as filed. A period's row is what the
+  // Financial Administration knows of it now: the regular return (kind R), or the corrective (O) or supplementary
+  // (D) one filed after it, with the control statement's lines as filed (kv, for the next supplementary one) and
+  // the filing it replaced (prev, JSON, so that a mark set by mistake can be taken back to it).
   [
     'ALTER TABLE documents ADD COLUMN supplied_on TEXT',
     'ALTER TABLE documents ADD COLUMN vat_mode TEXT',
@@ -381,6 +384,8 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE companies ADD COLUMN vat_since TEXT',
     'ALTER TABLE companies ADD COLUMN tax_office TEXT',
     'ALTER TABLE companies ADD COLUMN tax_account TEXT',
+    // The excess deduction of the last period before ours that was not refunded: the first period of ours deducts it (row 34).
+    'ALTER TABLE companies ADD COLUMN vat_carry INTEGER NOT NULL DEFAULT 0',
     `CREATE TABLE IF NOT EXISTS vat_returns (
       company_id TEXT NOT NULL,
       period TEXT NOT NULL,
@@ -392,6 +397,12 @@ const MIGRATIONS: readonly string[][] = [
       pay_cents INTEGER NOT NULL DEFAULT 0,
       refund_cents INTEGER NOT NULL DEFAULT 0,
       due_on TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'R',
+      fast INTEGER NOT NULL DEFAULT 0,
+      carried INTEGER NOT NULL DEFAULT 0,
+      kv TEXT,
+      found_on TEXT,
+      prev TEXT,
       PRIMARY KEY (company_id, period)
     )`,
   ],
@@ -483,4 +494,3 @@ export async function purge(db: D1Database): Promise<void> {
     db.prepare('DELETE FROM throttle WHERE expires_at < ?').bind(ts),
   ])
 }
-

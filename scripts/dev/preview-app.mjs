@@ -53,6 +53,7 @@ const files = new Map([
   ['/app/vyhlasenie', 'vyhlasenie.html'],
   ['/app/vyhlasenie?zmenit=1', 'vyhlasenie-zmenit.html'],
   ['/app/zmluva', 'zmluva.html'],
+  ['/app/dane', 'dane.html'],
   ['/app/faktury', 'faktury.html'],
   ['/app/faktury/nova', 'faktura-nova.html'],
   ['/app/faktury/demo-inv-1', 'faktura-1.html'],
@@ -132,6 +133,7 @@ function script(leads) {
     invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
     bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky alebo sa banka či účet odpojí.',
     team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.',
+    vat: 'Toto je náhľad: nič sa nesťahuje. V aplikácii sa stiahne súbor XML, ktorý účtovníčka načíta v eDane, skontroluje a podpíše.',
     poa: 'Toto je náhľad: nič sa neposiela. V aplikácii sa podpísaná plná moc nahrá a účtovníčka ju overí a podá na úrady.',
     decl: 'Toto je náhľad: nič sa neposiela. V aplikácii sa údaje uložia a účtovníčka ich porovná s obchodným registrom a s plnou mocou.',
     notice: 'Toto je náhľad: nič sa nevypovedá. V aplikácii sa výpoveď uloží, objaví sa v správach a do konca lehoty ju môžete vziať späť.',
@@ -153,6 +155,7 @@ function script(leads) {
     if (/^\\/app\\/faktury\\/[^/]+\\/(poslat|pripomenut)$/.test(a)) return 'invoiceMail';
     if (/^\\/app\\/faktury/.test(a)) return 'invoice';
     if (/^\\/ucto\\/doklady\\//.test(a)) return 'book';
+    if (/\\/dph\\//.test(a)) return 'vat';
     if (/\\/export$/.test(a)) return 'export';
     if (/^\\/ucto\\//.test(a)) return 'team';
     if (/\\/banka$/.test(a)) return 'banka';
@@ -168,7 +171,7 @@ function script(leads) {
   });
   document.addEventListener('submit', function (event) {
     event.preventDefault();
-    var form = event.target, which = event.submitter && event.submitter.value;
+    var form = event.target, which = event.submitter && (event.submitter.value || event.submitter.getAttribute('formaction'));
     var lead = leads[form.getAttribute('data-action') + '|' + which] || leads[form.getAttribute('data-action')];
     if (lead) { location.href = lead; return; }
     note(form, says[kind(form)]);
@@ -201,7 +204,7 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a><a href="koniec.html">Koniec zmluvy</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="ucto-dph.html">DPH</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a><a href="koniec.html">Koniec zmluvy</a></div>`
 
 function rewrite(page, extra) {
   return page
@@ -282,7 +285,15 @@ const teamFiles = new Map([
   ['/ucto/klienti/demo-company/aml', 'ucto-aml-1.html'],
   ['/ucto/klienti/demo-company-2/aml', 'ucto-aml-2.html'],
   ['/ucto/doklady/demo-doc-3', 'ucto-doklad-zauctovany.html'],
+  ['/ucto/klienti/demo-company/dph', 'ucto-dph.html'],
 ])
+// The VAT page of the sample company: the month that ended is ready to be filed, the running one runs.
+const month = (shift) => {
+  const d = new Date()
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + shift, 15)).toISOString().slice(0, 7)
+}
+teamFiles.set(`/ucto/klienti/demo-company/dph?obdobie=${month(-1)}`, 'ucto-dph.html')
+teamFiles.set(`/ucto/klienti/demo-company/dph?obdobie=${month(0)}`, 'ucto-dph-bezi.html')
 const queuePage = await html('/ucto/doklady')
 ;[...new Set([...queuePage.matchAll(/href="(\/ucto\/doklady\/[A-Za-z0-9-]+)"/g)].map((m) => m[1]))].forEach((path, i) => teamFiles.set(path, `ucto-doklad-${i + 1}.html`))
 for (const [path, file] of teamFiles) files.set(path, file)
@@ -307,8 +318,18 @@ for (const [path] of teamFiles) {
     originals.push(files.get(`/ucto/subory/${m[1]}`))
   }
 }
-for (const [path, file] of teamFiles) await write(file, await html(path))
+for (const [path, file] of teamFiles) await write(file, await html(path), { [`/ucto/klienti/demo-company/dph/priznanie.xml|/ucto/klienti/demo-company/dph/podane`]: 'ucto-dph-podane.html' })
+// Filed: the client is told in the app what to pay; the page of the month says so.
+{
+  const body = new URLSearchParams({ obdobie: month(-1) })
+  const filed = await call('/ucto/klienti/demo-company/dph/podane', { method: 'POST', body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+  if (filed.status !== 303) throw new Error(`filing the VAT return: ${filed.status}`)
+  await write('ucto-dph-podane.html', await html(`/ucto/klienti/demo-company/dph?obdobie=${month(-1)}&ok=dph-podane`))
+  files.set('/ucto/klienti/demo-company/dph?ok=dph-podane', 'ucto-dph-podane.html')
+}
 cookie = clientCookie
+await write('dane.html', await html('/app/dane'))
+await write('spravy.html', await html('/app/spravy'))
 // A second photo for the office supplies: a different file, so that it is not taken for the first one again.
 const second = Buffer.concat([await readFile(photo), Buffer.from([0])])
 {
@@ -344,7 +365,13 @@ await write('vsetko-mame.html', await html('/app'))
 // The draft invoice issued as it stands: it takes the next number and is a document of the company at once.
 {
   const draft = await html('/app/faktury/demo-inv-3')
-  const unescape = (text) => text.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+  const unescape = (text) =>
+    text
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
   const form = new URLSearchParams()
   for (const m of draft.matchAll(/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/g)) form.set(m[1], unescape(m[2]))
   for (const m of draft.matchAll(/<select[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
@@ -440,5 +467,27 @@ for (const asset of assets) {
   await mkdir(dirname(join(out, asset)), { recursive: true })
   await copyFile(join(root, 'public', asset), join(out, asset))
 }
-const written = [...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))), 'platba-kava-hotovo.html', 'platba-tankovanie-netreba.html', 'platba-potreby-hotovo.html', 'vsetko-mame.html', 'atelier.html', 'plna-moc-atelier.html', 'vyhlasenie-atelier.html', 'faktura-vystavena.html', 'faktura-odberatel-3.html', 'faktura-20260008.xml', 'banka-prepojena.html', 'banka-schvalenie.html', 'faktura-2-zaplatena.html', 'koniec.html', 'koniec-firma.html', 'koniec-doklady.html', 'koniec-faktury.html', 'ucto-klient-koniec.html', ...originals]
+const written = [
+  ...new Set([...files.values()].filter((f) => f.endsWith('.html') || f.endsWith('.xml'))),
+  'platba-kava-hotovo.html',
+  'platba-tankovanie-netreba.html',
+  'platba-potreby-hotovo.html',
+  'vsetko-mame.html',
+  'atelier.html',
+  'plna-moc-atelier.html',
+  'vyhlasenie-atelier.html',
+  'faktura-vystavena.html',
+  'faktura-odberatel-3.html',
+  'faktura-20260008.xml',
+  'banka-prepojena.html',
+  'banka-schvalenie.html',
+  'faktura-2-zaplatena.html',
+  'koniec.html',
+  'koniec-firma.html',
+  'koniec-doklady.html',
+  'koniec-faktury.html',
+  'ucto-klient-koniec.html',
+  'ucto-dph-podane.html',
+  ...originals,
+]
 console.log(JSON.stringify(Object.fromEntries([...written.filter((f) => f !== 'index.html').map((f) => [f, join(out, f)]), ...[...assets].sort().map((a) => [a, join(out, a)])])))

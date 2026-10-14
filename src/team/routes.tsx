@@ -12,7 +12,7 @@ import { flushOutbox, queueStatement } from '../mail'
 import { bell, ringStatement } from '../bell'
 import { lookupCompany } from '../rpo'
 import { dayOfText, isCategory, supplierKey, type PaidBy } from '../app/booking'
-import { getInvoice, invoiceLines } from '../app/invoices'
+import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
 import { app, dayName, readableName, signed, whenName } from '../app/copy'
 import { endingOf } from '../app/ending'
 import { linksOf } from '../app/bank'
@@ -20,8 +20,51 @@ import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
 import { checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
-import { LEVELS, checkDeclarationStatement, decideStatement, declarationStateOf, latestDeclaration, noticeEndsOn, reportStatements, reportsOf, riskStatements, risksOf, suggestedLevel, type Level } from '../app/aml'
+import {
+  LEVELS,
+  checkDeclarationStatement,
+  decideStatement,
+  declarationStateOf,
+  latestDeclaration,
+  noticeEndsOn,
+  reportStatements,
+  reportsOf,
+  riskStatements,
+  risksOf,
+  suggestedLevel,
+  type Level,
+} from '../app/aml'
 import { AmlPage } from '../views/aml'
+import { VatCard, VatPage, type VatForm } from '../views/vat'
+import { familyOf, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
+import { isTaxOffice } from '../app/vat-xml'
+import { formatEurExact } from '../format'
+import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, prevPeriod, vatOf, type VatData } from '../app/vat'
+import { returnXml, statementXml } from '../app/vat-xml'
+import {
+  docPreview,
+  docsAround,
+  fileStatement,
+  filedReturns,
+  groupedIban,
+  leftToPay,
+  overpaid,
+  payable,
+  periodName,
+  planFiling,
+  selfVatOf,
+  stripOf,
+  taxAccountOf,
+  taxIban,
+  taxPaid,
+  unfileStatement,
+  vatSymbol,
+  viewOf,
+  type FiledReturn,
+  type FilingChoices,
+  type FilingPlan,
+  type PeriodView,
+} from '../app/vat-store'
 import { currentWho, newLink, startSession } from '../app/session'
 import {
   checkStatement,
@@ -45,6 +88,8 @@ import {
   type Payment,
   type User,
   type Who,
+  vatCompanyOf,
+  vatDocOf,
 } from '../app/store'
 import { dayOf } from '../views/inside-pages'
 import { Tile } from '../views/home'
@@ -60,8 +105,11 @@ import {
   RequestsPage,
   TeamMissing,
   TeamShell,
+  detailsOf,
   valuesOf,
   type BookValues,
+  type DetailsErrors,
+  type DetailsValues,
   type NewClientValues,
   type TeamPlace,
 } from '../views/team'
@@ -201,6 +249,22 @@ function flashOf(c: Ctx): string | null {
       return t.handover.flash
     case 'odstranene':
       return t.handover.removed
+    case 'dph-podane':
+      return t.vat.flashes.filed
+    case 'dph-zrusene':
+      return t.vat.flashes.unfiled
+    case 'dph-blokovane':
+      return t.vat.flashes.blocked
+    case 'dph-bezi':
+      return t.vat.flashes.running
+    case 'dph-uz':
+      return t.vat.flashes.already
+    case 'dph-opravene':
+      return t.vat.flashes.corrected
+    case 'dph-kv':
+      return t.vat.flashes.correctedKv
+    case 'dph-netreba':
+      return t.vat.flashes.notNeeded
     default:
       return null
   }
@@ -223,7 +287,13 @@ teamRoutes.get('/', async (c) => {
 async function clientPage(
   c: Ctx,
   company: Company,
-  extra: { error?: string; draft?: string; end?: { day: string; reason: string; errors: { day?: string; reason?: string; form?: string } }; handoverError?: string } = {},
+  extra: {
+    error?: string
+    draft?: string
+    end?: { day: string; reason: string; errors: { day?: string; reason?: string; form?: string } }
+    handoverError?: string
+    details?: { values: DetailsValues; errors: DetailsErrors }
+  } = {},
   status: ContentfulStatusCode = 200,
 ) {
   const who = c.get('who')
@@ -244,10 +314,16 @@ async function clientPage(
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
-  const banks = await linksOf(db, company.id)
+  const [banks, vat] = await Promise.all([linksOf(db, company.id), vatSummary(db, company, day)])
   const active = banks.find((l) => l.status === 'active')
   const ended = banks.find((l) => l.status === 'expired')
-  const bankLine = active ? (active.syncedAt ? t.client.bank(active.bank, whenName(active.syncedAt, day)) : t.client.bankWaiting(active.bank)) : ended ? t.client.bankEnded(ended.bank) : t.client.noBank
+  const bankLine = active
+    ? active.syncedAt
+      ? t.client.bank(active.bank, whenName(active.syncedAt, day))
+      : t.client.bankWaiting(active.bank)
+    : ended
+      ? t.client.bankEnded(ended.bank)
+      : t.client.noBank
   return shell(
     c,
     'clients',
@@ -274,10 +350,29 @@ async function clientPage(
       handover={handover}
       ending={endingOf(company, day)}
       earliestEnd={noticeEndsOn(day)}
+      vat={<VatCard company={company} view={vat.view} needs7a={vat.needs7a} today={day} />}
       {...extra}
     />,
     status,
   )
+}
+
+/**
+ * The client page's VAT in short: the period whose return is due next, or, for a company that is not registered,
+ * how many services it bought from abroad in the last three months (each asks for a registration under § 7a).
+ */
+async function vatSummary(db: D1Database, company: Company, day: string): Promise<{ view: PeriodView | null; needs7a: number }> {
+  const current = periodOf(day, company.vatQuarterly)
+  if (company.vatStatus !== 'none') {
+    const period = prevPeriod(current)
+    const [docs, filed] = await Promise.all([docsAround(db, company.id, period, period), filedReturns(db, company.id)])
+    return { view: viewOf(company, period, docs, filed, day), needs7a: 0 }
+  }
+  const periods = [prevPeriod(prevPeriod(current)), prevPeriod(current), current]
+  const docs = await docsAround(db, company.id, periods[0] as string, current)
+  const needs = new Set<string>()
+  for (const p of periods) for (const i of viewOf(company, p, docs, [], day).result.issues) if (i.code === 'needs7a' && i.doc) needs.add(i.doc)
+  return { view: null, needs7a: needs.size }
 }
 
 /** The company of the address, when the user may see it; `ended` lets the administrator see one whose data are deleted. */
@@ -430,11 +525,47 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
   if (!company) return missingPage(c)
   const body = await c.req.parseBody()
   const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
-  const dic = text('dic', 12).replace(/\D/g, '')
-  const icdph = text('icdph', 14).replace(/\s/g, '').toUpperCase()
+  // The registration for VAT: chosen in the form; an older form that only had "Platiteľ DPH" says it with a box.
+  const status = body.dph_stav === 'payer' || body.dph_stav === 'reg7a' || body.dph_stav === 'none' ? body.dph_stav : body.dph === '1' ? 'payer' : 'none'
+  const values: DetailsValues = {
+    dic: text('dic', 14),
+    icdph: text('icdph', 16),
+    status,
+    quarterly: status === 'payer' && body.dph_obdobie === 'quarter',
+    since: text('dph_od', 20),
+    office: text('danovy_urad', 60),
+    account: text('oud', 40),
+    carry: text('dph_prenos', 16),
+    note: text('poznamka', 1000),
+  }
+  const dic = values.dic.replace(/\s/g, '')
+  const icdph = values.icdph.replace(/\s/g, '').toUpperCase()
+  const since = dayOfText(values.since)
+  const account = taxAccountOf(values.account)
+  const errors: DetailsErrors = {}
+  if (dic !== '' && !/^\d{10}$/.test(dic)) errors.dic = t.client.detailsErrors.dic
+  if (icdph !== '' && !/^SK\d{10}$/.test(icdph)) errors.icdph = t.client.detailsErrors.icdph
+  if (since === null) errors.since = t.client.detailsErrors.since
+  if (values.office !== '' && !isTaxOffice(values.office)) errors.office = t.client.detailsErrors.office
+  if (values.account !== '' && !account) errors.account = t.client.detailsErrors.account
+  // An excess deduction brought from before us: an amount in euros, or nothing.
+  const carry = values.carry === '' ? 0 : centsOf(values.carry)
+  if (carry === null || Number.isNaN(carry) || carry < 0) errors.carry = t.client.detailsErrors.carry
+  if (Object.keys(errors).length > 0) return clientPage(c, company, { details: { values, errors }, error: t.client.detailsFix }, 422)
   const db = c.env.DB
-  const sets = ['dic = ?', 'icdph = ?', 'vat_payer = ?', 'note = ?']
-  const binds: unknown[] = [/^\d{10}$/.test(dic) ? dic : null, /^SK\d{10}$/.test(icdph) ? icdph : null, body.dph === '1' ? 1 : 0, text('poznamka', 1000) || null]
+  const sets = ['dic = ?', 'icdph = ?', 'vat_payer = ?', 'vat_7a = ?', 'vat_quarterly = ?', 'vat_since = ?', 'tax_office = ?', 'tax_account = ?', 'vat_carry = ?', 'note = ?']
+  const binds: unknown[] = [
+    dic || null,
+    icdph || null,
+    status === 'payer' ? 1 : 0,
+    status === 'reg7a' ? 1 : 0,
+    values.quarterly ? 1 : 0,
+    since || null,
+    isTaxOffice(values.office) ? values.office : null,
+    account,
+    status === 'payer' ? (carry ?? 0) : 0,
+    values.note || null,
+  ]
   if (isAdmin(who.user)) {
     const plan = text('plan', 10)
     if (PLANS.some((p) => p.id === plan)) {
@@ -518,7 +649,9 @@ teamRoutes.post('/klienti/:id/koniec', async (c) => {
   // Set while the contract still runs and the client has not given notice; an end we set before can be moved.
   const [set] = await db.batch([
     db
-      .prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'firmony', ends_on = ? WHERE id = ? AND (notice_side IS NULL OR notice_side = 'firmony') AND (ends_on IS NULL OR ends_on >= ?)")
+      .prepare(
+        "UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'firmony', ends_on = ? WHERE id = ? AND (notice_side IS NULL OR notice_side = 'firmony') AND (ends_on IS NULL OR ends_on >= ?)",
+      )
       .bind(now(), who.user.id, day, company.id, today),
   ])
   if ((set?.meta?.changes ?? 0) === 0) return clientPage(c, company, { end: { day: dayText, reason, errors: {} }, error: t.end.errors.running }, 409)
@@ -526,7 +659,14 @@ teamRoutes.post('/klienti/:id/koniec', async (c) => {
   const id = crypto.randomUUID()
   const plain = (d: string) => dayName(d)
   await db.batch([
-    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: t.end.message(plain(day), plain(ending?.intakeUntil ?? day), plain(ending?.handoverBy ?? day), plain(ending?.accessUntil ?? day)), payment: null }),
+    messageStatement(db, {
+      id,
+      company: company.id,
+      author: who.user.id,
+      side: 'firmony',
+      body: t.end.message(plain(day), plain(ending?.intakeUntil ?? day), plain(ending?.handoverBy ?? day), plain(ending?.accessUntil ?? day)),
+      payment: null,
+    }),
     eventStatement(db, { company: company.id, user: who.user.id, action: 'contract.ended', subject: id, detail: { endsOn: day, reason } }),
     ...(await ringClient(c, company, id)),
   ])
@@ -540,9 +680,7 @@ teamRoutes.post('/klienti/:id/koniec/zrusit', async (c) => {
   if (!company || !isAdmin(who.user)) return missingPage(c)
   const db = c.env.DB
   const [back] = await db.batch([
-    db
-      .prepare("UPDATE companies SET notice_at = NULL, notice_by = NULL, notice_side = NULL, ends_on = NULL WHERE id = ? AND notice_side = 'firmony' AND ends_on >= ?")
-      .bind(company.id, dayOf(now())),
+    db.prepare("UPDATE companies SET notice_at = NULL, notice_by = NULL, notice_side = NULL, ends_on = NULL WHERE id = ? AND notice_side = 'firmony' AND ends_on >= ?").bind(company.id, dayOf(now())),
   ])
   if ((back?.meta?.changes ?? 0) === 0) return c.redirect(`/ucto/klienti/${company.id}#zmluva`, 303)
   const id = crypto.randomUUID()
@@ -568,7 +706,10 @@ teamRoutes.post('/klienti/:id/odovzdanie', async (c) => {
   const db = c.env.DB
   const names: string[] = []
   for (const file of files) {
-    const kept = await keepPaper(db, c.env.FILES, { company: company.id, user: who.user.id }, 'handover', { name: (file.name || 'uctovnictvo').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) })
+    const kept = await keepPaper(db, c.env.FILES, { company: company.id, user: who.user.id }, 'handover', {
+      name: (file.name || 'uctovnictvo').slice(0, 120),
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    })
     if (!kept.ok) {
       if (names.length > 0) break
       return clientPage(c, company, { handoverError: t.handover.errors[kept.reason] }, kept.reason === 'storage' ? 503 : 422)
@@ -670,7 +811,10 @@ teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
   const made = reportStatements(db, company.id, who.user.id, text)
   // Every administrator is the designated person's door: a doorbell that names neither the client nor the report.
   const admins = await db.prepare("SELECT email FROM users WHERE team = 'admin'").all<{ email: string }>()
-  await db.batch([...made.statements, ...admins.results.map((admin) => ringStatement(db, 'report', made.id, admin.email, bell.teamReport(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml#oznamenia`)))])
+  await db.batch([
+    ...made.statements,
+    ...admins.results.map((admin) => ringStatement(db, 'report', made.id, admin.email, bell.teamReport(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml#oznamenia`))),
+  ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}/aml?ok=oznamenie#oznamenia`, 303)
 })
@@ -689,6 +833,213 @@ teamRoutes.post('/klienti/:id/aml/oznamenie/:report', async (c) => {
   const [decided] = await db.batch([decideStatement(db, company.id, report, who.user.id, decision, note)])
   if ((decided?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'report.decided', subject: report, detail: { decision } })])
   return c.redirect(`/ucto/klienti/${company.id}/aml?ok=posudene#oznamenia`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// VAT: the return and the control statement of a period (vat.ts), their files, and the mark that they were filed
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The period of the address when it is one of the company's kind (a month, or a quarter for a quarterly payer). */
+function periodParam(company: Company, text: unknown, today: string): string {
+  const current = periodOf(today, company.vatQuarterly)
+  if (typeof text === 'string' && isPeriod(text) && isQuarter(text) === company.vatQuarterly && text <= current) return text
+  // The period whose return is due next: the last one that has ended.
+  return prevPeriod(current)
+}
+
+/** A period worked out, with the documents it may hold and the returns filed. */
+async function vatView(db: D1Database, company: Company, period: string, today: string): Promise<{ view: PeriodView; docs: Doc[]; filed: FiledReturn[] }> {
+  const [docs, filed] = await Promise.all([docsAround(db, company.id, period, period), filedReturns(db, company.id)])
+  return { view: viewOf(company, period, docs, filed, today), docs, filed }
+}
+
+/** What the accountant chose in the form of a filing; the same names in the files' address and in the mark. */
+function choicesOf(get: (name: string) => unknown): FilingChoices {
+  const yes = (value: unknown) => (value === '1' ? true : value === '0' ? false : undefined)
+  const found = get('zistene')
+  return { fast: yes(get('vratit')), settled: yes(get('vyrovnany')), foundOn: typeof found === 'string' ? dayOfText(found) || null : null }
+}
+
+/** A correction is made only from books that could be filed: nothing unbooked or unclear in the period. */
+const correctionBlocked = (view: PeriodView): boolean => view.state === 'changed' && (view.companyIssues.length > 0 || view.result.issues.some((i) => i.level === 'block'))
+
+/** The plan for a period, unless something keeps it from being filed. */
+function vatPlan(company: Company, view: PeriodView, filed: FiledReturn[], today: string, choices: FilingChoices): FilingPlan | null {
+  if (correctionBlocked(view) || !company.icdph || !company.taxOffice || company.vatStatus === 'none') return null
+  return planFiling(company, view, filed, today, choices)
+}
+
+teamRoutes.get('/klienti/:id/dph', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const today = dayOf(now())
+  const period = periodParam(company, c.req.query('obdobie'), today)
+  const periods = stripOf(company, period, today)
+  const [docs, filed] = await Promise.all([docsAround(db, company.id, periods[0] ?? period, periods[periods.length - 1] ?? period), filedReturns(db, company.id)])
+  const strip = periods.map((p) => viewOf(company, p, docs, filed, today))
+  const view = strip.find((s) => s.period === period) ?? viewOf(company, period, docs, filed, today)
+  // Not registered: what was bought from abroad in the periods shown asks for a registration under § 7a.
+  const needs = new Set(strip.flatMap((s) => s.result.issues.filter((i) => i.code === 'needs7a' && i.doc).map((i) => i.doc as string)))
+  return shell(
+    c,
+    'clients',
+    `${t.vat.title} ${periodName(period)}`,
+    <VatPage
+      user={c.get('who').user}
+      company={company}
+      view={view}
+      plan={vatPlan(company, view, filed, today, {})}
+      strip={strip}
+      docs={new Map(docs.map((d) => [d.id, d]))}
+      needs7a={docs.filter((d) => needs.has(d.id))}
+      today={today}
+      flash={flashOf(c)}
+    />,
+  )
+})
+
+/** The return or the control statement as a file, for "Načítať zo súboru" in eDane or on the portal. */
+teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
+  const company = await companyParam(c)
+  const file = c.req.param('file')
+  if (!company || (file !== 'priznanie.xml' && file !== 'kontrolny-vykaz.xml')) return missingPage(c)
+  const today = dayOf(now())
+  const period = periodParam(company, c.req.query('obdobie'), today)
+  const { view, filed } = await vatView(c.env.DB, company, period, today)
+  const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
+  if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
+  const plan = vatPlan(
+    company,
+    view,
+    filed,
+    today,
+    choicesOf((name) => c.req.query(name)),
+  )
+  if (!plan || !company.icdph || !company.taxOffice || company.vatStatus === 'none') return c.redirect(`${back}&ok=dph-blokovane`, 303)
+  const statement = file === 'kontrolny-vykaz.xml'
+  if (statement ? !plan.kv : !plan.returnNeeded) return c.redirect(`${back}&ok=dph-netreba`, 303)
+  const filer = { name: company.name, icdph: company.icdph, address: company.address, taxOffice: company.taxOffice, status: company.vatStatus }
+  // A file of a period filed is the one that was filed, with the day it was declared.
+  const declaredOn = view.state === 'filed' && view.filed ? view.filed.filedOn : today
+  const xml =
+    statement && plan.kv
+      ? statementXml(filer, period, plan.kv.sent, plan.kv.kind)
+      : returnXml(filer, period, plan.rows, { declaredOn, nothing: plan.nothing, fastRefund: plan.fast, kind: plan.kind, foundOn: plan.foundOn })
+  const kind = statement ? (plan.kv?.kind ?? 'R') : plan.kind
+  const name = `${statement ? 'KVDPH' : 'DPH'}${kind === 'R' ? '' : `_${kind}`}_${company.icdph}_${period}.xml`
+  await c.env.DB.batch([
+    eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: statement ? 'vat.statement.downloaded' : 'vat.return.downloaded', subject: period, detail: { kind } }),
+  ])
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
+
+/**
+ * The return marked as filed: once, with what was filed in it, and the client told what to pay and where. A period
+ * filed whose books changed takes a correction the same way, in place of the filing it corrects; a correction of the
+ * control statement alone is none of the client's business and tells the client nothing.
+ */
+teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const period = periodParam(company, body.obdobie, today)
+  const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
+  const db = c.env.DB
+  const { view, filed } = await vatView(db, company, period, today)
+  if (view.state === 'filed') return c.redirect(`${back}&ok=dph-uz`, 303)
+  if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
+  const plan =
+    view.state === 'ready' || view.state === 'changed'
+      ? vatPlan(
+          company,
+          view,
+          filed,
+          today,
+          choicesOf((name) => body[name]),
+        )
+      : null
+  if (!plan) return c.redirect(`${back}&ok=dph-blokovane`, 303)
+  const [done] = await db.batch([fileStatement(db, company.id, plan, who.user.id, today)])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=dph-uz`, 303)
+  const detail = {
+    kind: plan.kind,
+    returned: plan.returnNeeded,
+    statement: plan.kv?.kind ?? null,
+    pay: plan.pay,
+    refund: plan.refund,
+    r36: plan.settlement?.r36 ?? null,
+    r37: plan.settlement?.r37 ?? null,
+  }
+  const action = plan.replaces ? 'vat.corrected' : 'vat.filed'
+  if (!plan.returnNeeded) {
+    await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action, subject: period, detail })])
+    return c.redirect(`${back}&ok=dph-kv`, 303)
+  }
+  const ret = { payCents: plan.pay }
+  const paid = (await taxPaid(db, company.id, [{ period } as FiledReturn])).get(period)
+  const left = leftToPay(company, ret, paid)
+  const over = overpaid(company, ret, paid)
+  const backCents = plan.kind === 'D' ? Math.max(0, -(plan.settlement?.r37 ?? 0)) : plan.refund
+  const id = crypto.randomUUID()
+  const text = t.vat.clientMessage({
+    label: periodName(period),
+    kind: plan.kind,
+    left: left > 0 ? formatEurExact(left) : null,
+    paid: left > 0 && paid && paid.cents > 0 ? formatEurExact(paid.cents) : null,
+    back: backCents > 0 ? formatEurExact(backCents) : null,
+    fast: plan.fast,
+    over: over > 0 ? formatEurExact(over) : null,
+    due: dayName(plan.dueOn),
+    vs: vatSymbol(period),
+    account: company.taxAccount ? groupedIban(taxIban(company.taxAccount)) : null,
+  })
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action, subject: period, detail }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`${back}&ok=${plan.replaces ? 'dph-opravene' : 'dph-podane'}`, 303)
+})
+
+/** A mark set by mistake taken back; the client, who was told what to pay, is told that it does not stand. A correction
+ *  gives way to the filing it replaced. */
+teamRoutes.post('/klienti/:id/dph/zrusit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const period = periodParam(company, body.obdobie, today)
+  const db = c.env.DB
+  const mine = (await filedReturns(db, company.id)).find((f) => f.period === period)
+  const [gone] = mine ? await db.batch([unfileStatement(db, company.id, mine)]) : []
+  if (mine && (gone?.meta?.changes ?? 0) > 0) {
+    const id = crypto.randomUUID()
+    await db.batch([
+      messageStatement(db, {
+        id,
+        company: company.id,
+        author: who.user.id,
+        side: 'firmony',
+        body: mine.prev ? t.vat.clientUnfiledCorrection(periodName(period)) : t.vat.clientUnfiled(periodName(period)),
+        payment: null,
+      }),
+      eventStatement(db, { company: company.id, user: who.user.id, action: 'vat.unfiled', subject: period, detail: { kind: mine.kind } }),
+      ...(await ringClient(c, company, id)),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect(`/ucto/klienti/${company.id}/dph?obdobie=${period}&ok=dph-zrusene`, 303)
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -750,16 +1101,62 @@ async function candidatesFor(db: D1Database, company: string, d: Doc): Promise<P
   return missing.filter((p) => ids.has(p.id)).slice(0, 5)
 }
 
-async function bookPage(c: Ctx, found: { doc: Doc; company: Company }, extra: { values?: BookValues; errors?: Partial<Record<keyof BookValues, string>> } = {}, status: ContentfulStatusCode = 200) {
+/**
+ * The booking form's VAT: what the accountant confirmed, or what is proposed until she does, with the periods it may
+ * go into and where it goes. Null for a company that reports no VAT or a document whose kind has none.
+ */
+async function vatFormOf(db: D1Database, company: Company, doc: Doc, typed?: { values: VatForm['values']; errors: VatForm['errors'] }): Promise<VatForm | null> {
+  if (company.vatStatus === 'none') return null
+  const modes = modesFor(doc.kind)
+  if (modes.length === 0) return null
+  const counted = vatOf(vatDocOf(doc), vatCompanyOf(company))
+  if (!counted) return null
+  const filed = await filedReturns(db, company.id)
+  const preview = docPreview(company, doc, counted.data, filed)
+  const data: VatData = counted.data
+  const sum = data.lines.reduce((total, line) => total + line.base + (data.mode === 'domestic' ? line.vat : 0), 0)
+  const euro = (doc.currency ?? 'EUR') === 'EUR'
+  const sumOff =
+    euro && doc.totalCents !== null && data.lines.length > 0 && data.mode !== 'none' && Math.abs(sum - doc.totalCents) > 1
+      ? t.book.vatSumOff(formatEurExact(sum), formatEurExact(doc.totalCents))
+      : null
+  const goes =
+    preview.goes.length > 0
+      ? t.book.vatGoes(periodName(preview.period), preview.goes.map((key) => (key.startsWith('r') ? `r. ${key.slice(1)}` : `${key.slice(0, 1)}.${key.slice(1)}`)).join(', '))
+      : t.book.vatGoesNowhere
+  return {
+    values: typed?.values ?? vatValues(data),
+    errors: typed?.errors ?? {},
+    proposed: counted.proposed,
+    modes,
+    periods: periodsAround(preview.natural, data.period, nextPeriod, prevPeriod),
+    natural: preview.natural,
+    goes,
+    issues: preview.issues,
+    sumOff,
+    currency: euro ? null : doc.currency,
+    selfVat: selfVatOf(data),
+  }
+}
+
+async function bookPage(
+  c: Ctx,
+  found: { doc: Doc; company: Company },
+  extra: { values?: BookValues; errors?: Partial<Record<keyof BookValues, string>>; vat?: { values: VatForm['values']; errors: VatForm['errors'] } } = {},
+  status: ContentfulStatusCode = 200,
+) {
   const who = c.get('who')
   const db = c.env.DB
   const { doc, company } = found
-  const [payment, candidates, queue, invoice] = await Promise.all([
+  const [payment, candidates, queue, invoice, vat] = await Promise.all([
     doc.paymentId ? getPayment(db, company.id, doc.paymentId) : Promise.resolve(null),
     candidatesFor(db, company.id, doc),
     bookingQueue(db, who.user, true, company.id),
     doc.invoiceId ? getInvoice(db, company.id, doc.invoiceId) : Promise.resolve(null),
+    vatFormOf(db, company, doc, extra.vat),
   ])
+  // A company that is not registered and buys a service from abroad owes a registration under § 7a.
+  const needs7a = company.vatStatus === 'none' && vatOf(vatDocOf(doc), vatCompanyOf(company))?.data.mode === 'reverse'
   return shell(
     c,
     'queue',
@@ -767,6 +1164,9 @@ async function bookPage(c: Ctx, found: { doc: Doc; company: Company }, extra: { 
     <BookPage
       d={doc}
       company={company}
+      vat={vat}
+      vatKindFirst={company.vatStatus !== 'none' && familyOf(doc.kind) === null}
+      needs7a={needs7a}
       invoice={invoice ? { invoice, lines: await invoiceLines(db, invoice.id) } : null}
       values={extra.values ?? valuesOf(doc, company.vatPayer)}
       payment={payment}
@@ -854,7 +1254,20 @@ teamRoutes.post('/doklady/:id', async (c) => {
     if (values.kind !== 'other' && values.category === '') errors.category = t.book.errors.category
     if (values.kind !== 'other' && values.party === '') errors.party = t.book.errors.party
   }
-  if (Object.keys(errors).length > 0) return bookPage(c, found, { values, errors }, 422)
+  // The VAT part of the form, when it was on it: read only while the kind stays issued or received as it was shown;
+  // a document that changes between them gets a new proposal for its new kind.
+  const kind = (values.kind || null) as DocKind | null
+  const vatShown = body.dph === '1' && company.vatStatus !== 'none'
+  const sameFamily = familyOf(kind) !== null && familyOf(kind) === familyOf(doc.kind)
+  let vatRead: ReturnType<typeof readVat> | null = null
+  if (vatShown && sameFamily) {
+    const counted = vatOf(vatDocOf(doc), vatCompanyOf(company))
+    const natural = counted ? docPreview(company, doc, { ...counted.data, period: null }, await filedReturns(db, company.id)).natural : null
+    const periods = natural ? periodsAround(natural, counted?.data.period ?? null, nextPeriod, prevPeriod) : []
+    vatRead = readVat(body, { kind, payer: company.vatStatus === 'payer', deduct: values.deduct, booking, periods })
+  }
+  const vatErrors = vatRead !== null && Object.keys(vatRead.errors).length > 0
+  if (Object.keys(errors).length > 0 || vatErrors) return bookPage(c, found, { values, errors, vat: vatRead ? { values: vatRead.values, errors: vatRead.errors } : undefined }, 422)
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
@@ -886,6 +1299,16 @@ teamRoutes.post('/doklady/:id', async (c) => {
       ),
     eventStatement(db, { company: company.id, user: who.user.id, action: booking ? 'document.booked' : 'document.saved', subject: doc.id }),
   ]
+  if (vatRead?.data) {
+    const v = vatRead.data
+    statements.push(
+      db
+        .prepare('UPDATE documents SET vat_mode = ?, vat_lines = ?, supplied_on = ?, party_vat_id = ?, corrects = ?, vat_period = ? WHERE id = ? AND company_id = ?')
+        .bind(v.mode, JSON.stringify(v.lines), v.suppliedOn, v.vatId, v.corrects, v.period, doc.id, company.id),
+    )
+  } else if (vatShown && !sameFamily) {
+    statements.push(db.prepare('UPDATE documents SET vat_mode = NULL, vat_period = NULL WHERE id = ? AND company_id = ?').bind(doc.id, company.id))
+  }
   const key = supplierKey(values.ico, values.party)
   const remembered = booking && values.remember && key !== null && isCategory(values.category) && values.kind !== 'invoice_out'
   if (remembered && key && isCategory(values.category)) {
@@ -932,7 +1355,13 @@ teamRoutes.get('/subory/:id', async (c) => {
   const name = (found.doc.fileName ?? 'doklad').replace(/[^\p{L}\p{N}._ -]/gu, '_')
   const policy = type === 'application/pdf' ? "default-src 'none'; object-src 'self'; frame-ancestors 'self'" : "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
   return new Response(object.body, {
-    headers: { 'Content-Type': type, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`, 'Cache-Control': 'private, no-store', 'Content-Security-Policy': policy, 'X-Frame-Options': type === 'application/pdf' ? 'SAMEORIGIN' : 'DENY' },
+    headers: {
+      'Content-Type': type,
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'private, no-store',
+      'Content-Security-Policy': policy,
+      'X-Frame-Options': type === 'application/pdf' ? 'SAMEORIGIN' : 'DENY',
+    },
   })
 })
 

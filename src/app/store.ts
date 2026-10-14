@@ -48,6 +48,8 @@ export interface Company {
   taxOffice: TaxOffice | null
   /** The number of the company's personal tax account (osobný účet daňovníka), to which VAT is paid. */
   taxAccount: string | null
+  /** The excess deduction of the last period before ours that was not refunded, in cents: our first period deducts it. */
+  vatCarry: number
 }
 
 export type Team = 'accountant' | 'admin'
@@ -151,7 +153,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.tax_office, c.tax_account`
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.tax_office, c.tax_account, c.vat_carry`
 
 export function companyOf(row: Row): Company {
   return {
@@ -187,6 +189,7 @@ export function companyOf(row: Row): Company {
     vatSince: str(row.vat_since),
     taxOffice: isTaxOffice(row.tax_office) ? row.tax_office : null,
     taxAccount: str(row.tax_account),
+    vatCarry: num(row.vat_carry) ?? 0,
   }
 }
 
@@ -422,7 +425,9 @@ export function eventStatement(db: D1Database, e: { company: string | null; user
 /** The people of a company who get its emails: every member who did not turn reminders off, or all of them. */
 export async function membersOf(db: D1Database, company: string, onlyReminders = false): Promise<User[]> {
   const rows = await db
-    .prepare(`SELECT u.id, u.name, u.email, u.team, u.reminders FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ? ${onlyReminders ? 'AND u.reminders = 1' : ''} ORDER BY m.created_at`)
+    .prepare(
+      `SELECT u.id, u.name, u.email, u.team, u.reminders FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ? ${onlyReminders ? 'AND u.reminders = 1' : ''} ORDER BY m.created_at`,
+    )
     .bind(company)
     .all<Row>()
   return rows.results.map((row) => userOf(row))
@@ -451,12 +456,7 @@ export async function peopleOf(db: D1Database, company: string): Promise<Person[
 export type PaymentFilter = 'missing' | 'done' | 'all'
 
 export async function listPayments(db: D1Database, company: string, filter: PaymentFilter, limit = 400, search = ''): Promise<Payment[]> {
-  const where =
-    filter === 'missing'
-      ? `AND ${MISSING}`
-      : filter === 'done'
-        ? 'AND (p.exempt IS NOT NULL OR EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id))'
-        : ''
+  const where = filter === 'missing' ? `AND ${MISSING}` : filter === 'done' ? 'AND (p.exempt IS NOT NULL OR EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id))' : ''
   const { sql, binds } = searchSql(search, ['p.party', 'p.note', 'p.vs'], 'ABS(p.amount_cents)')
   const rows = await db
     .prepare(`SELECT ${PAYMENT_COLUMNS} FROM ${PAYMENT_FROM} WHERE p.company_id = ? ${where} ${sql} ORDER BY p.booked_on DESC, p.created_at DESC LIMIT ?`)
@@ -483,7 +483,10 @@ export function searchSql(search: string, columns: string[], amountColumn: strin
   for (const word of words) {
     const amount = /^\d+(?:[.,]\d{1,2})?$/.test(word) ? Math.round(Number(word.replace(',', '.')) * 100) : null
     const like = `%${word.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`
-    const plain = `%${word.normalize('NFD').replace(/\p{M}/gu, '').replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`
+    const plain = `%${word
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`
     const ors = columns.flatMap((column) => [`${column} LIKE ? ESCAPE '\\'`, `${column} LIKE ? ESCAPE '\\'`])
     for (let i = 0; i < columns.length; i++) binds.push(like, plain)
     if (amount !== null) {
@@ -621,10 +624,32 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
-      d.id, d.company, now(), d.source, d.addedBy, d.fileKey, d.fileType, d.fileName, d.fileBytes, d.fileHash, d.status, d.readBy,
-      r?.kind ?? null, r?.party ?? null, r?.partyIco ?? null, r?.partyIban ?? null, r?.number ?? null, r?.vs ?? null,
-      r?.issuedOn ?? null, r?.dueOn ?? null, r?.totalCents ?? null, r?.vatCents ?? null, r?.currency ?? null,
-      r?.category ?? null, r?.category ? 'ai' : null, d.invoiceId ?? null,
+      d.id,
+      d.company,
+      now(),
+      d.source,
+      d.addedBy,
+      d.fileKey,
+      d.fileType,
+      d.fileName,
+      d.fileBytes,
+      d.fileHash,
+      d.status,
+      d.readBy,
+      r?.kind ?? null,
+      r?.party ?? null,
+      r?.partyIco ?? null,
+      r?.partyIban ?? null,
+      r?.number ?? null,
+      r?.vs ?? null,
+      r?.issuedOn ?? null,
+      r?.dueOn ?? null,
+      r?.totalCents ?? null,
+      r?.vatCents ?? null,
+      r?.currency ?? null,
+      r?.category ?? null,
+      r?.category ? 'ai' : null,
+      d.invoiceId ?? null,
       ...vatHints(r),
     )
 }
@@ -650,9 +675,23 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
        WHERE id = ? AND company_id = ? AND status = 'reading'`,
     )
     .bind(
-      by, reading.kind, reading.party, reading.partyIco, reading.partyIban, reading.number, reading.vs, reading.issuedOn, reading.dueOn,
-      reading.totalCents, reading.vatCents, reading.currency, reading.category ?? null, reading.category ? 'ai' : null,
-      ...vatHints(reading), doc, company,
+      by,
+      reading.kind,
+      reading.party,
+      reading.partyIco,
+      reading.partyIban,
+      reading.number,
+      reading.vs,
+      reading.issuedOn,
+      reading.dueOn,
+      reading.totalCents,
+      reading.vatCents,
+      reading.currency,
+      reading.category ?? null,
+      reading.category ? 'ai' : null,
+      ...vatHints(reading),
+      doc,
+      company,
     )
 }
 
@@ -722,7 +761,10 @@ export async function documentByHash(db: D1Database, company: string, hash: stri
 
 /** Files added by a company today, by any way, to hold back a runaway script or a flood of email. */
 export async function filesToday(db: D1Database, company: string): Promise<number> {
-  const row = await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = ? AND source IN ('upload', 'email') AND created_at > ?").bind(company, now() - 86400).first<{ n: number }>()
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = ? AND source IN ('upload', 'email') AND created_at > ?")
+    .bind(company, now() - 86400)
+    .first<{ n: number }>()
   return row?.n ?? 0
 }
 
@@ -750,7 +792,10 @@ export async function matchCompany(db: D1Database, company: string): Promise<num
   const { auto } = decide(payments.map(asMatchPayment), docs.map(asMatchDocument))
   if (auto.length === 0) return 0
   const results = await db.batch(
-    auto.flatMap(([payment, doc]) => [linkStatement(db, company, payment, doc, 'auto', null, true), eventStatement(db, { company, user: null, action: 'link.auto', subject: payment, detail: { doc, min: AUTO_SCORE } })]),
+    auto.flatMap(([payment, doc]) => [
+      linkStatement(db, company, payment, doc, 'auto', null, true),
+      eventStatement(db, { company, user: null, action: 'link.auto', subject: payment, detail: { doc, min: AUTO_SCORE } }),
+    ]),
   )
   return results.filter((result, index) => index % 2 === 0 && (result.meta?.changes ?? 0) > 0).length
 }
@@ -786,7 +831,10 @@ export interface Imported {
 
 /** The company's account of an IBAN, made when it is first seen. */
 export async function accountFor(db: D1Database, company: string, iban: string, extra: { bank?: string | null; link?: string | null; remote?: string | null } = {}): Promise<string | null> {
-  await db.prepare('INSERT OR IGNORE INTO accounts (id, company_id, iban, bank, link_id, remote_id) VALUES (?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), company, iban, extra.bank ?? null, extra.link ?? null, extra.remote ?? null).run()
+  await db
+    .prepare('INSERT OR IGNORE INTO accounts (id, company_id, iban, bank, link_id, remote_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), company, iban, extra.bank ?? null, extra.link ?? null, extra.remote ?? null)
+    .run()
   if (extra.link || extra.remote || extra.bank) {
     await db
       .prepare('UPDATE accounts SET bank = COALESCE(?, bank), link_id = COALESCE(?, link_id), remote_id = COALESCE(?, remote_id) WHERE company_id = ? AND iban = ?')
@@ -886,7 +934,26 @@ export function insertPaymentStatement(db: D1Database, company: string, account:
       `INSERT OR IGNORE INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, party_iban, vs, ss, ks, note, card, ref, source, exempt, exempt_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(crypto.randomUUID(), company, account, now(), e.bookedOn, e.amountCents, e.currency, e.party, e.partyIban, e.vs, e.ss, e.ks, e.note, e.card ? 1 : 0, e.ref, source, exempt, exempt ? 'auto' : null)
+    .bind(
+      crypto.randomUUID(),
+      company,
+      account,
+      now(),
+      e.bookedOn,
+      e.amountCents,
+      e.currency,
+      e.party,
+      e.partyIban,
+      e.vs,
+      e.ss,
+      e.ks,
+      e.note,
+      e.card ? 1 : 0,
+      e.ref,
+      source,
+      exempt,
+      exempt ? 'auto' : null,
+    )
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -923,7 +990,10 @@ export function seenStatement(db: D1Database, company: string, side: Message['si
   return db.prepare('UPDATE messages SET seen_at = ? WHERE company_id = ? AND side = ? AND seen_at IS NULL').bind(now(), company, side)
 }
 
-export function messageStatement(db: D1Database, m: { id: string; company: string; author: string | null; side: Message['side']; body: string; payment: string | null; at?: number }): D1PreparedStatement {
+export function messageStatement(
+  db: D1Database,
+  m: { id: string; company: string; author: string | null; side: Message['side']; body: string; payment: string | null; at?: number },
+): D1PreparedStatement {
   return db
     .prepare('INSERT INTO messages (id, company_id, created_at, author, side, body, payment_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(m.id, m.company, m.at ?? now(), m.author, m.side, m.body, m.payment)

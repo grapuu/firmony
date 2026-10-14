@@ -61,6 +61,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ 
     db.prepare('DELETE FROM messages WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM inbound_mail WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM supplier_rules WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM vat_returns WHERE company_id = ?').bind(companyId),
     db.prepare("DELETE FROM company_files WHERE company_id = ? AND kind <> 'poa'").bind(companyId),
     db.prepare('DELETE FROM sessions WHERE company_id = ?').bind(companyId),
     ...people.flatMap((id) => [
@@ -70,7 +71,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ 
     ]),
     db.prepare('DELETE FROM members WHERE company_id = ?').bind(companyId),
     db
-      .prepare('UPDATE companies SET purged_at = ?, closed_at = COALESCE(closed_at, ?), note = NULL, invoice_iban = NULL, invoice_footer = NULL WHERE id = ? AND purged_at IS NULL')
+      .prepare('UPDATE companies SET purged_at = ?, closed_at = COALESCE(closed_at, ?), note = NULL, invoice_iban = NULL, invoice_footer = NULL, tax_account = NULL WHERE id = ? AND purged_at IS NULL')
       .bind(now(), now(), companyId),
     eventStatement(db, { company: companyId, user: null, action: 'company.purged', detail: { files, people: people.length } }),
   ]

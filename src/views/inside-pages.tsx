@@ -41,9 +41,7 @@ function paymentKind(p: Payment): string {
   return p.card ? app.payments.card : app.payments.transfer
 }
 
-const StatePill: FC<{ state: Payment['state'] }> = ({ state }) => (
-  <span class={`pill pill--${state === 'missing' ? 'amber' : state === 'done' ? 'ok' : 'grey'}`}>{app.payments.state[state]}</span>
-)
+const StatePill: FC<{ state: Payment['state'] }> = ({ state }) => <span class={`pill pill--${state === 'missing' ? 'amber' : state === 'done' ? 'ok' : 'grey'}`}>{app.payments.state[state]}</span>
 
 export const PayRow: FC<{ p: Payment; suggested?: boolean }> = ({ p, suggested }) => (
   <li class="row">
@@ -65,7 +63,7 @@ export const PayRow: FC<{ p: Payment; suggested?: boolean }> = ({ p, suggested }
 )
 
 function docName(d: Doc): string {
-  return d.party ?? (d.status === 'reading' ? app.documents.state.reading : d.fileName ?? app.documents.unknown)
+  return d.party ?? (d.status === 'reading' ? app.documents.state.reading : (d.fileName ?? app.documents.unknown))
 }
 
 function docState(d: Doc): { text: string; tone: string } {
@@ -155,37 +153,37 @@ export const AddCard: FC<{ inbox: string; id?: string; wide?: boolean; action?: 
       </div>
     </section>
   ) : (
-  <section class={`add${wide ? ' add--wide' : ''}`} id={id} aria-labelledby={`${id}-title`} data-drop>
-    <div class="add__main">
-      <Tile art={ART.paperReceipt} size="md" />
-      <h2 id={`${id}-title`} class="add__title">
-        {title}
-      </h2>
-      <p class="add__lead">{lead}</p>
-      <form class="add__form" method="post" action={action} enctype="multipart/form-data" data-upload>
-        <label class="btn btn--blue add__button" for={`${id}-file`}>
-          <span class="add__desk">{button}</span>
-          <span class="add__phone">{app.add.phone}</span>
-        </label>
-        <input id={`${id}-file`} class="add__file" type="file" name="file" multiple accept={ACCEPT} />
-        <button class="btn btn--line add__send" type="submit">
-          {app.add.send}
-        </button>
-        <p class="add__drop">{app.add.drop}</p>
-      </form>
-      <p class="add__types">{app.add.types}</p>
-    </div>
-    <div class="add__mail">
-      <p class="add__mailtitle">{app.add.emailTitle}</p>
-      <p class="add__maillead">{app.add.emailLead}</p>
-      <p class="copyline">
-        <span class="copyline__text">{inbox}</span>
-        <button class="copyline__button" type="button" data-copy={inbox} data-done={app.add.copied} hidden>
-          {app.add.copy}
-        </button>
-      </p>
-    </div>
-  </section>
+    <section class={`add${wide ? ' add--wide' : ''}`} id={id} aria-labelledby={`${id}-title`} data-drop>
+      <div class="add__main">
+        <Tile art={ART.paperReceipt} size="md" />
+        <h2 id={`${id}-title`} class="add__title">
+          {title}
+        </h2>
+        <p class="add__lead">{lead}</p>
+        <form class="add__form" method="post" action={action} enctype="multipart/form-data" data-upload>
+          <label class="btn btn--blue add__button" for={`${id}-file`}>
+            <span class="add__desk">{button}</span>
+            <span class="add__phone">{app.add.phone}</span>
+          </label>
+          <input id={`${id}-file`} class="add__file" type="file" name="file" multiple accept={ACCEPT} />
+          <button class="btn btn--line add__send" type="submit">
+            {app.add.send}
+          </button>
+          <p class="add__drop">{app.add.drop}</p>
+        </form>
+        <p class="add__types">{app.add.types}</p>
+      </div>
+      <div class="add__mail">
+        <p class="add__mailtitle">{app.add.emailTitle}</p>
+        <p class="add__maillead">{app.add.emailLead}</p>
+        <p class="copyline">
+          <span class="copyline__text">{inbox}</span>
+          <button class="copyline__button" type="button" data-copy={inbox} data-done={app.add.copied} hidden>
+            {app.add.copy}
+          </button>
+        </p>
+      </div>
+    </section>
   )
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -282,6 +280,8 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps
 export const Overview: FC<OverviewProps> = (props) => {
   const { missing, missingCount } = props
   const calm = missingCount === 0 && props.paymentsCount > 0
+  // Nothing is missing, but a tax waits to be paid: the one thing left for the client, said in the panel itself.
+  const taxDue = props.deadlines.some((d) => d.href === '/app/dane' && d.tone === 'amber')
   // Ten days past the contract's last day nothing more is asked of the client: only the download is left.
   const ended = Boolean(props.closed)
   return (
@@ -301,9 +301,14 @@ export const Overview: FC<OverviewProps> = (props) => {
             <div class="calm__text">
               <p class="calm__hello">{app.home.hello(props.firstName)}</p>
               <h1 id="stav" class="calm__title">
-                <span class="calm__sans">{app.home.doneTitle}</span> <em class="calm__serif">{app.home.doneSerif}</em>
+                <span class="calm__sans">{app.home.doneTitle}</span> <em class="calm__serif">{taxDue ? app.home.doneSerifTax : app.home.doneSerif}</em>
               </h1>
-              <p class="calm__lead">{app.home.doneLead}</p>
+              <p class="calm__lead">{taxDue ? app.home.doneLeadTax : app.home.doneLead}</p>
+              {taxDue ? (
+                <a class="btn btn--white calm__pay" href="/app/dane">
+                  {app.home.payTax}
+                </a>
+              ) : null}
             </div>
             <img class="calm__glass" src={ART.seal?.small?.src ?? ''} width="240" height="240" alt="" />
           </section>
@@ -321,7 +326,9 @@ export const Overview: FC<OverviewProps> = (props) => {
         <BankNoticeBar notice={props.bankNotice ?? null} today={props.today} />
         {props.steps && !ended ? <FirstSteps steps={props.steps} bankReady={props.bankReady} /> : null}
         {ended ? null : props.paymentsCount === 0 ? (
-          props.steps ? null : <p class="over__empty">{app.home.noPaymentsLead}</p>
+          props.steps ? null : (
+            <p class="over__empty">{app.home.noPaymentsLead}</p>
+          )
         ) : missingCount > 0 ? (
           <section class="feedcard" aria-labelledby="chyba">
             <header class="feedcard__head">
@@ -385,7 +392,13 @@ export const Overview: FC<OverviewProps> = (props) => {
                     <span class="date__num">{Number(d.day.slice(8, 10))}.</span>
                     <span class="date__month">{dayName(d.day, props.today).replace(/^\d+\.\s/, '')}</span>
                   </span>
-                  <span class="date__what">{d.label}</span>
+                  {d.href ? (
+                    <a class="date__what link" href={d.href}>
+                      {d.label}
+                    </a>
+                  ) : (
+                    <span class="date__what">{d.label}</span>
+                  )}
                   <span class={`pill pill--${d.tone}`}>{d.state}</span>
                 </li>
               ))}
@@ -408,7 +421,12 @@ export const Overview: FC<OverviewProps> = (props) => {
           {props.last ? (
             <a class="mate__last" href="/app/spravy#posledna">
               <span class="mate__lastwho">
-                {props.last.side === 'firmony' ? (props.last.authorName ?? props.accountant ?? app.home.accountant) : props.last.author && props.last.author !== props.me ? (props.last.authorName ?? app.messages.you) : app.messages.you}, {whenName(props.last.createdAt, props.now)}
+                {props.last.side === 'firmony'
+                  ? (props.last.authorName ?? props.accountant ?? app.home.accountant)
+                  : props.last.author && props.last.author !== props.me
+                    ? (props.last.authorName ?? app.messages.you)
+                    : app.messages.you}
+                , {whenName(props.last.createdAt, props.now)}
               </span>
               <span class="mate__lasttext">{props.last.body}</span>
             </a>
@@ -555,15 +573,15 @@ const UploadForm: FC<{ p: Payment; label: string; line?: boolean; closed?: strin
   closed ? (
     <p class="need__closed">{closed}</p>
   ) : (
-  <form class="need__form" method="post" action={`/app/platby/${p.id}/doklad`} enctype="multipart/form-data" data-upload>
-    <label class={`btn ${line ? 'btn--line' : 'btn--blue btn--large'} need__button`} for={`doklad-${p.id}`}>
-      {label}
-    </label>
-    <input id={`doklad-${p.id}`} class="add__file" type="file" name="file" multiple accept={ACCEPT} />
-    <button class="btn btn--line add__send" type="submit">
-      {app.add.send}
-    </button>
-  </form>
+    <form class="need__form" method="post" action={`/app/platby/${p.id}/doklad`} enctype="multipart/form-data" data-upload>
+      <label class={`btn ${line ? 'btn--line' : 'btn--blue btn--large'} need__button`} for={`doklad-${p.id}`}>
+        {label}
+      </label>
+      <input id={`doklad-${p.id}`} class="add__file" type="file" name="file" multiple accept={ACCEPT} />
+      <button class="btn btn--line add__send" type="submit">
+        {app.add.send}
+      </button>
+    </form>
   )
 
 export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose, today, flash, error, exemptValue, noteValue, closed = null }) => {
@@ -1014,7 +1032,16 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
 // Správy
 // ---------------------------------------------------------------------------------------------------------------
 
-export const MessagesPage: FC<{ messages: Message[]; accountant: string | null; now: number; payments: Map<string, Payment>; flash?: string | null; error?: string | null; draft?: string; me?: string }> = ({ messages, accountant, now, payments, flash, error, draft, me }) => (
+export const MessagesPage: FC<{
+  messages: Message[]
+  accountant: string | null
+  now: number
+  payments: Map<string, Payment>
+  flash?: string | null
+  error?: string | null
+  draft?: string
+  me?: string
+}> = ({ messages, accountant, now, payments, flash, error, draft, me }) => (
   <>
     <header class="phead">
       <Heading first={app.messages.title} />
@@ -1042,7 +1069,8 @@ export const MessagesPage: FC<{ messages: Message[]; accountant: string | null; 
                   <p class="msg__body">{m.body}</p>
                 </div>
                 <p class="msg__meta">
-                  {m.side === 'client' ? (m.author && m.author !== me ? (m.authorName ?? app.messages.you) : app.messages.you) : (m.authorName ?? accountant ?? app.home.accountant)}, {whenName(m.createdAt, now)}
+                  {m.side === 'client' ? (m.author && m.author !== me ? (m.authorName ?? app.messages.you) : app.messages.you) : (m.authorName ?? accountant ?? app.home.accountant)},{' '}
+                  {whenName(m.createdAt, now)}
                 </p>
               </li>
             )
