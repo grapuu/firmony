@@ -155,8 +155,9 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   ledger, the trial balance, the open items, the bank against the books, payments without a document, internal
   documents, the opening balances, CSV files for Excel and the books in the client's yearly ZIP). All checks passing
   (units 443, runtime 496); 42 rules taken out once, and every one held (two only after a check was added for each:
-  an invoice the owner paid himself, and a removed internal document's number never given again). The app preview
-  is version 12 ("Účtovná kniha" in its bar, with every page of the books of the sample company).
+  an invoice the owner paid himself, and a removed internal document's number never given again). Pushed at 11:58
+  (`62712e3`). The app preview is version 12 ("Účtovná kniha" in its bar, with every page of the books of the sample
+  company).
 
 ## What he has to do before it is live (each a few clicks)
 
