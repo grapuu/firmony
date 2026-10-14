@@ -206,7 +206,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 6)
+check('health says the schema', (await res.json()).schema === 7)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -3033,9 +3033,9 @@ check(
   check('a period that has not ended cannot be marked', res.status === 400)
   res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'priznanie', obdobie: last })
   check('nor anything but what the app does not file itself', res.status === 400)
-  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'closing', obdobie: String(year) })
-  check('nor the closing of a year that runs', res.status === 400)
-  res = await acc.post('/ucto/klienti/co-b/podane', { druh: 'closing', obdobie: String(year - 1) })
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'closing', obdobie: String(year - 1) })
+  check('nor the closing, which its own page marks', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-b/podane', { druh: 'sv', obdobie: last })
   check("nor anything of a client that is not hers", res.status === 404)
   res = await mf.dispatchFetch(`${site}/ucto/klienti/co-t/podane`, {
     method: 'POST',
@@ -3044,10 +3044,12 @@ check(
     headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example', cookie: luc.cookie, 'cf-connecting-ip': '203.0.113.30' },
   })
   check('nor from another site', res.status === 403 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0)
-  res = await acc.post('/ucto/klienti/co-t2/podane', { druh: 'closing', obdobie: String(year - 1) })
+  res = await acc.get('/ucto/terminy')
+  check('the closing leads to its page', plain(await res.text()).includes(`/ucto/klienti/co-t2/zavierka?rok=${year - 1}`))
+  await db.prepare('INSERT INTO closings (company_id, year, filed_on, filed_at, filed_by, pay_cents, due_on) VALUES (?, ?, ?, ?, ?, 0, ?)').bind('co-t2', year - 1, day(0), nowS, lucia?.id ?? '', day(0)).run()
   res = await acc.get('/ucto/terminy')
   page = plain(await res.text())
-  check('the closing marked as filed is no longer open', res.status === 200 && !rowOf(page, 'Závierka s. r. o.'))
+  check('the closing filed is no longer open', res.status === 200 && !rowOf(page, 'Závierka s. r. o.'))
 
   // The administrator sees everybody's, and chooses an accountant's.
   res = await admin.get('/ucto/terminy')
@@ -3070,7 +3072,223 @@ check(
     db.prepare("DELETE FROM accounts WHERE company_id IN ('co-t', 'co-t2')"),
     db.prepare("DELETE FROM vat_returns WHERE company_id IN ('co-t', 'co-t2')"),
     db.prepare("DELETE FROM filings WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM closings WHERE company_id IN ('co-t', 'co-t2')"),
     db.prepare("DELETE FROM companies WHERE id IN ('co-t', 'co-t2')"),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The closing of last year: the statements and the return from the books, what keeps them back, the accountant's
+// adjustments, the tax booked, the files against the official schemas, a deadline moved by a notice, the mark that
+// they were filed with what the client reads and pays, and the mark taken back
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const validXml = async (xml, schema) =>
+    (await validateXML({ xml: [{ fileName: 'x.xml', contents: xml }], schema: [{ fileName: schema, contents: readFileSync(new URL(`./xsd/${schema}`, import.meta.url), 'utf8') }] })).valid
+  const Y = Number(day(0).slice(0, 4)) - 1
+  const base = '/ucto/klienti/co-k/zavierka'
+  let seq = 0
+  const entry = (on, md, d, cents) =>
+    db
+      .prepare("INSERT INTO ledger_entries (id, company_id, kind, year, seq, number, on_date, text, lines, created_at, created_by) VALUES (?, 'co-k', 'internal', ?, ?, ?, ?, 'Test', ?, ?, ?)")
+      .bind(`k-e${++seq}`, Y, seq, `ID-${Y}-9${String(seq).padStart(2, '0')}`, on, JSON.stringify([{ md, d, cents }]), nowS, lucia?.id ?? '')
+  // A year of a young company: capital paid in, a sale paid, services paid, representation, and an advance on the income tax paid to its account.
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO companies (id, created_at, name, ico, dic, address, register_line, vat_payer, plan, inbox, accountant_id, start_on, tax_account) VALUES ('co-k', ?, 'Závierková s. r. o.', '50999994', '2120999994', 'Hlavná 12, 040 01 Košice', 'Obchodný register Okresného súdu Košice I, oddiel Sro, vložka č. 99999/V', 0, 'start', 'zavierka1', ?, ?, '1234567890')",
+      )
+      .bind(nowS, lucia?.id ?? '', `${Y}-01-01`),
+    db.prepare("INSERT INTO accounts (id, company_id, iban, ledger) VALUES ('acc-k', 'co-k', 'SK6809000000000999999994', '221.001')"),
+    db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-k', ?, 'jana@zavierkova.test', 'Jana Závierková')").bind(nowS),
+    db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('co-k', 'u-k', 'owner', ?)").bind(nowS),
+    entry(`${Y}-01-02`, '353', '411', 500000),
+    entry(`${Y}-01-05`, '221.001', '353', 500000),
+    entry(`${Y}-03-10`, '311', '602', 4000000),
+    entry(`${Y}-03-20`, '221.001', '311', 4000000),
+    entry(`${Y}-04-05`, '518', '321', 1500000),
+    entry(`${Y}-04-20`, '321', '221.001', 1500000),
+    entry(`${Y}-05-01`, '513', '221.001', 20000),
+    db
+      .prepare(
+        "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, party_iban, vs, exempt, ref) VALUES ('pk-1', 'co-k', 'acc-k', ?, ?, -50000, 'Daňový úrad', 'SK1281805002240123456789', ?, 'state', 'k1')",
+      )
+      .bind(nowS, `${Y}-06-15`, `110006${Y}`),
+    // VAT shares an advance's symbol, not its account: it is no advance.
+    db
+      .prepare(
+        "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, party_iban, vs, exempt, ref) VALUES ('pk-0', 'co-k', 'acc-k', ?, ?, -30000, 'Daňový úrad', 'SK2581805002400123456789', ?, 'state', 'k0')",
+      )
+      .bind(nowS, `${Y}-04-25`, `110003${Y}`),
+  ])
+
+  res = await acc.get('/ucto/klienti/co-k')
+  check("the client's page leads to the closing", (await res.text()).includes(`href="${base}"`))
+  res = await acc.get(base)
+  page = plain(await res.text())
+  check('the closing page answers with last year, without a script or a style of its own', res.status === 200 && !/<script>/.test(page) && !/ style=/i.test(page) && page.includes(`za rok ${Y}`))
+  check(
+    'the return from the books: the result, representation, the advance the bank shows, 10 %',
+    page.includes('24 800,00 €') && page.includes('200,00 €') && page.includes('Zaplatené preddavky') && page.includes('500,00 €') && page.includes('10 %'),
+  )
+  check(
+    'the statements in whole euros: the bank, the advance and the VAT paid as receivables, the capital',
+    page.includes('<td class="num">29 000</td>') && page.includes('<td class="num">800</td>') && page.includes('<td class="num">29 800</td>') && page.includes('<td class="num">5 000</td>') && page.includes('Výkaz ziskov a strát'),
+  )
+  check('what keeps it back: the activity, the tax not booked', page.includes('Doplňte SK NACE hlavnej činnosti') && page.includes('nie je zaúčtovaná ako vyšla') && page.includes('Treba vyriešiť'))
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  check('no file while something keeps it back', res.status === 303 && res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-blokovane`)
+  res = await acc.post(`${base}/podane`, { rok: String(Y) })
+  check('nor can it be marked as filed', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-blokovane` && !(await db.prepare("SELECT 1 AS x FROM closings WHERE company_id = 'co-k'").first()))
+
+  // The adjustments
+  const form = { rok: String(Y), a06: '200,00', a16: '100', zdanitelne: '40000,00', mikro: '1', od: `1. 1. ${Y}`, preddavky: '500,00', nace: '62.01', cinnost: 'Počítačové programovanie' }
+  res = await acc.post(base, form)
+  page = plain(await res.text())
+  check('a code that is no SK NACE is said, and nothing is kept', res.status === 422 && page.includes('SK NACE napíšte ako 62.01.0.') && !(await db.prepare("SELECT 1 AS x FROM closings WHERE company_id = 'co-k'").first()))
+  res = await acc.post(base, { ...form, nace: '62.01.0' })
+  let row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  let inputs = JSON.parse(row?.inputs ?? '{}')
+  check(
+    "kept: what differs from the books' proposal, not what equals it",
+    res.status === 303 && res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-ulozene#dan` && inputs.tableA?.a16 === 10000 && inputs.tableA?.a06 === undefined && inputs.nace === '62.01.0' && inputs.advances === null,
+    row?.inputs,
+  )
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  check('recomputed: 300 € that are no tax expenses, a base of 25 100 €, a tax of 2 510 €, 2 010 € to pay', page.includes('300,00 €') && page.includes('25 100,00 €') && page.includes('2 510,00 €') && page.includes('2 010,00 €'))
+
+  // The tax booked
+  res = await acc.post(`${base}/dan`, { rok: String(Y) })
+  const taxEntry = await db.prepare("SELECT * FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first()
+  row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  check(
+    'the tax booked by an internal document on the last day of the year: 591 against 341',
+    res.status === 303 && taxEntry?.on_date === `${Y}-12-31` && JSON.parse(taxEntry?.lines ?? '[]')[0]?.md === '591' && JSON.parse(taxEntry?.lines ?? '[]')[0]?.cents === 251000 && row?.tax_entry === taxEntry?.id,
+  )
+  res = await acc.post(`${base}/dan`, { rok: String(Y) })
+  check(
+    'booked again, it replaces the one before',
+    (await db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first())?.n === 1,
+  )
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  check('ready now, the tax in the statements and in the books', page.includes('Pripravené') && page.includes('je zaúčtovaná interným dokladom') && page.includes('22 290') && !page.includes('Čo treba vyriešiť'))
+
+  // The files, against the Financial Administration's own schemas
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  let xml = await res.text()
+  check(
+    'the tax return as a file of DPPOv25, valid against its schema',
+    res.status === 200 && (res.headers.get('content-disposition') ?? '').includes(`DPPO_2120999994_${Y}.xml`) && (await validXml(xml, 'dppo2025.xsd')),
+    xml.slice(0, 300),
+  )
+  check(
+    'with the computation, the micro-taxpayer, the advance and the activity',
+    xml.includes('<r100>24800.00</r100>') && xml.includes('<r130>300.00</r130>') && xml.includes('<r1010>500.00</r1010>') && xml.includes('<r1100>2010.00</r1100>') && xml.includes('<mikrodanovnikPar2w>1</mikrodanovnikPar2w>') && xml.includes('<k1>62</k1><k2>01</k2><k3>0</k3><cinnost>Počítačové programovanie</cinnost>'),
+  )
+  res = await acc.get(`${base}/zavierka.xml?rok=${Y}`)
+  xml = await res.text()
+  check(
+    'the financial statements as a file of UZMUJv14, valid, the tax in them',
+    res.status === 200 && (await validXml(xml, 'uzmuj2014.xsd')) && xml.includes('<r36><s1>2510</s1>') && xml.includes('<r38><s1>22290</s1>') && xml.includes('<r22><s1>29000</s1>') && xml.includes('<r19><s1>300</s1>') && xml.includes('<r41><s1>2010</s1>'),
+    xml.slice(xml.indexOf('<telo>'), xml.indexOf('<telo>') + 300),
+  )
+
+  // A deadline moved by a notice
+  res = await acc.post(`${base}/lehota`, { rok: String(Y), lehota: `${Y + 1}-06-15` })
+  check('a day that is no end of a month a notice may move to is refused', res.status === 400)
+  res = await acc.post(`${base}/lehota`, { rok: String(Y), lehota: `${Y + 1}-06-30` })
+  row = await db.prepare("SELECT extended_to FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  check('the end of June is kept', res.status === 303 && row?.extended_to === `${Y + 1}-06-30`)
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  // Late once it has passed (a day off around it may move it a few days on).
+  const lateSaid = page.includes('Lehota uplynula')
+  check('and said on the page, late only once it has passed', page.includes('Lehota predĺžená oznámením do 30. júna') && (day(0) > `${Y + 1}-07-05` ? lateSaid : day(0) < `${Y + 1}-06-28` ? !lateSaid : true))
+
+  // Filed
+  res = await acc.post(`${base}/podane`, { rok: String(Y) })
+  row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  const told = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-k' ORDER BY created_at DESC, rowid DESC").first()
+  check(
+    'marked as filed: once, with what was filed, the tax to pay by the moved deadline',
+    res.status === 303 && res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-podane` && row?.filed_at && row.pay_cents === 201000 && row.due_on === `${Y + 1}-06-30` && JSON.parse(row.filed).rows.r1050 === 251000,
+  )
+  check(
+    'the client reads what to pay, by when, to the income tax account, with the symbol of the year',
+    Boolean(told) && plain(told.body).includes('2 010,00 €') && plain(told.body).includes('8180 5002 2412 3456 7890') && told.body.includes(`170099${Y}`) && plain(told.body).includes('do 30. júna'),
+    told?.body,
+  )
+  check('on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-k' AND action = 'closing.filed'").first())?.n === 1)
+  const jana = as((await signIn('jana@zavierkova.test')).cookie)
+  res = await jana.get('/app/dane')
+  page = plain(await res.text())
+  check(
+    "in the client's taxes: the income tax of the year, to its account, with its symbol and a QR code for the bank",
+    res.status === 200 && page.includes(`Daň z príjmov za rok ${Y}`) && page.includes('2 010,00 €') && page.includes('8180 5002 2412 3456 7890') && page.includes(`170099${Y}`) && page.includes('PAY by square'),
+  )
+  res = await acc.post(`${base}/podane`, { rok: String(Y) })
+  check('marked again, nothing more happens', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-uz` && (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE company_id = 'co-k'").first())?.n === 1)
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  check('filed, its adjustments are closed and its tax is not booked again', page.includes('Podané') && page.includes('<fieldset class="cform__section" disabled') && !page.includes('Zaúčtovať daň') && page.includes('Zrušiť označenie'))
+  res = await acc.post(base, { ...form, nace: '62.01.0', a16: '999' })
+  check('nor are its adjustments kept', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-uz` && JSON.parse((await db.prepare("SELECT inputs FROM closings WHERE company_id = 'co-k'").first())?.inputs ?? '{}').tableA?.a16 === 10000)
+
+  // The deadlines: the closing done, the income tax the client's to pay until the bank shows it paid
+  res = await acc.get('/ucto/terminy?hotove=1')
+  page = plain(await res.text())
+  check('on the screen of deadlines the tax is the client\'s to pay', page.includes(`Úhrada dane z príjmov za rok ${Y}`) && page.includes('Na úhradu 2 010,00 €'))
+  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pk-3', 'co-k', 'acc-k', ?, ?, -201000, 'Daňový úrad', ?, 'k3')").bind(nowS, day(0), `170099${Y - 1}`).run()
+  res = await acc.get('/ucto/terminy')
+  check("the tax of another year is not this year's", plain(await res.text()).includes(`Úhrada dane z príjmov za rok ${Y}`))
+  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pk-2', 'co-k', 'acc-k', ?, ?, -201000, 'Daňový úrad', ?, 'k2')").bind(nowS, day(0), `170099${Y}`).run()
+  res = await acc.get('/ucto/terminy')
+  check('paid with the symbol of the year, it is no longer open', !plain(await res.text()).includes(`Úhrada dane z príjmov za rok ${Y}`))
+
+  // Who may, and from where
+  res = await anna.get(base)
+  check('a client gets nothing there', res.status === 404)
+  res = await acc.get('/ucto/klienti/co-b/zavierka')
+  check("nor does an accountant at a client that is not hers", res.status === 404)
+  res = await mf.dispatchFetch(`${site}${base}/zrusit`, {
+    method: 'POST',
+    body: `rok=${Y}`,
+    redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example', cookie: luc.cookie, 'cf-connecting-ip': '203.0.113.30' },
+  })
+  check('nor does anything come from another site', res.status === 403 && (await db.prepare("SELECT filed_at FROM closings WHERE company_id = 'co-k'").first())?.filed_at)
+
+  // The year that runs: worked out, not filed
+  res = await acc.get(`${base}?rok=${Y + 1}`)
+  page = plain(await res.text())
+  check('the year that runs is worked out ahead, nothing filed of it', res.status === 200 && page.includes('Rok ešte beží') && !page.includes('Označiť ako podané'))
+  res = await acc.post(`${base}/podane`, { rok: String(Y + 1) })
+  check('nor can it be marked', res.headers.get('location') === `${base}?rok=${Y + 1}&ok=zavierka-bezi`)
+  res = await acc.post(`${base}/podane`, { rok: '1999' })
+  check('a year the books do not have is no year', res.status === 400)
+
+  // The mark taken back
+  res = await acc.post(`${base}/zrusit`, { rok: String(Y) })
+  row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  const undone = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-k' ORDER BY created_at DESC, rowid DESC").first()
+  check(
+    'taken back: not filed, what was set stays, the client told',
+    res.status === 303 && row?.filed_at === null && row.pay_cents === null && JSON.parse(row.inputs).nace === '62.01.0' && undone?.body.includes('rušíme'),
+  )
+
+  await db.batch([
+    db.prepare("DELETE FROM payments WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM accounts WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM ledger_entries WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM closings WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM messages WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM members WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM sessions WHERE user_id = 'u-k'"),
+    db.prepare("DELETE FROM users WHERE id = 'u-k'"),
+    db.prepare("DELETE FROM companies WHERE id = 'co-k'"),
   ])
 }
 
@@ -3472,8 +3690,9 @@ check('the list no longer asks for the handover once it was made', !page.include
 // Ninety days past the last day the company's data are deleted; the identification stays five years
 await setEnd(day(-91))
 const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").all()
-// A recapitulative statement marked as filed while the contract ran.
+// A recapitulative statement marked as filed while the contract ran, and a closing.
 await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES ('co-a', 'sv', '2026-01', ?, ?, NULL)").bind(day(-120), nowS).run()
+await db.prepare("INSERT INTO closings (company_id, year, inputs, filed_on, filed_at) VALUES ('co-a', 2025, '{}', ?, ?)").bind(day(-120), nowS).run()
 await tick(Date.now())
 await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
@@ -3484,10 +3703,10 @@ const leftover = await db
        + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
        + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL)
-       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') AS n`,
+       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM closings WHERE company_id = 'co-a') AS n`,
   )
   .first()
-check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the filings marked, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
+check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the filings marked, the closings, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
 const objects = await files.list({ prefix: 'companies/co-a/' })
 check(
   'and so are their files, all but the power of attorney',

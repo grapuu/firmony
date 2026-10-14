@@ -1,6 +1,6 @@
 // The team's screen of deadlines (/ucto/terminy): every client's deadlines grouped by how soon they come, each with the
-// place where it is acted on. What the app does not file itself yet (the recapitulative statement, the closing) is
-// marked as filed here. The rules are in team/deadlines.ts.
+// place where it is acted on. What the app does not file itself yet (the recapitulative statement) is marked as filed
+// here. The rules are in team/deadlines.ts.
 import type { FC } from 'hono/jsx'
 import { DEADLINES } from '../config'
 import { formatEurExact } from '../format'
@@ -30,6 +30,8 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix'> & { company: 
       return t.what.docs(monthName(`${period}-01`))
     case 'closing':
       return t.what.closing(period)
+    case 'taxPay':
+      return t.what.taxPay(period)
     case 'handover':
       return t.what.handover
   }
@@ -46,15 +48,31 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
     case 'running':
       return d.kind === 'handover' ? t.state.running.contract : d.kind === 'summary' && (d.period ?? '').includes('Q') ? t.state.running.quarter : t.state.running.period
     case 'done':
-      return d.kind === 'summary' ? t.state.done.summary : d.kind === 'vatPay' ? t.state.done.vatPay : d.kind === 'closing' ? t.state.done.closing : d.kind === 'handover' ? t.state.done.handover : t.state.done.vat
+      return d.kind === 'summary'
+        ? t.state.done.summary
+        : d.kind === 'vatPay' || d.kind === 'taxPay'
+          ? t.state.done.vatPay
+          : d.kind === 'closing'
+            ? t.state.done.closing
+            : d.kind === 'handover'
+              ? t.state.done.handover
+              : t.state.done.vat
     default:
-      return d.kind === 'vatPay' ? t.state.toPay(formatEurExact(d.cents)) : d.kind === 'summary' ? t.state.open.summary : d.kind === 'closing' ? t.state.open.closing : d.kind === 'handover' ? t.state.open.handover : t.state.open.vat
+      return d.kind === 'vatPay' || d.kind === 'taxPay'
+        ? t.state.toPay(formatEurExact(d.cents))
+        : d.kind === 'summary'
+          ? t.state.open.summary
+          : d.kind === 'closing'
+            ? t.state.open.closing
+            : d.kind === 'handover'
+              ? t.state.open.handover
+              : t.state.open.vat
   }
 }
 
 const tone = (d: Due): string => (d.state === 'done' ? 'pill--ok' : d.late ? 'pill--red' : d.state === 'ready' ? 'pill--blue' : d.state === 'running' ? 'pill--grey' : 'pill--amber')
 
-/** Where a deadline is acted on: the period on the VAT page, the client's missing documents, the books, the handover. */
+/** Where a deadline is acted on: the period on the VAT page, the client's missing documents, the closing's page, the handover. */
 export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> }): string {
   const base = `/ucto/klienti/${d.company.id}`
   switch (d.kind) {
@@ -71,7 +89,8 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<Due
     case 'docs':
       return `${base}#chyba`
     case 'closing':
-      return `${base}/kniha`
+    case 'taxPay':
+      return `${base}/zavierka?rok=${d.period}`
     case 'handover':
       return `${base}#odovzdanie`
   }
@@ -82,7 +101,6 @@ function noteOf(d: Due): string | null {
   if (d.kind === 'vatFix') return d.fix === 'D' ? t.note.fixD : t.note.fixO
   if (d.kind === 'vat' && d.state === 'open') return t.note.older
   if (d.kind === 'summary' && d.state !== 'done') return t.note.summary
-  if (d.kind === 'closing' && d.state !== 'done') return t.note.closing
   return null
 }
 
@@ -113,8 +131,8 @@ export function deadlinesHref(p: { side: DueFilter; done: boolean; accountant: s
 }
 
 const MarkForm: FC<{ d: DueRow; back: string }> = ({ d, back }) => {
-  const kind = d.kind === 'summary' ? MARKED_KINDS.summary : d.kind === 'closing' ? MARKED_KINDS.closing : null
-  if (!kind || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
+  if (d.kind !== 'summary' || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
+  const kind = MARKED_KINDS.summary
   return (
     <form class="due__act" method="post" action={`/ucto/klienti/${d.company.id}/podane`}>
       <input type="hidden" name="druh" value={kind} />

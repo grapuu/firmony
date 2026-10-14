@@ -19,25 +19,29 @@
 // - The documents of a month, by the 10th of the next (APP.docsByDay), while payments of it have none (the client's);
 //   not once the contract's intake has closed.
 // - The annual closing and the corporate income tax return of a year: by the end of the third month after it, 31 March
-//   (§ 49(1) of Act No. 595/2003 Z. z.), moved to the next working day; not for a year before our contract started
-//   (point 5.2 of the terms: the former accountant's) nor for the year it ended in (point 10.4: only by agreement).
-//   Marked as filed (`filings`) until the app files it itself.
+//   (§ 49(1) of Act No. 595/2003 Z. z.), or the end of the month a notice moved it to (§ 49(3)), moved to the next
+//   working day (app/closing.ts, `closingDue`); not for a year before our contract started (point 5.2 of the terms: the
+//   former accountant's) nor for the year it ended in (point 10.4: only by agreement). Done once the closing page marks
+//   it filed (`closings`).
+// - The income tax that filed return asks the client to pay, by the same day, until the bank shows it paid with the
+//   year's symbol (the client's).
 // - The handover of the books at the end of a contract: within 30 days of its last day (point 10.4, ENDING.handoverDays).
 import { APP, DEADLINES } from '../config'
 import { addDays, endingOf, intakeOpen } from '../app/ending'
 import { bratislavaDay, type Company } from '../app/store'
-import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod, workingDayFrom } from '../app/vat'
+import { closingDue } from '../app/closing'
+import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod } from '../app/vat'
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
 
-export const DUE_SIDE: Record<DueKind, DueSide> = { vat: 'ours', vatFix: 'ours', summary: 'ours', closing: 'ours', handover: 'ours', vatPay: 'client', docs: 'client' }
+export const DUE_SIDE: Record<DueKind, DueSide> = { vat: 'ours', vatFix: 'ours', summary: 'ours', closing: 'ours', handover: 'ours', vatPay: 'client', docs: 'client', taxPay: 'client' }
 
-/** Filings the app does not make yet, marked as filed by hand (`filings.kind`). */
-export const MARKED_KINDS = { summary: 'sv', closing: 'closing' } as const
+/** Filings the app does not make yet, marked as filed by hand (`filings.kind`): the recapitulative statement. */
+export const MARKED_KINDS = { summary: 'sv' } as const
 export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 
 /**
@@ -64,6 +68,16 @@ export interface Due {
   fix: 'O' | 'D' | null
 }
 
+/** A year's closing as the deadlines read it (closing-store.ts): filed or not, the deadline a notice moved it to, the tax it asked for and what was paid of it. */
+export interface ClosingFact {
+  year: number
+  filed: boolean
+  extendedTo: string | null
+  payCents: number
+  dueOn: string | null
+  paid: number
+}
+
 /** What a company's deadlines are worked out from. */
 export interface DueFacts {
   /** The VAT periods of `vatWindow`, worked out (viewOf), the oldest first. */
@@ -71,8 +85,9 @@ export interface DueFacts {
   /** Every return filed, the newest first. */
   filed: FiledReturn[]
   paid: Map<string, TaxPaid>
-  /** What was marked as filed outside the app, as `${kind}:${period}` ('sv:2027-01', 'closing:2027'). */
+  /** What was marked as filed outside the app, as `${kind}:${period}` ('sv:2027-01'). */
   filings: Set<string>
+  closings: ClosingFact[]
   /** The payments without a document, by the month they were booked in (YYYY-MM). */
   missing: Map<string, number>
   /** Files handed over at the end of the contract. */
@@ -88,9 +103,6 @@ function nextMonth(month: string): string {
 
 /** The calendar quarter of a month's period: "2027-02" is "2027-Q1". */
 export const quarterOf = (period: string): string => (isQuarter(period) ? period : `${period.slice(0, 4)}-Q${Math.ceil(Number(period.slice(5, 7)) / 3)}`)
-
-/** The last day to file the closing and the corporate income tax return of a year, and to pay the tax: 31 March, or the next working day. */
-export const closingDeadline = (year: number): string => workingDayFrom(`${year + 1}-03-31`)
 
 /** The year of a closing ours to do: we kept the books at its end (point 5.2 of the terms), and the contract did not end in it (point 10.4). */
 export function closingIsOurs(company: Pick<Company, 'startOn' | 'createdAt' | 'endsOn'>, year: number): boolean {
@@ -181,9 +193,15 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
     }
   }
 
-  // The closing of the year that ended last, while it is ours and not filed.
+  // The closing of the year that ended last, while it is ours and not filed; the income tax each filed one asks for, until paid.
   const year = Number(today.slice(0, 4)) - 1
-  if (closingIsOurs(company, year)) add({ kind: 'closing', period: String(year), day: closingDeadline(year), state: facts.filings.has(`${MARKED_KINDS.closing}:${year}`) ? 'done' : 'open' })
+  const last = facts.closings.find((k) => k.year === year)
+  if (closingIsOurs(company, year)) add({ kind: 'closing', period: String(year), day: closingDue(year, last?.extendedTo ?? null), state: last?.filed ? 'done' : 'open' })
+  for (const k of facts.closings) {
+    if (!k.filed || k.payCents <= 0) continue
+    const rest = Math.max(0, k.payCents - k.paid)
+    add({ kind: 'taxPay', period: String(k.year), day: k.dueOn ?? closingDue(k.year, k.extendedTo), state: rest > 0 ? 'open' : 'done', cents: rest })
+  }
 
   // The books handed over at the end of the contract.
   const ending = endingOf(company, today)
@@ -208,7 +226,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, closing: 5, handover: 6 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, closing: 5, taxPay: 6, handover: 7 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

@@ -198,7 +198,11 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   after a check was added for it: what is done is never late). Found on the way and put right: the days off a deadline
   moves past (Act No. 261/2025 Z. z.: 17 November is a working day since 1 November 2025, 8 May and 15 September in
   2026), and a month of a person registered under § 7a whose documents are not all booked was said to have nothing to
-  file.
+  file. Built second (until 17:30): "The closing" under the accountants' side, the financial statements of a micro
+  entity and the corporate income tax return from the books, as files of the official eForms (all checks passing:
+  units 562, runtime 619; 52 rules taken out once, every one held, three only after a check was added for each).
+  Found on the way: an advance on the income tax shares its symbol with VAT (1100…), so a payment to the income tax's
+  account was taken for VAT; the books and the VAT paid now tell them apart by the account (prefix 500224 or 500240).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -819,9 +823,10 @@ on one screen, a document booked on one screen with its original beside the form
   Martin's declaration (a date of birth, no birth number) is checked by Lucia, risk nízke; Eva has none (her
   overview shows it first, `/app/ukazka?ako=eva` signs her in), and Jana has an open report about Ateliér Nova.
 - On a phone the column is a menu in the bar (`BarMenu`): who is signed in, the switch, signing out.
-- Not built yet on this side: the closing, a log of who changed what on the pages (the events are recorded),
-  assigning many clients at once, search in the queue. (The bank's own payments are booked since 14 October: "The
-  books"; every client's deadlines are on one screen since the afternoon of 14 October: "Every client's deadlines".)
+- Not built yet on this side: a log of who changed what on the pages (the events are recorded), assigning many
+  clients at once, search in the queue. (The bank's own payments are booked since 14 October: "The books"; every
+  client's deadlines are on one screen since the afternoon of 14 October: "Every client's deadlines"; the closing and
+  the corporate income tax return since its evening: "The closing".)
 
 ### VAT: the return and the control statement (14 October 2026; `src/app/vat.ts`, `vat-xml.ts`, `vat-store.ts`, `vat-form.ts`, views in `src/views/vat.tsx` and `taxes.tsx`)
 
@@ -897,8 +902,8 @@ Financial Administration by us: the accountant loads the files in eDane or in th
 - The client: the mark writes to the client in the app (a doorbell by email, nothing of the amount in it): the
   kind filed, what is left to pay (payments with the period's symbol from the bank count), by when, to which account
   (SKxx 8180 500240 and the personal account) and the symbol, or the excess deduction and when it comes back, or an
-  overpayment. /app/dane (for a registered company) lists every filed period with a PAY by square QR code for what
-  is left; the overview's deadlines say "Zaplatiť DPH za ..." until it is paid, and the deadlines' lead says that
+  overpayment. /app/dane lists every filed period with a PAY by square QR code for what is left (and, since the
+  evening of 14 October, every income tax return filed: "The closing"); the overview's deadlines say "Zaplatiť DPH za ..." until it is paid, and the deadlines' lead says that
   we file and the client pays the tax.
 - The sample: Ukážková firma is a monthly payer from the month of its contract, with documents of every kind of
   September; `scratchpad/vatflow.mjs` of that session filed it in the playground, and a document moved into
@@ -932,8 +937,11 @@ the books; worked out from what the app holds, never typed twice.
     documents are.
   - a payment without a document: the account the accountant gave it (`payments.contra`, never 221), else its
     reason's (`reasonAccount`: a bank fee 568, interest 662, between own accounts 261, VAT to or from the tax office
-    343.300 by its symbol 1100…, capital paid in 353 when its note says "imani", otherwise 365, wages paid 331). A
-    tax other than VAT, insurance or anything else waits for her account.
+    343.300 by its symbol 1100… when the money went to VAT's account (prefix 500240) or the bank did not say where,
+    the income tax and its advances 341 when it went to the income tax's (500224: an advance's symbol is 1100… too)
+    or by the year's own symbol 170099…, capital paid in 353 when its note says "imani", otherwise 365, wages paid
+    331; `treasuryTax` reads the prefix from the other side's IBAN, `payments.party_iban`). A tax other than these,
+    insurance or anything else waits for her account.
   - a VAT return marked as filed settles its period on its last day: what is owed (rows 17 and 25) from 343.200 and
     what is deducted (rows 18, 18a and 19, less row 28) from 343.100 to 343.300, the account with the tax office,
     which the tax paid clears. A corrective return settles in place of the regular one; a supplementary one by its
@@ -971,8 +979,8 @@ the books; worked out from what the app holds, never typed twice.
   the administrative fee given 538 by Lucia, a receipt the owner paid, and a bank balance (6 718,93 €) the books
   agree with once the three payments without a document are counted.
 - Not built: depreciation and asset cards (an asset bought goes to 042; putting it to use and depreciating it is an
-  internal document for now), a month or a year closed against changes, the closing entries and the financial
-  statements, payroll's entries, another currency than the euro, a cash book of its own, a log of each change of a
+  internal document for now), a month or a year closed against changes, the closing entries (the statements are
+  worked out without them: "The closing"), payroll's entries, another currency than the euro, a cash book of its own, a log of each change of a
   booked document beyond the events.
 
 ### Every client's deadlines (14 October 2026, from 15:17; `src/team/deadlines.ts`, `deadlines-store.ts`, views in `src/views/deadlines.tsx`)
@@ -992,9 +1000,11 @@ worked out from what the app holds every time, so it cannot disagree with the VA
   dauc.sk), which the app does not prepare yet and the accountant marks as filed; the VAT a filed return asks the client
   to pay, until the bank shows it paid; the client's documents of a month by the 10th, while payments of it have none
   and the intake is open; the closing and the corporate income tax return of the year that ended last, by 31 March or
-  the next working day (§ 49(1) of the Income Tax Act; an extension by notice under § 49(3) is not recorded yet), only
-  when the books were ours at the year's end and the contract did not end in it (points 5.2 and 10.4 of the terms),
-  marked as filed until the app files it itself; the handover at the end of a contract, within its thirty days.
+  the end of the month a notice moved it to, the next working day if that is a day off (§ 49(1) and (3) of the Income
+  Tax Act; `closingDue`), only when the books were ours at the year's end and the contract did not end in it (points
+  5.2 and 10.4 of the terms), done once its page marks it filed (`closings`); the income tax a filed closing asks the
+  client to pay (`taxPay`, the client's), until the bank shows it paid with the year's symbol; the handover at the end
+  of a contract, within its thirty days.
 - Which VAT periods are worked out (`vatWindow`): those that ended in the last four months (a quarterly payer's last two
   quarters), none before our first period (`firstPeriod`) nor after the contract's last month. What still runs is shown
   once its deadline is 45 days near (`DEADLINES.aheadDays`); what can be done now always (a supplementary return may be
@@ -1005,20 +1015,113 @@ worked out from what the app holds every time, so it cannot disagree with the VA
   (`?uctovnicka=<id>|none`; an accountant sees her own whatever the address says); the groups Po termíne, Do 7 dní, Do
   mesiaca, Neskôr, Hotové; each row the day (red when late, with how many days), what it is, the client, whose, the
   accountant (for the administrator), its state as a pill and the link where it is done (the period on the VAT page,
-  the client's missing documents, the books, the handover). The client's page has its own as "Termíny" in the side
+  the client's missing documents, the closing's page, the handover). The client's page has its own as "Termíny" in the side
   column (open ones), with the jump bar's link.
 - Loaded in a fixed number of queries whatever the number of clients (`teamDeadlines`): the companies, the returns
-  filed, the VAT paid by symbol, the payments without a document by month and the marks, each one statement over the
+  filed, the VAT paid by symbol, the payments without a document by month, the marks and the closings with the income
+  tax paid towards each, each one statement over the
   companies the user sees (no list of ids: D1 binds at most 100 values), and the documents of each VAT company's periods
   worked out, forty companies in one batch (a batch is one call to D1, read on 14 October 2026). At hundreds of clients
   it reads every VAT company's last four months: measure it on the first real month.
 - The marks (`filings`, schema step 6: company, kind, period, day, who; once): "Označiť ako podané" and "Zrušiť
-  označenie" on the row (`POST /ucto/klienti/:id/podane`, kinds `sv` and `closing`, only a period or a year that has
-  ended, events `filing.marked` and `filing.unmarked`; the way back only to the screen or a client's page). The deletion
-  at the end of a contract deletes them with the rest.
+  označenie" on the row (`POST /ucto/klienti/:id/podane`, the recapitulative statement alone (`sv`), only a period
+  that has ended, events `filing.marked` and `filing.unmarked`; the way back only to the screen or a client's page).
+  The closing's mark moved to its own page and table on the evening of 14 October (schema step 7 moves any it finds).
+  The deletion at the end of a contract deletes them with the rest.
 - Checked: 32 rules taken out once (`scripts/dev/mutate.mjs`), every one held (one after its check was added). Not
-  built: the recapitulative statement itself (its XML), an extension of the closing's deadline, payroll's deadlines
-  (they come with payroll), the deadline of the motor vehicle tax and of advances on the income tax.
+  built: the recapitulative statement itself (its XML), payroll's deadlines (they come with payroll), the deadline of
+  the motor vehicle tax and of each advance on the income tax (the closing says the advances' amount).
+
+### The closing (14 October 2026, from 16:03; `src/app/closing.ts`, `closing-form.ts`, `closing-xml.ts`, `closing-store.ts`, views in `src/views/closing.tsx`)
+
+What an online firm's accountant does once a year for an s. r. o.: the financial statements of a micro entity and the
+corporate income tax return, worked out from the books, every row traceable, filed as the official eForms take them,
+and the client told what to pay. As with VAT, nothing is sent by us: the accountant loads the files in eDane
+("Načítať zo súboru"), attaches the notes, signs and sends them, then marks the closing filed here.
+
+- Read on 14 October 2026, and what each rule leans on (the full list at the top of `closing.ts`): the eForm packages
+  DPPOv25 (form.622: the return for periods of 2025, its poučenie MF/012187/2025-721 and the eForm's own formulas,
+  among them rows 150 and 250 computed from Table B) and UZMUJv14 (form.301: Súvaha Úč MUJ 1-01, rows 01 to 45, and
+  Výkaz ziskov a strát Úč MUJ 2-01, rows 01 to 38, each row with the accounts the form names beside it), downloaded
+  from pfseform.financnasprava.sk; their schemas are in `test/xsd` (`dppo2025.xsd`, `uzmuj2014.xsd`) and every file is
+  validated against them in both suites. Act No. 595/2003 Z. z.: § 15(b) the rate (from 2025: 10 % up to 100 000 € of
+  taxable revenues, 21 %, 24 % above 5 000 000 €; 2024: 15 % up to 60 000 €), § 2(w) the micro-taxpayer (60 000 €),
+  § 30 the losses (five periods; half of the base, the whole of it for a micro-taxpayer's losses of periods from 2021),
+  § 46b the minimum tax (340, 960, 1 920, 3 840 €, 11 520 € above 5 000 000 € from 2026; half under (3), a share of a
+  shorter period under (6), none in a company's first period under (7), the excess credited in three periods under
+  (5)), § 42 the advances (quarterly above 5 000 € of row 1110, monthly above 16 600 €), § 49(1) and (3) the deadline
+  and its extension by notice (the end of a month, three months on, six with income from abroad; the tax is due then),
+  § 49(11) the statements filed by the same deadline. The Financial Directorate's information 7/PO/2026/IM: the tax is
+  paid to the account with prefix 500224 and the personal tax account (OÚD), symbol 1700992025 (170099 and the year);
+  an advance 1100MMRRRR, 11004QRRRR or 110000RRRR to the same account; row 1100 is nought, and nothing is paid, up to
+  5 €. Interest on a current account taxed by withholding goes to row 210 and stays in row 560.
+- The statements (`statementsOf`, pure): every account's balance at the year's end (`closingBalances`: the opening,
+  the year's entries, the years before's costs and revenues as 431), each placed in its row by the longest prefix the
+  form lists (`placeOf`): a receivable or a liability by its side (31x, 32x, 33x, 34x, 35x to 39x, 22x: a bank account
+  in overdraft is a loan, row 44, each bank account by itself), 431 with the results of the years before (row 32),
+  353 as a minus in row 28; a cost or a revenue by its synthetic account (`profitRowOf`), the income tax 591 and 595 in
+  row 36. The sums are the form's formulas; row 33 is what makes the balance sheet balance. In whole euros each row is
+  rounded and the sums made again; when the results of the two statements would part by the rounding, the difference
+  goes into row 22 and the page says so. An account the form has no row for is listed (`unplaced`) and keeps the
+  closing back.
+- The return (`taxOf`, pure; every row of the form from 100 to 1110 in its order): row 100 the result before tax (the
+  profit and loss account's row 35); Table A (rows 1 to 16, sum row 130); Table B (the books' and the tax's
+  depreciation, row 6 its formula, the difference into row 150 or 250, as the eForm computes them); the rows typed
+  (110, 140, 170, 180, 210, 230, 260 to 290); Table D, the losses of five periods, the oldest first, within the cap,
+  as much as the accountant deducts (`lossDeduct`, null for all); the rate by row 560; the minimum tax; Table K, the
+  minimum tax of three periods credited on the tax above the minimum; the advances (1010) and the tax withheld that
+  counts as one (1030); row 1100 or the overpayment of row 1101; row 1110 and the advances it brings. Not built: the
+  relief rows, the special tax bases (§ 17f, § 51e), the patent box (§ 13a, § 13b; row 240), rows 220 (no company
+  founded for business has it), 302 to 308, 320, 330, the share for a recipient under § 50 (left as the client's,
+  `c7paragraf50` 1), a request to refund the overpayment, a non-micro company's statements (Úč POD), deferred tax.
+- What the books propose (`proposeTax`) and the accountant sets (`taxInputOf`, `closing-form.ts`): the taxable
+  revenues are every revenue of class 6 (she lowers them by what is not subject to tax or exempt); representation 513
+  is Table A's row 6 and gifts 543 its row 8; interest 662 row 210; the depreciation of 551 Table B's rows 1 and 2
+  alike (nothing is added back until she says the tax depreciation differs); the micro-taxpayer follows row 560; a
+  period that begins after 1 January is a first one, which pays no minimum tax and counts its months; the advances are
+  what the bank shows paid to the income tax's account with a symbol of the year (`incomePaid`: by the account's
+  prefix, since VAT's symbol is the same). She may set every one: what equals the proposal is not stored, so it keeps
+  following the books. Stored (`closings.inputs`, JSON, each value checked again on reading by `storedInputs`): Table
+  A, Table B, the typed rows, row 560, the micro-taxpayer, the losses (year among the five before, amount, used
+  before), how much to deduct, the period's first day, the minimum tax's exemption and halving, the minimum taxes to
+  credit (three years), the advances, the tax withheld, SK NACE ("62.01.0", the format checked, not the list), the
+  activity in words, the day the statements were approved (after the year). The activity of the last year that has
+  one is offered for the next.
+- What keeps a closing back (`closingIssues`): documents of the year, or of no day yet, not booked or making no entry
+  (`Books.docDays`); the year's payments not in the books (without a document, waiting for one, to be classified: the
+  bank's balance would not be the statement's) or in another currency; cash below nought; an account without a row; the
+  company's DIČ, seat and activity, which both forms ask for; the tax not booked as computed (once the year has ended).
+  To look at: money in transit (261) at the year's end, the rounding put in row 22. A year that runs is worked out
+  ahead (the tax it heads to), its files and mark come after its end.
+- The page (`/ucto/klienti/:id/zavierka?rok=`; the client page's books card and every closing on the screen of
+  deadlines lead there): the last five years of the books side by side with their states (Rok beží, Treba vyriešiť,
+  Pripravené, Podané, Nepodané), last year first when it is ours; what to resolve, each with the way to it; the
+  return's rows that hold anything; the statements in whole euros with the year before when the books hold it (else
+  the page says to fill it in eDane from the former accountant's statements); the adjustments (the seldom parts folded
+  unless they hold something, "z kníh" beside a proposal); and the side card: the deadline (red once it has passed),
+  the result, the tax, what to pay, the micro-taxpayer, "Zaúčtovať daň" (`POST /zavierka/dan`: an internal document on
+  31 December, 591 against 341, the whole of row 1050, in place of the one this button booked before; the advances
+  were booked to 341 when paid), the files (`/zavierka/priznanie.xml`, `DPPO_<DIČ>_<year>.xml`; `/zavierka/zavierka.xml`,
+  `UZMUJ_<IČO>_<year>.xml`; only when nothing keeps it back), the note that the notes are the accountant's (a PDF in
+  eDane), "Označiť ako podané" and "Zrušiť označenie", and a card for the deadline a notice moved (`POST
+  /zavierka/lehota`, the six ends of month). Events: `closing.saved`, `closing.tax`, `closing.return.downloaded`,
+  `closing.statements.downloaded`, `closing.extended`, `closing.filed`, `closing.unfiled`.
+- Stored (`closings`, schema step 7, one row a company's year): the inputs, who saved them, the deadline a notice
+  moved, the tax's internal document, and once filed the day, who, what was filed (the return's rows, the statements
+  in whole euros, the advances it brings), the tax it asked to pay (row 1100) and by when. Nothing is changed once it
+  is filed but by taking the mark back; a filed year whose books changed since says which rows did and that a
+  supplementary return (§ 16 of the Tax Procedure Code) and a correction of the statements are to be considered.
+  The deletion at the end of a contract deletes the closings with the rest.
+- The client: the mark writes to the client in the app (a doorbell by email): what is left to pay (payments with the
+  year's symbol count), by when, to which account (SKxx 8180 500224 and the personal account) and the symbol, or the
+  overpayment left on the personal tax account, and the advances the next period brings. /app/dane lists every filed
+  year first ("Daň z príjmov za rok …") with the PAY by square QR code for what is left; the screen of deadlines has
+  "Úhrada dane z príjmov za rok …" as the client's until the bank shows it paid.
+- In the playground the sample companies' books start this year, so `/ucto/klienti/demo-company/zavierka` shows the
+  year that runs; a past year needs its entries (the e2e test's "Závierková s. r. o." is one).
+- To see on the first real filing: that eDane opens both files as they are (a DPPOv26 for 2026 is published in January
+  2027: its schema replaces `dppo2025.xsd`, and the first Firmony closings are for 2027), what eDane wants in
+  `opravnenaOsoba` (europio's representative, as for VAT), and whether the SK NACE list of DPPOv26 is still Rev. 2.
 
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
@@ -1100,18 +1203,19 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (504): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines
-npm run test:runtime     # the deployable bundle in workerd (582): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, to the deletion
+npm test                 # unit checks (562): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing
+npm run test:runtime     # the deployable bundle in workerd (619): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the closing, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (32)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (52)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
 The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?ako=uctovnicka` (Lucia). VAT:
 `/ucto/klienti/demo-company/dph`; September of the sample company is ready to be filed. The books:
 `/ucto/klienti/demo-company/kniha`. Every client's deadlines: `/ucto/terminy` (the sample company's September, its
-recapitulative statement, both companies' documents of the month).
+recapitulative statement, both companies' documents of the month). The closing: `/ucto/klienti/demo-company/zavierka`
+(the year that runs).
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
 the café payment. The bank: /app/banka shows the sample company's bank sending its statements by email;

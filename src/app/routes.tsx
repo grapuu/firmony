@@ -19,6 +19,7 @@ import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
 import { TaxesPage } from '../views/taxes'
+import { closingsOf, incomePaid } from './closing-store'
 import { filedReturns, taxPaid, type TaxPaid } from './vat-store'
 import { getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
@@ -1027,13 +1028,16 @@ async function companyPage(
 
 appRoutes.get('/firma', (c) => companyPage(c))
 
-/** The VAT returns we filed for the company, and for a tax to pay everything a bank needs, the QR code included. */
+/** The VAT and income tax returns we filed for the company, and for a tax to pay everything a bank needs, the QR code included. */
 appRoutes.get('/dane', async (c) => {
   const who = c.get('who')
   const db = c.env.DB
-  const filed = await filedReturns(db, who.company.id)
-  const paid = await taxPaid(db, who.company.id, filed)
-  return shell(c, 'taxes', t.taxes.title, <TaxesPage company={who.company} filed={filed} paid={paid} today={today()} />)
+  const [filed, closings] = await Promise.all([filedReturns(db, who.company.id), closingsOf(db, who.company.id)])
+  const [paid, income] = await Promise.all([
+    taxPaid(db, who.company.id, filed),
+    Promise.all(closings.filter((k) => k.filed).map(async (closing) => ({ closing, paid: await incomePaid(db, who.company.id, closing.year) }))),
+  ])
+  return shell(c, 'taxes', t.taxes.title, <TaxesPage company={who.company} filed={filed} paid={paid} income={income} today={today()} />)
 })
 
 appRoutes.post('/firma/pozvat', async (c) => {

@@ -77,8 +77,103 @@ What remains of it: the recapitulative statement's own XML; payroll's deadlines 
 and the advances on income tax (with the closing). At hundreds of clients the screen reads every VAT client's last four
 months of documents: to measure on the first real month.
 
+## Milestone 2: the closing and the corporate income tax return (done, 14 October 2026)
+
+What the accountant gets (`/ucto/klienti/:id/zavierka?rok=`, from the client's books card and from every closing on
+the screen of deadlines):
+
+- The financial statements of a micro entity (Súvaha Úč MUJ 1-01 and Výkaz ziskov a strát Úč MUJ 2-01) worked out from
+  the books, in whole euros, with the year before when the books hold it.
+- The corporate income tax return worked out row by row (100 to 1110, Tables A, B, D, F, K): the rate by the taxable
+  revenues, the losses of five years, the minimum tax (halved, shortened, or none in a first period), its credit in
+  three years, the advances paid that the bank shows, the tax to pay or the overpayment, and the advances the next year
+  brings. The books propose what they can (representation, gifts, bank interest taxed by withholding, depreciation, the
+  taxable revenues, the advances); the accountant adjusts the rest in one form, and what equals a proposal keeps
+  following the books.
+- What keeps the closing back, each with the way to it (documents and payments of the year not in the books, cash
+  below nought, an account the statements have no row for, the company's DIČ, seat and SK NACE, the tax not booked).
+- "Zaúčtovať daň": the tax booked by an internal document on 31 December (591 against 341).
+- The two files the Financial Administration takes, validated against its own schemas in the tests: the return
+  (DPPOv25) and the statements (UZMUJv14), for "Načítať zo súboru" in eDane.
+- The deadline moved by a notice (§ 49(3)), shown and used everywhere; red once it has passed.
+- "Označiť ako podané": the client gets a message with the tax to pay, the due day, the account (prefix 500224 and the
+  personal tax account) and the variable symbol (170099 and the year), or the overpayment, and the advances to pay
+  next; "Zrušiť označenie" takes it back and tells the client.
+- The client's Dane page lists the income tax with a PAY by square QR code; the screen of deadlines shows "Úhrada dane
+  z príjmov" as the client's until the bank shows it paid.
+- Code: `src/app/closing.ts` (the rules, pure), `closing-form.ts` (the adjustments, pure), `closing-xml.ts` (the two
+  files), `closing-store.ts` (the table, the payments, the year put together), `src/views/closing.tsx`, the routes in
+  `src/team/routes.tsx`, schema step 7 (`closings`), deleted with the company's data at the end of a contract.
+
+What it leans on (read on 14 October 2026, from the sources themselves):
+
+- The eForms and their schemas from pfseform.financnasprava.sk: DPPOv25 (form.622, with the eForm's own formulas,
+  e.g. rows 150 and 250 computed from Table B) and its poučenie MF/012187/2025-721; UZMUJv14 (form.301, measure
+  MF/15464/2013-74 as amended), with the accounts each row names.
+- Act No. 595/2003 Z. z.: § 15(b) the rates for 2025 on (10 % up to 100 000 € of taxable revenues, 21 %, 24 % above
+  5 000 000 €), § 2(w) the micro-taxpayer (60 000 €), § 30 the losses, § 46b the minimum tax (with the band of
+  11 520 € from 2026), § 42 the advances, § 47 rounding, § 49(1), (3), (11) the deadline, its extension, the
+  statements.
+- The Financial Directorate's information 7/PO/2026/IM (financnasprava.sk): the account 500224-OÚD/8180, the symbol
+  1700992025, nothing to pay up to 5 €, the extension's notice by 31 March, the new deadline the end of a month, the
+  tax due then (1/PO/2025/IM, as seminare.sfera.sk republished it, says the same of 2024). Its answers on interest
+  taxed by withholding (row 210, stays in row 560) and a first period (no minimum tax). Decree No. 378/2011 Z. z.
+  (podnikajte.sk, opytajsauctovnika.sk) for the symbols of advances.
+
+Found on the way and put right:
+
+- An advance on the income tax carries the same kind of symbol as VAT (1100MMRRRR): a payment to the income tax's
+  account was booked as VAT and counted as VAT paid. The books (`reasonAccount`) and the VAT paid (`taxPaid`, the
+  screen of deadlines) now tell them apart by the prefix of the account the money went to (500224 or 500240).
+- The eForm computes rows 150 and 250 from Table B; typing them directly would be overwritten when the file is opened.
+  The form asks for Table B instead and fills both rows from it.
+
+Changed from milestone 1: the closing is no longer marked filed on the screen of deadlines (`filings`, kind `closing`)
+but on its own page (`closings`), which tells the client what to pay; schema step 7 moves any mark it finds. The
+screen's closing row links to the page; the recapitulative statement keeps its mark.
+
+Checks: units 504 → 562, runtime 582 → 619, all passing, TypeScript clean. The pages were looked at in the playground
+at 1440, 390 and 320 px (nothing overflows; on a phone the statements' table scrolls inside its card, as the books'
+tables do). 52 rules taken out once with `scripts/dev/mutate.mjs`: 49 held at once, the other three once a check was
+added for each (the statements changed since the filing, a tick stored only against the proposal, the income tax paid
+with the year's own symbol).
+
+For a professional to read (the builder's reading, not an accountant's or a tax adviser's):
+
+- The rounding of the statements to whole euros: when the two results would differ, the difference goes into row 22
+  (money) of the balance sheet. Practice differs (some put it into other receivables or liabilities).
+- 042 and 052 (assets being acquired, advances for them) go to row 06 whatever the asset; the form spreads them over
+  rows 05 to 07 by kind. Every receivable and liability is taken as short-term (the books keep no maturity); 47x and
+  48x stand in row 35.
+- 431 (the result waiting for the general meeting) stands in row 32 with 428 and 429 in the next year's balance sheet.
+- The first year with Firmony: the year before comes from the former accountant's statements, which the app does not
+  hold; the page says to fill it in eDane.
+- The tax depreciation is proposed equal to the books' (551, which also holds intangible assets); a difference is the
+  accountant's to type in Table B.
+- A period that begins after 1 January is taken as a company's first one (no minimum tax, § 46b(7)), which she can
+  untick; a company founded on 1 January is not caught. Whether the 60 000 € of a micro-taxpayer is shortened for a
+  first period shorter than a year was not read; the app does not shorten it.
+- Deferred tax is not booked (a micro entity is understood not to have to; to confirm).
+- The client's message says the advances are paid from the first quarter (or month) after the filing deadline,
+  quarterly to the end of each quarter, monthly to the end of each month (§ 42); to confirm the wording.
+- `opravnenaOsoba` names europio's representative as "splnomocnenec"; the share of the tax for a recipient (§ 50) is
+  left unassigned (`c7paragraf50`), the client's to decide, which the app does not ask.
+- DPPOv25 is the form for periods of 2025. Firmony's first closings are for 2027 (the service starts on 1 January
+  2027): the form for that period (published in January 2028) and its SK NACE list must replace the schema before the
+  first real filing; the schema check in the tests will say what changed.
+- The advances the bank shows are those paid to the income tax's account with a symbol of the year: a bank that does
+  not say the other side's account (rare: Fio, open banking and SEPA XML statements do) leaves it to the accountant.
+
+What remains of it: the notes to the statements (poznámky, written by the accountant and attached as a PDF), a company
+that is not a micro entity (Úč POD), a supplementary return of a filed year (the page says when one is to be
+considered), the notice of extension as a file (OZN493; filed in eDane today), the closing entries (710, 702), asset
+cards and depreciation, the relief rows and the special tax bases, a request to refund the overpayment, reminders of
+each advance's day.
+
 ## Resources
 
-- One continuous session; repository work by shell and file tools, research by web search and the Financial
-  Administration's own eForm files (pfseform.financnasprava.sk) and slov-lex.sk. No paid external service was called,
-  nothing was deployed. The test suites take about 3 s (units) and 45 s (runtime); a full mutation run about 15 minutes.
+- One continuous session (milestone 1 from 15:17 to 16:03, milestone 2 to 17:30); repository work by shell and file
+  tools, research by web search and the Financial Administration's own eForm files (pfseform.financnasprava.sk,
+  financnasprava.sk) and slov-lex.sk. No paid external service was called, nothing was deployed, no production data
+  exist. The test suites take about 3 s (units) and 50 s (runtime); a full mutation run of milestone 2 (52 rules) about
+  20 minutes, most rules failing the units first.

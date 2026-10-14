@@ -20,6 +20,9 @@ import {
   ledgerStore,
   dues,
   dueViews,
+  closing,
+  closingXml,
+  closingForm,
   match,
   orderLinkMail,
   papers,
@@ -2670,8 +2673,8 @@ async function zipped(entries, note) {
     return filedOf(period, { rows: r.rows, payCents: r.rows.r35, kv: r.statement ? { kind: 'R', full: kv, sent: kv } : null, ...fields })
   }
   /** The deadlines of a company on a day, from its documents and returns, as the store hands them over. */
-  const run = (company, today, { docs = [], filed = [], paid = new Map(), filings = new Set(), missing = new Map(), handover = 0 } = {}) =>
-    dues.deadlinesOf(company, { views: dues.vatWindow(company, today).map((p) => vatStore.viewOf(company, p, docs, filed, today)), filed, paid, filings, missing, handover }, today)
+  const run = (company, today, { docs = [], filed = [], paid = new Map(), filings = new Set(), closings = [], missing = new Map(), handover = 0 } = {}) =>
+    dues.deadlinesOf(company, { views: dues.vatWindow(company, today).map((p) => vatStore.viewOf(company, p, docs, filed, today)), filed, paid, filings, closings, missing, handover }, today)
   const find = (list, kind, period) => list.find((d) => d.kind === kind && (period === undefined || d.period === period))
 
   // The holidays a deadline moves past (Act No. 241/1993 Z. z. as amended by Act No. 261/2025 Z. z.)
@@ -2689,7 +2692,14 @@ async function zipped(entries, note) {
       !vat.isWorkingDay('2027-01-06'),
   )
   check('the next working day of a weekend and of Easter', vat.workingDayFrom('2026-10-25') === '2026-10-26' && vat.workingDayFrom('2029-03-31') === '2029-04-03' && vat.workingDayFrom('2026-10-14') === '2026-10-14')
-  check('the closing is due on 31 March, or the next working day', dues.closingDeadline(2026) === '2027-03-31' && dues.closingDeadline(2028) === '2029-04-03' && dues.closingDeadline(2029) === '2030-04-01')
+  check('the closing is due on 31 March, or the next working day', closing.closingDeadline(2026) === '2027-03-31' && closing.closingDeadline(2028) === '2029-04-03' && closing.closingDeadline(2029) === '2030-04-01')
+  check(
+    'a notice moves it to the end of a month, three months on or six with income from abroad, a day off to the next working day',
+    closing.extensionDays(2026).map((d) => `${d.day}${d.abroad ? '*' : ''}`).join() === '2027-04-30,2027-05-31,2027-06-30,2027-07-31*,2027-08-31*,2027-09-30*' &&
+      closing.closingDue(2026, '2027-07-31') === '2027-08-02' &&
+      closing.closingDue(2026, '2027-06-30') === '2027-06-30' &&
+      closing.closingDue(2026, null) === '2027-03-31',
+  )
 
   // Which VAT periods are worked out
   check('the periods that ended in the last four months, not before our first', dues.vatWindow(co({ startOn: '2026-01-01' }), '2026-10-14').join() === '2026-06,2026-07,2026-08,2026-09')
@@ -2763,13 +2773,26 @@ async function zipped(entries, note) {
       Boolean(find(run(co({ vatStatus: 'none', startOn: '2026-06-01', endsOn: '2027-01-31' }), '2027-01-05'), 'closing')),
   )
   check('a company made by the team counts from the day it was made', Boolean(find(run(co({ vatStatus: 'none', startOn: null }), '2027-02-01'), 'closing', '2026')))
+  const kFact = (fields = {}) => ({ year: 2026, filed: false, extendedTo: null, payCents: 0, dueOn: null, paid: 0, ...fields })
   check(
-    'late past its day, done once marked',
-    find(run(co({ vatStatus: 'none' }), '2027-04-02'), 'closing')?.late && find(run(co({ vatStatus: 'none' }), '2027-04-02', { filings: new Set(['closing:2026']) }), 'closing')?.state === 'done',
+    'late past its day, done once its page marks it filed',
+    find(run(co({ vatStatus: 'none' }), '2027-04-02'), 'closing')?.late && find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ filed: true })] }), 'closing')?.state === 'done',
+  )
+  check(
+    'a notice moves its day, and it is not late before it',
+    find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ extendedTo: '2027-06-30' })] }), 'closing')?.day === '2027-06-30' &&
+      find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ extendedTo: '2027-06-30' })] }), 'closing')?.late === false,
+  )
+  item = find(run(co({ vatStatus: 'none' }), '2027-03-20', { closings: [kFact({ filed: true, payCents: 120000, dueOn: '2027-03-31', paid: 20000 })] }), 'taxPay', '2026')
+  check('a filed closing asks the client for its income tax by the deadline, less what was paid', item?.state === 'open' && item.cents === 100000 && item.day === '2027-03-31' && !item.late, JSON.stringify(item))
+  check(
+    'paid, it is done; nothing to pay asks for nothing',
+    find(run(co({ vatStatus: 'none' }), '2027-03-20', { closings: [kFact({ filed: true, payCents: 120000, dueOn: '2027-03-31', paid: 120000 })] }), 'taxPay')?.state === 'done' &&
+      !find(run(co({ vatStatus: 'none' }), '2027-03-20', { closings: [kFact({ filed: true, payCents: 0, dueOn: '2027-03-31' })] }), 'taxPay'),
   )
   check(
     'what is done is never late, whatever its day',
-    find(run(co({ vatStatus: 'none' }), '2027-04-02', { filings: new Set(['closing:2026']) }), 'closing')?.late === false &&
+    find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ filed: true })] }), 'closing')?.late === false &&
       find(run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vat', '2026-09')?.late === false,
   )
 
@@ -2810,22 +2833,345 @@ async function zipped(entries, note) {
       plain(dueViews.dueWhat(row({ kind: 'vat', company: { id: 'c1', vatStatus: 'reg7a' } }))) === 'Priznanie k DPH za september 2026' &&
       plain(dueViews.dueWhat(row({ kind: 'vatFix', fix: 'D' }))) === 'Dodatočné priznanie k DPH za september 2026' &&
       plain(dueViews.dueWhat(row({ kind: 'summary', period: '2026-Q3' }))) === 'Súhrnný výkaz za 3. štvrťrok 2026' &&
-      plain(dueViews.dueWhat(row({ kind: 'closing', period: '2026' }))) === 'Účtovná závierka a daňové priznanie za rok 2026',
+      plain(dueViews.dueWhat(row({ kind: 'closing', period: '2026' }))) === 'Účtovná závierka a daňové priznanie za rok 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'taxPay', period: '2026' }))) === 'Úhrada dane z príjmov za rok 2026',
   )
   check(
     'where it stands, in words',
     plain(dueViews.dueState(row({ kind: 'docs', count: 3 }))) === 'Chýbajú 3 doklady' &&
       plain(dueViews.dueState(row({ kind: 'vatPay', cents: 123456 }))) === 'Na úhradu 1 234,56 €' &&
       plain(dueViews.dueState(row({ kind: 'vat', state: 'blocked', count: 2 }))) === 'Treba vyriešiť: 2' &&
-      plain(dueViews.dueState(row({ kind: 'summary', state: 'done' }))) === 'Podaný',
+      plain(dueViews.dueState(row({ kind: 'summary', state: 'done' }))) === 'Podaný' &&
+      plain(dueViews.dueState(row({ kind: 'taxPay', cents: 100000 }))) === 'Na úhradu 1 000,00 €' &&
+      plain(dueViews.dueState(row({ kind: 'taxPay', state: 'done' }))) === 'Zaplatené',
   )
   check(
     'where it is done: the period on the VAT page, a quarter of § 7a by its first month',
     dueViews.dueHref(row({ kind: 'vat' })) === '/ucto/klienti/c1/dph?obdobie=2026-09' &&
       dueViews.dueHref(row({ kind: 'summary', period: '2026-Q3', company: { id: 'c1', vatStatus: 'reg7a' } })) === '/ucto/klienti/c1/dph?obdobie=2026-07' &&
-      dueViews.dueHref(row({ kind: 'docs' })) === '/ucto/klienti/c1#chyba',
+      dueViews.dueHref(row({ kind: 'docs' })) === '/ucto/klienti/c1#chyba' &&
+      dueViews.dueHref(row({ kind: 'closing', period: '2026' })) === '/ucto/klienti/c1/zavierka?rok=2026' &&
+      dueViews.dueHref(row({ kind: 'taxPay', period: '2026' })) === '/ucto/klienti/c1/zavierka?rok=2026',
   )
   check('the filters in the address', dueViews.deadlinesHref({ side: 'ours', done: true, accountant: '' }) === '/ucto/terminy?kto=my&hotove=1' && dueViews.deadlinesHref({ side: 'all', done: false, accountant: '' }) === '/ucto/terminy')
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The closing of a micro company: the financial statements and the corporate income tax return
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const xsd = (name) => readFileSync(new URL(`./xsd/${name}`, import.meta.url), 'utf8')
+  const valid = async (xml, schema, name) => {
+    const result = await validateXML({ xml: [{ fileName: `${name}.xml`, contents: xml }], schema: [{ fileName: `${name}.xsd`, contents: schema }] })
+    return { ok: result.valid, why: result.errors.map((e) => e.message).join(' | ') }
+  }
+  let n = 0
+  const entry = (on, ...lines) => ({ key: `e${n++}`, on, kind: 'internal', number: '', text: '', docId: null, paymentId: null, manualId: null, lines: lines.map(([md, d, cents]) => ({ md, d, cents })) })
+  // A year of a young company: capital subscribed and paid in, a sale, services, representation, a gift, the bank.
+  const year = [
+    { ...entry('2026-01-01', ['353', '701', 500000], ['701', '411', 500000]), kind: 'opening' },
+    entry('2026-02-01', ['221.001', '353', 500000]),
+    entry('2026-03-10', ['311', '602', 1230000]),
+    entry('2026-03-20', ['221.001', '311', 1230000]),
+    entry('2026-04-05', ['518', '321', 100000]),
+    entry('2026-04-20', ['321', '221.001', 100000]),
+    entry('2026-05-01', ['513', '221.001', 12050]),
+    entry('2026-06-01', ['543', '221.001', 5000]),
+    entry('2026-07-01', ['568', '221.001', 1234]),
+    entry('2026-08-01', ['221.001', '662', 123]),
+    entry('2026-12-31', ['518', '321', 50000]),
+  ]
+  const st = closing.statementsOf({ entries: year }, 2026)
+  check(
+    'the profit and loss account: sales, services with representation, other costs, interest and the bank, the result before tax',
+    st.profit.r03 === 1230000 && st.profit.r11 === 162050 && st.profit.r17 === 5000 && st.profit.r24 === 123 && st.profit.r33 === 1234 && st.profit.r35 === 1061839 && st.profit.r38 === 1061839,
+    JSON.stringify(st.profit),
+  )
+  check(
+    'the balance sheet: the bank, the capital paid in, a supplier unpaid, and the result that makes it balance',
+    st.balance.r22 === 1611839 && st.balance.r27 === 500000 && st.balance.r28 === 0 && st.balance.r39 === 50000 && st.balance.r33 === 1061839 && st.balance.r01 === st.balance.r24,
+    JSON.stringify({ r22: st.balance.r22, r27: st.balance.r27, r39: st.balance.r39, r33: st.balance.r33 }),
+  )
+  check(
+    'in whole euros, the result the same on both statements',
+    st.balanceEur.r22 === 16118 && st.profitEur.r11 === 1621 && st.profitEur.r38 === 10618 && st.balanceEur.r33 === 10618 && st.rounding === 0 && st.unplaced.length === 0,
+    JSON.stringify({ r22: st.balanceEur.r22, r38: st.profitEur.r38, r33: st.balanceEur.r33 }),
+  )
+  check('the accounts the return reads', st.accounts['513'] === 12050 && st.accounts['543'] === 5000 && st.accounts['662'] === 123 && st.accounts['602'] === 1230000)
+  const odd = closing.statementsOf({ entries: [entry('2027-01-10', ['221.001', '602', 10000]), entry('2027-01-11', ['518', '221.001', 50]), entry('2027-01-12', ['501', '221.001', 50])] }, 2027)
+  check(
+    'rounding that would part the results is put in row 22, and said',
+    odd.profitEur.r38 === 98 && odd.balanceEur.r33 === 98 && odd.balanceEur.r22 === 98 && odd.rounding === -1 && odd.balanceEur.r01 === odd.balanceEur.r24,
+    JSON.stringify({ r38: odd.profitEur.r38, r33: odd.balanceEur.r33, r22: odd.balanceEur.r22, rounding: odd.rounding }),
+  )
+  const lastYear = closing.statementsOf({ entries: [...year, entry('2027-02-01', ['221.001', '602', 10000])] }, 2027)
+  check('the next year opens with last year\'s result on 431, which stands with the results of the years before', lastYear.balance.r32 === 1061839 && lastYear.balance.r33 === 10000 && lastYear.profit.r03 === 10000)
+  check(
+    'an overdraft is a loan, a customer who paid ahead a liability, the VAT the tax office owes a receivable',
+    (() => {
+      const s = closing.statementsOf(
+        { entries: [entry('2026-03-01', ['221.001', '411', 100000]), entry('2026-03-01', ['518', '221.002', 30000]), entry('2026-03-02', ['221.001', '311', 1000]), entry('2026-03-03', ['343.100', '221.001', 2300])] },
+        2026,
+      )
+      return s.balance.r44 === 30000 && s.balance.r39 === 1000 && s.balance.r19 === 2300 && s.balance.r22 === 98700
+    })(),
+  )
+  check('an account the form has no row for is said', closing.statementsOf({ entries: [entry('2026-03-01', ['221.001', '414', 1000])] }, 2026).unplaced.join() === '414')
+
+  // The tax
+  const input = (fields = {}) => ({
+    year: 2026,
+    result: 0,
+    revenues: 0,
+    costs: 0,
+    tableA: {},
+    tableB: {},
+    typed: {},
+    taxable: 0,
+    losses: [],
+    lossDeduct: null,
+    micro: false,
+    minimumExempt: false,
+    minimumHalf: false,
+    months: 12,
+    minimumCredits: [],
+    advances: 0,
+    withheld: 0,
+    ...fields,
+  })
+  const E = (euros) => Math.round(euros * 100)
+  check('the rate by the taxable revenues: 10 % up to 100 000 €, 21 %, 24 % above 5 000 000 €; 15 % up to 60 000 € in 2024', closing.taxRate(2026, E(92000)) === 10 && closing.taxRate(2026, E(100000)) === 10 && closing.taxRate(2026, E(520000)) === 21 && closing.taxRate(2026, E(5000001)) === 24 && closing.taxRate(2024, E(60000)) === 15 && closing.taxRate(2024, E(60001)) === 21)
+  check(
+    'the minimum tax by the taxable revenues, with the band above 5 000 000 € from 2026',
+    closing.minimumTax(2026, E(50000)) === E(340) && closing.minimumTax(2026, E(62000)) === E(960) && closing.minimumTax(2026, E(250001)) === E(1920) && closing.minimumTax(2026, E(500001)) === E(3840) && closing.minimumTax(2026, E(6000000)) === E(11520) && closing.minimumTax(2025, E(6000000)) === E(3840),
+  )
+  let t = closing.taxOf(input({ result: -E(1200), taxable: E(62000) }))
+  check('a loss with 62 000 € of taxable revenues pays the minimum tax of 960 € (the Financial Directorate\'s example)', t.rows.r810 === E(960) && t.rows.r820 === E(960) && t.rows.r900 === E(960) && t.rows.r1050 === E(960) && t.rows.r1100 === E(960) && t.minimumPaid, JSON.stringify(t.rows))
+  t = closing.taxOf(input({ result: E(3000), taxable: E(50000) }))
+  check('a tax of 300 € under the minimum of 340 €: 340 € is paid, 40 € may be credited later', t.rows.r600 === E(300) && t.rows.r1050 === E(340) && t.rows.r830 === E(40), JSON.stringify(t.rows))
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableA: { a06: E(500) }, typed: { r210: E(2000) } }))
+  check(
+    'representation added, interest taxed by withholding taken out, 10 %: row 400 28 500 €, tax 2 850 €',
+    t.rows.r130 === E(500) && t.rows.r200 === E(500) && t.rows.r300 === E(2000) && t.rows.r400 === E(28500) && t.rows.r550 === 10 && t.rows.r600 === E(2850) && t.rows.r1050 === E(2850) && t.tableA.r06 === E(500) && t.tableA.r17 === E(500),
+    JSON.stringify(t.rows),
+  )
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), advances: E(2000) }))
+  check('the advances paid lower what is to pay', t.rows.r1040 === E(2000) && t.rows.r1100 === E(1000) && t.rows.r1101 === 0)
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), advances: E(4000) }))
+  check('more advances than tax: an overpayment', t.rows.r1100 === 0 && t.rows.r1101 === -E(1000))
+  t = closing.taxOf(input({ result: E(3449.9), taxable: E(40000), advances: E(340) }))
+  check('a tax to pay of 5 € or less is not paid', t.rows.r1050 === E(344.99) && t.rows.r1100 === 0 && t.rows.r1101 === 0, JSON.stringify(t.rows))
+  t = closing.taxOf(input({ result: E(12000), taxable: E(55000), micro: true, losses: [{ year: 2023, amount: E(5000), usedBefore: 0 }, { year: 2024, amount: E(16000), usedBefore: 0 }] }))
+  check(
+    'a micro-taxpayer deducts losses up to the whole base, the oldest first (KROS\'s example): 5 000 and 7 000, 9 000 left',
+    t.rows.r410 === E(12000) && t.losses[0].now === E(5000) && t.losses[1].now === E(7000) && t.losses[1].left === E(9000) && t.rows.r500 === 0,
+    JSON.stringify(t.losses),
+  )
+  t = closing.taxOf(input({ result: E(80000), taxable: E(400000), losses: [{ year: 2022, amount: E(100000), usedBefore: E(10000) }] }))
+  check('any other taxpayer up to half of the base: 40 000 of the 90 000 left', t.rows.r410 === E(40000) && t.losses[0].left === E(50000) && t.rows.r500 === E(40000) && t.rows.r600 === E(8400))
+  t = closing.taxOf(input({ year: 2025, result: E(3000), taxable: E(40000), micro: true, losses: [{ year: 2020, amount: E(1000), usedBefore: 0 }, { year: 2021, amount: E(4000), usedBefore: 0 }] }))
+  check('a loss of 2020 only up to half even for a micro-taxpayer, a loss of 2021 up to the rest (the Directorate\'s example)', t.losses[0].now === E(1000) && t.losses[1].now === E(2000) && t.rows.r410 === E(3000))
+  t = closing.taxOf(input({ result: E(3000), taxable: E(40000), losses: [{ year: 2020, amount: E(1000), usedBefore: 0 }] }))
+  check('a loss older than five periods is not deducted', t.rows.r410 === 0 && t.losses.length === 0)
+  t = closing.taxOf(input({ result: E(12000), taxable: E(55000), micro: true, losses: [{ year: 2024, amount: E(16000), usedBefore: 0 }], lossDeduct: E(9000) }))
+  check('the accountant may deduct less of a loss', t.rows.r410 === E(9000) && t.losses[0].left === E(7000))
+  t = closing.taxOf(input({ result: -E(500), taxable: E(10000), minimumExempt: true }))
+  check('a company in its first period pays no minimum tax', t.rows.r810 === 0 && t.rows.r1050 === 0 && t.rows.r1100 === 0 && !t.minimumPaid)
+  check(
+    'a shorter period pays its share of the minimum tax, a company employing the disabled half (§ 46b(3), (6))',
+    closing.taxOf(input({ taxable: E(10000), months: 3 })).rows.r810 === E(85) && closing.taxOf(input({ taxable: E(62000), months: 7 })).rows.r810 === E(560) && closing.taxOf(input({ taxable: E(62000), minimumHalf: true })).rows.r810 === E(480),
+  )
+  t = closing.taxOf(input({ result: E(8000), taxable: E(40000), minimumCredits: [{ year: 2024, amount: E(340), usedBefore: 0 }, { year: 2025, amount: E(200), usedBefore: 0 }] }))
+  check(
+    'the minimum tax paid over earlier tax is credited on the tax above the minimum, the oldest first',
+    t.rows.r800 === E(800) && t.rows.r910 === E(460) && t.rows.r920 === E(460) && t.rows.r1000 === E(340) && t.rows.r1050 === E(340) && t.minimumCredits[0].now === E(340) && t.minimumCredits[1].now === E(120) && t.minimumCredits[1].left === E(80),
+    JSON.stringify(t.rows),
+  )
+  check(
+    'the advances the next period brings: monthly above 16 600 €, quarterly above 5 000 € (the Directorate\'s figures)',
+    (() => {
+      const monthly = closing.taxOf(input({ result: E(178500), taxable: E(500000) }))
+      const quarterly = closing.taxOf(input({ result: E(75835.33), taxable: E(500000) }))
+      const none = closing.taxOf(input({ result: E(26791.8), taxable: E(90000) }))
+      return monthly.rows.r1110 === E(37485) && monthly.advancesNext.kind === 'monthly' && monthly.advancesNext.each === E(3123.75) && quarterly.rows.r1110 === E(15925.42) && quarterly.advancesNext.each === E(3981.36) && none.rows.r1110 === E(2679.18) && none.advancesNext.kind === 'none'
+    })(),
+  )
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableB: { b01: E(1200), b02: E(1000) } }))
+  check('the books depreciated more than the tax allows: Table B row 6, the difference added in row 150', t.tableBUsed && t.tableB.r06 === E(1000) && t.rows.r150 === E(200) && t.rows.r250 === 0 && t.rows.r400 === E(30200))
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableB: { b01: E(1200), b02: E(1500), b04: E(100) } }))
+  check('less: the difference taken off in row 250, what is not claimed lowering row 6', t.tableB.r06 === E(1400) && t.rows.r150 === 0 && t.rows.r250 === E(200) && t.rows.r400 === E(29800))
+  check('no depreciation, no Table B', !closing.taxOf(input({ result: E(100), taxable: E(100) })).tableBUsed)
+  const proposal = closing.proposeTax(st)
+  check(
+    'the books propose the result, the taxable revenues, the interest, representation and gifts',
+    proposal.result === 1061839 && proposal.taxable === 1230123 && proposal.r210 === 123 && proposal.tableA.a06 === 12050 && proposal.tableA.a08 === 5000 && proposal.tableB.b01 === 0,
+    JSON.stringify(proposal),
+  )
+  check(
+    'depreciation in the books is proposed as the tax depreciation too: nothing is added back unasked',
+    (() => {
+      const dep = closing.proposeTax(closing.statementsOf({ entries: [entry('2026-12-31', ['551', '082', 40000])] }, 2026))
+      return dep.tableB.b01 === 40000 && dep.tableB.b02 === 40000 && closing.taxOf(closing.taxInputOf(2026, dep, closing.EMPTY_INPUTS, { advances: 0 })).rows.r150 === 0
+    })(),
+  )
+  let ti = closing.taxInputOf(2026, proposal, closing.EMPTY_INPUTS, { advances: 30000 })
+  check(
+    "the return's input: the books' proposal, a micro-taxpayer by the taxable revenues, the advances the bank shows, a whole year that pays the minimum tax",
+    ti.result === 1061839 && ti.tableA.a06 === 12050 && ti.typed.r210 === 123 && ti.micro && ti.advances === 30000 && ti.months === 12 && !ti.minimumExempt,
+    JSON.stringify(ti),
+  )
+  ti = closing.taxInputOf(2026, proposal, { ...closing.EMPTY_INPUTS, tableA: { a06: 0, a16: 5000 }, taxable: E(70000), from: '2026-05-04', advances: 0 }, { advances: 30000 })
+  check(
+    "what the accountant set goes over it: a first period from its founding pays no minimum tax and counts its months, revenues over 60 000 € are no micro-taxpayer's",
+    ti.tableA.a06 === 0 && ti.tableA.a16 === 5000 && ti.tableA.a08 === 5000 && !ti.micro && ti.minimumExempt && ti.months === 8 && ti.advances === 0,
+    JSON.stringify(ti),
+  )
+  check('she may say otherwise of both', (() => {
+    const own = closing.taxInputOf(2026, proposal, { ...closing.EMPTY_INPUTS, micro: false, from: '2026-05-04', minimumExempt: false }, { advances: 0 })
+    return !own.micro && !own.minimumExempt
+  })())
+  check('Table F: the revenues, the costs, the result before tax', JSON.stringify(closing.tableF(st)) === JSON.stringify({ r01: 1230123, r02: 168284, r03: 1061839 }))
+
+  // The files, against the Financial Administration's own schemas
+  const filer = { name: 'Ukážková firma s. r. o.', ico: '12345679', dic: '2120000007', address: 'Hlavná 1, 040 01 Košice', registerLine: 'Obchodný register Okresného súdu Košice I, oddiel Sro, vložka č. 12345/V', nace: '62.01.0', activity: 'Počítačové programovanie' }
+  check('an SK NACE code in its parts', JSON.stringify(closingXml.naceParts('62.01.0')) === JSON.stringify({ k1: '62', k2: '01', k3: '0' }) && closingXml.naceParts('620100') === null && JSON.stringify(closingXml.naceParts('62010')) === JSON.stringify({ k1: '62', k2: '01', k3: '0' }))
+  t = closing.taxOf(input({ result: proposal.result, taxable: proposal.taxable, tableA: proposal.tableA, typed: { r210: proposal.r210 }, micro: true, losses: [{ year: 2025, amount: E(800), usedBefore: 0 }], minimumCredits: [{ year: 2025, amount: E(340), usedBefore: 0 }], advances: E(100) }))
+  const dppo = closingXml.dppoXml(filer, t, { year: 2026, from: '2026-01-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'R', micro: true, minimumHalf: false, minimumExempt: false, tableF: closing.tableF(st) })
+  let v = await valid(dppo, xsd('dppo2025.xsd'), 'dppo')
+  check('the tax return is valid against DPPOv25', v.ok, v.why)
+  check(
+    'it holds the computation, Tables A, D, F and K, and who files it',
+    dppo.includes(`<r100>${(1061839 / 100).toFixed(2)}</r100>`) &&
+      dppo.includes('<r550>10</r550>') &&
+      dppo.includes('<mikrodanovnikPar2w>1</mikrodanovnikPar2w>') &&
+      dppo.includes('<tabA><r01></r01>') &&
+      dppo.includes('<r06>120.50</r06>') &&
+      dppo.includes('<tabDs04><datumOd>01.01.2025</datumOd><datumDo>31.12.2025</datumDo><r01>800.00</r01>') &&
+      dppo.includes('<tabF><r01>12301.23</r01><r02>1682.84</r02><r03>10618.39</r03></tabF>') &&
+      dppo.includes('<vyskaKladnehoRozdielu>340.00</vyskaKladnehoRozdielu>') &&
+      dppo.includes('<priezvisko>Juhás</priezvisko><meno>Christian</meno>') &&
+      dppo.includes('<k1>62</k1><k2>01</k2><k3>0</k3>'),
+    dppo.slice(dppo.indexOf('<telo>'), dppo.indexOf('<telo>') + 400),
+  )
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), advances: E(4000) }))
+  v = await valid(closingXml.dppoXml(filer, t, { year: 2026, from: '2026-03-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'D', foundOn: '2027-05-02', micro: false, minimumHalf: false, minimumExempt: true, tableF: { r01: 0, r02: 0, r03: 0 } }), xsd('dppo2025.xsd'), 'dppo-d')
+  check('so is a supplementary one with an overpayment, of a first period', v.ok, v.why)
+  const uz = closingXml.statementsXml(filer, st, lastYear, { year: 2026, from: '2026-01-01', preparedOn: '2027-03-15' })
+  v = await valid(uz, xsd('uzmuj2014.xsd'), 'uzmuj')
+  check('the financial statements are valid against UZMUJv14', v.ok, v.why)
+  check(
+    'in whole euros, this year and the year before, the register named',
+    uz.includes('<r22><s1>16118</s1>') && uz.includes('<r38><s1>10618</s1>') && uz.includes('<datumK><den>31</den><mesiac>12</mesiac><rok>2026</rok></datumK>') && uz.includes('oddiel Sro'),
+    uz.slice(0, 600),
+  )
+  v = await valid(closingXml.statementsXml(filer, st, null, { year: 2026, from: '2026-05-01', preparedOn: '2027-03-15', approvedOn: '2027-06-10' }), xsd('uzmuj2014.xsd'), 'uzmuj-first')
+  check('so are those of a first year, without a year before', v.ok, v.why)
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableB: { b01: E(1200), b02: E(1000) } }))
+  const withB = closingXml.dppoXml(filer, t, { year: 2026, from: '2026-01-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'R', micro: false, minimumHalf: false, minimumExempt: false, tableF: { r01: 0, r02: 0, r03: 0 } })
+  v = await valid(withB, xsd('dppo2025.xsd'), 'dppo-b')
+  check('Table B goes with row 150, valid', v.ok && withB.includes('<tabB><r01>1200.00</r01><r02>1000.00</r02><r03>0.00</r03><r04>0.00</r04><r05>0.00</r05><r06>1000.00</r06></tabB>') && withB.includes('<r150>200.00</r150>'), v.why)
+
+  // What keeps a closing from being filed
+  const books = (fields = {}) => ({
+    start: '2026-01-01',
+    entries: [],
+    issues: { unbooked: [], noEntry: [], classify: [], waiting: [], missing: [], foreign: [], beforeStart: { docs: 0, payments: 0 } },
+    docDays: new Map(),
+    payments: new Map(),
+    ...fields,
+  })
+  const issues = (fields = {}, args = {}) =>
+    closing.closingIssues({ books: books(fields), year: 2026, company: { dic: '2120000007', address: 'Hlavná 1, Košice' }, nace: '62.01.0', statements: { unplaced: [], rounding: 0 }, tax: { computed: 0, booked: 0 }, ...args })
+  check('books that are whole, with everything the forms ask for, keep nothing back', issues().length === 0)
+  const pay = (id, bookedOn) => [id, { id, bookedOn }]
+  let found = issues({
+    issues: { unbooked: ['d1', 'd2', 'd3'], noEntry: ['d4'], classify: ['p1'], waiting: ['p2'], missing: ['p3', 'p4'], foreign: ['p5'], beforeStart: { docs: 0, payments: 0 } },
+    docDays: new Map([['d1', '2026-12-30'], ['d2', '2027-01-05'], ['d3', null], ['d4', '2026-03-01']]),
+    payments: new Map([pay('p1', '2026-06-01'), pay('p2', '2026-12-31'), pay('p3', '2026-11-11'), pay('p4', '2027-01-02'), pay('p5', '2026-02-02')]),
+  })
+  check(
+    "documents of the year or of no day yet, and the year's payments not in the books, keep it back; the next year's do not",
+    found.find((x) => x.code === 'unbooked')?.count === 3 && found.find((x) => x.code === 'payments')?.count === 3 && found.find((x) => x.code === 'foreign')?.count === 1 && found.every((x) => x.level === 'block'),
+    JSON.stringify(found),
+  )
+  found = issues({ start: null, entries: [entry('2026-05-01', ['501', '211', 500]), entry('2026-05-02', ['261', '221.001', 100])] }, { company: { dic: null, address: null }, nace: '', statements: { unplaced: ['414'], rounding: -1 }, tax: { computed: 34000, booked: 0 } })
+  check(
+    'no start, cash below nought, an account without a row, no tax number, seat or activity, the tax not booked; money in transit and the rounding to look at',
+    ['start', 'cash', 'unplaced', 'dic', 'address', 'nace', 'tax'].every((code) => found.some((x) => x.code === code && x.level === 'block')) &&
+      found.find((x) => x.code === 'unplaced')?.accounts?.join() === '414' &&
+      found.some((x) => x.code === 'transit' && x.level === 'warn') &&
+      found.find((x) => x.code === 'rounding')?.count === 1,
+    JSON.stringify(found),
+  )
+  check('while the year runs the tax is not asked to be booked', !issues({}, { tax: null }).some((x) => x.code === 'tax'))
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000) }))
+  const ch = closing.changedSinceFiled({ rows: { ...t.rows, r100: E(29000), r1050: E(2900) }, balance: { ...st.balanceEur }, profit: { ...st.profitEur } }, t, st)
+  check(
+    'what changed since the filing: the rows of the return, and whether either statement',
+    ch.rows.join() === 'r100,r1050' &&
+      !ch.statements &&
+      closing.changedSinceFiled({ rows: t.rows, balance: { ...st.balanceEur, r01: 1 }, profit: { ...st.profitEur } }, t, st).statements &&
+      closing.changedSinceFiled({ rows: t.rows, balance: { ...st.balanceEur }, profit: { ...st.profitEur, r38: 1 } }, t, st).statements,
+  )
+
+  // The accountant's adjustments, read and stored
+  const prop = { result: E(30000), revenues: E(92000), costs: E(62000), taxable: E(92000), r210: 123, tableA: { a06: 12050, a08: 0 }, tableB: { b01: 0, b02: 0 } }
+  const form = (fields) => (name) => fields[name]
+  let read = closingForm.readClosing(form({ a06: '120,50', a16: '300', r210: '1,23', zdanitelne: '92 000', preddavky: '250', nace: '62010', cinnost: 'Počítačové programovanie', od: '1. 1. 2026' }), 2026, prop, { advances: 25000 })
+  check(
+    "what equals the books' proposal is not stored, so it follows the books; what differs is",
+    Object.keys(read.errors).length === 0 &&
+      read.inputs.tableA.a06 === undefined &&
+      read.inputs.tableA.a16 === 30000 &&
+      read.inputs.typed.r210 === undefined &&
+      read.inputs.taxable === null &&
+      read.inputs.micro === null &&
+      read.inputs.minimumExempt === null &&
+      read.inputs.advances === null &&
+      read.inputs.from === null &&
+      read.inputs.nace === '62.01.0',
+    JSON.stringify(read),
+  )
+  check('an emptied proposal is a nought she set', closingForm.readClosing(form({ a06: '', zdanitelne: '92000' }), 2026, prop, { advances: 0 }).inputs.tableA.a06 === 0)
+  read = closingForm.readClosing(form({ mikro: '1', zdanitelne: '70000', oslobodena: '1', od: '4. 5. 2026', strata_rok_0: '2024', strata_suma_0: '800', kredit_rok_0: '2025', kredit_suma_0: '340', kredit_pred_0: '100', odpocet: '500', schvalena: '20. 6. 2027' }), 2026, prop, { advances: 0 })
+  check(
+    'the ticks stored only against the proposal, the losses and the credits, the founding, the approval',
+    read.inputs.micro === true &&
+      read.inputs.minimumExempt === null &&
+      read.inputs.from === '2026-05-04' &&
+      read.inputs.taxable === 7000000 &&
+      read.inputs.losses[0]?.year === 2024 &&
+      read.inputs.losses[0]?.amount === 80000 &&
+      read.inputs.minimumCredits[0]?.usedBefore === 10000 &&
+      read.inputs.lossDeduct === 50000 &&
+      read.inputs.approvedOn === '2027-06-20',
+    JSON.stringify(read.inputs),
+  )
+  read = closingForm.readClosing(form({ a01: 'veľa', od: '1. 1. 2025', strata_rok_0: '2019', strata_suma_0: '100', kredit_rok_0: '2025', kredit_suma_0: '100', kredit_pred_0: '200', nace: '62', schvalena: '31. 12. 2026' }), 2026, prop, { advances: 0 })
+  check(
+    'what is wrong is said field by field: no amount, a day out of the year, a loss too old, more used than there was, a code that is none, an approval before the end',
+    read.errors.a01 === 'amount' && read.errors.od === 'day' && read.errors.strata_rok_0 === 'year' && read.errors.kredit_pred_0 === 'used' && read.errors.nace === 'nace' && read.errors.schvalena === 'day' && read.values.a01 === 'veľa',
+    JSON.stringify(read.errors),
+  )
+  const stored = closingForm.storedInputs(JSON.stringify({ tableA: { a06: 100, a07: -5, a99: 3 }, taxable: 'x', micro: true, losses: [{ year: 2024, amount: 500, usedBefore: 900 }, { year: 2023, amount: 500, usedBefore: 0 }], nace: 'abc', from: '2026-02-30' }))
+  check(
+    'what is stored is checked again: a wrong value follows the books',
+    stored.tableA.a06 === 100 && stored.tableA.a07 === undefined && stored.taxable === null && stored.micro === true && stored.losses.length === 1 && stored.nace === '' && stored.from === null && closingForm.storedInputs('{').losses.length === 0,
+    JSON.stringify(stored),
+  )
+  const values = closingForm.closingValues(2026, { ...closing.EMPTY_INPUTS, losses: [{ year: 2024, amount: 80000, usedBefore: 0 }] }, prop, { advances: 25000 })
+  check(
+    "the form's values: what is stored, else what the books propose",
+    values.a06 === '120,50' && values.a01 === '' && values.r210 === '1,23' && values.zdanitelne === '92000,00' && values.mikro === '' && values.od === '1. 1. 2026' && values.preddavky === '250,00' && values.strata_rok_0 === '2024' && values.strata_suma_0 === '800,00',
+    JSON.stringify(values),
+  )
+
+  // The income tax paid to the State Treasury, in the books
+  check(
+    "the income tax by its account's prefix, or by its own symbol when the bank does not say where the money went",
+    ledger.reasonAccount({ amountCents: -34000, vs: '1700992026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '341' &&
+      ledger.reasonAccount({ amountCents: -34000, vs: '1100032026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '343.300',
+  )
 }
 
 done('units')

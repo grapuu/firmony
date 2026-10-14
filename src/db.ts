@@ -485,6 +485,30 @@ const MIGRATIONS: readonly string[][] = [
       PRIMARY KEY (company_id, kind, period)
     )`,
   ],
+  // The annual closing and the corporate income tax return (src/app/closing.ts, 14 October 2026): one row a company's
+  // year, with what the accountant set for it (closing-form.ts), the deadline a notice moved (§ 49(3)), the internal
+  // document that books the tax, and once filed, what was filed and what the client was told to pay by when. The mark of
+  // a closing filed moves here from `filings` (step 6), which keeps the recapitulative statement.
+  [
+    `CREATE TABLE IF NOT EXISTS closings (
+      company_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      inputs TEXT,
+      saved_at INTEGER,
+      saved_by TEXT,
+      extended_to TEXT,
+      tax_entry TEXT,
+      filed_on TEXT,
+      filed_at INTEGER,
+      filed_by TEXT,
+      filed TEXT,
+      pay_cents INTEGER,
+      due_on TEXT,
+      PRIMARY KEY (company_id, year)
+    )`,
+    "INSERT OR IGNORE INTO closings (company_id, year, filed_on, filed_at, filed_by) SELECT company_id, CAST(period AS INTEGER), filed_on, filed_at, filed_by FROM filings WHERE kind = 'closing'",
+    "DELETE FROM filings WHERE kind = 'closing'",
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

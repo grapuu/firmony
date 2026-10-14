@@ -1,7 +1,7 @@
 // What happens to a company's data after its contract (point 8.8 and 10.4 of the terms). Ninety days past the last
 // day, the schedule deletes the files and everything the company had in the app: documents, payments, accounts,
 // the bank's consents (closed at the bank too) and statements, invoices, messages, the email that came in, the suppliers' rules,
-// the returns and the other filings marked as filed and the accountant's own entries of the books (the client took the books along in its
+// the returns, the closings and the other filings marked as filed and the accountant's own entries of the books (the client took the books along in its
 // download), the handover, its people's access, and the accounts of people who belong to no company and to no team
 // any more.
 // What stays is what the law against money laundering keeps for five years after the end (s. 19 of Act No.
@@ -70,6 +70,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ 
     db.prepare('DELETE FROM supplier_rules WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM vat_returns WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM filings WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM closings WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM ledger_entries WHERE company_id = ?').bind(companyId),
     db.prepare("DELETE FROM company_files WHERE company_id = ? AND kind <> 'poa'").bind(companyId),
     db.prepare('DELETE FROM sessions WHERE company_id = ?').bind(companyId),

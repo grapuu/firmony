@@ -6398,3 +6398,159 @@ select.field__input {
     margin-left: 0;
   }
 }
+
+/* The closing page (views/closing.tsx) ------------------------------------------------------------------------ */
+
+/* Buttons side by side at the foot of a card. */
+.info__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vrows__sum td {
+  font-weight: 700;
+}
+
+/* The statements: a caption over each table, the sums in bold (ltable__syn). */
+.cstate {
+  margin-top: 18px;
+}
+
+.cstate__title {
+  padding-bottom: 10px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* The adjustments: a section for each table of the return, each row its number, what it is and its amount. */
+.cform {
+  display: grid;
+  gap: 26px;
+}
+
+.cform__section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cform__title {
+  padding: 0 0 2px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.crow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 156px;
+  align-items: center;
+  gap: 6px 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.crow__no {
+  color: var(--blue);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.crow__label {
+  color: var(--ink);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.crow__books {
+  display: block;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.crow .field__input,
+.cpast .field__input {
+  min-height: 42px;
+  font-size: 1rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.crow .field__error {
+  grid-column: 2 / -1;
+}
+
+/* Losses and minimum taxes of years before: the year, the amount, what was used of it, row by row. */
+.cpast {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 12px;
+}
+
+.cpast__head {
+  color: var(--dim);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.cpast__cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .crow {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .crow .field__input {
+    grid-column: 2;
+  }
+
+  .cpast {
+    grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* A part of the adjustments seldom needed, folded: its title is the switch. */
+.cform__more {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.cform__more > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.cform__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cform__more > summary::after {
+  content: '+';
+  flex: none;
+  color: var(--blue);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.cform__more[open] > summary::after {
+  content: '−';
+}
+
+.cform__more > .cform__section {
+  margin-top: 12px;
+}

@@ -210,6 +210,8 @@ export interface LedgerPayment {
   amountCents: number
   currency: string
   party: string | null
+  /** The other side's account, when the bank gave it: a tax paid to the State Treasury is told by its prefix. */
+  partyIban?: string | null
   vs: string | null
   note: string | null
   exempt: Exempt | null
@@ -291,6 +293,8 @@ export interface Books {
   unposted: Map<string, number>
   /** The payments booked by their documents (an invoice paid, a receipt paid by card), not by an account of their own. */
   documented: Set<string>
+  /** The day each document belongs to, booked or not (its entry's, else the day it was issued); null when it has none yet. */
+  docDays: Map<string, string | null>
   payments: Map<string, LedgerPayment>
   banks: LedgerBank[]
 }
@@ -413,13 +417,30 @@ export function bookingLines(doc: Doc, company: Company, payment: { bookedOn: st
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
+ * Which tax a payment to the State Treasury pays, by the prefix of the account it went to (IBAN SKkk 8180 PPPPPP
+ * AAAAAAAAAA): 500240 VAT, 500224 the income tax of a legal person and its advances. Null for any other account,
+ * or when the bank did not say where the money went.
+ */
+export function treasuryTax(iban: string | null | undefined): 'vat' | 'income' | 'other' | null {
+  const plain = (iban ?? '').replace(/\s/g, '').toUpperCase()
+  const m = /^SK\d{2}8180(\d{6})\d{10}$/.exec(plain)
+  if (!m) return null
+  return m[1] === '500240' ? 'vat' : m[1] === '500224' ? 'income' : 'other'
+}
+
+/**
  * The account of a payment's reason, when it says it plainly: a bank's fee 568 and its interest 662, money between the
  * company's own accounts 261 (both sides of a transfer meet there), VAT paid to or refunded by the tax office 343.300
- * (its variable symbol begins 1100), capital paid in 353, money the owner lent or got back 365, wages paid 331. Null
- * when the accountant decides (a tax other than VAT, insurance, anything else).
+ * (its variable symbol begins 1100, and it went to VAT's account if the bank says where), the income tax and its
+ * advances 341 (the account of the income tax of legal persons, prefix 500224: an advance's symbol begins 1100 as
+ * VAT's does; the tax of a year has its own, 170099 and the year), capital paid in 353, money the owner lent or got
+ * back 365, wages paid 331. Null when the accountant decides (another tax, insurance, anything else).
  */
-export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'note' | 'exempt' | 'exemptNote'>): string | null {
-  if (p.exempt === 'state' && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE
+export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'note' | 'exempt' | 'exemptNote' | 'partyIban'>): string | null {
+  const tax = p.exempt === 'state' ? treasuryTax(p.partyIban) : null
+  if (tax === 'income') return '341'
+  if (p.exempt === 'state' && (tax === 'vat' || tax === null) && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE
+  if (p.exempt === 'state' && tax === null && /^170099\d{4}$/.test(normalizeVs(p.vs))) return '341'
   switch (p.exempt) {
     case 'bank':
       return p.amountCents < 0 ? '568' : '662'
@@ -510,6 +531,7 @@ export function buildBooks(input: LedgerInput): Books {
   const items = new Map<string, OpenItem>()
   const unposted = new Map<string, number>()
   const documented = new Set<string>()
+  const docDays = new Map<string, string | null>()
   const payments = new Map(input.payments.map((p) => [p.id, p]))
   const inBooks = (day: string) => !start || day >= start
 
@@ -521,6 +543,7 @@ export function buildBooks(input: LedgerInput): Books {
   for (const d of input.docs) {
     const plan = planOf(d, company)
     if (plan) plans.set(d.id, plan)
+    docDays.set(d.id, plan?.on ?? d.issuedOn ?? null)
   }
   const shareOf = new Map<string, number>()
   for (const [paymentId, linked] of docsOf) {
@@ -704,7 +727,7 @@ export function buildBooks(input: LedgerInput): Books {
 
   entries.sort((a, b) => a.on.localeCompare(b.on) || ORDER[a.kind] - ORDER[b.kind] || a.number.localeCompare(b.number) || a.key.localeCompare(b.key))
   const openItems = [...items.values()].sort((a, b) => (a.dueOn ?? a.on).localeCompare(b.dueOn ?? b.on) || a.docId.localeCompare(b.docId))
-  return { start, entries, items: openItems, issues, unposted, documented, payments, banks: input.banks }
+  return { start, entries, items: openItems, issues, unposted, documented, docDays, payments, banks: input.banks }
 }
 
 // ---------------------------------------------------------------------------------------------------------------

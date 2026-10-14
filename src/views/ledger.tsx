@@ -1065,8 +1065,13 @@ export const LedgerCard: FC<{ company: Company; tb: TrialBalance; waiting: numbe
       {waiting > 0 ? <span class="pill pill--amber">{L.cardIssues(waiting)}</span> : null}
     </header>
     <p class="info__lead">{L.cardResult(tb.result >= 0, formatEurExact(Math.abs(tb.result)), tb.year)}</p>
-    <a class="btn btn--line btn--small" href={bookPath(company)}>
-      {L.cardOpen}
-    </a>
+    <div class="info__acts">
+      <a class="btn btn--line btn--small" href={bookPath(company)}>
+        {L.cardOpen}
+      </a>
+      <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/zavierka`}>
+        {t.closing.open}
+      </a>
+    </div>
   </section>
 )

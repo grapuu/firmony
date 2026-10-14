@@ -72,13 +72,18 @@ import {
   type OpeningRowValue,
 } from '../views/ledger'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
+import { ClosingPage, closingState, type ClosingState } from '../views/closing'
+import { extensionDays, tableF } from '../app/closing'
+import { closingValues, readClosing, type ClosingErrors, type ClosingValues } from '../app/closing-form'
+import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, saveInputsStatement, unfileClosingStatement, type ClosingView } from '../app/closing-store'
+import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
 import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, type VatData } from '../app/vat'
 import { returnXml, statementXml } from '../app/vat-xml'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
-import { MARKED_KINDS } from './deadlines'
+import { MARKED_KINDS, closingIsOurs } from './deadlines'
 import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
 import {
   docPreview,
@@ -86,6 +91,7 @@ import {
   fileStatement,
   filedReturns,
   groupedIban,
+  INCOME_PREFIX,
   leftToPay,
   overpaid,
   payable,
@@ -308,6 +314,22 @@ function flashOf(c: Ctx): string | null {
       return t.vat.flashes.correctedKv
     case 'dph-netreba':
       return t.vat.flashes.notNeeded
+    case 'zavierka-ulozene':
+      return t.closing.flashes.saved
+    case 'zavierka-dan':
+      return t.closing.flashes.booked
+    case 'zavierka-podane':
+      return t.closing.flashes.filed
+    case 'zavierka-zrusene':
+      return t.closing.flashes.unfiled
+    case 'zavierka-blokovane':
+      return t.closing.flashes.blocked
+    case 'zavierka-bezi':
+      return t.closing.flashes.running
+    case 'zavierka-uz':
+      return t.closing.flashes.already
+    case 'zavierka-lehota':
+      return t.closing.flashes.extended
     case 'kniha-ucet':
       return t.ledger.flashes.account
     case 'kniha-interny':
@@ -365,7 +387,8 @@ teamRoutes.get('/terminy', async (c) => {
 /** Where a form of the deadlines goes back to: the screen with its filters, or a client's page; nothing else. */
 const BACK = /^\/ucto\/(?:terminy|klienti\/[A-Za-z0-9-]{1,64})(?:\?[A-Za-z0-9=&_-]{0,200})?$/
 
-// A filing the app does not make yet (the recapitulative statement, the closing), marked as filed elsewhere, or the mark taken back.
+// A filing the app does not make yet (the recapitulative statement), marked as filed elsewhere, or the mark taken back.
+// The closing has its own page, which marks it.
 teamRoutes.post('/klienti/:id/podane', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
@@ -373,16 +396,10 @@ teamRoutes.post('/klienti/:id/podane', async (c) => {
   const db = c.env.DB
   const body = await c.req.parseBody()
   const today = dayOf(now())
-  const kind = body.druh === MARKED_KINDS.summary ? MARKED_KINDS.summary : body.druh === MARKED_KINDS.closing ? MARKED_KINDS.closing : null
+  const kind = body.druh === MARKED_KINDS.summary ? MARKED_KINDS.summary : null
   const period = typeof body.obdobie === 'string' ? body.obdobie : ''
-  // A statement of a period that has ended, a closing of a year that has.
-  const valid =
-    kind === MARKED_KINDS.summary
-      ? isPeriod(period) && periodRange(period).to < today
-      : kind === MARKED_KINDS.closing
-        ? /^\d{4}$/.test(period) && Number(period) < Number(today.slice(0, 4)) && Number(period) >= 2000
-        : false
-  if (!kind || !valid) return c.text('Bad request', 400)
+  // A statement of a period that has ended.
+  if (!kind || !isPeriod(period) || periodRange(period).to >= today) return c.text('Bad request', 400)
   const undo = body.zrusit === '1'
   await db.batch([
     undo ? unmarkFilingStatement(db, company.id, kind, period) : markFilingStatement(db, company.id, kind, period, who.user.id, today, now()),
@@ -1173,6 +1190,234 @@ teamRoutes.post('/klienti/:id/dph/zrusit', async (c) => {
     later(c, flushOutbox(db, c.env.EMAIL))
   }
   return c.redirect(`/ucto/klienti/${company.id}/dph?obdobie=${period}&ok=dph-zrusene`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The closing: a year's financial statements and corporate income tax return (closing.ts), the accountant's
+// adjustments, the tax booked, their files, the deadline a notice moved, and the mark that they were filed
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The years of the books one may open a closing of, the oldest first: the last five, none before the books start. */
+function closingYears(books: Books, today: string): number[] {
+  const start = books.start ? Number(books.start.slice(0, 4)) : null
+  return bookYears(books, today)
+    .filter((y) => start === null || y >= start)
+    .slice(0, 5)
+    .reverse()
+}
+
+/** The year of the address when the books have it; else last year when its closing is ours, else the newest. */
+function closingYear(company: Company, asked: unknown, years: number[], today: string): number | null {
+  const n = typeof asked === 'string' && /^\d{4}$/.test(asked) ? Number(asked) : Number.NaN
+  if (years.includes(n)) return n
+  const last = Number(today.slice(0, 4)) - 1
+  if (years.includes(last) && closingIsOurs(company, last)) return last
+  return years[years.length - 1] ?? null
+}
+
+/** A year asked for by a form, put together; null when the books do not have it. */
+async function closingOfForm(c: Ctx, company: Company, asked: unknown): Promise<{ view: ClosingView; today: string } | null> {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const [books, closings] = await Promise.all([booksOf(db, company), closingsOf(db, company.id)])
+  const n = typeof asked === 'string' && /^\d{4}$/.test(asked) ? Number(asked) : Number.NaN
+  if (!closingYears(books, today).includes(n)) return null
+  return { view: await closingView(db, company, n, today, { books, closings }), today }
+}
+
+async function closingPage(c: Ctx, company: Company, asked: unknown, form?: { values: ClosingValues; errors: ClosingErrors }) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const [books, closings] = await Promise.all([booksOf(db, company), closingsOf(db, company.id)])
+  const years = closingYears(books, today)
+  const year = closingYear(company, asked, years, today)
+  const view = year === null ? null : await closingView(db, company, year, today, { books, closings })
+  const states = years.map((y): { year: number; state: ClosingState } => ({
+    year: y,
+    state: view && y === view.year ? closingState(view) : closings.some((k) => k.year === y && k.filed) ? 'filed' : today <= `${y}-12-31` ? 'running' : 'open',
+  }))
+  return shell(
+    c,
+    'clients',
+    `${t.closing.title}${year ? ` ${year}` : ''}: ${company.name}`,
+    <ClosingPage
+      company={company}
+      view={view}
+      years={states}
+      ours={year !== null && closingIsOurs(company, year)}
+      values={form?.values ?? (view ? closingValues(view.year, view.inputs, view.proposal, { advances: view.paid.advances }) : {})}
+      errors={form?.errors ?? {}}
+      today={today}
+      flash={form ? null : flashOf(c)}
+      error={form ? t.closing.flashes.fix : null}
+    />,
+    form ? 422 : 200,
+  )
+}
+
+teamRoutes.get('/klienti/:id/zavierka', async (c) => {
+  const company = await companyParam(c)
+  return company ? closingPage(c, company, c.req.query('rok')) : missingPage(c)
+})
+
+/** The accountant's adjustments, kept while the closing is not filed. */
+teamRoutes.post('/klienti/:id/zavierka', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const found = await closingOfForm(c, company, body.rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const read = readClosing((name) => body[name], view.year, view.proposal, { advances: view.paid.advances })
+  if (Object.keys(read.errors).length > 0) return closingPage(c, company, String(view.year), { values: read.values, errors: read.errors })
+  const db = c.env.DB
+  const who = c.get('who')
+  await db.batch([saveInputsStatement(db, company.id, view.year, read.inputs, who.user.id), eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.saved', subject: String(view.year) })])
+  return c.redirect(`${back}&ok=zavierka-ulozene#dan`, 303)
+})
+
+/** The tax of the year booked as computed: an internal document on its last day, in place of the one booked before. */
+teamRoutes.post('/klienti/:id/zavierka/dan', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const found = await closingOfForm(c, company, (await c.req.parseBody()).rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  const cents = view.tax.rows.r1050 ?? 0
+  await db.batch([
+    ...bookTaxStatements(db, company.id, view.year, cents, view.closing?.taxEntry ?? null, who.user.id),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.tax', subject: String(view.year), detail: { cents } }),
+  ])
+  return c.redirect(`${back}&ok=zavierka-dan`, 303)
+})
+
+/** The return or the statements as a file, for "Načítať zo súboru" in eDane or on the portal. */
+teamRoutes.get('/klienti/:id/zavierka/:file', async (c) => {
+  const company = await companyParam(c)
+  const file = c.req.param('file')
+  if (!company || (file !== 'priznanie.xml' && file !== 'zavierka.xml')) return missingPage(c)
+  const found = await closingOfForm(c, company, c.req.query('rok'))
+  if (!found) return missingPage(c)
+  const { view, today } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  const state = closingState(view)
+  if (state !== 'ready' && state !== 'filed') return c.redirect(`${back}&ok=zavierka-blokovane`, 303)
+  const filer: ClosingFiler = { name: company.name, ico: company.ico, dic: company.dic, address: company.address, registerLine: company.registerLine, nace: view.inputs.nace, activity: view.inputs.activity }
+  const from = view.inputs.from ?? `${view.year}-01-01`
+  // A file of a closing filed is the one that was filed, with the day it was declared.
+  const declaredOn = view.closing?.filedOn ?? today
+  const statements = file === 'zavierka.xml'
+  const xml = statements
+    ? statementsXml(filer, view.statements, view.previous, { year: view.year, from, preparedOn: declaredOn, approvedOn: view.inputs.approvedOn })
+    : dppoXml(filer, view.tax, {
+        year: view.year,
+        from,
+        to: `${view.year}-12-31`,
+        declaredOn,
+        kind: 'R',
+        micro: view.input.micro,
+        minimumHalf: view.input.minimumHalf,
+        minimumExempt: view.input.minimumExempt,
+        tableF: tableF(view.statements),
+      })
+  const name = statements ? `UZMUJ_${company.ico ?? company.id}_${view.year}.xml` : `DPPO_${company.dic ?? company.ico ?? company.id}_${view.year}.xml`
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: statements ? 'closing.statements.downloaded' : 'closing.return.downloaded', subject: String(view.year) })])
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
+
+/** The deadline a notice moved (§ 49(3)), or the notice taken back. */
+teamRoutes.post('/klienti/:id/zavierka/lehota', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const found = await closingOfForm(c, company, body.rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  const to = typeof body.lehota === 'string' ? body.lehota : ''
+  if (to !== '' && !extensionDays(view.year).some((d) => d.day === to)) return c.text('Bad request', 400)
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  await db.batch([extendStatement(db, company.id, view.year, to || null), eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.extended', subject: String(view.year), detail: { to: to || null } })])
+  return c.redirect(`${back}&ok=zavierka-lehota`, 303)
+})
+
+/** The closing marked as filed: once, with what was filed, and the client told what to pay, by when and where. */
+teamRoutes.post('/klienti/:id/zavierka/podane', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const found = await closingOfForm(c, company, (await c.req.parseBody()).rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view, today } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  if (closingState(view) !== 'ready') return c.redirect(`${back}&ok=zavierka-blokovane`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  const r = view.tax.rows
+  const pay = r.r1100 ?? 0
+  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, advancesNext: view.tax.advancesNext }
+  const [done] = await db.batch([fileClosingStatement(db, company.id, view.year, snapshot, pay, view.due, who.user.id, today)])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const left = Math.max(0, pay - view.paid.tax)
+  const over = Math.max(0, -(r.r1101 ?? 0)) + Math.max(0, view.paid.tax - pay)
+  const id = crypto.randomUUID()
+  const text = t.closing.clientMessage({
+    year: view.year,
+    left: left > 0 ? formatEurExact(left) : null,
+    paid: left > 0 && view.paid.tax > 0 ? formatEurExact(view.paid.tax) : null,
+    over: over > 0 ? formatEurExact(over) : null,
+    due: dayName(view.due),
+    vs: incomeSymbol(view.year),
+    account: company.taxAccount ? groupedIban(taxIban(company.taxAccount, INCOME_PREFIX)) : null,
+    advances: { kind: view.tax.advancesNext.kind, each: formatEurExact(view.tax.advancesNext.each) },
+  })
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.filed', subject: String(view.year), detail: { pay, r1050: r.r1050 ?? 0, r1101: r.r1101 ?? 0 } }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`${back}&ok=zavierka-podane`, 303)
+})
+
+/** A mark set by mistake taken back; the client, who was told what to pay, is told that it does not stand. */
+teamRoutes.post('/klienti/:id/zavierka/zrusit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const year = typeof body.rok === 'string' && /^\d{4}$/.test(body.rok) ? Number(body.rok) : null
+  if (!year) return c.text('Bad request', 400)
+  const db = c.env.DB
+  const who = c.get('who')
+  const [gone] = await db.batch([unfileClosingStatement(db, company.id, year)])
+  if ((gone?.meta?.changes ?? 0) > 0) {
+    const id = crypto.randomUUID()
+    await db.batch([
+      messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: t.closing.clientUnfiled(year), payment: null }),
+      eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.unfiled', subject: String(year) }),
+      ...(await ringClient(c, company, id)),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect(`/ucto/klienti/${company.id}/zavierka?rok=${year}&ok=zavierka-zrusene`, 303)
 })
 
 // ---------------------------------------------------------------------------------------------------------------

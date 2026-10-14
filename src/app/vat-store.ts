@@ -80,9 +80,12 @@ const ibanOk = (iban: string): boolean => {
   return rest === 1
 }
 
-/** The IBAN to which a company pays VAT: SK, the check digits, 8180, the prefix 500240 and its account of ten digits. */
-export function taxIban(account: string): string {
-  const bban = `${TREASURY_BANK}${VAT_PREFIX}${account.padStart(10, '0')}`
+/** The prefix of the State Treasury's accounts for the income tax of legal persons and its advances. */
+export const INCOME_PREFIX = '500224'
+
+/** The IBAN to which a company pays a tax: SK, the check digits, 8180, the tax's prefix (VAT's unless said) and its account of ten digits. */
+export function taxIban(account: string, prefix: string = VAT_PREFIX): string {
+  const bban = `${TREASURY_BANK}${prefix}${account.padStart(10, '0')}`
   let rest = 0
   for (const ch of `${bban}SK00`) {
     const value = ch >= 'A' ? String(ch.charCodeAt(0) - 55) : ch
@@ -570,6 +573,12 @@ export function docPreview(company: Company, doc: Doc, data: VatData, filed: Fil
   return { natural, period, goes: keys.sort((a, b) => order(a) - order(b)), issues }
 }
 
+/**
+ * A payment (alias-free columns of payments) that did not go to another account of the State Treasury than VAT's
+ * (prefix 500240): an advance on the income tax has a symbol of the same form (1100MMRRRR) and goes to 500224.
+ */
+export const NOT_OTHER_TREASURY = "NOT (upper(replace(COALESCE(party_iban, ''), ' ', '')) LIKE 'SK__8180%' AND substr(upper(replace(party_iban, ' ', '')), 9, 6) <> '500240')"
+
 /** What was paid towards a period's VAT: in all, and the day of the last payment. */
 export interface TaxPaid {
   cents: number
@@ -586,7 +595,7 @@ export async function taxPaid(db: D1Database, companyId: string, filed: FiledRet
   const rows = await db
     .prepare(
       `SELECT ltrim(vs, '0') AS vs, -SUM(amount_cents) AS paid, MAX(booked_on) AS last FROM payments
-        WHERE company_id = ? AND amount_cents < 0 AND ltrim(vs, '0') LIKE '1100%' GROUP BY ltrim(vs, '0')`,
+        WHERE company_id = ? AND amount_cents < 0 AND ltrim(vs, '0') LIKE '1100%' AND ${NOT_OTHER_TREASURY} GROUP BY ltrim(vs, '0')`,
     )
     .bind(companyId)
     .all<{ vs: string; paid: number; last: string }>()

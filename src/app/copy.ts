@@ -164,8 +164,8 @@ export const app = typesetAll({
   taxes: {
     title: 'Dane',
     serif: 'Čo a kam zaplatiť.',
-    lead: 'Priznania k DPH podávame za Vás. Keď vyjde daň na úhradu, nájdete tu sumu, účet, variabilný symbol a QR kód pre Vašu banku.',
-    empty: 'Zatiaľ sme za Vás nepodali žiadne priznanie k DPH. Keď ho podáme, nájdete ho tu.',
+    lead: 'Priznania k DPH aj k dani z príjmov podávame za Vás. Keď vyjde daň na úhradu, nájdete tu sumu, účet, variabilný symbol a QR kód pre Vašu banku.',
+    empty: 'Zatiaľ sme za Vás nepodali žiadne priznanie. Keď ho podáme, nájdete ho tu.',
     notRegistered: 'Firma nie je registrovaná pre DPH, takže priznanie k DPH nepodáva. Ak sa to zmení, povieme Vám to.',
     period: (label: string) => typeset(`DPH za ${label}`),
     filed: {
@@ -191,6 +191,14 @@ export const app = typesetAll({
     noAccount: 'Číslo Vášho osobného daňového účtu ešte nemáme. Pošlite nám ho v správach (nájdete ho v osobnej internetovej zóne na financnasprava.sk) a pripravíme Vám príkaz aj s QR kódom.',
     qr: 'QR kód na úhradu',
     note: (label: string) => typeset(`DPH ${label}`),
+    income: (year: number) => typeset(`Daň z príjmov za rok ${year}`),
+    incomeFiled: (day: string) => typeset(`Priznanie a účtovná závierka podané ${day}`),
+    incomeNote: (year: number) => typeset(`Daň z príjmov ${year}`),
+    incomeOver: (amount: string) => typeset(`Preddavky prevýšili daň o ${amount}: preplatok zostáva na osobnom daňovom účte firmy. Ak ho chcete vrátiť, napíšte nám.`),
+    incomeAdvances: {
+      quarterly: (each: string) => typeset(`Na ďalšie obdobie platí firma štvrťročné preddavky na daň po ${each}, vždy do konca štvrťroka.`),
+      monthly: (each: string) => typeset(`Na ďalšie obdobie platí firma mesačné preddavky na daň po ${each}, vždy do konca mesiaca.`),
+    },
   },
   add: {
     title: 'Pridajte doklady',

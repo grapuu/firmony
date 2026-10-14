@@ -54,7 +54,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
     db.prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.deleted_at IS NULL ORDER BY d.created_at, d.id`).bind(company.id).all<Row>(),
     db
       .prepare(
-        `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.vs, p.note, p.exempt, p.exempt_note, p.contra, p.account_id, COALESCE(a.ledger, '221') AS ledger
+        `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.note, p.exempt, p.exempt_note, p.contra, p.account_id, COALESCE(a.ledger, '221') AS ledger
            FROM payments p JOIN accounts a ON a.id = p.account_id WHERE p.company_id = ? ORDER BY p.booked_on, p.rowid`,
       )
       .bind(company.id)
@@ -72,6 +72,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
       amountCents: Number(r.amount_cents),
       currency: String(r.currency ?? 'EUR'),
       party: str(r.party),
+      partyIban: str(r.party_iban),
       vs: str(r.vs),
       note: str(r.note),
       exempt: str(r.exempt) as Exempt | null,
