@@ -7,11 +7,18 @@
 // What was "sent" is at /playground/mail. /playground/koniec?dni=20 puts the sample company twenty days past the
 // last day of its contract (&zrusit=1 takes it back). /app/ukazka signs in to the sample company of the client's app; a
 // document added there is "read" by a pretend reader as yesterday's café receipt.
+//
+// The bank comes as it does from January 2027, without Enable Banking: statements by email, Fio's token, a statement
+// added on the page. /playground/vypis?typ=dalsi sends the sample company's address the bank's next statement (a
+// card payment and the money for invoice 20260007), typ=novy one of an account the company does not have yet (it
+// waits for Martin's yes), typ=medzera one that does not follow the last (it waits for Lucia). Any token of 64
+// letters and digits is taken by the pretend Fio. EB=1 in front of the command adds Enable Banking with its pretend
+// bank, as it was built on 13 October 2026.
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
-import { PRETEND_MAIL, pretendBank, readerAnswer, registerAnswer } from '../test/pretend.mjs'
+import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from '../test/pretend.mjs'
 
 const root = new URL('..', import.meta.url).pathname
 const dist = join(root, '.wrangler/dist')
@@ -34,8 +41,22 @@ const bank = pretendBank({
   ],
 })
 
+// Fio banka of the sample company: a second account, read by any token of the right form.
+const fio = pretendFio({
+  iban: 'SK2283300000002801234567',
+  anyToken: true,
+  closing: () => 1840.0,
+  transactions: () => [
+    { id: 26101401, date: bratislavaDay(-3), amount: 2000, party: 'Ukážková firma s. r. o.', account: 'SK3112000000198742637541', message: 'Prevod na účet vo Fio' },
+    { id: 26101402, date: bratislavaDay(-1), amount: -160, party: 'Slovak Telekom, a.s.', account: 'SK2111000000002612345678', vs: '7781202611', message: 'Internet' },
+  ],
+})
+const withBank = process.env.EB === '1'
+
 // Written in the long-standing option names and converted, so the script survives Miniflare's own renames.
 const mf = new Miniflare(convertV4MiniflareOptions({
+  // For /cdn-cgi/local/email, which /playground/vypis sends the bank's email through.
+  unsafeTriggerHandlers: true,
   d1Persist: join(root, '.wrangler/playground-d1'),
   r2Persist: join(root, '.wrangler/playground-r2'),
   workers: [
@@ -46,11 +67,13 @@ const mf = new Miniflare(convertV4MiniflareOptions({
       compatibilityDate: '2026-10-01',
       d1Databases: { DB: 'firmony-playground' },
       r2Buckets: { FILES: 'firmony-files' },
-      bindings: { DEMO: '1', ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
+      bindings: { DEMO: '1', ANTHROPIC_API_KEY: 'pretend', ...(withBank ? { ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey } : {}) },
       serviceBindings: { EMAIL: 'pretend-mail' },
       async outboundService(request) {
         const banked = await bank.answer(request)
         if (banked) return new MfResponse(await banked.text(), { status: banked.status, headers: { 'content-type': 'application/json' } })
+        const fromFio = await fio.answer(request)
+        if (fromFio) return new MfResponse(await fromFio.text(), { status: fromFio.status, headers: { 'content-type': 'application/json' } })
         const read = await readerAnswer(request)
         if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
         const answer = registerAnswer(request.url)
@@ -98,6 +121,58 @@ createServer(async (req, res) => {
           .run()
       }
       res.writeHead(303, { location: '/app' })
+      return res.end()
+    }
+    if (url.pathname === '/playground/vypis') {
+      // A statement as the sample company's bank sends it to the company's address for documents.
+      const db = await mf.getD1Database('DB')
+      const company = await db.prepare("SELECT inbox FROM companies WHERE id = 'demo-company'").first()
+      const account = await db.prepare("SELECT iban, balance_cents FROM accounts WHERE id = 'demo-account'").first()
+      if (!company || !account) {
+        res.writeHead(404)
+        return res.end('no sample company: open /app/ukazka first')
+      }
+      const kind = url.searchParams.get('typ') ?? 'dalsi'
+      const today = bratislavaDay(0)
+      const ref = (n) => `PG${Date.now()}${n}`
+      const xml =
+        kind === 'novy'
+          ? camtXml({
+              iban: 'SK4009000000005198123456',
+              from: bratislavaDay(-1),
+              to: bratislavaDay(-1),
+              opening: 120000,
+              entries: [{ ref: ref(1), day: bratislavaDay(-1), cents: -4500, party: 'ORANGE SLOVENSKO', card: true }],
+            })
+          : kind === 'medzera'
+            ? camtXml({
+                iban: account.iban,
+                from: today,
+                to: today,
+                opening: account.balance_cents - 25000,
+                entries: [{ ref: ref(1), day: today, cents: -4990, party: 'ALZA.SK', card: true }],
+              })
+            : camtXml({
+                iban: account.iban,
+                from: today,
+                to: today,
+                opening: account.balance_cents,
+                entries: [
+                  { ref: ref(1), day: today, cents: -2385, party: 'BILLA KOSICE', card: true },
+                  { ref: ref(2), day: today, cents: 62115, party: 'Kníhkupectvo Na korze s. r. o.', iban: 'SK4111000000002987654321', vs: '20260007', note: 'Faktúra 20260007' },
+                ],
+              })
+      const to = `doklady-${company.inbox}@firmony.ai`
+      const sent = await mf.dispatchFetch(`http://localhost/cdn-cgi/local/email?from=${encodeURIComponent('vypisy@banka.test')}&to=${encodeURIComponent(to)}`, {
+        method: 'POST',
+        body: statementMail({ to, xml }),
+      })
+      if (!sent.ok) {
+        res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
+        return res.end(`the email was not taken: ${sent.status} ${await sent.text()}`)
+      }
+      await sent.arrayBuffer()
+      res.writeHead(303, { location: kind === 'medzera' ? '/ucto/klienti/demo-company#vypisy' : kind === 'novy' ? '/app' : '/app/banka#vypisy' })
       return res.end()
     }
     if (url.pathname === '/playground/mail') {

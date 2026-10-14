@@ -203,3 +203,125 @@ export function pretendBank({ iban, transactions = () => [], balance = () => '0.
   }
   return { app, privateKey, publicKey, answer, calls, sessions, refuse: (code) => (refusing = code), fail: (status) => (failing = status) }
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fio banka, and statements a bank sends by email
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Fio's API as fio.ts uses it (its manual, version 1.9): the movements of a period for a token, every value in a
+ * column of its own. It takes the tokens it is given (with `anyToken`, any token of 64 letters and digits, for the
+ * playground), answers 409 when a token asks again within `minSeconds` (as Fio does within 30 seconds), and 401 to
+ * a token it does not know or once `revoke()` was called. `wait()` forgets when each token asked.
+ *
+ * A movement is given as { id, date, amount, party, account, bankCode, vs, ks, ss, message, kind }.
+ */
+export function pretendFio({ iban, accountId = '2801234567', transactions = () => [], closing = () => 0, tokens = [], anyToken = false, minSeconds = 30 }) {
+  const calls = []
+  const asked = new Map()
+  let revoked = false
+  let failing = null
+  const column = (id, value) => (value === null || value === undefined ? null : { value, name: `column${id}`, id })
+  async function answer(request) {
+    if (!request.url.startsWith('https://fioapi.fio.cz/')) return null
+    const url = new URL(request.url)
+    const m = /^\/v1\/rest\/periods\/([^/]+)\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})\/transactions\.json$/.exec(url.pathname)
+    calls.push({ method: request.method, from: m?.[2] ?? null, to: m?.[3] ?? null })
+    if (!m || request.method !== 'GET') return new Response('', { status: 404 })
+    const token = decodeURIComponent(m[1])
+    if (revoked || !(anyToken ? /^[A-Za-z0-9]{64}$/.test(token) : tokens.includes(token))) return new Response('', { status: 401 })
+    if (failing) return new Response('', { status: failing })
+    const t = Date.now()
+    if (asked.has(token) && t - asked.get(token) < minSeconds * 1000) return new Response('', { status: 409 })
+    asked.set(token, t)
+    const list = transactions().filter((tx) => tx.date >= m[2] && tx.date <= m[3])
+    const info = { accountId, bankId: '8330', currency: 'EUR', iban, bic: 'FIOZSKBAXXX', openingBalance: null, closingBalance: closing(), dateStart: `${m[2]}+0200`, dateEnd: `${m[3]}+0200` }
+    const transaction = list.map((tx) => ({
+      column22: column(22, tx.id),
+      column0: column(0, `${tx.date}+0200`),
+      column1: column(1, tx.amount),
+      column14: column(14, 'EUR'),
+      column2: column(2, tx.account ?? null),
+      column3: column(3, tx.bankCode ?? null),
+      column10: column(10, tx.party ?? null),
+      column4: column(4, tx.ks ?? null),
+      column5: column(5, tx.vs ?? null),
+      column6: column(6, tx.ss ?? null),
+      column7: column(7, tx.identification ?? null),
+      column16: column(16, tx.message ?? null),
+      column8: column(8, tx.kind ?? 'Bezhotovostná platba'),
+    }))
+    return new Response(JSON.stringify({ accountStatement: { info, transactionList: { transaction } } }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  return { answer, calls, revoke: () => (revoked = true), fail: (status) => (failing = status), wait: () => asked.clear() }
+}
+
+const xmlText = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const money = (cents) => (Math.abs(cents) / 100).toFixed(2)
+
+/**
+ * A bank's statement (camt.053.001.02) of one account: its opening balance, its movements, and a closing balance
+ * that follows from them unless `closing` says otherwise. A movement is { ref, day, cents, party, iban, vs, note, card }.
+ */
+export function camtXml({ iban, from, to, opening, entries, closing = null, number = '1' }) {
+  const end = closing ?? opening + entries.reduce((sum, e) => sum + e.cents, 0)
+  const bal = (code, cents, day) =>
+    `<Bal><Tp><CdOrPrtry><Cd>${code}</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">${money(cents)}</Amt><CdtDbtInd>${cents < 0 ? 'DBIT' : 'CRDT'}</CdtDbtInd><Dt><Dt>${day}</Dt></Dt></Bal>`
+  const ntry = (e) => {
+    const side = e.cents < 0 ? 'Cdtr' : 'Dbtr'
+    const parts = [
+      e.vs ? `<Refs><EndToEndId>/VS${xmlText(e.vs)}/SS/KS</EndToEndId></Refs>` : '',
+      e.party || e.iban ? `<RltdPties>${e.party ? `<${side}><Nm>${xmlText(e.party)}</Nm></${side}>` : ''}${e.iban ? `<${side}Acct><Id><IBAN>${e.iban}</IBAN></Id></${side}Acct>` : ''}</RltdPties>` : '',
+      e.note ? `<RmtInf><Ustrd>${xmlText(e.note)}</Ustrd></RmtInf>` : '',
+    ].join('')
+    return [
+      '<Ntry>',
+      `<Amt Ccy="EUR">${money(e.cents)}</Amt><CdtDbtInd>${e.cents < 0 ? 'DBIT' : 'CRDT'}</CdtDbtInd><Sts>BOOK</Sts>`,
+      `<BookgDt><Dt>${e.day}</Dt></BookgDt><ValDt><Dt>${e.day}</Dt></ValDt>`,
+      `<AcctSvcrRef>${xmlText(e.ref)}</AcctSvcrRef>`,
+      e.card ? '<BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>' : '',
+      parts ? `<NtryDtls><TxDtls>${parts}</TxDtls></NtryDtls>` : '',
+      e.card && e.party ? `<AddtlNtryInf>Platba kartou ${xmlText(e.party)}</AddtlNtryInf>` : '',
+      '</Ntry>',
+    ].join('')
+  }
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">',
+    `<BkToCstmrStmt><GrpHdr><MsgId>STMT-${to}-${xmlText(number)}</MsgId><CreDtTm>${to}T22:00:00</CreDtTm></GrpHdr>`,
+    `<Stmt><Id>${to}-${xmlText(number)}</Id><ElctrncSeqNb>${xmlText(number)}</ElctrncSeqNb><CreDtTm>${to}T22:00:00</CreDtTm>`,
+    `<FrToDt><FrDtTm>${from}T00:00:00</FrDtTm><ToDtTm>${to}T23:59:59</ToDtTm></FrToDt>`,
+    `<Acct><Id><IBAN>${iban}</IBAN></Id><Ccy>EUR</Ccy></Acct>`,
+    bal('OPBD', opening, from),
+    bal('CLBD', end, to),
+    ...entries.map(ntry),
+    '</Stmt></BkToCstmrStmt></Document>',
+    '',
+  ].join('\n')
+}
+
+/** An email with a statement attached, as a bank sends it to the company's address for documents. */
+export function statementMail({ to, from = 'vypisy@banka.test', xml, name = 'vypis.xml', subject = 'Výpis z účtu' }) {
+  const b = `stmt-${randomUUID()}`
+  return [
+    `From: Banka <${from}>`,
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+    `Message-ID: <${randomUUID()}@banka.test>`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${b}"`,
+    '',
+    `--${b}`,
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    'V prílohe je výpis z účtu.',
+    `--${b}`,
+    `Content-Type: application/xml; name="${name}"`,
+    `Content-Disposition: attachment; filename="${name}"`,
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(xml).toString('base64').replace(/.{76}/g, '$&\r\n'),
+    `--${b}--`,
+    '',
+  ].join('\r\n')
+}

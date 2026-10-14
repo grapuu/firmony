@@ -1,6 +1,6 @@
 // What happens to a company's data after its contract (point 8.8 and 10.4 of the terms). Ninety days past the last
 // day, the schedule deletes the files and everything the company had in the app: documents, payments, accounts,
-// the bank's consents (closed at the bank too), invoices, messages, the email that came in, the suppliers' rules,
+// the bank's consents (closed at the bank too) and statements, invoices, messages, the email that came in, the suppliers' rules,
 // the returns marked as filed and the accountant's own entries of the books (the client took the books along in its
 // download), the handover, its people's access, and the accounts of people who belong to no company and to no team
 // any more.
@@ -41,13 +41,17 @@ const LONELY = `SELECT m.user_id FROM members m JOIN users u ON u.id = m.user_id
 export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ files: number; rows: number }> {
   const db = env.DB
   if (bankReady(env)) {
-    const sessions = await db.prepare("SELECT session_id FROM bank_links WHERE company_id = ? AND status = 'active' AND session_id IS NOT NULL").bind(companyId).all<{ session_id: string }>()
+    const sessions = await db
+      .prepare("SELECT session_id FROM bank_links WHERE company_id = ? AND kind = 'eb' AND status = 'active' AND session_id IS NOT NULL")
+      .bind(companyId)
+      .all<{ session_id: string }>()
     for (const row of sessions.results) await closeSession(env, row.session_id).catch(() => null)
   }
   let files = 0
   if (env.FILES) {
     const kept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = ? AND kind = 'poa'").bind(companyId).all<{ r2_key: string }>()
     files += await deletePrefix(env.FILES, `companies/${companyId}/documents/`)
+    files += await deletePrefix(env.FILES, `companies/${companyId}/statements/`)
     files += await deletePrefix(env.FILES, `companies/${companyId}/papers/`, new Set(kept.results.map((r) => r.r2_key)))
   }
   const lonely = await db.prepare(LONELY).bind(companyId).all<{ user_id: string }>()
@@ -58,6 +62,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ 
     db.prepare('DELETE FROM payments WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM accounts WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM bank_links WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM statements WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ?)').bind(companyId),
     db.prepare('DELETE FROM invoices WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM messages WHERE company_id = ?').bind(companyId),

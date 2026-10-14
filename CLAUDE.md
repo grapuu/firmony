@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 12:30)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 14:00)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -173,6 +173,21 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   price. He was told: do not sign now; start January with statements uploaded in the app; switch the bank on at
   about 250 clients or on better terms; a reply to them asking for no minimum fee in the first year was drafted.
 
+- From 12:26 (14 October 2026). His word: "dobre ale to asi neprijmu cize pod tak, aby sme sa tomu vedeli vyhnut a
+  boli aj tak elita top smooth jednoduchy smart a elitny proste". He was told: the bank comes in three ways that cost
+  nothing (the bank itself emails a statement to the company's address, Fio banka's free token, a statement added
+  once a month), Enable Banking at about 250 clients, about four hours. At 12:48 he asked for a product for investors
+  too (the tax return clicked through by themselves, or done by us; one brand; shared by influencers; "keď to
+  používaš ako investor a si s tým spokojný, založíš si raz firmu, pôjdeš k nám"). He was told yes, as the way in,
+  after the bank: prices proposed and not decided (29 € for one broker, 49 € for every broker and crypto, 89 € done
+  by us), about two days, ready in December, and a page "Pre investorov" that collects requests until then. Built:
+  "The bank without an aggregator" under the client's app. All checks passing (units 466, runtime 552); 31 rules
+  taken out once and every one held (five only after a check was added for each: the yes that judges the next
+  statements as they come, the accountant told of them, statements the bank sends and accounts a link reads never
+  asked for, the 3rd and no other day, a bank of once a month remembered). Pushed at 14:00 (COMMIT_SHA). The app
+  preview is version 13 (the sample company's bank sends its statements by email; "Banka" and "Nový účet" in its bar;
+  every bank's steps; the next statement paying invoice 20260007; Fio linked; Lucia's statement to check).
+
 ## What he has to do before it is live (each a few clicks)
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
@@ -201,8 +216,9 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 8. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
    accountants to confirm 28/55/110 € a client, 5 € a payroll and 90 € a closing), the trade licence "vedenie účtovníctva" added to europio, liability
    insurance, and a digital postman (Qvalia was the lead: ask for its per-client API price).
-9. The bank by open banking (read on 13 October 2026 in Enable Banking's documentation, Control Panel and linked
-   accounts): an account for europio in its Control Panel (enablebanking.com); an application for **Production**
+9. The bank by open banking, not before about 250 clients (his word of 12:26 on 14 October; until then the bank
+   comes without it: "The bank without an aggregator"). Read on 13 October 2026 in Enable Banking's documentation,
+   Control Panel and linked accounts: an account for europio in its Control Panel (enablebanking.com); an application for **Production**
    with the redirect URL `https://firmony.ai/app/banka/navrat` (and the workers.dev one while there is no domain),
    a description, a data protection email (`ahoj@firmony.ai`), the privacy policy URL
    (`https://firmony.ai/pravne-informacie#ochrana-udajov`) and the terms of service URL
@@ -244,6 +260,11 @@ inak to nejde" and "účtovníčka nebude robiť za 25 eur ... bežne berú 50 a
   structure and arguments were taken: Dougs' clear prices and reassurance, inFakt's two ways in (founding or
   switching), Bench's "no judgment" about messy books, Pennylane's e-invoicing banner, CloudTalk's parallel of
   AI and human and its plain FAQ.
+
+His (14 October 2026, 12:26): no aggregator for now ("pod tak, aby sme sa tomu vedeli vyhnut a boli aj tak elita
+top smooth jednoduchy smart"). The bank comes by statements the bank emails, Fio's token and a statement added once a
+month; Enable Banking stays built and is switched on at about 250 clients or on better terms. Proposed at 12:48 and
+not decided: a product for investors under the same brand (prices above, under "Where things stand").
 
 His (14 October 2026, 10:53 and 10:57): "do toho ale nevybudujeme si vsetko svoje?", then "do toho". Everything is
 built by us, the books and the closing included; no certified program (Pohoda, Omega) stands behind them and no
@@ -563,6 +584,69 @@ by itself.
 - Not built yet: a credit note, an invoice in another currency, an advance invoice, recurring invoices sent by
   themselves, the e-invoice sent through a digital postman, invoice numbering of the company's own pattern, the
   company's logo on the invoice.
+
+### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
+
+Enable Banking asked 900 € a month (see 12:15 on 14 October). So the bank comes the ways that cost nothing, set once:
+
+- The ways, by bank (`BANK_WAYS` in `src/config.ts`): Slovenská sporiteľňa emails a statement every day with a
+  movement (`daily`: George, the account's statement settings, a new electronic statement, SEPA XML, daily, the
+  company's address; in Business24 a request for new statement settings); ČSOB emails them (`email`; its format was
+  not read: "XML, daily if the bank offers it"); Fio banka by the client's token (`token`); Tatra banka (its
+  "Výpis do účtovníctva" in XML, from the inbox of messages), VÚB, 365.bank, mBank, UniCredit, Prima, Revolut
+  Business (Camt.053), Wise (CAMT.053) and any other bank once a month (`monthly`). Read on 14 October 2026:
+  Slovenská sporiteľňa's page of electronic statements (formats PDF, SEPA XML, MT940; daily, monthly or yearly;
+  email is a channel). Not read: whether its emailed XML comes zipped or encrypted, and from which address.
+- The page (/app/banka, `BankPage`): without Enable Banking it opens with the list of banks; a bank picked
+  (`?banka=<id>#postup-banka`) shows its steps, the company's address for documents with a copy button, and the
+  one action that finishes it: "Hotovo, nastavené" (`POST /app/banka/nastavene`, `companies.bank_setup` with the
+  bank and the moment, for the two banks that send by themselves), the token form, or the monthly upload (which
+  remembers its bank). Then it waits for the first statement ("Čakáme na prvý výpis"), says after three days that
+  none came and what to check (`STATEMENTS.waitDays`), and once statements come it says when the last came and folds
+  the steps away ("Ako je to nastavené") and the list too ("Iná banka"). Below: "Pridať výpis ručne" and the
+  statements that came. With Enable Banking set up, its banks come first as before and these ways follow as
+  "Alebo bez prepojenia".
+- Every statement is kept with its file (`statements`, schema step 5; R2 `companies/<id>/statements/<file>.xml`;
+  ten years like any accounting document; `/app/vypisy/:id/subor` downloads it). A file may hold statements of
+  several accounts (`part`). What becomes of each (`verdictOf`, the whole rule): a member of the company who adds it
+  on a page is trusted (a new account included). One that came by email: an account the company does not have
+  waits for an owner (`confirm`); the same movements again are `known`; then it has to have both balances, its
+  movements have to make its closing balance from its opening one (`sum`), the account's balance has to be known
+  (`unknown`), it may not start before the day of that balance (`overlap`), and it has to open with that balance
+  (`gap`); else it is `held` for the accountant. A stranger who knows the IBAN (it is on every invoice) does not know
+  the balance. Taken: its payments come in (`importEntries`, nothing twice), its closing balance becomes the
+  account's, and the payments pair with their documents.
+- The owner's answer (`answerAccount`, `POST /app/vypisy/:id/ucet`, owners only; a card on the overview and on the
+  bank page, "Prišiel výpis z nového účtu", showing the IBAN): yes makes the account the company's and takes the
+  first statement that waited, and the next ones of that account have to follow it as if they came then; no refuses
+  them all, and nothing of them reaches the books. The accountant's answer (`answerHeld`, "Výpisy z banky" on the
+  team's client page, `#vypisy`, with why it waits in figures; counted under "Na kontrolu" in the list of clients):
+  "Zaúčtovať aj tak" or "Nezaúčtovať". Each answer is in the events.
+- Doorbells, rung at once: `statementConfirm` to the owners, `teamStatement` to the company's accountant (else
+  ahoj@). No IBAN and no amount in them.
+- The month whose statement is due (`statementDue`): an account that no active link reads and whose last statement
+  did not come by email (a bank that emails sends nothing on a day without a movement) has to have a balance on the
+  last day of the month before. The overview says so from the 1st ("Výpis z banky za ..."), and the company's people
+  are rung on the 3rd at 9:00 (`remindStatements`, once a month for each person, only those with reminders on).
+- Fio banka (`src/app/fio.ts`; its manual, API_Bankovnictvi.pdf version 1.9): the owner creates a token that only
+  reads, valid 180 days, and pastes it once (`POST /app/banka/fio`; 64 letters and digits, `isFioToken`). It is a
+  link like Enable Banking's (`bank_links.kind` 'fio', `token`): read at once (90 days back), then by the schedule
+  every six hours also while Enable Banking is not set up, and on "Načítať teraz"; one token at most every 30
+  seconds (`FIO.minSeconds`, `tried_at`; 409 from Fio is said as "o chvíľu"). A token Fio refuses (401, 403, 404)
+  ends the link and the overview offers a new one; unlinking forgets the token; a new token for the same account
+  takes the old link's place. Movements: column 22 the id (`fio:<id>`), 0 the day, 1 the amount, 2 and 3 the other
+  account (made an IBAN, `ibanOf`), 10 its name, 4 to 7 the symbols, 16 the message, 8 the kind ("kart" is a card).
+  Never seen against the real API.
+- The yearly download holds the statements (`vypisy/<day> <last four of the IBAN>.xml`, `vypisy.csv`); the
+  deletion ninety days past the end removes them with their files.
+- The playground runs without Enable Banking, as January will (`EB=1` brings it back). The sample company's bank
+  sends its statements by email: eleven, one for each day with a movement, each with its file, taken
+  (`seedStatements` in `src/app/demo.ts`). `/playground/vypis?typ=dalsi` emails the next one (a card payment and the
+  money that pays invoice 20260007), `typ=novy` one of an account the company does not have, `typ=medzera` one that
+  does not follow. The pretend Fio takes any token of 64 letters and digits.
+- Not built: a ZIP attachment with XML inside (a bank that zips its statements) is not opened; MT940 is not read
+  (Slovenská sporiteľňa offers it; the steps ask for SEPA XML); a statement in another currency is taken as it is.
+  Not seen: a statement emailed by a real bank, Fio's real API, ČSOB's emailed format.
 
 ### The bank by open banking (step 4, 13 October 2026; `src/app/bank.ts`, `src/views/bank.tsx`)
 
@@ -956,11 +1040,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (443): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books
-npm run test:runtime     # the deployable bundle in workerd (496): the site, the order, and the app end to end, VAT filed and corrected, the books, to the deletion
+npm test                 # unit checks (466): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books
+npm run test:runtime     # the deployable bundle in workerd (552): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (42)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (31)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
@@ -969,9 +1053,13 @@ The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?
 `/ucto/klienti/demo-company/kniha`.
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
-the café payment. The bank: /app/banka, a bank of the list, "Povoliť prístup" on /playground/banka, and the pretend
-Enable Banking's payments arrive (invoice 20260007 becomes paid). A fresh sample company: remove
-`.wrangler/playground-d1` and `.wrangler/playground-r2` before starting. `mutate.mjs` works in a copy in the system's temporary folder; replace its list with the next change's
+the café payment. The bank: /app/banka shows the sample company's bank sending its statements by email;
+/playground/vypis?typ=dalsi emails the next one (invoice 20260007 becomes paid), typ=novy one of a new account, typ=medzera
+one that does not follow; any token of 64 letters and digits links the pretend Fio. With `EB=1` in front of the
+command: a bank of the list, "Povoliť prístup" on /playground/banka, and the pretend Enable Banking's payments arrive.
+A fresh sample company: remove
+`.wrangler/playground-d1` and `.wrangler/playground-r2` before starting (on 14 October each start was fresh anyway:
+Miniflare kept the data in a temporary folder of its own). `mutate.mjs` works in a copy in the system's temporary folder; replace its list with the next change's
 rules.
 
 In the playground IČO 57442452 is found (europio), 35757442 makes the register fail, anything else is unknown;

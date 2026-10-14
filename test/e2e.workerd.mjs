@@ -7,7 +7,7 @@ import { check, done } from './check.mjs'
 import { readFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { validateXML } from 'xmllint-wasm'
-import { PRETEND_MAIL, pretendBank, readerAnswer, registerAnswer } from './pretend.mjs'
+import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 const lookups = []
@@ -15,6 +15,10 @@ const readings = []
 // The bank of Firma A: what it holds is set by the part of the test that reads it.
 const bankFeed = { transactions: [], balance: '0.00' }
 const bank = pretendBank({ iban: 'SK3112000000198742637541', transactions: () => bankFeed.transactions, balance: () => bankFeed.balance, extraAccount: 'SK7311000000002934567890' })
+// Fio banka of Firma S, read by one token.
+const FIO_TOKEN = 'Fio2026tokenAbCdEfGh0123456789IjKlMnOpQrStUvWxYz0123456789abcdef'.slice(0, 64)
+const fioFeed = { transactions: [], closing: 0 }
+const fio = pretendFio({ iban: 'SK2283300000002801234567', tokens: [FIO_TOKEN], transactions: () => fioFeed.transactions, closing: () => fioFeed.closing })
 const mf = new Miniflare(
   convertV4MiniflareOptions({
     unsafeTriggerHandlers: true,
@@ -31,6 +35,8 @@ const mf = new Miniflare(
         async outboundService(request) {
           const banked = await bank.answer(request)
           if (banked) return new MfResponse(await banked.text(), { status: banked.status, headers: { 'content-type': 'application/json' } })
+          const fromFio = await fio.answer(request)
+          if (fromFio) return new MfResponse(await fromFio.text(), { status: fromFio.status, headers: { 'content-type': 'application/json' } })
           const read = await readerAnswer(request, readings)
           if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
           const answer = registerAnswer(request.url, lookups)
@@ -200,7 +206,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 4)
+check('health says the schema', (await res.json()).schema === 5)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -1937,6 +1943,409 @@ check(
 )
 
 // ---------------------------------------------------------------------------------------------------------------
+// The bank without an aggregator (14 October 2026): the steps for each bank, statements the bank sends by email
+// (taken when they follow the last one, held for the accountant when they do not, an account the company does not
+// have waiting for the owner's yes), a statement added on a page, the month whose statement is due, Fio's token
+// ---------------------------------------------------------------------------------------------------------------
+{
+  await db.batch([
+    db
+      .prepare("INSERT INTO companies (id, created_at, name, ico, vat_payer, plan, inbox, accountant_id) VALUES ('co-s', ?, 'Firma S s. r. o.', '22222222', 0, 'start', 'ssss33', ?)")
+      .bind(nowS, lucia?.id ?? null),
+    db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-s', ?, 'simona@firma-s.test', 'Simona Sivá'), ('u-s2', ?, 'stano@firma-s.test', 'Stano Sivý')").bind(nowS, nowS),
+    db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('co-s', 'u-s', 'owner', ?), ('co-s', 'u-s2', 'member', ?)").bind(nowS, nowS),
+  ])
+  const simonaCookie = (await signIn('simona@firma-s.test')).cookie
+  const simona = as(simonaCookie)
+  const stano = as((await signIn('stano@firma-s.test')).cookie)
+  const inboxS = 'doklady-ssss33@firmony.ai'
+  const ibanS = 'SK4009000000005198123456'
+  const bankMail = async (xml, from = 'vypisy@banka.test') => {
+    const r = await mf.dispatchFetch(`http://localhost/cdn-cgi/local/email?from=${encodeURIComponent(from)}&to=${encodeURIComponent(inboxS)}`, {
+      method: 'POST',
+      body: statementMail({ to: inboxS, from, xml }),
+    })
+    await r.arrayBuffer()
+    await settle(500)
+    return r
+  }
+  const statementsS = async () =>
+    (await db.prepare("SELECT id, iban, source, status, entries, added, known, reason, file_key, account_id FROM statements WHERE company_id = 'co-s' ORDER BY created_at, rowid").all()).results
+  // A day of the month before last: older than the statement every account has to have by now.
+  const monthEarlier = (() => {
+    const d = new Date(`${day(0).slice(0, 7)}-10T12:00:00Z`)
+    d.setUTCMonth(d.getUTCMonth() - 2)
+    return d.toISOString().slice(0, 10)
+  })()
+  const paymentsS = async () => (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE company_id = 'co-s'").first())?.n
+  const dayS = (n) => day(n)
+
+  // The steps for each bank
+  res = await simona.get('/app/banka')
+  page = await res.text()
+  check(
+    'without a bank the page lists the banks, each with the way its payments come',
+    res.status === 200 && page.includes('href="/app/banka?banka=slsp#postup-banka"') && page.includes('href="/app/banka?banka=fio#postup-banka"') && page.includes('Raz za mesiac'),
+  )
+  res = await simona.get('/app/banka?banka=slsp')
+  page = await res.text()
+  check(
+    "a bank that sends statements by itself: its steps, the company's address, and the one click that finishes it",
+    page.includes('id="postup-banka"') && page.includes('SEPA XML') && page.includes(inboxS) && page.includes('action="/app/banka/nastavene"') && page.includes('name="banka" value="slsp"'),
+  )
+  res = await simona.get('/app/banka?banka=tatra')
+  page = await res.text()
+  check(
+    'a bank that sends none: once a month, with the upload that remembers the bank',
+    page.includes('Výpis do účtovníctva') && page.includes('id="pridat"') && page.includes('name="banka" value="tatra"') && !page.includes('action="/app/banka/nastavene"'),
+  )
+  res = await simona.get('/app/banka?banka=fio')
+  page = await res.text()
+  check('Fio: the steps to its token and the form for it', page.includes('Sledovanie účtu') && page.includes('action="/app/banka/fio"') && page.includes('name="token"'))
+  res = await simona.post('/app/banka/nastavene', { banka: 'tatra' })
+  check('a bank that sends nothing by itself cannot be set as sending', res.headers.get('location') === '/app/banka#postup')
+  res = await simona.post('/app/banka/nastavene', { banka: 'slsp' })
+  check(
+    'the owner says it is set at the bank',
+    res.headers.get('location') === '/app/banka?banka=slsp&ok=nastavene#postup-banka' &&
+      JSON.parse((await db.prepare("SELECT bank_setup FROM companies WHERE id = 'co-s'").first())?.bank_setup ?? '{}').bank === 'slsp',
+  )
+  res = await simona.get('/app/banka')
+  page = await res.text()
+  check('the page opens on that bank, waiting for its first statement', page.includes('id="postup-banka"') && page.includes('Čakáme na prvý výpis') && page.includes('Iná banka'))
+
+  // The first statement by email: an account the company does not have yet waits for the owner
+  const first = camtXml({
+    iban: ibanS,
+    from: dayS(-3),
+    to: dayS(-3),
+    opening: 100000,
+    entries: [
+      { ref: 'S1', day: dayS(-3), cents: -1890, party: 'PAPIERNICTVO PERO', card: true },
+      { ref: 'S2', day: dayS(-3), cents: 50000, party: 'Odberateľ s. r. o.', iban: 'SK9811000000002987654321', vs: '77001' },
+    ],
+  })
+  const ringsBefore = (await sent()).length
+  res = await bankMail(first)
+  let rows = await statementsS()
+  check(
+    'a statement of an account the company does not have is kept, and nothing of it touches the books',
+    res.status === 200 && rows.length === 1 && rows[0].status === 'confirm' && rows[0].source === 'email' && rows[0].account_id === null && (await paymentsS()) === 0,
+    JSON.stringify(rows),
+  )
+  check('the inbox record says a statement came', (await db.prepare("SELECT status FROM inbound_mail WHERE company_id = 'co-s' ORDER BY received_at DESC LIMIT 1").first())?.status === 'statement')
+  let rung = (await sent()).slice(ringsBefore)
+  check(
+    'the owner is rung at once, with nothing of the statement in the email',
+    rung.some(
+      (m) => m.to === 'simona@firma-s.test' && m.subject === 'Firmony: potvrďte účet z výpisu' && m.text.includes('/app/banka#vypisy') && !m.text.includes('0900') && !m.text.includes('5198'),
+    ) && !rung.some((m) => m.to === 'stano@firma-s.test'),
+    rung.map((m) => `${m.to}: ${m.subject}`).join(' | '),
+  )
+  res = await simona.get('/app')
+  page = (await res.text()).replace(/\u00a0/g, ' ')
+  check(
+    'the overview asks the owner whether it is the account of the company',
+    page.includes('Prišiel výpis z nového účtu') && page.includes('SK40 0900 0000 0051 9812 3456') && page.includes(`action="/app/vypisy/${rows[0].id}/ucet"`),
+  )
+  res = await stano.get('/app')
+  page = (await res.text()).replace(/\u00a0/g, ' ')
+  check('a member who is no owner sees it, without the answers', page.includes('Prišiel výpis z nového účtu') && !page.includes(`action="/app/vypisy/${rows[0].id}/ucet"`))
+  res = await stano.post(`/app/vypisy/${rows[0].id}/ucet`, { ano: '1' })
+  check('and cannot answer', res.status === 403 && (await statementsS())[0].status === 'confirm')
+  res = await anna.post(`/app/vypisy/${rows[0].id}/ucet`, { ano: '1' })
+  check('nobody of another company can answer for it', res.headers.get('location') === '/app/banka#vypisy' && (await statementsS())[0].status === 'confirm')
+  res = await simona.post(`/app/vypisy/${rows[0].id}/ucet`, { ano: '1' })
+  rows = await statementsS()
+  const accountS = await db.prepare("SELECT id, balance_cents, balance_on FROM accounts WHERE company_id = 'co-s' AND iban = ?").bind(ibanS).first()
+  check(
+    "the owner's yes: the account is the company's, the statement is taken and its payments are there",
+    res.headers.get('location') === '/app/banka?ok=ucet-pridany&n=1#vypisy' &&
+      rows[0].status === 'taken' &&
+      rows[0].added === 2 &&
+      accountS?.balance_cents === 148110 &&
+      accountS.balance_on === dayS(-3) &&
+      (await paymentsS()) === 2,
+    JSON.stringify({ rows, accountS }),
+  )
+  check('on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-s' AND action = 'statement.account.confirmed' AND user_id = 'u-s'").first())?.n === 1)
+
+  // The next ones: one that follows is taken by itself; the same file again, or the same movements, are nothing new
+  const second = camtXml({
+    iban: ibanS,
+    from: dayS(-2),
+    to: dayS(-2),
+    opening: 148110,
+    number: '2',
+    entries: [{ ref: 'S3', day: dayS(-2), cents: -12500, party: 'Nájom s. r. o.', iban: 'SK2283300000002801234567', vs: '1026' }],
+  })
+  res = await bankMail(second)
+  rows = await statementsS()
+  check(
+    'a statement that opens with the last closing balance is taken without a question',
+    rows.length === 2 &&
+      rows[1].status === 'taken' &&
+      rows[1].added === 1 &&
+      (await paymentsS()) === 3 &&
+      (await db.prepare('SELECT balance_cents FROM accounts WHERE id = ?').bind(accountS?.id).first())?.balance_cents === 135610,
+    JSON.stringify(rows[1]),
+  )
+  res = await bankMail(second)
+  check('the same file again is nothing', (await statementsS()).length === 2 && (await paymentsS()) === 3)
+  const resent = camtXml({
+    iban: ibanS,
+    from: dayS(-2),
+    to: dayS(-2),
+    opening: 148110,
+    number: '2b',
+    entries: [{ ref: 'S3', day: dayS(-2), cents: -12500, party: 'Nájom s. r. o.', iban: 'SK2283300000002801234567', vs: '1026' }],
+  })
+  res = await bankMail(resent)
+  rows = await statementsS()
+  check('the same movements in another file are known, and nobody is asked', rows.length === 3 && rows[2].status === 'known' && (await paymentsS()) === 3)
+
+  // One that does not follow waits for the accountant, and so does one whose figures do not add up
+  const luciaRingsBefore = (await sent()).length
+  const gapStatement = camtXml({
+    iban: ibanS,
+    from: dayS(-1),
+    to: dayS(-1),
+    opening: 120000,
+    number: '4',
+    entries: [{ ref: 'S5', day: dayS(-1), cents: -4500, party: 'ORANGE SLOVENSKO', card: true }],
+  })
+  res = await bankMail(gapStatement)
+  const forgedStatement = camtXml({
+    iban: ibanS,
+    from: dayS(-1),
+    to: dayS(-1),
+    opening: 135610,
+    closing: 999999,
+    number: '5',
+    entries: [{ ref: 'S6', day: dayS(-1), cents: -100, party: 'NIEKTO' }],
+  })
+  res = await bankMail(forgedStatement)
+  rows = await statementsS()
+  const gapRow = rows.find((r) => r.status === 'held' && JSON.parse(r.reason ?? '{}').kind === 'gap')
+  const sumRow = rows.find((r) => r.status === 'held' && JSON.parse(r.reason ?? '{}').kind === 'sum')
+  check('a statement that does not follow the last one is held, and nothing of it is booked', Boolean(gapRow) && Boolean(sumRow) && (await paymentsS()) === 3, JSON.stringify(rows))
+  rung = (await sent()).slice(luciaRingsBefore)
+  check(
+    'the accountant is rung, with nothing of it in the email',
+    rung.filter((m) => m.to === 'lucia@firmony.test' && m.subject === 'Firmony: výpis na kontrolu' && m.text.includes('/ucto/klienti/co-s#vypisy') && !/\d{3},\d{2}/.test(m.text)).length === 2,
+    rung.map((m) => `${m.to}: ${m.subject}`).join(' | '),
+  )
+  res = await simona.get('/app/banka')
+  page = await res.text()
+  check('the client sees that it waits for the accountant', page.includes('Čaká na účtovníčku') && page.includes('Výpisy chodia samy'))
+  res = await acc.get('/ucto/klienti/co-s')
+  page = (await res.text()).replace(/ /g, ' ')
+  check(
+    'the accountant sees why each waits, in figures',
+    page.includes('id="vypisy"') &&
+      page.includes('Začína zostatkom 1 200,00 €, posledný výpis skončil zostatkom 1 356,10 €') &&
+      page.includes('výpis uvádza konečný zostatok 9 999,99 €') &&
+      page.includes(`action="/ucto/klienti/co-s/vypisy/${gapRow?.id}"`),
+  )
+  res = await anna.post(`/ucto/klienti/co-s/vypisy/${gapRow?.id}`, { akcia: 'prijat' })
+  check('a client cannot decide it', res.status === 404 && (await db.prepare('SELECT status FROM statements WHERE id = ?').bind(gapRow?.id).first())?.status === 'held')
+  res = await acc.post(`/ucto/klienti/co-s/vypisy/${sumRow?.id}`, { akcia: 'odmietnut' })
+  check(
+    'the accountant refuses the one whose figures do not add up: nothing of it is booked',
+    res.status === 303 && (await db.prepare('SELECT status, decided_by FROM statements WHERE id = ?').bind(sumRow?.id).first())?.status === 'refused' && (await paymentsS()) === 3,
+  )
+  res = await acc.post(`/ucto/klienti/co-s/vypisy/${gapRow?.id}`, { akcia: 'prijat' })
+  check(
+    'and takes the other one: its payments are there',
+    res.status === 303 && (await db.prepare('SELECT status, decided_by FROM statements WHERE id = ?').bind(gapRow?.id).first())?.decided_by === lucia?.id && (await paymentsS()) === 4,
+  )
+  check('both on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-s' AND action IN ('statement.accepted', 'statement.refused')").first())?.n === 2)
+
+  // The owner's no for an account that is not the company's: nothing of it is kept in the books
+  res = await bankMail(camtXml({ iban: 'SK0509000000005100223344', from: dayS(-1), to: dayS(-1), opening: 5000, entries: [{ ref: 'P1', day: dayS(-1), cents: -2000, party: 'LEKAREN' }] }))
+  const personal = (await statementsS()).find((r) => r.iban === 'SK0509000000005100223344')
+  res = await simona.post(`/app/vypisy/${personal?.id}/ucet`, { ano: '0' })
+  check(
+    "the owner's no: the statement is refused, no account, no payment",
+    res.headers.get('location') === '/app/banka?ok=vypis-nezauctovany#vypisy' &&
+      (await db.prepare('SELECT status FROM statements WHERE id = ?').bind(personal?.id).first())?.status === 'refused' &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE iban = 'SK0509000000005100223344'").first())?.n === 0 &&
+      (await paymentsS()) === 4,
+  )
+
+  // Its file, as it came, for the company's people and nobody else
+  res = await simona.get(`/app/vypisy/${rows[0].id}/subor`)
+  check('a statement downloads as it came', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && (await res.text()) === first)
+  res = await anna.get(`/app/vypisy/${rows[0].id}/subor`)
+  check('not for another company', res.status === 404)
+
+  // An account whose statements the bank sends is never asked for: a bank sends nothing on a day without a movement
+  await db.prepare('UPDATE accounts SET balance_on = ? WHERE id = ?').bind(monthEarlier, accountS?.id).run()
+  res = await simona.get('/app')
+  check('statements the bank sends are not asked for, however long since the last', !(await res.text()).includes('class="stmtdue"'))
+
+  // Added on a page by a member: trusted, a new account included
+  const monthly = camtXml({ iban: 'SK2283300000002801234567', from: monthEarlier, to: monthEarlier, opening: 0, entries: [{ ref: 'M1', day: monthEarlier, cents: 30000, party: 'Vklad' }] })
+  res = await stano.upload('/app/banka', { name: 'vypis.xml', type: 'application/xml', bytes: new TextEncoder().encode(monthly) })
+  const uploaded = (await statementsS()).find((r) => r.iban === 'SK2283300000002801234567')
+  check('a statement a member adds on the page is taken, a new account included', res.status === 303 && uploaded?.status === 'taken' && uploaded.source === 'upload' && (await paymentsS()) === 5)
+  check('the bank the page was set to stays as it was', JSON.parse((await db.prepare("SELECT bank_setup FROM companies WHERE id = 'co-s'").first())?.bank_setup ?? '{}').bank === 'slsp')
+
+  // The month whose statement is still to come: on the overview from the 1st, and a doorbell on the 3rd
+  res = await simona.get('/app')
+  page = await res.text()
+  check('an account whose statement of last month is missing is asked for on the overview', page.includes('class="stmtdue"') && page.includes('href="/app/banka#pridat"'))
+  const third = (() => {
+    const d = new Date(`${day(0).slice(0, 7)}-03T12:00:00Z`)
+    do d.setUTCMonth(d.getUTCMonth() + 1)
+    while (d.getUTCDay() === 1)
+    return d.toISOString().slice(0, 10)
+  })()
+  const dueBefore = (await sent()).length
+  await tick(nineFive(`${third.slice(0, 8)}04`))
+  await settle(300)
+  check('nothing is asked for on another day', (await sent()).slice(dueBefore).filter((m) => m.subject.startsWith('Firmony: výpis z banky za')).length === 0)
+  await tick(nineFive(third))
+  await settle(500)
+  const dueRings = (await sent()).slice(dueBefore).filter((m) => m.subject.startsWith('Firmony: výpis z banky za'))
+  check(
+    'on the 3rd at nine the people of the company are rung, once each',
+    dueRings.filter((m) => m.to === 'simona@firma-s.test').length === 1 &&
+      dueRings.filter((m) => m.to === 'stano@firma-s.test').length === 1 &&
+      dueRings.every((m) => m.text.includes('/app/banka#pridat')),
+    dueRings.map((m) => `${m.to}: ${m.subject}`).join(' | '),
+  )
+  await tick(nineFive(third) + 5 * 60 * 1000)
+  await settle(300)
+  check('and not twice', (await sent()).slice(dueBefore).filter((m) => m.subject.startsWith('Firmony: výpis z banky za')).length === dueRings.length)
+
+  // Fio banka by the owner's token
+  res = await simona.post('/app/banka/fio', { token: 'krátky' })
+  check('what is no token of Fio is said so', res.status === 422 && (await res.text()).replace(/\u00a0/g, ' ').includes('Toto nevyzerá ako token z Fio banky'))
+  res = await simona.post('/app/banka/fio', { token: 'x'.repeat(64) })
+  check(
+    'a token Fio does not take is said so, and not kept',
+    res.status === 422 && (await res.text()).includes('Fio banka tento token neprijala') && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-s'").first())?.n === 0,
+  )
+  fioFeed.transactions = [
+    { id: 9001, date: dayS(-2), amount: -160, party: 'Slovak Telekom, a.s.', account: '2612345678', bankCode: '1100', vs: '7781202611', message: 'Internet' },
+    { id: 9002, date: dayS(-1), amount: 245.5, party: 'Odberateľ s. r. o.', account: 'SK9811000000002987654321', vs: '77002' },
+  ]
+  fioFeed.closing = 2085.5
+  const fioCalls = fio.calls.length
+  res = await simona.post('/app/banka/fio', { token: FIO_TOKEN })
+  const fioLink = await db.prepare("SELECT id, kind, status, token, bank FROM bank_links WHERE company_id = 'co-s' AND kind = 'fio'").first()
+  const fioAccount = await db.prepare("SELECT id, bank, link_id, balance_cents FROM accounts WHERE company_id = 'co-s' AND iban = 'SK2283300000002801234567'").first()
+  check(
+    "the owner's token: Fio is linked and read at once",
+    res.headers.get('location') === '/app/banka?ok=fio&n=2' && fioLink?.status === 'active' && fioLink.bank === 'Fio banka' && fio.calls.length === fioCalls + 1,
+    res.headers.get('location'),
+  )
+  check(
+    'its payments are there, its account is the one the page added before, now read by the token',
+    fioAccount?.link_id === fioLink?.id &&
+      fioAccount.balance_cents === 208550 &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE account_id = ? AND ref LIKE 'fio:%'").bind(fioAccount.id).first())?.n === 2,
+    JSON.stringify(fioAccount),
+  )
+  check(
+    'a transfer of Fio carries its IBAN and symbols',
+    (await db.prepare("SELECT party_iban, vs FROM payments WHERE ref = 'fio:9001' AND company_id = 'co-s'").first())?.party_iban === 'SK2411000000002612345678',
+  )
+  res = await simona.get('/app/banka')
+  page = await res.text()
+  check('the page shows Fio linked, and never its token', page.includes('Fio banka') && page.includes('SK22 8330 0000 0028 0123 4567') && !page.includes(FIO_TOKEN))
+  res = await simona.post(`/app/banka/${fioLink?.id}/nacitat`, {})
+  check('read again at once: Fio wants 30 seconds, and is not asked', res.headers.get('location') === '/app/banka?ok=fio-skoro' && fio.calls.length === fioCalls + 1)
+  await db.prepare('UPDATE bank_links SET tried_at = tried_at - 60 WHERE id = ?').bind(fioLink?.id).run()
+  fio.wait()
+  fioFeed.transactions.push({ id: 9003, date: dayS(0), amount: -9.9, party: 'Apple', identification: 'Nákup: APPLE.COM/BILL', kind: 'Platba kartou' })
+  res = await simona.post(`/app/banka/${fioLink?.id}/nacitat`, {})
+  check('a minute later it is read: what is new, and nothing twice', res.headers.get('location') === '/app/banka?ok=banka-nacitane&n=1', res.headers.get('location'))
+  // The schedule reads it every six hours, also while Enable Banking is not set up
+  await db.prepare('UPDATE bank_links SET tried_at = tried_at - 7 * 3600 WHERE id = ?').bind(fioLink?.id).run()
+  fio.wait()
+  const scheduledCalls = fio.calls.length
+  await tick(Date.now())
+  await settle(800)
+  check('the schedule reads Fio by itself', fio.calls.length === scheduledCalls + 1)
+  // An account a link reads is never asked for either; once the link ends, it is
+  await db.prepare('UPDATE accounts SET balance_on = ? WHERE id = ?').bind(monthEarlier, fioAccount?.id).run()
+  res = await simona.get('/app')
+  check('an account a link reads is not asked for', !(await res.text()).includes('class="stmtdue"'))
+  // A token that was taken back at Fio
+  fio.revoke()
+  await db.prepare('UPDATE bank_links SET tried_at = tried_at - 60 WHERE id = ?').bind(fioLink?.id).run()
+  fio.wait()
+  res = await simona.post(`/app/banka/${fioLink?.id}/nacitat`, {})
+  check(
+    'a token Fio no longer takes ends the link',
+    res.headers.get('location') === '/app/banka?chyba=vyprsalo' && (await db.prepare('SELECT status FROM bank_links WHERE id = ?').bind(fioLink?.id).first())?.status === 'expired',
+  )
+  res = await simona.get('/app')
+  page = await res.text()
+  check('and the overview says so, with the way to a new token', page.includes('href="/app/banka?banka=fio#postup-banka"'))
+  check('and asks for the statement the link no longer brings', page.includes('class="stmtdue"'))
+  res = await simona.post(`/app/banka/${fioLink?.id}/odpojit`, {})
+  check(
+    'unlinked: the token is forgotten, the payments stay',
+    (await db.prepare('SELECT token FROM bank_links WHERE id = ?').bind(fioLink?.id).first())?.token === null &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE ref LIKE 'fio:%' AND company_id = 'co-s'").first())?.n === 3,
+  )
+
+  // A bank whose statements are added once a month: the steps the statement was added from are remembered
+  {
+    const form = new FormData()
+    form.append('banka', 'tatra')
+    form.append(
+      'file',
+      new Blob(
+        [camtXml({ iban: 'SK2283300000002801234567', from: monthEarlier, to: monthEarlier, opening: 30000, number: '7', entries: [{ ref: 'M2', day: monthEarlier, cents: -500, party: 'Poplatok' }] })],
+        { type: 'application/xml' },
+      ),
+      'vypis-tatra.xml',
+    )
+    const encoded = new Request('https://x/', { method: 'POST', body: form })
+    const body = new Uint8Array(await encoded.arrayBuffer())
+    res = await mf.dispatchFetch(`${site}/app/banka`, {
+      method: 'POST',
+      body,
+      redirect: 'manual',
+      headers: { 'content-type': encoded.headers.get('content-type'), 'content-length': String(body.length), 'cf-connecting-ip': '203.0.113.30', origin: site, cookie: simonaCookie },
+    })
+    check(
+      'a statement added from the steps of a bank of once a month: the page opens on that bank next time',
+      res.status === 303 && JSON.parse((await db.prepare("SELECT bank_setup FROM companies WHERE id = 'co-s'").first())?.bank_setup ?? '{}').bank === 'tatra',
+    )
+    res = await simona.get('/app/banka')
+    page = await res.text()
+    check('with its steps and the other banks folded away', page.includes('Výpis do účtovníctva') && page.includes('Iná banka') && page.includes('name="banka" value="tatra"'))
+  }
+
+  // Two statements of an account the company does not have, the second not following the first: after the owner's yes
+  // the first is taken and the second waits for the accountant
+  {
+    const iban = 'SK6702000000001234567890'
+    await bankMail(camtXml({ iban, from: dayS(-5), to: dayS(-5), opening: 70000, entries: [{ ref: 'V1', day: dayS(-5), cents: -1000, party: 'PRVÝ' }] }))
+    await bankMail(camtXml({ iban, from: dayS(-4), to: dayS(-4), opening: 10000, number: '2', entries: [{ ref: 'V2', day: dayS(-4), cents: -2000, party: 'DRUHÝ' }] }))
+    const waiting = (await statementsS()).filter((r) => r.iban === iban)
+    const ringsYes = (await sent()).length
+    res = await simona.post(`/app/vypisy/${waiting[1]?.id}/ucet`, { ano: '1' })
+    await settle(500)
+    const after = (await statementsS()).filter((r) => r.iban === iban)
+    check(
+      "the owner's yes takes the first; the next one has to follow it, as if it came now",
+      waiting.length === 2 && waiting.every((r) => r.status === 'confirm') && after[0]?.status === 'taken' && after[1]?.status === 'held' && JSON.parse(after[1].reason ?? '{}').kind === 'gap',
+      JSON.stringify(after.map((r) => [r.status, r.reason])),
+    )
+    check(
+      'the accountant is told of the one that waits',
+      (await sent()).slice(ringsYes).some((m) => m.to === 'lucia@firmony.test' && m.subject === 'Firmony: výpis na kontrolu'),
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // VAT: the registration in the company's details, the booking form's VAT, a period's return and control statement
 // with their files, the mark that they were filed, and what the client then reads and pays
 // ---------------------------------------------------------------------------------------------------------------
@@ -2850,6 +3259,15 @@ check(
   archive.filter((f) => f.name.startsWith('doklady/')).every((f) => text(named('doklady.csv')).includes(f.name)),
 )
 check('the contract is in it with its terms', text(named('zmluva.txt')).includes('Firma A s. r. o.') && text(named('zmluva.txt')).includes('10.4 '))
+const statementFile = archive?.find((f) => f.name.startsWith('vypisy/'))
+check(
+  'and the bank statements as they came, each named in the list of them',
+  Boolean(statementFile) && text(statementFile) === new TextDecoder().decode(camtBytes) && text(named('vypisy.csv')).includes(statementFile.name) && text(named('citajte.txt')).includes('vypisy.csv'),
+  archive
+    ?.filter((f) => f.name.startsWith('vypisy'))
+    .map((f) => f.name)
+    .join(' | '),
+)
 check(
   'and the books of the year: the journal, the general ledger, the trial balance, the open items',
   ['uctovnictvo/dennik.csv', 'uctovnictvo/hlavna-kniha.csv', 'uctovnictvo/predvaha.csv', 'uctovnictvo/saldokonto.csv'].every((n) => bom(named(n))) &&
@@ -2910,10 +3328,11 @@ const leftover = await db
     `SELECT (SELECT COUNT(*) FROM documents WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payments WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM messages WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
-       + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL) AS n`,
+       + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL)
+       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') AS n`,
   )
   .first()
-check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed and the books are gone', leftover?.n === 0, JSON.stringify(leftover))
+check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
 const objects = await files.list({ prefix: 'companies/co-a/' })
 check(
   'and so are their files, all but the power of attorney',

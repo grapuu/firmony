@@ -50,7 +50,8 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
          (SELECT COUNT(*) FROM payments p WHERE p.company_id = c.id AND ${MISSING}) AS missing,
          (SELECT COUNT(*) FROM documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL AND d.booked_at IS NULL AND d.status IN ('read', 'manual')) AS to_book,
          (SELECT COUNT(*) FROM documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL AND d.status = 'reading') AS reading,
-         (SELECT COUNT(*) FROM payments p WHERE p.company_id = c.id AND p.exempt IS NOT NULL AND p.checked_at IS NULL AND p.exempt_by <> 'auto') AS to_check,
+         (SELECT COUNT(*) FROM payments p WHERE p.company_id = c.id AND p.exempt IS NOT NULL AND p.checked_at IS NULL AND p.exempt_by <> 'auto')
+           + (SELECT COUNT(*) FROM statements s WHERE s.company_id = c.id AND s.status = 'held') AS to_check,
          (SELECT CASE WHEN m.side = 'client' THEN m.created_at END FROM messages m WHERE m.company_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS waiting,
          ${POA_STATE_SQL} AS poa,
          ${DECLARATION_STATE_SQL} AS declaration,

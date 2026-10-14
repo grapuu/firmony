@@ -431,6 +431,45 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE accounts ADD COLUMN ledger TEXT',
     `UPDATE accounts SET ledger = printf('221.%03d', (SELECT COUNT(*) FROM accounts b WHERE b.company_id = accounts.company_id AND b.rowid <= accounts.rowid)) WHERE ledger IS NULL`,
   ],
+  // The bank without an aggregator (14 October 2026, src/app/statements.ts and fio.ts). Every statement is kept as a
+  // record with its file (a bank statement is an accounting document): where it came from, what it held, and whether
+  // it was taken, waits for the owner (an account the company does not have yet) or for the accountant (it does not
+  // follow the last one). A bank link of a second kind: Fio banka, read by the client's own token. And the way the
+  // owner chose to bring the bank in, with the bank, until the first statement shows that it works.
+  [
+    `CREATE TABLE IF NOT EXISTS statements (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      account_id TEXT,
+      iban TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      added_by TEXT,
+      sender TEXT,
+      file_key TEXT,
+      file_hash TEXT,
+      file_name TEXT,
+      part INTEGER NOT NULL DEFAULT 0,
+      number TEXT,
+      from_on TEXT,
+      to_on TEXT,
+      opening_cents INTEGER,
+      opening_on TEXT,
+      closing_cents INTEGER,
+      closing_on TEXT,
+      entries INTEGER NOT NULL DEFAULT 0,
+      added INTEGER NOT NULL DEFAULT 0,
+      known INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      reason TEXT,
+      decided_at INTEGER,
+      decided_by TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS statements_company ON statements (company_id, created_at)',
+    "ALTER TABLE bank_links ADD COLUMN kind TEXT NOT NULL DEFAULT 'eb'",
+    'ALTER TABLE bank_links ADD COLUMN token TEXT',
+    'ALTER TABLE companies ADD COLUMN bank_setup TEXT',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

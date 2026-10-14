@@ -7,6 +7,7 @@ import { flushOutbox } from '../mail'
 import { bell, ringStatement } from '../bell'
 import { monthName } from './copy'
 import type { AppBindings } from './routes'
+import { statementDue } from './statements'
 import { MISSING, membersOf } from './store'
 
 /** The parts of a moment in Bratislava. */
@@ -104,3 +105,31 @@ export async function remindBankRenewals(env: AppBindings, ms: number, origin: s
   if (statements.length > 0) await flushOutbox(db, env.EMAIL, 50)
   return statements.length
 }
+
+/**
+ * On the 3rd at nine, the people of a company whose statement of the last month is still to be added (statements.ts:
+ * an account that no link reads and whose bank does not send statements itself) get one doorbell. The overview says
+ * the same from the 1st, until the statement is there.
+ */
+export async function remindStatements(env: AppBindings, ms: number, origin: string = BRAND.origin): Promise<number> {
+  const b = bratislava(ms)
+  if (b.date !== STATEMENT_DAY || b.hour !== 9 || b.minute >= 15) return 0
+  const db = env.DB
+  const companies = await db
+    .prepare('SELECT c.id FROM companies c WHERE c.closed_at IS NULL AND c.demo = 0 AND (c.ends_on IS NULL OR c.ends_on >= ?) AND EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id)')
+    .bind(b.day)
+    .all<{ id: string }>()
+  const statements: D1PreparedStatement[] = []
+  for (const company of companies.results) {
+    const month = await statementDue(db, company.id, b.day)
+    if (!month) continue
+    const ring = bell.statement(monthName(`${month}-01`), `${origin}/app/banka#pridat`, `${origin}/app/firma#pripomienky`)
+    for (const person of await membersOf(db, company.id, true)) statements.push(ringStatement(db, 'remind-statement', month, person.email, ring))
+  }
+  for (let i = 0; i < statements.length; i += 50) await db.batch(statements.slice(i, i + 50))
+  if (statements.length > 0) await flushOutbox(db, env.EMAIL, 50)
+  return statements.length
+}
+
+/** The day of the month the statement of the last month is asked for by a doorbell (the overview asks from the 1st). */
+export const STATEMENT_DAY = 3

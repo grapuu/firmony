@@ -267,6 +267,48 @@ export const BANK = {
   readsPerHour: 6,
 } as const
 
+/**
+ * Fio banka read by the client's own token (src/app/fio.ts): Fio's free API, read in its manual (API_Bankovnictvi.pdf,
+ * version 1.9 of 16 October 2025). A token lives 180 days at most, and one token is asked at most every 30 seconds.
+ */
+export const FIO = {
+  api: 'https://fioapi.fio.cz/v1/rest',
+  tokenDays: 180,
+  minSeconds: 30,
+  timeoutMs: 15_000,
+} as const
+
+/**
+ * How the bank comes in without an aggregator (14 October 2026), bank by bank, as each bank's own pages said that day:
+ * Slovenská sporiteľňa e-mails SEPA XML statements every day ("Email (PDF, SEPA XML, MT940)", "on a daily, monthly or
+ * annual basis", slsp.sk); ČSOB sets e-mailed statements in its internet banking (the format was not confirmed);
+ * Fio gives a free token; Tatra banka e-mails only an encrypted PDF, so its "Výpis do účtovníctva" in XML (camt.053)
+ * is added once a month; the others are added once a month in XML until we know better. `way`: 'daily' (the bank
+ * sends XML every day), 'email' (the bank sends it, how often is set there), 'token' (Fio), 'monthly'.
+ */
+export type BankWay = 'daily' | 'email' | 'token' | 'monthly'
+export const BANK_WAYS: readonly { id: string; name: string; way: BankWay }[] = [
+  { id: 'slsp', name: 'Slovenská sporiteľňa', way: 'daily' },
+  { id: 'tatra', name: 'Tatra banka', way: 'monthly' },
+  { id: 'vub', name: 'VÚB banka', way: 'monthly' },
+  { id: 'csob', name: 'ČSOB', way: 'email' },
+  { id: 'fio', name: 'Fio banka', way: 'token' },
+  { id: '365', name: '365.bank', way: 'monthly' },
+  { id: 'mbank', name: 'mBank', way: 'monthly' },
+  { id: 'unicredit', name: 'UniCredit Bank', way: 'monthly' },
+  { id: 'prima', name: 'Prima banka', way: 'monthly' },
+  { id: 'revolut', name: 'Revolut Business', way: 'monthly' },
+  { id: 'wise', name: 'Wise Business', way: 'monthly' },
+  { id: 'ina', name: 'Iná banka', way: 'monthly' },
+] as const
+
+/** A statement the owner said comes by itself, and that has not come for this many days, is said to be missing. */
+export const STATEMENTS = {
+  waitDays: 3,
+  /** The statement of a month is asked for from the first day of the next one. */
+  dueDay: 1,
+} as const
+
 /** The people of Firmony: who becomes the first administrator, and how long a welcome link works. */
 export const TEAM = {
   /** Whoever signs in with this address while nobody of the team exists becomes the first administrator. */
@@ -290,7 +332,7 @@ export const READER = {
 } as const
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
-export const PRIVACY_VERSION = '2026-10-13'
+export const PRIVACY_VERSION = '2026-10-14'
 
 /**
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an

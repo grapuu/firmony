@@ -26,6 +26,7 @@ export async function exportYears(db: D1Database, company: string): Promise<stri
          UNION SELECT substr(booked_on, 1, 4) FROM payments WHERE company_id = ?1
          UNION SELECT substr(issued_on, 1, 4) FROM invoices WHERE company_id = ?1 AND status = 'issued'
          UNION SELECT strftime('%Y', created_at, 'unixepoch') FROM messages WHERE company_id = ?1
+         UNION SELECT substr(COALESCE(to_on, from_on, date(created_at, 'unixepoch')), 1, 4) FROM statements WHERE company_id = ?1 AND status IN ('taken', 'known', 'held')
        ) WHERE y GLOB '[12][0-9][0-9][0-9]' ORDER BY y DESC`,
     )
     .bind(company)
@@ -85,7 +86,7 @@ function contractText(company: Company, order: ContractFacts | null): string {
   return `${lines.join('\r\n')}\r\n`
 }
 
-function readme(company: Company, year: string, has: { invoices: boolean; messages: boolean; books: boolean }, today: string): string {
+function readme(company: Company, year: string, has: { invoices: boolean; messages: boolean; books: boolean; statements: boolean }, today: string): string {
   const lines = [
     `Firmony: doklady a údaje firmy ${company.name} za rok ${year}`,
     '',
@@ -93,6 +94,7 @@ function readme(company: Company, year: string, has: { invoices: boolean; messag
     'doklady.csv     zoznam dokladov: čo sme z nich prečítali, ako sú zaúčtované a ktorá platba k nim patrí',
     'platby.csv      platby z výpisov a z banky a či k nim máme doklad',
   ]
+  if (has.statements) lines.push('vypisy/         výpisy z banky, ako prišli (XML, camt.053)', 'vypisy.csv      zoznam výpisov: obdobie, účet, zostatky a čo sa s nimi stalo')
   if (has.invoices) lines.push('faktury/        faktúry, ktoré ste vystavili, ako e-faktúry (UBL 2.1, EN 16931)', 'faktury.csv     zoznam vystavených faktúr')
   if (has.messages) lines.push('spravy.txt      správy medzi Vami a nami')
   if (has.books) {
@@ -124,7 +126,7 @@ export async function exportYear(
   today: string,
 ): Promise<{ name: string; body: ReadableStream<Uint8Array> }> {
   const db = env.DB
-  const [docRows, payRows, linkRows, invoices, messageRows, books] = await Promise.all([
+  const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows] = await Promise.all([
     db
       .prepare(
         `SELECT ${DOC_COLUMNS}, p.booked_on AS paid_on, p.amount_cents AS paid_cents FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
@@ -153,6 +155,27 @@ export async function exportYear(
       .bind(company.id, year)
       .all<{ created_at: number; side: string; author_name: string | null; body: string }>(),
     booksOf(db, company),
+    // The statements of the company's accounts as they came (not one the owner said is no account of the company's).
+    db
+      .prepare(
+        `SELECT iban, created_at, source, number, from_on, to_on, opening_cents, closing_cents, entries, status, file_key FROM statements
+         WHERE company_id = ? AND status IN ('taken', 'known', 'held') AND substr(COALESCE(to_on, from_on, date(created_at, 'unixepoch')), 1, 4) = ?
+         ORDER BY COALESCE(to_on, from_on, ''), created_at, part LIMIT 20000`,
+      )
+      .bind(company.id, year)
+      .all<{
+        iban: string
+        created_at: number
+        source: string
+        number: string | null
+        from_on: string | null
+        to_on: string | null
+        opening_cents: number | null
+        closing_cents: number | null
+        entries: number
+        status: string
+        file_key: string | null
+      }>(),
   ])
   // The books of the year, when they hold anything in it.
   const bookYear = Number(year)
@@ -167,6 +190,7 @@ export async function exportYear(
     'faktury.csv',
     'spravy.txt',
     'zmluva.txt',
+    'vypisy.csv',
     'uctovnictvo/dennik.csv',
     'uctovnictvo/hlavna-kniha.csv',
     'uctovnictvo/predvaha.csv',
@@ -181,6 +205,30 @@ export async function exportYear(
     return { d, day, file, paidOn: typeof row.paid_on === 'string' ? row.paid_on : null, paidCents: typeof row.paid_cents === 'number' ? row.paid_cents : null }
   })
   const invoiceFiles = invoices.map((invoice) => ({ invoice, file: uniqueName(zipName(`faktury/${piece(invoice.number ?? invoice.id)}.xml`), taken) }))
+  // A file with statements of several accounts is one file in the archive.
+  const statementFiles = new Map<string, { name: string; when: number }>()
+  const statementList = statementRows.results.map((st) => {
+    if (st.file_key && !statementFiles.has(st.file_key)) {
+      const day = st.to_on ?? st.from_on ?? bratislava(st.created_at * 1000).day
+      statementFiles.set(st.file_key, { name: uniqueName(zipName(`vypisy/${day} ${st.iban.slice(-4)}.xml`), taken), when: st.created_at })
+    }
+    return { st, file: st.file_key ? (statementFiles.get(st.file_key)?.name ?? '') : '' }
+  })
+  const statementsCsv = csv([
+    ['Od', 'Do', 'Účet', 'Číslo výpisu', 'Počiatočný zostatok', 'Konečný zostatok', 'Pohybov', 'Prišiel', 'Stav', 'Súbor v archíve'],
+    ...statementList.map(({ st, file }) => [
+      st.from_on ?? '',
+      st.to_on ?? '',
+      st.iban,
+      st.number ?? '',
+      csvMoney(st.opening_cents),
+      csvMoney(st.closing_cents),
+      st.entries,
+      `${st.source === 'email' ? 'e-mailom' : 'nahraný'} ${bratislava(st.created_at * 1000).day}`,
+      st.status === 'held' ? 'čaká na kontrolu' : 'zaúčtovaný',
+      file,
+    ]),
+  ])
 
   const docsCsv = csv([
     [
@@ -279,9 +327,14 @@ export async function exportYear(
   const at = Math.floor(Date.now() / 1000)
   const files = env.FILES
   async function* entries(): AsyncGenerator<ZipEntry> {
-    yield { name: 'citajte.txt', when: at, data: text(readme(company, year, { invoices: invoices.length > 0, messages: messageRows.results.length > 0, books: hasBooks }, today)) }
+    yield {
+      name: 'citajte.txt',
+      when: at,
+      data: text(readme(company, year, { invoices: invoices.length > 0, messages: messageRows.results.length > 0, books: hasBooks, statements: statementList.length > 0 }, today)),
+    }
     yield { name: 'doklady.csv', when: at, data: text(docsCsv) }
     yield { name: 'platby.csv', when: at, data: text(paymentsCsv) }
+    if (statementList.length > 0) yield { name: 'vypisy.csv', when: at, data: text(statementsCsv) }
     if (invoices.length > 0) yield { name: 'faktury.csv', when: at, data: text(invoicesCsv) }
     if (messageRows.results.length > 0) yield { name: 'spravy.txt', when: at, data: text(messagesText) }
     if (hasBooks) {
@@ -293,6 +346,17 @@ export async function exportYear(
     yield { name: 'zmluva.txt', when: at, data: text(contractText(company, order)) }
     for (const { invoice, file } of invoiceFiles) {
       yield { name: file, when: invoice.createdAt, data: async () => encoder.encode(ublOf(invoice, await invoiceLines(db, invoice.id), company)) }
+    }
+    for (const [key, { name, when }] of statementFiles) {
+      if (!files) break
+      yield {
+        name,
+        when,
+        data: async () => {
+          const object = await files.get(key)
+          return object ? new Uint8Array(await object.arrayBuffer()) : null
+        },
+      }
     }
     for (const { d, file } of docs) {
       if (!file || !d.fileKey || !files) continue

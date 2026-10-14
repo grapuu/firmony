@@ -12,6 +12,7 @@ import {
   deadlines,
   demo,
   ending,
+  fio,
   format,
   ico,
   invoices,
@@ -24,6 +25,7 @@ import {
   planRows,
   reader,
   rpo,
+  statements as stmts,
   teamStore,
   terms,
   vat,
@@ -36,6 +38,7 @@ import {
 import { validateXML } from 'xmllint-wasm'
 import { crc32 as nodeCrc32 } from 'node:zlib'
 import { check, done } from './check.mjs'
+import { camtXml } from './pretend.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
 const NB = ' '
@@ -212,7 +215,10 @@ check('a notice given in the app can be taken back, with our consent given in ad
 
 // Every email to a client or the team is a doorbell: its link and its fixed words, and nothing that was typed.
 const sample = 'https://firmony.ai/app/x'
-const rung = Object.entries(bells.bell).map(([kind, make]) => [kind, make.length === 4 ? make('október 2026', '10. 11.', sample, sample) : make(sample, sample)])
+const rung = Object.entries(bells.bell).map(([kind, make]) => [
+  kind,
+  make.length === 4 ? make('október 2026', '10. 11.', sample, sample) : make.length === 3 ? make('október 2026', sample, sample) : make(sample, sample),
+])
 check(
   'every doorbell links into the app and says to answer there',
   rung.length >= 12 && rung.every(([, b]) => b.subject.startsWith('Firmony: ') && b.body.includes(sample) && b.body.includes('Na tento e-mail neodpovedajte')),
@@ -468,6 +474,119 @@ check(
   xml.readStatement(camt.replace('<Document', '<!DOCTYPE Document [<!ENTITY a "b">]>\n<Document')) === null && xml.readStatement(camt) !== null,
 )
 check('a file that is no statement is said to be none', xml.readStatement('<Invoice/>') === null && xml.readStatement('not xml at all') === null)
+check(
+  'a statement says its opening balance, its number and the days it covers',
+  statements?.[0]?.opening?.cents === 512345 && statements[0].opening.on === '2026-10-01' && statements[0].number === '2026-10-12-001' && statements[0].from === null,
+)
+
+// Bank statements as records (statements.ts): what an emailed statement has to show before it touches the books
+{
+  const iban = 'SK4009000000005198123456'
+  const daily = (day, opening, entries, extra = {}) =>
+    xml.readStatement(camtXml({ iban, from: day, to: day, opening, entries: entries.map((e, i) => ({ ref: `${day}-${i}`, day, ...e })), ...extra }))?.[0]
+  const first = daily('2026-10-12', 100000, [
+    { cents: -1240, party: 'KAVIAREN', card: true },
+    { cents: 50000, party: 'Odberateľ s. r. o.', iban: 'SK4111000000002987654321', vs: '20260007' },
+  ])
+  check(
+    'a daily statement as a bank sends it: the day, the number, both balances',
+    first?.from === '2026-10-12' && first.to === '2026-10-12' && first.number === '1' && first.opening?.cents === 100000 && first.closing?.cents === 148760 && first.entries.length === 2,
+    JSON.stringify(first && { from: first.from, to: first.to, number: first.number, opening: first.opening, closing: first.closing }),
+  )
+  check('its figures add up', stmts.sumsUp(first) && !stmts.sumsUp({ ...first, closing: { cents: 148761, on: '2026-10-12' } }) && !stmts.sumsUp({ ...first, opening: null }))
+  const none = new Set()
+  const at = (cents, on) => ({ balanceCents: cents, balanceOn: on })
+  check(
+    'an account the company does not have waits for the owner; a member who adds it on a page is trusted',
+    stmts.verdictOf(first, null, none, false).status === 'confirm' && stmts.verdictOf(first, null, none, true).status === 'taken',
+  )
+  check('a statement that opens with the last closing balance, a later day, is taken', stmts.verdictOf(first, at(100000, '2026-10-11'), none, false).status === 'taken')
+  const gap = stmts.verdictOf(first, at(99000, '2026-10-09'), none, false)
+  check(
+    'one that opens with another balance waits for the accountant, with both figures',
+    gap.status === 'held' && gap.reason.kind === 'gap' && gap.reason.opening === 100000 && gap.reason.last?.cents === 99000 && gap.reason.last?.on === '2026-10-09',
+  )
+  const overlap = stmts.verdictOf(first, at(100000, '2026-10-13'), none, false)
+  check('one of days the books already have, with movements they do not know, waits too', overlap.status === 'held' && overlap.reason.kind === 'overlap')
+  check('the same movements again are nothing new', stmts.verdictOf(first, at(148760, '2026-10-12'), new Set(first.entries.map((e) => e.ref)), false).status === 'known')
+  const forged = { ...first, closing: { cents: 999999, on: '2026-10-12' } }
+  const sum = stmts.verdictOf(forged, at(100000, '2026-10-11'), none, false)
+  check('figures that do not add up wait, whatever the balance', sum.status === 'held' && sum.reason.kind === 'sum' && sum.reason.sum === 148760 && sum.reason.closing === 999999)
+  check('without its balances it cannot be checked', stmts.verdictOf({ ...first, opening: null }, at(100000, '2026-10-11'), none, false).reason?.kind === 'opening')
+  check('an account whose balance we do not know yet waits', stmts.verdictOf(first, at(null, null), none, false).reason?.kind === 'unknown')
+  check('a member on a page is taken for an account the company has, whatever its balance', stmts.verdictOf(forged, at(1, '2026-10-30'), none, true).status === 'taken')
+  check(
+    'the month before a day',
+    stmts.lastDayBefore('2026-11-14') === '2026-10-31' &&
+      stmts.lastDayBefore('2027-03-01') === '2027-02-28' &&
+      stmts.lastDayBefore('2028-03-05') === '2028-02-29' &&
+      stmts.lastDayBefore('2027-01-10') === '2026-12-31',
+  )
+}
+
+// Fio banka by the client's token (fio.ts)
+check(
+  'a token of Fio is letters and digits',
+  fio.isFioToken('a'.repeat(64)) && fio.isFioToken('Ab12'.repeat(16)) && !fio.isFioToken('short') && !fio.isFioToken(`${'a'.repeat(63)}-`) && !fio.isFioToken(''),
+)
+check(
+  'an IBAN from an account number and a bank code',
+  fio.ibanOf('SK', '2801234567', '8330') === 'SK2283300000002801234567' && fio.ibanOf('CZ', '19-2000145399', '0800') === 'CZ6508000000192000145399' && fio.ibanOf('SK', 'abc', '8330') === null,
+)
+check('Fio dates, written or in milliseconds', fio.fioDay('2026-10-12+0200') === '2026-10-12' && fio.fioDay(Date.parse('2026-10-11T22:30:00Z')) === '2026-10-12' && fio.fioDay(null) === null)
+{
+  const col = (id, value) => ({ value, name: `c${id}`, id })
+  const tx = (cols) => Object.fromEntries(Object.entries(cols).map(([id, value]) => [`column${id}`, col(Number(id), value)]))
+  const card = fio.fioEntry(tx({ 22: 26101401, 0: '2026-10-12+0200', 1: -12.4, 14: 'EUR', 7: 'Nákup: KAVIAREN NA ROHU, KOSICE', 8: 'Platba kartou' }), 'SK')
+  check(
+    'a card payment of Fio, its merchant from what the bank wrote',
+    card?.ref === 'fio:26101401' && card.amountCents === -1240 && card.card === true && card.party === 'KAVIAREN NA ROHU, KOSICE' && card.bookedOn === '2026-10-12',
+  )
+  const paid = fio.fioEntry(
+    tx({ 22: 26101402, 0: '2026-10-12+0200', 1: 621.15, 2: '2987654321', 3: '1100', 10: 'Kníhkupectvo Na korze s. r. o.', 5: '20260007', 4: '0308', 16: 'Faktúra 20260007' }),
+    'SK',
+  )
+  check(
+    'a transfer of Fio: the account as an IBAN, the symbols from their columns',
+    paid?.partyIban === 'SK9811000000002987654321' && paid.vs === '20260007' && paid.ks === '0308' && paid.party === 'Kníhkupectvo Na korze s. r. o.' && paid.note === 'Faktúra 20260007' && !paid.card,
+    JSON.stringify(paid),
+  )
+  check('nothing booked, nothing taken', fio.fioEntry(tx({ 22: 1, 0: '2026-10-12+0200', 1: 0 }), 'SK') === null && fio.fioEntry({}, 'SK') === null)
+  const read = fio.readFio({
+    accountStatement: {
+      info: { accountId: '2801234567', iban: 'SK22 8330 0000 0028 0123 4567', closingBalance: 1840.5, dateEnd: '2026-10-13+0200' },
+      transactionList: { transaction: [tx({ 22: 7, 0: '2026-10-13+0200', 1: -160 })] },
+    },
+  })
+  check(
+    'an answer of Fio: its account, its balance at the end, its movements',
+    read?.iban === 'SK2283300000002801234567' && read.closing?.cents === 184050 && read.closing.on === '2026-10-13' && read.entries.length === 1 && read.accountId === '2801234567',
+  )
+  check('an answer that is none', fio.readFio(null) === null && fio.readFio({ nothing: 1 }) === null)
+  const answering =
+    (status, body = '') =>
+    async () =>
+      new Response(body, { status })
+  const kindOf = async (status) => {
+    try {
+      await fio.fetchFio('t'.repeat(64), '2026-10-01', '2026-10-13', answering(status))
+      return 'read'
+    } catch (err) {
+      return err instanceof fio.FioError ? err.kind : 'other'
+    }
+  }
+  check(
+    "what Fio's answers mean: too soon, a token that does not work, a fault to try later",
+    (await kindOf(409)) === 'soon' && (await kindOf(401)) === 'token' && (await kindOf(404)) === 'token' && (await kindOf(500)) === 'down' && (await kindOf(200)) === 'down',
+  )
+  const fine = await fio.fetchFio(
+    't'.repeat(64),
+    '2026-10-01',
+    '2026-10-13',
+    answering(200, JSON.stringify({ accountStatement: { info: { iban: 'SK2283300000002801234567', closingBalance: 1, dateEnd: '2026-10-13+0200' }, transactionList: { transaction: [] } } })),
+  )
+  check('and one it reads', fine.iban === 'SK2283300000002801234567' && fine.closing?.cents === 100)
+}
 const ubl = readFileSync(new URL('./fixtures/ubl-invoice.xml', import.meta.url), 'utf8')
 const received = xml.readInvoice(ubl, '57442452')
 check(

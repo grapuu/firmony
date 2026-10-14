@@ -15,6 +15,7 @@ import {
   type Company,
   type DocSource,
 } from './store'
+import { takeStatementFile, type Taken } from './statements'
 import { readInvoice, type Reading } from './xml'
 
 export const EXTENSIONS: Record<FileKind, string> = { jpeg: 'jpg', png: 'png', webp: 'webp', heic: 'heic', pdf: 'pdf', xml: 'xml' }
@@ -31,7 +32,11 @@ export interface Kept {
   known: string[]
   /** The new documents. */
   ids: string[]
+  /** Bank statements among the files: they go to the bank, not among the documents (statements.ts). */
+  statements: Taken
 }
+
+const noStatements = (): Taken => ({ statements: 0, added: 0, known: 0, confirm: 0, held: 0 })
 
 /**
  * Keeps files and writes the documents down; a document sent on a payment's page belongs to that payment. A file
@@ -41,19 +46,28 @@ export interface Kept {
 export async function keepFilesFor(
   env: AppBindings,
   company: Company,
-  by: { user: string | null; source: Extract<DocSource, 'upload' | 'email'> },
+  by: { user: string | null; source: Extract<DocSource, 'upload' | 'email'>; sender?: string | null },
   files: NewFile[],
   payment: string | null,
+  origin?: string,
 ): Promise<{ kept: Kept; work: Promise<void> | null }> {
   const db = env.DB
   const bucket = env.FILES
-  const kept: Kept = { added: 0, known: [], ids: [] }
+  const kept: Kept = { added: 0, known: [], ids: [], statements: noStatements() }
   if (!bucket) return { kept, work: null }
   const toRead: string[] = []
   const readNow: string[] = []
   const statements: D1PreparedStatement[] = []
   const seen = new Set<string>()
   for (const file of files) {
+    // A bank statement sent among documents (or by the bank itself to the company's address) goes to the bank.
+    if (file.kind === 'xml') {
+      const taken = await takeStatementFile(env, company, { user: by.user, source: by.source, sender: by.sender ?? null }, file, origin)
+      if (taken) {
+        for (const key of Object.keys(taken) as (keyof Taken)[]) kept.statements[key] += taken[key]
+        continue
+      }
+    }
     const hash = await fileHash(file.bytes)
     const existing = seen.has(hash) ? 'this-request' : await documentByHash(db, company.id, hash)
     if (existing) {

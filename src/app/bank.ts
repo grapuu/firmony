@@ -7,6 +7,7 @@
 import { BANK } from '../config'
 import { now, sha256Hex } from '../db'
 import { intakeFloor } from './ending'
+import { readFioLink } from './fio'
 import { newToken } from './session'
 import { accountFor, balanceStatement, eventStatement, importEntries, matchCompany } from './store'
 import { fingerprint, symbols, toCents, type Entry } from './xml'
@@ -242,11 +243,15 @@ export async function finishLink(env: BankEnv, args: { company: string; user: st
 /** Ends a consent: closed at the bank, and its accounts read no more. Their payments stay. */
 export async function unlink(env: BankEnv, company: string, user: string, linkId: string): Promise<boolean> {
   const db = env.DB
-  const link = await db.prepare("SELECT session_id FROM bank_links WHERE id = ? AND company_id = ? AND status IN ('active', 'expired')").bind(linkId, company).first<{ session_id: string | null }>()
+  const link = await db
+    .prepare("SELECT session_id, kind FROM bank_links WHERE id = ? AND company_id = ? AND status IN ('active', 'expired')")
+    .bind(linkId, company)
+    .first<{ session_id: string | null; kind: string }>()
   if (!link) return false
-  if (link.session_id && bankReady(env)) await call(env, 'DELETE', `/sessions/${encodeURIComponent(link.session_id)}`).catch(() => null)
+  if (link.kind === 'eb' && link.session_id && bankReady(env)) await call(env, 'DELETE', `/sessions/${encodeURIComponent(link.session_id)}`).catch(() => null)
   await db.batch([
-    db.prepare("UPDATE bank_links SET status = 'revoked' WHERE id = ? AND company_id = ?").bind(linkId, company),
+    // A Fio token is forgotten with the link: nothing at Fio needs closing, the owner deletes it there if he wants.
+    db.prepare("UPDATE bank_links SET status = 'revoked', token = NULL WHERE id = ? AND company_id = ?").bind(linkId, company),
     db.prepare('UPDATE accounts SET link_id = NULL, remote_id = NULL WHERE link_id = ? AND company_id = ?').bind(linkId, company),
     eventStatement(db, { company, user, action: 'bank.unlinked', subject: linkId }),
   ])
@@ -329,23 +334,26 @@ export type Read = { status: 'read'; added: number } | { status: 'ended' } | { s
  * Reads the accounts of one consent since the last read (a few days back, for bookings that come late; the first
  * read goes back 90 days), adds what is new and pairs it. A consent the bank says is over is marked expired.
  */
-export async function readLink(env: BankEnv, linkId: string, present: Present | null = null): Promise<Read> {
+export async function readLink(env: BankEnv, linkId: string, present: Present | null = null, fetcher: typeof fetch = fetch): Promise<Read> {
   const db = env.DB
   // A company whose contract ended more than ten days ago is read no more (point 10.4 of the terms).
   const link = await db
     .prepare(
-      `SELECT l.id, l.company_id, l.valid_until, l.synced_at FROM bank_links l JOIN companies c ON c.id = l.company_id
+      `SELECT l.id, l.company_id, l.valid_until, l.synced_at, l.kind, l.token FROM bank_links l JOIN companies c ON c.id = l.company_id
        WHERE l.id = ? AND l.status = 'active' AND c.closed_at IS NULL AND (c.ends_on IS NULL OR c.ends_on >= ?)`,
     )
     .bind(linkId, intakeFloor(bratislavaDay(now())))
-    .first<{ id: string; company_id: string; valid_until: number | null; synced_at: number | null }>()
+    .first<{ id: string; company_id: string; valid_until: number | null; synced_at: number | null; kind: string; token: string | null }>()
   if (!link) return { status: 'none' }
+  if (link.kind !== 'fio' && !bankReady(env)) return { status: 'none' }
   // Every try counts against the bank's four a day, so a failed one waits its six hours as well.
   await db.prepare('UPDATE bank_links SET tried_at = ? WHERE id = ?').bind(now(), link.id).run()
   if (link.valid_until !== null && link.valid_until < now()) {
     await db.prepare("UPDATE bank_links SET status = 'expired' WHERE id = ? AND status = 'active'").bind(link.id).run()
     return { status: 'ended' }
   }
+  // Fio banka is read by the client's own token (fio.ts).
+  if (link.kind === 'fio') return readFioLink(env, link, fetcher)
   const accounts = await db
     .prepare('SELECT id, remote_id FROM accounts WHERE link_id = ? AND company_id = ? AND remote_id IS NOT NULL')
     .bind(link.id, link.company_id)
@@ -408,14 +416,14 @@ export async function readDue(env: BankEnv): Promise<number> {
     db.prepare("UPDATE bank_links SET status = 'expired' WHERE status = 'active' AND valid_until IS NOT NULL AND valid_until < ?").bind(ts),
     db.prepare("DELETE FROM bank_links WHERE status = 'pending' AND created_at < ?").bind(ts - BANK.pendingSeconds),
   ])
-  if (!bankReady(env)) return 0
+  // Enable Banking's consents only while its application is set up; Fio's tokens always (fio.ts).
   const due = await db
     .prepare(
       `SELECT l.id FROM bank_links l JOIN companies c ON c.id = l.company_id
-       WHERE l.status = 'active' AND (l.tried_at IS NULL OR l.tried_at < ?) AND c.closed_at IS NULL AND (c.ends_on IS NULL OR c.ends_on >= ?)
+       WHERE l.status = 'active' AND (l.kind = 'fio' OR ?) AND (l.tried_at IS NULL OR l.tried_at < ?) AND c.closed_at IS NULL AND (c.ends_on IS NULL OR c.ends_on >= ?)
        ORDER BY COALESCE(l.tried_at, 0) LIMIT ?`,
     )
-    .bind(ts - BANK.syncEverySeconds, intakeFloor(bratislavaDay(ts)), BANK.linksPerRun)
+    .bind(bankReady(env) ? 1 : 0, ts - BANK.syncEverySeconds, intakeFloor(bratislavaDay(ts)), BANK.linksPerRun)
     .all<{ id: string }>()
   let read = 0
   for (const row of due.results) {
@@ -442,6 +450,8 @@ export interface BankAccountView {
 
 export interface BankLinkView {
   id: string
+  /** 'eb': a consent of Enable Banking; 'fio': Fio banka read by the client's own token. */
+  kind: 'eb' | 'fio'
   bank: string
   status: 'active' | 'expired' | 'revoked' | 'replaced'
   createdAt: number
@@ -455,7 +465,7 @@ export interface BankLinkView {
 export async function linksOf(db: D1Database, company: string): Promise<BankLinkView[]> {
   const rows = await db
     .prepare(
-      `SELECT l.id, l.bank, l.status, l.created_at, l.valid_until, l.synced_at, l.error FROM bank_links l
+      `SELECT l.id, l.kind, l.bank, l.status, l.created_at, l.valid_until, l.synced_at, l.error FROM bank_links l
        WHERE l.company_id = ? AND (l.status = 'active' OR (l.status = 'expired' AND NOT EXISTS (
          SELECT 1 FROM bank_links n WHERE n.company_id = l.company_id AND n.bank = l.bank AND n.status = 'active' AND n.created_at > l.created_at)))
        ORDER BY l.created_at DESC LIMIT 20`,
@@ -468,6 +478,7 @@ export async function linksOf(db: D1Database, company: string): Promise<BankLink
     .all<{ id: string; iban: string; balance_cents: number | null; balance_on: string | null; link_id: string }>()
   return rows.results.map((row) => ({
     id: String(row.id),
+    kind: row.kind === 'fio' ? 'fio' : 'eb',
     bank: String(row.bank),
     status: String(row.status) as BankLinkView['status'],
     createdAt: Number(row.created_at),
@@ -479,13 +490,13 @@ export async function linksOf(db: D1Database, company: string): Promise<BankLink
 }
 
 /** What the overview says about the bank: nothing, a consent that ends soon, or one that ended. */
-export type BankNotice = { kind: 'renew'; bank: string; until: number } | { kind: 'ended'; bank: string } | null
+export type BankNotice = { kind: 'renew'; bank: string; until: number; fio: boolean } | { kind: 'ended'; bank: string; fio: boolean } | null
 
 export function noticeOf(links: BankLinkView[], at: number = now()): BankNotice {
   const ended = links.find((l) => l.status === 'expired')
-  if (ended) return { kind: 'ended', bank: ended.bank }
+  if (ended) return { kind: 'ended', bank: ended.bank, fio: ended.kind === 'fio' }
   const soon = links.find((l) => l.status === 'active' && l.validUntil !== null && l.validUntil - at < BANK.renewDays * 86400)
-  return soon && soon.validUntil !== null ? { kind: 'renew', bank: soon.bank, until: soon.validUntil } : null
+  return soon && soon.validUntil !== null ? { kind: 'renew', bank: soon.bank, until: soon.validUntil, fio: soon.kind === 'fio' } : null
 }
 
 /**

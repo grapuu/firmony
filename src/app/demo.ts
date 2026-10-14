@@ -7,12 +7,15 @@
 // an answer and an invoice to book. Two requests from the site wait for the administrator (Christian).
 //
 // Everything is dated from today, so it always looks current. Every document has its original: a small PDF made
-// here from its own figures, so that "Otvoriť originál" opens something that says what the form says.
+// here from its own figures, so that "Otvoriť originál" opens something that says what the form says. Martin's bank
+// sends a statement to the company's address every day with a movement: each payment came with one, kept with its
+// file as the bank would have sent it.
 // It exists only where the Worker is told so (DEMO=1 on a developer's own machine: src/app/routes.tsx).
 import { TERMS_VERSION } from '../config'
 import { now } from '../db'
 import { COMPANY_COLUMNS, DOC_COLUMNS, DOC_FROM, companyOf, docOf, eventStatement, insertPaymentStatement, messageStatement, vatCompanyOf, vatDocOf } from './store'
 import { proposeVat } from './vat'
+import { fileHash } from './read'
 
 export const DEMO = {
   company: 'demo-company',
@@ -161,6 +164,95 @@ function originalOf(d: SampleDoc, today: string, buyer: string): { pdf: Uint8Arr
       ...(d.vs ? [{ text: `Variabilny symbol: ${d.vs}` }] : []),
     ]),
   }
+}
+
+const xmlText = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const xmlMoney = (cents: number) => (Math.abs(cents) / 100).toFixed(2)
+
+interface CamtEntry {
+  ref: string
+  day: string
+  cents: number
+  party: string | null
+  iban: string | null
+  vs: string | null
+  note: string | null
+  card: boolean
+}
+
+/** One day's statement of an account (camt.053.001.02), as a bank sends it. */
+function demoCamt(s: { iban: string; day: string; number: number; opening: number; closing: number; entries: CamtEntry[] }): string {
+  const bal = (code: string, cents: number) =>
+    `<Bal><Tp><CdOrPrtry><Cd>${code}</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">${xmlMoney(cents)}</Amt><CdtDbtInd>${cents < 0 ? 'DBIT' : 'CRDT'}</CdtDbtInd><Dt><Dt>${s.day}</Dt></Dt></Bal>`
+  const ntry = (e: CamtEntry) => {
+    const side = e.cents < 0 ? 'Cdtr' : 'Dbtr'
+    const details = [
+      e.vs ? `<Refs><EndToEndId>/VS${e.vs}/SS/KS</EndToEndId></Refs>` : '',
+      e.party || e.iban
+        ? `<RltdPties>${e.party ? `<${side}><Nm>${xmlText(e.party)}</Nm></${side}>` : ''}${e.iban ? `<${side}Acct><Id><IBAN>${e.iban}</IBAN></Id></${side}Acct>` : ''}</RltdPties>`
+        : '',
+      e.note && !e.card ? `<RmtInf><Ustrd>${xmlText(e.note)}</Ustrd></RmtInf>` : '',
+    ].join('')
+    return [
+      `<Ntry><Amt Ccy="EUR">${xmlMoney(e.cents)}</Amt><CdtDbtInd>${e.cents < 0 ? 'DBIT' : 'CRDT'}</CdtDbtInd><Sts>BOOK</Sts>`,
+      `<BookgDt><Dt>${e.day}</Dt></BookgDt><ValDt><Dt>${e.day}</Dt></ValDt><AcctSvcrRef>${xmlText(e.ref)}</AcctSvcrRef>`,
+      e.card ? '<BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>' : '',
+      details ? `<NtryDtls><TxDtls>${details}</TxDtls></NtryDtls>` : '',
+      e.card && e.party ? `<AddtlNtryInf>Platba kartou ${xmlText(e.party)}</AddtlNtryInf>` : !details && e.note ? `<AddtlNtryInf>${xmlText(e.note)}</AddtlNtryInf>` : '',
+      '</Ntry>',
+    ].join('')
+  }
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">',
+    `<BkToCstmrStmt><GrpHdr><MsgId>${s.day}-${s.number}</MsgId><CreDtTm>${s.day}T22:00:00</CreDtTm></GrpHdr>`,
+    `<Stmt><Id>${s.day}-${s.number}</Id><ElctrncSeqNb>${s.number}</ElctrncSeqNb><CreDtTm>${s.day}T22:00:00</CreDtTm>`,
+    `<FrToDt><FrDtTm>${s.day}T00:00:00</FrDtTm><ToDtTm>${s.day}T23:59:59</ToDtTm></FrToDt>`,
+    `<Acct><Id><IBAN>${s.iban}</IBAN></Id><Ccy>EUR</Ccy></Acct>`,
+    bal('OPBD', s.opening),
+    bal('CLBD', s.closing),
+    ...s.entries.map(ntry),
+    '</Stmt></BkToCstmrStmt></Document>',
+    '',
+  ].join('\n')
+}
+
+/**
+ * The statements that brought an account's payments, one for each day with a movement, as the bank sent them the
+ * next morning: taken, with their files. Their closing balances run from nothing to the account's balance.
+ */
+async function seedStatements(db: D1Database, files: R2Bucket | undefined, company: string, account: string, iban: string, ts: number): Promise<void> {
+  const rows = await db
+    .prepare('SELECT ref, booked_on, amount_cents, party, party_iban, vs, note, card FROM payments WHERE account_id = ? ORDER BY booked_on, rowid')
+    .bind(account)
+    .all<{ ref: string; booked_on: string; amount_cents: number; party: string | null; party_iban: string | null; vs: string | null; note: string | null; card: number }>()
+  const days = new Map<string, CamtEntry[]>()
+  for (const r of rows.results)
+    days.set(r.booked_on, [...(days.get(r.booked_on) ?? []), { ref: r.ref, day: r.booked_on, cents: r.amount_cents, party: r.party, iban: r.party_iban, vs: r.vs, note: r.note, card: r.card === 1 }])
+  const out: D1PreparedStatement[] = []
+  let balance = 0
+  let number = 0
+  for (const [day, entries] of days) {
+    number++
+    const opening = balance
+    const closing = opening + entries.reduce((sum, e) => sum + e.cents, 0)
+    const bytes = new TextEncoder().encode(demoCamt({ iban, day, number, opening, closing, entries }))
+    const id = `demo-st-${company}-${number}`
+    const key = files ? `companies/${company}/statements/${id}.xml` : null
+    if (files && key) await files.put(key, bytes, { httpMetadata: { contentType: 'application/xml' } })
+    const arrived = Math.min(ts - 600, Math.floor(Date.parse(`${day}T12:00:00Z`) / 1000) + 86400 - 6 * 3600 + 10 * 60)
+    out.push(
+      db
+        .prepare(
+          `INSERT INTO statements (id, company_id, account_id, iban, created_at, source, file_key, file_hash, file_name, part, number, from_on, to_on,
+             opening_cents, opening_on, closing_cents, closing_on, entries, added, known, status)
+           VALUES (?, ?, ?, ?, ?, 'email', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'taken')`,
+        )
+        .bind(id, company, account, iban, arrived, key, await fileHash(bytes), `vypis-${day}.xml`, String(number), day, day, opening, day, closing, day, entries.length, entries.length),
+    )
+    balance = closing
+  }
+  if (out.length > 0) await db.batch(out)
 }
 
 export async function seedDemo(db: D1Database, today: string, files?: R2Bucket): Promise<void> {
@@ -913,6 +1005,14 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
 
     eventStatement(db, { company: c1, user: null, action: 'demo.seeded' }),
   ])
+
+  // Martin set his bank to send a statement to the company's address every day with a movement: each payment of
+  // Ukážková firma came with one. Ateliér Nova adds its statements on the page.
+  await seedStatements(db, files, c1, DEMO.account, 'SK3112000000198742637541', ts)
+  await db
+    .prepare('UPDATE companies SET bank_setup = ? WHERE id = ?')
+    .bind(JSON.stringify({ bank: 'slsp', at: ts - 39 * 86400 }), c1)
+    .run()
 
   // What Lucia confirmed when she booked Ukážková firma's documents: their VAT as it was proposed.
   const row = await db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.id = ?`).bind(c1).first<Record<string, unknown>>()

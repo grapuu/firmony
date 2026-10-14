@@ -38,6 +38,9 @@ export const bell = {
   monthly: (month: string, by: string, link: string, settings: string) =>
     ring(`doklady za ${month} do ${by}`, `do ${by} potrebujeme doklady za ${month} a k niektorým platbám ešte chýbajú. Uvidíte ich po prihlásení:`, link, [`Pripomienky vypnete tu: ${settings}`]),
   bank: (link: string) => ring('obnovte prístup k banke', 'prístup Firmony k Vašej banke čoskoro vyprší. Obnovíte ho po prihlásení, trvá to minútu:', link),
+  statement: (month: string, link: string, settings: string) =>
+    ring(`výpis z banky za ${month}`, `do Firmony ešte neprišiel výpis z banky za ${month}. Pridáte ho po prihlásení, trvá to minútu:`, link, [`Pripomienky vypnete tu: ${settings}`]),
+  statementConfirm: (link: string) => ring('potvrďte účet z výpisu', 'do Firmony prišiel výpis z účtu, ktorý u Vás ešte nemáme. Po prihlásení potvrďte, či je to účet Vašej firmy:', link),
   contract: (link: string) =>
     ring('zmluva je uzavretá', `zmluva je uzavretá, ďakujeme za dôveru. Zmluvu, obchodné podmienky a prvé kroky nájdete v aplikácii. Prihláste sa týmto odkazom (${days}):`, link),
   welcome: (link: string) => ring('vitajte', `Vaša firma je pripravená vo Firmony. Prihláste sa týmto odkazom (${days}):`, link),
@@ -50,6 +53,7 @@ export const bell = {
   teamContract: (link: string) => ring('nová zmluva', 'klient uzavrel zmluvu online. Priraďte mu účtovníčku:', link),
   teamRequest: (link: string) => ring('nová žiadosť z webu', 'na webe prišla nová žiadosť:', link),
   teamNotice: (link: string) => ring('výpoveď zmluvy', 'klient vypovedal zmluvu alebo výpoveď vzal späť:', link),
+  teamStatement: (link: string) => ring('výpis na kontrolu', 'výpis z banky klienta nenadväzuje na predchádzajúci, preto sme ho nezaúčtovali. Pozrite sa naň:', link),
 }
 
 /** Everything a doorbell may say, for the checks: no other text reaches a mailbox of a client or of the team. */

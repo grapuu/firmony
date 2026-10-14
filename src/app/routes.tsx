@@ -4,7 +4,7 @@
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, BANK, BRAND, ENDING, TEAM } from '../config'
+import { APP, BANK, BANK_WAYS, BRAND, ENDING, FIO, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
@@ -12,7 +12,9 @@ import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPa
 import { Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
-import { BankPage } from '../views/bank'
+import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
+import { isFioToken, linkFio } from './fio'
+import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
 import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
@@ -48,7 +50,7 @@ import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
-import { remindAll, remindBankRenewals, bratislava } from './remind'
+import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { endingOf, intakeOpen, serviceOpen } from './ending'
 import { exportYear, exportYears } from './export'
 import { purgeEnded } from './purge'
@@ -298,6 +300,16 @@ function flashOf(c: Ctx): string | null {
       return t.bank.flash.odpojena
     case 'ucet-odobraty':
       return t.bank.flash.odobraty
+    case 'ucet-pridany':
+      return t.bank.statements.flash.confirmed(n)
+    case 'vypis-nezauctovany':
+      return t.bank.statements.flash.refused
+    case 'nastavene':
+      return t.bank.statements.flash.setup
+    case 'fio':
+      return t.bank.statements.flash.fio(n)
+    case 'fio-skoro':
+      return t.bank.statements.flash.fioSoon
     case 'zmluva':
       return t.contract.flash
     case 'vypoved':
@@ -354,7 +366,14 @@ appRoutes.get('/', async (c) => {
     switching: started?.situation === 'switch',
   }
   const ready = bankReady(c.env)
-  const bankNotice = ready && serviceOpen(who.company, day) ? noticeOf(await linksOf(db, company)) : null
+  // A consent of Enable Banking or a token of Fio that ends; a statement from an account the company does not have
+  // yet; the statement of last month, still to be added.
+  const open = serviceOpen(who.company, day)
+  const [bankNotice, statements, due] = await Promise.all([
+    open ? linksOf(db, company).then((links) => noticeOf(links)) : Promise.resolve(null),
+    statementsOf(db, company),
+    intakeOpen(who.company, day) ? statementDue(db, company, day) : Promise.resolve(null),
+  ])
   return shell(
     c,
     'home',
@@ -378,6 +397,9 @@ appRoutes.get('/', async (c) => {
       me={who.user.id}
       bankReady={ready}
       bankNotice={bankNotice}
+      waiting={waitingFirst(statements)}
+      owner={who.role === 'owner'}
+      statementDue={due}
       closed={closedIntake(who.company)}
     />,
   )
@@ -396,7 +418,9 @@ appRoutes.get('/platby', async (c) => {
   const filter = search ? 'all' : q === 'hotove' ? 'done' : q === 'vsetky' ? 'all' : 'missing'
   const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, filter, 400, search), countMissing(db, who.company.id)])
   const suggested = await suggestions(db, who.company.id, payments)
-  const bank = bankReady(c.env) && serviceOpen(who.company, today()) ? { links: await linksOf(db, who.company.id), today: today() } : null
+  const bank = serviceOpen(who.company, today())
+    ? { links: await linksOf(db, who.company.id), today: today(), ready: bankReady(c.env), lastStatement: await lastEmailStatement(db, who.company.id) }
+    : null
   return shell(
     c,
     'payments',
@@ -590,9 +614,22 @@ appRoutes.post('/banka', async (c) => {
   }
   if (!intakeOpen(who.company, today())) return bad(t.ending.noIntake(dayName(who.company.endsOn ?? today())), 409)
   if (typeof file !== 'object' || file === null || !('arrayBuffer' in file) || file.size === 0 || file.size > APP.fileBytes) return bad()
-  const statements = readStatement(new TextDecoder().decode(await file.arrayBuffer()))
-  if (!statements || statements.every((s) => !s.iban)) return bad()
-  const result = await importStatements(db, who.company.id, who.user.id, statements)
+  // Kept as a record with its file (statements.ts); whoever adds it on a page is signed in, so it is taken.
+  const result = await takeStatementFile(
+    c.env,
+    who.company,
+    { user: who.user.id, source: 'upload' },
+    { name: (file.name || 'vypis.xml').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) },
+    siteOrigin(c),
+  )
+  if (!result) return bad()
+  // Sent from the steps of a bank whose statements are added once a month: the page opens on that bank next time.
+  const bank = BANK_WAYS.find((w) => w.id === body.banka && w.way === 'monthly')
+  if (bank && result.statements > 0 && (await bankSetupOf(db, who.company.id))?.bank !== bank.id)
+    await db
+      .prepare('UPDATE companies SET bank_setup = ? WHERE id = ?')
+      .bind(JSON.stringify({ bank: bank.id, at: now() }), who.company.id)
+      .run()
   return c.redirect(`/app/platby?filter=vsetky&ok=vypis&n=${result.added}&k=${result.known}`, 303)
 })
 
@@ -620,10 +657,37 @@ function bankError(c: Ctx): string | null {
   }
 }
 
-async function bankPage(c: Ctx, error: string | null = null, status: ContentfulStatusCode = 200) {
+/** The way the owner said the bank comes in, and when (the bank's id among BANK_WAYS). */
+async function bankSetupOf(db: D1Database, company: string): Promise<BankSetup | null> {
+  const row = await db.prepare('SELECT bank_setup FROM companies WHERE id = ?').bind(company).first<{ bank_setup: string | null }>()
+  if (!row?.bank_setup) return null
+  try {
+    const value = JSON.parse(row.bank_setup) as { bank?: unknown; at?: unknown }
+    return typeof value.bank === 'string' && typeof value.at === 'number' ? { bank: value.bank, at: value.at } : null
+  } catch {
+    return null
+  }
+}
+
+/** The moment the newest statement came by email: the bank sends them itself. */
+async function lastEmailStatement(db: D1Database, company: string): Promise<number | null> {
+  const row = await db.prepare("SELECT MAX(created_at) AS at FROM statements WHERE company_id = ? AND source = 'email'").bind(company).first<{ at: number | null }>()
+  return typeof row?.at === 'number' ? row.at : null
+}
+
+async function bankPage(c: Ctx, error: string | null = null, status: ContentfulStatusCode = 200, fioError: string | null = null) {
   const who = c.get('who')
+  const db = c.env.DB
   const ready = bankReady(c.env)
-  const [links, banks] = await Promise.all([linksOf(c.env.DB, who.company.id), ready ? listBanks(c.env).catch(() => null) : Promise.resolve([])])
+  const [links, banks, setup, statements, lastEmail] = await Promise.all([
+    linksOf(db, who.company.id),
+    ready ? listBanks(c.env).catch(() => null) : Promise.resolve([]),
+    bankSetupOf(db, who.company.id),
+    statementsOf(db, who.company.id),
+    lastEmailStatement(db, who.company.id),
+  ])
+  const asked = c.req.query('banka') ?? (fioError ? 'fio' : null)
+  const chosen = BANK_WAYS.some((w) => w.id === asked) ? asked : (setup?.bank ?? null)
   return shell(
     c,
     'payments',
@@ -638,6 +702,12 @@ async function bankPage(c: Ctx, error: string | null = null, status: ContentfulS
       error={error ?? bankError(c)}
       open={serviceOpen(who.company, today())}
       intake={intakeOpen(who.company, today())}
+      inbox={inboxAddress(who.company)}
+      chosen={chosen}
+      setup={setup}
+      statements={statements}
+      lastEmail={lastEmail}
+      fioError={fioError}
     />,
     status,
   )
@@ -700,11 +770,19 @@ appRoutes.post('/banka/:id/nacitat', async (c) => {
   const who = c.get('who')
   const db = c.env.DB
   const id = c.req.param('id')
-  const link = ID.test(id) ? await db.prepare("SELECT id FROM bank_links WHERE id = ? AND company_id = ? AND status = 'active'").bind(id, who.company.id).first() : null
-  if (!link || !bankReady(c.env)) return c.redirect('/app/banka', 303)
+  const link = ID.test(id)
+    ? await db
+        .prepare("SELECT id, kind, tried_at FROM bank_links WHERE id = ? AND company_id = ? AND status = 'active'")
+        .bind(id, who.company.id)
+        .first<{ id: string; kind: string; tried_at: number | null }>()
+    : null
+  if (!link || (link.kind !== 'fio' && !bankReady(c.env))) return c.redirect('/app/banka', 303)
+  // Fio answers one token at most every 30 seconds.
+  if (link.kind === 'fio' && link.tried_at !== null && now() - link.tried_at < FIO.minSeconds) return c.redirect('/app/banka?ok=fio-skoro', 303)
   if (!(await withinLimit(db, 'bank-read', who.company.id, BANK.readsPerHour, 3600))) return c.redirect('/app/banka?chyba=vela', 303)
   const result = await readLink(c.env, id, { ip: c.req.header('cf-connecting-ip') ?? '', agent: c.req.header('user-agent') ?? '' })
   if (result.status === 'read') return c.redirect(result.added > 0 ? `/app/banka?ok=banka-nacitane&n=${result.added}` : '/app/banka?ok=banka-nic', 303)
+  if (result.status === 'failed' && result.why === '409 soon') return c.redirect('/app/banka?ok=fio-skoro', 303)
   return c.redirect(result.status === 'ended' ? '/app/banka?chyba=vyprsalo' : '/app/banka?chyba=banka', 303)
 })
 
@@ -723,6 +801,58 @@ appRoutes.post('/banka/ucet/:id/odobrat', async (c) => {
   const id = c.req.param('id')
   const done = ID.test(id) ? await dropAccount(c.env.DB, who.company.id, who.user.id, id) : false
   return c.redirect(done ? '/app/banka?ok=ucet-odobraty' : '/app/banka', 303)
+})
+
+/** The owner says how the bank comes in (a bank that sends its statements by itself): the page then waits for the first. */
+appRoutes.post('/banka/nastavene', async (c) => {
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const bank = BANK_WAYS.find((w) => w.id === body.banka && (w.way === 'daily' || w.way === 'email'))
+  if (!bank) return c.redirect('/app/banka#postup', 303)
+  const db = c.env.DB
+  await db.batch([
+    db.prepare('UPDATE companies SET bank_setup = ? WHERE id = ?').bind(JSON.stringify({ bank: bank.id, at: now() }), who.company.id),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'bank.setup', detail: { bank: bank.id } }),
+  ])
+  return c.redirect(`/app/banka?banka=${bank.id}&ok=nastavene#postup-banka`, 303)
+})
+
+/** Fio banka by the owner's token: read at once (fio.ts). */
+appRoutes.post('/banka/fio', async (c) => {
+  const who = c.get('who')
+  if (!serviceOpen(who.company, today())) return c.redirect('/app/banka?chyba=koniec', 303)
+  const body = await c.req.parseBody()
+  const token = typeof body.token === 'string' ? body.token.replace(/\s+/g, '') : ''
+  if (!isFioToken(token)) return bankPage(c, null, 422, t.bank.free.fioBad)
+  if (!(await withinLimit(c.env.DB, 'fio-link', who.company.id, 10, 3600))) return c.redirect('/app/banka?chyba=vela', 303)
+  const result = await linkFio(c.env, { company: who.company.id, user: who.user.id, token })
+  if (result.status === 'refused') return bankPage(c, null, 422, t.bank.free.fioRefused)
+  return c.redirect(result.status === 'linked' ? `/app/banka?ok=fio&n=${result.added}` : '/app/banka?ok=fio-skoro', 303)
+})
+
+/** The owner's answer about an account a statement came for (statements.ts). */
+appRoutes.post('/vypisy/:id/ucet', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return bankPage(c, t.bank.onlyOwner, 403)
+  const id = c.req.param('id')
+  const body = await c.req.parseBody()
+  const done = ID.test(id) ? await answerAccount(c.env, who.company, who.user.id, id, body.ano === '1', siteOrigin(c)) : null
+  if (!done) return c.redirect('/app/banka#vypisy', 303)
+  later(c, flushOutbox(c.env.DB, c.env.EMAIL))
+  return c.redirect(body.ano === '1' ? `/app/banka?ok=ucet-pridany&n=${done.taken}#vypisy` : '/app/banka?ok=vypis-nezauctovany#vypisy', 303)
+})
+
+/** A statement's file as it came: for the company's people, downloaded and never shown. */
+appRoutes.get('/vypisy/:id/subor', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const st = ID.test(id) ? await statementById(c.env.DB, who.company.id, id) : null
+  const object = st?.fileKey && c.env.FILES ? await c.env.FILES.get(st.fileKey) : null
+  if (!st || !object) return shell(c, 'payments', t.errors.notFound, <Missing />, 404)
+  const name = `vypis-${(st.to ?? st.from ?? 'banka').replace(/[^0-9-]/g, '')}-${st.iban.slice(-4)}.xml`
+  return new Response(object.body, {
+    headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' },
+  })
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1534,6 +1664,7 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
   try {
     await remindAll(env, at)
     await remindBankRenewals(env, at)
+    await remindStatements(env, at)
   } catch (err) {
     console.error('reminders failed', err instanceof Error ? err.name : 'error')
   }

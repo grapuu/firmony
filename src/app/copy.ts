@@ -218,7 +218,7 @@ export const app = typesetAll({
     transfer: 'Prevod',
     incoming: 'Prišlo na účet',
     statementTitle: 'Výpis z banky',
-    statementLead: 'Kým sa banka nedá prepojiť priamo, pridajte sem výpis z internet bankingu vo formáte XML (camt.053). Platby, ktoré už máme, sa nezdvoja.',
+    statementLead: 'Výpis z internet bankingu vo formáte XML (camt.053) pridáte aj sem. Platby, ktoré už máme, sa nezdvoja.',
     statementButton: 'Pridať výpis',
     statementDone: (added: number, known: number) =>
       typeset(
@@ -342,7 +342,7 @@ export const app = typesetAll({
       declaration: { title: 'Povedzte nám, kto stojí za firmou', lead: 'Údaje, ktoré od účtovnej firmy vyžaduje zákon proti praniu špinavých peňazí. Päť minút.', link: 'Vyplniť' },
       poa: { title: 'Podpíšte plnú moc', lead: 'Aby sme mohli podávať priznania a výkazy za Vás. S eID to trvá dve minúty.', link: 'Plná moc' },
       switching: { title: 'Dajte vedieť doterajšej účtovníčke', lead: 'Výpoveď a žiadosť o odovzdanie podkladov máme pripravenú.', link: 'Výpoveď' },
-      payments: { title: 'Pridajte výpis z banky', lead: 'Súbor XML z internet bankingu. Platby sa objavia a doklady k nim priradíme sami.', link: 'Pridať výpis' },
+      payments: { title: 'Nastavte banku', lead: 'Vyberte svoju banku a ukážeme Vám, čo nastaviť. Pri niektorých bankách potom platby chodia samy.', link: 'Nastaviť banku' },
       bank: { title: 'Prepojte banku', lead: 'Platby sa potom budú načítavať samy, štyrikrát denne. Stačí sa prihlásiť vo svojej banke.', link: 'Prepojiť banku' },
       upload: { title: 'Odfoťte prvý bloček', lead: 'Alebo nahrajte faktúru. Prečítame ju a priradíme k platbe.', link: 'Pridať doklad' },
       email: { title: 'Preposielajte faktúry z e-mailu', lead: 'Na Vašu adresu pre doklady. Dá sa nastaviť, aby sa preposielali samy.', link: 'Ako na to' },
@@ -626,6 +626,132 @@ export const app = typesetAll({
       go: 'Prepojiť banku',
       linked: (bank: string) => typeset(`${bank} je prepojená`),
       manage: 'Spravovať',
+      // Without Enable Banking: the bank comes in by statements and Fio's token.
+      freeTitle: 'Nastavte banku',
+      freeLead: 'Vyberte svoju banku a ukážeme Vám, čo nastaviť. Pri niektorých bankách potom platby chodia samy.',
+      freeGo: 'Nastaviť banku',
+      working: (when: string) => typeset(`Výpisy chodia. Posledný ${when}.`),
+    },
+    // The bank without an aggregator (14 October 2026): what each bank can do, and how it is set once.
+    free: {
+      intro: 'Platby z banky dostaneme bez poplatkov. Vyberte svoju banku a ukážeme Vám presne, čo nastaviť. Stačí raz.',
+      title: 'Vaša banka',
+      otherTitle: 'Alebo bez prepojenia',
+      pick: 'Vyberte banku',
+      change: 'Iná banka',
+      fileTitle: 'Pridať výpis ručne',
+      fileLead: 'Výpis z iného účtu alebo za staršie obdobie pridáte aj sem, vo formáte XML (camt.053). Platby, ktoré už máme, sa nezdvoja.',
+      wayShort: {
+        daily: 'Samo, každý deň',
+        email: 'Samo, e-mailom',
+        token: 'Samo, cez token',
+        monthly: 'Raz za mesiac',
+      },
+      lead: {
+        slsp: 'Slovenská sporiteľňa vie po každom dni s pohybom na účte poslať výpis vo formáte XML na e-mail. Nastavíte to raz a potom už nerobíte nič.',
+        csob: 'ČSOB vie posielať elektronické výpisy e-mailom. Nastavíte to raz v internet bankingu a potom už nerobíte nič.',
+        fio: 'Fio banka dáva svojim klientom zadarmo token na čítanie pohybov na účte. Vložíte ho raz a platby sa potom načítavajú samy, štyrikrát denne.',
+        tatra: 'Tatra banka posiela e-mailom len zašifrovaný výpis v PDF, ten neprečítame. Výpis do účtovníctva vo formáte XML si raz za mesiac stiahnete a pridáte. Trvá to minútu.',
+        revolut: 'Revolut Business výpisy sám neposiela. Raz za mesiac si výpis stiahnete vo formáte XML a pridáte ho. Trvá to minútu.',
+        wise: 'Wise výpisy sám neposiela. Raz za mesiac si výpis stiahnete vo formáte CAMT.053 a pridáte ho. Trvá to minútu.',
+        generic:
+          'Raz za mesiac si v internet bankingu stiahnete výpis vo formáte XML a pridáte ho. Trvá to minútu. Ak Vaša banka vie výpisy v XML posielať e-mailom sama, nastavte našu adresu a nemusíte robiť nič.',
+      },
+      steps: {
+        slsp: [
+          'Prihláste sa do George. Pri účte firmy otvorte nastavenia výpisov a zadajte nový elektronický výpis. V Business24 je to Žiadosť o nové nastavenie výpisov.',
+          'Formát zvoľte SEPA XML a periodicitu denne.',
+          'Ako e-mail zadajte adresu Vašej firmy vo Firmony, je nižšie.',
+          'Uložte. Prvý výpis príde po najbližšom dni s pohybom na účte a hneď ho uvidíte tu.',
+        ],
+        csob: [
+          'V internetbankingu ČSOB nastavte zasielanie elektronických výpisov e-mailom. V ČSOB BusinessBanking je to v notifikáciách.',
+          'Formát zvoľte XML a frekvenciu denne, ak ju banka ponúka.',
+          'Ako e-mail zadajte adresu Vašej firmy vo Firmony, je nižšie.',
+          'Uložte. Prvý výpis uvidíte tu hneď, ako príde.',
+        ],
+        fio: [
+          'V internetbankingu Fio kliknite na Nastavenia a otvorte záložku API.',
+          'Pridajte nový token pre účet firmy. Zvoľte Sledovanie účtu, teda len čítanie, a platnosť 180 dní.',
+          'Token potvrďte, skopírujte ho a vložte sem.',
+        ],
+        tatra: [
+          'V internet bankingu Tatra banky otvorte Účty a zvoľte Výpis do účtovníctva.',
+          'Vyberte minulý mesiac a formát XML (camt.053).',
+          'Súbor nájdete v Schránke správ. Stiahnite ho.',
+          'Pridajte ho tu alebo ho pošlite e-mailom na adresu Vašej firmy vo Firmony.',
+        ],
+        revolut: [
+          'V Revolut Business otvorte Domov, potom ponuku s tromi bodkami a Výpisy (Statements).',
+          'Zvoľte výpis z účtu (Account statement) za minulý mesiac vo formáte XML (Camt.053).',
+          'Pridajte ho tu alebo ho pošlite e-mailom na adresu Vašej firmy vo Firmony.',
+        ],
+        wise: [
+          'Vo Wise kliknite na svoje iniciály a otvorte Statements and reports, potom Statements.',
+          'Stiahnite výpis za minulý mesiac vo formáte CAMT.053.',
+          'Pridajte ho tu alebo ho pošlite e-mailom na adresu Vašej firmy vo Firmony.',
+        ],
+        generic: [
+          'V internet bankingu nájdite výpisy z účtu firmy.',
+          'Stiahnite výpis za minulý mesiac vo formáte XML (camt.053, niekde sa volá SEPA XML).',
+          'Pridajte ho tu alebo ho pošlite e-mailom na adresu Vašej firmy vo Firmony.',
+        ],
+      },
+      address: 'Adresa Vašej firmy vo Firmony',
+      monthlyNote: 'Výpis za predchádzajúci mesiac pridajte do 5. dňa. Keď bude chýbať, pripomenieme Vám to.',
+      done: 'Hotovo, nastavené',
+      doneLead: 'Keď to v banke nastavíte, kliknite. Prvý výpis potom čakáme my.',
+      waiting: (bank: string) => typeset(`Čakáme na prvý výpis. ${bank} ho pošle po najbližšom dni s pohybom na účte.`),
+      late: (address: string) => typeset(`Výpis zatiaľ neprišiel. Skontrolujte v banke, či je zadaná adresa ${address} a formát XML. Ak na účte nebol žiadny pohyb, výpis ešte neodišiel.`),
+      working: (when: string) => typeset(`Výpisy chodia samy. Posledný prišiel ${when}.`),
+      fioLabel: 'Token z Fio banky',
+      fioButton: 'Pripojiť Fio banku',
+      fioNote: 'Token dovoľuje len čítať pohyby na účte. Platiť ani nič meniť ním nemôžeme. Platí najviac 180 dní, potom ho za minútu vymeníte za nový.',
+      fioRenew: 'Vložiť nový token',
+      fioWorking: 'Fio banka je pripojená. Platby sa načítavajú samy.',
+      howTo: 'Ako je to nastavené',
+      fioBad: 'Toto nevyzerá ako token z Fio banky. Skopírujte ho celý, je to dlhý reťazec písmen a číslic.',
+      fioRefused: 'Fio banka tento token neprijala. Skontrolujte, či je platný a či ste ho skopírovali celý.',
+      fioDown: 'Fio banka teraz neodpovedá. Token sme si nechali a platby načítame o chvíľu samy.',
+    },
+    statements: {
+      title: 'Výpisy',
+      lead: 'Každý výpis si uchovávame desať rokov, ako to chce zákon o účtovníctve.',
+      empty: 'Zatiaľ sme nedostali žiadny výpis.',
+      status: { taken: 'Zaúčtovaný', known: 'Už sme ho mali', confirm: 'Čaká na Vás', held: 'Čaká na účtovníčku', refused: 'Nezaúčtovaný' },
+      source: { upload: 'pridaný v aplikácii', email: 'prišiel e-mailom' },
+      entries: (n: number) => typeset(`${n} ${plural(n, 'pohyb', 'pohyby', 'pohybov')}`),
+      download: 'Stiahnuť',
+      confirmTitle: 'Prišiel výpis z nového účtu',
+      confirmLead: (iban: string) => typeset(`Výpis je z účtu ${iban}. Ten u Vás zatiaľ nemáme. Je to účet Vašej firmy?`),
+      confirmYes: 'Áno, je to účet firmy',
+      confirmNo: 'Nie, nie je',
+      confirmOwner: 'Či je to účet firmy, potvrdí majiteľ firmy.',
+      heldLead: 'Nenadväzuje na predchádzajúci výpis, preto ho skontroluje účtovníčka.',
+      due: {
+        title: (month: string) => typeset(`Pridajte výpis za ${month}`),
+        lead: 'Výpis z banky za predchádzajúci mesiac potrebujeme do 5. dňa, aby sme platby stihli zaúčtovať. Trvá to minútu.',
+        go: 'Pridať výpis',
+      },
+      flash: {
+        confirmed: (n: number) =>
+          typeset(
+            n === 0
+              ? 'Účet je pridaný.'
+              : n === 1
+                ? 'Účet je pridaný a výpis je zaúčtovaný.'
+                : `Účet je pridaný a ${n} ${plural(n, 'výpis', 'výpisy', 'výpisov')} ${plural(n, 'je', 'sú', 'je')} ${plural(n, 'zaúčtovaný', 'zaúčtované', 'zaúčtovaných')}.`,
+          ),
+        refused: 'Výpis sme nezaúčtovali.',
+        setup: 'Ďakujeme. Prvý výpis uvidíte tu, keď ho banka pošle.',
+        fio: (n: number) =>
+          typeset(
+            n === 0 ? 'Fio banka je pripojená. Zatiaľ žiadne platby.' : `Fio banka je pripojená. ${plural(n, 'Pribudla', 'Pribudli', 'Pribudlo')} ${n} ${plural(n, 'platba', 'platby', 'platieb')}.`,
+          ),
+        fioSoon: 'Token máme. Fio banka chce medzi načítaniami aspoň 30 sekúnd, platby načítame o chvíľu samy.',
+        waiting: 'Výpis je z účtu, ktorý u Vás ešte nemáme. Potvrďte, prosím, že je to účet firmy.',
+        held: 'Výpis nenadväzuje na predchádzajúci, pozrie sa naň účtovníčka.',
+      },
     },
   },
   contract: {

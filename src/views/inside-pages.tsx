@@ -2,7 +2,8 @@
 // a payment has none. Everything else is shown so that nobody has to wonder whether it is in order.
 import type { FC } from 'hono/jsx'
 import type { BankLinkView, BankNotice } from '../app/bank'
-import { BankCard, BankNoticeBar } from './bank'
+import { BankCard, BankNoticeBar, ConfirmAccount } from './bank'
+import type { StatementView } from '../app/statements'
 import { APP, ART, type Art } from '../config'
 import { formatEur } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, monthName, readableName, signed } from '../app/copy'
@@ -212,6 +213,11 @@ export interface OverviewProps {
   /** Whether the bank can be linked, and what the overview says about a consent that ends. */
   bankReady?: boolean
   bankNotice?: BankNotice
+  /** Statements from accounts the company does not have yet, one for each account (the owner answers them). */
+  waiting?: StatementView[]
+  owner?: boolean
+  /** The month whose bank statement is still to be added (YYYY-MM). */
+  statementDue?: string | null
   /** Ten days past the contract's last day no document is taken, and this says why. */
   closed?: string | null
 }
@@ -238,7 +244,7 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps
   const list = [
     { done: steps.declaration, href: '/app/vyhlasenie', text: s.declaration, optional: false },
     { done: steps.poa, href: '/app/plna-moc', text: s.poa, optional: false },
-    bankReady ? { done: steps.payments, href: '/app/banka#prepojit', text: s.bank, optional: false } : { done: steps.payments, href: '/app/platby#vypis', text: s.payments, optional: false },
+    bankReady ? { done: steps.payments, href: '/app/banka#prepojit', text: s.bank, optional: false } : { done: steps.payments, href: '/app/banka#postup', text: s.payments, optional: false },
     { done: steps.upload, href: '/app/doklady#pridat', text: s.upload, optional: false },
     ...(steps.switching ? [{ done: false, href: '/app/prechod', text: s.switching, optional: true }] : []),
     { done: steps.email, href: '/app/firma#doklady-emailom', text: s.email, optional: true },
@@ -324,6 +330,20 @@ export const Overview: FC<OverviewProps> = (props) => {
         )}
         <Flash text={props.flash} />
         <BankNoticeBar notice={props.bankNotice ?? null} today={props.today} />
+        {ended ? null : (props.waiting ?? []).map((st) => <ConfirmAccount st={st} owner={Boolean(props.owner)} />)}
+        {!ended && props.statementDue ? (
+          <section class="stmtdue" aria-labelledby="vypis-chyba">
+            <div class="stmtdue__text">
+              <h2 id="vypis-chyba" class="stmtdue__title">
+                {app.bank.statements.due.title(monthName(`${props.statementDue}-01`))}
+              </h2>
+              <p>{app.bank.statements.due.lead}</p>
+            </div>
+            <a class="btn btn--blue btn--small" href="/app/banka#pridat">
+              {app.bank.statements.due.go}
+            </a>
+          </section>
+        ) : null}
         {props.steps && !ended ? <FirstSteps steps={props.steps} bankReady={props.bankReady} /> : null}
         {ended ? null : props.paymentsCount === 0 ? (
           props.steps ? null : (
@@ -480,7 +500,7 @@ export const PaymentsPage: FC<{
   warn?: string | null
   search?: string
   /** The bank, when it can be linked: linked (and when it was read), or the way to link it. */
-  bank?: { links: BankLinkView[]; today: string } | null
+  bank?: { links: BankLinkView[]; today: string; ready: boolean; lastStatement: number | null } | null
   /** Ten days past the contract's last day no statement is taken. */
   closed?: boolean
 }> = ({ filter, payments, missingCount, suggested, flash, warn, search = '', bank, closed = false }) => (
@@ -527,14 +547,14 @@ export const PaymentsPage: FC<{
         </section>
       ))
     )}
-    {bank ? <BankCard links={bank.links} today={bank.today} /> : null}
+    {bank ? <BankCard links={bank.links} today={bank.today} ready={bank.ready} lastStatement={bank.lastStatement} /> : null}
     <section class="bankfile" aria-labelledby="vypis">
       <Tile art={ART.paperBank} size="md" />
       <div class="bankfile__text">
         <h2 id="vypis" class="bankfile__title">
-          {bank ? app.bank.statementTitle : app.payments.statementTitle}
+          {bank ? (bank.ready ? app.bank.statementTitle : app.bank.free.fileTitle) : app.payments.statementTitle}
         </h2>
-        <p>{bank ? app.bank.statementLead : app.payments.statementLead}</p>
+        <p>{bank ? (bank.ready ? app.bank.statementLead : app.bank.free.fileLead) : app.payments.statementLead}</p>
       </div>
       {closed ? null : (
         <form class="bankfile__form" method="post" action="/app/banka" enctype="multipart/form-data" data-upload>

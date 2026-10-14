@@ -3,7 +3,7 @@
 // beside the form, and "Zaúčtovať a ďalší" goes straight to the next one.
 import type { Child, FC } from 'hono/jsx'
 import { APP, ART, BRAND, PLANS, type Art } from '../config'
-import { formatEur } from '../format'
+import { formatEur, formatEurExact } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../app/copy'
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
 import type { LedgerLine } from '../app/ledger'
@@ -14,6 +14,7 @@ import { TAX_OFFICES } from '../app/vat-xml'
 import { VatFields, type VatForm } from './vat'
 import { moneyText } from '../app/vat-form'
 import type { Paper, PoaState } from '../app/papers'
+import type { StatementView } from '../app/statements'
 import type { DeclarationState, Level } from '../app/aml'
 import { addDays, endingOf, type Ending } from '../app/ending'
 import { team as t } from '../team/copy'
@@ -304,6 +305,8 @@ export interface ClientPageProps {
   vat?: Child
   /** The books in short (views/ledger.tsx). */
   ledger?: Child
+  /** The newest statements of the bank, and every one that waits (app/statements.ts). */
+  statements?: StatementView[]
   /** The company's details as they were sent, with what is wrong with them. */
   details?: { values: DetailsValues; errors: DetailsErrors }
 }
@@ -517,6 +520,66 @@ const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; no
   )
 }
 
+/** Why a statement waits, said with its figures. */
+function heldText(st: StatementView, today: string): string {
+  const r = st.reason
+  if (!r) return t.client.statements.heldTitle
+  if (r.kind === 'gap' && r.last) return t.client.statements.reason.gap(formatEurExact(r.opening ?? 0), formatEurExact(r.last.cents), dayName(r.last.on, today))
+  if (r.kind === 'sum') return t.client.statements.reason.sum(formatEurExact(r.opening ?? 0), formatEurExact(r.sum ?? 0), formatEurExact(r.closing ?? 0))
+  if (r.kind === 'overlap' && r.last) return t.client.statements.reason.overlap(dayName(r.last.on, today))
+  if (r.kind === 'unknown') return t.client.statements.reason.unknown
+  return t.client.statements.reason.opening
+}
+
+/** The client's statements: the ones that wait first, with what the accountant can do about each. */
+const StatementsCard: FC<{ company: Company; list: StatementView[]; now: number }> = ({ company, list, now }) => {
+  const today = dayOf(now)
+  const s = app.bank.statements
+  return (
+    <section class="info" id="vypisy" aria-labelledby="vypisy-t">
+      <h2 id="vypisy-t" class="info__title">
+        {t.client.statements.title}
+      </h2>
+      <p class="info__lead">{t.client.statements.lead}</p>
+      {list.length === 0 ? (
+        <p class="info__empty">{t.client.statements.empty}</p>
+      ) : (
+        <ul class="stmts__list">
+          {[...list]
+            .sort((a, z) => Number(z.status === 'held') - Number(a.status === 'held'))
+            .map((st) => (
+              <li class={`stmts__item${st.status === 'held' ? ' stmts__item--held' : ''}`}>
+                <div class="stmts__main">
+                  <p class="stmts__period">
+                    {st.from && st.to ? (st.from === st.to ? dayName(st.from, today) : `${dayName(st.from, today)} až ${dayName(st.to, today)}`) : whenName(st.createdAt, now)}
+                  </p>
+                  <p class="stmts__meta">
+                    <span class="stmts__iban">{groupIban(st.iban)}</span>
+                    <span>{s.entries(st.entries)}</span>
+                    <span>{s.source[st.source]}</span>
+                  </p>
+                  {st.status === 'held' ? <p class="stmts__note">{heldText(st, today)}</p> : null}
+                  {st.status === 'confirm' ? <p class="stmts__note">{t.client.statements.ownerWaits}</p> : null}
+                </div>
+                <span class={`pill ${st.status === 'taken' ? 'pill--ok' : st.status === 'held' || st.status === 'confirm' ? 'pill--amber' : 'pill--mist'}`}>{s.status[st.status]}</span>
+                {st.status === 'held' ? (
+                  <form class="stmts__actions" method="post" action={`/ucto/klienti/${company.id}/vypisy/${st.id}`}>
+                    <button class="btn btn--blue btn--small" type="submit" name="akcia" value="prijat">
+                      {t.client.statements.take}
+                    </button>
+                    <button class="btn btn--line btn--small" type="submit" name="akcia" value="odmietnut">
+                      {t.client.statements.refuse}
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 export const ClientPage: FC<ClientPageProps> = (p) => {
   const c = p.company
   const admin = p.user.team === 'admin'
@@ -556,6 +619,11 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
         </a>
         <a href="#spravy">{t.client.messages}</a>
         <a href="#chyba">{t.clients.missing}</a>
+        {(p.statements ?? []).some((st) => st.status === 'held') ? (
+          <a href="#vypisy">
+            {t.client.statements.title} <span class="count count--amber">{(p.statements ?? []).filter((st) => st.status === 'held').length}</span>
+          </a>
+        ) : null}
         <a href="#zmluva">{p.declaration === 'checked' ? t.client.poaState[p.poa] : t.aml.state[p.declaration]}</a>
         <a href={`/ucto/klienti/${c.id}/dph`}>{t.client.vatCard}</a>
         <a href={`/ucto/klienti/${c.id}/kniha`}>{t.ledger.card}</a>
@@ -665,6 +733,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
               </>
             )}
           </section>
+          <StatementsCard company={c} list={p.statements ?? []} now={p.now} />
         </div>
         <aside class="pgrid__side">
           <ContractCard

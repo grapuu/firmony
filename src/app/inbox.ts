@@ -6,6 +6,7 @@
 import PostalMime from 'postal-mime'
 import { APP, BRAND } from '../config'
 import { now, withinLimit } from '../db'
+import { flushOutbox } from '../mail'
 import { app as t } from './copy'
 import { intakeOpen } from './ending'
 import { keepFilesFor, type NewFile } from './intake'
@@ -32,7 +33,7 @@ export interface Mail {
   setReject(reason: string): void
 }
 
-export type Received = 'unknown' | 'ended' | 'too-large' | 'too-many' | 'unreadable' | 'added' | 'known' | 'empty'
+export type Received = 'unknown' | 'ended' | 'too-large' | 'too-many' | 'unreadable' | 'added' | 'known' | 'empty' | 'statement'
 
 /** Takes the documents of one email. What has to be read afterwards is handed to `later`. */
 export async function receiveMail(env: AppBindings, mail: Mail, later: (work: Promise<unknown>) => void): Promise<Received> {
@@ -91,13 +92,22 @@ export async function receiveMail(env: AppBindings, mail: Mail, later: (work: Pr
     await db.batch(statements)
     return 'empty'
   }
-  const { kept, work } = await keepFilesFor(env, company, { user: null, source: 'email' }, files, null)
+  const { kept, work } = await keepFilesFor(env, company, { user: null, source: 'email', sender }, files, null)
+  // A statement the bank sends every day is the bank, not a document: said so in the record of what came.
+  const outcome: Received = kept.added > 0 ? 'added' : kept.statements.statements > 0 ? 'statement' : 'known'
   await db.batch([
-    inboundStatement(db, company.id, sender, subject, kept.added, kept.added > 0 ? 'added' : 'known'),
-    eventStatement(db, { company: company.id, user: null, action: 'mail.received', detail: { files: files.length, added: kept.added, known: kept.known.length } }),
+    inboundStatement(db, company.id, sender, subject, kept.added, outcome),
+    eventStatement(db, {
+      company: company.id,
+      user: null,
+      action: 'mail.received',
+      detail: { files: files.length, added: kept.added, known: kept.known.length, statements: kept.statements.statements },
+    }),
   ])
   if (work) later(work)
-  return kept.added > 0 ? 'added' : 'known'
+  // A statement that waits for the owner or the accountant rings now, not with the next run of the schedule.
+  if (kept.statements.confirm + kept.statements.held > 0) later(flushOutbox(db, env.EMAIL))
+  return outcome
 }
 
 function inboundStatement(db: D1Database, company: string, sender: string | null, subject: string | null, files: number, status: Received): D1PreparedStatement {

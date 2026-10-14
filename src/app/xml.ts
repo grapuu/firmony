@@ -103,7 +103,14 @@ export interface Entry {
 export interface Statement {
   iban: string | null
   currency: string | null
+  /** The balance the statement opens with (OPBD, or PRCD: the one the statement before closed with). */
+  opening: { cents: number; on: string } | null
   closing: { cents: number; on: string } | null
+  /** The bank's number of the statement (its legal sequence, else its electronic one, else its id). */
+  number: string | null
+  /** The days it covers, as the bank gives them. */
+  from: string | null
+  to: string | null
   entries: Entry[]
 }
 
@@ -136,13 +143,20 @@ export function readStatement(xml: string): Statement[] | null {
     const iban = text(at(stmt, 'Acct', 'Id', 'IBAN'))
     const currency = text(at(stmt, 'Acct', 'Ccy'))
     let closing: Statement['closing'] = null
+    let opening: Statement['opening'] = null
     for (const bal of list((stmt as Record<string, unknown>).Bal)) {
       const type = text(at(bal, 'Tp', 'CdOrPrtry', 'Cd'))
-      if (type !== 'CLBD') continue
+      if (type !== 'CLBD' && type !== 'OPBD' && type !== 'PRCD') continue
       const cents = toCents(text(at(bal, 'Amt')))
       const on = day(text(at(bal, 'Dt', 'Dt')) ?? text(at(bal, 'Dt', 'DtTm')))
-      if (cents !== null && on) closing = { cents: text(at(bal, 'CdtDbtInd')) === 'DBIT' ? -cents : cents, on }
+      if (cents === null || !on) continue
+      const balance = { cents: text(at(bal, 'CdtDbtInd')) === 'DBIT' ? -cents : cents, on }
+      if (type === 'CLBD') closing = balance
+      else if (type === 'OPBD' || !opening) opening = balance
     }
+    const number = text(at(stmt, 'LglSeqNb')) ?? text(at(stmt, 'ElctrncSeqNb')) ?? text(at(stmt, 'Id'))
+    const from = day(text(at(stmt, 'FrToDt', 'FrDtTm')) ?? text(at(stmt, 'FrToDt', 'FrDt')))
+    const to = day(text(at(stmt, 'FrToDt', 'ToDtTm')) ?? text(at(stmt, 'FrToDt', 'ToDt')))
     const entries: Entry[] = []
     const seen = new Map<string, number>()
     for (const ntry of list((stmt as Record<string, unknown>).Ntry)) {
@@ -190,7 +204,7 @@ export function readStatement(xml: string): Statement[] | null {
         })
       })
     }
-    statements.push({ iban: iban ? iban.replace(/\s/g, '').toUpperCase() : null, currency, closing, entries })
+    statements.push({ iban: iban ? iban.replace(/\s/g, '').toUpperCase() : null, currency, opening, closing, number: number ? number.slice(0, 60) : null, from, to, entries })
   }
   return statements
 }

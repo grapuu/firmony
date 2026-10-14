@@ -131,7 +131,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          'Ak firma prepojí banku, pohyby na jej účtoch číta s jej súhlasom Enable Banking Oy (Fínsko), poskytovateľ služby informovania o platobnom účte. Účtovníctvo vedú naši externí účtovníci na Slovensku, viazaní mlčanlivosťou.',
+          'Ak firma prepojí banku, pohyby na jej účtoch číta s jej súhlasom Enable Banking Oy (Fínsko), poskytovateľ služby informovania o platobnom účte. Ak firma vloží token Fio banky, pohyby na účte čítame priamo vo Fio banke; token slúži len na čítanie a zabudneme ho, keď firma banku odpojí. Výpisy, ktoré banka firmy posiela na adresu firmy pre doklady, spracúvame ako jej doklady. Účtovníctvo vedú naši externí účtovníci na Slovensku, viazaní mlčanlivosťou.',
         )}
       </p>
       <p>
@@ -153,7 +153,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          `Údaje o zmluve, plnú moc a záznamy z identifikácie klienta (vyhlásenie, riziko a vnútorné oznámenia) 5 rokov od skončenia zmluvy, ako ukladá zákon č. 297/2008 Z. z., a potom ich vymažeme; faktúry za naše služby 10 rokov. Pri e-mailoch, ktoré prídu na adresu firmy pre doklady, uchovávame odosielateľa a predmet ${RETENTION.outboxDays} dní a prílohy ako doklady firmy. Doklady a ostatné údaje firmy si firma po skončení zmluvy stiahne v aplikácii a po uplynutí 90 dní od skončenia ich vymažeme, spolu s prístupmi ľudí, ktorí už k žiadnej inej firme nepatria.`,
+          `Údaje o zmluve, plnú moc a záznamy z identifikácie klienta (vyhlásenie, riziko a vnútorné oznámenia) 5 rokov od skončenia zmluvy, ako ukladá zákon č. 297/2008 Z. z., a potom ich vymažeme; faktúry za naše služby 10 rokov. Pri e-mailoch, ktoré prídu na adresu firmy pre doklady, uchovávame odosielateľa a predmet ${RETENTION.outboxDays} dní a prílohy ako doklady firmy, výpisy z banky rovnako. Doklady a ostatné údaje firmy si firma po skončení zmluvy stiahne v aplikácii a po uplynutí 90 dní od skončenia ich vymažeme, spolu s prístupmi ľudí, ktorí už k žiadnej inej firme nepatria.`,
         )}
       </p>
 

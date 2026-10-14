@@ -64,6 +64,8 @@ const files = new Map([
   ['/app/prihlasenie', 'prihlasenie.html'],
   ['/app/prihlasenie/poslane', 'prihlasenie-poslane.html'],
 ])
+// The steps for every bank of the list (the sample company's bank sends its statements by itself).
+for (const id of ['slsp', 'tatra', 'vub', 'csob', 'fio', '365', 'mbank', 'unicredit', 'prima', 'revolut', 'wise', 'ina']) files.set(`/app/banka?banka=${id}`, `banka-${id}.html`)
 const all = await html('/app/platby?filter=vsetky')
 const payments = [...all.matchAll(/href="(\/app\/platby\/[0-9a-f-]{36})"[\s\S]*?row__title">([^<]+)</g)].map((m) => ({ path: m[1], name: m[2] }))
 payments.forEach((p, i) => files.set(p.path, `platba-${i + 1}.html`))
@@ -96,8 +98,6 @@ if (!cafe || !fuel || !office) throw new Error('the sample company is not fresh:
 function local(href, extra) {
   const [pathAndQuery, hash] = href.split('#')
   const anchor = hash ? `#${hash}` : ''
-  // Every bank of the list leads to the same sample of a bank's sign-in.
-  if (pathAndQuery.startsWith('/app/banka/pripojit')) return 'banka-schvalenie.html'
   const file = extra.get(pathAndQuery) ?? files.get(pathAndQuery) ?? files.get(pathAndQuery.split('?')[0])
   if (file) return file + anchor
   if (pathAndQuery.startsWith('/art/') || pathAndQuery.startsWith('/fonts/')) return pathAndQuery.slice(1)
@@ -132,6 +132,8 @@ function script(leads) {
     invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, odberateľ ju dostane e-mailom s QR kódom na platbu a keď ju zaplatí, sama sa označí ako zaplatená.',
     invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
     bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky alebo sa banka či účet odpojí.',
+    setup: 'Toto je náhľad: nič sa neukladá. V aplikácii stránka odteraz čaká na prvý výpis z tejto banky a povie Vám, keď príde.',
+    account: 'Toto je náhľad: nič sa neukladá. V aplikácii sa podľa Vašej odpovede výpis zaúčtuje, alebo sa nezaúčtuje nič z neho.',
     team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.',
     vat: 'Toto je náhľad: nič sa nesťahuje. V aplikácii sa stiahne súbor XML, ktorý účtovníčka načíta v eDane, skontroluje a podpíše.',
     books: 'Toto je náhľad: nič sa neukladá. V aplikácii sa to hneď zapíše do knihy a predvaha, denník aj saldokonto sa prepočítajú.',
@@ -154,6 +156,8 @@ function script(leads) {
     if (a === '/app/vyhlasenie') return 'decl';
     if (/^\\/app\\/firma\\/vypoved/.test(a)) return 'notice';
     if (/^\\/app\\/banka\\/.+\\/(nacitat|odpojit|odobrat)$/.test(a)) return 'bank';
+    if (a === '/app/banka/nastavene') return 'setup';
+    if (/^\\/app\\/vypisy\\//.test(a)) return 'account';
     if (/^\\/app\\/faktury\\/[^/]+\\/(poslat|pripomenut)$/.test(a)) return 'invoiceMail';
     if (/^\\/app\\/faktury/.test(a)) return 'invoice';
     if (/^\\/ucto\\/doklady\\//.test(a)) return 'book';
@@ -208,7 +212,7 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="ucto-dph.html">DPH</a><a href="ucto-kniha.html">Účtovná kniha</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a><a href="koniec.html">Koniec zmluvy</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="ucto-dph.html">DPH</a><a href="ucto-kniha.html">Účtovná kniha</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="vypis-novy-ucet.html">Nový účet</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a><a href="koniec.html">Koniec zmluvy</a></div>`
 
 function rewrite(page, extra) {
   return page
@@ -246,6 +250,7 @@ const leads = {
   '/app/prihlasenie': 'prihlasenie-poslane.html',
   '/app/firma/prepnut': 'atelier.html',
   '/app/faktury/demo-inv-3|vystavit': 'faktura-vystavena.html',
+  '/app/banka/fio': 'banka-fio-pripojena.html',
 }
 
 // The first state: three payments without a document.
@@ -269,6 +274,12 @@ const body = new URLSearchParams({ dovod: 'other', poznamka: 'Tankovanie služob
 const res = await call(`${fuel.path}/bez-dokladu`, { method: 'POST', body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
 if (res.status !== 303) throw new Error(`no document: ${res.status}`)
 await write('platba-tankovanie-netreba.html', await html(`${fuel.path}?ok=netreba`))
+
+// A statement that does not follow the last one comes by email: it waits for Lucia on the team's side.
+{
+  const sent = await call('/playground/vypis?typ=medzera')
+  if (sent.status !== 303) throw new Error(`a statement by email: ${sent.status}`)
+}
 
 // The accountants' side, signed in as the sample administrator, as the client left things: the café receipt waits
 // to be booked with its photo, and the fuel waits to be checked.
@@ -414,48 +425,32 @@ await write('vsetko-mame.html', await html('/app'))
   await write('faktura-vystavena.html', page)
 }
 
-// The bank linked by open banking, last of what the client does: the sample of the bank's sign-in, the bank's page
-// after it, and invoice 20260007, which the money from the bank has paid by itself.
+// The bank as it comes from January 2027, last of what the client does: the next statement arrives by email (and its
+// money pays invoice 20260007 by itself), a statement of an account the company does not have asks Martin, and Fio
+// banka is linked by its token.
 {
-  const start = await call('/app/banka/pripojit?banka=Tatra%20banka')
-  const signInAtBank = new URL(start.headers.get('location') ?? '')
-  const back = new URL(signInAtBank.searchParams.get('spat') ?? '')
-  const linked = await call(`${back.pathname}${back.search}`)
-  if (linked.status !== 303) throw new Error(`linking the bank: ${linked.status}`)
-  await new Promise((resolve) => setTimeout(resolve, 2000))
-  await write('banka-prepojena.html', await html(linked.headers.get('location') ?? '/app/banka'))
+  const next = await call('/playground/vypis?typ=dalsi')
+  if (next.status !== 303) throw new Error(`the next statement: ${next.status}`)
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await write('banka-vypis.html', await html('/app/banka'))
   await write('faktura-2-zaplatena.html', await html('/app/faktury/demo-inv-2'))
-  const sample = `<!doctype html>
-<html lang="sk">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Prihlásenie v banke (ukážka)</title>
-<style>
-${css}
-${EXTRA_CSS}
-.bankdemo { display: grid; place-items: center; min-height: 100vh; padding: 24px 16px; background: var(--mist); }
-.bankdemo__card { display: grid; gap: 14px; width: min(100%, 440px); padding: 28px; border: 1px solid var(--line); border-radius: 18px; background: var(--white); box-shadow: var(--shadow); }
-.bankdemo__card p { margin: 0; color: var(--text); line-height: 1.55; }
-.bankdemo__small { color: var(--soft) !important; font-size: 0.875rem; }
-.bankdemo__card h1 { margin: 0; color: var(--ink); font-size: 1.375rem; }
-.bankdemo__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
-</style>
-</head>
-<body class="inside">
-<main class="bankdemo">
-<div class="bankdemo__card">
-<p class="bankdemo__small">Takto to vyzerá vo Vašej banke (ukážka). Prihlásite sa ako vždy, aj potvrdením v mobile.</p>
-<h1>Povoliť prístup k účtom?</h1>
-<p>Firmony cez Enable Banking chce 180 dní čítať pohyby a zostatok na podnikateľskom účte SK31 1200 0000 1987 4263 7541. Platiť ani nič meniť nemôže.</p>
-<div class="bankdemo__actions"><a class="btn btn--blue" href="banka-prepojena.html">Povoliť prístup</a><a class="btn btn--line" href="banka.html">Zrušiť</a></div>
-</div>
-</main>
-${BAR}
-</body>
-</html>
-`
-  await writeFile(join(out, 'banka-schvalenie.html'), sample)
+  const fresh = await call('/playground/vypis?typ=novy')
+  if (fresh.status !== 303) throw new Error(`a statement of a new account: ${fresh.status}`)
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  const overview = await html('/app')
+  const action = overview.match(/action="(\/app\/vypisy\/[0-9a-f-]{36}\/ucet)"/)?.[1]
+  if (!action) throw new Error('no statement waits for the owner')
+  const answered = { [`${action}|1`]: 'banka-ucet-pridany.html' }
+  await write('vypis-novy-ucet.html', overview, answered)
+  // Martin's yes: the account is the company's and its statement is taken.
+  const yes = await call(action, { method: 'POST', body: new URLSearchParams({ ano: '1' }), headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+  if (yes.status !== 303) throw new Error(`the owner's yes: ${yes.status}`)
+  await write('banka-ucet-pridany.html', await html(yes.headers.get('location')?.replace(/^https?:\/\/[^/]+/, '') ?? '/app/banka'))
+  const token = 'Fio' + 'a1B2c3D4e5'.repeat(6) + 'f'
+  const linked = await call('/app/banka/fio', { method: 'POST', body: new URLSearchParams({ token }), headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+  if (linked.status !== 303) throw new Error(`Fio by its token: ${linked.status}`)
+  const fioPage = linked.headers.get('location')?.replace(/^https?:\/\/[^/]+/, '') ?? '/app/banka'
+  await write('banka-fio-pripojena.html', await html(`${fioPage.split('#')[0]}&banka=fio#postup-banka`))
 }
 
 // The end of a contract, as the client sees it twenty days after its last day (only the download is left), and the
@@ -500,8 +495,10 @@ const written = [
   'faktura-vystavena.html',
   'faktura-odberatel-3.html',
   'faktura-20260008.xml',
-  'banka-prepojena.html',
-  'banka-schvalenie.html',
+  'banka-vypis.html',
+  'vypis-novy-ucet.html',
+  'banka-ucet-pridany.html',
+  'banka-fio-pripojena.html',
   'faktura-2-zaplatena.html',
   'koniec.html',
   'koniec-firma.html',

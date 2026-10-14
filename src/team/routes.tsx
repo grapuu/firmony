@@ -16,6 +16,7 @@ import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
 import { app, dayName, readableName, signed, whenName } from '../app/copy'
 import { endingOf } from '../app/ending'
 import { linksOf } from '../app/bank'
+import { answerHeld, statementsOf } from '../app/statements'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
@@ -238,6 +239,10 @@ teamRoutes.use('*', async (c, next) => {
 
 function flashOf(c: Ctx): string | null {
   switch (c.req.query('ok')) {
+    case 'vypis-zauctovany':
+      return t.client.statements.taken
+    case 'vypis-nezauctovany':
+      return t.client.statements.refused
     case 'zauctovane':
       return t.book.bookedFlash
     case 'pravidlo':
@@ -357,16 +362,19 @@ async function clientPage(
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
-  const [banks, vat, books] = await Promise.all([linksOf(db, company.id), vatSummary(db, company, day), booksOf(db, company)])
+  const [banks, vat, books, statements] = await Promise.all([linksOf(db, company.id), vatSummary(db, company, day), booksOf(db, company), statementsOf(db, company.id, 6)])
   const active = banks.find((l) => l.status === 'active')
   const ended = banks.find((l) => l.status === 'expired')
+  const mailed = statements.find((st) => st.source === 'email')
   const bankLine = active
     ? active.syncedAt
       ? t.client.bank(active.bank, whenName(active.syncedAt, day))
       : t.client.bankWaiting(active.bank)
     : ended
       ? t.client.bankEnded(ended.bank)
-      : t.client.noBank
+      : mailed
+        ? t.client.bankStatements(whenName(mailed.createdAt, day))
+        : t.client.noBank
   return shell(
     c,
     'clients',
@@ -395,6 +403,7 @@ async function clientPage(
       earliestEnd={noticeEndsOn(day)}
       vat={<VatCard company={company} view={vat.view} needs7a={vat.needs7a} today={day} />}
       ledger={<LedgerCard company={company} tb={trialBalance(books, Number(day.slice(0, 4)), Number(day.slice(5, 7)))} waiting={blockingCount(books, day)} />}
+      statements={statements}
       {...extra}
     />,
     status,
@@ -561,6 +570,18 @@ teamRoutes.post('/klienti/:id/pripomenut', async (c) => {
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}?ok=pripomenute#chyba`, 303)
+})
+
+/** A statement that did not follow the one before: taken as it is, or not (statements.ts). */
+teamRoutes.post('/klienti/:id/vypisy/:sid', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const sid = c.req.param('sid')
+  const done = /^[0-9a-f-]{36}$/.test(sid) ? await answerHeld(c.env, company, who.user.id, sid, body.akcia === 'prijat') : false
+  if (!done) return c.redirect(`/ucto/klienti/${company.id}#vypisy`, 303)
+  return c.redirect(`/ucto/klienti/${company.id}?ok=${body.akcia === 'prijat' ? 'vypis-zauctovany' : 'vypis-nezauctovany'}#vypisy`, 303)
 })
 
 teamRoutes.post('/klienti/:id/udaje', async (c) => {
