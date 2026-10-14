@@ -3528,6 +3528,23 @@ check(
   const undone = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-w' ORDER BY created_at DESC, rowid DESC").first()
   check('opened again: not closed, its incomes kept, the client told', res.status === 303 && run?.closed_at === null && JSON.parse(run.lines)[0]?.gross === 150000 && undone?.body.includes('rušíme'))
 
+  // A closed snapshot is retained even beyond the navigation window and the years supported for new calculations.
+  const historical = '2025-01'
+  const historicalLines = JSON.parse(run.lines).map((line) => ({ ...line, slip: { ...line.slip, period: historical, net: 112233 } }))
+  await db.prepare("INSERT INTO payroll_runs (company_id, period, payday, lines, closed_at, closed_on, closed_by) VALUES ('co-w', ?, '2025-02-10', ?, ?, '2025-02-10', ?)").bind(historical, JSON.stringify(historicalLines), nowS, lucia.id).run()
+  res = await acc.get(`${base}?obdobie=${historical}`)
+  page = plain(await res.text())
+  check('a historical closed payroll remains in navigation with its stored net, without recalculation', res.status === 200 && page.includes(`obdobie=${historical}`) && page.includes('1 122,33 €'))
+  res = await acc.get(`${base}/paska?obdobie=${historical}&zamestnanec=${kept.id}`)
+  check('a historical payslip is downloadable outside the recent six months and supported years', res.status === 200 && plain(await res.text()).includes('1 122,33 €'))
+  res = await acc.post(`${base}/otvorit`, { obdobie: historical })
+  check('a closed historical payroll cannot be reopened into unsupported calculation rules', res.headers.get('location')?.includes('mzdy-nepodporovane') && (await db.prepare("SELECT closed_at FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(historical).first())?.closed_at === nowS)
+  await db.prepare("INSERT INTO payroll_runs (company_id, period, payday, lines) VALUES ('co-w', '2030-01', '2030-02-10', '[]')").run()
+  res = await acc.get(`${base}?obdobie=2030-01`)
+  check('an unsupported open year explains the missing rules instead of inventing a payslip', res.status === 200 && plain(await res.text()).includes('Pravidlá chýbajú'))
+  res = await acc.post(base, { obdobie: '2030-01', akcia: 'uzavriet' })
+  check('an unsupported year cannot be computed or closed by posting directly', res.headers.get('location')?.includes('mzdy-nepodporovane') && (await db.prepare("SELECT closed_at FROM payroll_runs WHERE company_id = 'co-w' AND period = '2030-01'").first())?.closed_at === null)
+
   await db.batch([
     db.prepare("DELETE FROM payments WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM accounts WHERE company_id = 'co-w'"),

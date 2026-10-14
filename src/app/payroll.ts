@@ -46,11 +46,16 @@ export const PAYROLL_YEARS: Readonly<Record<number, PayrollYear>> = {
   2027: { year: 2027, subsistence: 29522, averageWage: 162000, minimumWage: 97200 },
 }
 
-/** The year's figures, or the nearest year known (a later year until its figures are added). */
+/** Whether a period has its own rules. Never substitute another year's legislation. */
+export function supportsPayrollPeriod(period: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(period) && Object.hasOwn(PAYROLL_YEARS, Number(period.slice(0, 4)))
+}
+
+/** The year's figures; an unsupported year must be added and verified before it is calculated. */
 export function payrollYear(year: number): PayrollYear {
-  const known = Object.keys(PAYROLL_YEARS).map(Number).sort((a, b) => a - b)
-  const pick = known.filter((y) => y <= year).pop() ?? (known[0] as number)
-  return PAYROLL_YEARS[pick] as PayrollYear
+  const rules = Object.hasOwn(PAYROLL_YEARS, year) ? PAYROLL_YEARS[year] : undefined
+  if (!rules) throw new RangeError(`Unsupported payroll year: ${year}`)
+  return rules
 }
 
 export type SocialKind = 'sickness' | 'oldAge' | 'disability' | 'unemployment' | 'support' | 'guarantee' | 'accident' | 'reserve'
@@ -97,6 +102,8 @@ export interface PayInput {
 
 export interface Payslip {
   period: string
+  /** Present on newly calculated slips; older closed snapshots remain readable without it. */
+  rulesYear?: number
   gross: number
   /** The social assessment base (capped) and each kind of insurance, the employee's and the employer's. */
   socialBase: number
@@ -168,15 +175,16 @@ export function childBonus(child: Child, period: string): number {
   return 0
 }
 
-/** The deductible item of health insurance for a month's income (§ 16(16)): 380 € off below 380 €, less above it, none from 570 €. */
-export function healthDeductible(income: number): number {
+/** The deductible item (§ 16(16)–(18)): prorated for days employed, rounded up to the cent. Defaults to a whole month. */
+export function healthDeductible(income: number, days = 1, daysInMonth = 1): number {
   if (income >= 57000) return 0
-  if (income <= 38000) return income
-  return Math.max(0, Math.ceil(38000 - (income - 38000) * 2))
+  const whole = income <= 38000 ? Math.max(0, income) : Math.max(0, 38000 - (income - 38000) * 2)
+  return Math.ceil((whole * Math.min(daysInMonth, Math.max(0, days))) / daysInMonth)
 }
 
 /** One employee's month. */
 export function payslip(input: PayInput): Payslip {
+  if (!supportsPayrollPeriod(input.period)) throw new RangeError(`Unsupported payroll period: ${input.period}`)
   const y = payrollYear(Number(input.period.slice(0, 4)))
   const gross = Math.max(0, Math.round(input.gross))
   const socialBase = Math.min(gross, socialCap(y))
@@ -188,13 +196,13 @@ export function payslip(input: PayInput): Payslip {
   const socialEmployer = Object.values(employer).reduce((s, v) => s + (v ?? 0), 0)
 
   const half = input.disabled ? 2 : 1
-  const healthDeduction = input.healthDeduction ? healthDeductible(gross) : 0
+  const healthDeduction = input.healthDeduction ? healthDeductible(gross, input.days, monthDays(input.period)) : 0
   let healthEmployee = floorCents(((gross - healthDeduction) * HEALTH.employee) / half / 10000)
   const healthEmployer = floorCents((gross * HEALTH.employer) / half / 10000)
   // The minimum advance: the employee's and the employer's rate of the subsistence minimum, each rounded down (VšZP:
   // 45,45 € in 2026), by the days employed; what the two fall short of it the employee pays (§ 16a).
   let healthTopUp = 0
-  if (!input.healthMinimumExempt) {
+  if (!input.healthMinimumExempt && !input.disabled) {
     const days = Math.min(monthDays(input.period), Math.max(0, input.days))
     const whole = floorCents((y.subsistence * HEALTH.employee) / half / 10000) + floorCents((y.subsistence * HEALTH.employer) / half / 10000)
     const minimum = floorCents((whole * days) / monthDays(input.period))
@@ -222,6 +230,7 @@ export function payslip(input: PayInput): Payslip {
   const net = gross - socialEmployee - healthEmployee - withheld
   return {
     period: input.period,
+    rulesYear: y.year,
     gross,
     socialBase,
     social: { employee, employer },

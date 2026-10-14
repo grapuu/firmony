@@ -3388,7 +3388,10 @@ async function zipped(entries, note) {
       payroll.monthlyBands(y26).join() === '366528,502910,625086' &&
       Math.round(154.8 * y27.subsistence) === 4570006,
   )
-  check('the social insurance cap: 16 764 € in 2026, 17 820 € in 2027', payroll.socialCap(y26) === 1676400 && payroll.socialCap(y27) === 1782000 && payroll.payrollYear(2030).year === 2027)
+  check('the social insurance cap: 16 764 € in 2026, 17 820 € in 2027', payroll.socialCap(y26) === 1676400 && payroll.socialCap(y27) === 1782000)
+  let unsupported = false
+  try { payroll.payrollYear(2030) } catch (e) { unsupported = e instanceof RangeError }
+  check('an unsupported payroll year cannot silently borrow another year\'s rules', unsupported && payroll.supportsPayrollPeriod('2026-09') && !payroll.supportsPayrollPeriod('2025-09') && !payroll.supportsPayrollPeriod('2026-13'))
   const pay = (fields) => payroll.payslip({ period: '2026-10', gross: 0, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false, days: 31, ...fields })
   let p = pay({ gross: 150000, children: [{ name: 'Andrea', born: '2016-04-02' }] })
   check(
@@ -3419,6 +3422,11 @@ async function zipped(entries, note) {
     payroll.healthDeductible(55000) === 4000 && pay({ gross: 55000, healthDeduction: true }).healthEmployee === 2550 && payroll.healthDeductible(30000) === 30000 && payroll.healthDeductible(57000) === 0,
   )
   check('a person with a disability: 2,5 % and 5,5 %', pay({ gross: 150000, disabled: true }).healthEmployee === 3750 && pay({ gross: 150000, disabled: true }).healthEmployer === 8250)
+  p = pay({ period: '2026-09', gross: 50000, days: 15, healthDeduction: true })
+  check('the deductible item follows days employed: 500 € for half of September leaves 70 € deducted and 21,50 € employee insurance', p.healthDeduction === 7000 && p.healthEmployee === 2150, JSON.stringify(p))
+  check('a partial-month deductible is rounded up to a cent, including income below 380 €', payroll.healthDeductible(50000, 1, 31) === 452 && payroll.healthDeductible(30000, 15, 30) === 15000 && payroll.healthDeductible(50000, 0, 30) === 0)
+  p = pay({ gross: 10000, disabled: true })
+  check('disability itself exempts a low wage from the minimum health advance', p.healthEmployee === 250 && p.healthEmployer === 550 && p.healthTopUp === 0, JSON.stringify(p))
   check(
     "the child bonus by age: 100 € to the month the child turns 15, 50 € to the month it turns 18, from the month it is born",
     payroll.childBonus({ name: 'a', born: '2012-05-10' }, '2027-05') === 10000 &&

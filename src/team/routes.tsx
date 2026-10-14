@@ -96,8 +96,10 @@ import {
   type Employee,
   type Insurer,
   type PayrollSettings,
+  type PayrollRun,
 } from '../app/payroll-store'
 import { addDays } from '../app/ending'
+import { supportsPayrollPeriod } from '../app/payroll'
 import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
@@ -388,6 +390,8 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.employee
     case 'mzdy-nastavenie':
       return t.payroll.flashes.settings
+    case 'mzdy-nepodporovane':
+      return t.payroll.unsupported
     case 'kniha-ucet':
       return t.ledger.flashes.account
     case 'kniha-interny':
@@ -1559,13 +1563,13 @@ teamRoutes.post('/klienti/:id/zavierka/zrusit', async (c) => {
 // payroll settings, an employee's payslip
 // ---------------------------------------------------------------------------------------------------------------
 
-/** The months a company's payroll opens for: the last six up to this one, none before its first employee started. */
-function payrollMonths(employees: readonly Employee[], today: string): string[] {
+/** Recent work plus every stored month. Historical closed payslips must never expire from navigation. */
+function payrollMonths(employees: readonly Employee[], today: string, runs: readonly PayrollRun[]): string[] {
   const current = today.slice(0, 7)
   const first = employees.reduce<string | null>((min, e) => (!min || e.startedOn < min ? e.startedOn : min), null)?.slice(0, 7) ?? current
   const out: string[] = []
   for (let m = current; out.length < 6 && m >= first; m = prevPeriod(m)) out.unshift(m)
-  return out
+  return [...new Set([...out, ...runs.map((r) => r.period).filter((p) => /^\d{4}-(0[1-9]|1[0-2])$/.test(p))])].sort()
 }
 
 /** The month of the address when it is one of them; else last month when it is, else this one. */
@@ -1611,11 +1615,11 @@ async function payrollPage(
   const db = c.env.DB
   const today = dayOf(now())
   const { employees, runs, settings } = await payrollData(db, company)
-  const months = payrollMonths(employees, today)
+  const months = payrollMonths(employees, today, runs)
   const period = payrollPeriod(asked, months, today)
   const run = runs.find((r) => r.period === period) ?? null
-  const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : today <= monthRange(m).to ? 'running' : 'open')
-  const slips = monthSlips(period, employees, run)
+  const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : !supportsPayrollPeriod(m) ? 'unsupported' : today <= monthRange(m).to ? 'running' : 'open')
+  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run)
   const payday = run?.payday ?? paydayOf(period, settings)
   const insurers = [...new Set<Insurer>([...employees.map((e) => e.insurer), ...(Object.keys(settings.health) as Insurer[])])]
   const failed = Boolean(forms.month || forms.settings)
@@ -1658,12 +1662,13 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const body = await c.req.parseBody()
   const today = dayOf(now())
   const { employees, runs, settings } = await payrollData(db, company)
-  const months = payrollMonths(employees, today)
+  const months = payrollMonths(employees, today, runs)
   const period = typeof body.obdobie === 'string' && months.includes(body.obdobie) ? body.obdobie : null
   if (!period) return c.text('Bad request', 400)
   const back = `/ucto/klienti/${company.id}/mzdy?obdobie=${period}`
   const run = runs.find((r) => r.period === period) ?? null
   if (run?.closedOn) return c.redirect(`${back}&ok=mzdy-uz`, 303)
+  if (!supportsPayrollPeriod(period)) return c.redirect(`${back}&ok=mzdy-nepodporovane`, 303)
   const values: Record<string, string> = {}
   const errors: FieldErrors = {}
   const proposed = monthSlips(period, employees, run)
@@ -1717,6 +1722,7 @@ teamRoutes.post('/klienti/:id/mzdy/otvorit', async (c) => {
   const body = await c.req.parseBody()
   const period = typeof body.obdobie === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(body.obdobie) ? body.obdobie : null
   if (!period) return c.text('Bad request', 400)
+  if (!supportsPayrollPeriod(period)) return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${period}&ok=mzdy-nepodporovane`, 303)
   const db = c.env.DB
   const who = c.get('who')
   const [gone] = await db.batch([reopenRunStatement(db, company.id, period)])
@@ -1862,10 +1868,12 @@ teamRoutes.get('/klienti/:id/mzdy/paska', async (c) => {
   if (!company) return missingPage(c)
   const today = dayOf(now())
   const { employees, runs } = await payrollData(c.env.DB, company)
-  const months = payrollMonths(employees, today)
+  const months = payrollMonths(employees, today, runs)
   const period = c.req.query('obdobie') ?? ''
   if (!months.includes(period)) return missingPage(c)
-  const line = monthSlips(period, employees, runs.find((r) => r.period === period) ?? null).find((l) => l.employeeId === c.req.query('zamestnanec'))
+  const run = runs.find((r) => r.period === period) ?? null
+  if (!run?.closedOn && !supportsPayrollPeriod(period)) return missingPage(c)
+  const line = monthSlips(period, employees, run).find((l) => l.employeeId === c.req.query('zamestnanec'))
   if (!line) return missingPage(c)
   return shell(c, 'clients', `${t.payroll.payslip}: ${line.name}`, <PayslipPage company={company} period={period} line={line} today={today} />)
 })

@@ -16,8 +16,8 @@ import { Flash, Heading } from './inside'
 
 const w = t.payroll
 
-export type MonthState = 'open' | 'closed' | 'running'
-const STATE_PILL: Record<MonthState, string> = { open: 'pill--amber', closed: 'pill--ok', running: 'pill--grey' }
+export type MonthState = 'open' | 'closed' | 'running' | 'unsupported'
+const STATE_PILL: Record<MonthState, string> = { open: 'pill--amber', closed: 'pill--ok', running: 'pill--grey', unsupported: 'pill--amber' }
 
 export type SlipLine = RunLine & { slip: Payslip; days: number }
 
@@ -247,7 +247,9 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                 <span class="tick tick--green" aria-hidden="true" /> {w.closedLine(dayName(p.run.closedOn, p.today), p.run.closedByName ?? '')}
               </p>
             ) : null}
-            {p.slips.length === 0 ? (
+            {p.state === 'unsupported' ? (
+              <p class="info__lead">{w.unsupported}</p>
+            ) : p.slips.length === 0 ? (
               <p class="info__empty">{p.employees.length === 0 ? w.noEmployees : w.nobodyInMonth}</p>
             ) : (
               <form method="post" action={base(c)} novalidate>
