@@ -184,7 +184,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   "The bank without an aggregator" under the client's app. All checks passing (units 466, runtime 552); 31 rules
   taken out once and every one held (five only after a check was added for each: the yes that judges the next
   statements as they come, the accountant told of them, statements the bank sends and accounts a link reads never
-  asked for, the 3rd and no other day, a bank of once a month remembered). Pushed at 14:00 (COMMIT_SHA). The app
+  asked for, the 3rd and no other day, a bank of once a month remembered). Pushed at 14:10 (`fc41ff6`). The app
   preview is version 13 (the sample company's bank sends its statements by email; "Banka" and "Nový účet" in its bar;
   every bank's steps; the next statement paying invoice 20260007; Fio linked; Lucia's statement to check).
 
