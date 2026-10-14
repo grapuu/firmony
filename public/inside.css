@@ -2873,6 +2873,19 @@ select.field__input {
   white-space: nowrap;
 }
 
+/* An eKasa receipt's code under its name, typed whole: it fills its line and wraps anywhere, never at its dash alone. */
+.book__code {
+  display: grid;
+  min-width: 0;
+  color: var(--soft);
+}
+
+.book__codevalue {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
 .book__file {
   display: grid;
   justify-items: center;

@@ -137,6 +137,9 @@ export interface Doc {
   foreign: boolean | null
   correctsHint: string | null
   linesHint: VatLine[]
+  /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
+  ekasaUid: string | null
+  ekasaOkp: string | null
 }
 
 export interface Message {
@@ -242,7 +245,8 @@ function paymentOf(row: Row): Payment {
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
-  d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party`
+  d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
+  d.ekasa_uid, d.ekasa_okp`
 export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
 
 export function docOf(row: Row): Doc {
@@ -287,6 +291,8 @@ export function docOf(row: Row): Doc {
     foreign: row.foreign_party === null || row.foreign_party === undefined ? null : row.foreign_party === 1,
     correctsHint: str(row.corrects),
     linesHint: isVatMode(row.vat_mode) ? [] : vatLinesOf(row.vat_lines),
+    ekasaUid: str(row.ekasa_uid),
+    ekasaOkp: str(row.ekasa_okp),
   }
 }
 
@@ -677,7 +683,7 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
     .prepare(
       `UPDATE documents SET status = 'read', read_by = ?, kind = ?, party = ?, party_ico = ?, party_iban = ?, number = ?, vs = ?,
          issued_on = ?, due_on = ?, total_cents = ?, vat_cents = ?, currency = ?, category = ?, proposal = ?,
-         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?
+         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?, ekasa_uid = ?, ekasa_okp = ?
        WHERE id = ? AND company_id = ? AND status = 'reading'`,
     )
     .bind(
@@ -696,6 +702,8 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
       reading.category ?? null,
       reading.category ? 'ai' : null,
       ...vatHints(reading),
+      reading.ekasaUid ?? null,
+      reading.ekasaOkp ?? null,
       doc,
       company,
     )
@@ -727,15 +735,25 @@ export function ruleUpsertStatement(db: D1Database, company: string, key: string
     .bind(company, key, name, category, vatDeduct ? 1 : 0, now(), by)
 }
 
-/** Marks a document as a suspected duplicate of an older one of the company; such a document is never paired by itself. */
+/**
+ * Marks a document as a suspected duplicate of an older one of the company; such a document is never paired by
+ * itself. Looked at: the latest documents of the same amount and, for an eKasa receipt, those with its codes or of
+ * its day (a code or the amount may have been read wrong once).
+ */
 export async function markDuplicate(db: D1Database, company: string, doc: string): Promise<string | null> {
   const self = await getDocument(db, company, doc)
-  if (!self || self.totalCents === null) return null
+  const codes = Boolean(self?.ekasaUid || self?.ekasaOkp)
+  if (!self || (self.totalCents === null && !codes)) return null
   const rows = await db
-    .prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.id <> ? AND d.deleted_at IS NULL AND d.total_cents = ? AND d.created_at <= ? ORDER BY d.created_at LIMIT 20`)
-    .bind(company, doc, self.totalCents, self.createdAt)
+    .prepare(
+      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ?1 AND d.id <> ?2 AND d.deleted_at IS NULL AND d.created_at <= ?3
+         AND (d.total_cents = ?4 OR d.ekasa_uid = ?5 OR d.ekasa_okp = ?6 OR (?7 = 1 AND d.issued_on = ?8 AND (d.ekasa_uid IS NOT NULL OR d.ekasa_okp IS NOT NULL)))
+       ORDER BY d.created_at DESC LIMIT 50`,
+    )
+    .bind(company, doc, self.createdAt, self.totalCents, self.ekasaUid, self.ekasaOkp, codes ? 1 : 0, self.issuedOn)
     .all<Row>()
-  const twin = rows.results.map(docOf).find((other) => sameDocument(self, other))
+  const others = rows.results.map(docOf).filter((other) => sameDocument(self, other))
+  const twin = others.find((other) => !other.duplicateOf) ?? others[0]
   if (!twin) return null
   await db.prepare('UPDATE documents SET duplicate_of = ? WHERE id = ? AND company_id = ? AND duplicate_of IS NULL').bind(twin.id, doc, company).run()
   return twin.id

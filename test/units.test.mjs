@@ -11,6 +11,7 @@ import {
   decodePayBySquare,
   deadlines,
   demo,
+  ekasa,
   ending,
   fio,
   format,
@@ -646,6 +647,31 @@ check('a picture that is no document is none', reader.readingFrom({ je_doklad: f
 const odd = reader.readingFrom({ je_doklad: true, typ: 'neviem', datum_vystavenia: '12. 10. 2026', suma_celkom: '-5', iban_druhej_strany: 'xx', mena: 'eura' })
 check('what is not what it should be is left out', odd?.kind === 'other' && odd.issuedOn === null && odd.totalCents === null && odd.partyIban === null && odd.currency === null)
 
+// eKasa receipts (src/app/ekasa.ts): the codes as the Financial Administration's description of the eKasa interface
+// writes them (2.7 the identifier, 2.2 the verification code), and one receipt told from another by them
+const UID = 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A'
+const OKP = 'C44B3977-0E415CC6-EE663AA1-776C973A-A143B660'
+const misread = (code, n) => code.slice(0, code.length - n) + [...code.slice(code.length - n)].map((ch) => (ch === 'F' ? 'E' : 'F')).join('')
+const ekasaRead = reader.readingFrom({ je_doklad: true, typ: 'blocek', suma_celkom: '3.80', ekasa_uid: ' o-7dbcda8a56ee426dbcda8a56ee426d1a', ekasa_okp: 'C44B3977-0E415CC6' })
+check("the reader's eKasa codes are kept when they are codes", ekasaRead?.ekasaUid === UID && ekasaRead.ekasaOkp === null, JSON.stringify(ekasaRead))
+check(
+  'an identifier is a letter, a dash and 32 hexadecimal characters, a nought for the letter O put right',
+  ekasa.ekasaUid(UID.toLowerCase()) === UID && ekasa.ekasaUid(`0${UID.slice(1)}`) === UID && ekasa.ekasaUid(`O - ${UID.slice(2, 18)} ${UID.slice(18)}`) === UID,
+)
+check(
+  'anything else is no identifier',
+  ekasa.ekasaUid(UID.slice(0, -1)) === null && ekasa.ekasaUid(`${UID.slice(0, -1)}G`) === null && ekasa.ekasaUid(UID.slice(2)) === null && ekasa.ekasaUid(`${UID}0`) === null && ekasa.ekasaUid(42) === null,
+)
+check(
+  'a verification code is five blocks of eight, however it was written',
+  ekasa.ekasaOkp(OKP.replace(/-/g, '').toLowerCase()) === OKP && ekasa.ekasaOkp(OKP.replace(/-/g, ' ')) === OKP && ekasa.ekasaOkp(OKP) === OKP,
+)
+check('or it is none', ekasa.ekasaOkp(OKP.slice(0, 35)) === null && ekasa.ekasaOkp(`X${OKP.slice(1)}`) === null && ekasa.ekasaOkp(UID) === null && ekasa.ekasaOkp(null) === null)
+check('one receipt read twice with up to four characters wrong is one', ekasa.sameReceipt({ ekasaUid: UID }, { ekasaUid: misread(UID, 4) }) === true && ekasa.sameReceipt({ ekasaOkp: OKP }, { ekasaOkp: misread(OKP, 4) }) === true)
+check('five wrong is another receipt', ekasa.sameReceipt({ ekasaUid: UID }, { ekasaUid: misread(UID, 5) }) === false && ekasa.sameReceipt({ ekasaOkp: OKP }, { ekasaOkp: misread(OKP, 5) }) === false)
+check('either code agreeing is enough', ekasa.sameReceipt({ ekasaUid: UID, ekasaOkp: OKP }, { ekasaUid: misread(UID, 9), ekasaOkp: OKP }) === true)
+check('nothing to compare says nothing', ekasa.sameReceipt({ ekasaUid: UID }, { ekasaOkp: OKP }) === null && ekasa.sameReceipt({}, { ekasaUid: UID }) === null)
+
 // The app's words
 check(
   'Slovak counting',
@@ -805,6 +831,20 @@ check(
   !booking.sameDocument(docA, { ...docA, totalCents: 1250 }) &&
     !booking.sameDocument(docA, { ...docA, issuedOn: '2026-10-11' }) &&
     !booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '2' }),
+)
+check('an eKasa receipt is known by its code, whatever amount was read', booking.sameDocument({ ...docA, ekasaUid: UID }, { ...docA, totalCents: 1210, ekasaUid: misread(UID, 1) }))
+check(
+  'two receipts of one number and amount are two when their codes differ (a till starts again at 1 each month)',
+  !booking.sameDocument({ ...docA, number: '1', ekasaUid: UID }, { ...docA, number: '1', ekasaUid: misread(UID, 12) }),
+)
+check('a receipt without a code is judged as before', booking.sameDocument({ ...docA, number: '1', ekasaUid: UID }, { ...docA, number: '1' }))
+const sampleCodes = ['demo-doc-6', 'demo-doc-12'].map((id) => demo.sampleCodes(id))
+check(
+  'the sample receipts carry codes of the right form, each its own, the same on every run',
+  sampleCodes.every((c) => ekasa.ekasaUid(c.uid) === c.uid && ekasa.ekasaOkp(c.okp) === c.okp) &&
+    ekasa.sameReceipt({ ekasaUid: sampleCodes[0].uid, ekasaOkp: sampleCodes[0].okp }, { ekasaUid: sampleCodes[1].uid, ekasaOkp: sampleCodes[1].okp }) === false &&
+    demo.sampleCodes('demo-doc-6').uid === sampleCodes[0].uid,
+  JSON.stringify(sampleCodes),
 )
 check('a day typed the Slovak way', booking.dayOfText('11. 10. 2026') === '2026-10-11' && booking.dayOfText('1.2.2027') === '2027-02-01' && booking.dayOfText('2026-10-11') === '2026-10-11')
 check('a day that does not exist is none', booking.dayOfText('31. 2. 2026') === null && booking.dayOfText('zajtra') === null && booking.dayOfText('11. 10. 1999') === null)

@@ -13,43 +13,31 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // An employee's month (src/app/payroll.ts)
-  ['src/app/payroll.ts', "floorCents(((kind === 'accident' ? gross : socialBase) * bp) / 10000)", 'floorCents((socialBase * bp) / 10000)', 'accident insurance has no cap'],
-  ['src/app/payroll.ts', 'const socialBase = Math.min(gross, socialCap(y))', 'const socialBase = gross', 'social insurance is capped'],
-  ['src/app/payroll.ts', 'const floorCents = (value: number): number => Math.floor(value + 1e-9)', 'const floorCents = (value: number): number => Math.round(value)', 'insurance amounts are rounded down'],
-  ['src/app/payroll.ts', '    healthTopUp = Math.max(0, minimum - healthEmployee - healthEmployer)', '    healthTopUp = 0', 'the minimum health advance is topped up'],
-  ['src/app/payroll.ts', 'const minimum = floorCents((whole * days) / monthDays(input.period))', 'const minimum = whole', 'the minimum health advance is shared by the days'],
-  ['src/app/payroll.ts', 'const nonTaxable = input.declaration ? Math.min(Math.max(0, partialBase), nonTaxableMonth(y)) : 0', 'const nonTaxable = Math.min(Math.max(0, partialBase), nonTaxableMonth(y))', 'the non-taxable part only with the declaration'],
-  ['src/app/payroll.ts', 'part(b1, b2) * 25', 'part(b1, b2) * 19', 'the 25 % band'],
-  ['src/app/payroll.ts', 'part(b3, Number.POSITIVE_INFINITY) * 35', 'part(b3, Number.POSITIVE_INFINITY) * 30', 'the 35 % band'],
-  ['src/app/payroll.ts', 'if (years < 15 || (years === 15 && birthdayMonth)) return 10000', 'if (years < 15) return 10000', 'the 100 € bonus to the month the child turns 15'],
-  ['src/app/payroll.ts', '  if (child.born.slice(0, 7) > period) return 0\n', '', 'no bonus before the birth'],
-  ['src/app/payroll.ts', 'const cut = partialBase > threshold ? (partialBase - threshold) / 10 : 0', 'const cut = 0', 'the bonus cut for a high income'],
-  ['src/app/payroll.ts', 'const cap = ((BONUS_CAP[Math.min(reduced.length, 6)] ?? 0) * Math.max(0, partialBase)) / 10000', 'const cap = Number.POSITIVE_INFINITY', 'the bonus at most a share of the base'],
-  ['src/app/payroll.ts', 'const eligible = input.declaration ? input.children', 'const eligible = true ? input.children', 'the bonus only with the declaration'],
-  ['src/app/payroll.ts', 'const half = input.disabled ? 2 : 1', 'const half = 1', 'a disability halves health insurance'],
-  ['src/app/payroll.ts', 'return Math.max(0, Math.ceil(38000 - (income - 38000) * 2))', 'return 38000', 'the deductible item shrinks above 380 €'],
-  ['src/app/payroll.ts', 'export const nonTaxableYear = (y: PayrollYear): number => roundCents(21 * y.subsistence)', 'export const nonTaxableYear = (y: PayrollYear): number => roundCents(19.2 * y.subsistence)', 'the non-taxable part is 21 times the subsistence minimum'],
-  // The months (src/app/payroll-store.ts)
-  ['src/app/payroll-store.ts', 'const day = settings.payday ? Math.min(settings.payday, last) : last', 'const day = settings.payday ?? last', 'a payday in a shorter month'],
-  ['src/app/payroll-store.ts', '(days === monthDays(period) ? e.wage : Math.round((e.wage * days) / monthDays(period)))', 'e.wage', 'a share of the wage for part of a month'],
-  ['src/app/payroll-store.ts', '  if (start > end) return 0\n', '', 'nobody employed has no days'],
-  // The books (src/app/ledger.ts)
-  ['src/app/ledger.ts', '    if (payroll.some((r) => r.pays.social === out)) return SOCIAL_ACCOUNT\n', '', "the Social Insurance Agency's sum to 336.100"],
-  ['src/app/ledger.ts', "  if (tax === 'wage') return '342'\n", '', 'the wage tax by its account'],
-  ['src/app/ledger.ts', "(p.exempt === 'payroll' || p.exempt === 'state') && p.amountCents < 0", "p.exempt === 'payroll' && p.amountCents < 0", "a payroll sum the app took for the state's"],
-  ['src/app/ledger.ts', "{ md: '524', d: SOCIAL_ACCOUNT, cents: r.socialEmployer }", "{ md: '521', d: SOCIAL_ACCOUNT, cents: r.socialEmployer }", "the employer's insurance to 524"],
-  // The deadlines (src/team/deadlines.ts)
-  ['src/team/deadlines.ts', "state: closed ? 'done' : today <= periodRange(month).to ? 'running' : 'open'", "state: today <= periodRange(month).to ? 'running' : 'open'", 'a closed month is done'],
-  ['src/team/deadlines.ts', 'const day = workingDayFrom(pr.closed.get(month) ?? paydayOf(month, pr))', 'const day = workingDayFrom(paydayOf(month, pr))', 'a closed month by its own payday'],
-  ['src/team/deadlines.ts', 'if ((pr.last && month > pr.last.slice(0, 7)) || (lastOurs && month > lastOurs)) continue', 'if (lastOurs && month > lastOurs) continue', 'nothing after the last employee left'],
-  ['src/team/deadlines.ts', "state: facts.filings.has(`${MARKED_KINDS.payroll}:${month}`) ? 'done' : 'open'", "state: 'open'", 'the reports marked are done'],
-  // The pages (runtime)
-  ['src/team/routes.tsx', "  if (today <= monthRange(period).to) return c.redirect(`${back}&ok=mzdy-bezi`, 303)\n", '', 'the month that runs is not closed'],
-  ['src/team/routes.tsx', 'iban: company.taxAccount ? taxIban(company.taxAccount, WAGE_PREFIX) : null', 'iban: company.taxAccount ? taxIban(company.taxAccount) : null', 'the wage tax to its own account'],
-  ['src/team/routes.tsx', "  if (iban !== '' && !isIban(iban)) errors.iban = t.payroll.errors.iban\n", '', "an employee's IBAN that is none is refused"],
-  ['src/team/routes.tsx', "const born = dayOfText(field('narodeny', 16), 1900)", "const born = dayOfText(field('narodeny', 16))", 'a birth day in the 1900s'],
-  ['src/app/purge.ts', "    db.prepare('DELETE FROM employees WHERE company_id = ?').bind(companyId),\n", '', 'the employees go with the company'],
+  // The codes of an eKasa receipt (src/app/ekasa.ts)
+  ['src/app/ekasa.ts', ".toUpperCase().replace(/^0-/, 'O-')", '.toUpperCase()', 'a nought for the letter O'],
+  ['src/app/ekasa.ts', "value.replace(/\\s/g, '').toUpperCase().replace", "value.replace(/\\s/g, '').replace", 'an identifier in capitals'],
+  ['src/app/ekasa.ts', 'return /^[A-Z]-[0-9A-F]{32}$/.test(plain) ? plain : null', 'return plain', 'an identifier of its form only'],
+  ['src/app/ekasa.ts', "test(hex) ? (hex.match(/.{8}/g) ?? []).join('-') : null", 'test(hex) ? hex : null', 'a verification code in its five blocks'],
+  ['src/app/ekasa.ts', "return /^[0-9A-F]{40}$/.test(hex) ? (hex.match(/.{8}/g) ?? []).join('-') : null", "return (hex.match(/.{8}/g) ?? []).join('-')", 'a verification code of its form only'],
+  ['src/app/ekasa.ts', 'const MISREAD = 4', 'const MISREAD = 0', 'a few characters read wrong'],
+  ['src/app/ekasa.ts', 'const MISREAD = 4', 'const MISREAD = 5', 'five characters wrong is another code'],
+  ['src/app/ekasa.ts', 'if (byUid === true || byOkp === true) return true', 'if (byUid === true) return true', 'either code agreeing is enough'],
+  ['src/app/ekasa.ts', '  if (byUid === false || byOkp === false) return false\n', '', 'codes that disagree are two receipts'],
+  // A duplicate (src/app/booking.ts, src/app/store.ts)
+  ['src/app/booking.ts', 'if (receipt !== null) return receipt', 'if (receipt === true) return true', 'two receipts of one number and amount stay two'],
+  ['src/app/booking.ts', 'if (receipt !== null) return receipt', 'if (receipt === false) return false', 'one receipt by its code, whatever amount was read'],
+  ['src/app/store.ts', 'OR d.ekasa_uid = ?5 OR d.ekasa_okp = ?6 ', '', 'a document with the exact code is looked at'],
+  ['src/app/store.ts', 'AND d.issued_on = ?8 AND (d.ekasa_uid IS NOT NULL OR d.ekasa_okp IS NOT NULL)', 'AND d.issued_on = ?8 AND 0', 'a coded receipt of the same day is looked at'],
+  ['src/app/store.ts', 'const twin = others.find((other) => !other.duplicateOf) ?? others[0]', 'const twin = others[0]', 'the twin is the original'],
+  ['src/app/store.ts', 'if (!self || (self.totalCents === null && !codes)) return null', 'if (!self || self.totalCents === null) return null', 'a receipt without an amount, by its code'],
+  ['src/app/store.ts', 'ORDER BY d.created_at DESC LIMIT 50', 'ORDER BY d.created_at LIMIT 50', 'the latest documents are looked at'],
+  // Read, kept and shown (src/app/read.ts, src/app/store.ts, src/views/team.tsx)
+  ['src/app/read.ts', 'ekasaUid: ekasaUid(input.ekasa_uid),', 'ekasaUid: null,', "the reader's identifier"],
+  ['src/app/read.ts', 'ekasaOkp: ekasaOkp(input.ekasa_okp),', 'ekasaOkp: null,', "the reader's verification code"],
+  ['src/app/store.ts', '      reading.ekasaUid ?? null,\n', '      null,\n', 'the identifier is stored'],
+  ['src/app/store.ts', '      reading.ekasaOkp ?? null,\n', '      null,\n', 'the verification code is stored'],
+  ['src/app/store.ts', 'ekasaUid: str(row.ekasa_uid),', 'ekasaUid: null,', 'the identifier is read back'],
+  ['src/views/team.tsx', '{d.ekasaUid || d.ekasaOkp ? (', '{false ? (', 'the accountant sees the code'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

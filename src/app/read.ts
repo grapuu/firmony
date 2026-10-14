@@ -3,6 +3,7 @@
 // or when the reader cannot say, the document goes to the accountant, and the client is told only that.
 import { READER } from '../config'
 import { CATEGORIES, CATEGORY_IDS, isCategory } from './booking'
+import { ekasaOkp, ekasaUid } from './ekasa'
 import { toCents, type Reading } from './xml'
 import type { DocKind } from './match'
 
@@ -64,6 +65,14 @@ const TOOL = {
       datum_dodania: { type: 'string', description: 'Dátum dodania tovaru alebo služby, ak je na doklade uvedený osobitne. RRRR-MM-DD' },
       sidlo_v_zahranici: { type: 'boolean', description: 'Či druhá strana sídli mimo Slovenska.' },
       opravuje_fakturu: { type: 'string', description: 'Ak je to dobropis alebo opravná faktúra: číslo faktúry, ktorú opravuje.' },
+      ekasa_uid: {
+        type: 'string',
+        description: 'Pri bločku z eKasy: unikátny identifikátor dokladu (UID), písmeno, pomlčka a 32 znakov 0 až 9 a A až F, napríklad O-7DBCDA8A56EE426DBCDA8A56EE426D1A. Prepíš ho znak po znaku; off-line doklad ho nemá.',
+      },
+      ekasa_okp: {
+        type: 'string',
+        description: 'Pri bločku z eKasy: overovací kód (OKP), päť skupín po 8 znakov 0 až 9 a A až F oddelených pomlčkou. Prepíš ho znak po znaku.',
+      },
       dph_podla_sadzieb: {
         type: 'array',
         description: 'Základ dane a DPH pre každú sadzbu, ako sú na doklade rozpísané. Pri dobropise so znamienkom mínus.',
@@ -117,6 +126,8 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
     foreign: typeof input.sidlo_v_zahranici === 'boolean' ? input.sidlo_v_zahranici : null,
     corrects: clean(input.opravuje_fakturu, 40),
     vatLines: ratesOf(input.dph_podla_sadzieb),
+    ekasaUid: ekasaUid(input.ekasa_uid),
+    ekasaOkp: ekasaOkp(input.ekasa_okp),
   }
 }
 

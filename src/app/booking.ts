@@ -2,6 +2,7 @@
 // accounts, and the entry the accountant is offered. The client never sees any of this; the accountant always
 // confirms it. The books themselves (the journal, every account, the trial balance) are worked out from what she
 // confirms by ledger.ts, with this same entry.
+import { sameReceipt, type EkasaCodes } from './ekasa'
 import { nameWords } from './match'
 import type { DocKind } from './match'
 
@@ -128,11 +129,17 @@ export function supplierKey(ico: string | null | undefined, name: string | null 
   return words.length > 0 ? `name:${words.join(' ')}` : null
 }
 
-/** A suspected duplicate: the same kind and amount, and the same number, or the same supplier on the same day. */
+/**
+ * A suspected duplicate: one eKasa receipt by its codes; otherwise the same kind and amount, and the same number, or
+ * the same supplier on the same day.
+ */
 export function sameDocument(
-  a: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null },
-  b: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null },
+  a: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null } & EkasaCodes,
+  b: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null } & EkasaCodes,
 ): boolean {
+  // An eKasa receipt is known by its own codes, even when its amount was read wrong once (src/app/ekasa.ts).
+  const receipt = sameReceipt(a, b)
+  if (receipt !== null) return receipt
   if (a.totalCents === null || a.totalCents !== b.totalCents || a.kind !== b.kind) return false
   const plain = (n: string | null) => (n ?? '').replace(/[\s/-]/g, '').toUpperCase()
   if (plain(a.number) !== '' && plain(a.number) === plain(b.number)) return true

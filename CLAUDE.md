@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 14:02)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 18:31)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -198,14 +198,19 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   after a check was added for it: what is done is never late). Found on the way and put right: the days off a deadline
   moves past (Act No. 261/2025 Z. z.: 17 November is a working day since 1 November 2025, 8 May and 15 September in
   2026), and a month of a person registered under § 7a whose documents are not all booked was said to have nothing to
-  file. Built second (until 17:30): "The closing" under the accountants' side, the financial statements of a micro
+  file. Built second (until 17:22): "The closing" under the accountants' side, the financial statements of a micro
   entity and the corporate income tax return from the books, as files of the official eForms (all checks passing:
   units 562, runtime 619; 52 rules taken out once, every one held, three only after a check was added for each).
   Found on the way: an advance on the income tax shares its symbol with VAT (1100…), so a payment to the income tax's
   account was taken for VAT; the books and the VAT paid now tell them apart by the account (prefix 500224 or 500240).
-  Built third (until about 19:30): "Payroll" under the accountants' side, employees in an employment relationship with
+  Built third (until 17:57): "Payroll" under the accountants' side, employees in an employment relationship with
   a monthly wage, under the rules of 2026 and 2027 as the authorities published them (all checks passing: units 590,
-  runtime 639; 32 rules taken out once, every one held, two only after a check was added for each).
+  runtime 639; 32 rules taken out once, every one held, two only after a check was added for each). The digital
+  postman waits for his choice of a provider. Built fourth: "eKasa receipts" under the client's app (all checks
+  passing: units 603, runtime 647; 22 rules taken out once, every one held). Found first: asking the Financial
+  Administration for a receipt by program is for a verifier under § 18(11) of Act No. 384/2025 Z. z., whose conditions
+  FR SR has not published; whether europio becomes one is his decision, and a letter asking FR SR is drafted in
+  `PROGRESS.md`. Built meanwhile: the reader reads a receipt's two codes, which tell one receipt from another.
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -328,7 +333,8 @@ on Crete, the sites of Matax, Bezúčto and Keepi, TASR on Digitoo, Enable Banki
 - The Slovak edge from 1 January 2027: e-invoices arrive as data through a digital postman, the bank through open
   banking (Enable Banking lists SLSP, VÚB, Tatra, ČSOB, Poštová, 365.bank), and an eKasa receipt's QR code points
   to the receipt in the Financial Administration's database ("Over doklad"). Whether that may be used at scale is
-  to be checked.
+  to be checked. (Checked on 14 October 2026: only by a verifier under § 18(11) of Act No. 384/2025 Z. z., on
+  conditions FR SR has not published yet; see "eKasa receipts".)
 - Proposed, not yet decided by him: phase 1 by 1 January 2027 is the pipe (a client app: photo, email forwarding,
   eKasa QR, e-invoices and bank by themselves, "missing document" per payment, VAT due and when, messages with the
   accountant) and an accountant's cockpit (AI proposes MD/D, VAT and the control statement line; she confirms;
@@ -441,8 +447,8 @@ filing) is ours. One amber thing in sight on every page: what is missing; when n
 - The sample company (`demo.ts`, "Ukážková firma s. r. o.", Martin Novák, dated from today) exists only at
   `/app/ukazka` on a developer's machine with `DEMO=1`, which only the playground sets; the runtime test holds that
   it is 404 on the Worker.
-- Not built yet: the digital postman, eKasa receipts by their QR code, deleting files at the end of their ten
-  years, thumbnails. Not seen in a real
+- Not built yet: the digital postman, eKasa receipts as data from the Financial Administration (their codes are read
+  since 14 October: "eKasa receipts" below), deleting files at the end of their ten years, thumbnails. Not seen in a real
   browser: a PDF opened by "Otvoriť originál" under its CSP; a photo from an iPhone made smaller by the script
   (HEIC).
 
@@ -718,6 +724,37 @@ service under PSD2; `src/app/bank.ts` is the only file that talks to it. Without
   codes of its errors (`ErrorResponse` was cut off in the reference), whether a bank needs `auth_method`, how long
   an account's `uid` lasts beyond its session.
 
+### eKasa receipts (14 October 2026, evening; `src/app/ekasa.ts`)
+
+What "eKasa receipts by their QR code" was meant to be: the code points to the receipt in the Financial
+Administration's eKasa system, so a receipt could come in as data instead of a photo read by the AI. What the law
+allows was read first (Act No. 384/2025 Z. z. on recording takings, in force since 1 January 2026, in the original on
+static.slov-lex.sk; the full reading and a letter to FR SR are in `PROGRESS.md`, milestone 4): the public may check a
+receipt by its code (§ 18(1) and (3)); a program asking for receipts and taking their data is a verifier's
+(overovateľ, § 2(aj)), who notifies FR SR of its IP address, reports its results back and follows conditions FR SR
+publishes (§ 18(11)), from a day FR SR publishes (§ 19(6)); neither was published on 14 October 2026. A Worker has no
+fixed address of its own. So Firmony asks the service nothing until he decides and FR SR answers.
+
+- The codes (`ekasaUid`, `ekasaOkp`), as FR SR's "Popis integračného rozhrania systému eKASA" (4 November 2022) has
+  them: the identifier (UID: a letter, "-", 32 hexadecimal characters; given by the eKasa system to a receipt the till
+  sent at once, and the whole content of its QR code) and the seller's verification code (OKP: five blocks of eight
+  hexadecimal characters; on every receipt, and the first part of the QR code of a receipt sent late). The reader's
+  tool asks for both (`ekasa_uid`, `ekasa_okp`, "znak po znaku"); each is kept only in its form, in capitals, the OKP
+  in its blocks, a nought read for the letter O put right (`documents.ekasa_uid`, `ekasa_okp`, schema step 9).
+- One receipt or two (`sameReceipt`, used first by `sameDocument`): the same when either code agrees, up to four
+  characters misread (`MISREAD`; two receipts' codes differ in nearly all of their 32 or 40); two when the codes both
+  have disagree, whatever their number and amount (a till numbers receipts from 1 again every calendar month); with
+  nothing to compare, the old rule. `markDuplicate` looks at the 50 latest documents of the same amount, or with the
+  receipt's exact code, or coded ones of its day, and names the original, not another duplicate.
+- The accountant's booking screen shows the code under the original, wrapped anywhere but never cut, with "Overiť na
+  finančnej správe" (`EKASA_VERIFY`, opd.financnasprava.sk, which she opens herself).
+- The sample company's receipts have codes (`sampleCodes`, made up from the document's id), printed on their PDFs.
+- The pretend reader takes what a test's photo says it shows: the bytes `PRETEND` and a JSON object of the tool's
+  fields (`readerAnswer` in `test/pretend.mjs`).
+- Not built: the QR code decoded from the picture (the printed codes are read; Chrome on Android's BarcodeDetector,
+  not Safari's, or a decoder on the server, CPU on every photo), the lookup once allowed, a receipt as data without a
+  photo, a client's own eKasa takings in the VAT return (D.1).
+
 ## The order and the contract online (`src/order.ts`, `src/order-mail.ts`, `src/views/order.tsx`, `src/content/terms.ts`; 13 October 2026)
 
 What Dougs and Pennylane do at the end of their sign-up: the contract is concluded on a page, by the person who may
@@ -802,8 +839,9 @@ on one screen, a document booked on one screen with its original beside the form
   "Uložiť bez zaúčtovania"; "Zahodiť doklad" (a duplicate, or what is no document); a booked one can be changed
   or unbooked, and is never deleted, by the client or the team. The reader proposes the category (`kategoria`);
   a supplier's rule wins over it and is applied at once to the supplier's other waiting documents. The same
-  document sent twice (same number and amount, or same supplier, day and amount) is marked "Možný duplikát" and is
-  never paired by itself. A payment can be given to a document from its best candidates.
+  document sent twice (an eKasa receipt by its codes; otherwise the same number and amount, or the same supplier, day
+  and amount) is marked "Možný duplikát" and is never paired by itself. An eKasa receipt's code stands under its
+  original with "Overiť na finančnej správe". A payment can be given to a document from its best candidates.
 - Messages (/ucto/spravy): the clients whose last message is theirs, the longest waiting first. A client's message
   is emailed to the company's accountant, or to ahoj@ while it has none.
 - A request from the site becomes a client in one form (`?ziadost=`): company, person, plan, accountant, VAT, and
@@ -1135,7 +1173,7 @@ and the client told what to pay. As with VAT, nothing is sent by us: the account
   2027: its schema replaces `dppo2025.xsd`, and the first Firmony closings are for 2027), what eDane wants in
   `opravnenaOsoba` (europio's representative, as for VAT), and whether the SK NACE list of DPPOv26 is still Rev. 2.
 
-### Payroll (14 October 2026, from 17:30; `src/app/payroll.ts`, `payroll-store.ts`, views in `src/views/payroll.tsx`)
+### Payroll (14 October 2026, from 17:22; `src/app/payroll.ts`, `payroll-store.ts`, views in `src/views/payroll.tsx`)
 
 What the accountant of an online firm does each month for a young company's first employees: the payslips, what the
 company pays and where, the books, and the reports to file. Built for employees in an employment relationship with a
@@ -1261,11 +1299,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (590): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll
-npm run test:runtime     # the deployable bundle in workerd (639): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the closing, payroll, to the deletion
+npm test                 # unit checks (603): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes
+npm run test:runtime     # the deployable bundle in workerd (647): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the closing, payroll, eKasa duplicates, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (32)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (22)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 

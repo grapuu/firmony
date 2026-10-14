@@ -2,7 +2,7 @@
 // the work quickly: what waits is counted everywhere, a document is booked on one screen with its original
 // beside the form, and "Zaúčtovať a ďalší" goes straight to the next one.
 import type { Child, FC } from 'hono/jsx'
-import { APP, ART, BRAND, PLANS, type Art } from '../config'
+import { APP, ART, BRAND, EKASA_VERIFY, PLANS, type Art } from '../config'
 import { formatEur, formatEurExact } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../app/copy'
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
@@ -1224,6 +1224,17 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
           ) : (
             <p class="info__empty">{t.book.noFile}</p>
           )}
+          {d.ekasaUid || d.ekasaOkp ? (
+            <p class="book__origfoot">
+              <span class="book__code">
+                <span>{t.book.ekasaCode(d.ekasaUid ? 'UID' : 'OKP')}</span>
+                <span class="book__codevalue">{d.ekasaUid ?? d.ekasaOkp}</span>
+              </span>
+              <a class="link" href={EKASA_VERIFY} target="_blank" rel="noopener">
+                {t.book.ekasaVerify}
+              </a>
+            </p>
+          ) : null}
         </div>
         <form class="book__form" method="post" action={`/ucto/doklady/${d.id}`} novalidate>
           {d.proposal ? <p class="book__proposal">{d.proposal === 'rule' ? t.book.proposalRule : t.book.proposalAi}</p> : null}

@@ -234,6 +234,9 @@ export interface Reading {
   foreign?: boolean | null
   corrects?: string | null
   vatLines?: { rate: number; base: number; vat: number }[] | null
+  /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
+  ekasaUid?: string | null
+  ekasaOkp?: string | null
 }
 
 function partyOf(node: unknown): { name: string | null; ids: string[]; vatId: string | null; country: string | null } {

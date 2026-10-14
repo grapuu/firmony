@@ -225,10 +225,115 @@ students, sick pay (náhrada príjmu, 14 days from 2026) and holiday pay worked 
 zúčtovanie), deductions, meal allowances, the employees' registrations, and the reports as files: the Social Insurance
 Agency's monthly report, the health insurers' batch 514, the overview PREHLADv26 and the yearly Hlásenie.
 
+## Priority 4: the digital postman (not started: the owner's choice)
+
+Nothing was built: the provider is his to pick (Qvalia was the lead; `CLAUDE.md`, item 8 of "What he has to do"), and
+each provider's interface differs (sending, receiving, the Peppol participant's registration). What already stands
+for it: issued invoices are e-invoices (UBL 2.1, Peppol BIS 3.0) and a received e-invoice is read by our own code; the
+missing piece is the delivery itself. Once he names the provider: its API for receiving and sending, the registration
+of each client as a participant, and the price per client into the margin check.
+
+## Milestone 4: eKasa receipts, first part (done, 14 October 2026)
+
+The priority was "eKasa receipts by their QR code": the code on a receipt points to the receipt in the Financial
+Administration's eKasa system, so a receipt could come in as data instead of a photo the AI reads. Whether that may
+be used at scale was open (`CLAUDE.md`, "The key"). It was read first, and the answer decides what was built.
+
+What the law says (read on 14 October 2026 in the original):
+
+- Act No. 384/2025 Z. z. on recording takings (zákon o evidencii tržieb), in force since 1 January 2026, replaced Act
+  No. 289/2008 Z. z. (static.slov-lex.sk, the text as of 1 January 2026; FR SR's information 1/ZoET/2025/I).
+- § 2(ai): the service for verifying receipts lets one verify, through a receipt's QR code, the data the eKasa system
+  holds, "sprístupňovať a získavať tieto údaje"; § 2(aj): a verifier (overovateľ) is a person entitled to use it and
+  obtain the data "po splnení podmienok podľa § 18 ods. 11".
+- § 18(1) and (3): FR SR lets the public verify a receipt by its QR code or its identifier through an application,
+  repeatedly; the seller has to tolerate it.
+- § 18(11): before using the service a verifier notifies FR SR of the IP address it will use, sends FR SR true results
+  of what it verified, and follows the conditions of use and of communication FR SR sets and publishes on its site.
+- § 19(6): the financial administration proceeds under § 18(11) only from a day FR SR sets and publishes.
+- Not found on FR SR's site that day (its eKasa pages for sellers and for producers, ePeňaženka, OPD): the verifiers'
+  conditions, the day of § 19(6), an interface for verifiers. Poradca.sk (28 January 2026) writes that the service was
+  made at the request of accounting firms and that FR SR will publish the conditions. FR SR's eKasa page also says that
+  since 1 January 2025 the VAT recapitulation is no longer a compulsory part of what a till sends, so Over doklad may
+  show it incompletely (the VAT of each item stays).
+
+So asking the Financial Administration by program, for every client's receipts, is the verifier's way, and it needs:
+(1) the owner's decision to be one (europio, for its clients), (2) FR SR's conditions, which are not published, (3) a
+fixed IP address: a Worker has none of its own (Cloudflare's egress addresses are shared); a fixed one is a paid
+option (dedicated egress, or a small proxy with its own address) and not ours to buy. Firmony asks the service
+nothing, and the address its web page calls (not documented by FR SR) is not used.
+
+What was built meanwhile (it works today, and it is what the lookup will need):
+
+- The reader reads the two codes every eKasa receipt carries, as FR SR's "Popis integračného rozhrania systému eKASA"
+  (4 November 2022) defines them: the identifier (UID, chapter 2.7: a letter, "-" and 32 hexadecimal characters; a
+  receipt the till sent at once has it, and it is the whole content of its QR code, chapter 2.10) and the seller's
+  verification code (OKP, chapter 2.2: five blocks of eight hexadecimal characters; every receipt has it, and the QR
+  code of a receipt sent late begins with it, chapter 2.9). Each is checked against its form, written as FR SR writes
+  it (capitals, the blocks, a nought read for the letter O put right), and kept with the document (schema step 9:
+  `documents.ekasa_uid`, `ekasa_okp`). Code: `src/app/ekasa.ts`, the reader's tool in `src/app/read.ts`.
+- Duplicates: a receipt photographed twice (or photographed and forwarded) is one even when its amount or its day was
+  read wrong once: its codes agree, a few characters misread allowed (up to four of 32 or 40; two receipts' codes
+  differ in nearly all). Two receipts whose codes differ are two even with the same number and amount: a till numbers
+  its receipts from 1 again every calendar month (chapter 3.3.12.14), so the old rule (number and amount) took a
+  monthly parking receipt for a duplicate of last month's. Without codes the old rule stands.
+- Put right on the way: the search for a duplicate looked at the 20 oldest documents of the same amount, so a company
+  with many of one amount (parking, coffee) stopped finding new duplicates; it looks at the 50 latest now, and names
+  the original rather than another duplicate.
+- The accountant's booking screen shows the code under the original, with "Overiť na finančnej správe" (FR SR's Over
+  doklad on the web, opd.financnasprava.sk, which she opens herself: the public use of § 18(3)).
+- The sample company's receipts carry codes, printed on their originals.
+
+Checks: units 590 → 603, runtime 639 → 647, all passing, TypeScript clean. The booking screen was looked at in the
+playground at 1440, 390 and 320 px (nothing overflows; the code keeps one line down to 390 px). 22 rules taken out once
+with `scripts/dev/mutate.mjs`: all held (the checks of a code read exactly, of the original named as the twin and of a
+receipt without an amount were written with the rules, before the run; one rule's mutation was first written so that
+it broke the query instead of the rule, and was run again done right).
+
+For the owner to decide, and a professional to read:
+
+- Whether europio becomes a verifier. A letter to FR SR is drafted below (through "Opýtajte sa finančnej správy", or
+  by an e-filing to the Financial Directorate); its answer decides the next step and its cost (the fixed address).
+- Whether data fetched from the service may stand in the books for the paper receipt (Act No. 431/2002 Z. z.: § 10 on
+  what an accounting document holds, and its rules on the form of accounting records). Until it is answered, the photo
+  stays the document and the codes only identify it.
+- The tolerance of four characters is the builder's judgement of a thermal slip read from a phone photo.
+
+The letter (draft, Slovak, his to send and sign):
+
+> Vec: Služba na overovanie dokladov pre overovateľa podľa § 18 ods. 11 zákona č. 384/2025 Z. z.
+>
+> Dobrý deň,
+>
+> spoločnosť europio s. r. o., IČO 57 442 452, DIČ 2122734449, K lesu 2218/39A, 040 18 Košice, pripravuje službu
+> vedenia účtovníctva pre malé obchodné spoločnosti. Klienti nám posielajú pokladničné doklady z pokladníc eKasa ako
+> fotografie. Správnosť ich údajov by sme radi overovali službou na overovanie dokladov ako overovateľ podľa § 2 písm.
+> aj) a § 18 ods. 11 zákona č. 384/2025 Z. z. o evidencii tržieb. Prosíme o informáciu:
+>
+> 1. kde finančné riaditeľstvo zverejnilo, alebo kedy zverejní, podmienky používania služby na overovanie dokladov
+>    overovateľom a podmienky komunikácie s ňou, a deň podľa § 19 ods. 6 zákona;
+> 2. ako sa oznamuje IP adresa podľa § 18 ods. 11 a či možno oznámiť viac adries alebo ich rozsah;
+> 3. či je služba určená aj na automatizované overovanie programom (rozhranie, jeho dokumentácia, počet overení,
+>    poplatok);
+> 4. v akej forme a lehote overovateľ zasiela výsledky overenia podľa § 18 ods. 11 druhej vety;
+> 5. či overovateľ môže overovať doklady, ktoré mu poskytnú jeho klienti (kupujúci), a uchovávať získané údaje ako
+>    súčasť ich účtovníctva.
+>
+> Ďakujeme.
+>
+> S pozdravom
+> Christian Juhás, konateľ, europio s. r. o.
+
+What remains of it: the QR code decoded from the picture (the reader reads the printed codes; decoding the QR needs the
+phone's browser, whose BarcodeDetector Chrome on Android has and Safari has not, or a decoder on the server, which costs
+CPU on every photo), the lookup itself once allowed, a receipt taken as data without a photo, and a client's own eKasa
+takings in the VAT return (row D.1 of the control statement, `CLAUDE.md`).
+
 ## Resources
 
-- One continuous session (milestone 1 from 15:17 to 16:03, milestone 2 to 17:30, milestone 3 after it); repository work by shell and file
-  tools, research by web search and the Financial Administration's own eForm files (pfseform.financnasprava.sk,
-  financnasprava.sk) and slov-lex.sk. No paid external service was called, nothing was deployed, no production data
-  exist. The test suites take about 3 s (units) and 50 s (runtime); a full mutation run of milestone 2 (52 rules) about
-  20 minutes, most rules failing the units first.
+- One continuous session (milestone 1 from 15:17 to 16:03, milestone 2 to 17:22, milestone 3 to 17:57, milestone 4 to
+  18:31); repository work by shell and file tools, research by web search and the Financial Administration's own
+  files (pfseform.financnasprava.sk, financnasprava.sk: the eForms, the eKasa interface's description) and
+  slov-lex.sk. No paid external service was called, nothing was deployed, no production data exist. The test suites
+  take about 3 s (units) and 50 s (runtime); a full mutation run of milestone 2 (52 rules) about 20 minutes, of
+  milestone 4 (22 rules) about 12, most rules failing the units first.

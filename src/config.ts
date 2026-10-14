@@ -351,6 +351,13 @@ export const READER = {
   pdfBytes: 25_000_000,
 } as const
 
+/**
+ * The Financial Administration's "Over doklad" on the web, where anyone checks a receipt of an eKasa till by its
+ * identifier (UID) or, off-line, by its verification code (OKP) and what goes with it (§ 18(1) and (3) of Act No.
+ * 384/2025 Z. z.). The accountant opens it herself; Firmony asks it nothing (src/app/ekasa.ts).
+ */
+export const EKASA_VERIFY = 'https://opd.financnasprava.sk/'
+
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
 export const PRIVACY_VERSION = '2026-10-14'
 

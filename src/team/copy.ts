@@ -333,6 +333,8 @@ export const team = typesetAll({
     proposalAi: 'Návrh od AI',
     open: 'Otvoriť originál',
     noFile: 'K tomuto dokladu nemáme súbor.',
+    ekasaCode: (name: 'UID' | 'OKP') => `eKasa ${name}`,
+    ekasaVerify: 'Overiť na finančnej správe',
     kind: 'Druh',
     kinds: { receipt: 'Bloček', invoice_in: 'Prijatá faktúra', invoice_out: 'Vydaná faktúra', other: 'Iný doklad' },
     party: 'Partner',

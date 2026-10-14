@@ -206,7 +206,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 8)
+check('health says the schema', (await res.json()).schema === 9)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -701,6 +701,60 @@ check(
       .bind(cafeDoc?.id ?? '')
       .first()
   )?.deleted_at === null,
+)
+
+// eKasa receipts are known by their own codes: one receipt photographed twice is one even when its amount was read
+// wrong the second time, and two receipts of one number and amount (a till starts again at 1 each month) are two.
+const pretendPhoto = (name, fields) => ({ name, type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode(`PRETEND${JSON.stringify(fields)}`)]) })
+const ekasaDocs = async (names) =>
+  (await db.prepare(`SELECT id, file_name, duplicate_of, ekasa_uid, ekasa_okp, total_cents FROM documents WHERE file_name IN (${names.map(() => '?').join(', ')}) ORDER BY created_at, rowid`).bind(...names).all()).results
+const coffee = { druha_strana: 'Kaviareň Pod hradom', datum_vystavenia: day(-2), cislo_dokladu: '118', suma_celkom: '3.80', dph_celkom: '0.71' }
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava.jpg', { ...coffee, ekasa_uid: 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A', ekasa_okp: 'c44b3977 0e415cc6 ee663aa1 776c973a a143b660' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava-znova.jpg', { ...coffee, suma_celkom: '3.30', ekasa_uid: '0-7dbcda8a56ee426dbcda8a56ee426d1b' })] })
+await settle(600)
+const [coffee1, coffee2] = await ekasaDocs(['kava.jpg', 'kava-znova.jpg'])
+check(
+  "the receipt's eKasa codes are kept as the Financial Administration writes them",
+  coffee1?.ekasa_uid === 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A' && coffee1.ekasa_okp === 'C44B3977-0E415CC6-EE663AA1-776C973A-A143B660' && coffee1.duplicate_of === null,
+  JSON.stringify(coffee1),
+)
+check(
+  'one eKasa receipt photographed twice is one, though its amount and a character of its code were read wrong',
+  coffee2?.duplicate_of === coffee1?.id && coffee2.total_cents === 330 && coffee2.ekasa_uid === 'O-7DBCDA8A56EE426DBCDA8A56EE426D1B',
+  JSON.stringify(coffee2),
+)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava-tretia.jpg', { ...coffee, suma_celkom: '3.30', datum_vystavenia: day(-7), ekasa_uid: 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava-stvrta.jpg', { ...coffee, suma_celkom: '', ekasa_okp: 'C44B3977-0E415CC6-EE663AA1-776C973A-A143B660' })] })
+await settle(600)
+const [coffee3, coffee4] = await ekasaDocs(['kava-tretia.jpg', 'kava-stvrta.jpg'])
+check(
+  'a third photo with its amount and day read wrong is known by its code, as the first one, never as a duplicate',
+  coffee3?.duplicate_of === coffee1?.id && coffee3.total_cents === 330,
+  JSON.stringify(coffee3),
+)
+check('and one whose amount could not be read at all', coffee4?.duplicate_of === coffee1?.id && coffee4.total_cents === null, JSON.stringify(coffee4))
+res = await acc.get(`/ucto/doklady/${coffee1?.id}`)
+page = await res.text()
+check(
+  'the accountant sees the code and where to check it',
+  /eKasa UID<\/span><span class="book__codevalue">O-7DBCDA8A56EE426DBCDA8A56EE426D1A</.test(page) && page.includes('href="https://opd.financnasprava.sk/"'),
+)
+const parking = { druha_strana: 'Parkovisko Centrum s. r. o.', ico_druhej_strany: '50999888', cislo_dokladu: '1', suma_celkom: '2.00', dph_celkom: '0.37', kategoria: 'travel' }
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('parkovanie-1.jpg', { ...parking, datum_vystavenia: day(-35), ekasa_uid: 'O-0F3A6C1E9B2D4E58A7C3F1B0D9E2A4C6' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('parkovanie-2.jpg', { ...parking, datum_vystavenia: day(-5), ekasa_uid: 'O-B84E21D7C5A9F3E0D6B2A8C4E1F7D3B9' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('parkovanie-3.jpg', { ...parking, datum_vystavenia: day(-5) })] })
+await settle(600)
+const [parking1, parking2, parking3] = await ekasaDocs(['parkovanie-1.jpg', 'parkovanie-2.jpg', 'parkovanie-3.jpg'])
+check('two receipts of one number and amount are two when their codes differ', parking1?.duplicate_of === null && parking2?.duplicate_of === null, JSON.stringify([parking1, parking2]))
+check('without a code, the number and the amount still tell a duplicate', parking3?.duplicate_of === parking2?.id, JSON.stringify(parking3))
+for (const d of [coffee1, coffee2, coffee3, coffee4, parking1, parking2, parking3]) await anna.post(`/app/doklady/${d?.id}/zmazat`, {})
+check(
+  'and the client can delete them all',
+  (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE (file_name LIKE 'kava%' OR file_name LIKE 'parkovanie-%') AND deleted_at IS NULL").first())?.n === 0,
 )
 
 // The export for her accounting program
