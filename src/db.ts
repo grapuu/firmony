@@ -509,6 +509,45 @@ const MIGRATIONS: readonly string[][] = [
     "INSERT OR IGNORE INTO closings (company_id, year, filed_on, filed_at, filed_by) SELECT company_id, CAST(period AS INTEGER), filed_on, filed_at, filed_by FROM filings WHERE kind = 'closing'",
     "DELETE FROM filings WHERE kind = 'closing'",
   ],
+  // Payroll (src/app/payroll.ts, 14 October 2026): a company's employees in an employment relationship, each month's
+  // run (the incomes typed while it is open, the payslips as they were once closed: what the books, the client's
+  // message and the deadlines read), and the company's payroll settings (the payday, the accounts and payer numbers at
+  // the Social Insurance Agency and the health insurers).
+  [
+    `CREATE TABLE IF NOT EXISTS employees (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      born_on TEXT,
+      insurer TEXT NOT NULL,
+      started_on TEXT NOT NULL,
+      ended_on TEXT,
+      wage_cents INTEGER NOT NULL,
+      declaration INTEGER NOT NULL DEFAULT 0,
+      disabled INTEGER NOT NULL DEFAULT 0,
+      health_deduction INTEGER NOT NULL DEFAULT 0,
+      health_exempt INTEGER NOT NULL DEFAULT 0,
+      children TEXT NOT NULL DEFAULT '[]',
+      iban TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER
+    )`,
+    'CREATE INDEX IF NOT EXISTS employees_company ON employees (company_id)',
+    `CREATE TABLE IF NOT EXISTS payroll_runs (
+      company_id TEXT NOT NULL,
+      period TEXT NOT NULL,
+      payday TEXT,
+      lines TEXT NOT NULL DEFAULT '[]',
+      saved_at INTEGER,
+      saved_by TEXT,
+      closed_at INTEGER,
+      closed_on TEXT,
+      closed_by TEXT,
+      PRIMARY KEY (company_id, period)
+    )`,
+    'ALTER TABLE companies ADD COLUMN payroll TEXT',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

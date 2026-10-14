@@ -170,9 +170,64 @@ considered), the notice of extension as a file (OZN493; filed in eDane today), t
 cards and depreciation, the relief rows and the special tax bases, a request to refund the overpayment, reminders of
 each advance's day.
 
+## Milestone 3: payroll, first part (done, 14 October 2026)
+
+Scope chosen: employees in an employment relationship with a monthly wage, the case of a young company's first hires.
+The other kinds (agreements, a director's remuneration, pensioners, students) and the reports as files come next.
+
+What the accountant gets (`/ucto/klienti/:id/mzdy`, from the client's books card and the screen of deadlines):
+
+- Employees (wage, insurer, start and end, the signed declaration, a disability, the deductible item, an exception
+  from the minimum health advance, children for the bonus, the IBAN).
+- A month's payslips worked out from the income she types (the wage offered, a share of it for part of a month): each
+  kind of social insurance of both sides, health insurance with the minimum advance and the deductible item, the
+  non-taxable part, the tax by the four bands of 2026, the child bonus with its cap and its cut for high incomes, the
+  net wage, the employer's cost; a breakdown and a payslip to print.
+- "Uzavrieť mesiac": the payslips kept as they were, the month booked (521, 524, 331, 336.100, 336.200, 342), and the
+  client told in the app what to pay, to whom and where: each employee's net wage, the Social Insurance Agency, each
+  health insurer, the tax office (prefix 500259, symbol 1100 and the month, within five days of the payout).
+- The books recognise the payments: the Social Insurance Agency's, an insurer's or the tax office's sum of a closed
+  month goes to its account (336.100, 336.200, 342), anything else marked payroll is wages (331).
+- The screen of deadlines: each month closed by its payday, and its reports (Social Insurance Agency by the payday,
+  health insurers within three days, the tax office's overview by the end of the next month), marked when filed.
+
+What it leans on (read on 14 October 2026, from the sources themselves where they publish it): the Social Insurance
+Agency (tables from 1 January 2026; the general assessment base of 2025, 19 440 €; deadlines and rounding), VšZP and
+Dôvera (rates from 2026, the minimum advance, the report within three days), the Financial Directorate's pages on the
+advance, the bands, the child bonus of 2026, rounding since 2020, the remittance and the overview, and the subsistence
+minimum of 1 July 2026 (295,22 €) for 2027. Checked against published figures: SuperFaktúra, Bezúčto, Peniaze.sk,
+KROS (each named in the unit checks).
+
+Found on the way and put right: the app's date reader refused a birth date before 2000 (it now takes the 1900s where a
+birth date is asked for).
+
+Checks: units 562 → 590, runtime 619 → 639, all passing, TypeScript clean. The page was looked at in the playground at
+1440, 390 and 320 px (the month's table scrolls inside its card on a phone). 32 rules taken out once with
+`scripts/dev/mutate.mjs`: 30 held at once, the other two once a check was added for each (nobody employed has no days
+in a month; the employer's social insurance goes to 524).
+
+For a professional to read (a payroll accountant's eye):
+
+- 2027's figures: the subsistence minimum and the average wage are published; the rates of 2026 are carried (the
+  health rate of 5 % is legislated for 2026 and 2027); the child bonus of 2027 is taken as 2026's. To confirm in
+  December 2026.
+- The employer's unemployment insurance is split 0,5 % + 0,5 % (the support in short-time work), as a company that
+  pays the latter; to confirm that every client is such an employer.
+- The child bonus for the month of a birth is granted (the bonus "for the month the child is born"); and the bonus is
+  granted with the declaration alone (the employer asks for the documents).
+- The minimum health advance is shared by the days of the month in employment; the exceptions are the accountant's
+  tick.
+- The payday decides the due day of the insurance and its reports (the Social Insurance Agency's report on the payday,
+  § 143(2) of Act No. 461/2003 Z. z.); a company without a payday agreed pays by the last day of the next month.
+
+What remains of payroll: agreements (dohody) and their exemptions, a director's remuneration, working pensioners and
+students, sick pay (náhrada príjmu, 14 days from 2026) and holiday pay worked out, the annual reconciliation (ročné
+zúčtovanie), deductions, meal allowances, the employees' registrations, and the reports as files: the Social Insurance
+Agency's monthly report, the health insurers' batch 514, the overview PREHLADv26 and the yearly Hlásenie.
+
 ## Resources
 
-- One continuous session (milestone 1 from 15:17 to 16:03, milestone 2 to 17:30); repository work by shell and file
+- One continuous session (milestone 1 from 15:17 to 16:03, milestone 2 to 17:30, milestone 3 after it); repository work by shell and file
   tools, research by web search and the Financial Administration's own eForm files (pfseform.financnasprava.sk,
   financnasprava.sk) and slov-lex.sk. No paid external service was called, nothing was deployed, no production data
   exist. The test suites take about 3 s (units) and 50 s (runtime); a full mutation run of milestone 2 (52 rules) about

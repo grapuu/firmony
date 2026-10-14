@@ -82,6 +82,8 @@ const ibanOk = (iban: string): boolean => {
 
 /** The prefix of the State Treasury's accounts for the income tax of legal persons and its advances. */
 export const INCOME_PREFIX = '500224'
+/** The prefix for the tax withheld from wages (preddavky na daň zo závislej činnosti). */
+export const WAGE_PREFIX = '500259'
 
 /** The IBAN to which a company pays a tax: SK, the check digits, 8180, the tax's prefix (VAT's unless said) and its account of ten digits. */
 export function taxIban(account: string, prefix: string = VAT_PREFIX): string {

@@ -1,11 +1,12 @@
 // What the team's screen of deadlines reads (src/team/deadlines.ts has the rules). Every company the user sees, in a
 // fixed number of queries whatever their number: the companies, the returns filed, the VAT paid, the payments without a
-// document, the filings marked, the closings with the income tax paid; and the documents of each VAT company's last
-// periods, many companies in one batch.
+// document, the filings marked, the closings with the income tax paid, the employees and the payroll months closed; and
+// the documents of each VAT company's last periods, many companies in one batch.
 import { DEADLINES } from '../config'
 import { COMPANY_COLUMNS, MISSING, companyOf, docOf, type Company, type Doc, type User } from '../app/store'
 import { FILED_SELECT, NOT_OTHER_TREASURY, docsAroundStatement, filedReturnOf, paidByPeriod, viewOf, type FiledReturn } from '../app/vat-store'
-import { compareDues, deadlinesOf, vatWindow, type ClosingFact, type Due, type MarkedKind } from './deadlines'
+import { payrollSettingsOf } from '../app/payroll-store'
+import { compareDues, deadlinesOf, vatWindow, type ClosingFact, type Due, type MarkedKind, type PayrollFact } from './deadlines'
 import { visible } from './store'
 
 type Row = Record<string, unknown>
@@ -41,10 +42,10 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
     binds.push(scope.accountant)
   }
   const sql = where.join(' ')
-  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows] = await db.batch<Row>([
+  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows] = await db.batch<Row>([
     db
       .prepare(
-        `SELECT ${COMPANY_COLUMNS}, (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover') AS handover
+        `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover') AS handover
            FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE ${sql} ORDER BY c.name COLLATE NOCASE`,
       )
       .bind(...binds),
@@ -75,6 +76,12 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
            FROM closings k JOIN companies c ON c.id = k.company_id WHERE ${sql}`,
       )
       .bind(...binds),
+    db
+      .prepare(
+        `SELECT e.company_id, MIN(e.started_on) AS first, MAX(COALESCE(e.ended_on, '9999-12-31')) AS last FROM employees e JOIN companies c ON c.id = e.company_id WHERE ${sql} GROUP BY e.company_id`,
+      )
+      .bind(...binds),
+    db.prepare(`SELECT r.company_id, r.period, r.payday FROM payroll_runs r JOIN companies c ON c.id = r.company_id WHERE ${sql} AND r.closed_at IS NOT NULL`).bind(...binds),
   ])
   const companies = (companyRows?.results ?? []).map(companyOf)
   const handover = new Map((companyRows?.results ?? []).map((r) => [String(r.id), Number(r.handover ?? 0)]))
@@ -88,6 +95,18 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
     const months = missing.get(id) ?? new Map<string, number>()
     months.set(String(r.month), Number(r.n))
     missing.set(id, months)
+  }
+  const settings = new Map((companyRows?.results ?? []).map((r) => [String(r.id), payrollSettingsOf(r.payroll_settings)]))
+  const closedRuns = new Map<string, Map<string, string | null>>()
+  for (const r of runRows?.results ?? []) {
+    const id = String(r.company_id)
+    closedRuns.set(id, (closedRuns.get(id) ?? new Map<string, string | null>()).set(String(r.period), typeof r.payday === 'string' ? r.payday : null))
+  }
+  const payroll = new Map<string, PayrollFact>()
+  for (const r of employeeRows?.results ?? []) {
+    const id = String(r.company_id)
+    const last = String(r.last ?? '')
+    payroll.set(id, { first: typeof r.first === 'string' ? r.first : null, last: last && last !== '9999-12-31' ? last : null, payday: settings.get(id)?.payday ?? null, closed: closedRuns.get(id) ?? new Map<string, string | null>() })
   }
   const closings = new Map<string, ClosingFact[]>()
   for (const r of closingRows?.results ?? [])
@@ -126,6 +145,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
       paid: paidByPeriod(returns, paid.get(company.id) ?? []),
       filings: filings.get(company.id) ?? new Set<string>(),
       closings: closings.get(company.id) ?? [],
+      payroll: payroll.get(company.id),
       missing: missing.get(company.id) ?? new Map<string, number>(),
       handover: handover.get(company.id) ?? 0,
     }

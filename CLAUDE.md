@@ -203,6 +203,9 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   units 562, runtime 619; 52 rules taken out once, every one held, three only after a check was added for each).
   Found on the way: an advance on the income tax shares its symbol with VAT (1100…), so a payment to the income tax's
   account was taken for VAT; the books and the VAT paid now tell them apart by the account (prefix 500224 or 500240).
+  Built third (until about 19:30): "Payroll" under the accountants' side, employees in an employment relationship with
+  a monthly wage, under the rules of 2026 and 2027 as the authorities published them (all checks passing: units 590,
+  runtime 639; 32 rules taken out once, every one held, two only after a check was added for each).
 
 ## What he has to do before it is live (each a few clicks)
 
@@ -940,8 +943,13 @@ the books; worked out from what the app holds, never typed twice.
     343.300 by its symbol 1100… when the money went to VAT's account (prefix 500240) or the bank did not say where,
     the income tax and its advances 341 when it went to the income tax's (500224: an advance's symbol is 1100… too)
     or by the year's own symbol 170099…, capital paid in 353 when its note says "imani", otherwise 365, wages paid
-    331; `treasuryTax` reads the prefix from the other side's IBAN, `payments.party_iban`). A tax other than these,
-    insurance or anything else waits for her account.
+    331, and of a payroll month closed the sum due to the Social Insurance Agency 336.100, to a health insurer
+    336.200, to the tax office 342 (also by its prefix 500259), whether the client marked it payroll or the app took it
+    for the state's; `treasuryTax` reads the prefix from the other side's IBAN, `payments.party_iban`). A tax other
+    than these, insurance or anything else waits for her account.
+  - a payroll month closed (`payroll_runs`, "Payroll"), on its last day: the wages 521 against 331, the employee's
+    insurance from 331 to 336.100 and 336.200, the tax withheld less the bonuses from 331 to 342 (the other way when the
+    bonuses are more), the employer's insurance 524 against 336.100 and 336.200.
   - a VAT return marked as filed settles its period on its last day: what is owed (rows 17 and 25) from 343.200 and
     what is deducted (rows 18, 18a and 19, less row 28) from 343.100 to 343.300, the account with the tax office,
     which the tax paid clears. A corrective return settles in place of the regular one; a supplementary one by its
@@ -980,7 +988,7 @@ the books; worked out from what the app holds, never typed twice.
   agree with once the three payments without a document are counted.
 - Not built: depreciation and asset cards (an asset bought goes to 042; putting it to use and depreciating it is an
   internal document for now), a month or a year closed against changes, the closing entries (the statements are
-  worked out without them: "The closing"), payroll's entries, another currency than the euro, a cash book of its own, a log of each change of a
+  worked out without them: "The closing"), another currency than the euro, a cash book of its own, a log of each change of a
   booked document beyond the events.
 
 ### Every client's deadlines (14 October 2026, from 15:17; `src/team/deadlines.ts`, `deadlines-store.ts`, views in `src/views/deadlines.tsx`)
@@ -1003,7 +1011,10 @@ worked out from what the app holds every time, so it cannot disagree with the VA
   the end of the month a notice moved it to, the next working day if that is a day off (§ 49(1) and (3) of the Income
   Tax Act; `closingDue`), only when the books were ours at the year's end and the contract did not end in it (points
   5.2 and 10.4 of the terms), done once its page marks it filed (`closings`); the income tax a filed closing asks the
-  client to pay (`taxPay`, the client's), until the bank shows it paid with the year's symbol; the handover at the end
+  client to pay (`taxPay`, the client's), until the bank shows it paid with the year's symbol; a month's payroll
+  (`payroll`, the last three months with somebody employed), closed by its payday (a day off moves it on), and once
+  closed its reports (`payrollReports`: the Social Insurance Agency's by the payday, the health insurers' within three
+  days, the tax office's overview by the end of the next month; marked as filed, kind `mz`); the handover at the end
   of a contract, within its thirty days.
 - Which VAT periods are worked out (`vatWindow`): those that ended in the last four months (a quarterly payer's last two
   quarters), none before our first period (`firstPeriod`) nor after the contract's last month. What still runs is shown
@@ -1025,12 +1036,13 @@ worked out from what the app holds every time, so it cannot disagree with the VA
   it reads every VAT company's last four months: measure it on the first real month.
 - The marks (`filings`, schema step 6: company, kind, period, day, who; once): "Označiť ako podané" and "Zrušiť
   označenie" on the row (`POST /ucto/klienti/:id/podane`, the recapitulative statement alone (`sv`), only a period
-  that has ended, events `filing.marked` and `filing.unmarked`; the way back only to the screen or a client's page).
+  that has ended, and a month's payroll reports (`mz`), events `filing.marked` and `filing.unmarked`; the way back
+  only to the screen or a client's page).
   The closing's mark moved to its own page and table on the evening of 14 October (schema step 7 moves any it finds).
   The deletion at the end of a contract deletes them with the rest.
 - Checked: 32 rules taken out once (`scripts/dev/mutate.mjs`), every one held (one after its check was added). Not
-  built: the recapitulative statement itself (its XML), payroll's deadlines (they come with payroll), the deadline of
-  the motor vehicle tax and of each advance on the income tax (the closing says the advances' amount).
+  built: the recapitulative statement itself (its XML), the payroll reports as files, the deadline of the motor vehicle
+  tax and of each advance on the income tax (the closing says the advances' amount).
 
 ### The closing (14 October 2026, from 16:03; `src/app/closing.ts`, `closing-form.ts`, `closing-xml.ts`, `closing-store.ts`, views in `src/views/closing.tsx`)
 
@@ -1123,6 +1135,52 @@ and the client told what to pay. As with VAT, nothing is sent by us: the account
   2027: its schema replaces `dppo2025.xsd`, and the first Firmony closings are for 2027), what eDane wants in
   `opravnenaOsoba` (europio's representative, as for VAT), and whether the SK NACE list of DPPOv26 is still Rev. 2.
 
+### Payroll (14 October 2026, from 17:30; `src/app/payroll.ts`, `payroll-store.ts`, views in `src/views/payroll.tsx`)
+
+What the accountant of an online firm does each month for a young company's first employees: the payslips, what the
+company pays and where, the books, and the reports to file. Built for employees in an employment relationship with a
+monthly wage; nothing is sent to the insurers or the tax office by us.
+
+- Read on 14 October 2026 (the full list at the top of `payroll.ts`): the Social Insurance Agency's tables from
+  1 January 2026 (rates; the cap 16 764 € a month, 11 times the average wage of two years before; the base and each
+  amount rounded down, each kind on its own) and its notice that the general assessment base of 2025 is 19 440 €
+  (average 1 620 €: the cap of 2027 is 17 820 €); VšZP and Dôvera (health 5 % and 11 % in 2026 and 2027, halved with a
+  disability, rounded down, the minimum advance 45,45 € in 2026, the deductible item below 570 €, the advance due on
+  the payday and its report within three days); the Financial Directorate's pages on the advance (the bands from 2026,
+  19, 25, 30 and 35 % at 154,8, 212,4 and 264 times the subsistence minimum, a twelfth a month: 3 665,28 €, 5 029,10 €,
+  6 250,86 € in 2026), the child bonus of 2026 (100 € to the month a child turns 15, 50 € to 18, 29 to 64 % of the base,
+  a tenth of the base above 1,5 times the average wage off each child), rounding since 2020 (mathematical, § 47), the
+  remittance (within five days of the payout to 500259 and the personal tax account, symbol 1100 and the month) and
+  the overview (prehľad, by the end of the next month); the subsistence minimum of 1 July 2026 (295,22 €) for 2027's
+  non-taxable part (6 199,62 €, 516,64 € a month) and bands.
+- The engine (`payslip`, pure): the gross the accountant gives for the month (the wage, offered; a share of it for part
+  of a month), each kind of social insurance of each side, health with the deductible item and the minimum topped up
+  (by the days employed; an exception declared skips it), the partial base, the non-taxable part with the signed
+  declaration, the advance by the bands rounded once, the bonus per child, what is withheld (minus: the bonus paid out
+  with the wage), the net, the employer's cost. `PAYROLL_YEARS` holds 2026 and 2027; a later year uses 2027's until
+  its figures are added. Checked against published figures: SuperFaktúra's 1 500 € with a daughter (1 234,51 €),
+  Bezúčto's minimum wage of 2027 (772,11 € net, 1 323,85 € the employer's cost), the Agency's capped amounts,
+  Peniaze.sk's low wage with two children (141,75 € of bonus), KROS's 3 000 € with two (71,80 € and 21,80 €).
+- Stored (schema step 8): `employees` (name, birth day, insurer 24/25/27, start and end, monthly wage, the
+  declaration, a disability, the deductible item claimed, an exception from the minimum health advance, children for
+  the bonus, the IBAN for the net wage), `payroll_runs` (a company's month: the incomes typed and the payday while it
+  is open; once closed, each line with its payslip and days as they were, who closed it and when), `companies.payroll`
+  (the payday of the month, the Social Insurance Agency's account and the employer's number, each insurer's account
+  and number). The deletion at the end of a contract deletes them with the rest.
+- The page (`/ucto/klienti/:id/mzdy?obdobie=`; the client page's books card leads there): the last six months with
+  their states, the month's table (each employee's income to type, the insurance, the tax after the bonus, the net,
+  the cost, a breakdown and the payslip to print, `/mzdy/paska`), the payday, "Prepočítať a uložiť" and "Uzavrieť
+  mesiac" (only after the month: the payslips kept, booked, and the client's message), "Otvoriť mesiac znova" (the
+  client told that it does not stand), what to pay and where (each employee's net to their account, the Social
+  Insurance Agency, each insurer, the tax office), the employees (`/mzdy/zamestnanec`), the settings. Events:
+  `payroll.saved`, `payroll.closed`, `payroll.reopened`, `payroll.settings`, `employee.added`, `employee.changed`.
+- Not built: agreements outside employment (dohody), a director's remuneration, working pensioners and students,
+  sick pay and holiday pay worked out by the app (typed in the month's income), the annual reconciliation, wage
+  deductions, meal allowances, the registrations of employees, and the reports as files (the Social Insurance
+  Agency's monthly report, the insurers' 514 batch, the overview PREHLADv26): they are filed in the insurers' portals
+  and eDane from the page's figures and marked on the screen of deadlines. The client is told in a message, not yet
+  with QR codes on its Dane page.
+
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
@@ -1203,11 +1261,11 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (562): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing
-npm run test:runtime     # the deployable bundle in workerd (619): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the closing, to the deletion
+npm test                 # unit checks (590): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll
+npm run test:runtime     # the deployable bundle in workerd (639): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the closing, payroll, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (52)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (32)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
@@ -1215,7 +1273,7 @@ The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?
 `/ucto/klienti/demo-company/dph`; September of the sample company is ready to be filed. The books:
 `/ucto/klienti/demo-company/kniha`. Every client's deadlines: `/ucto/terminy` (the sample company's September, its
 recapitulative statement, both companies' documents of the month). The closing: `/ucto/klienti/demo-company/zavierka`
-(the year that runs).
+(the year that runs). Payroll: `/ucto/klienti/demo-company/mzdy` (the sample company has no employees: add one there).
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
 the café payment. The bank: /app/banka shows the sample company's bank sending its statements by email;

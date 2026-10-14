@@ -143,14 +143,14 @@ export function sameDocument(
 /** A day as an accountant types it: 11. 10. 2026. */
 export const textDay = (day: string): string => `${Number(day.slice(8, 10))}. ${Number(day.slice(5, 7))}. ${day.slice(0, 4)}`
 
-/** "11. 10. 2026", "11.10.2026" or "2026-10-11" as 2026-10-11; '' when empty; null when it is no day. */
-export function dayOfText(text: string): string | null {
+/** "11. 10. 2026", "11.10.2026" or "2026-10-11" as 2026-10-11; '' when empty; null when it is no day (or before `since`, a year: a birth day may be in the 1900s). */
+export function dayOfText(text: string, since = 2000): string | null {
   const plain = text.replace(/\s/g, '')
   if (plain === '') return ''
   const sk = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(plain)
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(plain)
   const [y, m, d] = sk ? [Number(sk[3]), Number(sk[2]), Number(sk[1])] : iso ? [Number(iso[1]), Number(iso[2]), Number(iso[3])] : [0, 0, 0]
-  if (y < 2000 || y > 2100) return null
+  if (y < since || y > 2100) return null
   const day = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
   const check = new Date(`${day}T12:00:00Z`)
   return check.getUTCFullYear() === y && check.getUTCMonth() + 1 === m && check.getUTCDate() === d ? day : null

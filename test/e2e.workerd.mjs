@@ -206,7 +206,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 7)
+check('health says the schema', (await res.json()).schema === 8)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -3293,6 +3293,132 @@ check(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Payroll: an employee, last month's payslip worked out, the month closed (booked, the client told what to pay and
+// where), its deadlines and reports, a payroll payment's account, the month opened again
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const monthBack = (n) => {
+    const d = new Date(`${day(0).slice(0, 7)}-15T12:00:00Z`)
+    d.setUTCMonth(d.getUTCMonth() - n)
+    return d.toISOString().slice(0, 7)
+  }
+  const last = monthBack(1)
+  const current = day(0).slice(0, 7)
+  const base = '/ucto/klienti/co-w/mzdy'
+  await db
+    .prepare(
+      "INSERT INTO companies (id, created_at, name, ico, dic, address, vat_payer, plan, inbox, accountant_id, start_on, tax_account) VALUES ('co-w', ?, 'Mzdová s. r. o.', '50999995', '2120999995', 'Hlavná 14, 040 01 Košice', 0, 'rast', 'mzdy1', ?, ?, '1234567890')",
+    )
+    .bind(nowS, lucia?.id ?? '', `${monthBack(3)}-01`)
+    .run()
+
+  res = await acc.get(base)
+  page = plain(await res.text())
+  check('the payroll page answers, without a script or a style of its own, and asks for the first employee', res.status === 200 && !/<script>/.test(page) && !/ style=/i.test(page) && page.includes('Firma zatiaľ nemá zamestnancov'))
+  const employee = {
+    meno: 'Ján Mzdový',
+    narodeny: '1. 1. 1990',
+    poistovna: '25',
+    nastup: skDay(`${monthBack(3)}-01`),
+    skoncenie: '',
+    mzda: '1500',
+    iban: 'SK31 1200 0000 1987 4263 7541',
+    vyhlasenie: '1',
+    dieta_0: 'Andrea',
+    narodene_0: '2. 4. 2016',
+  }
+  res = await acc.post(`${base}/zamestnanec`, { ...employee, meno: 'J', iban: 'SK00 1234' })
+  page = plain(await res.text())
+  check('an employee without a name or with an IBAN that is none is refused, field by field', res.status === 422 && page.includes('Napíšte meno a priezvisko.') && page.includes('Toto číslo účtu nie je platný IBAN.'))
+  res = await acc.post(`${base}/zamestnanec`, employee)
+  const kept = await db.prepare("SELECT * FROM employees WHERE company_id = 'co-w'").first()
+  check(
+    'an employee kept: the wage, the insurer, the declaration, the child',
+    res.status === 303 && kept?.wage_cents === 150000 && kept.insurer === '25' && kept.declaration === 1 && JSON.parse(kept.children)[0]?.born === '2016-04-02' && kept.iban === 'SK3112000000198742637541',
+  )
+
+  // Last month, worked out and kept
+  res = await acc.get(base)
+  page = plain(await res.text())
+  const net = last < '2027' ? '1 234,51 €' : '1 238,20 €'
+  check(`last month is offered with the wage and its payslip: ${net} to pay out`, res.status === 200 && page.includes(`name="hruba_${kept?.id}"`) && page.includes(net) && page.includes('Čo zaplatiť'), page.slice(page.indexOf('Na výplatu'), page.indexOf('Na výplatu') + 300))
+  const payday = `${current}-10`
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: 'veľa', vyplata: skDay(payday), akcia: 'ulozit' })
+  check('an income that is no amount is said', res.status === 422 && plain(await res.text()).includes('Sumu napíšte v eurách'))
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'ulozit' })
+  let run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
+  check('kept while open: the income and the payday', res.status === 303 && run?.payday === payday && JSON.parse(run.lines)[0]?.gross === 150000 && run.closed_at === null)
+
+  // Closed: booked, and the client told what to pay
+  res = await acc.post(base, { obdobie: current, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(`${current}-28`), akcia: 'uzavriet' })
+  check('the month that runs cannot be closed', res.headers.get('location') === `${base}?obdobie=${current}&ok=mzdy-bezi`)
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'uzavriet' })
+  run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
+  const slip = JSON.parse(run?.lines ?? '[]')[0]?.slip
+  check('closed once, with the payslip as it was worked out', res.status === 303 && run?.closed_at && slip?.gross === 150000 && slip.bonus === 10000 && slip.net === (last < '2027' ? 123451 : 123820), JSON.stringify(slip))
+  const told = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-w' ORDER BY created_at DESC, rowid DESC").first()
+  check(
+    'the client reads what to pay and where: the net wage to the employee\'s account, the insurers, the tax office with the month\'s symbol',
+    Boolean(told) && plain(told.body).includes(`Ján Mzdový: ${net} na SK31 1200 0000 1987 4263 7541`) && told.body.includes('Sociálna poisťovňa') && told.body.includes('VšZP') && told.body.includes(`VS 1100${last.slice(5, 7)}${last.slice(0, 4)}`) && plain(told.body).includes('8180 5002 5912 3456 7890'),
+    told?.body,
+  )
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1800', vyplata: skDay(payday), akcia: 'uzavriet' })
+  check('closed, it is not closed again nor changed', res.headers.get('location') === `${base}?obdobie=${last}&ok=mzdy-uz` && JSON.parse((await db.prepare("SELECT lines FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first())?.lines ?? '[]')[0]?.gross === 150000)
+  res = await acc.get(`/ucto/klienti/co-w/kniha/dennik?rok=${last.slice(0, 4)}&mesiac=${Number(last.slice(5, 7))}`)
+  page = plain(await res.text())
+  check('in the books: the month\'s payroll on its last day', page.includes('Mzdy za') && page.includes('521') && page.includes('336.100') && page.includes('524'))
+  res = await acc.get(`${base}/paska?obdobie=${last}&zamestnanec=${kept?.id}`)
+  check('the payslip to print', res.status === 200 && plain(await res.text()).includes('Výplatná páska'))
+
+  // A payroll payment: the Social Insurance Agency's sum goes to 336.100
+  await db.prepare("INSERT INTO accounts (id, company_id, iban, ledger) VALUES ('acc-w', 'co-w', 'SK6809000000000999999995', '221.001')").run()
+  await db
+    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, exempt, ref) VALUES ('pw-1', 'co-w', 'acc-w', ?, ?, ?, 'Sociálna poisťovňa', 'payroll', 'w1')")
+    .bind(nowS, payday <= day(0) ? payday : day(0), -(slip.socialEmployee + slip.socialEmployer))
+    .run()
+  res = await acc.get(`/ucto/klienti/co-w/kniha/platby?rok=${day(0).slice(0, 4)}`)
+  page = plain(await res.text())
+  check("a payroll payment of the Social Insurance Agency's sum is booked to 336.100", page.includes('336.100'))
+
+  // The deadlines
+  res = await acc.get('/ucto/terminy?hotove=1')
+  page = plain(await res.text())
+  check('on the screen of deadlines: the month closed, its reports to file', page.includes('Mzdy za') && page.includes('Uzavreté') && page.includes('Výkazy do poisťovní a prehľad za'))
+  res = await acc.post('/ucto/klienti/co-w/podane', { druh: 'mz', obdobie: last })
+  check('the reports marked as filed', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-w' AND kind = 'mz'").first())?.n === 1)
+
+  // The settings
+  res = await acc.post(`${base}/nastavenie`, { den: '40', sp_iban: 'SK00', sp_vs: 'abc' })
+  check('settings that are none are said', res.status === 422)
+  res = await acc.post(`${base}/nastavenie`, { den: '10', sp_iban: 'SK31 1200 0000 1987 4263 7541', sp_vs: '1234567890', zp_iban_25: '', zp_vs_25: '4567' })
+  const settings = JSON.parse((await db.prepare("SELECT payroll FROM companies WHERE id = 'co-w'").first())?.payroll ?? '{}')
+  check('kept: the payday, the Social Insurance Agency, the insurer', res.status === 303 && settings.payday === 10 && settings.social?.vs === '1234567890' && settings.health?.['25']?.vs === '4567')
+
+  // Who may
+  res = await anna.get(base)
+  check('a client gets nothing there', res.status === 404)
+  res = await acc.get('/ucto/klienti/co-b/mzdy')
+  check('nor does an accountant at a client that is not hers', res.status === 404)
+
+  // Opened again
+  res = await acc.post(`${base}/otvorit`, { obdobie: last })
+  run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
+  const undone = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-w' ORDER BY created_at DESC, rowid DESC").first()
+  check('opened again: not closed, its incomes kept, the client told', res.status === 303 && run?.closed_at === null && JSON.parse(run.lines)[0]?.gross === 150000 && undone?.body.includes('rušíme'))
+
+  await db.batch([
+    db.prepare("DELETE FROM payments WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM accounts WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM employees WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_runs WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM filings WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM messages WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM companies WHERE id = 'co-w'"),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // The order: a request for a company the register knows as an s. r. o. becomes a contract concluded online by a
 // director the register names (Zelený dvor s. r. o.: two directors in office, one whose office ended).
 // ---------------------------------------------------------------------------------------------------------------
@@ -3693,6 +3819,8 @@ const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company
 // A recapitulative statement marked as filed while the contract ran, and a closing.
 await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES ('co-a', 'sv', '2026-01', ?, ?, NULL)").bind(day(-120), nowS).run()
 await db.prepare("INSERT INTO closings (company_id, year, inputs, filed_on, filed_at) VALUES ('co-a', 2025, '{}', ?, ?)").bind(day(-120), nowS).run()
+await db.prepare("INSERT INTO employees (id, company_id, name, insurer, started_on, wage_cents, created_at) VALUES ('emp-a', 'co-a', 'Zamestnanec A', '25', '2026-01-01', 100000, ?)").bind(nowS).run()
+await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('co-a', '2026-01', '[]')").run()
 await tick(Date.now())
 await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
@@ -3703,10 +3831,11 @@ const leftover = await db
        + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
        + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL)
-       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM closings WHERE company_id = 'co-a') AS n`,
+       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM closings WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM employees WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_runs WHERE company_id = 'co-a') AS n`,
   )
   .first()
-check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the filings marked, the closings, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
+check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the filings marked, the closings, the employees and their payroll, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
 const objects = await files.list({ prefix: 'companies/co-a/' })
 check(
   'and so are their files, all but the power of attorney',

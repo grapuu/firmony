@@ -13,7 +13,7 @@ import { bell, ringStatement } from '../bell'
 import { lookupCompany } from '../rpo'
 import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
-import { app, dayName, readableName, signed, whenName } from '../app/copy'
+import { app, dayName, monthName, readableName, signed, whenName } from '../app/copy'
 import { endingOf } from '../app/ending'
 import { linksOf } from '../app/bank'
 import { answerHeld, statementsOf } from '../app/statements'
@@ -77,10 +77,32 @@ import { extensionDays, tableF } from '../app/closing'
 import { closingValues, readClosing, type ClosingErrors, type ClosingValues } from '../app/closing-form'
 import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, saveInputsStatement, unfileClosingStatement, type ClosingView } from '../app/closing-store'
 import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
+import { CHILD_ROWS, EmployeePage, PayrollPage, PayslipPage, type FieldErrors, type MonthState, type PayOrders, type SlipLine } from '../views/payroll'
+import {
+  INSURERS,
+  closeRunStatement,
+  employeeStatement,
+  employeesOf,
+  isInsurer,
+  monthRange,
+  monthSlips,
+  paydayOf,
+  payrollSettingsOf,
+  reopenRunStatement,
+  runTotals,
+  runsOf,
+  saveRunStatement,
+  settingsStatement,
+  type Employee,
+  type Insurer,
+  type PayrollSettings,
+} from '../app/payroll-store'
+import { addDays } from '../app/ending'
+import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
-import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, type VatData } from '../app/vat'
+import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
 import { returnXml, statementXml } from '../app/vat-xml'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
@@ -92,6 +114,7 @@ import {
   filedReturns,
   groupedIban,
   INCOME_PREFIX,
+  WAGE_PREFIX,
   leftToPay,
   overpaid,
   payable,
@@ -330,6 +353,22 @@ function flashOf(c: Ctx): string | null {
       return t.closing.flashes.already
     case 'zavierka-lehota':
       return t.closing.flashes.extended
+    case 'mzdy-ulozene':
+      return t.payroll.flashes.saved
+    case 'mzdy-uzavrete':
+      return t.payroll.flashes.closed
+    case 'mzdy-otvorene':
+      return t.payroll.flashes.reopened
+    case 'mzdy-bezi':
+      return t.payroll.flashes.running
+    case 'mzdy-uz':
+      return t.payroll.flashes.already
+    case 'mzdy-nikto':
+      return t.payroll.flashes.nobody
+    case 'mzdy-zamestnanec':
+      return t.payroll.flashes.employee
+    case 'mzdy-nastavenie':
+      return t.payroll.flashes.settings
     case 'kniha-ucet':
       return t.ledger.flashes.account
     case 'kniha-interny':
@@ -387,8 +426,8 @@ teamRoutes.get('/terminy', async (c) => {
 /** Where a form of the deadlines goes back to: the screen with its filters, or a client's page; nothing else. */
 const BACK = /^\/ucto\/(?:terminy|klienti\/[A-Za-z0-9-]{1,64})(?:\?[A-Za-z0-9=&_-]{0,200})?$/
 
-// A filing the app does not make yet (the recapitulative statement), marked as filed elsewhere, or the mark taken back.
-// The closing has its own page, which marks it.
+// A filing the app does not make yet (the recapitulative statement, a month's payroll reports), marked as filed
+// elsewhere, or the mark taken back. The closing has its own page, which marks it.
 teamRoutes.post('/klienti/:id/podane', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
@@ -396,10 +435,10 @@ teamRoutes.post('/klienti/:id/podane', async (c) => {
   const db = c.env.DB
   const body = await c.req.parseBody()
   const today = dayOf(now())
-  const kind = body.druh === MARKED_KINDS.summary ? MARKED_KINDS.summary : null
+  const kind = body.druh === MARKED_KINDS.summary ? MARKED_KINDS.summary : body.druh === MARKED_KINDS.payroll ? MARKED_KINDS.payroll : null
   const period = typeof body.obdobie === 'string' ? body.obdobie : ''
-  // A statement of a period that has ended.
-  if (!kind || !isPeriod(period) || periodRange(period).to >= today) return c.text('Bad request', 400)
+  // A statement of a period that has ended; payroll reports of a month that has.
+  if (!kind || !isPeriod(period) || periodRange(period).to >= today || (kind === MARKED_KINDS.payroll && period.includes('Q'))) return c.text('Bad request', 400)
   const undo = body.zrusit === '1'
   await db.batch([
     undo ? unmarkFilingStatement(db, company.id, kind, period) : markFilingStatement(db, company.id, kind, period, who.user.id, today, now()),
@@ -1418,6 +1457,322 @@ teamRoutes.post('/klienti/:id/zavierka/zrusit', async (c) => {
     later(c, flushOutbox(db, c.env.EMAIL))
   }
   return c.redirect(`/ucto/klienti/${company.id}/zavierka?rok=${year}&ok=zavierka-zrusene`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payroll: a month's payslips (payroll.ts), the month closed and the client told what to pay, the employees, the
+// payroll settings, an employee's payslip
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The months a company's payroll opens for: the last six up to this one, none before its first employee started. */
+function payrollMonths(employees: readonly Employee[], today: string): string[] {
+  const current = today.slice(0, 7)
+  const first = employees.reduce<string | null>((min, e) => (!min || e.startedOn < min ? e.startedOn : min), null)?.slice(0, 7) ?? current
+  const out: string[] = []
+  for (let m = current; out.length < 6 && m >= first; m = prevPeriod(m)) out.unshift(m)
+  return out
+}
+
+/** The month of the address when it is one of them; else last month when it is, else this one. */
+function payrollPeriod(asked: unknown, months: readonly string[], today: string): string {
+  if (typeof asked === 'string' && months.includes(asked)) return asked
+  const last = prevPeriod(today.slice(0, 7))
+  return months.includes(last) ? last : today.slice(0, 7)
+}
+
+async function payrollData(db: D1Database, company: Company) {
+  const [employees, runs, row] = await Promise.all([employeesOf(db, company.id), runsOf(db, company.id), db.prepare('SELECT payroll FROM companies WHERE id = ?').bind(company.id).first<{ payroll: string | null }>()])
+  return { employees, runs, settings: payrollSettingsOf(row?.payroll ?? null) }
+}
+
+/** What the company pays for a month and where: each employee's net wage, the Social Insurance Agency, each health insurer, the tax office. */
+function payOrders(company: Company, period: string, slips: readonly SlipLine[], employees: readonly Employee[], settings: PayrollSettings, payday: string): PayOrders {
+  const totals = runTotals(slips)
+  const iban = new Map(employees.map((e) => [e.id, e.iban]))
+  return {
+    payday,
+    employees: slips.map((l) => ({ name: l.name, amount: l.slip.net, iban: iban.get(l.employeeId) ?? null })),
+    social: { amount: totals.social, iban: settings.social.iban, vs: settings.social.vs },
+    health: (Object.entries(totals.health) as [Insurer, number][]).map(([code, amount]) => ({ code, amount, iban: settings.health[code]?.iban ?? null, vs: settings.health[code]?.vs ?? null })),
+    tax: { amount: totals.tax, iban: company.taxAccount ? taxIban(company.taxAccount, WAGE_PREFIX) : null, vs: `1100${period.slice(5, 7)}${period.slice(0, 4)}`, due: workingDayFrom(addDays(payday, 5)) },
+  }
+}
+
+const settingsValues = (s: PayrollSettings): Record<string, string> => {
+  const v: Record<string, string> = { den: s.payday ? String(s.payday) : '', sp_iban: s.social.iban ?? '', sp_vs: s.social.vs ?? '' }
+  for (const code of Object.keys(INSURERS) as Insurer[]) {
+    v[`zp_iban_${code}`] = s.health[code]?.iban ?? ''
+    v[`zp_vs_${code}`] = s.health[code]?.vs ?? ''
+  }
+  return v
+}
+
+async function payrollPage(
+  c: Ctx,
+  company: Company,
+  asked: unknown,
+  forms: { month?: { values: Record<string, string>; errors: FieldErrors }; settings?: { values: Record<string, string>; errors: FieldErrors } } = {},
+) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const { employees, runs, settings } = await payrollData(db, company)
+  const months = payrollMonths(employees, today)
+  const period = payrollPeriod(asked, months, today)
+  const run = runs.find((r) => r.period === period) ?? null
+  const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : today <= monthRange(m).to ? 'running' : 'open')
+  const slips = monthSlips(period, employees, run)
+  const payday = run?.payday ?? paydayOf(period, settings)
+  const insurers = [...new Set<Insurer>([...employees.map((e) => e.insurer), ...(Object.keys(settings.health) as Insurer[])])]
+  const failed = Boolean(forms.month || forms.settings)
+  return shell(
+    c,
+    'clients',
+    `${t.payroll.title}: ${company.name}`,
+    <PayrollPage
+      company={company}
+      period={period}
+      months={months.map((m) => ({ period: m, state: stateOf(m) }))}
+      state={stateOf(period)}
+      employees={employees}
+      slips={slips}
+      run={run}
+      totals={runTotals(slips)}
+      orders={payOrders(company, period, slips, employees, settings, payday)}
+      values={forms.month?.values ?? { vyplata: textDay(payday) }}
+      errors={forms.month?.errors ?? {}}
+      settings={{ values: forms.settings?.values ?? settingsValues(settings), errors: forms.settings?.errors ?? {}, insurers }}
+      today={today}
+      flash={failed ? null : flashOf(c)}
+      error={failed ? t.payroll.flashes.fix : null}
+    />,
+    failed ? 422 : 200,
+  )
+}
+
+teamRoutes.get('/klienti/:id/mzdy', async (c) => {
+  const company = await companyParam(c)
+  return company ? payrollPage(c, company, c.req.query('obdobie')) : missingPage(c)
+})
+
+/** The incomes typed and the payday: kept, or the month closed with them and the client told what to pay. */
+teamRoutes.post('/klienti/:id/mzdy', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const { employees, runs, settings } = await payrollData(db, company)
+  const months = payrollMonths(employees, today)
+  const period = typeof body.obdobie === 'string' && months.includes(body.obdobie) ? body.obdobie : null
+  if (!period) return c.text('Bad request', 400)
+  const back = `/ucto/klienti/${company.id}/mzdy?obdobie=${period}`
+  const run = runs.find((r) => r.period === period) ?? null
+  if (run?.closedOn) return c.redirect(`${back}&ok=mzdy-uz`, 303)
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const proposed = monthSlips(period, employees, run)
+  const lines = proposed.map((l) => {
+    const name = `hruba_${l.employeeId}`
+    const text = typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 14) : ''
+    values[name] = text
+    const cents = centsOf(text)
+    if (cents === null || Number.isNaN(cents) || cents < 0) errors[name] = t.payroll.errors.amount
+    return { employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: cents !== null && cents >= 0 ? cents : 0 }
+  })
+  const paydayText = typeof body.vyplata === 'string' ? body.vyplata.trim().slice(0, 16) : ''
+  values.vyplata = paydayText
+  const payday = dayOfText(paydayText)
+  if (!payday || payday < `${period}-01`) errors.vyplata = t.payroll.errors.paydayDate
+  if (Object.keys(errors).length > 0 || !payday) return payrollPage(c, company, period, { month: { values, errors } })
+  const close = body.akcia === 'uzavriet'
+  if (!close) {
+    await db.batch([saveRunStatement(db, company.id, period, payday, lines, who.user.id, now()), eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.saved', subject: period })])
+    return c.redirect(`${back}&ok=mzdy-ulozene`, 303)
+  }
+  if (today <= monthRange(period).to) return c.redirect(`${back}&ok=mzdy-bezi`, 303)
+  if (lines.length === 0) return c.redirect(`${back}&ok=mzdy-nikto`, 303)
+  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null })
+  const [done] = await db.batch([closeRunStatement(db, company.id, period, payday, slips, who.user.id, today, now())])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=mzdy-uz`, 303)
+  const orders = payOrders(company, period, slips, employees, settings, payday)
+  const iban = (value: string | null) => (value ? groupedIban(value) : null)
+  const text = t.payroll.clientMessage({
+    month: monthName(`${period}-01`),
+    payday: dayName(payday),
+    employees: orders.employees.map((e) => ({ name: e.name, amount: formatEurExact(e.amount), iban: iban(e.iban) })),
+    social: orders.social.amount > 0 ? { amount: formatEurExact(orders.social.amount), iban: iban(orders.social.iban), vs: orders.social.vs } : null,
+    health: orders.health.map((h) => ({ name: INSURERS[h.code], amount: formatEurExact(h.amount), iban: iban(h.iban), vs: h.vs })),
+    tax: orders.tax.amount > 0 ? { amount: formatEurExact(orders.tax.amount), iban: iban(orders.tax.iban), vs: orders.tax.vs, due: dayName(orders.tax.due) } : null,
+  })
+  const id = crypto.randomUUID()
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.closed', subject: period, detail: { employees: slips.length, gross: runTotals(slips).gross } }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`${back}&ok=mzdy-uzavrete`, 303)
+})
+
+/** A month closed by mistake opened again; the client, who was told what to pay, is told that it does not stand. */
+teamRoutes.post('/klienti/:id/mzdy/otvorit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const period = typeof body.obdobie === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(body.obdobie) ? body.obdobie : null
+  if (!period) return c.text('Bad request', 400)
+  const db = c.env.DB
+  const who = c.get('who')
+  const [gone] = await db.batch([reopenRunStatement(db, company.id, period)])
+  if ((gone?.meta?.changes ?? 0) > 0) {
+    const id = crypto.randomUUID()
+    await db.batch([
+      messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: t.payroll.clientReopened(monthName(`${period}-01`)), payment: null }),
+      eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.reopened', subject: period }),
+      ...(await ringClient(c, company, id)),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${period}&ok=mzdy-otvorene`, 303)
+})
+
+/** The payroll settings: the payday, and the accounts and payer numbers at the Social Insurance Agency and the health insurers. */
+teamRoutes.post('/klienti/:id/mzdy/nastavenie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const den = text('den', 2)
+  values.den = den
+  const day = den === '' ? null : Number(den)
+  if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31)) errors.den = t.payroll.errors.payday
+  const pair = (ibanName: string, vsName: string) => {
+    const i = text(ibanName, 34)
+    const v = text(vsName, 10)
+    values[ibanName] = i
+    values[vsName] = v
+    if (i !== '' && !isIban(i)) errors[ibanName] = t.payroll.errors.iban
+    if (v !== '' && !/^\d{1,10}$/.test(v)) errors[vsName] = t.payroll.errors.vs
+    return { iban: i !== '' && isIban(i) ? plainIban(i) : null, vs: /^\d{1,10}$/.test(v) ? v : null }
+  }
+  const settings: PayrollSettings = { payday: errors.den ? null : day, social: pair('sp_iban', 'sp_vs'), health: {} }
+  for (const code of Object.keys(INSURERS) as Insurer[]) {
+    if (!(`zp_iban_${code}` in body) && !(`zp_vs_${code}` in body)) continue
+    settings.health[code] = pair(`zp_iban_${code}`, `zp_vs_${code}`)
+  }
+  if (Object.keys(errors).length > 0) return payrollPage(c, company, body.obdobie, { settings: { values, errors } })
+  const db = c.env.DB
+  await db.batch([settingsStatement(db, company.id, settings), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'payroll.settings' })])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-nastavenie#nastavenie`, 303)
+})
+
+const employeeValues = (e: Employee | null): Record<string, string> => {
+  const v: Record<string, string> = {
+    meno: e?.name ?? '',
+    narodeny: e?.bornOn ? textDay(e.bornOn) : '',
+    poistovna: e?.insurer ?? '25',
+    nastup: e ? textDay(e.startedOn) : '',
+    skoncenie: e?.endedOn ? textDay(e.endedOn) : '',
+    mzda: e ? moneyText(e.wage) : '',
+    iban: e?.iban ? groupedIban(e.iban) : '',
+    vyhlasenie: e?.declaration ? '1' : '',
+    ztp: e?.disabled ? '1' : '',
+    op: e?.healthDeduction ? '1' : '',
+    vynimka: e?.healthExempt ? '1' : '',
+  }
+  for (let i = 0; i < CHILD_ROWS; i++) {
+    v[`dieta_${i}`] = e?.children[i]?.name ?? ''
+    v[`narodene_${i}`] = e?.children[i] ? textDay(e.children[i]?.born ?? '') : ''
+  }
+  return v
+}
+
+teamRoutes.get('/klienti/:id/mzdy/zamestnanec', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asked = c.req.query('id')
+  const employee = asked ? ((await employeesOf(c.env.DB, company.id)).find((e) => e.id === asked) ?? null) : null
+  if (asked && !employee) return missingPage(c)
+  return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: employee?.id ?? null, values: employeeValues(employee), errors: {} }} />)
+})
+
+teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const existing = typeof body.id === 'string' && ID.test(body.id) ? ((await employeesOf(db, company.id)).find((e) => e.id === body.id) ?? null) : null
+  if (typeof body.id === 'string' && body.id !== '' && !existing) return missingPage(c)
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const field = (name: string, max: number) => {
+    values[name] = text(name, max)
+    return values[name] as string
+  }
+  const name = field('meno', 80)
+  if (name.length < 2) errors.meno = t.payroll.errors.name
+  const born = dayOfText(field('narodeny', 16), 1900)
+  if (born === null) errors.narodeny = t.payroll.errors.day
+  const insurer = field('poistovna', 2)
+  if (!isInsurer(insurer)) errors.poistovna = t.payroll.errors.insurer
+  const started = dayOfText(field('nastup', 16))
+  if (!started) errors.nastup = t.payroll.errors.day
+  const ended = dayOfText(field('skoncenie', 16))
+  if (ended === null) errors.skoncenie = t.payroll.errors.day
+  else if (ended && started && ended < started) errors.skoncenie = t.payroll.errors.ended
+  const wage = centsOf(field('mzda', 14))
+  if (wage === null || Number.isNaN(wage) || wage < 0) errors.mzda = t.payroll.errors.amount
+  const iban = field('iban', 34)
+  if (iban !== '' && !isIban(iban)) errors.iban = t.payroll.errors.iban
+  for (const tick of ['vyhlasenie', 'ztp', 'op', 'vynimka']) values[tick] = body[tick] === '1' ? '1' : ''
+  const children: { name: string; born: string }[] = []
+  for (let i = 0; i < CHILD_ROWS; i++) {
+    const childName = field(`dieta_${i}`, 80)
+    const childBorn = dayOfText(field(`narodene_${i}`, 16))
+    if (childName === '' && childBorn === '') continue
+    if (childName.length < 1 || !childBorn) errors[`dieta_${i}`] = t.payroll.errors.child
+    else children.push({ name: childName, born: childBorn })
+  }
+  if (Object.keys(errors).length > 0 || !started || wage === null || !isInsurer(insurer))
+    return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: existing?.id ?? null, values, errors }} />, 422)
+  const employee: Employee = {
+    id: existing?.id ?? crypto.randomUUID(),
+    name,
+    bornOn: born || null,
+    insurer,
+    startedOn: started,
+    endedOn: ended || null,
+    wage,
+    declaration: values.vyhlasenie === '1',
+    disabled: values.ztp === '1',
+    healthDeduction: values.op === '1',
+    healthExempt: values.vynimka === '1',
+    children,
+    iban: iban !== '' ? plainIban(iban) : null,
+  }
+  await db.batch([
+    employeeStatement(db, company.id, employee, c.get('who').user.id, now()),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: existing ? 'employee.changed' : 'employee.added', subject: employee.id }),
+  ])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-zamestnanec#zamestnanci`, 303)
+})
+
+/** An employee's payslip of a month, to print. */
+teamRoutes.get('/klienti/:id/mzdy/paska', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const today = dayOf(now())
+  const { employees, runs } = await payrollData(c.env.DB, company)
+  const months = payrollMonths(employees, today)
+  const period = c.req.query('obdobie') ?? ''
+  if (!months.includes(period)) return missingPage(c)
+  const line = monthSlips(period, employees, runs.find((r) => r.period === period) ?? null).find((l) => l.employeeId === c.req.query('zamestnanec'))
+  if (!line) return missingPage(c)
+  return shell(c, 'clients', `${t.payroll.payslip}: ${line.name}`, <PayslipPage company={company} period={period} line={line} today={today} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------

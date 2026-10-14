@@ -729,8 +729,8 @@ export const PaymentsPage: FC<PaymentsPageProps> = (p) => {
         ) : (
           <ul class="lpays">
             {p.payments.map((x) => {
-              const effective = paymentContra(x)
-              const reason = reasonAccount(x)
+              const effective = paymentContra(x, p.books.payroll)
+              const reason = reasonAccount(x, p.books.payroll)
               const mine = x.contra !== null && effective === x.contra
               const failed = p.error?.payment === x.id
               const what = x.party ? readableName(x.party) : (x.note ?? '')
@@ -1071,6 +1071,9 @@ export const LedgerCard: FC<{ company: Company; tb: TrialBalance; waiting: numbe
       </a>
       <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/zavierka`}>
         {t.closing.open}
+      </a>
+      <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/mzdy`}>
+        {t.payroll.open}
       </a>
     </div>
   </section>

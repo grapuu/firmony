@@ -32,6 +32,10 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix'> & { company: 
       return t.what.closing(period)
     case 'taxPay':
       return t.what.taxPay(period)
+    case 'payroll':
+      return t.what.payroll(monthName(`${period}-01`))
+    case 'payrollReports':
+      return t.what.payrollReports(monthName(`${period}-01`))
     case 'handover':
       return t.what.handover
   }
@@ -48,25 +52,9 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
     case 'running':
       return d.kind === 'handover' ? t.state.running.contract : d.kind === 'summary' && (d.period ?? '').includes('Q') ? t.state.running.quarter : t.state.running.period
     case 'done':
-      return d.kind === 'summary'
-        ? t.state.done.summary
-        : d.kind === 'vatPay' || d.kind === 'taxPay'
-          ? t.state.done.vatPay
-          : d.kind === 'closing'
-            ? t.state.done.closing
-            : d.kind === 'handover'
-              ? t.state.done.handover
-              : t.state.done.vat
+      return t.state.done[d.kind] ?? t.state.done.vat
     default:
-      return d.kind === 'vatPay' || d.kind === 'taxPay'
-        ? t.state.toPay(formatEurExact(d.cents))
-        : d.kind === 'summary'
-          ? t.state.open.summary
-          : d.kind === 'closing'
-            ? t.state.open.closing
-            : d.kind === 'handover'
-              ? t.state.open.handover
-              : t.state.open.vat
+      return d.kind === 'vatPay' || d.kind === 'taxPay' ? t.state.toPay(formatEurExact(d.cents)) : (t.state.open[d.kind] ?? t.state.open.vat)
   }
 }
 
@@ -91,6 +79,9 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<Due
     case 'closing':
     case 'taxPay':
       return `${base}/zavierka?rok=${d.period}`
+    case 'payroll':
+    case 'payrollReports':
+      return `${base}/mzdy?obdobie=${d.period}`
     case 'handover':
       return `${base}#odovzdanie`
   }
@@ -101,6 +92,7 @@ function noteOf(d: Due): string | null {
   if (d.kind === 'vatFix') return d.fix === 'D' ? t.note.fixD : t.note.fixO
   if (d.kind === 'vat' && d.state === 'open') return t.note.older
   if (d.kind === 'summary' && d.state !== 'done') return t.note.summary
+  if (d.kind === 'payrollReports' && d.state !== 'done') return t.note.payrollReports
   return null
 }
 
@@ -131,8 +123,8 @@ export function deadlinesHref(p: { side: DueFilter; done: boolean; accountant: s
 }
 
 const MarkForm: FC<{ d: DueRow; back: string }> = ({ d, back }) => {
-  if (d.kind !== 'summary' || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
-  const kind = MARKED_KINDS.summary
+  if ((d.kind !== 'summary' && d.kind !== 'payrollReports') || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
+  const kind = d.kind === 'summary' ? MARKED_KINDS.summary : MARKED_KINDS.payroll
   return (
     <form class="due__act" method="post" action={`/ucto/klienti/${d.company.id}/podane`}>
       <input type="hidden" name="druh" value={kind} />

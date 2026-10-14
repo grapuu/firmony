@@ -25,23 +25,40 @@
 //   it filed (`closings`).
 // - The income tax that filed return asks the client to pay, by the same day, until the bank shows it paid with the
 //   year's symbol (the client's).
+// - The payroll of a month with employees (app/payroll.ts): closed by its payday in the next month (the last day of it
+//   when no payday is agreed, § 143(2) of Act No. 461/2003 Z. z.), and once closed, its reports: the Social Insurance
+//   Agency's by the same day, the health insurers' within three days of it (§ 20 of Act No. 580/2004 Z. z.), the tax
+//   office's overview (prehľad) by the end of the next month (§ 39(9) and § 49 of Act No. 595/2003 Z. z.). The app does
+//   not file them yet: they are marked as filed (`filings`, kind 'mz'), listed by the earliest of their days.
 // - The handover of the books at the end of a contract: within 30 days of its last day (point 10.4, ENDING.handoverDays).
 import { APP, DEADLINES } from '../config'
 import { addDays, endingOf, intakeOpen } from '../app/ending'
 import { bratislavaDay, type Company } from '../app/store'
 import { closingDue } from '../app/closing'
-import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod } from '../app/vat'
+import { paydayOf } from '../app/payroll-store'
+import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod, workingDayFrom } from '../app/vat'
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'payroll' | 'payrollReports' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
 
-export const DUE_SIDE: Record<DueKind, DueSide> = { vat: 'ours', vatFix: 'ours', summary: 'ours', closing: 'ours', handover: 'ours', vatPay: 'client', docs: 'client', taxPay: 'client' }
+export const DUE_SIDE: Record<DueKind, DueSide> = {
+  vat: 'ours',
+  vatFix: 'ours',
+  summary: 'ours',
+  closing: 'ours',
+  payroll: 'ours',
+  payrollReports: 'ours',
+  handover: 'ours',
+  vatPay: 'client',
+  docs: 'client',
+  taxPay: 'client',
+}
 
-/** Filings the app does not make yet, marked as filed by hand (`filings.kind`): the recapitulative statement. */
-export const MARKED_KINDS = { summary: 'sv' } as const
+/** Filings the app does not make yet, marked as filed by hand (`filings.kind`): the recapitulative statement, a month's payroll reports. */
+export const MARKED_KINDS = { summary: 'sv', payroll: 'mz' } as const
 export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 
 /**
@@ -78,6 +95,15 @@ export interface ClosingFact {
   paid: number
 }
 
+/** A company's payroll as the deadlines read it: the months it had employees, its payday, the months closed with their paydays. */
+export interface PayrollFact {
+  /** The first and the last day anybody was employed (the last null while somebody still is). */
+  first: string | null
+  last: string | null
+  payday: number | null
+  closed: Map<string, string | null>
+}
+
 /** What a company's deadlines are worked out from. */
 export interface DueFacts {
   /** The VAT periods of `vatWindow`, worked out (viewOf), the oldest first. */
@@ -88,6 +114,7 @@ export interface DueFacts {
   /** What was marked as filed outside the app, as `${kind}:${period}` ('sv:2027-01'). */
   filings: Set<string>
   closings: ClosingFact[]
+  payroll?: PayrollFact
   /** The payments without a document, by the month they were booked in (YYYY-MM). */
   missing: Map<string, number>
   /** Files handed over at the end of the contract. */
@@ -203,6 +230,23 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
     add({ kind: 'taxPay', period: String(k.year), day: k.dueOn ?? closingDue(k.year, k.extendedTo), state: rest > 0 ? 'open' : 'done', cents: rest })
   }
 
+  // Payroll: each month of the last few with somebody employed, closed by its payday; a closed one's reports.
+  const pr = facts.payroll
+  if (pr?.first) {
+    const current = today.slice(0, 7)
+    const firstOurs = (company.startOn ?? bratislavaDay(company.createdAt)).slice(0, 7)
+    const lastOurs = company.endsOn ? company.endsOn.slice(0, 7) : null
+    let month = current
+    for (let i = 0; i < DEADLINES.payrollMonths; i++, month = prevPeriod(month)) {
+      if (month < pr.first.slice(0, 7) || month < firstOurs) break
+      if ((pr.last && month > pr.last.slice(0, 7)) || (lastOurs && month > lastOurs)) continue
+      const day = workingDayFrom(pr.closed.get(month) ?? paydayOf(month, pr))
+      const closed = pr.closed.has(month)
+      add({ kind: 'payroll', period: month, day, state: closed ? 'done' : today <= periodRange(month).to ? 'running' : 'open' })
+      if (closed) add({ kind: 'payrollReports', period: month, day, state: facts.filings.has(`${MARKED_KINDS.payroll}:${month}`) ? 'done' : 'open' })
+    }
+  }
+
   // The books handed over at the end of the contract.
   const ending = endingOf(company, today)
   if (ending) add({ kind: 'handover', period: null, day: ending.handoverBy, state: facts.handover > 0 ? 'done' : ending.phase === 'ending' ? 'running' : 'open' })
@@ -226,7 +270,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, closing: 5, taxPay: 6, handover: 7 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, closing: 7, taxPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

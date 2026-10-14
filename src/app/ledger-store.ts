@@ -6,6 +6,7 @@ import { buildBooks, canonicalAccount, type Books, type LedgerLine, type ManualE
 import type { Exempt } from './match'
 import { DOC_COLUMNS, DOC_FROM, docOf, type Company } from './store'
 import { filedReturns } from './vat-store'
+import { ledgerPayroll, runsOf } from './payroll-store'
 
 type Row = Record<string, unknown>
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
@@ -50,7 +51,7 @@ export async function manualEntries(db: D1Database, company: string): Promise<Ma
 
 /** Everything the books of a company are worked out from, read at once, and the books. */
 export async function booksOf(db: D1Database, company: Company): Promise<Books> {
-  const [docs, payments, banks, filed, manual] = await Promise.all([
+  const [docs, payments, banks, filed, manual, runs] = await Promise.all([
     db.prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.deleted_at IS NULL ORDER BY d.created_at, d.id`).bind(company.id).all<Row>(),
     db
       .prepare(
@@ -62,6 +63,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
     db.prepare("SELECT id, iban, COALESCE(ledger, '221') AS ledger, balance_cents, balance_on FROM accounts WHERE company_id = ? ORDER BY ledger, iban").bind(company.id).all<Row>(),
     filedReturns(db, company.id),
     manualEntries(db, company.id),
+    runsOf(db, company.id),
   ])
   return buildBooks({
     company,
@@ -90,6 +92,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
     })),
     filed,
     manual,
+    payroll: runs.map(ledgerPayroll).filter((r): r is NonNullable<typeof r> => r !== null),
   })
 }
 

@@ -23,6 +23,8 @@ import {
   closing,
   closingXml,
   closingForm,
+  payroll,
+  payrollStore,
   match,
   orderLinkMail,
   papers,
@@ -3172,6 +3174,152 @@ async function zipped(entries, note) {
     ledger.reasonAccount({ amountCents: -34000, vs: '1700992026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '341' &&
       ledger.reasonAccount({ amountCents: -34000, vs: '1100032026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '343.300',
   )
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payroll: an employee's month, against figures the authorities and the profession published
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const y26 = payroll.payrollYear(2026)
+  const y27 = payroll.payrollYear(2027)
+  check(
+    "the non-taxable part's twelfth and the monthly bands, as the Financial Directorate gives them for 2026; 2027 from the subsistence minimum of July 2026",
+    payroll.nonTaxableMonth(y26) === 49723 &&
+      payroll.nonTaxableYear(y27) === 619962 &&
+      payroll.nonTaxableMonth(y27) === 51664 &&
+      payroll.monthlyBands(y26).join() === '366528,502910,625086' &&
+      Math.round(154.8 * y27.subsistence) === 4570006,
+  )
+  check('the social insurance cap: 16 764 € in 2026, 17 820 € in 2027', payroll.socialCap(y26) === 1676400 && payroll.socialCap(y27) === 1782000 && payroll.payrollYear(2030).year === 2027)
+  const pay = (fields) => payroll.payslip({ period: '2026-10', gross: 0, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false, days: 31, ...fields })
+  let p = pay({ gross: 150000, children: [{ name: 'Andrea', born: '2016-04-02' }] })
+  check(
+    "SuperFaktúra's 1 500 € with a daughter: insurance 216 €, an advance of 149,49 €, the bonus of 100 €, 1 234,51 € paid",
+    p.socialEmployee === 14100 && p.healthEmployee === 7500 && p.partialBase === 128400 && p.advance === 14949 && p.bonus === 10000 && p.withheld === 4949 && p.net === 123451,
+    JSON.stringify(p),
+  )
+  p = pay({ period: '2027-01', gross: 97200 })
+  check(
+    "the minimum wage of 2027: each social amount rounded down (91,36 €), 48,60 € to health, 59,93 € of tax, 772,11 € paid, 1 323,85 € the employer's cost (Bezúčto)",
+    p.socialEmployee === 9136 && p.social.employee.sickness === 1360 && p.healthEmployee === 4860 && p.advance === 5993 && p.net === 77211 && p.employerCost === 132385 && p.socialEmployer === 24493,
+    JSON.stringify(p),
+  )
+  p = pay({ gross: 2000000, declaration: false })
+  check(
+    'above the cap: social insurance from 16 764 € (the Agency\'s 234,69 € and 2 346,96 €), accident insurance and health from the whole',
+    p.socialBase === 1676400 && p.social.employee.sickness === 23469 && p.social.employer.oldAge === 234696 && p.social.employer.accident === 16000 && p.healthEmployer === 220000,
+  )
+  check('the bands: 10 000 € without the declaration, 19 %, 25 %, 30 % and 35 % of their parts, rounded once', pay({ gross: 1000000, declaration: false }).advance === 221209)
+  p = pay({ gross: 20000 })
+  check('the minimum health advance of 2026 is 45,45 €: what 200 € falls short of it the employee pays', p.healthEmployee + p.healthEmployer === 4545 && p.healthTopUp === 1345)
+  check(
+    'shared by the days employed, and not paid by one with an exception',
+    pay({ period: '2026-09', gross: 10000, days: 15 }).healthTopUp === 2272 - 1600 && pay({ gross: 20000, healthMinimumExempt: true }).healthTopUp === 0,
+  )
+  check(
+    'the deductible item below 570 €: 550 € leaves 510 € to the employee\'s health; 300 € leaves nothing (but the minimum)',
+    payroll.healthDeductible(55000) === 4000 && pay({ gross: 55000, healthDeduction: true }).healthEmployee === 2550 && payroll.healthDeductible(30000) === 30000 && payroll.healthDeductible(57000) === 0,
+  )
+  check('a person with a disability: 2,5 % and 5,5 %', pay({ gross: 150000, disabled: true }).healthEmployee === 3750 && pay({ gross: 150000, disabled: true }).healthEmployer === 8250)
+  check(
+    "the child bonus by age: 100 € to the month the child turns 15, 50 € to the month it turns 18, from the month it is born",
+    payroll.childBonus({ name: 'a', born: '2012-05-10' }, '2027-05') === 10000 &&
+      payroll.childBonus({ name: 'a', born: '2012-05-10' }, '2027-06') === 5000 &&
+      payroll.childBonus({ name: 'b', born: '2009-03-01' }, '2027-03') === 5000 &&
+      payroll.childBonus({ name: 'b', born: '2009-03-01' }, '2027-04') === 0 &&
+      payroll.childBonus({ name: 'c', born: '2026-10-20' }, '2026-10') === 10000 &&
+      payroll.childBonus({ name: 'c', born: '2026-10-20' }, '2026-09') === 0,
+  )
+  p = pay({ gross: 46000, children: [{ name: 'a', born: '2020-01-01' }, { name: 'b', born: '2022-01-01' }] })
+  check('a low wage: two children\'s bonus at most 36 % of the partial base, 141,75 € of 460 € (Peniaze.sk)', p.partialBase === 39376 && p.bonus === 14175 && p.withheld < 0 && p.net === 46000 - 4324 - 2300 + 14175, JSON.stringify(p))
+  p = pay({ gross: 300000, children: [{ name: 'a', born: '2016-01-01' }, { name: 'b', born: '2010-01-01' }] })
+  check('a high one: each child\'s bonus lowered by a tenth of the base above 2 286 € (KROS\'s 3 000 €: 71,80 € and 21,80 €)', p.partialBase === 256800 && p.bonus === 9360 && p.bonusByChild.map((c) => c.amount).join() === '7180,2180', JSON.stringify(p.bonusByChild))
+  check('no declaration, no non-taxable part and no bonus', pay({ gross: 150000, declaration: false, children: [{ name: 'a', born: '2016-01-01' }] }).bonus === 0 && pay({ gross: 150000, declaration: false }).nonTaxable === 0)
+  const t = payroll.payrollTotals([
+    { ...pay({ gross: 150000 }), insurer: '25' },
+    { ...pay({ gross: 200000 }), insurer: '24' },
+    { ...pay({ gross: 100000 }), insurer: '25' },
+  ])
+  check('the month\'s sums: the Social Insurance Agency, each health insurer, the tax office, the employees', t.gross === 450000 && t.health['25'] === 7500 + 16500 + 5000 + 11000 && t.health['24'] === 10000 + 22000 && t.social === 51900 + 69200 + 34600 && t.tax === 14949 + 23081 + 6817 && t.net === 340353, JSON.stringify(t))
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payroll: the months, the payday, the books, the deadlines
+// ---------------------------------------------------------------------------------------------------------------
+{
+  check(
+    "the payday: the agreed day of the next month (the last of a shorter one), else the next month's last day",
+    payrollStore.paydayOf('2026-10', { payday: 10 }) === '2026-11-10' &&
+      payrollStore.paydayOf('2026-10', { payday: 31 }) === '2026-11-30' &&
+      payrollStore.paydayOf('2026-10', { payday: null }) === '2026-11-30' &&
+      payrollStore.paydayOf('2026-12', { payday: 5 }) === '2027-01-05',
+  )
+  check(
+    'the days of a month employed',
+    payrollStore.daysEmployed({ startedOn: '2026-10-15', endedOn: null }, '2026-10') === 17 &&
+      payrollStore.daysEmployed({ startedOn: '2026-01-01', endedOn: '2026-10-10' }, '2026-10') === 10 &&
+      payrollStore.daysEmployed({ startedOn: '2026-11-01', endedOn: null }, '2026-10') === 0 &&
+      payrollStore.daysEmployed({ startedOn: '2026-12-15', endedOn: null }, '2026-10') === 0 &&
+      payrollStore.daysEmployed({ startedOn: '2026-01-01', endedOn: '2026-08-31' }, '2026-10') === 0,
+  )
+  const employee = (fields = {}) => ({ id: 'e1', name: 'Ján', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, ...fields })
+  let slips = payrollStore.monthSlips('2026-10', [employee({ startedOn: '2026-10-16' }), employee({ id: 'e2', startedOn: '2026-12-01' })], null)
+  check('an open month proposes the wage, a share of it for part of the month; nobody who was not employed', slips.length === 1 && slips[0].gross === 77419 && slips[0].days === 16)
+  slips = payrollStore.monthSlips('2026-10', [employee()], { period: '2026-10', payday: '2026-11-10', lines: [{ employeeId: 'e1', name: 'Ján', insurer: '25', gross: 160000 }], closedOn: null, closedByName: null })
+  check('the income typed for the month counts', slips[0].gross === 160000 && slips[0].slip.gross === 160000)
+  const closed = { period: '2026-09', payday: '2026-10-10', lines: slips.map((l) => ({ ...l })), closedOn: '2026-10-05', closedByName: 'Lucia' }
+  const lp = payrollStore.ledgerPayroll(closed)
+  const s1 = slips[0].slip
+  check(
+    'a closed month as the books take it: the sums, and what each payment of it comes to',
+    lp.gross === 160000 && lp.socialEmployee === s1.socialEmployee && lp.tax === s1.withheld && lp.pays.social === s1.socialEmployee + s1.socialEmployer && lp.pays.health.join() === String(s1.healthEmployee + s1.healthEmployer) && payrollStore.ledgerPayroll({ ...closed, closedOn: null }) === null,
+  )
+  const pay = (amountCents, fields = {}) => ({ amountCents, vs: null, note: null, exempt: 'payroll', exemptNote: null, partyIban: null, ...fields })
+  check(
+    "a payroll payment's account: the Social Insurance Agency's sum, a health insurer's, the tax office's (also by its prefix), else wages",
+    ledger.reasonAccount(pay(-lp.pays.social), [lp]) === '336.100' &&
+      ledger.reasonAccount(pay(-lp.pays.health[0]), [lp]) === '336.200' &&
+      ledger.reasonAccount(pay(-lp.tax), [lp]) === '342' &&
+      ledger.reasonAccount(pay(-123, { partyIban: 'SK1981805002590123456789' }), [lp]) === '342' &&
+      ledger.reasonAccount(pay(-s1.net), [lp]) === '331' &&
+      ledger.reasonAccount(pay(-lp.pays.social), []) === '331' &&
+      ledger.reasonAccount(pay(-lp.pays.social, { exempt: 'state', partyIban: 'SK7381800000007000155733' }), [lp]) === '336.100' &&
+      ledger.reasonAccount(pay(-777, { exempt: 'state', partyIban: 'SK7381800000007000155733' }), [lp]) === null,
+  )
+  check('a birth day may be in the 1900s, a document\'s not', booking.dayOfText('1. 1. 1990', 1900) === '1990-01-01' && booking.dayOfText('1. 1. 1990') === null)
+  const books = ledger.buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'none' }, docs: [], payments: [], banks: [], filed: [], manual: [], payroll: [lp] })
+  const entry = books.entries.find((e) => e.key === 'w:2026-09')
+  check(
+    "the month's entry on its last day: 521 against 331, the employee's insurance and tax from 331, the employer's 524",
+    entry?.on === '2026-09-30' &&
+      entry.kind === 'payroll' &&
+      entry.lines.some((l) => l.md === '521' && l.d === '331' && l.cents === 160000) &&
+      entry.lines.some((l) => l.md === '331' && l.d === '336.100' && l.cents === s1.socialEmployee) &&
+      entry.lines.some((l) => l.md === '331' && l.d === '342' && l.cents === s1.withheld) &&
+      entry.lines.some((l) => l.md === '524' && l.d === '336.100' && l.cents === s1.socialEmployer) &&
+      entry.lines.some((l) => l.md === '524' && l.d === '336.200' && l.cents === s1.healthEmployer),
+    JSON.stringify(entry),
+  )
+
+  // The deadlines
+  const co = (fields = {}) => ({ id: 'c1', name: 'Firma', vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: null, address: 'x', ...fields })
+  const facts = (payroll) => ({ views: [], filed: [], paid: new Map(), filings: new Set(), closings: [], missing: new Map(), handover: 0, payroll })
+  const run = (payroll, today, filings = new Set()) => dues.deadlinesOf(co(), { ...facts(payroll), filings }, today)
+  const pf = (fields = {}) => ({ first: '2026-08-01', last: null, payday: 10, closed: new Map(), ...fields })
+  let list = run(pf(), '2026-10-14')
+  const find = (kind, period) => list.find((d) => d.kind === kind && d.period === period)
+  check(
+    'each month with employees closed by its payday, the next working day (10 October 2026 is a Saturday); the month that runs runs',
+    find('payroll', '2026-09')?.day === '2026-10-12' && find('payroll', '2026-09')?.late && find('payroll', '2026-10')?.state === 'running' && find('payroll', '2026-08')?.state === 'open' && !find('payroll', '2026-07'),
+    JSON.stringify(list),
+  )
+  list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14')
+  check('closed: done, by its own payday; its reports then to file', find('payroll', '2026-09')?.state === 'done' && find('payrollReports', '2026-09')?.state === 'open' && find('payrollReports', '2026-09')?.day === '2026-10-09')
+  list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14', new Set(['mz:2026-09']))
+  check('the reports marked as filed are done', find('payrollReports', '2026-09')?.state === 'done')
+  list = run(pf({ last: '2026-08-31' }), '2026-10-14')
+  check('nothing after the last employee left', !find('payroll', '2026-09') && Boolean(find('payroll', '2026-08')))
+  check('a company without employees has no payroll', !dues.deadlinesOf(co(), facts(undefined), '2026-10-14').some((d) => d.kind === 'payroll'))
 }
 
 done('units')

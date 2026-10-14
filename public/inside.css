@@ -6554,3 +6554,127 @@ select.field__input {
 .cform__more > .cform__section {
   margin-top: 12px;
 }
+
+/* Payroll (views/payroll.tsx) ---------------------------------------------------------------------------------- */
+
+/* The month's card and its form (both grid items) shrink with the column; the table scrolls inside it (lscroll). */
+.wmonth,
+.wmonth > form {
+  min-width: 0;
+}
+
+.wtable {
+  min-width: 700px;
+}
+
+.wtable__name {
+  display: block;
+  font-weight: 600;
+}
+
+.wtable__sub {
+  display: block;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.wtable .field__input.wtable__input {
+  width: 128px;
+  min-height: 40px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wform {
+  margin-top: 14px;
+}
+
+/* A payslip's lines: the sums strong, each kind of insurance indented under its sum. */
+.wslip {
+  margin: 8px 0;
+}
+
+.kv .kv__sub dt {
+  padding-left: 14px;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.kv .kv__sub dd {
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.kv .kv__strong dt,
+.kv .kv__strong dd {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* What to pay: each payee, the sum, by when, where. */
+.wpays {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wpay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.wpay__who {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.wpay__due {
+  color: var(--dim);
+  font-size: 0.875rem;
+}
+
+.wpay__acct {
+  flex-basis: 100%;
+  color: var(--soft);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.wpay__list {
+  display: grid;
+  flex-basis: 100%;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wpay__list .wpay__acct {
+  display: block;
+}
+
+/* The children of an employee: a name and a day, side by side. */
+.wkids {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px 16px;
+}
+
+.wsheet {
+  max-width: 720px;
+}
+
+@media print {
+  .wsheet__print {
+    display: none;
+  }
+}

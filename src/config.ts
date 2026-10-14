@@ -334,6 +334,8 @@ export const DEADLINES = {
   olderPeriods: 24,
   /** Companies whose documents are read in one batch. */
   batch: 40,
+  /** The months of payroll listed: the one that runs and the ones before it. */
+  payrollMonths: 3,
 } as const
 
 /**
