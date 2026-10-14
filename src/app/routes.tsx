@@ -54,6 +54,7 @@ import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { endingOf, intakeOpen, serviceOpen } from './ending'
 import { exportYear, exportYears } from './export'
+import { beginExport, completeExport, confirmExport, exportReceipts } from './handover-store'
 import { purgeEnded } from './purge'
 import { currentWho, endSession, linkUsable, newLink, newToken, startSession, switchStatement, useLink } from './session'
 import {
@@ -991,13 +992,14 @@ async function companyPage(
 ) {
   const who = c.get('who')
   const db = c.env.DB
-  const [people, companies, papers, declared, years, handover] = await Promise.all([
+  const [people, companies, papers, declared, years, handover, receipts] = await Promise.all([
     peopleOf(db, who.company.id),
     companiesOf(db, who.user.id),
     papersOf(db, who.company.id, 'poa'),
     latestDeclaration(db, who.company.id),
     exportYears(db, who.company.id),
     papersOf(db, who.company.id, 'handover'),
+    exportReceipts(db, who.company.id),
   ])
   const me = people.find((p) => p.id === who.user.id) ?? { ...who.user, role: who.role }
   return shell(
@@ -1020,6 +1022,7 @@ async function companyPage(
       ending={endingOf(who.company, today())}
       years={years}
       handover={handover}
+      receipts={receipts}
       downloadError={extra.download ?? null}
     />,
     status,
@@ -1294,6 +1297,7 @@ appRoutes.post('/firma/vypoved/spat', async (c) => {
 
 appRoutes.get('/export', async (c) => {
   const who = c.get('who')
+  if (who.role !== 'owner') return companyPage(c, { download: t.download.onlyOwner }, 403)
   const db = c.env.DB
   const year = c.req.query('rok') ?? ''
   if (!/^\d{4}$/.test(year) || !(await exportYears(db, who.company.id)).includes(year)) return shell(c, 'company', t.errors.notFound, <Missing />, 404)
@@ -1304,7 +1308,8 @@ appRoutes.get('/export', async (c) => {
     .first<{ plan: string; price_cents: number | null; accepted_at: number | null; signed_by: string | null; start_on: string | null }>()
   const order = row ? { plan: row.plan, priceCents: row.price_cents, acceptedAt: row.accepted_at, signedBy: row.signed_by, startOn: row.start_on } : null
   await db.batch([eventStatement(db, { company: who.company.id, user: who.user.id, action: 'export.downloaded', subject: year })])
-  const archive = await exportYear(c.env, who.company, year, order, dayName(today()).replace(/\u00a0/g, ' '))
+  const receipt = await beginExport(db, who.company.id, year, who.user.id)
+  const archive = await exportYear(c.env, who.company, year, order, dayName(today()).replace(/\u00a0/g, ' '), { ...receipt, onComplete: async () => { await completeExport(db, receipt.id) } })
   return new Response(archive.body, {
     headers: {
       'Content-Type': 'application/zip',
@@ -1313,6 +1318,17 @@ appRoutes.get('/export', async (c) => {
       'X-Content-Type-Options': 'nosniff',
     },
   })
+})
+
+appRoutes.post('/export/potvrdit', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return companyPage(c, { download: t.company.onlyOwner }, 403)
+  const body = await c.req.parseBody()
+  if (body.potvrdit !== '1' || typeof body.export !== 'string') return companyPage(c, { download: t.download.confirmNeeded }, 422)
+  const done = await confirmExport(c.env.DB, who.company.id, body.export)
+  if ((done.meta?.changes ?? 0) === 0) return companyPage(c, { download: t.download.stale }, 409)
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: 'export.confirmed', subject: body.export })])
+  return c.redirect('/app/firma#stiahnut', 303)
 })
 
 appRoutes.get('/odovzdanie/:id', async (c) => {

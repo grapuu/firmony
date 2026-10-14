@@ -1,13 +1,15 @@
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
 // email service and the pretend register of test/pretend.mjs. Nothing leaves the machine.
 //
-//   npx wrangler deploy --dry-run --outdir .wrangler/dist && node --no-warnings test/e2e.workerd.mjs
+//   npm run test:runtime
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { check, done } from './check.mjs'
 import { readFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
+import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 const lookups = []
@@ -21,6 +23,9 @@ const fioFeed = { transactions: [], closing: 0 }
 const fio = pretendFio({ iban: 'SK2283300000002801234567', tokens: [FIO_TOKEN], transactions: () => fioFeed.transactions, closing: () => fioFeed.closing })
 const mf = new Miniflare(
   convertV4MiniflareOptions({
+    // Miniflare otherwise fetches https://workers.cloudflare.com/cf.json for Request.cf metadata.
+    // Fixtures and all services are local; explicitly disable that independent metadata fetch as well.
+    cf: false,
     unsafeTriggerHandlers: true,
     workers: [
       {
@@ -206,7 +211,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 10)
+check('health says the schema', (await res.json()).schema === 12)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -491,7 +496,6 @@ page = await res.text()
 check('the messages show, with the payment they are about', page.includes('čo s touto platbou?') && /K.platbe: Cerpacia Stanica/.test(page))
 
 // A session that has expired opens nothing
-const { createHash } = await import('node:crypto')
 const oldToken = 'A'.repeat(43)
 await db
   .prepare("INSERT INTO sessions (id, user_id, company_id, created_at, expires_at) VALUES (?, 'u-a', 'co-a', ?, ?)")
@@ -1023,6 +1027,8 @@ check('who gets an email with a link that lasts days', Boolean(invitation) && in
 res = await post('/app/vstup', { t: invToken }, { ip: '203.0.113.33' })
 const janSession = as((res.headers.get('set-cookie') ?? '').split(';')[0])
 check('and is in the company with it', res.status === 303 && (await (await janSession.get('/app')).text()).includes('Firma A s. r. o.'))
+res = await janSession.get(`/app/export?rok=${day(0).slice(0, 4)}`)
+check('an ordinary member cannot download employee personal data in the complete archive', res.status === 403)
 res = await anna.post('/app/firma/pozvat', { meno: 'Ján Spoločník', email: 'JAN@firma-a.test' })
 check('somebody who is in already is not invited twice', res.status === 409)
 res = await janSession.post('/app/firma/pozvat', { meno: 'Cudzí', email: 'cudzi@x.test' })
@@ -3293,6 +3299,14 @@ check(
     'booked again, it replaces the one before',
     (await db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first())?.n === 1,
   )
+  const staleClosing = (await closingsOf(db, 'co-k')).find((k) => k.year === Y)
+  const competing = await Promise.all([
+    db.batch(bookTaxStatements(db, 'co-k', Y, 251000, staleClosing.taxEntry, lucia.id, staleClosing.revision)),
+    db.batch(bookTaxStatements(db, 'co-k', Y, 251000, staleClosing.taxEntry, lucia.id, staleClosing.revision)),
+  ])
+  check('two tax bookings from the same revision accept exactly one and leave one active 591/341 entry', competing.filter((r) => r[1].meta.changes > 0).length === 1 && (await db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first()).n === 1, JSON.stringify(competing.map((r) => r[1].meta)))
+  const [staleFiled] = await db.batch([fileClosingStatement(db, 'co-k', Y, { rows: {}, balance: {}, profit: {}, advancesNext: { kind: 'none', each: 0 } }, 0, `${Y + 1}-03-31`, lucia.id, day(0), staleClosing.revision)])
+  check('a filing prepared before the tax booking cannot claim the new closing revision', staleFiled.meta.changes === 0 && (await db.prepare("SELECT filed_at FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()).filed_at === null)
   res = await acc.get(`${base}?rok=${Y}`)
   page = plain(await res.text())
   check('ready now, the tax in the statements and in the books', page.includes('Pripravené') && page.includes('je zaúčtovaná interným dokladom') && page.includes('22 290') && !page.includes('Čo treba vyriešiť'))
@@ -3343,6 +3357,24 @@ check(
     told?.body,
   )
   check('on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-k' AND action = 'closing.filed'").first())?.n === 1)
+  const frozen = JSON.parse(row.filed)
+  const saleBefore = await db.prepare("SELECT lines FROM ledger_entries WHERE id = 'k-e3'").first()
+  await db.prepare("UPDATE ledger_entries SET lines = ? WHERE id = 'k-e3'").bind(JSON.stringify([{ md: '311', d: '602', cents: 9000000 }])).run()
+  await db.prepare("UPDATE companies SET name = 'Zmenená firma', address = 'Iná 1, 811 01 Bratislava' WHERE id = 'co-k'").run()
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  const frozenReturn = await res.text()
+  check('after books and filer details change, the filed return remains byte-for-byte identical', res.status === 200 && frozenReturn === frozen.files.return.xml && frozenReturn.includes('<r1050>2510.00</r1050>') && !frozenReturn.includes('Zmenená firma'))
+  res = await acc.get(`${base}/zavierka.xml?rok=${Y}`)
+  check('the filed statements also replay their exact saved XML and filename', res.status === 200 && await res.text() === frozen.files.statements.xml && res.headers.get('content-disposition').includes(frozen.files.statements.name))
+  const lateTax = await db.batch(bookTaxStatements(db, 'co-k', Y, 999999, row.tax_entry, lucia.id, row.revision))
+  check('even a direct stale booking cannot touch tax entries after filing', lateTax[1].meta.changes === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first()).n === 1)
+  await db.prepare("UPDATE ledger_entries SET lines = ? WHERE id = 'k-e3'").bind(saleBefore.lines).run()
+  await db.prepare("UPDATE companies SET name = 'Závierková s. r. o.', address = 'Hlavná 12, 040 01 Košice' WHERE id = 'co-k'").run()
+  const legacy = { ...frozen }; delete legacy.files
+  await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-k' AND year = ?").bind(JSON.stringify(legacy), Y).run()
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  check('a legacy filing without saved XML does not silently regenerate an original from today\'s books', res.status === 409 && plain(await res.text()).includes('pôvodné XML neuložilo'))
+  await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-k' AND year = ?").bind(JSON.stringify(frozen), Y).run()
   const jana = as((await signIn('jana@zavierkova.test')).cookie)
   res = await jana.get('/app/dane')
   page = plain(await res.text())
@@ -3399,6 +3431,8 @@ check(
     'taken back: not filed, what was set stays, the client told',
     res.status === 303 && row?.filed_at === null && row.pay_cents === null && JSON.parse(row.inputs).nace === '62.01.0' && undone?.body.includes('rušíme'),
   )
+  const archived = await db.prepare("SELECT data FROM closing_history WHERE company_id = 'co-k' AND year = ? ORDER BY id DESC LIMIT 1").bind(Y).first()
+  check('reopening a filed closing preserves the complete previous filing in history', JSON.parse(JSON.parse(archived.data).filed).files.return.xml === frozenReturn)
 
   await db.batch([
     db.prepare("DELETE FROM payments WHERE company_id = 'co-k'"),
@@ -3527,6 +3561,8 @@ check(
   run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
   const undone = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-w' ORDER BY created_at DESC, rowid DESC").first()
   check('opened again: not closed, its incomes kept, the client told', res.status === 303 && run?.closed_at === null && JSON.parse(run.lines)[0]?.gross === 150000 && undone?.body.includes('rušíme'))
+  const payrollArchive = await db.prepare("SELECT data FROM payroll_history WHERE company_id = 'co-w' AND period = ? ORDER BY id DESC LIMIT 1").bind(last).first()
+  check('reopening payroll preserves the previously closed payslip before any recalculation', JSON.parse(JSON.parse(payrollArchive.data).lines)[0].slip.net === slip.net)
 
   // A closed snapshot is retained even beyond the navigation window and the years supported for new calculations.
   const historical = '2025-01'
@@ -3873,6 +3909,12 @@ check(
 check('every file in it reads, every sum right', archive !== null && archive.length > 6 && archive.every((f) => f.ok), archive?.map((f) => f.name).join(' | '))
 const named = (name) => archive?.find((f) => f.name === name)
 const text = (f) => new TextDecoder().decode(f?.data ?? new Uint8Array())
+const validManifest = (contents) => {
+  const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
+  return m.files.length === contents.length - 1 && m.files.every((record) => { const file = contents.find((f) => f.name === record.name); return file && file.data.length === record.bytes && createHash('sha256').update(file.data).digest('hex') === record.sha256 })
+}
+check('the handover manifest verifies every file by name, byte length and SHA-256', validManifest(archive))
+check('lossless payroll, employee, filing and history data are included even in a year with no payroll', ['data/zamestnanci.json', 'data/mzdy.json', 'data/historia-miezd.json', 'data/zavierky.json', 'data/historia-zavierok.json', 'data/podania.json', 'data/dph.json', 'data/interne-doklady.json'].every((name) => named(name)))
 check(
   'it holds what it says: the lists, the messages, the contract',
   ['citajte.txt', 'doklady.csv', 'platby.csv', 'faktury.csv', 'spravy.txt', 'zmluva.txt'].every((n) => named(n)),
@@ -3959,10 +4001,61 @@ await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed
 await db.prepare("INSERT INTO closings (company_id, year, inputs, filed_on, filed_at) VALUES ('co-a', 2025, '{}', ?, ?)").bind(day(-120), nowS).run()
 await db.prepare("INSERT INTO employees (id, company_id, name, insurer, started_on, wage_cents, created_at) VALUES ('emp-a', 'co-a', 'Zamestnanec A', '25', '2026-01-01', 100000, ?)").bind(nowS).run()
 await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('co-a', '2026-01', '[]')").run()
+const exportedSlip = payslip({ period: '2026-01', gross: 100000, days: 31, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false })
+const exportedLine = { employeeId: 'emp-a', name: 'Zamestnanec A', insurer: '25', gross: 100000, days: 31, iban: null, slip: exportedSlip }
+await db.prepare("UPDATE payroll_runs SET payday = '2026-02-10', lines = ?, closed_at = ?, closed_on = ?, closed_by = ? WHERE company_id = 'co-a' AND period = '2026-01'").bind(JSON.stringify([exportedLine]), nowS, day(0), lucia.id).run()
+const originalXml = '<?xml version="1.0" encoding="UTF-8"?><fixture>original archived filing</fixture>'
+const originalSnapshot = JSON.stringify({ rows: { r1050: 0 }, balance: {}, profit: {}, advancesNext: { kind: 'none', each: 0 }, files: { version: 1, declaredOn: day(0), return: { name: 'DPPO_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') }, statements: { name: 'UZ_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') } } })
+await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-a' AND year = 2025").bind(originalSnapshot).run()
 await tick(Date.now())
 await settle(500)
+check('ninety days and an uploaded handover PDF cannot delete unacknowledged accounting data', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first()).purged_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM employees WHERE company_id = 'co-a'").first()).n === 1)
+const handoverYears = await exportYears(db, 'co-a')
+check('a closing-only year is offered for export', handoverYears.includes('2025'))
+const interrupted = await beginExport(db, 'co-a', '2026', 'u-a')
+const refusedIncomplete = await confirmExport(db, 'co-a', interrupted.id)
+check('an incomplete stream cannot be acknowledged even by calling the storage function directly', refusedIncomplete.meta.changes === 0)
+await db.prepare("UPDATE employees SET wage_cents = 100001 WHERE id = 'emp-a'").run()
+const refusedChanged = await completeExport(db, interrupted.id)
+check('a dataset changing during export cannot be marked complete', refusedChanged.meta.changes === 0)
+await db.prepare("UPDATE employees SET wage_cents = 100000 WHERE id = 'emp-a'").run()
+let received = []
+for (const y of handoverYears) {
+  res = await anna.get(`/app/export?rok=${y}`)
+  const contents = unzip(new Uint8Array(await res.arrayBuffer()))
+  check(`the complete archive of ${y} verifies before acknowledgement`, res.status === 200 && validManifest(contents))
+  const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
+  received.push(m.receipt)
+  if (y === '2026') check('closed payslips are exported from the stored snapshot with every employee', JSON.parse(text(contents.find((f) => f.name === 'mzdy/2026-01/uzavrete-pasky.json')))[0].slip.net === exportedSlip.net && JSON.parse(text(contents.find((f) => f.name === 'data/zamestnanci.json')))[0].name === 'Zamestnanec A')
+  if (y === '2025') check('the archive contains the original filed XML without recalculation', text(contents.find((f) => f.name === 'podania/2025/priznanie.xml')) === originalXml && JSON.parse(text(contents.find((f) => f.name === 'data/historia-zavierok.json'))).length > 0)
+}
+res = await anna.post('/app/export/potvrdit', { export: received[0] })
+check('acknowledgement requires the explicit received-content checkbox', res.status === 422)
+const borisExporter = as((await signIn('boris@firma-b.test')).cookie)
+res = await borisExporter.post('/app/export/potvrdit', { export: received[0], potvrdit: '1' })
+check('one company cannot acknowledge another company\'s archive', res.status === 409)
+res = await anna.post('/app/export/potvrdit', { export: received[0], potvrdit: '1' })
+check('the owner can acknowledge a fully completed current archive', res.status === 303)
+await tick(Date.now()); await settle(100)
+check('acknowledging only one of several years still blocks deletion', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first()).purged_at === null)
+for (const id of received.slice(1)) await anna.post('/app/export/potvrdit', { export: id, potvrdit: '1' })
+await db.prepare("UPDATE employees SET wage_cents = 110000 WHERE id = 'emp-a'").run()
+await tick(Date.now()); await settle(100)
+check('a change after acknowledged exports invalidates handover and prevents deletion', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first()).purged_at === null && await confirmedRevision(db, 'co-a', handoverYears) === null)
+res = await anna.post('/app/export/potvrdit', { export: received[0], potvrdit: '1' })
+check('a stale acknowledgement is refused', res.status === 409)
+for (const y of handoverYears) {
+  res = await anna.get(`/app/export?rok=${y}`)
+  const contents = unzip(new Uint8Array(await res.arrayBuffer()))
+  const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
+  await anna.post('/app/export/potvrdit', { export: m.receipt, potvrdit: '1' })
+}
+await tick(Date.now()); await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
 check("the schedule deletes the company's data after its ninety days", typeof purgedRow?.purged_at === 'number' && typeof purgedRow.closed_at === 'number' && purgedRow.name === 'Firma A s. r. o.')
+let frozenWrite = false
+try { await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('co-a', '2026-02', '[]')").run() } catch { frozenWrite = true }
+check('a completed purge cannot receive fresh accounting writes after its handover was finalized', frozenWrite)
 const leftover = await db
   .prepare(
     `SELECT (SELECT COUNT(*) FROM documents WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payments WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM messages WHERE company_id = 'co-a')
@@ -3970,7 +4063,9 @@ const leftover = await db
        + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
        + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL)
        + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM closings WHERE company_id = 'co-a')
-       + (SELECT COUNT(*) FROM employees WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_runs WHERE company_id = 'co-a') AS n`,
+       + (SELECT COUNT(*) FROM employees WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_runs WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM closing_history WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_history WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,
   )
   .first()
 check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the filings marked, the closings, the employees and their payroll, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))

@@ -5,7 +5,7 @@
 // (its own symbol, 170099 and the year). The rules are in closing.ts, the form in closing-form.ts, the page in
 // views/closing.tsx; `closingView` puts a year together for the page and its files.
 import { now } from '../db'
-import { booksOf, internalStatement, removeInternalStatement } from './ledger-store'
+import { booksOf } from './ledger-store'
 import type { Books } from './ledger'
 import {
   changedSinceFiled,
@@ -37,10 +37,20 @@ export interface FiledClosing {
   balance: Lines
   profit: Lines
   advancesNext: TaxResult['advancesNext']
+  files?: ClosingFiles
+}
+
+/** Exact UTF-8 files prepared when the closing was marked as filed. Legacy filings may not have them. */
+export interface ClosingFiles {
+  version: 1
+  declaredOn: string
+  return: { name: string; xml: string; sha256: string }
+  statements: { name: string; xml: string; sha256: string }
 }
 
 export interface Closing {
   year: number
+  revision: number
   inputs: ClosingInputs
   savedAt: number | null
   savedByName: string | null
@@ -68,6 +78,7 @@ function filedOf(json: unknown): FiledClosing | null {
       balance: numbers(v.balance),
       profit: numbers(v.profit),
       advancesNext: { kind: kind === 'monthly' || kind === 'quarterly' ? kind : 'none', each: Number(v.advancesNext?.each ?? 0) || 0 },
+      ...(v.files?.version === 1 && typeof v.files.return?.xml === 'string' && typeof v.files.return.name === 'string' && typeof v.files.statements?.xml === 'string' && typeof v.files.statements.name === 'string' ? { files: v.files } : {}),
     }
   } catch {
     return null
@@ -78,6 +89,7 @@ function closingOf(r: Row): Closing {
   const filedAt = typeof r.filed_at === 'number' ? r.filed_at : null
   return {
     year: Number(r.year),
+    revision: Number(r.revision ?? 0),
     inputs: storedInputs(r.inputs),
     savedAt: typeof r.saved_at === 'number' ? r.saved_at : null,
     savedByName: str(r.saved_by_name),
@@ -108,7 +120,7 @@ export function saveInputsStatement(db: D1Database, company: string, year: numbe
   return db
     .prepare(
       `INSERT INTO closings (company_id, year, inputs, saved_at, saved_by) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (company_id, year) DO UPDATE SET inputs = excluded.inputs, saved_at = excluded.saved_at, saved_by = excluded.saved_by WHERE closings.filed_at IS NULL`,
+       ON CONFLICT (company_id, year) DO UPDATE SET inputs = excluded.inputs, saved_at = excluded.saved_at, saved_by = excluded.saved_by, revision = closings.revision + 1 WHERE closings.filed_at IS NULL`,
     )
     .bind(company, year, JSON.stringify(inputs), now(), by)
 }
@@ -116,7 +128,7 @@ export function saveInputsStatement(db: D1Database, company: string, year: numbe
 /** The deadline a notice moved (§ 49(3)), or taken back (null); while the closing is not filed. */
 export function extendStatement(db: D1Database, company: string, year: number, to: string | null): D1PreparedStatement {
   return db
-    .prepare('INSERT INTO closings (company_id, year, extended_to) VALUES (?, ?, ?) ON CONFLICT (company_id, year) DO UPDATE SET extended_to = excluded.extended_to WHERE closings.filed_at IS NULL')
+    .prepare('INSERT INTO closings (company_id, year, extended_to) VALUES (?, ?, ?) ON CONFLICT (company_id, year) DO UPDATE SET extended_to = excluded.extended_to, revision = closings.revision + 1 WHERE closings.filed_at IS NULL')
     .bind(company, year, to)
 }
 
@@ -124,34 +136,42 @@ export function extendStatement(db: D1Database, company: string, year: number, t
  * The tax of a year booked by an internal document on its last day (591 against 341, the whole tax of row 1050: the
  * advances paid were booked to 341 already), in place of the one booked before; nought books nothing.
  */
-export function bookTaxStatements(db: D1Database, company: string, year: number, cents: number, previous: string | null, by: string): D1PreparedStatement[] {
-  const out: D1PreparedStatement[] = []
-  if (previous) out.push(removeInternalStatement(db, company, previous, by))
+export function bookTaxStatements(db: D1Database, company: string, year: number, cents: number, previous: string | null, by: string, revision: number): D1PreparedStatement[] {
   const id = cents > 0 ? crypto.randomUUID() : null
-  if (id) out.push(internalStatement(db, company, { id, on: `${year}-12-31`, text: `Daň z príjmov za rok ${year}`, lines: [{ md: '591', d: '341', cents }] }, by))
-  out.push(
+  // D1 batch is one transaction. Claim the revision first; every ledger write below requires that exact claim.
+  // A second request that read the same revision can neither delete the first entry nor insert a duplicate.
+  const out = [
+    db.prepare('INSERT OR IGNORE INTO closings (company_id, year) VALUES (?, ?)').bind(company, year),
     db
-      .prepare('INSERT INTO closings (company_id, year, tax_entry) VALUES (?, ?, ?) ON CONFLICT (company_id, year) DO UPDATE SET tax_entry = excluded.tax_entry WHERE closings.filed_at IS NULL')
-      .bind(company, year, id),
-  )
+      .prepare('UPDATE closings SET tax_entry = ?, revision = revision + 1 WHERE company_id = ? AND year = ? AND revision = ? AND tax_entry IS ? AND filed_at IS NULL')
+      .bind(id, company, year, revision, previous),
+  ]
+  const claim = 'EXISTS (SELECT 1 FROM closings WHERE company_id = ? AND year = ? AND revision = ? AND tax_entry IS ? AND filed_at IS NULL)'
+  if (previous) out.push(db.prepare(`UPDATE ledger_entries SET deleted_at = ?, deleted_by = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND ${claim}`).bind(now(), by, previous, company, company, year, revision + 1, id))
+  if (id) out.push(db.prepare(
+    `INSERT INTO ledger_entries (id, company_id, kind, year, seq, number, on_date, text, lines, created_at, created_by)
+     SELECT ?1, ?2, 'internal', ?3, s, printf('ID-%d-%03d', ?3, s), ?4, ?5, ?6, ?7, ?8
+       FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS s FROM ledger_entries WHERE company_id = ?2 AND kind = 'internal' AND year = ?3)
+       WHERE EXISTS (SELECT 1 FROM closings WHERE company_id = ?2 AND year = ?3 AND revision = ?9 AND tax_entry = ?1 AND filed_at IS NULL)`,
+  ).bind(id, company, year, `${year}-12-31`, `Daň z príjmov za rok ${year}`, JSON.stringify([{ md: '591', d: '341', cents }]), now(), by, revision + 1))
   return out
 }
 
 /** The closing marked as filed, once: what was filed, the tax it asks for and by when. */
-export function fileClosingStatement(db: D1Database, company: string, year: number, filed: FiledClosing, payCents: number, dueOn: string, by: string, today: string): D1PreparedStatement {
+export function fileClosingStatement(db: D1Database, company: string, year: number, filed: FiledClosing, payCents: number, dueOn: string, by: string, today: string, revision: number): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO closings (company_id, year, filed_on, filed_at, filed_by, filed, pay_cents, due_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (company_id, year) DO UPDATE SET filed_on = excluded.filed_on, filed_at = excluded.filed_at, filed_by = excluded.filed_by, filed = excluded.filed,
-         pay_cents = excluded.pay_cents, due_on = excluded.due_on WHERE closings.filed_at IS NULL`,
+         pay_cents = excluded.pay_cents, due_on = excluded.due_on, revision = closings.revision + 1 WHERE closings.filed_at IS NULL AND closings.revision = ?`,
     )
-    .bind(company, year, today, now(), by, JSON.stringify(filed), payCents, dueOn)
+    .bind(company, year, today, now(), by, JSON.stringify(filed), payCents, dueOn, revision)
 }
 
 /** A mark set by mistake taken back: what the accountant set stays. */
 export function unfileClosingStatement(db: D1Database, company: string, year: number): D1PreparedStatement {
   return db
-    .prepare('UPDATE closings SET filed_on = NULL, filed_at = NULL, filed_by = NULL, filed = NULL, pay_cents = NULL, due_on = NULL WHERE company_id = ? AND year = ? AND filed_at IS NOT NULL')
+    .prepare('UPDATE closings SET filed_on = NULL, filed_at = NULL, filed_by = NULL, filed = NULL, pay_cents = NULL, due_on = NULL, revision = revision + 1 WHERE company_id = ? AND year = ? AND filed_at IS NOT NULL')
     .bind(company, year)
 }
 

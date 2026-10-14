@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy",
     "check": "tsc --noEmit",
     "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs",
-    "test:runtime": "esbuild src/index.tsx --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/dist/index.js && node --no-warnings test/e2e.workerd.mjs"
+    "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs"
   },
   "dependencies": {
     "bysquare": "4.0.2",

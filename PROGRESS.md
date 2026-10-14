@@ -405,3 +405,37 @@ later (§ 80(6)).
   slov-lex.sk. No paid external service was called, nothing was deployed, no production data exist. The test suites
   take about 3 s (units) and 50 s (runtime); a full mutation run of milestone 2 (52 rules) about 20 minutes, of
   milestone 4 (22 rules) about 12, of milestone 5 (26 rules) about 9, most rules failing the units first.
+
+
+## Correctness repairs (Codex, 14 October 2026)
+
+Branch `codex/firmony-correctness-and-history`, stacked PR #2 against this continuation. No merge or deployment.
+
+- Payroll: prorate the health deductible by employment days; disability exempts the minimum advance. Unknown years
+  fail explicitly rather than borrowing the latest known legislation. Every stored payroll month stays accessible,
+  including closed payslips whose year is no longer supported for new calculations.
+- Closing: revision checks make competing tax bookings accept one ledger write. A filing captures the exact DPPO
+  and UZMUJ XML, filenames, declaration date and SHA-256. Later downloads replay these files. Legacy filings without
+  saved XML return 409 rather than manufacturing an original. Reopening retains previous filed and payroll snapshots.
+- SV: the goods limit checks the current quarter and the previous four. A quarterly payer requiring monthly SV
+  cannot generate or mark a quarterly statement. Separate monthly SV for quarterly VAT payers remains outside this
+  implementation; the page directs the accountant to eDane.
+- Handover: year discovery includes payroll, closings, filings and internal entries; queries respect D1's compound
+  SELECT limit. ZIPs include lossless JSON, closed payslips, stored filing XML, history, handover attachments and a
+  SHA-256 manifest. Missing files or ZIP limits abort rather than acknowledging a partial archive. Export row caps
+  were removed. Full archives include employee personal data and are now restricted to company owners.
+- Deletion: an owner acknowledges completed archives for every year at the current data revision. Accounting writes
+  invalidate old acknowledgements. Purge checks the revision and expiry again, freezes writes before deleting files,
+  and rotates deferred companies so missing acknowledgements do not starve the queue. This intentionally changes the
+  previous unconditional 90-day deletion policy; assess the contract text before any production release.
+- Schema steps 11 and 12 append history, revisions and receipts; old migration steps remain unchanged. Existing
+  filings without original XML are not backfilled with recalculated files.
+- Test builds are local esbuild bundles, without `wrangler deploy`. Miniflare's independent Request.cf metadata fetch
+  is explicitly disabled (`cf: false`); all application outbound services use the local fixtures. The workspace's
+  native TypeScript 7 executable cannot resolve `/proc/self/exe`; supplementary TypeScript 6 checks are clean.
+
+Rule references: health insurance Act 580/2004, § 16(16)–(18) and § 16a(2)(c),
+https://static.slov-lex.sk/static/SK/ZZ/2004/580/20260701.html ; SV Act 222/2004, § 80(2),
+https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html .
+
+Verified locally after the repairs: 636/636 unit checks, 694/694 workerd runtime checks, TypeScript 6 clean, `git diff --check` clean. Runtime checks include deliberately stale concurrent tax bookings, byte-identical filing downloads after edits, cancelled/incomplete exports, access control and invalidation of acknowledged handovers.

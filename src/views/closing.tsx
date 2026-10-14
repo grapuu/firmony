@@ -447,7 +447,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
       ) : view.booked > 0 ? (
         <p class="info__source">{k.taxBooked(formatEurExact(view.booked))}</p>
       ) : null}
-      {view.running ? null : canFile ? (
+      {filed?.filed && !filed.filed.files ? <p class="flag">{k.missingOriginal}</p> : view.running ? null : canFile ? (
         <div class="vstatus__files">
           <a class="btn btn--blue" href={`${base}/priznanie.xml?rok=${view.year}`}>
             {k.download}

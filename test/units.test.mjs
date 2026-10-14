@@ -1267,6 +1267,17 @@ async function zipped(entries, note) {
   // 21:04:10 UTC on 13 October is 23:04:10 in Bratislava (summer time)
   check('a file is dated by the wall time in Bratislava', files?.[0]?.time === ((23 << 11) | (4 << 5) | 5) && files?.[0]?.date === (((2026 - 1980) << 9) | (10 << 5) | 13))
   check('a name cannot climb out of the archive', zip.zipName('../../etc/passwd') === '_/_/etc/passwd' && zip.zipName('a//b') === 'a/b' && zip.zipName('.htaccess') === '_htaccess')
+  let completed = false
+  const strict = (source) => zip.zipStream(source, undefined, { strict: true, onComplete: async () => { completed = true } })
+  let missingFailed = false
+  try { await new Response(strict([{ name: 'missing.pdf', when: at, data: async () => null }])).arrayBuffer() } catch { missingFailed = true }
+  check('a strict handover archive fails on a missing source and never records completion', missingFailed && !completed)
+  const strictBytes = new Uint8Array(await new Response(strict([{ name: 'present.txt', when: at, data: async () => enc.encode('kept') }])).arrayBuffer())
+  check('completion is recorded only after the complete, readable ZIP has been emitted', completed && unzip(strictBytes)?.[0]?.sumOk)
+  completed = false
+  const cancelled = strict([{ name: 'cancelled.txt', when: at, data: async () => enc.encode('kept') }]).getReader()
+  await cancelled.read(); await cancelled.cancel()
+  check('a cancelled archive does not count as a completed handover', !completed)
 }
 
 // The end of a contract: the last day, ten days for the last month's documents, thirty for the handover, ninety to download
@@ -2208,12 +2219,22 @@ async function zipped(entries, note) {
   )
   check('what is not the period is not in it', vatSummary.summaryLines(payer, '2027-02', docs).lines.length === 0 && !vatSummary.summaryLines(payer, '2027-02', docs).due)
   check(
-    '§ 7a: the calendar quarter; a quarterly payer the quarter, warned above 50 000 € of goods',
+    '§ 7a: the calendar quarter; a quarterly payer the quarter only within the goods limit',
     vatSummary.summaryPeriodOf('2027-02', { status: 'reg7a' }) === '2027-Q1' &&
       vatSummary.summaryPeriodOf('2027-02', payer) === '2027-02' &&
       vatSummary.summaryLines({ ...payer, quarterly: true }, '2027-Q1', [sale('CZ12345678', 5_000_100, 'eu_goods')]).issues.some((i) => i.code === 'svMonthly') &&
       !vatSummary.summaryLines({ ...payer, quarterly: true }, '2027-Q1', [sale('CZ12345678', 5_000_000, 'eu_goods'), sale('DE123456789', 9_000_000)]).issues.some((i) => i.code === 'svMonthly'),
   )
+
+  const quarterly = { ...payer, quarterly: true }
+  const goodsOn = (on, cents) => {
+    const d = sale('CZ12345678', cents, 'eu_goods')
+    return { ...d, issuedOn: on, receivedOn: on, vat: { ...d.vat, suppliedOn: on } }
+  }
+  const quarterlyView = (d) => vatSummary.summaryView(quarterly, '2027-Q1', d, null, 0, '2027-04-02')
+  check('exceeding the current-quarter goods limit blocks the plan rather than merely warning', quarterlyView([goodsOn('2027-01-15', 5_000_001)]).state === 'blocked' && quarterlyView([goodsOn('2027-01-15', 5_000_001)]).plan === null)
+  check('any of the previous four quarters can require monthly SV, including across a year boundary', ['2026-01-15', '2026-04-15', '2026-07-15', '2026-10-15'].every((on) => quarterlyView([goodsOn(on, 5_000_001), goodsOn('2027-01-15', 10000)]).plan === null))
+  check('exactly 50 000 € stays eligible and the fifth previous quarter has expired', quarterlyView([goodsOn('2026-01-15', 5_000_000), goodsOn('2027-01-15', 10000)]).state === 'ready' && quarterlyView([goodsOn('2025-12-15', 5_000_001), goodsOn('2027-01-15', 10000)]).state === 'ready')
 
   // States, and the corrections a change after filing asks for
   const view = (filed, today, d = docs) => vatSummary.summaryView(payer, '2027-01', d, filed, 0, today)

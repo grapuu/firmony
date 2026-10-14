@@ -75,7 +75,7 @@ import { VatCard, VatPage, type VatForm } from '../views/vat'
 import { ClosingPage, closingState, type ClosingState } from '../views/closing'
 import { extensionDays, tableF } from '../app/closing'
 import { closingValues, readClosing, type ClosingErrors, type ClosingValues } from '../app/closing-form'
-import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, saveInputsStatement, unfileClosingStatement, type ClosingView } from '../app/closing-store'
+import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
 import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
 import { CHILD_ROWS, EmployeePage, PayrollPage, PayslipPage, type FieldErrors, type MonthState, type PayOrders, type SlipLine } from '../views/payroll'
 import {
@@ -374,6 +374,8 @@ function flashOf(c: Ctx): string | null {
       return t.closing.flashes.already
     case 'zavierka-lehota':
       return t.closing.flashes.extended
+    case 'zavierka-zmenena':
+      return t.closing.flashes.stale
     case 'mzdy-ulozene':
       return t.payroll.flashes.saved
     case 'mzdy-uzavrete':
@@ -1429,12 +1431,27 @@ teamRoutes.post('/klienti/:id/zavierka/dan', async (c) => {
   const db = c.env.DB
   const who = c.get('who')
   const cents = view.tax.rows.r1050 ?? 0
-  await db.batch([
-    ...bookTaxStatements(db, company.id, view.year, cents, view.closing?.taxEntry ?? null, who.user.id),
-    eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.tax', subject: String(view.year), detail: { cents } }),
-  ])
+  const result = await db.batch(bookTaxStatements(db, company.id, view.year, cents, view.closing?.taxEntry ?? null, who.user.id, view.closing?.revision ?? 0))
+  if ((result[1]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
+  await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.tax', subject: String(view.year), detail: { cents } })])
   return c.redirect(`${back}&ok=zavierka-dan`, 303)
 })
+
+/** Produce both files together; at filing they become an immutable snapshot, including the filer and filenames. */
+async function closingFiles(company: Company, view: ClosingView, declaredOn: string): Promise<ClosingFiles> {
+  const filer: ClosingFiler = { name: company.name, ico: company.ico, dic: company.dic, address: company.address, registerLine: company.registerLine, nace: view.inputs.nace, activity: view.inputs.activity }
+  const from = view.inputs.from ?? `${view.year}-01-01`
+  const make = async (name: string, xml: string) => ({ name, xml, sha256: [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(xml)))].map((b) => b.toString(16).padStart(2, '0')).join('') })
+  return {
+    version: 1,
+    declaredOn,
+    return: await make(`DPPO_${company.dic ?? company.ico ?? company.id}_${view.year}.xml`, dppoXml(filer, view.tax, {
+      year: view.year, from, to: `${view.year}-12-31`, declaredOn, kind: 'R', micro: view.input.micro,
+      minimumHalf: view.input.minimumHalf, minimumExempt: view.input.minimumExempt, tableF: tableF(view.statements),
+    })),
+    statements: await make(`UZMUJ_${company.ico ?? company.id}_${view.year}.xml`, statementsXml(filer, view.statements, view.previous, { year: view.year, from, preparedOn: declaredOn, approvedOn: view.inputs.approvedOn })),
+  }
+}
 
 /** The return or the statements as a file, for "Načítať zo súboru" in eDane or on the portal. */
 teamRoutes.get('/klienti/:id/zavierka/:file', async (c) => {
@@ -1448,25 +1465,12 @@ teamRoutes.get('/klienti/:id/zavierka/:file', async (c) => {
   if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
   const state = closingState(view)
   if (state !== 'ready' && state !== 'filed') return c.redirect(`${back}&ok=zavierka-blokovane`, 303)
-  const filer: ClosingFiler = { name: company.name, ico: company.ico, dic: company.dic, address: company.address, registerLine: company.registerLine, nace: view.inputs.nace, activity: view.inputs.activity }
-  const from = view.inputs.from ?? `${view.year}-01-01`
-  // A file of a closing filed is the one that was filed, with the day it was declared.
-  const declaredOn = view.closing?.filedOn ?? today
   const statements = file === 'zavierka.xml'
-  const xml = statements
-    ? statementsXml(filer, view.statements, view.previous, { year: view.year, from, preparedOn: declaredOn, approvedOn: view.inputs.approvedOn })
-    : dppoXml(filer, view.tax, {
-        year: view.year,
-        from,
-        to: `${view.year}-12-31`,
-        declaredOn,
-        kind: 'R',
-        micro: view.input.micro,
-        minimumHalf: view.input.minimumHalf,
-        minimumExempt: view.input.minimumExempt,
-        tableF: tableF(view.statements),
-      })
-  const name = statements ? `UZMUJ_${company.ico ?? company.id}_${view.year}.xml` : `DPPO_${company.dic ?? company.ico ?? company.id}_${view.year}.xml`
+  const snapshot = view.closing?.filed
+  // Never fabricate an original for a legacy filing that did not store its XML.
+  if (snapshot && !snapshot.files) return c.text(t.closing.missingOriginal, 409)
+  const files = snapshot?.files ?? await closingFiles(company, view, today)
+  const { xml, name } = statements ? files.statements : files.return
   await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: statements ? 'closing.statements.downloaded' : 'closing.return.downloaded', subject: String(view.year) })])
   return new Response(xml, {
     headers: {
@@ -1511,9 +1515,9 @@ teamRoutes.post('/klienti/:id/zavierka/podane', async (c) => {
   const who = c.get('who')
   const r = view.tax.rows
   const pay = r.r1100 ?? 0
-  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, advancesNext: view.tax.advancesNext }
-  const [done] = await db.batch([fileClosingStatement(db, company.id, view.year, snapshot, pay, view.due, who.user.id, today)])
-  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, advancesNext: view.tax.advancesNext, files: await closingFiles(company, view, today) }
+  const [done] = await db.batch([fileClosingStatement(db, company.id, view.year, snapshot, pay, view.due, who.user.id, today, view.closing?.revision ?? 0)])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
   const left = Math.max(0, pay - view.paid.tax)
   const over = Math.max(0, -(r.r1101 ?? 0)) + Math.max(0, view.paid.tax - pay)
   const id = crypto.randomUUID()

@@ -554,6 +554,69 @@ const MIGRATIONS: readonly string[][] = [
   // The recapitulative statement (src/app/vat-summary.ts, 14 October 2026): what a statement marked as filed held
   // (its rows, the rows its file sent, and the filing it replaced), so that a change after it asks for a correction.
   ['ALTER TABLE filings ADD COLUMN data TEXT'],
+  // Compare-and-swap for a closing's writes; keep the original values when a filed closing or a closed payroll is reopened.
+  [
+    'ALTER TABLE closings ADD COLUMN revision INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE closing_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, company_id TEXT NOT NULL, year INTEGER NOT NULL,
+      archived_at INTEGER NOT NULL, data TEXT NOT NULL
+    )`,
+    'CREATE INDEX closing_history_company ON closing_history (company_id, year)',
+    `CREATE TRIGGER closing_history_update AFTER UPDATE ON closings
+      WHEN OLD.inputs IS NOT NULL OR OLD.tax_entry IS NOT NULL OR OLD.filed_at IS NOT NULL
+      BEGIN INSERT INTO closing_history (company_id, year, archived_at, data)
+        VALUES (OLD.company_id, OLD.year, unixepoch(), json_object(
+          'inputs', OLD.inputs, 'saved_at', OLD.saved_at, 'saved_by', OLD.saved_by, 'extended_to', OLD.extended_to,
+          'tax_entry', OLD.tax_entry, 'filed_on', OLD.filed_on, 'filed_at', OLD.filed_at, 'filed_by', OLD.filed_by,
+          'filed', OLD.filed, 'pay_cents', OLD.pay_cents, 'due_on', OLD.due_on, 'revision', OLD.revision)); END`,
+    `CREATE TABLE payroll_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, company_id TEXT NOT NULL, period TEXT NOT NULL,
+      archived_at INTEGER NOT NULL, data TEXT NOT NULL
+    )`,
+    'CREATE INDEX payroll_history_company ON payroll_history (company_id, period)',
+    `CREATE TRIGGER payroll_history_update AFTER UPDATE ON payroll_runs
+      WHEN OLD.closed_at IS NOT NULL AND (OLD.closed_at IS NOT NEW.closed_at OR OLD.lines IS NOT NEW.lines)
+      BEGIN INSERT INTO payroll_history (company_id, period, archived_at, data)
+        VALUES (OLD.company_id, OLD.period, unixepoch(), json_object(
+          'payday', OLD.payday, 'lines', OLD.lines, 'saved_at', OLD.saved_at, 'saved_by', OLD.saved_by,
+          'closed_at', OLD.closed_at, 'closed_on', OLD.closed_on, 'closed_by', OLD.closed_by)); END`,
+  ],
+  // A completed export is acknowledged by the owner. Any subsequent accounting change invalidates that handover.
+  [
+    'ALTER TABLE companies ADD COLUMN purge_started_at INTEGER',
+    'ALTER TABLE companies ADD COLUMN purge_checked_at INTEGER',
+    'CREATE TABLE company_data_revisions (company_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0)',
+    `CREATE TABLE export_receipts (
+      id TEXT PRIMARY KEY, company_id TEXT NOT NULL, year TEXT NOT NULL, revision INTEGER NOT NULL,
+      user_id TEXT NOT NULL, created_at INTEGER NOT NULL, completed_at INTEGER, confirmed_at INTEGER
+    )`,
+    'CREATE INDEX export_receipts_company ON export_receipts (company_id, revision, year)',
+    ...['documents', 'payments', 'links', 'accounts', 'bank_links', 'statements', 'invoices', 'messages', 'supplier_rules', 'vat_returns', 'filings', 'closings', 'closing_history', 'employees', 'payroll_runs', 'payroll_history', 'ledger_entries', 'company_files'].flatMap((table) => [
+      ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+        const row = action === 'DELETE' ? 'OLD' : 'NEW'
+        return `CREATE TRIGGER ${table}_data_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+      }),
+      ...['INSERT', 'UPDATE'].map((action) => `CREATE TRIGGER ${table}_purging_${action.toLowerCase()} BEFORE ${action} ON ${table}
+        WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+        BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
+    ]),
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER invoice_lines_data_${action.toLowerCase()} AFTER ${action} ON invoice_lines BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) SELECT company_id, 1 FROM invoices WHERE id = ${row}.invoice_id
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map((action) => `CREATE TRIGGER invoice_lines_purging_${action.toLowerCase()} BEFORE ${action} ON invoice_lines
+      WHEN EXISTS (SELECT 1 FROM invoices i JOIN companies c ON c.id = i.company_id WHERE i.id = NEW.invoice_id AND c.purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
+    `CREATE TRIGGER companies_data_update AFTER UPDATE OF name, ico, dic, icdph, address, register_line, payroll, tax_account, start_on, ends_on, vat_payer, vat_7a, vat_quarterly, vat_since, tax_office, vat_carry ON companies BEGIN
+      INSERT INTO company_data_revisions (company_id, revision) VALUES (NEW.id, 1)
+      ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+    `CREATE TRIGGER companies_purging_update BEFORE UPDATE OF name, ico, dic, icdph, address, register_line, payroll, tax_account, start_on, ends_on, vat_payer, vat_7a, vat_quarterly, vat_since, tax_office, vat_carry ON companies
+      WHEN OLD.purge_started_at IS NOT NULL AND NEW.purged_at IS NULL BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

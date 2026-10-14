@@ -6,7 +6,7 @@
 // 14 October 2026; the poučenie to SVDPHv20 under measure No. 405/2019 Z. z., and the eForm form.471 itself, read
 // on pfseform.financnasprava.sk the same day):
 // - Who and for what: a payer for its VAT period (monthly, or the calendar quarter of a quarterly payer: § 80(2) allows
-//   the quarter while goods stay within 50 000 € a quarter, which the page warns of), a person registered under § 7a
+//   the quarter only when goods stay within 50 000 € in it and in each of the previous four quarters), a person registered under § 7a
 //   for the calendar quarter (§ 80(3)); within 25 days after the period (§ 80(9); vat.ts, `filingDeadline`). Nothing
 //   is filed for a period without such supplies.
 // - What: each customer's total, by its VAT number, for goods supplied free of tax to another member state (§ 43,
@@ -98,7 +98,15 @@ export function summaryLines(company: VatCompany, period: string, docs: VatDoc[]
   let due = false
   const lines = new Map<string, SvLine>()
   const { from, to } = periodRange(period)
-  let goods = 0
+  const goods = new Map<string, number>()
+  // SV periodicity is independent of the VAT return. Check the full four-quarter lookback, not just today's rows.
+  for (const doc of docs) {
+    if (!isIssued(doc.kind)) continue
+    const counted = vatOf(doc, company)
+    if (counted?.data.mode !== 'eu_goods') continue
+    const quarter = quarterOf(periodOfDoc(doc, counted.data, company))
+    goods.set(quarter, (goods.get(quarter) ?? 0) + counted.data.lines.reduce((sum, line) => sum + line.base, 0))
+  }
   for (const doc of docs) {
     // A document nobody has read yet may be an invoice of the period: it keeps the statement back until it is.
     if (doc.kind === null && !doc.booked) {
@@ -129,15 +137,21 @@ export function summaryLines(company: VatCompany, period: string, docs: VatDoc[]
     }
     const cents = data.lines.reduce((sum, line) => sum + line.base, 0)
     const code = data.mode === 'eu_service' ? '2' : ''
-    if (code === '') goods += cents
     const line = { country, number: vatId.slice(2), code } as const
     const held = lines.get(key(line)) ?? { ...line, cents: 0, docs: [] }
     held.cents += cents
     held.docs.push(doc.id)
     lines.set(key(line), held)
   }
-  // A quarterly payer may file for the quarter only while its goods stay within 50 000 € (§ 80(2)).
-  if (company.status === 'payer' && isQuarter(period) && goods > GOODS_LIMIT) issues.push({ level: 'warn', code: 'svMonthly', doc: null })
+  if (company.status === 'payer' && isQuarter(period)) {
+    const index = Number(period.slice(0, 4)) * 4 + Number(period.slice(-1)) - 1
+    const exceeds = [...goods].some(([quarter, cents]) => {
+      const q = Number(quarter.slice(0, 4)) * 4 + Number(quarter.slice(-1)) - 1
+      return q >= index - 4 && q <= index && cents > GOODS_LIMIT
+    })
+    // Until separate monthly SV periods are implemented, prevent an invalid quarterly filing altogether.
+    if (exceeds) issues.push({ level: 'block', code: 'svMonthly', doc: null })
+  }
   return { lines: [...lines.values()].sort((a, b) => key(a).localeCompare(key(b))), issues, due }
 }
 

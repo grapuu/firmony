@@ -537,7 +537,7 @@ export const team = typesetAll({
       summary: 'Dodanie do EÚ: za obdobie sa podáva aj súhrnný výkaz (nižšie).',
       svVatId: 'Chýba IČ DPH odberateľa z iného štátu EÚ: bez neho faktúra do súhrnného výkazu nepôjde.',
       svMonthly:
-        'Tovar dodaný do EÚ za štvrťrok presiahol 50 000 €: súhrnný výkaz sa od toho mesiaca podáva za každý mesiac štvrťroka zvlášť (§ 80 ods. 2). Firmony ich nepripravuje: podajte ich v eDane.',
+        'Tovar dodaný do EÚ v tomto alebo v niektorom zo štyroch predchádzajúcich štvrťrokov presiahol 50 000 €. Súhrnné výkazy musia byť mesačné (§ 80 ods. 2). Štvrťročný výkaz nemožno stiahnuť ani označiť ako podaný; mesačné výkazy podajte v eDane.',
       deduct7a: 'Osoba registrovaná podľa § 7a si DPH neodpočítava: odpočet sme nezapočítali.',
       domestic7a: 'Osoba registrovaná podľa § 7a uvádza len služby a tovar zo zahraničia; tento doklad sme vynechali.',
       mismatch: 'Pri plnení bez DPH je uvedená DPH.',
@@ -1001,6 +1001,7 @@ export const team = typesetAll({
     bookTaxLead: (amount: string, year: number) => typeset(`Interný doklad k 31. 12. ${year}: 591 Splatná daň z príjmov / 341 Daň z príjmov, ${amount}. Doklad, ktorý daň zaúčtoval predtým, nahradí.`),
     download: 'Stiahnuť daňové priznanie (XML)',
     downloadStatements: 'Stiahnuť účtovnú závierku (XML)',
+    missingOriginal: 'Pri tomto staršom podaní sa pôvodné XML neuložilo. Vyžiadajte si originál podania z finančnej správy; aktuálny prepočet ho nenahrádza.',
     downloadBlocked: 'Súbory pripravíme, keď bude všetko vyriešené.',
     notes: 'Poznámky k závierke Firmony nepripravuje: v eDane ich priložte ako PDF. Závierku podajte samostatne v lehote na podanie priznania (§ 49 ods. 11 zákona o dani z príjmov); finančná správa ju uloží do registra účtovných závierok.',
     markLead: 'Keď priznanie a závierku podáte na finančnú správu, označte to tu. Klientovi pošleme do správ, koľko a kam zaplatiť.',
@@ -1053,6 +1054,7 @@ export const team = typesetAll({
       running: 'Rok ešte beží.',
       already: 'Táto závierka je už označená ako podaná.',
       extended: 'Lehotu sme uložili.',
+      stale: 'Závierka sa medzitým zmenila. Skontrolujte aktuálne údaje a akciu zopakujte.',
     },
   },
   payroll: {

@@ -128,7 +128,9 @@ export function uniqueName(name: string, taken: Set<string>): string {
   return candidate
 }
 
-async function* chunks(entries: AsyncIterable<ZipEntry> | Iterable<ZipEntry>, overflowNote: (names: string[]) => string): AsyncGenerator<Uint8Array> {
+export interface ZipOptions { strict?: boolean; onComplete?: () => Promise<void> }
+
+async function* chunks(entries: AsyncIterable<ZipEntry> | Iterable<ZipEntry>, overflowNote: (names: string[]) => string, options: ZipOptions): AsyncGenerator<Uint8Array> {
   const encoder = new TextEncoder()
   const central: Uint8Array[] = []
   const taken = new Set<string>()
@@ -137,16 +139,19 @@ async function* chunks(entries: AsyncIterable<ZipEntry> | Iterable<ZipEntry>, ov
   for await (const entry of entries) {
     const name = uniqueName(zipName(entry.name), taken)
     if (left.length > 0 || central.length >= LIMIT_FILES) {
+      if (options.strict) throw new RangeError('Archive file limit exceeded')
       left.push(name)
       continue
     }
     const data = await entry.data()
     if (!data) {
+      if (options.strict) throw new Error(`Archive source missing: ${name}`)
       taken.delete(name.toLowerCase())
       continue
     }
     const nameBytes = encoder.encode(name)
     if (offset + 30 + nameBytes.length + data.length > LIMIT_BYTES) {
+      if (options.strict) throw new RangeError('Archive byte limit exceeded')
       left.push(name)
       continue
     }
@@ -175,11 +180,12 @@ async function* chunks(entries: AsyncIterable<ZipEntry> | Iterable<ZipEntry>, ov
     size += record.length
   }
   yield endRecord(central.length, size, offset)
+  await options.onComplete?.()
 }
 
 /** The archive as a stream; files are read one at a time, as the stream is read. */
-export function zipStream(entries: AsyncIterable<ZipEntry> | Iterable<ZipEntry>, overflowNote: (names: string[]) => string = (names) => names.join('\n')): ReadableStream<Uint8Array> {
-  const iterator = chunks(entries, overflowNote)
+export function zipStream(entries: AsyncIterable<ZipEntry> | Iterable<ZipEntry>, overflowNote: (names: string[]) => string = (names) => names.join('\n'), options: ZipOptions = {}): ReadableStream<Uint8Array> {
+  const iterator = chunks(entries, overflowNote, options)
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {

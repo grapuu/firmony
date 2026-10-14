@@ -12,6 +12,9 @@ import { now } from '../db'
 import { bankReady, closeSession, type BankEnv } from './bank'
 import { purgeFloor, recordsFloor } from './ending'
 import { eventStatement } from './store'
+import { exportYears } from './export'
+import { confirmedRevision } from './handover-store'
+import { bratislava } from './remind'
 
 export interface PurgeEnv extends BankEnv {
   FILES?: R2Bucket
@@ -38,8 +41,14 @@ const LONELY = `SELECT m.user_id FROM members m JOIN users u ON u.id = m.user_id
   WHERE m.company_id = ?1 AND u.team IS NULL AND NOT EXISTS (SELECT 1 FROM members o WHERE o.user_id = m.user_id AND o.company_id <> ?1)`
 
 /** One company's data, deleted: the files first, then the rows in one batch, which either all go or none. */
-export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ files: number; rows: number }> {
+export async function purgeCompany(env: PurgeEnv, companyId: string, today = bratislava(Date.now()).day): Promise<{ files: number; rows: number }> {
   const db = env.DB
+  const revision = await confirmedRevision(db, companyId, await exportYears(db, companyId))
+  if (revision === null) return { files: 0, rows: 0 }
+  // Freeze new writes before any external file deletion. A change since the handover check cancels this claim.
+  const claim = await db.prepare(`UPDATE companies SET purge_started_at = COALESCE(purge_started_at, ?) WHERE id = ? AND purged_at IS NULL AND demo = 0 AND ends_on < ?
+    AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = companies.id), 0) = ?`).bind(now(), companyId, purgeFloor(today), revision).run()
+  if ((claim.meta?.changes ?? 0) === 0) return { files: 0, rows: 0 }
   if (bankReady(env)) {
     const sessions = await db
       .prepare("SELECT session_id FROM bank_links WHERE company_id = ? AND kind = 'eb' AND status = 'active' AND session_id IS NOT NULL")
@@ -73,6 +82,8 @@ export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ 
     db.prepare('DELETE FROM closings WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM employees WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_runs WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_history WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM closing_history WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM ledger_entries WHERE company_id = ?').bind(companyId),
     db.prepare("DELETE FROM company_files WHERE company_id = ? AND kind <> 'poa'").bind(companyId),
     db.prepare('DELETE FROM sessions WHERE company_id = ?').bind(companyId),
@@ -87,6 +98,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ 
       .bind(now(), now(), companyId),
     eventStatement(db, { company: companyId, user: null, action: 'company.purged', detail: { files, people: people.length } }),
   ]
+  statements.push(db.prepare('DELETE FROM export_receipts WHERE company_id = ?').bind(companyId), db.prepare('DELETE FROM company_data_revisions WHERE company_id = ?').bind(companyId))
   const results = await db.batch(statements)
   return { files, rows: results.reduce((sum, r) => sum + (r.meta?.changes ?? 0), 0) }
 }
@@ -95,19 +107,22 @@ export async function purgeCompany(env: PurgeEnv, companyId: string): Promise<{ 
 export async function purgeEnded(env: PurgeEnv, today: string): Promise<number> {
   const db = env.DB
   const due = await db
-    .prepare('SELECT id FROM companies WHERE ends_on IS NOT NULL AND ends_on < ? AND purged_at IS NULL AND demo = 0 ORDER BY ends_on LIMIT ?')
+    .prepare('SELECT id FROM companies WHERE ends_on IS NOT NULL AND ends_on < ? AND purged_at IS NULL AND demo = 0 ORDER BY COALESCE(purge_checked_at, 0), ends_on LIMIT ?')
     .bind(purgeFloor(today), ENDING.perRun)
     .all<{ id: string }>()
+  let purged = 0
   for (const row of due.results) {
     try {
-      await purgeCompany(env, row.id)
+      await db.prepare('UPDATE companies SET purge_checked_at = ? WHERE id = ?').bind(now(), row.id).run()
+      const result = await purgeCompany(env, row.id, today)
+      if (result.rows > 0) purged++
     } catch (err) {
       console.error('deleting a company failed', err instanceof Error ? err.name : 'error')
     }
   }
   await forgetRecords(env, today)
   await forgetLonely(db)
-  return due.results.length
+  return purged
 }
 
 /**
