@@ -439,3 +439,31 @@ https://static.slov-lex.sk/static/SK/ZZ/2004/580/20260701.html ; SV Act 222/2004
 https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html .
 
 Verified locally after the repairs: 636/636 unit checks, 694/694 workerd runtime checks, TypeScript 6 clean, `git diff --check` clean. Runtime checks include deliberately stale concurrent tax bookings, byte-identical filing downloads after edits, cancelled/incomplete exports, access control and invalidation of acknowledged handovers.
+
+
+## Monthly SV of a quarterly VAT payer (Codex, 14 October 2026)
+
+Branch `codex/firmony-monthly-summary`, stacked over PR #2. The VAT return stays quarterly; SV has independent
+monthly periods, files, filing/correction marks and deadlines. This completes the ordinary monthly-SV limitation
+listed above. No merge or deployment.
+
+- The 50 000 € test uses the current quarter and four preceding quarters; page and deadline loaders fetch that
+  history. Tax-day months are independent of a manually selected VAT quarter. Services alone do not trigger the goods
+  limit. Once monthly filings exist, a sequence cannot silently revert to a quarterly duplicate.
+- At a mid-quarter crossing, earlier months wait for that month's end and share its deadline. Corrections use this
+  adjusted deadline too. The deadlines screen includes completed SV months while their VAT quarter is still running.
+- A previously filed quarter can be explicitly reclassified to its last month, following FR SR methodology example 18.
+  Existing last-month filings are never overwritten. Missing original rows require resolving the legacy case through
+  the tax portal. New filings capture exact XML, filenames and SHA-256; prior values survive corrections,
+  reclassification and cancellation in schema step 13's `filing_history` and the yearly handover.
+- Revision guards reject two writes prepared from the same books, including corrections within the same second.
+  Invalid SV periods do not fall back to another period. Company access rules and local service mocks remain.
+- Regression: 646 unit checks and 715 workerd checks. UI captures come from actual runtime responses. The CI
+  layout check renders monthly and transition screens at 1440, 390 and 320 pixels, checks overflow and unique headings,
+  and keeps screenshots as a short-lived Actions artifact. Test services never call a live tax or banking endpoint.
+
+Primary references checked in the 2026 and 2027 law versions: § 80 of Act 222/2004,
+https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html and
+https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html . Transition deadlines and return to quarterly filing:
+https://podpora.financnasprava.sk/670936-Zmena-obdobia-u-platite%C4%BEa . Late reclassification: FR SR methodology,
+https://www.financnasprava.sk/_img/pfsedit/Dokumenty_PFS/Zverejnovanie_dok/Dane/Metodicke_pokyny/Nepriame_dane/2019/2019.12.31_MP_par_80.pdf , example 18.

@@ -2235,6 +2235,20 @@ async function zipped(entries, note) {
   check('exceeding the current-quarter goods limit blocks the plan rather than merely warning', quarterlyView([goodsOn('2027-01-15', 5_000_001)]).state === 'blocked' && quarterlyView([goodsOn('2027-01-15', 5_000_001)]).plan === null)
   check('any of the previous four quarters can require monthly SV, including across a year boundary', ['2026-01-15', '2026-04-15', '2026-07-15', '2026-10-15'].every((on) => quarterlyView([goodsOn(on, 5_000_001), goodsOn('2027-01-15', 10000)]).plan === null))
   check('exactly 50 000 € stays eligible and the fifth previous quarter has expired', quarterlyView([goodsOn('2026-01-15', 5_000_000), goodsOn('2027-01-15', 10000)]).state === 'ready' && quarterlyView([goodsOn('2025-12-15', 5_000_001), goodsOn('2027-01-15', 10000)]).state === 'ready')
+  const monthlyGoods = [goodsOn('2027-01-15', 3_000_000), goodsOn('2027-02-15', 2_500_000)]
+  const monthlySchedule = vatSummary.summarySchedule(quarterly, '2027-Q1', monthlyGoods)
+  check('quarterly VAT produces three independent monthly SV periods when the second month crosses the limit', monthlySchedule.monthly && monthlySchedule.crossedIn === '2027-02' && monthlySchedule.periods.join() === '2027-01,2027-02,2027-03')
+  const janView = (today, filed = null, d = monthlyGoods) => vatSummary.summaryView(quarterly, '2027-01', d, filed, 0, today)
+  check('a prior month waits for the end of the crossing month, with the crossing month\'s deadline', janView('2027-02-20').state === 'running' && janView('2027-03-01').state === 'ready' && janView('2027-03-01').endsOn === '2027-02-28' && janView('2027-03-01').deadline === '2027-03-25')
+  check('monthly SV assigns only its own tax-day supplies, independently of the VAT quarter override', janView('2027-03-01', null, monthlyGoods.map((d) => ({ ...d, vat: { ...d.vat, period: '2027-Q2' } }))).rows[0]?.euros === 30000)
+  const filedJan = { kind: 'R', filedOn: '2027-03-01', filedAt: 1, filedBy: null, rows: [{ country: 'CZ', number: '12345678', euros: 29000, code: '' }], sent: [], prev: null }
+  check('the transition deadline controls corrective versus supplementary monthly SV too', janView('2027-03-02', filedJan).plan?.kind === 'O' && janView('2027-03-26', filedJan).plan?.kind === 'D')
+  check('filing the first monthly SV does not remove the delayed deadline of the transition', vatSummary.summarySchedule(quarterly, '2027-Q1', monthlyGoods, ['2027-01']).crossedIn === '2027-02')
+  check('FR SR example: October and November 2023 share 27 December after the holiday adjustment', vatSummary.summaryView(quarterly, '2023-10', [goodsOn('2023-10-15', 4_000_000), goodsOn('2023-11-15', 2_000_000)], null, 0, '2023-12-01').deadline === '2023-12-27')
+  check('goods history is loaded from the first of the four preceding quarters', vatSummary.summaryLookbackFrom('2027-02') === '2026-Q1' && vatSummary.summaryLookbackFrom('2027-Q4') === '2026-Q4')
+  check('service values alone never force monthly SV for a quarterly payer', !vatSummary.summarySchedule(quarterly, '2027-Q1', [sale('DE123456789', 9_000_000)]).monthly)
+  check('an existing monthly filing sequence stays monthly even after later invoice edits remove the threshold', vatSummary.summarySchedule(quarterly, '2027-Q1', [], ['2027-01']).monthly)
+  check('the first month of a new quarter can already have monthly SV deadlines while its VAT quarter runs', dues.summaryWindow({ vatStatus: 'payer', vatQuarterly: true, vatSince: '2026-01-01', startOn: '2026-01-01', endsOn: null }, '2027-02-05').includes('2027-Q1'))
 
   // States, and the corrections a change after filing asks for
   const view = (filed, today, d = docs) => vatSummary.summaryView(payer, '2027-01', d, filed, 0, today)

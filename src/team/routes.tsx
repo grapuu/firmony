@@ -106,7 +106,8 @@ import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
 import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
 import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
-import { summaryPeriodOf, type SvView } from '../app/vat-summary'
+import { quarterOf, summaryLookbackFrom, summaryPeriodOf, type SvView, type SvFiled } from '../app/vat-summary'
+import { dataRevision } from '../app/handover-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
 import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
@@ -127,6 +128,9 @@ import {
   stripOf,
   summaryFiled,
   svViewOf,
+  svViewsOf,
+  summariesFiled,
+  reclassifySummaryStatements,
   fileSummaryStatement,
   unfileSummaryStatement,
   taxAccountOf,
@@ -358,6 +362,8 @@ function flashOf(c: Ctx): string | null {
       return t.vat.sv.flashes.already
     case 'sv-netreba':
       return t.vat.sv.flashes.none
+    case 'sv-zmeneny':
+      return t.vat.sv.flashes.stale
     case 'zavierka-ulozene':
       return t.closing.flashes.saved
     case 'zavierka-dan':
@@ -1078,13 +1084,34 @@ function choicesOf(get: (name: string) => unknown): FilingChoices {
 const correctionBlocked = (view: PeriodView): boolean => view.state === 'changed' && (view.companyIssues.length > 0 || view.result.issues.some((i) => i.level === 'block'))
 
 /** The recapitulative statement of a VAT period's statement period (a quarter under § 7a), with its own documents. */
-async function svWithDocs(db: D1Database, company: Company, period: string, today: string): Promise<{ sv: SvView; docs: Doc[] }> {
+async function svWithDocs(db: D1Database, company: Company, period: string, today: string) {
+  const revision = await dataRevision(db, company.id)
   const sv = summaryPeriodOf(period, { status: company.vatStatus })
-  const [docs, filed] = await Promise.all([docsAround(db, company.id, sv, sv), summaryFiled(db, company.id, sv)])
-  return { sv: svViewOf(company, sv, docs, filed, today), docs }
+  const [docs, filed] = await Promise.all([docsAround(db, company.id, summaryLookbackFrom(sv), quarterOf(sv)), summariesFiled(db, company.id)])
+  return { ...svViewsOf(company, sv, docs, filed, today), docs, filed, revision }
 }
 
-const svView = async (db: D1Database, company: Company, period: string, today: string): Promise<SvView> => (await svWithDocs(db, company, period, today)).sv
+/** SV accepts its own month, even when the VAT return uses a quarter. Never silently substitutes another filing period. */
+function summaryParam(company: Company, value: unknown, today: string): string | null {
+  if (company.vatStatus === 'none' || typeof value !== 'string' || !isPeriod(value) || periodRange(value).from > today) return null
+  return summaryPeriodOf(value, { status: company.vatStatus })
+}
+
+const summaryBack = (company: Company, period: string): string => {
+  const vat = company.vatQuarterly ? quarterOf(period) : isQuarter(period) ? `${period.slice(0, 4)}-${String((Number(period.slice(-1)) - 1) * 3 + 1).padStart(2, '0')}` : period
+  return `/ucto/klienti/${company.id}/dph?obdobie=${vat}`
+}
+
+function selectedSummary(company: Company, period: string, loaded: Awaited<ReturnType<typeof svWithDocs>>, today: string): SvView {
+  return loaded.views.find((v) => v.period === period) ?? svViewOf(company, period, loaded.docs, loaded.filed.get(period) ?? null, today, loaded.schedule)
+}
+
+async function summarySnapshot(company: Company, period: string, kind: 'R' | 'O' | 'D', rows: NonNullable<SvView['plan']>['rows'], today: string): Promise<NonNullable<SvFiled['file']>> {
+  const xml = summaryXml({ name: company.name, icdph: company.icdph as string, address: company.address }, period, rows, kind, today)
+  const name = `SVDPH${kind === 'R' ? '' : `_${kind}`}_${company.icdph}_${period}.xml`
+  const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(xml)))].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return { name, xml, sha256 }
+}
 
 /** The plan for a period, unless something keeps it from being filed. */
 function vatPlan(company: Company, view: PeriodView, filed: FiledReturn[], today: string, choices: FilingChoices): FilingPlan | null {
@@ -1120,7 +1147,9 @@ teamRoutes.get('/klienti/:id/dph', async (c) => {
       strip={strip}
       docs={new Map([...docs, ...(summary?.docs ?? [])].map((d) => [d.id, d]))}
       needs7a={docs.filter((d) => needs.has(d.id))}
-      summary={summary?.sv ?? null}
+      summaries={summary?.views ?? []}
+      summarySchedule={summary?.schedule ?? null}
+      legacySummary={summary?.legacy ?? null}
       today={today}
       flash={flashOf(c)}
     />,
@@ -1133,8 +1162,11 @@ teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
   const file = c.req.param('file')
   if (!company || (file !== 'priznanie.xml' && file !== 'kontrolny-vykaz.xml' && file !== 'suhrnny-vykaz.xml')) return missingPage(c)
   const today = dayOf(now())
+  if (file === 'suhrnny-vykaz.xml') {
+    const sv = summaryParam(company, c.req.query('obdobie'), today)
+    return sv ? summaryFile(c, company, sv, today) : missingPage(c)
+  }
   const period = periodParam(company, c.req.query('obdobie'), today)
-  if (file === 'suhrnny-vykaz.xml') return summaryFile(c, company, period, today)
   const { view, filed } = await vatView(c.env.DB, company, period, today)
   const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
   if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
@@ -1174,19 +1206,24 @@ teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
  * filed), or the one filed, with the day it was declared; none while the period runs or something keeps it back.
  */
 async function summaryFile(c: Ctx, company: Company, period: string, today: string): Promise<Response> {
-  const sv = await svView(c.env.DB, company, period, today)
-  const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}#suhrnny`
+  const loaded = await svWithDocs(c.env.DB, company, period, today)
+  const sv = selectedSummary(company, period, loaded, today)
+  const back = `${summaryBack(company, period)}#suhrnny`
+  const original = c.req.query('povodne') === '1'
+  const saved = loaded.filed.get(period)
+  if (original && !saved?.file) return c.text(t.vat.sv.missingOriginal, 409)
   const send = sv.plan ?? (sv.state === 'filed' && sv.filed ? { kind: sv.filed.kind, rows: sv.filed.sent } : null)
-  if (sv.state === 'running') return c.redirect(back.replace('#', '&ok=sv-bezi#'), 303)
-  if (sv.state === 'none') return c.redirect(back.replace('#', '&ok=sv-netreba#'), 303)
-  if (!send || !company.icdph) return c.redirect(back.replace('#', '&ok=sv-blokovane#'), 303)
-  const declaredOn = sv.state === 'filed' && sv.filed ? sv.filed.filedOn : today
-  const xml = summaryXml({ name: company.name, icdph: company.icdph, address: company.address }, sv.period, send.rows, send.kind, declaredOn)
-  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'vat.summary.downloaded', subject: sv.period, detail: { kind: send.kind } })])
-  return new Response(xml, {
+  if (!original && sv.state === 'running') return c.redirect(back.replace('#', '&ok=sv-bezi#'), 303)
+  if (!original && sv.state === 'none') return c.redirect(back.replace('#', '&ok=sv-netreba#'), 303)
+  if (!original && (!send || !company.icdph)) return c.redirect(back.replace('#', '&ok=sv-blokovane#'), 303)
+  if (!original && sv.state === 'filed' && !sv.filed?.file) return c.text(t.vat.sv.missingOriginal, 409)
+  const snapshot = original || sv.state === 'filed' ? saved?.file : await summarySnapshot(company, sv.period, send!.kind, send!.rows, today)
+  if (!snapshot) return c.text(t.vat.sv.missingOriginal, 409)
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'vat.summary.downloaded', subject: sv.period, detail: { kind: original ? saved?.kind : send?.kind, original } })])
+  return new Response(snapshot.xml, {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Content-Disposition': `attachment; filename="SVDPH${send.kind === 'R' ? '' : `_${send.kind}`}_${company.icdph}_${sv.period}.xml"`,
+      'Content-Disposition': `attachment; filename="${snapshot.name}"`,
       'Cache-Control': 'private, no-store',
     },
   })
@@ -1199,16 +1236,19 @@ teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/podane', async (c) => {
   if (!company) return missingPage(c)
   const body = await c.req.parseBody()
   const today = dayOf(now())
-  const period = periodParam(company, body.obdobie, today)
-  const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
+  const period = summaryParam(company, body.obdobie, today)
+  if (!period) return c.text('Bad request', 400)
+  const back = summaryBack(company, period)
   const db = c.env.DB
-  const sv = await svView(db, company, period, today)
+  const loaded = await svWithDocs(db, company, period, today)
+  const sv = selectedSummary(company, period, loaded, today)
   if (sv.state === 'filed') return c.redirect(`${back}&ok=sv-uz#suhrnny`, 303)
   if (sv.state === 'none') return c.redirect(`${back}&ok=sv-netreba#suhrnny`, 303)
   if (sv.state === 'running') return c.redirect(`${back}&ok=sv-bezi#suhrnny`, 303)
   if (!sv.plan) return c.redirect(`${back}&ok=sv-blokovane#suhrnny`, 303)
-  const [done] = await db.batch([fileSummaryStatement(db, company.id, sv, sv.plan, who.user.id, today)])
-  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=sv-uz#suhrnny`, 303)
+  const snapshot = await summarySnapshot(company, sv.period, sv.plan.kind, sv.plan.rows, today)
+  const [done] = await db.batch([fileSummaryStatement(db, company.id, sv, sv.plan, who.user.id, today, snapshot, loaded.revision)])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=sv-zmeneny#suhrnny`, 303)
   const correction = sv.filed !== null
   await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: correction ? 'vat.summary.corrected' : 'vat.summary.filed', subject: sv.period, detail: { kind: sv.plan.kind, rows: sv.plan.rows.length } })])
   return c.redirect(`${back}&ok=${correction ? 'sv-opraveny' : 'sv-podany'}#suhrnny`, 303)
@@ -1221,13 +1261,28 @@ teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/zrusit', async (c) => {
   if (!company) return missingPage(c)
   const body = await c.req.parseBody()
   const today = dayOf(now())
-  const period = periodParam(company, body.obdobie, today)
+  const period = summaryParam(company, body.obdobie, today)
+  if (!period) return c.text('Bad request', 400)
   const db = c.env.DB
-  const sv = summaryPeriodOf(period, { status: company.vatStatus })
-  const filed = await summaryFiled(db, company.id, sv)
-  const [gone] = filed ? await db.batch([unfileSummaryStatement(db, company.id, sv, filed)]) : []
-  if (filed && (gone?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'vat.summary.unfiled', subject: sv, detail: { kind: filed.kind } })])
-  return c.redirect(`/ucto/klienti/${company.id}/dph?obdobie=${period}&ok=sv-zruseny#suhrnny`, 303)
+  const revision = await dataRevision(db, company.id)
+  const filed = await summaryFiled(db, company.id, period)
+  const [gone] = filed ? await db.batch([unfileSummaryStatement(db, company.id, period, filed, revision)]) : []
+  if (filed && (gone?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'vat.summary.unfiled', subject: period, detail: { kind: filed.kind } })])
+  return c.redirect(`${summaryBack(company, period)}&ok=sv-zruseny#suhrnny`, 303)
+})
+
+teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/obdobie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const today = dayOf(now())
+  const body = await c.req.parseBody()
+  const period = summaryParam(company, body.obdobie, today)
+  if (!period || !isQuarter(period)) return c.text('Bad request', 400)
+  const loaded = await svWithDocs(c.env.DB, company, period, today)
+  if (!loaded.schedule.monthly || !loaded.legacy || loaded.legacy.rows === null) return c.redirect(`${summaryBack(company, period)}&ok=sv-zmeneny#suhrnny`, 303)
+  const [done] = await c.env.DB.batch(reclassifySummaryStatements(c.env.DB, company.id, period, loaded.legacy, loaded.revision))
+  if ((done?.meta?.changes ?? 0) > 0) await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'vat.summary.reclassified', subject: period })])
+  return c.redirect(`${summaryBack(company, period)}&ok=sv-zmeneny#suhrnny`, 303)
 })
 
 /**

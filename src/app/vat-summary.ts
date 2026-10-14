@@ -5,13 +5,13 @@
 // The rules (§ 80 of Act No. 222/2004 Z. z. as in force from 1 January 2027, read on static.slov-lex.sk on
 // 14 October 2026; the poučenie to SVDPHv20 under measure No. 405/2019 Z. z., and the eForm form.471 itself, read
 // on pfseform.financnasprava.sk the same day):
-// - Who and for what: a payer for its VAT period (monthly, or the calendar quarter of a quarterly payer: § 80(2) allows
-//   the quarter only when goods stay within 50 000 € in it and in each of the previous four quarters), a person registered under § 7a
+// - Who and for what: monthly SV for a monthly payer; for a quarterly payer, independent months when § 80(2) requires
+//   them, otherwise a quarter within the goods limit in it and the previous four quarters. A person under § 7a
 //   for the calendar quarter (§ 80(3)); within 25 days after the period (§ 80(9); vat.ts, `filingDeadline`). Nothing
 //   is filed for a period without such supplies.
 // - What: each customer's total, by its VAT number, for goods supplied free of tax to another member state (§ 43,
 //   without a code) and for services whose place of supply is there (§ 15(1), code 2); in the period the tax fell due
-//   (§ 80(6): the return's period, `periodOfDoc`), a correction of the base in the period it was made (§ 80(7)).
+//   (§ 80(6): `taxDay`, independently of a VAT period override), a correction of the base in the period it was made (§ 80(7)).
 //   Each row in whole euros, half a euro up (§ 80(6)); the total on the first page is the sum of the rows (the eForm's
 //   own check). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
 //   call-off stock (part II).
@@ -19,7 +19,7 @@
 //   supplementary one (dodatočný) with only the rows that change: the right value, nought for a row that was wrong;
 //   a row cancelled because its code was wrong, or of triangular trade, carries the code 0 (poučenie, part IV and
 //   its examples 10 to 14).
-import { correctionKind, filingDeadline, isEuVatId, isIssued, isQuarter, periodOfDoc, periodRange, plainVatId, vatCountry, vatOf, type Issue, type VatCompany, type VatDoc } from './vat'
+import { filingDeadline, isEuVatId, isIssued, isQuarter, periodOf, periodRange, plainVatId, taxDay, vatCountry, vatOf, type Issue, type VatCompany, type VatDoc } from './vat'
 
 /** A row's code: goods without one, services 2; 0 cancels a row of a code (a supplementary statement alone). */
 export type SvCode = '' | '1' | '2' | '0'
@@ -54,6 +54,9 @@ export interface SvFiled {
   /** The rows its file held (a supplementary statement's are only those that changed). */
   sent: SvRow[]
   prev: SvFiled | null
+  /** The actual file marked as sent. A reclassified quarter retains its original file and source period. */
+  file?: { name: string; xml: string; sha256: string }
+  sourcePeriod?: string
 }
 
 /** none: nothing to file; running: the period has not ended; blocked: something keeps it back; ready: its file can
@@ -61,7 +64,7 @@ export interface SvFiled {
 export type SvState = 'none' | 'running' | 'blocked' | 'ready' | 'filed' | 'changed'
 
 export interface SvView {
-  /** The statement's period: the payer's VAT period, a calendar quarter under § 7a. */
+  /** The independent statement period: a month or a calendar quarter under § 80. */
   period: string
   state: SvState
   lines: SvLine[]
@@ -72,12 +75,22 @@ export interface SvView {
   /** What to file now: a regular statement, or a correction of the one filed; null when nothing can be. */
   plan: { kind: 'R' | 'O' | 'D'; rows: SvRow[] } | null
   deadline: string
+  /** A monthly statement can first be prepared after the month in which quarterly eligibility ended. */
+  endsOn: string
+}
+
+export interface SvSchedule {
+  quarter: string
+  periods: string[]
+  monthly: boolean
+  /** First month whose cumulative goods exceeded the limit; null when monthly from the quarter's start. */
+  crossedIn: string | null
 }
 
 /** The quarter a month falls in ('2027-Q1' of '2027-02'); a quarter stays itself. */
 export const quarterOf = (period: string): string => (isQuarter(period) ? period : `${period.slice(0, 4)}-Q${Math.ceil(Number(period.slice(5, 7)) / 3)}`)
 
-/** The statement's period of a VAT period: the same for a payer, the calendar quarter for a person registered under § 7a. */
+/** The base period before resolving monthly SV: the same for a payer, the calendar quarter under § 7a. */
 export const summaryPeriodOf = (period: string, company: Pick<VatCompany, 'status'>): string => (company.status === 'reg7a' ? quarterOf(period) : period)
 
 /** Whole euros, half a euro away from nought (§ 80(6)). */
@@ -85,6 +98,50 @@ export const wholeEuros = (cents: number): number => Math.sign(cents) * Math.rou
 
 /** What § 80(2) measures a quarter's goods against: 50 000 €, in cents. */
 const GOODS_LIMIT = 5_000_000
+
+/** The reporting month follows the tax day, independently of the VAT return's monthly/quarterly period override. */
+export const summaryMonthOf = (doc: VatDoc, data: NonNullable<VatDoc['vat']>): string => periodOf(taxDay(doc, data), false)
+
+export const quarterMonths = (period: string): string[] => {
+  const quarter = quarterOf(period)
+  const first = (Number(quarter.slice(-1)) - 1) * 3 + 1
+  return [first, first + 1, first + 2].map((m) => `${quarter.slice(0, 4)}-${String(m).padStart(2, '0')}`)
+}
+
+/** Start of the four preceding quarters, including year boundaries; loaders must fetch this history too. */
+export function summaryLookbackFrom(period: string): string {
+  const quarter = quarterOf(period)
+  return `${Number(quarter.slice(0, 4)) - 1}${quarter.slice(4)}`
+}
+
+/** § 80(2), FR SR methodology examples 7/8: monthly VAT is unchanged; quarterly VAT can require three monthly SVs. */
+export function summarySchedule(company: VatCompany, period: string, docs: VatDoc[], filedPeriods: readonly string[] = []): SvSchedule {
+  const quarter = quarterOf(period)
+  if (company.status === 'reg7a') return { quarter, periods: [quarter], monthly: false, crossedIn: null }
+  if (!company.quarterly) return { quarter, periods: isQuarter(period) ? quarterMonths(period) : [period], monthly: true, crossedIn: null }
+  const byMonth = new Map<string, number>()
+  for (const doc of docs) {
+    if (!isIssued(doc.kind)) continue
+    const counted = vatOf(doc, company)
+    if (counted?.data.mode !== 'eu_goods') continue
+    const month = summaryMonthOf(doc, counted.data)
+    byMonth.set(month, (byMonth.get(month) ?? 0) + counted.data.lines.reduce((sum, line) => sum + line.base, 0))
+  }
+  const months = quarterMonths(quarter)
+  const previous = [...new Set([...byMonth.keys()].map(quarterOf))].filter((q) => q >= summaryLookbackFrom(quarter) && q < quarter)
+  const crossed = (q: string): string | null => {
+    let total = 0
+    for (const month of quarterMonths(q)) {
+      total += byMonth.get(month) ?? 0
+      if (total > GOODS_LIMIT) return month
+    }
+    return null
+  }
+  const fromStart = previous.some((q) => crossed(q) !== null)
+  const crossedIn = fromStart ? null : crossed(quarter)
+  const monthly = fromStart || crossedIn !== null || filedPeriods.some((p) => months.includes(p))
+  return { quarter, periods: monthly ? months : [quarter], monthly, crossedIn }
+}
 
 const key = (r: { country: string; number: string; code: string }) => `${r.country}:${r.number}:${r.code}`
 
@@ -98,15 +155,6 @@ export function summaryLines(company: VatCompany, period: string, docs: VatDoc[]
   let due = false
   const lines = new Map<string, SvLine>()
   const { from, to } = periodRange(period)
-  const goods = new Map<string, number>()
-  // SV periodicity is independent of the VAT return. Check the full four-quarter lookback, not just today's rows.
-  for (const doc of docs) {
-    if (!isIssued(doc.kind)) continue
-    const counted = vatOf(doc, company)
-    if (counted?.data.mode !== 'eu_goods') continue
-    const quarter = quarterOf(periodOfDoc(doc, counted.data, company))
-    goods.set(quarter, (goods.get(quarter) ?? 0) + counted.data.lines.reduce((sum, line) => sum + line.base, 0))
-  }
   for (const doc of docs) {
     // A document nobody has read yet may be an invoice of the period: it keeps the statement back until it is.
     if (doc.kind === null && !doc.booked) {
@@ -118,7 +166,8 @@ export function summaryLines(company: VatCompany, period: string, docs: VatDoc[]
     const counted = vatOf(doc, company)
     if (!counted || (counted.data.mode !== 'eu_goods' && counted.data.mode !== 'eu_service')) continue
     const { data, proposed } = counted
-    if (summaryPeriodOf(periodOfDoc(doc, data, company), company) !== period) continue
+    const month = summaryMonthOf(doc, data)
+    if ((isQuarter(period) ? quarterOf(month) : month) !== period) continue
     due = true
     if (!doc.booked) {
       issues.push({ level: 'block', code: 'unbooked', doc: doc.id })
@@ -143,15 +192,7 @@ export function summaryLines(company: VatCompany, period: string, docs: VatDoc[]
     held.docs.push(doc.id)
     lines.set(key(line), held)
   }
-  if (company.status === 'payer' && isQuarter(period)) {
-    const index = Number(period.slice(0, 4)) * 4 + Number(period.slice(-1)) - 1
-    const exceeds = [...goods].some(([quarter, cents]) => {
-      const q = Number(quarter.slice(0, 4)) * 4 + Number(quarter.slice(-1)) - 1
-      return q >= index - 4 && q <= index && cents > GOODS_LIMIT
-    })
-    // Until separate monthly SV periods are implemented, prevent an invalid quarterly filing altogether.
-    if (exceeds) issues.push({ level: 'block', code: 'svMonthly', doc: null })
-  }
+  if (company.status === 'payer' && isQuarter(period) && summarySchedule(company, period, docs).monthly) issues.push({ level: 'block', code: 'svMonthly', doc: null })
   return { lines: [...lines.values()].sort((a, b) => key(a).localeCompare(key(b))), issues, due }
 }
 
@@ -191,20 +232,22 @@ const sameRows = (a: SvRow[], b: SvRow[]): boolean => {
  * address missing), whether it was filed and changed since, and what to file now. What a statement filed holds is
  * always every row the books gave when it was filed, a supplementary one too.
  */
-export function summaryView(company: VatCompany, period: string, docs: VatDoc[], filed: SvFiled | null, companyBlocks: number, today: string): SvView {
+export function summaryView(company: VatCompany, period: string, docs: VatDoc[], filed: SvFiled | null, companyBlocks: number, today: string, schedule = summarySchedule(company, period, docs, filed && !isQuarter(period) ? [period] : [])): SvView {
   const { lines, issues, due } = summaryLines(company, period, docs)
   const rows = rowsOf(lines)
-  const deadline = filingDeadline(period)
+  const endsOn = schedule.crossedIn && !isQuarter(period) && period < schedule.crossedIn ? periodRange(schedule.crossedIn).to : periodRange(period).to
+  const deadline = filingDeadline(schedule.crossedIn && !isQuarter(period) && period < schedule.crossedIn ? schedule.crossedIn : period)
+  if (!schedule.periods.includes(period) && !isQuarter(period)) issues.push({ level: 'block', code: 'svQuarterly', doc: null })
   const blocked = companyBlocks > 0 || issues.some((i) => i.level === 'block')
-  const base = { period, lines, rows, issues, filed, deadline }
+  const base = { period, lines, rows, issues, filed, deadline, endsOn }
   if (filed) {
     if (filed.rows === null || sameRows(filed.rows, rows)) return { ...base, state: 'filed', plan: null }
-    const kind = correctionKind(period, today)
+    const kind = today <= deadline ? 'O' : 'D'
     return { ...base, state: 'changed', plan: blocked ? null : { kind, rows: kind === 'O' ? rows : svDiff(filed.rows, rows) } }
   }
   // Supplies that came to nothing (an invoice and its credit note) leave nothing to file.
   if (!due || (!blocked && rows.length === 0)) return { ...base, state: 'none', plan: null }
-  if (today <= periodRange(period).to) return { ...base, state: 'running', plan: null }
+  if (today <= endsOn) return { ...base, state: 'running', plan: null }
   if (blocked) return { ...base, state: 'blocked', plan: null }
   return { ...base, state: 'ready', plan: { kind: 'R', rows } }
 }

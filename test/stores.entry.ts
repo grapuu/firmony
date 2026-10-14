@@ -3,3 +3,7 @@ export { bookTaxStatements, closingsOf, fileClosingStatement, saveInputsStatemen
 export { payslip } from '../src/app/payroll'
 export { exportYears, exportYear } from '../src/app/export'
 export { beginExport, completeExport, confirmExport, dataRevision, confirmedRevision } from '../src/app/handover-store'
+export { fileSummaryStatement, svFiledOf, svViewOf, svViewsOf, summariesFiled, docsAround } from '../src/app/vat-store'
+export { companyOf } from '../src/app/store'
+export { summaryXml } from '../src/app/vat-xml'
+export { teamDeadlines } from '../src/team/deadlines-store'

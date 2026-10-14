@@ -617,6 +617,30 @@ const MIGRATIONS: readonly string[][] = [
     `CREATE TRIGGER companies_purging_update BEFORE UPDATE OF name, ico, dic, icdph, address, register_line, payroll, tax_account, start_on, ends_on, vat_payer, vat_7a, vat_quarterly, vat_since, tax_office, vat_carry ON companies
       WHEN OLD.purge_started_at IS NOT NULL AND NEW.purged_at IS NULL BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
   ],
+  // SV originals survive corrections, cancellation of a mark and reclassification from a quarter to its last month.
+  [
+    `CREATE TABLE filing_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, company_id TEXT NOT NULL, kind TEXT NOT NULL, period TEXT NOT NULL,
+      archived_at INTEGER NOT NULL, data TEXT NOT NULL
+    )`,
+    'CREATE INDEX filing_history_company ON filing_history (company_id, kind, period)',
+    `CREATE TRIGGER filing_history_update AFTER UPDATE ON filings WHEN OLD.kind = 'sv' AND OLD.data IS NOT NEW.data BEGIN
+      INSERT INTO filing_history (company_id, kind, period, archived_at, data) VALUES (OLD.company_id, OLD.kind, OLD.period, unixepoch(),
+        json_object('filed_on', OLD.filed_on, 'filed_at', OLD.filed_at, 'filed_by', OLD.filed_by, 'data', OLD.data)); END`,
+    `CREATE TRIGGER filing_history_delete BEFORE DELETE ON filings WHEN OLD.kind = 'sv'
+      AND NOT EXISTS (SELECT 1 FROM companies WHERE id = OLD.company_id AND purge_started_at IS NOT NULL) BEGIN
+      INSERT INTO filing_history (company_id, kind, period, archived_at, data) VALUES (OLD.company_id, OLD.kind, OLD.period, unixepoch(),
+        json_object('filed_on', OLD.filed_on, 'filed_at', OLD.filed_at, 'filed_by', OLD.filed_by, 'data', OLD.data)); END`,
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER filing_history_data_${action.toLowerCase()} AFTER ${action} ON filing_history BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map((action) => `CREATE TRIGGER filing_history_purging_${action.toLowerCase()} BEFORE ${action} ON filing_history
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

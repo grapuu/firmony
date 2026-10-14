@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "check": "tsc --noEmit",
     "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs",
-    "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs"
+    "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs",
+    "test:ui": "node test/visual.mjs"
   },
   "dependencies": {
     "bysquare": "4.0.2",
@@ -24,6 +25,7 @@
     "@fontsource-variable/funnel-display": "^5.3.0",
     "@fontsource-variable/newsreader": "^5.3.0",
     "esbuild": "0.28.1",
+    "playwright": "1.62.1",
     "typescript": "^7.0.2",
     "wrangler": "^4.147.0",
     "xmllint-wasm": "5.3.0"

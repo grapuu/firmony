@@ -61,7 +61,7 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
 const tone = (d: Due): string => (d.state === 'done' ? 'pill--ok' : d.late ? 'pill--red' : d.state === 'ready' ? 'pill--blue' : d.state === 'running' ? 'pill--grey' : 'pill--amber')
 
 /** Where a deadline is acted on: the period on the VAT page, the client's missing documents, the closing's page, the handover. */
-export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> }): string {
+export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> & Partial<Pick<DueRow['company'], 'vatQuarterly'>> }): string {
   const base = `/ucto/klienti/${d.company.id}`
   switch (d.kind) {
     case 'vat':
@@ -72,7 +72,8 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<Due
       // A person registered under § 7a files it for a quarter; its VAT page goes by months: the quarter's first one.
       const period = d.period ?? ''
       const month = period.includes('Q') && d.company.vatStatus === 'reg7a' ? `${period.slice(0, 4)}-${String((Number(period.slice(6)) - 1) * 3 + 1).padStart(2, '0')}` : period
-      return `${base}/dph?obdobie=${month}#suhrnny`
+      const vat = d.company.vatQuarterly && !period.includes('Q') ? `${period.slice(0, 4)}-Q${Math.ceil(Number(period.slice(5, 7)) / 3)}` : month
+      return `${base}/dph?obdobie=${vat}#suhrnny${d.company.vatQuarterly && !period.includes('Q') ? `-${period}` : ''}`
     }
     case 'docs':
       return `${base}#chyba`

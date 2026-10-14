@@ -4,10 +4,10 @@
 // the documents of each VAT company's last periods, many companies in one batch.
 import { DEADLINES } from '../config'
 import { COMPANY_COLUMNS, MISSING, companyOf, docOf, type Company, type Doc, type User } from '../app/store'
-import { FILED_SELECT, NOT_OTHER_TREASURY, SUMMARY_KIND, docsAroundStatement, filedReturnOf, paidByPeriod, svFiledOf, svViewOf, viewOf, type FiledReturn } from '../app/vat-store'
-import { summaryPeriodOf, type SvFiled } from '../app/vat-summary'
+import { FILED_SELECT, NOT_OTHER_TREASURY, SUMMARY_KIND, docsAroundStatement, filedReturnOf, paidByPeriod, svFiledOf, svViewsOf, viewOf, type FiledReturn } from '../app/vat-store'
+import { quarterOf, summaryLookbackFrom, type SvFiled } from '../app/vat-summary'
 import { payrollSettingsOf } from '../app/payroll-store'
-import { compareDues, deadlinesOf, vatWindow, type ClosingFact, type Due, type MarkedKind, type PayrollFact } from './deadlines'
+import { compareDues, deadlinesOf, summaryWindow, vatWindow, type ClosingFact, type Due, type MarkedKind, type PayrollFact } from './deadlines'
 import { visible } from './store'
 
 type Row = Record<string, unknown>
@@ -131,12 +131,12 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
 
   // The documents of every VAT company's periods worked out, many companies in one batch; a person registered under
   // § 7a from the start of the first one's quarter, which its recapitulative statement covers.
-  const windows = companies.map((company) => ({ company, periods: vatWindow(company, today) })).filter((w) => w.periods.length > 0)
+  const windows = companies.map((company) => ({ company, periods: summaryWindow(company, today) })).filter((w) => w.periods.length > 0)
   const docs = new Map<string, Doc[]>()
   for (let i = 0; i < windows.length; i += DEADLINES.batch) {
     const chunk = windows.slice(i, i + DEADLINES.batch)
     const results = await db.batch<Row>(
-      chunk.map((w) => docsAroundStatement(db, w.company.id, summaryPeriodOf(w.periods[0] as string, { status: w.company.vatStatus }), w.periods[w.periods.length - 1] as string)),
+      chunk.map((w) => docsAroundStatement(db, w.company.id, summaryLookbackFrom(w.periods[0] as string), quarterOf(w.periods[w.periods.length - 1] as string))),
     )
     chunk.forEach((w, j) => docs.set(w.company.id, (results[j]?.results ?? []).map(docOf)))
   }
@@ -149,7 +149,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
     const svFiled = summariesFiled.get(company.id) ?? new Map<string, SvFiled>()
     const facts = {
       views: window.map((period) => viewOf(company, period, held, returns, today)),
-      summaries: [...new Set(window.map((period) => summaryPeriodOf(period, { status: company.vatStatus })))].map((period) => svViewOf(company, period, held, svFiled.get(period) ?? null, today)),
+      summaries: summaryWindow(company, today).flatMap((period) => svViewsOf(company, period, held, svFiled, today).views),
       filed: returns,
       paid: paidByPeriod(returns, paid.get(company.id) ?? []),
       filings: filings.get(company.id) ?? new Set<string>(),

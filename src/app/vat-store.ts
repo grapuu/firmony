@@ -3,7 +3,7 @@
 import { typeset } from '../format'
 import { now } from '../db'
 import { DOC_COLUMNS, DOC_FROM, docOf, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
-import { summaryView, type SvCode, type SvFiled, type SvRow, type SvView } from './vat-summary'
+import { quarterMonths, summarySchedule, summaryView, type SvCode, type SvFiled, type SvRow, type SvView, type SvSchedule } from './vat-summary'
 import {
   correctionKind,
   emptyRows,
@@ -660,6 +660,8 @@ function svFiledFrom(value: unknown, depth = 0): SvFiled | null {
     rows: Array.isArray(v.rows) ? svRowsOf(v.rows) : null,
     sent: svRowsOf(v.sent),
     prev: svFiledFrom(v.prev, depth + 1),
+    ...(v.file && typeof v.file === 'object' && typeof (v.file as Record<string, unknown>).xml === 'string' && typeof (v.file as Record<string, unknown>).name === 'string' && typeof (v.file as Record<string, unknown>).sha256 === 'string' ? { file: v.file as NonNullable<SvFiled['file']> } : {}),
+    ...(typeof v.sourcePeriod === 'string' ? { sourcePeriod: v.sourcePeriod } : {}),
   }
 }
 
@@ -685,34 +687,72 @@ export async function summaryFiled(db: D1Database, company: string, period: stri
 }
 
 /** The statement of a period as the company's books give it (the VAT number and the seat are its own to give). */
-export function svViewOf(company: Company, period: string, docs: Doc[], filed: SvFiled | null, today: string): SvView {
+export function svViewOf(company: Company, period: string, docs: Doc[], filed: SvFiled | null, today: string, schedule?: SvSchedule): SvView {
   const blocks = companyIssues(company).filter((issue) => issue !== 'office').length
-  return summaryView(vatCompanyOf(company), period, docs.map(vatDocOf), filed, blocks, today)
+  return summaryView(vatCompanyOf(company), period, docs.map(vatDocOf), filed, blocks, today, schedule)
 }
 
-const svData = (f: Pick<SvFiled, 'kind' | 'rows' | 'sent' | 'prev'>): Record<string, unknown> => ({ kind: f.kind, rows: f.rows, sent: f.sent, prev: f.prev ? { ...svData(f.prev), filedOn: f.prev.filedOn, filedAt: f.prev.filedAt, filedBy: f.prev.filedBy } : null })
+/** Independent SV periods for the selected VAT period; preserve an in-progress monthly filing sequence. */
+export function svViewsOf(company: Company, period: string, docs: Doc[], filed: ReadonlyMap<string, SvFiled>, today: string): { schedule: SvSchedule; views: SvView[]; legacy: SvFiled | null } {
+  const schedule = summarySchedule(vatCompanyOf(company), period, docs.map(vatDocOf), [...filed.keys()])
+  const legacy = schedule.monthly ? filed.get(schedule.quarter) ?? null : null
+  const last = quarterMonths(period)[2]
+  const views = schedule.periods.map((p) => {
+    const view = svViewOf(company, p, docs, filed.get(p) ?? null, today, schedule)
+    // FR SR methodology example 18: the filed quarter is treated as the last month. Do not submit another regular one.
+    return legacy && p === last ? { ...view, state: 'blocked' as const, plan: null, issues: [...view.issues, { level: 'block' as const, code: 'svPeriodChange' as const, doc: null }] } : view
+  })
+  return { schedule, views, legacy }
+}
+
+export async function summariesFiled(db: D1Database, company: string): Promise<Map<string, SvFiled>> {
+  const rows = await db.prepare('SELECT f.*, u.name AS filed_by_name FROM filings f LEFT JOIN users u ON u.id = f.filed_by WHERE f.company_id = ? AND f.kind = ?').bind(company, SUMMARY_KIND).all<Record<string, unknown>>()
+  return new Map(rows.results.map((r) => [String(r.period), svFiledOf(r)]))
+}
+
+const svData = (f: Pick<SvFiled, 'kind' | 'rows' | 'sent' | 'prev' | 'file' | 'sourcePeriod'>): Record<string, unknown> => ({ kind: f.kind, rows: f.rows, sent: f.sent, file: f.file, sourcePeriod: f.sourcePeriod, prev: f.prev ? { ...svData(f.prev), filedOn: f.prev.filedOn, filedAt: f.prev.filedAt, filedBy: f.prev.filedBy } : null })
+
+const summaryRevisionGuard = (company: string, revision?: number): { sql: string; binds: (string | number)[] } => revision === undefined ? { sql: '', binds: [] } : { sql: ' AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?), 0) = ?', binds: [company, revision] }
 
 /**
  * The statement marked as filed with what its file held: a first one once (the key is the company, the kind and the
  * period), a correction only over the filing it was made against (its moment), which it keeps as the one before.
  */
-export function fileSummaryStatement(db: D1Database, company: string, view: SvView, plan: NonNullable<SvView['plan']>, by: string, today: string): D1PreparedStatement {
+export function fileSummaryStatement(db: D1Database, company: string, view: SvView, plan: NonNullable<SvView['plan']>, by: string, today: string, file?: SvFiled['file'], revision?: number): D1PreparedStatement {
   const at = now()
-  const data = JSON.stringify(svData({ kind: plan.kind, rows: view.rows, sent: plan.rows, prev: view.filed }))
+  const data = JSON.stringify(svData({ kind: plan.kind, rows: view.rows, sent: plan.rows, prev: view.filed, file }))
+  const guard = summaryRevisionGuard(company, revision)
   if (!view.filed)
     return db
-      .prepare('INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by, data) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (company_id, kind, period) DO NOTHING')
-      .bind(company, SUMMARY_KIND, view.period, today, at, by, data)
+      .prepare(`INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by, data) SELECT ?, ?, ?, ?, ?, ?, ? WHERE 1 = 1${guard.sql} ON CONFLICT (company_id, kind, period) DO NOTHING`)
+      .bind(company, SUMMARY_KIND, view.period, today, at, by, data, ...guard.binds)
   return db
-    .prepare('UPDATE filings SET filed_on = ?, filed_at = ?, filed_by = ?, data = ? WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?')
-    .bind(today, at, by, data, company, SUMMARY_KIND, view.period, view.filed.filedAt)
+    .prepare(`UPDATE filings SET filed_on = ?, filed_at = ?, filed_by = ?, data = ? WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?${guard.sql}`)
+    .bind(today, at, by, data, company, SUMMARY_KIND, view.period, view.filed.filedAt, ...guard.binds)
 }
 
 /** A mark taken back: a correction gives way to the filing it replaced; a first filing is gone. */
-export function unfileSummaryStatement(db: D1Database, company: string, period: string, filed: SvFiled): D1PreparedStatement {
+export function unfileSummaryStatement(db: D1Database, company: string, period: string, filed: SvFiled, revision?: number): D1PreparedStatement {
+  const guard = summaryRevisionGuard(company, revision)
   if (filed.prev)
     return db
-      .prepare('UPDATE filings SET filed_on = ?, filed_at = ?, filed_by = ?, data = ? WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?')
-      .bind(filed.prev.filedOn, filed.prev.filedAt, filed.prev.filedBy, JSON.stringify(svData(filed.prev)), company, SUMMARY_KIND, period, filed.filedAt)
-  return db.prepare('DELETE FROM filings WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?').bind(company, SUMMARY_KIND, period, filed.filedAt)
+      .prepare(`UPDATE filings SET filed_on = ?, filed_at = ?, filed_by = ?, data = ? WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?${guard.sql}`)
+      .bind(filed.prev.filedOn, filed.prev.filedAt, filed.prev.filedBy, JSON.stringify(svData(filed.prev)), company, SUMMARY_KIND, period, filed.filedAt, ...guard.binds)
+  return db.prepare(`DELETE FROM filings WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?${guard.sql}`).bind(company, SUMMARY_KIND, period, filed.filedAt, ...guard.binds)
+}
+
+/** Only the app's filing classification changes; the original snapshot stays. Never overwrites an existing monthly filing. */
+export function reclassifySummaryStatements(db: D1Database, company: string, quarter: string, filed: SvFiled, revision: number): D1PreparedStatement[] {
+  const last = quarterMonths(quarter)[2] as string
+  const data = JSON.stringify(svData({ ...filed, sourcePeriod: quarter }))
+  const guard = summaryRevisionGuard(company, revision)
+  return [
+    db.prepare(`INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by, data)
+      SELECT company_id, kind, ?, filed_on, filed_at, filed_by, ? FROM filings
+      WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?${guard.sql} ON CONFLICT (company_id, kind, period) DO NOTHING`)
+      .bind(last, data, company, SUMMARY_KIND, quarter, filed.filedAt, ...guard.binds),
+    db.prepare(`DELETE FROM filings WHERE company_id = ? AND kind = ? AND period = ? AND filed_at = ?
+      AND EXISTS (SELECT 1 FROM filings m WHERE m.company_id = ? AND m.kind = ? AND m.period = ? AND m.data = ?)`)
+      .bind(company, SUMMARY_KIND, quarter, filed.filedAt, company, SUMMARY_KIND, last, data),
+  ]
 }

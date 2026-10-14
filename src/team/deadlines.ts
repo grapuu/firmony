@@ -39,7 +39,7 @@ import { closingDue } from '../app/closing'
 import { paydayOf } from '../app/payroll-store'
 import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod, workingDayFrom } from '../app/vat'
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
-import type { SvView } from '../app/vat-summary'
+import { summaryPeriodOf, type SvView } from '../app/vat-summary'
 
 export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'payroll' | 'payrollReports' | 'handover'
 
@@ -160,6 +160,17 @@ export function vatWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly' | 
   return out
 }
 
+/** Monthly SV can already be due during an unfinished quarterly VAT period. */
+export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly' | 'vatSince' | 'startOn' | 'endsOn'>, today: string): string[] {
+  const periods = vatWindow(company, today).map((p) => summaryPeriodOf(p, { status: company.vatStatus }))
+  if (company.vatStatus === 'payer' && company.vatQuarterly) {
+    const current = periodOf(today, true)
+    const first = firstPeriod(company)
+    if ((!first || current >= first) && (!company.endsOn || current <= periodOf(company.endsOn, true))) periods.push(current)
+  }
+  return [...new Set(periods)]
+}
+
 /** A company's deadlines: everything that can be done now, what still runs once it is `aheadDays` near, and what was done in the last weeks. */
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
@@ -197,7 +208,7 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const blocks = sv.issues.filter((i) => i.level === 'block').length
       if (sv.state === 'none') continue
       if (sv.state === 'changed') {
-        const fix = sv.plan?.kind === 'D' || (!sv.plan && correctionKind(sv.period, today) === 'D') ? 'D' : 'O'
+        const fix = sv.plan?.kind === 'D' || (!sv.plan && today > sv.deadline) ? 'D' : 'O'
         add({ kind: 'summary', period: sv.period, day: fix === 'O' ? sv.deadline : today, state: sv.plan ? 'ready' : 'blocked', count: blocks, fix })
       } else add({ kind: 'summary', period: sv.period, day: sv.deadline, state: sv.state === 'filed' ? 'done' : sv.state, count: blocks })
     }

@@ -15,6 +15,7 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['zavierky', 'SELECT * FROM closings WHERE company_id = ?1 AND year = ?2 ORDER BY year'],
     ['historia-zavierok', 'SELECT * FROM closing_history WHERE company_id = ?1 AND year = ?2 ORDER BY id'],
     ['podania', 'SELECT * FROM filings WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY kind, period'],
+    ['historia-podani', 'SELECT * FROM filing_history WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],
     ['dph', 'SELECT * FROM vat_returns WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY period'],
     ['interne-doklady', 'SELECT * FROM ledger_entries WHERE company_id = ?1 AND year = ?2 ORDER BY on_date, id'],
     ['nastavenia-miezd', 'SELECT payroll FROM companies WHERE id = ?1'],
@@ -42,6 +43,14 @@ export async function handoverData(db: D1Database, company: string, year: string
   }
   for (const row of tables.get('zavierky') ?? []) addFiled(row.filed, `podania/${year}`)
   for (const row of tables.get('historia-zavierok') ?? []) addFiled((parsed(row.data) as Row | null)?.filed, `podania/${year}/historia/${row.id}`)
+  const addSummary = (value: unknown, path: string) => {
+    let filing = parsed(value) as { file?: { xml?: unknown }; prev?: unknown } | null
+    for (let i = 0; filing && i <= 20; i++, filing = filing.prev as typeof filing) {
+      if (typeof filing.file?.xml === 'string') entries.push(entry(`${path}/${i === 0 ? 'podane' : `predchadzajuce-${i}`}.xml`, filing.file.xml))
+    }
+  }
+  for (const row of tables.get('podania') ?? []) if (row.kind === 'sv') addSummary(row.data, `podania/sv/${row.period}`)
+  for (const row of tables.get('historia-podani') ?? []) if (row.kind === 'sv') addSummary((parsed(row.data) as Row | null)?.data, `podania/sv/${row.period}/historia/${row.id}`)
   for (const run of tables.get('mzdy') ?? []) {
     if (run.closed_at === null || !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(run.period))) continue
     const lines = parsed(run.lines)

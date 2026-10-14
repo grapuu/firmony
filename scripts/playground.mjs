@@ -1,7 +1,7 @@
 // The deployable bundle in the Workers runtime on http://127.0.0.1:8787, with a local database and the stand-ins
 // of test/pretend.mjs. Build it first:
 //
-//   npx wrangler deploy --dry-run --outdir .wrangler/dist && node --no-warnings scripts/playground.mjs
+//   node test/build.mjs && node --no-warnings scripts/playground.mjs
 //
 // IČO 57442452 is found in the register, 35757442 makes the register fail, anything else is unknown.
 // What was "sent" is at /playground/mail. /playground/koniec?dni=20 puts the sample company twenty days past the
@@ -55,6 +55,7 @@ const withBank = process.env.EB === '1'
 
 // Written in the long-standing option names and converted, so the script survives Miniflare's own renames.
 const mf = new Miniflare(convertV4MiniflareOptions({
+  cf: false,
   // For /cdn-cgi/local/email, which /playground/vypis sends the bank's email through.
   unsafeTriggerHandlers: true,
   d1Persist: join(root, '.wrangler/playground-d1'),

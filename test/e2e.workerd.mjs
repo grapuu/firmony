@@ -4,14 +4,15 @@
 //   npm run test:runtime
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { check, done } from './check.mjs'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
-import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision } from '../.wrangler/dist/stores.js'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
+if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
 const lookups = []
 const readings = []
 // The bank of Firma A: what it holds is set by the part of the test that reads it.
@@ -211,7 +212,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 12)
+check('health says the schema', (await res.json()).schema === 13)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -3205,6 +3206,103 @@ check(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Monthly recapitulative statements of a quarterly VAT payer, including late reclassification of a filed quarter.
+{
+  const date = new Date(`${day(0)}T12:00:00Z`)
+  const first = new Date(Date.UTC(date.getUTCFullYear(), Math.floor(date.getUTCMonth() / 3) * 3 - 6, 1))
+  const y = first.getUTCFullYear()
+  const months = [0, 1, 2].map((i) => `${y}-${String(first.getUTCMonth() + i + 1).padStart(2, '0')}`)
+  const quarter = `${y}-Q${Math.floor(first.getUTCMonth() / 3) + 1}`
+  const base = '/ucto/klienti/co-sv/dph'
+  const plain = (s) => s.replace(/\u00a0/g, ' ')
+  await db.prepare("INSERT INTO companies (id, created_at, name, ico, dic, icdph, address, vat_payer, vat_quarterly, vat_since, tax_office, plan, inbox, accountant_id, start_on) VALUES ('co-sv', ?, 'Mesačné výkazy s. r. o.', '50999993', '2120999993', 'SK2120999993', 'Hlavná 10, 040 01 Košice', 1, 1, ?, 'Košice', 'rast', 'suhrnny1', ?, ?)").bind(nowS, `${months[0]}-01`, lucia.id, `${months[0]}-01`).run()
+  const amounts = [3000000, 2500000, 100000]
+  for (let i = 0; i < 3; i++) await db.prepare(`INSERT INTO documents (id, company_id, created_at, source, status, kind, party, number, issued_on, supplied_on, total_cents, vat_cents, currency, category, booked_at, vat_mode, vat_lines, party_vat_id, vat_period)
+    VALUES (?, 'co-sv', ?, 'web', 'read', 'invoice_out', 'EU Kunde', ?, ?, ?, ?, 0, 'EUR', 'sales', ?, ?, ?, 'CZ12345678', ?)`)
+    .bind(`sv-${i}`, nowS, `SV-${i}`, `${months[i]}-15`, `${months[i]}-15`, amounts[i], nowS, i < 2 ? 'eu_goods' : 'eu_service', JSON.stringify([{ rate: 0, base: amounts[i], vat: 0, deduct: 0 }]), quarter).run()
+  res = await acc.get(`${base}?obdobie=${quarter}`)
+  let html = await res.text()
+  check('a quarterly VAT page shows three monthly SV cards and submits each actual month', res.status === 200 && months.every((m) => html.includes(`id="suhrnny-${m}"`) && html.includes(`name="obdobie" value="${m}"`)) && plain(html).includes('Priznanie DPH zostáva štvrťročné'))
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/monthly-sv.html`, html)
+  const valid = async (xml) => (await validateXML({ xml: [{ fileName: 'sv.xml', contents: xml }], schema: [{ fileName: 'sv.xsd', contents: readFileSync(new URL('./xsd/svdph2020.xsd', import.meta.url), 'utf8') }] })).valid
+  const originals = []
+  for (let i = 0; i < 3; i++) {
+    res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[i]}`)
+    const xml = await res.text(); originals.push(xml)
+    check(`monthly XML ${months[i]} contains only its month, with the schema and monthly filename`, res.status === 200 && res.headers.get('content-disposition').includes(months[i]) && xml.includes(`<mesiac>${Number(months[i].slice(-2))}</mesiac><stvrtrok></stvrtrok>`) && xml.includes(`<hodnota>${amounts[i] / 100}</hodnota>`) && await valid(xml))
+  }
+  res = await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: quarter })
+  check('posting the old quarterly SV period cannot create an invalid filing', res.headers.get('location').includes('sv-blokovane') && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv'").first()).n === 0)
+  res = await acc.get(`${base}/priznanie.xml?obdobie=${quarter}`)
+  check('the VAT return itself still downloads for the whole quarter', res.status === 200 && res.headers.get('content-disposition')?.includes(quarter), JSON.stringify({ status: res.status, location: res.headers.get('location'), body: (await res.text()).slice(0, 300) }))
+  res = await acc.get('/ucto/terminy')
+  html = await res.text()
+  check('deadlines point a monthly SV to its card inside the quarterly VAT page', html.includes(`obdobie=${quarter}#suhrnny-${months[0]}`))
+  for (const month of months) await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: month })
+  let rows = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND kind = 'sv' ORDER BY period").all()
+  check('three months are filed separately with the exact XML snapshots and SHA-256', rows.results.length === 3 && rows.results.every((r, i) => { const f = JSON.parse(r.data).file; return r.period === months[i] && f.xml === originals[i] && f.sha256 === createHash('sha256').update(f.xml).digest('hex') }))
+  await db.prepare("UPDATE companies SET name = 'Nový názov firmy' WHERE id = 'co-sv'").run()
+  res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}&povodne=1`)
+  check('a filed monthly SV replays its original bytes even after filer details change', res.status === 200 && await res.text() === originals[0])
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3100000, vat: 0, deduct: 0 }])).run()
+  res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}`)
+  const correctedXml = await res.text()
+  check('a changed monthly SV prepares a valid supplementary file for only the changed month', res.status === 200 && correctedXml.includes('<dodatocny>1</dodatocny>') && correctedXml.includes('<hodnota>31000</hodnota>') && await valid(correctedXml))
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[0] })
+  let latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).first()
+  check('monthly correction preserves the prior original snapshot', JSON.parse(latest.data).prev.file.xml === originals[0])
+  // Two corrections prepared from the very same data revision, even within one second.
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3200000, vat: 0, deduct: 0 }])).run()
+  const company = companyOf(await db.prepare("SELECT * FROM companies WHERE id = 'co-sv'").first())
+  const documents = await docsAround(db, 'co-sv', `${y - 1}-Q${quarter.slice(-1)}`, quarter)
+  const revision = await dataRevision(db, 'co-sv')
+  const view = svViewsOf(company, quarter, documents, await summariesFiled(db, 'co-sv'), day(0)).views[0]
+  const xml = summaryXml({ name: company.name, icdph: company.icdph, address: company.address }, months[0], view.plan.rows, view.plan.kind, day(0))
+  const file = { name: `SVDPH_D_SK2120999993_${months[0]}.xml`, xml, sha256: createHash('sha256').update(xml).digest('hex') }
+  const competing = await Promise.all([0, 1].map(() => db.batch([fileSummaryStatement(db, 'co-sv', view, view.plan, lucia.id, day(0), file, revision)])))
+  check('same-revision monthly corrections accept exactly one write without losing the prior chain', competing.filter((r) => r[0].meta.changes > 0).length === 1 && JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).first()).data).prev.prev.file.xml === originals[0])
+  res = await anna.get(`${base}?obdobie=${quarter}`)
+  check('a client cannot access the monthly SV workflow', res.status === 404)
+  res = await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: '2026-99' })
+  check('an invalid SV month is refused instead of silently filing another period', res.status === 400)
+  // A quarter was already filed before omitted goods were discovered: reclassify it, do not duplicate its last month.
+  await db.prepare("DELETE FROM filings WHERE company_id = 'co-sv'").run()
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3000000, vat: 0, deduct: 0 }])).run()
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-1'").bind(JSON.stringify([{ rate: 0, base: 1500000, vat: 0, deduct: 0 }])).run()
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: quarter })
+  const quarterFiled = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).data)
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-1'").bind(JSON.stringify([{ rate: 0, base: 2500000, vat: 0, deduct: 0 }])).run()
+  res = await acc.get(`${base}?obdobie=${quarter}`); html = await res.text()
+  check('a newly required monthly sequence explains how to reclassify the already filed quarter', plain(html).includes('Zaradiť podaný výkaz k poslednému mesiacu'))
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/monthly-sv-transition.html`, html)
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[2] })
+  check('a regular last-month filing is blocked while a filed quarter already represents it', (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()).n === 0)
+  await acc.post(`${base}/suhrnny-vykaz/obdobie`, { obdobie: quarter })
+  latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()
+  check('reclassification keeps the original quarter XML, source period and filing history', latest && JSON.parse(latest.data).sourcePeriod === quarter && JSON.parse(latest.data).file.xml === quarterFiled.file.xml && (await db.prepare("SELECT COUNT(*) AS n FROM filing_history WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).n > 0 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).n === 0)
+  res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[2]}`)
+  const lastCorrection = await res.text()
+  check('the last-month supplementary file cancels supplies belonging to earlier months', res.status === 200 && lastCorrection.includes('<dodatocny>1</dodatocny>') && lastCorrection.includes('<hodnota>0</hodnota>') && await valid(lastCorrection))
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[2] })
+  latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()
+  check('the last-month correction retains the reclassified original in its chain', JSON.parse(latest.data).prev.file.xml === quarterFiled.file.xml && JSON.parse(latest.data).prev.sourcePeriod === quarter)
+  const exported = await exportYear({ DB: db, FILES: files }, company, String(y), null, day(0))
+  const contents = unzip(new Uint8Array(await new Response(exported.body).arrayBuffer()))
+  check('the annual handover includes current SV XML and the original filed quarter from history', contents.some((f) => f.name.startsWith('podania/sv/') && new TextDecoder().decode(f.data) === quarterFiled.file.xml) && contents.some((f) => f.name === 'data/historia-podani.json'))
+  const currentFirst = Math.floor(date.getUTCMonth() / 3) * 3 + 1
+  const activeMonth = `${date.getUTCFullYear()}-${String(currentFirst).padStart(2, '0')}`
+  const inQuarter = `${date.getUTCFullYear()}-Q${Math.ceil(currentFirst / 3)}`
+  const nextMonth = `${date.getUTCFullYear()}-${String(currentFirst + 1).padStart(2, '0')}-15`
+  await db.prepare(`INSERT INTO documents (id, company_id, created_at, source, status, kind, number, issued_on, supplied_on, total_cents, vat_cents, currency, category, booked_at, vat_mode, vat_lines, party_vat_id, vat_period)
+    VALUES ('sv-current', 'co-sv', ?, 'web', 'read', 'invoice_out', 'SV-CURRENT', ?, ?, 10000, 0, 'EUR', 'sales', ?, 'eu_service', '[{"rate":0,"base":10000,"vat":0,"deduct":0}]', 'CZ12345678', ?)`).bind(nowS, `${activeMonth}-10`, `${activeMonth}-10`, nowS, inQuarter).run()
+  const due = await teamDeadlines(db, { ...lucia, team: 'accountant' }, false, nextMonth, { company: 'co-sv' })
+  check('the real deadline loader includes a completed monthly SV inside the VAT quarter still running', due.dues.some((d) => d.kind === 'summary' && d.period === activeMonth && d.state === 'ready'), JSON.stringify(due.dues.map((d) => ({ kind: d.kind, period: d.period, state: d.state }))))
+  await db.batch([
+    db.prepare("DELETE FROM filings WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM filing_history WHERE company_id = 'co-sv'"),
+    db.prepare("DELETE FROM documents WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM companies WHERE id = 'co-sv'"), db.prepare("DELETE FROM company_data_revisions WHERE company_id = 'co-sv'"),
+  ])
+}
+
 // The closing of last year: the statements and the return from the books, what keeps them back, the accountant's
 // adjustments, the tax booked, the files against the official schemas, a deadline moved by a notice, the mark that
 // they were filed with what the client reads and pays, and the mark taken back
@@ -4065,6 +4163,7 @@ const leftover = await db
        + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM closings WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM employees WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_runs WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM closing_history WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_history WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM filing_history WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,
   )
   .first()

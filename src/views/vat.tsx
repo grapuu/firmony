@@ -7,10 +7,10 @@ import { formatEur, formatEurExact } from '../format'
 import { dayName, dayShort, readableName } from '../app/copy'
 import { textDay } from '../app/booking'
 import type { Company, Doc, User } from '../app/store'
-import { ROWS, correctionKind, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
+import { ROWS, correctionKind, filingDeadline, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
 import { FORM_RATES, type FormRate, type VatErrorCode, type VatErrors, type VatValues } from '../app/vat-form'
 import { payable, periodName, type FilingPlan, type PeriodState, type PeriodView } from '../app/vat-store'
-import { totalOf, wholeEuros, type SvRow, type SvState, type SvView } from '../app/vat-summary'
+import { totalOf, wholeEuros, type SvRow, type SvState, type SvView, type SvFiled, type SvSchedule } from '../app/vat-summary'
 import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
 
@@ -387,12 +387,11 @@ const SvRows: FC<{ rows: SvRow[] }> = ({ rows }) => (
  * The recapitulative statement of the period (a quarter for a person registered under § 7a): each customer's row with
  * its invoices, what keeps it back, its file and the mark, or the correction a change after the mark asks for.
  */
-const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<string, Doc>; today: string }> = ({ company, period, sv, docs, today }) => {
-  if (sv.state === 'none' && !sv.filed) return null
+const SummaryCard: FC<{ company: Company; sv: SvView; docs: Map<string, Doc>; today: string; showEmpty?: boolean }> = ({ company, sv, docs, today, showEmpty }) => {
+  if (sv.state === 'none' && !sv.filed && !showEmpty) return null
   const base = `/ucto/klienti/${company.id}/dph`
   const s = v.sv
   const blocks = sv.issues.filter((i) => i.level === 'block')
-  const monthly = sv.issues.some((i) => i.code === 'svMonthly')
   const one = (i: Issue) => {
     const d = i.doc ? docs.get(i.doc) : undefined
     return (
@@ -410,11 +409,11 @@ const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<
     )
   }
   return (
-    <section class="info" id="suhrnny" aria-labelledby="suhrnny-t">
+    <section class="info" id={`suhrnny-${sv.period}`} aria-labelledby={`suhrnny-${sv.period}-t`}>
       <header class="info__row">
-        <h2 id="suhrnny-t" class="info__title">
+        <h3 id={`suhrnny-${sv.period}-t`} class="info__title">
           {s.title(periodName(sv.period))}
-        </h2>
+        </h3>
         <span class={`pill ${SV_PILL[sv.state]}`}>{s.state[sv.state]}</span>
       </header>
       <p class="info__lead">
@@ -441,14 +440,9 @@ const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<
         </ul>
       ) : null}
       {sv.rows.length > 0 ? <p class="info__source">{s.total(euros(totalOf(sv.rows)))}</p> : null}
-      {blocks.length > 0 || monthly ? (
+      {blocks.length > 0 ? (
         <ul class="vissues">
           {blocks.map(one)}
-          {monthly ? (
-            <li class="vissue vissue--warn">
-              <span class="vissue__text">{v.issue.svMonthly}</span>
-            </li>
-          ) : null}
         </ul>
       ) : null}
       {sv.filed ? (
@@ -456,8 +450,9 @@ const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<
           <span class="tick tick--green" aria-hidden="true" /> {s.filed(dayName(sv.filed.filedOn, today), sv.filed.filedByName ?? '', sv.filed.kind)}
         </p>
       ) : null}
-      {sv.state === 'running' ? <p class="info__lead">{s.running(dayName(periodRange(sv.period).to, today))}</p> : null}
-      {sv.state === 'changed' ? <p class="flag">{correctionKind(sv.period, today) === 'O' ? s.changedO : s.changedD}</p> : null}
+      {sv.state === 'none' ? <p class="info__lead">{s.flashes.none}</p> : null}
+      {sv.state === 'running' ? <p class="info__lead">{s.running(dayName(sv.endsOn, today))}</p> : null}
+      {sv.state === 'changed' ? <p class="flag">{today <= sv.deadline ? s.changedO : s.changedD}</p> : null}
       {sv.plan && sv.plan.kind === 'D' ? (
         <>
           <p class="info__source">{s.sends}</p>
@@ -467,7 +462,7 @@ const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<
       {(sv.state === 'blocked' || (sv.state === 'changed' && !sv.plan)) ? <p class="info__source">{s.blocked}</p> : null}
       {sv.plan || sv.state === 'filed' ? (
         <form class="vfile" method="get" action={`${base}/suhrnny-vykaz.xml`}>
-          <input type="hidden" name="obdobie" value={period} />
+          <input type="hidden" name="obdobie" value={sv.period} />
           <div class="vstatus__files">
             <button class="btn btn--blue" type="submit">
               {s.download[sv.plan?.kind ?? sv.filed?.kind ?? 'R']}
@@ -483,9 +478,10 @@ const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<
           ) : null}
         </form>
       ) : null}
+      {sv.filed?.file ? <a class="link" href={`${base}/suhrnny-vykaz.xml?obdobie=${sv.period}&povodne=1`}>{s.original}</a> : null}
       {sv.filed ? (
         <form method="post" action={`${base}/suhrnny-vykaz/zrusit`}>
-          <input type="hidden" name="obdobie" value={period} />
+          <input type="hidden" name="obdobie" value={sv.period} />
           <button class="btn btn--text" type="submit">
             {sv.filed.prev ? s.unmarkCorrection : s.unmark}
           </button>
@@ -493,6 +489,25 @@ const SummaryCard: FC<{ company: Company; period: string; sv: SvView; docs: Map<
       ) : null}
     </section>
   )
+}
+
+const SummarySection: FC<{ company: Company; views: SvView[]; schedule: SvSchedule | null; legacy: SvFiled | null; docs: Map<string, Doc>; today: string }> = ({ company, views, schedule, legacy, docs, today }) => {
+  if (!schedule) return null
+  const monthlyQuarter = company.vatQuarterly && schedule.monthly
+  if (!monthlyQuarter && !legacy && !views.some((view) => view.state !== 'none')) return null
+  return <section class="stack" id="suhrnny" aria-labelledby="suhrnny-t">
+    <h2 class="info__title" id="suhrnny-t">{v.sv.heading}</h2>
+    {monthlyQuarter ? <p class="info__lead">{v.sv.monthlyLead}{schedule.crossedIn ? ` ${v.sv.transition(periodName(schedule.crossedIn), dayName(filingDeadline(schedule.crossedIn), today))}` : ''}</p> : null}
+    {legacy ? <div class="info">
+      <p class="flag">{v.sv.reclassifyLead}</p>
+      {legacy.file ? <a class="link" href={`/ucto/klienti/${company.id}/dph/suhrnny-vykaz.xml?obdobie=${schedule.quarter}&povodne=1`}>{v.sv.original}</a> : null}
+      {legacy.rows === null ? <p class="info__source">{v.sv.reclassifyMissing}</p> : !views.some((view) => view.period === schedule.periods[2] && view.filed) ? <form method="post" action={`/ucto/klienti/${company.id}/dph/suhrnny-vykaz/obdobie`}>
+        <input type="hidden" name="obdobie" value={schedule.quarter} />
+        <button type="submit" class="btn btn--line">{v.sv.reclassify}</button>
+      </form> : <p class="info__source">{v.sv.reclassifyConflict}</p>}
+    </div> : null}
+    {views.map((sv) => <SummaryCard company={company} sv={sv} docs={docs} today={today} showEmpty={monthlyQuarter} />)}
+  </section>
 }
 
 export interface VatPageProps {
@@ -508,7 +523,9 @@ export interface VatPageProps {
   /** What would be filed now (the files and the mark), or null when nothing can be. */
   plan: FilingPlan | null
   /** The recapitulative statement of the period's statement period; null for a company that is not registered. */
-  summary: SvView | null
+  summaries: SvView[]
+  summarySchedule: SvSchedule | null
+  legacySummary: SvFiled | null
   today: string
   flash?: string | null
   error?: string | null
@@ -543,7 +560,7 @@ export const VatPage: FC<VatPageProps> = (p) => {
               <Issues company={c} view={p.view} docs={p.docs} />
               <RowsCard view={p.view} docs={p.docs} />
               <StatementCard company={c} view={p.view} docs={p.docs} />
-              {p.summary ? <SummaryCard company={c} period={p.view.period} sv={p.summary} docs={p.docs} today={p.today} /> : null}
+              <SummarySection company={c} views={p.summaries} schedule={p.summarySchedule} legacy={p.legacySummary} docs={p.docs} today={p.today} />
               <p class="info__source vnotbuilt">{v.notBuilt}</p>
             </div>
             <aside class="pgrid__side">

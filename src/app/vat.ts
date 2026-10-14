@@ -534,6 +534,8 @@ export type IssueCode =
   | 'before'
   | 'svVatId'
   | 'svMonthly'
+  | 'svQuarterly'
+  | 'svPeriodChange'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */

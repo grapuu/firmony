@@ -32,6 +32,7 @@ export async function exportYears(db: D1Database, company: string): Promise<stri
     "SELECT CAST(year AS TEXT) AS y FROM closing_history WHERE company_id = ?1",
     "SELECT CAST(year AS TEXT) AS y FROM ledger_entries WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM filings WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM filing_history WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM vat_returns WHERE company_id = ?1",
     "SELECT substr(started_on, 1, 4) AS y FROM employees WHERE company_id = ?1",
     "SELECT substr(COALESCE(start_on, date(created_at, 'unixepoch')), 1, 4) AS y FROM companies WHERE id = ?1",

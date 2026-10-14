@@ -958,22 +958,26 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   No. 405/2019 Z. z.) and the eForm form.471 itself (its schema `form.471.sk.xsd`, kept as `test/xsd/svdph2020.xsd`, and
   its script, which shows how it writes the file). Each customer's total by its VAT number, from the issued invoices
   of goods to the EU (`eu_goods`, no code) and of services there (`eu_service`, code 2), in the period the return counts
-  them (`periodOfDoc`; goods by § 19(8), the 15th of the next month or the invoice's day before it, `taxDay`), a credit
+  them (`taxDay`, independently of the VAT period; goods by § 19(8)), a credit
   note in its own period (§ 80(7)), whole euros half up, the total of the first page the sum of the rows; the payer's
-  VAT period, the calendar quarter of a person registered under § 7a (§ 80(3)); a quarterly payer is warned once its
-  goods pass 50 000 € a quarter (monthly statements, § 80(2), are not made: a block). Blocked by an invoice not booked
+  periods are independent of the VAT return. A quarterly payer gets three monthly SVs when the goods limit in the
+  current or preceding four quarters requires them; § 7a stays quarterly. Earlier months of a transition share the
+  crossing month's deadline. The VAT return remains quarterly. Existing monthly marks keep a monthly sequence.
+  A filed quarter can be explicitly reclassified to its last month (FR SR methodology example 18), preserving
+  original XML and history before the last-month correction. Blocked by an invoice not booked
   or unread, a customer without a VAT number of another member state (`svVatId`), lines missing, and the company's own
   VAT number or seat (not its tax office: the form names none). States: none, running, blocked, ready, filed, changed.
   Its card on the VAT page (`#suhrnny`: the rows with their invoices, the total, the file `/dph/suhrnny-vykaz.xml`, the
   mark `/dph/suhrnny-vykaz/podane`, taken back by `/dph/suhrnny-vykaz/zrusit`; the client is told nothing, no money is
   in it); the file as the eForm writes it (the month without its nought, the quarter I to IV, 1 and 0, the name in four
   lines, europio as the authorised person, twelve rows of part I and twelve empty rows of part II a page). Kept in
-  `filings` (kind `sv`, schema step 10's `data`: every row as filed, the rows sent, the filing replaced). Changed after
+  `filings` (kind `sv`, JSON includes rows, the prior filing and exact XML/hash). Schema step 13 keeps old
+  values in `filing_history` on correction, unmarking or reclassification; export and purge include it. Changed after
   filing: a corrective statement with every row before the deadline, a supplementary one after it with only the rows
   that change (§ 80(8): the right value; nought for a row that is no more; the code 0 for a row whose code was 1, or 2
   while the customer stays under another, the poučenie's examples 10 to 14), which § 80(8) gives no deadline (the screen
   lists it for today). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
-  call-off stock (part II), the monthly statements of a quarterly payer above 50 000 € of goods, a customer's VAT number
+  call-off stock (part II), a customer's VAT number
   that comes later (§ 80(6), the period it is given).
 - Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, domestic reverse charge (A.2), eKasa takings
   (D.1), bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in another
@@ -1327,8 +1331,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (626): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes, the recapitulative statement
-npm run test:runtime     # the deployable bundle in workerd (663): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the recapitulative statement, the closing, payroll, eKasa duplicates, to the deletion
+npm test                 # unit checks (646): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes, the recapitulative statement
+npm run test:runtime     # the deployable bundle in workerd (715): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the recapitulative statement, the closing, payroll, eKasa duplicates, to the deletion
+FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
 node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (26)

@@ -24,3 +24,14 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run test:runtime
+        env:
+          FIRMONY_CAPTURE_DIR: .wrangler/ui
+      - run: npm run test:ui
+        env:
+          FIRMONY_CHROME: /usr/bin/google-chrome
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: monthly-sv-layout
+          path: .wrangler/screens
+          retention-days: 7
