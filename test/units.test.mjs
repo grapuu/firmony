@@ -15,6 +15,8 @@ import {
   format,
   ico,
   invoices,
+  ledger,
+  ledgerStore,
   match,
   orderLinkMail,
   papers,
@@ -1982,6 +1984,485 @@ async function zipped(entries, note) {
     vatForm.periodsAround('2026-09', null, vat.nextPeriod, vat.prevPeriod).join() === '2026-06,2026-07,2026-08,2026-09,2026-10,2026-11,2026-12' &&
       vatForm.periodsAround('2026-09', '2025-01', vat.nextPeriod, vat.prevPeriod)[0] === '2025-01',
   )
+}
+
+// The books: the journal, the trial balance, the open items and the bank, worked out from documents and payments
+{
+  const NB = ' '
+  const plain = (text) => String(text).replace(/ /g, ' ')
+  const company = (fields = {}) => ({
+    id: 'c1',
+    name: 'Firma s. r. o.',
+    icdph: 'SK2120000007',
+    vatStatus: 'payer',
+    vatQuarterly: false,
+    vatSince: null,
+    startOn: '2026-09-01',
+    vatCarry: 0,
+    ...fields,
+  })
+  const vatData = (mode, lines, extra = {}) => ({ mode, lines, suppliedOn: null, vatId: null, corrects: null, period: null, ...extra })
+  const doc = (id, fields) => ({
+    id,
+    companyId: 'c1',
+    createdAt: Date.parse('2026-09-20T10:00:00Z') / 1000,
+    kind: 'invoice_in',
+    number: null,
+    party: null,
+    partyIco: null,
+    issuedOn: '2026-09-05',
+    dueOn: null,
+    totalCents: 0,
+    vatCents: null,
+    currency: 'EUR',
+    category: 'services',
+    vatDeduct: null,
+    account: null,
+    bookedAt: 1,
+    paidPrivately: false,
+    paymentId: null,
+    vat: null,
+    partyVatId: null,
+    suppliedOn: null,
+    foreign: null,
+    correctsHint: null,
+    linesHint: [],
+    ...fields,
+  })
+  const pay = (id, bookedOn, amountCents, fields = {}) => ({
+    id,
+    bookedOn,
+    amountCents,
+    currency: 'EUR',
+    party: null,
+    vs: null,
+    note: null,
+    exempt: null,
+    exemptNote: null,
+    contra: null,
+    bankId: 'b1',
+    bank: '221.001',
+    ...fields,
+  })
+  const docs = [
+    doc('hosting', {
+      number: 'F2026118',
+      party: 'Hostingový dom s. r. o.',
+      totalCents: 12300,
+      dueOn: '2026-09-19',
+      paymentId: 'p1',
+      vat: vatData('domestic', [{ rate: 23, base: 10000, vat: 2300, deduct: 2300 }], { vatId: 'SK2020000000' }),
+    }),
+    doc('sale', {
+      kind: 'invoice_out',
+      number: '20260001',
+      party: 'Zákazník s. r. o.',
+      issuedOn: '2026-09-10',
+      dueOn: '2026-09-24',
+      totalCents: 24600,
+      category: 'sales',
+      vat: vatData('domestic', [{ rate: 23, base: 20000, vat: 4600, deduct: 0 }]),
+    }),
+    doc('cafe', {
+      kind: 'receipt',
+      party: 'Kaviareň',
+      issuedOn: '2026-09-12',
+      totalCents: 1240,
+      category: 'representation',
+      paymentId: 'p2',
+      vat: vatData('domestic', [{ rate: 23, base: 1008, vat: 232, deduct: 0 }]),
+    }),
+    doc('fuel', {
+      kind: 'receipt',
+      party: 'Čerpacia stanica',
+      issuedOn: '2026-09-30',
+      totalCents: 6150,
+      category: 'fuel',
+      paymentId: 'p3',
+      vat: vatData('domestic', [{ rate: 23, base: 5000, vat: 1150, deduct: 1150 }]),
+    }),
+    doc('cash', { kind: 'receipt', party: 'Papiernictvo', issuedOn: '2026-09-20', totalCents: 300, category: 'material', vat: vatData('none', []) }),
+    doc('private', { kind: 'receipt', party: 'Kníhkupectvo', issuedOn: '2026-09-21', totalCents: 990, category: 'services', paidPrivately: true, vat: vatData('none', []) }),
+    doc('abroad', {
+      number: 'IE-77',
+      party: 'Cloud Ltd',
+      issuedOn: '2026-09-08',
+      totalCents: 10000,
+      vat: vatData('reverse', [{ rate: 23, base: 10000, vat: 2300, deduct: 2300 }], { vatId: 'IE6388047V' }),
+    }),
+    doc('waiting', { bookedAt: null, kind: null, totalCents: 500, category: null }),
+    doc('credit', {
+      number: 'D-1',
+      party: 'Hostingový dom s. r. o.',
+      issuedOn: '2026-09-25',
+      totalCents: 1230,
+      vat: vatData('domestic', [{ rate: 23, base: -1000, vat: -230, deduct: -230 }], { corrects: 'F2026118', vatId: 'SK2020000000' }),
+    }),
+  ]
+  const payments = [
+    pay('p1', '2026-09-15', -12300, { party: 'Hostingový dom s. r. o.' }),
+    pay('p2', '2026-09-13', -1240, { party: 'KAVIAREN NA ROHU' }),
+    pay('p3', '2026-10-01', -6150, { party: 'CERPACIA STANICA' }),
+    pay('fee', '2026-09-30', -450, { exempt: 'bank', note: 'Poplatok za vedenie účtu' }),
+    pay('capital', '2026-09-02', 500000, { exempt: 'capital', note: 'Splatenie základného imania', party: 'Martin Novák' }),
+    pay('state', '2026-09-20', -3300, { exempt: 'state', vs: '1700000000' }),
+    pay('missing', '2026-09-25', -2000, { party: 'Niekto' }),
+    pay('vat', '2026-10-20', -2300, { exempt: 'state', vs: '1100092026' }),
+    pay('old', '2026-08-20', -999),
+  ]
+  const rows = (fields) => ({ ...vat.emptyRows(), ...fields })
+  const filedSep = { period: '2026-09', filedAt: 1, filedOn: '2026-10-20', rows: rows({ r17: 6900, r19: 5750, r28: 230 }), kind: 'R', prev: null }
+  const manual = [
+    {
+      id: 'ps',
+      kind: 'opening',
+      number: 'PS',
+      on: '2026-09-01',
+      text: 'Počiatočné stavy',
+      lines: [
+        { md: '353', d: '701', cents: 500000 },
+        { md: '701', d: '411', cents: 500000 },
+      ],
+      createdAt: 1,
+      createdByName: null,
+    },
+    { id: 'id1', kind: 'internal', number: 'ID-2026-001', on: '2026-09-30', text: 'Nevyfakturované služby', lines: [{ md: '548', d: '325', cents: 100 }], createdAt: 1, createdByName: null },
+  ]
+  const banks = [{ id: 'b1', iban: 'SK3112000000198742637541', ledger: '221.001', balanceCents: 480710, balanceOn: '2026-09-30' }]
+  const books = ledger.buildBooks({ company: company(), docs, payments, banks, filed: [filedSep], manual })
+  const entry = (key) => books.entries.find((e) => e.key === key)
+  const lines = (key) => (entry(key)?.lines ?? []).map((l) => `${l.md}/${l.d}:${l.cents}`).join(' ')
+
+  check(
+    'an account as the books write it',
+    ledger.canonicalAccount('518') === '518' && ledger.canonicalAccount('518001') === '518.001' && ledger.canonicalAccount('343.1') === '343.1' && ledger.canonicalAccount(' 221 001 ') === '221.001',
+  )
+  check(
+    'no account outside classes 0 to 7, nor a short one',
+    ledger.canonicalAccount('912') === null && ledger.canonicalAccount('52') === null && ledger.canonicalAccount('5181234') === null && ledger.canonicalAccount('') === null,
+  )
+  check(
+    'accounts named as the chart names them',
+    ledger.accountName('321') === 'Dodávatelia' &&
+      ledger.accountName('343.100').startsWith('DPH na vstupe') &&
+      ledger.accountName('518.001') === 'Ostatné služby' &&
+      ledger.accountName('221.001', banks).startsWith('Bankový účet SK31'),
+  )
+  check(
+    'the books start on the opening balances day',
+    books.start === '2026-09-01' && ledger.booksStart({ startOn: '2026-10-01' }, []) === '2026-10-01' && ledger.booksStart({ startOn: null }, []) === null,
+  )
+  check(
+    'a received invoice: the cost and the VAT deducted against the supplier',
+    lines('d:hosting') === '518/321:10000 343.100/321:2300' && entry('d:hosting')?.on === '2026-09-05',
+    lines('d:hosting'),
+  )
+  check('paid: the supplier against the bank, on the bank day', lines('p:p1') === '321/221.001:12300' && entry('p:p1')?.on === '2026-09-15', lines('p:p1'))
+  check('an issued invoice: the customer against revenue and the VAT owed', lines('d:sale') === '311/602:20000 311/343.200:4600', lines('d:sale'))
+  check(
+    'a receipt paid by card in its own month goes against the bank itself, on the bank day',
+    lines('d:cafe') === '513/221.001:1240' && entry('d:cafe')?.on === '2026-09-13' && !entry('p:p2'),
+    lines('d:cafe'),
+  )
+  check(
+    'a receipt paid in the next month goes through money in transit',
+    lines('d:fuel') === '501/261:5000 343.100/261:1150' && entry('d:fuel')?.on === '2026-09-30' && lines('p:p3') === '261/221.001:6150' && entry('p:p3')?.on === '2026-10-01',
+    `${lines('d:fuel')} | ${lines('p:p3')}`,
+  )
+  check('a receipt with no payment is paid from the cash box', lines('d:cash') === '501/211:300')
+  check('a receipt the owner paid is owed to him', lines('d:private') === '518/365:990')
+  check('a service from abroad: the VAT the company pays itself, deducted', lines('d:abroad') === '518/321:10000 343.100/343.200:2300', lines('d:abroad'))
+  check('a credit note books the other way', lines('d:credit') === '321/518:1000 321/343.100:230', lines('d:credit'))
+  check('a bank fee and the capital paid in, by their reasons', lines('p:fee') === '568/221.001:450' && lines('p:capital') === '221.001/353:500000')
+  check('VAT paid to the tax office clears the settlement', lines('p:vat') === '343.300/221.001:2300')
+  check(
+    'a filed return settles the period on its last day',
+    lines('v:2026-09') === '343.200/343.300:6900 343.300/343.100:5520' && entry('v:2026-09')?.on === '2026-09-30' && entry('v:2026-09')?.number === 'DPH 09/2026',
+    lines('v:2026-09'),
+  )
+  check('the opening balances and an internal document as written', lines('m:ps') === '353/701:500000 701/411:500000' && lines('m:id1') === '548/325:100' && entry('m:ps')?.on === '2026-09-01')
+  check(
+    'what the books cannot book is said, not guessed',
+    books.issues.unbooked.join() === 'waiting' &&
+      books.issues.classify.join() === 'state' &&
+      books.issues.missing.join() === 'missing' &&
+      books.issues.beforeStart.payments === 1 &&
+      books.unposted.get('state') === -3300 &&
+      books.unposted.get('missing') === -2000 &&
+      !books.unposted.has('old'),
+    JSON.stringify(books.issues),
+  )
+  check('the entries in the order of their days', books.entries.every((e, i, all) => i === 0 || all[i - 1].on <= e.on) && books.entries[0]?.key === 'm:ps')
+  const at = (account, day) => ledger.balanceOf(books.entries, account, day)
+  check(
+    "VAT on its three accounts: what the return settled leaves nothing behind, the tax office's account holds the rest",
+    at('343.100', '2026-09-30') === 0 && at('343.200', '2026-09-30') === 0 && at('343.300', '2026-09-30') === -1380 && at('343.300', '2026-10-31') === 920 && at('343', '2026-09-30') === -1380,
+    JSON.stringify([at('343.100', '2026-09-30'), at('343.200', '2026-09-30'), at('343.300', '2026-09-30')]),
+  )
+  check('money in transit until the bank books it', at('261', '2026-09-30') === -6150 && at('261', '2026-10-01') === 0)
+  check('the bank account in the books', at('221.001', '2026-09-30') === 486010 && at('221', '2026-09-30') === 486010, String(at('221.001', '2026-09-30')))
+  const [bank] = ledger.bankChecks(books, '2026-10-14')
+  check('the bank against the books: what is not booked explains the difference', bank.ledger === 486010 && bank.unposted === -5300 && bank.rest === 0, JSON.stringify(bank))
+  const tb = ledger.trialBalance(books, 2026, 9)
+  check('the trial balance balances', tb.md === tb.d && tb.ps === 0 && tb.ks === 0 && tb.md > 0, JSON.stringify([tb.md, tb.d, tb.ps, tb.ks]))
+  check('the result: revenues less costs', tb.revenues === 20000 && tb.costs === 27080 && tb.result === -7080, JSON.stringify([tb.revenues, tb.costs, tb.result]))
+  const row = (account) => tb.classes.flatMap((c) => c.rows).find((r) => r.account === account)
+  check('opening balances stand as the opening, not as turnover', row('411')?.ps === -500000 && row('411')?.d === 0 && row('353')?.ps === 500000 && row('353')?.d === 500000 && row('353')?.ks === 0)
+  check(
+    'a synthetic account with its analytic ones under it',
+    row('343')?.analytic === false && row('343.100')?.analytic === true && row('343')?.ks === row('343.100').ks + row('343.200').ks + row('343.300').ks && !row('701'),
+    JSON.stringify(row('343')),
+  )
+  check('the classes in order', tb.classes.map((c) => c.cls).join() === '2,3,4,5,6', tb.classes.map((c) => c.cls).join())
+  const oct = ledger.trialBalance(books, 2026, 10)
+  check('a later month adds its turnover', oct.md - tb.md === 6150 + 2300 && row('221')?.ks === 486010, String(oct.md - tb.md))
+  const next = ledger.yearOpening(books.entries, 2027)
+  check(
+    'the next year opens with the balance sheet and the result on 431',
+    next.get('431') === 7080 && ![...next.keys()].some((a) => a.startsWith('5') || a.startsWith('6') || a.startsWith('7')) && next.get('221.001') === 486010 - 6150 - 2300,
+    JSON.stringify([...next]),
+  )
+  const moves = ledger.accountMoves(books, '321', 2026, 12)
+  check(
+    'an account and its lines, with the balance after each',
+    moves.ps === 0 && moves.ks === -8770 && moves.moves.length === 6 && moves.moves[moves.moves.length - 1].balance === -8770,
+    JSON.stringify(moves.moves.map((m) => m.balance)),
+  )
+  const items = new Map(books.items.map((i) => [i.docId, i]))
+  check(
+    'open items: paid, unpaid, overdue, and a credit note against its supplier',
+    ledger.leftOf(items.get('hosting')) === 0 &&
+      ledger.leftOf(items.get('sale')) === 24600 &&
+      ledger.daysOverdue(items.get('sale'), '2026-10-14') === 20 &&
+      ledger.leftOf(items.get('abroad')) === 10000 &&
+      ledger.leftOf(items.get('credit')) === -1230 &&
+      ledger.daysOverdue(items.get('credit'), '2026-10-14') === 0,
+  )
+  check('the open items on 321 make the balance of 321', [...items.values()].filter((i) => i.account === '321').reduce((sum, i) => sum + ledger.leftOf(i), 0) === -moves.ks)
+
+  // A supplementary return settles its difference on the day it was filed
+  const corrected = {
+    ...filedSep,
+    filedOn: '2026-11-05',
+    kind: 'D',
+    rows: rows({ r17: 7000, r19: 5750, r28: 230 }),
+    prev: JSON.stringify({ kind: 'R', filed_on: '2026-10-20', rows: JSON.stringify(filedSep.rows), prev: null }),
+  }
+  const later = ledger.buildBooks({ company: company(), docs, payments, banks, filed: [corrected], manual })
+  check(
+    'a supplementary return: the regular one at the period end, the difference on its own day',
+    later.entries
+      .find((e) => e.key === 'v:2026-09')
+      ?.lines.map((l) => l.cents)
+      .join() === '6900,5520' &&
+      later.entries.find((e) => e.key === 'v:2026-09:1')?.on === '2026-11-05' &&
+      later.entries
+        .find((e) => e.key === 'v:2026-09:1')
+        ?.lines.map((l) => `${l.md}/${l.d}:${l.cents}`)
+        .join() === '343.200/343.300:100',
+  )
+  // A corrective return before the deadline replaces the regular one in the settlement; it is no difference of its own
+  const replaced = {
+    ...filedSep,
+    kind: 'O',
+    rows: rows({ r17: 7000, r19: 5750, r28: 230 }),
+    prev: JSON.stringify({ kind: 'R', filed_on: '2026-10-10', rows: JSON.stringify(filedSep.rows), prev: null }),
+  }
+  const withO = ledger.buildBooks({ company: company(), docs, payments, banks, filed: [replaced], manual })
+  check(
+    'a corrective return settles as the regular one did, with its own figures',
+    withO.entries
+      .find((e) => e.key === 'v:2026-09')
+      ?.lines.map((l) => l.cents)
+      .join() === '7000,5520' && !withO.entries.some((e) => e.key === 'v:2026-09:1'),
+  )
+  check('what a return owes and deducts, corrections included', ledger.vatOwed(rows({ r17: 100, r25: -10 })) === 90 && ledger.vatDeducted(rows({ r18: 5, r18a: 6, r19: 40, r28: 7 })) === 44)
+  const closing = ledger.buildBooks({
+    company: company(),
+    docs: [],
+    payments: [],
+    banks,
+    filed: [],
+    manual: [
+      {
+        id: 'z',
+        kind: 'internal',
+        number: 'ID-2026-009',
+        on: '2026-12-31',
+        text: 'Uzávierka',
+        lines: [
+          { md: '710', d: '702', cents: 100 },
+          { md: '518', d: '325', cents: 300 },
+        ],
+        createdAt: 1,
+        createdByName: null,
+      },
+    ],
+  })
+  check(
+    'the closing accounts do not carry into the next year',
+    !ledger.yearOpening(closing.entries, 2027).has('710') && !ledger.yearOpening(closing.entries, 2027).has('702') && ledger.yearOpening(closing.entries, 2027).get('325') === -300,
+  )
+  check('a paid invoice is never overdue', ledger.daysOverdue(items.get('hosting'), '2026-12-31') === 0)
+  const twoBanks = ledger.buildBooks({
+    company: company(),
+    docs: [],
+    payments: [pay('a', '2026-09-10', -500), pay('b', '2026-09-10', -700, { bankId: 'b2', bank: '221.002' })],
+    banks: [banks[0], { id: 'b2', iban: 'SK0000000000000000000002', ledger: '221.002', balanceCents: -700, balanceOn: '2026-09-30' }],
+    filed: [],
+    manual: [],
+  })
+  check(
+    'each bank account explains its own difference',
+    ledger
+      .bankChecks(twoBanks, '2026-10-14')
+      .map((c) => c.unposted)
+      .join() === '-500,-700',
+  )
+  const owner = ledger.buildBooks({
+    company: company({ vatStatus: 'none' }),
+    docs: [doc('own', { totalCents: 4900, paidPrivately: true, vat: vatData('none', []) })],
+    payments: [],
+    banks,
+    filed: [],
+    manual: [],
+  })
+  check(
+    'an invoice the owner paid himself is owed to him, and settled with the supplier',
+    owner.entries
+      .find((e) => e.key === 'd:own:owner')
+      ?.lines.map((l) => `${l.md}/${l.d}:${l.cents}`)
+      .join() === '321/365:4900' && ledger.leftOf(owner.items[0]) === 0,
+  )
+  check(
+    'a company not registered for VAT books no VAT',
+    ledger
+      .buildBooks({ company: company({ vatStatus: 'none' }), docs: [docs[0]], payments: [], banks, filed: [], manual: [] })
+      .entries[0].lines.map((l) => `${l.md}/${l.d}:${l.cents}`)
+      .join() === '518/321:12300',
+  )
+  const reg7a = ledger.buildBooks({ company: company({ vatStatus: 'reg7a' }), docs: [docs[6]], payments: [], banks, filed: [], manual: [] })
+  check(
+    '§ 7a: the VAT on a service from abroad is owed and is part of the cost',
+    reg7a.entries[0].lines.map((l) => `${l.md}/${l.d}:${l.cents}`).join() === '518/321:10000 518/343.200:2300'.replace(' ', ','),
+  )
+  check(
+    'documents before the books start are left to the accountant before us',
+    ledger.buildBooks({ company: company({ startOn: '2026-09-10' }), docs: [docs[0]], payments: [], banks, filed: [], manual: [] }).issues.beforeStart.docs === 1,
+  )
+
+  // Several documents on one payment, and a payment whose documents are not all booked
+  const two = ledger.buildBooks({
+    company: company(),
+    docs: [
+      doc('a', { totalCents: 1000, paymentId: 'pp', vat: vatData('none', []), issuedOn: '2026-09-02' }),
+      doc('b', { totalCents: 2000, paymentId: 'pp', vat: vatData('none', []), issuedOn: '2026-09-03' }),
+      doc('c', { totalCents: 700, paymentId: 'pq', bookedAt: null, vat: vatData('none', []) }),
+    ],
+    payments: [pay('pp', '2026-09-10', -3100), pay('pq', '2026-09-11', -700)],
+    banks,
+    filed: [],
+    manual: [],
+  })
+  const twoItems = new Map(two.items.map((i) => [i.docId, i]))
+  check(
+    'one payment for two invoices: each its own, the last what is left',
+    two.entries
+      .find((e) => e.key === 'p:pp')
+      ?.lines.map((l) => l.cents)
+      .join() === '1000,2100' &&
+      ledger.leftOf(twoItems.get('b')) === -100 &&
+      !two.unposted.has('pp'),
+  )
+  check('a payment waits for its document to be booked', two.issues.waiting.join() === 'pq' && two.unposted.get('pq') === -700 && !two.entries.some((e) => e.key === 'p:pq'))
+
+  // A payment without a document
+  check(
+    "a payment's reason gives its account, the accountant's own wins",
+    ledger.reasonAccount({ amountCents: -450, exempt: 'bank' }) === '568' &&
+      ledger.reasonAccount({ amountCents: 12, exempt: 'bank' }) === '662' &&
+      ledger.reasonAccount({ amountCents: -100, exempt: 'own' }) === '261' &&
+      ledger.reasonAccount({ amountCents: 500000, exempt: 'capital', note: 'Vklad do základného imania' }) === '353' &&
+      ledger.reasonAccount({ amountCents: 300000, exempt: 'capital', note: 'pôžička' }) === '365' &&
+      ledger.reasonAccount({ amountCents: -2300, exempt: 'state', vs: '1100092026' }) === '343.300' &&
+      ledger.reasonAccount({ amountCents: -3300, exempt: 'state', vs: '1700000000' }) === null &&
+      ledger.reasonAccount({ amountCents: -120000, exempt: 'payroll' }) === '331' &&
+      ledger.reasonAccount({ amountCents: -100, exempt: 'other' }) === null &&
+      ledger.paymentContra(pay('x', '2026-09-01', -3300, { exempt: 'state', contra: '538' })) === '538' &&
+      ledger.paymentContra(pay('x', '2026-09-01', -450, { exempt: 'bank', contra: '221.002' })) === '568',
+  )
+  check(
+    'a receipt paid directly only when it is the payment alone, to the cent, in its month',
+    ledger.receiptContra({ on: '2026-09-12', expected: -1240 }, { bookedOn: '2026-09-13', amountCents: -1240, bank: '221.001' }, 1).contra === '221.001' &&
+      ledger.receiptContra({ on: '2026-09-12', expected: -1240 }, { bookedOn: '2026-09-13', amountCents: -1250, bank: '221.001' }, 1).contra === '261' &&
+      ledger.receiptContra({ on: '2026-09-12', expected: -1240 }, { bookedOn: '2026-09-13', amountCents: -1240, bank: '221.001' }, 2).contra === '261',
+  )
+
+  // What the accountant types
+  const typed = ledger.readEntryRows([
+    { md: '548', d: '325', amount: '1 200,50' },
+    { md: '', d: '', amount: '' },
+    { md: '518', d: '518', amount: '10' },
+    { md: '9', d: '325', amount: '10' },
+    { md: '518', d: '325', amount: '-5' },
+  ])
+  check(
+    'an internal document: good lines kept, empty ones left out, each mistake named',
+    typed.lines.length === 1 && typed.lines[0].cents === 120050 && typed.errors[2] === 'same' && typed.errors[3] === 'md' && typed.errors[4] === 'amount' && !(1 in typed.errors),
+  )
+  const opening = ledger.readOpeningRows([
+    { account: '221.001', md: '4 861,63', d: '' },
+    { account: '411', md: '', d: '5000' },
+    { account: '431', md: '138,37', d: '' },
+    { account: '701', md: '1', d: '' },
+    { account: '311', md: '1', d: '1' },
+  ])
+  check(
+    'opening balances against 701, the closing accounts refused, one side only',
+    opening.md === 500000 &&
+      opening.d === 500000 &&
+      opening.lines[0].md === '221.001' &&
+      opening.lines[0].d === '701' &&
+      opening.lines[1].md === '701' &&
+      opening.errors[3] === 'closing' &&
+      opening.errors[4] === 'both',
+    JSON.stringify(opening),
+  )
+  check(
+    'the form shows the opening balances again',
+    ledger
+      .openingRows(opening.lines)
+      .map((r) => `${r.account}:${r.md ?? ''}:${r.d ?? ''}`)
+      .join() === '221.001:486163:,411::500000,431:13837:',
+  )
+  check(
+    'lines stored are read back checked',
+    ledgerStore.storedLines(
+      JSON.stringify([
+        { md: '518', d: '325', cents: 10 },
+        { md: '518', d: '518', cents: 5 },
+        { md: 'x', d: '325', cents: 5 },
+        { md: '518', d: '325', cents: 1.5 },
+      ]),
+    ).length === 1,
+  )
+
+  // The files
+  const journal = plain(ledger.journalCsv(books, 2026))
+  check(
+    'the journal as a file',
+    journal.startsWith('﻿Dátum;Doklad;Text;MD;D;Suma;Zdroj') && journal.includes('2026-09-05;F2026118;Hostingový dom s. r. o.: Služby;518;321;100,00;doklad') && journal.includes('VBÚ 221.001'),
+    journal.slice(0, 400),
+  )
+  const trial = plain(ledger.trialCsv(tb))
+  check('the trial balance as a file', trial.includes('321;Dodávatelia;') && trial.includes('Strata;;;;;70,80'), trial.slice(-200))
+  const general = plain(ledger.generalLedgerCsv(books, 2026))
+  check(
+    'the general ledger as a file, account by account',
+    general.includes('343.100;DPH na vstupe (odpočet);2026-01-01;;Počiatočný stav') && !general.includes('\r\n343;Daň z pridanej hodnoty;'),
+    general.slice(0, 300),
+  )
+  check('the open items as a file', plain(ledger.saldoCsv(books, '2026-10-14')).includes('311;20260001;Zákazník s. r. o.;2026-09-10;2026-09-24;246,00;0,00;246,00;20'))
 }
 
 done('units')

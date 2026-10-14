@@ -134,6 +134,8 @@ function script(leads) {
     bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky alebo sa banka či účet odpojí.',
     team: 'Toto je náhľad: nič sa neukladá ani neposiela. V aplikácii sa to hneď vykoná.',
     vat: 'Toto je náhľad: nič sa nesťahuje. V aplikácii sa stiahne súbor XML, ktorý účtovníčka načíta v eDane, skontroluje a podpíše.',
+    books: 'Toto je náhľad: nič sa neukladá. V aplikácii sa to hneď zapíše do knihy a predvaha, denník aj saldokonto sa prepočítajú.',
+    range: 'Toto je náhľad s jedným obdobím. V aplikácii sa ukáže vybraný rok a mesiac.',
     poa: 'Toto je náhľad: nič sa neposiela. V aplikácii sa podpísaná plná moc nahrá a účtovníčka ju overí a podá na úrady.',
     decl: 'Toto je náhľad: nič sa neposiela. V aplikácii sa údaje uložia a účtovníčka ich porovná s obchodným registrom a s plnou mocou.',
     notice: 'Toto je náhľad: nič sa nevypovedá. V aplikácii sa výpoveď uloží, objaví sa v správach a do konca lehoty ju môžete vziať späť.',
@@ -156,6 +158,8 @@ function script(leads) {
     if (/^\\/app\\/faktury/.test(a)) return 'invoice';
     if (/^\\/ucto\\/doklady\\//.test(a)) return 'book';
     if (/\\/dph\\//.test(a)) return 'vat';
+    if (/\\/kniha(\\/dennik|\\/platby|\\/ucet\\/[0-9.]+)?$/.test(a) && (form.getAttribute('method') || 'get').toLowerCase() === 'get') return 'range';
+    if (/\\/kniha\\//.test(a)) return 'books';
     if (/\\/export$/.test(a)) return 'export';
     if (/^\\/ucto\\//.test(a)) return 'team';
     if (/\\/banka$/.test(a)) return 'banka';
@@ -204,7 +208,7 @@ function script(leads) {
 </script>`
 }
 
-const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="ucto-dph.html">DPH</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a><a href="koniec.html">Koniec zmluvy</a></div>`
+const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými údajmi.</span><a href="index.html">Klient</a><a href="ucto.html">Účtovníčka</a><a href="ucto-dph.html">DPH</a><a href="ucto-kniha.html">Účtovná kniha</a><a href="vsetko-mame.html">Keď nič nechýba</a><a href="atelier.html">Nová firma</a><a href="banka.html">Banka</a><a href="faktura-odberatel.html">Faktúra u odberateľa</a><a href="koniec.html">Koniec zmluvy</a></div>`
 
 function rewrite(page, extra) {
   return page
@@ -326,6 +330,23 @@ for (const [path, file] of teamFiles) await write(file, await html(path), { [`/u
   if (filed.status !== 303) throw new Error(`filing the VAT return: ${filed.status}`)
   await write('ucto-dph-podane.html', await html(`/ucto/klienti/demo-company/dph?obdobie=${month(-1)}&ok=dph-podane`))
   files.set('/ucto/klienti/demo-company/dph?ok=dph-podane', 'ucto-dph-podane.html')
+}
+// The books of the sample company, once its return was filed (the VAT settled on 343.300): the trial balance, the
+// journal, the open items, the payments without a document, the internal documents, the opening balances, and every
+// account of the trial balance with its movements.
+{
+  const books = new Map([
+    ['/ucto/klienti/demo-company/kniha', 'ucto-kniha.html'],
+    ['/ucto/klienti/demo-company/kniha/dennik', 'ucto-kniha-dennik.html'],
+    ['/ucto/klienti/demo-company/kniha/saldokonto', 'ucto-kniha-saldokonto.html'],
+    ['/ucto/klienti/demo-company/kniha/platby', 'ucto-kniha-platby.html'],
+    ['/ucto/klienti/demo-company/kniha/interne', 'ucto-kniha-interne.html'],
+    ['/ucto/klienti/demo-company/kniha/pociatocne', 'ucto-kniha-pociatocne.html'],
+  ])
+  const trial = await html('/ucto/klienti/demo-company/kniha')
+  for (const m of trial.matchAll(/href="(\/ucto\/klienti\/demo-company\/kniha\/ucet\/[0-9.]+)\?/g)) books.set(m[1], `ucto-kniha-ucet-${m[1].split('/').pop()}.html`)
+  for (const [path, file] of books) files.set(path, file)
+  for (const [path, file] of books) await write(file, await html(path))
 }
 cookie = clientCookie
 await write('dane.html', await html('/app/dane'))

@@ -5391,3 +5391,529 @@ select.field__input {
 .calm__pay {
   margin-top: 20px;
 }
+
+/* The books: the trial balance, the journal, an account, the open items, payments without a document, internal
+   documents and the opening balances (the team). Tables of figures in the app's own hand: tabular figures, the
+   synthetic account in ink and its analytic ones under it in a softer one, a balance's side in small letters. ---- */
+
+.ltabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 22px;
+}
+
+.ltabs__item {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.ltabs__item:hover {
+  border-color: var(--blue-line);
+  color: var(--ink);
+}
+
+.ltabs__item[aria-current='page'] {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--white);
+}
+
+.lhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+
+.lrange {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 10px;
+}
+
+.lrange__field {
+  display: grid;
+  gap: 4px;
+}
+
+.lrange .field__input {
+  min-height: 40px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.lrange__go {
+  min-height: 40px;
+}
+
+/* A wide table scrolls inside its card; the page itself never does. */
+.lscroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ltable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ltable th {
+  padding: 0 12px 8px 0;
+  color: var(--dim);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ltable td {
+  padding: 8px 12px 8px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  vertical-align: top;
+}
+
+.ltable .num {
+  padding-right: 0;
+  padding-left: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ltable--trial,
+.ltable--account {
+  min-width: 720px;
+}
+
+.ltable--journal {
+  min-width: 680px;
+}
+
+.ltable__acct {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ltable__acct .link {
+  font-weight: 600;
+}
+
+.ltable__name {
+  min-width: 160px;
+  overflow-wrap: anywhere;
+}
+
+.ltable__class th {
+  padding-top: 18px;
+  padding-bottom: 6px;
+  color: var(--blue);
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+}
+
+.ltable__syn td {
+  font-weight: 600;
+}
+
+.ltable__an td {
+  border-top-style: dashed;
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.ltable__an .ltable__acct {
+  padding-left: 14px;
+}
+
+.ltable__sum td {
+  border-top: 1px solid var(--line-strong);
+  color: var(--soft);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.ltable__total th,
+.ltable__total td {
+  padding-top: 12px;
+  border-top: 2px solid var(--ink);
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.ltable__late td {
+  background: var(--amber-soft);
+}
+
+.lzero {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+/* A balance of nought keeps the room of its side, so that the figures stand under each other. */
+.lside--blank {
+  visibility: hidden;
+}
+
+.lside {
+  display: inline-block;
+  min-width: 2.1em;
+  margin-left: 4px;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.lbalanced,
+.lbank__ok {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--green);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.ldown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.ldown .link {
+  font-weight: 600;
+}
+
+/* Above the trial balance: what keeps the books from being whole across the page, then the result and the bank side by side. */
+.ltop {
+  display: grid;
+  gap: 20px;
+}
+
+.lpair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 20px;
+}
+
+.lresult__big {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  color: var(--green);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.lresult__big strong {
+  font-family: var(--display);
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+}
+
+.lresult__big--loss {
+  color: var(--red-ink);
+}
+
+.lbank {
+  display: grid;
+  gap: 10px;
+}
+
+.lbank + .lbank {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.lbank__name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.lbank__name span {
+  color: var(--soft);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.info .kv dd.lbank__rest {
+  color: var(--amber);
+}
+
+/* The journal: one entry's lines share the date, the document and the text. */
+.lentry + .lentry td {
+  border-top: 1px solid var(--line-strong);
+}
+
+.lentry tr + tr td {
+  border-top: 1px dashed var(--line);
+}
+
+.lentry__day {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.lentry__doc {
+  min-width: 120px;
+}
+
+.lentry__src {
+  display: block;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.lentry__text {
+  min-width: 180px;
+  overflow-wrap: anywhere;
+}
+
+.llate {
+  display: block;
+  color: var(--amber);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lstack {
+  display: grid;
+  gap: 18px;
+}
+
+/* Payments without a document: each with the account it is booked against, and the way to give another. */
+.lpays {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lpay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.lpay--missing {
+  border-color: transparent;
+  background: var(--amber-soft);
+}
+
+.lpay__text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.lpay__title {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.lpay__amount {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lpay__sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.lpay__state {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lpay--missing .lpay__state {
+  color: var(--amber);
+}
+
+.lpay__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lpay__input {
+  width: 7.5em;
+  min-height: 40px;
+}
+
+.lpay__error {
+  flex-basis: 100%;
+}
+
+/* Internal documents and the opening balances. */
+.lmanual {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lmanual__item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.lmanual__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--soft);
+  font-size: 0.9375rem;
+}
+
+.lmanual__number {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.lmanual__text {
+  flex-basis: 100%;
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.lmanual__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ltable--lines td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.lform {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+}
+
+.lform th {
+  color: var(--dim);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.lform td {
+  padding-right: 8px;
+}
+
+.lform td:last-child {
+  padding-right: 0;
+}
+
+.lform .field__input {
+  width: 100%;
+  min-height: 42px;
+}
+
+.lopening {
+  max-width: 640px;
+}
+
+.lopening__day {
+  max-width: 12em;
+}
+
+.ltrial {
+  margin-top: 24px;
+}
+
+.ltable__alt {
+  display: none;
+}
+
+/* On a phone the trial balance keeps the figures in sight: an account's name goes under its number. */
+@media (max-width: 700px) {
+  .ltable--trial {
+    min-width: 520px;
+  }
+
+  /* The name's column stays (the rows of sums span it) and takes no room. */
+  .ltable--trial .ltable__name {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    border-top-width: 0;
+    font-size: 0;
+    line-height: 0;
+  }
+
+  .ltable--trial .ltable__acct {
+    min-width: 9.5em;
+    white-space: normal;
+  }
+
+  .ltable--trial .ltable__acct .link {
+    white-space: nowrap;
+  }
+
+  .ltable--trial .ltable__alt {
+    display: block;
+    max-width: 10em;
+    margin-top: 2px;
+    color: var(--soft);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.3;
+    white-space: normal;
+  }
+
+  .ltable--trial td,
+  .ltable--trial th {
+    padding-right: 8px;
+  }
+
+  .ltable--trial .num {
+    padding-left: 8px;
+  }
+}

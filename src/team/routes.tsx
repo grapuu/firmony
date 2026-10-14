@@ -11,7 +11,7 @@ import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
 import { bell, ringStatement } from '../bell'
 import { lookupCompany } from '../rpo'
-import { dayOfText, isCategory, supplierKey, type PaidBy } from '../app/booking'
+import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
 import { app, dayName, readableName, signed, whenName } from '../app/copy'
 import { endingOf } from '../app/ending'
@@ -35,8 +35,43 @@ import {
   type Level,
 } from '../app/aml'
 import { AmlPage } from '../views/aml'
+import {
+  accountMoves,
+  accountName,
+  bookYears,
+  bookingLines,
+  canonicalAccount,
+  generalLedgerCsv,
+  journalCsv,
+  openingRows,
+  paymentsWithoutDocuments,
+  readEntryRows,
+  readOpeningRows,
+  saldoCsv,
+  synthetic,
+  trialBalance,
+  trialCsv,
+  type Books,
+} from '../app/ledger'
+import { booksOf, contraStatement, internalStatement, manualEntries, openingStatements, removeInternalStatement } from '../app/ledger-store'
+import {
+  AccountPage,
+  InternalPage,
+  JournalPage,
+  LedgerCard,
+  OpeningPage,
+  PaymentsPage,
+  SaldoPage,
+  TrialPage,
+  blockingCount,
+  bookPath,
+  emptyInternal,
+  type InternalForm,
+  type OpeningForm,
+  type OpeningRowValue,
+} from '../views/ledger'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
-import { familyOf, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
+import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
 import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, prevPeriod, vatOf, type VatData } from '../app/vat'
@@ -265,6 +300,14 @@ function flashOf(c: Ctx): string | null {
       return t.vat.flashes.correctedKv
     case 'dph-netreba':
       return t.vat.flashes.notNeeded
+    case 'kniha-ucet':
+      return t.ledger.flashes.account
+    case 'kniha-interny':
+      return t.ledger.flashes.internal
+    case 'kniha-odstraneny':
+      return t.ledger.flashes.removed
+    case 'kniha-ps':
+      return t.ledger.flashes.opening
     default:
       return null
   }
@@ -314,7 +357,7 @@ async function clientPage(
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
-  const [banks, vat] = await Promise.all([linksOf(db, company.id), vatSummary(db, company, day)])
+  const [banks, vat, books] = await Promise.all([linksOf(db, company.id), vatSummary(db, company, day), booksOf(db, company)])
   const active = banks.find((l) => l.status === 'active')
   const ended = banks.find((l) => l.status === 'expired')
   const bankLine = active
@@ -351,6 +394,7 @@ async function clientPage(
       ending={endingOf(company, day)}
       earliestEnd={noticeEndsOn(day)}
       vat={<VatCard company={company} view={vat.view} needs7a={vat.needs7a} today={day} />}
+      ledger={<LedgerCard company={company} tb={trialBalance(books, Number(day.slice(0, 4)), Number(day.slice(5, 7)))} waiting={blockingCount(books, day)} />}
       {...extra}
     />,
     status,
@@ -1080,6 +1124,223 @@ teamRoutes.post('/platby/:id/kontrola', async (c) => {
 })
 
 // ---------------------------------------------------------------------------------------------------------------
+// The books: the trial balance, the journal, an account, the open items, payments without a document, internal
+// documents and the opening balances. All of it is worked out from the books (src/app/ledger.ts) on every request.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The year and the month of the address: this year up to this month unless another is asked for. */
+function rangeOf(c: Ctx, years: number[], today: string): { year: number; month: number } {
+  const asked = Number(c.req.query('rok'))
+  const thisYear = Number(today.slice(0, 4))
+  const year = years.includes(asked) ? asked : thisYear
+  const m = Number(c.req.query('mesiac'))
+  const month = Number.isInteger(m) && m >= 1 && m <= 12 ? m : year === thisYear ? Number(today.slice(5, 7)) : 12
+  return { year, month }
+}
+
+async function booksPage(c: Ctx): Promise<{ company: Company; books: Books; today: string; years: number[]; year: number; month: number } | null> {
+  const company = await companyParam(c)
+  if (!company) return null
+  const today = dayOf(now())
+  const books = await booksOf(c.env.DB, company)
+  const years = bookYears(books, today)
+  return { company, books, today, years, ...rangeOf(c, years, today) }
+}
+
+teamRoutes.get('/klienti/:id/kniha', async (c) => {
+  const b = await booksPage(c)
+  if (!b) return missingPage(c)
+  return shell(
+    c,
+    'clients',
+    `${t.ledger.title}: ${b.company.name}`,
+    <TrialPage company={b.company} books={b.books} tb={trialBalance(b.books, b.year, b.month)} years={b.years} year={b.year} month={b.month} today={b.today} flash={flashOf(c)} />,
+  )
+})
+
+teamRoutes.get('/klienti/:id/kniha/dennik', async (c) => {
+  const b = await booksPage(c)
+  if (!b) return missingPage(c)
+  return shell(c, 'clients', `${t.ledger.journalTitle}: ${b.company.name}`, <JournalPage company={b.company} books={b.books} years={b.years} year={b.year} month={b.month} />)
+})
+
+teamRoutes.get('/klienti/:id/kniha/ucet/:account', async (c) => {
+  const account = canonicalAccount(c.req.param('account'))
+  const b = account ? await booksPage(c) : null
+  if (!b || !account) return missingPage(c)
+  const moves = accountMoves(b.books, account, b.year, b.month)
+  return shell(
+    c,
+    'clients',
+    `${t.ledger.accountTitle(account)}: ${b.company.name}`,
+    <AccountPage company={b.company} books={b.books} account={account} name={accountName(account, b.books.banks)} {...moves} years={b.years} year={b.year} month={b.month} />,
+  )
+})
+
+teamRoutes.get('/klienti/:id/kniha/saldokonto', async (c) => {
+  const b = await booksPage(c)
+  if (!b) return missingPage(c)
+  return shell(c, 'clients', `${t.ledger.saldoTitle}: ${b.company.name}`, <SaldoPage company={b.company} books={b.books} today={b.today} />)
+})
+
+teamRoutes.get('/klienti/:id/kniha/platby', async (c) => {
+  const b = await booksPage(c)
+  if (!b) return missingPage(c)
+  return shell(
+    c,
+    'clients',
+    `${t.ledger.paymentsTitle}: ${b.company.name}`,
+    <PaymentsPage company={b.company} books={b.books} payments={paymentsWithoutDocuments(b.books, b.year)} years={b.years} year={b.year} flash={flashOf(c)} />,
+  )
+})
+
+/** The account the accountant gives a payment without a document; empty puts its reason's back. */
+teamRoutes.post('/klienti/:id/kniha/platby/:payment', async (c) => {
+  const b = await booksPage(c)
+  const id = c.req.param('payment')
+  const payment = b && ID.test(id) ? b.books.payments.get(id) : undefined
+  if (!b || !payment) return missingPage(c)
+  const body = await c.req.parseBody()
+  const typed = typeof body.ucet === 'string' ? body.ucet.trim().slice(0, 12) : ''
+  const account = typed === '' ? null : canonicalAccount(typed)
+  if (typed !== '' && (!account || synthetic(account) === '221')) {
+    return shell(
+      c,
+      'clients',
+      `${t.ledger.paymentsTitle}: ${b.company.name}`,
+      <PaymentsPage company={b.company} books={b.books} payments={paymentsWithoutDocuments(b.books, b.year)} years={b.years} year={b.year} error={{ payment: id, value: typed }} />,
+      422,
+    )
+  }
+  const db = c.env.DB
+  await db.batch([contraStatement(db, b.company.id, id, account), eventStatement(db, { company: b.company.id, user: c.get('who').user.id, action: 'ledger.contra', subject: id, detail: { account } })])
+  return c.redirect(`${bookPath(b.company, 'payments')}?rok=${b.year}&ok=kniha-ucet#platba-${id}`, 303)
+})
+
+const INTERNAL_ROWS = 6
+
+async function internalPage(c: Ctx, company: Company, form: InternalForm, status: ContentfulStatusCode = 200) {
+  const entries = (await manualEntries(c.env.DB, company.id)).filter((m) => m.kind === 'internal').reverse()
+  return shell(c, 'clients', `${t.ledger.internalTitle}: ${company.name}`, <InternalPage company={company} entries={entries} form={form} flash={status === 200 ? flashOf(c) : null} />, status)
+}
+
+teamRoutes.get('/klienti/:id/kniha/interne', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  return internalPage(c, company, emptyInternal(dayOf(now()), INTERNAL_ROWS))
+})
+
+teamRoutes.post('/klienti/:id/kniha/interne', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const rows = Array.from({ length: INTERNAL_ROWS }, (_, i) => ({ md: text(`md_${i}`, 12), d: text(`d_${i}`, 12), amount: text(`suma_${i}`, 20) }))
+  const day = dayOfText(text('datum', 20))
+  const what = text('text', 160)
+  const read = readEntryRows(rows)
+  const errors: InternalForm['errors'] = {}
+  if (!day) errors.day = true
+  if (what.length < 2) errors.text = true
+  if (Object.keys(read.errors).length > 0) errors.rows = read.errors
+  else if (read.lines.length === 0) errors.lines = true
+  if (!day || Object.keys(errors).length > 0) return internalPage(c, company, { day: text('datum', 20), text: what, rows, errors }, 422)
+  const db = c.env.DB
+  const id = crypto.randomUUID()
+  await db.batch([
+    internalStatement(db, company.id, { id, on: day, text: what, lines: read.lines }, c.get('who').user.id),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'ledger.internal', subject: id, detail: { on: day, lines: read.lines.length } }),
+  ])
+  return c.redirect(`${bookPath(company, 'internal')}?ok=kniha-interny`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/interne/:entry/odstranit', async (c) => {
+  const company = await companyParam(c)
+  const id = c.req.param('entry')
+  if (!company || !ID.test(id)) return missingPage(c)
+  const db = c.env.DB
+  const removed = await removeInternalStatement(db, company.id, id, c.get('who').user.id).run()
+  if ((removed.meta?.changes ?? 0) === 0) return missingPage(c)
+  await db.batch([eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'ledger.removed', subject: id })])
+  return c.redirect(`${bookPath(company, 'internal')}?ok=kniha-odstraneny`, 303)
+})
+
+const money = (cents: number | null): string => (cents === null ? '' : moneyText(cents))
+
+async function openingPage(c: Ctx, company: Company, form: OpeningForm | null, status: ContentfulStatusCode = 200) {
+  const saved = (await manualEntries(c.env.DB, company.id)).find((m) => m.kind === 'opening') ?? null
+  const rows: OpeningRowValue[] = form?.rows ?? (saved ? openingRows(saved.lines).map((r) => ({ account: r.account, md: money(r.md), d: money(r.d) })) : [])
+  const filled = rows.filter((r) => r.account || r.md || r.d)
+  const shown = [...filled, ...Array.from({ length: Math.max(14 - filled.length, 8) }, () => ({ account: '', md: '', d: '' }))]
+  const day = form?.day ?? textDay(saved?.on ?? company.startOn ?? `${dayOf(now()).slice(0, 4)}-01-01`)
+  return shell(
+    c,
+    'clients',
+    `${t.ledger.openingTitle}: ${company.name}`,
+    <OpeningPage company={company} form={{ day, rows: form ? rows : shown, errors: form?.errors ?? {} }} saved={saved} flash={status === 200 ? flashOf(c) : null} />,
+    status,
+  )
+}
+
+teamRoutes.get('/klienti/:id/kniha/pociatocne', async (c) => {
+  const company = await companyParam(c)
+  return company ? openingPage(c, company, null) : missingPage(c)
+})
+
+const OPENING_ROWS = 80
+
+teamRoutes.post('/klienti/:id/kniha/pociatocne', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const rows: OpeningRowValue[] = []
+  for (let i = 0; i < OPENING_ROWS; i++) {
+    if (!(`ucet_${i}` in body) && !(`md_${i}` in body) && !(`d_${i}` in body)) continue
+    rows.push({ account: text(`ucet_${i}`, 12), md: text(`md_${i}`, 20), d: text(`d_${i}`, 20) })
+  }
+  const day = dayOfText(text('datum', 20))
+  const read = readOpeningRows(rows)
+  const errors: OpeningForm['errors'] = {}
+  if (!day) errors.day = true
+  if (Object.keys(read.errors).length > 0) errors.rows = read.errors
+  else if (read.md !== read.d) errors.unbalanced = { md: read.md, d: read.d }
+  if (!day || Object.keys(errors).length > 0) return openingPage(c, company, { day: text('datum', 20), rows, errors }, 422)
+  const db = c.env.DB
+  const id = crypto.randomUUID()
+  await db.batch([
+    ...openingStatements(db, company.id, { id, on: day, lines: read.lines }, c.get('who').user.id),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'ledger.opening', subject: id, detail: { on: day, lines: read.lines.length, total: read.md } }),
+  ])
+  return c.redirect(`${bookPath(company, 'opening')}?ok=kniha-ps`, 303)
+})
+
+/** The books as files for Slovak Excel: the journal and the general ledger of a year, the trial balance, the open items. */
+teamRoutes.get('/klienti/:id/kniha/:file', async (c) => {
+  const file = c.req.param('file')
+  if (!['dennik.csv', 'hlavna-kniha.csv', 'predvaha.csv', 'saldokonto.csv'].includes(file)) return missingPage(c)
+  const b = await booksPage(c)
+  if (!b) return missingPage(c)
+  const csv =
+    file === 'dennik.csv'
+      ? journalCsv(b.books, b.year)
+      : file === 'hlavna-kniha.csv'
+        ? generalLedgerCsv(b.books, b.year)
+        : file === 'predvaha.csv'
+          ? trialCsv(trialBalance(b.books, b.year, b.month))
+          : saldoCsv(b.books, b.today)
+  const slug = (b.company.ico ?? b.company.name).replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()
+  const name = `${file.replace('.csv', '')}-${slug}-${file === 'saldokonto.csv' ? b.today : file === 'predvaha.csv' ? `${b.year}-${String(b.month).padStart(2, '0')}` : b.year}.csv`
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------
 // Booking
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -1169,6 +1430,9 @@ async function bookPage(
       needs7a={needs7a}
       invoice={invoice ? { invoice, lines: await invoiceLines(db, invoice.id) } : null}
       values={extra.values ?? valuesOf(doc, company.vatPayer)}
+      ledgerLines={
+        extra.values ? null : bookingLines(doc, company, payment ? { bookedOn: payment.bookedOn, amountCents: payment.amountCents, bankLedger: payment.bankLedger, docs: payment.docs } : null)
+      }
       payment={payment}
       candidates={candidates}
       paidBy={paidByOf(doc, doc.paymentId !== null)}

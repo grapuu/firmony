@@ -6,7 +6,7 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
-## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 10:27)
+## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 11:58)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
   ("najprv brand, naša web stránka, prezentácia ... niečo, čo rozbije konkurenciu"). Software for the accountants
@@ -23,7 +23,7 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 - Nothing is deployed. The code is on GitHub, `grapuu/firmony` (private), created on 13 October 2026 at 16:20
   from the browser pane of his desktop app, which he signed in to GitHub (account grapuu) for it; `main` is pushed.
   A new session adds the repository with `add_repo` (owner grapuu, access "push"). There is no Worker yet.
-- All checks pass: `npm test` (388 unit checks) and `npm run test:runtime` (457 checks in workerd). The sixth
+- All checks pass: `npm test` (443 unit checks) and `npm run test:runtime` (496 checks in workerd). The sixth
   design is committed (13 October 2026, from 15:07): white, blue and red, built as CloudTalk builds its site.
 - **The client's app, first version** (13 October 2026, from 16:44, his word: "môže začať stavať software ...
   doslova okopíruj ten model ... aby ten človek z toho nemal strach ... také interaktívne, také moderné, jak web
@@ -147,6 +147,17 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   out once and every one held. Pushed at 10:27 (`3d62898`). The app preview is version 11 ("DPH" in its bar: September
   ready, then filed; the client's Dane with the QR code; "Keď nič nechýba" now asks to pay the VAT).
 
+- From 10:53 (14 October 2026). He asked "do toho ale nevybudujeme si vsetko svoje?" and was told yes, with the new
+  order: (1) our own books (about 5 hours), (2) every client's deadlines on one screen (about 2 hours), (3) the micro
+  company's closing and the corporate tax return as XML (about 6 hours, by February), (4) payroll (about 2 days, by
+  the end of January), (5) the digital postman and eKasa receipts. The export to Pohoda or Omega is no longer
+  planned. His word at 10:57: "do toho". Built: "The books" under the accountants' side (the journal, the general
+  ledger, the trial balance, the open items, the bank against the books, payments without a document, internal
+  documents, the opening balances, CSV files for Excel and the books in the client's yearly ZIP). All checks passing
+  (units 443, runtime 496); 42 rules taken out once, and every one held (two only after a check was added for each:
+  an invoice the owner paid himself, and a removed internal document's number never given again). The app preview
+  is version 12 ("Účtovná kniha" in its bar, with every page of the books of the sample company).
+
 ## What he has to do before it is live (each a few clicks)
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
@@ -217,6 +228,11 @@ inak to nejde" and "účtovníčka nebude robiť za 25 eur ... bežne berú 50 a
   switching), Bench's "no judgment" about messy books, Pennylane's e-invoicing banner, CloudTalk's parallel of
   AI and human and its plain FAQ.
 
+His (14 October 2026, 10:53 and 10:57): "do toho ale nevybudujeme si vsetko svoje?", then "do toho". Everything is
+built by us, the books and the closing included; no certified program (Pohoda, Omega) stands behind them and no
+export to one is planned. The order he was given: the books, every client's deadlines on one screen, the closing
+and the corporate tax return by February, payroll by the end of January, then the digital postman and eKasa.
+
 His (13 October 2026, 23:03): "nechcem žiadnu komunikáciu mailom nič také ... všetko v našom uzamknutom ekosystéme".
 Read as, and he was told so before the work started: messages, documents, data, the contract and every notice live
 only in the app; an email to a client or to the team is a doorbell with a link and nothing else (`src/bell.ts`).
@@ -261,7 +277,9 @@ on Crete, the sites of Matax, Bezúčto and Keepi, TASR on Digitoo, Enable Banki
   accountant) and an accountant's cockpit (AI proposes MD/D, VAT and the control statement line; she confirms;
   bank matched; VAT return and control statement as XML; every client's deadlines on one screen). The ledger and
   the closing stay in a certified program (Pohoda or Omega) until there are hundreds of clients. First piece
-  offered: intake (email, photo, eKasa QR) with AI posting proposals, tried on europio's documents.
+  offered: intake (email, photo, eKasa QR) with AI posting proposals, tried on europio's documents. (Superseded on
+  14 October 2026 at 10:53: his word is to build everything ourselves, the ledger and the closing included; see
+  "The books".)
 - For marketing later: since 17 August 2026 an s. r. o. is founded only through a notary or an advocate, and
   over 24 000 companies were founded by mid-September 2026 (95 % s. r. o.); Dougs wins clients at founding.
 
@@ -656,10 +674,11 @@ on one screen, a document booked on one screen with its original beside the form
 - Booking (/ucto/doklady and /ucto/doklady/:id): the queue of all her clients, oldest first. One screen: the
   original (a photo, or a PDF framed beside the form; a phone gets the link), the form (kind, what it is for as a
   category with its account, supplier, IČO, number, dates typed "11. 10. 2026", amounts, VAT, VS, another account),
-  "Odpočítať DPH" for a VAT payer, "Zapamätať pre dodávateľa", and the entry it makes, MD and D, live from the form
-  (`entryFor` in `src/app/booking.ts`: a received invoice against 321, a receipt against 221 from the company's
-  account, 365 when the owner paid it himself, 211 from cash; VAT on 343 only when it is deducted; an issued
-  invoice 311 against 602 or 604 and 343). "Zaúčtovať a ďalší" books and opens the client's next document;
+  "Odpočítať DPH" for a VAT payer, "Zapamätať pre dodávateľa", and the entry it makes, MD and D, as the books hold
+  it (`entryFor` in `src/app/booking.ts`, through `bookingLines` in `src/app/ledger.ts`: a received invoice against
+  321, a receipt against the bank account's 221.00x or 261 when it was paid by card, 365 when the owner paid it
+  himself, 211 from cash; VAT on 343.100 only when it is deducted; an issued invoice 311 against 602 or 604 and
+  343.200). "Zaúčtovať a ďalší" books and opens the client's next document;
   "Uložiť bez zaúčtovania"; "Zahodiť doklad" (a duplicate, or what is no document); a booked one can be changed
   or unbooked, and is never deleted, by the client or the team. The reader proposes the category (`kategoria`);
   a supplier's rule wins over it and is applied at once to the supplier's other waiting documents. The same
@@ -687,9 +706,9 @@ on one screen, a document booked on one screen with its original beside the form
   Martin's declaration (a date of birth, no birth number) is checked by Lucia, risk nízke; Eva has none (her
   overview shows it first, `/app/ukazka?ako=eva` signs her in), and Jana has an open report about Ateliér Nova.
 - On a phone the column is a menu in the bar (`BarMenu`): who is signed in, the switch, signing out.
-- Not built yet on this side: deadlines of every client on one screen, the closing, booking the bank's own payments
-  (a fee, a tax) as entries, a log of who changed what on the pages (the events are recorded), assigning many
-  clients at once, search in the queue.
+- Not built yet on this side: deadlines of every client on one screen, the closing, a log of who changed what on
+  the pages (the events are recorded), assigning many clients at once, search in the queue. (The bank's own payments
+  are booked since 14 October: "The books".)
 
 ### VAT: the return and the control statement (14 October 2026; `src/app/vat.ts`, `vat-xml.ts`, `vat-store.ts`, `vat-form.ts`, views in `src/views/vat.tsx` and `taxes.tsx`)
 
@@ -775,6 +794,71 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
   in `opravnenaOsoba` (europio s. r. o., with its phone and email, is written today).
 
+### The books (14 October 2026; `src/app/ledger.ts`, `src/app/ledger-store.ts`, views in `src/views/ledger.tsx`)
+
+His word of 10:53, "do toho ale nevybudujeme si vsetko svoje?": the books are ours, not a certified program's
+(Pohoda, Omega), and the export to one is no longer planned. What an accountant keeps for an s. r. o. in double
+entry (Act No. 431/2002 Z. z.): the journal, the general ledger, the trial balance, the open items, the bank against
+the books; worked out from what the app holds, never typed twice.
+
+- Nothing of the books is stored as entries (`buildBooks`, pure). Each entry is worked out every time from what
+  stands behind it, so it cannot drift from it:
+  - a booked document: the entry of `entryFor` with the VAT the return counts (deducted: the lines' `deduct`; owed:
+    the lines' VAT; what the company pays itself on a purchase from abroad, deducted or part of the cost) on 343.100
+    (deducted) and 343.200 (owed), on its day of supply, else of issue, else the day it came. A credit note (a
+    corrective document whose lines are minus) books the other way. An invoice the owner paid himself is also owed
+    to him (321 against 365); a receipt nobody paid by bank or himself is paid from the cash box (211).
+  - a payment, on the day the bank booked it, against its bank account's analytic account (221.001; given once in
+    `accounts.ledger` and never renumbered, `NEXT_BANK_LEDGER` in `src/db.ts`): an invoice paid (321) or paid to us
+    (311); a receipt paid by card against the bank itself when the payment is its alone, to the cent and in its
+    month (the entry then stands on the bank's day), otherwise through money in transit, 261 (`receiptContra`).
+    Several documents on one payment: each its own amount, the last what is left. A payment is booked once its
+    documents are.
+  - a payment without a document: the account the accountant gave it (`payments.contra`, never 221), else its
+    reason's (`reasonAccount`: a bank fee 568, interest 662, between own accounts 261, VAT to or from the tax office
+    343.300 by its symbol 1100…, capital paid in 353 when its note says "imani", otherwise 365, wages paid 331). A
+    tax other than VAT, insurance or anything else waits for her account.
+  - a VAT return marked as filed settles its period on its last day: what is owed (rows 17 and 25) from 343.200 and
+    what is deducted (rows 18, 18a and 19, less row 28) from 343.100 to 343.300, the account with the tax office,
+    which the tax paid clears. A corrective return settles in place of the regular one; a supplementary one by its
+    difference, on the day it was filed (`filingChain` reads the filings back through `prev`). An excess deduction
+    carried needs no entry: it stays on 343.300.
+  - the accountant's internal documents and the opening balances are stored (`ledger_entries`, schema step 4).
+    An internal document is numbered `ID-2027-001` in the same statement that writes it and is removed only by a
+    mark, so a number is never given twice. The opening balances are one entry against 701, both sides equal,
+    written anew as a whole.
+- The books start on the opening balances' day, else the contract's first day (`start_on`). Documents and payments
+  before it are left out and counted on the page: they belong to the accountant before us, or into the opening.
+- A year opens with the balance-sheet accounts (classes 0 to 4) as the year before closed them and the results of
+  the years before on 431, until the accountant distributes them by an internal document; costs, revenues and the
+  closing accounts start from nothing (`yearOpening`). The opening balances count as the opening (PS), not as turnover.
+- An account is three digits and, after a full stop, its analytic number as typed (`canonicalAccount`: 518,
+  518.001; "518001" is 518.001), classes 0 to 7. `CHART` names the synthetic accounts of the Slovak chart (rámcová
+  účtová osnova) a young company uses; 343.100, 343.200 and 343.300 are ours, a bank account is named by its IBAN.
+- The team's pages, `/ucto/klienti/:id/kniha`: Predvaha (what keeps the books from being whole, each with the way
+  to it: documents to book, payments that need an account, payments waiting for their documents, payments the
+  client has no document for, another currency, the cash box in minus, money in transit, before the start; the
+  result of the year so far; each bank account against the books on the day the bank last said its balance, with
+  what is not booked yet and what is left, usually the opening balance not written in yet; the trial balance by
+  class, analytic accounts under their synthetic one, a balance with its side MD or D, from January to a chosen
+  month), Denník (a month's entries; each account a link), an account's movements (`/kniha/ucet/:account`, the
+  balance after each line), Saldokonto (the open invoices of 311 and 321 with the days past due, and what is on the
+  account without an invoice), Platby bez dokladu (each with its account, proposed or hers, and a field to give
+  another), Interné doklady, Počiatočné stavy. Files for Slovak Excel: `dennik.csv`, `hlavna-kniha.csv`,
+  `predvaha.csv`, `saldokonto.csv`; the same in the client's yearly ZIP under `uctovnictvo/`.
+- The booking form shows a document's entry as the books hold it (`bookingLines`: 343.100, the bank's analytic
+  account or 261); after a mistake in the form, the entry of the form's own figures. The client page has the books
+  in short (the result of the year so far, how many things wait, "Otvoriť knihu"); its jump bar links them.
+- Events: `ledger.contra`, `ledger.internal`, `ledger.removed`, `ledger.opening`. The deletion at the end of a
+  contract deletes `ledger_entries` with the rest (the client took the books along in its download).
+- The sample company: opening balances on its first day (the capital subscribed and not paid in, 353 against 411),
+  the administrative fee given 538 by Lucia, a receipt the owner paid, and a bank balance (6 718,93 €) the books
+  agree with once the three payments without a document are counted.
+- Not built: depreciation and asset cards (an asset bought goes to 042; putting it to use and depreciating it is an
+  internal document for now), a month or a year closed against changes, the closing entries and the financial
+  statements, payroll's entries, another currency than the euro, a cash book of its own, a log of each change of a
+  booked document beyond the events.
+
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
@@ -855,16 +939,17 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (388): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT
-npm run test:runtime     # the deployable bundle in workerd (457): the site, the order, and the app end to end, VAT filed and corrected, to the deletion
+npm test                 # unit checks (443): pairing, statements, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books
+npm run test:runtime     # the deployable bundle in workerd (496): the site, the order, and the app end to end, VAT filed and corrected, the books, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (35)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (42)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
 The team in the playground: `/ucto/ukazka` (the administrator) or `/ucto/ukazka?ako=uctovnicka` (Lucia). VAT:
-`/ucto/klienti/demo-company/dph`; September of the sample company is ready to be filed.
+`/ucto/klienti/demo-company/dph`; September of the sample company is ready to be filed. The books:
+`/ucto/klienti/demo-company/kniha`.
 The app in the playground: `/app/ukazka` signs in to the sample company; a photo added there is "read" by the
 pretend reader (`readerAnswer` in `test/pretend.mjs`) as yesterday's café receipt for 12,40 €, which pairs it with
 the café payment. The bank: /app/banka, a bank of the list, "Povoliť prístup" on /playground/banka, and the pretend

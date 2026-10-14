@@ -406,7 +406,35 @@ const MIGRATIONS: readonly string[][] = [
       PRIMARY KEY (company_id, period)
     )`,
   ],
+  // The books (14 October 2026, src/app/ledger.ts). They are worked out from the documents, the payments and the
+  // returns every time; stored are only what nothing else holds: the accountant's internal documents and the
+  // opening balances (ledger_entries, removed by a mark and never deleted), the account she gave a payment that has no
+  // document (payments.contra), and each bank account's analytic account, given once and never renumbered.
+  [
+    `CREATE TABLE IF NOT EXISTS ledger_entries (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      seq INTEGER,
+      number TEXT,
+      on_date TEXT NOT NULL,
+      text TEXT NOT NULL,
+      lines TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      deleted_at INTEGER,
+      deleted_by TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS ledger_entries_company ON ledger_entries (company_id, on_date)',
+    'ALTER TABLE payments ADD COLUMN contra TEXT',
+    'ALTER TABLE accounts ADD COLUMN ledger TEXT',
+    `UPDATE accounts SET ledger = printf('221.%03d', (SELECT COUNT(*) FROM accounts b WHERE b.company_id = accounts.company_id AND b.rowid <= accounts.rowid)) WHERE ledger IS NULL`,
+  ],
 ]
+
+/** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
+export const NEXT_BANK_LEDGER = `(SELECT printf('221.%03d', COALESCE(MAX(CAST(substr(ledger, 5) AS INTEGER)), 0) + 1) FROM accounts WHERE company_id = ?1)`
 
 export const SCHEMA_VERSION = MIGRATIONS.length
 

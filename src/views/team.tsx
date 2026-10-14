@@ -6,6 +6,7 @@ import { APP, ART, BRAND, PLANS, type Art } from '../config'
 import { formatEur } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../app/copy'
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
+import type { LedgerLine } from '../app/ledger'
 import type { Exempt } from '../app/match'
 import type { Company, Doc, Message, Payment, User } from '../app/store'
 import type { VatStatus } from '../app/vat'
@@ -301,6 +302,8 @@ export interface ClientPageProps {
   handoverError?: string
   /** The VAT of the period being filed now (views/vat.tsx). */
   vat?: Child
+  /** The books in short (views/ledger.tsx). */
+  ledger?: Child
   /** The company's details as they were sent, with what is wrong with them. */
   details?: { values: DetailsValues; errors: DetailsErrors }
 }
@@ -555,6 +558,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
         <a href="#chyba">{t.clients.missing}</a>
         <a href="#zmluva">{p.declaration === 'checked' ? t.client.poaState[p.poa] : t.aml.state[p.declaration]}</a>
         <a href={`/ucto/klienti/${c.id}/dph`}>{t.client.vatCard}</a>
+        <a href={`/ucto/klienti/${c.id}/kniha`}>{t.ledger.card}</a>
         <a href="#udaje">{t.client.details}</a>
       </nav>
       <div class="pgrid pgrid--wide">
@@ -678,6 +682,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           />
           {p.ending ? <HandoverCard company={c} handover={p.handover} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
           {p.vat ?? null}
+          {p.ledger ?? null}
           <section class="info" id="udaje" aria-labelledby="udaje-t">
             <h2 id="udaje-t" class="info__title">
               {t.client.details}
@@ -1028,6 +1033,8 @@ export interface BookPageProps {
   /** An invoice the client issued in Firmony: its sheet is the original. */
   invoice?: { invoice: StoredInvoice; lines: Line[] } | null
   values: BookValues
+  /** The document's entry as the books hold it; null shows the entry of the form's own figures (after a mistake). */
+  ledgerLines?: LedgerLine[] | null
   payment: Payment | null
   candidates: Payment[]
   paidBy: PaidBy
@@ -1056,23 +1063,26 @@ const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: 
   </div>
 )
 
-export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, values, payment, candidates, paidBy, queueLeft, now, errors, flash }) => {
+export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, values, ledgerLines, payment, candidates, paidBy, queueLeft, now, errors, flash }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const cents = (text: string) => {
     const m = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(text.replace(/\s/g, ''))
     return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : null
   }
-  const entry = entryFor({
-    kind: (values.kind || null) as Doc['kind'],
-    category: (values.category || null) as Doc['category'],
-    totalCents: cents(values.total),
-    vatCents: cents(values.vat),
-    vatPayer: company.vatPayer,
-    vatDeduct: values.deduct,
-    paidBy,
-    account: values.account || null,
-    selfVat: vat?.selfVat ?? null,
-  })
+  // The entry as the books hold it (with the bank account's analytic account and VAT's); the form's own figures after a mistake.
+  const entry: LedgerLine[] =
+    ledgerLines ??
+    entryFor({
+      kind: (values.kind || null) as Doc['kind'],
+      category: (values.category || null) as Doc['category'],
+      totalCents: cents(values.total),
+      vatCents: cents(values.vat),
+      vatPayer: company.vatPayer,
+      vatDeduct: values.deduct,
+      paidBy,
+      account: values.account || null,
+      selfVat: vat?.selfVat ?? null,
+    })
   const paidName = { bank: t.book.paidBank, private: t.book.paidPrivate, cash: t.book.paidCash, unpaid: t.book.unpaid }[paidBy]
   return (
     <>
@@ -1222,7 +1232,7 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
                       <td>{line.md}</td>
                       <td>{line.d}</td>
                       <td>{formatEur(line.cents)}</td>
-                      <td>{t.book.entryWhat[line.what]}</td>
+                      <td>{line.what ? t.book.entryWhat[line.what] : ''}</td>
                     </tr>
                   ))}
                 </tbody>

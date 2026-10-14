@@ -11,6 +11,8 @@ import { dayName, readableName } from './copy'
 import { issuedInYear, invoiceLines, ublOf } from './invoices'
 import type { Exempt } from './match'
 import { bratislava } from './remind'
+import { generalLedgerCsv, journalCsv, saldoCsv, trialBalance, trialCsv } from './ledger'
+import { booksOf } from './ledger-store'
 import { DOC_COLUMNS, DOC_FROM, docOf, type Company, type Doc } from './store'
 
 type Row = Record<string, unknown>
@@ -83,7 +85,7 @@ function contractText(company: Company, order: ContractFacts | null): string {
   return `${lines.join('\r\n')}\r\n`
 }
 
-function readme(company: Company, year: string, has: { invoices: boolean; messages: boolean }, today: string): string {
+function readme(company: Company, year: string, has: { invoices: boolean; messages: boolean; books: boolean }, today: string): string {
   const lines = [
     `Firmony: doklady a údaje firmy ${company.name} za rok ${year}`,
     '',
@@ -93,12 +95,20 @@ function readme(company: Company, year: string, has: { invoices: boolean; messag
   ]
   if (has.invoices) lines.push('faktury/        faktúry, ktoré ste vystavili, ako e-faktúry (UBL 2.1, EN 16931)', 'faktury.csv     zoznam vystavených faktúr')
   if (has.messages) lines.push('spravy.txt      správy medzi Vami a nami')
+  if (has.books) {
+    lines.push(
+      'uctovnictvo/dennik.csv        účtovný denník roka: každý zápis, ako idú dni',
+      'uctovnictvo/hlavna-kniha.csv  hlavná kniha: každý účet so začiatočným stavom, pohybmi a konečným stavom',
+      'uctovnictvo/predvaha.csv      obratová predvaha za celý rok a výsledok hospodárenia',
+      'uctovnictvo/saldokonto.csv    neuhradené faktúry odberateľov a dodávateľov ku dňu stiahnutia',
+    )
+  }
   lines.push(
     'zmluva.txt      zmluva a obchodné podmienky',
     '',
     'Súbory CSV otvoríte v Exceli: sú v kódovaní UTF-8 a stĺpce oddeľuje bodkočiarka.',
     'Účtovné doklady a účtovníctvo uchovávajte desať rokov (§ 35 zákona č. 431/2002 Z. z. o účtovníctve).',
-    `Účtovníctvo z účtovného programu Vám odovzdávame zvlášť, v aplikácii vo Firma a nastavenia.`,
+    'Ak Vám účtovníčka odovzdala aj iné súbory, nájdete ich v aplikácii vo Firma a nastavenia.',
     '',
     `Stiahnuté ${today} z ${BRAND.origin}.`,
   )
@@ -114,7 +124,7 @@ export async function exportYear(
   today: string,
 ): Promise<{ name: string; body: ReadableStream<Uint8Array> }> {
   const db = env.DB
-  const [docRows, payRows, linkRows, invoices, messageRows] = await Promise.all([
+  const [docRows, payRows, linkRows, invoices, messageRows, books] = await Promise.all([
     db
       .prepare(
         `SELECT ${DOC_COLUMNS}, p.booked_on AS paid_on, p.amount_cents AS paid_cents FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
@@ -142,11 +152,27 @@ export async function exportYear(
       )
       .bind(company.id, year)
       .all<{ created_at: number; side: string; author_name: string | null; body: string }>(),
+    booksOf(db, company),
   ])
+  // The books of the year, when they hold anything in it.
+  const bookYear = Number(year)
+  const hasBooks = books.entries.some((e) => e.on.startsWith(`${year}-`))
 
   // Names first, so that the lists name each file as it stands in the archive.
   const taken = new Set<string>()
-  for (const fixed of ['citajte.txt', 'doklady.csv', 'platby.csv', 'faktury.csv', 'spravy.txt', 'zmluva.txt']) taken.add(fixed)
+  for (const fixed of [
+    'citajte.txt',
+    'doklady.csv',
+    'platby.csv',
+    'faktury.csv',
+    'spravy.txt',
+    'zmluva.txt',
+    'uctovnictvo/dennik.csv',
+    'uctovnictvo/hlavna-kniha.csv',
+    'uctovnictvo/predvaha.csv',
+    'uctovnictvo/saldokonto.csv',
+  ])
+    taken.add(fixed)
   const docs = docRows.results.map((row) => {
     const d: Doc = docOf(row)
     const day = d.issuedOn ?? bratislava(d.createdAt * 1000).day
@@ -253,11 +279,17 @@ export async function exportYear(
   const at = Math.floor(Date.now() / 1000)
   const files = env.FILES
   async function* entries(): AsyncGenerator<ZipEntry> {
-    yield { name: 'citajte.txt', when: at, data: text(readme(company, year, { invoices: invoices.length > 0, messages: messageRows.results.length > 0 }, today)) }
+    yield { name: 'citajte.txt', when: at, data: text(readme(company, year, { invoices: invoices.length > 0, messages: messageRows.results.length > 0, books: hasBooks }, today)) }
     yield { name: 'doklady.csv', when: at, data: text(docsCsv) }
     yield { name: 'platby.csv', when: at, data: text(paymentsCsv) }
     if (invoices.length > 0) yield { name: 'faktury.csv', when: at, data: text(invoicesCsv) }
     if (messageRows.results.length > 0) yield { name: 'spravy.txt', when: at, data: text(messagesText) }
+    if (hasBooks) {
+      yield { name: 'uctovnictvo/dennik.csv', when: at, data: text(journalCsv(books, bookYear)) }
+      yield { name: 'uctovnictvo/hlavna-kniha.csv', when: at, data: text(generalLedgerCsv(books, bookYear)) }
+      yield { name: 'uctovnictvo/predvaha.csv', when: at, data: text(trialCsv(trialBalance(books, bookYear, 12))) }
+      yield { name: 'uctovnictvo/saldokonto.csv', when: at, data: text(saldoCsv(books, bratislava(Date.now()).day)) }
+    }
     yield { name: 'zmluva.txt', when: at, data: text(contractText(company, order)) }
     for (const { invoice, file } of invoiceFiles) {
       yield { name: file, when: invoice.createdAt, data: async () => encoder.encode(ublOf(invoice, await invoiceLines(db, invoice.id), company)) }

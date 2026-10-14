@@ -200,7 +200,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 3)
+check('health says the schema', (await res.json()).schema === 4)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -2283,6 +2283,236 @@ check(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The books: the trial balance with what keeps it from being whole, the journal, an account, the open items, the
+// account of a payment without a document, internal documents numbered for good, the opening balances, the files
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/ /g, ' ')
+  const today = day(0)
+  const y = today.slice(0, 4)
+  const m = Number(today.slice(5, 7))
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, start_on, icdph) VALUES ('co-l', ?, 'Kniha s. r. o.', '50999991', 'Hlavná 9, 040 01 Košice', 1, 'rast', 'kniha001', ?, ?, 'SK2120999991')",
+      )
+      .bind(nowS, lucia?.id ?? '', `${y}-01-01`),
+    db
+      .prepare("INSERT INTO accounts (id, company_id, iban, ledger, balance_cents, balance_on) VALUES ('acc-l', 'co-l', 'SK6809000000000999999991', '221.001', ?, ?)")
+      .bind(-12300 - 450 - 3300 - 2000, today),
+    db
+      .prepare(
+        "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pl-1', 'co-l', 'acc-l', ?, ?, -12300, 'Dodávateľ s. r. o.', '7001', 'l1'), ('pl-fee', 'co-l', 'acc-l', ?, ?, -450, NULL, NULL, 'l2'), ('pl-state', 'co-l', 'acc-l', ?, ?, -3300, 'Finančná správa SR', '1700000000', 'l3'), ('pl-miss', 'co-l', 'acc-l', ?, ?, -2000, 'Niekto', NULL, 'l4')",
+      )
+      .bind(nowS, today, nowS, today, nowS, today, nowS, today),
+    db.prepare("UPDATE payments SET exempt = 'bank', note = 'Poplatok za vedenie účtu' WHERE id = 'pl-fee'"),
+    db.prepare("UPDATE payments SET exempt = 'state', exempt_note = 'správny poplatok' WHERE id = 'pl-state'"),
+    db
+      .prepare(
+        "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_ico, party_vat_id, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, vat_deduct, booked_at, booked_by) VALUES ('dl-in', 'co-l', ?, 'email', 'read', 'test', 'invoice_in', 'Dodávateľ s. r. o.', '36123456', 'SK2020123456', 'FA-L1', '7001', ?, ?, 12300, 2300, 'EUR', 'services', 1, ?, ?)",
+      )
+      .bind(nowS, today, today, nowS, lucia?.id ?? ''),
+    db
+      .prepare(
+        "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_ico, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, booked_at, booked_by) VALUES ('dl-out', 'co-l', ?, 'issued', 'read', 'test', 'invoice_out', 'Odberateľ s. r. o.', '12345679', '2026L01', '2026L01', ?, ?, 36900, 6900, 'EUR', 'sales', ?, ?)",
+      )
+      .bind(nowS, today, today, nowS, lucia?.id ?? ''),
+    db.prepare("INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, total_cents) VALUES ('dl-wait', 'co-l', ?, 'upload', 'read', 'test', 'receipt', 990)").bind(nowS),
+    db.prepare("INSERT INTO links (document_id, payment_id, company_id, how, created_at) VALUES ('dl-in', 'pl-1', 'co-l', 'auto', ?)").bind(nowS),
+  ])
+
+  res = await anna.get('/ucto/klienti/co-l/kniha')
+  check('a client gets nothing of the books', res.status === 404)
+  res = await acc.get('/ucto/klienti/co-l/kniha')
+  page = plain(await res.text())
+  check(
+    'the trial balance: the accounts by class, VAT on its analytic accounts, the result',
+    res.status === 200 &&
+      page.includes('Obratová predvaha') &&
+      page.includes('Trieda 3: Zúčtovacie vzťahy') &&
+      page.includes('343.100') &&
+      page.includes('343.200') &&
+      page.includes('221.001') &&
+      page.includes('Zisk') &&
+      page.includes('Obraty MD a D sa zhodujú'),
+  )
+  check(
+    'and what keeps the books from being whole, each with the way to it',
+    page.includes('1 doklad čaká na zaúčtovanie.') &&
+      page.includes('1 platbe bez dokladu treba dať účet.') &&
+      page.includes('Klient ešte neposlal doklad k 1 platbe.') &&
+      page.includes('/ucto/klienti/co-l/kniha/platby'),
+  )
+  check(
+    'the bank against the books: what is not booked yet explains the difference',
+    page.includes('Banka a kniha') && page.includes('Platby, ktoré ešte nie sú v knihe') && page.includes('−53,00 €') && page.includes('Kniha sa s bankou zhoduje.'),
+    page.match(/Banka a kniha[\s\S]{0,600}/)?.[0],
+  )
+  res = await acc.get(`/ucto/klienti/co-l/kniha/dennik?rok=${y}&mesiac=${m}`)
+  page = plain(await res.text())
+  check(
+    'the journal of the month: the invoice with its VAT, its payment against the bank, the bank fee',
+    res.status === 200 &&
+      page.includes('FA-L1') &&
+      page.includes('Úhrada: Dodávateľ s. r. o. (FA-L1)') &&
+      page.includes('Banka: Poplatok za vedenie účtu') &&
+      page.includes('568') &&
+      page.includes('VBÚ 221.001'),
+  )
+  res = await acc.get(`/ucto/klienti/co-l/kniha/ucet/321?rok=${y}&mesiac=${m}`)
+  page = plain(await res.text())
+  check('an account and its movements', res.status === 200 && page.includes('Účet 321') && page.includes('Dodávatelia') && page.includes('Počiatočný stav') && page.includes('123,00'))
+  res = await acc.get('/ucto/klienti/co-l/kniha/ucet/912')
+  check('no account outside the chart', res.status === 404)
+  res = await acc.get('/ucto/klienti/co-l/kniha/saldokonto')
+  page = plain(await res.text())
+  check('the open items: the issued invoice waits, the received one is paid', res.status === 200 && page.includes('2026L01') && page.includes('369,00') && !page.includes('FA-L1'))
+
+  // The account of a payment without a document: refused when it is no account, or the bank's own; given, it books
+  res = await acc.post('/ucto/klienti/co-l/kniha/platby/pl-state', { ucet: '221.001' })
+  page = plain(await res.text())
+  check('the bank account cannot be the other side of a bank payment', res.status === 422 && page.includes('Bankový účet 221 tu byť nemôže.') && page.includes('value="221.001"'))
+  res = await acc.post('/ucto/klienti/co-l/kniha/platby/pl-state', { ucet: 'x1' })
+  check('nor what is no account', res.status === 422)
+  res = await acc.post('/ucto/klienti/co-l/kniha/platby/pl-state', { ucet: '538' })
+  check(
+    'an account given: saved, on record, and the payment is in the books',
+    res.status === 303 &&
+      (await db.prepare("SELECT contra FROM payments WHERE id = 'pl-state'").first())?.contra === '538' &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'ledger.contra' AND subject = 'pl-state'").first())?.n === 1,
+  )
+  res = await acc.get('/ucto/klienti/co-l/kniha')
+  page = plain(await res.text())
+  check('and nothing waits for an account any more', !page.includes('treba dať účet') && page.includes('538'))
+  res = await acc.get(`/ucto/klienti/co-l/kniha/platby?rok=${y}`)
+  page = plain(await res.text())
+  check('the payments without a document, with their accounts', res.status === 200 && page.includes('Váš 538') && page.includes('568, podľa dôvodu') && !page.includes('Niekto'))
+  res = await acc.post('/ucto/klienti/co-b/kniha/platby/pb-1', { ucet: '518' })
+  check("an accountant cannot touch another accountant's client", res.status === 404)
+  res = await acc.post('/ucto/klienti/co-l/kniha/platby/pb-1', { ucet: '518' })
+  check("nor give an account to another company's payment through her own", res.status === 404 && (await db.prepare("SELECT contra FROM payments WHERE id = 'pb-1'").first())?.contra === null)
+
+  // Internal documents: numbered in the company's year, the number never given twice
+  const internal = (extra) => acc.post('/ucto/klienti/co-l/kniha/interne', { datum: skDay(today), text: 'Časové rozlíšenie nájmu', md_0: '381', d_0: '518', suma_0: '40', ...extra })
+  res = await internal({ text: '', md_0: '518' })
+  page = plain(await res.text())
+  check('an internal document with mistakes says each', res.status === 422 && page.includes('Napíšte, čo zápis je.') && page.includes('MD a D sú ten istý účet.'))
+  res = await internal({ datum: '31. 2. 2026' })
+  check('and a day that is none', res.status === 422 && plain(await res.text()).includes('Zadajte dátum'))
+  await internal({})
+  await internal({ text: 'Druhý zápis', md_0: '548', d_0: '325', suma_0: '1 200,50' })
+  const numbers = (await db.prepare("SELECT id, number FROM ledger_entries WHERE company_id = 'co-l' AND kind = 'internal' ORDER BY seq").all()).results
+  check('numbered in a row', numbers.map((r) => r.number).join() === `ID-${y}-001,ID-${y}-002`, numbers.map((r) => r.number).join())
+  // The newest one removed: the next still takes a number of its own, never the one removed.
+  res = await acc.post(`/ucto/klienti/co-l/kniha/interne/${numbers[1]?.id}/odstranit`, {})
+  await internal({ text: 'Tretí zápis' })
+  const after = (await db.prepare("SELECT number, deleted_at FROM ledger_entries WHERE company_id = 'co-l' AND kind = 'internal' ORDER BY seq").all()).results
+  check(
+    'one removed keeps its number, and the next takes a new one',
+    after.length === 3 && after[1].deleted_at !== null && after[2].number === `ID-${y}-003` && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'ledger.removed'").first())?.n === 1,
+    JSON.stringify(after),
+  )
+  res = await acc.get('/ucto/klienti/co-l/kniha/interne')
+  page = plain(await res.text())
+  check(
+    'the internal documents that stand, with who wrote them',
+    page.includes(`ID-${y}-001`) && page.includes(`ID-${y}-003`) && !page.includes(`ID-${y}-002`) && page.includes('zapísala Lucia Horváthová'),
+  )
+  res = await acc.post(`/ucto/klienti/co-a/kniha/interne/${numbers[0]?.id}/odstranit`, {})
+  check(
+    "an internal document is removed only from its own company's books",
+    res.status === 404 &&
+      (
+        await db
+          .prepare('SELECT deleted_at FROM ledger_entries WHERE id = ?')
+          .bind(numbers[0]?.id ?? '')
+          .first()
+      )?.deleted_at === null,
+  )
+  res = await acc.get(`/ucto/klienti/co-l/kniha/ucet/381?rok=${y}&mesiac=${m}`)
+  page = plain(await res.text())
+  check('internal documents are in the books', page.includes('Tretí zápis') && page.includes('Časové rozlíšenie nájmu'))
+  res = await acc.get(`/ucto/klienti/co-l/kniha/ucet/325?rok=${y}&mesiac=${m}`)
+  check('and one removed is not', !plain(await res.text()).includes('Druhý zápis'))
+
+  // The opening balances: against 701, both sides the same, written anew as a whole
+  const opening = (extra) =>
+    acc.post('/ucto/klienti/co-l/kniha/pociatocne', {
+      datum: `1. 1. ${y}`,
+      ucet_0: '221.001',
+      md_0: '100',
+      d_0: '',
+      ucet_1: '411',
+      md_1: '',
+      d_1: '5 000',
+      ucet_2: '353',
+      md_2: '4 900',
+      d_2: '',
+      ...extra,
+    })
+  res = await opening({ md_2: '4 800' })
+  page = plain(await res.text())
+  check('opening balances whose sides differ are refused', res.status === 422 && page.includes('Strany nesedia: MD 4 900,00 €, D 5 000,00 €.'))
+  res = await opening({ ucet_2: '701' })
+  check('and the closing accounts are not among them', res.status === 422 && plain(await res.text()).includes('Účty triedy 7 sem nepatria.'))
+  res = await opening({})
+  const stand = async () => (await db.prepare("SELECT lines FROM ledger_entries WHERE company_id = 'co-l' AND kind = 'opening' AND deleted_at IS NULL").all()).results
+  check('saved, each line against 701', res.status === 303 && (await stand()).length === 1 && JSON.parse((await stand())[0].lines).every((l) => l.md === '701' || l.d === '701'))
+  res = await opening({ md_0: '200', md_2: '4 800' })
+  check('written again, the new ones stand alone', res.status === 303 && (await stand()).length === 1 && (await stand())[0].lines.includes('"cents":20000'))
+  const openingId = (await db.prepare("SELECT id FROM ledger_entries WHERE company_id = 'co-l' AND kind = 'opening' AND deleted_at IS NULL").first())?.id
+  res = await acc.post(`/ucto/klienti/co-l/kniha/interne/${openingId}/odstranit`, {})
+  check('the opening balances are not removed as an internal document', res.status === 404 && (await stand()).length === 1)
+  res = await acc.get('/ucto/klienti/co-l/kniha/pociatocne')
+  page = plain(await res.text())
+  check('and the form shows them as they stand', page.includes('value="221.001"') && page.includes('value="200,00"') && page.includes('MD spolu 5 000,00 €, D spolu 5 000,00 €'))
+  res = await acc.get(`/ucto/klienti/co-l/kniha?rok=${y}&mesiac=${m}`)
+  page = plain(await res.text())
+  check(
+    'the opening balances stand as the opening of the year',
+    page.includes('Počiatočný stav') && page.includes('5 000,00<span class="lside">D</span>') && page.includes('4 800,00<span class="lside">MD</span>'),
+  )
+
+  // The files
+  res = await acc.get(`/ucto/klienti/co-l/kniha/dennik.csv?rok=${y}`)
+  const bytes = new Uint8Array(await res.arrayBuffer())
+  let csv = new TextDecoder().decode(bytes)
+  check(
+    'the journal as a file for Slovak Excel',
+    res.status === 200 &&
+      (res.headers.get('content-type') ?? '').startsWith('text/csv') &&
+      bytes[0] === 0xef &&
+      bytes[1] === 0xbb &&
+      bytes[2] === 0xbf &&
+      csv.startsWith('Dátum;Doklad;Text;MD;D;Suma;Zdroj') &&
+      csv.includes(';FA-L1;') &&
+      csv.includes(';221.001;'),
+    csv.slice(0, 200),
+  )
+  res = await acc.get(`/ucto/klienti/co-l/kniha/predvaha.csv?rok=${y}&mesiac=${m}`)
+  csv = plain(await res.text())
+  check('the trial balance as a file', res.status === 200 && csv.includes('Účet;Názov účtu;Počiatočný stav') && csv.includes('343.100;DPH na vstupe (odpočet)'))
+  res = await acc.get(`/ucto/klienti/co-l/kniha/hlavna-kniha.csv?rok=${y}`)
+  check('the general ledger as a file', res.status === 200 && plain(await res.text()).includes('Spolu a konečný stav'))
+  res = await acc.get('/ucto/klienti/co-l/kniha/saldokonto.csv')
+  check('the open items as a file', res.status === 200 && plain(await res.text()).includes('311;2026L01;Odberateľ s. r. o.'))
+  res = await acc.get('/ucto/klienti/co-l/kniha/ine.csv')
+  check('and no other file', res.status === 404)
+
+  // The client page says where the books stand; the booking form shows the entry as the books hold it
+  res = await acc.get('/ucto/klienti/co-l')
+  page = plain(await res.text())
+  check('the client page has the books in short', page.includes('Účtovná kniha') && page.includes(`za rok ${y} doteraz`) && page.includes('/ucto/klienti/co-l/kniha'))
+  res = await acc.get('/ucto/doklady/dl-in')
+  page = plain(await res.text())
+  check('the booking form shows the entry with the VAT account the books use', page.includes('343.100') && page.includes('321'), page.match(/entry__table[\s\S]{0,500}/)?.[0])
+
+  // Firma A gets an internal document of this year, so that its download below holds the books.
+  res = await acc.post('/ucto/klienti/co-a/kniha/interne', { datum: skDay(today), text: 'Zápis do knihy', md_0: '548', d_0: '325', suma_0: '1' })
+  check("Firma A's books take an internal document", res.status === 303)
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // The order: a request for a company the register knows as an s. r. o. becomes a contract concluded online by a
 // director the register names (Zelený dvor s. r. o.: two directors in office, one whose office ended).
 // ---------------------------------------------------------------------------------------------------------------
@@ -2620,6 +2850,13 @@ check(
   archive.filter((f) => f.name.startsWith('doklady/')).every((f) => text(named('doklady.csv')).includes(f.name)),
 )
 check('the contract is in it with its terms', text(named('zmluva.txt')).includes('Firma A s. r. o.') && text(named('zmluva.txt')).includes('10.4 '))
+check(
+  'and the books of the year: the journal, the general ledger, the trial balance, the open items',
+  ['uctovnictvo/dennik.csv', 'uctovnictvo/hlavna-kniha.csv', 'uctovnictvo/predvaha.csv', 'uctovnictvo/saldokonto.csv'].every((n) => bom(named(n))) &&
+    text(named('uctovnictvo/dennik.csv')).includes('Zápis do knihy') &&
+    text(named('citajte.txt')).includes('uctovnictvo/dennik.csv'),
+  archive?.map((f) => f.name).join(' | '),
+)
 const ownFiles = await db
   .prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a' AND deleted_at IS NULL AND file_key IS NOT NULL AND substr(COALESCE(issued_on, date(created_at, 'unixepoch')), 1, 4) = ?")
   .bind(year)
@@ -2673,10 +2910,10 @@ const leftover = await db
     `SELECT (SELECT COUNT(*) FROM documents WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payments WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM messages WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
-       + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL) AS n`,
+       + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL) AS n`,
   )
   .first()
-check('documents, payments, messages, invoices, accounts, people, the handover and the VAT filed are gone', leftover?.n === 0, JSON.stringify(leftover))
+check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed and the books are gone', leftover?.n === 0, JSON.stringify(leftover))
 const objects = await files.list({ prefix: 'companies/co-a/' })
 check(
   'and so are their files, all but the power of attorney',

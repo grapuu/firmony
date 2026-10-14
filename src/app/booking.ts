@@ -1,24 +1,11 @@
 // How a document is booked: what it is for (a category), the account that category goes to in the Slovak chart of
 // accounts, and the entry the accountant is offered. The client never sees any of this; the accountant always
-// confirms it. The ledger itself is kept in her certified program: what she confirms here is exported to it.
+// confirms it. The books themselves (the journal, every account, the trial balance) are worked out from what she
+// confirms by ledger.ts, with this same entry.
 import { nameWords } from './match'
 import type { DocKind } from './match'
 
-export type Category =
-  | 'material'
-  | 'fuel'
-  | 'energy'
-  | 'goods'
-  | 'repairs'
-  | 'travel'
-  | 'representation'
-  | 'services'
-  | 'fees'
-  | 'insurance'
-  | 'bank'
-  | 'asset'
-  | 'sales'
-  | 'sales_goods'
+export type Category = 'material' | 'fuel' | 'energy' | 'goods' | 'repairs' | 'travel' | 'representation' | 'services' | 'fees' | 'insurance' | 'bank' | 'asset' | 'sales' | 'sales_goods'
 
 export interface CategoryInfo {
   /** As the accountant reads it. */
@@ -92,8 +79,10 @@ export function entryFor(args: {
   paidBy: PaidBy
   /** An account the accountant chose instead of the category's. */
   account?: string | null
-  /** VAT the company pays itself on what it bought from abroad, and whether it deducts it. */
-  selfVat?: { cents: number; deduct: boolean } | null
+  /** VAT the company pays itself on what it bought from abroad, and whether it deducts it (all of it, or `deductCents`). */
+  selfVat?: { cents: number; deduct: boolean; deductCents?: number } | null
+  /** The account that paid a receipt, when the books know it better than `paidBy` (the bank account's analytic, or money in transit). */
+  contra?: string | null
 }): EntryLine[] {
   const { kind, category, totalCents, vatPayer, paidBy } = args
   if (!kind || kind === 'other' || !category || totalCents === null || totalCents <= 0) return []
@@ -110,7 +99,7 @@ export function entryFor(args: {
       : [{ md: '311', d: info.account, cents: totalCents, what: 'revenue' }]
   }
   if (info.revenue) return []
-  const contra = kind === 'invoice_in' ? '321' : paidBy === 'private' ? '365' : paidBy === 'cash' ? '211' : '221'
+  const contra = kind === 'invoice_in' ? '321' : (args.contra ?? (paidBy === 'private' ? '365' : paidBy === 'cash' ? '211' : '221'))
   const split = vatPayer && args.vatDeduct && vat > 0
   const lines: EntryLine[] = split
     ? [
@@ -119,7 +108,12 @@ export function entryFor(args: {
       ]
     : [{ md: info.account, d: contra, cents: totalCents, what: 'cost' }]
   const self = args.selfVat
-  if (self && self.cents > 0) lines.push(self.deduct ? { md: '343', d: '343', cents: self.cents, what: 'vat' } : { md: info.account, d: '343', cents: self.cents, what: 'cost' })
+  if (self && self.cents > 0) {
+    // Deducted, the VAT is the company's claim on the state against what it owes; not deducted, it is part of the cost.
+    const deducted = self.deduct ? Math.max(0, Math.min(self.cents, self.deductCents ?? self.cents)) : 0
+    if (deducted > 0) lines.push({ md: '343', d: '343', cents: deducted, what: 'vat' })
+    if (self.cents - deducted > 0) lines.push({ md: info.account, d: '343', cents: self.cents - deducted, what: 'cost' })
+  }
   return lines
 }
 

@@ -1,7 +1,7 @@
 // The client's app in the database. Every read and every change names the company it belongs to, so nobody
 // reaches another company's payments or documents by guessing an id. Whether a payment still needs a document
 // is read from links and exempt every time and never stored on its own.
-import { now } from '../db'
+import { NEXT_BANK_LEDGER, now } from '../db'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
 import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
@@ -83,6 +83,10 @@ export interface Payment {
   exemptByName: string | null
   checkedAt: number | null
   accountIban: string
+  /** The bank account's analytic account in the books (221.001). */
+  bankLedger: string
+  /** The account the accountant gave a payment that has no document to book it by. */
+  contra: string | null
   docs: number
   state: PaymentState
 }
@@ -199,7 +203,7 @@ export async function getCompany(db: D1Database, id: string): Promise<Company | 
 }
 
 const PAYMENT_COLUMNS = `p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.ss, p.ks, p.note, p.card, p.source,
-  p.exempt, p.exempt_note, p.exempt_by, eb.name AS exempt_by_name, p.checked_at, a.iban AS account_iban,
+  p.exempt, p.exempt_note, p.exempt_by, eb.name AS exempt_by_name, p.checked_at, a.iban AS account_iban, a.ledger AS bank_ledger, p.contra,
   (SELECT COUNT(*) FROM links l WHERE l.payment_id = p.id) AS docs`
 const PAYMENT_FROM = 'payments p JOIN accounts a ON a.id = p.account_id LEFT JOIN users eb ON eb.id = p.exempt_by'
 
@@ -228,6 +232,8 @@ function paymentOf(row: Row): Payment {
     exemptByName: str(row.exempt_by_name),
     checkedAt: num(row.checked_at),
     accountIban: String(row.account_iban ?? ''),
+    bankLedger: str(row.bank_ledger) ?? '221',
+    contra: str(row.contra),
     docs,
     state: exempt ? 'exempt' : docs > 0 ? 'done' : 'missing',
   }
@@ -831,9 +837,10 @@ export interface Imported {
 
 /** The company's account of an IBAN, made when it is first seen. */
 export async function accountFor(db: D1Database, company: string, iban: string, extra: { bank?: string | null; link?: string | null; remote?: string | null } = {}): Promise<string | null> {
+  // A new account takes the next analytic account of the company's bank accounts (221.001 ...), for good.
   await db
-    .prepare('INSERT OR IGNORE INTO accounts (id, company_id, iban, bank, link_id, remote_id) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), company, iban, extra.bank ?? null, extra.link ?? null, extra.remote ?? null)
+    .prepare(`INSERT OR IGNORE INTO accounts (id, company_id, iban, bank, link_id, remote_id, ledger) VALUES (?2, ?1, ?3, ?4, ?5, ?6, ${NEXT_BANK_LEDGER})`)
+    .bind(company, crypto.randomUUID(), iban, extra.bank ?? null, extra.link ?? null, extra.remote ?? null)
     .run()
   if (extra.link || extra.remote || extra.bank) {
     await db

@@ -147,7 +147,7 @@ function kvOf(json: unknown): FiledKv | null {
   }
 }
 
-function rowsOf(json: unknown): Rows {
+export function rowsOf(json: unknown): Rows {
   const rows = emptyRows()
   if (typeof json !== 'string') return rows
   try {
@@ -596,8 +596,9 @@ export const leftToPay = (company: Pick<Company, 'vatStatus'>, ret: Pick<FiledRe
 export const overpaid = (company: Pick<Company, 'vatStatus'>, ret: Pick<FiledReturn, 'payCents'>, paid: TaxPaid | undefined): number => Math.max(0, (paid?.cents ?? 0) - payable(company, ret))
 
 /** The VAT a company pays itself on a document it bought from abroad (§ 69, § 11), as confirmed or proposed, for its entry. */
-export function selfVatOf(data: VatData | null | undefined): { cents: number; deduct: boolean } | null {
+export function selfVatOf(data: VatData | null | undefined): { cents: number; deduct: boolean; deductCents: number } | null {
   if (!data || (data.mode !== 'reverse' && data.mode !== 'acquisition')) return null
   const cents = data.lines.reduce((sum, line) => sum + line.vat, 0)
-  return cents > 0 ? { cents, deduct: data.lines.some((line) => line.deduct > 0) } : null
+  const deductCents = data.lines.reduce((sum, line) => sum + line.deduct, 0)
+  return cents > 0 ? { cents, deduct: deductCents > 0, deductCents } : null
 }
