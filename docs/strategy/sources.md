@@ -39,11 +39,11 @@ Kontrola všetkých URL: **15. 10. 2026**. „V“ znamená vysokú istotu, že 
 | F3 | [Dougs FAQ](https://www.dougs.fr/faq/) | V: vysvetlenie služby |
 | F4 | [Dougs CGU](https://www.dougs.fr/cgu/) | V: oddelenie softvéru a odbornej zodpovednosti podľa lettre de mission |
 | F5 | [Dougs prechod](https://www.dougs.fr/blog/changer-de-comptable-au-moment-du-bilan/) | V: postup a zmluvné súvislosti prechodu |
-| P1 | [Pennylane FR](https://www.pennylane.com/fr) | V: francúzska produktová ponuka |
-| P2 | [Pennylane ceny](https://www.pennylane.com/fr/tarifs/small) | V: segment, používatelia, faktúry a funkčné rozdiely balíkov |
-| P3 | [Pennylane FAQ](https://www.pennylane.com/fr/faq) | V: vlastný alebo partnerský expert-comptable |
-| P4 | [Pennylane onboarding](https://help.pennylane.com/fr/articles/44776-parametrer-son-compte-pennylane) | V: nastavenie účtu, dokladov a spolupráce |
-| P5 | [Pennylane bankové chyby](https://help.pennylane.com/fr/articles/18855-gerer-et-resoudre-les-problemes-de-connexion-bancaire) | V: obnova spojenia; nie bezpodmienečné realtime |
+| PN1 | [Pennylane FR](https://www.pennylane.com/fr) | V: francúzska produktová ponuka |
+| PN2 | [Pennylane ceny](https://www.pennylane.com/fr/tarifs/small) | V: segment, používatelia, faktúry a funkčné rozdiely balíkov |
+| PN3 | [Pennylane FAQ](https://www.pennylane.com/fr/faq) | V: vlastný alebo partnerský expert-comptable |
+| PN4 | [Pennylane onboarding](https://help.pennylane.com/fr/articles/44776-parametrer-son-compte-pennylane) | V: nastavenie účtu, dokladov a spolupráce |
+| PN5 | [Pennylane bankové chyby](https://help.pennylane.com/fr/articles/18855-gerer-et-resoudre-les-problemes-de-connexion-bancaire) | V: obnova spojenia; nie bezpodmienečné realtime |
 | I1 | [Indy](https://www.indy.fr/) | V: segment nezávislých podnikateľov |
 | I2 | [Indy ceny](https://www.indy.fr/prix/) | V: rozdelenie plánov podľa právnej formy a rozsahu |
 | I3 | [Indy odborník](https://www.indy.fr/expert-comptable/) | V: partnerský expert ako rozšírenie Premium, zmluva o misii |

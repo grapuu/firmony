@@ -214,14 +214,14 @@ Poradie oblastí je jednotné: 1 segment; 2 prísľub; 3 služba; 4 onboarding/U
 | 13 | Osobitný postup zmeny odborníka a výpovede F5. |
 | 14 | Produktizovaná odborná služba a distribúcia cez založenie firmy; FR legislatívu neprenášať do SK. |
 
-### Pennylane — P1–P5, Francúzsko
+### Pennylane — PN1–PN5, Francúzsko
 
 | Oblasť | Zistenie |
 |---|---|
 | 1 | Podnikatelia, finančné tímy, účtovné kancelárie. |
 | 2 | Spoločné finančné údaje a spolupráca. |
 | 3 | Platforma; vlastný alebo partnerský odborník podľa samostatného vzťahu. |
-| 4 | Nastavenie účtu, banky, fakturácie a spolupracovníkov P4. |
+| 4 | Nastavenie účtu, banky, fakturácie a spolupracovníkov PN4. |
 | 5 | Pripojenie účtov, dodanie podkladov a výnimky. |
 | 6 | OCR, banky, pravidlá, revízne moduly podľa plánu. |
 | 7 | Platby a účtovné moduly; funkcie podaní nie sú dôkazom osobnej služby vo všetkých plánoch. |
@@ -230,7 +230,7 @@ Poradie oblastí je jednotné: 1 segment; 2 prísľub; 3 služba; 4 onboarding/U
 | 10 | Presné zodpovednostné ustanovenia partnerovej misie N. |
 | 11 | Verejné prípadové referencie; nezávislá kvalita N. |
 | 12 | Odborné partnerstvá, obsah, vzdelávanie a integrátori. |
-| 13 | Pomoc s importom a bankovým spojením; obnovovanie súhlasu je reálna súčasť toku P5. |
+| 13 | Pomoc s importom a bankovým spojením; obnovovanie súhlasu je reálna súčasť toku PN5. |
 | 14 | Kolaborácia a finančný ekosystém; Firmony nemá takú šírku, ani ju pred pilotom nepotrebuje. |
 
 ### Indy — I1–I4, Francúzsko
