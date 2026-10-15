@@ -176,11 +176,16 @@ try {
     Boolean(await page.locator('[data-auth-error]').count()) &&
       !(await db.prepare("SELECT id FROM users WHERE email = 'unverified-change@example.test'").first()),
   )
+  // The rejected POST already has the target URL. Wait for the signed response and the actual work form,
+  // so that a URL-only wait cannot succeed before re-verification or cancel the in-flight request.
+  const verification = page.waitForResponse((r) => new URL(r.url()).pathname === '/auth/verify' && r.request().method() === 'POST')
   await page.locator('form[data-passkey="authenticate"] button').click()
-  await page.waitForURL(`${origin}/ucto/tim`)
+  const verifiedResponse = await verification
+  await page.locator('form[action="/ucto/tim"]').waitFor({ state: 'visible' })
+  const fresh = await db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = 'browser-admin' AND verified_at > ?").bind(Math.floor(Date.now() / 1000) - 30).first()
   check(
     'successful re-verification returns to the safe work page',
-    new URL(page.url()).pathname === '/ucto/tim' && !(await db.prepare("SELECT id FROM users WHERE email = 'unverified-change@example.test'").first()),
+    verifiedResponse.status() === 200 && fresh.n === 1 && new URL(page.url()).pathname === '/ucto/tim' && !(await db.prepare("SELECT id FROM users WHERE email = 'unverified-change@example.test'").first()),
   )
   check('the passkey client has no uncaught browser errors', errors.length === 0)
   await mkdir('.wrangler/screens', { recursive: true })

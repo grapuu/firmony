@@ -25,14 +25,13 @@ Schema steps **16–17** add UV passkeys, controlled provisioning/recovery, inci
   checks hashes/foreign keys/contracts/holds, rejects corruption and disables restored bearer credentials.
   It uses quiescent synthetic data. Production backup, independent evidence archive, live-provider recovery,
   staffing and measured production RPO/RTO remain unverified. Business readiness stays UNKNOWN/NO-GO.
-- Verification at `b3d14a5a`: native TypeScript 7, **699 unit / 934 workerd / 7 Chrome WebAuthn checks**,
-  and **54 layouts** passed [CI](https://github.com/grapuu/firmony/actions/runs/38780273340).
-  The downloaded 55-image artifact matched SHA-256
-  `2d0fab5be7a299f92a7068189ec52b1859111324ebe24def6af75a91c909c725`; reviewed desktop and narrow screens.
-  A further retention fix adds ordinary-attachment races, portable retired-file data and revoked-owner coverage;
-  all **944 workerd checks** passed locally after those changes. The final head receives the same complete CI
-  plus three handover-retirement layouts (57 total). New dependency audit reported zero advisories when checked.
-  No merge or production deployment.
+- Verification at `f201c33f`: native TypeScript 7, **699 unit / 944 workerd / 7 Chrome WebAuthn checks**,
+  and **57 layouts** passed [CI](https://github.com/grapuu/firmony/actions/runs/38782077416).
+  The downloaded 58-image artifact matched SHA-256
+  `85ae2576fd80a9afa14ac4ef69d60804ad51f4122fabb2c7eee615a033511017`; reviewed desktop and narrow screens,
+  including retired attachments and stacked incident facts. The browser test explicitly waits for the signed
+  re-verification response and resulting work form; the final head receives the same complete CI.
+  New dependency audit reported zero advisories when checked. No merge or production deployment.
 
 
 ## Responsibility, contract evidence and larger-client intake (Codex, 15 October 2026)
