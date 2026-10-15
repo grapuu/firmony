@@ -30,7 +30,7 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null; c
         <Heading first={p.title} second={p.serif} />
         <p class="phead__lead">{p.lead}</p>
       </header>
-      <p class={`notice ${contract.status === 'corrupt' ? 'notice--error' : ''}`} role="status">
+      <p class={`notice contract-status ${contract.status === 'snapshot' ? 'contract-status--saved' : contract.status === 'corrupt' ? 'notice--error' : ''}`} role="status">
         {contract.notice}
       </p>
       <div class="invoice">

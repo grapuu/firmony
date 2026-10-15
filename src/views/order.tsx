@@ -2,14 +2,13 @@
 // main points stand in a bordered table at the top (the way his contracts are made: what matters first, the rest in
 // the terms), and follow the plan and the month chosen below them without a script (`:has()` in app.css).
 import type { Child, FC } from 'hono/jsx'
-import { CLOSING_PRICE, PAYROLL_PRICE, PLANS } from '../config'
+import { BRAND, CLOSING_PRICE, PAYROLL_PRICE, PLANS } from '../config'
 import { copy } from '../copy'
 import { formatEur, typeset } from '../format'
 import { formatIco } from '../ico'
 import type { Order } from '../order'
 import type { ContractGate, ResolvedContract } from '../contracts'
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, longDate } from '../content/terms'
-import { BRAND } from '../config'
 
 const o = copy.order
 

@@ -32,6 +32,11 @@ SV and support work. Schema step **15** adds contract snapshots and append-only 
   New cases cover release validity, price/wording changes, tenant/role access, missing evidence, stale proposals,
   different plans, expiry, revocation races, duplicate acceptance, exact exports, missing archives and deliberate corruption.
   CI adds four actual contract/review captures to the existing seven at 1440/390/320 px (33 layouts).
+- The first exact-head CI passed native TypeScript 7, all 690/844 checks and all 33 layouts
+  ([run](https://github.com/grapuu/firmony/actions/runs/38732063245)). Its downloaded screenshot artifact matched
+  SHA-256 `a90b446ffbd86b78e60ce354eb7c579f5c9f77bce59064adcb96ee0d40967f63`. Visual review prompted a small
+  mobile improvement: contract facts stack label above value at narrow widths, and a verified stored record
+  uses a calm blue status rather than an amber warning. The final commit receives its own CI verification.
 - Removed the obsolete single-feature push trigger from CI; PRs and `main` remain checked. Prior PR heads were
   verified as ancestors of this cumulative base; branches/history are retained. The current PR is the review entry
   to `main`; merging and deployment remain the owner's separate decision.

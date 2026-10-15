@@ -6727,3 +6727,12 @@ select.field__input {
 
 /* The acceptance digest must wrap even on narrow screens and in print. */
 .contract__digest { overflow-wrap: anywhere; }
+
+.contract-status { margin-bottom: 16px; }
+.contract-status--saved { background: var(--blue-soft); color: var(--blue); }
+
+@media screen and (max-width: 600px) {
+  .contract__points { padding: 14px; }
+  .contract .kv div { flex-direction: column; gap: 4px; }
+  .contract .kv dd { max-width: none; text-align: left; }
+}
