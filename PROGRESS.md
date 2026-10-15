@@ -35,6 +35,11 @@ external messages or advertising spend. The existing schema stays at step 14.
 - CI uses native TypeScript 7 and expands browser verification from four to seven real runtime captures at
   1440/390/320 px: monthly SV, transition, open/locked periods, home, waiting support and empty support.
   It checks overflow, unique IDs and page-specific controls; screenshots stay in the Actions artifact.
+- The first exact-head CI passed all 675/808 checks, native TypeScript 7 and all 21 layouts
+  ([run](https://github.com/grapuu/firmony/actions/runs/38726782077)). Its downloaded screenshot archive matched
+  the published SHA-256 digest. Visual review of the real desktop/mobile home and 320px support screen prompted
+  a final small polish: shorter queue instructions and a naturally wrapping deadline badge, rather than two
+  narrow text columns. The first-response clock still does not measure substantive resolution.
 
 The report of the session that continued Firmony from 14 October 2026 (15:17 Bratislava), milestone by milestone:
 what was built, what each rule leans on, which checks pass, what remains, and what a professional should read before

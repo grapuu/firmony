@@ -443,8 +443,8 @@ export const team = typesetAll({
   inbox: {
     title: 'Správy',
     serif: 'Bez odpovede.',
-    lead: 'Otázky čakajúce na osobnú odpoveď. Ďalšia správa klienta ani automatické oznámenie pôvodný čas čakania neposúvajú.',
-    target: 'Odpovedajte do rovnakého času nasledujúceho pracovného dňa. Čas sa počíta podľa Bratislavy; odpoveď ešte neznamená vyriešenie otázky.',
+    lead: 'Otázky bez osobnej odpovede. Ďalšia správa ani oznámenie čakanie neposúvajú.',
+    target: 'Odpoveď do nasledujúceho pracovného dňa v rovnakom čase v Bratislave.',
     empty: 'Všetkým klientom ste odpovedali.',
     waiting: (when: string) => typeset(`Čaká od ${when}`),
     due: (when: string) => typeset(`Odpovedať do ${when}`),

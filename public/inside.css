@@ -473,6 +473,7 @@
 }
 
 .support-row .row__end .pill {
+  display: block;
   min-width: 0;
   max-width: 100%;
   justify-content: flex-start;
