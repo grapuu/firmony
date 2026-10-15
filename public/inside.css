@@ -464,6 +464,26 @@
   justify-content: center;
 }
 
+.support-row .row__end {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  max-width: 21rem;
+}
+
+.support-row .row__end .pill {
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.support-row .row__sub {
+  overflow-wrap: anywhere;
+}
+
 /* Prehľad --------------------------------------------------------------------------------------------------- */
 
 .over {

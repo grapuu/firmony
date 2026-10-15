@@ -13,3 +13,4 @@ export { insertPaymentStatement, linkStatement, importEntries, matchCompany } fr
 export { localDaySql } from '../src/app/period-schema'
 export { purgeCompany } from '../src/app/purge'
 export { keepFilesFor } from '../src/app/intake'
+export { teamClients, waitingThreads, teamCounts } from '../src/team/store'

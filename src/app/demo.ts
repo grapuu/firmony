@@ -988,6 +988,7 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
       payment: null,
       body: 'Áno, stačí ju preposlať na Vašu adresu pre doklady. K platbe ju priradíme sami. Túto už máme.',
     }),
+    eventStatement(db, { company: c1, user: DEMO.accountant, action: 'message.answered', subject: 'demo-msg-3' }),
     db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = ? AND id IN ('demo-msg-1', 'demo-msg-2')").bind(ts, c1),
     messageStatement(db, {
       id: 'demo-msg-21',

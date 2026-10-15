@@ -443,9 +443,14 @@ export const team = typesetAll({
   inbox: {
     title: 'Správy',
     serif: 'Bez odpovede.',
-    lead: 'Klienti, ktorých posledná správa čaká na Vašu odpoveď. Sľubujeme odpoveď do jedného pracovného dňa.',
+    lead: 'Otázky čakajúce na osobnú odpoveď. Ďalšia správa klienta ani automatické oznámenie pôvodný čas čakania neposúvajú.',
+    target: 'Odpovedajte do rovnakého času nasledujúceho pracovného dňa. Čas sa počíta podľa Bratislavy; odpoveď ešte neznamená vyriešenie otázky.',
     empty: 'Všetkým klientom ste odpovedali.',
     waiting: (when: string) => typeset(`Čaká od ${when}`),
+    due: (when: string) => typeset(`Odpovedať do ${when}`),
+    late: 'Po termíne odpovede',
+    owner: (name: string | null) => typeset(name ? `Zodpovedá: ${name}` : 'Bez pridelenej účtovníčky · potrebuje prideliť'),
+    pending: (n: number) => typeset(`Bez odpovede: ${n}`),
   },
   requests: {
     title: 'Žiadosti z webu',

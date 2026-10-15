@@ -1,5 +1,41 @@
 # Firmony: progress of the continuation
 
+## Strategy and unanswered support (Codex, 15 October 2026)
+
+Branch `codex/firmony-strategy-and-service-quality`, based on PR #4 at
+`58f6520b7f1d190adfbce9bddea536633a9413db`. No merge, production deployment, destructive migration,
+external messages or advertising spend. The existing schema stays at step 14.
+
+- [Ten strategy documents](docs/strategy/README.md), a primary-source register and an explicit launch evidence
+  registry. They cover the actual capability map, 13 competitor/reference profiles across 14 dimensions,
+  the 16-step client journey, accounting scenario matrix, eFaktúra/provider design, customer research plan,
+  original positioning, channel experiments, economics without invented inputs, ranked implementation cards,
+  December gates and 20 failure scenarios. Proposed pilot/research numbers are plans, not existing clients.
+- Production is not proven. All ten critical launch gates remain UNKNOWN/NO-GO until real evidence is reviewed.
+  Local XML/mocks do not prove tax filing, live banking or Peppol delivery. Previous period locks, SV corrections,
+  histories and handover guards are reused rather than rebuilt. December readiness/pilot is distinguished from
+  the 1 January 2027 service date currently configured in the public site.
+- Fixed a concrete service defect: the inbox, company list and navigation used the last message, so a client
+  follow-up reset the wait and a system notification could hide an unanswered question. They now share a query
+  scoped to visible companies and retain the oldest client message after the last explicitly audited personal
+  reply. `message.answered` must match the company, message and author; notices signed by an accountant are still
+  notices. Equal timestamps use stable insertion order. Missing evidence keeps the question pending.
+- The inbox displays original waiting time, unanswered-message count, assigned accountant or missing assignment,
+  next-working-day response target and lateness. The target preserves Bratislava wall time across DST and uses
+  the existing Slovak holiday calendar, including temporary 2026 exceptions. This measures first personal response,
+  not substantive resolution. Automatic escalation, substitute assignment and resolution tracking remain roadmap work.
+- The original hero now puts the owner first: “Vy budujete firmu. My strážime účtovníctvo.” The explanation and meta
+  description state the agreed scope. Prices, planned accountant pay and accepted contract wording are not changed.
+- Validation: **675 unit checks and 808 workerd checks passed**, plus the supplementary TypeScript 6 check.
+  Fifteen new unit cases cover ordinary days, weekends, local midnight, DST, Easter, year end and holiday exceptions.
+  Twenty-seven new runtime cases cover notifications (including named authors), reading, explicit replies,
+  foreign events/authors, tenant visibility, demo/closed firms, reassignment, same-second ordering and escaped previews.
+  A first completed runtime run passed 806 cases; a later local run lost a loopback socket before the new tests,
+  and a clean rerun passed all 808. All external services remain local mocks.
+- CI uses native TypeScript 7 and expands browser verification from four to seven real runtime captures at
+  1440/390/320 px: monthly SV, transition, open/locked periods, home, waiting support and empty support.
+  It checks overflow, unique IDs and page-specific controls; screenshots stay in the Actions artifact.
+
 The report of the session that continued Firmony from 14 October 2026 (15:17 Bratislava), milestone by milestone:
 what was built, what each rule leans on, which checks pass, what remains, and what a professional should read before
 it is relied on. The project's own notes are `CLAUDE.md`; this file is the report beside them.

@@ -5,6 +5,7 @@
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { check, done } from './check.mjs'
 import { checkPeriodLocks } from './periods.runtime.mjs'
+import { checkSupportQueue } from './support.runtime.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
@@ -74,7 +75,8 @@ const NB = ' '
 let res = await get('/')
 let page = await res.text()
 check('the home page answers', res.status === 200)
-check('it says the promise', page.includes('Postaráme sa o') && page.includes('Vy rastiete.'))
+check('it puts the client in the story and explains the agreed scope', page.includes('Vy budujete firmu.') && page.includes('My strážime účtovníctvo.') && page.includes('dohodnutú účtovnú agendu'))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
   'it names the prices of all three plans',
   [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)),
@@ -814,7 +816,7 @@ res = await appPost('/app/spravy', { sprava: 'A ešte jedna vec.' })
 await settle()
 check('a second message before anybody looked rings nothing more', (await sent()).slice(before2b).filter((m) => m.to === 'lucia@firmony.test').length === 1)
 res = await acc.get('/ucto/spravy')
-check('and waits in her inbox', (await res.text()).includes('A ešte jedna vec.'))
+check('and the original unanswered question still waits in her inbox', (await res.text()).includes('čo s touto platbou?'))
 res = await acc.post('/ucto/klienti/co-a/spravy', { sprava: 'Rozumiem, zaúčtujeme ho podľa výpisu.' })
 await settle()
 check(
@@ -826,6 +828,8 @@ check('answered, nothing waits', (await res.text()).includes('Všetkým klientom
 jar = annaCookie
 res = await appGet('/app/spravy')
 check('the client reads the answer under her name', (await res.text()).includes('Lucia Horváthová'))
+
+await checkSupportQueue({ db, acc, admin, anna, nowS, lucia, boss: bossRow })
 
 // A request from the site becomes a client in one form, with a welcome email that signs in
 await db

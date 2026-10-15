@@ -25,6 +25,7 @@ import { dayOf, groupIban, whenName } from './inside-pages'
 import { Wordmark } from './layout'
 import { InvoiceSheet } from './invoices'
 import type { Line, StoredInvoice } from '../app/invoices'
+import { responseDueAt } from '../team/support'
 
 export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'people'
 
@@ -1035,6 +1036,7 @@ export const InboxPage: FC<{ threads: Thread[]; now: number }> = ({ threads, now
     <header class="phead">
       <Heading first={t.inbox.title} second={t.inbox.serif} />
       <p class="phead__lead">{t.inbox.lead}</p>
+      <p class="phead__lead">{t.inbox.target}</p>
     </header>
     {threads.length === 0 ? (
       <section class="nothing">
@@ -1043,20 +1045,30 @@ export const InboxPage: FC<{ threads: Thread[]; now: number }> = ({ threads, now
       </section>
     ) : (
       <ul class="rows rows--card">
-        {threads.map((th) => (
-          <li class="row">
-            <a class="row__link" href={`/ucto/klienti/${th.company.id}#spravy`}>
-              <Tile art={ART.chat} size="sm" />
-              <span class="row__text">
-                <span class="row__title">{th.company.name}</span>
-                <span class="row__sub row__sub--text">{th.body}</span>
-              </span>
-              <span class="row__end">
-                <span class="pill pill--blue">{t.inbox.waiting(whenName(th.at, now))}</span>
-              </span>
-            </a>
-          </li>
-        ))}
+        {threads.map((th) => {
+          const due = responseDueAt(th.at)
+          const late = now > due
+          return (
+            <li class="row support-row">
+              <a class="row__link" href={`/ucto/klienti/${th.company.id}#spravy`}>
+                <Tile art={ART.chat} size="sm" />
+                <span class="row__text">
+                  <span class="row__title">{th.company.name}</span>
+                  <span class="row__sub row__sub--text">{th.body}</span>
+                  <span class="row__sub">{t.inbox.owner(th.company.accountantName)}</span>
+                  <span class="row__sub">{t.inbox.pending(th.pending)}</span>
+                </span>
+                <span class="row__end">
+                  <span class="pill pill--blue">{t.inbox.waiting(whenName(th.at, now))}</span>
+                  <span class={`pill${late ? ' pill--red' : ''}`}>
+                    {late ? `${t.inbox.late} · ` : ''}
+                    <time datetime={new Date(due * 1000).toISOString()}>{t.inbox.due(whenName(due, now))}</time>
+                  </span>
+                </span>
+              </a>
+            </li>
+          )
+        })}
       </ul>
     )}
   </>

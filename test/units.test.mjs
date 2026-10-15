@@ -27,6 +27,7 @@ import {
   payroll,
   payrollStore,
   periods,
+  support,
   match,
   orderLinkMail,
   papers,
@@ -3586,6 +3587,30 @@ async function zipped(entries, note) {
   const pay = { amountCents: -12345, vs: null, note: null, exempt: 'payroll', exemptNote: null, contra: null, bookedOn: '2026-09-30' }
   const run = { period: '2026-10', pays: { social: 12345, health: [], tax: 0 } }
   check('a later closed payroll cannot reclassify an earlier payment', ledger.paymentContra(pay, [run]) === '331' && ledger.paymentContra({ ...pay, bookedOn: '2026-10-31' }, [run]) === '336.100')
+}
+
+// Response clocks preserve local time across weekends, holidays and both daylight-saving changes.
+{
+  const cases = [
+    ['2026-10-15T08:20:30Z', '2026-10-16T08:20:30Z', 'ordinary next working day'],
+    ['2026-10-16T08:20:30Z', '2026-10-19T08:20:30Z', 'Friday to Monday'],
+    ['2026-10-17T20:15:00Z', '2026-10-19T20:15:00Z', 'weekend arrival'],
+    ['2026-10-18T22:30:00Z', '2026-10-19T22:30:00Z', 'UTC Sunday is already Monday in Bratislava'],
+    ['2026-10-23T08:00:00Z', '2026-10-26T09:00:00Z', 'autumn DST keeps 10:00 local'],
+    ['2026-03-27T09:00:00Z', '2026-03-30T08:00:00Z', 'spring DST keeps 10:00 local'],
+    ['2026-04-02T08:00:00Z', '2026-04-07T08:00:00Z', 'Good Friday and Easter Monday'],
+    ['2026-05-07T08:00:00Z', '2026-05-08T08:00:00Z', '8 May is a working day in 2026'],
+    ['2027-05-07T08:00:00Z', '2027-05-10T08:00:00Z', 'May 2027 weekend'],
+    ['2026-09-14T08:00:00Z', '2026-09-15T08:00:00Z', '15 September exception in 2026'],
+    ['2027-09-14T08:00:00Z', '2027-09-16T08:00:00Z', '15 September off in 2027'],
+    ['2026-12-23T09:00:00Z', '2026-12-28T09:00:00Z', 'Christmas holidays and weekend'],
+    ['2026-12-31T22:59:59Z', '2027-01-04T22:59:59Z', 'year end at local 23:59:59'],
+    ['2026-11-16T09:00:00Z', '2026-11-17T09:00:00Z', '17 November is a working day'],
+  ]
+  for (const [from, expected, name] of cases) check(`support: ${name}`, new Date(support.responseDueAt(Date.parse(from) / 1000) * 1000).toISOString() === expected.replace('Z', '.000Z'))
+  let refused = false
+  try { support.responseDueAt(Number.NaN) } catch { refused = true }
+  check('support: an invalid clock is refused', refused)
 }
 
 done('units')

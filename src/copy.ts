@@ -20,17 +20,16 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: účtovníctvo pre mladé firmy`,
-    description: `Postaráme sa o celé účtovníctvo Vašej s. r. o. Doklady stačí odfotiť. Zaúčtujeme ich, podáme priznanie k DPH aj daňové priznanie a postrážime termíny. Od ${eur(start.price)} mesačne podľa počtu dokladov.`,
+    description: `Účtovníctvo pre mladé s. r. o. Doklady, termíny a správy s účtovníčkou na jednom mieste. Rozsah služby podľa potrieb Vašej firmy. Od ${eur(start.price)} mesačne podľa počtu dokladov.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
   hero: {
     tag: 'Účtovníctvo pre mladé s. r. o.',
-    /** "Postaráme sa" is kept together, so that the line breaks before "o všetko". */
-    first: 'Postaráme\u00a0sa o všetko.',
-    second: 'Vy rastiete.',
-    lead: 'Doklady odfotíte, všetko ostatné je na nás. Zaúčtujeme ich, podáme priznania a postrážime každý termín.',
+    first: 'Vy budujete firmu.',
+    second: 'My strážime účtovníctvo.',
+    lead: 'Doklady, termíny a správy s účtovníčkou na jednom mieste. Vy poznáte svoju firmu. My sa staráme o dohodnutú účtovnú agendu a ozveme sa, keď potrebujeme Vaše rozhodnutie.',
     price: `Od ${eur(start.price)} mesačne. Platíte podľa počtu dokladov.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
@@ -46,7 +45,7 @@ export const copy = typesetAll({
   /** One month, as the papers fly into it while the page is scrolled. An illustration. */
   flow: {
     first: 'Vy pošlete doklady.',
-    second: 'My urobíme zvyšok.',
+    second: 'My ich skontrolujeme.',
     lead: 'Bloček odfotíte, faktúru prepošlete. Umelá inteligencia ich prečíta, účtovníčka všetko skontroluje a podá priznania.',
     label: 'Ukážka: október Vašej firmy vo Firmony, všetko zaúčtované',
     month: 'Október 2026',

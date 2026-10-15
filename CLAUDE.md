@@ -1,5 +1,11 @@
 # Firmony: working notes
 
+Current strategy and evidence (15 October 2026): [docs/strategy/README.md](docs/strategy/README.md).
+Its ten documents distinguish implemented code, local mocks, public competitor claims and unknown production
+readiness. Historical economics and launch assumptions below are not measured results. The new support queue
+keeps the first unanswered client's time until an explicitly audited personal reply; automated filing notices
+do not count. See the latest PROGRESS entry for scope and validation. No merge or production deployment.
+
 Accounting for young Slovak companies (s. r. o.), run by europio s. r. o. (the owner's company; no new s. r. o.,
 his word of 12 October 2026). AI does the routine, a freelance accountant checks and files, one fixed monthly
 price. The service starts on 1 January 2027; until then the site collects non-binding requests.
@@ -1331,8 +1337,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (660): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes, the recapitulative statement
-npm run test:runtime     # the deployable bundle in workerd (781): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the recapitulative statement, the closing, payroll, eKasa duplicates, to the deletion
+npm test                 # 675 unit checks, including the Slovak working-day response clock
+npm run test:runtime     # 808 workerd checks, including the unanswered support queue, then the full accounting/export/purge regression
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
