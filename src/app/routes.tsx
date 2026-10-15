@@ -244,7 +244,8 @@ appRoutes.use('*', async (c, next) => {
     await endSession(c, c.env.DB)
     return reads ? c.redirect('/app/prihlasenie', 303) : c.text('Forbidden', 403)
   }
-  const security = await securityGate(c, who, sensitivePath(new URL(c.req.url).pathname, c.req.method) && (new URL(c.req.url).pathname !== '/app/export' || who.role === 'owner'))
+  const path = new URL(c.req.url).pathname
+  const security = await securityGate(c, who, sensitivePath(path, c.req.method) && (!/^\/app\/export(?:\/|$)/.test(path) || who.role === 'owner'))
   if (security) return security
   c.set('who', who as ClientWho)
   await next()

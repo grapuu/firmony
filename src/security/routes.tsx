@@ -61,6 +61,7 @@ securityRoutes.get('/', async (c) => {
           keys={await passkeysOf(c.env.DB, who.user.id)}
           next={safeNext(c.req.query('next') ?? (who.user.team ? '/ucto' : '/app'))}
           verified={verifiedRecently(who, now(), SECURITY.sensitiveSeconds)}
+          currentKey={who.verifiedCredential}
         />
       )}`,
   )

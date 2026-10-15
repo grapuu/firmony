@@ -39,7 +39,7 @@ export const IncidentsPage: FC<{
   error?: string
 }> = ({ incidents, companies, people, user, today, error }) => (
   <>
-    <header class="phead">
+    <header class="phead incident-head">
       <Heading first="Incidenty" second="a uchovanie dôkazov" />
       <p class="phead__lead">Každý prípad má vlastníka, referenciu podkladov a ďalšiu kontrolu. Založenie prípadu neznamená uznanie nároku.</p>
     </header>
@@ -161,7 +161,7 @@ export const IncidentPage: FC<{
     <a class="back" href="/ucto/incidenty">
       Incidenty
     </a>
-    <header class="phead">
+    <header class="phead incident-head">
       <Heading first={i.company_name} second={i.title} />
       <p class="phead__lead">{state(i)}</p>
     </header>

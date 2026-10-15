@@ -23,8 +23,9 @@ export const SecurityPage: FC<{
   keys: Passkey[]
   next: string
   verified: boolean
+  currentKey?: string | null
   error?: string
-}> = ({ user, keys, next, verified, error }) => (
+}> = ({ user, keys, next, verified, currentKey, error }) => (
   <Frame title="Bezpečný prístup">
     <Heading first={verified ? 'Váš prístup' : 'Potvrďte prístup'} second="prihlasovacím kľúčom" small />
     <p class="door__lead">{user.name}, kľúč potvrdíte PIN-om, odtlačkom alebo zámkom zariadenia. Firmony tieto údaje nedostáva.</p>
@@ -33,7 +34,7 @@ export const SecurityPage: FC<{
         {error}
       </p>
     ) : null}
-    <p class="notice" data-auth-error role="alert" hidden />
+    <p class="notice" data-auth-error role="alert" tabindex={-1} hidden />
     {keys.length ? (
       <form class="door__form" data-passkey="authenticate" method="post" action="/auth/options">
         <input type="hidden" name="next" value={next} />
@@ -81,7 +82,8 @@ export const SecurityPage: FC<{
           {keys.map((k) => (
             <li>
               <span>{k.name}</span>
-              {verified ? (
+              {k.id === currentKey ? <span class="small">Aktuálne použitý</span> : null}
+              {verified && keys.length > 1 && k.id !== currentKey ? (
                 <form method="post" action={`/auth/keys/${encodeURIComponent(k.id)}/remove`}>
                   <button class="btn btn--text btn--small" type="submit">
                     Odobrať
