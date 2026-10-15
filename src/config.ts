@@ -68,9 +68,9 @@ export const PAYROLL_PRICE = 15
 
 /**
  * What a freelance accountant is paid (his yes of 13 October 2026, 22:04): a client a month by plan, a person's
- * payroll a month, a closing. Her work is the check, the returns and the answers; the app does the rest. Shown on no
- * page; with the prices above it leaves at least 60 % after her pay, the bank, the e-invoices, the reading and a
- * reserve of 2 % for our own errors.
+ * payroll a month, a closing. Her planned work is the review, returns and answers. Shown on no
+ * page. These are planning assumptions, not a verified margin: actual economics depend on measured onboarding,
+ * review, support, corrections and production vendor charges.
  */
 export const ACCOUNTANT_PAY = { start: 28, rast: 55, firma: 110, payroll: 5, closing: 90 } as const
 

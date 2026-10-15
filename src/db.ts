@@ -1,6 +1,7 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
+import { PERIOD_SCHEMA } from './app/period-schema'
 
 export const now = (): number => Math.floor(Date.now() / 1000)
 
@@ -641,6 +642,8 @@ const MIGRATIONS: readonly string[][] = [
       WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
       BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
   ],
+  // A continuous period lock, its transition history and transactional guards on accounting sources.
+  PERIOD_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

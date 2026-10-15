@@ -41,3 +41,5 @@ export * as closingXml from '../src/app/closing-xml'
 export * as closingForm from '../src/app/closing-form'
 export * as payroll from '../src/app/payroll'
 export * as payrollStore from '../src/app/payroll-store'
+
+export * as periods from '../src/app/periods'

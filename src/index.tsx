@@ -13,6 +13,7 @@ import { lookupCompany, lookupDirectors, type Company } from './rpo'
 import { appRoutes, appScheduled, xmlResponse, type AppBindings } from './app/routes'
 import { invoiceByToken, invoiceLines } from './app/invoices'
 import { getCompany, userByEmail } from './app/store'
+import { isPeriodLocked } from './app/periods'
 import { newLink, newToken, startSession } from './app/session'
 import { inboxCode } from './team/store'
 import { acceptStatements, acceptedAs, isClient, newOrderStatement, orderByToken, type Order } from './order'
@@ -500,6 +501,9 @@ app.get('/healthz', async (c) => {
 app.notFound((c) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: new URL(c.req.url).pathname, noindex: true }, <NotFound />, 404))
 
 app.onError((err, c) => {
+  if (isPeriodLocked(err)) return page(c, { title: 'Uzamknuté účtovné obdobie', description: '', path: c.req.path, noindex: true },
+    <section class="section"><h1>Účtovné obdobie je uzamknuté.</h1><p>Zmenu sme neuložili. Účtovníčka musí najprv otvoriť príslušné obdobie v Účtovnej knihe, v časti Uzamknutie období, a uviesť dôvod.</p>
+      <a class="btn btn--line" href={c.req.path.startsWith('/ucto') ? '/ucto' : '/app'}>Späť do aplikácie</a></section>, 409)
   console.error('request failed', err instanceof Error ? err.name : 'error')
   return c.text('Niečo sa pokazilo. Skúste to znova o chvíľu.', 500)
 })

@@ -1055,7 +1055,7 @@ the books; worked out from what the app holds, never typed twice.
   the administrative fee given 538 by Lucia, a receipt the owner paid, and a bank balance (6 718,93 €) the books
   agree with once the three payments without a document are counted.
 - Not built: depreciation and asset cards (an asset bought goes to 042; putting it to use and depreciating it is an
-  internal document for now), a month or a year closed against changes, the closing entries (the statements are
+  internal document for now), the closing entries (the statements are
   worked out without them: "The closing"), another currency than the euro, a cash book of its own, a log of each change of a
   booked document beyond the events.
 
@@ -1331,8 +1331,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # unit checks (646): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes, the recapitulative statement
-npm run test:runtime     # the deployable bundle in workerd (715): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the recapitulative statement, the closing, payroll, eKasa duplicates, to the deletion
+npm test                 # unit checks (660): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books, every client's deadlines, the closing, payroll, eKasa codes, the recapitulative statement
+npm run test:runtime     # the deployable bundle in workerd (781): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, the deadlines, the recapitulative statement, the closing, payroll, eKasa duplicates, to the deletion
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
@@ -1359,3 +1359,21 @@ rules.
 In the playground IČO 57442452 is found (europio), 35757442 makes the register fail, anything else is unknown;
 `/playground/mail` shows what was "sent". To stop it: `pkill -f "node --no-warnings [s]cripts/playground"` in a
 command of its own (a command line that contains the start command is killed by the same pattern).
+
+
+## Period locks and the competitive baseline (Codex, 15 October 2026)
+
+The next milestone is on `codex/firmony-period-locks`, stacked over PR #3. Schema step 14 adds a continuous lock
+through a completed month, an explicit reason for reopening, immutable transition history, source-table guards
+and data-revision checks. The team manages it at `/ucto/klienti/:id/kniha/obdobia`; December closes the whole year.
+Earlier years are protected because their balances carry forward. Intake of late unbooked documents and raw bank
+facts stays possible, but locked sources cannot be posted or paired until reopened. A later payroll cannot
+reclassify an earlier payment. Opening balances, settings, linked receipts, old/new dates and nested VAT correction
+dates are covered. Current lock state and full history travel in each accounting archive and controlled purge.
+
+`docs/konkurencny-audit-2026-10-15.md` is the current source-backed competitive baseline and pre-December plan:
+verified public statements are distinct from operationally tested capabilities. Bezúčtovníka already advertises
+expert help, filing and planned eFaktúra delivery through a partner. Firmony's complete postman connection, authority
+receipts, production banking verification, staff capacity, MFA and restore drills are still launch dependencies.
+Existing configured prices/pay are planning inputs, not a measured margin. Do not claim these dependencies are
+finished because a feature exists in a development branch. No merge or deployment was authorized for this milestone.

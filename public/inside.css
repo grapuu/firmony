@@ -6691,3 +6691,15 @@ select.field__input {
     display: none;
   }
 }
+
+/* Period controls and the permanent transition history. */
+.period-forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; }
+.period-forms > .info { min-width: 0; }
+.period-form { display: grid; gap: 10px; margin-top: 18px; }
+.period-form .field__input { min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; }
+.period-form .btn { justify-self: start; white-space: normal; }
+.period-history { margin: 18px 0; padding-left: 24px; }
+.period-history li { padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.period-history p { margin: 6px 0 0; }
+
+#stav-uzamknutia .info__source { overflow-wrap: anywhere; }

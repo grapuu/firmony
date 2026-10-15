@@ -2,6 +2,7 @@
 // reaches another company's payments or documents by guessing an id. Whether a payment still needs a document
 // is read from links and exempt every time and never stored on its own.
 import { NEXT_BANK_LEDGER, now } from '../db'
+import { linkLockedSql } from './period-schema'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
 import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
@@ -571,6 +572,7 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
        FROM documents d JOIN payments p ON p.company_id = d.company_id
        WHERE d.id = ? AND p.id = ? AND p.company_id = ? AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
          AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id)
+         ${how === 'auto' ? `AND NOT ${linkLockedSql('p.id', 'd.id')}` : ''}
          ${alone ? 'AND NOT EXISTS (SELECT 1 FROM links WHERE payment_id = p.id)' : ''}`,
     )
     .bind(how, by, now(), doc, payment, company)
@@ -818,7 +820,9 @@ export async function matchCompany(db: D1Database, company: string): Promise<num
   const results = await db.batch(
     auto.flatMap(([payment, doc]) => [
       linkStatement(db, company, payment, doc, 'auto', null, true),
-      eventStatement(db, { company, user: null, action: 'link.auto', subject: payment, detail: { doc, min: AUTO_SCORE } }),
+      // Same transaction: a skipped or concurrently claimed pair must not create a false accounting event.
+      db.prepare("INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?, ?, NULL, 'link.auto', ?, ? WHERE changes() > 0")
+        .bind(now(), company, payment, JSON.stringify({ doc, min: AUTO_SCORE })),
     ]),
   )
   return results.filter((result, index) => index % 2 === 0 && (result.meta?.changes ?? 0) > 0).length
@@ -903,7 +907,6 @@ export async function importEntries(db: D1Database, company: string, accountId: 
   const sameAs = (e: Entry, p: (typeof others)[number]) =>
     p.booked_on === e.bookedOn && p.amount_cents === e.amountCents && (!p.vs || !e.vs || p.vs === e.vs) && (!p.party_iban || !e.partyIban || p.party_iban === e.partyIban)
   const fresh: D1PreparedStatement[] = []
-  const reasons: (string | null)[] = []
   for (const entry of entries) {
     // Known from this source by its reference: the insert below leaves it, and it takes no other payment's place.
     if (!mine.has(entry.ref)) {
@@ -915,15 +918,14 @@ export async function importEntries(db: D1Database, company: string, accountId: 
       }
     }
     const reason = autoExempt(entry, own)
-    reasons.push(reason)
     fresh.push(insertPaymentStatement(db, company, accountId, entry, reason, source))
   }
   for (let i = 0; i < fresh.length; i += 50) {
     const results = await db.batch(fresh.slice(i, i + 50))
-    results.forEach((result, j) => {
+    results.forEach((result) => {
       if ((result.meta?.changes ?? 0) > 0) {
         out.added++
-        if (reasons[i + j]) out.exempt++
+        if ((result.results[0] as { exempt?: string | null } | undefined)?.exempt) out.exempt++
       } else out.known++
     })
   }
@@ -957,7 +959,9 @@ export function insertPaymentStatement(db: D1Database, company: string, account:
   return db
     .prepare(
       `INSERT OR IGNORE INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, party_iban, vs, ss, ks, note, card, ref, source, exempt, exempt_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+         CASE WHEN EXISTS (SELECT 1 FROM period_locks WHERE company_id = ?2 AND through_on >= ?5) THEN NULL ELSE ?17 END,
+         CASE WHEN EXISTS (SELECT 1 FROM period_locks WHERE company_id = ?2 AND through_on >= ?5) THEN NULL ELSE ?18 END) RETURNING exempt`,
     )
     .bind(
       crypto.randomUUID(),

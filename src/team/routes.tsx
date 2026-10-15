@@ -55,6 +55,9 @@ import {
   type Books,
 } from '../app/ledger'
 import { booksOf, contraStatement, internalStatement, manualEntries, openingStatements, removeInternalStatement } from '../app/ledger-store'
+import { changeLockStatement, lockHistory, periodLock } from '../app/period-store'
+import { lockBlockers, lockTarget, type LockValues } from '../app/periods'
+import { PeriodPage, type PeriodPageProps } from '../views/periods'
 import {
   AccountPage,
   InternalPage,
@@ -2005,8 +2008,52 @@ teamRoutes.get('/klienti/:id/kniha', async (c) => {
     c,
     'clients',
     `${t.ledger.title}: ${b.company.name}`,
-    <TrialPage company={b.company} books={b.books} tb={trialBalance(b.books, b.year, b.month)} years={b.years} year={b.year} month={b.month} today={b.today} flash={flashOf(c)} />,
+    <TrialPage company={b.company} books={b.books} tb={trialBalance(b.books, b.year, b.month)} years={b.years} year={b.year} month={b.month} today={b.today} lockedThrough={(await periodLock(c.env.DB, b.company.id))?.through} flash={flashOf(c)} />,
   )
+})
+
+async function periodsPage(c: Ctx, company: Company, extra: Partial<Pick<PeriodPageProps, 'values' | 'error' | 'blockers'>> = {}, status: ContentfulStatusCode = 200) {
+  const db = c.env.DB
+  const revision = await dataRevision(db, company.id)
+  // Company settings also affect the books; read them after the revision, rather than reuse an earlier route lookup.
+  const currentCompany = await teamCompany(db, c.get('who').user, company.id)
+  if (!currentCompany) return missingPage(c)
+  const [lock, history, books] = await Promise.all([periodLock(db, company.id), lockHistory(db, company.id), booksOf(db, currentCompany)])
+  return shell(c, 'clients', `Uzamknutie období: ${company.name}`, <PeriodPage company={company} lock={lock} history={history} revision={revision} today={dayOf(now())} start={books.start}
+    flash={c.req.query('ok') === 'uzamknute' ? 'Obdobie je uzamknuté.' : c.req.query('ok') === 'otvorene' ? 'Obdobie je otvorené. Dôvod je uložený v histórii.' : null} {...extra} />, status)
+}
+
+teamRoutes.get('/klienti/:id/kniha/obdobia', async (c) => {
+  const company = await companyParam(c)
+  return company ? periodsPage(c, company) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/kniha/obdobia', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = (key: string) => typeof body[key] === 'string' ? (body[key] as string).trim() : ''
+  const values: LockValues = { action: text('akcia'), month: text('mesiac'), reason: text('dovod') }
+  const fail = (error: string, status: ContentfulStatusCode = 422, blockers?: PeriodPageProps['blockers']) => periodsPage(c, company, { values, error, blockers }, status)
+  const version = Number(text('verzia')), revision = Number(text('revizia'))
+  const db = c.env.DB
+  const currentRevision = await dataRevision(db, company.id)
+  const currentCompany = await teamCompany(db, c.get('who').user, company.id)
+  if (!currentCompany) return missingPage(c)
+  const [lock, books] = await Promise.all([periodLock(db, company.id), booksOf(db, currentCompany)])
+  if (!/^\d+$/.test(text('verzia')) || !/^\d+$/.test(text('revizia')) || !Number.isSafeInteger(version) || !Number.isSafeInteger(revision)
+    || version !== (lock?.version ?? 0) || revision !== currentRevision) return fail('Údaje sa medzičasom zmenili. Skontrolujte aktuálny stav a odošlite formulár znova.', 409)
+  const target = lockTarget(values, lock?.through ?? null, dayOf(now()), books.start)
+  if ('error' in target) return fail(target.error)
+  if (values.reason.length > 1000) return fail('Poznámka môže mať najviac 1 000 znakov.')
+  if (values.action === 'lock' && target.through) {
+    if (!books.start) return fail('Najprv nastavte začiatok účtovníctva alebo počiatočné stavy.')
+    const blockers = lockBlockers(books, target.through)
+    if (blockers.documents + blockers.payments > 0) return fail('Vybrané obdobie obsahuje nedoriešené účtovné zápisy.', 422, blockers)
+  }
+  const result = await changeLockStatement(db, company.id, target.through, values.reason, c.get('who').user.id, version, revision).run()
+  if ((result.meta?.changes ?? 0) === 0) return fail('Údaje sa medzičasom zmenili. Skontrolujte aktuálny stav a odošlite formulár znova.', 409)
+  return c.redirect(`${bookPath(company, 'periods')}?ok=${values.action === 'lock' ? 'uzamknute' : 'otvorene'}`, 303)
 })
 
 teamRoutes.get('/klienti/:id/kniha/dennik', async (c) => {

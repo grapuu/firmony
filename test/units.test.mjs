@@ -26,6 +26,7 @@ import {
   closingForm,
   payroll,
   payrollStore,
+  periods,
   match,
   orderLinkMail,
   papers,
@@ -3561,6 +3562,30 @@ async function zipped(entries, note) {
   list = run(pf({ last: '2026-08-31' }), '2026-10-14')
   check('nothing after the last employee left', !find('payroll', '2026-09') && Boolean(find('payroll', '2026-08')))
   check('a company without employees has no payroll', !dues.deadlinesOf(co(), facts(undefined), '2026-10-14').some((d) => d.kind === 'payroll'))
+}
+
+// Continuous locks: strict month parsing, completed periods, direction, reason and full/partial reopening.
+{
+  const pick = (action, month, reason = '') => periods.lockTarget({ action, month, reason }, '2026-09-30', '2026-10-15', '2026-01-01')
+  check('the current month cannot be locked', 'error' in pick('lock', '2026-10'))
+  check('a completed later year can be locked through December', periods.lockTarget({ action: 'lock', month: '2025-12', reason: '' }, null, '2026-10-15').through === '2025-12-31')
+  check('an already locked month does not hide a stale intent', 'error' in pick('lock', '2026-09'))
+  check('reopening needs a meaningful reason', 'error' in pick('open', '2026-09', 'oprava'))
+  check('partial reopening keeps earlier months locked', pick('open', '2026-09', 'Oprava nesprávneho účtu').through === '2026-08-31')
+  check('reopening from the start removes the whole lock', pick('open', '2026-01', 'Oprava počiatočných stavov').through === null)
+  check('reopening across New Year keeps the previous December', periods.lockTarget({ action: 'open', month: '2026-01', reason: 'Oprava účtovania januára' }, '2026-02-28', '2026-10-15', '2025-01-01').through === '2025-12-31')
+  check('invalid and out-of-range months are rejected', ['2026-00', '2026-13', '2026-9', '2026-Q3', '2026-09extra', '0000-01'].every((month) => 'error' in pick('lock', month)))
+  check('unknown actions are rejected', 'error' in pick('erase', '2026-09'))
+  check('an open future month cannot be reopened', 'error' in pick('open', '2026-10', 'Oprava budúceho mesiaca'))
+  check('the lock cannot precede the books', 'error' in periods.lockTarget({ action: 'lock', month: '2025-12', reason: '' }, null, '2026-10-15', '2026-01-01'))
+  check('wrapped D1 lock errors are recognized without exposing SQL', periods.isPeriodLocked({ cause: new Error('D1_ERROR: FIRMONY_PERIOD_LOCKED: SQLITE_CONSTRAINT') }) && !periods.isPeriodLocked(new Error('other error')))
+  const issues = { unbooked: ['old', 'future', 'undated'], noEntry: ['old'], classify: ['p1'], waiting: ['p1'], missing: ['p2'], foreign: [] }
+  const b = { start: '2026-01-01', issues, docDays: new Map([['old', '2026-09-01'], ['future', '2026-10-01']]), payments: new Map([['p1', { bookedOn: '2026-09-30' }], ['p2', { bookedOn: '2026-10-01' }]]) }
+  const blocked = periods.lockBlockers(b, '2026-09-30')
+  check('readiness counts only protected dates, deduplicates and includes undated documents', blocked.documents === 2 && blocked.payments === 1)
+  const pay = { amountCents: -12345, vs: null, note: null, exempt: 'payroll', exemptNote: null, contra: null, bookedOn: '2026-09-30' }
+  const run = { period: '2026-10', pays: { social: 12345, health: [], tax: 0 } }
+  check('a later closed payroll cannot reclassify an earlier payment', ledger.paymentContra(pay, [run]) === '331' && ledger.paymentContra({ ...pay, bookedOn: '2026-10-31' }, [run]) === '336.100')
 }
 
 done('units')

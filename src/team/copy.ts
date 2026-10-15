@@ -1213,7 +1213,7 @@ export const team = typesetAll({
   ledger: {
     title: 'Účtovná kniha',
     lead: 'Denník, hlavná kniha, predvaha a saldokonto sa skladajú samy zo zaúčtovaných dokladov, z platieb a z podaných priznaní DPH. Ručne sa píšu len interné doklady a počiatočné stavy.',
-    tabs: { trial: 'Predvaha', journal: 'Denník', saldo: 'Saldokonto', payments: 'Platby bez dokladu', internal: 'Interné doklady', opening: 'Počiatočné stavy' },
+    tabs: { trial: 'Predvaha', journal: 'Denník', saldo: 'Saldokonto', payments: 'Platby bez dokladu', internal: 'Interné doklady', opening: 'Počiatočné stavy', periods: 'Uzamknutie období' },
     year: 'Rok',
     through: 'Do mesiaca',
     month: 'Mesiac',

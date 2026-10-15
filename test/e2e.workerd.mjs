@@ -4,6 +4,7 @@
 //   npm run test:runtime
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { check, done } from './check.mjs'
+import { checkPeriodLocks } from './periods.runtime.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
@@ -212,7 +213,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 13)
+check('health says the schema', (await res.json()).schema === 14)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -4007,6 +4008,8 @@ check(
 check('every file in it reads, every sum right', archive !== null && archive.length > 6 && archive.every((f) => f.ok), archive?.map((f) => f.name).join(' | '))
 const named = (name) => archive?.find((f) => f.name === name)
 const text = (f) => new TextDecoder().decode(f?.data ?? new Uint8Array())
+await checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, today: day(0), files, unzip, text })
+
 const validManifest = (contents) => {
   const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
   return m.files.length === contents.length - 1 && m.files.every((record) => { const file = contents.find((f) => f.name === record.name); return file && file.data.length === record.bytes && createHash('sha256').update(file.data).digest('hex') === record.sha256 })

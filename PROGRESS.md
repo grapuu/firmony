@@ -467,3 +467,39 @@ https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html and
 https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html . Transition deadlines and return to quarterly filing:
 https://podpora.financnasprava.sk/670936-Zmena-obdobia-u-platite%C4%BEa . Late reclassification: FR SR methodology,
 https://www.financnasprava.sk/_img/pfsedit/Dokumenty_PFS/Zverejnovanie_dok/Dane/Metodicke_pokyny/Nepriame_dane/2019/2019.12.31_MP_par_80.pdf , example 18.
+
+
+## Period locks and a verified competitive plan (Codex, 15 October 2026)
+
+Branch `codex/firmony-period-locks`, stacked over PR #3. A completed month, or December for a whole year, can be
+locked by the assigned accountant or an administrator. Reopening from a month keeps older months protected;
+reopening from the beginning removes the active cutoff. Every transition retains its author, reason, before/after
+cutoffs and version. History cannot be edited or removed in ordinary operation. An optimistic data revision
+protects readiness from concurrent changes, including company settings and changes inside the same second.
+
+Schema step 14 guards source writes in the same transaction: posted documents, both sides of date moves, payments,
+receipt dependencies and allocations, bank analytic accounts, manual/opening entries, VAT settings, returns and
+nested correction dates, filings, payroll and issued invoices/lines. Late raw bank facts and unbooked documents can
+arrive without silently changing the locked journal. Automatic pairing skips protected sources and logs an event
+only when the pair is actually inserted. Expected conflicts return a readable 409 without SQL. A lock created during
+an upload rolls back the document and removes the new object. History and the current lock are exported and can be
+purged only through the already controlled handover process. This is an internal posting lock, not a claim of legal
+year-end closure or a substitute for closing entries, an authority filing or professional review.
+
+The competitive report is `docs/konkurencny-audit-2026-10-15.md`: matrix with evidence levels, ten ranked
+opportunities, engine and customer workflows, full postman integration design, three partner candidates, current
+accounting gaps, launch gates through November, later modules and precisely defined quality metrics. Public sources
+were checked on 15 October: all five requested competitor pages, its blog and LinkedIn (including the founder's
+recruitment post), FS manuals and provider lists, OpenPeppol and primary provider documentation. The FS page lists
+Slovak transpositions v1.12 dated 14 October; the XLSX could not be parsed by the web reader, so its scenarios are
+explicitly not claimed as run. Instagram/Facebook content, actual competitor task times and independent customer
+counts remain unverified. No competitor account, submission, provider signup or purchase was made.
+
+The report identifies operational gaps instead of declaring a market lead: Firmony has no complete eFaktúra
+transport or authority-receipt loop, production bank coverage and staffing remain unverified, and secure recovery,
+MFA, actual time/cost measurements and the revised handover retention policy need completion before public launch.
+The configuration comment about an assured margin was corrected; existing prices and planned pay were not changed.
+
+Validation: 660 unit checks, 781 workerd runtime checks and supplementary TypeScript 6. Native TypeScript 7 and
+browser layouts are checked in GitHub Actions; the browser suite includes the open/locked period screens and
+monthly-SV screens at 1440, 390 and 320 pixels. No production deployment, merge or real tax/bank operation.

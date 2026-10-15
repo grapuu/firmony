@@ -8,7 +8,7 @@ const fixtures = resolve(process.env.FIRMONY_CAPTURE_DIR ?? '.wrangler/ui')
 const assets = resolve('public')
 const out = resolve('.wrangler/screens')
 await mkdir(out, { recursive: true })
-const pages = ['monthly-sv.html', 'monthly-sv-transition.html']
+const pages = ['monthly-sv.html', 'monthly-sv-transition.html', 'period-open.html', 'period-locked.html']
 for (const name of pages) await readFile(resolve(fixtures, name))
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon' }
 const server = createServer(async (req, res) => {
@@ -32,12 +32,12 @@ try {
       await page.goto(`${base}/${name}`, { waitUntil: 'networkidle' })
       await page.evaluate(() => document.fonts.ready)
       const layout = await page.evaluate(() => {
-        const ids = [...document.querySelectorAll('[id^="suhrnny"]')].map((e) => e.id)
-        return { overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, unique: new Set(ids).size === ids.length, cards: document.querySelectorAll('section.info[id^="suhrnny-"]').length }
+        const ids = [...document.querySelectorAll('[id]')].map((e) => e.id)
+        return { overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, unique: new Set(ids).size === ids.length, cards: document.querySelectorAll('section.info[id^="suhrnny-"]').length, forms: document.querySelectorAll('.period-form').length, labelled: [...document.querySelectorAll('.period-form input[type=month], .period-form textarea')].every((e) => e.labels?.length > 0) }
       })
       await page.screenshot({ path: `${out}/${width}-${name.replace('.html', '.png')}`, fullPage: true })
-      if (layout.overflow || !layout.unique || layout.cards !== 3) throw new Error(`${width} ${name}: ${JSON.stringify(layout)}`)
-      console.log(`${width} ${name}: fits; three cards with unique accessible headings`)
+      if (layout.overflow || !layout.unique || (name.startsWith('monthly-') ? layout.cards !== 3 : !layout.labelled || layout.forms !== (name === 'period-locked.html' ? 2 : 1))) throw new Error(`${width} ${name}: ${JSON.stringify(layout)}`)
+      console.log(`${width} ${name}: fits; unique headings and expected controls`)
     }
     await page.close()
   }

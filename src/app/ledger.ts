@@ -501,7 +501,8 @@ export function paymentsWithoutDocuments(books: Books, year: number): LedgerPaym
 export function paymentContra(p: LedgerPayment, payroll: readonly LedgerPayroll[] = []): string | null {
   const given = canonicalAccount(p.contra)
   if (given && synthetic(given) !== '221') return given
-  return reasonAccount(p, payroll)
+  // A later payroll must never reclassify an earlier payment, including one in a locked period.
+  return reasonAccount(p, payroll.filter((run) => run.period <= p.bookedOn.slice(0, 7)))
 }
 
 const lineOf = (account: string, bank: string, cents: number): LedgerLine => (cents < 0 ? { md: account, d: bank, cents: -cents } : { md: bank, d: account, cents })
@@ -577,7 +578,7 @@ export function buildBooks(input: LedgerInput): Books {
   for (const d of input.docs) {
     const plan = planOf(d, company)
     if (plan) plans.set(d.id, plan)
-    docDays.set(d.id, plan?.on ?? d.issuedOn ?? null)
+    docDays.set(d.id, plan?.on ?? d.issuedOn ?? bratislavaDay(d.createdAt))
   }
   const shareOf = new Map<string, number>()
   for (const [paymentId, linked] of docsOf) {
