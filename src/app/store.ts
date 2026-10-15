@@ -407,13 +407,17 @@ export interface Who {
   company: Company | null
   role: string | null
   session: string
+  createdAt: number
+  verifiedAt: number | null
+  verifiedCredential: string | null
 }
 
 /** The user (and company, while still a member) of a session that has not expired. */
 export async function whoBySession(db: D1Database, sessionId: string): Promise<Who | null> {
   const row = await db
     .prepare(
-      `SELECT u.id AS u_id, u.name AS u_name, u.email AS u_email, u.team AS u_team, u.reminders AS u_reminders, m.role AS m_role,
+      `SELECT u.id AS u_id, u.name AS u_name, u.email AS u_email, u.team AS u_team, u.reminders AS u_reminders, m.role AS m_role, s.created_at AS session_created_at,
+              CASE WHEN EXISTS (SELECT 1 FROM passkeys k WHERE k.id = s.credential_id AND k.user_id = u.id) THEN s.verified_at END AS verified_at, s.credential_id,
               ${COMPANY_COLUMNS}
        FROM sessions s
        JOIN users u ON u.id = s.user_id
@@ -426,7 +430,7 @@ export async function whoBySession(db: D1Database, sessionId: string): Promise<W
     .first<Row>()
   if (!row) return null
   const company = row.id ? companyOf(row) : null
-  return { user: userOf(row, 'u_'), company, role: company ? str(row.m_role) : null, session: sessionId }
+  return { user: userOf(row, 'u_'), company, role: company ? str(row.m_role) : null, session: sessionId, createdAt: Number(row.session_created_at), verifiedAt: num(row.verified_at), verifiedCredential: str(row.credential_id) }
 }
 
 export function eventStatement(db: D1Database, e: { company: string | null; user: string | null; action: string; subject?: string | null; detail?: unknown }): D1PreparedStatement {

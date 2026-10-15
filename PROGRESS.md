@@ -1,5 +1,33 @@
 # Firmony: progress of the continuation
 
+## Passkeys, incident evidence and recovery drill (Codex, 15 October 2026)
+
+Current branch: `codex/firmony-security-and-evidence`, based on the final cumulative PR #7 head
+`04ec8eb8112fda32e6170b85d43ec2b8f16ce3fa`. All previous accounting and contract work is preserved.
+Schema steps **16–17** add UV passkeys, controlled provisioning/recovery, incidents and retention guards.
+
+- [Security and operations](docs/security/README.md): mandatory team WebAuthn UV; 12-hour ordinary and
+  five-minute sensitive freshness; rotating sessions, one-use five-minute challenges, canonical HTTPS RP,
+  pinned official verifier/browser libraries. Email alone cannot replace an existing key or open team work.
+- First staff enrollment requires independent activation. Explicit finite bootstrap has a durable consumed marker.
+  Recovery needs two distinct current administrators, separate from the recipient, with identity references;
+  consumption rechecks approval/revocation and atomically replaces keys and invalidates sessions/mail links.
+  A fresh customer mailbox session may enroll the first key; full owner exports require recent UV.
+- Internal incident register has scoped access, owner/backup, review dates, versioned reassignment and immutable
+  decision history. Open cases and holds block SQL/R2 retention deletion; review dates never expire protection.
+  A new review cancels a pending release. Release and closure require independent administrators.
+- Confirmed handover first freezes writes for at least 24 hours before destructive deletion. A case arriving
+  after that claim is explicitly flagged as potentially partially lost; subsequent stoppable deletion is blocked.
+  Tests inject cases during R2 listing and after deletion. No cross-D1/R2 atomicity or WORM claim is made.
+- Local restore drill copies all business tables, schema/triggers and originals/metadata into another empty D1/R2,
+  checks hashes/foreign keys/contracts/holds, rejects corruption and disables restored bearer credentials.
+  It uses quiescent synthetic data. Production backup, independent evidence archive, live-provider recovery,
+  staffing and measured production RPO/RTO remain unverified. Business readiness stays UNKNOWN/NO-GO.
+- Verification: see final exact-head GitHub checks. Local verification passed **699 unit checks and 934 workerd checks**, including real signatures,
+  recovery, retention races and isolated restoration; supplementary TypeScript 6. New dependency audit returned
+  zero advisories at the time of the check. Final native TypeScript, browser and layout results follow in exact-head CI. No merge or production deployment.
+
+
 ## Responsibility, contract evidence and larger-client intake (Codex, 15 October 2026)
 
 Current branch: `codex/firmony-liability-and-enterprise-readiness`, based on PR #6 at

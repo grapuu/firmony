@@ -365,6 +365,10 @@ export async function checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, toda
     await completeExport(db, receipt.id)
     await confirmExport(db, 'co-lock-purge', receipt.id)
   }
+  const staged = await purgeCompany({ DB: db, FILES: files }, 'co-lock-purge', today)
+  const frozen = await db.prepare("SELECT purge_started_at, purge_delete_started_at FROM companies WHERE id = 'co-lock-purge'").first()
+  check('a confirmed handover first freezes writes without starting destructive deletion', staged.rows === 0 && frozen.purge_started_at !== null && frozen.purge_delete_started_at === null)
+  await db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-lock-purge'").bind(nowS - 86401).run()
   const purged = await purgeCompany({ DB: db, FILES: files }, 'co-lock-purge', today)
   check(
     'a confirmed handover can purge a locked company including its history',

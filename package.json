@@ -7,12 +7,16 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc -p tsconfig.browser.json",
     "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs",
     "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs",
-    "test:ui": "node test/visual.mjs"
+    "test:ui": "node test/visual.mjs",
+    "build:assets": "node scripts/build-security.mjs",
+    "test:browser": "node test/passkeys.browser.mjs"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.0.0",
     "bysquare": "4.0.2",
     "fast-xml-parser": "5.11.1",
     "hono": "^4.13.12",

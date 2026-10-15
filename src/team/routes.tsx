@@ -111,6 +111,9 @@ import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPe
 import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
 import { quarterOf, summaryLookbackFrom, summaryPeriodOf, type SvView, type SvFiled } from '../app/vat-summary'
 import { dataRevision } from '../app/handover-store'
+import { sensitivePath } from '../security/policy'
+import { securityGate } from '../security/routes'
+import { incidentRoutes } from '../incidents/routes'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash } from '../contracts'
 import { orderOf } from '../order'
 import { ContractReviewPage } from '../views/contract-review'
@@ -282,6 +285,8 @@ teamRoutes.use('*', async (c, next) => {
       404,
     )
   }
+  const security = await securityGate(c, who, sensitivePath(new URL(c.req.url).pathname, c.req.method))
+  if (security) return security
   c.set('who', who)
   await next()
 })
@@ -2629,17 +2634,27 @@ teamRoutes.post('/tim', async (c) => {
   if (!EMAIL.test(values.email)) errors.email = t.people.errors.email
   if (Object.keys(errors).length > 0) return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={errors} />, 422)
   const existing = await userByEmail(db, values.email)
+  if (existing?.id === who.user.id && values.role !== 'admin') return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={{ email: 'Vlastnú rolu správcu nemožno týmto formulárom znížiť.' }} />, 422)
   const id = existing?.id ?? crypto.randomUUID()
-  await db.batch([
+  const changed = await db.batch([
     existing
-      ? db.prepare('UPDATE users SET team = ? WHERE id = ?').bind(values.role, id)
-      : db.prepare('INSERT INTO users (id, created_at, email, name, team) VALUES (?, ?, ?, ?, ?)').bind(id, now(), values.email, values.name, values.role),
+      ? db.prepare("UPDATE users SET team = ?1 WHERE id = ?2 AND EXISTS (SELECT 1 FROM users WHERE id = ?3 AND team = 'admin') AND (?1 = 'admin' OR team IS NOT 'admin' OR EXISTS (SELECT 1 FROM users WHERE team = 'admin' AND id <> ?2))").bind(values.role, id, who.user.id)
+      : db.prepare("INSERT INTO users (id, created_at, email, name, team) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?6 AND team = 'admin')").bind(id, now(), values.email, values.name, values.role, who.user.id),
+    ...(existing && existing.id !== who.user.id ? [
+      db.prepare("DELETE FROM sessions WHERE user_id = ?1 AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team = 'admin') AND EXISTS (SELECT 1 FROM users WHERE id = ?1 AND team = ?3)").bind(id, who.user.id, values.role),
+      db.prepare("DELETE FROM login_links WHERE user_id = ?1 AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team = 'admin') AND EXISTS (SELECT 1 FROM users WHERE id = ?1 AND team = ?3)").bind(id, who.user.id, values.role),
+    ] : []),
+  ])
+  if (!changed[0]?.meta.changes) return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={{ email: 'Oprávnenia sa zmenili. Obnovte stránku a skontrolujte tím.' }} />, 409)
+  await db.batch([
     eventStatement(db, { company: null, user: who.user.id, action: 'team.added', subject: id, detail: { role: values.role } }),
     queueStatement(db, { key: `team:${id}:${values.role}`, to: values.email, subject: t.people.inviteSubject, body: t.people.inviteBody(values.name, `${siteOrigin(c)}/app/prihlasenie`) }),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect('/ucto/tim?ok=tim', 303)
 })
+
+teamRoutes.route('/incidenty', incidentRoutes)
 
 teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/prihlasenie', 303)))
 

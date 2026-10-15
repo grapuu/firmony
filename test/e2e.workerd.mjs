@@ -7,6 +7,10 @@ import { check, done } from './check.mjs'
 import { checkPeriodLocks } from './periods.runtime.mjs'
 import { checkSupportQueue } from './support.runtime.mjs'
 import { checkContractTransactions } from './contracts.runtime.mjs'
+import { checkSecurity } from './security.runtime.mjs'
+import { checkIncidents } from './incidents.runtime.mjs'
+import { checkRestore } from './restore.runtime.mjs'
+import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
@@ -39,7 +43,7 @@ const mf = new Miniflare(
         compatibilityDate: '2026-10-01',
         d1Databases: { DB: 'firmony-e2e' },
         r2Buckets: { FILES: 'firmony-e2e-files' },
-        bindings: { CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
+        bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.ai', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
           const banked = await bank.answer(request)
@@ -217,7 +221,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 15)
+check('health says the schema', (await res.json()).schema === 17)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -527,7 +531,30 @@ check('every change is on record', (await db.prepare("SELECT COUNT(*) AS n FROM 
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Signs a browser in by the link in its email, from a connection of its own. */
-async function signIn(email) {
+const authenticators = new Map()
+async function verifyBrowser(email, browserCookie) {
+  const user = await db.prepare('SELECT id, team FROM users WHERE email = ?').bind(email).first()
+  let key = authenticators.get(email)
+  const registering = !key
+  if (!key) { key = await authenticator(); authenticators.set(email, key) }
+  let code = email === 'ahoj@firmony.ai' ? TEST_BOOTSTRAP : ''
+  if (registering && user.team && !code) {
+    code = 'G'.repeat(42) + String(authenticators.size % 10)
+    const grant = createHash('sha256').update(code).digest('hex')
+    const adminId = (await db.prepare("SELECT id FROM users WHERE team = 'admin' LIMIT 1").first()).id
+    await db.prepare("INSERT INTO auth_grants (id, user_id, kind, source, created_at, created_by, evidence, expires_at) VALUES (?, ?, 'enroll', 'admin', ?, ?, 'TEST-ONLY fixture identity', ?)")
+      .bind(grant, user.id, Math.floor(Date.now() / 1000), adminId, Math.floor(Date.now() / 1000) + 3600).run()
+  }
+  const api = jsonClient(mf, site, browserCookie, `203.0.113.${100 + authenticators.size}`)
+  const r = await api('/auth/options', { action: registering ? 'register' : 'authenticate', code, next: user.team ? '/ucto' : '/app' })
+  const options = await r.json()
+  if (r.status !== 200) throw new Error(`fixture options ${email}: ${r.status} ${JSON.stringify(options)}`)
+  const response = registering ? await key.register(options.options) : await key.authenticate(options.options)
+  const confirmed = await api('/auth/verify', { id: options.id, response, name: 'TEST-ONLY passkey' })
+  if (confirmed.status !== 200) throw new Error(`fixture confirmation ${email}: ${confirmed.status} ${JSON.stringify(await confirmed.json())}; ${JSON.stringify(await db.prepare("SELECT detail FROM events WHERE action = 'auth.failed' ORDER BY rowid DESC LIMIT 1").first())}`)
+  return { cookie: (confirmed.headers.get('set-cookie') ?? '').split(';')[0], location: (await confirmed.json()).to }
+}
+async function emailOnly(email) {
   const n = (await sent()).length
   await post('/app/prihlasenie', { email }, { ip: '203.0.113.30' })
   await settle()
@@ -538,6 +565,10 @@ async function signIn(email) {
   const t = mail?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
   const r = await post('/app/vstup', { t }, { ip: '203.0.113.30' })
   return { cookie: (r.headers.get('set-cookie') ?? '').split(';')[0], location: r.headers.get('location'), mail }
+}
+async function signIn(email) {
+  const pending = await emailOnly(email)
+  return { ...await verifyBrowser(email, pending.cookie), mail: pending.mail }
 }
 const as = (cookie) => ({
   get: (path) => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.30', cookie } }),
@@ -573,7 +604,7 @@ check('the sample team does not exist on the live Worker', res.status === 404)
 // The first administrator: whoever reads the public mailbox, while the team is empty
 const boss = await signIn('ahoj@firmony.ai')
 const bossRow = await db.prepare("SELECT id, team, name FROM users WHERE email = 'ahoj@firmony.ai'").first()
-check('the public mailbox becomes the first administrator', bossRow?.team === 'admin' && bossRow.name === 'Christian Juhás' && boss.location === '/ucto')
+check('the explicitly configured bootstrap account becomes the first verified administrator', bossRow?.team === 'admin' && bossRow.name === 'Christian Juhás' && boss.location === '/ucto')
 const admin = as(boss.cookie)
 res = await admin.get('/ucto')
 page = await res.text()
@@ -617,6 +648,9 @@ for (const path of ['/ucto/klienti/co-b', '/ucto/doklady/db-1', '/ucto/subory/db
 }
 res = await acc.post('/ucto/platby/pb-1/kontrola', { ok: '1' })
 check('nor can she touch a payment of another accountant', res.status === 404)
+
+const security = await checkSecurity({ db, mf, site, admin, anna, acc, as, signIn, emailOnly, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkIncidents({ db, files, admin, anna, acc, lucia, security, nowS, today: day(0), day, capture: process.env.FIRMONY_CAPTURE_DIR })
 
 // Booking: the reader's proposal, an entry, a rule for the supplier
 res = await acc.get(`/ucto/doklady/${cafeDoc?.id}`)
@@ -3803,7 +3837,7 @@ check('nothing is created before the contract', (await db.prepare("SELECT COUNT(
 res = await post(orderLink, { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1' }, { origin: 'https://evil.example', ip: '198.51.100.21' })
 check('a contract posted from another site is refused', res.status === 403)
 res = await post(orderLink, validContract, { ip: '198.51.100.21' })
-const contractCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
+let contractCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
 check(
   'the contract is concluded and the browser is signed in',
   res.status === 303 && res.headers.get('location') === '/app?ok=zmluva' && contractCookie.startsWith('__Host-firmony='),
@@ -3895,6 +3929,7 @@ const missingContract = await resolveContract(db, 'co-b', 'unknown-release')
 check('an unknown old version never falls back to current terms', missingContract.status === 'missing' && missingContract.terms === null)
 const oldContract = await resolveContract(db, 'co-a', '2026-10-13')
 check('the legacy archive keeps the actual old liability cap and its uncertainty warning', oldContract.status === 'archive' && oldContract.terms.text.includes('dvanásťnásobku') && oldContract.notice.includes('nie je dôkaz'))
+contractCookie = (await verifyBrowser('tomas@zelenydvor.test', contractCookie)).cookie
 const acceptedExport = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { headers: { cookie: contractCookie } })
 const acceptedZip = unzip(new Uint8Array(await acceptedExport.arrayBuffer()))
 const exactJson = acceptedZip?.find((f) => f.name === 'zmluva.json')
@@ -4181,7 +4216,10 @@ res = await get(`/app/odovzdanie/${handed?.id}`, { headers: { cookie: (await sig
 check('nobody of another company gets them', res.status === 404)
 res = await admin.get('/ucto')
 page = await res.text()
-check('the list no longer asks for the handover once it was made', !page.includes('Odovzdanie mešká'))
+const handedClientRow = page.match(/<a class="tbl__row[^>]*href="\/ucto\/klienti\/co-a"[\s\S]*?<\/a>/)?.[0]
+check('the client row no longer asks for its handover once it was made', Boolean(handedClientRow) && !handedClientRow.includes('Odovzdanie mešká'))
+
+await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
 await setEnd(day(-91))
@@ -4240,6 +4278,10 @@ for (const y of handoverYears) {
   const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
   await anna.post('/app/export/potvrdit', { export: m.receipt, potvrdit: '1' })
 }
+await tick(Date.now()); await settle(500)
+const stagedPurge = await db.prepare("SELECT purge_started_at, purge_delete_started_at, purged_at FROM companies WHERE id = 'co-a'").first()
+check('the schedule observes the full intervention window before deleting acknowledged data', stagedPurge.purge_started_at !== null && stagedPurge.purge_delete_started_at === null && stagedPurge.purged_at === null)
+await db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-a'").bind(nowS - 86401).run()
 await tick(Date.now()); await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
 check("the schedule deletes the company's data after its ninety days", typeof purgedRow?.purged_at === 'number' && typeof purgedRow.closed_at === 'number' && purgedRow.name === 'Firma A s. r. o.')

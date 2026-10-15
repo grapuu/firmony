@@ -6736,3 +6736,19 @@ select.field__input {
   .contract .kv div { flex-direction: column; gap: 4px; }
   .contract .kv dd { max-width: none; text-align: left; }
 }
+
+/* Account security uses native passkeys; controls remain readable on small devices. */
+.security { max-width: 680px; }
+.security .door__card { display: grid; gap: 20px; }
+.security__setup summary { cursor: pointer; color: var(--blue); font-weight: 600; }
+.security__setup .door__form { margin-top: 16px; }
+.security__keys ul { list-style: none; padding: 0; }
+.security__keys li { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.security__keys .security__grant { display: grid; }
+.security__code { display: block; overflow-wrap: anywhere; margin: 12px 0; padding: 12px; background: white; border-radius: 8px; }
+
+.incident-list { display: grid; gap: 14px; margin-top: 24px; }
+.incident-card { display: grid; gap: 10px; overflow-wrap: anywhere; }
+.incident-new summary { cursor: pointer; color: var(--blue); font-weight: 600; }
+.incident-new .details { margin-top: 20px; }
+.incident-history { padding-left: 20px; display: grid; gap: 16px; overflow-wrap: anywhere; }

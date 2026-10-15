@@ -46,3 +46,6 @@ export * as periods from '../src/app/periods'
 export * as support from '../src/team/support'
 
 export * as contracts from '../src/contracts'
+
+export * as security from '../src/security/policy'
+export { isEvidenceHeld } from '../src/incidents/store'

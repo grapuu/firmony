@@ -20,7 +20,7 @@ V stĺpci „používateľ/produkcia“ je N vždy skutočná neistota. Automati
 | Web, IČO, orientačný cenník, žiadosť | TESTOVANÉ | `src/index.tsx`, `order.ts`, `rpo.ts`, runtime | N; dôveryhodnosť ponuky a konverzia |
 | Registrácia, e-mailový vstup, relácie | TESTOVANÉ | `src/app/session.ts`, runtime: expirácia/práva | N; bezpečnostná revízia a obnova prístupu |
 | Roly firma/účtovník/admin | TESTOVANÉ | `app/routes.tsx`, `team/store.ts`, izolácia firiem | N; kontrola práv v produkcii |
-| MFA pre odborný tím, silnejšie potvrdenie exportu | CHÝBA | Nenájdené TOTP/WebAuthn v prihlásení | Implementovať a otestovať obchádzanie |
+| MFA pre odborný tím, silnejšie potvrdenie exportu | IMPLEMENTOVANÉ / lokálne TESTOVANÉ | WebAuthn s povinným UV a opätovné potvrdenie citlivých úkonov; [balík](../security/README.md) | Produkčné aktivácie, zariadenia a nezávislá revízia N |
 | Zmluva a prijaté znenie | OPRAVA PÔVODNÉHO ZÁVERU | Pred týmto rozšírením sa ukladala iba verzia a cena, zobrazoval sa živý text. Nový snapshot a podpisové brány: [zodpovednosť](../responsibility/README.md). | Staré znenia bez snapshotu nie sú dokázané; právne/poistné schválenie N. |
 | Plná moc, AML vyhlásenie, interné posúdenie | ČIASTOČNÉ | `papers.ts`, `aml.ts`, príslušné views | Žiadny dôkaz registrácií, reálneho overenia identity a účinnosti mandátov |
 | Migrácia starej agendy | ČIASTOČNÉ | `papers.ts`, počiatočné stavy v `ledger*` | Automatický import účtovných databáz CHÝBA; úplnosť preverí účtovník |
@@ -46,13 +46,13 @@ V stĺpci „používateľ/produkcia“ je N vždy skutočná neistota. Automati
 | Úplný export a potvrdené odovzdanie | TESTOVANÉ | `export.ts`, `handover-*`, `purge.ts`, viacročný export | Reálny odberateľský import a obnova N |
 | Správy a pridelený účtovník | ČIASTOČNÉ → TESTOVANÉ pre opravu tejto vetvy | Pôvodne vek od poslednej správy; nový front od najstaršej nezodpovedanej | Včasná vecná odpoveď a skutočné vyriešenie stále N |
 | Automatické eskalácie, zastupovanie tímu | PLÁNOVANÉ | P2 a P9 | Samotný nový front neznamená 24/7 dohľad |
-| Bezpečné obnovenie D1 aj R2 | NEOVERENÉ | Nie je doložený vykonaný restore drill | Kritická brána P1; ZIP export nie je záloha prevádzky |
+| Bezpečné obnovenie D1 aj R2 | LOKÁLNA SKÚŠKA / produkcia NEOVERENÁ | Oddelená obnova syntetickej D1/R2 vrátane hashov, zmlúv, holdov a zrušenia relácií; [postup](../security/recovery.md) | G4 potrebuje skutočnú zálohu, kontrolórov a namerané RPO/RTO |
 | Skutočná ekonomika, klientsky čas, spokojnosť | CHÝBA | Žiadny pilotný dataset | P8/P9; plánové odmeny nie sú zmerané náklady |
 | Hosting a produkčné integrácie | NEOVERENÉ | Zástupné D1 ID v konfigurácii | Tento audit nepreveroval externú Cloudflare konzolu |
 
 ## Architektúra a technický dlh
 
-Cloudflare Worker + Hono SSR/TSX; bez klientskych skriptov; lokálne CSS a fonty. D1 ukladá firmy, prístupy, bankové fakty, doklady, väzby, pravidlá, knihy, podania, mzdy, udalosti a front e-mailov. R2 obsahuje originály. Cron spracúva fronty, obnovy čítania a retenčné kroky. `src/db.ts` má vo východisku 14 idempotentných migračných krokov; zámky a odovzdanie majú databázové ochrany. Podrobnosti zmien ostávajú v PROGRESS, neimplementujú sa znova.
+Cloudflare Worker + Hono SSR/TSX; lokálny klientsky skript pre WebAuthn, ostatné obrazovky SSR; lokálne CSS a fonty. D1 ukladá firmy, prístupy, bankové fakty, doklady, väzby, pravidlá, knihy, podania, mzdy, udalosti a front e-mailov. R2 obsahuje originály. Cron spracúva fronty, obnovy čítania a retenčné kroky. `src/db.ts` má vo východisku 14 idempotentných migračných krokov; zámky a odovzdanie majú databázové ochrany. Podrobnosti zmien ostávajú v PROGRESS, neimplementujú sa znova.
 
 Riziká: veľmi rozsiahle súbory routes/store a runtime scenár s mnohými nadväznosťami; účtovný model odvádza časť výsledkov zo zdrojov, preto každá nová cesta zápisu potrebuje revízie a kontrolu zámkov. Rozdeľovať po menších doménach pri dotknutej zmene, bez plošného prepisu pred pilotom. Pridať reprodukovateľnú odbornú vzorku nezávislú od implementačných vzorcov.
 

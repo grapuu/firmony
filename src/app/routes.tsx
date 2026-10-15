@@ -18,6 +18,8 @@ import { answerAccount, statementById, statementDue, statementsOf, takeStatement
 import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
+import { bootstrapReady, sensitivePath, type SecurityBindings } from '../security/policy'
+import { securityGate } from '../security/routes'
 import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
@@ -91,12 +93,13 @@ import {
   unlinkStatement,
   unseenFromFirmony,
   userByEmail,
+  userById,
   type Company,
   type Who,
 } from './store'
 import { readInvoice, readStatement, type Reading } from './xml'
 
-export interface AppBindings extends ContractBindings {
+export interface AppBindings extends ContractBindings, SecurityBindings {
   DB: D1Database
   EMAIL?: Mailer
   /** The documents' files (R2, EU). Without it nothing can be uploaded. */
@@ -157,14 +160,14 @@ appRoutes.post('/prihlasenie', async (c) => {
   }
   // The same answer whether the address is ours or not: the form tells nobody who is a client.
   let user = await userByEmail(db, email)
-  if (!user && email.toLowerCase() === TEAM.bootstrapEmail.toLowerCase()) {
-    // The first administrator: whoever receives the email of the public mailbox, while nobody of the team exists.
+  if (!user && bootstrapReady(c.env, now()) && email.toLowerCase() === c.env.TEAM_BOOTSTRAP_EMAIL?.toLowerCase()) {
+    // Initial provisioning requires all explicit bootstrap settings. Mailbox proof alone never opens team data.
     const anyone = await db.prepare('SELECT 1 AS x FROM users WHERE team IS NOT NULL LIMIT 1').first()
     if (!anyone) {
       const id = crypto.randomUUID()
       await db.batch([
-        db.prepare("INSERT INTO users (id, created_at, email, name, team) VALUES (?, ?, ?, ?, 'admin')").bind(id, now(), TEAM.bootstrapEmail, TEAM.bootstrapName),
-        eventStatement(db, { company: null, user: id, action: 'team.bootstrap' }),
+        db.prepare("INSERT OR IGNORE INTO users (id, created_at, email, name, team) SELECT ?, ?, ?, ?, 'admin' WHERE NOT EXISTS (SELECT 1 FROM users WHERE team IS NOT NULL)").bind(id, now(), c.env.TEAM_BOOTSTRAP_EMAIL, TEAM.bootstrapName),
+        db.prepare("INSERT INTO events (at, user_id, action) SELECT ?, id, 'team.bootstrap' FROM users WHERE id = ? AND team = 'admin'").bind(now(), id),
       ])
       user = await userByEmail(db, email)
     }
@@ -197,7 +200,8 @@ appRoutes.post('/vstup', async (c) => {
   if (!user) return render(c, <Door title={t.login.expiredTitle}>{<Expired />}</Door>, 410)
   const to = await startSession(c, db, user)
   if (!to) return render(c, <Door title={t.login.expiredTitle}>{<Expired noCompany />}</Door>, 403)
-  return c.redirect(to, 303)
+  const signedIn = await userById(db, user)
+  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : to, 303)
 })
 
 appRoutes.post('/odhlasit', async (c) => {
@@ -240,6 +244,8 @@ appRoutes.use('*', async (c, next) => {
     await endSession(c, c.env.DB)
     return reads ? c.redirect('/app/prihlasenie', 303) : c.text('Forbidden', 403)
   }
+  const security = await securityGate(c, who, sensitivePath(new URL(c.req.url).pathname, c.req.method) && (new URL(c.req.url).pathname !== '/app/export' || who.role === 'owner'))
+  if (security) return security
   c.set('who', who as ClientWho)
   await next()
 })
@@ -1715,5 +1721,5 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
       await matchCompany(db, company.id)
     }
   }
-  await db.batch([db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(ts), db.prepare('DELETE FROM login_links WHERE expires_at < ?').bind(ts - 86400)])
+  await db.batch([db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(ts), db.prepare('DELETE FROM login_links WHERE expires_at < ?').bind(ts - 86400), db.prepare('DELETE FROM auth_challenges WHERE expires_at < ?').bind(ts)])
 }

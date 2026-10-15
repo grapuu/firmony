@@ -27,13 +27,14 @@ import { InvoiceSheet } from './invoices'
 import type { Line, StoredInvoice } from '../app/invoices'
 import { responseDueAt } from '../team/support'
 
-export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'people'
+export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'people' | 'incidents'
 
 const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean }[] = [
   { place: 'clients', href: '/ucto', label: t.nav.clients, short: t.nav.short.clients, art: ART.tree },
   { place: 'deadlines', href: '/ucto/terminy', label: t.nav.deadlines, short: t.nav.short.deadlines, art: ART.paperReturn },
   { place: 'queue', href: '/ucto/doklady', label: t.nav.queue, short: t.nav.short.queue, art: ART.paperInvoice },
   { place: 'inbox', href: '/ucto/spravy', label: t.nav.inbox, short: t.nav.short.inbox, art: ART.chat },
+  { place: 'incidents', href: '/ucto/incidenty', label: 'Incidenty', short: 'Incidenty', art: ART.lens },
   { place: 'requests', href: '/ucto/ziadosti', label: t.nav.requests, short: t.nav.short.requests, art: ART.envelope, admin: true },
   { place: 'people', href: '/ucto/tim', label: t.nav.people, short: t.nav.short.people, art: ART.lens, admin: true },
 ]
@@ -85,6 +86,7 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
               ) : null}
             </nav>
             <div class="side__foot">
+              <a class="side__out" href="/auth?next=%2Fucto">Zabezpečenie prístupu</a>
               <span class="side__user">{user.name}</span>
               <span class="side__email">{user.email}</span>
               <form method="post" action="/app/odhlasit">

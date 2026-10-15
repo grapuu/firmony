@@ -12,7 +12,7 @@ import { Wordmark } from './layout'
 export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'taxes' | 'messages' | 'company'
 
 /** The head of every page of the app: its own stylesheet after the site's, and its one small script. */
-export const InsideHead: FC<{ title: string }> = ({ title }) => (
+export const InsideHead: FC<{ title: string; security?: boolean }> = ({ title, security = false }) => (
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -29,6 +29,7 @@ export const InsideHead: FC<{ title: string }> = ({ title }) => (
     <link rel="stylesheet" href="/app.css" />
     <link rel="stylesheet" href="/inside.css" />
     <script src="/inside.js" defer></script>
+    {security ? <script src="/security.js" defer></script> : null}
   </head>
 )
 
@@ -178,6 +179,7 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
             ) : null}
             <span class="side__user">{who.user.name}</span>
             <span class="side__email">{who.user.email}</span>
+            <a class="side__out" href="/auth?next=%2Fapp">Zabezpečenie prístupu</a>
             <form method="post" action="/app/odhlasit">
               <button class="side__out" type="submit">
                 {app.nav.signOut}
@@ -258,6 +260,7 @@ export const BarMenu: FC<{ label: string; user: { name: string; email: string };
         <span class="barmenu__user">{user.name}</span>
         <span class="barmenu__email">{user.email}</span>
       </p>
+      <a class="barmenu__item" href="/auth">Zabezpečenie prístupu</a>
       <form method="post" action="/app/odhlasit">
         <button class="barmenu__item barmenu__item--out" type="submit">
           {app.nav.signOut}

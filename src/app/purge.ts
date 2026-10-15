@@ -15,19 +15,22 @@ import { eventStatement } from './store'
 import { exportYears } from './export'
 import { confirmedRevision } from './handover-store'
 import { bratislava } from './remind'
+import { evidenceBlocked, PURGE_GRACE_SECONDS } from '../incidents/store'
 
 export interface PurgeEnv extends BankEnv {
   FILES?: R2Bucket
 }
 
 /** Deletes every object under a prefix but those kept; returns how many went. */
-async function deletePrefix(files: R2Bucket, prefix: string, keep: Set<string> = new Set()): Promise<number> {
+async function deletePrefix(files: R2Bucket, prefix: string, keep: Set<string> = new Set(), canDelete: () => Promise<boolean> = async () => true): Promise<number> {
   let deleted = 0
   let cursor: string | undefined
   do {
+    if (!await canDelete()) throw new Error('Evidence hold prevents file deletion')
     const page = await files.list({ prefix, cursor, limit: 1000 })
     const keys = page.objects.map((o) => o.key).filter((key) => !keep.has(key))
     if (keys.length > 0) {
+      if (!await canDelete()) throw new Error('Evidence hold prevents file deletion')
       await files.delete(keys)
       deleted += keys.length
     }
@@ -43,12 +46,24 @@ const LONELY = `SELECT m.user_id FROM members m JOIN users u ON u.id = m.user_id
 /** One company's data, deleted: the files first, then the rows in one batch, which either all go or none. */
 export async function purgeCompany(env: PurgeEnv, companyId: string, today = bratislava(Date.now()).day): Promise<{ files: number; rows: number }> {
   const db = env.DB
+  if (await evidenceBlocked(db, companyId)) return { files: 0, rows: 0 }
   const revision = await confirmedRevision(db, companyId, await exportYears(db, companyId))
   if (revision === null) return { files: 0, rows: 0 }
   // Freeze new writes before any external file deletion. A change since the handover check cancels this claim.
   const claim = await db.prepare(`UPDATE companies SET purge_started_at = COALESCE(purge_started_at, ?) WHERE id = ? AND purged_at IS NULL AND demo = 0 AND ends_on < ?
-    AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = companies.id), 0) = ?`).bind(now(), companyId, purgeFloor(today), revision).run()
+    AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = companies.id), 0) = ?
+    AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
+    AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`).bind(now(), companyId, purgeFloor(today), revision).run()
   if ((claim.meta?.changes ?? 0) === 0) return { files: 0, rows: 0 }
+  // A full day between freezing writes and the irreversible phase gives operations a real intervention window.
+  const destructive = await db.prepare(`UPDATE companies SET purge_delete_started_at = COALESCE(purge_delete_started_at, ?1)
+    WHERE id = ?2 AND purged_at IS NULL AND purge_started_at <= ?3
+      AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`)
+    .bind(now(), companyId, now() - PURGE_GRACE_SECONDS).run()
+  if ((destructive.meta.changes ?? 0) === 0) return { files: 0, rows: 0 }
+  const canDelete = async () => !await evidenceBlocked(db, companyId)
+
   if (bankReady(env)) {
     const sessions = await db
       .prepare("SELECT session_id FROM bank_links WHERE company_id = ? AND kind = 'eb' AND status = 'active' AND session_id IS NOT NULL")
@@ -59,9 +74,9 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
   let files = 0
   if (env.FILES) {
     const kept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = ? AND kind = 'poa'").bind(companyId).all<{ r2_key: string }>()
-    files += await deletePrefix(env.FILES, `companies/${companyId}/documents/`)
-    files += await deletePrefix(env.FILES, `companies/${companyId}/statements/`)
-    files += await deletePrefix(env.FILES, `companies/${companyId}/papers/`, new Set(kept.results.map((r) => r.r2_key)))
+    files += await deletePrefix(env.FILES, `companies/${companyId}/documents/`, new Set(), canDelete)
+    files += await deletePrefix(env.FILES, `companies/${companyId}/statements/`, new Set(), canDelete)
+    files += await deletePrefix(env.FILES, `companies/${companyId}/papers/`, new Set(kept.results.map((r) => r.r2_key)), canDelete)
   }
   const lonely = await db.prepare(LONELY).bind(companyId).all<{ user_id: string }>()
   const people = lonely.results.map((r) => r.user_id)
@@ -110,7 +125,9 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
 export async function purgeEnded(env: PurgeEnv, today: string): Promise<number> {
   const db = env.DB
   const due = await db
-    .prepare('SELECT id FROM companies WHERE ends_on IS NOT NULL AND ends_on < ? AND purged_at IS NULL AND demo = 0 ORDER BY COALESCE(purge_checked_at, 0), ends_on LIMIT ?')
+    .prepare(`SELECT id FROM companies WHERE ends_on IS NOT NULL AND ends_on < ? AND purged_at IS NULL AND demo = 0
+      AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL) ORDER BY COALESCE(purge_checked_at, 0), ends_on LIMIT ?`)
     .bind(purgeFloor(today), ENDING.perRun)
     .all<{ id: string }>()
   let purged = 0
@@ -147,11 +164,21 @@ export async function forgetLonely(db: D1Database): Promise<number> {
 export async function forgetRecords(env: PurgeEnv, today: string): Promise<number> {
   const db = env.DB
   const due = await db
-    .prepare('SELECT id FROM companies WHERE purged_at IS NOT NULL AND ends_on IS NOT NULL AND ends_on < ? AND demo = 0 ORDER BY ends_on LIMIT ?')
+    .prepare(`SELECT id FROM companies WHERE purged_at IS NOT NULL AND ends_on IS NOT NULL AND ends_on < ? AND demo = 0
+      AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL) ORDER BY ends_on LIMIT ?`)
     .bind(recordsFloor(today), ENDING.perRun)
     .all<{ id: string }>()
+  let deleted = 0
   for (const { id } of due.results) {
-    if (env.FILES) await deletePrefix(env.FILES, `companies/${id}/`)
+    const claim = await db.prepare(`UPDATE companies SET records_delete_started_at = COALESCE(records_delete_started_at, ?1)
+      WHERE id = ?2 AND purged_at IS NOT NULL AND ends_on < ?3
+        AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`)
+      .bind(now(), id, recordsFloor(today)).run()
+    if (!claim.meta.changes) continue
+    const canDelete = async () => !await evidenceBlocked(db, id)
+    if (env.FILES) await deletePrefix(env.FILES, `companies/${id}/`, new Set(), canDelete)
     await db.batch([
       db.prepare('DELETE FROM company_files WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM declarations WHERE company_id = ?').bind(id),
@@ -163,6 +190,7 @@ export async function forgetRecords(env: PurgeEnv, today: string): Promise<numbe
       db.prepare('DELETE FROM events WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM companies WHERE id = ?').bind(id),
     ])
+    deleted++
   }
-  return due.results.length
+  return deleted
 }

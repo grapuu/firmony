@@ -25,6 +25,8 @@ import { OrderDone, OrderGone, OrderPage, TermsPage, type OrderErrors, type Orde
 import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
+import { securityRoutes } from './security/routes'
+import { isEvidenceHeld } from './incidents/store'
 import { Home, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
@@ -109,7 +111,7 @@ app.use('*', async (c, next) => {
     if (length > (UPLOADS.test(url.pathname) ? APP.uploadBytes : LIMITS.formBytes)) return c.text('Too large', 413)
   }
   await next()
-  const inside = /^\/(app|ucto|f)(\/|$)/.test(url.pathname)
+  const inside = /^\/(app|ucto|auth|f)(\/|$)/.test(url.pathname)
   if (!c.res.headers.has('Content-Security-Policy')) c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
   // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
@@ -492,6 +494,7 @@ app.get('/f/:token/xml', async (c) => {
   return xmlResponse(found.invoice, await invoiceLines(c.env.DB, found.invoice.id), seller)
 })
 
+app.route('/auth', securityRoutes)
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
 
@@ -515,6 +518,7 @@ app.get('/healthz', async (c) => {
 app.notFound((c) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: new URL(c.req.url).pathname, noindex: true }, <NotFound />, 404))
 
 app.onError((err, c) => {
+  if (isEvidenceHeld(err)) return c.text('Tento záznam musíme uchovať. Vymazanie sme nevykonali. Obráťte sa na zodpovedného správcu.', 409)
   if (isPeriodLocked(err)) return page(c, { title: 'Uzamknuté účtovné obdobie', description: '', path: c.req.path, noindex: true },
     <section class="section"><h1>Účtovné obdobie je uzamknuté.</h1><p>Zmenu sme neuložili. Účtovníčka musí najprv otvoriť príslušné obdobie v Účtovnej knihe, v časti Uzamknutie období, a uviesť dôvod.</p>
       <a class="btn btn--line" href={c.req.path.startsWith('/ucto') ? '/ucto' : '/app'}>Späť do aplikácie</a></section>, 409)

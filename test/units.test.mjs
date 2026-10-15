@@ -28,6 +28,8 @@ import {
   payrollStore,
   periods,
   support,
+  security,
+  isEvidenceHeld,
   contracts,
   match,
   orderLinkMail,
@@ -3636,6 +3638,22 @@ async function zipped(entries, note) {
   let refused = false
   try { support.responseDueAt(Number.NaN) } catch { refused = true }
   check('support: an invalid clock is refused', refused)
+}
+
+// Authentication boundaries are independent of the route's tenant authorization.
+{
+  check('return addresses reject external, normalized external and non-application destinations', ['//evil.example/ucto', '/\\\\evil.example/ucto', 'https://firmony.ai/app', '/auth/grants', '/application', '/ucto-other'].every((s) => security.safeNext(s) === '/app'))
+  check('return addresses preserve valid internal paths and queries', security.safeNext('/ucto/klienti/x?rok=2026#doklady') === '/ucto/klienti/x?rok=2026#doklady')
+  check('passkeys are bound to the canonical HTTPS production origin', security.relyingParty('https://firmony.ai/auth/options', {})?.rpID === 'firmony.ai' && security.relyingParty('http://firmony.ai/auth/options', {}) === null && security.relyingParty('https://preview.example/auth/options', { DEMO: '1' }) === null)
+  check('local passkeys require an explicit demo flag', security.relyingParty('http://localhost:8787/auth', {}) === null && security.relyingParty('http://localhost:8787/auth', { DEMO: '1' })?.rpID === 'localhost')
+  const bootstrap = { TEAM_BOOTSTRAP_EMAIL: 'owner@example.test', TEAM_BOOTSTRAP_TOKEN: 'x'.repeat(43), TEAM_BOOTSTRAP_EXPIRES_AT: '1100' }
+  check('bootstrap never defaults to a public mailbox or an unlimited deadline', security.bootstrapReady(bootstrap, 1000) && !security.bootstrapReady({}, 1000) && !security.bootstrapReady({ ...bootstrap, TEAM_BOOTSTRAP_EXPIRES_AT: '' }, 1000) && !security.bootstrapReady(bootstrap, 1100))
+  const who = { verifiedAt: 1000, verifiedCredential: 'key' }
+  check('freshness needs the credential, rejects future timestamps and expires at the boundary', security.verifiedRecently(who, 1100, 300) && !security.verifiedRecently(who, 1300, 300) && !security.verifiedRecently(who, 999, 300) && !security.verifiedRecently({ ...who, verifiedCredential: null }, 1100, 300))
+  check('exports, payroll downloads, role changes and retention release require recent verification', [['/app/export','GET'], ['/ucto/klienti/co/export','GET'], ['/ucto/klienti/co/dennik.csv','GET'], ['/ucto/klienti/co/paska','GET'], ['/ucto/tim','POST'], ['/ucto/incidenty/x/schvalit-uvolnenie','POST']].every(([p,m]) => security.sensitivePath(p,m)))
+  check('ordinary work does not receive an accidental repeated-verification requirement', !security.sensitivePath('/ucto/doklady','GET') && !security.sensitivePath('/ucto/klienti/x/spravy','POST'))
+  const e = { cause: { cause: new Error('D1_ERROR: Evidence hold prevents deletion') } }
+  check('retention errors are recognized through nested causes and tolerate cycles', isEvidenceHeld(e) && !isEvidenceHeld(new Error('other')) && (() => { const x = {}; x.cause = x; return !isEvidenceHeld(x) })())
 }
 
 done('units')

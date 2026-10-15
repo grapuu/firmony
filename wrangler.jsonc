@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "firmony",
   "main": "src/index.tsx",
+  "build": { "command": "npm run build:assets" },
   "compatibility_date": "2026-10-01",
 
   // The stylesheet and the fonts are served straight from ./public.

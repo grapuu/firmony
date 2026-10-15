@@ -20,6 +20,10 @@ Doteraz sa ukladalo číslo verzie podmienok a základná cena, ale stránka aj 
 
 Archív 2026-10-13 je rekonštrukcia verzie z repozitára, výslovne označená ako taká. Nevytvárame chýbajúci dôkaz historického súhlasu. Neznáma verzia sa nenahrádza dnešnou. Úprava opravuje aj príliš silné tvrdenie o uloženom znení v predchádzajúcej produktovej analýze.
 
+## Prístup a uchovanie v aplikácii
+
+Nadväzujúci [bezpečnostný balík](../security/README.md) implementuje overenie tímu prihlasovacím kľúčom, register incidentov, blokovanie výmazu pri otvorenom prípade, dvojité schválenie uvoľnenia a lokálnu skúšku obnovy. Nejde o nezávislý dôkazový archív, vykonané hlásenie poisťovni ani produkčné schválenie. Právne dôvody a primeranosť uchovania určí zodpovedný odborník; bežné zmeny zdrojových dát tento register úplne nezastavuje.
+
 ## Čo nepovažujeme za vybavené
 
 Nemáme doloženú poistnú zmluvu, pripoistenie garancie, schválenie advokáta, veľkosť rezervy, produkčnú obnovu, odbornú kapacitu ani akceptáciu klienta. Správca môže do systému zapísať referenciu na posúdenie; systém neoverí jeho vecnú pravdivosť. Dôkazy musia existovať mimo samotných polí formulára a musí ich schváliť zodpovedná osoba.

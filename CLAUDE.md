@@ -1,3 +1,11 @@
+Current security implementation (15 October 2026): [docs/security/README.md](docs/security/README.md).
+The current cumulative branch is `codex/firmony-security-and-evidence` (base PR #7 `04ec8eb8`), schema 17.
+Team work now requires passkey UV; sensitive actions require fresh confirmation. Incidents/holds block retention,
+and a synthetic D1/R2 restore drill verifies recovery with revoked old sessions. Independent evidence archiving,
+production backup/recovery and business readiness remain unverified. See the first PROGRESS entry. Historical
+claims below about missing MFA/claims registers or no client JavaScript are superseded by this scoped change.
+No automatic merge or production deployment; preserve prior branches and history.
+
 # Firmony: working notes
 
 Current responsibility and signing controls (15 October 2026): [docs/responsibility/README.md](docs/responsibility/README.md).
