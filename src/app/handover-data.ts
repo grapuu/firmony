@@ -9,6 +9,7 @@ const parsed = (value: unknown): unknown => { try { return typeof value === 'str
 
 export async function handoverData(db: D1Database, company: string, year: string, at: number): Promise<ZipEntry[]> {
   const selections: [string, string][] = [
+    ['prilohy', 'SELECT * FROM company_files WHERE company_id = ?1 ORDER BY id'],
     ['uzamknutie-obdobi', 'SELECT * FROM period_locks WHERE company_id = ?1'],
     ['historia-uzamknutia', 'SELECT * FROM period_lock_history WHERE company_id = ?1 ORDER BY version'],
     ['zamestnanci', 'SELECT * FROM employees WHERE company_id = ?1 ORDER BY id'],

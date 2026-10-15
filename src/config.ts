@@ -309,10 +309,8 @@ export const STATEMENTS = {
   dueDay: 1,
 } as const
 
-/** The people of Firmony: who becomes the first administrator, and how long a welcome link works. */
+/** Team display defaults and welcome-link duration. Provisioning requires explicit SecurityBindings. */
 export const TEAM = {
-  /** Whoever signs in with this address while nobody of the team exists becomes the first administrator. */
-  bootstrapEmail: BRAND.email,
   bootstrapName: 'Christian Juhás',
   /** The link in the email that welcomes a new client works this many days, once. */
   welcomeDays: 7,

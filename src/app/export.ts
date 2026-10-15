@@ -123,6 +123,7 @@ function readme(company: Company, year: string, has: { invoices: boolean; messag
     )
   }
   lines.push(
+    'odobrane-prilohy/  prílohy vyradené z bežného prehľadu, uchované do riadeného výmazu; čas a osoba v data/prilohy.json',
     'data/           úplné údaje miezd, zamestnancov, podaní a účtovných zápisov vo formáte JSON vrátane histórie; sumy sú v centoch',
     'mzdy/           uložené uzavreté výplatné pásky ako JSON a prehľad pre Excel; bez nového prepočtu',
     'podania/        pôvodné uložené XML podaných závierok a ich predchádzajúcich verzií, ak sa pri podaní uložili',
@@ -157,7 +158,7 @@ export async function exportYear(
   const at = Math.floor(Date.now() / 1000)
   const [snapshots, papers] = await Promise.all([
     handoverData(db, company.id, year, at),
-    db.prepare('SELECT id, kind, file_name, created_at, r2_key FROM company_files WHERE company_id = ? ORDER BY id').bind(company.id).all<{ id: string; kind: string; file_name: string; created_at: number; r2_key: string }>(),
+    db.prepare('SELECT id, kind, file_name, created_at, r2_key, deleted_at FROM company_files WHERE company_id = ? ORDER BY id').bind(company.id).all<{ id: string; kind: string; file_name: string; created_at: number; r2_key: string; deleted_at: number | null }>(),
   ])
   const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows] = await Promise.all([
     db
@@ -382,7 +383,7 @@ export async function exportYear(
       yield { name: 'zmluva.sha256', when: at, data: text(`${contract.sha256}  zmluva.json\n`) }
     }
     yield* snapshots
-    for (const paper of papers.results) yield { name: uniqueName(zipName(`odovzdane/${paper.kind}-${paper.id}-${paper.file_name}`), taken), when: paper.created_at, data: async () => { const object = await files?.get(paper.r2_key); return object ? new Uint8Array(await object.arrayBuffer()) : null } }
+    for (const paper of papers.results) yield { name: uniqueName(zipName(`${paper.deleted_at === null ? 'odovzdane' : 'odobrane-prilohy'}/${paper.kind}-${paper.id}-${paper.file_name}`), taken), when: paper.created_at, data: async () => { const object = await files?.get(paper.r2_key); return object ? new Uint8Array(await object.arrayBuffer()) : null } }
     for (const { invoice, file } of invoiceFiles) {
       yield { name: file, when: invoice.createdAt, data: async () => encoder.encode(ublOf(invoice, await invoiceLines(db, invoice.id), company)) }
     }

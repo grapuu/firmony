@@ -80,7 +80,7 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
          ${POA_STATE_SQL} AS poa,
          ${DECLARATION_STATE_SQL} AS declaration,
          ${OPEN_REPORTS_SQL} AS open_reports,
-         (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover') AS handover
+         (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover' AND f.deleted_at IS NULL) AS handover
        FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id
        JOIN visible_companies vc ON vc.id = c.id
        LEFT JOIN unanswered pending ON pending.company_id = c.id AND pending.position = 1

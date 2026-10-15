@@ -18,14 +18,21 @@ Schema steps **16–17** add UV passkeys, controlled provisioning/recovery, inci
   A new review cancels a pending release. Release and closure require independent administrators.
 - Confirmed handover first freezes writes for at least 24 hours before destructive deletion. A case arriving
   after that claim is explicitly flagged as potentially partially lost; subsequent stoppable deletion is blocked.
-  Tests inject cases during R2 listing and after deletion. No cross-D1/R2 atomicity or WORM claim is made.
+  Tests inject cases during R2 listing and after deletion. Retiring handover attachments keeps the original
+  and provenance until controlled retention; portable exports include clearly labelled retired files.
+  Failed new paper uploads clean up their uncommitted UUID object after a concurrent freeze. No cross-D1/R2 atomicity or WORM claim is made.
 - Local restore drill copies all business tables, schema/triggers and originals/metadata into another empty D1/R2,
   checks hashes/foreign keys/contracts/holds, rejects corruption and disables restored bearer credentials.
   It uses quiescent synthetic data. Production backup, independent evidence archive, live-provider recovery,
   staffing and measured production RPO/RTO remain unverified. Business readiness stays UNKNOWN/NO-GO.
-- Verification: see final exact-head GitHub checks. Local verification passed **699 unit checks and 934 workerd checks**, including real signatures,
-  recovery, retention races and isolated restoration; supplementary TypeScript 6. New dependency audit returned
-  zero advisories at the time of the check. Final native TypeScript, browser and layout results follow in exact-head CI. No merge or production deployment.
+- Verification at `b3d14a5a`: native TypeScript 7, **699 unit / 934 workerd / 7 Chrome WebAuthn checks**,
+  and **54 layouts** passed [CI](https://github.com/grapuu/firmony/actions/runs/38780273340).
+  The downloaded 55-image artifact matched SHA-256
+  `2d0fab5be7a299f92a7068189ec52b1859111324ebe24def6af75a91c909c725`; reviewed desktop and narrow screens.
+  A further retention fix adds ordinary-attachment races, portable retired-file data and revoked-owner coverage;
+  all **944 workerd checks** passed locally after those changes. The final head receives the same complete CI
+  plus three handover-retirement layouts (57 total). New dependency audit reported zero advisories when checked.
+  No merge or production deployment.
 
 
 ## Responsibility, contract evidence and larger-client intake (Codex, 15 October 2026)

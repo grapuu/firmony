@@ -207,10 +207,10 @@ export const team = typesetAll({
     endedByUs: (when: string, day: string) =>
       typeset(`Zmluvu sme ukončili ${when}. Posledný deň je ${day}: dokončite práce za zaplatené obdobia a do 30 dní odovzdajte účtovníctvo nižšie (bod 10.4 podmienok).`),
     afterEnd: (intake: string, handover: string, purge: string) =>
-      typeset(`Doklady za posledný mesiac berie aplikácia do ${intake}. Účtovníctvo odovzdajte do ${handover}. Údaje firmy sa vymažú ${purge}; zmluva, plná moc a identifikácia zostanú päť rokov.`),
+      typeset(`Doklady za posledný mesiac berie aplikácia do ${intake}. Účtovníctvo odovzdajte do ${handover}. Retenčný výmaz je možný najskôr ${purge}, po potvrdení kompletného odovzdania a uvoľnení prípadného uchovania. Zmluva, plná moc a identifikácia zostávajú podľa retenčných lehôt.`),
     handoverDue: (day: string) => typeset(`Odovzdať do ${day}`),
     handoverLate: 'Odovzdanie mešká',
-    purged: (day: string, until: string) => typeset(`Údaje firmy sme vymazali ${day}. Zmluvu, plnú moc a identifikáciu uchovávame do ${until}.`),
+    purged: (day: string, until: string) => typeset(`Údaje firmy sme vymazali ${day}. Zmluvu, plnú moc a identifikáciu uchovávame najmenej do ${until}; otvorený prípad môže vyžadovať dlhšie uchovanie.`),
     amlOpen: 'Identifikácia a riziko',
     reportsOpen: (n: number) => typeset(`${n} ${plural(n, 'oznámenie čaká', 'oznámenia čakajú', 'oznámení čaká')} na posúdenie`),
   },
@@ -235,7 +235,7 @@ export const team = typesetAll({
     cancelled: 'Ukončenie sme zrušili. Klient má správu v aplikácii.',
     message: (end: string, intake: string, handover: string, access: string) =>
       typeset(
-        `Zmluvu o vedení účtovníctva ukončujeme. Posledný deň zmluvy je ${end}. Dovtedy pracujeme ako doteraz. Doklady za posledný mesiac nám pošlite do ${intake}, účtovníctvo Vám tu odovzdáme do ${handover} a všetky doklady a údaje si vo Firma a nastavenia stiahnete do ${access}. Potom ich vymažeme.`,
+        `Zmluvu o vedení účtovníctva ukončujeme. Posledný deň zmluvy je ${end}. Dovtedy pracujeme ako doteraz. Doklady za posledný mesiac nám pošlite do ${intake}, účtovníctvo Vám tu odovzdáme do ${handover} a všetky doklady a údaje si vo Firma a nastavenia stiahnete do ${access}. Po potvrdenom odovzdaní a uplynutí lehôt uchovania nasleduje výmaz.`,
       ),
     messageCancel: 'Ukončenie zmluvy rušíme. Pokračujeme ako doteraz.',
   },
@@ -244,7 +244,7 @@ export const team = typesetAll({
     lead: 'Nahrajte export z účtovného programu a zostavy: hlavnú knihu, denník, súvahu a výkaz ziskov a strát. Klient ich nájde vo Firma a nastavenia a dostane správu v aplikácii.',
     files: 'Súbory',
     button: 'Odovzdať klientovi',
-    remove: 'Odstrániť',
+    remove: 'Odobrať z prehľadu',
     none: 'Zatiaľ nič.',
     flash: 'Účtovníctvo sme odovzdali. Klient má správu v aplikácii.',
     removed: 'Súbor sme odstránili.',

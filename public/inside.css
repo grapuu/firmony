@@ -6754,3 +6754,8 @@ select.field__input {
 .incident-history { padding-left: 20px; display: grid; gap: 16px; overflow-wrap: anywhere; }
 
 .incident-head { overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .info .incident-facts > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .info .incident-facts dd { max-width: 100%; margin-left: 0; text-align: left; }
+}

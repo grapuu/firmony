@@ -25,8 +25,6 @@ export interface Incident {
   release_requested_by: string | null
   release_ref: string | null
 }
-export const activeHold = (db: D1Database, company: string) =>
-  db.prepare('SELECT 1 AS x FROM evidence_holds WHERE company_id = ? AND released_at IS NULL LIMIT 1').bind(company).first().then(Boolean)
 const SELECT = `SELECT i.*, c.name AS company_name, h.id AS hold_id, h.review_on AS hold_review_on, h.released_at, h.release_requested_by, h.release_ref, o.name AS owner_name, b.name AS backup_name
   FROM incidents i JOIN companies c ON c.id = i.company_id LEFT JOIN evidence_holds h ON h.incident_id = i.id LEFT JOIN users o ON o.id = i.owner_id LEFT JOIN users b ON b.id = i.backup_id`
 export async function incidentsOf(db: D1Database, user: User): Promise<Incident[]> {
@@ -88,7 +86,7 @@ export async function reviewHold(db: D1Database, user: User, id: string, reviewO
   const result = await db
     .prepare(
       `UPDATE evidence_holds SET review_on = ?1, reviewed_by = ?2, review_ref = ?3, release_requested_at = NULL, release_requested_by = NULL, release_ref = NULL
-    WHERE incident_id = ?4 AND released_at IS NULL AND EXISTS (SELECT 1 FROM companies c WHERE c.id = evidence_holds.company_id AND (EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team = 'admin') OR c.accountant_id = ?2 OR EXISTS (SELECT 1 FROM incidents i WHERE i.id = evidence_holds.incident_id AND (i.owner_id = ?2 OR i.backup_id = ?2))))`,
+    WHERE incident_id = ?4 AND released_at IS NULL AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team IS NOT NULL) AND EXISTS (SELECT 1 FROM companies c WHERE c.id = evidence_holds.company_id AND (EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team = 'admin') OR c.accountant_id = ?2 OR EXISTS (SELECT 1 FROM incidents i WHERE i.id = evidence_holds.incident_id AND (i.owner_id = ?2 OR i.backup_id = ?2))))`,
     )
     .bind(reviewOn, user.id, reference, id)
     .run()

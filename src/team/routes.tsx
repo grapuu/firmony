@@ -20,7 +20,7 @@ import { answerHeld, statementsOf } from '../app/statements'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
-import { checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
+import { retirePaperStatements, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
 import {
   LEVELS,
   checkDeclarationStatement,
@@ -972,11 +972,8 @@ teamRoutes.post('/klienti/:id/odovzdanie/:file/odstranit', async (c) => {
   const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
   if (!company || !paper || paper.kind !== 'handover') return missingPage(c)
   const db = c.env.DB
-  await db.batch([
-    db.prepare("DELETE FROM company_files WHERE id = ? AND company_id = ? AND kind = 'handover'").bind(paper.id, company.id),
-    eventStatement(db, { company: company.id, user: who.user.id, action: 'handover.removed', subject: paper.id }),
-  ])
-  if (c.env.FILES) await c.env.FILES.delete(paper.r2Key)
+  const result = await db.batch(retirePaperStatements(db, company.id, paper.id, who.user.id))
+  if (!result[0]?.meta.changes) return c.text('Príloha sa medzitým zmenila. Obnovte stránku.', 409)
   return c.redirect(`/ucto/klienti/${company.id}?ok=odstranene#odovzdanie`, 303)
 })
 

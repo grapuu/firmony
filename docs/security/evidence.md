@@ -10,6 +10,8 @@ Otvorený prípad alebo aktívne uchovanie blokuje bežný retenčný výmaz ú�
 
 Tieto ochrany **nepredstavujú nezávislý nemenný archív**: nebránia všetkým bežným úpravám účtovných dát a neodolajú privilegovanému správcovi infraštruktúry, ktorý zmení schému či priamo úložisko. Pri udalosti vytvoriť a overiť samostatný chránený dôkazový balík podľa právneho posúdenia (originály, stav kníh/podaní, potvrdenia, udalosti, platný kontrakt, manifest a externý doklad času/úschovy). Jeho automatické nezávislé uloženie tento balík ešte nedodáva.
 
+Odobratie odovzdanej prílohy ju vyradí z bežného prehľadu a prístupu; originál aj pôvodný databázový záznam zostanú do riadeného retenčného výmazu. Plný archív ich obsahuje pod `odobrane-prilohy/` a metadáta vrátane času/osoby odobratia v `data/prilohy.json`. Tento postup odstraňuje medzeru medzi ručným zmazaním záznamu a súboru pri otváraní prípadu. Aktívny prípad blokuje aj samotné vyradenie. Právny vlastník musí pred produkciou potvrdiť primeranosť a informačné povinnosti tohto retenčného správania.
+
 ## Súbeh s mazaním
 
 Po potvrdení kompletného aktuálneho odovzdania a uplynutí štandardného okna plánovač najprv zmrazí účtovné zápisy. Najmenej **24 hodín** nezačne nevratnú fázu. Nejde o skrátenie klientovej existujúcej lehoty; reálny výmaz môže nastať neskôr. Pri aktívnom prípade sa nespustí. Samotné zamrznutie bez deštruktívneho nároku ešte umožní úplné uchovanie.

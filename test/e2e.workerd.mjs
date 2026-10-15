@@ -650,7 +650,7 @@ res = await acc.post('/ucto/platby/pb-1/kontrola', { ok: '1' })
 check('nor can she touch a payment of another accountant', res.status === 404)
 
 const security = await checkSecurity({ db, mf, site, admin, anna, acc, as, signIn, emailOnly, capture: process.env.FIRMONY_CAPTURE_DIR })
-await checkIncidents({ db, files, admin, anna, acc, lucia, security, nowS, today: day(0), day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkIncidents({ db, files, admin, anna, acc, lucia, security, nowS, today: day(0), day, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 
 // Booking: the reader's proposal, an entry, a rule for the supplier
 res = await acc.get(`/ucto/doklady/${cafeDoc?.id}`)

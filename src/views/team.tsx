@@ -521,6 +521,7 @@ const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; no
           ))}
         </ul>
       )}
+      <p class="small">Odobratie vyradí prílohu z bežného prehľadu. Originál s históriou zostáva v plnom archíve do riadeného výmazu.</p>
       <form class="stack" method="post" action={`/ucto/klienti/${c.id}/odovzdanie`} enctype="multipart/form-data">
         <label class="field__label" for="odovzdanie-subory">
           {t.handover.files}

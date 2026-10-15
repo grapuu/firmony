@@ -1,6 +1,9 @@
 export const INCIDENT_SCHEMA = [
   'ALTER TABLE companies ADD COLUMN purge_delete_started_at INTEGER',
   'ALTER TABLE companies ADD COLUMN records_delete_started_at INTEGER',
+  'ALTER TABLE company_files ADD COLUMN deleted_at INTEGER',
+  'ALTER TABLE company_files ADD COLUMN deleted_by TEXT',
+  'ALTER TABLE company_files ADD COLUMN retire_nonce TEXT',
   // An already-running old purge may have deleted objects. Never relabel it as safe merely by upgrading.
   'UPDATE companies SET purge_delete_started_at = purge_started_at WHERE purge_started_at IS NOT NULL',
   `CREATE TABLE incidents (
@@ -20,6 +23,9 @@ export const INCIDENT_SCHEMA = [
     reviewed_by TEXT, review_ref TEXT, release_requested_at INTEGER, release_requested_by TEXT,
     release_ref TEXT, released_at INTEGER, released_by TEXT
   )`,
+  `CREATE TRIGGER company_files_hold_retire BEFORE UPDATE OF deleted_at ON company_files
+    WHEN NEW.deleted_at IS NOT OLD.deleted_at AND (EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = OLD.company_id AND released_at IS NULL) OR EXISTS (SELECT 1 FROM incidents WHERE company_id = OLD.company_id AND closed_at IS NULL))
+    BEGIN SELECT RAISE(ABORT, 'Evidence hold prevents attachment retirement'); END`,
   'CREATE INDEX evidence_holds_active ON evidence_holds (company_id, released_at)',
   `CREATE TABLE incident_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id TEXT NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,

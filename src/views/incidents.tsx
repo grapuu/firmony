@@ -171,7 +171,7 @@ export const IncidentPage: FC<{
       </p>
     ) : null}
     <section class="info">
-      <dl class="kv">
+      <dl class="kv incident-facts">
         <div>
           <dt>Referencia podkladov</dt>
           <dd class="kv__long">{i.evidence}</dd>

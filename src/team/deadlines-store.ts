@@ -46,7 +46,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
   const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows] = await db.batch<Row>([
     db
       .prepare(
-        `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover') AS handover
+        `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover' AND f.deleted_at IS NULL) AS handover
            FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE ${sql} ORDER BY c.name COLLATE NOCASE`,
       )
       .bind(...binds),
