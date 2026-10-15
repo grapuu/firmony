@@ -6,12 +6,13 @@ import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'mi
 import { check, done } from './check.mjs'
 import { checkPeriodLocks } from './periods.runtime.mjs'
 import { checkSupportQueue } from './support.runtime.mjs'
+import { checkContractTransactions } from './contracts.runtime.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
-import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines } from '../.wrangler/dist/stores.js'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
@@ -38,7 +39,7 @@ const mf = new Miniflare(
         compatibilityDate: '2026-10-01',
         d1Databases: { DB: 'firmony-e2e' },
         r2Buckets: { FILES: 'firmony-e2e-files' },
-        bindings: { ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
+        bindings: { CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
           const banked = await bank.answer(request)
@@ -52,6 +53,7 @@ const mf = new Miniflare(
           return new MfResponse('unexpected request', { status: 599 })
         },
       },
+      { name: 'firmony-unreleased', modulesRoot: dist, modules: [{ type: 'ESModule', path: `${dist}/index.js` }], compatibilityDate: '2026-10-01', d1Databases: { DB: 'firmony-e2e' } },
       { name: 'pretend-mail', modules: true, compatibilityDate: '2026-10-01', script: PRETEND_MAIL },
     ],
   }),
@@ -215,7 +217,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 14)
+check('health says the schema', (await res.json()).schema === 15)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -1403,12 +1405,14 @@ check(
     (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('beriem späť'),
 )
 
-// The contract inside the app: the terms in full, numbered, to save or print
+// A legacy version number is not proof of the accepted wording.
+await db.prepare("UPDATE companies SET terms_version = '2026-10-13' WHERE id = 'co-a'").run()
+// The contract inside the app: the archived release is clearly labelled.
 res = await anna.get('/app/zmluva')
 page = await res.text()
 check(
   'the contract and its terms are in the app',
-  res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-11-1"') && page.includes('Firma A s. r. o.') && page.includes('data-print'),
+  res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-11-1"') && page.includes('Firma A s. r. o.') && page.includes('data-print') && page.includes('Archívne znenie'),
 )
 
 res = await anna.get('/app')
@@ -3700,6 +3704,8 @@ check(
 // director the register names (Zelený dvor s. r. o.: two directors in office, one whose office ended).
 // ---------------------------------------------------------------------------------------------------------------
 
+await checkContractTransactions(db)
+
 const zeleny = { ico: '55012345', mode: 'company', plan: 'rast', situation: 'switch', name: 'Tomáš Dvorský', email: 'tomas@zelenydvor.test', phone: '', note: '' }
 res = await post('/zacat', zeleny, { ip: '198.51.100.20' })
 check('a request for an s. r. o. leads to the contract', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmluva=1')
@@ -3738,6 +3744,53 @@ check(
 check('the order page is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 const months = [...page.matchAll(/name="start" id="start-\d" value="(\d{4}-\d{2}-01)"/g)].map((m) => m[1])
 check('six months are offered, the launch the first of them at the earliest', months.length === 6 && months[0] >= '2027-01-01', months.join(' '))
+const proposal = page.match(/name="proposal" value="([a-f0-9]{64})"/)?.[1]
+check('an unreviewed order cannot be signed', /type="submit" disabled/.test(page) && Boolean(proposal))
+const validContract = { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1', proposal }
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
+check('direct posting cannot bypass the missing expert review', res.status === 409 && (await db.prepare("SELECT status FROM orders WHERE id = ?").bind(orderRow.id).first())?.status === 'open')
+const reviewPath = `/ucto/ziadosti/${orderRow.request_id}/posudenie`
+res = await acc.get(reviewPath)
+check('an accountant cannot approve a contract intake', res.status === 404)
+res = await anna.get(reviewPath)
+check('a client cannot approve a contract intake', res.status === 404)
+res = await admin.get(reviewPath)
+const reviewHtml = await res.text()
+check('an administrator sees scope, capacity, authority and insurance checks', res.status === 200 && ['category', 'scope', 'cover', 'authority'].every((k) => reviewHtml.includes(`name="${k}"`)))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-review.html`, reviewHtml)
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-blocked.html`, page)
+const reviewFields = { proposal, decision: 'standard', plan: 'rast', evidence: 'TEST-ONLY qualification report', accountant: lucia.id, category: '1', scope: '1', cover: '1', authority: '1' }
+res = await admin.post(reviewPath, { ...reviewFields, category: '0' })
+check('standard approval without all controls is refused', res.status === 422 && !(await db.prepare('SELECT id FROM order_reviews WHERE order_id = ?').bind(orderRow.id).first()))
+res = await admin.post(reviewPath, { ...reviewFields, accountant: 'u-a' })
+check('a client cannot be named responsible accountant', res.status === 422)
+res = await admin.post(reviewPath, { ...reviewFields, proposal: 'b'.repeat(64) })
+check('an expert cannot approve stale company facts or tariffs', res.status === 409)
+res = await admin.post(reviewPath, { ...reviewFields, decision: 'bespoke' })
+check('a bespoke prospect has a recorded decision, without a standard contract', res.status === 303)
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
+check('an individual service cannot be signed as a standard package', res.status === 409)
+res = await admin.post(reviewPath, reviewFields)
+check('an admin can approve the documented standard scope', res.status === 303)
+res = await admin.post(reviewPath, { ...reviewFields, decision: 'hold' })
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
+check('the newest decision revokes an earlier approval', res.status === 409)
+res = await admin.post(reviewPath, reviewFields)
+const noRelease = await mf.getWorker('firmony-unreleased')
+const unsignedBody = new URLSearchParams(validContract).toString()
+res = await noRelease.fetch(`${site}${orderLink}`, { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(unsignedBody)) }, body: unsignedBody })
+check('a worker without legal and insurance release stays closed despite an approved order', res.status === 409, `${res.status}: ${await res.text()}`)
+res = await get(orderLink)
+page = await res.text()
+check('only the specifically reviewed plan is offered for signing', !/type="submit" disabled/.test(page) && /value="firma"[^>]*disabled/.test(page))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-ready.html`, page)
+res = await post(orderLink, { ...validContract, proposal: 'a'.repeat(64) }, { ip: '198.51.100.21' })
+check('a stale proposal is refused before creating a company', res.status === 409 && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 0)
+res = await post(orderLink, { ...validContract, proposal: '' }, { ip: '198.51.100.21' })
+check('a missing proposal digest cannot be bypassed by a direct post', res.status === 409)
+res = await post(orderLink, { ...validContract, plan: 'firma' }, { ip: '198.51.100.21' })
+check('changing the package requires a fresh scope decision', res.status === 409)
+
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Peter Starý', agree: '1' }, { ip: '198.51.100.21' })
 check('a director whose office ended cannot conclude it', res.status === 422 && (await res.text()).includes('Vyberte, prosím, konateľa'))
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Tomáš Dvorský' }, { ip: '198.51.100.21' })
@@ -3749,7 +3802,7 @@ check('a plan that does not exist is refused', res.status === 422)
 check('nothing is created before the contract', (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 0)
 res = await post(orderLink, { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1' }, { origin: 'https://evil.example', ip: '198.51.100.21' })
 check('a contract posted from another site is refused', res.status === 403)
-res = await post(orderLink, { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1' }, { ip: '198.51.100.21' })
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
 const contractCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
 check(
   'the contract is concluded and the browser is signed in',
@@ -3760,7 +3813,7 @@ const madeCompany = await db.prepare("SELECT * FROM companies WHERE ico = '55012
 check(
   'the company is created with the contract on it',
   madeCompany?.name === 'Zelený dvor s. r. o.' &&
-    madeCompany?.plan === 'rast' &&
+    madeCompany?.plan === 'rast' && madeCompany?.accountant_id === lucia.id &&
     madeCompany?.vat_payer === 1 &&
     madeCompany?.signed_by === 'Tomáš Dvorský' &&
     madeCompany?.start_on === months[1] &&
@@ -3823,6 +3876,38 @@ check(
   'the contract in the app names who concluded it and the price of that day',
   res.status === 200 && page.includes('Tomáš Dvorský, konateľ') && page.includes('169 € mesačne bez DPH') && page.includes('Obchodné podmienky služby Firmony'),
 )
+
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-accepted.html`, page)
+const exactContract = await resolveContract(db, madeCompany.id, '2099-01-01')
+check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-15')
+check('the acceptance digest covers the exact stored UTF-8 bytes', exactContract.sha256 === createHash('sha256').update(exactContract.data).digest('hex'))
+check('approval and exact tariff evidence are retained with the contract', exactContract.snapshot.catalogue.payrollCents === 1500 && exactContract.snapshot.catalogue.closingCents === 24900 && exactContract.snapshot.approval.accountantId === lucia.id)
+let immutableContract = false
+try { await db.prepare("UPDATE contract_snapshots SET data = '{}' WHERE company_id = ?").bind(madeCompany.id).run() } catch { immutableContract = true }
+check('ordinary SQL cannot overwrite an accepted contract', immutableContract)
+let retainedContract = false
+try { await db.prepare('DELETE FROM contract_snapshots WHERE company_id = ?').bind(madeCompany.id).run() } catch { retainedContract = true }
+check('an active client contract cannot be deleted', retainedContract)
+let immutableReview = false
+try { await db.prepare("UPDATE order_reviews SET decision = 'hold' WHERE order_id = ?").bind(orderRow.id).run() } catch { immutableReview = true }
+check('review history cannot be overwritten', immutableReview)
+const missingContract = await resolveContract(db, 'co-b', 'unknown-release')
+check('an unknown old version never falls back to current terms', missingContract.status === 'missing' && missingContract.terms === null)
+const oldContract = await resolveContract(db, 'co-a', '2026-10-13')
+check('the legacy archive keeps the actual old liability cap and its uncertainty warning', oldContract.status === 'archive' && oldContract.terms.text.includes('dvanásťnásobku') && oldContract.notice.includes('nie je dôkaz'))
+const acceptedExport = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { headers: { cookie: contractCookie } })
+const acceptedZip = unzip(new Uint8Array(await acceptedExport.arrayBuffer()))
+const exactJson = acceptedZip?.find((f) => f.name === 'zmluva.json')
+check('a client can export the exact accepted snapshot with a matching checksum', acceptedExport.status === 200 && exactJson && createHash('sha256').update(exactJson.data).digest('hex') === exactContract.sha256 && acceptedZip.some((f) => f.name === 'zmluva.sha256'))
+const triggerSql = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'contract_snapshots_immutable'").first()).sql
+await db.exec('DROP TRIGGER contract_snapshots_immutable')
+await db.prepare("UPDATE contract_snapshots SET data = '{}' WHERE company_id = ?").bind(madeCompany.id).run()
+res = await get('/app/zmluva', { headers: { cookie: contractCookie } })
+check('corruption shows an explicit failure instead of substituting new terms', res.status === 200 && (await res.text()).includes('Uloženú zmluvu sa nepodarilo overiť'))
+res = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { headers: { cookie: contractCookie } })
+check('a corrupt contract blocks a purportedly complete export', res.status === 409)
+await db.prepare('UPDATE contract_snapshots SET data = ? WHERE company_id = ?').bind(exactContract.data, madeCompany.id).run()
+await db.prepare(triggerSql).run()
 res = await get('/app/plna-moc', { headers: { cookie: contractCookie } })
 page = (await res.text()).replace(/\u00a0/g, ' ')
 check(

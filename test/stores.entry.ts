@@ -14,3 +14,6 @@ export { localDaySql } from '../src/app/period-schema'
 export { purgeCompany } from '../src/app/purge'
 export { keepFilesFor } from '../src/app/intake'
 export { teamClients, waitingThreads, teamCounts } from '../src/team/store'
+
+export { contractCatalogueHash, orderOfferHash, contractGate, resolveContract } from '../src/contracts'
+export { acceptStatements, orderOf } from '../src/order'

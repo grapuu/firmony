@@ -111,6 +111,9 @@ import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPe
 import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
 import { quarterOf, summaryLookbackFrom, summaryPeriodOf, type SvView, type SvFiled } from '../app/vat-summary'
 import { dataRevision } from '../app/handover-store'
+import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash } from '../contracts'
+import { orderOf } from '../order'
+import { ContractReviewPage } from '../views/contract-review'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
 import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
@@ -2556,6 +2559,53 @@ teamRoutes.post('/ziadosti/:id', async (c) => {
     ])
   }
   return c.redirect('/ucto/ziadosti', 303)
+})
+
+async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode = 200) {
+  if (!isAdmin(c.get('who').user)) return missingPage(c)
+  const id = c.req.param('id') ?? ''
+  if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
+  const row = await c.env.DB.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
+  const order = row ? orderOf(row) : null
+  const people = await c.env.DB.prepare("SELECT id, name FROM users WHERE team IN ('admin', 'accountant') ORDER BY name").all<{ id: string; name: string }>()
+  return shell(c, 'requests', 'Posúdenie pred podpisom', <ContractReviewPage requestId={id} order={order}
+    offerHash={order ? await orderOfferHash(order) : ''} review={order ? await latestOrderReview(c.env.DB, order.id) : null}
+    people={people.results} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} error={error} />, status)
+}
+teamRoutes.get('/ziadosti/:id/posudenie', (c) => reviewPage(c))
+teamRoutes.post('/ziadosti/:id/posudenie', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const id = c.req.param('id')
+  if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
+  const db = c.env.DB
+  const row = await db.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
+  const order = row ? orderOf(row) : null
+  if (!order || order.status !== 'open') return reviewPage(c, 'Objednávka už nie je otvorená.', 409)
+  const body = await c.req.parseBody()
+  const text = (v: unknown) => typeof v === 'string' ? v.trim() : ''
+  const decision = text(body.decision)
+  const evidence = text(body.evidence)
+  const accountant = text(body.accountant)
+  const plan = PLANS.find((p) => p.id === body.plan)
+  const hash = await orderOfferHash(order)
+  if (body.proposal !== hash) return reviewPage(c, 'Návrh sa zmenil. Posúďte aktuálne údaje znova.', 409)
+  if (!['standard', 'bespoke', 'hold'].includes(decision) || evidence.length < 12 || evidence.length > 240 || !plan)
+    return reviewPage(c, 'Vyberte rozhodnutie a balík a uveďte referenciu na odborné posúdenie (12 až 240 znakov).', 422)
+  if (decision === 'standard' && (!['category', 'scope', 'cover', 'authority'].every((k) => body[k] === '1')
+    || !await db.prepare("SELECT 1 AS x FROM users WHERE id = ? AND team IN ('admin', 'accountant')").bind(accountant).first()))
+    return reviewPage(c, 'Štandardné prijatie vyžaduje všetky kontroly a zodpovedného člena tímu.', 422)
+  const ts = now()
+  await db.batch([
+    db.prepare(`INSERT INTO order_reviews (order_id, reviewed_at, reviewed_by, decision, offer_hash, plan, evidence, accountant_id, expires_at)
+      SELECT id, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 FROM orders WHERE id = ?1 AND status = 'open' AND expires_at > ?2`)
+      .bind(order.id, ts, who.user.id, decision, hash, plan.id, evidence, decision === 'standard' ? accountant : null, Math.min(order.expiresAt, ts + 7 * 86400)),
+    db.prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail)
+      SELECT ?2, NULL, ?3, 'contract.reviewed', id, ?4 FROM orders
+      WHERE id = ?1 AND status = 'open' AND expires_at > ?2`)
+      .bind(order.id, ts, who.user.id, JSON.stringify({ decision, offerHash: hash, plan: plan.id, evidence, accountant: decision === 'standard' ? accountant : null })),
+  ])
+  return c.redirect(`/ucto/ziadosti/${id}/posudenie`, 303)
 })
 
 teamRoutes.get('/tim', async (c) => {

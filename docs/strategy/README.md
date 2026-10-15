@@ -30,3 +30,7 @@ Všetky návrhy majú spoločné identifikátory P1–P10 z dokumentu 09. Tam je
 3. December chápať ako podmienený pilot; január 2027 je verejný začiatok uvedený v kóde, nie potvrdená pripravenosť.
 4. Najprv overiť odborníkov, podania, obnovu a partnerov bánk/eFaktúry. Marketing rozširovať podľa kapacity a meranej ekonomiky.
 5. Každý sľub spojiť s dôkazom. Prvá realizovaná oprava z auditu chráni nezodpovedané otázky pred skrytím automatickým oznámením alebo ďalšou správou klienta.
+
+## Rozšírenie zodpovednosti a prijímania klientov
+
+Aktuálny [balík zodpovednosti](../responsibility/README.md) obsahuje primárne právne a poistné podklady, návrh nového článku 6, konkrétne schvaľovanie pred podpisom a opravu historického znenia kontraktu. Verejná bezrizikovosť ani skutočné poistné krytie nie sú potvrdené. Nové podpisovanie ostáva bez doložených schválení uzavreté.

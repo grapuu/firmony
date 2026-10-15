@@ -1452,6 +1452,7 @@ export const RequestsPage: FC<{ requests: Request[]; now: number; flash?: string
               </span>
               {r.status === 'new' || r.status === 'contacted' ? (
                 <div class="req__actions">
+                  <a class="btn btn--line btn--small" href={`/ucto/ziadosti/${r.id}/posudenie`}>Posúdiť rozsah</a>
                   <a class="btn btn--blue btn--small" href={`/ucto/klienti/novy?ziadost=${r.id}`}>
                     {t.requests.make}
                   </a>

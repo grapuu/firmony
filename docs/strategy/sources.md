@@ -19,7 +19,7 @@ Kontrola všetkých URL: **15. 10. 2026**. „V“ znamená vysokú istotu, že 
 | D1 | [Digital Taxes](https://digitaltaxes.sk/) | V: služba, referencie, migrácia a výpovedná lehota podľa FAQ |
 | D2 | [Digital Taxes ceny](https://digitaltaxes.sk/cennik/) | V: informatívny kalkulátor a položkový cenník; odhad nie je ponuka |
 | D3 | [Zákaznícka zóna](https://digitaltaxes.sk/zakaznicka-zona/) | V: deklarované funkcie portálu |
-| D4 | [Digital Taxes VOP](https://digitaltaxes.sk/vseobecne-obchodne-podmienky/) | N: stránka dostupná, úplné použiteľné zmluvné ustanovenia v získanom texte neoverené |
+| D4 | [Digital Taxes VOP](https://digitaltaxes.sk/vseobecne-obchodne-podmienky/) | V, doplnené 15. 10.: text získaný; čl. 7 ods. 17–18 upravuje zodpovednosť a výluky. Nejde o potvrdenie právnej platnosti alebo praxe. [Rozšírenie](../responsibility/01-law-and-competition.md). |
 | O1 | [Online-uctovnik](https://www.online-uctovnik.sk/) | V: služby, archív, zvoz a deklarované poistenie |
 | O2 | [Online-uctovnik ceny](https://www.online-uctovnik.sk/uctovnictvo-cennik) | V: položka, mesačné minimá, zahrnutá závierka a samostatné úkony |
 | U1 | [UOL účtovníctvo](https://www.uol.sk/uctovnictvo/) | V: pridelený odborník, zastupiteľnosť, systém a prevzatie |

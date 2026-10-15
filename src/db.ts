@@ -2,6 +2,7 @@
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
 import { PERIOD_SCHEMA } from './app/period-schema'
+import { CONTRACT_SCHEMA } from './contract-schema'
 
 export const now = (): number => Math.floor(Date.now() / 1000)
 
@@ -644,6 +645,7 @@ const MIGRATIONS: readonly string[][] = [
   ],
   // A continuous period lock, its transition history and transactional guards on accounting sources.
   PERIOD_SCHEMA,
+  CONTRACT_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

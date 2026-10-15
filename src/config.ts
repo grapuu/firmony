@@ -365,9 +365,10 @@ export const PRIVACY_VERSION = '2026-10-14'
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an
  * s. r. o. becomes an order; its link goes by email to the address that was typed, and a director (konateľ) named
  * in the register accepts the terms on the order's page. Bump TERMS_VERSION with every change of the terms
- * (src/content/terms.ts): an accepted order keeps the version it accepted.
+ * (src/content/terms.ts): acceptance keeps the complete wording and tariffs with SHA-256. Signing also requires
+ * explicit legal/insurance release approval and a documented review of the particular order.
  */
-export const TERMS_VERSION = '2026-10-13'
+export const TERMS_VERSION = '2026-10-15'
 
 export const ORDER = {
   /** The link to an order works this many days. */

@@ -75,7 +75,7 @@ Poradie oblastí je jednotné: 1 segment; 2 prísľub; 3 služba; 4 onboarding/U
 | 7 | Párované bankové dáta, DPH, majetok a výkazy v portáli; živé AIS nevyplýva samotným zobrazením. |
 | 8 | Chat s účtovníkom v zákazníckej zóne. |
 | 9 | Informatívny kalkulátor + položkový cenník D2; základný zobrazený odhad nie je záväzná cena. |
-| 10 | VOP URL existuje, úplné použiteľné znenie v získanom obsahu N; FAQ uvádza dvojmesačnú výpoveď. |
+| 10 | Doplnené overenie 15. 10.: verejné VOP, čl. 7 ods. 17–18 opisujú zodpovednosť závislú na zavinení, náhradu preukázaných sankcií a výluky; platnosť dojednania a prax N. Podrobnosti v [právnom rozšírení](../responsibility/01-law-and-competition.md). FAQ uvádza dvojmesačnú výpoveď. |
 | 11 | Referencie na vlastnom webe; tvrdená úspora času bez nášho nezávislého merania. |
 | 12 | Produktové stránky, kalkulátor, obsah; výkonnosť SEO N. |
 | 13 | Vyžadujú knihy, inventarizácie a denník; čas úplného prevzatia N. |

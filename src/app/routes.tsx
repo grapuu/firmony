@@ -18,6 +18,7 @@ import { answerAccount, statementById, statementDue, statementsOf, takeStatement
 import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
+import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
 import { filedReturns, taxPaid, type TaxPaid } from './vat-store'
@@ -95,7 +96,7 @@ import {
 } from './store'
 import { readInvoice, readStatement, type Reading } from './xml'
 
-export interface AppBindings {
+export interface AppBindings extends ContractBindings {
   DB: D1Database
   EMAIL?: Mailer
   /** The documents' files (R2, EU). Without it nothing can be uploaded. */
@@ -1239,7 +1240,8 @@ appRoutes.get('/zmluva', async (c) => {
     .bind(who.company.id)
     .first<{ plan: string; price_cents: number | null; accepted_at: number | null; signed_by: string | null; start_on: string | null; terms_version: string | null }>()
   const order = row ? { plan: row.plan, priceCents: row.price_cents, acceptedAt: row.accepted_at, signedBy: row.signed_by, startOn: row.start_on, termsVersion: row.terms_version } : null
-  return shell(c, 'company', t.contractPage.title, <ContractPage company={who.company} order={order} />)
+  const contract = await resolveContract(c.env.DB, who.company.id, order?.termsVersion ?? who.company.termsVersion)
+  return shell(c, 'company', t.contractPage.title, <ContractPage company={who.company} order={order} contract={contract} />)
 })
 
 appRoutes.post('/firma/vypoved', async (c) => {
@@ -1301,6 +1303,8 @@ appRoutes.get('/export', async (c) => {
   const db = c.env.DB
   const year = c.req.query('rok') ?? ''
   if (!/^\d{4}$/.test(year) || !(await exportYears(db, who.company.id)).includes(year)) return shell(c, 'company', t.errors.notFound, <Missing />, 404)
+  const contract = await resolveContract(db, who.company.id, who.company.termsVersion)
+  if (contract.status === 'corrupt') return companyPage(c, { download: contract.notice }, 409)
   if (!(await withinLimit(db, 'export', who.company.id, ENDING.exportsPerHour, 3600))) return companyPage(c, { download: t.download.throttle }, 429)
   const row = await db
     .prepare('SELECT o.plan, o.price_cents, o.accepted_at, o.signed_by, o.start_on FROM orders o JOIN companies co ON co.order_id = o.id WHERE co.id = ?')

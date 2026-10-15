@@ -21,7 +21,7 @@ V stĺpci „používateľ/produkcia“ je N vždy skutočná neistota. Automati
 | Registrácia, e-mailový vstup, relácie | TESTOVANÉ | `src/app/session.ts`, runtime: expirácia/práva | N; bezpečnostná revízia a obnova prístupu |
 | Roly firma/účtovník/admin | TESTOVANÉ | `app/routes.tsx`, `team/store.ts`, izolácia firiem | N; kontrola práv v produkcii |
 | MFA pre odborný tím, silnejšie potvrdenie exportu | CHÝBA | Nenájdené TOTP/WebAuthn v prihlásení | Implementovať a otestovať obchádzanie |
-| Zmluva a uložené prijaté znenie | TESTOVANÉ | `order.ts`, `content/terms.ts` | Právna vhodnosť N; podpisujúci/mandát nestačí len register |
+| Zmluva a prijaté znenie | OPRAVA PÔVODNÉHO ZÁVERU | Pred týmto rozšírením sa ukladala iba verzia a cena, zobrazoval sa živý text. Nový snapshot a podpisové brány: [zodpovednosť](../responsibility/README.md). | Staré znenia bez snapshotu nie sú dokázané; právne/poistné schválenie N. |
 | Plná moc, AML vyhlásenie, interné posúdenie | ČIASTOČNÉ | `papers.ts`, `aml.ts`, príslušné views | Žiadny dôkaz registrácií, reálneho overenia identity a účinnosti mandátov |
 | Migrácia starej agendy | ČIASTOČNÉ | `papers.ts`, počiatočné stavy v `ledger*` | Automatický import účtovných databáz CHÝBA; úplnosť preverí účtovník |
 | Mobilné pridanie, PDF, e-mail dokladov | TESTOVANÉ | `intake.ts`, `inbox.ts`, runtime | N; doručiteľnosť, škodlivé súbory, reálny mobil |

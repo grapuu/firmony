@@ -44,3 +44,5 @@ export * as payrollStore from '../src/app/payroll-store'
 
 export * as periods from '../src/app/periods'
 export * as support from '../src/team/support'
+
+export * as contracts from '../src/contracts'

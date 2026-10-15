@@ -1,5 +1,15 @@
 # Firmony: working notes
 
+Current responsibility and signing controls (15 October 2026): [docs/responsibility/README.md](docs/responsibility/README.md).
+Schema 15 stores full acceptance-time contracts and tariffs; known legacy text is a labelled reconstruction,
+unknown versions never show today's terms. Proposed terms 2026-10-15 await lawyer/underwriter approval.
+Signing stays closed without catalogue-bound CONTRACT_RELEASE and an admin's documented per-order expert review.
+Only reviewed supported micro scope can sign a standard package; larger or complex firms need an individual service.
+No actual insurance, reserve, enterprise capacity or legal approval has been established. The new evidence register
+is NO-GO; claims retention/legal hold and independent preservation are still prerequisites. The current cumulative
+branch is codex/firmony-liability-and-enterprise-readiness. Prior commits/branches are preserved; no automatic merge/deploy.
+
+
 Current strategy and evidence (15 October 2026): [docs/strategy/README.md](docs/strategy/README.md).
 Its ten documents distinguish implemented code, local mocks, public competitor claims and unknown production
 readiness. Historical economics and launch assumptions below are not measured results. The new support queue
@@ -1337,8 +1347,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 675 unit checks, including the Slovak working-day response clock
-npm run test:runtime     # 808 workerd checks, including the unanswered support queue, then the full accounting/export/purge regression
+npm test                 # 690 unit checks, including contract releases and the Slovak working-day response clock
+npm run test:runtime     # 844 workerd checks, including contract evidence/races and the accounting/export/purge regression
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

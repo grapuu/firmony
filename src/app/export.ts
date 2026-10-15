@@ -5,7 +5,7 @@
 import { BRAND } from '../config'
 import { csvCell, csvMoney } from '../team/store'
 import { zipName, zipStream, uniqueName, type ZipEntry } from '../zip'
-import { termsText } from '../content/terms'
+import { resolveContract, type ResolvedContract } from '../contracts'
 import { CATEGORIES } from './booking'
 import { dayName, readableName } from './copy'
 import { issuedInYear, invoiceLines, ublOf } from './invoices'
@@ -86,14 +86,20 @@ export interface ContractFacts {
   startOn: string | null
 }
 
-function contractText(company: Company, order: ContractFacts | null): string {
-  const lines = ['Zmluva o vedení účtovníctva', '', `Firma: ${company.name}${company.ico ? `, IČO ${company.ico}` : ''}`]
-  if (company.contractAt && company.signedBy) lines.push(`Uzavretá online: ${moment(company.contractAt)}, ${company.signedBy}, konateľ`)
-  if (order) lines.push(`Balík: ${order.plan}${order.priceCents !== null ? `, ${csvMoney(order.priceCents)} € mesačne bez DPH` : ''}`)
-  if (company.startOn) lines.push(`Začiatok: ${dayName(company.startOn).replace(/ /g, ' ')}`)
-  if (company.endsOn) lines.push(`Koniec: ${dayName(company.endsOn).replace(/ /g, ' ')}`)
-  if (company.termsVersion) lines.push(`Obchodné podmienky: znenie ${company.termsVersion}`)
-  lines.push('', termsText().replace(/ /g, ' '))
+function contractText(company: Company, order: ContractFacts | null, contract: ResolvedContract): string {
+  const s = contract.snapshot
+  const lines = ['Zmluva o vedení účtovníctva', '', contract.notice, '',
+    `Firma: ${s?.client.name ?? company.name}, IČO ${s?.client.ico ?? company.ico ?? 'neuvedené'}`]
+  const at = s?.acceptedAt ?? order?.acceptedAt ?? company.contractAt
+  const by = s?.signedBy ?? order?.signedBy ?? company.signedBy
+  if (at && by) lines.push(`Uzavretá online: ${moment(at)}, ${by}, konateľ`)
+  if (s) lines.push(`Balík: ${s.plan.name}, ${csvMoney(s.plan.monthlyCents)} € mesačne bez DPH, do ${s.plan.docs} dokladov`,
+    `Mzdy: ${csvMoney(s.catalogue.payrollCents)} € za človeka mesačne bez DPH`,
+    `Závierka: ${csvMoney(s.catalogue.closingCents)} € bez DPH`, `Začiatok: ${s.startOn}`, `SHA-256 zmluva.json: ${contract.sha256}`)
+  else if (order) lines.push(`Balík: ${order.plan}${order.priceCents !== null ? `, ${csvMoney(order.priceCents)} € mesačne bez DPH` : ''}; úplný historický cenník nebol uložený.`)
+  if (!s && company.startOn) lines.push(`Začiatok: ${company.startOn}`)
+  if (company.endsOn) lines.push(`Koniec: ${company.endsOn}`)
+  if (contract.terms) lines.push('', contract.terms.text.replace(/\u00a0/g, ' '))
   return `${lines.join('\r\n')}\r\n`
 }
 
@@ -121,6 +127,8 @@ function readme(company: Company, year: string, has: { invoices: boolean; messag
     'mzdy/           uložené uzavreté výplatné pásky ako JSON a prehľad pre Excel; bez nového prepočtu',
     'podania/        pôvodné uložené XML podaných závierok a ich predchádzajúcich verzií, ak sa pri podaní uložili',
     'odovzdane/      súbory a plné moci, ktoré Vám účtovníčka sprístupnila',
+    'zmluva.txt      prijaté znenie alebo výslovné upozornenie na chýbajúci pôvodný záznam',
+    'zmluva.json     presný záznam novšej zmluvy a jej cenníka, ak bol pri uzavretí uložený; zmluva.sha256 obsahuje jeho kontrolný súčet',
     'manifest.json   zoznam všetkých súborov, ich veľkostí a kontrolných súčtov SHA-256',
     'Pri staršom podaní bez uloženého XML zostávajú pôvodné uložené údaje v data/; originál XML si vyžiadajte z finančnej správy.',
     'zmluva.txt      zmluva a obchodné podmienky',
@@ -144,6 +152,8 @@ export async function exportYear(
   completion?: { id: string; revision: number; onComplete: () => Promise<void> },
 ): Promise<{ name: string; body: ReadableStream<Uint8Array> }> {
   const db = env.DB
+  const contract = await resolveContract(db, company.id, company.termsVersion)
+  if (contract.status === 'corrupt') throw new Error(contract.notice)
   const at = Math.floor(Date.now() / 1000)
   const [snapshots, papers] = await Promise.all([
     handoverData(db, company.id, year, at),
@@ -366,7 +376,11 @@ export async function exportYear(
       yield { name: 'uctovnictvo/predvaha.csv', when: at, data: text(trialCsv(trialBalance(books, bookYear, 12))) }
       yield { name: 'uctovnictvo/saldokonto.csv', when: at, data: text(saldoCsv(books, bratislava(Date.now()).day)) }
     }
-    yield { name: 'zmluva.txt', when: at, data: text(contractText(company, order)) }
+    yield { name: 'zmluva.txt', when: at, data: text(contractText(company, order, contract)) }
+    if (contract.data && contract.sha256) {
+      yield { name: 'zmluva.json', when: at, data: text(contract.data) }
+      yield { name: 'zmluva.sha256', when: at, data: text(`${contract.sha256}  zmluva.json\n`) }
+    }
     yield* snapshots
     for (const paper of papers.results) yield { name: uniqueName(zipName(`odovzdane/${paper.kind}-${paper.id}-${paper.file_name}`), taken), when: paper.created_at, data: async () => { const object = await files?.get(paper.r2_key); return object ? new Uint8Array(await object.arrayBuffer()) : null } }
     for (const { invoice, file } of invoiceFiles) {

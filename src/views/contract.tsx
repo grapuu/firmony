@@ -1,17 +1,12 @@
-// The contract inside the app (his word of 13 October 2026: nothing by email): what was agreed when the director
-// concluded it, and the terms in full, numbered as the contract refers to them. It replaces the confirmation that
-// used to go out by email with the terms in it: the client reads it, saves it as a PDF or prints it, here.
+// Display acceptance-time evidence. Current terms and tariffs must never stand in for a missing old contract.
 import type { FC } from 'hono/jsx'
-import { CLOSING_PRICE, PAYROLL_PRICE, TERMS_VERSION, planById } from '../config'
-import { TERMS, TERMS_SUBTITLE, TERMS_TITLE } from '../content/terms'
-import { formatEur, typeset } from '../format'
+import type { ResolvedContract } from '../contracts'
+import { formatEur } from '../format'
 import { app, dayName, whenName } from '../app/copy'
 import type { Company } from '../app/store'
 import { Heading } from './inside'
 
 const p = app.contractPage
-
-/** What the order of an online contract kept: the plan and its price on that day, who concluded it and when. */
 export interface ContractOrder {
   plan: string
   priceCents: number | null
@@ -20,13 +15,12 @@ export interface ContractOrder {
   startOn: string | null
   termsVersion: string | null
 }
-
-export const ContractPage: FC<{ company: Company; order: ContractOrder | null }> = ({ company, order }) => {
-  const plan = planById(order?.plan ?? company.plan)
-  const accepted = order?.termsVersion ?? company.termsVersion
-  const signedAt = order?.acceptedAt ?? company.contractAt
-  const signedBy = order?.signedBy ?? company.signedBy
-  const startOn = order?.startOn ?? company.startOn
+export const ContractPage: FC<{ company: Company; order: ContractOrder | null; contract: ResolvedContract }> = ({ company, order, contract }) => {
+  const s = contract.snapshot
+  const signedAt = s?.acceptedAt ?? order?.acceptedAt ?? company.contractAt
+  const signedBy = s?.signedBy ?? order?.signedBy ?? company.signedBy
+  const startOn = s?.startOn ?? order?.startOn ?? company.startOn
+  const price = s?.plan.monthlyCents ?? order?.priceCents
   return (
     <>
       <a class="back" href="/app/firma#zmluva">
@@ -36,11 +30,14 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null }>
         <Heading first={p.title} second={p.serif} />
         <p class="phead__lead">{p.lead}</p>
       </header>
+      <p class={`notice ${contract.status === 'corrupt' ? 'notice--error' : ''}`} role="status">
+        {contract.notice}
+      </p>
       <div class="invoice">
         <div class="invoice__paper">
-          <article class="sheet deed contract" aria-label={TERMS_TITLE}>
-            <h2 class="deed__title">{typeset(TERMS_TITLE)}</h2>
-            <p class="contract__sub">{typeset(TERMS_SUBTITLE)}</p>
+          <article class="sheet deed contract" aria-label={contract.terms?.title ?? p.title}>
+            <h2 class="deed__title">{contract.terms?.title ?? p.title}</h2>
+            {contract.terms ? <p class="contract__sub">{contract.terms.subtitle}</p> : null}
             <section class="contract__points" aria-labelledby="body-t">
               <h3 id="body-t" class="contract__heading">
                 {p.points}
@@ -48,24 +45,38 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null }>
               <dl class="kv">
                 <div>
                   <dt>{p.company}</dt>
-                  <dd class="kv__long">{company.name}</dd>
+                  <dd class="kv__long">
+                    {s?.client.name ?? company.name}
+                    {s?.client.ico ? `, IČO ${s.client.ico}` : ''}
+                  </dd>
                 </div>
-                {plan ? (
+                {price !== null && price !== undefined ? (
                   <div>
                     <dt>{p.plan}</dt>
                     <dd class="kv__long">
-                      {plan.name}, {p.price(formatEur(order?.priceCents ?? plan.price * 100), plan.docs)}
+                      {s
+                        ? `${s.plan.name}, ${p.price(formatEur(price), s.plan.docs)}`
+                        : `${order?.plan ?? company.plan}, ${formatEur(price)} mesačne bez DPH; historický rozsah balíka treba overiť.`}
                     </dd>
                   </div>
                 ) : null}
-                <div>
-                  <dt>{p.payroll}</dt>
-                  <dd class="kv__long">{p.payrollValue(formatEur(PAYROLL_PRICE * 100))}</dd>
-                </div>
-                <div>
-                  <dt>{p.closing}</dt>
-                  <dd class="kv__long">{p.closingValue(formatEur(CLOSING_PRICE * 100))}</dd>
-                </div>
+                {s ? (
+                  <>
+                    <div>
+                      <dt>{p.payroll}</dt>
+                      <dd class="kv__long">{p.payrollValue(formatEur(s.catalogue.payrollCents))}</dd>
+                    </div>
+                    <div>
+                      <dt>{p.closing}</dt>
+                      <dd class="kv__long">{p.closingValue(formatEur(s.catalogue.closingCents))}</dd>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <dt>Cenník pri uzavretí</dt>
+                    <dd class="kv__long">Úplný cenník sa neukladal. Aktuálne ceny ho nenahrádzajú.</dd>
+                  </div>
+                )}
                 {startOn ? (
                   <div>
                     <dt>{p.start}</dt>
@@ -76,10 +87,6 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null }>
                   <dt>{p.concluded}</dt>
                   <dd class="kv__long">{signedAt && signedBy ? p.concludedValue(whenName(signedAt, '1900-01-01'), signedBy) : p.offline}</dd>
                 </div>
-                <div>
-                  <dt>{p.notice}</dt>
-                  <dd class="kv__long">{p.noticeValue}</dd>
-                </div>
                 {company.endsOn ? (
                   <div>
                     <dt>{p.ends}</dt>
@@ -88,7 +95,7 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null }>
                 ) : null}
               </dl>
             </section>
-            {TERMS.map((section, i) => (
+            {contract.terms?.sections.map((section, i) => (
               <section class="contract__section" id={`clanok-${i + 1}`}>
                 <h3 class="contract__heading">
                   {i + 1}. {section.title}
@@ -112,7 +119,7 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null }>
             <button class="btn btn--blue invoice__wide" type="button" data-print hidden>
               {p.print}
             </button>
-            {accepted && accepted !== TERMS_VERSION ? <p class="info__lead">{p.other(dayName(accepted), dayName(TERMS_VERSION))}</p> : null}
+            {contract.sha256 ? <p class="info__source contract__digest">SHA-256: {contract.sha256}</p> : null}
             <p class="info__source">
               {p.question}{' '}
               <a class="link" href="/app/spravy">

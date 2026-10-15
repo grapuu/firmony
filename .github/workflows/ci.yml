@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches:
-      - codex/firmony-correctness-and-history
+      - main
 permissions:
   contents: read
 jobs:

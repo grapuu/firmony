@@ -6,6 +6,7 @@
 import { ORDER, TERMS_VERSION, planById, type PlanId } from './config'
 import { now, sha256Hex } from './db'
 import type { Director } from './rpo'
+import { contractSnapshot, type ContractApproval } from './contracts'
 
 export interface Order {
   id: string
@@ -45,7 +46,7 @@ function directorsOf(value: unknown): Director[] | null {
   }
 }
 
-function orderOf(row: Row): Order {
+export function orderOf(row: Row): Order {
   const status = str(row.status)
   const expires = num(row.expires_at) ?? 0
   return {
@@ -115,6 +116,7 @@ export interface Acceptance {
   /** The director who accepted, as the register names them (or as typed when the register named nobody). */
   signedBy: string
   ipHash: string
+  approval: ContractApproval
 }
 
 export interface Accepted {
@@ -130,10 +132,11 @@ export interface Accepted {
  * accepted by this very acceptance (its id, its company and its time), so a second acceptance at the same moment,
  * or one of an order that is no longer open, writes nothing.
  */
-export function acceptStatements(db: D1Database, order: Order, a: Acceptance, ids: { companyId: string; userId: string; existingUser: boolean; inbox: string }): Accepted {
+export async function acceptStatements(db: D1Database, order: Order, a: Acceptance, ids: { companyId: string; userId: string; existingUser: boolean; inbox: string }): Promise<Accepted> {
   const ts = now()
   const plan = planById(a.plan)
   const priceCents = Math.round((plan?.price ?? 0) * 100)
+  const frozen = await contractSnapshot(order, a, ids.companyId, ts, a.approval)
   // ?1 the order, ?2 the company this acceptance creates, ?3 its time: only the acceptance that closed the order
   // finds all three on it.
   const mine = 'EXISTS (SELECT 1 FROM orders WHERE id = ?1 AND company_id = ?2 AND accepted_at = ?3)'
@@ -141,20 +144,27 @@ export function acceptStatements(db: D1Database, order: Order, a: Acceptance, id
     db
       .prepare(
         `UPDATE orders SET status = 'accepted', accepted_at = ?3, company_id = ?2, signed_by = ?4, start_on = ?5, price_cents = ?6, terms_version = ?7, ip_hash = ?8, plan = ?9
-         WHERE id = ?1 AND status = 'open' AND expires_at > ?3`,
+         WHERE id = ?1 AND status = 'open' AND expires_at > ?3
+           AND EXISTS (SELECT 1 FROM order_reviews r JOIN users u ON u.id = r.accountant_id
+             WHERE r.order_id = ?1 AND r.id = ?10 AND r.id = (SELECT MAX(id) FROM order_reviews WHERE order_id = ?1)
+               AND r.decision = 'standard' AND r.offer_hash = ?11 AND r.expires_at > ?3 AND r.plan = ?9
+               AND u.team IN ('admin', 'accountant'))`,
       )
-      .bind(order.id, ids.companyId, ts, a.signedBy, a.startOn, priceCents, TERMS_VERSION, a.ipHash, a.plan),
+      .bind(order.id, ids.companyId, ts, a.signedBy, a.startOn, priceCents, TERMS_VERSION, a.ipHash, a.plan, a.approval.review.id, a.approval.offerHash),
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, register_line, vat_payer, plan, inbox, request_id, order_id, contract_at, terms_version, signed_by, start_on)
-         SELECT ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?1, ?3, ?12, ?13, ?14 WHERE ${mine}`,
+        `INSERT INTO companies (id, created_at, name, ico, address, register_line, vat_payer, plan, inbox, request_id, order_id, contract_at, terms_version, signed_by, start_on, accountant_id)
+         SELECT ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?1, ?3, ?12, ?13, ?14, ?15 WHERE ${mine}`,
       )
-      .bind(order.id, ids.companyId, ts, order.company, order.ico, order.address, order.registerLine, plan?.vatPayer ? 1 : 0, a.plan, ids.inbox, order.requestId, TERMS_VERSION, a.signedBy, a.startOn),
+      .bind(order.id, ids.companyId, ts, order.company, order.ico, order.address, order.registerLine, plan?.vatPayer ? 1 : 0, a.plan, ids.inbox, order.requestId, TERMS_VERSION, a.signedBy, a.startOn, a.approval.review.accountant_id),
+    db.prepare(`INSERT INTO contract_snapshots (company_id, order_id, accepted_at, terms_version, sha256, data)
+      SELECT ?2, ?1, ?3, ?4, ?5, ?6 WHERE ${mine}`)
+      .bind(order.id, ids.companyId, ts, TERMS_VERSION, frozen.sha256, frozen.data),
     ...(ids.existingUser ? [] : [db.prepare(`INSERT OR IGNORE INTO users (id, created_at, email, name) SELECT ?4, ?3, ?5, ?6 WHERE ${mine}`).bind(order.id, ids.companyId, ts, ids.userId, order.email, a.signedBy)]),
     db.prepare(`INSERT OR IGNORE INTO members (company_id, user_id, role, created_at) SELECT ?2, ?4, 'owner', ?3 WHERE ${mine}`).bind(order.id, ids.companyId, ts, ids.userId),
     db
       .prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?3, ?2, ?4, 'contract.accepted', ?1, ?5 WHERE ${mine}`)
-      .bind(order.id, ids.companyId, ts, ids.userId, JSON.stringify({ terms: TERMS_VERSION, signedBy: a.signedBy, plan: a.plan, startOn: a.startOn })),
+      .bind(order.id, ids.companyId, ts, ids.userId, JSON.stringify({ terms: TERMS_VERSION, signedBy: a.signedBy, plan: a.plan, startOn: a.startOn, sha256: frozen.sha256, review: a.approval.review.id, catalogueHash: a.approval.release.catalogueHash, release: a.approval.release })),
   ]
   if (order.requestId) statements.push(db.prepare(`UPDATE requests SET status = 'client' WHERE id = ?4 AND ${mine}`).bind(order.id, ids.companyId, ts, order.requestId))
   return { companyId: ids.companyId, userId: ids.userId, inbox: ids.inbox, statements }

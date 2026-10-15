@@ -6724,3 +6724,6 @@ select.field__input {
 .period-history p { margin: 6px 0 0; }
 
 #stav-uzamknutia .info__source { overflow-wrap: anywhere; }
+
+/* The acceptance digest must wrap even on narrow screens and in print. */
+.contract__digest { overflow-wrap: anywhere; }

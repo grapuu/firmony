@@ -28,6 +28,7 @@ import {
   payrollStore,
   periods,
   support,
+  contracts,
   match,
   orderLinkMail,
   papers,
@@ -199,7 +200,31 @@ check(
   'the terms say a month above the limit is the next plan',
   terms.termsText().includes('vyúčtujeme ako najbližší vyšší balík') && terms.termsText().includes(`viac ako ${config.PLANS[config.PLANS.length - 1].docs} za mesiac`),
 )
-check('the terms keep the cap on damages to what can be foreseen (§ 379)', terms.termsText().includes('§ 379 Obchodného zákonníka') && terms.termsText().includes('dvanásťnásobku'))
+check('proposed liability does not disguise twelve fees as foreseeable loss', !terms.termsText().includes('dvanásťnásobku') && terms.termsText().includes('§ 373') && terms.termsText().includes('príčinná súvislosť'))
+check('insurer decisions do not erase the provider obligation', terms.termsText().includes('Rozhodnutie poisťovne ani jej limit nemenia našu'))
+check('late input is assessed causally, with a duty to warn', terms.termsText().includes('nie automatickým vylúčením našej zodpovednosti') && !terms.termsText().includes('výlučne našou'))
+check('lawfully due tax is distinct from irreversible loss of a lawful deduction', terms.termsText().includes('nezvratnej straty zákonného nároku') && terms.termsText().includes('sám osebe nie je škodou'))
+const catalogueHash = await contracts.contractCatalogueHash()
+const release = { catalogueHash, legalReview: 'fixture-lawyer-report', insuranceReview: 'fixture-underwriter-report', validUntil: 2000000000 }
+check('a release approval is bound to the full catalogue', contracts.approvedRelease(JSON.stringify(release), catalogueHash, 1900000000)?.catalogueHash === catalogueHash)
+for (const [name, value] of [
+  ['absent', undefined], ['malformed', '{'], ['too long', 'x'.repeat(2049)],
+  ['wrong catalogue', JSON.stringify({ ...release, catalogueHash: 'a'.repeat(64) })],
+  ['no lawyer reference', JSON.stringify({ ...release, legalReview: '' })],
+  ['no insurance reference', JSON.stringify({ ...release, insuranceReview: ' ' })],
+  ['expired', JSON.stringify({ ...release, validUntil: 1900000000 })],
+  ['timestamp as string', JSON.stringify({ ...release, validUntil: '2000000000' })],
+  ['null', 'null'],
+]) check(`contract signing stays closed: ${name}`, contracts.approvedRelease(value, catalogueHash, 1900000000) === null)
+const originalPrice = config.PLANS[0].price
+config.PLANS[0].price += 1
+check('a price edit invalidates the approved catalogue without a version change', await contracts.contractCatalogueHash() !== catalogueHash)
+config.PLANS[0].price = originalPrice
+const originalPoint = terms.TERMS[0].points[0]
+terms.TERMS[0].points[0] += ' changed'
+check('a wording edit invalidates approval even with an unchanged version label', await contracts.contractCatalogueHash() !== catalogueHash)
+terms.TERMS[0].points[0] = originalPoint
+
 check('the months to start in begin with the launch', terms.startMonths('2026-10-13').join(' ') === '2027-01-01 2027-02-01 2027-03-01 2027-04-01 2027-05-01 2027-06-01')
 check('after the launch they begin with the next month, over a new year', terms.startMonths('2027-11-20').slice(0, 3).join(' ') === '2027-12-01 2028-01-01 2028-02-01')
 check('a date is written in words', terms.longDate('2027-01-01') === '1. januára 2027')

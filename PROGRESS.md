@@ -1,5 +1,42 @@
 # Firmony: progress of the continuation
 
+## Responsibility, contract evidence and larger-client intake (Codex, 15 October 2026)
+
+Current branch: `codex/firmony-liability-and-enterprise-readiness`, based on PR #6 at
+`ecc5ab1f8d5a93dd31e9e8019f5599e01d1b3c2a`. It contains all previous accounting, history, period-lock,
+SV and support work. Schema step **15** adds contract snapshots and append-only intake reviews.
+
+- [Responsibility preparation](docs/responsibility/README.md): current Slovak primary law, a qualified discussion
+  of conflicting appellate approaches to liability caps, competitor contract evidence, a concrete clause/process
+  pack for the lawyer, the broker's underwriting matrix, financial-capacity scenarios and an individual route for
+  user-reported opportunities of approximately €2M/€45M turnover. No client, policy, limit, reserve or premium is invented.
+- Proposed terms **2026-10-15** remove the twelve-fee foreseeability shortcut and exclusive-fault wording,
+  distinguish legally due tax from irreversible loss of a lawful entitlement, and retain causation and mitigation.
+  These terms await legal/underwriting approval. Existing contracts are not changed retrospectively.
+- Ordinary professional-policy documents can exclude explicit guarantees and contract deadlines. Insurer consent,
+  notification, serial losses, cloud/AI and liquidity must be resolved before sale; an insurance refusal does not
+  itself extinguish a valid claim against the service provider. All seven new business evidence gates are UNKNOWN/NO-GO.
+- Fixed a substantive defect: old code stored the terms version but displayed/exported today's wording and tariffs.
+  New acceptance stores the full text, catalogue, operator, client, chosen plan, signer, start and time in the same
+  transaction, with SHA-256. The app/ZIP read the saved snapshot. A corrupt snapshot blocks a complete export.
+  Legacy 2026-10-13 is a labelled reconstruction, not fabricated proof of acceptance; unknown versions have no live-text fallback.
+- Signing is closed without valid, catalogue-bound legal/insurance release evidence. Each order also needs an
+  admin's documented expert review, supported micro scope, verified signing authority, named accountant, capacity/
+  risk assessment and specific plan. Bespoke/held/expired/revoked cases cannot sign a standard package. The final
+  transaction rechecks the latest decision, including revocation after the request read. Internal report links
+  are not exposed in the client's contract JSON. Manual creation of a client account is not contract acceptance.
+- SHA-256 and ordinary database immutability are not qualified signatures or protection from database administrators.
+  Claims register/legal hold, independent evidence preservation, live insurance, staffing and production restore
+  remain explicitly open prerequisites, not completed features. No external message, merge or deployment was made.
+- Local verification before publication: **690 unit checks and 844 workerd checks** passed; supplementary TypeScript 6.
+  New cases cover release validity, price/wording changes, tenant/role access, missing evidence, stale proposals,
+  different plans, expiry, revocation races, duplicate acceptance, exact exports, missing archives and deliberate corruption.
+  CI adds four actual contract/review captures to the existing seven at 1440/390/320 px (33 layouts).
+- Removed the obsolete single-feature push trigger from CI; PRs and `main` remain checked. Prior PR heads were
+  verified as ancestors of this cumulative base; branches/history are retained. The current PR is the review entry
+  to `main`; merging and deployment remain the owner's separate decision.
+
+
 ## Strategy and unanswered support (Codex, 15 October 2026)
 
 Branch `codex/firmony-strategy-and-service-quality`, based on PR #4 at
