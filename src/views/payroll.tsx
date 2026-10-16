@@ -13,6 +13,8 @@ import { moneyText } from '../app/vat-form'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
+import { REPORT_KINDS, REPORT_LABELS, type ReportItem } from '../payroll-reporting/model'
+import { DELIVERY_TONE } from '../filings/model'
 
 const w = t.payroll
 
@@ -190,6 +192,8 @@ const SettingsCard: FC<{ company: Company; insurers: Insurer[]; values: Settings
 )
 
 export interface PayrollPageProps {
+  reports?: ReportItem[]
+  reopenBlocked?: boolean
   company: Company
   period: string
   months: { period: string; state: MonthState }[]
@@ -363,7 +367,7 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                 )}
               </form>
             )}
-            {closed ? (
+            {closed && !p.reopenBlocked ? (
               <form method="post" action={`${base(c)}/otvorit`}>
                 <input type="hidden" name="obdobie" value={p.period} />
                 <button class="btn btn--text" type="submit">
@@ -372,6 +376,12 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
               </form>
             ) : null}
           </section>
+          {closed ? <section class="info payroll-reports-summary"><h2 class="info__title">Mzdové podania a potvrdenky</h2>
+            <p>Uzavretie miezd ešte nepotvrdzuje odoslanie výkazov. Každý príjemca má samostatný výsledok.</p>
+            {(p.reports ?? []).filter((r) => r.active).map((r) => <p>{REPORT_KINDS[r.kind]} · {monthName(`${r.period}-01`)} <span class={`pill pill--${r.sourceChanged ? 'red' : DELIVERY_TONE[r.status]}`}>{r.sourceChanged ? 'Podklady sa zmenili' : r.pkg ? REPORT_LABELS[r.status] : 'Treba doložiť výkaz'}</span></p>)}
+            {p.reopenBlocked ? <p class="notice">Uzávierka už má evidované odoslanie alebo overenú výplatu príjmov. Pôvodné podklady zostávajú zachované; ďalšiu opravu posúdi odborný správca.</p> : null}
+            <a class="btn btn--line" href={`/ucto/klienti/${c.id}/mzdove-podania?obdobie=${p.period}`}>Otvoriť mzdové podania</a>
+          </section> : null}
           {p.slips.length > 0 ? <PaysCard orders={p.orders} today={p.today} /> : null}
           <p class="info__source vnotbuilt">{w.notBuilt}</p>
         </div>

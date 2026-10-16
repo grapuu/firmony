@@ -1,9 +1,17 @@
+Current payroll-evidence follow-up (16 October 2026): [docs/security/payroll-evidence.md](docs/security/payroll-evidence.md).
+Schema **19** adds independent monthly SP/health-insurer reports and a paid-month FS prehľad. Exact external
+files, recipient receipts, revisioned actual-payout verification and corrections share the work queue, deadlines,
+owner-only payroll view, complete exports and evidence retention. Later paid income invalidates earlier FS coverage.
+Official payroll file generation, partial/irregular/noncash income, annual reports, live delivery and production
+verification remain outside this implementation. Receipt matching is a professional's recorded check, not API proof.
+Existing legal/insurance/enterprise gates remain NO-GO. No automatic merge/deploy; continue PR #8 and preserve history.
+
 Current filing-evidence follow-up (16 October 2026): [docs/security/filing-evidence.md](docs/security/filing-evidence.md).
 Schema **18** separates saved XML from recorded submission, accountant-checked acceptance, refusal and review.
 Each VAT/KV/SV/DPPO/UZ document has its own immutable payload, receipt history and scoped permissions. The
 current unfinished queue spans all periods; deadlines never treat preparation or legacy marks as acceptance.
 Portable exports and retention include original receipts. Pending current filings block handover freeze.
-Payroll recipient-level confirmations, mixed-state correction workflows, live FS/Peppol delivery, production
+Payroll recipient-level evidence is extended by schema 19 above. Mixed-state correction workflows, live FS/Peppol delivery, production
 recovery and business/legal/insurance approval remain open. Tests are synthetic, not real authority receipts.
 No automatic merge/deploy; continue the existing cumulative PR #8 and preserve all branches/history.
 

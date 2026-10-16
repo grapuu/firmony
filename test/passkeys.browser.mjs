@@ -6,6 +6,7 @@ import { readFile, mkdir } from 'node:fs/promises'
 import { resolve, extname, sep } from 'node:path'
 import { randomBytes, createHash } from 'node:crypto'
 import { check, done } from './check.mjs'
+import { payslip } from '../.wrangler/dist/stores.js'
 
 const assets = resolve('public'),
   dist = resolve('.wrangler/dist')
@@ -239,6 +240,44 @@ try {
   await mkdir('.wrangler/screens', { recursive: true })
   await page.screenshot({ path: '.wrangler/screens/390-filing-browser.png', fullPage: true })
 
+  // Regular monthly payroll: exercise the actual payout, file upload and recipient receipt forms.
+  const wageMonth = new Date(`${today.slice(0,7)}-15T12:00:00Z`); wageMonth.setUTCMonth(wageMonth.getUTCMonth()-1)
+  const wagePeriod = wageMonth.toISOString().slice(0,7), payrollBase = `${origin}/ucto/klienti/browser-co/mzdove-podania`
+  const slip = payslip({period:wagePeriod,gross:100000,days:30,declaration:true,children:[],disabled:false,healthDeduction:false,healthMinimumExempt:false})
+  await db.prepare("INSERT INTO payroll_runs (company_id,period,payday,lines,closed_at,closed_on,closed_by) VALUES ('browser-co',?,?,?, ?,?,'browser-admin')").bind(wagePeriod,today,JSON.stringify([{employeeId:'browser-employee',name:'TEST Employee',insurer:'25',gross:100000,days:30,slip}]),now,today).run()
+  await page.goto(`${payrollBase}?obdobie=${wagePeriod}`)
+  await page.locator('.payroll-init button').click()
+  await page.locator('.payroll-payout form').waitFor({state:'visible'})
+  check('the browser initializes separate payroll recipients without copying the planned payout date',await page.locator('.payroll-report-card').count()===2 && await page.locator('input[name=paidOn]').inputValue()==='')
+  await page.locator('input[name=paidOn]').fill(today)
+  await page.locator('input[name=reference]').fill('TEST browser settled bank statement')
+  await page.locator('.payroll-payout input[name=checked]').check()
+  const cashResponse = page.waitForResponse((r)=>new URL(r.url()).pathname.endsWith('/mzdove-podania/vyplata') && r.request().method()==='POST')
+  await page.locator('.payroll-payout button[type=submit]').click()
+  check('the browser confirms actual payout and creates its FS recipient', (await cashResponse).status()===303 && (await db.prepare("SELECT COUNT(*) AS n FROM payroll_targets WHERE company_id='browser-co' AND kind='tax'").first()).n===1)
+  const payrollTarget = await db.prepare("SELECT * FROM payroll_targets WHERE company_id='browser-co' AND kind='sp'").first()
+  await page.goto(`${payrollBase}/${payrollTarget.id}`)
+  const payrollBytes=Buffer.from('<TEST_ONLY company="63333333" kind="sp"/>')
+  await page.locator('#report-variant').fill('TEST ONLY riadny mesačný výkaz')
+  await page.locator('#report-file').setInputFiles({name:'TEST_ONLY-payroll.xml',mimeType:'application/xml',buffer:payrollBytes})
+  await page.locator('.payroll-report-upload input[name=checked]').check()
+  const payrollSaved=page.waitForResponse((r)=>new URL(r.url()).pathname.endsWith(`/${payrollTarget.id}/subor`) && r.request().method()==='POST')
+  await page.locator('.payroll-report-upload button[type=submit]').click()
+  await page.locator('.filing-form').waitFor({state:'visible'})
+  check('the real payroll upload stores an exact prepared report', (await payrollSaved).status()===303 && (await db.prepare('SELECT status FROM payroll_packages WHERE target_id=?').bind(payrollTarget.id).first()).status==='prepared')
+  await page.locator('#filing-state').selectOption('accepted')
+  await page.locator('#filing-reference').fill('TEST-BROWSER-PAYROLL-RECEIPT')
+  await page.locator('.filing-form input[name=checked]').check()
+  await page.locator('#filing-file').setInputFiles({name:'TEST_ONLY-payroll-receipt.xml',mimeType:'application/xml',buffer:Buffer.from('<TEST_ONLY kind="sp" reference="TEST-BROWSER-PAYROLL-RECEIPT"/>')})
+  const payrollAccepted=page.waitForResponse((r)=>new URL(r.url()).pathname.endsWith('/stav') && r.request().method()==='POST')
+  await page.locator('.filing-form button[type=submit]').click()
+  await page.getByRole('link',{name:'Stiahnuť potvrdenku',exact:true}).waitFor({state:'visible'})
+  check('the real browser records SP acceptance without marking health insurance accepted',(await payrollAccepted).status()===303 && (await db.prepare("SELECT p.status FROM payroll_packages p JOIN payroll_targets t ON t.package_id=p.id WHERE t.company_id='browser-co' AND t.kind='sp'").first()).status==='accepted' && !(await db.prepare("SELECT package_id FROM payroll_targets WHERE company_id='browser-co' AND kind='health25'").first()).package_id)
+  const originalDownload=page.waitForEvent('download')
+  await page.getByRole('link',{name:'Stiahnuť pôvodný výkaz',exact:true}).click()
+  check('the browser downloads exact payroll source bytes',(await readFile(await (await originalDownload).path())).equals(payrollBytes))
+  await page.screenshot({path:'.wrangler/screens/390-payroll-browser.png',fullPage:true})
+
   await db.batch([
     db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('browser-client', ?, 'browser-client@example.test', 'Klient prehliadača')").bind(now),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('browser-co', 'browser-client', 'owner', ?)").bind(now),
@@ -251,6 +290,8 @@ try {
   await Promise.all([clientPage.waitForURL(`${origin}/app`), clientPage.locator('form[action="/app/vstup"] button[type=submit]').click()])
   await clientPage.goto(`${origin}/app/podania/${filingId}`)
   check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)
+  await clientPage.goto(`${origin}/app/mzdove-podania/${payrollTarget.id}`)
+  check('the customer browser sees payroll evidence without payout or accounting forms',await clientPage.getByText('TEST-BROWSER-PAYROLL-RECEIPT',{exact:false}).count()>0 && await clientPage.locator('.filing-form,.payroll-report-upload,.payroll-payout form').count()===0)
   await clientContext.close()
   check('the authenticated work and filing forms have no uncaught browser errors', errors.length === 0)
   await mkdir('.wrangler/screens', { recursive: true })

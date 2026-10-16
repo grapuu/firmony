@@ -12,13 +12,14 @@ import { checkIncidents } from './incidents.runtime.mjs'
 import { checkRestore } from './restore.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
 import { checkFilings } from './filings.runtime.mjs'
+import { checkPayrollReports } from './payroll-reporting.runtime.mjs'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
-import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage } from '../.wrangler/dist/stores.js'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage, payrollReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
@@ -223,7 +224,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 18)
+check('health says the schema', (await res.json()).schema === 19)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -3708,7 +3709,7 @@ check(
   // The deadlines
   res = await acc.get('/ucto/terminy?hotove=1')
   page = plain(await res.text())
-  check('on the screen of deadlines: the month closed, its reports to file', page.includes('Mzdy za') && page.includes('Uzavreté') && page.includes('Výkazy do poisťovní a prehľad za'))
+  check('closed payroll has separate insurer deadlines and an actual-payment review', page.includes('Mzdy za') && page.includes('Uzavreté') && page.includes('Sociálna poisťovňa') && page.includes('VšZP') && page.includes('Výplatu treba overiť'))
   res = await acc.post('/ucto/klienti/co-w/podane', { druh: 'mz', obdobie: last })
   check('the reports marked as filed', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-w' AND kind = 'mz'").first())?.n === 1)
 
@@ -3750,11 +3751,18 @@ check(
   res = await acc.post(base, { obdobie: '2030-01', akcia: 'uzavriet' })
   check('an unsupported year cannot be computed or closed by posting directly', res.headers.get('location')?.includes('mzdy-nepodporovane') && (await db.prepare("SELECT closed_at FROM payroll_runs WHERE company_id = 'co-w' AND period = '2030-01'").first())?.closed_at === null)
 
+  // Synthetic fixture: reopen the unsent source, then use the controlled retention state for cleanup.
+  await db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-w'").bind(nowS).run()
   await db.batch([
     db.prepare("DELETE FROM payments WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM accounts WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM employees WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_runs WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_events WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_packages WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_targets WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_payouts WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_closures WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM filings WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM messages WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM companies WHERE id = 'co-w'"),
@@ -4248,6 +4256,7 @@ const handedClientRow = page.match(/<a class="tbl__row[^>]*href="\/ucto\/klienti
 check('the client row no longer asks for its handover once it was made', Boolean(handedClientRow) && !handedClientRow.includes('Odovzdanie mešká'))
 
 await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
@@ -4261,6 +4270,10 @@ await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('
 const exportedSlip = payslip({ period: '2026-01', gross: 100000, days: 31, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false })
 const exportedLine = { employeeId: 'emp-a', name: 'Zamestnanec A', insurer: '25', gross: 100000, days: 31, iban: null, slip: exportedSlip }
 await db.prepare("UPDATE payroll_runs SET payday = '2026-02-10', lines = ?, closed_at = ?, closed_on = ?, closed_by = ? WHERE company_id = 'co-a' AND period = '2026-01'").bind(JSON.stringify([exportedLine]), nowS, day(0), lucia.id).run()
+const handoverPayrollCompany = companyOf(await db.prepare("SELECT * FROM companies WHERE id = 'co-a'").first())
+const handoverPayrollUser = await db.prepare('SELECT * FROM users WHERE id = ?').bind(lucia.id).first()
+await payrollReporting.initializeClosedRun(db, handoverPayrollCompany, '2026-01', handoverPayrollUser)
+await payrollReporting.recordPayout(db, await payrollReporting.closureOf(db, 'co-a', '2026-01'), handoverPayrollUser, { paidOn: day(0), reference: 'TEST ONLY final settled payroll', reason: '', checked: true, revision: 0 }, day(0))
 const originalXml = '<?xml version="1.0" encoding="UTF-8"?><fixture>original archived filing</fixture>'
 const originalSnapshot = JSON.stringify({ rows: { r1050: 0 }, balance: {}, profit: {}, advancesNext: { kind: 'none', each: 0 }, files: { version: 1, declaredOn: day(0), return: { name: 'DPPO_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') }, statements: { name: 'UZ_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') } } })
 await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-a' AND year = 2025").bind(originalSnapshot).run()
@@ -4273,6 +4286,11 @@ const pendingHandover = (await db.prepare("SELECT * FROM filing_packages WHERE c
 for (const pkg of pendingHandover) if (await currentPackage(db, pkg)) {
   res = await acc.upload(`/ucto/klienti/co-a/podania/${pkg.id}/stav`, { name: 'TEST-ONLY-final-receipt.xml', type: 'application/xml', bytes: new TextEncoder().encode(`<TEST_ONLY form="${pkg.kind}" reference="TEST-FINAL-${pkg.id}"/>`) }, { to: 'accepted', revision: String(pkg.revision), externalOn: day(0), reference: `TEST-FINAL-${pkg.id}`, channel: 'TEST-ONLY', checked: '1', reason: 'TEST-ONLY final handover proof' }, 'receipt')
   check(`current ${pkg.kind} delivery is completed before its final acknowledged archive`, res.status === 303)
+}
+for (const target of await payrollReporting.reportItems(db, 'co-a')) {
+  const saved = await payrollReporting.saveReport(db, files, target, handoverPayrollUser, { revision: target.revision, variant: 'TEST ONLY final report', checked: true, reason: '', file: { name: 'TEST_ONLY-final-payroll.xml', bytes: new TextEncoder().encode(`<TEST_ONLY recipient="${target.kind}"/>`) } })
+  const result = saved.ok && await payrollReporting.changeReportDelivery(db, files, await payrollReporting.reportPackage(db, 'co-a', saved.id), handoverPayrollUser, { to: 'accepted', revision: 0, externalOn: day(0), reference: `TEST-PAYROLL-FINAL-${target.kind}`, channel: 'TEST ONLY', checked: true, reason: '', receipt: { name: 'TEST_ONLY-final-receipt.xml', bytes: new TextEncoder().encode(`<TEST_ONLY receipt="${target.kind}"/>`) } }, day(0))
+  check(`current payroll ${target.kind} evidence completes before final acknowledged handover`, result?.ok)
 }
 const handoverYears = await exportYears(db, 'co-a')
 check('a closing-only year is offered for export', handoverYears.includes('2025'))
@@ -4335,6 +4353,8 @@ const leftover = await db
        + (SELECT COUNT(*) FROM closing_history WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_history WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM filing_history WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM filing_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filing_events WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_closures WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_payouts WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_targets WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_events WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,
   )
   .first()

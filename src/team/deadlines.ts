@@ -34,6 +34,7 @@
 // - The handover of the books at the end of a contract: within 30 days of its last day (point 10.4, ENDING.handoverDays).
 import { APP, DEADLINES } from '../config'
 import type { DeliveryStatus } from '../filings/model'
+import type { PayrollReportFact, ReportKind } from '../payroll-reporting/model'
 import { addDays, endingOf, intakeOpen } from '../app/ending'
 import { bratislavaDay, type Company } from '../app/store'
 import { closingDue } from '../app/closing'
@@ -42,7 +43,7 @@ import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, period
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
 import { summaryPeriodOf, type SvView } from '../app/vat-summary'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'payroll' | 'payrollReports' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
@@ -54,6 +55,7 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   closing: 'ours',
   payroll: 'ours',
   payrollReports: 'ours',
+  payrollReport: 'ours',
   handover: 'ours',
   vatPay: 'client',
   docs: 'client',
@@ -72,6 +74,10 @@ export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 export type DueState = 'ready' | 'blocked' | 'open' | 'running' | 'done'
 
 export interface Due {
+  reportId?: string
+  reportKind?: ReportKind
+  sourceChanged?: boolean
+  payrollStage?: 'legacy' | 'payout'
   deliveryStatus?: DeliveryStatus
   manualRecorded?: boolean
   companyId: string
@@ -109,6 +115,8 @@ export interface PayrollFact {
   last: string | null
   payday: number | null
   closed: Map<string, string | null>
+  initialized?: Set<string>
+  payoutPending?: Set<string>
 }
 
 /** What a company's deadlines are worked out from. */
@@ -124,6 +132,7 @@ export interface DueFacts {
   summaries?: SvView[]
   closings: ClosingFact[]
   payroll?: PayrollFact
+  payrollReports?: PayrollReportFact[]
   /** The payments without a document, by the month they were booked in (YYYY-MM). */
   missing: Map<string, number>
   /** Files handed over at the end of the contract. */
@@ -178,7 +187,7 @@ export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly
 /** A company's deadlines: everything that can be done now, what still runs once it is `aheadDays` near, and what was done in the last weeks. */
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
-  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded'>>) =>
+  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage'>>) =>
     out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day })
 
   if (company.vatStatus !== 'none') {
@@ -256,6 +265,8 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
     add({ kind: 'taxPay', period: String(k.year), day: k.dueOn ?? closingDue(k.year, k.extendedTo), state: rest > 0 ? 'open' : 'done', cents: rest })
   }
 
+  for (const r of facts.payrollReports ?? []) add({ kind: 'payrollReport', period: r.period, day: r.due, state: r.status === 'accepted' && !r.sourceChanged ? 'done' : r.sourceChanged || ['rejected', 'review'].includes(r.status) ? 'blocked' : 'open', deliveryStatus: r.status, reportKind: r.kind, reportId: r.id, sourceChanged: r.sourceChanged })
+
   // Payroll: each month of the last few with somebody employed, closed by its payday; a closed one's reports.
   const pr = facts.payroll
   if (pr?.first) {
@@ -270,8 +281,10 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const closed = pr.closed.has(month)
       add({ kind: 'payroll', period: month, day, state: closed ? 'done' : today <= periodRange(month).to ? 'running' : 'open' })
       if (closed) {
-        const marked = facts.filings.has(`${MARKED_KINDS.payroll}:${month}`)
-        add({ kind: 'payrollReports', period: month, day, state: 'open', manualRecorded: marked, ...(marked ? { deliveryStatus: 'unverified' } : {}) })
+        if (!pr.initialized?.has(month)) {
+          const marked = facts.filings.has(`${MARKED_KINDS.payroll}:${month}`)
+          add({ kind: 'payrollReports', period: month, day, state: 'open', payrollStage: 'legacy', manualRecorded: marked, deliveryStatus: 'unverified' })
+        } else if (pr.payoutPending?.has(month)) add({ kind: 'payrollReports', period: month, day, state: 'open', payrollStage: 'payout' })
       }
     }
   }
@@ -299,7 +312,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, closing: 7, taxPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, closing: 7, taxPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

@@ -1,5 +1,32 @@
 # Firmony: progress of the continuation
 
+## Payroll evidence by recipient and actual paid month (Codex, 16 October 2026)
+
+Continues existing PR #8 on `codex/firmony-security-and-evidence`, remote parent
+`1da802f8f81cecbfaf959ec4c7136a79b543cb29`. Schema **19**; no merge or deployment.
+
+- Closing regular monthly payroll atomically saves an immutable source and separate SP/represented health-insurer
+  obligations, including zero contributions. Legacy closed runs can gain evidence without unlocking financial data.
+- An accountant explicitly verifies actual payment with a date and settlement reference. The FS prehľad belongs
+  to the paid month; several wage runs paid in that month share one target. Later income or a corrected payout
+  invalidates earlier completion while preserving the original report and receipt. Planned payday is not cash proof.
+- Exact externally prepared files have separate prepared/submitted/accepted/rejected/review states and immutable
+  version/receipt history. Acceptance/refusal requires a checked original. Admin review is required for successors
+  of sent/accepted/disputed reports and corrections of an attested payout. No statutory correction type is invented.
+- Recipient work appears in the existing all-period queue and deadlines. Owners see the same read-only evidence;
+  invited members cannot access payroll originals. Fresh verification, live SQL assignment/role checks, revision
+  guards and receipt reuse protection apply. Independent recipient reference namespaces do not cause false collisions.
+- Complete portable exports include sources, payouts, every report version and original proof. Checksums, incident
+  holds, source undo protection, pending-work handover freeze and controlled retention cover the new data. Lost commit
+  acknowledgements retain originals; concurrent uploads/decisions commit once. All-table synthetic restoration includes it.
+- Local validation: **768 unit checks and 1,066 real workerd checks passed**, plus supplementary TypeScript 6
+  (native TypeScript 7 runs in CI). Added an actual Chrome payroll/owner journey and five desktop/mobile capture
+  pages. Published-head CI, artifact digest and visual review are recorded in PR #8.
+- [Scope and primary sources](docs/security/payroll-evidence.md): official payroll files still require an external
+  payroll program/portal and professional checking. Partial, irregular and noncash income, annual returns, live
+  delivery, production recovery and legal/insurance approval remain open. No automation percentage or production
+  perfection is asserted. Larger companies still need the existing individual scope/capacity/coverage review.
+
 ## Separate delivery evidence for shared accounting workflows (Codex, 16 October 2026)
 
 Continues PR #8 on `codex/firmony-security-and-evidence`, remote parent

@@ -17,6 +17,7 @@ import { confirmedRevision } from './handover-store'
 import { bratislava } from './remind'
 import { evidenceBlocked, PURGE_GRACE_SECONDS } from '../incidents/store'
 import { pendingFilingsSql } from '../filings/model'
+import { pendingPayrollSql } from '../payroll-reporting/sql'
 
 export interface PurgeEnv extends BankEnv {
   FILES?: R2Bucket
@@ -54,6 +55,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
   const claim = await db.prepare(`UPDATE companies SET purge_started_at = COALESCE(purge_started_at, ?) WHERE id = ? AND purged_at IS NULL AND demo = 0 AND ends_on < ?
     AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = companies.id), 0) = ?
     AND NOT (${pendingFilingsSql('companies.id')})
+    AND NOT (${pendingPayrollSql('companies.id')})
     AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
     AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`).bind(now(), companyId, purgeFloor(today), revision).run()
   if ((claim.meta?.changes ?? 0) === 0) return { files: 0, rows: 0 }
@@ -103,6 +105,11 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     db.prepare('DELETE FROM closings WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM employees WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_runs WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_events WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_packages WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_targets WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_payouts WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_closures WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_history WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM closing_history WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM ledger_entries WHERE company_id = ?').bind(companyId),

@@ -3,6 +3,7 @@
 // here. The rules are in team/deadlines.ts.
 import type { FC } from 'hono/jsx'
 import { DELIVERY_LABELS } from '../filings/model'
+import { REPORT_KINDS, REPORT_LABELS } from '../payroll-reporting/model'
 import { DEADLINES } from '../config'
 import { formatEurExact } from '../format'
 import { dayName, monthName } from '../app/copy'
@@ -16,7 +17,7 @@ import { Flash, Heading } from './inside'
 const t = team.deadlines
 
 /** What a deadline is, in words: "DPH a kontrolný výkaz za september 2026". */
-export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix'> & { company: Pick<DueRow['company'], 'vatStatus'> }): string {
+export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind' | 'payrollStage'> & { company: Pick<DueRow['company'], 'vatStatus'> }): string {
   const period = d.period ?? ''
   switch (d.kind) {
     case 'vat':
@@ -35,7 +36,10 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix'> & { company: 
       return t.what.taxPay(period)
     case 'payroll':
       return t.what.payroll(monthName(`${period}-01`))
+    case 'payrollReport':
+      return `${d.reportKind ? REPORT_KINDS[d.reportKind] : 'Mzdový výkaz'} za ${monthName(`${period}-01`)}`
     case 'payrollReports':
+      if (d.payrollStage === 'payout') return `Overiť skutočné vyplatenie príjmov za ${monthName(`${period}-01`)}`
       return t.what.payrollReports(monthName(`${period}-01`))
     case 'handover':
       return t.what.handover
@@ -43,8 +47,10 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix'> & { company: 
 }
 
 /** Where it stands, in words: "Pripravené na podanie", "Treba vyriešiť: 3", "Na úhradu 1 234,56 €". */
-export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'period'> & Pick<Due, 'deliveryStatus'>): string {
-  if (d.deliveryStatus) return DELIVERY_LABELS[d.deliveryStatus]
+export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'period'> & Pick<Due, 'deliveryStatus' | 'payrollStage' | 'sourceChanged'>): string {
+  if (d.payrollStage === 'payout') return 'Výplatu treba overiť'
+  if (d.sourceChanged) return 'Podklady sa po uložení zmenili'
+  if (d.deliveryStatus) return d.kind === 'payrollReport' ? REPORT_LABELS[d.deliveryStatus] : DELIVERY_LABELS[d.deliveryStatus]
   if (d.kind === 'docs' && d.state !== 'done') return t.state.missing(d.count)
   switch (d.state) {
     case 'ready':
@@ -60,10 +66,10 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
   }
 }
 
-const tone = (d: Due): string => (d.state === 'done' ? 'pill--ok' : d.late ? 'pill--red' : d.state === 'ready' ? 'pill--blue' : d.state === 'running' ? 'pill--grey' : 'pill--amber')
+const tone = (d: Due): string => (d.state === 'done' ? 'pill--ok' : d.late || d.sourceChanged || d.deliveryStatus === 'rejected' || d.deliveryStatus === 'review' ? 'pill--red' : d.state === 'ready' ? 'pill--blue' : d.state === 'running' ? 'pill--grey' : 'pill--amber')
 
 /** Where a deadline is acted on: the period on the VAT page, the client's missing documents, the closing's page, the handover. */
-export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> & Partial<Pick<DueRow['company'], 'vatQuarterly'>> }): string {
+export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | 'reportId'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> & Partial<Pick<DueRow['company'], 'vatQuarterly'>> }): string {
   const base = `/ucto/klienti/${d.company.id}`
   if (d.deliveryStatus && ['vat', 'summary', 'closing'].includes(d.kind)) return `${base}/podania?obdobie=${d.period}`
   switch (d.kind) {
@@ -83,8 +89,11 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus'> & 
     case 'closing':
     case 'taxPay':
       return `${base}/zavierka?rok=${d.period}`
-    case 'payroll':
+    case 'payrollReport':
+      return `${base}/mzdove-podania/${d.reportId}`
     case 'payrollReports':
+      return `${base}/mzdove-podania?obdobie=${d.period}`
+    case 'payroll':
       return `${base}/mzdy?obdobie=${d.period}`
     case 'handover':
       return `${base}#odovzdanie`
@@ -93,6 +102,9 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus'> & 
 
 /** A line under the deadline that says what to know about it. */
 function noteOf(d: Due): string | null {
+  if (d.payrollStage === 'payout') return 'Plánovaný výplatný termín nestačí. Obdobie prehľadu finančnej správy sa určí podľa overeného vyplatenia príjmov.'
+  if (d.sourceChanged) return 'Pôvodné potvrdenie zostáva v histórii. Odborník musí posúdiť aktuálne podklady a správny druh opravy.'
+  if (d.kind === 'payrollReports' && !d.manualRecorded) return 'Založte samostatnú evidenciu príjemcov tejto staršej uzávierky. Jedno označenie nepotvrdzuje všetky podania.'
   if (d.kind === 'payrollReports' && d.manualRecorded) return 'Odoslanie je označené ručne. Prijatie jednotlivými príjemcami zatiaľ nie je doložené.'
   if (d.deliveryStatus && d.deliveryStatus !== 'accepted') return 'Termín zostáva otvorený do doloženia prijatia. Odbornú správnosť kontroluje účtovník.'
   if (d.kind === 'vatFix') return d.fix === 'D' ? t.note.fixD : t.note.fixO
@@ -130,7 +142,7 @@ export function deadlinesHref(p: { side: DueFilter; done: boolean; accountant: s
 }
 
 const MarkForm: FC<{ d: DueRow; back: string }> = ({ d, back }) => {
-  if (d.kind !== 'payrollReports' || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
+  if (d.kind !== 'payrollReports' || d.payrollStage === 'payout' || !d.manualRecorded || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
   return (
     <form class="due__act" method="post" action={`/ucto/klienti/${d.company.id}/podane`}>
       <input type="hidden" name="druh" value={MARKED_KINDS.payroll} />

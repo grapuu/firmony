@@ -48,7 +48,7 @@ export const team = typesetAll({
       ready: 'Pripravené na podanie',
       blocked: (n: number) => typeset(`Treba vyriešiť: ${n}`),
       running: { period: 'Obdobie beží', quarter: 'Štvrťrok beží', month: 'Mesiac beží', contract: 'Zmluva ešte beží' },
-      open: { vat: 'Nepodané', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Podať a označiť', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
+      open: { vat: 'Nepodané', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Evidovať jednotlivých príjemcov', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
       missing: (n: number) => typeset(`${plural(n, 'Chýba', 'Chýbajú', 'Chýba')} ${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}`),
       toPay: (amount: string) => typeset(`Na úhradu ${amount}`),
       done: { vat: 'Podané', summary: 'Podaný', vatPay: 'Zaplatené', taxPay: 'Zaplatené', closing: 'Podané', payroll: 'Uzavreté', payrollReports: 'Podané', handover: 'Odovzdané' } as Partial<Record<string, string>> & {
@@ -64,7 +64,7 @@ export const team = typesetAll({
       older: 'Obdobie sme neprepočítali, je staršie ako štyri mesiace.',
       summary: 'Súbor je na stránke DPH: po podaní ho označte tam.',
       summaryD: 'Po termíne: dodatočný súhrnný výkaz len so zmenenými riadkami. Zákon mu lehotu neurčuje: podajte ho čím skôr.',
-      payrollReports: 'Sociálnej poisťovni do výplatného dňa, zdravotným poisťovniam do 3 dní po ňom, prehľad daňovému úradu do konca mesiaca. Firmony ich zatiaľ nepodáva: po podaní ich tu označte.',
+      payrollReports: 'Každá poisťovňa a finančná správa majú samostatnú evidenciu. Prehľad finančnej správy sa určuje podľa mesiaca skutočne vyplatených príjmov.',
     },
     mark: 'Evidovať ručné odoslanie',
     unmark: 'Zrušiť označenie',
@@ -1215,7 +1215,7 @@ export const team = typesetAll({
     },
     open: 'Mzdy',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: dohody, odmenu konateľa, pracujúcich dôchodcov a študentov, náhradu príjmu pri PN a náhradu mzdy za dovolenku (zadajte ich do hrubého príjmu), ročné zúčtovanie dane, zrážky zo mzdy, stravné, prihlášky zamestnancov a mesačné výkazy do poisťovní ani prehľad pre daňový úrad. Tie podajte v portáloch poisťovní a v eDane s číslami z tejto stránky a v termínoch ich označte.',
+      'Firmony zatiaľ nepripravuje: dohody, odmenu konateľa, pracujúcich dôchodcov a študentov, náhradu príjmu pri PN a náhradu mzdy za dovolenku (zadajte ich do hrubého príjmu), ročné zúčtovanie dane, zrážky zo mzdy, stravné, prihlášky zamestnancov a mesačné výkazy do poisťovní ani prehľad pre daňový úrad. Výkazy pripravte a skontrolujte v príslušnom portáli alebo mzdovom programe. Presné súbory a potvrdenky uložte v evidencii mzdových podaní; jedno ručné označenie všetky povinnosti nepotvrdzuje.',
   },
   ledger: {
     title: 'Účtovná kniha',

@@ -1,3 +1,5 @@
+import { closureCurrentSql, payrollStatusSql, reportCurrentSql, targetActiveSql } from '../payroll-reporting/sql'
+import { type PayrollReportFact } from '../payroll-reporting/model'
 import { deliveryStatusSql, safeJson, type DeliveryStatus } from '../filings/model'
 // What the team's screen of deadlines reads (src/team/deadlines.ts has the rules). Every company the user sees, in a
 // fixed number of queries whatever their number: the companies, the returns filed, the VAT paid, the payments without a
@@ -44,7 +46,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
     binds.push(scope.accountant)
   }
   const sql = where.join(' ')
-  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows] = await db.batch<Row>([
+  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows] = await db.batch<Row>([
     db
       .prepare(
         `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover' AND f.deleted_at IS NULL) AS handover
@@ -83,7 +85,14 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
         `SELECT e.company_id, MIN(e.started_on) AS first, MAX(COALESCE(e.ended_on, '9999-12-31')) AS last FROM employees e JOIN companies c ON c.id = e.company_id WHERE ${sql} GROUP BY e.company_id`,
       )
       .bind(...binds),
-    db.prepare(`SELECT r.company_id, r.period, r.payday FROM payroll_runs r JOIN companies c ON c.id = r.company_id WHERE ${sql} AND r.closed_at IS NOT NULL`).bind(...binds),
+    db.prepare(`SELECT r.company_id, r.period, r.payday, pc.id AS evidence_id,
+      (SELECT COALESCE(SUM(json_extract(value, '$.gross')), 0) FROM json_each(CASE WHEN json_valid(r.lines) THEN r.lines ELSE '[]' END)) > 0 AS needs_payout,
+      EXISTS (SELECT 1 FROM payroll_payouts cp WHERE cp.closure_id = pc.id) AS has_payout
+      FROM payroll_runs r JOIN companies c ON c.id = r.company_id LEFT JOIN payroll_closures pc ON pc.id = r.evidence_id AND pc.company_id = r.company_id AND pc.period = r.period AND (${closureCurrentSql('pc')})
+      WHERE ${sql} AND r.closed_at IS NOT NULL`).bind(...binds),
+    db.prepare(`SELECT t.id, t.company_id, t.kind, t.period, t.due_on, ${payrollStatusSql('t', 'p')} AS delivery_status,
+      (p.id IS NOT NULL AND NOT (${reportCurrentSql('t', 'p')})) AS source_changed FROM payroll_targets t JOIN companies c ON c.id = t.company_id
+      LEFT JOIN payroll_packages p ON p.id = t.package_id AND p.company_id = t.company_id WHERE ${sql} AND (${targetActiveSql('t')})`).bind(...binds),
   ])
   const companies = (companyRows?.results ?? []).map(companyOf)
   const handover = new Map((companyRows?.results ?? []).map((r) => [String(r.id), Number(r.handover ?? 0)]))
@@ -108,7 +117,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
   for (const r of employeeRows?.results ?? []) {
     const id = String(r.company_id)
     const last = String(r.last ?? '')
-    payroll.set(id, { first: typeof r.first === 'string' ? r.first : null, last: last && last !== '9999-12-31' ? last : null, payday: settings.get(id)?.payday ?? null, closed: closedRuns.get(id) ?? new Map<string, string | null>() })
+    payroll.set(id, { first: typeof r.first === 'string' ? r.first : null, last: last && last !== '9999-12-31' ? last : null, payday: settings.get(id)?.payday ?? null, closed: closedRuns.get(id) ?? new Map<string, string | null>(), initialized: new Set((runRows?.results ?? []).filter((r) => r.company_id === id && r.evidence_id).map((r) => String(r.period))), payoutPending: new Set((runRows?.results ?? []).filter((r) => r.company_id === id && r.evidence_id && r.needs_payout && !r.has_payout).map((r) => String(r.period))) })
   }
   const closings = new Map<string, ClosingFact[]>()
   for (const r of closingRows?.results ?? [])
@@ -143,6 +152,9 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
     chunk.forEach((w, j) => docs.set(w.company.id, (results[j]?.results ?? []).map(docOf)))
   }
 
+  const payrollReports = new Map<string, PayrollReportFact[]>()
+  for (const r of payrollReportRows?.results ?? []) push(payrollReports, String(r.company_id), { id: String(r.id), kind: r.kind as PayrollReportFact['kind'], period: String(r.period), due: String(r.due_on), status: r.delivery_status as DeliveryStatus, sourceChanged: Boolean(r.source_changed) })
+
   const dues: DueRow[] = []
   for (const company of companies) {
     const returns = filed.get(company.id) ?? []
@@ -157,6 +169,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
       filings: filings.get(company.id) ?? new Set<string>(),
       closings: closings.get(company.id) ?? [],
       payroll: payroll.get(company.id),
+      payrollReports: payrollReports.get(company.id) ?? [],
       missing: missing.get(company.id) ?? new Map<string, number>(),
       handover: handover.get(company.id) ?? 0,
     }

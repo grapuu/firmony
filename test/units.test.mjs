@@ -26,6 +26,7 @@ import {
   closingForm,
   payroll,
   payrollStore,
+  payrollReporting as reports,
   periods,
   support,
   security,
@@ -3732,6 +3733,37 @@ async function zipped(entries, note) {
   check('ordinary work does not receive an accidental repeated-verification requirement', !security.sensitivePath('/ucto/doklady','GET') && !security.sensitivePath('/ucto/klienti/x/spravy','POST'))
   const e = { cause: { cause: new Error('D1_ERROR: Evidence hold prevents deletion') } }
   check('retention errors are recognized through nested causes and tolerate cycles', isEvidenceHeld(e) && !isEvidenceHeld(new Error('other')) && (() => { const x = {}; x.cause = x; return !isEvidenceHeld(x) })())
+}
+
+// Monthly reports use each recipient's period, never a planned payday as evidence of cash payment.
+{
+  check('report kinds reject inherited object names', reports.isReportKind('sp') && !reports.isReportKind('constructor') && !reports.isReportKind('__proto__') && !payrollStore.isInsurer('constructor'))
+  check('payroll periods reject quarters and impossible months', reports.isMonth('2026-09') && ['2026-9','2026-00','2026-13','2026-Q3'].every((p) => !reports.isMonth(p)))
+  check('tax reporting follows the actual paid month across New Year', reports.taxReportDue('2026-12') === '2027-02-01' && reports.taxReportDue('2026-10') === '2026-11-30')
+  check('insurer operational dates do not borrow tax weekend extensions', reports.reportDue('sp','2026-10-10') === '2026-10-10' && reports.reportDue('health25','2026-10-10') === '2026-10-13')
+  const line = (insurer, gross = 0) => ({ insurer, gross, slip: {} })
+  check('every represented insurer needs evidence even with zero contribution', reports.requiredInsurers([line('25'),line('24',100),line('25')]).join() === '24,25')
+  check('incomplete and unknown payroll snapshots fail closed', [[],null,[line('constructor')],[line('25',-1)],[{insurer:'25',gross:100}]].every((v) => reports.requiredInsurers(v) === null))
+  const input = { revision:0, paidOn:'2026-10-12', reference:'TEST bank statement 123', reason:'', checked:true }
+  const valid = (v = {}, current = 0, admin = false) => reports.payoutError({...input,...v},current,admin,'2026-10-16','2026-09')
+  check('an accountant can attest a past complete actual payout', valid() === null)
+  check('payout rejects future, impossible and pre-source dates', ['2026-10-17','2026-02-30','2026-08-31',''].every((paidOn) => Boolean(valid({paidOn}))))
+  check('payout confirmation needs explicit verification and a usable reference', Boolean(valid({checked:false})) && Boolean(valid({reference:'plan'})))
+  check('payout corrections require current revision, admin and a reason', Boolean(valid({},1,true)) && Boolean(valid({revision:1},1,false)) && Boolean(valid({revision:1},1,true)) && valid({revision:1,reason:'TEST correction after bank review'},1,true) === null)
+  const base = { views:[],filed:[],paid:new Map(),filings:new Set(),closings:[],missing:new Map(),handover:0 }
+  const company = {id:'co',vatStatus:'none',startOn:'2026-01-01',createdAt:0,endsOn:null}
+  const payrollReports = [
+    {id:'sp',kind:'sp',period:'2026-09',due:'2026-10-10',status:'accepted',sourceChanged:false},
+    {id:'zp',kind:'health25',period:'2026-09',due:'2026-10-13',status:'prepared',sourceChanged:false},
+    {id:'tax',kind:'tax',period:'2026-10',due:'2026-11-30',status:'accepted',sourceChanged:true},
+  ]
+  const list = dues.deadlinesOf(company,{...base,payrollReports},'2026-10-16').filter((d) => d.kind === 'payrollReport')
+  check('acceptance closes only the matching current recipient deadline', list.find((d) => d.reportId === 'sp')?.state === 'done' && list.find((d) => d.reportId === 'zp')?.state === 'open' && list.find((d) => d.reportId === 'tax')?.state === 'blocked')
+  check('recipient deadlines link directly to their own evidence', dueViews.dueHref({...list[1],company}) === '/ucto/klienti/co/mzdove-podania/zp')
+  check('payroll evidence mutations resume on GET work pages after verification', security.actionReturn('/ucto/klienti/co/mzdove-podania/vyplata','https://firmony.ai/ucto/klienti/co/mzdove-podania?obdobie=2026-09') === '/ucto/klienti/co/mzdove-podania?obdobie=2026-09' && security.actionReturn('/ucto/klienti/co/mzdove-podania/t/verzie/p/stav') === '/ucto/klienti/co/mzdove-podania/t/verzie/p')
+  check('payroll originals and all evidence mutations require fresh verification', [['/ucto/klienti/co/mzdove-podania/zalozit','POST'],['/ucto/klienti/co/mzdove-podania/vyplata','POST'],['/ucto/klienti/co/mzdove-podania/t/subor','POST'],['/ucto/klienti/co/mzdove-podania/t/verzie/p/stav','POST'],['/app/mzdove-podania/t/verzie/p/dokument','GET'],['/app/mzdove-podania/t/verzie/p/potvrdenka/e','GET']].every(([p,m]) => security.sensitivePath(p,m)))
+  const cyclic = {}; cyclic.cause = cyclic
+  check('payroll source guards recognize nested errors without looping', reports.payrollBlocked({cause:new Error('FIRMONY_PAYROLL_REPORTED')}) && !reports.payrollBlocked(cyclic))
 }
 
 done('units')

@@ -35,6 +35,9 @@ export async function exportYears(db: D1Database, company: string): Promise<stri
     "SELECT substr(period, 1, 4) AS y FROM filings WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM filing_history WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM filing_packages WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM payroll_closures WHERE company_id = ?1",
+    "SELECT substr(paid_on, 1, 4) AS y FROM payroll_payouts WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM payroll_targets WHERE company_id = ?1",
     "SELECT substr(COALESCE(through_on, before_on), 1, 4) AS y FROM period_lock_history WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM vat_returns WHERE company_id = ?1",
     "SELECT substr(started_on, 1, 4) AS y FROM employees WHERE company_id = ?1",
@@ -128,13 +131,14 @@ function readme(company: Company, year: string, has: { invoices: boolean; messag
     'odobrane-prilohy/  prílohy vyradené z bežného prehľadu, uchované do riadeného výmazu; čas a osoba v data/prilohy.json',
     'data/           úplné údaje miezd, zamestnancov, podaní a účtovných zápisov vo formáte JSON vrátane histórie; sumy sú v centoch',
     'mzdy/           uložené uzavreté výplatné pásky ako JSON a prehľad pre Excel; bez nového prepočtu',
+    'mzdy/podania/   pôvodné mzdové výkazy; zdroje, overené výplaty a úplná história sú v data/',
+    'podania/potvrdenky/  pôvodné skontrolované potvrdenky daňových aj mzdových podaní',
     'podania/        pôvodné uložené XML podaných závierok a ich predchádzajúcich verzií, ak sa pri podaní uložili',
     'odovzdane/      súbory a plné moci, ktoré Vám účtovníčka sprístupnila',
     'zmluva.txt      prijaté znenie alebo výslovné upozornenie na chýbajúci pôvodný záznam',
     'zmluva.json     presný záznam novšej zmluvy a jej cenníka, ak bol pri uzavretí uložený; zmluva.sha256 obsahuje jeho kontrolný súčet',
     'manifest.json   zoznam všetkých súborov, ich veľkostí a kontrolných súčtov SHA-256',
     'Pri staršom podaní bez uloženého XML zostávajú pôvodné uložené údaje v data/; originál XML si vyžiadajte z finančnej správy.',
-    'zmluva.txt      zmluva a obchodné podmienky',
     '',
     'Súbory CSV otvoríte v Exceli: sú v kódovaní UTF-8 a stĺpce oddeľuje bodkočiarka.',
     'Účtovné doklady a účtovníctvo uchovávajte desať rokov (§ 35 zákona č. 431/2002 Z. z. o účtovníctve).',
@@ -158,10 +162,14 @@ export async function exportYear(
   const contract = await resolveContract(db, company.id, company.termsVersion)
   if (contract.status === 'corrupt') throw new Error(contract.notice)
   const at = Math.floor(Date.now() / 1000)
-  const [snapshots, papers, receipts] = await Promise.all([
+  const [snapshots, papers, receipts, payrollFiles] = await Promise.all([
     handoverData(db, company.id, year, at),
     db.prepare('SELECT id, kind, file_name, created_at, r2_key, deleted_at FROM company_files WHERE company_id = ? ORDER BY id').bind(company.id).all<{ id: string; kind: string; file_name: string; created_at: number; r2_key: string; deleted_at: number | null }>(),
-    db.prepare('SELECT e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ? AND substr(p.period, 1, 4) = ? AND e.file_key IS NOT NULL ORDER BY e.id').bind(company.id, year).all<{ id: string; at: number; file_key: string; file_bytes: number; file_sha256: string }>(),
+    db.prepare(`SELECT e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ?1 AND substr(p.period, 1, 4) = ?2 AND e.file_key IS NOT NULL
+      UNION ALL SELECT 'payroll-' || e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM payroll_events e JOIN payroll_packages p ON p.id = e.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE e.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND e.file_key IS NOT NULL ORDER BY 1`)
+      .bind(company.id, year).all<{ id: string; at: number; file_key: string; file_bytes: number; file_sha256: string }>(),
+    db.prepare(`SELECT p.id, p.file_key, p.file_bytes, p.sha256, p.created_at, t.kind, t.period FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ? AND substr(t.period, 1, 4) = ? ORDER BY p.id`)
+      .bind(company.id, year).all<{ id: string; file_key: string; file_bytes: number; sha256: string; created_at: number; kind: string; period: string }>(),
   ])
   const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows] = await Promise.all([
     db
@@ -386,6 +394,16 @@ export async function exportYear(
       yield { name: 'zmluva.sha256', when: at, data: text(`${contract.sha256}  zmluva.json\n`) }
     }
     yield* snapshots
+    for (const report of payrollFiles.results) yield {
+      name: zipName(`mzdy/podania/${report.kind}-${report.period}-${report.id}.${report.file_key.split('.').pop()}`), when: report.created_at,
+      data: async () => {
+        const object = await files?.get(report.file_key)
+        if (!object) throw new Error('Payroll report missing from archive')
+        const bytes = new Uint8Array(await object.arrayBuffer())
+        if (bytes.length !== report.file_bytes || await fileHash(bytes) !== report.sha256) throw new Error('Payroll report checksum mismatch')
+        return bytes
+      },
+    }
     for (const receipt of receipts.results) yield {
       name: zipName(`podania/potvrdenky/${receipt.id}.${receipt.file_key.split('.').pop()}`), when: receipt.at,
       data: async () => {

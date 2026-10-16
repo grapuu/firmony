@@ -85,3 +85,8 @@ export function revisableSql(company: string, ids: string[], required: string[] 
   return `(SELECT SUM(CASE WHEN q.needed AND (p.id IS NULL OR p.status NOT IN ('prepared', 'rejected')) THEN 1 ELSE 0 END) = 0
     FROM (${sources}) q LEFT JOIN filing_packages p ON p.id = q.id AND p.company_id = ${company})`
 }
+
+export interface FilingWorkItem {
+  id: string; company_id: string; company_name: string; period: string; status: DeliveryStatus; created_at: number
+  kind: FilingType | null; label: string | null; href: string | null
+}

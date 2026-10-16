@@ -67,9 +67,9 @@ Podporovaných je päť existujúcich generovaných druhov: DPH, KV, SV, DPPO a 
 Toto nerozširuje účtovnú agendu na všetky veľké spoločnosti alebo režimy. Staršie interné označenia
 sa automaticky nepremenia na potvrdené prijatie. Ich rekonciliácia vyžaduje odborný postup a skutočné podklady.
 
-Mzdové hlásenia jednotlivým poisťovniam a finančnej správe ešte nemajú samostatné doklady doručenia.
-Pôvodné ručné označenie preto zostáva **nedoložené a nesplní termín**. Je potrebné doplniť model každého
-príjemcu, výkaz, jeho lehotu a potvrdenie. Neoznačovať túto agendu za prevádzkovo dokončenú.
+Schéma 19 dopĺňa [samostatnú evidenciu mesačných mzdových podaní](payroll-evidence.md) podľa príjemcu,
+skutočného mesiaca výplaty a presného externého súboru. Staršie skupinové označenie zostáva nedoložené.
+Oficiálne mzdové súbory sa zatiaľ negenerujú; automatické podávanie a ďalšie mzdové režimy zostávajú otvorené.
 
 Pred pilotom preveriť skutočné potvrdenky v každej podporovanej agende, postup pri neskoršom chybovom
 protokole, obsahové opravy po doručení a dostupnosť odborného zástupcu. Samotné prijatie nie je konečné

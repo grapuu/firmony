@@ -134,6 +134,7 @@ const IncomeReturn: FC<{ company: Company; closing: Closing; paid: IncomePaid; t
 }
 
 export interface TaxesPageProps {
+  payroll?: boolean
   company: Company
   filed: FiledReturn[]
   paid: Map<string, TaxPaid>
@@ -142,11 +143,12 @@ export interface TaxesPageProps {
   today: string
 }
 
-export const TaxesPage: FC<TaxesPageProps> = ({ company, filed, paid, income, today }) => (
+export const TaxesPage: FC<TaxesPageProps> = ({ company, filed, paid, income, today, payroll }) => (
   <>
     <header class="phead">
       <Heading first={x.title} second={x.serif} />
       <p class="phead__lead">{x.lead}</p>
+      {payroll ? <p><a class="link" href="/app/mzdove-podania">Mzdové podania a potvrdenky</a></p> : null}
     </header>
     {company.vatStatus === 'none' && filed.length === 0 && income.length === 0 ? (
       <section class="nothing">

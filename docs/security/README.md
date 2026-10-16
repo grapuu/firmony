@@ -15,7 +15,7 @@ Stav implementácie: **15. 10. 2026**. Tento balík nadväzuje na [zodpovednosť
 ## Prevádzkové postupy
 
 - [Podania, originály XML a doložené prijatie](filing-evidence.md) — doplnené 16. 10. 2026, schéma 18; manuálna odborná kontrola potvrdeniek.
-
+- [Mzdové podania podľa príjemcu a skutočnej výplaty](payroll-evidence.md) — schéma 19; externé originály, opravy a samostatné potvrdenky.
 - [Aktivácia, každodenná práca a obnova prístupov](access.md)
 - [Incident, súbeh s mazaním a uvoľnenie uchovania](evidence.md)
 - [Obnova D1/R2 a dôkazy pripravenosti](recovery.md)

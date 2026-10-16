@@ -13,7 +13,7 @@ const str = (value: unknown): string | null => (typeof value === 'string' && val
 /** The health insurers an employee may be with, by their codes. */
 export const INSURERS = { '24': 'Dôvera', '25': 'VšZP', '27': 'Union' } as const
 export type Insurer = keyof typeof INSURERS
-export const isInsurer = (value: unknown): value is Insurer => typeof value === 'string' && value in INSURERS
+export const isInsurer = (value: unknown): value is Insurer => typeof value === 'string' && Object.hasOwn(INSURERS, value)
 
 export interface Employee {
   id: string
@@ -177,19 +177,20 @@ export function saveRunStatement(db: D1Database, company: string, period: string
 }
 
 /** A month closed: its payslips as they were worked out, once. */
-export function closeRunStatement(db: D1Database, company: string, period: string, payday: string, lines: RunLine[], by: string, today: string, at: number): D1PreparedStatement {
+export function closeRunStatement(db: D1Database, company: string, period: string, payday: string, lines: RunLine[], by: string, today: string, at: number, evidenceId?: string, revision?: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO payroll_runs (company_id, period, payday, lines, saved_at, saved_by, closed_at, closed_on, closed_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?5, ?7, ?6)
-       ON CONFLICT (company_id, period) DO UPDATE SET payday = excluded.payday, lines = excluded.lines, closed_at = excluded.closed_at, closed_on = excluded.closed_on, closed_by = excluded.closed_by
-       WHERE payroll_runs.closed_at IS NULL`,
+      `INSERT INTO payroll_runs (company_id, period, payday, lines, saved_at, saved_by, closed_at, closed_on, closed_by, evidence_id) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?5, ?7, ?6, ?8
+       WHERE ?9 IS NULL OR COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?1), 0) = ?9
+       ON CONFLICT (company_id, period) DO UPDATE SET payday = excluded.payday, lines = excluded.lines, closed_at = excluded.closed_at, closed_on = excluded.closed_on, closed_by = excluded.closed_by, evidence_id = excluded.evidence_id
+       WHERE payroll_runs.closed_at IS NULL AND (?9 IS NULL OR COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?1), 0) = ?9)`,
     )
-    .bind(company, period, payday, JSON.stringify(lines), at, by, today)
+    .bind(company, period, payday, JSON.stringify(lines), at, by, today, evidenceId ?? null, revision ?? null)
 }
 
 /** A month closed by mistake opened again: its incomes stay. */
 export function reopenRunStatement(db: D1Database, company: string, period: string): D1PreparedStatement {
-  return db.prepare('UPDATE payroll_runs SET closed_at = NULL, closed_on = NULL, closed_by = NULL WHERE company_id = ? AND period = ? AND closed_at IS NOT NULL').bind(company, period)
+  return db.prepare('UPDATE payroll_runs SET closed_at = NULL, closed_on = NULL, closed_by = NULL, evidence_id = NULL WHERE company_id = ? AND period = ? AND closed_at IS NOT NULL').bind(company, period)
 }
 
 /** A month's payslips: the closed ones as they were, an open month's worked out from the incomes typed (else each employee's wage). */

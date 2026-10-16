@@ -28,6 +28,7 @@ import { teamRoutes } from './team/routes'
 import { securityRoutes } from './security/routes'
 import { isEvidenceHeld } from './incidents/store'
 import { isFilingSent } from './filings/model'
+import { payrollBlocked } from './payroll-reporting/model'
 import { Home, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
@@ -519,6 +520,7 @@ app.get('/healthz', async (c) => {
 app.notFound((c) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: new URL(c.req.url).pathname, noindex: true }, <NotFound />, 404))
 
 app.onError((err, c) => {
+  if (payrollBlocked(err)) return c.text('Uzávierku sme neotvorili. Už má evidované odoslanie výkazu alebo skutočné vyplatenie príjmov. Originály zostávajú zachované; opravu musí posúdiť odborný správca v evidencii mzdových podaní.', 409)
   if (isFilingSent(err)) return page(c, { title: 'Podanie má evidované doručenie', description: '', path: c.req.path, noindex: true }, <main class="section"><h1>Podanie sme nezrušili</h1><p>Máme k nemu evidované odoslanie alebo potvrdenie. Históriu zachováme. Opravu vyriešte cez evidenciu podaní alebo s odborným správcom.</p><a href="/ucto/terminy">Späť na termíny</a></main>, 409)
   if (isEvidenceHeld(err)) return c.text('Tento záznam musíme uchovať. Vymazanie sme nevykonali. Obráťte sa na zodpovedného správcu.', 409)
   if (isPeriodLocked(err)) return page(c, { title: 'Uzamknuté účtovné obdobie', description: '', path: c.req.path, noindex: true },

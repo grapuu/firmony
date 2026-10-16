@@ -2,7 +2,8 @@ import { now, sha256Hex } from '../db'
 import { dayOfText } from '../app/booking'
 import { sniffHandover } from '../app/papers'
 import { fileHash } from '../app/read'
-import { activePackageSql, canTransition, filingSourceSql, safeJson, type DeliveryState, type FilingEvent, type FilingFile, type FilingPackage, type FilingType } from './model'
+import { payrollQueueSql } from '../payroll-reporting/sql'
+import { activePackageSql, canTransition, filingSourceSql, safeJson, type DeliveryState, type FilingEvent, type FilingFile, type FilingPackage, type FilingWorkItem, type FilingType } from './model'
 import type { User } from '../app/store'
 
 export async function filingFile(name: string, xml: string): Promise<FilingFile & { attemptId: string }> {
@@ -18,14 +19,15 @@ export function prepareFiling(db: D1Database, company: string, kind: FilingType,
     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?8, ?9 WHERE EXISTS (${sourceGuard(kind)})`)
     .bind(file.attemptId, company, kind, period, file.name, file.xml, file.sha256, now(), by)
 }
-const LIST_COLUMNS = 'p.id, p.company_id, p.kind, p.period, p.name, p.sha256, p.created_at, p.created_by, p.status, p.revision, p.updated_at, p.updated_by, p.last_event'
-export async function filingQueue(db: D1Database, user: User, page = 1): Promise<(Omit<FilingPackage, 'xml'> & { company_name: string })[]> {
-  return (await db.prepare(`SELECT ${LIST_COLUMNS}, c.name AS company_name FROM filing_packages p JOIN companies c ON c.id = p.company_id
-    WHERE c.closed_at IS NULL AND c.demo = 0 AND (?1 = 'admin' OR c.accountant_id = ?2)
-      AND p.status <> 'accepted' AND (${activePackageSql()})
-    ORDER BY CASE p.status WHEN 'rejected' THEN 0 WHEN 'review' THEN 0 WHEN 'submitted' THEN 1 ELSE 2 END, p.period, p.created_at, p.id LIMIT 51 OFFSET ?3`)
-    .bind(user.team, user.id, (Math.min(10000, Math.max(1, Math.trunc(page))) - 1) * 50).all<Omit<FilingPackage, 'xml'> & { company_name: string }>()).results
+export async function filingQueue(db: D1Database, user: User, page = 1): Promise<FilingWorkItem[]> {
+  return (await db.prepare(`SELECT * FROM (SELECT p.id, p.company_id, c.name AS company_name, p.period, p.status, p.created_at, p.kind, NULL AS label, NULL AS href
+      FROM filing_packages p JOIN companies c ON c.id = p.company_id
+      WHERE c.closed_at IS NULL AND c.demo = 0 AND (?1 = 'admin' OR c.accountant_id = ?2) AND p.status <> 'accepted' AND (${activePackageSql()})
+      UNION ALL ${payrollQueueSql})
+    ORDER BY CASE status WHEN 'rejected' THEN 0 WHEN 'review' THEN 0 WHEN 'submitted' THEN 1 ELSE 2 END, period, created_at, id LIMIT 51 OFFSET ?3`)
+    .bind(user.team, user.id, (Math.min(10000, Math.max(1, Math.trunc(page))) - 1) * 50).all<FilingWorkItem>()).results
 }
+
 export async function packagesOf(db: D1Database, company: string, period = '', page = 1): Promise<(Omit<FilingPackage, 'xml'> & { current: number })[]> {
   return (await db.prepare(`SELECT p.id, p.company_id, p.kind, p.period, p.name, p.sha256, p.created_at, p.created_by, p.status, p.revision, p.updated_at, p.updated_by, p.last_event,
     (${activePackageSql()}) AS current FROM filing_packages p
@@ -48,7 +50,7 @@ export interface DeliveryChange {
   to: DeliveryState; revision: number; externalOn: string; reference: string; reason: string; channel: string
   checked: boolean; receipt?: { name: string; bytes: Uint8Array }
 }
-export function validateChange(pkg: FilingPackage, user: User, input: DeliveryChange, today: string): string | null {
+export function validateChange(pkg: Pick<FilingPackage, 'status' | 'revision'>, user: User, input: DeliveryChange, today: string): string | null {
   if (input.revision !== pkg.revision) return 'Stav sa medzitým zmenil. Obnovte stránku.'
   if (!canTransition(pkg.status, input.to, user.team === 'admin')) return 'Táto zmena stavu nie je povolená.'
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.externalOn) || input.externalOn !== dayOfText(input.externalOn) || input.externalOn > today) return 'Zadajte skutočný dátum, ktorý nie je v budúcnosti.'
@@ -58,12 +60,12 @@ export function validateChange(pkg: FilingPackage, user: User, input: DeliveryCh
   if (input.receipt && (input.receipt.bytes.length === 0 || input.receipt.bytes.length > 10 * 1024 * 1024)) return 'Potvrdenka môže mať najviac 10 MB a nesmie byť prázdna.'
   return null
 }
-async function discardUncommitted(db: D1Database, files: R2Bucket, key: string) {
+export async function discardUncommitted(db: D1Database, files: R2Bucket, key: string, table: 'filing_events' | 'payroll_events' | 'payroll_packages' = 'filing_events') {
   // An interrupted response may hide a successful commit. Keep evidence whenever its database outcome is uncertain.
-  const used = await db.prepare('SELECT 1 FROM filing_events WHERE file_key = ?').bind(key).first().catch(() => true)
+  const used = await db.prepare(`SELECT 1 FROM ${table} WHERE file_key = ?`).bind(key).first().catch(() => true)
   if (!used) await files.delete(key)
 }
-export async function changeDelivery(db: D1Database, files: R2Bucket | undefined, pkg: FilingPackage, user: User, input: DeliveryChange, today: string): Promise<{ ok: boolean; error?: string }> {
+export async function recordDelivery(db: D1Database, files: R2Bucket | undefined, pkg: Pick<FilingPackage, 'id' | 'company_id' | 'status' | 'revision'>, user: User, input: DeliveryChange, today: string, tables: { packages: 'filing_packages'; events: 'filing_events' } | { packages: 'payroll_packages'; events: 'payroll_events' }): Promise<{ ok: boolean; error?: string }> {
   const error = validateChange(pkg, user, input, today)
   if (error) return { ok: false, error }
   const id = crypto.randomUUID(), at = now()
@@ -78,26 +80,30 @@ export async function changeDelivery(db: D1Database, files: R2Bucket | undefined
   }
   try {
     const result = await db.batch([
-      db.prepare(`INSERT INTO filing_events (id, package_id, company_id, revision, at, by_user, from_state, to_state, external_on, reference, reason, channel,
+      db.prepare(`INSERT INTO ${tables.events} (id, package_id, company_id, revision, at, by_user, from_state, to_state, external_on, reference, reason, channel,
           file_key, file_name, file_type, file_bytes, file_sha256)
         SELECT ?1, id, company_id, revision + 1, ?4, ?5, status, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
-        FROM filing_packages WHERE id = ?2 AND company_id = ?3 AND revision = ?16 AND status = ?17`)
+        FROM ${tables.packages} WHERE id = ?2 AND company_id = ?3 AND revision = ?16 AND status = ?17`)
         .bind(id, pkg.id, pkg.company_id, at, user.id, input.to, input.externalOn, input.reference.replace(/\s/g, '').toUpperCase(), input.reason.trim(), input.channel.trim(), key, input.receipt?.name.slice(0, 160) ?? null, type, size, hash, input.revision, pkg.status),
-      db.prepare(`UPDATE filing_packages SET status = ?1, revision = revision + 1, updated_at = ?2, updated_by = ?3, last_event = ?4
-        WHERE id = ?5 AND company_id = ?6 AND revision = ?7 AND EXISTS (SELECT 1 FROM filing_events WHERE id = ?4 AND package_id = ?5 AND revision = ?7 + 1)`)
+      db.prepare(`UPDATE ${tables.packages} SET status = ?1, revision = revision + 1, updated_at = ?2, updated_by = ?3, last_event = ?4
+        WHERE id = ?5 AND company_id = ?6 AND revision = ?7 AND EXISTS (SELECT 1 FROM ${tables.events} WHERE id = ?4 AND package_id = ?5 AND revision = ?7 + 1)`)
         .bind(input.to, at, user.id, id, pkg.id, pkg.company_id, input.revision),
     ])
     if (!result[0]?.meta.changes || !result[1]?.meta.changes) {
-      if (key && files) await discardUncommitted(db, files, key)
+      if (key && files) await discardUncommitted(db, files, key, tables.events)
       return { ok: false, error: 'Stav sa medzitým zmenil. Obnovte stránku; pôvodnú akciu sme nezopakovali.' }
     }
     return { ok: true }
   } catch (cause) {
-    if (key && files) await discardUncommitted(db, files, key)
+    if (key && files) await discardUncommitted(db, files, key, tables.events)
     const message = String(cause)
     if (/UNIQUE constraint failed|FIRMONY_FILING_RECEIPT_REUSED/.test(message)) return { ok: false, error: 'Toto číslo alebo súbor potvrdenia už evidujeme. Skontrolujte správny dokument a firmu.' }
     if (/FIRMONY_FILING_AUTHORITY/.test(message)) return { ok: false, error: 'Oprávnenia sa medzitým zmenili. Obnovte stránku.' }
     if (/handover is being finalized/.test(message)) return { ok: false, error: 'Účtovníctvo je uzamknuté na odovzdanie. Stav sme nezmenili.' }
     throw cause
   }
+}
+
+export async function changeDelivery(db: D1Database, files: R2Bucket | undefined, pkg: FilingPackage, user: User, input: DeliveryChange, today: string): Promise<{ ok: boolean; error?: string }> {
+  return recordDelivery(db, files, pkg, user, input, today, { packages: 'filing_packages', events: 'filing_events' })
 }

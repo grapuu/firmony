@@ -38,7 +38,7 @@ async function list(c: Ctx) {
   const legacy = await db.prepare(`SELECT 1 FROM vat_returns WHERE company_id = ?1 AND delivery IS NULL
     UNION ALL SELECT 1 FROM filings WHERE company_id = ?1 AND (kind <> 'sv' OR data IS NULL OR data NOT LIKE '%attemptId%')
     UNION ALL SELECT 1 FROM closings WHERE company_id = ?1 AND filed_at IS NOT NULL AND (filed IS NULL OR filed NOT LIKE '%attemptId%') LIMIT 1`).bind(company.id).first()
-  return frame(c, <FilingsPage company={company} packages={packages.slice(0, 50).map((p) => ({ ...p, current: Boolean(p.current) }))} base={base(c)} period={period} page={page} hasNext={packages.length > 50} legacy={Boolean(legacy)} />)
+  return frame(c, <FilingsPage company={company} packages={packages.slice(0, 50).map((p) => ({ ...p, current: Boolean(p.current) }))} base={base(c)} period={period} page={page} hasNext={packages.length > 50} legacy={Boolean(legacy)} payrollHref={base(c).startsWith('/ucto') ? `/ucto/klienti/${company.id}/mzdove-podania` : c.get('who').role === 'owner' ? '/app/mzdove-podania' : undefined} />)
 }
 async function detail(c: Ctx, error?: string, values?: Record<string, string>, status: ContentfulStatusCode = 200) {
   const db = c.env.DB, company = c.get('filingCompany'), pkg = await packageOf(db, company.id, c.req.param('package') ?? '')

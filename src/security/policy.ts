@@ -49,6 +49,7 @@ export function actionReturn(value: unknown, referrer?: string, origin: string =
 function workPage(path: string): string {
   if (path === '/app/export/potvrdit') return '/app/firma#stiahnut'
   if (path === '/app/faktury') return '/app/faktury/nova'
+  if (/^\/app\/mzdove-podania(?:\/|$)/.test(path)) return '/app/mzdove-podania'
   const clientItem = /^\/app\/(doklady|platby|faktury)\/([^/]+)/.exec(path)
   if (clientItem) return `/app/${clientItem[1]}/${clientItem[2]}`
   const clientPage = /^\/app\/(banka|firma|doklady|spravy|plna-moc|vyhlasenie)(?:\/|$)/.exec(path)
@@ -56,6 +57,8 @@ function workPage(path: string): string {
   const company = /^\/ucto\/klienti\/([^/]+)(?:\/(.*))?$/.exec(path)
   if (company) {
     const base = `/ucto/klienti/${company[1]}`, section = company[2] ?? ''
+    const payroll = /^mzdove-podania(?:\/([^/]+))?(?:\/verzie\/([^/]+))?/.exec(section)
+    if (payroll) return `${base}/mzdove-podania${payroll[1] && !['vyplata', 'zalozit'].includes(payroll[1]) ? `/${payroll[1]}${payroll[2] ? `/verzie/${payroll[2]}` : ''}` : ''}`
     const filing = /^podania\/([^/]+)(?:\/|$)/.exec(section)
     if (filing) return `${base}/podania/${filing[1]}`
     const books = /^kniha\/(obdobia|platby|interne|pociatocne)(?:\/|$)/.exec(section)
@@ -96,6 +99,7 @@ export function verifiedRecently(who: Who, at: number, seconds = SECURITY.teamSe
 }
 /** Authentication freshness, separate from the route's company/role authorization. */
 export function sensitivePath(path: string, method: string): boolean {
+  if (/^\/(?:app|ucto\/klienti\/[^/]+)\/mzdove-podania(?:\/|$)/.test(path) && (method !== 'GET' && method !== 'HEAD' || /\/(?:dokument|potvrdenka\/[^/]+)$/.test(path))) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/podania\/[^/]+\/(?:stav|dokument\.xml|potvrdenka\/[^/]+)$/.test(path)) return true
   if (/^\/app\/export(?:\/potvrdit)?$/.test(path)) return true
   if (

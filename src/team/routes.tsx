@@ -4,6 +4,8 @@
 import { Hono, type Context } from 'hono'
 import { filingFile, packageOf, prepareFiling } from '../filings/store'
 import { filingRoutes, filingQueueRoutes } from '../filings/routes'
+import { payrollReportRoutes } from '../payroll-reporting/routes'
+import { closureStatements, reportItems as payrollReportItems, runReopenBlocked } from '../payroll-reporting/store'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { APP, ART, BRAND, ENDING, PLANS, TEAM } from '../config'
@@ -405,6 +407,8 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.running
     case 'mzdy-uz':
       return t.payroll.flashes.already
+    case 'mzdy-zmenene':
+      return 'Podklady sa medzitým zmenili. Obnovte stránku a skontrolujte aktuálne mzdy; uzávierku sme nevytvorili.'
     case 'mzdy-nikto':
       return t.payroll.flashes.nobody
     case 'mzdy-zamestnanec':
@@ -1748,6 +1752,8 @@ async function payrollPage(
       employees={employees}
       slips={slips}
       run={run}
+      reports={run?.closedOn ? await payrollReportItems(db, company.id, period) : []}
+      reopenBlocked={run?.closedOn ? await runReopenBlocked(db, company.id, period) : false}
       totals={runTotals(slips)}
       orders={payOrders(company, period, slips, employees, settings, payday)}
       values={forms.month?.values ?? { vyplata: textDay(payday) }}
@@ -1774,6 +1780,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const who = c.get('who')
   const body = await c.req.parseBody()
   const today = dayOf(now())
+  const sourceRevision = await dataRevision(db, company.id)
   const { employees, runs, settings } = await payrollData(db, company)
   const months = payrollMonths(employees, today, runs)
   const period = typeof body.obdobie === 'string' && months.includes(body.obdobie) ? body.obdobie : null
@@ -1806,8 +1813,12 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   if (today <= monthRange(period).to) return c.redirect(`${back}&ok=mzdy-bezi`, 303)
   if (lines.length === 0) return c.redirect(`${back}&ok=mzdy-nikto`, 303)
   const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null })
-  const [done] = await db.batch([closeRunStatement(db, company.id, period, payday, slips, who.user.id, today, now())])
-  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=mzdy-uz`, 303)
+  const evidenceId = crypto.randomUUID(), closedAt = now()
+  const [done] = await db.batch([
+    closeRunStatement(db, company.id, period, payday, slips, who.user.id, today, closedAt, evidenceId, sourceRevision),
+    ...await closureStatements(db, company, { company_id: company.id, period, payday, lines: JSON.stringify(slips), closed_at: closedAt, evidence_id: evidenceId }, evidenceId, who.user.id),
+  ])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=mzdy-zmenene`, 303)
   const orders = payOrders(company, period, slips, employees, settings, payday)
   const iban = (value: string | null) => (value ? groupedIban(value) : null)
   const text = t.payroll.clientMessage({
@@ -2700,6 +2711,7 @@ teamRoutes.post('/tim', async (c) => {
 teamRoutes.route('/incidenty', incidentRoutes)
 teamRoutes.route('/podania', filingQueueRoutes)
 teamRoutes.route('/klienti/:companyId/podania', filingRoutes)
+teamRoutes.route('/klienti/:companyId/mzdove-podania', payrollReportRoutes)
 
 teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/prihlasenie', 303)))
 

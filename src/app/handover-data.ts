@@ -20,6 +20,12 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['historia-zavierok', 'SELECT * FROM closing_history WHERE company_id = ?1 AND year = ?2 ORDER BY id'],
     ['podania', 'SELECT * FROM filings WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY kind, period'],
     ['historia-podani', 'SELECT * FROM filing_history WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],
+    // Closure/payment dependencies may span New Year. Keep the complete company-level graph in each archive.
+    ['mzdove-uzavierky', 'SELECT * FROM payroll_closures WHERE company_id = ?1 ORDER BY period, id'],
+    ['overene-vyplaty', 'SELECT * FROM payroll_payouts WHERE company_id = ?1 ORDER BY closure_id, revision'],
+    ['mzdove-povinnosti', 'SELECT * FROM payroll_targets WHERE company_id = ?1 ORDER BY period, kind'],
+    ['verzie-mzdovych-podani', 'SELECT p.* FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ?1 AND substr(t.period, 1, 4) = ?2 ORDER BY p.id'],
+    ['dorucenie-mzdovych-podani', 'SELECT e.* FROM payroll_events e JOIN payroll_packages p ON p.id = e.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE e.company_id = ?1 AND substr(t.period, 1, 4) = ?2 ORDER BY e.package_id, e.revision'],
     ['verzie-podani', 'SELECT * FROM filing_packages WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],
     ['dorucenie-podani', 'SELECT e.* FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ?1 AND substr(p.period, 1, 4) = ?2 ORDER BY e.package_id, e.revision'],
     ['dph', 'SELECT * FROM vat_returns WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY period'],
@@ -41,6 +47,8 @@ export async function handoverData(db: D1Database, company: string, year: string
   const entry = (name: string, content: string): ZipEntry => ({ name: zipName(name), when: at, data: async () => encoder.encode(content) })
   const entries = [...tables].map(([name, rows]) => entry(`data/${name}.json`, json(rows)))
   entries.push(entry('data/format.json', json({ format: 'firmony-accounting-handover', version: 1, schema: SCHEMA_VERSION, company, year, createdAt: at, amounts: 'integer cents; JSON strings preserve original database values' })))
+  for (const c of tables.get('mzdove-uzavierky') ?? []) if (typeof c.source_json !== 'string' || await sha256Hex(c.source_json) !== c.sha256) throw new Error('Payroll closure checksum mismatch')
+  for (const p of tables.get('verzie-mzdovych-podani') ?? []) if (typeof p.source_json !== 'string' || await sha256Hex(p.source_json) !== p.source_hash) throw new Error('Payroll report coverage checksum mismatch')
   for (const p of tables.get('verzie-podani') ?? []) {
     if (typeof p.xml !== 'string' || await sha256Hex(p.xml) !== p.sha256) throw new Error('Filing package checksum mismatch')
     entries.push(entry(`podania/dorucenie/${p.kind}-${p.period}-${p.id}.xml`, p.xml))

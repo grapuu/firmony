@@ -2,6 +2,7 @@
 // is made for the company of that session (store.ts). Forms answer with a redirect to a page that says what
 // happened, so a reload never sends anything twice.
 import { Hono, type Context } from 'hono'
+import { clientPayrollReportRoutes } from '../payroll-reporting/routes'
 import { clientFilingRoutes } from '../filings/routes'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
@@ -1049,7 +1050,7 @@ appRoutes.get('/dane', async (c) => {
     taxPaid(db, who.company.id, filed),
     Promise.all(closings.filter((k) => k.filed).map(async (closing) => ({ closing, paid: await incomePaid(db, who.company.id, closing.year) }))),
   ])
-  return shell(c, 'taxes', t.taxes.title, <TaxesPage company={who.company} filed={filed} paid={paid} income={income} today={today()} />)
+  return shell(c, 'taxes', t.taxes.title, <TaxesPage payroll={who.role === 'owner'} company={who.company} filed={filed} paid={paid} income={income} today={today()} />)
 })
 
 appRoutes.post('/firma/pozvat', async (c) => {
@@ -1684,6 +1685,7 @@ export function xmlResponse(invoice: StoredInvoice, lines: Line[], seller: Compa
 }
 
 appRoutes.route('/podania', clientFilingRoutes)
+appRoutes.route('/mzdove-podania', clientPayrollReportRoutes)
 appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Missing />, 404) : c.redirect('/app/prihlasenie', 303)))
 
 // ---------------------------------------------------------------------------------------------------------------
