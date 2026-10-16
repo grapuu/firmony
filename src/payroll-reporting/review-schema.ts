@@ -1,5 +1,5 @@
 import { PAYROLL_REPORTING_SCHEMA } from './schema'
-import { currentCoverageJsonSql, currentPendingPayrollSql, currentReportSql, currentTargetActiveSql, pendingPayrollSql, reportCurrentSql, targetActiveSql, unknownLegacyPeriodSql } from './sql'
+import { currentCoverageJsonSql, currentPendingPayrollSql, currentReportSql, currentTargetActiveSql, pendingPayrollSql, reportCurrentSql, targetActiveSql, targetReviewScopeSql, unknownLegacyPeriodSql } from './sql'
 
 // Preserve schema 19 byte-for-byte. Replace only named guards in this additive migration, with checked matches.
 function changedTrigger(name: string, changes: [string, string][]): string[] {
@@ -16,7 +16,7 @@ export const PAYROLL_REVIEW_SCHEMA = [
   "ALTER TABLE payroll_payouts ADD COLUMN report_period TEXT CHECK (report_period IS NULL OR (report_period GLOB '20[0-9][0-9]-[01][0-9]' AND substr(report_period, 6, 2) BETWEEN '01' AND '12'))",
   `CREATE TABLE payroll_target_reviews (
     id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id), target_id TEXT NOT NULL REFERENCES payroll_targets(id),
-    source_json TEXT NOT NULL CHECK (source_json = '[]'), data_revision INTEGER NOT NULL,
+    source_json TEXT NOT NULL CHECK (source_json = '[]'), scope_json TEXT NOT NULL CHECK (json_valid(scope_json)), data_revision INTEGER NOT NULL,
     reason TEXT NOT NULL CHECK (length(reason) >= 24), reference TEXT NOT NULL CHECK (length(reference) >= 12), at INTEGER NOT NULL, by_user TEXT NOT NULL,
     file_key TEXT, file_name TEXT, file_type TEXT, file_bytes INTEGER, file_sha256 TEXT,
     UNIQUE(target_id, data_revision)
@@ -35,7 +35,7 @@ export const PAYROLL_REVIEW_SCHEMA = [
   `CREATE TRIGGER payroll_target_reviews_create BEFORE INSERT ON payroll_target_reviews WHEN
     NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.by_user AND team = 'admin')
     OR NOT EXISTS (SELECT 1 FROM payroll_targets t WHERE t.id = NEW.target_id AND t.company_id = NEW.company_id AND t.kind = 'tax'
-      AND (${currentTargetActiveSql('t')}) AND ${currentCoverageJsonSql('t')} = '[]' AND NOT (${unknownLegacyPeriodSql('t')}))
+      AND (${currentTargetActiveSql('t')}) AND ${currentCoverageJsonSql('t')} = '[]' AND NEW.scope_json = ${targetReviewScopeSql('t')} AND NOT (${unknownLegacyPeriodSql('t')}))
     OR NEW.data_revision <> COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = NEW.company_id), 0)
     OR (EXISTS (SELECT 1 FROM payroll_packages p WHERE p.target_id = NEW.target_id AND p.status <> 'prepared') AND (NEW.file_key IS NULL OR NEW.file_sha256 IS NULL OR COALESCE(NEW.file_bytes, 0) <= 0))
     OR (NEW.file_key IS NOT NULL AND NEW.file_key NOT LIKE 'companies/' || NEW.company_id || '/filings/%')

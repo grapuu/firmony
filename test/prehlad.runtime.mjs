@@ -93,6 +93,16 @@ export async function checkPrehlad({db,files,acc,admin,lucia,nowS,day,signIn,as,
   check('review evidence remains company scoped',(await foreign.get(`/app/mzdove-podania/${tax.id}/preverenia/${review.id}/dokument`)).status===404)
   await p.recordPayout(db,closure,adminUser,{paidOn:today,reportPeriod:period,reference:'TEST final corrected reporting period',reason:'TEST final synthetic allocation confirmed',checked:true,revision:3},today)
   check('newly allocated income reactivates a retired target without reviving old completion',(await p.reportItem(db,company,tax.id)).active && (await p.reportItem(db,company,tax.id)).sourceChanged && (await g.targetReviews(db,company,tax.id)).length===1)
+  await p.recordPayout(db,closure,adminUser,{paidOn:today,reportPeriod:today.slice(0,7),reference:'TEST renewed synthetic period reclassification',reason:'TEST renewed external correction requires a fresh scope review',checked:true,revision:4},today)
+  check('returning to empty coverage cannot reuse a resolution from before renewed income',(await p.reportItem(db,company,tax.id)).active && (await g.reviewScope(db,company,tax.id)).canRetire && (await filingQueue(db,user)).some((r)=>r.id===tax.id))
+  const freshScope=await g.reviewScope(db,company,tax.id)
+  const renewed=await g.retireTarget(db,files,company,tax.id,adminUser,{revision:freshScope.revision,reason:'TEST renewed sources and all actual external reports professionally resolved',reference:'TEST new independent resolution',checked:true,file:{name:'TEST_ONLY-renewed-resolution.xml',bytes:new TextEncoder().encode('<TEST_ONLY resolution="newly reclassified income professionally resolved"/>')}})
+  check('a new expert resolution can retire the changed empty scope with its own original',renewed.ok && !(await p.reportItem(db,company,tax.id)).active && (await g.targetReviews(db,company,tax.id)).length===2)
+  const latest=(await p.reportItem(db,company,tax.id)).pkg
+  res=await admin.post(`${base}/${tax.id}/verzie/${latest.id}/stav`,{to:'submitted',revision:String(latest.revision),externalOn:today,reference:'TEST late external submission evidence',channel:'TEST ONLY late FS evidence',reason:'TEST external event discovered after expert resolution',checked:'1'})
+  check('late external evidence invalidates a prior empty-scope resolution',res.status===303 && (await p.reportItem(db,company,tax.id)).active && (await filingQueue(db,user)).some((r)=>r.id===tax.id))
+  res=await owner.get(`/app/mzdove-podania/${tax.id}`);html=await res.text()
+  check('the owner sees why resolved work reopened without receiving an administrative form',res.status===200 && html.includes('Predchádzajúce vyradenie už nepokrýva') && !html.includes('payroll-scope'))
   for(const sql of ['UPDATE payroll_generations SET details=details WHERE company_id=?','DELETE FROM payroll_target_reviews WHERE company_id=?']){let denied=false;try{await db.prepare(sql).bind(company).run()}catch{denied=true}check('generated and expert-review history is immutable and retained',denied)}
   const archive=await exportYear({DB:db,FILES:files},await co(),period.slice(0,4),null,today),zipped=await unzip(new Uint8Array(await new Response(archive.body).arrayBuffer()))
   const paths=Array.isArray(zipped)?zipped.map((f)=>f.name):[...zipped.keys()]

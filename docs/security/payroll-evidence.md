@@ -52,6 +52,7 @@ nemajú prístup k mzdovým originálom ani týmto stránkam; kompletný export 
 - Prázdne nesprávne priradené obdobie FS môže správca vyradiť iba po zdokumentovanom odbornom
   vyriešení; pri evidovanom odoslaní potrebuje aj originál podkladu. Tým sa neruší podanie na úrade.
   Nový priradený príjem povinnosť opäť aktivuje a stará potvrdenka ho nepokrýva.
+  Ani ďalší návrat k prázdnym podkladom či neskorší dôkaz odoslania neobnovia staré vyradenie.
 - Ďalšia verzia už odoslaného, prijatého alebo preverovaného výkazu vyžaduje správcu a dôvod.
   Neodoslaná alebo odmietnutá verzia sa môže odborne nahradiť, pričom pôvodná história zostáva zachovaná.
   Po evidovanom odoslaní, prijatí, preverení alebo skutočnej výplate nemožno jednoducho znovu otvoriť mzdy.

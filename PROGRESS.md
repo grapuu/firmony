@@ -19,12 +19,15 @@ Continues existing PR #8 on `codex/firmony-security-and-evidence`, remote parent
 - Administrators can document resolution of an empty incorrect period. Already recorded external
   submissions need an original supporting document. This retires internal work only, preserves all
   versions and does not cancel any statutory filing. Newly assigned income reactivates the task.
+  Historical assignment identities and package revisions prevent reuse of an old resolution after
+  another allocation cycle or late external evidence.
 - Portable exports, original checksums, incident protection, handover freeze, synthetic restoration and
   controlled purge cover generation/review evidence. Owners receive read-only provenance and files;
   no additional customer administration is introduced.
 - Local validation: **785 unit checks and 1,104 real workerd checks**, including the independent
   schema-19-to-20 transition and official XSD validation. Supplementary local TypeScript 6 passed;
   authoritative TS7, real Chrome and desktop/mobile validation on the published head are recorded in PR #8.
+  Additional allocation-cycle and late-evidence regressions protect the freshness of expert resolutions.
 - [Scope, exact format hashes and primary sources](docs/security/payroll-generation.md). Insurer reports,
   special/partial/noncash wages, annual payroll, live filing, real portal acceptance, production recovery
   and legal/insurance approval remain open. Tests use synthetic data; no perfect-service claim is made.

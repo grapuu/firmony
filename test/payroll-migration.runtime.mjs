@@ -5,7 +5,7 @@ import { check } from './check.mjs'
 import { PAYROLL_REPORTING_SCHEMA as oldStep, PAYROLL_REVIEW_SCHEMA as upgrade, payrollReporting as p, payrollGeneration as g, companyOf, payslip, legacyPayrollCoverage, filingQueue } from '../.wrangler/dist/stores.js'
 
 export async function checkPayrollMigration({db: current,nowS,day}) {
-  check('the entire deployed schema-19 step remains byte-for-byte unchanged',createHash('sha256').update(JSON.stringify(oldStep)).digest('hex')==='1d22f406cada72ce9dda6640d74e86f870afa46ed6312657fd3d9f1846874d1e')
+  check('the entire existing schema-19 step remains byte-for-byte unchanged',createHash('sha256').update(JSON.stringify(oldStep)).digest('hex')==='1d22f406cada72ce9dda6640d74e86f870afa46ed6312657fd3d9f1846874d1e')
   const dist=new URL('../.wrangler/dist',import.meta.url).pathname
   const mf=new Miniflare(convertV4MiniflareOptions({cf:false,workers:[{name:'payroll-upgrade',modulesRoot:dist,modules:[{type:'ESModule',path:`${dist}/index.js`}],compatibilityDate:'2026-10-01',d1Databases:{DB:'payroll-upgrade'},r2Buckets:{FILES:'payroll-upgrade'},outboundService:()=>new Response('offline',{status:599})}]}))
   try {

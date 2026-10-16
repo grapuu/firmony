@@ -35,7 +35,14 @@ export function unknownLegacyPeriodSql(target: string): string { return `EXISTS 
   WHERE lp.company_id = ${target}.company_id AND lp.report_period IS NULL AND substr(lp.paid_on, 1, 7) = ${target}.period
     AND (${latestPayoutSql('lp')}) AND (${closureCurrentSql('lc')}))` }
 export function retiredTaxSql(target: string): string { return `EXISTS (SELECT 1 FROM payroll_target_reviews tr WHERE tr.target_id = ${target}.id AND tr.company_id = ${target}.company_id
-  AND tr.source_json = ${coverageJsonSql(target, true)} AND tr.source_json = '[]' AND NOT (${unknownLegacyPeriodSql(target)}))` }
+  AND tr.source_json = ${coverageJsonSql(target, true)} AND tr.source_json = '[]' AND tr.scope_json = ${targetReviewScopeSql(target)} AND NOT (${unknownLegacyPeriodSql(target)}))` }
+// Include historical assignments: returning to an empty set must not revive an old resolution.
+// Package revisions also invalidate it when late external evidence arrives for a historical version.
+export function targetReviewScopeSql(target: string): string { return `json_object('payouts',
+  (SELECT COALESCE(json_group_array(s.id), '[]') FROM (SELECT rp.id FROM payroll_payouts rp WHERE rp.company_id = ${target}.company_id
+    AND (rp.report_period = ${target}.period OR rp.report_period IS NULL AND substr(rp.paid_on, 1, 7) = ${target}.period) ORDER BY rp.id) s),
+  'packages', (SELECT COALESCE(json_group_array(json_object('id', s.id, 'revision', s.revision)), '[]') FROM
+    (SELECT p.id, p.revision FROM payroll_packages p WHERE p.target_id = ${target}.id AND p.company_id = ${target}.company_id ORDER BY p.id) s))` }
 export const currentTargetActiveSql = (t: string) => targetActiveSql(t, true)
 export const currentCoverageJsonSql = (t: string) => coverageJsonSql(t, true)
 export const currentReportSql = (t: string, p: string) => reportCurrentSql(t, p, true)

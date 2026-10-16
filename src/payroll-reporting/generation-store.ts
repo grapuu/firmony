@@ -4,7 +4,7 @@ import { companyOf, type Company, type User } from '../app/store'
 import { fileHash } from '../app/read'
 import { sniffHandover } from '../app/papers'
 import { discardUncommitted } from '../filings/store'
-import { currentCoverageJsonSql, currentTargetActiveSql, closureCurrentSql, latestPayoutSql, unknownLegacyPeriodSql } from './sql'
+import { currentCoverageJsonSql, currentTargetActiveSql, closureCurrentSql, latestPayoutSql, targetReviewScopeSql, unknownLegacyPeriodSql } from './sql'
 import { prehladInputError, prehladTotals, prehladXml, PREHLAD_FORMAT, PREHLAD_XSD_SHA256, type PrehladInput, type PrehladSource, type PrehladTotals } from './prehlad'
 import { saveReport } from './store'
 import type { Closure, ReportTarget } from './model'
@@ -57,7 +57,7 @@ export async function generationOf(db: D1Database, company: string, packageId: s
   return db.prepare('SELECT g.*, u.name AS by_name FROM payroll_generations g LEFT JOIN users u ON u.id = g.by_user WHERE g.company_id = ? AND g.package_id = ?').bind(company, packageId).first<GenerationEvidence>()
 }
 export interface TargetReview {
-  id: string; company_id: string; target_id: string; data_revision: number; source_json: string; reason: string; reference: string; at: number; by_user: string; by_name: string | null
+  id: string; company_id: string; target_id: string; data_revision: number; source_json: string; scope_json: string; reason: string; reference: string; at: number; by_user: string; by_name: string | null
   file_key: string | null; file_name: string | null; file_type: string | null; file_bytes: number | null; file_sha256: string | null
 }
 export async function targetReviews(db: D1Database, company: string, targetId: string): Promise<TargetReview[]> {
@@ -65,8 +65,8 @@ export async function targetReviews(db: D1Database, company: string, targetId: s
 }
 export async function reviewScope(db: D1Database, company: string, targetId: string) {
   const revision = await dataRevision(db, company)
-  const row = await db.prepare(`SELECT t.id, ${currentCoverageJsonSql('t')} AS coverage, (${unknownLegacyPeriodSql('t')}) AS unknown, (${currentTargetActiveSql('t')}) AS active,
-    EXISTS (SELECT 1 FROM payroll_packages p WHERE p.target_id = t.id AND p.status <> 'prepared') AS sent FROM payroll_targets t WHERE t.id = ? AND t.company_id = ? AND t.kind = 'tax'`).bind(targetId, company).first<{ id: string; coverage: string; unknown: number; active: number; sent: number }>()
+  const row = await db.prepare(`SELECT t.id, ${currentCoverageJsonSql('t')} AS coverage, ${targetReviewScopeSql('t')} AS scopeJson, (${unknownLegacyPeriodSql('t')}) AS unknown, (${currentTargetActiveSql('t')}) AS active,
+    EXISTS (SELECT 1 FROM payroll_packages p WHERE p.target_id = t.id AND p.status <> 'prepared') AS sent FROM payroll_targets t WHERE t.id = ? AND t.company_id = ? AND t.kind = 'tax'`).bind(targetId, company).first<{ id: string; coverage: string; scopeJson: string; unknown: number; active: number; sent: number }>()
   return row ? { ...row, revision, canRetire: row.active && row.coverage === '[]' && !row.unknown } : null
 }
 export async function retireTarget(db: D1Database, files: R2Bucket | undefined, company: string, targetId: string, user: User, input: { revision: number; reference: string; reason: string; checked: boolean; file?: { name: string; bytes: Uint8Array } }): Promise<{ ok: boolean; error?: string }> {
@@ -83,9 +83,9 @@ export async function retireTarget(db: D1Database, files: R2Bucket | undefined, 
   const id = crypto.randomUUID(), key = format ? `companies/${company}/filings/review-${id}.${format.ext}` : null
   if (key && files && input.file) await files.put(key, input.file.bytes, { httpMetadata: { contentType: format!.type } })
   try {
-    const r = await db.prepare(`INSERT INTO payroll_target_reviews (id, company_id, target_id, source_json, data_revision, reason, reference, at, by_user, file_key, file_name, file_type, file_bytes, file_sha256)
-      SELECT ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?), 0) = ?`)
-      .bind(id, company, targetId, input.revision, input.reason.trim(), input.reference.trim(), now(), user.id, key, input.file?.name.slice(0,160) ?? null, format?.type ?? null, input.file?.bytes.length ?? null, input.file ? await fileHash(input.file.bytes) : null, company, input.revision).run()
+    const r = await db.prepare(`INSERT INTO payroll_target_reviews (id, company_id, target_id, source_json, scope_json, data_revision, reason, reference, at, by_user, file_key, file_name, file_type, file_bytes, file_sha256)
+      SELECT ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?), 0) = ?`)
+      .bind(id, company, targetId, scope.scopeJson, input.revision, input.reason.trim(), input.reference.trim(), now(), user.id, key, input.file?.name.slice(0,160) ?? null, format?.type ?? null, input.file?.bytes.length ?? null, input.file ? await fileHash(input.file.bytes) : null, company, input.revision).run()
     if (r.meta.changes) return { ok: true }
     if (key && files) await discardUncommitted(db, files, key, 'payroll_target_reviews')
     return { ok: false, error: 'Podklady sa medzitým zmenili. Obnovte stránku.' }

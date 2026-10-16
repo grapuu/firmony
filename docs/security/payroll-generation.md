@@ -26,6 +26,9 @@ zaznamenať odborné vyriešenie. Musí preveriť všetky príjmy aj skutočné 
 evidovanom odoslaní potrebuje pôvodný podklad k vyriešeniu. Tento úkon nepodáva, neruší ani neodvoláva
 nič na FS a nepredstiera prijatie výkazu. Odstráni iba nesprávnu úlohu z pracovného zoznamu; všetky
 dôkazy zostávajú. Nové priradenie príjmu povinnosť znovu aktivuje bez obnovenia starej platnosti.
+Rozhodnutie je viazané aj na históriu priradení a revízie podaní. Návrat k prázdnym podkladom
+po ďalšom presune príjmu ani dodatočný externý dôkaz nesmú znovu použiť staré vyradenie; potrebujú
+nové odborné vyriešenie.
 Nevytvárať náhradný nulový výkaz ako spôsob odstránenia chybnej evidencie.
 
 ## Podporované generovanie
@@ -75,6 +78,6 @@ sa vzťahujú na nové záznamy. Syntetická obnova zahŕňa nové tabuľky a oc
 
 Testy overujú XML nezávislou oficiálnou XSD, povolené/nepodporované prípady, skutočný HTTP/Chrome tok,
 súbehy, odobratie oprávnení, uchovanie a prechod skutočne rekonštruovanej schémy 19 do 20. Súbory sú
-označené **TEST_ONLY**. Validácia XSD nepreukazuje prijatie podateľňou ani vecnú správnosť všetkých
+syntetické; potvrdenky sú označené **TEST_ONLY**. Validácia XSD nepreukazuje prijatie podateľňou ani vecnú správnosť všetkých
 údajov. Pred pilotom zostáva skúška importu na FS a odborné potvrdenie vykazovacích scenárov vrátane
 oneskorených výplat a prelomu roka. Produkčná obnova a právne/poistné schválenia zostávajú otvorené.
