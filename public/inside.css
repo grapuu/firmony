@@ -6761,6 +6761,8 @@ select.field__input {
 }
 
 /* Delivery work: long references wrap without widening the mobile page. */
+.filing-work { display: grid; gap: 20px; }
+.filing-work > p { margin: 0; }
 .filing-card, .filing-document, .filing-history, .filing-form { overflow-wrap: anywhere; }
 .filing-card .pill { white-space: normal; }
 .filing-form input, .filing-form select, .filing-form textarea { min-width: 0; max-width: 100%; }

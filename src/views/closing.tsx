@@ -431,11 +431,15 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
       {view.closing?.extendedTo && !filed ? <p class="info__lead">{k.extendedTo(dayName(view.closing.extendedTo, today))}</p> : null}
       {filed ? (
         <p class="vstatus__filed">
-          <span class="tick tick--green" aria-hidden="true" /> {k.filed(dayName(filed.filedOn ?? today, today), filed.filedByName ?? '')}
+          {k.filed(dayName(filed.filedOn ?? today, today), filed.filedByName ?? '')}
         </p>
       ) : null}
       {view.changed && (view.changed.rows.length > 0 || view.changed.statements) ? (
-        <p class="flag">{k.changed(view.changed.rows.map((row) => row.slice(1)).join(', '), view.changed.statements)}</p>
+        <p class="flag">{filed?.deliveryStatus && ['prepared', 'rejected', 'review'].includes(filed.deliveryStatus)
+          ? filed.canReprepare
+            ? 'Po uložení podkladov sa výpočet zmenil. Neodoslané alebo odmietnuté podklady znovu otvorte a skontrolujte pred prípravou novej verzie.'
+            : 'Po uložení podkladov sa výpočet zmenil. Dokumenty majú rozdielny alebo sporný stav doručenia; ďalší postup musí posúdiť odborný správca.'
+          : k.changed(view.changed.rows.map((row) => row.slice(1)).join(', '), view.changed.statements)}</p>
       ) : null}
       {state === 'blocked' ? <p class="vstatus__blocked">{t.vat.blocked(view.issues.filter((i) => i.level === 'block').length)}</p> : null}
       {toBook ? (

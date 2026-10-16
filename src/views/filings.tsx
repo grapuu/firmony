@@ -13,7 +13,7 @@ export const DeliveryNotice: FC<{ status?: DeliveryStatus; href: string }> = ({ 
     <a class="link" href={href}>Podania a potvrdenky</a>
   </p>
 )
-export const FilingQueuePage: FC<{ rows: (Omit<FilingPackage, 'xml'> & { company_name: string })[]; page: number; hasNext: boolean }> = ({ rows, page, hasNext }) => <>
+export const FilingQueuePage: FC<{ rows: (Omit<FilingPackage, 'xml'> & { company_name: string })[]; page: number; hasNext: boolean }> = ({ rows, page, hasNext }) => <div class="filing-work">
   <Heading first="Podania" second="na dokončenie" />
   <p class="info__lead">Najprv odmietnuté a sporné potvrdenia, potom čakajúce odoslania a pripravené dokumenty. Aktuálne podania zostávajú v tomto zozname aj zo starších období.</p>
   <p><a class="link" href="/ucto/terminy">Termíny a povinnosti</a></p>
@@ -23,9 +23,9 @@ export const FilingQueuePage: FC<{ rows: (Omit<FilingPackage, 'xml'> & { company
     <a class="btn btn--line" href={`/ucto/klienti/${p.company_id}/podania/${p.id}`}>Dokončiť podanie</a>
   </article>)}
   <nav class="filing-pagination" aria-label="Strany pracovného zoznamu">{page > 1 ? <a class="btn btn--line" href={`/ucto/podania?strana=${page - 1}`}>Predchádzajúca strana</a> : null}{hasNext ? <a class="btn btn--line" href={`/ucto/podania?strana=${page + 1}`}>Ďalšia strana</a> : null}</nav>
-</>
+</div>
 export const FilingsPage: FC<{ company: Company; packages: (Omit<FilingPackage, 'xml'> & { current: boolean })[]; base: string; legacy: boolean; period?: string; page?: number; hasNext?: boolean }> = ({ company, packages, base, legacy, period, page = 1, hasNext }) => (
-  <>
+  <div class="filing-work">
     <Heading first="Podania" second="a potvrdenky" />
     <p class="info__lead">{company.name}. Každý dokument má vlastný stav doručenia. Pripravené podklady ešte neznamenajú prijatie podateľňou.</p>
     <p><a class="link" href={base.startsWith('/ucto') ? `/ucto/klienti/${company.id}` : '/app/dane'}>Späť na prehľad</a>{period ? <> · <a class="link" href={base}>Všetky obdobia</a></> : null}</p>
@@ -40,7 +40,7 @@ export const FilingsPage: FC<{ company: Company; packages: (Omit<FilingPackage, 
       {page > 1 ? <a class="btn btn--line" href={`${base}?${new URLSearchParams({ ...(period ? { obdobie: period } : {}), strana: String(page - 1) })}`}>Novšie podania</a> : null}
       {hasNext ? <a class="btn btn--line" href={`${base}?${new URLSearchParams({ ...(period ? { obdobie: period } : {}), strana: String(page + 1) })}`}>Staršie podania</a> : null}
     </nav> : null}
-  </>
+  </div>
 )
 const ACTION_LABELS: Partial<Record<DeliveryState, string>> = {
   submitted: 'Evidovať odoslanie mimo Firmony', accepted: 'Doložiť prijatie podateľňou', rejected: 'Evidovať odmietnutie', review: 'Otvoriť preverenie potvrdenia',
@@ -50,7 +50,7 @@ export const FilingPage: FC<{
   error?: string; values?: Record<string, string>; frozen?: boolean
 }> = ({ company, pkg: p, events, current, base, user, today, error, values = {}, frozen }) => {
   const choices = user && !frozen ? TRANSITIONS[p.status].filter((to) => canTransition(p.status, to, user.team === 'admin')) : []
-  return <>
+  return <div class="filing-work">
     <p><a class="link" href={`${base}?obdobie=${p.period}`}>Podania za {label(p.period)}</a></p>
     <Heading first={FILING_KINDS[p.kind]} second={label(p.period)} />
     <p class="info__lead">{company.name}</p>
@@ -80,5 +80,5 @@ export const FilingPage: FC<{
         {e.reason ? <p>{e.reason}</p> : null}{e.file_key ? <a class="link" href={`${base}/${p.id}/potvrdenka/${e.id}`}>Stiahnuť potvrdenku</a> : null}
       </li>)}</ol>}
     </section>
-  </>
+  </div>
 }
