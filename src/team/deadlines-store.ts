@@ -1,3 +1,4 @@
+import { deliveryStatusSql, safeJson, type DeliveryStatus } from '../filings/model'
 // What the team's screen of deadlines reads (src/team/deadlines.ts has the rules). Every company the user sees, in a
 // fixed number of queries whatever their number: the companies, the returns filed, the VAT paid, the payments without a
 // document, the filings marked, the closings with the income tax paid, the employees and the payroll months closed; and
@@ -68,11 +69,11 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
           WHERE ${sql} AND ${MISSING} GROUP BY p.company_id, substr(p.booked_on, 1, 7)`,
       )
       .bind(...binds),
-    db.prepare(`SELECT f.company_id, f.kind, f.period, f.filed_on, f.filed_at, f.filed_by, f.data FROM filings f JOIN companies c ON c.id = f.company_id WHERE ${sql}`).bind(...binds),
+    db.prepare(`SELECT f.company_id, f.kind, f.period, f.filed_on, f.filed_at, f.filed_by, f.data, ${deliveryStatusSql('f.company_id', [safeJson('f.data', '$.file.attemptId')])} AS delivery_status FROM filings f JOIN companies c ON c.id = f.company_id WHERE ${sql}`).bind(...binds),
     // The income tax of a year is paid with its own symbol, 170099 and the year (closing-store.ts).
     db
       .prepare(
-        `SELECT k.company_id, k.year, k.extended_to, k.filed_at, k.pay_cents, k.due_on,
+        `SELECT k.company_id, k.year, k.extended_to, k.filed_at, k.pay_cents, k.due_on, ${deliveryStatusSql('k.company_id', [safeJson('k.filed', '$.files.return.attemptId'), safeJson('k.filed', '$.files.statements.attemptId')])} AS delivery_status,
                 (SELECT COALESCE(-SUM(p.amount_cents), 0) FROM payments p WHERE p.company_id = k.company_id AND p.amount_cents < 0 AND ltrim(p.vs, '0') = '170099' || k.year) AS paid
            FROM closings k JOIN companies c ON c.id = k.company_id WHERE ${sql}`,
       )
@@ -113,6 +114,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
   for (const r of closingRows?.results ?? [])
     push(closings, String(r.company_id), {
       year: Number(r.year),
+      deliveryStatus: String(r.delivery_status ?? 'unverified') as DeliveryStatus,
       filed: r.filed_at !== null && r.filed_at !== undefined,
       extendedTo: typeof r.extended_to === 'string' ? r.extended_to : null,
       payCents: Number(r.pay_cents ?? 0),

@@ -3,6 +3,7 @@
 // mark that they were filed, which sends the client what to pay; and the recapitulative statement of the period.
 // vat.ts and vat-summary.ts work it all out; nothing here computes.
 import type { FC } from 'hono/jsx'
+import { DeliveryNotice } from './filings'
 import { formatEur, formatEurExact } from '../format'
 import { dayName, dayShort, readableName } from '../app/copy'
 import { textDay } from '../app/booking'
@@ -16,7 +17,7 @@ import { Flash, Heading } from './inside'
 
 const v = t.vat
 
-const STATE_PILL: Record<PeriodState, string> = { filed: 'pill--ok', changed: 'pill--amber', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', none: 'pill--grey' }
+const STATE_PILL: Record<PeriodState, string> = { filed: 'pill--blue', changed: 'pill--amber', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', none: 'pill--grey' }
 
 /** "03", "01a": a row as the form numbers it. */
 const rowNo = (row: string) => row.slice(1)
@@ -328,15 +329,21 @@ const StatusCard: FC<{ company: Company; view: PeriodView; plan: FilingPlan | nu
         </div>
       </dl>
       {view.filed ? (
+        <DeliveryNotice status={view.filed.deliveryStatus} href={`/ucto/klienti/${company.id}/podania?obdobie=${view.period}`} />
+      ) : null}
+      {view.state === 'changed' && !plan && view.filed?.deliveryStatus && ['prepared', 'rejected', 'review'].includes(view.filed.deliveryStatus) ? (
+        <p class="notice">Podklady sa zmenili. Neodoslané alebo odmietnuté podklady najprv znovu otvorte tlačidlom nižšie. Ak majú dokumenty rozdielny stav doručenia, prípad preverí odborný správca; nevytvárame automaticky nesprávny typ opravného priznania.</p>
+      ) : null}
+      {view.filed ? (
         <p class="vstatus__filed">
-          <span class="tick tick--green" aria-hidden="true" /> {v.filed(dayName(view.filed.filedOn, today), view.filed.filedByName ?? '', view.filed.kind)}
+          {v.filed(dayName(view.filed.filedOn, today), view.filed.filedByName ?? '', view.filed.kind)}
         </p>
       ) : null}
       {view.result.rows.r34 > 0 ? <p class="info__lead">{v.carried(formatEurExact(view.result.rows.r34))}</p> : null}
       {view.running ? <p class="info__lead">{v.running(dayName(periodRange(view.period).to, today))}</p> : null}
       {view.state === 'none' ? <p class="info__lead">{v.nothing7a}</p> : null}
       {view.state === 'blocked' ? <p class="vstatus__blocked">{v.blocked(blocks)}</p> : null}
-      {changed ? (
+      {changed && plan ? (
         <p class="flag">
           {view.changed.length > 0 ? (kind === 'O' ? v.changedO : v.changedD(dayName(plan?.dueOn ?? view.deadline, today))) : kind === 'O' ? v.changedKvO : v.changedKvD}
           {view.changed.length > 0 ? ` ${v.changedRows(view.changed.map(rowNo).join(', '))}` : null}
@@ -350,11 +357,11 @@ const StatusCard: FC<{ company: Company; view: PeriodView; plan: FilingPlan | nu
         <p class="info__source">{v.correctionBlocked}</p>
       ) : null}
       {toPay > 0 && !company.taxAccount && (view.state === 'ready' || view.state === 'filed' || view.state === 'changed') ? <p class="flag">{v.accountMissing}</p> : null}
-      {view.filed ? (
+      {view.filed && (view.filed.canReprepare || !view.filed.delivery?.vat && !view.filed.delivery?.kv) ? (
         <form method="post" action={`${base}/zrusit`}>
           <input type="hidden" name="obdobie" value={view.period} />
           <button class="btn btn--text" type="submit">
-            {view.filed.prev ? v.unmarkCorrection : v.unmark}
+            {view.filed.canReprepare ? 'Znovu otvoriť neodoslané alebo odmietnuté podklady' : view.filed.prev ? v.unmarkCorrection : v.unmark}
           </button>
         </form>
       ) : null}
@@ -362,7 +369,7 @@ const StatusCard: FC<{ company: Company; view: PeriodView; plan: FilingPlan | nu
   )
 }
 
-const SV_PILL: Record<SvState, string> = { none: 'pill--grey', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', filed: 'pill--ok', changed: 'pill--amber' }
+const SV_PILL: Record<SvState, string> = { none: 'pill--grey', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', filed: 'pill--blue', changed: 'pill--amber' }
 
 /** Whole euros as the statement has them: "1 000 €", "−120 €". */
 const euros = (n: number) => formatEur(n * 100)
@@ -446,13 +453,17 @@ const SummaryCard: FC<{ company: Company; sv: SvView; docs: Map<string, Doc>; to
         </ul>
       ) : null}
       {sv.filed ? (
+        <DeliveryNotice status={sv.filed.deliveryStatus} href={`/ucto/klienti/${company.id}/podania?obdobie=${sv.period}`} />
+      ) : null}
+      {sv.filed ? (
         <p class="vstatus__filed">
-          <span class="tick tick--green" aria-hidden="true" /> {s.filed(dayName(sv.filed.filedOn, today), sv.filed.filedByName ?? '', sv.filed.kind)}
+          {s.filed(dayName(sv.filed.filedOn, today), sv.filed.filedByName ?? '', sv.filed.kind)}
         </p>
       ) : null}
       {sv.state === 'none' ? <p class="info__lead">{s.flashes.none}</p> : null}
       {sv.state === 'running' ? <p class="info__lead">{s.running(dayName(sv.endsOn, today))}</p> : null}
-      {sv.state === 'changed' ? <p class="flag">{today <= sv.deadline ? s.changedO : s.changedD}</p> : null}
+      {sv.state === 'changed' && sv.plan ? <p class="flag">{today <= sv.deadline ? s.changedO : s.changedD}</p> : null}
+      {sv.state === 'changed' && !sv.plan && sv.filed?.deliveryStatus && ['prepared', 'rejected', 'review'].includes(sv.filed.deliveryStatus) ? <p class="notice">Podklady sa zmenili. Neodoslané alebo odmietnuté podklady najprv znovu otvorte. Sporné potvrdenie preverí odborný správca pred prípravou ďalšieho podania.</p> : null}
       {sv.plan && sv.plan.kind === 'D' ? (
         <>
           <p class="info__source">{s.sends}</p>
@@ -479,11 +490,11 @@ const SummaryCard: FC<{ company: Company; sv: SvView; docs: Map<string, Doc>; to
         </form>
       ) : null}
       {sv.filed?.file ? <a class="link" href={`${base}/suhrnny-vykaz.xml?obdobie=${sv.period}&povodne=1`}>{s.original}</a> : null}
-      {sv.filed ? (
+      {sv.filed && (!sv.filed.file?.attemptId || ['prepared', 'rejected'].includes(sv.filed.deliveryStatus ?? 'unverified')) ? (
         <form method="post" action={`${base}/suhrnny-vykaz/zrusit`}>
           <input type="hidden" name="obdobie" value={sv.period} />
           <button class="btn btn--text" type="submit">
-            {sv.filed.prev ? s.unmarkCorrection : s.unmark}
+            {sv.filed.file?.attemptId ? 'Znovu otvoriť neodoslané alebo odmietnuté podklady' : sv.filed.prev ? s.unmarkCorrection : s.unmark}
           </button>
         </form>
       ) : null}

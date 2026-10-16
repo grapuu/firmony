@@ -46,7 +46,7 @@ export const SecurityPage: FC<{
       <p class="notice">
         {user.team
           ? 'Prvý kľúč aktivujete kódom od správcu. Kód Vám odovzdá overeným spôsobom mimo prihlasovacieho e-mailu.'
-          : 'Pre bezpečné stiahnutie celého účtovníctva si nastavte kľúč. Prvé nastavenie vyžaduje čerstvé prihlásenie e-mailom.'}
+          : 'Pre bezpečné stiahnutie citlivých údajov si nastavte kľúč. Prvé nastavenie vyžaduje čerstvé prihlásenie e-mailom.'}
       </p>
     )}
     <details class="security__setup" open={!keys.length}>

@@ -15,6 +15,7 @@ import { generalLedgerCsv, journalCsv, saldoCsv, trialBalance, trialCsv } from '
 import { booksOf } from './ledger-store'
 import { DOC_COLUMNS, DOC_FROM, docOf, type Company, type Doc } from './store'
 import { handoverData } from './handover-data'
+import { fileHash } from './read'
 
 type Row = Record<string, unknown>
 
@@ -33,6 +34,7 @@ export async function exportYears(db: D1Database, company: string): Promise<stri
     "SELECT CAST(year AS TEXT) AS y FROM ledger_entries WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM filings WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM filing_history WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM filing_packages WHERE company_id = ?1",
     "SELECT substr(COALESCE(through_on, before_on), 1, 4) AS y FROM period_lock_history WHERE company_id = ?1",
     "SELECT substr(period, 1, 4) AS y FROM vat_returns WHERE company_id = ?1",
     "SELECT substr(started_on, 1, 4) AS y FROM employees WHERE company_id = ?1",
@@ -156,9 +158,10 @@ export async function exportYear(
   const contract = await resolveContract(db, company.id, company.termsVersion)
   if (contract.status === 'corrupt') throw new Error(contract.notice)
   const at = Math.floor(Date.now() / 1000)
-  const [snapshots, papers] = await Promise.all([
+  const [snapshots, papers, receipts] = await Promise.all([
     handoverData(db, company.id, year, at),
     db.prepare('SELECT id, kind, file_name, created_at, r2_key, deleted_at FROM company_files WHERE company_id = ? ORDER BY id').bind(company.id).all<{ id: string; kind: string; file_name: string; created_at: number; r2_key: string; deleted_at: number | null }>(),
+    db.prepare('SELECT e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ? AND substr(p.period, 1, 4) = ? AND e.file_key IS NOT NULL ORDER BY e.id').bind(company.id, year).all<{ id: string; at: number; file_key: string; file_bytes: number; file_sha256: string }>(),
   ])
   const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows] = await Promise.all([
     db
@@ -359,7 +362,7 @@ export async function exportYear(
   const encoder = new TextEncoder()
   const text = (value: string) => async () => encoder.encode(value)
   const files = env.FILES
-  if (!files && (docs.some(({ file }) => file) || statementFiles.size > 0 || papers.results.length > 0)) throw new Error('Archive file storage is unavailable')
+  if (!files && (docs.some(({ file }) => file) || statementFiles.size > 0 || papers.results.length > 0 || receipts.results.length > 0)) throw new Error('Archive file storage is unavailable')
   async function* entries(): AsyncGenerator<ZipEntry> {
     yield {
       name: 'citajte.txt',
@@ -383,6 +386,16 @@ export async function exportYear(
       yield { name: 'zmluva.sha256', when: at, data: text(`${contract.sha256}  zmluva.json\n`) }
     }
     yield* snapshots
+    for (const receipt of receipts.results) yield {
+      name: zipName(`podania/potvrdenky/${receipt.id}.${receipt.file_key.split('.').pop()}`), when: receipt.at,
+      data: async () => {
+        const object = await files?.get(receipt.file_key)
+        if (!object) throw new Error('Filing receipt missing from archive')
+        const bytes = new Uint8Array(await object.arrayBuffer())
+        if (bytes.length !== receipt.file_bytes || await fileHash(bytes) !== receipt.file_sha256) throw new Error('Filing receipt checksum mismatch')
+        return bytes
+      },
+    }
     for (const paper of papers.results) yield { name: uniqueName(zipName(`${paper.deleted_at === null ? 'odovzdane' : 'odobrane-prilohy'}/${paper.kind}-${paper.id}-${paper.file_name}`), taken), when: paper.created_at, data: async () => { const object = await files?.get(paper.r2_key); return object ? new Uint8Array(await object.arrayBuffer()) : null } }
     for (const { invoice, file } of invoiceFiles) {
       yield { name: file, when: invoice.createdAt, data: async () => encoder.encode(ublOf(invoice, await invoiceLines(db, invoice.id), company)) }

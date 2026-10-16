@@ -208,7 +208,51 @@ try {
   await Promise.all([page.waitForURL(`${companyPage}?ok=odstranene#odovzdanie`), page.locator(`form[action="${action}"] button`).click()])
   await page.getByText('Odobratie vyradí prílohu z bežného prehľadu.', { exact: false }).waitFor({ state: 'visible' })
   check('the confirmed repeat retires the attachment once and preserves its original', Boolean((await db.prepare("SELECT deleted_at FROM company_files WHERE id = 'browser-paper'").first()).deleted_at) && Boolean(await bucket.head('companies/browser-co/papers/handover.pdf')) && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'handover.removed' AND subject = 'browser-paper'").first()).n === 1)
-  check('the passkey client has no uncaught browser errors', errors.length === 0)
+  // Use the actual rendered filing form after real passkey authentication; every file here is TEST_ONLY.
+  const filingId = 'browser-filing', period = `${Number(today.slice(0, 4)) - 1}-09`
+  const filingXml = '<TEST_ONLY company="63333333" form="sv"/>', filingHash = createHash('sha256').update(filingXml).digest('hex')
+  const dossier = `${origin}/ucto/klienti/browser-co/podania/${filingId}`
+  await db.batch([
+    db.prepare("INSERT INTO filings (company_id, kind, period, filed_at, filed_on, filed_by, data) VALUES ('browser-co', 'sv', ?, ?, ?, 'browser-admin', ?)").bind(period, now, today, JSON.stringify({ kind: 'R', rows: [], sent: [], prev: null, file: { name: 'TEST_ONLY.xml', xml: filingXml, sha256: filingHash, attemptId: filingId } })),
+    db.prepare("INSERT INTO filing_packages (id, company_id, kind, period, name, xml, sha256, created_at, created_by, updated_at, updated_by) VALUES (?, 'browser-co', 'sv', ?, 'TEST_ONLY.xml', ?, ?, ?, 'browser-admin', ?, 'browser-admin')").bind(filingId, period, filingXml, filingHash, now, now),
+  ])
+  await page.goto(dossier)
+  await page.locator('#filing-state').selectOption('accepted')
+  await page.locator('#filing-reference').fill('TEST-BROWSER-RECEIPT')
+  await page.locator('input[name=checked]').check()
+  const rejectedSubmission = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith(`/${filingId}/stav`) && r.request().method() === 'POST')
+  await page.locator('.filing-form button[type=submit]').click()
+  const missingReceipt = await rejectedSubmission
+  await page.locator('[role=alert]').waitFor({ state: 'visible' })
+  check('the actual browser form preserves inputs and refuses acceptance without a receipt', missingReceipt.status() === 409 && await page.locator('#filing-reference').inputValue() === 'TEST-BROWSER-RECEIPT' && (await db.prepare('SELECT status FROM filing_packages WHERE id = ?').bind(filingId).first()).status === 'prepared')
+  const proofBytes = Buffer.from('<TEST_ONLY company="63333333" form="sv" reference="TEST-BROWSER-RECEIPT" result="accepted"/>')
+  await page.locator('#filing-file').setInputFiles({ name: 'TEST_ONLY-receipt.xml', mimeType: 'application/xml', buffer: proofBytes })
+  const acceptedSubmission = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith(`/${filingId}/stav`) && r.request().method() === 'POST')
+  await page.locator('.filing-form button[type=submit]').click()
+  const receiptResponse = await acceptedSubmission
+  await page.locator('.filing-history .filing-event').waitFor({ state: 'visible' })
+  check('the browser completes delivery with a checked original and visible history', receiptResponse.status() === 303 && (await db.prepare('SELECT status FROM filing_packages WHERE id = ?').bind(filingId).first()).status === 'accepted' && await page.locator('.filing-history .filing-event').count() === 1)
+  const downloaded = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).click()
+  const proofDownload = await downloaded
+  check('the real browser downloads the original receipt byte for byte', (await readFile(await proofDownload.path())).equals(proofBytes))
+  await mkdir('.wrangler/screens', { recursive: true })
+  await page.screenshot({ path: '.wrangler/screens/390-filing-browser.png', fullPage: true })
+
+  await db.batch([
+    db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('browser-client', ?, 'browser-client@example.test', 'Klient prehliadača')").bind(now),
+    db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('browser-co', 'browser-client', 'owner', ?)").bind(now),
+  ])
+  const clientContext = await browser.newContext({ viewport: { width: 390, height: 844 } }), clientPage = await clientContext.newPage()
+  await clientPage.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort())
+  const clientToken = randomBytes(32).toString('base64url')
+  await db.prepare("INSERT INTO login_links (id, user_id, created_at, expires_at) VALUES (?, 'browser-client', ?, ?)").bind(createHash('sha256').update(clientToken).digest('hex'), now, now + 600).run()
+  await clientPage.goto(`${origin}/app/vstup?t=${clientToken}`)
+  await Promise.all([clientPage.waitForURL(`${origin}/app`), clientPage.locator('form[action="/app/vstup"] button[type=submit]').click()])
+  await clientPage.goto(`${origin}/app/podania/${filingId}`)
+  check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)
+  await clientContext.close()
+  check('the authenticated work and filing forms have no uncaught browser errors', errors.length === 0)
   await mkdir('.wrangler/screens', { recursive: true })
   await page.goto(`${origin}/auth?next=%2Fucto`)
   await page.screenshot({

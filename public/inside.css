@@ -6759,3 +6759,12 @@ select.field__input {
   .info .incident-facts > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .info .incident-facts dd { max-width: 100%; margin-left: 0; text-align: left; }
 }
+
+/* Delivery work: long references wrap without widening the mobile page. */
+.filing-card, .filing-document, .filing-history, .filing-form { overflow-wrap: anywhere; }
+.filing-card .pill { white-space: normal; }
+.filing-form input, .filing-form select, .filing-form textarea { min-width: 0; max-width: 100%; }
+.filing-history { display: grid; gap: 1.25rem; }
+.filing-event { border-top: 1px solid var(--line, #e7e9ee); padding-top: 1rem; }
+.filing-event h3 { font-size: 1rem; }
+.filing-pagination { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }

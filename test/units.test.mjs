@@ -30,6 +30,8 @@ import {
   support,
   security,
   isEvidenceHeld,
+  filings,
+  validateChange,
   contracts,
   match,
   orderLinkMail,
@@ -56,6 +58,25 @@ import { camtXml } from './pretend.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
 const NB = ' '
+
+// Recorded submission, a checked receipt and statutory corrections are separate decisions.
+{
+  const user = { id: 'accountant', team: 'accountant' }, pkg = { status: 'prepared', revision: 0 }
+  const input = { to: 'accepted', revision: 0, externalOn: '2026-10-16', reference: 'TEST-ONLY-1234', reason: '', channel: 'TEST-ONLY', checked: true, receipt: { name: 'TEST_ONLY.xml', bytes: new TextEncoder().encode('<TEST_ONLY/>') } }
+  const invalid = (extra) => validateChange(pkg, user, { ...input, ...extra }, '2026-10-16') !== null
+  check('filing enums reject prototype keys and unknown delivery states', ['constructor', '__proto__', 'toString', 'done'].every((s) => !filings.isDeliveryState(s)) && ['constructor', '__proto__', 'all'].every((s) => !filings.isFilingType(s)))
+  check('a receipt may establish acceptance directly from preparation', validateChange(pkg, user, input, '2026-10-16') === null)
+  check('an unconfirmed attachment cannot establish acceptance', invalid({ checked: false }) && invalid({ receipt: undefined }) && invalid({ receipt: { ...input.receipt, bytes: new Uint8Array() } }))
+  check('filing dates reject impossible, empty, noncanonical and future days', ['', '2026-02-30', '2026-13-01', '2026-1-01', '2026-10-17'].every((externalOn) => invalid({ externalOn })))
+  check('a stale receipt revision is rejected before storage', invalid({ revision: 1 }))
+  check('receipt references need meaningful identifiers and a delivery channel', invalid({ reference: '    ' }) && invalid({ reference: ' abc ' }) && invalid({ reference: 'x'.repeat(161) }) && invalid({ channel: ' ' }))
+  check('a refusal needs a reason and original proof', invalid({ to: 'rejected' }) && invalid({ to: 'rejected', reason: 'TEST-ONLY reason', receipt: undefined }) && validateChange(pkg, user, { ...input, to: 'rejected', reason: 'TEST-ONLY signing failure' }, '2026-10-16') === null)
+  check('reviewing accepted evidence is restricted to an administrator', !filings.canTransition('accepted', 'review', false) && filings.canTransition('accepted', 'review', true) && !filings.canTransition('accepted', 'prepared', true) && !filings.canTransition('review', 'accepted', false))
+  check('resending after refusal needs a documented next step', validateChange({ status: 'rejected', revision: 0 }, user, { ...input, to: 'submitted', reason: '' }, '2026-10-16') !== null)
+  check('legacy delivery references tolerate malformed JSON and reject unknown kinds', JSON.stringify(filings.deliveryIds('{broken')) === '{}' && JSON.stringify(filings.deliveryIds({ vat: 'id-1', mystery: 'id-2', kv: '../outside' })) === '{"vat":"id-1"}')
+  const wrapped = { cause: { cause: new Error('D1_ERROR: FIRMONY_FILING_SENT') } }, cyclic = {}; cyclic.cause = cyclic
+  check('delivery guards recognize wrapped database errors and tolerate cycles', filings.isFilingSent(wrapped) && !filings.isFilingSent(cyclic))
+}
 
 // The company ID
 check('IČO with spaces', ico.normalizeIco('57 442 452') === '57442452')
@@ -2932,7 +2953,7 @@ async function zipped(entries, note) {
   const filedFrom = (company, period, docs, fields = {}) => {
     const r = vatStore.viewOf(company, period, docs, [], vat.filingDeadline(period)).result
     const kv = vat.kvFileOf(r.kv)
-    return filedOf(period, { rows: r.rows, payCents: r.rows.r35, kv: r.statement ? { kind: 'R', full: kv, sent: kv } : null, ...fields })
+    return filedOf(period, { deliveryStatus: 'accepted', rows: r.rows, payCents: r.rows.r35, kv: r.statement ? { kind: 'R', full: kv, sent: kv } : null, ...fields })
   }
   /** The deadlines of a company on a day, from its documents and returns, as the store hands them over. */
   const run = (company, today, { docs = [], filed = [], paid = new Map(), filings = new Set(), svFiled = new Map(), closings = [], missing = new Map(), handover = 0 } = {}) => {
@@ -3014,6 +3035,12 @@ async function zipped(entries, note) {
   )
   // Changed after filing: corrective before the deadline, supplementary after it
   const twice = [doc(), doc({ id: 'd2', number: '20260002', issuedOn: '2026-09-28' })]
+  for (const deliveryStatus of ['prepared', 'rejected', 'review']) {
+    const filed = { ...filedFrom(co(), '2026-09', [doc()]), deliveryStatus }
+    const changed = vatStore.viewOf(co(), '2026-09', twice, [filed], '2026-11-03')
+    const pending = run(co(), '2026-11-03', { docs: twice, filed: [filed] })
+    check(`changed ${deliveryStatus} documents require review or reopening before statutory corrections`, vatStore.planFiling(co(), changed, [filed], '2026-11-03') === null && !find(pending, 'vatFix', '2026-09') && find(pending, 'vat', '2026-09')?.state === 'blocked')
+  }
   item = find(run(co(), '2026-10-21', { docs: twice, filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vatFix', '2026-09')
   check('changed before the deadline: a corrective return by it', item?.fix === 'O' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
   item = find(run(co(), '2026-11-03', { docs: twice, filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vatFix', '2026-09')
@@ -3030,7 +3057,7 @@ async function zipped(entries, note) {
   list = run(co(), '2026-10-14', { docs: [doc(), euService()] })
   item = find(list, 'summary')
   check('a service to another member state: the recapitulative statement of the period, ready by its deadline', item?.period === '2026-09' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
-  const svFiledOf = (rows, fields = {}) => ({ kind: 'R', filedOn: '2026-10-20', filedAt: 1, filedBy: null, rows, sent: rows ?? [], prev: null, ...fields })
+  const svFiledOf = (rows, fields = {}) => ({ deliveryStatus: 'accepted', kind: 'R', filedOn: '2026-10-20', filedAt: 1, filedBy: null, rows, sent: rows ?? [], prev: null, ...fields })
   const deRow = { country: 'DE', number: '123456789', euros: 1000, code: '2' }
   check('filed as the books stand, it is done', find(run(co(), '2026-10-21', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([deRow])]]) }), 'summary')?.state === 'done')
   item = find(run(co(), '2026-10-21', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([{ ...deRow, euros: 900 }])]]) }), 'summary')
@@ -3060,7 +3087,7 @@ async function zipped(entries, note) {
       Boolean(find(run(co({ vatStatus: 'none', startOn: '2026-06-01', endsOn: '2027-01-31' }), '2027-01-05'), 'closing')),
   )
   check('a company made by the team counts from the day it was made', Boolean(find(run(co({ vatStatus: 'none', startOn: null }), '2027-02-01'), 'closing', '2026')))
-  const kFact = (fields = {}) => ({ year: 2026, filed: false, extendedTo: null, payCents: 0, dueOn: null, paid: 0, ...fields })
+  const kFact = (fields = {}) => ({ deliveryStatus: 'accepted', year: 2026, filed: false, extendedTo: null, payCents: 0, dueOn: null, paid: 0, ...fields })
   check(
     'late past its day, done once its page marks it filed',
     find(run(co({ vatStatus: 'none' }), '2027-04-02'), 'closing')?.late && find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ filed: true })] }), 'closing')?.state === 'done',
@@ -3610,7 +3637,7 @@ async function zipped(entries, note) {
   list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14')
   check('closed: done, by its own payday; its reports then to file', find('payroll', '2026-09')?.state === 'done' && find('payrollReports', '2026-09')?.state === 'open' && find('payrollReports', '2026-09')?.day === '2026-10-09')
   list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14', new Set(['mz:2026-09']))
-  check('the reports marked as filed are done', find('payrollReports', '2026-09')?.state === 'done')
+  check('a manual payroll marker never proves acceptance', find('payrollReports', '2026-09')?.state === 'open' && find('payrollReports', '2026-09')?.deliveryStatus === 'unverified')
   list = run(pf({ last: '2026-08-31' }), '2026-10-14')
   check('nothing after the last employee left', !find('payroll', '2026-09') && Boolean(find('payroll', '2026-08')))
   check('a company without employees has no payroll', !dues.deadlinesOf(co(), facts(undefined), '2026-10-14').some((d) => d.kind === 'payroll'))
@@ -3680,6 +3707,7 @@ async function zipped(entries, note) {
     ['/ucto/klienti/x/odovzdanie/y/odstranit', '/ucto/klienti/x#odovzdanie'],
     ['/ucto/klienti/x/dph/suhrnny-vykaz/podane', '/ucto/klienti/x/dph'],
     ['/ucto/klienti/x/zavierka/podane', '/ucto/klienti/x/zavierka'],
+    ['/ucto/klienti/x/podania/y/stav', '/ucto/klienti/x/podania/y'],
     ['/ucto/klienti/x/mzdy/otvorit', '/ucto/klienti/x/mzdy'],
     ['/ucto/klienti/x/kniha/interne/y/odstranit', '/ucto/klienti/x/kniha/interne'],
     ['/ucto/incidenty/x/schvalit-uvolnenie', '/ucto/incidenty/x'],

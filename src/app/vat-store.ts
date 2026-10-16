@@ -2,6 +2,7 @@
 // paid (the company's personal tax account, the variable symbol of the period). The rules themselves are in vat.ts.
 import { typeset } from '../format'
 import { now } from '../db'
+import { deliveryIds, deliveryStatusSql, revisableSql, safeJson, type DeliveryStatus, type FilingType } from '../filings/model'
 import { DOC_COLUMNS, DOC_FROM, docOf, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
 import { quarterMonths, summarySchedule, summaryView, type SvCode, type SvFiled, type SvRow, type SvView, type SvSchedule } from './vat-summary'
 import {
@@ -109,6 +110,9 @@ export interface FiledKv {
 }
 
 export interface FiledReturn {
+  delivery?: Partial<Record<FilingType, string>>
+  deliveryStatus?: DeliveryStatus
+  canReprepare?: boolean
   period: string
   filedAt: number
   filedOn: string
@@ -166,14 +170,19 @@ export function rowsOf(json: unknown): Rows {
 }
 
 /** The columns of a filing as stored, without the period and the company: what `prev` keeps of the one replaced. */
-const FILING_COLUMNS = ['filed_at', 'filed_on', 'filed_by', 'rows', 'kv_rows', 'pay_cents', 'refund_cents', 'due_on', 'kind', 'fast', 'carried', 'kv', 'found_on', 'prev'] as const
+const FILING_COLUMNS = ['filed_at', 'filed_on', 'filed_by', 'rows', 'kv_rows', 'pay_cents', 'refund_cents', 'due_on', 'kind', 'fast', 'carried', 'kv', 'found_on', 'delivery', 'prev'] as const
 
 /** The columns a filing is read with (vat_returns aliased v, the person who filed it u). */
-export const FILED_SELECT = `v.company_id, v.period, ${FILING_COLUMNS.map((c) => `v.${c}`).join(', ')}, u.name AS filed_by_name`
+export const FILED_SELECT = `v.company_id, v.period, ${FILING_COLUMNS.map((c) => `v.${c}`).join(', ')}, u.name AS filed_by_name,
+  ${deliveryStatusSql('v.company_id', [safeJson('v.delivery', '$.vat'), safeJson('v.delivery', '$.kv')], ['1', 'v.kv IS NOT NULL'])} AS delivery_status,
+  ${revisableSql('v.company_id', [safeJson('v.delivery', '$.vat'), safeJson('v.delivery', '$.kv')], ['1', 'v.kv IS NOT NULL'])} AS can_reprepare`
 
 /** A filing as stored. */
 export function filedReturnOf(r: Record<string, unknown>): FiledReturn {
   return {
+    delivery: deliveryIds(r.delivery),
+    deliveryStatus: (typeof r.delivery_status === 'string' ? r.delivery_status : 'unverified') as DeliveryStatus,
+    canReprepare: r.can_reprepare === 1,
     period: String(r.period),
     filedAt: Number(r.filed_at),
     filedOn: String(r.filed_on),
@@ -339,6 +348,9 @@ export function planFiling(company: Company, view: PeriodView, filed: FiledRetur
     }
   }
   if (view.state !== 'changed' || !view.filed) return null
+  // A changed unsent/refused draft is not a statutory supplementary return. Reopen it first. A disputed
+  // confirmation needs expert resolution; never infer a tax-correction kind from that uncertain state.
+  if (['prepared', 'rejected', 'review'].includes(view.filed.deliveryStatus ?? 'unverified')) return null
   const prev = view.filed
   const kind = correctionKind(view.period, today)
   const returnNeeded = view.changed.length > 0
@@ -401,7 +413,8 @@ export function supplementaryDeadline(found: string): string {
  * correction replaces the filing it was made against, and only that one (an answer sent twice changes nothing the
  * second time), keeping it in `prev`.
  */
-export function fileStatement(db: D1Database, company: string, plan: FilingPlan, by: string, today: string): D1PreparedStatement {
+export function fileStatement(db: D1Database, company: string, plan: FilingPlan, by: string, today: string, delivery?: Partial<Record<FilingType, string>>, revision?: number): D1PreparedStatement {
+  const guard = revision === undefined ? { sql: '', binds: [] as (string | number)[] } : { sql: ' AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?), 0) = ?', binds: [company, revision] }
   const values = [
     now(),
     today,
@@ -416,22 +429,23 @@ export function fileStatement(db: D1Database, company: string, plan: FilingPlan,
     plan.carried,
     plan.kvStored ? JSON.stringify(plan.kvStored) : null,
     plan.foundOn,
+    delivery ? JSON.stringify(delivery) : null,
   ]
   if (!plan.replaces) {
     return db
       .prepare(
-        `INSERT INTO vat_returns (company_id, period, filed_at, filed_on, filed_by, rows, kv_rows, pay_cents, refund_cents, due_on, kind, fast, carried, kv, found_on, prev)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL) ON CONFLICT (company_id, period) DO NOTHING`,
+        `INSERT INTO vat_returns (company_id, period, filed_at, filed_on, filed_by, rows, kv_rows, pay_cents, refund_cents, due_on, kind, fast, carried, kv, found_on, delivery, prev)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL WHERE 1 = 1${guard.sql} ON CONFLICT (company_id, period) DO NOTHING`,
       )
-      .bind(company, plan.period, ...values)
+      .bind(company, plan.period, ...values, ...guard.binds)
   }
   const prev = plan.replaces
   return db
     .prepare(
-      `UPDATE vat_returns SET filed_at = ?, filed_on = ?, filed_by = ?, rows = ?, kv_rows = ?, pay_cents = ?, refund_cents = ?, due_on = ?, kind = ?, fast = ?, carried = ?, kv = ?, found_on = ?, prev = ?
-        WHERE company_id = ? AND period = ? AND filed_at = ? AND IFNULL(prev, '') = ?`,
+      `UPDATE vat_returns SET filed_at = ?, filed_on = ?, filed_by = ?, rows = ?, kv_rows = ?, pay_cents = ?, refund_cents = ?, due_on = ?, kind = ?, fast = ?, carried = ?, kv = ?, found_on = ?, delivery = ?, prev = ?
+        WHERE company_id = ? AND period = ? AND filed_at = ? AND IFNULL(prev, '') = ?${guard.sql}`,
     )
-    .bind(...values, prev.raw, company, plan.period, prev.filedAt, prev.prev ?? '')
+    .bind(...values, prev.raw, company, plan.period, prev.filedAt, prev.prev ?? '', ...guard.binds)
 }
 
 /** A mark set by mistake taken back: a correction gives way to the filing it replaced, a first filing goes. */
@@ -674,13 +688,13 @@ export function svFiledOf(row: Record<string, unknown>): SvFiled {
     data = null
   }
   const parsed = svFiledFrom({ ...(data && typeof data === 'object' ? data : {}), filedOn: String(row.filed_on), filedAt: Number(row.filed_at), filedBy: typeof row.filed_by === 'string' ? row.filed_by : null })
-  return { ...(parsed as SvFiled), filedByName: typeof row.filed_by_name === 'string' ? row.filed_by_name : null }
+  return { ...(parsed as SvFiled), deliveryStatus: (typeof row.delivery_status === 'string' ? row.delivery_status : 'unverified') as DeliveryStatus, filedByName: typeof row.filed_by_name === 'string' ? row.filed_by_name : null }
 }
 
 /** A period's statement filed, or null. */
 export async function summaryFiled(db: D1Database, company: string, period: string): Promise<SvFiled | null> {
   const row = await db
-    .prepare('SELECT f.filed_on, f.filed_at, f.filed_by, f.data, u.name AS filed_by_name FROM filings f LEFT JOIN users u ON u.id = f.filed_by WHERE f.company_id = ? AND f.kind = ? AND f.period = ?')
+    .prepare(`SELECT f.filed_on, f.filed_at, f.filed_by, f.data, u.name AS filed_by_name, ${deliveryStatusSql('f.company_id', [safeJson('f.data', '$.file.attemptId')])} AS delivery_status FROM filings f LEFT JOIN users u ON u.id = f.filed_by WHERE f.company_id = ? AND f.kind = ? AND f.period = ?`)
     .bind(company, SUMMARY_KIND, period)
     .first<Record<string, unknown>>()
   return row ? svFiledOf(row) : null
@@ -689,7 +703,8 @@ export async function summaryFiled(db: D1Database, company: string, period: stri
 /** The statement of a period as the company's books give it (the VAT number and the seat are its own to give). */
 export function svViewOf(company: Company, period: string, docs: Doc[], filed: SvFiled | null, today: string, schedule?: SvSchedule): SvView {
   const blocks = companyIssues(company).filter((issue) => issue !== 'office').length
-  return summaryView(vatCompanyOf(company), period, docs.map(vatDocOf), filed, blocks, today, schedule)
+  const view = summaryView(vatCompanyOf(company), period, docs.map(vatDocOf), filed, blocks, today, schedule)
+  return view.state === 'changed' && ['prepared', 'rejected', 'review'].includes(filed?.deliveryStatus ?? 'unverified') ? { ...view, plan: null } : view
 }
 
 /** Independent SV periods for the selected VAT period; preserve an in-progress monthly filing sequence. */
@@ -706,7 +721,7 @@ export function svViewsOf(company: Company, period: string, docs: Doc[], filed: 
 }
 
 export async function summariesFiled(db: D1Database, company: string): Promise<Map<string, SvFiled>> {
-  const rows = await db.prepare('SELECT f.*, u.name AS filed_by_name FROM filings f LEFT JOIN users u ON u.id = f.filed_by WHERE f.company_id = ? AND f.kind = ?').bind(company, SUMMARY_KIND).all<Record<string, unknown>>()
+  const rows = await db.prepare(`SELECT f.*, u.name AS filed_by_name, ${deliveryStatusSql('f.company_id', [safeJson('f.data', '$.file.attemptId')])} AS delivery_status FROM filings f LEFT JOIN users u ON u.id = f.filed_by WHERE f.company_id = ? AND f.kind = ?`).bind(company, SUMMARY_KIND).all<Record<string, unknown>>()
   return new Map(rows.results.map((r) => [String(r.period), svFiledOf(r)]))
 }
 

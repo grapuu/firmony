@@ -33,6 +33,14 @@ za odbornú kontrolu sa neprenáša na klienta cez neurčité „schváliť vše
   obdobie len z tej istej stránky na našej adrese. Pôvodný POST sa automaticky neopakuje. Pri správe kľúčov
   sa zobrazí zrozumiteľná stránka s funkčným overením namiesto surovej JSON chyby.
 
+## Doplnené 16. 10. 2026
+
+[Samostatná evidencia podaní](../security/filing-evidence.md) už oddeľuje pripravené XML, evidované odoslanie,
+odborníkom skontrolované prijatie, odmietnutie a preverovanie. Klient má rovnaký prehľad bez povinnosti
+spravovať potvrdenky. Spoločný pracovný zoznam účtovníka ukáže aktuálne nedokončené dokumenty aj zo starších
+období. Toto je manuálne doloženie výsledku, nie aktivovaná integrácia s podateľňou. Mzdové potvrdenia
+po jednotlivých príjemcoch a všetky zmiešané scenáre opráv zostávajú otvorené.
+
 ## Čo ešte musíme preukázať alebo dopracovať
 
 | Priorita | Konkrétna práca | Dôkaz dokončenia |

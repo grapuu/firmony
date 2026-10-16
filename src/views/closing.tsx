@@ -3,6 +3,7 @@
 // resolved), the accountant's adjustments, the files the Financial Administration takes, the tax booked, the deadline a
 // notice moved, and the mark that it was filed, which sends the client what to pay. closing.ts works it all out.
 import type { FC } from 'hono/jsx'
+import { DeliveryNotice } from './filings'
 import { formatCount, formatEurExact } from '../format'
 import { dayName } from '../app/copy'
 import { BALANCE_ROWS, PROFIT_ROWS, TABLE_A, TABLE_B, extensionDays, type ClosingIssue, type Lines } from '../app/closing'
@@ -17,7 +18,7 @@ const k = t.closing
 
 export type ClosingState = 'running' | 'blocked' | 'ready' | 'filed' | 'open'
 
-const STATE_PILL: Record<ClosingState, string> = { running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', filed: 'pill--ok', open: 'pill--amber' }
+const STATE_PILL: Record<ClosingState, string> = { running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', filed: 'pill--blue', open: 'pill--amber' }
 const STATE_NAME: Record<ClosingState, string> = { ...k.state, open: t.deadlines.state.open.vat }
 
 /** Where a year's closing stands: filed, its year running, something to resolve, or ready to be filed. */
@@ -401,6 +402,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
         </h2>
         <span class={`pill ${STATE_PILL[state]}`}>{STATE_NAME[state]}</span>
       </header>
+      {filed ? <DeliveryNotice status={filed.deliveryStatus} href={`/ucto/klienti/${company.id}/podania?obdobie=${view.year}`} /> : null}
       <dl class="kv">
         <div>
           <dt>{k.deadlineLabel}</dt>
@@ -470,11 +472,11 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
         </form>
       ) : null}
       {(r.r1100 ?? 0) > 0 && !company.taxAccount && !view.running ? <p class="flag">{k.accountMissing}</p> : null}
-      {filed ? (
+      {filed && (filed.canReprepare || !filed.filed?.files?.return.attemptId && !filed.filed?.files?.statements.attemptId) ? (
         <form method="post" action={`${base}/zrusit`}>
           <input type="hidden" name="rok" value={String(view.year)} />
           <button class="btn btn--text" type="submit">
-            {k.unmark}
+            {filed.canReprepare ? 'Znovu otvoriť neodoslané alebo odmietnuté podklady' : k.unmark}
           </button>
         </form>
       ) : null}

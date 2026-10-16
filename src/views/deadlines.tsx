@@ -2,6 +2,7 @@
 // place where it is acted on. What the app does not file itself yet (the recapitulative statement) is marked as filed
 // here. The rules are in team/deadlines.ts.
 import type { FC } from 'hono/jsx'
+import { DELIVERY_LABELS } from '../filings/model'
 import { DEADLINES } from '../config'
 import { formatEurExact } from '../format'
 import { dayName, monthName } from '../app/copy'
@@ -42,7 +43,8 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix'> & { company: 
 }
 
 /** Where it stands, in words: "Pripravené na podanie", "Treba vyriešiť: 3", "Na úhradu 1 234,56 €". */
-export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'period'>): string {
+export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'period'> & Pick<Due, 'deliveryStatus'>): string {
+  if (d.deliveryStatus) return DELIVERY_LABELS[d.deliveryStatus]
   if (d.kind === 'docs' && d.state !== 'done') return t.state.missing(d.count)
   switch (d.state) {
     case 'ready':
@@ -61,8 +63,9 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
 const tone = (d: Due): string => (d.state === 'done' ? 'pill--ok' : d.late ? 'pill--red' : d.state === 'ready' ? 'pill--blue' : d.state === 'running' ? 'pill--grey' : 'pill--amber')
 
 /** Where a deadline is acted on: the period on the VAT page, the client's missing documents, the closing's page, the handover. */
-export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> & Partial<Pick<DueRow['company'], 'vatQuarterly'>> }): string {
+export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> & Partial<Pick<DueRow['company'], 'vatQuarterly'>> }): string {
   const base = `/ucto/klienti/${d.company.id}`
+  if (d.deliveryStatus && ['vat', 'summary', 'closing'].includes(d.kind)) return `${base}/podania?obdobie=${d.period}`
   switch (d.kind) {
     case 'vat':
     case 'vatFix':
@@ -90,6 +93,8 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period'> & { company: Pick<Due
 
 /** A line under the deadline that says what to know about it. */
 function noteOf(d: Due): string | null {
+  if (d.kind === 'payrollReports' && d.manualRecorded) return 'Odoslanie je označené ručne. Prijatie jednotlivými príjemcami zatiaľ nie je doložené.'
+  if (d.deliveryStatus && d.deliveryStatus !== 'accepted') return 'Termín zostáva otvorený do doloženia prijatia. Odbornú správnosť kontroluje účtovník.'
   if (d.kind === 'vatFix') return d.fix === 'D' ? t.note.fixD : t.note.fixO
   if (d.kind === 'vat' && d.state === 'open') return t.note.older
   if (d.kind === 'summary' && d.fix === 'D') return t.note.summaryD
@@ -131,9 +136,9 @@ const MarkForm: FC<{ d: DueRow; back: string }> = ({ d, back }) => {
       <input type="hidden" name="druh" value={MARKED_KINDS.payroll} />
       <input type="hidden" name="obdobie" value={d.period} />
       <input type="hidden" name="spat" value={back} />
-      {d.state === 'done' ? <input type="hidden" name="zrusit" value="1" /> : null}
+      {d.state === 'done' || d.manualRecorded ? <input type="hidden" name="zrusit" value="1" /> : null}
       <button class="btn btn--line btn--small" type="submit">
-        {d.state === 'done' ? t.unmark : t.mark}
+        {d.state === 'done' || d.manualRecorded ? t.unmark : t.mark}
       </button>
     </form>
   )
@@ -213,6 +218,7 @@ export const DeadlinesPage: FC<DeadlinesPageProps> = ({ user, dues, today, side,
       <header class="phead phead--row">
         <div>
           <Heading first={t.title} second={t.serif} />
+          <p><a class="link" href="/ucto/podania">Podania a potvrdenky na dokončenie zo všetkých období</a></p>
           <p class="phead__lead">{t.lead}</p>
         </div>
       </header>

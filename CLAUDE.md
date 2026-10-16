@@ -1,3 +1,12 @@
+Current filing-evidence follow-up (16 October 2026): [docs/security/filing-evidence.md](docs/security/filing-evidence.md).
+Schema **18** separates saved XML from recorded submission, accountant-checked acceptance, refusal and review.
+Each VAT/KV/SV/DPPO/UZ document has its own immutable payload, receipt history and scoped permissions. The
+current unfinished queue spans all periods; deadlines never treat preparation or legacy marks as acceptance.
+Portable exports and retention include original receipts. Pending current filings block handover freeze.
+Payroll recipient-level confirmations, mixed-state correction workflows, live FS/Peppol delivery, production
+recovery and business/legal/insurance approval remain open. Tests are synthetic, not real authority receipts.
+No automatic merge/deploy; continue the existing cumulative PR #8 and preserve all branches/history.
+
 Current shared-product follow-up (15 October 2026): [docs/strategy/11-shared-product-and-automation.md](docs/strategy/11-shared-product-and-automation.md).
 The existing cumulative PR #8 now also fixes cross-supplier duplicate collisions, same-second duplicate cycles,
 out-of-order OCR rechecks, malformed AI output and impossible dates, and safe return to work after passkey

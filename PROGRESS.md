@@ -1,5 +1,33 @@
 # Firmony: progress of the continuation
 
+## Separate delivery evidence for shared accounting workflows (Codex, 16 October 2026)
+
+Continues PR #8 on `codex/firmony-security-and-evidence`, remote parent
+`ee090d450d7a71c4d0fdf20d3bba5449c3a33789`. Schema **18**; no merge or deployment.
+
+- Replaced the misleading internal “filed” success with exact prepared XML versions and independent
+  VAT/KV/SV/DPPO/UZ delivery histories. An accountant records external submission or checks a receipt;
+  acceptance/refusal requires an original and explicit matching. Preparation is never proof from an authority.
+- Added a shared company register for accountant and client, a scoped work queue across all current periods,
+  direct receipt completion, pagination, meaningful conflicts and mobile layouts. The customer has no new
+  evidence-management duties. Payment instructions remain distinct from acceptance.
+- Pending, refused, disputed and legacy unverified forms stay open. Changed unsent/refused drafts require
+  reopening instead of a fabricated statutory correction. Mixed-state corrections still require expert handling.
+- SQL guards preserve XML/history, prevent receipt reuse across forms, check live assignment/role, serialize
+  stale revisions and prevent source undo or company deletion from erasing sent evidence. Accepted SV
+  reclassification preserves original payload identity. Ambiguous commit failures keep committed R2 originals.
+- Original receipts and history are portable, checksum verified and covered by incident holds, synthetic
+  restoration and controlled retention. A pending current form blocks handover freeze; frozen dossiers are
+  read-only. Missing/corrupt receipts prevent a successful complete export.
+- Validation before publication: **753 unit checks and 1,012 real workerd checks passed**; supplementary local
+  TypeScript 6 passed (native TS7 requires CI in this environment). Added real Chrome filing/client journeys
+  and five mobile/desktop capture pages; exact published-head CI and visual review are recorded in PR #8.
+- [Operational scope and evidence](docs/security/filing-evidence.md) explain the manual receipt verification,
+  official FS sources, unchanged legal/insurance gates and remaining work. Payroll confirmations for each
+  recipient remain unverified; the old group checkbox no longer closes their deadline. Live filing, certified
+  eInvoice delivery, production backup recovery and an independently reviewed pilot remain prerequisites.
+
+
 ## Shared workflow, AI validation and duplicate correctness (Codex, 15 October 2026)
 
 Follow-up on the existing cumulative PR #8, remote parent `4d5669e0387a84367ea7cf2d95f9ac4ef8886ead`.

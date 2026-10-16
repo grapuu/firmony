@@ -33,6 +33,7 @@
 //   not file them yet: they are marked as filed (`filings`, kind 'mz'), listed by the earliest of their days.
 // - The handover of the books at the end of a contract: within 30 days of its last day (point 10.4, ENDING.handoverDays).
 import { APP, DEADLINES } from '../config'
+import type { DeliveryStatus } from '../filings/model'
 import { addDays, endingOf, intakeOpen } from '../app/ending'
 import { bratislavaDay, type Company } from '../app/store'
 import { closingDue } from '../app/closing'
@@ -71,6 +72,8 @@ export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 export type DueState = 'ready' | 'blocked' | 'open' | 'running' | 'done'
 
 export interface Due {
+  deliveryStatus?: DeliveryStatus
+  manualRecorded?: boolean
   companyId: string
   kind: DueKind
   /** What it is of: a VAT period, a month of documents (YYYY-MM), the year of a closing; null for the handover. */
@@ -90,6 +93,7 @@ export interface Due {
 
 /** A year's closing as the deadlines read it (closing-store.ts): filed or not, the deadline a notice moved it to, the tax it asked for and what was paid of it. */
 export interface ClosingFact {
+  deliveryStatus?: DeliveryStatus
   year: number
   filed: boolean
   extendedTo: string | null
@@ -174,7 +178,7 @@ export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly
 /** A company's deadlines: everything that can be done now, what still runs once it is `aheadDays` near, and what was done in the last weeks. */
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
-  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix'>>) =>
+  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded'>>) =>
     out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day })
 
   if (company.vatStatus !== 'none') {
@@ -197,10 +201,14 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const blocks = view.companyIssues.length + (view.previous ? 1 : 0) + view.result.issues.filter((i) => i.level === 'block').length
       if (view.state === 'ready') add({ kind: 'vat', period, day: view.deadline, state: 'ready' })
       else if (view.state === 'blocked') add({ kind: 'vat', period, day: view.deadline, state: 'blocked', count: blocks })
-      else if (view.state === 'filed') add({ kind: 'vat', period, day: view.deadline, state: 'done' })
+      else if (view.state === 'filed') add({ kind: 'vat', period, day: view.deadline, state: view.filed?.deliveryStatus === 'accepted' ? 'done' : ['rejected', 'review'].includes(view.filed?.deliveryStatus ?? '') ? 'blocked' : 'open', deliveryStatus: view.filed?.deliveryStatus ?? 'unverified' })
       else if (view.state === 'changed') {
-        const fix = correctionKind(period, today)
-        add({ kind: 'vatFix', period, day: fix === 'O' ? view.deadline : supplementaryDeadline(today), state: blocks > 0 ? 'blocked' : 'ready', count: blocks, fix })
+        const delivery = view.filed?.deliveryStatus
+        if (delivery && ['prepared', 'rejected', 'review'].includes(delivery)) add({ kind: 'vat', period, day: view.deadline, state: 'blocked', count: blocks, deliveryStatus: delivery })
+        else {
+          const fix = correctionKind(period, today)
+          add({ kind: 'vatFix', period, day: fix === 'O' ? view.deadline : supplementaryDeadline(today), state: blocks > 0 ? 'blocked' : 'ready', count: blocks, fix })
+        }
       }
     }
     // A period with supplies to another member state has its recapitulative statement too.
@@ -208,9 +216,15 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const blocks = sv.issues.filter((i) => i.level === 'block').length
       if (sv.state === 'none') continue
       if (sv.state === 'changed') {
-        const fix = sv.plan?.kind === 'D' || (!sv.plan && today > sv.deadline) ? 'D' : 'O'
-        add({ kind: 'summary', period: sv.period, day: fix === 'O' ? sv.deadline : today, state: sv.plan ? 'ready' : 'blocked', count: blocks, fix })
-      } else add({ kind: 'summary', period: sv.period, day: sv.deadline, state: sv.state === 'filed' ? 'done' : sv.state, count: blocks })
+        const delivery = sv.filed?.deliveryStatus
+        if (delivery && ['prepared', 'rejected', 'review'].includes(delivery)) add({ kind: 'summary', period: sv.period, day: sv.deadline, state: 'blocked', count: blocks, deliveryStatus: delivery })
+        else {
+          const fix = sv.plan?.kind === 'D' || (!sv.plan && today > sv.deadline) ? 'D' : 'O'
+          add({ kind: 'summary', period: sv.period, day: fix === 'O' ? sv.deadline : today, state: sv.plan ? 'ready' : 'blocked', count: blocks, fix })
+        }
+      } else add({ kind: 'summary', period: sv.period, day: sv.deadline,
+        state: sv.state === 'filed' ? (sv.filed?.deliveryStatus === 'accepted' ? 'done' : ['rejected', 'review'].includes(sv.filed?.deliveryStatus ?? '') ? 'blocked' : 'open') : sv.state,
+        ...(sv.state === 'filed' ? { deliveryStatus: sv.filed?.deliveryStatus ?? 'unverified' } : {}), count: blocks })
     }
     // The period that runs today: its return is ahead (a person registered under § 7a files only once it owes tax).
     const current = periodOf(today, quarterly)
@@ -235,7 +249,7 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
   // The closing of the year that ended last, while it is ours and not filed; the income tax each filed one asks for, until paid.
   const year = Number(today.slice(0, 4)) - 1
   const last = facts.closings.find((k) => k.year === year)
-  if (closingIsOurs(company, year)) add({ kind: 'closing', period: String(year), day: closingDue(year, last?.extendedTo ?? null), state: last?.filed ? 'done' : 'open' })
+  if (closingIsOurs(company, year)) add({ kind: 'closing', period: String(year), day: closingDue(year, last?.extendedTo ?? null), state: last?.filed && last.deliveryStatus === 'accepted' ? 'done' : 'open', ...(last?.filed ? { deliveryStatus: last.deliveryStatus ?? 'unverified' } : {}) })
   for (const k of facts.closings) {
     if (!k.filed || k.payCents <= 0) continue
     const rest = Math.max(0, k.payCents - k.paid)
@@ -255,7 +269,10 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const day = workingDayFrom(pr.closed.get(month) ?? paydayOf(month, pr))
       const closed = pr.closed.has(month)
       add({ kind: 'payroll', period: month, day, state: closed ? 'done' : today <= periodRange(month).to ? 'running' : 'open' })
-      if (closed) add({ kind: 'payrollReports', period: month, day, state: facts.filings.has(`${MARKED_KINDS.payroll}:${month}`) ? 'done' : 'open' })
+      if (closed) {
+        const marked = facts.filings.has(`${MARKED_KINDS.payroll}:${month}`)
+        add({ kind: 'payrollReports', period: month, day, state: 'open', manualRecorded: marked, ...(marked ? { deliveryStatus: 'unverified' } : {}) })
+      }
     }
   }
 

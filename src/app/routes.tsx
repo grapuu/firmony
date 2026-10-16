@@ -2,6 +2,7 @@
 // is made for the company of that session (store.ts). Forms answer with a redirect to a page that says what
 // happened, so a reload never sends anything twice.
 import { Hono, type Context } from 'hono'
+import { clientFilingRoutes } from '../filings/routes'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { APP, BANK, BANK_WAYS, BRAND, ENDING, FIO, TEAM } from '../config'
@@ -1682,6 +1683,7 @@ export function xmlResponse(invoice: StoredInvoice, lines: Line[], seller: Compa
   })
 }
 
+appRoutes.route('/podania', clientFilingRoutes)
 appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Missing />, 404) : c.redirect('/app/prihlasenie', 303)))
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -167,6 +167,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompa
         ) : null}
       </header>
       <Flash text={flash} />
+      <p><a class="btn btn--line" href="/ucto/podania">Podania na dokončenie</a></p>
       <dl class="figs__grid figs__grid--four">
         <div class="fig">
           <dt>{t.clients.toBook}</dt>

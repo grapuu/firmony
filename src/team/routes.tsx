@@ -2,10 +2,12 @@
 // same "not found" as for anything that does not exist. Every company, document and payment is checked against
 // what the user may see (an accountant her own clients, an administrator everybody).
 import { Hono, type Context } from 'hono'
+import { filingFile, packageOf, prepareFiling } from '../filings/store'
+import { filingRoutes, filingQueueRoutes } from '../filings/routes'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { APP, ART, BRAND, ENDING, PLANS, TEAM } from '../config'
-import { ensureSchema, now } from '../db'
+import { ensureSchema, now, sha256Hex } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
@@ -1177,6 +1179,14 @@ teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
   const period = periodParam(company, c.req.query('obdobie'), today)
   const { view, filed } = await vatView(c.env.DB, company, period, today)
   const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
+  if (view.state === 'filed') {
+    const id = view.filed?.delivery?.[file === 'kontrolny-vykaz.xml' ? 'kv' : 'vat']
+    if (id) {
+      const saved = await packageOf(c.env.DB, company.id, id)
+      if (!saved || await sha256Hex(saved.xml) !== saved.sha256) return c.text('Uložený dokument chýba alebo sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+      return new Response(saved.xml, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="${saved.name}"`, 'Cache-Control': 'private, no-store' } })
+    }
+  }
   if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
   const plan = vatPlan(
     company,
@@ -1227,6 +1237,11 @@ async function summaryFile(c: Ctx, company: Company, period: string, today: stri
   if (!original && sv.state === 'filed' && !sv.filed?.file) return c.text(t.vat.sv.missingOriginal, 409)
   const snapshot = original || sv.state === 'filed' ? saved?.file : await summarySnapshot(company, sv.period, send!.kind, send!.rows, today)
   if (!snapshot) return c.text(t.vat.sv.missingOriginal, 409)
+  if (await sha256Hex(snapshot.xml) !== snapshot.sha256) return c.text('Uložený dokument sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+  if (snapshot.attemptId) {
+    const pkg = await packageOf(c.env.DB, company.id, snapshot.attemptId)
+    if (!pkg || pkg.kind !== 'sv' || pkg.xml !== snapshot.xml || pkg.sha256 !== snapshot.sha256) return c.text('Pôvodný dokument sa nezhoduje s evidenciou podania. Prípad musí preveriť účtovný tím.', 409)
+  }
   await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'vat.summary.downloaded', subject: sv.period, detail: { kind: original ? saved?.kind : send?.kind, original } })])
   return new Response(snapshot.xml, {
     headers: {
@@ -1254,12 +1269,16 @@ teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/podane', async (c) => {
   if (sv.state === 'none') return c.redirect(`${back}&ok=sv-netreba#suhrnny`, 303)
   if (sv.state === 'running') return c.redirect(`${back}&ok=sv-bezi#suhrnny`, 303)
   if (!sv.plan) return c.redirect(`${back}&ok=sv-blokovane#suhrnny`, 303)
-  const snapshot = await summarySnapshot(company, sv.period, sv.plan.kind, sv.plan.rows, today)
-  const [done] = await db.batch([fileSummaryStatement(db, company.id, sv, sv.plan, who.user.id, today, snapshot, loaded.revision)])
+  const original = await summarySnapshot(company, sv.period, sv.plan.kind, sv.plan.rows, today)
+  const snapshot = await filingFile(original.name, original.xml)
+  const [done] = await db.batch([
+    fileSummaryStatement(db, company.id, sv, sv.plan, who.user.id, today, snapshot, loaded.revision),
+    prepareFiling(db, company.id, 'sv', sv.period, snapshot, who.user.id),
+  ])
   if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=sv-zmeneny#suhrnny`, 303)
   const correction = sv.filed !== null
   await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: correction ? 'vat.summary.corrected' : 'vat.summary.filed', subject: sv.period, detail: { kind: sv.plan.kind, rows: sv.plan.rows.length } })])
-  return c.redirect(`${back}&ok=${correction ? 'sv-opraveny' : 'sv-podany'}#suhrnny`, 303)
+  return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${sv.period}`, 303)
 })
 
 /** A mark set by mistake taken back: a correction gives way to the statement it replaced. */
@@ -1307,6 +1326,7 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
   const period = periodParam(company, body.obdobie, today)
   const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
   const db = c.env.DB
+  const revision = await dataRevision(db, company.id)
   const { view, filed } = await vatView(db, company, period, today)
   if (view.state === 'filed') return c.redirect(`${back}&ok=dph-uz`, 303)
   if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
@@ -1320,8 +1340,22 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
           choicesOf((name) => body[name]),
         )
       : null
-  if (!plan) return c.redirect(`${back}&ok=dph-blokovane`, 303)
-  const [done] = await db.batch([fileStatement(db, company.id, plan, who.user.id, today)])
+  if (!plan || company.vatStatus === 'none' || !company.icdph || !company.taxOffice) return c.redirect(`${back}&ok=dph-blokovane`, 303)
+  const filer = { name: company.name, icdph: company.icdph, address: company.address, taxOffice: company.taxOffice, status: company.vatStatus }
+  const returnFile = plan.returnNeeded ? await filingFile(
+    `DPH${plan.kind === 'R' ? '' : `_${plan.kind}`}_${company.icdph}_${period}.xml`,
+    returnXml(filer, period, plan.rows, { declaredOn: today, nothing: plan.nothing, fastRefund: plan.fast, kind: plan.kind, foundOn: plan.foundOn }),
+  ) : null
+  const kvFile = plan.kv ? await filingFile(
+    `KVDPH${plan.kv.kind === 'R' ? '' : `_${plan.kv.kind}`}_${company.icdph}_${period}.xml`,
+    statementXml(filer, period, plan.kv.sent, plan.kv.kind),
+  ) : null
+  const delivery = { ...(plan.replaces?.delivery ?? {}), ...(returnFile ? { vat: returnFile.attemptId } : {}), ...(kvFile ? { kv: kvFile.attemptId } : {}) }
+  const [done] = await db.batch([
+    fileStatement(db, company.id, plan, who.user.id, today, delivery, revision),
+    ...(returnFile ? [prepareFiling(db, company.id, 'vat', period, returnFile, who.user.id)] : []),
+    ...(kvFile ? [prepareFiling(db, company.id, 'kv', period, kvFile, who.user.id)] : []),
+  ])
   if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=dph-uz`, 303)
   const detail = {
     kind: plan.kind,
@@ -1335,7 +1369,7 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
   const action = plan.replaces ? 'vat.corrected' : 'vat.filed'
   if (!plan.returnNeeded) {
     await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action, subject: period, detail })])
-    return c.redirect(`${back}&ok=dph-kv`, 303)
+    return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${period}`, 303)
   }
   const ret = { payCents: plan.pay }
   const paid = (await taxPaid(db, company.id, [{ period } as FiledReturn])).get(period)
@@ -1361,7 +1395,7 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
     ...(await ringClient(c, company, id)),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
-  return c.redirect(`${back}&ok=${plan.replaces ? 'dph-opravene' : 'dph-podane'}`, 303)
+  return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${period}`, 303)
 })
 
 /** A mark set by mistake taken back; the client, who was told what to pay, is told that it does not stand. A correction
@@ -1533,7 +1567,13 @@ teamRoutes.get('/klienti/:id/zavierka/:file', async (c) => {
   // Never fabricate an original for a legacy filing that did not store its XML.
   if (snapshot && !snapshot.files) return c.text(t.closing.missingOriginal, 409)
   const files = snapshot?.files ?? await closingFiles(company, view, today)
-  const { xml, name } = statements ? files.statements : files.return
+  const saved = statements ? files.statements : files.return
+  const { xml, name } = saved
+  if (await sha256Hex(xml) !== saved.sha256) return c.text('Uložený dokument sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+  if (saved.attemptId) {
+    const pkg = await packageOf(c.env.DB, company.id, saved.attemptId)
+    if (!pkg || pkg.kind !== (statements ? 'uz' : 'dppo') || pkg.xml !== xml || pkg.sha256 !== saved.sha256) return c.text('Pôvodný dokument sa nezhoduje s evidenciou podania. Prípad musí preveriť účtovný tím.', 409)
+  }
   await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: statements ? 'closing.statements.downloaded' : 'closing.return.downloaded', subject: String(view.year) })])
   return new Response(xml, {
     headers: {
@@ -1578,8 +1618,14 @@ teamRoutes.post('/klienti/:id/zavierka/podane', async (c) => {
   const who = c.get('who')
   const r = view.tax.rows
   const pay = r.r1100 ?? 0
-  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, advancesNext: view.tax.advancesNext, files: await closingFiles(company, view, today) }
-  const [done] = await db.batch([fileClosingStatement(db, company.id, view.year, snapshot, pay, view.due, who.user.id, today, view.closing?.revision ?? 0)])
+  const generated = await closingFiles(company, view, today)
+  const files = { ...generated, return: await filingFile(generated.return.name, generated.return.xml), statements: await filingFile(generated.statements.name, generated.statements.xml) }
+  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, advancesNext: view.tax.advancesNext, files }
+  const [done] = await db.batch([
+    fileClosingStatement(db, company.id, view.year, snapshot, pay, view.due, who.user.id, today, view.closing?.revision ?? 0),
+    prepareFiling(db, company.id, 'dppo', String(view.year), files.return, who.user.id),
+    prepareFiling(db, company.id, 'uz', String(view.year), files.statements, who.user.id),
+  ])
   if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
   const left = Math.max(0, pay - view.paid.tax)
   const over = Math.max(0, -(r.r1101 ?? 0)) + Math.max(0, view.paid.tax - pay)
@@ -1600,7 +1646,7 @@ teamRoutes.post('/klienti/:id/zavierka/podane', async (c) => {
     ...(await ringClient(c, company, id)),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
-  return c.redirect(`${back}&ok=zavierka-podane`, 303)
+  return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${view.year}`, 303)
 })
 
 /** A mark set by mistake taken back; the client, who was told what to pay, is told that it does not stand. */
@@ -2652,6 +2698,8 @@ teamRoutes.post('/tim', async (c) => {
 })
 
 teamRoutes.route('/incidenty', incidentRoutes)
+teamRoutes.route('/podania', filingQueueRoutes)
+teamRoutes.route('/klienti/:companyId/podania', filingRoutes)
 
 teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/prihlasenie', 303)))
 

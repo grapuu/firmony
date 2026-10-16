@@ -5,6 +5,7 @@ import { PERIOD_SCHEMA } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
+import { FILING_SCHEMA } from './filings/schema'
 
 export const now = (): number => Math.floor(Date.now() / 1000)
 
@@ -650,6 +651,7 @@ const MIGRATIONS: readonly string[][] = [
   CONTRACT_SCHEMA,
   SECURITY_SCHEMA,
   INCIDENT_SCHEMA,
+  FILING_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

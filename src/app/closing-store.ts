@@ -5,6 +5,7 @@
 // (its own symbol, 170099 and the year). The rules are in closing.ts, the form in closing-form.ts, the page in
 // views/closing.tsx; `closingView` puts a year together for the page and its files.
 import { now } from '../db'
+import { deliveryStatusSql, revisableSql, safeJson, type DeliveryStatus, type FilingFile } from '../filings/model'
 import { booksOf } from './ledger-store'
 import type { Books } from './ledger'
 import {
@@ -44,11 +45,13 @@ export interface FiledClosing {
 export interface ClosingFiles {
   version: 1
   declaredOn: string
-  return: { name: string; xml: string; sha256: string }
-  statements: { name: string; xml: string; sha256: string }
+  return: FilingFile
+  statements: FilingFile
 }
 
 export interface Closing {
+  deliveryStatus?: DeliveryStatus
+  canReprepare?: boolean
   year: number
   revision: number
   inputs: ClosingInputs
@@ -88,6 +91,8 @@ function filedOf(json: unknown): FiledClosing | null {
 function closingOf(r: Row): Closing {
   const filedAt = typeof r.filed_at === 'number' ? r.filed_at : null
   return {
+    deliveryStatus: (typeof r.delivery_status === 'string' ? r.delivery_status : 'unverified') as DeliveryStatus,
+    canReprepare: r.can_reprepare === 1,
     year: Number(r.year),
     revision: Number(r.revision ?? 0),
     inputs: storedInputs(r.inputs),
@@ -107,7 +112,10 @@ function closingOf(r: Row): Closing {
 export async function closingsOf(db: D1Database, company: string): Promise<Closing[]> {
   const rows = await db
     .prepare(
-      `SELECT k.*, s.name AS saved_by_name, f.name AS filed_by_name FROM closings k LEFT JOIN users s ON s.id = k.saved_by LEFT JOIN users f ON f.id = k.filed_by
+      `SELECT k.*, s.name AS saved_by_name, f.name AS filed_by_name,
+        ${deliveryStatusSql('k.company_id', [safeJson('k.filed', '$.files.return.attemptId'), safeJson('k.filed', '$.files.statements.attemptId')])} AS delivery_status
+        , ${revisableSql('k.company_id', [safeJson('k.filed', '$.files.return.attemptId'), safeJson('k.filed', '$.files.statements.attemptId')])} AS can_reprepare
+        FROM closings k LEFT JOIN users s ON s.id = k.saved_by LEFT JOIN users f ON f.id = k.filed_by
         WHERE k.company_id = ? ORDER BY k.year DESC`,
     )
     .bind(company)

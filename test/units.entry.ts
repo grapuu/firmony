@@ -49,3 +49,5 @@ export * as contracts from '../src/contracts'
 
 export * as security from '../src/security/policy'
 export { isEvidenceHeld } from '../src/incidents/store'
+export * as filings from '../src/filings/model'
+export { validateChange } from '../src/filings/store'

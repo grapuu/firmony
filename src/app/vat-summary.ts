@@ -43,6 +43,7 @@ export interface SvRow {
 
 /** A statement as the Financial Administration holds it: what was filed last, and the filing it replaced. */
 export interface SvFiled {
+  deliveryStatus?: import('../filings/model').DeliveryStatus
   kind: 'R' | 'O' | 'D'
   filedOn: string
   filedAt: number
@@ -55,7 +56,7 @@ export interface SvFiled {
   sent: SvRow[]
   prev: SvFiled | null
   /** The actual file marked as sent. A reclassified quarter retains its original file and source period. */
-  file?: { name: string; xml: string; sha256: string }
+  file?: { name: string; xml: string; sha256: string; attemptId?: string }
   sourcePeriod?: string
 }
 

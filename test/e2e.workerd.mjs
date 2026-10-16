@@ -11,13 +11,14 @@ import { checkSecurity } from './security.runtime.mjs'
 import { checkIncidents } from './incidents.runtime.mjs'
 import { checkRestore } from './restore.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
+import { checkFilings } from './filings.runtime.mjs'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
-import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract } from '../.wrangler/dist/stores.js'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
@@ -222,7 +223,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 17)
+check('health says the schema', (await res.json()).schema === 18)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -573,9 +574,10 @@ async function signIn(email) {
 }
 const as = (cookie) => ({
   get: (path) => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.30', cookie } }),
-  async upload(path, file) {
+  async upload(path, file, fields = {}, fieldName = 'file') {
     const form = new FormData()
-    form.append('file', new Blob([file.bytes], { type: file.type ?? 'application/octet-stream' }), file.name)
+    for (const [key, value] of Object.entries(fields)) form.append(key, String(value))
+    form.append(fieldName, new Blob([file.bytes], { type: file.type ?? 'application/octet-stream' }), file.name)
     const encoded = new Request('https://x/', { method: 'POST', body: form })
     const body = new Uint8Array(await encoded.arrayBuffer())
     return mf.dispatchFetch(`${site}${path}`, {
@@ -2667,6 +2669,10 @@ check(
   res = await anna.get('/app')
   check('and the overview no longer asks', !plain(await res.text()).includes('Zaplaťte 11,50 €'))
 
+  // Compatibility fixture: an imported pre-registry manual filing, with no delivery IDs.
+  // New prepared/accepted workflows and proof guards are exercised separately in filings.runtime.mjs.
+  await db.prepare("UPDATE vat_returns SET delivery = NULL WHERE company_id = 'co-a' AND period = ?").bind(old).run()
+
   // A document booked after filing changes the figures. The deadline has passed: a supplementary return with rows 36
   // and 37, and a supplementary control statement with the new line alone.
   await db
@@ -2679,7 +2685,7 @@ check(
   page = plain(await res.text())
   check(
     'a document booked after filing: the page says which rows changed, that a supplementary return is due, and its rows 36 and 37',
-    page.includes('Zmenené po podaní') &&
+    page.includes('Zmenené po uložení') &&
       page.includes('Zmenené riadky: 03, 04, 17, 32, 35.') &&
       page.includes('treba dodatočné priznanie') &&
       page.includes('Stiahnuť dodatočné priznanie') &&
@@ -2737,7 +2743,7 @@ check(
   check(
     'marked as filed: the period now comes to 57,50 €, due by the end of the month after the finding',
     res.status === 303 &&
-      (res.headers.get('location') ?? '').includes('ok=dph-opravene') &&
+      (res.headers.get('location') ?? '').includes('/podania?obdobie=') &&
       dRow?.kind === 'D' &&
       dRow.pay_cents === 1150 + 4600 &&
       dRow.found_on === found &&
@@ -2753,10 +2759,10 @@ check(
   )
   res = await anna.get('/app/dane')
   page = plain(await res.text())
-  check('the client sees what is left of it, with the QR code', page.includes('Dodatočné priznanie podané') && page.includes('Zaplatili ste už 11,50 € z 57,50 €') && page.includes('PAY by square'))
+  check('the client sees what is left of it, with the QR code', page.includes('Dodatočné podklady pripravené') && page.includes('Zaplatili ste už 11,50 € z 57,50 €') && page.includes('PAY by square'))
   res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
   page = plain(await res.text())
-  check('and the period stands filed again', page.includes('Podané') && !page.includes('Zmenené po podaní'))
+  check('and the period stands filed again', page.includes('Podklady uložené') && !page.includes('Zmenené po uložení'))
   res = await acc.get(`/ucto/klienti/co-a/dph/kontrolny-vykaz.xml?obdobie=${old}`)
   check('its files are the ones filed', (await res.text()).includes('KOpr="2"'))
 
@@ -3092,7 +3098,7 @@ check(
     rowsOf(page).filter((r) => r.includes('Termíny s. r. o.')).join(' | '),
   )
   check('a month of ours never filed, older than the ones worked out, is overdue', Boolean(rowOf(page, 'Termíny s. r. o.', `DPH a kontrolný výkaz za ${nameOf(monthBack(5))}`, 'Nepodané', 'po termíne')))
-  check('the months filed are not asked for', !rowOf(page, 'Termíny s. r. o.', `za ${nameOf(monthBack(3))}`))
+  check('internal marks without receipts remain on the work queue', Boolean(rowOf(page, 'Termíny s. r. o.', `za ${nameOf(monthBack(3))}`, 'Prijatie nedoložené')))
   const sv = rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)
   check('the service supplied to Germany asks for the recapitulative statement, ready, its file on the VAT page', Boolean(sv) && sv.includes('Pripravené na podanie') && !sv.includes('Označiť ako podané'), sv)
   check("the client's documents of last month, the client's to bring", Boolean(rowOf(page, 'Termíny s. r. o.', `Doklady za ${nameOf(last)}`, 'Chýba 1 doklad', 'Úloha klienta')))
@@ -3133,7 +3139,7 @@ check(
   const svFiled = await db.prepare("SELECT filed_on, data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first()
   check(
     'marked as filed with what its file held',
-    res.status === 303 && (res.headers.get('location') ?? '').includes('ok=sv-podany') && JSON.parse(svFiled?.data ?? '{}').rows?.[0]?.euros === 1000 && JSON.parse(svFiled?.data ?? '{}').kind === 'R',
+    res.status === 303 && (res.headers.get('location') ?? '').includes('/podania?obdobie=') && JSON.parse(svFiled?.data ?? '{}').rows?.[0]?.euros === 1000 && JSON.parse(svFiled?.data ?? '{}').kind === 'R',
     JSON.stringify(svFiled),
   )
   res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
@@ -3143,16 +3149,19 @@ check(
   check('a period without supplies to the EU shows no statement', !plain(await (await acc.get(`/ucto/klienti/co-t/dph?obdobie=${monthBack(2)}`)).text()).includes('Súhrnný výkaz za'))
   res = await acc.get('/ucto/terminy')
   page = plain(await res.text())
-  check('then it is no longer open', !rowOf(page, 'Súhrnný výkaz za'))
+  check('a prepared summary remains open until its receipt is recorded', Boolean(rowOf(page, 'Súhrnný výkaz za', 'Podklady pripravené')))
   res = await acc.get('/ucto/terminy?hotove=1')
   page = plain(await res.text())
-  check('it is among what is done', rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)?.includes('Podaný'))
+  check('a prepared summary is never shown as accepted', !rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)?.includes('Prijatie podateľňou doložené'))
+
+  // Compatibility fixture: the old manually recorded statement predates receipt IDs.
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).run()
 
   // The invoice changed after the filing: a corrective statement before the deadline, a supplementary one after it
   await db.prepare(`UPDATE documents SET vat_lines = '[{"rate":0,"base":120000,"vat":0,"deduct":0}]' WHERE id = 't-eu'`).run()
   page = await svPage()
   const fix = page.includes('Stiahnuť opravný súhrnný výkaz') ? 'O' : page.includes('Stiahnuť dodatočný súhrnný výkaz') ? 'D' : null
-  check('changed after it was filed, the page says so and offers the correction', page.includes('Zmenený po podaní') && fix !== null && page.includes('Označiť opravu ako podanú'))
+  check('changed after it was filed, the page says so and offers the correction', page.includes('Zmenené po uložení') && fix !== null && page.includes('Uložiť opravené podklady'))
   res = await acc.get('/ucto/terminy')
   page = plain(await res.text())
   check('so does the screen of deadlines', Boolean(rowOf(page, 'Termíny s. r. o.', `${fix === 'O' ? 'Opravný' : 'Dodatočný'} súhrnný výkaz za ${nameOf(last)}`)))
@@ -3167,12 +3176,12 @@ check(
   )
   res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
   const corrected = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
-  check('the correction marked, over the statement it corrects', (res.headers.get('location') ?? '').includes('ok=sv-opraveny') && corrected.kind === fix && corrected.rows?.[0]?.euros === 1200 && corrected.prev?.rows?.[0]?.euros === 1000)
+  check('the correction marked, over the statement it corrects', (res.headers.get('location') ?? '').includes('/podania?obdobie=') && corrected.kind === fix && corrected.rows?.[0]?.euros === 1200 && corrected.prev?.rows?.[0]?.euros === 1000)
   page = await svPage()
-  check('filed again as the books stand', page.includes(fix === 'O' ? 'Opravný podaný' : 'Dodatočný podaný') && page.includes('Zrušiť označenie opravy'))
+  check('prepared again as the books stand, with a safe reopen action', page.includes(fix === 'O' ? 'Opravné podklady uložené' : 'Dodatočné podklady uložené') && page.includes('Znovu otvoriť neodoslané alebo odmietnuté podklady'))
   res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/zrusit', { obdobie: last })
   const back = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
-  check('the correction taken back gives way to the statement it corrected', back.kind === 'R' && back.rows?.[0]?.euros === 1000 && back.prev === null && (await svPage()).includes('Zmenený po podaní'))
+  check('the correction taken back gives way to the statement it corrected', back.kind === 'R' && back.rows?.[0]?.euros === 1000 && back.prev === null && (await svPage()).includes('Zmenené po uložení'))
   res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/zrusit', { obdobie: last })
   check('and that taken back, nothing is filed', (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'sv'").first())?.n === 0 && (await svPage()).includes('Pripravený'))
   await db.prepare(`UPDATE documents SET vat_lines = '[{"rate":0,"base":100000,"vat":0,"deduct":0}]' WHERE id = 't-eu'`).run()
@@ -3222,7 +3231,7 @@ check(
   await db.prepare('INSERT INTO closings (company_id, year, filed_on, filed_at, filed_by, pay_cents, due_on) VALUES (?, ?, ?, ?, ?, 0, ?)').bind('co-t2', year - 1, day(0), nowS, lucia?.id ?? '', day(0)).run()
   res = await acc.get('/ucto/terminy')
   page = plain(await res.text())
-  check('the closing filed is no longer open', res.status === 200 && !rowOf(page, 'Závierka s. r. o.'))
+  check('an old closing without receipt remains open', res.status === 200 && Boolean(rowOf(page, 'Závierka s. r. o.', 'Prijatie nedoložené')))
 
   // The administrator sees everybody's, and chooses an accountant's.
   res = await admin.get('/ucto/terminy')
@@ -3246,6 +3255,10 @@ check(
     db.prepare("DELETE FROM vat_returns WHERE company_id IN ('co-t', 'co-t2')"),
     db.prepare("DELETE FROM filings WHERE company_id IN ('co-t', 'co-t2')"),
     db.prepare("DELETE FROM closings WHERE company_id IN ('co-t', 'co-t2')"),
+    // Isolated fixture disposal follows the controlled retention boundary after its prepared sources were removed.
+    db.prepare("UPDATE companies SET purge_started_at = ? WHERE id IN ('co-t', 'co-t2')").bind(nowS),
+    db.prepare("DELETE FROM filing_events WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM filing_packages WHERE company_id IN ('co-t', 'co-t2')"),
     db.prepare("DELETE FROM companies WHERE id IN ('co-t', 'co-t2')"),
   ])
 }
@@ -3289,6 +3302,9 @@ check(
   await db.prepare("UPDATE companies SET name = 'Nový názov firmy' WHERE id = 'co-sv'").run()
   res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}&povodne=1`)
   check('a filed monthly SV replays its original bytes even after filer details change', res.status === 200 && await res.text() === originals[0])
+  // The following arithmetic cases model imported legacy filings. These prepared fixtures have not been sent:
+  // preserve their immutable package history, but make the legacy source explicit instead of inventing receipts.
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv'").run()
   await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3100000, vat: 0, deduct: 0 }])).run()
   res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}`)
   const correctedXml = await res.text()
@@ -3296,6 +3312,7 @@ check(
   await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[0] })
   let latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).first()
   check('monthly correction preserves the prior original snapshot', JSON.parse(latest.data).prev.file.xml === originals[0])
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).run()
   // Two corrections prepared from the very same data revision, even within one second.
   await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3200000, vat: 0, deduct: 0 }])).run()
   const company = companyOf(await db.prepare("SELECT * FROM companies WHERE id = 'co-sv'").first())
@@ -3316,6 +3333,7 @@ check(
   await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-1'").bind(JSON.stringify([{ rate: 0, base: 1500000, vat: 0, deduct: 0 }])).run()
   await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: quarter })
   const quarterFiled = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).data)
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv' AND period = ?").bind(quarter).run()
   await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-1'").bind(JSON.stringify([{ rate: 0, base: 2500000, vat: 0, deduct: 0 }])).run()
   res = await acc.get(`${base}?obdobie=${quarter}`); html = await res.text()
   check('a newly required monthly sequence explains how to reclassify the already filed quarter', plain(html).includes('Zaradiť podaný výkaz k poslednému mesiacu'))
@@ -3344,6 +3362,8 @@ check(
   check('the real deadline loader includes a completed monthly SV inside the VAT quarter still running', due.dues.some((d) => d.kind === 'summary' && d.period === activeMonth && d.state === 'ready'), JSON.stringify(due.dues.map((d) => ({ kind: d.kind, period: d.period, state: d.state }))))
   await db.batch([
     db.prepare("DELETE FROM filings WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM filing_history WHERE company_id = 'co-sv'"),
+    db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-sv'").bind(nowS),
+    db.prepare("DELETE FROM filing_events WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM filing_packages WHERE company_id = 'co-sv'"),
     db.prepare("DELETE FROM documents WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM companies WHERE id = 'co-sv'"), db.prepare("DELETE FROM company_data_revisions WHERE company_id = 'co-sv'"),
   ])
 }
@@ -3492,7 +3512,7 @@ check(
   const told = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-k' ORDER BY created_at DESC, rowid DESC").first()
   check(
     'marked as filed: once, with what was filed, the tax to pay by the moved deadline',
-    res.status === 303 && res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-podane` && row?.filed_at && row.pay_cents === 201000 && row.due_on === `${Y + 1}-06-30` && JSON.parse(row.filed).rows.r1050 === 251000,
+    res.status === 303 && res.headers.get('location') === `/ucto/klienti/co-k/podania?obdobie=${Y}` && row?.filed_at && row.pay_cents === 201000 && row.due_on === `${Y + 1}-06-30` && JSON.parse(row.filed).rows.r1050 === 251000,
   )
   check(
     'the client reads what to pay, by when, to the income tax account, with the symbol of the year',
@@ -3529,7 +3549,7 @@ check(
   check('marked again, nothing more happens', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-uz` && (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE company_id = 'co-k'").first())?.n === 1)
   res = await acc.get(`${base}?rok=${Y}`)
   page = plain(await res.text())
-  check('filed, its adjustments are closed and its tax is not booked again', page.includes('Podané') && page.includes('<fieldset class="cform__section" disabled') && !page.includes('Zaúčtovať daň') && page.includes('Zrušiť označenie'))
+  check('prepared, its adjustments are closed and its tax is not booked again', page.includes('Podklady uložené') && page.includes('<fieldset class="cform__section" disabled') && !page.includes('Zaúčtovať daň') && page.includes('Znovu otvoriť neodoslané alebo odmietnuté podklady'))
   res = await acc.post(base, { ...form, nace: '62.01.0', a16: '999' })
   check('nor are its adjustments kept', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-uz` && JSON.parse((await db.prepare("SELECT inputs FROM closings WHERE company_id = 'co-k'").first())?.inputs ?? '{}').tableA?.a16 === 10000)
 
@@ -3582,6 +3602,9 @@ check(
     db.prepare("DELETE FROM accounts WHERE company_id = 'co-k'"),
     db.prepare("DELETE FROM ledger_entries WHERE company_id = 'co-k'"),
     db.prepare("DELETE FROM closings WHERE company_id = 'co-k'"),
+    db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-k'").bind(nowS),
+    db.prepare("DELETE FROM filing_events WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM filing_packages WHERE company_id = 'co-k'"),
     db.prepare("DELETE FROM messages WHERE company_id = 'co-k'"),
     db.prepare("DELETE FROM members WHERE company_id = 'co-k'"),
     db.prepare("DELETE FROM sessions WHERE user_id = 'u-k'"),
@@ -4221,6 +4244,7 @@ page = await res.text()
 const handedClientRow = page.match(/<a class="tbl__row[^>]*href="\/ucto\/klienti\/co-a"[\s\S]*?<\/a>/)?.[0]
 check('the client row no longer asks for its handover once it was made', Boolean(handedClientRow) && !handedClientRow.includes('Odovzdanie mešká'))
 
+await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
@@ -4240,6 +4264,13 @@ await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-a' AND ye
 await tick(Date.now())
 await settle(500)
 check('ninety days and an uploaded handover PDF cannot delete unacknowledged accounting data', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first()).purged_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM employees WHERE company_id = 'co-a'").first()).n === 1)
+// Complete the current fixture's external delivery before acknowledging its final handover. These originals are
+// TEST_ONLY evidence, never responses from an authority. Old, inactive prepared packages remain in the archive.
+const pendingHandover = (await db.prepare("SELECT * FROM filing_packages WHERE company_id = 'co-a' AND status <> 'accepted'").all()).results
+for (const pkg of pendingHandover) if (await currentPackage(db, pkg)) {
+  res = await acc.upload(`/ucto/klienti/co-a/podania/${pkg.id}/stav`, { name: 'TEST-ONLY-final-receipt.xml', type: 'application/xml', bytes: new TextEncoder().encode(`<TEST_ONLY form="${pkg.kind}" reference="TEST-FINAL-${pkg.id}"/>`) }, { to: 'accepted', revision: String(pkg.revision), externalOn: day(0), reference: `TEST-FINAL-${pkg.id}`, channel: 'TEST-ONLY', checked: '1', reason: 'TEST-ONLY final handover proof' }, 'receipt')
+  check(`current ${pkg.kind} delivery is completed before its final acknowledged archive`, res.status === 303)
+}
 const handoverYears = await exportYears(db, 'co-a')
 check('a closing-only year is offered for export', handoverYears.includes('2025'))
 const interrupted = await beginExport(db, 'co-a', '2026', 'u-a')
@@ -4300,6 +4331,7 @@ const leftover = await db
        + (SELECT COUNT(*) FROM employees WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_runs WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM closing_history WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_history WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM filing_history WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM filing_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filing_events WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,
   )
   .first()

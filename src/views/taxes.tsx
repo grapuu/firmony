@@ -4,6 +4,7 @@
 // return. What was already paid counts: after a correction only the rest is asked for, and paying more than the
 // period comes to is said as an overpayment.
 import type { FC } from 'hono/jsx'
+import { DeliveryNotice } from './filings'
 import { ART } from '../config'
 import { formatEurExact } from '../format'
 import { app, dayName } from '../app/copy'
@@ -83,6 +84,7 @@ const Return: FC<{ company: Company; ret: FiledReturn; paid: TaxPaid | undefined
         <span class={`pill ${pill[0]}`}>{pill[1]}</span>
       </header>
       <p class="info__source">{x.filed[ret.kind](dayName(ret.filedOn, today))}</p>
+      <DeliveryNotice status={ret.deliveryStatus} href={`/app/podania?obdobie=${ret.period}`} />
       {left > 0 ? (
         <>
           {late ? <p class="flag">{x.late}</p> : null}
@@ -117,6 +119,7 @@ const IncomeReturn: FC<{ company: Company; closing: Closing; paid: IncomePaid; t
         <span class={`pill ${pill[0]}`}>{pill[1]}</span>
       </header>
       <p class="info__source">{x.incomeFiled(dayName(closing.filedOn ?? today, today))}</p>
+      <DeliveryNotice status={closing.deliveryStatus} href={`/app/podania?obdobie=${closing.year}`} />
       {left > 0 ? (
         <>
           {late ? <p class="flag">{x.late}</p> : null}

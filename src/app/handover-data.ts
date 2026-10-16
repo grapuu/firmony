@@ -1,5 +1,6 @@
 // Lossless accounting snapshots complement the human CSV reports. Never recalculate a closed payslip or filed XML here.
 import { SCHEMA_VERSION } from '../db'
+import { sha256Hex } from '../db'
 import { csvCell, csvMoney } from '../team/store'
 import { zipName, type ZipEntry } from '../zip'
 
@@ -19,6 +20,8 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['historia-zavierok', 'SELECT * FROM closing_history WHERE company_id = ?1 AND year = ?2 ORDER BY id'],
     ['podania', 'SELECT * FROM filings WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY kind, period'],
     ['historia-podani', 'SELECT * FROM filing_history WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],
+    ['verzie-podani', 'SELECT * FROM filing_packages WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],
+    ['dorucenie-podani', 'SELECT e.* FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ?1 AND substr(p.period, 1, 4) = ?2 ORDER BY e.package_id, e.revision'],
     ['dph', 'SELECT * FROM vat_returns WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY period'],
     ['interne-doklady', 'SELECT * FROM ledger_entries WHERE company_id = ?1 AND year = ?2 ORDER BY on_date, id'],
     ['nastavenia-miezd', 'SELECT payroll FROM companies WHERE id = ?1'],
@@ -38,6 +41,11 @@ export async function handoverData(db: D1Database, company: string, year: string
   const entry = (name: string, content: string): ZipEntry => ({ name: zipName(name), when: at, data: async () => encoder.encode(content) })
   const entries = [...tables].map(([name, rows]) => entry(`data/${name}.json`, json(rows)))
   entries.push(entry('data/format.json', json({ format: 'firmony-accounting-handover', version: 1, schema: SCHEMA_VERSION, company, year, createdAt: at, amounts: 'integer cents; JSON strings preserve original database values' })))
+  for (const p of tables.get('verzie-podani') ?? []) {
+    if (typeof p.xml !== 'string' || await sha256Hex(p.xml) !== p.sha256) throw new Error('Filing package checksum mismatch')
+    entries.push(entry(`podania/dorucenie/${p.kind}-${p.period}-${p.id}.xml`, p.xml))
+    entries.push(entry(`podania/dorucenie/${p.kind}-${p.period}-${p.id}.sha256`, `${p.sha256}\n`))
+  }
 
   const addFiled = (filed: unknown, path: string) => {
     const files = (parsed(filed) as { files?: { return?: { xml?: unknown }; statements?: { xml?: unknown } } } | null)?.files

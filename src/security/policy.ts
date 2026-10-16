@@ -56,6 +56,8 @@ function workPage(path: string): string {
   const company = /^\/ucto\/klienti\/([^/]+)(?:\/(.*))?$/.exec(path)
   if (company) {
     const base = `/ucto/klienti/${company[1]}`, section = company[2] ?? ''
+    const filing = /^podania\/([^/]+)(?:\/|$)/.exec(section)
+    if (filing) return `${base}/podania/${filing[1]}`
     const books = /^kniha\/(obdobia|platby|interne|pociatocne)(?:\/|$)/.exec(section)
     if (books) return `${base}/kniha/${books[1]}`
     const page = /^(dph|mzdy|zavierka|aml)(?:\/|$)/.exec(section)
@@ -94,6 +96,7 @@ export function verifiedRecently(who: Who, at: number, seconds = SECURITY.teamSe
 }
 /** Authentication freshness, separate from the route's company/role authorization. */
 export function sensitivePath(path: string, method: string): boolean {
+  if (/^\/(?:app|ucto\/klienti\/[^/]+)\/podania\/[^/]+\/(?:stav|dokument\.xml|potvrdenka\/[^/]+)$/.test(path)) return true
   if (/^\/app\/export(?:\/potvrdit)?$/.test(path)) return true
   if (
     path.startsWith('/ucto/') &&
