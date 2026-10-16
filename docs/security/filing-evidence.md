@@ -43,6 +43,8 @@ Zoznam je stránkovaný, rovnako ako firemný register. Staršie verzie zostáva
   Opätovné posúdenie pôvodnej potvrdenky toho istého dokumentu zachováva všetky udalosti.
 - Zaevidované odoslanie, prijatie a preverovanie nemožno odstrániť jednoduchým zrušením zdrojového
   označenia. Opravy zachovajú pôvodný zdroj v histórii. Prijatie môže spochybniť a uzavrieť len správca.
+  Pri oprave iba kontrolného výkazu možno znovu otvoriť jeho neodoslaný draft bez zrušenia nezmeneného
+  prijatého DPH priznania; posudzujú sa iba verzie, ktoré sa naozaj nahradia. Aj vyradený draft zostáva v histórii.
 - Oprávnenie účtovníka aj pridelenie firmy sa znovu kontrolujú v databázovej transakcii. Súbežné zápisy
   používajú revíziu; vyhrá iba jeden. Pri stratenej odpovedi po úspešnom commite sa dôkaz nemaže.
 - Mutácie a citlivé sťahovanie vyžadujú čerstvé overenie prístupu. Klient má iba čítanie v rámci svojej

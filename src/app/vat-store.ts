@@ -171,11 +171,14 @@ export function rowsOf(json: unknown): Rows {
 
 /** The columns of a filing as stored, without the period and the company: what `prev` keeps of the one replaced. */
 const FILING_COLUMNS = ['filed_at', 'filed_on', 'filed_by', 'rows', 'kv_rows', 'pay_cents', 'refund_cents', 'due_on', 'kind', 'fast', 'carried', 'kv', 'found_on', 'delivery', 'prev'] as const
+const DELIVERY_IDS = [safeJson('v.delivery', '$.vat'), safeJson('v.delivery', '$.kv')]
+// Undoing a KV-only draft leaves its accepted VAT return unchanged. Check only versions actually removed.
+const REOPENED_FORMS = DELIVERY_IDS.map((id, i) => `(v.prev IS NULL OR ${id} IS NOT ${safeJson(safeJson('v.prev', '$.delivery'), i === 0 ? '$.vat' : '$.kv')})${i === 1 ? ' AND v.kv IS NOT NULL' : ''}`)
 
 /** The columns a filing is read with (vat_returns aliased v, the person who filed it u). */
 export const FILED_SELECT = `v.company_id, v.period, ${FILING_COLUMNS.map((c) => `v.${c}`).join(', ')}, u.name AS filed_by_name,
   ${deliveryStatusSql('v.company_id', [safeJson('v.delivery', '$.vat'), safeJson('v.delivery', '$.kv')], ['1', 'v.kv IS NOT NULL'])} AS delivery_status,
-  ${revisableSql('v.company_id', [safeJson('v.delivery', '$.vat'), safeJson('v.delivery', '$.kv')], ['1', 'v.kv IS NOT NULL'])} AS can_reprepare`
+  ${revisableSql('v.company_id', DELIVERY_IDS, REOPENED_FORMS)} AS can_reprepare`
 
 /** A filing as stored. */
 export function filedReturnOf(r: Record<string, unknown>): FiledReturn {

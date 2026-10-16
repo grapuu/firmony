@@ -74,6 +74,16 @@ export async function checkFilings({ db, files, acc, admin, lucia, nowS, day, si
   res = await send(acc, kv, fields('accepted', 0, 'TEST-KV-ACCEPT'), proof('kv', 'TEST-KV-ACCEPT'))
   check('an existing receipt can finish preparation in one confirmed step', res.status === 303 && await state(kv) === 'accepted' && (await row()).deliveryStatus === 'accepted')
   check('both applicable forms must be accepted before the deadline becomes done', (await dues()).some((d) => d.kind === 'vat' && d.period === period && d.state === 'done'))
+  const priorVat = await db.prepare('SELECT * FROM vat_returns WHERE company_id = ? AND period = ?').bind(company, period).first()
+  const controlDraft = await filingFile('TEST-ONLY-KV-correction.xml', '<TEST_ONLY form="kv" correction="1"/>')
+  await db.batch([
+    db.prepare('UPDATE vat_returns SET delivery = ?, prev = ? WHERE company_id = ? AND period = ?')
+      .bind(JSON.stringify({ vat: vat.attemptId, kv: controlDraft.attemptId }), JSON.stringify(priorVat), company, period),
+    prepareFiling(db, company, 'kv', period, controlDraft, user.id),
+  ])
+  check('an accepted unchanged VAT return does not hide safe reopening of an unsent control-only draft', (await row()).canReprepare && await currentPackage(db, await pkg(controlDraft)) && await state(vat) === 'accepted')
+  res = await acc.post(`/ucto/klienti/${company}/dph/zrusit`, { obdobie: period })
+  check('reopening only the unsent correction restores accepted originals and retains draft evidence', res.status === 303 && (await row()).deliveryStatus === 'accepted' && (await row()).delivery.kv === kv.attemptId && !await currentPackage(db, await pkg(controlDraft)) && Boolean(await pkg(controlDraft)))
   const historyBefore = (await eventsOf(db, company, vat.attemptId)).length
   res = await send(acc, vat, fields('review', 2, 'TEST-REVIEW', { reason: 'TEST-ONLY suspicious receipt review' }))
   check('an ordinary accountant cannot reopen an accepted confirmation', res.status === 409 && await state(vat) === 'accepted')
