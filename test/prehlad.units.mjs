@@ -22,7 +22,7 @@ export async function checkPrehlad() {
   check('the user explicitly chooses ordinary versus corrective filing and representation',Boolean(error({kind:''})) && Boolean(error({representation:''})) && error()===null)
   check('a different company, missing completeness review or absent review reference is refused',Boolean(error({dic:'2126333556'})) && Boolean(error({name:'Different company'})) && Boolean(error({checked:false})) && Boolean(error({reference:''})))
   check('a lawyer-reviewed power is not inferred from a selected representative',Boolean(error({representation:'firmony'})) && error({representation:'firmony'},true)===null)
-  check('unstructured addresses and forbidden XML controls cannot become a form',Boolean(error({postal:'040 01'})) && Boolean(error({street:'X\u0001Y'})) && Boolean(error({street:'x'.repeat(31)})))
+  check('unstructured addresses and forbidden XML characters cannot become a form',Boolean(error({postal:'040 01'})) && ['X\u0001Y','X\uFFFEY','X\uFFFFY','X\uD800Y','x'.repeat(31)].every((street)=>Boolean(error({street}))))
   check('correction discovery date is required, bounded and kept off ordinary reports',Boolean(error({kind:'O'})) && Boolean(error({kind:'O',foundOn:'2026-10-17'})) && Boolean(error({foundOn:'2026-10-10'})) && error({kind:'O',foundOn:'2026-10-15',reason:'TEST full correction of initial report'})===null)
   check('superseding an earlier exact file needs an explicit reason',Boolean(error({},false,true)) && error({reason:'TEST expert replacement before sending'},false,true)===null)
   const corrected=p.prehladXml(period,totals,{...input,kind:'O',foundOn:'2026-10-15',representation:'firmony'})
