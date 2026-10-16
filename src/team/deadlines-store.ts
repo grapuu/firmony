@@ -1,4 +1,4 @@
-import { closureCurrentSql, payrollStatusSql, reportCurrentSql, targetActiveSql } from '../payroll-reporting/sql'
+import { closureCurrentSql, latestPayoutSql, currentPayrollStatusSql as payrollStatusSql, currentReportSql as reportCurrentSql, currentTargetActiveSql as targetActiveSql } from '../payroll-reporting/sql'
 import { type PayrollReportFact } from '../payroll-reporting/model'
 import { deliveryStatusSql, safeJson, type DeliveryStatus } from '../filings/model'
 // What the team's screen of deadlines reads (src/team/deadlines.ts has the rules). Every company the user sees, in a
@@ -87,7 +87,7 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
       .bind(...binds),
     db.prepare(`SELECT r.company_id, r.period, r.payday, pc.id AS evidence_id,
       (SELECT COALESCE(SUM(json_extract(value, '$.gross')), 0) FROM json_each(CASE WHEN json_valid(r.lines) THEN r.lines ELSE '[]' END)) > 0 AS needs_payout,
-      EXISTS (SELECT 1 FROM payroll_payouts cp WHERE cp.closure_id = pc.id) AS has_payout
+      EXISTS (SELECT 1 FROM payroll_payouts cp WHERE cp.closure_id = pc.id AND cp.report_period IS NOT NULL AND (${latestPayoutSql('cp')})) AS has_payout
       FROM payroll_runs r JOIN companies c ON c.id = r.company_id LEFT JOIN payroll_closures pc ON pc.id = r.evidence_id AND pc.company_id = r.company_id AND pc.period = r.period AND (${closureCurrentSql('pc')})
       WHERE ${sql} AND r.closed_at IS NOT NULL`).bind(...binds),
     db.prepare(`SELECT t.id, t.company_id, t.kind, t.period, t.due_on, ${payrollStatusSql('t', 'p')} AS delivery_status,

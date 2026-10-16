@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { checkPrehlad } from './prehlad.units.mjs'
 import {
   aml,
   appCopy,
@@ -3739,12 +3740,12 @@ async function zipped(entries, note) {
 {
   check('report kinds reject inherited object names', reports.isReportKind('sp') && !reports.isReportKind('constructor') && !reports.isReportKind('__proto__') && !payrollStore.isInsurer('constructor'))
   check('payroll periods reject quarters and impossible months', reports.isMonth('2026-09') && ['2026-9','2026-00','2026-13','2026-Q3'].every((p) => !reports.isMonth(p)))
-  check('tax reporting follows the actual paid month across New Year', reports.taxReportDue('2026-12') === '2027-02-01' && reports.taxReportDue('2026-10') === '2026-11-30')
+  check('the FS deadline follows the independently reviewed reporting period across New Year', reports.taxReportDue('2026-12') === '2027-02-01' && reports.taxReportDue('2026-10') === '2026-11-30')
   check('insurer operational dates do not borrow tax weekend extensions', reports.reportDue('sp','2026-10-10') === '2026-10-10' && reports.reportDue('health25','2026-10-10') === '2026-10-13')
   const line = (insurer, gross = 0) => ({ insurer, gross, slip: {} })
   check('every represented insurer needs evidence even with zero contribution', reports.requiredInsurers([line('25'),line('24',100),line('25')]).join() === '24,25')
   check('incomplete and unknown payroll snapshots fail closed', [[],null,[line('constructor')],[line('25',-1)],[{insurer:'25',gross:100}]].every((v) => reports.requiredInsurers(v) === null))
-  const input = { revision:0, paidOn:'2026-10-12', reference:'TEST bank statement 123', reason:'', checked:true }
+  const input = { revision:0, paidOn:'2026-10-12', reportPeriod:'2026-09', reference:'TEST bank statement 123', reason:'', checked:true }
   const valid = (v = {}, current = 0, admin = false) => reports.payoutError({...input,...v},current,admin,'2026-10-16','2026-09')
   check('an accountant can attest a past complete actual payout', valid() === null)
   check('payout rejects future, impossible and pre-source dates', ['2026-10-17','2026-02-30','2026-08-31',''].every((paidOn) => Boolean(valid({paidOn}))))
@@ -3766,4 +3767,5 @@ async function zipped(entries, note) {
   check('payroll source guards recognize nested errors without looping', reports.payrollBlocked({cause:new Error('FIRMONY_PAYROLL_REPORTED')}) && !reports.payrollBlocked(cyclic))
 }
 
+await checkPrehlad()
 done('units')

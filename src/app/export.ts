@@ -166,7 +166,8 @@ export async function exportYear(
     handoverData(db, company.id, year, at),
     db.prepare('SELECT id, kind, file_name, created_at, r2_key, deleted_at FROM company_files WHERE company_id = ? ORDER BY id').bind(company.id).all<{ id: string; kind: string; file_name: string; created_at: number; r2_key: string; deleted_at: number | null }>(),
     db.prepare(`SELECT e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ?1 AND substr(p.period, 1, 4) = ?2 AND e.file_key IS NOT NULL
-      UNION ALL SELECT 'payroll-' || e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM payroll_events e JOIN payroll_packages p ON p.id = e.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE e.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND e.file_key IS NOT NULL ORDER BY 1`)
+      UNION ALL SELECT 'payroll-' || e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM payroll_events e JOIN payroll_packages p ON p.id = e.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE e.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND e.file_key IS NOT NULL
+      UNION ALL SELECT 'review-' || r.id, r.at, r.file_key, r.file_bytes, r.file_sha256 FROM payroll_target_reviews r JOIN payroll_targets t ON t.id = r.target_id WHERE r.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND r.file_key IS NOT NULL ORDER BY 1`)
       .bind(company.id, year).all<{ id: string; at: number; file_key: string; file_bytes: number; file_sha256: string }>(),
     db.prepare(`SELECT p.id, p.file_key, p.file_bytes, p.sha256, p.created_at, t.kind, t.period FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ? AND substr(t.period, 1, 4) = ? ORDER BY p.id`)
       .bind(company.id, year).all<{ id: string; file_key: string; file_bytes: number; sha256: string; created_at: number; kind: string; period: string }>(),
@@ -370,7 +371,7 @@ export async function exportYear(
   const encoder = new TextEncoder()
   const text = (value: string) => async () => encoder.encode(value)
   const files = env.FILES
-  if (!files && (docs.some(({ file }) => file) || statementFiles.size > 0 || papers.results.length > 0 || receipts.results.length > 0)) throw new Error('Archive file storage is unavailable')
+  if (!files && (docs.some(({ file }) => file) || statementFiles.size > 0 || papers.results.length > 0 || receipts.results.length > 0 || payrollFiles.results.length > 0)) throw new Error('Archive file storage is unavailable')
   async function* entries(): AsyncGenerator<ZipEntry> {
     yield {
       name: 'citajte.txt',

@@ -102,7 +102,7 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
 
 /** A line under the deadline that says what to know about it. */
 function noteOf(d: Due): string | null {
-  if (d.payrollStage === 'payout') return 'Plánovaný výplatný termín nestačí. Obdobie prehľadu finančnej správy sa určí podľa overeného vyplatenia príjmov.'
+  if (d.payrollStage === 'payout') return 'Plánovaný výplatný termín nestačí. Účtovník musí osobitne overiť skutočnú výplatu aj vykazované obdobie prehľadu finančnej správy.'
   if (d.sourceChanged) return 'Pôvodné potvrdenie zostáva v histórii. Odborník musí posúdiť aktuálne podklady a správny druh opravy.'
   if (d.kind === 'payrollReports' && !d.manualRecorded) return 'Založte samostatnú evidenciu príjemcov tejto staršej uzávierky. Jedno označenie nepotvrdzuje všetky podania.'
   if (d.kind === 'payrollReports' && d.manualRecorded) return 'Odoslanie je označené ručne. Prijatie jednotlivými príjemcami zatiaľ nie je doložené.'

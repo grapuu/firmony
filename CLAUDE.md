@@ -1,9 +1,14 @@
-Current payroll-evidence follow-up (16 October 2026): [docs/security/payroll-evidence.md](docs/security/payroll-evidence.md).
-Schema **19** adds independent monthly SP/health-insurer reports and a paid-month FS prehľad. Exact external
-files, recipient receipts, revisioned actual-payout verification and corrections share the work queue, deadlines,
-owner-only payroll view, complete exports and evidence retention. Later paid income invalidates earlier FS coverage.
-Official payroll file generation, partial/irregular/noncash income, annual reports, live delivery and production
-verification remain outside this implementation. Receipt matching is a professional's recorded check, not API proof.
+Current payroll-generation follow-up (16 October 2026): [docs/security/payroll-generation.md](docs/security/payroll-generation.md).
+Schema **20** separates the verified actual payout date from the accountant-reviewed FS reporting period.
+The old universal cash-month assignment was too broad: existing schema-19 payouts migrate with an unreviewed
+period, preserving their facts and historical receipts. An administrator can document resolution of an empty
+incorrect target; newly assigned income reactivates it. No fake zero report or automatic cancellation is created.
+Regular Slovak s.r.o. wages without bonuses/special tax adjustments can generate an exact PREHLADv26 file,
+with a source-bound review, immutable provenance and ordinary independent receipt workflow. Official XSD
+validation is covered by tests; real portal acceptance remains unverified. SP/health reports still need external
+files. Payout corrections, owner-only evidence, exports and retention remain shared with schema 19 below.
+Partial/irregular/noncash income, annual reports, live delivery and production verification remain outside scope.
+Receipt matching is a professional's recorded check, not API proof. Prior paid-month assumptions are superseded.
 Existing legal/insurance/enterprise gates remain NO-GO. No automatic merge/deploy; continue PR #8 and preserve history.
 
 Current filing-evidence follow-up (16 October 2026): [docs/security/filing-evidence.md](docs/security/filing-evidence.md).

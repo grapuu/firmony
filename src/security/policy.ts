@@ -58,6 +58,7 @@ function workPage(path: string): string {
   if (company) {
     const base = `/ucto/klienti/${company[1]}`, section = company[2] ?? ''
     const payroll = /^mzdove-podania(?:\/([^/]+))?(?:\/verzie\/([^/]+))?/.exec(section)
+    if (payroll?.[1] && /^mzdove-podania\/[^/]+\/(?:pripravit|generovat)$/.test(section)) return `${base}/mzdove-podania/${payroll[1]}/pripravit`
     if (payroll) return `${base}/mzdove-podania${payroll[1] && !['vyplata', 'zalozit'].includes(payroll[1]) ? `/${payroll[1]}${payroll[2] ? `/verzie/${payroll[2]}` : ''}` : ''}`
     const filing = /^podania\/([^/]+)(?:\/|$)/.exec(section)
     if (filing) return `${base}/podania/${filing[1]}`
@@ -99,6 +100,7 @@ export function verifiedRecently(who: Who, at: number, seconds = SECURITY.teamSe
 }
 /** Authentication freshness, separate from the route's company/role authorization. */
 export function sensitivePath(path: string, method: string): boolean {
+  if (/^\/ucto\/klienti\/[^/]+\/mzdove-podania\/[^/]+\/pripravit$/.test(path)) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/mzdove-podania(?:\/|$)/.test(path) && (method !== 'GET' && method !== 'HEAD' || /\/(?:dokument|potvrdenka\/[^/]+)$/.test(path))) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/podania\/[^/]+\/(?:stav|dokument\.xml|potvrdenka\/[^/]+)$/.test(path)) return true
   if (/^\/app\/export(?:\/potvrdit)?$/.test(path)) return true

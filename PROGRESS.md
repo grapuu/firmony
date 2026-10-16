@@ -1,6 +1,38 @@
 # Firmony: progress of the continuation
 
+## Reviewed reporting periods and regular PREHLADv26 generation (Codex, 16 October 2026)
+
+Continues existing PR #8 on `codex/firmony-security-and-evidence`, remote parent
+`fed4389e160c496c247b66481e4a9c33329d5624`. Additive schema **20**; no merge or deployment.
+
+- Corrects the preceding entry's overbroad cash-month assumption. Official FS examples distinguish the
+  reporting period from the actual payout date. An accountant must confirm both separately; the system
+  no longer infers the reporting period from a bank transfer. Existing payout facts and original receipts
+  remain intact, while their old automatic period assignments require explicit review.
+- Generates PREHLADv26 for supported ordinary regular s.r.o. wages without bonuses or special tax
+  adjustments, using stored closed payslips and reviewed reporting periods. Previewed totals, explicit
+  R/O kind, representation, header and scope attestation bind to the source/data revision. Generation
+  saves exact XML and immutable provenance atomically; acceptance remains a separate checked receipt.
+- Unsupported or incomplete sources lead to professional external preparation. Missing/invalid data is
+  not replaced with zero. Representation by europio needs a checked power of attorney; a concurrent
+  source or permission change prevents generation from committing with the old review.
+- Administrators can document resolution of an empty incorrect period. Already recorded external
+  submissions need an original supporting document. This retires internal work only, preserves all
+  versions and does not cancel any statutory filing. Newly assigned income reactivates the task.
+- Portable exports, original checksums, incident protection, handover freeze, synthetic restoration and
+  controlled purge cover generation/review evidence. Owners receive read-only provenance and files;
+  no additional customer administration is introduced.
+- Local validation: **785 unit checks and 1,104 real workerd checks**, including the independent
+  schema-19-to-20 transition and official XSD validation. Supplementary local TypeScript 6 passed;
+  authoritative TS7, real Chrome and desktop/mobile validation on the published head are recorded in PR #8.
+- [Scope, exact format hashes and primary sources](docs/security/payroll-generation.md). Insurer reports,
+  special/partial/noncash wages, annual payroll, live filing, real portal acceptance, production recovery
+  and legal/insurance approval remain open. Tests use synthetic data; no perfect-service claim is made.
+
 ## Payroll evidence by recipient and actual paid month (Codex, 16 October 2026)
+
+Historical schema-19 entry: its universal paid-month FS mapping and absence of any official payroll
+generator are superseded by schema 20 above. Preserve this entry as change history, not a current rule.
 
 Continues existing PR #8 on `codex/firmony-security-and-evidence`, remote parent
 `1da802f8f81cecbfaf959ec4c7136a79b543cb29`. Schema **19**; no merge or deployment.

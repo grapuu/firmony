@@ -5,8 +5,8 @@ import { sniffHandover } from '../app/papers'
 import type { Company, User } from '../app/store'
 import type { FilingEvent } from '../filings/model'
 import { discardUncommitted, recordDelivery, type DeliveryChange } from '../filings/store'
-import { payoutError, reportDue, requiredInsurers, type Closure, type Payout, type ReportItem, type ReportKind, type ReportPackage, type ReportTarget } from './model'
-import { closureCurrentSql, coverageJsonSql, latestPayoutSql, payrollRunProtectedSql, reportCurrentSql, targetActiveSql } from './sql'
+import { payoutError, reportDue, requiredInsurers, type Closure, type Payout, type PayoutInput, type ReportItem, type ReportKind, type ReportPackage, type ReportTarget } from './model'
+import { closureCurrentSql, currentCoverageJsonSql as coverageJsonSql, latestPayoutSql, payrollRunProtectedSql, currentReportSql as reportCurrentSql, currentTargetActiveSql as targetActiveSql } from './sql'
 
 type Row = Record<string, unknown>
 type ClosedRow = { company_id: string; period: string; payday: string; lines: string; closed_at: number; evidence_id: string | null }
@@ -17,7 +17,7 @@ export async function payoutsOf(db: D1Database, company: string, closure: string
   return (await db.prepare('SELECT * FROM payroll_payouts WHERE company_id = ? AND closure_id = ? ORDER BY revision DESC').bind(company, closure).all<Payout>()).results
 }
 function targetStatement(db: D1Database, company: string, period: string, kind: ReportKind, payday: string, closure: string | null, by: string, payoutId?: string): D1PreparedStatement {
-  const guard = closure ? `EXISTS (SELECT 1 FROM payroll_closures pc WHERE pc.id = ?7 AND (${closureCurrentSql('pc')})) AND ?9 IS NULL` : 'EXISTS (SELECT 1 FROM payroll_payouts WHERE id = ?9 AND company_id = ?2 AND substr(paid_on, 1, 7) = ?4)'
+  const guard = closure ? `EXISTS (SELECT 1 FROM payroll_closures pc WHERE pc.id = ?7 AND (${closureCurrentSql('pc')})) AND ?9 IS NULL` : 'EXISTS (SELECT 1 FROM payroll_payouts WHERE id = ?9 AND company_id = ?2 AND report_period = ?4)'
   return db.prepare(`INSERT INTO payroll_targets (id, company_id, kind, period, due_on, closure_id, created_at, updated_by)
     SELECT ?1, ?2, ?3, ?4, ?5, ?7, ?6, ?8 WHERE ${guard}
     ON CONFLICT(company_id, kind, period) DO UPDATE SET closure_id = excluded.closure_id, package_id = NULL,
@@ -55,21 +55,21 @@ export async function initializeClosedRun(db: D1Database, company: Company, peri
     return result[0]?.meta.changes ? { ok: true } : { ok: false, error: 'Uzávierka sa zmenila. Obnovte stránku.' }
   } catch (e) { return payrollError(e) }
 }
-export async function recordPayout(db: D1Database, closure: Closure, user: User, value: { paidOn: string; reference: string; reason: string; checked: boolean; revision: number }, today: string): Promise<{ ok: boolean; error?: string }> {
+export async function recordPayout(db: D1Database, closure: Closure, user: User, value: PayoutInput, today: string): Promise<{ ok: boolean; error?: string }> {
   const lines = JSON.parse(closure.lines)
   if (!requiredInsurers(lines) || !lines.some((l: { gross: number }) => l.gross > 0)) return { ok: false, error: 'Táto uzávierka neobsahuje príjem na potvrdenie výplaty. Iné príjmy musí posúdiť účtovník osobitne.' }
   const history = await payoutsOf(db, closure.company_id, closure.id), previous = history[0]
   const error = payoutError(value, previous?.revision ?? 0, user.team === 'admin', today, closure.period)
   if (error) return { ok: false, error }
-  if (value.paidOn === previous?.paid_on && value.reference.trim() === previous.reference) return { ok: false, error: 'Tento dátum už evidujeme. Nový záznam nevznikol.' }
+  if (value.paidOn === previous?.paid_on && value.reference.trim() === previous.reference && value.reportPeriod === previous.report_period) return { ok: false, error: 'Tieto údaje už evidujeme. Nový záznam nevznikol.' }
   const id = crypto.randomUUID()
   try {
     const result = await db.batch([
-      db.prepare(`INSERT INTO payroll_payouts (id, closure_id, company_id, revision, paid_on, reference, reason, at, by_user)
-        SELECT ?1, pc.id, pc.company_id, ?4 + 1, ?5, ?6, ?7, ?8, ?9 FROM payroll_closures pc WHERE pc.id = ?2 AND pc.company_id = ?3
+      db.prepare(`INSERT INTO payroll_payouts (id, closure_id, company_id, revision, paid_on, reference, reason, at, by_user, report_period)
+        SELECT ?1, pc.id, pc.company_id, ?4 + 1, ?5, ?6, ?7, ?8, ?9, ?10 FROM payroll_closures pc WHERE pc.id = ?2 AND pc.company_id = ?3
           AND (${closureCurrentSql('pc')}) AND COALESCE((SELECT MAX(revision) FROM payroll_payouts WHERE closure_id = pc.id), 0) = ?4`)
-        .bind(id, closure.id, closure.company_id, value.revision, value.paidOn, value.reference.trim(), value.reason.trim(), now(), user.id),
-      targetStatement(db, closure.company_id, value.paidOn.slice(0, 7), 'tax', value.paidOn, null, user.id, id),
+        .bind(id, closure.id, closure.company_id, value.revision, value.paidOn, value.reference.trim(), value.reason.trim(), now(), user.id, value.reportPeriod),
+      targetStatement(db, closure.company_id, value.reportPeriod, 'tax', `${value.reportPeriod}-01`, null, user.id, id),
     ])
     return result[0]?.meta.changes ? { ok: true } : { ok: false, error: 'Výplata sa medzitým zmenila. Obnovte stránku.' }
   } catch (e) { return payrollError(e) }
@@ -81,7 +81,7 @@ export async function reportItems(db: D1Database, company: string, period = '', 
   const result = await db.prepare(`SELECT t.*, ${PACKAGE_SELECT}, (${targetActiveSql('t')}) AS active, (${reportCurrentSql('t', 'p')}) AS source_current
     FROM payroll_targets t LEFT JOIN payroll_packages p ON p.id = t.package_id AND p.company_id = t.company_id
     WHERE t.company_id = ?1 AND (?2 = '' OR t.period = ?2 OR t.closure_id IN (SELECT id FROM payroll_closures WHERE company_id = ?1 AND period = ?2)
-      OR (t.kind = 'tax' AND EXISTS (SELECT 1 FROM payroll_payouts cp JOIN payroll_closures cc ON cc.id = cp.closure_id WHERE cc.company_id = ?1 AND cc.period = ?2 AND substr(cp.paid_on, 1, 7) = t.period AND (${latestPayoutSql('cp')}))))
+      OR (t.kind = 'tax' AND EXISTS (SELECT 1 FROM payroll_payouts cp JOIN payroll_closures cc ON cc.id = cp.closure_id WHERE cc.company_id = ?1 AND cc.period = ?2 AND (cp.report_period = t.period OR cp.report_period IS NULL AND substr(cp.paid_on, 1, 7) = t.period) AND (${latestPayoutSql('cp')}))))
     ORDER BY t.period DESC, t.kind, t.id LIMIT 51 OFFSET ?3`).bind(company, period, (Math.min(10000, Math.max(1, Math.trunc(page))) - 1) * 50).all<Row>()
   return result.results.map(itemFrom)
 }
@@ -113,7 +113,11 @@ export async function sourceOf(db: D1Database, target: ReportTarget): Promise<{ 
   if (!row?.active || row.source === null) return null
   return { json: row.source, hash: await sha256Hex(row.source) }
 }
-export interface ReportUpload { revision: number; variant: string; reason: string; checked: boolean; file: { name: string; bytes: Uint8Array } }
+export interface ReportUpload {
+  revision: number; variant: string; reason: string; checked: boolean; file: { name: string; bytes: Uint8Array }
+  expectedDataRevision?: number; expectedSourceHash?: string
+  generation?: { format: 'PREHLADv26'; details: string; sha256: string }
+}
 export async function saveReport(db: D1Database, files: R2Bucket | undefined, target: ReportTarget, user: User, value: ReportUpload): Promise<{ ok: boolean; error?: string; id?: string }> {
   if (!files) return { ok: false, error: 'Úložisko nie je dostupné. Výkaz sme neuložili.' }
   if (!value.checked || value.variant.trim().length < 2 || value.variant.length > 120) return { ok: false, error: 'Uveďte druh formulára a potvrďte odbornú kontrolu súboru, príjemcu a obdobia.' }
@@ -125,8 +129,9 @@ export async function saveReport(db: D1Database, files: R2Bucket | undefined, ta
   const format = sniffHandover(value.file.bytes, value.file.name)
   if (!format || !['xml', 'txt', 'pdf', 'asice', 'asics'].includes(format.ext)) return { ok: false, error: 'Nahrajte pôvodný súbor výkazu v XML, textovej dávke, PDF alebo ASiC.' }
   const revision = await dataRevision(db, target.company_id), source = await sourceOf(db, target)
+  if (value.expectedDataRevision !== undefined && value.expectedDataRevision !== revision || value.expectedSourceHash !== undefined && value.expectedSourceHash !== source?.hash) return { ok: false, error: 'Podklady sa od odbornej kontroly zmenili. Obnovte prehľad a skontrolujte nové úhrny.' }
   if (!source) return { ok: false, error: 'Tento výkaz nemá aktuálnu uzavretú mzdovú verziu. Najprv skontrolujte uzávierku.' }
-  if (target.kind === 'tax' && source.json === '[]' && (user.team !== 'admin' || value.reason.trim().length < 12)) return { ok: false, error: 'V tomto mesiaci už neevidujeme výplaty. Opravu predchádzajúceho prehľadu musí posúdiť správca s uvedením dôvodu.' }
+  if (target.kind === 'tax' && source.json === '[]') return { ok: false, error: 'Pre toto obdobie nemáme odborne priradené vyplatené príjmy. Najprv preverte vykazované obdobie; nevytvárajte náhradný nulový výkaz.' }
   const id = crypto.randomUUID(), key = `companies/${target.company_id}/filings/${id}.${format.ext}`, hash = await fileHash(value.file.bytes), at = now()
   await files.put(key, value.file.bytes, { httpMetadata: { contentType: format.type } })
   try {
@@ -135,11 +140,12 @@ export async function saveReport(db: D1Database, files: R2Bucket | undefined, ta
         SELECT ?1, id, company_id, package_id, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?14, ?15 FROM payroll_targets
         WHERE id = ?2 AND company_id = ?3 AND revision = ?4 AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?3), 0) = ?16`)
         .bind(id, target.id, target.company_id, value.revision, value.reason.trim(), value.variant.trim(), value.file.name.slice(0, 160), key, format.type, value.file.bytes.length, hash, source.json, source.hash, at, user.id, revision),
+      ...(value.generation ? [db.prepare('INSERT INTO payroll_generations (package_id, company_id, format, details, sha256, at, by_user) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, target.company_id, value.generation.format, value.generation.details, value.generation.sha256, at, user.id)] : []),
       db.prepare(`UPDATE payroll_targets SET package_id = ?1, revision = revision + 1, updated_by = ?2 WHERE id = ?3 AND company_id = ?4 AND revision = ?5
         AND EXISTS (SELECT 1 FROM payroll_packages WHERE id = ?1 AND target_id = ?3 AND previous_id IS payroll_targets.package_id)`)
         .bind(id, user.id, target.id, target.company_id, value.revision),
     ])
-    if (!result[0]?.meta.changes || !result[1]?.meta.changes) { await discardUncommitted(db, files, key, 'payroll_packages'); return { ok: false, error: 'Podklady sa medzitým zmenili. Obnovte stránku; pôvodnú akciu sme nezopakovali.' } }
+    if (!result[0]?.meta.changes || !result.at(-1)?.meta.changes) { await discardUncommitted(db, files, key, 'payroll_packages'); return { ok: false, error: 'Podklady sa medzitým zmenili. Obnovte stránku; pôvodnú akciu sme nezopakovali.' } }
     return { ok: true, id }
   } catch (e) { await discardUncommitted(db, files, key, 'payroll_packages'); return payrollError(e) }
 }

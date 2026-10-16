@@ -13,13 +13,15 @@ import { checkRestore } from './restore.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
 import { checkFilings } from './filings.runtime.mjs'
 import { checkPayrollReports } from './payroll-reporting.runtime.mjs'
+import { checkPrehlad } from './prehlad.runtime.mjs'
+import { checkPayrollMigration } from './payroll-migration.runtime.mjs'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
-import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage, payrollReporting } from '../.wrangler/dist/stores.js'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
@@ -224,7 +226,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 19)
+check('health says the schema', (await res.json()).schema === 20)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -3758,6 +3760,8 @@ check(
     db.prepare("DELETE FROM accounts WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM employees WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_runs WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_target_reviews WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_events WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_packages WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_targets WHERE company_id = 'co-w'"),
@@ -4257,6 +4261,8 @@ check('the client row no longer asks for its handover once it was made', Boolean
 
 await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPayrollMigration({ db, nowS, day })
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
@@ -4273,7 +4279,13 @@ await db.prepare("UPDATE payroll_runs SET payday = '2026-02-10', lines = ?, clos
 const handoverPayrollCompany = companyOf(await db.prepare("SELECT * FROM companies WHERE id = 'co-a'").first())
 const handoverPayrollUser = await db.prepare('SELECT * FROM users WHERE id = ?').bind(lucia.id).first()
 await payrollReporting.initializeClosedRun(db, handoverPayrollCompany, '2026-01', handoverPayrollUser)
-await payrollReporting.recordPayout(db, await payrollReporting.closureOf(db, 'co-a', '2026-01'), handoverPayrollUser, { paidOn: day(0), reference: 'TEST ONLY final settled payroll', reason: '', checked: true, revision: 0 }, day(0))
+await payrollReporting.recordPayout(db, await payrollReporting.closureOf(db, 'co-a', '2026-01'), handoverPayrollUser, { paidOn: '2026-02-10', reportPeriod: '2026-02', reference: 'TEST ONLY final settled payroll', reason: '', checked: true, revision: 0 }, day(0))
+const handoverPayrollAdmin = await db.prepare("SELECT * FROM users WHERE team = 'admin' ORDER BY id LIMIT 1").first()
+await payrollReporting.recordPayout(db, await payrollReporting.closureOf(db, 'co-a', '2026-01'), handoverPayrollAdmin, { paidOn: '2026-02-10', reportPeriod: '2026-01', reference: 'TEST ONLY final settled payroll', reason: 'TEST expert corrected synthetic reporting period', checked: true, revision: 1 }, day(0))
+const extraHandoverTarget = (await payrollReporting.reportItems(db, 'co-a')).find((r) => r.kind === 'tax' && r.period === '2026-02')
+const extraHandoverScope = await payrollGeneration.reviewScope(db, 'co-a', extraHandoverTarget.id)
+const extraHandoverReview = await payrollGeneration.retireTarget(db, files, 'co-a', extraHandoverTarget.id, handoverPayrollAdmin, { revision: extraHandoverScope.revision, reason: 'TEST no actual report was sent and all income belongs to the independently reviewed January period', reference: 'TEST final expert scope resolution', checked: true })
+check('a synthetic unsent incorrect period has retained expert resolution before final handover', extraHandoverReview.ok)
 const originalXml = '<?xml version="1.0" encoding="UTF-8"?><fixture>original archived filing</fixture>'
 const originalSnapshot = JSON.stringify({ rows: { r1050: 0 }, balance: {}, profit: {}, advancesNext: { kind: 'none', each: 0 }, files: { version: 1, declaredOn: day(0), return: { name: 'DPPO_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') }, statements: { name: 'UZ_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') } } })
 await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-a' AND year = 2025").bind(originalSnapshot).run()
@@ -4287,8 +4299,9 @@ for (const pkg of pendingHandover) if (await currentPackage(db, pkg)) {
   res = await acc.upload(`/ucto/klienti/co-a/podania/${pkg.id}/stav`, { name: 'TEST-ONLY-final-receipt.xml', type: 'application/xml', bytes: new TextEncoder().encode(`<TEST_ONLY form="${pkg.kind}" reference="TEST-FINAL-${pkg.id}"/>`) }, { to: 'accepted', revision: String(pkg.revision), externalOn: day(0), reference: `TEST-FINAL-${pkg.id}`, channel: 'TEST-ONLY', checked: '1', reason: 'TEST-ONLY final handover proof' }, 'receipt')
   check(`current ${pkg.kind} delivery is completed before its final acknowledged archive`, res.status === 303)
 }
-for (const target of await payrollReporting.reportItems(db, 'co-a')) {
-  const saved = await payrollReporting.saveReport(db, files, target, handoverPayrollUser, { revision: target.revision, variant: 'TEST ONLY final report', checked: true, reason: '', file: { name: 'TEST_ONLY-final-payroll.xml', bytes: new TextEncoder().encode(`<TEST_ONLY recipient="${target.kind}"/>`) } })
+for (const target of (await payrollReporting.reportItems(db, 'co-a')).filter((r) => r.active)) {
+  const finalGenerationPlan = target.kind === 'tax' ? await payrollGeneration.generationPlan(db, 'co-a', target.id, day(0)) : null
+  const saved = finalGenerationPlan ? await payrollGeneration.generatePrehlad(db, files, finalGenerationPlan, handoverPayrollUser, finalGenerationPlan.token, { dic: handoverPayrollCompany.dic, name: handoverPayrollCompany.name, street: 'TEST street', number: '12', postal: '04001', city: 'Košice', preparedBy: 'TEST final handover reviewer', phone: '', email: '', declaredOn: day(0), kind: 'R', foundOn: '', representation: 'company', reason: '', reference: 'TEST final complete monthly scope review', checked: true }, day(0)) : await payrollReporting.saveReport(db, files, target, handoverPayrollUser, { revision: target.revision, variant: 'TEST ONLY final report', checked: true, reason: '', file: { name: 'TEST_ONLY-final-payroll.xml', bytes: new TextEncoder().encode(`<TEST_ONLY recipient="${target.kind}"/>`) } })
   const result = saved.ok && await payrollReporting.changeReportDelivery(db, files, await payrollReporting.reportPackage(db, 'co-a', saved.id), handoverPayrollUser, { to: 'accepted', revision: 0, externalOn: day(0), reference: `TEST-PAYROLL-FINAL-${target.kind}`, channel: 'TEST ONLY', checked: true, reason: '', receipt: { name: 'TEST_ONLY-final-receipt.xml', bytes: new TextEncoder().encode(`<TEST_ONLY receipt="${target.kind}"/>`) } }, day(0))
   check(`current payroll ${target.kind} evidence completes before final acknowledged handover`, result?.ok)
 }
@@ -4353,6 +4366,7 @@ const leftover = await db
        + (SELECT COUNT(*) FROM closing_history WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_history WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM filing_history WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM filing_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filing_events WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_target_reviews WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_closures WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_payouts WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_targets WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_events WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,

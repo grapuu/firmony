@@ -1,9 +1,11 @@
 # Mzdové výkazy a dôkazy doručenia
 
-Stav: 16. 10. 2026, schéma **19**, existujúce PR #8. Podporovaný rozsah je pravidelná mesačná
+Stav: 16. 10. 2026, schémy **19–20**, existujúce PR #8. Podporovaný rozsah je pravidelná mesačná
 mzda v existujúcom mzdovom výpočte. Ide o evidenciu práce účtovníka a presných externých súborov.
-Oficiálne výkazy sa zatiaľ negenerujú ani automaticky neodosielajú; model zamestnanca nemá všetky
-identifikátory potrebné na dôveryhodné generovanie formulárov poisťovní.
+[Generovanie PREHLADv26](payroll-generation.md) pokrýva osobitne vymedzený rozsah bežných miezd.
+Výkazy poisťovní sa zatiaľ negenerujú; model zamestnanca nemá všetky potrebné identifikátory.
+Žiadny výkaz sa automaticky neodosiela. Pôvodné automatické priradenie FS podľa mesiaca výplaty
+bolo príliš široké a schéma 20 ho nahrádza odborným potvrdením obdobia.
 
 ## Jeden pracovný tok
 
@@ -15,19 +17,22 @@ tejto evidencie; skupinové historické označenie zostáva nedoložené.
 Plánovaný výplatný deň nie je dôkaz výplaty. Účtovník potvrdí skutočný dátum vyplatenia všetkých
 príjmov danej uzávierky a uvedie referenciu overenia, napríklad transakcie a bankový výpis. Platobný
 príkaz nestačí. Toto potvrdenie vyžaduje výslovné overenie jedného dátumu pre celú uzávierku.
-Vznikne jeden prehľad FS za mesiac skutočného vyplatenia. Viac uzávierok vyplatených v rovnakom mesiaci
-patrí do jednej povinnosti. Zdrojový mesiac a mesiac prehľadu sa môžu líšiť.
+Osobitne potvrdí vykazované obdobie FS podľa povahy príjmu a príslušných pravidiel. Nevypĺňa sa
+automaticky z dátumu úhrady. Viac uzávierok výslovne priradených k tomu istému obdobiu tvorí jednu
+povinnosť. Zdrojový mesiac, vykazované obdobie a mesiac úhrady sú odlišné údaje. Staršie automatické
+priradenia vyžadujú preverenie; pôvodné podania zostanú zachované ako historické dôkazy.
 
 | Príjemca | Obdobie | Zobrazené vybavenie do |
 |---|---|---|
 | Sociálna poisťovňa | Uzavretý mzdový mesiac | Uložený výplatný termín |
 | Každá dotknutá zdravotná poisťovňa | Uzavretý mzdový mesiac | Výplatný termín + 3 kalendárne dni |
-| Finančná správa | Overený mesiac vyplatenia | Koniec nasledujúceho mesiaca, s daňovým pracovným kalendárom |
+| Finančná správa | Odborne potvrdené vykazované obdobie | Koniec nasledujúceho mesiaca, s daňovým pracovným kalendárom |
 
 Pri poisťovniach ide o konzervatívne prevádzkové dátumy. Aplikácia na ne neprenáša víkendové predĺženia
 z daňového procesu. Pri neštandardnom výplatnom režime a zákonných výnimkách musí lehotu posúdiť odborník.
 
-Účtovník v **Mzdových podaniach** uloží presný externe pripravený výkaz a uvedie druh/verziu formulára.
+Účtovník v **Mzdových podaniach** uloží presný externe pripravený výkaz a uvedie druh/verziu formulára,
+alebo pre podporované bežné mzdy pripraví PREHLADv26 z nemenných uzávierok.
 Potvrdí odbornú kontrolu príjemcu, firmy, obdobia a úplnosti; pri FS aj ďalších príjmov mimo aplikácie.
 Príprava, evidované odoslanie, doložené prijatie, odmietnutie a preverenie sú samostatné stavy.
 Prijatie a odmietnutie potrebujú originál skontrolovanej potvrdenky. Prijatie nepotvrdzuje vecnú správnosť.
@@ -40,9 +45,13 @@ nemajú prístup k mzdovým originálom ani týmto stránkam; kompletný export 
 
 ## Opravy, oprávnenia a uchovanie
 
-- Opravu potvrdenej výplaty robí správca s dôvodom. Vzniká nový záznam s osobou a časom; pôvodný zostáva.
+- Opravu potvrdenej výplaty alebo vykazovaného obdobia robí správca s dôvodom. Vzniká nový záznam
+  s osobou a časom; pôvodný zostáva.
   Zmena zdrojov zneplatní aktuálne dokončenie FS prehľadu. Starý prijatý súbor a potvrdenka zostávajú
   dostupné ako historický dôkaz; novú zákonnú formu opravy vždy vyberie odborník.
+- Prázdne nesprávne priradené obdobie FS môže správca vyradiť iba po zdokumentovanom odbornom
+  vyriešení; pri evidovanom odoslaní potrebuje aj originál podkladu. Tým sa neruší podanie na úrade.
+  Nový priradený príjem povinnosť opäť aktivuje a stará potvrdenka ho nepokrýva.
 - Ďalšia verzia už odoslaného, prijatého alebo preverovaného výkazu vyžaduje správcu a dôvod.
   Neodoslaná alebo odmietnutá verzia sa môže odborne nahradiť, pričom pôvodná história zostáva zachovaná.
   Po evidovanom odoslaní, prijatí, preverení alebo skutočnej výplate nemožno jednoducho znovu otvoriť mzdy.
@@ -52,7 +61,8 @@ nemajú prístup k mzdovým originálom ani týmto stránkam; kompletný export 
 - Rovnaké bajty potvrdenky nemožno použiť pre iný dokument. Referencie sa porovnávajú v rámci príjemcu;
   FS zdieľa tento priestor so svojimi daňovými formulármi. Nezávislé poisťovne môžu mať rovnaké číslo,
   ale každá potrebuje vlastný zodpovedajúci originál. Účtovník musí overiť význam referencie na portáli.
-- Export obsahuje zdroje uzávierok, overené výplaty, povinnosti, všetky verzie, históriu a originály.
+- Export obsahuje zdroje uzávierok, overené výplaty a obdobia, povinnosti, všetky verzie, históriu,
+  pôvod generovaných súborov, odborné vyriešenia prázdnych období a originály.
   Závislosti cez rok zostávajú v spoločných JSON záznamoch; binárne výkazy a potvrdenky sú podľa roka podania.
   Každý originál má kontrolný súčet. Chýbajúci alebo poškodený súbor znemožní úspešný úplný export.
 - Nedokončené aktuálne podanie alebo neoverená výplata kladného príjmu blokujú zmrazenie na odovzdanie.
@@ -70,7 +80,8 @@ nesmú sa označiť za podporenú automatizáciu.
 
 Pred pilotom treba otestovať reálne exporty a výsledné potvrdenky každého príjemcu, nadväzujúce chybové
 protokoly, obsahové opravy už doručených miezd a úplnosť údajov pri prevzatí firmy. Súčasné testy používajú
-iba **TEST_ONLY** súbory. Obnova D1/R2 je syntetická; produkčná obnova, živé integrácie a právne/poistné
+iba syntetické údaje a potvrdenky **TEST_ONLY**; generované XML sa navyše kontroluje oficiálnou XSD.
+Obnova D1/R2 je syntetická; produkčná obnova, živé integrácie a právne/poistné
 schválenie zostávajú otvorené. Tento modul nemení schvaľovanie zmlúv ani rozsah služby pre veľké firmy.
 
 ## Primárne podklady

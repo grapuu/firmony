@@ -60,7 +60,7 @@ export function validateChange(pkg: Pick<FilingPackage, 'status' | 'revision'>, 
   if (input.receipt && (input.receipt.bytes.length === 0 || input.receipt.bytes.length > 10 * 1024 * 1024)) return 'Potvrdenka môže mať najviac 10 MB a nesmie byť prázdna.'
   return null
 }
-export async function discardUncommitted(db: D1Database, files: R2Bucket, key: string, table: 'filing_events' | 'payroll_events' | 'payroll_packages' = 'filing_events') {
+export async function discardUncommitted(db: D1Database, files: R2Bucket, key: string, table: 'filing_events' | 'payroll_events' | 'payroll_packages' | 'payroll_target_reviews' = 'filing_events') {
   // An interrupted response may hide a successful commit. Keep evidence whenever its database outcome is uncertain.
   const used = await db.prepare(`SELECT 1 FROM ${table} WHERE file_key = ?`).bind(key).first().catch(() => true)
   if (!used) await files.delete(key)

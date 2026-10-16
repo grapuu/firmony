@@ -11,6 +11,10 @@ import { teamCompany, teamCounts } from '../team/store'
 import { Shell } from '../views/inside'
 import { TeamShell } from '../views/team'
 import { PayrollReportsPage, PayrollReportPage } from '../views/payroll-reports'
+import { PrehladPreparationPage } from '../views/prehlad-preparation'
+import { generatePrehlad, generationOf, generationPlan, retireTarget, reviewScope, targetReviews } from './generation-store'
+import { addressParts } from '../app/vat-xml'
+import type { PrehladInput } from './prehlad'
 import { isDeliveryState } from '../filings/model'
 import { isMonth } from './model'
 import { changeReportDelivery, closureOf, initializeClosedRun, recordPayout, reportEvents, reportHistory, reportItem, reportItems, reportPackage, runEvidence, saveReport, targetOf } from './store'
@@ -42,7 +46,7 @@ async function detail(c: Ctx, error?: string, values?: Record<string, string>, s
   const pkgId = c.req.param('package') ?? item.package_id
   const selected = pkgId ? await reportPackage(db, company.id, pkgId) : null
   if (pkgId && (!selected || selected.target_id !== item.id)) return c.notFound()
-  return frame(c, <PayrollReportPage company={company} target={item} item={item} selected={selected} packages={await reportHistory(db, company.id, item.id)} events={selected ? await reportEvents(db, company.id, selected.id) : []} base={base(c)} user={staff(c) ? c.get('who').user : undefined} frozen={await frozen(c)} today={today()} error={error} values={values} />, status)
+  return frame(c, <PayrollReportPage company={company} target={item} item={item} selected={selected} packages={await reportHistory(db, company.id, item.id)} events={selected ? await reportEvents(db, company.id, selected.id) : []} generation={selected ? await generationOf(db, company.id, selected.id) : null} reviews={await targetReviews(db, company.id, item.id)} scope={staff(c) && c.get('who').user.team === 'admin' ? await reviewScope(db, company.id, item.id) : null} base={base(c)} user={staff(c) ? c.get('who').user : undefined} frozen={await frozen(c)} today={today()} error={error} values={values} />, status)
 }
 async function download(c: Ctx, receipt: boolean) {
   const co = c.get('payrollCompany'), db = c.env.DB, pkg = await reportPackage(db, co.id, c.req.param('package') ?? '')
@@ -73,6 +77,15 @@ for (const routes of [payrollReportRoutes, clientPayrollReportRoutes]) {
   routes.get('/:target/verzie/:package', (c) => detail(c))
   routes.get('/:target/verzie/:package/dokument', (c) => download(c, false))
   routes.get('/:target/verzie/:package/potvrdenka/:event', (c) => download(c, true))
+  routes.get('/:target/preverenia/:review/dokument', async (c) => {
+    const co = c.get('payrollCompany'), review = (await targetReviews(c.env.DB, co.id, c.req.param('target'))).find((r) => r.id === c.req.param('review'))
+    if (!review?.file_key?.startsWith(`companies/${co.id}/filings/`)) return c.notFound()
+    const object = await c.env.FILES?.get(review.file_key)
+    if (!object) return c.text('Pôvodný podklad nie je dostupný.', 409)
+    const bytes = new Uint8Array(await object.arrayBuffer())
+    if (bytes.length !== review.file_bytes || await fileHash(bytes) !== review.file_sha256) return c.text('Podklad sa nezhoduje s kontrolným odtlačkom.', 409)
+    return new Response(bytes, { headers: { 'Content-Type': review.file_type ?? 'application/octet-stream', 'Content-Disposition': `attachment; filename="preverenie-${review.id}.${review.file_key.split('.').pop()}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } })
+  })
 }
 const uploadLimit = bodyLimit({ maxSize: 10 * 1024 * 1024 + 128 * 1024, onError: (c) => detail(c as Ctx, 'Súbor môže mať najviac 10 MB.', undefined, 413) })
 const smallLimit = bodyLimit({ maxSize: 64 * 1024 })
@@ -89,9 +102,34 @@ payrollReportRoutes.post('/vyplata', smallLimit, async (c) => {
   const closure = await closureOf(c.env.DB, co.id, period)
   if (!closure || closure.id !== text(data.closure, 64)) return list(c, 'Mzdová uzávierka sa zmenila. Obnovte stránku.', { period }, 409)
   if (!await withinLimit(c.env.DB, 'payroll-payout', user.id, 60, 3600)) return list(c, 'Príliš veľa zmien. Skúste to neskôr.', { period }, 429)
-  const values = { period, paidOn: text(data.paidOn, 16), reference: text(data.reference, 241), reason: text(data.reason, 1201), checked: data.checked === '1' ? '1' : '' }
+  const values = { period, paidOn: text(data.paidOn, 16), reportPeriod: text(data.reportPeriod, 16), reference: text(data.reference, 241), reason: text(data.reason, 1201), checked: data.checked === '1' ? '1' : '' }
   const result = await recordPayout(c.env.DB, closure, user, { ...values, checked: values.checked === '1', revision: number(data.revision) }, today())
   return result.ok ? c.redirect(`${base(c)}?obdobie=${period}#vyplata-${period}`, 303) : list(c, result.error, values, 409)
+})
+async function preparation(c: Ctx, values?: Record<string, string>, error?: string, status: ContentfulStatusCode = 200) {
+  const plan = await generationPlan(c.env.DB, c.get('payrollCompany').id, c.req.param('target') ?? '', today())
+  if (!plan) return c.notFound()
+  const address = addressParts(plan.company.address), user = c.get('who').user
+  const defaults = { dic: plan.company.dic ?? '', name: plan.company.name, street: address.street, number: address.number, postal: address.postal, city: address.city, preparedBy: user.name, phone: '', email: user.email, declaredOn: today(), foundOn: '', kind: '', representation: '', reason: '', reference: '', checked: '' }
+  return frame(c, <PrehladPreparationPage plan={plan} base={base(c)} values={{ ...defaults, ...values }} error={error} />, status)
+}
+payrollReportRoutes.get('/:target/pripravit', (c) => preparation(c))
+payrollReportRoutes.post('/:target/generovat', smallLimit, async (c) => {
+  const body = await c.req.parseBody(), plan = await generationPlan(c.env.DB, c.get('payrollCompany').id, c.req.param('target'), today())
+  if (!plan) return c.notFound()
+  if (!await withinLimit(c.env.DB, 'payroll-generation', c.get('who').user.id, 60, 3600)) return preparation(c, undefined, 'Príliš veľa požiadaviek. Skúste to neskôr.', 429)
+  const values: Record<string, string> = {}
+  for (const key of ['dic','name','street','number','postal','city','preparedBy','phone','email','declaredOn','foundOn','kind','representation','reason','reference']) values[key] = text(body[key], 1201)
+  values.checked = body.checked === '1' ? '1' : ''
+  const result = await generatePrehlad(c.env.DB, c.env.FILES, plan, c.get('who').user, text(body.token, 64), { ...values, checked: values.checked === '1' } as unknown as PrehladInput, today())
+  return result.ok && 'id' in result ? c.redirect(`${base(c)}/${plan.target.id}/verzie/${result.id}`, 303) : preparation(c, { ...values, checked: '' }, result.error, 409)
+})
+payrollReportRoutes.post('/:target/preverit-rozsah', uploadLimit, async (c) => {
+  const body = await c.req.parseBody(), file = body.evidence instanceof File && body.evidence.size ? body.evidence : null
+  const values = { reviewReason: text(body.reason, 1201), reviewReference: text(body.reference, 241) }
+  if (!await withinLimit(c.env.DB, 'payroll-scope-review', c.get('who').user.id, 60, 3600)) return detail(c, 'Príliš veľa požiadaviek. Skúste to neskôr.', values, 429)
+  const result = await retireTarget(c.env.DB, c.env.FILES, c.get('payrollCompany').id, c.req.param('target'), c.get('who').user, { revision: number(body.revision), reason: values.reviewReason, reference: values.reviewReference, checked: body.checked === '1', ...(file ? { file: { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } } : {}) })
+  return result.ok ? c.redirect(`${base(c)}/${c.req.param('target')}`, 303) : detail(c, result.error, values, 409)
 })
 payrollReportRoutes.post('/:target/subor', uploadLimit, async (c) => {
   const target = await targetOf(c.env.DB, c.get('payrollCompany').id, c.req.param('target'))
