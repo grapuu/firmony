@@ -41,7 +41,7 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
 export const CATEGORY_IDS = Object.keys(CATEGORIES) as Category[]
 
 export function isCategory(value: unknown): value is Category {
-  return typeof value === 'string' && value in CATEGORIES
+  return typeof value === 'string' && Object.hasOwn(CATEGORIES, value)
 }
 
 /** The categories that fit a kind of document: revenue for an issued invoice, costs for everything else. */
@@ -130,8 +130,8 @@ export function supplierKey(ico: string | null | undefined, name: string | null 
 }
 
 /**
- * A suspected duplicate: one eKasa receipt by its codes; otherwise the same kind and amount, and the same number, or
- * the same supplier on the same day.
+ * A suspected duplicate: one eKasa receipt by its codes; otherwise the same supplier, kind and amount, with
+ * the same number or, for unnumbered documents, the same day. Numbers are not unique across suppliers.
  */
 export function sameDocument(
   a: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null } & EkasaCodes,
@@ -141,10 +141,14 @@ export function sameDocument(
   const receipt = sameReceipt(a, b)
   if (receipt !== null) return receipt
   if (a.totalCents === null || a.totalCents !== b.totalCents || a.kind !== b.kind) return false
+  // Two known, different IČOs override a similar name. When one is missing, compare both names instead.
+  const aIco = supplierKey(a.partyIco, null), bIco = supplierKey(b.partyIco, null)
+  const aName = supplierKey(null, a.party), bName = supplierKey(null, b.party)
+  const sameSupplier = aIco && bIco ? aIco === bIco : aName !== null && aName === bName
+  if (!sameSupplier || (a.issuedOn && b.issuedOn && a.issuedOn !== b.issuedOn)) return false
   const plain = (n: string | null) => (n ?? '').replace(/[\s/-]/g, '').toUpperCase()
   if (plain(a.number) !== '' && plain(a.number) === plain(b.number)) return true
-  const sameSupplier = supplierKey(a.partyIco, a.party) !== null && supplierKey(a.partyIco, a.party) === supplierKey(b.partyIco, b.party)
-  return sameSupplier && a.issuedOn !== null && a.issuedOn === b.issuedOn && plain(a.number) === plain(b.number)
+  return a.issuedOn !== null && a.issuedOn === b.issuedOn && plain(a.number) === '' && plain(b.number) === ''
 }
 
 /** A day as an accountant types it: 11. 10. 2026. */

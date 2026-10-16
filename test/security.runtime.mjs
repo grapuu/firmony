@@ -291,6 +291,14 @@ export async function checkSecurity({ db, mf, site, admin, anna, acc, as, signIn
     'sensitive downloads demand recent verification rather than an old verified cookie',
     res.status === 303 && res.headers.get('location').startsWith('/auth?'),
   )
+  res = await as(recoveredCookie).post('/ucto/klienti/co-a/odovzdanie/no-file/odstranit', {})
+  const blocked = await res.text()
+  check('blocked POST-only actions return to the company handover page after verification', res.status === 403 && blocked.includes('name="next" value="/ucto/klienti/co-a#odovzdanie"'))
+  if (capture) writeFileSync(`${capture}/security-action-blocked.html`, blocked)
+  res = await as(recoveredCookie).post(`/auth/keys/${replacement.id}/remove`, {})
+  const keyError = await res.text()
+  check('an expired key-management confirmation offers the working verification form instead of raw JSON', res.status === 403 && res.headers.get('content-type').includes('text/html') && keyError.includes('data-passkey="authenticate"'))
+  if (capture) writeFileSync(`${capture}/security-key-error.html`, keyError)
   await db
     .prepare('UPDATE sessions SET verified_at = ? WHERE user_id = ?')
     .bind(Math.floor(Date.now() / 1000) - 43201, target.id)

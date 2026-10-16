@@ -22,11 +22,56 @@ export function safeNext(value: unknown): string {
   if (typeof value !== 'string' || !value.startsWith('/') || value.length > 1200) return '/app'
   try {
     const u = new URL(value, BRAND.origin)
-    if (u.origin !== new URL(BRAND.origin).origin || !/^\/(?:app|ucto)(?:\/|$)/.test(u.pathname)) return '/app'
+    if (u.origin !== new URL(BRAND.origin).origin) return '/app'
+    if (u.pathname === '/auth') return '/auth'
+    if (!/^\/(?:app|ucto)(?:\/|$)/.test(u.pathname)) return '/app'
     return `${u.pathname}${u.search}${u.hash}`
   } catch {
     return '/app'
   }
+}
+
+/** A blocked mutation must resume on a GET work page, never replay the POST or navigate to its action URL. */
+export function actionReturn(value: unknown, referrer?: string, origin: string = BRAND.origin): string {
+  const target = new URL(workPage(new URL(safeNext(value), BRAND.origin).pathname), BRAND.origin)
+  // Preserve the selected accounting period only from this action's own work page on the same origin.
+  // A referrer cannot select a different page, another company, a download or an action URL.
+  if (referrer && referrer.length <= 1200) {
+    try {
+      const previous = new URL(referrer)
+      if (previous.origin === new URL(origin).origin && previous.pathname === target.pathname) return `${target.pathname}${previous.search}${target.hash}`
+    } catch {
+      // A missing or malformed referrer is optional navigation context.
+    }
+  }
+  return `${target.pathname}${target.hash}`
+}
+function workPage(path: string): string {
+  if (path === '/app/export/potvrdit') return '/app/firma#stiahnut'
+  if (path === '/app/faktury') return '/app/faktury/nova'
+  const clientItem = /^\/app\/(doklady|platby|faktury)\/([^/]+)/.exec(path)
+  if (clientItem) return `/app/${clientItem[1]}/${clientItem[2]}`
+  const clientPage = /^\/app\/(banka|firma|doklady|spravy|plna-moc|vyhlasenie)(?:\/|$)/.exec(path)
+  if (clientPage) return `/app/${clientPage[1]}`
+  const company = /^\/ucto\/klienti\/([^/]+)(?:\/(.*))?$/.exec(path)
+  if (company) {
+    const base = `/ucto/klienti/${company[1]}`, section = company[2] ?? ''
+    const books = /^kniha\/(obdobia|platby|interne|pociatocne)(?:\/|$)/.exec(section)
+    if (books) return `${base}/kniha/${books[1]}`
+    const page = /^(dph|mzdy|zavierka|aml)(?:\/|$)/.exec(section)
+    if (page) return `${base}/${page[1]}`
+    if (/^odovzdanie(?:\/|$)/.test(section)) return `${base}#odovzdanie`
+    return base
+  }
+  if (path === '/ucto/klienti') return '/ucto/klienti/novy'
+  const document = /^\/ucto\/doklady\/([^/]+)/.exec(path)
+  if (document) return `/ucto/doklady/${document[1]}`
+  const incident = /^\/ucto\/incidenty\/([^/]+)/.exec(path)
+  if (incident) return `/ucto/incidenty/${incident[1]}`
+  if (/^\/ucto\/ziadosti\/[^/]+\/posudenie$/.test(path)) return path
+  const teamPage = /^\/ucto\/(tim|ziadosti|incidenty)(?:\/|$)/.exec(path)
+  if (teamPage) return `/ucto/${teamPage[1]}`
+  return path === '/ucto' || path.startsWith('/ucto/') ? '/ucto' : '/app'
 }
 export function relyingParty(url: string, env: SecurityBindings): { origin: string; rpID: string } | null {
   const u = new URL(url)

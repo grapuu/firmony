@@ -748,21 +748,30 @@ export function ruleUpsertStatement(db: D1Database, company: string, key: string
  */
 export async function markDuplicate(db: D1Database, company: string, doc: string): Promise<string | null> {
   const self = await getDocument(db, company, doc)
-  const codes = Boolean(self?.ekasaUid || self?.ekasaOkp)
-  if (!self || (self.totalCents === null && !codes)) return null
-  const rows = await db
-    .prepare(
-      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ?1 AND d.id <> ?2 AND d.deleted_at IS NULL AND d.created_at <= ?3
-         AND (d.total_cents = ?4 OR d.ekasa_uid = ?5 OR d.ekasa_okp = ?6 OR (?7 = 1 AND d.issued_on = ?8 AND (d.ekasa_uid IS NOT NULL OR d.ekasa_okp IS NOT NULL)))
-       ORDER BY d.created_at DESC LIMIT 50`,
-    )
-    .bind(company, doc, self.createdAt, self.totalCents, self.ekasaUid, self.ekasaOkp, codes ? 1 : 0, self.issuedOn)
-    .all<Row>()
-  const others = rows.results.map(docOf).filter((other) => sameDocument(self, other))
+  if (!self) return null
+  const others = (await duplicateCandidates(db, company, self, false)).filter((other) => sameDocument(self, other))
   const twin = others.find((other) => !other.duplicateOf) ?? others[0]
   if (!twin) return null
   await db.prepare('UPDATE documents SET duplicate_of = ? WHERE id = ? AND company_id = ? AND duplicate_of IS NULL').bind(twin.id, doc, company).run()
   return twin.id
+}
+
+/** Ingestion order breaks same-second ties. Newer candidates are only unbooked documents awaiting review. */
+async function duplicateCandidates(db: D1Database, company: string, self: Doc, newer: boolean): Promise<Doc[]> {
+  const codes = Boolean(self.ekasaUid || self.ekasaOkp)
+  if (self.totalCents === null && !codes) return []
+  const compare = newer ? '>' : '<', order = newer ? 'ASC' : 'DESC'
+  const rows = await db
+    .prepare(
+      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ?1 AND d.id <> ?2 AND d.deleted_at IS NULL
+         AND (d.created_at ${compare} ?3 OR (d.created_at = ?3 AND d.rowid ${compare} (SELECT rowid FROM documents WHERE id = ?2 AND company_id = ?1)))
+         ${newer ? 'AND d.booked_at IS NULL' : ''}
+         AND (d.total_cents = ?4 OR d.ekasa_uid = ?5 OR d.ekasa_okp = ?6 OR (?7 = 1 AND d.issued_on = ?8 AND (d.ekasa_uid IS NOT NULL OR d.ekasa_okp IS NOT NULL)))
+       ORDER BY d.created_at ${order}, d.rowid ${order} LIMIT 50`,
+    )
+    .bind(company, self.id, self.createdAt, self.totalCents, self.ekasaUid, self.ekasaOkp, codes ? 1 : 0, self.issuedOn)
+    .all<Row>()
+  return rows.results.map(docOf)
 }
 
 export function manualStatement(db: D1Database, company: string, doc: string, why: string): D1PreparedStatement {
@@ -848,6 +857,11 @@ export async function afterReading(db: D1Database, company: string, doc: string)
   if (!d) return
   await db.batch([ruleStatement(db, company, doc, supplierKey(d.partyIco, d.party))])
   await markDuplicate(db, company, doc)
+  // OCR can finish in the opposite order from upload. Once the older original is readable, recheck its
+  // newer unbooked copies as well; otherwise deterministic ordering would miss this asynchronous case.
+  for (const other of await duplicateCandidates(db, company, d, true)) {
+    if (!other.duplicateOf && sameDocument(d, other)) await markDuplicate(db, company, other.id)
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------

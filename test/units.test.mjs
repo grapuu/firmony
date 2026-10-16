@@ -676,6 +676,25 @@ check(
 check('a picture that is no document is none', reader.readingFrom({ je_doklad: false, suma_celkom: '10' }) === null)
 const odd = reader.readingFrom({ je_doklad: true, typ: 'neviem', datum_vystavenia: '12. 10. 2026', suma_celkom: '-5', iban_druhej_strany: 'xx', mena: 'eura' })
 check('what is not what it should be is left out', odd?.kind === 'other' && odd.issuedOn === null && odd.totalCents === null && odd.partyIban === null && odd.currency === null)
+for (const value of ['2026-02-29', '2026-02-31', '2026-04-31', '2026-13-01']) {
+  const invalid = reader.readingFrom({ je_doklad: true, datum_vystavenia: value, datum_splatnosti: value, datum_dodania: value })
+  check(`an AI calendar date must exist: ${value}`, invalid.issuedOn === null && invalid.dueOn === null && invalid.suppliedOn === null)
+}
+check('valid leap days survive AI validation', reader.readingFrom({ je_doklad: true, datum_vystavenia: '2028-02-29' }).issuedOn === '2028-02-29')
+check('AI categories and kinds reject inherited object names', ['__proto__', 'constructor', 'toString'].every((value) => {
+  const invalid = reader.readingFrom({ je_doklad: true, typ: value, kategoria: value })
+  return !booking.isCategory(value) && invalid.kind === 'other' && invalid.category === null
+}))
+{
+  const fetchBefore = globalThis.fetch
+  try {
+    for (const content of [{ invalid: true }, [null], [{ type: 'tool_use', name: 'zapis_doklad', input: [] }]]) {
+      globalThis.fetch = async () => Response.json({ content })
+      const result = await reader.readDocument('test-only', { kind: 'jpeg', bytes: bytes(0xff, 0xd8, 0xff) }, { name: 'Test', ico: null })
+      check('a malformed AI response goes to a person without an exception', result.manual === 'not an answer')
+    }
+  } finally { globalThis.fetch = fetchBefore }
+}
 
 // eKasa receipts (src/app/ekasa.ts): the codes as the Financial Administration's description of the eKasa interface
 // writes them (2.7 the identifier, 2.2 the verification code), and one receipt told from another by them
@@ -855,7 +874,12 @@ check(
 check('or by nothing', booking.supplierKey(null, null) === null)
 const docA = { kind: 'receipt', totalCents: 1240, number: null, party: 'Kaviareň Na rohu', partyIco: '50123456', issuedOn: '2026-10-12' }
 check('the same receipt twice is a suspected duplicate', booking.sameDocument(docA, { ...docA }))
-check('the same number and amount is one', booking.sameDocument({ ...docA, number: '2026/118', partyIco: null, party: 'A' }, { ...docA, number: '2026118', partyIco: null, party: 'B' }))
+check('the same supplier, number and amount identifies a suspected duplicate', booking.sameDocument({ ...docA, number: '2026/118' }, { ...docA, number: '2026118' }))
+check('two different suppliers can issue the same invoice number and amount', !booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '1', partyIco: '50999888' }))
+check('different names with no IČO do not share an invoice sequence', !booking.sameDocument({ ...docA, number: '1', partyIco: null, party: 'Dodávateľ Alfa' }, { ...docA, number: '1', partyIco: null, party: 'Dodávateľ Beta' }))
+check('missing supplier identity cannot establish a duplicate from number alone', !booking.sameDocument({ ...docA, number: '1', partyIco: null, party: null }, { ...docA, number: '1', partyIco: null, party: null }))
+check('one missing IČO can fall back to the matching supplier name', booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '1', partyIco: null }))
+check('reused receipt numbers on different dates stay separate', !booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '1', issuedOn: '2026-10-11' }))
 check(
   'another amount, another day, or another number is not',
   !booking.sameDocument(docA, { ...docA, totalCents: 1250 }) &&
@@ -3644,6 +3668,32 @@ async function zipped(entries, note) {
 {
   check('return addresses reject external, normalized external and non-application destinations', ['//evil.example/ucto', '/\\\\evil.example/ucto', 'https://firmony.ai/app', '/auth/grants', '/application', '/ucto-other'].every((s) => security.safeNext(s) === '/app'))
   check('return addresses preserve valid internal paths and queries', security.safeNext('/ucto/klienti/x?rok=2026#doklady') === '/ucto/klienti/x?rok=2026#doklady')
+  check('key management can resume on its own page without copying nested return addresses', security.safeNext('/auth?next=https://evil.example') === '/auth')
+  for (const [action, page] of [
+    ['/app/export/potvrdit', '/app/firma#stiahnut'],
+    ['/app/faktury', '/app/faktury/nova'],
+    ['/app/platby/x/bez-dokladu', '/app/platby/x'],
+    ['/app/doklady/x/odpojit', '/app/doklady/x'],
+    ['/app/faktury/x/poslat', '/app/faktury/x'],
+    ['/app/firma/ludia/x/odobrat', '/app/firma'],
+    ['/app/banka/x/nacitat', '/app/banka'],
+    ['/ucto/klienti/x/odovzdanie/y/odstranit', '/ucto/klienti/x#odovzdanie'],
+    ['/ucto/klienti/x/dph/suhrnny-vykaz/podane', '/ucto/klienti/x/dph'],
+    ['/ucto/klienti/x/zavierka/podane', '/ucto/klienti/x/zavierka'],
+    ['/ucto/klienti/x/mzdy/otvorit', '/ucto/klienti/x/mzdy'],
+    ['/ucto/klienti/x/kniha/interne/y/odstranit', '/ucto/klienti/x/kniha/interne'],
+    ['/ucto/incidenty/x/schvalit-uvolnenie', '/ucto/incidenty/x'],
+    ['/ucto/doklady/x/platba', '/ucto/doklady/x'],
+    ['/ucto/ziadosti/x/posudenie', '/ucto/ziadosti/x/posudenie'],
+    ['/ucto/tim', '/ucto/tim'],
+    ['//evil.example/app/firma', '/app'],
+    ['/ucto/unknown/action', '/ucto'],
+  ]) check(`blocked action resumes on a work page: ${action}`, security.actionReturn(action) === page)
+  check('re-verification keeps the selected accounting period on the same work page', security.actionReturn('/ucto/klienti/x/dph/podane', 'https://firmony.ai/ucto/klienti/x/dph?mesiac=2026-08') === '/ucto/klienti/x/dph?mesiac=2026-08')
+  check('handover return keeps its section while copying safe work-page filters', security.actionReturn('/ucto/klienti/x/odovzdanie/y/odstranit', 'https://firmony.ai/ucto/klienti/x?rok=2025') === '/ucto/klienti/x?rok=2025#odovzdanie')
+  for (const referrer of ['https://evil.example/ucto/klienti/x/dph?mesiac=2020-01', 'https://firmony.ai/ucto/klienti/other/dph?mesiac=2020-01', 'https://firmony.ai/ucto/klienti/x/export?rok=2025', 'not a URL']) {
+    check('a referrer cannot replace the safe work destination', security.actionReturn('/ucto/klienti/x/dph/podane', referrer) === '/ucto/klienti/x/dph')
+  }
   check('passkeys are bound to the canonical HTTPS production origin', security.relyingParty('https://firmony.ai/auth/options', {})?.rpID === 'firmony.ai' && security.relyingParty('http://firmony.ai/auth/options', {}) === null && security.relyingParty('https://preview.example/auth/options', { DEMO: '1' }) === null)
   check('local passkeys require an explicit demo flag', security.relyingParty('http://localhost:8787/auth', {}) === null && security.relyingParty('http://localhost:8787/auth', { DEMO: '1' })?.rpID === 'localhost')
   const bootstrap = { TEAM_BOOTSTRAP_EMAIL: 'owner@example.test', TEAM_BOOTSTRAP_TOKEN: 'x'.repeat(43), TEAM_BOOTSTRAP_EXPIRES_AT: '1100' }

@@ -1,5 +1,30 @@
 # Firmony: progress of the continuation
 
+## Shared workflow, AI validation and duplicate correctness (Codex, 15 October 2026)
+
+Follow-up on the existing cumulative PR #8, remote parent `4d5669e0387a84367ea7cf2d95f9ac4ef8886ead`.
+The schema stays at **17**. No extra PR/branch, merge or production deployment.
+
+- Fixed false duplicate proposals across independent suppliers sharing a number and amount. Known different
+  IČOs override similar names; missing identity is not invented. Distinct known dates protect reused receipt
+  numbers when no eKasa code is available. Strong eKasa identity continues to take precedence.
+- Duplicate edges now point backwards in ingestion order, including equal timestamps. Concurrent checks of
+  one batch cannot create a cycle. Finishing older OCR rechecks newer unbooked copies, so out-of-order model
+  responses do not bypass the new ordering. Candidate search remains bounded; this is no perfect-detection claim.
+- AI dates must be actual calendar days. Document kinds/categories use own properties rather than inherited
+  object members. Malformed response envelopes/tool inputs fall back to a person without throwing in the reader.
+  Invalid facts remain empty for professional review; the client is not asked to repair the model's answer.
+- A rejected mutation resumes on an existing GET work page after authentication, retaining accounting-period
+  query context only from that same page/origin. It never replays the POST. Key-management failures render the
+  usable verification form and return to key management, rather than raw JSON. Authorization remains separate.
+- Added concurrent D1 and HTTP workflow regressions, a Chrome CTAP2 journey through a real POST-only handover
+  action, and narrow/desktop captures of blocked actions, key errors and uncertain-document review.
+  Local checks and final exact-head CI are recorded in the PR. External bank/model/filing acceptance and production
+  restoration remain unproven; unit/runtime/browser success does not prove an error-free accounting service.
+- [One shared product](docs/strategy/11-shared-product-and-automation.md) records the owner's requirements,
+  actual responsibilities, remaining concrete work and measurement criteria. No 99% automation rate, active
+  insurance or signed legal approval is asserted.
+
 ## Passkeys, incident evidence and recovery drill (Codex, 15 October 2026)
 
 Current branch: `codex/firmony-security-and-evidence`, based on the final cumulative PR #7 head

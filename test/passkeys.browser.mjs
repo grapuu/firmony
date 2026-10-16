@@ -187,6 +187,27 @@ try {
     'successful re-verification returns to the safe work page',
     verifiedResponse.status() === 200 && fresh.n === 1 && new URL(page.url()).pathname === '/ucto/tim' && !(await db.prepare("SELECT id FROM users WHERE email = 'unverified-change@example.test'").first()),
   )
+  // A real POST-only action used to resume with GET /.../odstranit and strand the user on a 404.
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date())
+  await db.batch([
+    db.prepare("INSERT INTO companies (id, created_at, name, ico, plan, inbox, accountant_id, start_on, ends_on, notice_side) VALUES ('browser-co', ?, 'Plynulý prechod s. r. o.', '63333333', 'start', 'browserhandover', 'browser-admin', ?, ?, 'firmony')").bind(now, `${today.slice(0, 4)}-01-01`, today),
+    db.prepare("INSERT INTO company_files (id, company_id, kind, created_at, created_by, file_name, file_type, file_size, r2_key) VALUES ('browser-paper', 'browser-co', 'handover', ?, 'browser-admin', 'Odovzdanie.pdf', 'application/pdf', 26, 'companies/browser-co/papers/handover.pdf')").bind(now),
+  ])
+  const bucket = await mf.getR2Bucket('FILES')
+  await bucket.put('companies/browser-co/papers/handover.pdf', '%PDF-1.4 browser test only')
+  await db.prepare("UPDATE sessions SET verified_at = ? WHERE user_id = 'browser-admin'").bind(Math.floor(Date.now() / 1000) - 301).run()
+  const companyPage = `${origin}/ucto/klienti/browser-co`, action = '/ucto/klienti/browser-co/odovzdanie/browser-paper/odstranit'
+  await page.goto(`${companyPage}#odovzdanie`)
+  await page.locator(`form[action="${action}"] button`).click()
+  check('the browser pauses a POST-only attachment action before mutation', Boolean(await page.locator('[data-auth-error]').count()) && (await db.prepare("SELECT deleted_at FROM company_files WHERE id = 'browser-paper'").first()).deleted_at === null)
+  const signed = page.waitForResponse((r) => new URL(r.url()).pathname === '/auth/verify' && r.request().method() === 'POST')
+  await page.locator('form[data-passkey="authenticate"] button').click()
+  await signed
+  await page.locator(`form[action="${action}"] button`).waitFor({ state: 'visible' })
+  check('a POST-only action resumes on its working company section without replay or 404', page.url() === `${companyPage}#odovzdanie` && (await db.prepare("SELECT deleted_at FROM company_files WHERE id = 'browser-paper'").first()).deleted_at === null)
+  await Promise.all([page.waitForURL(`${companyPage}?ok=odstranene#odovzdanie`), page.locator(`form[action="${action}"] button`).click()])
+  await page.getByText('Odobratie vyradí prílohu z bežného prehľadu.', { exact: false }).waitFor({ state: 'visible' })
+  check('the confirmed repeat retires the attachment once and preserves its original', Boolean((await db.prepare("SELECT deleted_at FROM company_files WHERE id = 'browser-paper'").first()).deleted_at) && Boolean(await bucket.head('companies/browser-co/papers/handover.pdf')) && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'handover.removed' AND subject = 'browser-paper'").first()).n === 1)
   check('the passkey client has no uncaught browser errors', errors.length === 0)
   await mkdir('.wrangler/screens', { recursive: true })
   await page.goto(`${origin}/auth?next=%2Fucto`)

@@ -10,6 +10,7 @@ import { checkContractTransactions } from './contracts.runtime.mjs'
 import { checkSecurity } from './security.runtime.mjs'
 import { checkIncidents } from './incidents.runtime.mjs'
 import { checkRestore } from './restore.runtime.mjs'
+import { checkAutomation } from './automation.runtime.mjs'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
@@ -800,6 +801,7 @@ check(
   'and the client can delete them all',
   (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE (file_name LIKE 'kava%' OR file_name LIKE 'parkovanie-%') AND deleted_at IS NULL").first())?.n === 0,
 )
+await checkAutomation({ db, acc, anna, nowS, day, appPost, pretendPhoto, settle, capture: process.env.FIRMONY_CAPTURE_DIR })
 
 // The export for her accounting program
 res = await acc.get(`/ucto/klienti/co-a/export?mesiac=${day(-1).slice(0, 7)}`)

@@ -15,7 +15,7 @@ import { currentWho, newToken } from '../app/session'
 import { eventStatement, type Who } from '../app/store'
 import type { AppBindings } from '../app/routes'
 import { SecurityPage, GrantsPage } from '../views/security'
-import { relyingParty, safeNext, SECURITY, verifiedRecently } from './policy'
+import { actionReturn, relyingParty, safeNext, SECURITY, verifiedRecently } from './policy'
 import { consumeChallenge, decode, encode, grantFor, newChallenge, passkeysOf, rotatedSession, setVerifiedCookie, userHandle, type Grant } from './store'
 
 type Env = { Bindings: AppBindings; Variables: { who: Who } }
@@ -29,8 +29,9 @@ export async function securityGate(c: Context, who: Who, sensitive = false): Pro
   const requires = sensitive || Boolean(who.user.team) || keys.length > 0
   if (!requires || verifiedRecently(who, now(), sensitive ? SECURITY.sensitiveSeconds : SECURITY.teamSeconds)) return null
   const u = new URL(c.req.url)
-  const next = safeNext(`${u.pathname}${u.search}`)
-  if (c.req.method === 'GET' || c.req.method === 'HEAD') return c.redirect(`/auth?next=${encodeURIComponent(next)}`, 303)
+  const reads = c.req.method === 'GET' || c.req.method === 'HEAD'
+  const next = reads ? safeNext(`${u.pathname}${u.search}`) : actionReturn(u.pathname, c.req.header('referer'), u.origin)
+  if (reads) return c.redirect(`/auth?next=${encodeURIComponent(next)}`, 303)
   return c.html(
     html`<!doctype html>${(
         <SecurityPage
@@ -266,9 +267,22 @@ securityRoutes.post('/verify', async (c) => {
 securityRoutes.post('/keys/:id/remove', async (c) => {
   const who = c.get('who'),
     db = c.env.DB
-  if (!verifiedRecently(who, now(), SECURITY.sensitiveSeconds)) return failure(c, 'Najprv potvrďte prístup kľúčom.', 403)
+  const renderKeyError = async (message: string, status: 403 | 409) => c.html(
+    html`<!doctype html>${(
+      <SecurityPage
+        user={who.user}
+        keys={await passkeysOf(db, who.user.id)}
+        next="/auth"
+        verified={verifiedRecently(who, now(), SECURITY.sensitiveSeconds)}
+        currentKey={who.verifiedCredential}
+        error={message}
+      />
+    )}`,
+    status,
+  )
+  if (!verifiedRecently(who, now(), SECURITY.sensitiveSeconds)) return renderKeyError('Najprv potvrďte prístup kľúčom. Potom Vás vrátime k správe kľúčov.', 403)
   const id = c.req.param('id')
-  if (id === who.verifiedCredential) return failure(c, 'Aktuálne použitý kľúč nemožno odstrániť. Overte sa druhým kľúčom.', 409)
+  if (id === who.verifiedCredential) return renderKeyError('Aktuálne použitý kľúč nemožno odstrániť. Overte sa druhým kľúčom.', 409)
   const removed = await db
     .prepare(
       `DELETE FROM passkeys WHERE id = ? AND user_id = ? AND id <> ?

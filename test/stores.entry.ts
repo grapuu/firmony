@@ -20,3 +20,4 @@ export { acceptStatements, orderOf } from '../src/order'
 export { openIncident, reviewHold, requestRelease, approveRelease, closeIncident, assignIncident, evidenceBlocked, getIncident } from '../src/incidents/store'
 
 export { keepPaper } from '../src/app/papers'
+export { afterReading, markDuplicate } from '../src/app/store'

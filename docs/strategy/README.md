@@ -14,6 +14,7 @@ Stav k **15. októbru 2026**. Tento balík rozširuje [prvý audit](../konkurenc
 | [08 December Launch Plan](08-december-launch-plan.md) | Termíny, pilot a rozhodnutie GO / NO-GO |
 | [09 Top 10 Strategic Priorities](09-top-10-priorities.md) | Poradie práce a spôsob overenia každej investície |
 | [10 Red Team Report](10-red-team-report.md) | Ako môžeme zlyhať a čo tomu musí zabrániť |
+| [11 Jeden systém a automatizácia](11-shared-product-and-automation.md) | Minimum práce klienta, odborná kontrola, opravené prekážky a merateľné dokončenie |
 | [Zdroje](sources.md) | Primárne URL, dátum, rozsah a limity dôkazov |
 | [Register pripravenosti](launch-evidence.json) | Strojovo čitateľné brány; neznámy údaj nie je úspech |
 

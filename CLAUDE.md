@@ -1,3 +1,10 @@
+Current shared-product follow-up (15 October 2026): [docs/strategy/11-shared-product-and-automation.md](docs/strategy/11-shared-product-and-automation.md).
+The existing cumulative PR #8 now also fixes cross-supplier duplicate collisions, same-second duplicate cycles,
+out-of-order OCR rechecks, malformed AI output and impossible dates, and safe return to work after passkey
+confirmation. It preserves period context only from the same work page/origin; rejected POSTs never replay.
+This is tested code, not a measured 99% automation rate or whole-product production acceptance. Schema remains 17.
+No automatic merge or production deployment; keep the existing PR and preserve previous branches/history.
+
 Current security implementation (15 October 2026): [docs/security/README.md](docs/security/README.md).
 The current cumulative branch is `codex/firmony-security-and-evidence` (base PR #7 `04ec8eb8`), schema 17.
 Team work now requires passkey UV; sensitive actions require fresh confirmation. Incidents/holds block retention,
