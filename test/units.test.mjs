@@ -36,6 +36,8 @@ import {
   payrollStore,
   payMonth,
   payrollForm,
+  taxSettlement,
+  prehlad as prehladUnit,
   payrollReporting as reports,
   periods,
   support,
@@ -4159,6 +4161,52 @@ async function zipped(entries, note) {
       !payrollStore.leaveTouchesClosed(leave('2026-05-28', null, 500000), leave('2026-05-28', '2026-06-03', 500000), runs, employee()) &&
       payrollStore.leaveTouchesClosed(leave('2026-05-28', null, 500000), leave('2026-05-28', '2026-05-30', 500000), runs, employee()),
   )
+}
+
+// The annual settlement (17 October 2026): the year's tax, its non-taxable parts, the bonus, what is settled.
+{
+  const y = payroll.payrollYear(2026)
+  check('the year\'s tax by the bands of 2026: 19 % to 43 983,32 €, 25 % above', taxSettlement.yearTax(3000000, y) === 570000 && taxSettlement.yearTax(5000000, y) === 986100)
+  check(
+    "the taxpayer's part: whole to 26 083,13 €, then 14 661,11 € less a third of the base, nought from 43 983,32 €; a pension comes off it",
+    taxSettlement.taxpayerPart(2000000, y) === 596673 && taxSettlement.taxpayerPart(3000000, y) === 466111 && taxSettlement.taxpayerPart(4400000, y) === 0 && taxSettlement.taxpayerPart(2000000, y, 100000) === 496673,
+  )
+  check(
+    "the spouse's part: 5 455,30 € less the spouse's income, a twelfth a month; above 43 983,32 € 20 116,40 € less a third of the base",
+    taxSettlement.spousePart(2000000, y, 12, 100000) === 445530 && taxSettlement.spousePart(2000000, y, 6, 100000) === 222765 && taxSettlement.spousePart(5000000, y, 12, 0) === 344973 && taxSettlement.spousePart(2000000, y, 0, 0) === 0,
+  )
+  const child = [{ name: 'TEST', born: '2020-05-01' }]
+  const all = Array.from({ length: 12 }, (_, i) => i + 1)
+  check(
+    "the year's bonus: each month 100 € at most 29 % of a twelfth of the base, lowered by a tenth of the base above 27 432 €",
+    taxSettlement.yearBonus(2000000, y, child, all).total === 120000 && taxSettlement.yearBonus(300000, y, child, all).total === 87000 && taxSettlement.yearBonus(3000000, y, child, all).total === 94320 && taxSettlement.yearBonus(4000000, y, child, all).total === 0 && taxSettlement.yearBonus(2000000, y, child, [3, 4]).total === 20000,
+  )
+  const here = { taxable: 1800000, insurance: 259200, advance: 179388, bonus: 120000, months: all.map((m) => `2026-${String(m).padStart(2, '0')}`) }
+  let r = taxSettlement.settle(2026, here, child, { ...taxSettlement.EMPTY_SETTLEMENT, requested: true })
+  check(
+    'a whole year here: the base, the tax, the advances, the bonus as paid; a few cents back',
+    r.partialBase === 1540800 && r.nonTaxable.taxpayer === 596673 && r.taxBase === 944127 && r.tax === 179384 && r.taxDifference === -4 && r.bonus === 120000 && r.bonusDifference === 0,
+    JSON.stringify(r),
+  )
+  r = taxSettlement.settle(2026, { ...here, months: here.months.slice(6) }, child, { ...taxSettlement.EMPTY_SETTLEMENT, requested: true, other: { taxable: 600000, insurance: 86400, advance: 40000, bonus: 0, months: 6 }, spouseMonths: 12, spouseIncome: 0, dds: 30000 })
+  check(
+    'with an employer before, the spouse and supplementary pension saving: the bonus for the months before too, a refund, the bonus owed paid',
+    r.taxable === 2400000 && r.nonTaxable.spouse === 545530 && r.nonTaxable.dds === 18000 && r.taxDifference < 0 && r.bonus === 120000 && r.bonusDifference === 0,
+    JSON.stringify(r),
+  )
+  check('stored inputs read back: wrong figures are nought', JSON.stringify(taxSettlement.settlementInputsOf({ requested: true, dds: -5, other: { months: 13 }, settleIn: '2027-3' })) === JSON.stringify({ ...taxSettlement.EMPTY_SETTLEMENT, requested: true }))
+  const employee = { id: 'e1', name: 'Ján', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, contract: 'employment', regular: true, pension: 'none', exemption: false, wageKind: 'monthly', weeklyHours: 4000, leaveDays: null }
+  const march = payrollStore.monthSlips('2027-03', [employee], null, { settlements: [{ employeeId: 'e1', year: 2026, inputs: { requested: true, settleIn: '2027-03' }, result: { taxDifference: -12000, bonusDifference: 5000 } }] })[0]
+  check(
+    'a settlement settled with a month: the refund and the bonus paid out with the wage, the remittance lowered by them',
+    march.slip.settlementTax === -12000 && march.slip.settlementBonus === 5000 && march.slip.net === march.slip.gross - march.slip.socialEmployee - march.slip.healthEmployee - march.slip.withheld + 12000 + 5000 && payrollStore.runTotals([march]).tax === march.slip.withheld - 12000 - 5000,
+  )
+  const lines = JSON.stringify([{ employeeId: 'e1', gross: march.gross, slip: march.slip }])
+  const totals = prehladUnit.prehladTotals('2027-03', [{ id: 'c', period: '2027-03', report_period: '2027-03', paid_on: '2027-04-10', lines }], '2027-04-20')
+  check('the overview: row 02 the refund, the bonus of the settlement with the month\'s in row 05', totals.issues.length === 0 && totals.settlement === -12000 && totals.bonus === 5000 && totals.bonusFromTax === totals.advance - 12000 && totals.bonusOwn === 5000 - (totals.advance - 12000), JSON.stringify(totals))
+  const big = JSON.stringify([{ employeeId: 'e1', gross: march.gross, slip: payroll.payslip({ period: '2027-03', gross: 150000, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false, days: 31, settlement: { tax: -50000, bonus: 0 } }) }])
+  const capped = prehladUnit.prehladTotals('2027-03', [{ id: 'c', period: '2027-03', report_period: '2027-03', paid_on: '2027-04-10', lines: big }], '2027-04-20')
+  check('a refund above the advances: row 02 down to them, the rest the employer pays and asks the tax office for', capped.settlement === -capped.advance && capped.settlementOwn === 50000 - capped.advance)
 }
 
 // Income tax advances (Act 595/2003 s. 42(1), (2), (7)): from the month after the return's filing deadline, by the end

@@ -127,6 +127,24 @@ export async function checkPayrollFull({ db, acc, lucia, nowS, day, capture }) {
   check('the payslip has each part of the month', slipPage.includes('Mzda za odpracovaný čas') && slipPage.includes('Náhrada príjmu pri PN') && slipPage.includes('Mzda a príplatok za nadčas') && slipPage.includes('Pracovný pomer'))
   page = plain(await (await acc.get(`${base}?obdobie=${M}`)).text())
   check('the holiday taken stands with the employee', page.includes(`dovolenka ${M.slice(0, 4)}: čerpané 2 z`))
+  // The annual settlement of the year: worked out from the closed months, the month after the year to settle in.
+  const year = Number(M.slice(0, 4))
+  const rz = `${base}/rocne`
+  res = await acc.post(rz, { rok: String(year), zamestnanec: jan, ine_taxable: '', dds: '100', zuctovat: `${year}-12` })
+  check('a settlement in a month of the year itself is refused, as one not asked for', res.status === 422 && plain(await res.text()).includes('Vyberte mesiac po skončení roka'))
+  res = await acc.post(rz, { rok: String(year), zamestnanec: jan, poziadal: '1', dds: '100', ine_months: '13', zuctovat: `${year + 1}-03` })
+  check('months above twelve are refused', res.status === 422 && plain(await res.text()).includes('od 0 do 12'))
+  res = await acc.post(rz, { rok: String(year), zamestnanec: jan, poziadal: '1', dds: '100', zuctovat: `${year + 1}-03` })
+  check('the settlement worked out and kept with its month', res.status === 303 && res.headers.get('location')?.includes('ok=rz'))
+  const kept = await db.prepare('SELECT * FROM tax_settlements WHERE company_id = ? AND employee_id = ?').bind(company, jan).first()
+  const result = JSON.parse(kept?.result ?? 'null')
+  check('its result: the closed months\' income, the parts, the tax against the advances', kept?.settle_in === `${year + 1}-03` && result.taxable > 0 && result.nonTaxable.dds === 10000 && result.advances > 0 && result.taxDifference === result.tax - result.advances, JSON.stringify(result))
+  const rzRaw = await (await acc.get(`${rz}?rok=${year}`)).text()
+  if (capture) writeFileSync(`${capture}/settlement.html`, rzRaw)
+  const rzPage = plain(rzRaw)
+  check('the page has each person of the year and the result', rzPage.includes('TEST-ONLY Ján Plný') && rzPage.includes('TEST-ONLY Peter Študent') && rzPage.includes('Čiastkový základ dane') && rzPage.includes(`So mzdou za marec ${year + 1}`) && rzPage.includes('Podklady pre ročné hlásenie') && rzPage.includes(`do 30. apríla ${year + 1}`))
+  const certificate = plain(await (await acc.get(`${base}/potvrdenie?rok=${year}&zamestnanec=${jan}`)).text())
+  check('the statement of taxable income of the year', certificate.includes('Potvrdenie o zdaniteľných príjmoch') && certificate.includes('Úhrn zdaniteľných príjmov') && certificate.includes('Zrazené preddavky na daň'))
   check(
     'the student and the pensioner on agreements are registered with the Social Insurance Agency, never with a health insurer',
     page.includes('Sociálnej poisťovne: TEST-ONLY Peter Študent') && !page.includes('VšZP: TEST-ONLY Peter Študent') && !page.includes('VšZP: TEST-ONLY Mária Dôchodkyňa') && page.includes('VšZP: TEST-ONLY Eva Konateľka'),

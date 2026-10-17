@@ -132,6 +132,8 @@ export const SlipDetail: FC<{ line: SlipLine }> = ({ line }) => {
       {item(w.lines.taxBase ?? '', slip.taxBase)}
       {item(w.lines.advance ?? '', -slip.advance)}
       {slip.bonus > 0 ? item(w.lines.bonus ?? '', slip.bonus) : null}
+      {slip.settlementTax ? item(w.settlement.slipTax(slip.settlementTax > 0), -slip.settlementTax) : null}
+      {slip.settlementBonus ? item(w.settlement.slipBonus(slip.settlementBonus > 0), slip.settlementBonus) : null}
       {item(w.lines.net ?? '', slip.net, true)}
       {item(w.lines.socialEmployer ?? '', slip.socialEmployer)}
       {social('employer')}
@@ -753,6 +755,15 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
         </div>
         <aside class="pgrid__side">
           <EmployeesCard company={c} employees={p.employees} leave={p.leave ?? {}} today={p.today} />
+          <section class="info" id="rocne" aria-labelledby="rocne-t">
+            <h2 id="rocne-t" class="info__title">
+              {w.settlement.open}
+            </h2>
+            <p class="info__lead">{w.settlement.openLead}</p>
+            <a class="btn btn--line btn--small" href={`${base(c)}/rocne`}>
+              {w.settlement.open}
+            </a>
+          </section>
           <RegistrationsCard company={c} registrations={p.registrations ?? []} today={p.today} />
           <SettingsCard company={c} insurers={p.settings.insurers} values={p.settings.values} errors={p.settings.errors} />
         </aside>

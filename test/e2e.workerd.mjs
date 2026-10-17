@@ -270,7 +270,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 29)
+check('health says the schema', (await res.json()).schema === 30)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })

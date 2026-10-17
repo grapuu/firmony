@@ -126,6 +126,9 @@ import { addDays } from '../app/ending'
 import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
 import { leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay-month'
 import { hundredthsOf, hundredthsText, partsValues, readParts, tenThousandthsOf, tenThousandthsText } from '../app/payroll-form'
+import { EMPTY_SETTLEMENT, settle, type SettlementInputs } from '../app/tax-settlement'
+import { settledInClosed, settlementStatement, settlementsOf, yearIncome } from '../app/tax-settlement-store'
+import { CertificatePage, SettlementPage, type SettlementRow, type SettlementState } from '../views/settlement'
 import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
@@ -456,6 +459,10 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.sickRemoved
     case 'mzdy-pn-uzavrete':
       return t.payroll.errors.sickClosed
+    case 'rz':
+      return t.payroll.settlement.flash
+    case 'rz-uzavrete':
+      return t.payroll.settlement.closedRefused
     case 'plna-moc-vratena':
       return t.client.poaReturned
     case 'plna-moc-dovod':
@@ -1811,13 +1818,14 @@ function payrollPeriod(asked: unknown, months: readonly string[], today: string)
 }
 
 async function payrollData(db: D1Database, company: Company) {
-  const [employees, runs, row, leaves] = await Promise.all([
+  const [employees, runs, row, leaves, settlements] = await Promise.all([
     employeesOf(db, company.id),
     runsOf(db, company.id),
     db.prepare('SELECT payroll FROM companies WHERE id = ?').bind(company.id).first<{ payroll: string | null }>(),
     sickLeavesOf(db, company.id),
+    settlementsOf(db, company.id),
   ])
-  return { employees, runs, leaves, settings: payrollSettingsOf(row?.payroll ?? null) }
+  return { employees, runs, leaves, settlements, settings: payrollSettingsOf(row?.payroll ?? null) }
 }
 
 /** What the company pays for a month and where: each employee's net wage, the Social Insurance Agency, each health insurer, the tax office. */
@@ -1891,12 +1899,12 @@ async function payrollPage(
 ) {
   const db = c.env.DB
   const today = dayOf(now())
-  const { employees, runs, leaves, settings } = await payrollData(db, company)
+  const { employees, runs, leaves, settlements, settings } = await payrollData(db, company)
   const months = payrollMonths(employees, today, runs)
   const period = payrollPeriod(asked, months, today)
   const run = runs.find((r) => r.period === period) ?? null
   const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : !supportsPayrollPeriod(m) ? 'unsupported' : today <= monthRange(m).to ? 'running' : 'open')
-  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run, { leaves, runs })
+  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run, { leaves, runs, settlements })
   const payday = run?.payday ?? paydayOf(period, settings)
   const insurers = [...new Set<Insurer>([...employees.map((e) => e.insurer), ...(Object.keys(settings.health) as Insurer[])])]
   const failed = Boolean(forms.month || forms.settings || forms.sick?.errors && Object.keys(forms.sick.errors).length > 0)
@@ -1974,7 +1982,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const body = await c.req.parseBody()
   const today = dayOf(now())
   const sourceRevision = await dataRevision(db, company.id)
-  const { employees, runs, leaves, settings } = await payrollData(db, company)
+  const { employees, runs, leaves, settlements, settings } = await payrollData(db, company)
   const months = payrollMonths(employees, today, runs)
   const period = typeof body.obdobie === 'string' && months.includes(body.obdobie) ? body.obdobie : null
   if (!period) return c.text('Bad request', 400)
@@ -1984,7 +1992,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   if (!supportsPayrollPeriod(period)) return c.redirect(`${back}&ok=mzdy-nepodporovane`, 303)
   const values: Record<string, string> = {}
   const errors: FieldErrors = {}
-  const proposed = monthSlips(period, employees, run, { leaves, runs })
+  const proposed = monthSlips(period, employees, run, { leaves, runs, settlements })
   const lines = proposed.map((l) => {
     const e = employees.find((x) => x.id === l.employeeId)!
     const read = readParts(body as Record<string, unknown>, l.employeeId, e.contract, e.wageKind, e.wage)
@@ -1997,7 +2005,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const payday = dayOfText(paydayText)
   if (!payday || payday < `${period}-01`) errors.vyplata = t.payroll.errors.paydayDate
   if (Object.keys(errors).length > 0 || !payday) return payrollPage(c, company, period, { month: { values, errors } })
-  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null }, { leaves, runs })
+  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null }, { leaves, runs, settlements })
   const typed = slips.map((l) => ({ employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: l.gross, parts: l.parts }))
   const close = body.akcia === 'uzavriet'
   if (!close) {
@@ -2274,15 +2282,170 @@ teamRoutes.get('/klienti/:id/mzdy/paska', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
   const today = dayOf(now())
-  const { employees, runs, leaves } = await payrollData(c.env.DB, company)
+  const { employees, runs, leaves, settlements } = await payrollData(c.env.DB, company)
   const months = payrollMonths(employees, today, runs)
   const period = c.req.query('obdobie') ?? ''
   if (!months.includes(period)) return missingPage(c)
   const run = runs.find((r) => r.period === period) ?? null
   if (!run?.closedOn && !supportsPayrollPeriod(period)) return missingPage(c)
-  const line = monthSlips(period, employees, run, { leaves, runs }).find((l) => l.employeeId === c.req.query('zamestnanec'))
+  const line = monthSlips(period, employees, run, { leaves, runs, settlements }).find((l) => l.employeeId === c.req.query('zamestnanec'))
   if (!line) return missingPage(c)
   return shell(c, 'clients', `${t.payroll.payslip}: ${line.name}`, <PayslipPage company={company} period={period} line={line} today={today} />)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The annual settlement of the income tax advances (ročné zúčtovanie)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The year a settlement page opens on: last year until the end of June, else this one. */
+const settlementYear = (asked: unknown, today: string): number => {
+  const n = Number(asked)
+  if (Number.isInteger(n) && n >= 2020 && n <= Number(today.slice(0, 4))) return n
+  return today.slice(5, 7) <= '06' ? Number(today.slice(0, 4)) - 1 : Number(today.slice(0, 4))
+}
+
+const settlementValues = (i: SettlementInputs): Record<string, string> => ({
+  poziadal: i.requested ? '1' : '',
+  ine_taxable: i.other.taxable ? moneyText(i.other.taxable) : '',
+  ine_insurance: i.other.insurance ? moneyText(i.other.insurance) : '',
+  ine_advance: i.other.advance ? moneyText(i.other.advance) : '',
+  ine_bonus: i.other.bonus ? moneyText(i.other.bonus) : '',
+  ine_months: i.other.months ? String(i.other.months) : '',
+  manzel_mesiace: i.spouseMonths ? String(i.spouseMonths) : '',
+  manzel_prijem: i.spouseIncome ? moneyText(i.spouseIncome) : '',
+  dds: i.dds ? moneyText(i.dds) : '',
+  dochodok: i.pension ? moneyText(i.pension) : '',
+  zuctovat: i.settleIn ?? '',
+})
+
+async function settlementPage(c: Ctx, company: Company, asked: unknown, form?: { employeeId: string; values: Record<string, string>; errors: FieldErrors }) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const year = settlementYear(asked, today)
+  const [{ employees, runs }, settlements] = await Promise.all([payrollData(db, company), settlementsOf(db, company.id)])
+  const supported = supportsPayrollPeriod(`${year}-01`)
+  const first = employees.reduce<number>((min, e) => Math.min(min, Number(e.startedOn.slice(0, 4))), Number(today.slice(0, 4)))
+  const years: number[] = []
+  for (let y = Number(today.slice(0, 4)); y >= first && years.length < 6; y--) years.unshift(y)
+  const closedMonths = new Set(runs.filter((r) => r.closedOn).map((r) => r.period))
+  const months = Array.from({ length: 6 }, (_, i) => `${year + 1}-${String(i + 1).padStart(2, '0')}`).filter((m) => !closedMonths.has(m))
+  const rows: SettlementRow[] = supported
+    ? employees.flatMap((e) => {
+        const income = yearIncome(e.id, runs, year)
+        if (income.months.length === 0) return []
+        const saved = settlements.find((x) => x.employeeId === e.id && x.year === year)
+        const locked = settledInClosed(saved, runs)
+        const fresh = saved?.inputs.requested ? settle(year, income, e.children, saved.inputs) : null
+        const stale = Boolean(saved?.result && fresh && !locked && JSON.stringify(fresh) !== JSON.stringify(saved.result))
+        const state: SettlementState = !saved?.inputs.requested
+          ? { kind: 'none' }
+          : locked && saved.inputs.settleIn
+            ? { kind: 'closed', month: saved.inputs.settleIn }
+            : stale
+              ? { kind: 'stale' }
+              : saved.inputs.settleIn
+                ? { kind: 'due', month: saved.inputs.settleIn }
+                : { kind: 'ready' }
+        const own = form?.employeeId === e.id
+        return [{ employee: e, income, result: saved?.result ?? null, state, locked, values: own ? form.values : settlementValues(saved?.inputs ?? EMPTY_SETTLEMENT), errors: own ? form.errors : {} }]
+      })
+    : []
+  const failed = Boolean(form && Object.keys(form.errors).length > 0)
+  return shell(
+    c,
+    'clients',
+    `${t.payroll.settlement.title}: ${company.name}`,
+    <SettlementPage company={company} year={year} years={years} supported={supported} rows={rows} months={months} flash={failed ? null : flashOf(c)} error={failed ? t.payroll.flashes.fix : null} />,
+    failed ? 422 : 200,
+  )
+}
+
+teamRoutes.get('/klienti/:id/mzdy/rocne', async (c) => {
+  const company = await companyParam(c)
+  return company ? settlementPage(c, company, c.req.query('rok')) : missingPage(c)
+})
+
+/** An employee's settlement worked out and kept, with the month it is settled in (never one closed). */
+teamRoutes.post('/klienti/:id/mzdy/rocne', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const year = settlementYear(body.rok, today)
+  if (!supportsPayrollPeriod(`${year}-01`)) return c.text('Bad request', 400)
+  const [{ employees, runs }, settlements] = await Promise.all([payrollData(db, company), settlementsOf(db, company.id)])
+  const employee = employees.find((e) => e.id === body.zamestnanec)
+  if (!employee) return missingPage(c)
+  const saved = settlements.find((x) => x.employeeId === employee.id && x.year === year)
+  if (settledInClosed(saved, runs)) return c.redirect(`/ucto/klienti/${company.id}/mzdy/rocne?rok=${year}&ok=rz-uzavrete#rz-${employee.id}`, 303)
+  const text = (name: string) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 16) : '')
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const amount = (name: string) => {
+    values[name] = text(name)
+    const n = centsOf(values[name] as string)
+    if (n !== null && (Number.isNaN(n) || n < 0)) {
+      errors[name] = t.payroll.errors.amount
+      return 0
+    }
+    return n ?? 0
+  }
+  const months = (name: string) => {
+    values[name] = text(name)
+    const n = values[name] === '' ? 0 : Number(values[name])
+    if (!Number.isInteger(n) || n < 0 || n > 12) {
+      errors[name] = t.payroll.settlement.errors.months
+      return 0
+    }
+    return n
+  }
+  values.poziadal = body.poziadal === '1' ? '1' : ''
+  const settleIn = typeof body.zuctovat === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(body.zuctovat) ? body.zuctovat : null
+  values.zuctovat = settleIn ?? ''
+  const inputs: SettlementInputs = {
+    requested: values.poziadal === '1',
+    other: { taxable: amount('ine_taxable'), insurance: amount('ine_insurance'), advance: amount('ine_advance'), bonus: amount('ine_bonus'), months: months('ine_months') },
+    spouseMonths: months('manzel_mesiace'),
+    spouseIncome: amount('manzel_prijem'),
+    dds: amount('dds'),
+    pension: amount('dochodok'),
+    settleIn,
+  }
+  if (settleIn && (settleIn < `${year + 1}-01` || runs.some((r) => r.closedOn && r.period === settleIn) || !supportsPayrollPeriod(settleIn))) errors.zuctovat = t.payroll.settlement.errors.settleIn
+  if (settleIn && !inputs.requested) errors.poziadal = t.payroll.settlement.errors.requested
+  if (Object.keys(errors).length > 0) return settlementPage(c, company, year, { employeeId: employee.id, values, errors })
+  const result = settle(year, yearIncome(employee.id, runs, year), employee.children, inputs)
+  await db.batch([
+    settlementStatement(db, company.id, employee.id, year, inputs, result, c.get('who').user.id, now()),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'payroll.settlement', subject: `${employee.id}:${year}` }),
+  ])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy/rocne?rok=${year}&ok=rz#rz-${employee.id}`, 303)
+})
+
+/** An employee's statement of taxable income of a year, to print. */
+teamRoutes.get('/klienti/:id/mzdy/potvrdenie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const today = dayOf(now())
+  const year = Number(c.req.query('rok'))
+  const { employees, runs } = await payrollData(c.env.DB, company)
+  const employee = employees.find((e) => e.id === c.req.query('zamestnanec'))
+  if (!employee || !Number.isInteger(year)) return missingPage(c)
+  const income = yearIncome(employee.id, runs, year)
+  if (income.months.length === 0) return missingPage(c)
+  let social = 0
+  let health = 0
+  const bonusMonths: string[] = []
+  for (const run of runs) {
+    if (!run.closedOn || !run.period.startsWith(`${year}-`)) continue
+    const slip = run.lines.find((l) => l.employeeId === employee.id)?.slip
+    if (!slip) continue
+    social += slip.socialEmployee
+    health += slip.healthEmployee
+    if (slip.bonus > 0) bonusMonths.push(run.period)
+  }
+  return shell(c, 'clients', `${t.payroll.settlement.certificate}: ${employee.name}`, <CertificatePage company={company} employee={employee} year={year} income={{ ...income, social, health, bonusMonths: bonusMonths.sort() }} today={today} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------

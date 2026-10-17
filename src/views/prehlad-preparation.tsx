@@ -17,6 +17,10 @@ export const PrehladPreparationPage: FC<{ plan: GenerationPlan; base: string; va
       <div><dt>Zrazené preddavky · riadok 1</dt><dd>{formatEurExact(plan.totals.advance)}</dd></div>
       <div><dt>Posledná overená výplata</dt><dd>{plan.totals.paidOn ? dayName(plan.totals.paidOn, v.declaredOn ?? '') : 'Treba preveriť'}</dd></div>
       <div><dt>Počet zamestnancov v podkladoch</dt><dd>{plan.totals.employees}</dd></div>
+      {plan.totals.settlement !== 0 ? <div><dt>Ročné zúčtovanie · riadok 2</dt><dd>{formatEurExact(plan.totals.settlement)}</dd></div> : null}
+      {plan.totals.bonus > 0 ? <div><dt>Daňový bonus z preddavkov · riadok 5</dt><dd>{formatEurExact(plan.totals.bonusFromTax)}</dd></div> : null}
+      {plan.totals.bonusOwn > 0 ? <div><dt>Bonus zo zdrojov zamestnávateľa · riadok C</dt><dd>{formatEurExact(plan.totals.bonusOwn)}</dd></div> : null}
+      {plan.totals.settlementOwn > 0 ? <div><dt>Preplatok zo zdrojov zamestnávateľa (žiadosť na daňový úrad)</dt><dd>{formatEurExact(plan.totals.settlementOwn)}</dd></div> : null}
     </dl><p class="small">Použijeme uložené uzavreté pásky a účtovníkom potvrdené obdobie. Výplatný termín ani bankový prevod sám neurčujú vykazovaný mesiac. Suma preddavkov nie je potvrdenie ich úhrady.</p></section>
     {blocked ? <section class="info"><h2 class="info__title">Najprv vyriešte podklady</h2><ul>{plan.totals.issues.map((i) => <li>{i}</li>)}</ul><p>Pre tento prípad použite odborné spracovanie a doložte externý výkaz do existujúcej evidencie.</p><a class="btn btn--line" href={base}>Otvoriť mzdové podania</a></section> : <form class="info stack prehlad-form" method="post" action={`${base}/${plan.target.id}/generovat`}>
       <input type="hidden" name="token" value={plan.token} />

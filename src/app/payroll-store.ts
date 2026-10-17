@@ -325,7 +325,12 @@ export type SlipLine = RunLine & { slip: Payslip; days: number; proposals?: Line
  * gross as other income), the employee's terms, the sick leaves (each daily base as typed, else proposed from the months
  * closed before) and the average earnings (as typed, else proposed).
  */
-export function monthSlips(period: string, employees: readonly Employee[], run: PayrollRun | null, context: { leaves?: readonly SickLeave[]; runs?: readonly PayrollRun[] } = {}): SlipLine[] {
+export function monthSlips(
+  period: string,
+  employees: readonly Employee[],
+  run: PayrollRun | null,
+  context: { leaves?: readonly SickLeave[]; runs?: readonly PayrollRun[]; settlements?: readonly { employeeId: string; inputs: { requested: boolean; settleIn: string | null }; result: { taxDifference: number; bonusDifference: number } | null }[] } = {},
+): SlipLine[] {
   if (run?.closedOn) return run.lines.filter((l): l is RunLine & { slip: Payslip } => Boolean(l.slip)).map((l) => ({ ...l, days: l.days ?? monthDays(period) }))
   const typed = new Map((run?.lines ?? []).map((l) => [l.employeeId, l]))
   return employees
@@ -347,6 +352,8 @@ export function monthSlips(period: string, employees: readonly Employee[], run: 
       const average = proposeAverage(period, terms, closed)
       const pay = monthPay(period, terms, parts, sick, parts.average ?? average.average)
       const exemption = e.exemption && exemptionAllowed(e.contract, e.pension, terms.regular)
+      // An annual settlement settled with this month's wage (tax-settlement.ts).
+      const settled = (context.settlements ?? []).find((x) => x.employeeId === e.id && x.inputs.requested && x.inputs.settleIn === period && x.result)
       return {
         employeeId: e.id,
         name: e.name,
@@ -374,6 +381,7 @@ export function monthSlips(period: string, employees: readonly Employee[], run: 
           regular: terms.regular,
           pension: e.pension,
           exemption,
+          ...(settled?.result ? { settlement: { tax: settled.result.taxDifference, bonus: settled.result.bonusDifference } } : {}),
         }),
       }
     })

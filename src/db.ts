@@ -935,6 +935,36 @@ const MIGRATIONS: readonly string[][] = [
   ],  // A health insurer's report of a month covers the people insured with it as employees: a student on a student's
   // agreement and an old-age pensioner on an agreement are left out of it, as the report leaves them out.
   PAYROLL_HEALTH_COVERAGE_SCHEMA,
+  // The annual settlement (src/app/tax-settlement.ts, 17 October 2026): an employee's year, what the accountant gave,
+  // the result worked out when saved, and the payroll month it is settled in.
+  [
+    `CREATE TABLE IF NOT EXISTS tax_settlements (
+      company_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      inputs TEXT NOT NULL,
+      result TEXT,
+      settle_in TEXT,
+      saved_at INTEGER,
+      saved_by TEXT,
+      PRIMARY KEY (company_id, employee_id, year)
+    )`,
+    ...['INSERT', 'UPDATE', 'DELETE'].flatMap((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return [
+        `CREATE TRIGGER tax_settlements_data_${action.toLowerCase()} AFTER ${action} ON tax_settlements BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+        ...(action === 'DELETE'
+          ? []
+          : [
+              `CREATE TRIGGER tax_settlements_purging_${action.toLowerCase()} BEFORE ${action} ON tax_settlements
+                WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+                BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+            ]),
+      ]
+    }),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

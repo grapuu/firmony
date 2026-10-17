@@ -15,11 +15,13 @@ export interface PrehladTotals {
   gross: number; advance: number; paidOn: string; employees: number; issues: string[]
   /** The child bonus of the month: the whole (row A), what the advances bear (row 05 and row B), what the employer pays of its own (row C). */
   bonus: number; bonusFromTax: number; bonusOwn: number
+  /** Row 02: the annual settlements settled in the month (underpayments plus, overpayments minus), at most the advances down; what the advances cannot bear the employer pays of its own and asks the tax office for (§ 40(8)). */
+  settlement: number; settlementOwn: number
 }
 const money = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0
 export function prehladTotals(period: string, sources: PrehladSource[], today: string): PrehladTotals {
   const issues = new Set<string>(), seen = new Set<string>(), employees = new Set<string>()
-  let gross = 0, advance = 0, paidOn = '', bonus = 0
+  let gross = 0, advance = 0, paidOn = '', bonus = 0, settled = 0
   if (!isMonth(period) || ![2026, 2027].includes(Number(period.slice(0, 4)))) issues.add('Pre toto obdobie nemáme overený formulár PREHLADv26.')
   if (period >= today.slice(0, 7)) issues.add('Prehľad pripravte až po skončení vykazovaného mesiaca.')
   if (!sources.length) issues.add('Chýbajú vyplatené príjmy s odborne potvrdeným vykazovaným obdobím.')
@@ -33,14 +35,18 @@ export function prehladTotals(period: string, sources: PrehladSource[], today: s
     for (const line of lines) {
       const s = line?.slip
       const sick = s?.sickPay === undefined ? 0 : s.sickPay
-      if (!line || typeof line.employeeId !== 'string' || employees.has(line.employeeId) || !s || s.period !== source.period || s.rulesYear !== Number(source.period.slice(0, 4)) || ![line.gross, s.gross, sick, s.advance, s.socialEmployee, s.healthEmployee, s.net, s.bonus].every(money) || !Number.isSafeInteger(s.withheld) || s.gross !== line.gross || s.withheld !== s.advance - s.bonus || s.net !== s.gross + sick - s.socialEmployee - s.healthEmployee - s.withheld) { issues.add('Uložená výplatná páska nemá úplné a konzistentné podklady.'); continue }
+      const st = s?.settlementTax === undefined ? 0 : s.settlementTax, sb = s?.settlementBonus === undefined ? 0 : s.settlementBonus
+      if (!line || typeof line.employeeId !== 'string' || employees.has(line.employeeId) || !s || s.period !== source.period || s.rulesYear !== Number(source.period.slice(0, 4)) || ![line.gross, s.gross, sick, s.advance, s.socialEmployee, s.healthEmployee, s.net, s.bonus].every(money) || ![s.withheld, st, sb].every(Number.isSafeInteger) || s.gross !== line.gross || s.withheld !== s.advance - s.bonus || s.net !== s.gross + sick - s.socialEmployee - s.healthEmployee - s.withheld - st + sb) { issues.add('Uložená výplatná páska nemá úplné a konzistentné podklady.'); continue }
       employees.add(line.employeeId)
-      gross += s.gross + sick; advance += s.advance; bonus += s.bonus
+      gross += s.gross + sick; advance += s.advance; bonus += s.bonus + sb; settled += st
     }
   }
-  if (!money(gross) || gross <= 0 || gross > 99_999_999_999 || !money(advance) || advance > 9_999_999_999 || !money(bonus) || bonus > 9_999_999_999) issues.add('Úhrny nezodpovedajú podporovanému rozsahu formulára.')
-  const bonusFromTax = Math.min(bonus, advance)
-  return { gross, advance, paidOn, employees: employees.size, issues: [...issues], bonus, bonusFromTax, bonusOwn: bonus - bonusFromTax }
+  if (!money(gross) || gross <= 0 || gross > 99_999_999_999 || !money(advance) || advance > 9_999_999_999 || bonus > 9_999_999_999) issues.add('Úhrny nezodpovedajú podporovanému rozsahu formulára.')
+  if (bonus < 0) issues.add('Vrátenie daňového bonusu z ročného zúčtovania prevyšuje bonusy mesiaca. Prehľad pripravte odborne.')
+  const settlement = Math.max(settled, -advance)
+  const total = advance + settlement
+  const bonusFromTax = Math.max(0, Math.min(bonus, total))
+  return { gross, advance, paidOn, employees: employees.size, issues: [...issues], bonus, bonusFromTax, bonusOwn: bonus - bonusFromTax, settlement, settlementOwn: settlement - settled }
 }
 export interface PrehladInput {
   dic: string; name: string; street: string; number: string; postal: string; city: string
@@ -70,6 +76,6 @@ export function prehladXml(period: string, totals: PrehladTotals, v: PrehladInpu
   const poa = v.representation === 'firmony'
   const header = [el('dic',v.dic), group('druhPrehladu',[el('riadny',v.kind==='R'?'1':'0'),el('opravny',v.kind==='O'?'1':'0')]), group('zdanovacieObdobie',[el('mesiac',period.slice(5)),el('rok',period.slice(0,4))]),el('datumZisteniaOP',date(v.foundOn)),group('fo',empty(['priezvisko','meno','titul','titulZa'])),group('po',[el('obchodneMeno',v.name),el('pravnaForma','112')]),group('sidlo',[el('ulica',v.street),el('cislo',v.number),el('psc',v.postal),el('obec',v.city),el('stat','Slovenská republika')]),group('podava',[...empty(['priezvisko','meno','titul','titulZa','rodneCislo','datumNarodenia']),el('dic',poa?OPERATOR.taxId:''),el('obchodneMeno',poa?OPERATOR.name:''),el('pravnaForma',poa?'112':''),el('ulica',poa?representativeAddress.street:''),el('cislo',poa?representativeAddress.number:''),el('psc',poa?representativeAddress.postal:''),el('obec',poa?representativeAddress.city:''),el('stat',poa?OPERATOR.country:'')]),el('tel',v.phone),el('email',v.email)]
   const bonus = totals.bonus > 0
-  const body = [group('cast1',[el('r00',amount(totals.gross)),group('r01',[el('datum',date(totals.paidOn)),el('suma',amount(totals.advance))]),group('r01a',empty(['mesiacRok','suma'])),...empty(['r01b','r02','r03']),el('r04',amount(totals.advance)),el('r05',bonus?amount(totals.bonusFromTax):''),...empty(['r06','r07']),el('r08',amount(totals.advance-totals.bonusFromTax)),el('r08b','0')]),group('cast2',[el('rA',bonus?amount(totals.bonus):''),el('rB',bonus?amount(totals.bonusFromTax):''),el('rC',bonus&&totals.bonusOwn>0?amount(totals.bonusOwn):''),...empty(['rD','rE','rF'])]),group('cast3',[...['poukazatBonus','poukazatPremiu','poukazatBonusNaUroky'].map((tag)=>group(tag,[el('ziadam','0'),el('suma')])),group('sposobPlatby',[el('poukazka','0'),el('ucet','0')]),el('IBAN')])]
+  const body = [group('cast1',[el('r00',amount(totals.gross)),group('r01',[el('datum',date(totals.paidOn)),el('suma',amount(totals.advance))]),group('r01a',empty(['mesiacRok','suma'])),...empty(['r01b']),el('r02',totals.settlement!==0?amount(totals.settlement):''),...empty(['r03']),el('r04',amount(totals.advance+totals.settlement)),el('r05',bonus?amount(totals.bonusFromTax):''),...empty(['r06','r07']),el('r08',amount(totals.advance+totals.settlement-totals.bonusFromTax)),el('r08b','0')]),group('cast2',[el('rA',bonus?amount(totals.bonus):''),el('rB',bonus?amount(totals.bonusFromTax):''),el('rC',bonus&&totals.bonusOwn>0?amount(totals.bonusOwn):''),...empty(['rD','rE','rF'])]),group('cast3',[...['poukazatBonus','poukazatPremiu','poukazatBonusNaUroky'].map((tag)=>group(tag,[el('ziadam','0'),el('suma')])),group('sposobPlatby',[el('poukazka','0'),el('ucet','0')]),el('IBAN')])]
   return `<?xml version="1.0" encoding="UTF-8"?>\n${group('dokument',[group('hlavicka',header),group('telo',body),group('vyhotovil',[el('meno',v.preparedBy),el('tel',v.phone),el('datumVyhotovenia',date(v.declaredOn))])])}\n`
 }

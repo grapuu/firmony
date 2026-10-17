@@ -77,7 +77,7 @@ over. Bring this section up to date first whenever a session ends.
    set in the closing's form with the average employees from payroll, accounts placed in a row of her own (a
    receivable due after a year, a related party), the audit of § 19(1)(a) said; `closingBalancesByYear` reads every
    year in one pass; test/closing-pod.runtime.mjs); then, in this order: full payroll (agreements, directors,
-   sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS; foreign
+   sick leave, holidays, overtime, the annual settlement: built on 17 October 2026, see below); migration from Pohoda, Omega, Money, KROS; foreign
    currencies, OSS, Intrastat and joint-stock companies. Deferred tax (built: § 10 of the measure MF/23054/2002-92 as
    of 1 January 2026, required with the audit, never for a micro entity; the register's temporary differences
    (`temporaryDifferences`), the provisions proposed, what she types, tax losses on her word; booked with the year's
@@ -110,7 +110,15 @@ over. Bring this section up to date first whenever a session ends.
    a regular income (the codes ZECD1V and ZECD2V) and a pensioner on an agreement has no sickness insurance; the 514
    leaves out the state-insured (`healthInsuredCoverageSql`, the generation trigger replaced in step 29, no target for
    them alone); PREHLAD takes sick pay into row 00 and the child bonus into row 05 and section II (rows A to C).
-   Next: the annual settlement. The site promises a
+   Stage 3 (the annual settlement, schema step 30 `tax_settlements`): `src/app/tax-settlement.ts` (§ 38: the partial
+   base of the year here and at the employers before, the taxpayer's part with the 2026 reduction 14 661,11 € less a
+   third, the spouse's, supplementary pension saving up to 180 €, a pension off the part, the bands, the year's bonus by
+   month with the cut above 27 432 € and the share caps), `/ucto/klienti/:id/mzdy/rocne?rok=` (each employee, the form,
+   the result, the month to settle in; never changed once that month is closed), the settlement on the month's slip
+   (`settlementTax`, `settlementBonus`) and in the overview's row 02 (down to the advances; the rest the employer's own,
+   asked of the tax office) and row 05; `/mzdy/potvrdenie` the statement of taxable income; the annual report's figures
+   (its eForm for 2026 is published in 2027: then its XML). Next by the order: migration from Pohoda, Omega, Money,
+   KROS; then foreign currencies, OSS, Intrastat, joint-stock companies. The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
@@ -1548,12 +1556,11 @@ monthly wage; nothing is sent to the insurers or the tax office by us.
   client told that it does not stand), what to pay and where (each employee's net to their account, the Social
   Insurance Agency, each insurer, the tax office), the employees (`/mzdy/zamestnanec`), the settings. Events:
   `payroll.saved`, `payroll.closed`, `payroll.reopened`, `payroll.settings`, `employee.added`, `employee.changed`.
-- Not built: agreements outside employment (dohody), a director's remuneration, working pensioners and students,
-  sick pay and holiday pay worked out by the app (typed in the month's income), the annual reconciliation, wage
-  deductions, meal allowances, the registrations of employees, and the reports as files (the Social Insurance
-  Agency's monthly report, the insurers' 514 batch, the overview PREHLADv26): they are filed in the insurers' portals
-  and eDane from the page's figures and marked on the screen of deadlines. The client is told in a message, not yet
-  with QR codes on its Dane page.
+- Since 17 October 2026 (item 8 of "Start here"): agreements, a director's remuneration, pensioners and students,
+  sick pay, holiday, obstacles, overtime and surcharges worked out by the app, the annual settlement, and the reports
+  of every relationship. Not built: wage deductions (exekúcie), meal allowances, seasonal work, a collective
+  agreement's rates, the annual report's eForm file (its figures are on the settlement page), the § 33a bonus on
+  mortgage interest. The client is told in a message, not yet with QR codes on its Dane page.
 
 ## Firmony for investors (14 October 2026; `src/views/investors.tsx`, `INVESTORS` in `src/config.ts`, `copy.investors`)
 
@@ -1689,8 +1696,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 866 unit checks (17 October 2026), including contract releases, registrations and tax advances
-npm run test:runtime     # 1320 workerd checks on Node 24 (as GitHub runs them), including contract evidence/races and the purge
+npm test                 # 1013 unit checks (17 October 2026, evening), including full payroll and the annual settlement
+npm run test:runtime     # 1430 workerd checks on Node 24 (as GitHub runs them), including test/payroll-full.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

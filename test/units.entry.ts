@@ -51,6 +51,7 @@ export * as payroll from '../src/app/payroll'
 export * as payrollStore from '../src/app/payroll-store'
 export * as payMonth from '../src/app/pay-month'
 export * as payrollForm from '../src/app/payroll-form'
+export * as taxSettlement from '../src/app/tax-settlement'
 
 export * as periods from '../src/app/periods'
 export * as support from '../src/team/support'

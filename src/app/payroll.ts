@@ -181,6 +181,8 @@ export interface PayInput {
   exemption?: boolean
   /** The days the minimum health advance counts (the days employed less those of sickness benefit, when the state pays). */
   minimumDays?: number
+  /** The annual settlement settled with this month's wage (tax-settlement.ts): the tax owed (minus: refunded), the bonus paid (minus: returned). */
+  settlement?: { tax: number; bonus: number }
 }
 
 export interface Payslip {
@@ -216,6 +218,9 @@ export interface Payslip {
   bonus: number
   bonusByChild: { name: string; amount: number }[]
   withheld: number
+  /** The annual settlement settled with the month (older slips have none): the tax withheld for it (minus: refunded), the bonus paid for it (minus: returned). */
+  settlementTax?: number
+  settlementBonus?: number
   net: number
   employerCost: number
 }
@@ -328,7 +333,9 @@ export function payslip(input: PayInput): Payslip {
   const bonusByChild = reduced.map((c) => ({ name: c.name, amount: roundCents(c.amount * scale) }))
   const bonus = roundCents(Math.min(whole, cap))
   const withheld = advance - bonus
-  const net = gross + sickPay - socialEmployee - healthEmployee - withheld
+  const settlementTax = Math.round(input.settlement?.tax ?? 0)
+  const settlementBonus = Math.round(input.settlement?.bonus ?? 0)
+  const net = gross + sickPay - socialEmployee - healthEmployee - withheld - settlementTax + settlementBonus
   return {
     period: input.period,
     rulesYear: y.year,
@@ -355,6 +362,7 @@ export function payslip(input: PayInput): Payslip {
     bonus,
     bonusByChild,
     withheld,
+    ...(input.settlement ? { settlementTax, settlementBonus } : {}),
     net,
     employerCost: gross + sickPay + socialEmployer + healthEmployer,
   }
@@ -386,7 +394,7 @@ export function payrollTotals(slips: readonly (Payslip & { insurer: string })[])
     net: slips.reduce((t, s) => t + s.net, 0),
     social: slips.reduce((t, s) => t + s.socialEmployee + s.socialEmployer, 0),
     health,
-    tax: slips.reduce((t, s) => t + s.withheld, 0),
+    tax: slips.reduce((t, s) => t + s.withheld + (s.settlementTax ?? 0) - (s.settlementBonus ?? 0), 0),
     employerCost: slips.reduce((t, s) => t + s.employerCost, 0),
   }
 }
