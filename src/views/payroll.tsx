@@ -15,6 +15,8 @@ import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
 import { REPORT_KINDS, REPORT_LABELS, type ReportItem } from '../payroll-reporting/model'
 import { DELIVERY_TONE } from '../filings/model'
+import type { RegistrationDue } from '../team/registrations'
+import { registrationWhat } from './deadlines'
 
 const w = t.payroll
 
@@ -125,6 +127,39 @@ const PaysCard: FC<{ orders: PayOrders; today: string }> = ({ orders, today }) =
   </section>
 )
 
+/** The registrations with the Social Insurance Agency and the health insurers: filed in their portals, recorded here. */
+const RegistrationsCard: FC<{ company: Company; registrations: RegistrationDue[]; today: string }> = ({ company, registrations, today }) => (
+  <section class="info" id="prihlasenia" aria-labelledby="prihlasenia-t">
+    <h2 id="prihlasenia-t" class="info__title">
+      {w.registrations.title}
+    </h2>
+    <p class="info__lead">{w.registrations.lead}</p>
+    {registrations.length === 0 ? (
+      <p class="info__empty">{w.registrations.empty}</p>
+    ) : (
+      <ul class="plain">
+        {registrations.map((r) => (
+          <li class="plain__row plain__row--two">
+            <span class="plain__name">{registrationWhat(r)}</span>
+            <span class="plain__sub">
+              <span class={`pill ${r.done ? 'pill--ok' : today > r.day ? 'pill--red' : 'pill--amber'}`}>
+                {r.done ? w.registrations.done : today > r.day ? w.registrations.late(dayName(r.day, today)) : w.registrations.by(dayName(r.day, today))}
+              </span>
+            </span>
+            <form class="plain__action" method="post" action={`${base(company)}/prihlasenia`}>
+              <input type="hidden" name="kluc" value={r.key} />
+              {r.done ? <input type="hidden" name="spat" value="1" /> : null}
+              <button class={`btn btn--small ${r.done ? 'btn--text' : 'btn--line'}`} type="submit">
+                {r.done ? w.registrations.undo : w.registrations.mark}
+              </button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+)
+
 const EmployeesCard: FC<{ company: Company; employees: Employee[]; today: string }> = ({ company, employees, today }) => (
   <section class="info" id="zamestnanci" aria-labelledby="zamestnanci-t">
     <h2 id="zamestnanci-t" class="info__title">
@@ -135,12 +170,12 @@ const EmployeesCard: FC<{ company: Company; employees: Employee[]; today: string
     ) : (
       <ul class="plain">
         {employees.map((e) => (
-          <li class="plain__row">
+          <li class="plain__row plain__row--two">
             <span class="plain__name">{e.name}</span>
             <span class="plain__sub">
               <span>{w.employees.line(dayName(e.startedOn, today), e.endedOn ? dayName(e.endedOn, today) : null, formatEurExact(e.wage), INSURERS[e.insurer])}</span>
             </span>
-            <a class="btn btn--line btn--small" href={`${base(company)}/zamestnanec?id=${e.id}`}>
+            <a class="btn btn--line btn--small plain__action" href={`${base(company)}/zamestnanec?id=${e.id}`}>
               {w.employees.edit}
             </a>
           </li>
@@ -192,6 +227,8 @@ const SettingsCard: FC<{ company: Company; insurers: Insurer[]; values: Settings
 )
 
 export interface PayrollPageProps {
+  /** The registrations with the Social Insurance Agency and the health insurers (team/registrations.ts). */
+  registrations?: RegistrationDue[]
   reports?: ReportItem[]
   reopenBlocked?: boolean
   company: Company
@@ -387,6 +424,7 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
         </div>
         <aside class="pgrid__side">
           <EmployeesCard company={c} employees={p.employees} today={p.today} />
+          <RegistrationsCard company={c} registrations={p.registrations ?? []} today={p.today} />
           <SettingsCard company={c} insurers={p.settings.insurers} values={p.settings.values} errors={p.settings.errors} />
         </aside>
       </div>

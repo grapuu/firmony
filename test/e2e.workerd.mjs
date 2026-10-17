@@ -782,8 +782,15 @@ await settle()
 const lucia = await db.prepare("SELECT id, team FROM users WHERE email = 'lucia@firmony.test'").first()
 check(
   'an accountant is added and told how to sign in',
-  res.status === 303 && lucia?.team === 'accountant' && (await sent()).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('/app/prihlasenie')),
+  res.status === 303 && lucia?.team === 'accountant' && (await sent()).some((m) => m.to === 'lucia@firmony.test' && m.text.includes('/app/prihlasenie') && m.text.includes('Jednorazový kód')),
 )
+{
+  // Without a passkey she cannot work: the team's page says so and leads to the activation code.
+  const people = await (await admin.get('/ucto/tim')).text()
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/team-people.html`, people)
+  const row = people.split('<li class="row">').find((li) => li.includes('lucia@firmony.test')) ?? ''
+  check('a new member without a passkey is marked, with the way to her activation code', row.includes('Bez kľúča') && row.includes('href="/auth/grants"'))
+}
 res = await admin.post('/ucto/klienti/co-a/udaje', { dic: '2121234567', icdph: '', poznamka: 'Chce prehľad do 20.', plan: 'rast', uctovnicka: lucia?.id ?? '' })
 const coA = await db.prepare("SELECT accountant_id, dic, plan, note FROM companies WHERE id = 'co-a'").first()
 check('a client is given to her', res.status === 303 && coA?.accountant_id === lucia?.id && coA.dic === '2121234567' && coA.plan === 'rast' && coA.note === 'Chce prehľad do 20.')
@@ -1654,8 +1661,26 @@ check("the accountant's list says it waits for her", (await res.text()).includes
 res = await acc.get('/ucto/klienti/co-a')
 page = await res.text()
 check("her client's page has it with the button to mark it", page.includes(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`) && page.includes('plnomocenstvo.asice'))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/client-poa.html`, page)
 res = await acc.get(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}`)
 check('and she opens it', res.status === 200)
+{
+  // A paper that is not the power of attorney goes back to the client, with why; never one that was checked.
+  const wrong = await db.prepare("SELECT id FROM company_files WHERE company_id = 'co-a' AND kind = 'poa' AND file_name = 'plna moc podpisana.pdf'").first()
+  res = await acc.post(`/ucto/klienti/co-a/plna-moc/${wrong?.id}/vratit`, { dovod: 'x' })
+  check('returning needs a reason', res.status === 303 && (await db.prepare('SELECT deleted_at FROM company_files WHERE id = ?').bind(wrong?.id ?? '').first())?.deleted_at === null)
+  res = await anna.post(`/ucto/klienti/co-a/plna-moc/${wrong?.id}/vratit`, { dovod: 'Je to iná firma' })
+  check('a client returns nothing', res.status === 404)
+  res = await acc.post(`/ucto/klienti/co-a/plna-moc/${wrong?.id}/vratit`, { dovod: 'Je to iná firma' })
+  const back = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
+  check(
+    'returned: out of the list, on record with why, and the client is told in the app what to upload',
+    res.status === 303 && Boolean((await db.prepare('SELECT deleted_at FROM company_files WHERE id = ?').bind(wrong?.id ?? '').first())?.deleted_at) &&
+      Boolean(await db.prepare("SELECT id FROM events WHERE action = 'poa.returned' AND subject = ?").bind(wrong?.id ?? '').first()) &&
+      back?.body.replace(/\u00a0/g, ' ').includes('Plnú moc „plna moc podpisana.pdf“ sme Vám vrátili: Je to iná firma. Nahrajte') &&
+      !(await (await anna.get('/app/plna-moc')).text()).includes('plna moc podpisana.pdf'),
+  )
+}
 res = await admin.post(`/ucto/klienti/co-b/plna-moc/${poaRow?.id}/overit`, {})
 check(
   'a paper is checked only under its own company',
@@ -1678,6 +1703,8 @@ check(
 )
 res = await acc.post(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/overit`, {})
 check('twice is once', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'poa.checked'").first())?.n === 1)
+res = await acc.post(`/ucto/klienti/co-a/plna-moc/${poaRow?.id}/vratit`, { dovod: 'Omylom vrátená' })
+check('a checked power of attorney is never returned', (await db.prepare('SELECT deleted_at FROM company_files WHERE id = ?').bind(poaRow?.id ?? '').first())?.deleted_at === null)
 res = await anna.get('/app/firma')
 page = await res.text()
 check("the client sees it on the company's page, with the notice for the former accountant", page.includes('Máme ju') && page.includes('href="/app/prechod"'))
@@ -2582,6 +2609,17 @@ check(
     'a token Fio does not take is said so, and not kept',
     res.status === 422 && (await res.text()).includes('Fio banka tento token neprijala') && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-s'").first())?.n === 0,
   )
+  // Fio not answering is said as that, not as "too soon"; the token stays and the schedule reads it.
+  fio.fail(503)
+  res = await simona.post('/app/banka/fio', { token: FIO_TOKEN })
+  check(
+    'Fio down: the owner is told it does not answer, and the token is kept',
+    res.headers.get('location') === '/app/banka?ok=fio-neodpoveda' && (await db.prepare("SELECT COUNT(*) AS n FROM bank_links WHERE company_id = 'co-s' AND kind = 'fio' AND status = 'active'").first())?.n === 1 &&
+      (await (await simona.get('/app/banka?ok=fio-neodpoveda')).text()).replace(/\u00a0/g, ' ').includes('Fio banka teraz neodpovedá'),
+  )
+  fio.fail(null)
+  await db.batch([db.prepare("DELETE FROM bank_links WHERE company_id = 'co-s' AND kind = 'fio'"), db.prepare("DELETE FROM events WHERE company_id = 'co-s' AND action = 'bank.linked' AND json_extract(detail, '$.kind') = 'fio'")])
+  fio.wait()
   fioFeed.transactions = [
     { id: 9001, date: dayS(-2), amount: -160, party: 'Slovak Telekom, a.s.', account: '2612345678', bankCode: '1100', vs: '7781202611', message: 'Internet' },
     { id: 9002, date: dayS(-1), amount: 245.5, party: 'Odberateľ s. r. o.', account: 'SK9811000000002987654321', vs: '77002' },
@@ -3940,6 +3978,42 @@ check(
     res.status === 303 && kept?.wage_cents === 150000 && kept.insurer === '25' && kept.declaration === 1 && JSON.parse(kept.children)[0]?.born === '2016-04-02' && kept.iban === 'SK3112000000198742637541',
   )
 
+  // Her registrations: the company employs for the first time while the contract is ours. Filed in the portals of
+  // the Social Insurance Agency and VšZP, recorded here; the newest record counts.
+  {
+    const regPage = plain(await (await acc.get(base)).text())
+    const terms = await (await acc.get('/ucto/terminy')).text()
+    check(
+      'a new employee brings her registrations and the employer\'s, late here, to the payroll page and the deadlines',
+      regPage.includes('Prihlásenia a odhlásenia') && regPage.includes('Prihlásenie do Sociálnej poisťovne: Ján Mzdový') && regPage.includes('Oznámenie nástupu v zdravotnej poisťovni VšZP: Ján Mzdový') &&
+        regPage.includes('Registrácia zamestnávateľa v Sociálnej poisťovni') && regPage.includes('po termíne') &&
+        terms.includes('/ucto/klienti/co-w/mzdy#prihlasenia'),
+    )
+    const recorded = () => db.prepare("SELECT action FROM events WHERE company_id = 'co-w' AND subject = ? ORDER BY id").bind(`${kept?.id}:in:social`).all().then((r) => r.results.map((e) => e.action))
+    res = await acc.post(`${base}/prihlasenia`, { kluc: `${kept?.id}:in:social` })
+    const afterHtml = await (await acc.get(base)).text()
+    const after = plain(afterHtml)
+    if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/payroll-registrations.html`, afterHtml)
+    check('recorded as filed: once, with who, and the page says so', res.status === 303 && JSON.stringify(await recorded()) === '["registration.done"]' && after.includes('Podané'))
+    await acc.post(`${base}/prihlasenia`, { kluc: `${kept?.id}:in:social` })
+    await acc.post(`${base}/prihlasenia`, { kluc: 'nic:in:social' })
+    check('the same twice is one record, and what is not owed records nothing', JSON.stringify(await recorded()) === '["registration.done"]' && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE subject = 'nic:in:social'").first())?.n === 0)
+    await acc.post(`${base}/prihlasenia`, { kluc: `${kept?.id}:in:social`, spat: '1' })
+    const reopened = plain(await (await acc.get('/ucto/terminy')).text())
+    check(
+      'taken back by mistake, it is open again',
+      JSON.stringify(await recorded()) === '["registration.done","registration.undone"]' && reopened.includes('Prihlásenie do Sociálnej poisťovne: Ján Mzdový'),
+      `${JSON.stringify(await recorded())} ${reopened.slice(reopened.indexOf('Mzdov') - 300, reopened.indexOf('Mzdov') + 100)}`,
+    )
+    res = await acc.post('/ucto/klienti/co-b/mzdy/prihlasenia', { kluc: 'employer:social' })
+    check("nobody records one of a client that is not hers", res.status === 404)
+    for (const key of [`${kept?.id}:in:social`, `${kept?.id}:in:health`, 'employer:social', 'employer:health:25']) await acc.post(`${base}/prihlasenia`, { kluc: key })
+    check(
+      'all four recorded: nothing of them is late any more, and the deadlines have them as done',
+      !plain(await (await acc.get(base)).text()).includes('po termíne') && !plain(await (await acc.get('/ucto/terminy')).text()).includes('Ján Mzdový'),
+    )
+  }
+
   // Last month, worked out and kept
   res = await acc.get(base)
   page = plain(await res.text())
@@ -4100,6 +4174,42 @@ check('an expert cannot approve stale company facts or tariffs', res.status === 
 res = await admin.post(reviewPath, { ...reviewFields, decision: 'bespoke' })
 await settle()
 check('a bespoke prospect has a recorded decision, and no link to a standard contract', res.status === 303 && (await linkMails()).length === 0)
+check(
+  'a bespoke scope leads to a client made on a paper contract',
+  (await (await admin.get(reviewPath)).text()).replace(/\u00a0/g, ' ').includes('Individuálnu službu uzavriete zmluvou na papieri') &&
+    (await (await admin.get(reviewPath)).text()).includes(`href="/ucto/klienti/novy?ziadost=${orderRow.request_id}"`),
+)
+{
+  // An online order that lapsed while its request waited is no dead end: thirty more days with a new token, or a
+  // client on paper. Not for a company that is a client already.
+  const tsNow = Math.floor(Date.now() / 1000)
+  await db.batch([
+    db.prepare("INSERT INTO requests (id, created_at, ico, company, plan, situation, name, email, privacy_version) VALUES ('req-lapsed', ?, '55099999', 'Stará objednávka s. r. o.', 'start', 'fresh', 'Eva Neskorá', 'eva@neskoro.test', 'v1')").bind(tsNow - 40 * 86400),
+    db.prepare("INSERT INTO orders (id, token, created_at, expires_at, request_id, ico, company, plan, person, email) VALUES ('ord-lapsed', ?, ?, ?, 'req-lapsed', '55099999', 'Stará objednávka s. r. o.', 'start', 'Eva Neskorá', 'eva@neskoro.test')").bind('f'.repeat(64), tsNow - 40 * 86400, tsNow - 10 * 86400),
+  ])
+  const lapsedPath = '/ucto/ziadosti/req-lapsed/posudenie'
+  const lapsedHtml = await (await admin.get(lapsedPath)).text()
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-lapsed.html`, lapsedHtml)
+  const lapsed = lapsedHtml.replace(/\u00a0/g, ' ')
+  check('a lapsed order says so and offers both ways on', lapsed.includes('Objednávka vypršala') && lapsed.includes('action="/ucto/ziadosti/req-lapsed/obnovit"') && lapsed.includes('href="/ucto/klienti/novy?ziadost=req-lapsed"'))
+  res = await acc.post('/ucto/ziadosti/req-lapsed/obnovit', {})
+  check('an accountant renews nothing', res.status === 404)
+  res = await admin.post('/ucto/ziadosti/req-lapsed/obnovit', {})
+  const renewed = await db.prepare("SELECT token, expires_at FROM orders WHERE id = 'ord-lapsed'").first()
+  check(
+    'renewed: thirty more days, a new token, on record, and the review form is back',
+    res.status === 303 && renewed.expires_at > tsNow + 29 * 86400 && renewed.token !== 'f'.repeat(64) &&
+      Boolean(await db.prepare("SELECT id FROM events WHERE action = 'order.renewed' AND subject = 'ord-lapsed'").first()) &&
+      (await (await admin.get(lapsedPath)).text()).includes('name="proposal"'),
+  )
+  res = await admin.post('/ucto/ziadosti/req-lapsed/obnovit', {})
+  check('an order that runs is not renewed again', res.status === 409)
+  await db.prepare("UPDATE orders SET expires_at = ? WHERE id = 'ord-lapsed'").bind(tsNow - 1).run()
+  await db.prepare("INSERT INTO companies (id, created_at, name, ico, plan, inbox) VALUES ('co-lapsed', ?, 'Stará objednávka s. r. o.', '55099999', 'start', 'lapsed01')").bind(tsNow).run()
+  res = await admin.post('/ucto/ziadosti/req-lapsed/obnovit', {})
+  check('nor one of a company that has become a client', res.status === 409 && (await db.prepare("SELECT expires_at FROM orders WHERE id = 'ord-lapsed'").first())?.expires_at === tsNow - 1)
+  await db.batch([db.prepare("DELETE FROM companies WHERE id = 'co-lapsed'"), db.prepare("DELETE FROM orders WHERE id = 'ord-lapsed'"), db.prepare("DELETE FROM requests WHERE id = 'req-lapsed'")])
+}
 res = await admin.post(reviewPath, reviewFields)
 await settle()
 check('an approved standard scope sends the director the link at once', res.status === 303 && res.headers.get('location') === `${reviewPath}?ok=odkaz` && (await linkMails()).length === 1)
@@ -4577,9 +4687,24 @@ check(
 const handoverForeign = as((await signIn('boris@firma-b.test')).cookie)
 res = await handoverForeign.get(`/app/odovzdanie/${handed?.id}`)
 check('nobody of another company gets them', res.status === 404)
-res = await admin.get('/ucto')
-page = await res.text()
-const handedClientRow = page.match(/<a class="tbl__row[^>]*href="\/ucto\/klienti\/co-a"[\s\S]*?<\/a>/)?.[0]
+// Point 10.4: the books handed over and the power of attorney given up. Files alone do not finish it.
+const handoverRow = async () => (await (await admin.get('/ucto')).text()).match(/<a class="tbl__row[^>]*href="\/ucto\/klienti\/co-a"[\s\S]*?<\/a>/)?.[0] ?? ''
+check('files alone leave the handover owed: the power of attorney is still ours to give up', (await handoverRow()).includes('Odovzdanie mešká') || (await handoverRow()).includes('Odovzdať do'))
+{
+  const handoverHtml = await (await acc.get('/ucto/klienti/co-a')).text()
+  check('the client page asks for the power of attorney to be given up', handoverHtml.includes('action="/ucto/klienti/co-a/odovzdanie/plna-moc"'))
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/handover-resign.html`, handoverHtml)
+}
+res = await acc.post('/ucto/klienti/co-a/odovzdanie/plna-moc', {})
+await acc.post('/ucto/klienti/co-a/odovzdanie/plna-moc', {})
+check(
+  'given up: recorded once, with who, and the page says so',
+  res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-a' AND action = 'poa.resigned'").first())?.n === 1 &&
+    (await (await acc.get('/ucto/klienti/co-a')).text()).replace(/\u00a0/g, ' ').includes('Vzdanie plnej moci zaznamenané'),
+)
+res = await acc.post('/ucto/klienti/co-b/odovzdanie/plna-moc', {})
+check('never for a client that is not hers', res.status === 404)
+const handedClientRow = await handoverRow()
 check('the client row no longer asks for its handover once it was made', Boolean(handedClientRow) && !handedClientRow.includes('Odovzdanie mešká'))
 
 await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })

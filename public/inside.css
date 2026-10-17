@@ -448,6 +448,13 @@
   gap: 14px;
 }
 
+/* An action under a row that is no link itself: the activation code of a team member without a passkey. */
+.row__act {
+  display: inline-block;
+  margin: -4px 20px 14px 74px;
+  font-size: 0.875rem;
+}
+
 .row__amount {
   color: var(--ink);
   font-weight: 600;
@@ -2741,6 +2748,12 @@
   white-space: nowrap;
 }
 
+/* A stacked row says its whole name: a registration, a file handed over, an employee. */
+.plain__row--two .plain__name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .plain__amount {
   color: var(--ink);
   font-weight: 600;
@@ -5024,6 +5037,7 @@ select.field__input {
 }
 
 .plain__action {
+  justify-self: start;
   margin-top: 6px;
 }
 

@@ -60,6 +60,3 @@ export const bell = {
   teamBilling: (month: string, link: string) => ring(`faktúry klientom za ${month}`, `faktúry klientom za ${month} sú pripravené. Skontrolujte ich a vystavte:`, link),
   teamStatement: (link: string) => ring('výpis na kontrolu', 'výpis z banky klienta nenadväzuje na predchádzajúci, preto sme ho nezaúčtovali. Pozrite sa naň:', link),
 }
-
-/** Everything a doorbell may say, for the checks: no other text reaches a mailbox of a client or of the team. */
-export const BELL_KINDS = Object.keys(bell) as (keyof typeof bell)[]

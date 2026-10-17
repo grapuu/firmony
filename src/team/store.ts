@@ -48,6 +48,13 @@ function unansweredSql(v: ReturnType<typeof visible>): string {
     )`
 }
 
+/** Point 10.4 of the terms: the books handed over and the power of attorney given up. Until both, the count is 0. */
+export const POA_RESIGNED = 'poa.resigned'
+export function handedOverSql(company: string): string {
+  return `(CASE WHEN EXISTS (SELECT 1 FROM events ev WHERE ev.company_id = ${company}.id AND ev.action = '${POA_RESIGNED}')
+    THEN (SELECT COUNT(*) FROM company_files f WHERE f.company_id = ${company}.id AND f.kind = 'handover' AND f.deleted_at IS NULL) ELSE 0 END)`
+}
+
 export interface ClientRow {
   company: Company
   missing: number
@@ -79,7 +86,7 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
          ${POA_STATE_SQL} AS poa,
          ${DECLARATION_STATE_SQL} AS declaration,
          ${OPEN_REPORTS_SQL} AS open_reports,
-         (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover' AND f.deleted_at IS NULL) AS handover
+         ${handedOverSql('c')} AS handover
        FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id
        JOIN visible_companies vc ON vc.id = c.id
        LEFT JOIN unanswered pending ON pending.company_id = c.id AND pending.position = 1
@@ -244,13 +251,18 @@ export interface TeamMember {
   email: string
   team: Team
   clients: number
+  /** Passkeys registered: without one the person cannot work in the team's part (an activation code first). */
+  keys: number
 }
 
 export async function teamMembers(db: D1Database): Promise<TeamMember[]> {
   const rows = await db
-    .prepare("SELECT u.id, u.name, u.email, u.team, (SELECT COUNT(*) FROM companies c WHERE c.accountant_id = u.id AND c.closed_at IS NULL AND c.demo = 0) AS clients FROM users u WHERE u.team IS NOT NULL ORDER BY u.name")
+    .prepare(
+      `SELECT u.id, u.name, u.email, u.team, (SELECT COUNT(*) FROM companies c WHERE c.accountant_id = u.id AND c.closed_at IS NULL AND c.demo = 0) AS clients,
+         (SELECT COUNT(*) FROM passkeys k WHERE k.user_id = u.id) AS keys FROM users u WHERE u.team IS NOT NULL ORDER BY u.name`,
+    )
     .all<Row>()
-  return rows.results.map((row) => ({ id: String(row.id), name: String(row.name), email: String(row.email), team: String(row.team) as Team, clients: Number(row.clients ?? 0) }))
+  return rows.results.map((row) => ({ id: String(row.id), name: String(row.name), email: String(row.email), team: String(row.team) as Team, clients: Number(row.clients ?? 0), keys: Number(row.keys ?? 0) }))
 }
 
 export interface Request {

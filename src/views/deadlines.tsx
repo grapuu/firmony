@@ -11,13 +11,15 @@ import { periodName } from '../app/vat-store'
 import type { User } from '../app/store'
 import { DUE_GROUPS, DUE_SIDE, MARKED_KINDS, dueFigures, groupOf, type Due, type DueGroup, type DueSide } from '../team/deadlines'
 import type { DueRow } from '../team/deadlines-store'
+import type { RegistrationDue } from '../team/registrations'
+import { INSURERS, type Insurer } from '../app/payroll-store'
 import { team } from '../team/copy'
 import { Flash, Heading } from './inside'
 
 const t = team.deadlines
 
 /** What a deadline is, in words: "DPH a kontrolný výkaz za september 2026". */
-export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind' | 'payrollStage'> & { company: Pick<DueRow['company'], 'vatStatus'> }): string {
+export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind' | 'payrollStage' | 'registration'> & { company: Pick<DueRow['company'], 'vatStatus'> }): string {
   const period = d.period ?? ''
   switch (d.kind) {
     case 'vat':
@@ -34,6 +36,10 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind'
       return t.what.closing(period)
     case 'taxPay':
       return t.what.taxPay(period)
+    case 'taxAdvance':
+      return t.what.taxAdvance
+    case 'payrollPay':
+      return t.what.payrollPay(monthName(`${period}-01`))
     case 'payroll':
       return t.what.payroll(monthName(`${period}-01`))
     case 'payrollReport':
@@ -41,9 +47,17 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind'
     case 'payrollReports':
       if (d.payrollStage === 'payout') return `Overiť skutočné vyplatenie príjmov za ${monthName(`${period}-01`)}`
       return t.what.payrollReports(monthName(`${period}-01`))
+    case 'registration':
+      return d.registration ? registrationWhat(d.registration) : ''
     case 'handover':
       return t.what.handover
   }
+}
+
+/** A registration in words: "Prihlásenie do Sociálnej poisťovne: Ján Novák". */
+export function registrationWhat(r: Pick<RegistrationDue, 'agency' | 'move' | 'name' | 'insurer'>): string {
+  const insurer = INSURERS[(r.insurer ?? '') as Insurer] ?? ''
+  return t.what.registration[r.move][r.agency](r.name ?? '', insurer)
 }
 
 /** Where it stands, in words: "Pripravené na podanie", "Treba vyriešiť: 3", "Na úhradu 1 234,56 €". */
@@ -62,7 +76,7 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
     case 'done':
       return t.state.done[d.kind] ?? t.state.done.vat
     default:
-      return d.kind === 'vatPay' || d.kind === 'taxPay' ? t.state.toPay(formatEurExact(d.cents)) : (t.state.open[d.kind] ?? t.state.open.vat)
+      return d.kind === 'vatPay' || d.kind === 'taxPay' || d.kind === 'taxAdvance' ? t.state.toPay(formatEurExact(d.cents)) : (t.state.open[d.kind] ?? t.state.open.vat)
   }
 }
 
@@ -88,13 +102,17 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
       return `${base}#chyba`
     case 'closing':
     case 'taxPay':
+    case 'taxAdvance':
       return `${base}/zavierka?rok=${d.period}`
     case 'payrollReport':
       return `${base}/mzdove-podania/${d.reportId}`
     case 'payrollReports':
       return `${base}/mzdove-podania?obdobie=${d.period}`
     case 'payroll':
+    case 'payrollPay':
       return `${base}/mzdy?obdobie=${d.period}`
+    case 'registration':
+      return `${base}/mzdy#prihlasenia`
     case 'handover':
       return `${base}#odovzdanie`
   }

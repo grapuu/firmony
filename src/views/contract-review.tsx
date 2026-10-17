@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { OPERATOR, PLANS, TERMS_VERSION } from '../config'
+import { OPERATOR, ORDER, PLANS, TERMS_VERSION } from '../config'
 import type { OrderReview, ReleaseState } from '../contracts'
 import type { Order } from '../order'
 import { team as t } from '../team/copy'
@@ -149,6 +149,28 @@ export const ContractReviewPage: FC<{
     {error ? (
       <p class="notice notice--error" role="alert">
         {error}
+      </p>
+    ) : null}
+    {order && order.status === 'expired' ? (
+      <section class="info">
+        <h2 class="info__title">Objednávka vypršala</h2>
+        <p class="info__lead">
+          Online objednávka platí {ORDER.days} dní a táto uplynula bez zmluvy. Obnovte ju a posúďte znova, alebo založte klienta na zmluvu podpísanú na
+          papieri.
+        </p>
+        <form method="post" action={`/ucto/ziadosti/${requestId}/obnovit`}>
+          <button class="btn btn--blue" type="submit">
+            Obnoviť objednávku na {ORDER.days} dní
+          </button>
+        </form>
+      </section>
+    ) : null}
+    {order && order.status !== 'accepted' ? (
+      <p class="info__source">
+        {review?.decision === 'bespoke' ? 'Individuálnu službu uzavriete zmluvou na papieri: ' : 'Ak zmluvu podpíšete na papieri: '}
+        <a class="link" href={`/ucto/klienti/novy?ziadost=${requestId}`}>
+          Založiť klienta bez online zmluvy
+        </a>
       </p>
     ) : null}
     {order && order.status === 'open' && review?.decision === 'standard' ? (

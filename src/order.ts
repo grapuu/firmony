@@ -105,6 +105,26 @@ export async function newOrderStatement(db: D1Database, token: string, o: NewOrd
     .bind(crypto.randomUUID(), await sha256Hex(token), ts, ts + ORDER.days * 86400, o.requestId, o.ico, o.company, o.address, o.registerLine, o.directors ? JSON.stringify(o.directors) : null, o.plan, o.person, o.email, o.phone)
 }
 
+/** The newest order made from a request from the site, or null. */
+export async function latestOrderOfRequest(db: D1Database, requestId: string): Promise<Order | null> {
+  const row = await db.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(requestId).first<Row>()
+  return row ? orderOf(row) : null
+}
+
+/**
+ * An order that lapsed before its review was done gets another ORDER.days, for the same company and director; the
+ * review and the link to the contract are made again (a new token, so a link sent before opens nothing). Not one that
+ * was accepted, nor for a company that is a client.
+ */
+export function renewOrderStatement(db: D1Database, orderId: string, ts: number, tokenHash: string): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE orders SET expires_at = ?2 + ?3, token = ?4 WHERE id = ?1 AND status = 'open' AND expires_at <= ?2
+         AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = orders.ico AND c.closed_at IS NULL AND c.demo = 0 AND c.operator = 0)`,
+    )
+    .bind(orderId, ts, ORDER.days * 86400, tokenHash)
+}
+
 /** Whether a company with this IČO is already a client (a second contract for it is not taken online). */
 export async function isClient(db: D1Database, ico: string): Promise<boolean> {
   // europio, which issues Firmony's invoices, keeps its own books in the app, and is no client of itself.

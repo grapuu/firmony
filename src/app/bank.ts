@@ -152,11 +152,6 @@ export async function listBanks(env: BankEnv): Promise<Aspsp[]> {
   return list
 }
 
-/** Forgets the list of banks (a test, or a bank that was not found). */
-export function forgetBanks(): void {
-  banks = null
-}
-
 /**
  * Starts linking a bank: the consent is written down as pending with a hash of its state, and the address of the
  * bank's own sign-in is handed back. The state comes back with the client and ties the answer to this person.

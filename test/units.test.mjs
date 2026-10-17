@@ -21,6 +21,7 @@ import {
   ledger,
   ledgerStore,
   dues,
+  registrations,
   dueViews,
   closing,
   closingXml,
@@ -3690,6 +3691,75 @@ async function zipped(entries, note) {
   list = run(pf({ last: '2026-08-31' }), '2026-10-14')
   check('nothing after the last employee left', !find('payroll', '2026-09') && Boolean(find('payroll', '2026-08')))
   check('a company without employees has no payroll', !dues.deadlinesOf(co(), facts(undefined), '2026-10-14').some((d) => d.kind === 'payroll'))
+  list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-05')
+  check(
+    "a closed month's wages and levies are the client's to pay by its payday, and the app leads to the message with the sums",
+    find('payrollPay', '2026-09')?.day === '2026-10-09' && dues.DUE_SIDE.payrollPay === 'client' &&
+      deadlines.clientDeadlines(co(), list, '2026-10-05', new Map()).some((d) => d.href === '/app/spravy' && d.label.replace(/\s/g, ' ') === 'Zaplatiť výplaty a odvody za september 2026'),
+  )
+  list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14')
+  check('once its payday has passed it is no longer listed (the bank is not read for it)', !find('payrollPay', '2026-09'))
+}
+
+// Income tax advances (Act 595/2003 s. 42(1), (2), (7)): from the month after the return's filing deadline, by the end
+// of each month or calendar quarter, moved to the next working day; the client's to pay, shown before its day.
+{
+  const k = (kind, each = 150000, fields = {}) => ({ year: 2026, filed: true, extendedTo: null, payCents: 0, dueOn: null, paid: 0, advances: { kind, each }, ...fields })
+  check('quarterly: the end of the next calendar quarter after the deadline', dues.nextTaxAdvance([k('quarterly')], '2027-04-10')?.day === '2027-06-30')
+  check('monthly: the end of this month', dues.nextTaxAdvance([k('monthly')], '2027-04-10')?.day === '2027-04-30')
+  check('before the filing deadline, the first is the month after it', dues.nextTaxAdvance([k('monthly')], '2027-03-10')?.day === '2027-04-30')
+  check('a month that ends on a Saturday moves to Monday', dues.nextTaxAdvance([k('monthly')], '2027-07-15')?.day === '2027-08-02')
+  check('a deadline moved by a notice moves the first advance (31 July 2027 is a Saturday)', dues.nextTaxAdvance([k('monthly', 150000, { extendedTo: '2027-06-30' })], '2027-04-10')?.day === '2027-08-02')
+  check('none past the next filing deadline, none for a return that asks for none, none before it is filed', dues.nextTaxAdvance([k('monthly')], '2028-04-15') === null && dues.nextTaxAdvance([k('none', 0)], '2027-04-10') === null && dues.nextTaxAdvance([k('monthly', 150000, { filed: false })], '2027-04-10') === null)
+  const company = { id: 'c1', name: 'Firma', vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: null, address: 'x' }
+  const list = dues.deadlinesOf(company, { views: [], filed: [], paid: new Map(), filings: new Set(), closings: [k('quarterly')], missing: new Map(), handover: 0 }, '2027-04-10')
+  const advance = list.find((d) => d.kind === 'taxAdvance')
+  check(
+    "it is the client's to pay, with its amount, and the client's app says so",
+    advance?.day === '2027-06-30' && advance.cents === 150000 && dues.DUE_SIDE.taxAdvance === 'client' && !dues.pressing(list, '2027-06-28').some((d) => d.kind === 'taxAdvance') &&
+      deadlines.clientDeadlines(company, list, '2027-04-10', new Map()).some((d) => d.label.replace(/\s/g, ' ') === 'Zaplatiť preddavok na daň z príjmov' && d.href === '/app/dane' && d.state.replace(/\s/g, ' ').includes('1 500,00')),
+    JSON.stringify(advance),
+  )
+}
+
+// Registrations with the Social Insurance Agency and the health insurers (Act 461/2003 s. 231(1)(a), (b); Act 580/2004
+// s. 24(1)(c), (k)): the day before the first one starts, before an employee starts, eight days or eight working days.
+{
+  const ana = { id: 'e1', name: 'Ana Nová', insurer: '25', startedOn: '2027-02-01', endedOn: null }
+  const ben = { id: 'e2', name: 'Ben Starý', insurer: '24', startedOn: '2026-05-01', endedOn: '2027-03-15' }
+  const all = registrations.registrationDues([ana, ben], '2027-01-01', null, new Map(), '2027-01-20')
+  const at = (key) => all.find((r) => r.key === key)?.day
+  check(
+    'an employee who starts while the contract is ours: registered the day before, the insurer told within eight working days',
+    at('e1:in:social') === '2027-01-31' && at('e1:in:health') === '2027-02-11' && at('employer:health:25') === '2027-02-11',
+    JSON.stringify(all),
+  )
+  check(
+    'one who started before the contract was the former accountant\'s; leaving under us is ours: eight days, eight working days',
+    !at('e2:in:social') && !at('e2:in:health') && !at('employer:health:24') && !at('employer:social') && at('e2:out:social') === '2027-03-23' && at('e2:out:health') === '2027-03-25',
+  )
+  const first = registrations.registrationDues([ana], '2027-01-01', null, new Map(), '2027-01-20')
+  check('the company that employs for the first time registers as an employer the day before', first.find((r) => r.key === 'employer:social')?.day === '2027-01-31')
+  check('nothing after the contract has ended is ours', registrations.registrationDues([ana], '2026-01-01', '2027-01-31', new Map(), '2027-01-20').length === 0)
+  check('working days skip weekends and Slovak days off', registrations.workingDaysAfter('2026-12-30', 2) === '2027-01-04')
+  const marked = registrations.registrationDues([ana], '2027-01-01', null, new Map([['e1:in:social', '2027-01-20']]), '2027-01-20')
+  check('a registration recorded as filed is done', marked.find((r) => r.key === 'e1:in:social')?.done === true && marked.find((r) => r.key === 'e1:in:health')?.done === false)
+  check(
+    'done ones leave a month after their day, or after they were recorded when that was later',
+    !registrations.registrationDues([ana], '2027-01-01', null, new Map([['e1:in:social', '2027-01-30']]), '2027-03-15').some((r) => r.key === 'e1:in:social') &&
+      registrations.registrationDues([ana], '2027-01-01', null, new Map([['e1:in:social', '2027-03-10']]), '2027-03-15').some((r) => r.key === 'e1:in:social' && r.done),
+  )
+  const company = { id: 'c1', name: 'Firma', vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2027-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: null, address: 'x' }
+  const facts = { views: [], filed: [], paid: new Map(), filings: new Set(), closings: [], missing: new Map(), handover: 0, employees: [ana], registered: new Map() }
+  const list = dues.deadlinesOf(company, facts, '2027-01-28')
+  const reg = list.filter((d) => d.kind === 'registration')
+  check(
+    'they are deadlines of ours, pressing within a week, and lead to the payroll page',
+    reg.length === 4 && dues.pressing(list, '2027-01-28').some((d) => d.registration?.key === 'e1:in:social') &&
+      dueViews.dueHref({ kind: 'registration', period: null, company: { id: 'c1', vatStatus: 'none' } }) === '/ucto/klienti/c1/mzdy#prihlasenia' &&
+      dueViews.dueWhat({ kind: 'registration', period: null, fix: null, registration: reg.find((d) => d.registration?.key === 'e1:in:health')?.registration, company: { vatStatus: 'none' } }).includes('VšZP: Ana Nová'),
+    JSON.stringify(reg.map((d) => `${d.registration?.key}:${d.day}:${d.state}`)),
+  )
 }
 
 // Continuous locks: strict month parsing, completed periods, direction, reason and full/partial reopening.

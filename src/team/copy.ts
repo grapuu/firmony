@@ -42,18 +42,35 @@ export const team = typesetAll({
       docs: (month: string) => typeset(`Doklady za ${month}`),
       closing: (year: string) => typeset(`Účtovná závierka a daňové priznanie za rok ${year}`),
       taxPay: (year: string) => typeset(`Úhrada dane z príjmov za rok ${year}`),
+      taxAdvance: 'Preddavok na daň z príjmov',
+      payrollPay: (month: string) => typeset(`Výplaty a odvody za ${month}`),
       payroll: (month: string) => typeset(`Mzdy za ${month}`),
       payrollReports: (month: string) => typeset(`Výkazy do poisťovní a prehľad za ${month}`),
+      // A name and an insurer's brand are never declined: the sentence is built around them.
+      registration: {
+        employer: {
+          social: () => 'Registrácia zamestnávateľa v Sociálnej poisťovni',
+          health: (_name: string, insurer: string) => typeset(`Registrácia platiteľa poistného v zdravotnej poisťovni ${insurer}`),
+        },
+        in: {
+          social: (name: string) => typeset(`Prihlásenie do Sociálnej poisťovne: ${name}`),
+          health: (name: string, insurer: string) => typeset(`Oznámenie nástupu v zdravotnej poisťovni ${insurer}: ${name}`),
+        },
+        out: {
+          social: (name: string) => typeset(`Odhlásenie zo Sociálnej poisťovne: ${name}`),
+          health: (name: string, insurer: string) => typeset(`Oznámenie skončenia v zdravotnej poisťovni ${insurer}: ${name}`),
+        },
+      },
       handover: 'Odovzdanie účtovníctva',
     },
     state: {
       ready: 'Pripravené na podanie',
       blocked: (n: number) => typeset(`Treba vyriešiť: ${n}`),
       running: { period: 'Obdobie beží', quarter: 'Štvrťrok beží', month: 'Mesiac beží', contract: 'Zmluva ešte beží' },
-      open: { vat: 'Nepodané', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Evidovať jednotlivých príjemcov', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
+      open: { payrollPay: 'Platí klient', vat: 'Nepodané', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Evidovať jednotlivých príjemcov', registration: 'Podať v portáli', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
       missing: (n: number) => typeset(`${plural(n, 'Chýba', 'Chýbajú', 'Chýba')} ${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}`),
       toPay: (amount: string) => typeset(`Na úhradu ${amount}`),
-      done: { vat: 'Podané', summary: 'Podaný', vatPay: 'Zaplatené', taxPay: 'Zaplatené', closing: 'Podané', payroll: 'Uzavreté', payrollReports: 'Podané', handover: 'Odovzdané' } as Partial<Record<string, string>> & {
+      done: { vat: 'Podané', summary: 'Podaný', vatPay: 'Zaplatené', taxPay: 'Zaplatené', closing: 'Podané', payroll: 'Uzavreté', payrollReports: 'Podané', registration: 'Podané', handover: 'Odovzdané' } as Partial<Record<string, string>> & {
         vat: string
       },
     },
@@ -211,6 +228,12 @@ export const team = typesetAll({
     poaAdded: (when: string, who: string | null) => typeset(who ? `${when}, ${who}` : when),
     poaWaits: 'Na overenie',
     poaFlash: 'Plnú moc sme označili ako overenú.',
+    poaReturn: 'Vrátiť klientovi',
+    poaReturnReason: 'Prečo ju vraciate',
+    poaReturnHint: 'Napríklad: chýba podpis, je to iný dokument, iná firma.',
+    poaReturnError: 'Napíšte klientovi aspoň pár slov, prečo.',
+    poaReturned: 'Plnú moc sme vrátili klientovi so správou.',
+    poaReturnMessage: (file: string, reason: string) => typeset(`Plnú moc „${file}“ sme Vám vrátili: ${reason} Nahrajte, prosím, správnu v časti Plná moc.`),
     poaState: { missing: 'Plná moc chýba', waiting: 'Plná moc na overenie', checked: 'Plná moc overená' },
     ends: (day: string) => typeset(`Končí ${day}`),
     ended: (day: string) => typeset(`Skončila ${day}`),
@@ -260,6 +283,13 @@ export const team = typesetAll({
     none: 'Zatiaľ nič.',
     flash: 'Účtovníctvo sme odovzdali. Klient má správu v aplikácii.',
     removed: 'Súbor sme odstránili.',
+    poa: {
+      title: 'Plná moc',
+      lead: 'Po odovzdaní sa plnej moci vzdáme a oznámime to finančnej správe, Sociálnej poisťovni a zdravotným poisťovniam (bod 10.4 podmienok). Keď je to podané, zaznamenajte to tu.',
+      button: 'Zaznamenať vzdanie plnej moci',
+      done: (when: string, who: string | null) => typeset(`Vzdanie plnej moci zaznamenané ${when}${who ? `, ${who}` : ''}.`),
+      flash: 'Vzdanie plnej moci je zaznamenané.',
+    },
     errors: {
       none: 'Vyberte súbory.',
       large: 'Súbor je väčší ako 15 MB. Rozdeľte ho, prosím.',
@@ -430,7 +460,6 @@ export const team = typesetAll({
     vatSumOff: (lines: string, total: string) => typeset(`Riadky DPH spolu ${lines}, doklad ${total}. Skontrolujte rozpis.`),
     vatForeign: (currency: string) => typeset(`Doklad je v ${currency}: sumy DPH napíšte v eurách, kurzom ECB z predchádzajúceho dňa pred dátumom dodania.`),
     vatKindFirst: 'DPH navrhneme, keď vyberiete druh dokladu (bloček, prijatá alebo vydaná faktúra) a doklad uložíte.',
-    vatNoTaxHere: 'Pri tomto režime sa DPH neuvádza, len základ.',
     vatErrors: {
       amount: 'Sumu napíšte ako číslo, napríklad 12,40 alebo -12,40.',
       base: 'K DPH doplňte aj základ.',
@@ -637,11 +666,13 @@ export const team = typesetAll({
     email: 'E-mail',
     role: 'Rola',
     add: 'Pridať do tímu',
-    added: 'Pridané. Prihlási sa svojím e-mailom na stránke prihlásenia.',
+    added: 'Pridané. Teraz pre túto osobu vytvorte jednorazový kód v Aktiváciách a odovzdajte ho mimo e-mailu, napríklad telefonicky. Prihlási sa svojím e-mailom, zadá kód a zaregistruje si kľúč.',
+    noKey: 'Bez kľúča',
+    activate: 'Vytvoriť aktivačný kód',
     clients: (n: number) => typeset(`${n} ${plural(n, 'klient', 'klienti', 'klientov')}`),
     errors: { name: 'Doplňte meno.', email: 'Skontrolujte e-mail.' },
     inviteSubject: `${BRAND.name}: prístup pre tím`,
-    inviteBody: (name: string, link: string) => [`Dobrý deň, ${name},`, '', `máte prístup do ${BRAND.name} pre účtovníkov. Prihlásite sa svojím e-mailom tu:`, '', link, '', BRAND.name].join('\n'),
+    inviteBody: (name: string, link: string) => [`Dobrý deň, ${name},`, '', `máte prístup do ${BRAND.name} pre účtovníkov. Prihlásite sa svojím e-mailom tu:`, '', link, '', 'Jednorazový kód na prvý prihlasovací kľúč Vám správca odovzdá mimo e-mailu.', '', BRAND.name].join('\n'),
   },
   vat: {
     title: 'DPH',
@@ -650,7 +681,6 @@ export const team = typesetAll({
     back: (name: string) => name,
     notRegistered: 'Firma nie je registrovaná pre DPH. Ak sa registruje, zmeňte to v údajoch firmy.',
     statusPayer: (period: string) => typeset(`Platiteľ DPH, ${period === 'quarter' ? 'štvrťročne' : 'mesačne'}`),
-    status7a: 'Registrovaná podľa § 7a: podáva len priznanie, a to za mesiac, v ktorom kúpila službu alebo tovar zo zahraničia.',
     deadline: (day: string) => typeset(`Podať a zaplatiť do ${day}`),
     ready: 'Pripravené na podanie',
     blocked: (n: number) => typeset(`Pred podaním treba vyriešiť: ${n}`),
@@ -772,9 +802,6 @@ export const team = typesetAll({
     markLead: 'Uložte presné podklady. Potom si stiahnete práve tieto súbory pre eDane a v evidencii podaní zaevidujete odoslanie a samostatné potvrdenky priznania a kontrolného výkazu. Klient dostane údaje na úhradu s informáciou o nedoloženom prijatí.',
     unmark: 'Zrušiť označenie',
     unmarkCorrection: 'Zrušiť označenie opravy',
-    filedFlash: 'Podklady uložené. Doručenie doložte v evidencii podaní.',
-    unfiledFlash: 'Označenie sme zrušili.',
-    blockedFlash: 'Najprv vyriešte, čo bráni podaniu.',
     changedO: 'Od podania sa doklady obdobia zmenili. Lehota ešte neuplynula: podajte opravné priznanie, ktoré podané nahradí (§ 16 ods. 1 daňového poriadku).',
     changedD: (day: string) =>
       typeset(
@@ -1273,6 +1300,18 @@ export const team = typesetAll({
       noAccount: 'účet doplňte v nastavení',
       bonusOver: 'Daňové bonusy prevýšili preddavky: rozdiel firma vyplatí zo svojho a uplatní si ho v prehľade.',
     },
+    registrations: {
+      title: 'Prihlásenia a odhlásenia',
+      lead: 'Podávate ich v portáli Sociálnej poisťovne a zdravotnej poisťovne. Tu zaznamenáte, že sú podané.',
+      empty: 'Žiadne prihlásenie ani odhlásenie teraz nečaká.',
+      by: (day: string) => typeset(`do ${day}`),
+      late: (day: string) => typeset(`po termíne (${day})`),
+      done: 'Podané',
+      mark: 'Podané',
+      undo: 'Vrátiť',
+      flashDone: 'Zaznamenané ako podané.',
+      flashUndone: 'Vrátené medzi nepodané.',
+    },
     employees: {
       title: 'Zamestnanci',
       add: 'Pridať zamestnanca',
@@ -1352,7 +1391,7 @@ export const team = typesetAll({
     },
     open: 'Mzdy',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: dohody, odmenu konateľa, pracujúcich dôchodcov a študentov, náhradu príjmu pri PN a náhradu mzdy za dovolenku (zadajte ich do hrubého príjmu), ročné zúčtovanie dane, zrážky zo mzdy, stravné, prihlášky zamestnancov a mesačné výkazy do poisťovní ani prehľad pre daňový úrad. Výkazy pripravte a skontrolujte v príslušnom portáli alebo mzdovom programe. Presné súbory a potvrdenky uložte v evidencii mzdových podaní; jedno ručné označenie všetky povinnosti nepotvrdzuje.',
+      'Firmony zatiaľ nepripravuje: dohody, odmenu konateľa, pracujúcich dôchodcov a študentov, náhradu príjmu pri PN a náhradu mzdy za dovolenku (zadajte ich do hrubého príjmu), ročné zúčtovanie dane, zrážky zo mzdy a stravné. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pri bežnom pracovnom pomere pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
   },
   ledger: {
     title: 'Účtovná kniha',
@@ -1438,7 +1477,6 @@ export const team = typesetAll({
     paymentsTitle: 'Platby bez dokladu',
     paymentsLead:
       'Platby, ku ktorým doklad netreba: poplatky banke, dane, vklady, prevody medzi vlastnými účtami. Účet sa navrhne podľa dôvodu; kde ho dôvod nepovie, dáte ho Vy. Platba, ktorá účet nemá, v knihe nie je.',
-    pcols: { day: 'Dátum', what: 'Platba', amount: 'Suma', reason: 'Dôvod', account: 'Účet' },
     reasonNone: 'pri inom doklade',
     proposed: 'podľa dôvodu',
     yours: 'Váš',

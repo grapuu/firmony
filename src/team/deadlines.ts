@@ -43,8 +43,9 @@ import { paydayOf } from '../app/payroll-store'
 import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod, workingDayFrom } from '../app/vat'
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
 import { summaryPeriodOf, type SvView } from '../app/vat-summary'
+import { registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
@@ -57,10 +58,13 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   payroll: 'ours',
   payrollReports: 'ours',
   payrollReport: 'ours',
+  registration: 'ours',
   handover: 'ours',
   vatPay: 'client',
   docs: 'client',
   taxPay: 'client',
+  taxAdvance: 'client',
+  payrollPay: 'client',
 }
 
 /** A month's payroll reports marked as filed by hand before they had evidence of their own (`filings.kind`); such a
@@ -75,6 +79,8 @@ export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 export type DueState = 'ready' | 'blocked' | 'open' | 'running' | 'done'
 
 export interface Due {
+  /** A registration with the Social Insurance Agency or a health insurer (registrations.ts). */
+  registration?: RegistrationDue
   reportId?: string
   reportKind?: ReportKind
   sourceChanged?: boolean
@@ -107,6 +113,8 @@ export interface ClosingFact {
   payCents: number
   dueOn: string | null
   paid: number
+  /** The advances the filed return brings for the next period (closing.ts, `advancesNext`). */
+  advances?: { kind: 'none' | 'quarterly' | 'monthly'; each: number }
 }
 
 /** A company's payroll as the deadlines read it: the months it had employees, its payday, the months closed with their paydays. */
@@ -138,6 +146,10 @@ export interface DueFacts {
   missing: Map<string, number>
   /** Files handed over at the end of the contract. */
   handover: number
+  /** The employees with their dates and insurers, and the registrations recorded as filed (registrations.ts). */
+  employees?: RegistrationEmployee[]
+  /** Each registration recorded as filed, with the day it was recorded. */
+  registered?: Map<string, string>
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -145,6 +157,24 @@ const pad = (n: number) => String(n).padStart(2, '0')
 function nextMonth(month: string): string {
   const [y, m] = month.split('-').map(Number) as [number, number]
   return m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`
+}
+
+/**
+ * The next income tax advance due on or after today, from the newest filed return that asks for advances: the last
+ * day of each month (monthly) or of each calendar quarter (quarterly), moved to the next working day, from the month
+ * after the return's filing deadline to the month of the next one.
+ */
+export function nextTaxAdvance(closings: readonly ClosingFact[], today: string): { year: string; day: string; each: number } | null {
+  const filed = closings.filter((k) => k.filed && k.advances && k.advances.kind !== 'none' && k.advances.each > 0).sort((a, b) => b.year - a.year)[0]
+  if (!filed?.advances) return null
+  const from = nextMonth(closingDue(filed.year, filed.extendedTo).slice(0, 7))
+  const until = closingDue(filed.year + 1, null).slice(0, 7)
+  for (let month = from; month <= until; month = nextMonth(month)) {
+    if (filed.advances.kind === 'quarterly' && Number(month.slice(5, 7)) % 3 !== 0) continue
+    const day = workingDayFrom(periodRange(month).to)
+    if (day >= today) return { year: String(filed.year), day, each: filed.advances.each }
+  }
+  return null
 }
 
 /** The year of a closing ours to do: we kept the books at its end (point 5.2 of the terms), and the contract did not end in it (point 10.4). */
@@ -188,7 +218,7 @@ export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly
 /** A company's deadlines: everything that can be done now, what still runs once it is `aheadDays` near, and what was done in the last weeks. */
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
-  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage'>>) =>
+  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage' | 'registration'>>) =>
     // Sent and waiting for its receipt is not late, whenever the receipt comes: what was ours to do by the day is done.
     out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day && due.deliveryStatus !== 'submitted' })
 
@@ -282,6 +312,8 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const day = workingDayFrom(pr.closed.get(month) ?? paydayOf(month, pr))
       const closed = pr.closed.has(month)
       add({ kind: 'payroll', period: month, day, state: closed ? 'done' : today <= periodRange(month).to ? 'running' : 'open' })
+      // A closed month's wages and levies are the client's to pay on its payday (the message says how much, to whom).
+      if (closed && day >= today) add({ kind: 'payrollPay', period: month, day, state: 'open' })
       if (closed) {
         if (!pr.initialized?.has(month)) {
           const marked = facts.filings.has(`${MARKED_KINDS.payroll}:${month}`)
@@ -290,6 +322,17 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       }
     }
   }
+
+  // The income tax advances a filed return brings (Act 595/2003 s. 42(1), (2), (7)): from the month after its filing
+  // deadline to the next one, monthly by the end of each month or quarterly by the end of each calendar quarter. The
+  // client pays them; the next one is shown before its day (whether it was paid is not read from the bank).
+  const advance = nextTaxAdvance(facts.closings, today)
+  if (advance && (!company.endsOn || advance.day <= company.endsOn)) add({ kind: 'taxAdvance', period: advance.year, day: advance.day, state: 'open', cents: advance.each })
+
+  // Registrations with the Social Insurance Agency and the health insurers: the accountant files them in their portals
+  // and records it on the payroll page.
+  for (const r of registrationDues(facts.employees ?? [], company.startOn ?? bratislavaDay(company.createdAt), company.endsOn, facts.registered ?? new Map(), today))
+    add({ kind: 'registration', period: null, day: r.day, state: r.done ? 'done' : 'open', registration: r })
 
   // The books handed over at the end of the contract.
   const ending = endingOf(company, today)
@@ -314,7 +357,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, closing: 7, taxPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

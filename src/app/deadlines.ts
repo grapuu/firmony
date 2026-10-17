@@ -78,7 +78,9 @@ export function clientDeadlines(
     else if (d.kind === 'closing') {
       closing = true
       out.push({ day: d.day, label: t.deadline.closing(period), state: filedState(d), tone: d.state === 'done' ? 'ok' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
-    } else if (d.kind === 'taxPay') out.push({ day: d.day, label: t.deadline.taxPay(period), state: d.state === 'done' ? t.deadline.vatPaid : t.deadline.vatToPay(formatEurExact(d.cents)), tone: d.state === 'done' ? 'ok' : 'amber', href: '/app/dane' })
+    } else if (d.kind === 'taxAdvance') out.push({ day: d.day, label: t.deadline.taxAdvance, state: t.deadline.vatToPay(formatEurExact(d.cents)), tone: 'amber', href: '/app/dane' })
+    else if (d.kind === 'payrollPay') out.push({ day: d.day, label: t.deadline.payrollPay(monthName(`${period}-01`)), state: t.deadline.payrollPayState, tone: 'amber', href: '/app/spravy' })
+    else if (d.kind === 'taxPay') out.push({ day: d.day, label: t.deadline.taxPay(period), state: d.state === 'done' ? t.deadline.vatPaid : t.deadline.vatToPay(formatEurExact(d.cents)), tone: d.state === 'done' ? 'ok' : 'amber', href: '/app/dane' })
   }
   // The closing of the year that runs, when it is ours and the one before is not on the list.
   const year = Number(day.slice(0, 4))

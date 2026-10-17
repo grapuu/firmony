@@ -133,6 +133,38 @@ Codex's "Vy budujete firmu. My strážime účtovníctvo." or keeps it).
   domain first, because passkeys are bound to it): `docs/spustenie.md`. A separate doc for it was refused by the
   tooling as not asked for; it is offered to him.
 
+- Stage 7 (the check of the whole circle): an independent reader (one helper, read only) walked the circle; every
+  finding was verified in the code before it was mended. What changed:
+  - Registrations with the Social Insurance Agency and the health insurers (`src/team/registrations.ts`, read in
+    the original on 17 October 2026: Act 461/2003 s. 231(1)(a), (b), Act 580/2004 s. 24(1)(c), (k)): the employer
+    the day before its first employee starts, an employee the day before the start, the insurer within eight working
+    days of a start or an end, the Agency within eight days of an end; only while the contract is ours. They are
+    deadlines of ours (kind 'registration'), filed by the accountant in the portals and recorded on the payroll
+    page ("Prihlásenia a odhlásenia", events `registration.done` and `registration.undone`, the newest counts; one
+    recorded stays visible a month after its day or after it was recorded). Terms 2.2: the client reports a hire in
+    the app three working days before it.
+  - Income tax advances (Act 595/2003 s. 42(1), (2), (7)): the next one a filed return asks for is a deadline of
+    the client's (kind 'taxAdvance', `nextTaxAdvance`), from the month after the filing deadline, monthly or by the
+    end of each calendar quarter, moved to a working day; whether it was paid is not read from the bank. So are a
+    closed month's wages and levies, until its payday (kind 'payrollPay'; the client's app leads to the message
+    with the sums and accounts).
+  - The handover counts as made only with the files and the power of attorney given up (terms 10.4; the event
+    `poa.resigned`, `handedOverSql`), recorded on the client's handover card.
+  - A wrong power of attorney goes back to the client with why (`/ucto/klienti/:id/plna-moc/:file/vratit`,
+    `returnPoaStatements`, event `poa.returned`, a message in the app); never one that was checked.
+  - An online order that lapsed before its review is renewed for 30 days with a new token
+    (`/ucto/ziadosti/:id/obnovit`, `renewOrderStatement`), never for a client; the review page always offers the
+    paper contract too, and says so for a bespoke decision. `latestOrderOfRequest` replaces three copies of a query.
+  - The team page marks a member without a passkey and leads to the activation code; the invitation says the code
+    comes outside email. An accountant is told that the administrator ends a contract. Fio not answering is said as
+    that (`fio-neodpoveda`), not as "too soon". Taking back a notice says it can be taken back.
+  - The payroll page says what is prepared where (monthly reports and the tax office's summary in "Mzdové
+    podania", registrations recorded on the page itself); a name on a stacked row wraps instead of ending in "...".
+  - Noise out: six unused exports and nine unused texts.
+  - 16 rules taken out once (`scripts/dev/mutate.mjs`); units 866, runtime 1320 on Node 24, the visual test with
+    five more pages at 1440, 390 and 320 px. Commit: see the log ("Close the loop: the check of the whole circle
+    (stage 7)").
+
 ## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 19:05)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
@@ -1533,12 +1565,12 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 849 unit checks (17 October 2026), including contract releases and the Slovak working-day response clock
-npm run test:runtime     # 1298 workerd checks on Node 24 (as GitHub runs them), including contract evidence/races and the purge
+npm test                 # 866 unit checks (17 October 2026), including contract releases, registrations and tax advances
+npm run test:runtime     # 1320 workerd checks on Node 24 (as GitHub runs them), including contract evidence/races and the purge
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (12)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (16)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 

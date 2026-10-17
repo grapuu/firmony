@@ -13,19 +13,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // Stages 5 and 6 of closing the loop (17 October 2026): texts that are true, and what running it needs.
-  ['src/app/purge.ts', '    if (ended?.ends_on && ended.ends_on < unconfirmedFloor(today)) revision = await dataRevision(db, companyId)\n', '', 'an unconfirmed archive is deleted a year after the end'],
-  ['src/app/purge.ts', ' && ended.ends_on < unconfirmedFloor(today))', ')', 'an unconfirmed archive is kept within the year'],
-  ['src/team/store.ts', ' && !owed && pressing === 0', ' && !owed', 'a client with something pressing is not done'],
-  ['src/team/store.ts', 'attempts >= ? AND created_at > ?', 'attempts > ? AND created_at > ?', 'email that every attempt failed is flagged'],
-  ['src/team/routes.tsx', "    isAdmin(who.user) ? failedMail(c.env.DB) : Promise.resolve(null),", '    failedMail(c.env.DB),', 'only the administrator is told of failed email'],
-  ['src/app/routes.tsx', "  if (await db.prepare('SELECT 1 AS x FROM users WHERE team IS NOT NULL LIMIT 1').first()) return c.notFound()\n", '', 'the first administrator page is gone once the team exists'],
-  ['src/contracts.ts', "  if (release.catalogueHash !== hash) return { state: 'other' }\n", '', 'an approval of other terms is said to be one'],
-  ['src/contracts.ts', '  const midnight = [1, 2, 0]', '  const midnight = [0]', 'a prepared approval lasts through its last day in Bratislava'],
-  ['src/team/routes.tsx', '    else if (day <= dayOf(now())) form.errors.until = t.release.errors.past\n', '', 'no approval is prepared for a day gone'],
-  ['src/team/routes.tsx', "teamRoutes.get('/ziadosti/schvalenie', async (c) => {\n  if (!isAdmin(c.get('who').user)) return missingPage(c)\n", "teamRoutes.get('/ziadosti/schvalenie', async (c) => {\n", 'only an administrator prepares the approval'],
-  ['src/team/routes.tsx', '    if (!reference(form.legal)) form.errors.legal = t.release.errors.reference\n', '', 'an approval needs the lawyer\'s reference'],
-  ['src/payroll-reporting/model.ts', "  sp: 'Mesačný výkaz pre Sociálnu poisťovňu',", "  sp: 'Mesačný výkaz \u2014 Sociálna poisťovňa',", 'no long dash in any text'],
+  // Stage 7 of closing the loop (17 October 2026): what the check of the whole circle found.
+  ['src/team/registrations.ts', "      add({ key: `${e.id}:in:social`, agency: 'social', move: 'in', name: e.name, insurer: null, day: addDays(e.startedOn, -1) })", "      add({ key: `${e.id}:in:social`, agency: 'social', move: 'in', name: e.name, insurer: null, day: e.startedOn })", 'an employee is registered the day before the start'],
+  ['src/team/registrations.ts', '    if (isWorkingDay(d)) left--', '    left--', 'the insurer is told within eight working days'],
+  ['src/team/registrations.ts', '  const ours = (day: string) => day >= from && (!until || day <= until)', '  const ours = (day: string) => !until || day <= until', 'what was before the contract is the former accountant\'s'],
+  ['src/team/routes.tsx', '  if (!due || due.done !== back) return', '  if (!due) return', 'a registration recorded twice is one record'],
+  ['src/team/deadlines.ts', "    add({ kind: 'registration', period: null, day: r.day, state: r.done ? 'done' : 'open', registration: r })", "    add({ kind: 'registration', period: null, day: r.day, state: 'open', registration: r })", 'a recorded registration is done'],
+  ['src/team/store.ts', "  return `(CASE WHEN EXISTS (SELECT 1 FROM events ev WHERE ev.company_id = ${company}.id AND ev.action = '${POA_RESIGNED}')", "  return `(CASE WHEN 1", 'files alone do not finish the handover'],
+  ['src/app/papers.ts', "AND kind = 'poa' AND deleted_at IS NULL AND checked_at IS NULL\").bind(ts, user, nonce, id, company)", "AND kind = 'poa' AND deleted_at IS NULL\").bind(ts, user, nonce, id, company)", 'a checked power of attorney is never returned'],
+  ['src/team/routes.tsx', '  if (reason.length < 5) return', '  if (reason.length < 0) return', 'a power of attorney is returned with a reason'],
+  ['src/team/deadlines.ts', "    if (filed.advances.kind === 'quarterly' && Number(month.slice(5, 7)) % 3 !== 0) continue\n", '', 'quarterly advances fall at the end of a quarter'],
+  ['src/team/deadlines.ts', '    const day = workingDayFrom(periodRange(month).to)', '    const day = periodRange(month).to', 'an advance due on a weekend moves to the working day'],
+  ['src/team/deadlines.ts', '  const from = nextMonth(closingDue(filed.year, filed.extendedTo).slice(0, 7))', '  const from = closingDue(filed.year, filed.extendedTo).slice(0, 7)', 'advances start the month after the filing deadline'],
+  ['src/order.ts', "         AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = orders.ico AND c.closed_at IS NULL AND c.demo = 0 AND c.operator = 0)`", '`', 'no order is renewed for a client'],
+  ['src/order.ts', "      `UPDATE orders SET expires_at = ?2 + ?3, token = ?4 WHERE", "      `UPDATE orders SET expires_at = ?2 + ?3 WHERE ?4 = ?4 AND", 'a renewed order has a new token'],
+  ['src/app/fio.ts', " : read.status === 'failed' && read.why !== '409 soon' ? { status: 'down' }", '', 'Fio not answering is said as that'],
+  ['src/views/team.tsx', '              {m.keys === 0 ? <span class="pill pill--amber">{t.people.noKey}</span> : null}\n', '', 'a member without a passkey is marked'],
+  ['src/team/deadlines.ts', "      if (closed && day >= today) add({ kind: 'payrollPay', period: month, day, state: 'open' })", "      if (closed) add({ kind: 'payrollPay', period: month, day, state: 'open' })", 'wages to pay are listed until their payday'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

@@ -141,7 +141,6 @@ export const VAT_IN = '343.100'
 export const VAT_OUT = '343.200'
 export const VAT_SETTLE = '343.300'
 export const TRANSIT = '261'
-export const CASH = '211'
 export const OWNER = '365'
 export const OPENING = '701'
 

@@ -342,6 +342,8 @@ function flashOf(c: Ctx): string | null {
       return t.bank.statements.flash.fio(n)
     case 'fio-skoro':
       return t.bank.statements.flash.fioSoon
+    case 'fio-neodpoveda':
+      return t.bank.free.fioDown
     case 'zmluva':
       return t.contract.flash
     case 'vypoved':
@@ -379,7 +381,7 @@ appRoutes.get('/', async (c) => {
         `SELECT EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'upload') AS upload,
                 EXISTS (SELECT 1 FROM declarations WHERE company_id = ?1) AS declaration,
                 EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'email') AS email,
-                EXISTS (SELECT 1 FROM company_files WHERE company_id = ?1 AND kind = 'poa') AS poa,
+                EXISTS (SELECT 1 FROM company_files WHERE company_id = ?1 AND kind = 'poa' AND deleted_at IS NULL) AS poa,
                 (SELECT COUNT(*) FROM members WHERE company_id = ?1) AS people,
                 (SELECT r.situation FROM companies co JOIN requests r ON r.id = co.request_id WHERE co.id = ?1) AS situation,
                 EXISTS (SELECT 1 FROM events WHERE company_id = ?1 AND action = 'switching.sent')
@@ -877,7 +879,7 @@ appRoutes.post('/banka/fio', async (c) => {
   if (!(await withinLimit(c.env.DB, 'fio-link', who.company.id, 10, 3600))) return c.redirect('/app/banka?chyba=vela', 303)
   const result = await linkFio(c.env, { company: who.company.id, user: who.user.id, token })
   if (result.status === 'refused') return bankPage(c, null, 422, t.bank.free.fioRefused)
-  return c.redirect(result.status === 'linked' ? `/app/banka?ok=fio&n=${result.added}` : '/app/banka?ok=fio-skoro', 303)
+  return c.redirect(result.status === 'linked' ? `/app/banka?ok=fio&n=${result.added}` : result.status === 'down' ? '/app/banka?ok=fio-neodpoveda' : '/app/banka?ok=fio-skoro', 303)
 })
 
 /** The owner's answer about an account a statement came for (statements.ts). */

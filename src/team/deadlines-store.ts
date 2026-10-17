@@ -6,12 +6,13 @@ import { deliveryStatusSql, safeJson, type DeliveryStatus } from '../filings/mod
 // document, the filings marked, the closings with the income tax paid, the employees and the payroll months closed; and
 // the documents of each VAT company's last periods, many companies in one batch.
 import { DEADLINES } from '../config'
-import { COMPANY_COLUMNS, MISSING, companyOf, docOf, type Company, type Doc, type User } from '../app/store'
+import { COMPANY_COLUMNS, MISSING, bratislavaDay, companyOf, docOf, type Company, type Doc, type User } from '../app/store'
 import { FILED_SELECT, NOT_OTHER_TREASURY, SUMMARY_KIND, docsAroundStatement, filedReturnOf, paidByPeriod, svFiledOf, svViewsOf, viewOf, type FiledReturn } from '../app/vat-store'
 import { quarterOf, summaryLookbackFrom, type SvFiled } from '../app/vat-summary'
 import { payrollSettingsOf } from '../app/payroll-store'
 import { compareDues, deadlinesOf, summaryWindow, vatWindow, type ClosingFact, type Due, type MarkedKind, type PayrollFact } from './deadlines'
-import { visible } from './store'
+import { handedOverSql, visible } from './store'
+import { REGISTRATION_EVENTS, registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
 
 type Row = Record<string, unknown>
 
@@ -54,10 +55,10 @@ export async function companyDeadlines(db: D1Database, company: string, today: s
 }
 
 async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], today: string): Promise<{ companies: Company[]; dues: DueRow[] }> {
-  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows] = await db.batch<Row>([
+  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows] = await db.batch<Row>([
     db
       .prepare(
-        `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover' AND f.deleted_at IS NULL) AS handover
+        `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, ${handedOverSql('c')} AS handover
            FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE ${sql} ORDER BY c.name COLLATE NOCASE`,
       )
       .bind(...binds),
@@ -83,7 +84,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
     // The income tax of a year is paid with its own symbol, 170099 and the year (closing-store.ts).
     db
       .prepare(
-        `SELECT k.company_id, k.year, k.extended_to, k.filed_at, k.pay_cents, k.due_on, ${deliveryStatusSql('k.company_id', [safeJson('k.filed', '$.files.return.attemptId'), safeJson('k.filed', '$.files.statements.attemptId')])} AS delivery_status,
+        `SELECT k.company_id, k.year, k.extended_to, k.filed_at, k.pay_cents, k.due_on, ${safeJson('k.filed', '$.advancesNext.kind')} AS advances_kind, ${safeJson('k.filed', '$.advancesNext.each')} AS advances_each, ${deliveryStatusSql('k.company_id', [safeJson('k.filed', '$.files.return.attemptId'), safeJson('k.filed', '$.files.statements.attemptId')])} AS delivery_status,
                 (SELECT COALESCE(-SUM(p.amount_cents), 0) FROM payments p WHERE p.company_id = k.company_id AND p.amount_cents < 0 AND ltrim(p.vs, '0') = '170099' || k.year) AS paid
            FROM closings k JOIN companies c ON c.id = k.company_id WHERE ${sql}`,
       )
@@ -101,6 +102,15 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
     db.prepare(`SELECT t.id, t.company_id, t.kind, t.period, t.due_on, ${payrollStatusSql('t', 'p')} AS delivery_status,
       (p.id IS NOT NULL AND NOT (${reportCurrentSql('t', 'p')})) AS source_changed FROM payroll_targets t JOIN companies c ON c.id = t.company_id
       LEFT JOIN payroll_packages p ON p.id = t.package_id AND p.company_id = t.company_id WHERE ${sql} AND (${targetActiveSql('t')})`).bind(...binds),
+    // Each employee for the registrations with the Social Insurance Agency and the insurers, and what was recorded as
+    // filed: the newest record of a registration counts (taken back by mistake, it is open again).
+    db.prepare(`SELECT e.company_id, e.id, e.name, e.insurer, e.started_on, e.ended_on FROM employees e JOIN companies c ON c.id = e.company_id WHERE ${sql}`).bind(...binds),
+    db
+      .prepare(
+        `SELECT ev.company_id, ev.subject, ev.action, ev.at FROM events ev JOIN companies c ON c.id = ev.company_id
+          WHERE ${sql} AND ev.action IN ('${REGISTRATION_EVENTS.done}', '${REGISTRATION_EVENTS.undone}') ORDER BY ev.id`,
+      )
+      .bind(...binds),
   ])
   const companies = (companyRows?.results ?? []).map(companyOf)
   const handover = new Map((companyRows?.results ?? []).map((r) => [String(r.id), Number(r.handover ?? 0)]))
@@ -137,6 +147,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
       payCents: Number(r.pay_cents ?? 0),
       dueOn: typeof r.due_on === 'string' ? r.due_on : null,
       paid: Number(r.paid ?? 0),
+      advances: { kind: r.advances_kind === 'monthly' || r.advances_kind === 'quarterly' ? r.advances_kind : 'none', each: Number(r.advances_each ?? 0) || 0 },
     })
   const filings = new Map<string, Set<string>>()
   const summariesFiled = new Map<string, Map<string, SvFiled>>()
@@ -163,6 +174,18 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
   const payrollReports = new Map<string, PayrollReportFact[]>()
   for (const r of payrollReportRows?.results ?? []) push(payrollReports, String(r.company_id), { id: String(r.id), kind: r.kind as PayrollReportFact['kind'], period: String(r.period), due: String(r.due_on), status: r.delivery_status as DeliveryStatus, sourceChanged: Boolean(r.source_changed) })
 
+  const people = new Map<string, RegistrationEmployee[]>()
+  for (const r of peopleRows?.results ?? [])
+    push(people, String(r.company_id), { id: String(r.id), name: String(r.name), insurer: String(r.insurer), startedOn: String(r.started_on), endedOn: typeof r.ended_on === 'string' ? r.ended_on : null })
+  const registered = new Map<string, Map<string, string>>()
+  for (const r of registeredRows?.results ?? []) {
+    const id = String(r.company_id)
+    const marks = registered.get(id) ?? new Map<string, string>()
+    if (r.action === REGISTRATION_EVENTS.done) marks.set(String(r.subject), bratislavaDay(Number(r.at)))
+    else marks.delete(String(r.subject))
+    registered.set(id, marks)
+  }
+
   const dues: DueRow[] = []
   for (const company of companies) {
     const returns = filed.get(company.id) ?? []
@@ -180,6 +203,8 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
       payrollReports: payrollReports.get(company.id) ?? [],
       missing: missing.get(company.id) ?? new Map<string, number>(),
       handover: handover.get(company.id) ?? 0,
+      employees: people.get(company.id) ?? [],
+      registered: registered.get(company.id) ?? new Map<string, string>(),
     }
     for (const due of deadlinesOf(company, facts, today)) dues.push({ ...due, company, companyName: company.name })
   }
@@ -190,4 +215,21 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
 /** A mark set by mistake, taken back. */
 export function unmarkFilingStatement(db: D1Database, company: string, kind: MarkedKind, period: string): D1PreparedStatement {
   return db.prepare('DELETE FROM filings WHERE company_id = ? AND kind = ? AND period = ?').bind(company, kind, period)
+}
+
+/** One company's registrations with the Social Insurance Agency and the health insurers, for its payroll page. */
+export async function companyRegistrations(db: D1Database, company: Company, today: string): Promise<RegistrationDue[]> {
+  const [people, marks] = await db.batch<Row>([
+    db.prepare('SELECT id, name, insurer, started_on, ended_on FROM employees WHERE company_id = ?').bind(company.id),
+    db
+      .prepare(`SELECT subject, action, at FROM events WHERE company_id = ? AND action IN ('${REGISTRATION_EVENTS.done}', '${REGISTRATION_EVENTS.undone}') ORDER BY id`)
+      .bind(company.id),
+  ])
+  const done = new Map<string, string>()
+  for (const r of marks?.results ?? []) {
+    if (r.action === REGISTRATION_EVENTS.done) done.set(String(r.subject), bratislavaDay(Number(r.at)))
+    else done.delete(String(r.subject))
+  }
+  const employees = (people?.results ?? []).map((r) => ({ id: String(r.id), name: String(r.name), insurer: String(r.insurer), startedOn: String(r.started_on), endedOn: typeof r.ended_on === 'string' ? r.ended_on : null }))
+  return registrationDues(employees, company.startOn ?? bratislavaDay(company.createdAt), company.endsOn, done, today)
 }

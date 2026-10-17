@@ -250,6 +250,21 @@ export async function paperResponse(files: R2Bucket | undefined, paper: Paper): 
 }
 
 /** Retire from normal access while keeping the original and its provenance until controlled company retention. */
+/**
+ * A power of attorney that is not one (unsigned, another company's, the wrong file) is returned to the client: out of
+ * the client's list and the company's state, the original kept in the full archive until the controlled deletion, as
+ * a handover file that is removed. Only one nobody has checked.
+ */
+export function returnPoaStatements(db: D1Database, company: string, id: string, user: string, reason: string): D1PreparedStatement[] {
+  const ts = now(), nonce = crypto.randomUUID()
+  return [
+    db.prepare("UPDATE company_files SET deleted_at = ?1, deleted_by = ?2, retire_nonce = ?3 WHERE id = ?4 AND company_id = ?5 AND kind = 'poa' AND deleted_at IS NULL AND checked_at IS NULL").bind(ts, user, nonce, id, company),
+    db.prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail)
+      SELECT ?1, company_id, ?2, 'poa.returned', id, json_object('fileName', file_name, 'r2Key', r2_key, 'reason', ?6, 'retainedUntilControlledPurge', 1)
+      FROM company_files WHERE id = ?4 AND company_id = ?5 AND retire_nonce = ?3`).bind(ts, user, nonce, id, company, reason),
+  ]
+}
+
 export function retirePaperStatements(db: D1Database, company: string, id: string, user: string): D1PreparedStatement[] {
   const ts = now(), nonce = crypto.randomUUID()
   return [

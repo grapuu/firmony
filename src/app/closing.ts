@@ -154,9 +154,6 @@ export function profitRowOf(account: string): string {
   return 'r17'
 }
 
-/** The accounts that are the income tax itself: they are not part of the result before tax (row 100). */
-export const TAX_ACCOUNTS = new Set(['591', '592', '595', '596'])
-
 const empty = (rows: readonly string[]): Lines => Object.fromEntries(rows.map((r) => [r, 0])) as Lines
 
 /** The sums of the balance sheet, the form's formulas, over its leaf rows; row 33, the result, is what makes it balance. */

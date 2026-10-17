@@ -24,7 +24,7 @@ import { answerHeld, statementsOf } from '../app/statements'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
-import { booksRefused, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf, retirePaperStatements } from '../app/papers'
+import { booksRefused, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf, retirePaperStatements, returnPoaStatements } from '../app/papers'
 import {
   LEVELS,
   checkDeclarationStatement,
@@ -120,14 +120,15 @@ import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
-import { orderOf, type Order } from '../order'
+import { latestOrderOfRequest, renewOrderStatement, type Order } from '../order'
 import { orderLinkMail } from '../order-mail'
 import { ContractReleasePage, ContractReviewPage, type ReleaseForm } from '../views/contract-review'
 import { BillingPage } from '../views/billing'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
-import { teamDeadlines, unmarkFilingStatement } from './deadlines-store'
+import { companyRegistrations, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
+import { REGISTRATION_EVENTS } from './registrations'
 import {
   docPreview,
   docsAround,
@@ -215,6 +216,7 @@ import {
   canSee,
   endedCompanies,
   failedMail,
+  POA_RESIGNED,
   getRequest,
   inboxCode,
   isAdmin,
@@ -427,6 +429,16 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.settings
     case 'mzdy-nepodporovane':
       return t.payroll.unsupported
+    case 'plna-moc-vratena':
+      return t.client.poaReturned
+    case 'plna-moc-dovod':
+      return t.client.poaReturnError
+    case 'plna-moc-vzdana':
+      return t.handover.poa.flash
+    case 'prihlasenie':
+      return t.payroll.registrations.flashDone
+    case 'prihlasenie-spat':
+      return t.payroll.registrations.flashUndone
     case 'kniha-ucet':
       return t.ledger.flashes.account
     case 'kniha-interny':
@@ -538,6 +550,10 @@ async function clientPage(
     papersOf(db, company.id, 'handover'),
     papersOf(db, company.id, 'takeover'),
   ])
+  const resigned = await db
+    .prepare(`SELECT ev.at, u.name FROM events ev LEFT JOIN users u ON u.id = ev.user_id WHERE ev.company_id = ? AND ev.action = '${POA_RESIGNED}' ORDER BY ev.id LIMIT 1`)
+    .bind(company.id)
+    .first<{ at: number; name: string | null }>()
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
   const [banks, vat, books, statements, due] = await Promise.all([
@@ -583,6 +599,7 @@ async function clientPage(
       risk={risks[0]?.level ?? null}
       openReports={reports.filter((r) => r.decision === null).length}
       handover={handover}
+      resigned={resigned ? { at: Number(resigned.at), by: resigned.name } : null}
       takeover={takeover}
       ending={endingOf(company, day)}
       earliestEnd={noticeEndsOn(day)}
@@ -875,6 +892,29 @@ teamRoutes.post('/klienti/:id/plna-moc/:file/overit', async (c) => {
   return c.redirect(`/ucto/klienti/${company.id}?ok=plna-moc#zmluva`, 303)
 })
 
+// A power of attorney that is not one goes back to the client, with a message that says why and what to upload.
+teamRoutes.post('/klienti/:id/plna-moc/:file/vratit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  const id = c.req.param('file')
+  const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
+  if (!company || !paper || paper.kind !== 'poa') return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const reason = typeof body.dovod === 'string' ? body.dovod.trim().replace(/\s+/g, ' ').slice(0, 300) : ''
+  if (reason.length < 5) return c.redirect(`/ucto/klienti/${company.id}?ok=plna-moc-dovod#zmluva`, 303)
+  const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`
+  const [returned] = await db.batch(returnPoaStatements(db, company.id, paper.id, who.user.id, reason))
+  if ((returned?.meta?.changes ?? 0) === 0) return c.redirect(`/ucto/klienti/${company.id}#zmluva`, 303)
+  const message = crypto.randomUUID()
+  await db.batch([
+    messageStatement(db, { id: message, company: company.id, author: who.user.id, side: 'firmony', body: t.client.poaReturnMessage(paper.fileName, sentence), payment: null }),
+    ...(await ringClient(c, company, message)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/ucto/klienti/${company.id}?ok=plna-moc-vratena#zmluva`, 303)
+})
+
 // ---------------------------------------------------------------------------------------------------------------
 // The end of a contract from our side (point 10.2 and 10.3 of the terms), and the books handed over at its end
 // ---------------------------------------------------------------------------------------------------------------
@@ -991,6 +1031,22 @@ teamRoutes.get('/klienti/:id/odovzdanie/:file', async (c) => {
   const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
   const answer = paper?.kind === 'handover' ? await paperResponse(c.env.FILES, paper) : null
   return answer ?? missingPage(c)
+})
+
+// The power of attorney given up at the end of the contract (point 10.4 of the terms), recorded once.
+teamRoutes.post('/klienti/:id/odovzdanie/plna-moc', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  if (!endingOf(company, dayOf(now()))) return c.redirect(`/ucto/klienti/${company.id}`, 303)
+  await db
+    .prepare(
+      `INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?2, ?1, ?3, '${POA_RESIGNED}', ?1, NULL
+         WHERE NOT EXISTS (SELECT 1 FROM events WHERE company_id = ?1 AND action = '${POA_RESIGNED}')`,
+    )
+    .bind(company.id, now(), c.get('who').user.id)
+    .run()
+  return c.redirect(`/ucto/klienti/${company.id}?ok=plna-moc-vzdana#odovzdanie`, 303)
 })
 
 teamRoutes.post('/klienti/:id/odovzdanie/:file/odstranit', async (c) => {
@@ -1757,6 +1813,7 @@ async function payrollPage(
       slips={slips}
       run={run}
       reports={run?.closedOn ? await payrollReportItems(db, company.id, period) : []}
+      registrations={await companyRegistrations(db, company, today)}
       reopenBlocked={run?.closedOn ? await runReopenBlocked(db, company.id, period) : false}
       totals={runTotals(slips)}
       orders={payOrders(company, period, slips, employees, settings, payday)}
@@ -1774,6 +1831,31 @@ async function payrollPage(
 teamRoutes.get('/klienti/:id/mzdy', async (c) => {
   const company = await companyParam(c)
   return company ? payrollPage(c, company, c.req.query('obdobie')) : missingPage(c)
+})
+
+/**
+ * A registration with the Social Insurance Agency or a health insurer recorded as filed in its portal, or taken back
+ * when recorded by mistake. Only a registration the company owes today can be recorded; the newest record counts.
+ */
+teamRoutes.post('/klienti/:id/mzdy/prihlasenia', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const key = typeof body.kluc === 'string' ? body.kluc : ''
+  const back = body.spat === '1'
+  const due = (await companyRegistrations(db, company, dayOf(now()))).find((r) => r.key === key)
+  if (!due || due.done !== back) return c.redirect(`/ucto/klienti/${company.id}/mzdy#prihlasenia`, 303)
+  await db.batch([
+    eventStatement(db, {
+      company: company.id,
+      user: c.get('who').user.id,
+      action: back ? REGISTRATION_EVENTS.undone : REGISTRATION_EVENTS.done,
+      subject: key,
+      detail: { agency: due.agency, move: due.move, day: due.day },
+    }),
+  ])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=${back ? 'prihlasenie-spat' : 'prihlasenie'}#prihlasenia`, 303)
 })
 
 /** The incomes typed and the payday: kept, or the month closed with them and the client told what to pay. */
@@ -2783,8 +2865,7 @@ async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode =
   if (!isAdmin(c.get('who').user)) return missingPage(c)
   const id = c.req.param('id') ?? ''
   if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
-  const row = await c.env.DB.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
-  const order = row ? orderOf(row) : null
+  const order = await latestOrderOfRequest(c.env.DB, id)
   const people = await c.env.DB.prepare("SELECT id, name FROM users WHERE team IN ('admin', 'accountant') ORDER BY name").all<{ id: string; name: string }>()
   const sent = order
     ? await c.env.DB.prepare("SELECT at FROM events WHERE action = 'contract.link.sent' AND subject = ? ORDER BY id DESC LIMIT 1").bind(order.id).first<{ at: number }>()
@@ -2792,7 +2873,7 @@ async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode =
   return shell(c, 'requests', 'Posúdenie pred podpisom', <ContractReviewPage requestId={id} order={order}
     offerHash={order ? await orderOfferHash(order) : ''} review={order ? await latestOrderReview(c.env.DB, order.id) : null}
     people={people.results} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} linkSentAt={sent?.at ?? null}
-    flash={c.req.query('ok') === 'odkaz' ? 'Odkaz na zmluvu sme poslali konateľovi.' : undefined} error={error} />, status)
+    flash={c.req.query('ok') === 'odkaz' ? 'Odkaz na zmluvu sme poslali konateľovi.' : c.req.query('ok') === 'obnovena' ? 'Objednávka platí ďalších 30 dní. Posúďte ju a odkaz pošleme konateľovi.' : undefined} error={error} />, status)
 }
 
 /**
@@ -2828,8 +2909,7 @@ teamRoutes.post('/ziadosti/:id/posudenie', async (c) => {
   const id = c.req.param('id')
   if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
   const db = c.env.DB
-  const row = await db.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
-  const order = row ? orderOf(row) : null
+  const order = await latestOrderOfRequest(db, id)
   if (!order || order.status !== 'open') return reviewPage(c, 'Objednávka už nie je otvorená.', 409)
   const body = await c.req.parseBody()
   const text = (v: unknown) => typeof v === 'string' ? v.trim() : ''
@@ -2860,13 +2940,30 @@ teamRoutes.post('/ziadosti/:id/posudenie', async (c) => {
   return c.redirect(`/ucto/ziadosti/${id}/posudenie${sent ? '?ok=odkaz' : ''}`, 303)
 })
 
+// An online order that lapsed while the request waited: thirty more days, and the review is made again.
+teamRoutes.post('/ziadosti/:id/obnovit', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const id = c.req.param('id')
+  const db = c.env.DB
+  if (!ID.test(id) || !(await getRequest(db, id))) return missingPage(c)
+  const order = await latestOrderOfRequest(db, id)
+  if (!order || order.status !== 'expired') return reviewPage(c, 'Obnoviť sa dá len objednávka, ktorej platnosť uplynula.', 409)
+  const ts = now()
+  const [renewed] = await db.batch([
+    renewOrderStatement(db, order.id, ts, await sha256Hex(newToken())),
+    db.prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?2, NULL, ?3, 'order.renewed', id, NULL FROM orders WHERE id = ?1 AND status = 'open' AND expires_at > ?2`).bind(order.id, ts, who.user.id),
+  ])
+  if (!renewed?.meta.changes) return reviewPage(c, 'Objednávku nemožno obnoviť: firma je už klientom alebo zmluvu medzičasom uzavrela.', 409)
+  return c.redirect(`/ucto/ziadosti/${id}/posudenie?ok=obnovena`, 303)
+})
+
 teamRoutes.post('/ziadosti/:id/odkaz', async (c) => {
   const who = c.get('who')
   if (!isAdmin(who.user)) return missingPage(c)
   const id = c.req.param('id')
   if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
-  const row = await c.env.DB.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
-  const order = row ? orderOf(row) : null
+  const order = await latestOrderOfRequest(c.env.DB, id)
   if (!order || !(await sendOrderLink(c, order, id, who.user.id))) return reviewPage(c, 'Odkaz teraz poslať nemožno: zmluvu musí potvrdiť platné štandardné posúdenie a schválené znenie.', 409)
   return c.redirect(`/ucto/ziadosti/${id}/posudenie?ok=odkaz`, 303)
 })

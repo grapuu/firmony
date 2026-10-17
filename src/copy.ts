@@ -505,7 +505,6 @@ export const copy = typesetAll({
     },
     noVat: 'bez DPH',
     yearly: 'raz ročne',
-    startChosen: 'podľa voľby nižšie',
     invoicesValue: 'balík mesačne vopred, mzdy a doklady navyše za uplynulý mesiac, splatnosť 14 dní',
     noticeValue: 'jeden mesiac, bez viazanosti',
     docsValue: `za mesiac do ${APP.docsByDay}. dňa nasledujúceho mesiaca`,

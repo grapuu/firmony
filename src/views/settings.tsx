@@ -92,6 +92,7 @@ const Notice: FC<{ company: Company; owner: boolean; today: string; end: string;
         {ending ? <AfterEnd ending={ending} /> : null}
         {owner && company.endsOn >= today ? (
           <form method="post" action="/app/firma/vypoved/spat">
+            <p class="notice-box__text">{n.withdrawLead}</p>
             <button class="btn btn--line btn--small" type="submit">
               {n.withdraw}
             </button>

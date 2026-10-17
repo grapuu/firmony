@@ -47,7 +47,6 @@ export const currentTargetActiveSql = (t: string) => targetActiveSql(t, true)
 export const currentCoverageJsonSql = (t: string) => coverageJsonSql(t, true)
 export const currentReportSql = (t: string, p: string) => reportCurrentSql(t, p, true)
 export const currentPendingPayrollSql = (c: string) => pendingPayrollSql(c, true)
-export const currentPayrollStatusSql = (t: string, p: string) => payrollStatusSql(t, p, true)
 
 // Version-20 wrappers above stay unchanged for the additive migrations. Runtime uses version 21 below.
 export function healthIdentityCoverageSql(target: string): string { return `(SELECT COALESCE(json_group_array(json_object('employee', s.employee, 'identity', s.identity)), '[]') FROM
@@ -56,7 +55,6 @@ export function healthIdentityCoverageSql(target: string): string { return `(SEL
     FROM payroll_closures pc, json_each(pc.lines) l WHERE pc.id = ${target}.closure_id AND pc.company_id = ${target}.company_id AND 'health' || json_extract(l.value, '$.insurer') = ${target}.kind ORDER BY employee) s)` }
 export const healthReportCurrentSql = (t: string, p: string) => reportCurrentSql(t,p,true,true)
 export const healthPendingPayrollSql = (c: string) => pendingPayrollSql(c,true,true)
-export const healthPayrollStatusSql = (t: string, p: string) => payrollStatusSql(t,p,true,true)
 
 // Keep schema-19/20/21 SQL unchanged; only current runtime and schema 22 use these facts.
 export function socialCoverageSql(target:string):string { return `(SELECT COALESCE(json_group_array(json_object('employee', s.employee, 'identity', s.identity, 'relation', s.relation, 'input', s.input)), '[]') FROM

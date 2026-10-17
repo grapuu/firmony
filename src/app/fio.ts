@@ -185,7 +185,7 @@ export async function linkFio(
   env: FioEnv,
   args: { company: string; user: string; token: string },
   fetcher: typeof fetch = fetch,
-): Promise<{ status: 'linked'; added: number } | { status: 'soon' } | { status: 'refused' }> {
+): Promise<{ status: 'linked'; added: number } | { status: 'soon' } | { status: 'down' } | { status: 'refused' }> {
   const db = env.DB
   const id = crypto.randomUUID()
   await db
@@ -200,5 +200,6 @@ export async function linkFio(
     return { status: 'refused' }
   }
   await db.batch([eventStatement(db, { company: args.company, user: args.user, action: 'bank.linked', subject: id, detail: { bank: 'Fio banka', kind: 'fio' } })])
-  return read.status === 'read' ? { status: 'linked', added: read.added } : { status: 'soon' }
+  // Asked too soon (409) the token is read by the schedule; Fio not answering at all is said as that.
+  return read.status === 'read' ? { status: 'linked', added: read.added } : read.status === 'failed' && read.why !== '409 soon' ? { status: 'down' } : { status: 'soon' }
 }

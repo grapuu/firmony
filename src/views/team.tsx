@@ -356,6 +356,8 @@ export interface ClientPageProps {
   openReports: number
   /** The books handed over at the end, the contract's end once it has a last day, and the earliest end we can give. */
   handover: Paper[]
+  /** The power of attorney given up at the end, as recorded (point 10.4 of the terms). */
+  resigned?: { at: number; by: string | null } | null
   /** What the former accountant handed over, as the client uploaded it (/app/prechod). */
   takeover?: Paper[]
   ending: Ending | null
@@ -491,6 +493,20 @@ const ContractCard: FC<{
                     </button>
                   </form>
                 ) : null}
+                {paper.checkedAt === null && poa !== 'checked' ? (
+                  <details class="more more--quiet plain__more">
+                    <summary class="more__summary">{t.client.poaReturn}</summary>
+                    <form class="more__body stack" method="post" action={`/ucto/klienti/${c.id}/plna-moc/${paper.id}/vratit`} novalidate>
+                      <label class="field__label" for={`vratit-${paper.id}`}>
+                        {t.client.poaReturnReason}
+                      </label>
+                      <input id={`vratit-${paper.id}`} class="field__input" name="dovod" maxlength={300} placeholder={t.client.poaReturnHint} autocomplete="off" />
+                      <button class="btn btn--line btn--small stack__submit" type="submit">
+                        {t.client.poaReturn}
+                      </button>
+                    </form>
+                  </details>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -531,13 +547,22 @@ const ContractCard: FC<{
             </button>
           </form>
         </details>
+      ) : !admin && !ending ? (
+        <p class="info__source">{t.end.onlyAdmin}</p>
       ) : null}
     </section>
   )
 }
 
 /** The books handed over at the end of the contract: uploaded here, shown to the client in Firma a nastavenia. */
-const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; now: number; error?: string }> = ({ company: c, handover, ending, now, error }) => {
+const HandoverCard: FC<{ company: Company; handover: Paper[]; resigned: { at: number; by: string | null } | null; ending: Ending; now: number; error?: string }> = ({
+  company: c,
+  handover,
+  resigned,
+  ending,
+  now,
+  error,
+}) => {
   const today = dayOf(now)
   return (
     <section class="info" id="odovzdanie" aria-labelledby="odovzdanie-t">
@@ -546,7 +571,7 @@ const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; no
       </h2>
       <p class="info__lead">{t.handover.lead}</p>
       <p class="pills">
-        {handover.length > 0 ? null : (
+        {handover.length > 0 && resigned ? null : (
           <span class={`pill ${today > ending.handoverBy ? 'pill--red' : 'pill--amber'}`}>
             {today > ending.handoverBy ? t.client.handoverLate : t.client.handoverDue(dayName(ending.handoverBy, today))}
           </span>
@@ -585,6 +610,19 @@ const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; no
           {t.handover.button}
         </button>
       </form>
+      <h3 class="info__subtitle">{t.handover.poa.title}</h3>
+      {resigned ? (
+        <p class="vstatus__filed">
+          <span class="tick tick--green" aria-hidden="true" /> {t.handover.poa.done(whenName(resigned.at, now), resigned.by)}
+        </p>
+      ) : (
+        <form class="stack" method="post" action={`/ucto/klienti/${c.id}/odovzdanie/plna-moc`}>
+          <p class="info__lead">{t.handover.poa.lead}</p>
+          <button class="btn btn--line stack__submit" type="submit">
+            {t.handover.poa.button}
+          </button>
+        </form>
+      )}
     </section>
   )
 }
@@ -819,7 +857,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
             earliestEnd={p.earliestEnd}
             end={p.end}
           />
-          {p.ending ? <HandoverCard company={c} handover={p.handover} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
+          {p.ending ? <HandoverCard company={c} handover={p.handover} resigned={p.resigned ?? null} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
           {p.takeover && p.takeover.length > 0 ? (
             <section class="info" id="prevzatie" aria-labelledby="prevzatie-t">
               <h2 id="prevzatie-t" class="info__title">
@@ -1750,9 +1788,15 @@ export const PeoplePage: FC<{ people: TeamMember[]; values: { name: string; emai
               </span>
             </span>
             <span class="row__end">
+              {m.keys === 0 ? <span class="pill pill--amber">{t.people.noKey}</span> : null}
               <span class={`pill ${m.team === 'admin' ? 'pill--blue' : 'pill--grey'}`}>{t.nav.role[m.team]}</span>
             </span>
           </span>
+          {m.keys === 0 ? (
+            <a class="link row__act" href="/auth/grants">
+              {t.people.activate}
+            </a>
+          ) : null}
         </li>
       ))}
     </ul>
