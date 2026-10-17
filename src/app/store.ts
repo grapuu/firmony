@@ -370,8 +370,13 @@ export function vatDocOf(doc: Doc): VatDoc {
 /** The VAT registration of a company, as the return reads it. */
 export const vatCompanyOf = (company: Company): VatCompany => ({ status: company.vatStatus, quarterly: company.vatQuarterly, since: company.vatSince })
 
-/** A moment's day in Bratislava, YYYY-MM-DD. */
-export const bratislavaDay = (seconds: number): string => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(seconds * 1000))
+/**
+ * A moment's day in Bratislava, YYYY-MM-DD. One formatter for the whole Worker: making one is costly, and the VAT and
+ * the deadlines ask this of every document of every period (the load test of 17 October 2026 found three seconds of
+ * a page spent only on making formatters, at 3 600 documents).
+ */
+const BRATISLAVA_DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' })
+export const bratislavaDay = (seconds: number): string => BRATISLAVA_DAY.format(new Date(seconds * 1000))
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is signed in

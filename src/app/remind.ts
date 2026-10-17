@@ -11,9 +11,11 @@ import { statementDue } from './statements'
 import { MISSING, membersOf } from './store'
 
 /** The parts of a moment in Bratislava. */
+const BRATISLAVA_PARTS = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23' })
+
 export function bratislava(ms: number): { day: string; weekday: number; date: number; hour: number; minute: number } {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23' })
+    BRATISLAVA_PARTS
       .formatToParts(new Date(ms))
       .map((p) => [p.type, p.value]),
   )

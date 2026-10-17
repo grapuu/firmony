@@ -57,9 +57,9 @@ const signedExact = (cents: number): string => `${cents > 0 ? '+' : ''}${formatE
 /** A turnover: a dim nought when there was none. */
 const Turnover: FC<{ cents: number }> = ({ cents }) => (cents === 0 ? <span class="lzero">0,00</span> : <>{amount(cents)}</>)
 
-export type LedgerTab = 'trial' | 'journal' | 'saldo' | 'payments' | 'internal' | 'opening' | 'periods'
-const TABS: readonly LedgerTab[] = ['trial', 'journal', 'saldo', 'payments', 'internal', 'opening', 'periods']
-const TAB_PATH: Record<LedgerTab, string> = { trial: '', journal: '/dennik', saldo: '/saldokonto', payments: '/platby', internal: '/interne', opening: '/pociatocne', periods: '/obdobia' }
+export type LedgerTab = 'trial' | 'journal' | 'saldo' | 'payments' | 'internal' | 'opening' | 'assets' | 'periods'
+const TABS: readonly LedgerTab[] = ['trial', 'journal', 'saldo', 'payments', 'internal', 'opening', 'assets', 'periods']
+const TAB_PATH: Record<LedgerTab, string> = { trial: '', journal: '/dennik', saldo: '/saldokonto', payments: '/platby', internal: '/interne', opening: '/pociatocne', assets: '/majetok', periods: '/obdobia' }
 
 export const bookPath = (company: Company, tab: LedgerTab = 'trial'): string => `/ucto/klienti/${company.id}/kniha${TAB_PATH[tab]}`
 
@@ -124,6 +124,37 @@ const RangeForm: FC<{ action: string; years: number[]; year: number; month?: num
 )
 
 const query = (year: number, month?: number) => `?rok=${year}${month ? `&mesiac=${month}` : ''}`
+
+/** How many entries of the journal, and moves of an account, one page shows: a large company has thousands a month. */
+export const LEDGER_PAGE = 500
+
+/** The part of a list one page shows, and the page itself kept within the list. */
+export function pageSlice<T>(items: T[], asked: number, size = LEDGER_PAGE): { items: T[]; page: number; pages: number; from: number; to: number } {
+  const pages = Math.max(1, Math.ceil(items.length / size))
+  const page = Number.isInteger(asked) && asked >= 1 ? Math.min(asked, pages) : 1
+  const start = (page - 1) * size
+  const shown = items.slice(start, start + size)
+  return { items: shown, page, pages, from: shown.length ? start + 1 : 0, to: start + shown.length }
+}
+
+const Pager: FC<{ href: string; page: number; pages: number; from: number; to: number; total: number }> = (p) =>
+  p.pages <= 1 ? null : (
+    <nav class="lpager" aria-label={L.pageOf(p.from, p.to, p.total)}>
+      <span class="lpager__where">{L.pageOf(p.from, p.to, p.total)}</span>
+      <span class="lpager__links">
+        {p.page > 1 ? (
+          <a class="btn btn--line btn--small" href={`${p.href}&strana=${p.page - 1}`}>
+            {L.pagePrev}
+          </a>
+        ) : null}
+        {p.page < p.pages ? (
+          <a class="btn btn--line btn--small" href={`${p.href}&strana=${p.page + 1}`}>
+            {L.pageNext}
+          </a>
+        ) : null}
+      </span>
+    </nav>
+  )
 
 // ---------------------------------------------------------------------------------------------------------------
 // The trial balance, and what keeps the books from being whole
@@ -433,12 +464,17 @@ export interface JournalPageProps {
   years: number[]
   year: number
   month: number
+  /** Which part of the month's entries, from 1. */
+  page?: number
 }
 
 export const JournalPage: FC<JournalPageProps> = (p) => {
   const base = bookPath(p.company)
   const prefix = `${p.year}-${String(p.month).padStart(2, '0')}`
-  const entries = p.books.entries.filter((e) => e.on.startsWith(prefix))
+  const month = p.books.entries.filter((e) => e.on.startsWith(prefix))
+  const part = pageSlice(month, p.page ?? 1)
+  const entries = part.items
+  const pager = <Pager href={`${base}/dennik${query(p.year, p.month)}`} page={part.page} pages={part.pages} from={part.from} to={part.to} total={month.length} />
   return (
     <>
       <LedgerHead company={p.company} tab="journal" title={L.journalTitle} lead={L.journalLead} query={query(p.year, p.month)} />
@@ -449,6 +485,7 @@ export const JournalPage: FC<JournalPageProps> = (p) => {
           </h2>
           <RangeForm action={`${base}/dennik`} years={p.years} year={p.year} month={p.month} which="month" />
         </header>
+        {pager}
         {entries.length === 0 ? (
           <p class="info__empty">{L.journalEmpty}</p>
         ) : (
@@ -501,6 +538,7 @@ export const JournalPage: FC<JournalPageProps> = (p) => {
             </table>
           </div>
         )}
+        {pager}
         <Downloads company={p.company} year={p.year} month={p.month} />
       </section>
     </>
@@ -520,10 +558,15 @@ export interface AccountPageProps {
   years: number[]
   year: number
   month: number
+  /** Which part of the moves, from 1. */
+  page?: number
 }
 
 export const AccountPage: FC<AccountPageProps> = (p) => {
   const base = bookPath(p.company)
+  const part = pageSlice(p.moves, p.page ?? 1)
+  const before = part.from > 1 ? p.moves[part.from - 2] : undefined
+  const pager = <Pager href={`${base}/ucet/${p.account}${query(p.year, p.month)}`} page={part.page} pages={part.pages} from={part.from} to={part.to} total={p.moves.length} />
   return (
     <>
       <LedgerHead company={p.company} tab={null} title={L.accountTitle(p.account)} second={p.name} lead={L.accountLead} />
@@ -534,6 +577,7 @@ export const AccountPage: FC<AccountPageProps> = (p) => {
           </h2>
           <RangeForm action={`${base}/ucet/${p.account}`} years={p.years} year={p.year} month={p.month} />
         </header>
+        {pager}
         <div class="lscroll">
           <table class="ltable ltable--account">
             <thead>
@@ -555,12 +599,12 @@ export const AccountPage: FC<AccountPageProps> = (p) => {
             </thead>
             <tbody>
               <tr class="ltable__syn">
-                <td colspan={6}>{L.psRow}</td>
+                <td colspan={6}>{before ? L.carriedRow : L.psRow}</td>
                 <td class="num">
-                  <Balance cents={p.ps} />
+                  <Balance cents={before ? before.balance : p.ps} />
                 </td>
               </tr>
-              {p.moves.map((m) => (
+              {part.items.map((m) => (
                 <tr>
                   <td class="lentry__day">{dayShort(m.entry.on)}</td>
                   <td class="lentry__doc">
@@ -594,6 +638,7 @@ export const AccountPage: FC<AccountPageProps> = (p) => {
             </tfoot>
           </table>
         </div>
+        {pager}
         {p.moves.length === 0 ? <p class="info__empty">{L.accountEmpty}</p> : null}
         <a class="btn btn--line btn--small" href={`${base}${query(p.year, p.month)}`}>
           {L.accountBack}

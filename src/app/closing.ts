@@ -24,6 +24,7 @@
 // those of representation and gifts, unpaid costs under § 17(19), tax depreciation, exempt income, losses of years
 // before us) are hers to type, each proposed where the books can; the notes (poznámky) are hers to write. Not built:
 // the return of a company that is not a micro entity (Úč POD), deferred tax, the relief rows, the special tax bases.
+import type { AssetYear } from './assets'
 import { balanceOf, synthetic, accountClass, type Books, type LedgerEntry } from './ledger'
 import type { Company } from './store'
 import { workingDayFrom } from './vat'
@@ -530,10 +531,26 @@ export interface Proposal {
  * row 6, account 513) and gifts (row 8, account 543), and the depreciation of account 551 in Table B, the tax
  * depreciation proposed the same until the accountant says otherwise (so that nothing is added back unasked).
  */
-export function proposeTax(statements: Statements): Proposal {
+export function proposeTax(statements: Statements, assets: AssetYear | null = null): Proposal {
   const p = statements.profit
   const f = tableF(statements)
   const depreciation = Math.max(0, statements.accounts['551'] ?? 0)
+  // With the register (17 October 2026): Table B holds the tangible assets only. The books' depreciation is 551 less
+  // the register's intangible assets and less the residual values of liquidated assets the register booked on 551;
+  // the tax depreciation is the register's for its tangible assets, and 551 the same for what is outside the register.
+  // The § 22(12) shares on sale go to row 5.
+  if (assets) {
+    const outside = Math.max(0, depreciation - assets.bookTangible - assets.bookIntangible - assets.liquidated)
+    return {
+      result: p.r35 ?? 0,
+      revenues: f.r01,
+      costs: f.r02,
+      taxable: Math.max(0, f.r01),
+      r210: Math.max(0, statements.accounts['662'] ?? 0),
+      tableA: { a06: Math.max(0, statements.accounts['513'] ?? 0), a08: Math.max(0, statements.accounts['543'] ?? 0) },
+      tableB: { b01: assets.bookTangible + outside, b02: assets.taxTangible + outside, ...(assets.saleShares > 0 ? { b05: assets.saleShares } : {}) },
+    }
+  }
   return {
     result: p.r35 ?? 0,
     revenues: f.r01,

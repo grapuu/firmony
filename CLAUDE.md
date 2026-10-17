@@ -52,7 +52,23 @@ over. Bring this section up to date first whenever a session ends.
    filings and the payroll reports, in a folder per office and company with PREHLAD.txt, each fingerprint checked
    again; `/ucto/podania/naraz` records every number and checked receipt in one form, each row through
    `recordDelivery` against the rows she may work on now; an empty row changes nothing; test/bundle.runtime.mjs);
-   a load test with a large fictional
+   a load test with a large fictional (built: `npm run test:load`, `test/load.mjs`, one TEST-ONLY company of a year
+   with `FIRMONY_LOAD_DOCS` documents a month (3 000 by default), as many payments from three accounts and 100
+   employees, every heavy page timed three times, the report in `.wrangler/load/report.json`; at 300 a month it found
+   three seconds of a page spent making date formatters: `bratislavaDay` and its kin now keep one formatter, and
+   `vatDocsByPeriod` sorts the documents by period once, so the team's home went from 3 179 to 139 ms and the
+   client's overview from 2 523 to 140 ms on this machine);
+   at 3 000 a month (36 000 documents and 36 000 payments a year) every page answered, in 1,3 to 3,8 s here: the
+   books are worked out from every document each time (`booksOf`), the next step for volume; the journal and an
+   account's ledger show 500 lines a page (`pageSlice`, `?strana=`); the VAT page of such a month is 1,5 MB;
+   fixed assets and depreciation (built: `src/app/assets.ts`, `assets-store.ts`, `views/assets.tsx`, schema step 26
+   `assets`, the books' tab "Majetok" at `/ucto/klienti/:id/kniha/majetok`; the Income Tax Act read in the original on
+   slov-lex, version of 1 January 2026: § 22(2) 1 700 €, § 22(7) 2 400 €, § 22(8) intangible as the books, § 26(1)
+   groups 0 to 6 in 2 to 40 years, § 27 straight with the first year's months share and the rest in the year after,
+   § 28 accelerated 6/7 and 8/9 for groups 2 and 3, § 47 rounding, § 22(11) and (12), § 17(34) the car of 48 000 €;
+   the books get the putting in use from 041/042, each ended month's depreciation on 551 in one entry, the disposal;
+   the closing's Table B takes the register's tangible assets; changes reaching a locked period are refused by the
+   schema; purge and the yearly archive (`data/majetok.json`) carry it; test/assets.runtime.mjs);
    company; fixed assets and depreciation; the closing of small and large entities; stock; full payroll (agreements,
    directors, sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS;
    foreign currencies, OSS, Intrastat and joint-stock companies. The site promises a large company only an offer

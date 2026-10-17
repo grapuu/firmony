@@ -23,6 +23,7 @@
 // costs and revenues start from nothing, and the year's result stands on 431 until it is distributed.
 import { csvCell, csvMoney } from '../team/store'
 import { CATEGORIES, entryFor, type PaidBy } from './booking'
+import type { AssetEntry } from './assets'
 import { readableName } from './copy'
 import { centsOf } from './invoices'
 import { normalizeVs, type DocKind, type Exempt } from './match'
@@ -50,8 +51,10 @@ export const CHART: Readonly<Record<string, string>> = {
   '052': 'Poskytnuté preddavky na dlhodobý hmotný majetok',
   '073': 'Oprávky k softvéru',
   '074': 'Oprávky k oceniteľným právam',
+  '079': 'Oprávky k ostatnému dlhodobému nehmotnému majetku',
   '081': 'Oprávky k stavbám',
   '082': 'Oprávky k samostatným hnuteľným veciam a súborom hnuteľných vecí',
+  '089': 'Oprávky k ostatnému dlhodobému hmotnému majetku',
   '112': 'Materiál na sklade',
   '132': 'Tovar na sklade a v predajniach',
   '211': 'Pokladnica',
@@ -109,6 +112,7 @@ export const CHART: Readonly<Record<string, string>> = {
   '544': 'Zmluvné pokuty, penále a úroky z omeškania',
   '545': 'Ostatné pokuty, penále a úroky z omeškania',
   '546': 'Odpis pohľadávky',
+  '543': 'Dary',
   '548': 'Ostatné náklady na hospodársku činnosť',
   '549': 'Manká a škody na majetku',
   '551': 'Odpisy dlhodobého nehmotného majetku a dlhodobého hmotného majetku',
@@ -187,7 +191,7 @@ export interface LedgerLine {
   what?: 'cost' | 'vat' | 'revenue' | 'payable' | 'receivable'
 }
 
-export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'internal'
+export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'asset' | 'internal'
 
 export interface LedgerEntry {
   /** Unique in the books: d:<document>, p:<payment>, v:<period>[:n], m:<stored entry>. */
@@ -270,6 +274,8 @@ export interface LedgerInput {
   manual: ManualEntry[]
   /** The months of payroll closed. */
   payroll?: LedgerPayroll[]
+  /** The register's entries (assets.ts, assetEntries): putting in use, each month's depreciation, each disposal. */
+  assets?: AssetEntry[]
 }
 
 /** An invoice's open item (saldokonto): what it comes to on its account and what of it was settled. */
@@ -539,7 +545,7 @@ function settlementLines(owed: number, deducted: number): LedgerLine[] {
   return lines
 }
 
-const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, internal: 5 }
+const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, asset: 5, internal: 6 }
 
 /** The day the books start: the opening balances' day, else the contract's first day; null when neither is known. */
 export function booksStart(company: Pick<Company, 'startOn'>, manual: readonly ManualEntry[]): string | null {
@@ -769,6 +775,12 @@ export function buildBooks(input: LedgerInput): Books {
     ].filter((l) => l.cents > 0)
     if (lines.length > 0)
       entries.push({ key: `w:${r.period}`, on: end, kind: 'payroll', number: `MZDY ${r.period.slice(5, 7)}/${r.period.slice(0, 4)}`, text: `Mzdy za ${periodName(r.period)}`, docId: null, paymentId: null, manualId: null, lines })
+  }
+
+  // The register of fixed assets: putting in use, each month's depreciation, each disposal, all within the books.
+  for (const a of input.assets ?? []) {
+    if (!inBooks(a.on)) continue
+    entries.push({ key: a.key, on: a.on, kind: 'asset', number: a.number, text: a.text, docId: null, paymentId: null, manualId: null, lines: a.lines.map((l) => ({ ...l })) })
   }
 
   // What the accountant wrote herself.
@@ -1102,7 +1114,7 @@ export function openingRows(lines: readonly LedgerLine[]): { account: string; md
 
 const csv = (rows: (string | number | null)[][]) => `﻿${rows.map((row) => row.map((cell) => csvCell(cell)).join(';')).join('\r\n')}\r\n`
 
-const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', internal: 'interný doklad' }
+const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', asset: 'majetok', internal: 'interný doklad' }
 
 /** The number a journal prints for an entry: the document's own, or what the entry is. */
 export function numberOf(e: LedgerEntry, books: Books): string {

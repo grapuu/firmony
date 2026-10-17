@@ -13,6 +13,7 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['prilohy', 'SELECT * FROM company_files WHERE company_id = ?1 ORDER BY id'],
     ['uzamknutie-obdobi', 'SELECT * FROM period_locks WHERE company_id = ?1'],
     ['historia-uzamknutia', 'SELECT * FROM period_lock_history WHERE company_id = ?1 ORDER BY version'],
+    ['majetok', 'SELECT * FROM assets WHERE company_id = ?1 ORDER BY in_use_on, number'],
     ['zamestnanci', 'SELECT * FROM employees WHERE company_id = ?1 ORDER BY id'],
     ['mzdy', 'SELECT * FROM payroll_runs WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY period'],
     ['historia-miezd', 'SELECT * FROM payroll_history WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],

@@ -733,6 +733,74 @@ const MIGRATIONS: readonly string[][] = [
       PRIMARY KEY (client_id, key)
     )`,
   ],
+  // 26 (17 October 2026): the register of fixed assets (src/app/assets.ts), every size of company being his word. An
+  // asset gives the books its putting in use, each month's depreciation and its disposal, so it is guarded as the
+  // books are: nothing of it that reaches a locked period changes, every change moves the company's data revision,
+  // and nothing changes while the company is being handed over.
+  [
+    `CREATE TABLE IF NOT EXISTS assets (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      account TEXT NOT NULL CHECK (account IN ('013', '014', '019', '021', '022', '029')),
+      document_id TEXT,
+      cost_cents INTEGER NOT NULL CHECK (cost_cents > 0),
+      in_use_on TEXT NOT NULL,
+      tax_group INTEGER CHECK (tax_group IS NULL OR tax_group BETWEEN 0 AND 6),
+      tax_method TEXT NOT NULL DEFAULT 'straight' CHECK (tax_method IN ('straight', 'accelerated')),
+      car INTEGER NOT NULL DEFAULT 0,
+      book_months INTEGER,
+      source TEXT NOT NULL DEFAULT 'purchase' CHECK (source IN ('purchase', 'opening')),
+      prior_book_cents INTEGER NOT NULL DEFAULT 0,
+      prior_tax_cents INTEGER NOT NULL DEFAULT 0,
+      prior_tax_years INTEGER NOT NULL DEFAULT 0,
+      disposed_on TEXT,
+      disposal TEXT CHECK (disposal IS NULL OR disposal IN ('sale', 'liquidation', 'damage', 'gift')),
+      note TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER,
+      updated_by TEXT,
+      deleted_at INTEGER,
+      UNIQUE (company_id, number)
+    )`,
+    'CREATE INDEX IF NOT EXISTS assets_company ON assets (company_id, in_use_on)',
+    ...['INSERT', 'UPDATE', 'DELETE'].flatMap((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      const lockedOn = (r: string, day: string) => `EXISTS (SELECT 1 FROM period_locks l JOIN companies c ON c.id = l.company_id
+        WHERE l.company_id = ${r}.company_id AND l.through_on IS NOT NULL AND c.purge_started_at IS NULL AND ${day} <= l.through_on)`
+      // What reaches the books from the day of putting in use, or only from a disposal's day when nothing else changes.
+      const reach = (r: string) => `(${lockedOn(r, `${r}.in_use_on`)} OR (${r}.disposed_on IS NOT NULL AND ${lockedOn(r, `${r}.disposed_on`)}))`
+      const onlyDisposal = `(OLD.name IS NEW.name AND OLD.account IS NEW.account AND OLD.cost_cents IS NEW.cost_cents AND OLD.in_use_on IS NEW.in_use_on
+        AND OLD.tax_group IS NEW.tax_group AND OLD.tax_method IS NEW.tax_method AND OLD.car IS NEW.car AND OLD.book_months IS NEW.book_months
+        AND OLD.source IS NEW.source AND OLD.prior_book_cents IS NEW.prior_book_cents AND OLD.prior_tax_cents IS NEW.prior_tax_cents
+        AND OLD.prior_tax_years IS NEW.prior_tax_years AND OLD.deleted_at IS NEW.deleted_at)`
+      const lock =
+        action === 'UPDATE'
+          ? `CASE WHEN ${onlyDisposal} THEN (OLD.disposed_on IS NOT NEW.disposed_on OR OLD.disposal IS NOT NEW.disposal)
+              AND ((OLD.disposed_on IS NOT NULL AND ${lockedOn('OLD', 'OLD.disposed_on')}) OR (NEW.disposed_on IS NOT NULL AND ${lockedOn('NEW', 'NEW.disposed_on')}))
+              ELSE (${reach('OLD')} OR ${reach('NEW')}) END`
+          : reach(row)
+      return [
+        `DROP TRIGGER IF EXISTS assets_locked_${action.toLowerCase()}`,
+        `CREATE TRIGGER assets_locked_${action.toLowerCase()} BEFORE ${action} ON assets WHEN ${lock}
+          BEGIN SELECT RAISE(ABORT, 'FIRMONY_PERIOD_LOCKED'); END`,
+        `DROP TRIGGER IF EXISTS assets_data_${action.toLowerCase()}`,
+        `CREATE TRIGGER assets_data_${action.toLowerCase()} AFTER ${action} ON assets BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+        ...(action === 'DELETE'
+          ? []
+          : [
+              `DROP TRIGGER IF EXISTS assets_purging_${action.toLowerCase()}`,
+              `CREATE TRIGGER assets_purging_${action.toLowerCase()} BEFORE ${action} ON assets
+                WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+                BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+            ]),
+      ]
+    }),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

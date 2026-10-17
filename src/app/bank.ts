@@ -263,8 +263,9 @@ export async function closeSession(env: BankEnv, sessionId: string): Promise<voi
 // ---------------------------------------------------------------------------------------------------------------
 
 /** The day in Bratislava of a moment, YYYY-MM-DD. */
+const BRATISLAVA_DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' })
 function bratislavaDay(seconds: number): string {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(seconds * 1000))
+  return BRATISLAVA_DAY.format(new Date(seconds * 1000))
 }
 
 const clip = (value: unknown, max: number): string | null => (typeof value === 'string' && value.trim() !== '' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : null)

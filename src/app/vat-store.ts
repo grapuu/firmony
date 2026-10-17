@@ -18,6 +18,7 @@ import {
   nextPeriod,
   periodOf,
   periodOfDoc,
+  vatDocsByPeriod,
   periodRange,
   prevPeriod,
   ROWS,
@@ -28,6 +29,7 @@ import {
   type IssueCode,
   type KvFile,
   type PeriodResult,
+  type VatDoc,
   type Rows,
   type Settlement,
   type VatData,
@@ -520,9 +522,36 @@ export interface PeriodView {
   deadline: string
 }
 
+/**
+ * The documents as VAT reads them, made once for one list of documents however many periods ask (a page works out
+ * six periods, the deadlines a year's): keyed by the list itself, and made again when the list, the company's
+ * registration or the filed returns are not the ones it was made for.
+ */
+const vatReading = new WeakMap<Doc[], { length: number; docs: VatDoc[]; filed?: FiledReturn[]; company?: string; buckets?: Map<string, VatDoc[]> }>()
+function vatDocsOf(docs: Doc[]): VatDoc[] {
+  const hit = vatReading.get(docs)
+  if (hit && hit.length === docs.length) return hit.docs
+  const made = { length: docs.length, docs: docs.map(vatDocOf) }
+  vatReading.set(docs, made)
+  return made.docs
+}
+function vatDocsIn(company: Company, period: string, docs: Doc[], filed: FiledReturn[]): VatDoc[] {
+  const all = vatDocsOf(docs)
+  const hit = vatReading.get(docs)
+  const vc = vatCompanyOf(company)
+  const key = `${vc.status}|${vc.quarterly ? 'q' : 'm'}`
+  if (!hit) return all
+  if (!hit.buckets || hit.filed !== filed || hit.company !== key) {
+    hit.buckets = vatDocsByPeriod(vc, all, filedMap(filed))
+    hit.filed = filed
+    hit.company = key
+  }
+  return hit.buckets.get(period) ?? []
+}
+
 export function viewOf(company: Company, period: string, docs: Doc[], filed: FiledReturn[], today: string): PeriodView {
   const carried = carriedInto(company, period, filed)
-  const result = workOut(vatCompanyOf(company), period, docs.map(vatDocOf), filedMap(filed), carried)
+  const result = workOut(vatCompanyOf(company), period, vatDocsIn(company, period, docs, filed), filedMap(filed), carried)
   const mine = filed.find((f) => f.period === period) ?? null
   const changed = mine ? changedRows(mine.rows, result.rows) : []
   const kvChanged = mine ? kvFileLines(kvDiff(mine.kv?.full ?? EMPTY_KV, result.statement ? kvFileOf(result.kv) : EMPTY_KV)) : 0
@@ -706,13 +735,13 @@ export async function summaryFiled(db: D1Database, company: string, period: stri
 /** The statement of a period as the company's books give it (the VAT number and the seat are its own to give). */
 export function svViewOf(company: Company, period: string, docs: Doc[], filed: SvFiled | null, today: string, schedule?: SvSchedule): SvView {
   const blocks = companyIssues(company).filter((issue) => issue !== 'office').length
-  const view = summaryView(vatCompanyOf(company), period, docs.map(vatDocOf), filed, blocks, today, schedule)
+  const view = summaryView(vatCompanyOf(company), period, vatDocsOf(docs), filed, blocks, today, schedule)
   return view.state === 'changed' && ['prepared', 'rejected', 'review'].includes(filed?.deliveryStatus ?? 'unverified') ? { ...view, plan: null } : view
 }
 
 /** Independent SV periods for the selected VAT period; preserve an in-progress monthly filing sequence. */
 export function svViewsOf(company: Company, period: string, docs: Doc[], filed: ReadonlyMap<string, SvFiled>, today: string): { schedule: SvSchedule; views: SvView[]; legacy: SvFiled | null } {
-  const schedule = summarySchedule(vatCompanyOf(company), period, docs.map(vatDocOf), [...filed.keys()])
+  const schedule = summarySchedule(vatCompanyOf(company), period, vatDocsOf(docs), [...filed.keys()])
   const legacy = schedule.monthly ? filed.get(schedule.quarter) ?? null : null
   const last = quarterMonths(period)[2]
   const views = schedule.periods.map((p) => {

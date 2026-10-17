@@ -25,7 +25,8 @@ export function isFioToken(token: string): boolean {
 }
 
 /** The day in Bratislava of a moment, YYYY-MM-DD. */
-const bratislavaDay = (seconds: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(seconds * 1000))
+const BRATISLAVA_DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' })
+const bratislavaDay = (seconds: number) => BRATISLAVA_DAY.format(new Date(seconds * 1000))
 
 /** A date of Fio's answer: milliseconds since 1970 (the manual's example) or "2026-10-12+0200". */
 export function fioDay(value: unknown): string | null {

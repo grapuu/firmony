@@ -23,6 +23,8 @@ import {
   dues,
   registrations,
   dueViews,
+  ledgerViews,
+  assets,
   closing,
   closingXml,
   closingForm,
@@ -1595,6 +1597,17 @@ async function zipped(entries, note) {
     doc({ kind: 'invoice_in', number: 'X', issuedOn: '2027-02-02', vat: v('domestic', [[23, 1000, 230, 230]], { vatId: 'SK2121212121', suppliedOn: '2027-02-02' }) }),
   ]
   const jan = vat.workOut(payer, '2027-01', month)
+  {
+    // The documents sorted by period once (the load test of 17 October 2026) give every period the same result as all
+    // of them gone through for each, including one not read yet and one of another month.
+    const unread = doc({ kind: null, booked: false, number: 'U-1', issuedOn: '2027-01-05' })
+    const all = [...month, unread]
+    const buckets = vat.vatDocsByPeriod(payer, all, new Map([['2026-12', '2027-01-20']]))
+    const same = ['2026-12', '2027-01', '2027-02', '2027-03'].every(
+      (p) => JSON.stringify(vat.workOut(payer, p, all, new Map([['2026-12', '2027-01-20']]))) === JSON.stringify(vat.workOut(payer, p, buckets.get(p) ?? [], new Map([['2026-12', '2027-01-20']]))),
+    )
+    check('working out each period from its own documents gives what all of them give', same && (buckets.get('2027-01') ?? []).includes(unread) && (buckets.get('2027-02') ?? []).length === 1)
+  }
   const r = jan.rows
   check(
     'sales at home by rate: 19 % in 01 and 02, 5 % in 01a and 02a, 23 % in 03 and 04',
@@ -3884,6 +3897,76 @@ async function zipped(entries, note) {
   check('payroll source guards recognize nested errors without looping', reports.payrollBlocked({cause:new Error('FIRMONY_PAYROLL_REPORTED')}) && !reports.payrollBlocked(cyclic))
 }
 
+{
+  // A long list of the books shown in parts (the load test of 17 October 2026): every entry once, in order, and a
+  // page asked beyond the list shows its last part.
+  const all = Array.from({ length: 1234 }, (_, i) => i)
+  const parts = [1, 2, 3].map((n) => ledgerViews.pageSlice(all, n))
+  check(
+    'the books in parts of 500: every line once and in order, the third part the last 234',
+    parts.flatMap((p) => p.items).join() === all.join() && parts[0].pages === 3 && parts[2].from === 1001 && parts[2].to === 1234 &&
+      ledgerViews.pageSlice(all, 9).page === 3 && ledgerViews.pageSlice(all, -1).page === 1 && ledgerViews.pageSlice([], 1).from === 0 && ledgerViews.pageSlice([], 1).pages === 1,
+  )
+}
+{
+  // Fixed assets and depreciation (17 October 2026), by Act No. 595/2003 Z. z. as it stands from 1 January 2026.
+  const base = { id: 'a1', number: 'M-2026-001', name: 'Stroj', account: '022', taxMethod: 'straight', car: false, bookMonths: null, source: 'purchase', priorBookCents: 0, priorTaxCents: 0, priorTaxYears: 0, disposedOn: null, disposal: null }
+  const sum = (ys) => ys.reduce((s, y) => s + y.cents + y.saleShare, 0)
+  // § 27: group 1, 10 000 € put in use in March: 10/12 of 2 500 € the first year, the rest in the year after the four.
+  const straight = assets.taxSchedule({ ...base, costCents: 1_000_000, inUseOn: '2026-03-15', taxGroup: 1 })
+  check(
+    'straight line: the months share the first year, full years after, the deferred part in the year after the period (§ 27)',
+    JSON.stringify(straight.map((y) => [y.year, y.cents])) === JSON.stringify([[2026, 208333], [2027, 250000], [2028, 250000], [2029, 250000], [2030, 41667]]) && sum(straight) === 1_000_000,
+    JSON.stringify(straight),
+  )
+  const january = assets.taxSchedule({ ...base, costCents: 1_000_000, inUseOn: '2026-01-05', taxGroup: 2 })
+  check('put in use in January: six years and nothing after, the last taking the rounding', january.length === 6 && sum(january) === 1_000_000 && january[0].cents === 166667, JSON.stringify(january))
+  // § 28: group 2, 12 000 € from January: 12 000/6, then twice the residual over 6, 5, 4, 3 and 2.
+  const fast = assets.taxSchedule({ ...base, costCents: 1_200_000, inUseOn: '2026-01-10', taxGroup: 2, taxMethod: 'accelerated' })
+  check(
+    'accelerated: the first coefficient, then twice the residual value over the further coefficient less the years (§ 28)',
+    JSON.stringify(fast.map((y) => y.cents)) === JSON.stringify([200000, 333333, 266667, 200000, 133333, 66667]) && sum(fast) === 1_200_000,
+    JSON.stringify(fast.map((y) => y.cents)),
+  )
+  const fastJuly = assets.taxSchedule({ ...base, costCents: 1_200_000, inUseOn: '2026-07-01', taxGroup: 2, taxMethod: 'accelerated' })
+  check(
+    'accelerated from July: half the first year, the second year counted from the full first year, the half deferred to the seventh',
+    fastJuly[0].cents === 100000 && fastJuly[1].cents === 333333 && fastJuly[6]?.cents === 100000 && sum(fastJuly) === 1_200_000,
+    JSON.stringify(fastJuly.map((y) => y.cents)),
+  )
+  const car = assets.taxSchedule({ ...base, costCents: 6_000_000, inUseOn: '2026-01-01', taxGroup: 1, car: true })
+  check('a car of 60 000 €: its depreciation beside the one from 48 000 € (§ 17(34))', car[1].cents === 1_500_000 && car[1].limited === 1_200_000 && assets.assetYear([{ ...base, costCents: 6_000_000, inUseOn: '2026-01-01', taxGroup: 1, car: true }], 2027).carExcess === 300_000)
+  const sold = { ...base, costCents: 1_000_000, inUseOn: '2026-03-15', taxGroup: 1, disposedOn: '2028-05-20', disposal: 'sale' }
+  const soldTax = assets.taxSchedule(sold)
+  check('sold in its third year: no depreciation that year, its residual value the expense (§ 22(11), § 19(3)(b))', soldTax.length === 3 && soldTax[2].cents === 0 && soldTax[2].residual === 541667, JSON.stringify(soldTax))
+  const soldCar = assets.taxSchedule({ ...sold, car: true })
+  check('a car sold may take the share of its full months (§ 22(12))', soldCar[2].saleShare === Math.floor((250000 * 4) / 12 + 0.5), JSON.stringify(soldCar[2]))
+  // The books: as the tax, spread over the months; or in months set by the accountant.
+  const months = assets.bookMonths({ ...base, costCents: 1_000_000, inUseOn: '2026-03-15', taxGroup: 1 })
+  check('the books as the tax: each year over its months, the same total', months[0].month === '2026-03' && months.filter((m) => m.month.startsWith('2026')).length === 10 && months.reduce((s, m) => s + m.cents, 0) === 1_000_000)
+  const software = { ...base, account: '013', taxGroup: null, bookMonths: 36, costCents: 360_000, inUseOn: '2026-02-01' }
+  check('software over 36 months: 100 € a month, and its tax the same (§ 22(8))', assets.bookMonths(software).length === 36 && assets.bookMonths(software)[0].cents === 10000 && sum(assets.taxSchedule(software)) === 360_000)
+  // The entries: putting in use from 042, a month's depreciation on its last day, a disposal.
+  const entries = assets.assetEntries([{ ...sold }, software], '2028-06-30')
+  const put = entries.find((e) => e.key === 'a:a1:in')
+  const march = entries.find((e) => e.key === 'a:odpisy:2026-03')
+  const out = entries.find((e) => e.key === 'a:a1:out')
+  check(
+    'the register gives the books: 022 from 042, 551 against each accumulated account each month, the disposal writing the asset off',
+    put?.lines[0].md === '022' && put?.lines[0].d === '042' && march?.on === '2026-03-31' && march?.lines.some((l) => l.md === '551' && l.d === '082') &&
+      out?.lines.reduce((s, l) => s + l.cents, 0) === 1_000_000 && out?.lines.some((l) => l.md === '541') && entries.some((e) => e.key === 'a:odpisy:2028-06') && !entries.some((e) => e.key === 'a:odpisy:2028-07'),
+    JSON.stringify(out),
+  )
+  check(
+    'a tangible asset under 1 700 € and an intangible one without months are refused, accelerated only for groups 2 and 3',
+    Boolean(assets.assetErrors({ ...base, costCents: 150_000, inUseOn: '2026-01-01', taxGroup: 1 }).cost) &&
+      Boolean(assets.assetErrors({ ...base, account: '013', taxGroup: null, costCents: 500_000, inUseOn: '2026-01-01' }).months) &&
+      Boolean(assets.assetErrors({ ...base, costCents: 500_000, inUseOn: '2026-01-01', taxGroup: 1, taxMethod: 'accelerated' }).method),
+  )
+  // The closing: Table B takes the register's tangible assets, and 551 outside it as before.
+  const proposal = closing.proposeTax({ profit: {}, accounts: { '551': 500_000 }, balance: {} }, { bookTangible: 300_000, bookIntangible: 100_000, taxTangible: 250_000, saleShares: 0, carExcess: 0, disposedTax: 0, disposedBook: 0, liquidated: 0 })
+  check('the closing takes the register into Table B, intangible assets out', proposal.tableB.b01 === 400_000 && proposal.tableB.b02 === 350_000, JSON.stringify(proposal.tableB))
+}
 await checkPrehlad()
 await (await import('./billing.units.mjs')).checkBillingRules()
 await (await import('./health.units.mjs')).checkHealth()

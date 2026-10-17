@@ -7,6 +7,8 @@
 import { now } from '../db'
 import { deliveryStatusSql, revisableSql, safeJson, type DeliveryStatus, type FilingFile } from '../filings/model'
 import { booksOf } from './ledger-store'
+import { assetYear } from './assets'
+import { assetsOf } from './assets-store'
 import type { Books } from './ledger'
 import {
   changedSinceFiled,
@@ -236,11 +238,11 @@ export interface ClosingView {
 }
 
 export async function closingView(db: D1Database, company: Company, year: number, today: string, loaded?: { books?: Books; closings?: Closing[] }): Promise<ClosingView> {
-  const [books, closings, paid] = await Promise.all([loaded?.books ?? booksOf(db, company), loaded?.closings ?? closingsOf(db, company.id), incomePaid(db, company.id, year)])
+  const [books, closings, paid, assets] = await Promise.all([loaded?.books ?? booksOf(db, company), loaded?.closings ?? closingsOf(db, company.id), incomePaid(db, company.id, year), assetsOf(db, company.id)])
   const closing = closings.find((k) => k.year === year) ?? null
   const statements = statementsOf(books, year)
   const previous = books.start && books.start < `${year}-01-01` ? statementsOf(books, year - 1) : null
-  const proposal = proposeTax(statements)
+  const proposal = proposeTax(statements, assets.length > 0 ? assetYear(assets, year) : null)
   // The activity is the company's: what was set for the year, else the last year that has it.
   const stored = closing?.inputs ?? storedInputs(null)
   const earlier = closings.find((k) => k.year < year && k.inputs.nace)?.inputs

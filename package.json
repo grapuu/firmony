@@ -12,7 +12,8 @@
     "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs",
     "test:ui": "node test/visual.mjs",
     "build:assets": "node scripts/build-security.mjs",
-    "test:browser": "node test/passkeys.browser.mjs"
+    "test:browser": "node test/passkeys.browser.mjs",
+    "test:load": "node test/build.mjs && node --no-warnings test/load.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "14.0.0",

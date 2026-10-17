@@ -6948,3 +6948,22 @@ select.field__input {
 }
 .bundle__form > .btn { justify-self: start; min-width: 16rem; }
 @media (max-width: 760px) { .bundle__form > .btn { justify-self: stretch; min-width: 0; } }
+
+/* A long list of the books in parts of 500 (17 October 2026). */
+.lpager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 14px 0; }
+.lpager__where { color: var(--soft); font-size: 0.9375rem; font-variant-numeric: tabular-nums; }
+.lpager__links { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* The register of fixed assets (17 October 2026). */
+.asset-form__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.asset-form__wide { grid-column: 1 / -1; }
+.asset-form__choice { display: grid; gap: 6px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.asset-form__months { max-width: 12rem; }
+.asset-form__prior { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 6px; }
+.asset-table__gone td { color: var(--soft); }
+.asset-table .pill { margin-left: 8px; white-space: nowrap; }
+@media (max-width: 760px) {
+  .asset-form__grid, .asset-form__prior { grid-template-columns: minmax(0, 1fr); }
+}
+.asset-table th + th, .asset-table td + td { padding-left: 16px; }
+.asset-table td.num { white-space: nowrap; }

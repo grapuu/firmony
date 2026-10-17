@@ -578,6 +578,31 @@ export function kvNumber(number: string | null | undefined): string {
  * period before that was not refunded under § 79(2), which a payer deducts from this period's own liability (row 34,
  * § 79(1); what it cannot deduct, the tax office refunds).
  */
+/**
+ * The documents each period's work-out looks at, by the same rules `workOut` applies to every document: one not
+ * read yet by the period of its date, every other by the period its VAT falls in. Working out several periods of
+ * one set of documents, each then reads only its own: the result is the same, but the documents are not all gone
+ * through again for every period (the load test of 17 October 2026: a large company has thousands a month).
+ */
+export function vatDocsByPeriod(company: VatCompany, docs: VatDoc[], filed: ReadonlyMap<string, string> = new Map()): Map<string, VatDoc[]> {
+  const payer = company.status === 'payer'
+  const out = new Map<string, VatDoc[]>()
+  const put = (period: string, doc: VatDoc) => {
+    const list = out.get(period)
+    if (list) list.push(doc)
+    else out.set(period, [doc])
+  }
+  for (const doc of docs) {
+    if (doc.kind === null && !doc.booked) {
+      if (company.status !== 'none') put(periodOf(doc.issuedOn ?? doc.receivedOn, payer && company.quarterly), doc)
+      continue
+    }
+    const counted = vatOf(doc, company)
+    if (counted) put(periodOfDoc(doc, counted.data, company, filed), doc)
+  }
+  return out
+}
+
 export function workOut(company: VatCompany, period: string, docs: VatDoc[], filed: ReadonlyMap<string, string> = new Map(), carriedIn = 0): PeriodResult {
   const rows = emptyRows()
   const kv: Kv = { a1: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }

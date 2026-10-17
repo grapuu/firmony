@@ -50,9 +50,12 @@ export interface ZipEntry {
 const LIMIT_BYTES = 0xffffffff - 64 * 1024 * 1024
 const LIMIT_FILES = 65_000
 
+// One formatter for every file of an archive: making one for each is costly when a year holds thousands.
+const BRATISLAVA_CLOCK = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+
 function dosParts(seconds: number): { time: number; date: number } {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    BRATISLAVA_CLOCK
       .formatToParts(new Date(seconds * 1000))
       .map((p) => [p.type, p.value]),
   )

@@ -78,6 +78,10 @@ import {
   type OpeningForm,
   type OpeningRowValue,
 } from '../views/ledger'
+import { AssetPage, AssetsPage, assetRow, emptyAssetValues, valuesOf as assetValuesOf, type AssetFormErrors, type AssetValues } from '../views/assets'
+import { DISPOSALS, assetErrors, assetKind, assetYear, isAssetAccount, type AssetAccount, type Disposal } from '../app/assets'
+import { assetsOf, disposeAssetStatement, insertAssetStatement, removeAssetStatement, updateAssetStatement, type AssetInput } from '../app/assets-store'
+import { isPeriodLocked } from '../app/periods'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
 import { ClosingPage, closingState, type ClosingState } from '../views/closing'
 import { extensionDays, tableF } from '../app/closing'
@@ -2207,7 +2211,7 @@ teamRoutes.post('/klienti/:id/kniha/obdobia', async (c) => {
 teamRoutes.get('/klienti/:id/kniha/dennik', async (c) => {
   const b = await booksPage(c)
   if (!b) return missingPage(c)
-  return shell(c, 'clients', `${t.ledger.journalTitle}: ${b.company.name}`, <JournalPage company={b.company} books={b.books} years={b.years} year={b.year} month={b.month} />)
+  return shell(c, 'clients', `${t.ledger.journalTitle}: ${b.company.name}`, <JournalPage company={b.company} books={b.books} years={b.years} year={b.year} month={b.month} page={Number(c.req.query('strana') ?? 1)} />)
 })
 
 teamRoutes.get('/klienti/:id/kniha/ucet/:account', async (c) => {
@@ -2219,7 +2223,7 @@ teamRoutes.get('/klienti/:id/kniha/ucet/:account', async (c) => {
     c,
     'clients',
     `${t.ledger.accountTitle(account)}: ${b.company.name}`,
-    <AccountPage company={b.company} books={b.books} account={account} name={accountName(account, b.books.banks)} {...moves} years={b.years} year={b.year} month={b.month} />,
+    <AccountPage company={b.company} books={b.books} account={account} name={accountName(account, b.books.banks)} {...moves} years={b.years} year={b.year} month={b.month} page={Number(c.req.query('strana') ?? 1)} />,
   )
 })
 
@@ -2269,6 +2273,180 @@ async function internalPage(c: Ctx, company: Company, form: InternalForm, status
   const entries = (await manualEntries(c.env.DB, company.id)).filter((m) => m.kind === 'internal').reverse()
   return shell(c, 'clients', `${t.ledger.internalTitle}: ${company.name}`, <InternalPage company={company} entries={entries} form={form} flash={status === 200 ? flashOf(c) : null} />, status)
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// The register of fixed assets (17 October 2026; src/app/assets.ts): every size of company has assets
+// ---------------------------------------------------------------------------------------------------------------
+
+const ASSET_LOCKED = 'Toto zasahuje do uzamknutého obdobia. Najprv ho otvorte v časti Uzamknutie období.'
+
+/** What the form of an asset sent: its values to show again, and the asset when every part of it is right. */
+function assetFromForm(body: Record<string, unknown>): { values: AssetValues; input: AssetInput | null; errors: AssetFormErrors } {
+  const text = (key: string, max: number) => (typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, max) : '')
+  const values: AssetValues = {
+    name: text('nazov', 160),
+    account: text('ucet', 3),
+    inUseOn: text('zaradenie', 10),
+    cost: text('cena', 20),
+    group: text('skupina', 1),
+    method: text('metoda', 12) === 'accelerated' ? 'accelerated' : 'straight',
+    car: body.auto === '1',
+    books: text('uctovne', 10) === 'months' ? 'months' : 'tax',
+    months: text('mesiace', 5),
+    source: text('povod', 10) === 'opening' ? 'opening' : 'purchase',
+    priorBook: text('opravky', 20),
+    priorTax: text('danove', 20),
+    priorYears: text('roky', 3),
+    note: text('poznamka', 300),
+  }
+  const account = isAssetAccount(values.account) ? values.account : null
+  const intangible = account !== null && assetKind(account) === 'intangible'
+  const cost = moneyOf(values.cost)
+  const months = values.books === 'months' || intangible ? Number.parseInt(values.months, 10) : null
+  const priorTax = values.source === 'opening' ? (moneyOf(values.priorTax) ?? 0) : 0
+  const priorBook = values.source === 'opening' ? (values.books === 'tax' && !intangible ? priorTax : (moneyOf(values.priorBook) ?? 0)) : 0
+  const candidate = {
+    name: values.name,
+    account: (account ?? values.account) as AssetAccount,
+    inUseOn: values.inUseOn,
+    costCents: cost === null || Number.isNaN(cost) ? 0 : cost,
+    taxGroup: intangible || values.group === '' ? null : Number(values.group),
+    taxMethod: intangible ? ('straight' as const) : values.method === 'accelerated' ? ('accelerated' as const) : ('straight' as const),
+    car: !intangible && values.car,
+    bookMonths: months === null || Number.isNaN(months) ? (intangible || values.books === 'months' ? Number.NaN : null) : months,
+    source: values.source,
+    priorBookCents: Number.isNaN(priorBook) ? -1 : priorBook,
+    priorTaxCents: Number.isNaN(priorTax) ? -1 : priorTax,
+    priorTaxYears: values.source === 'opening' ? Number.parseInt(values.priorYears || '0', 10) : 0,
+    disposedOn: null,
+    disposal: null,
+  }
+  const errors: AssetFormErrors = assetErrors(candidate)
+  if (dayOfText(values.inUseOn) === null && !/^\d{4}-\d{2}-\d{2}$/.test(values.inUseOn)) errors.inUseOn = 'Zadajte deň zaradenia do užívania.'
+  if (Object.keys(errors).length > 0 || !account) return { values, input: null, errors }
+  return {
+    values,
+    input: {
+      name: candidate.name,
+      account,
+      documentId: null,
+      costCents: candidate.costCents,
+      inUseOn: candidate.inUseOn,
+      taxGroup: candidate.taxGroup,
+      taxMethod: candidate.taxMethod,
+      car: candidate.car,
+      bookMonths: candidate.bookMonths,
+      source: candidate.source,
+      priorBookCents: candidate.priorBookCents,
+      priorTaxCents: candidate.priorTaxCents,
+      priorTaxYears: Number.isNaN(candidate.priorTaxYears) ? 0 : candidate.priorTaxYears,
+      note: values.note || null,
+    },
+    errors,
+  }
+}
+
+async function assetsPage(c: Ctx, company: Company, form: { values?: AssetValues; errors?: AssetFormErrors } = {}, status: ContentfulStatusCode = 200) {
+  const today = dayOf(now())
+  const year = Number(today.slice(0, 4))
+  const assets = await assetsOf(c.env.DB, company.id)
+  const flash = c.req.query('ok') === 'pridane' ? 'Majetok je v evidencii.' : c.req.query('ok') === 'odstranene' ? 'Majetok sme z evidencie odstránili.' : null
+  return shell(
+    c,
+    'clients',
+    `Majetok: ${company.name}`,
+    <AssetsPage company={company} rows={assets.map((a) => assetRow(a, today))} year={year} summary={assetYear(assets, year)} values={form.values ?? emptyAssetValues(today)} errors={form.errors ?? {}} flash={flash} today={today} />,
+    status,
+  )
+}
+
+async function assetPage(c: Ctx, company: Company, form: { values?: AssetValues; errors?: AssetFormErrors; flash?: string | null } = {}, status: ContentfulStatusCode = 200) {
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  if (!asset) return missingPage(c)
+  const flash = form.flash ?? (c.req.query('ok') === 'ulozene' ? 'Zmeny sú uložené.' : c.req.query('ok') === 'vyradene' ? 'Vyradenie je zapísané.' : null)
+  return shell(c, 'clients', `${asset.name}: ${company.name}`, <AssetPage company={company} asset={asset} values={form.values ?? assetValuesOf(asset)} errors={form.errors ?? {}} flash={flash} today={dayOf(now())} />, status)
+}
+
+teamRoutes.get('/klienti/:id/kniha/majetok', async (c) => {
+  const company = await companyParam(c)
+  return company ? assetsPage(c, company) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/kniha/majetok', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const { values, input, errors } = assetFromForm(await c.req.parseBody())
+  if (!input) return assetsPage(c, company, { values, errors }, 422)
+  const id = crypto.randomUUID()
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([insertAssetStatement(c.env.DB, company.id, id, input, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.added', subject: id })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetsPage(c, company, { values, errors: { form: ASSET_LOCKED } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok?ok=pridane`, 303)
+})
+
+teamRoutes.get('/klienti/:id/kniha/majetok/:asset', async (c) => {
+  const company = await companyParam(c)
+  return company ? assetPage(c, company) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/kniha/majetok/:asset', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const id = c.req.param('asset')
+  if (!(await assetsOf(c.env.DB, company.id)).some((a) => a.id === id)) return missingPage(c)
+  const { values, input, errors } = assetFromForm(await c.req.parseBody())
+  if (!input) return assetPage(c, company, { values, errors }, 422)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([updateAssetStatement(c.env.DB, company.id, id, input, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.changed', subject: id })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetPage(c, company, { values, errors: { form: ASSET_LOCKED } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok/${id}?ok=ulozene`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/majetok/:asset/vyradit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  if (!asset) return missingPage(c)
+  const body = await c.req.parseBody()
+  const undo = body.zrusit === '1'
+  const day = typeof body.den === 'string' ? body.den.trim() : ''
+  const how = typeof body.sposob === 'string' && (DISPOSALS as readonly string[]).includes(body.sposob) ? (body.sposob as Disposal) : null
+  if (!undo && (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < asset.inUseOn || !how)) return assetPage(c, company, { errors: { disposal: 'Zadajte deň a spôsob vyradenia, nie pred zaradením.' } }, 422)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([
+      disposeAssetStatement(c.env.DB, company.id, asset.id, undo ? null : day, undo ? null : how, who.user.id),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: undo ? 'asset.restored' : 'asset.disposed', subject: asset.id, ...(undo ? {} : { detail: { on: day, how } }) }),
+    ])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetPage(c, company, { errors: { disposal: ASSET_LOCKED } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok/${asset.id}?ok=vyradene`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/majetok/:asset/odstranit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  if (!asset) return missingPage(c)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([removeAssetStatement(c.env.DB, company.id, asset.id, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.removed', subject: asset.id })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetPage(c, company, { errors: { form: ASSET_LOCKED } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok?ok=odstranene`, 303)
+})
 
 teamRoutes.get('/klienti/:id/kniha/interne', async (c) => {
   const company = await companyParam(c)
