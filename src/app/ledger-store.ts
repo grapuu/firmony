@@ -11,6 +11,7 @@ import { assetEntries } from './assets'
 import { assetsOf } from './assets-store'
 import { stockEntries } from './stock'
 import { stockOf } from './stock-store'
+import { ratesFor } from './fx-store'
 
 type Row = Record<string, unknown>
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
@@ -64,15 +65,28 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
       )
       .bind(company.id)
       .all<Row>(),
-    db.prepare("SELECT id, iban, COALESCE(ledger, '221') AS ledger, balance_cents, balance_on FROM accounts WHERE company_id = ? ORDER BY ledger, iban").bind(company.id).all<Row>(),
+    db.prepare("SELECT id, iban, COALESCE(ledger, '221') AS ledger, balance_cents, balance_on, currency FROM accounts WHERE company_id = ? ORDER BY ledger, iban").bind(company.id).all<Row>(),
     filedReturns(db, company.id),
     manualEntries(db, company.id),
     runsOf(db, company.id),
     assetsOf(db, company.id),
     stockOf(db, company.id),
   ])
+  // The rates of every other currency the documents and payments are in.
+  const currencies = [...docs.results.map((r) => str(r.currency)), ...payments.results.map((r) => str(r.currency)), ...banks.results.map((r) => str(r.currency))].filter((c): c is string => !!c && c !== 'EUR')
+  const rates = await ratesFor(db, currencies)
+  // An account's currency: as kept, else the one its payments are all in.
+  const paidIn = new Map<string, Set<string>>()
+  for (const r of payments.results) paidIn.set(String(r.account_id), (paidIn.get(String(r.account_id)) ?? new Set()).add(String(r.currency ?? 'EUR')))
+  const currencyOf = (r: Row): string | null => {
+    const kept = str(r.currency)
+    if (kept) return kept
+    const seen = paidIn.get(String(r.id))
+    return seen && seen.size === 1 ? ([...seen][0] ?? null) : null
+  }
   return buildBooks({
     company,
+    rates,
     docs: docs.results.map(docOf),
     payments: payments.results.map((r) => ({
       id: String(r.id),
@@ -95,6 +109,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
       ledger: String(r.ledger),
       balanceCents: typeof r.balance_cents === 'number' ? r.balance_cents : null,
       balanceOn: str(r.balance_on),
+      currency: currencyOf(r),
     })),
     filed,
     manual,

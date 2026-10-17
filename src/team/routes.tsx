@@ -126,6 +126,8 @@ import { addDays } from '../app/ending'
 import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
 import { addDay, leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay-month'
 import { decodeText, parseDelimited, readTable } from '../app/table-read'
+import { eurOf, isCurrency, rateFor, rateMicro, rateText } from '../app/fx'
+import { knownCurrencies, ratesFor } from '../app/fx-store'
 import { assetRows, openItems, personRows, pohodaInvoices, priorStatements as takeoverPrior, trialBalance as takeoverTrial, type LineIssue, type OpenItem } from '../app/takeover'
 import { assetNumbers, assetRowsStatements, batchesOf, openItemsStatements, peopleStatements, priorListOf, priorStatementStatement, removeBatchStatements, removePriorStatement } from '../app/takeover-store'
 import { TakeoverPage, type TakeoverPageProps } from '../views/takeover'
@@ -213,6 +215,7 @@ import {
   type Who,
   vatCompanyOf,
   vatDocOf,
+  bratislavaDay,
 } from '../app/store'
 import { dayOf } from '../views/inside-pages'
 import { Tile } from '../views/home'
@@ -3498,13 +3501,19 @@ async function bookPage(
   const who = c.get('who')
   const db = c.env.DB
   const { doc, company } = found
-  const [payment, candidates, queue, invoice, vat] = await Promise.all([
+  const currency = extra.values?.currency ?? doc.currency ?? 'EUR'
+  const [payment, candidates, queue, invoice, vat, currencies, rates] = await Promise.all([
     doc.paymentId ? getPayment(db, company.id, doc.paymentId) : Promise.resolve(null),
     candidatesFor(db, company.id, doc),
     bookingQueue(db, who.user, true, company.id),
     doc.invoiceId ? getInvoice(db, company.id, doc.invoiceId) : Promise.resolve(null),
     vatFormOf(db, company, doc, extra.vat),
+    knownCurrencies(db),
+    ratesFor(db, [currency]),
   ])
+  // The ECB's rate of the day before the document's day (§ 24 of the Act on Accounting, § 26 of the VAT Act).
+  const proposal = currency !== 'EUR' ? rateFor(rates, currency, doc.suppliedOn ?? doc.issuedOn ?? bratislavaDay(doc.createdAt)) : null
+  const usedRate = currency !== 'EUR' ? (rateMicro(doc.fxRate) ?? proposal?.rate ?? null) : null
   // A company that is not registered and buys a service from abroad owes a registration under § 7a.
   const needs7a = company.vatStatus === 'none' && vatOf(vatDocOf(doc), vatCompanyOf(company))?.data.mode === 'reverse'
   return shell(
@@ -3520,8 +3529,11 @@ async function bookPage(
       invoice={invoice ? { invoice, lines: await invoiceLines(db, invoice.id) } : null}
       values={extra.values ?? valuesOf(doc, company.vatPayer)}
       ledgerLines={
-        extra.values ? null : bookingLines(doc, company, payment ? { bookedOn: payment.bookedOn, amountCents: payment.amountCents, bankLedger: payment.bankLedger, docs: payment.docs } : null)
+        extra.values ? null : bookingLines(doc, company, payment ? { bookedOn: payment.bookedOn, amountCents: payment.amountCents, bankLedger: payment.bankLedger, docs: payment.docs, currency: payment.currency } : null, rates)
       }
+      currencies={currencies}
+      rateProposal={proposal ? { rate: rateText(proposal.rate), day: textDay(proposal.day) } : null}
+      inEuros={usedRate !== null && doc.totalCents !== null ? eurOf(doc.totalCents, usedRate) : null}
       payment={payment}
       candidates={candidates}
       paidBy={paidByOf(doc, doc.paymentId !== null)}
@@ -3590,6 +3602,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
     deduct: company.vatPayer && body.deduct === '1',
     remember: body.remember === '1',
     account: /^\d{3,6}$/.test(text('account', 6)) ? text('account', 6) : '',
+    currency: isCurrency(text('currency', 3)) ? text('currency', 3) : 'EUR',
+    rate: text('rate', 16),
   }
   const booking = action === 'dalsi' || action === 'zauctovat'
   const errors: Partial<Record<keyof BookValues, string>> = {}
@@ -3601,6 +3615,16 @@ teamRoutes.post('/doklady/:id', async (c) => {
   if (vat !== null && (Number.isNaN(vat) || (total !== null && !Number.isNaN(total) && vat > total))) errors.vat = t.book.errors.vat
   if (issued === null) errors.issued = t.book.errors.date
   if (due === null) errors.due = t.book.errors.date
+  // Another currency: the rate typed, else the ECB's of the day before the document's day (kept as the ECB writes it).
+  let fxRate: string | null = null
+  if (values.currency !== 'EUR') {
+    const typed = values.rate === '' ? null : rateMicro(values.rate)
+    if (values.rate !== '' && typed === null) errors.rate = t.book.errors.rate
+    const day = doc.suppliedOn ?? issued ?? doc.issuedOn ?? bratislavaDay(doc.createdAt)
+    const ecb = typed === null && values.rate === '' ? rateFor(await ratesFor(db, [values.currency]), values.currency, day) : null
+    const micro = typed ?? ecb?.rate ?? null
+    fxRate = micro === null ? null : rateText(micro).replace(',', '.')
+  }
   if (booking) {
     if (values.kind === '') errors.kind = t.book.errors.kind
     if (total === null && !errors.total) errors.total = t.book.errors.total
@@ -3627,7 +3651,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
         `UPDATE documents SET status = 'read', read_by = CASE WHEN status = 'read' THEN read_by ELSE ?1 END,
            kind = ?2, party = ?3, party_ico = ?4, number = ?5, vs = ?6, issued_on = ?7, due_on = ?8, total_cents = ?9, vat_cents = ?10,
            category = ?11, vat_deduct = ?12, account = ?13,
-           booked_at = CASE WHEN ?14 = 1 THEN ?15 ELSE booked_at END, booked_by = CASE WHEN ?14 = 1 THEN ?16 ELSE booked_by END
+           booked_at = CASE WHEN ?14 = 1 THEN ?15 ELSE booked_at END, booked_by = CASE WHEN ?14 = 1 THEN ?16 ELSE booked_by END,
+           currency = ?19, fx_rate = ?20
          WHERE id = ?17 AND company_id = ?18 AND deleted_at IS NULL`,
       )
       .bind(
@@ -3649,6 +3674,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
         who.user.id,
         doc.id,
         company.id,
+        values.currency,
+        fxRate,
       ),
     eventStatement(db, { company: company.id, user: who.user.id, action: booking ? 'document.booked' : 'document.saved', subject: doc.id }),
   ]

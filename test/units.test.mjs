@@ -38,6 +38,8 @@ import {
   payrollForm,
   taxSettlement,
   tableRead,
+  fx,
+  lastDeclared,
   takeover,
   takeoverStore,
   prehlad as prehladUnit,
@@ -4854,6 +4856,81 @@ await (await import('./social.units.mjs')).checkSocial()
   check('an invoice taken over and not yet paid is open in the saldokonto by what is left', unpaid.items.length === 1 && unpaid.items[0].total === 30000 && unpaid.items[0].settled === 0 && unpaid.entries.every((e) => e.docId !== 'old'))
   const uploaded = ledger.buildBooks({ company: co, docs: [{ ...item, source: 'upload', paymentId: null }], payments: [], banks: [], filed: [], manual: opening })
   check('an old invoice the client uploaded (paid before us) is no open item', uploaded.items.length === 0)
+}
+
+// Foreign currencies (17 October 2026): the ECB's rates, a document and a payment in euros, the exchange differences.
+{
+  check('a rate in millionths, as the ECB and as Slovak writes it; none that is no rate', fx.rateMicro('25.308') === 25308000 && fx.rateMicro('1,0823') === 1082300 && fx.rateMicro('162.53') === 162530000 && fx.rateMicro('0') === null && fx.rateMicro('1.2.3') === null && fx.rateText(25308000) === '25,308' && fx.rateText(2000000) === '2')
+  check('550 000 CZK at 25,308 is 21 732,26 € (FR SR 297846); 100 USD at 1,0823 is 92,40 €, a credit note minus', fx.eurOf(55000000, 25308000) === 2173226 && fx.eurOf(10000, 1082300) === 9240 && fx.eurOf(-10000, 1082300) === -9240)
+  const ecb = `<?xml version="1.0"?><gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref"><Cube>
+    <Cube time="2024-03-11"><Cube currency="CZK" rate="25.295"/><Cube currency="USD" rate="1.0926"/></Cube>
+    <Cube time="2024-03-08"><Cube currency="CZK" rate="25.308"/><Cube currency="USD" rate="1.0932"/></Cube>
+    <Cube time="2024-03-07"><Cube currency="CZK" rate="25.270"/></Cube></Cube></gesmes:Envelope>`
+  const read = fx.parseEcb(ecb)
+  const rates = fx.ratesOf(read)
+  check("the ECB's file: every day's rate of every currency", read.length === 5 && rates.get('CZK')?.length === 3 && rates.get('CZK')?.[0]?.[0] === '2024-03-07')
+  check(
+    'the rate of the day before: an invoice of Monday 11.3.2024 at Friday\'s 25,308 (FR SR 297846); the balance sheet day at its own',
+    fx.rateFor(rates, 'CZK', '2024-03-11')?.rate === 25308000 && fx.rateFor(rates, 'CZK', '2024-03-10')?.day === '2024-03-08' && fx.rateFor(rates, 'CZK', '2024-03-11', 'onOrBefore')?.rate === 25295000,
+  )
+  check('no rate before the first kept, none for a currency not kept, none older than a fortnight', fx.rateFor(rates, 'CZK', '2024-03-07') === null && fx.rateFor(rates, 'GBP', '2024-03-11') === null && fx.rateFor(rates, 'CZK', '2024-04-30') === null)
+  check('the last day the ECB declared: a Saturday the Friday, a Monday morning the Friday, a Monday evening the Monday', lastDeclared('2026-10-17', true) === '2026-10-16' && lastDeclared('2026-10-19', false) === '2026-10-16' && lastDeclared('2026-10-19', true) === '2026-10-19')
+  const proposal = vat.proposeVat({ id: 'v', kind: 'invoice_in', number: 'US-1', party: 'Cloud Inc.', partyIco: null, partyVatId: null, suppliedOn: null, corrects: null, lines: [], issuedOn: '2026-03-10', receivedOn: '2026-03-12', totalCents: 10000, vatCents: 0, currency: 'USD', rate: 1080000, category: 'services', vatDeduct: true, foreign: true, booked: false, vat: null }, { status: 'payer', quarterly: false, since: null })
+  check('a purchase in dollars with its rate: the reverse charge proposed in euros', proposal?.mode === 'reverse' && proposal.lines[0]?.base === 9259 && proposal.lines[0]?.vat === 2130, JSON.stringify(proposal))
+
+  // The books of a company with documents and payments in other currencies.
+  const co = { id: 'c1', name: 'Firma s. r. o.', icdph: null, vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', vatCarry: 0 }
+  const doc = (id, fields) => ({ id, companyId: 'c1', createdAt: Date.parse('2026-03-12T10:00:00Z') / 1000, source: 'upload', kind: 'invoice_in', number: id, party: 'Partner', partyIco: null, issuedOn: '2026-03-10', dueOn: null, totalCents: 0, vatCents: 0, currency: 'EUR', category: 'services', vatDeduct: null, account: null, bookedAt: 1, paidPrivately: false, paymentId: null, vat: null, partyVatId: null, suppliedOn: null, foreign: null, correctsHint: null, linesHint: [], ...fields })
+  const pay = (id, bookedOn, amountCents, fields = {}) => ({ id, bookedOn, amountCents, currency: 'EUR', party: 'Partner', vs: null, note: null, exempt: null, exemptNote: null, contra: null, bankId: 'b1', bank: '221.001', ...fields })
+  const table = fx.ratesOf([
+    { currency: 'USD', day: '2026-03-09', rate: '1.08' },
+    { currency: 'USD', day: '2026-05-29', rate: '1.10' },
+    { currency: 'USD', day: '2026-12-31', rate: '1.00' },
+    { currency: 'CZK', day: '2026-11-19', rate: '25.3' },
+    { currency: 'CZK', day: '2026-12-31', rate: '25.0' },
+  ])
+  const opening = [{ id: 'ps', kind: 'opening', number: 'PS', on: '2026-01-01', text: 'PS', lines: [{ md: '221.001', d: '701', cents: 1000000 }, { md: '701', d: '411', cents: 1000000 }], createdAt: 1, createdByName: null }]
+  const books = ledger.buildBooks({
+    company: co,
+    rates: table,
+    docs: [
+      doc('usd-in', { totalCents: 100000, currency: 'USD', paymentId: 'p1' }),
+      doc('czk-out', { kind: 'invoice_out', totalCents: 2530000, currency: 'CZK', issuedOn: '2026-11-20', category: 'sales', paymentId: 'p2' }),
+      doc('usd-card', { kind: 'receipt', totalCents: 1000, currency: 'USD', issuedOn: '2026-03-10', paymentId: 'p3' }),
+      doc('gbp', { totalCents: 5000, currency: 'GBP', paymentId: 'p4' }),
+    ],
+    payments: [
+      pay('p1', '2026-03-20', -93000),
+      pay('p2', '2027-01-15', 101000),
+      pay('p3', '2026-03-10', -930),
+      pay('p4', '2026-03-20', -6000),
+      pay('p5', '2026-06-01', 100000, { currency: 'USD', bankId: 'b2', bank: '221.002', contra: '365', party: 'Spoločník' }),
+    ],
+    banks: [
+      { id: 'b1', iban: 'SK3112000000198742637541', ledger: '221.001', balanceCents: null, balanceOn: null },
+      { id: 'b2', iban: 'SK6809000000000999966666', ledger: '221.002', balanceCents: 100000, balanceOn: '2026-06-30', currency: 'USD' },
+    ],
+    filed: [],
+    manual: opening,
+  })
+  const linesOf = (key) => (books.entries.find((e) => e.key === key)?.lines ?? []).map((l) => `${l.md}/${l.d}:${l.cents}`).join(' ')
+  check('an invoice of 1 000 USD at the ECB\'s 1,08 of the day before it: 925,93 €', linesOf('d:usd-in') === '518/321:92593', linesOf('d:usd-in'))
+  check('paid with 930 € from the euro account: the difference of 4,07 € a loss on 563, the invoice settled', linesOf('p:p1') === '321/221.001:93000 563/321:407' && books.items.find((i) => i.docId === 'usd-in')?.settled === books.items.find((i) => i.docId === 'usd-in')?.total, linesOf('p:p1'))
+  check(
+    'an issued invoice of 25 300 CZK open at the year\'s end: 1 000 € revalued at the rate of 31 December to 1 012 €, a gain on 663',
+    linesOf('d:czk-out') === '311/602:100000' && linesOf('fx:2026') === '311/663:1200',
+    `${linesOf('d:czk-out')} | ${linesOf('fx:2026')}`,
+  )
+  check('its payment of 1 010 € the next year settles what it stands at since: a loss of 2 €', linesOf('p:p2') === '221.001/311:101000 563/311:200', linesOf('p:p2'))
+  check('a receipt of 10 USD paid alone by card: the 9,30 € the bank took, against the bank on its day', linesOf('d:usd-card') === '518/221.001:930' && !books.entries.some((e) => e.key === 'p:p3'), linesOf('d:usd-card'))
+  check('a document in a currency without a rate is said and not booked; its payment waits', (books.issues.unrated ?? []).includes('gbp') && !books.entries.some((e) => e.key === 'd:gbp') && books.issues.waiting.includes('p4'))
+  check(
+    'a payment on a dollar account at the rate of the day before it, and the account revalued at the year\'s end from its balance in dollars',
+    linesOf('p:p5') === '221.002/365:90909' && linesOf('fxb:2026:b2') === '221.002/663:9091',
+    `${linesOf('p:p5')} | ${linesOf('fxb:2026:b2')}`,
+  )
+  const noRates = ledger.buildBooks({ company: co, docs: [doc('usd-in', { totalCents: 100000, currency: 'USD', fxRate: '1.25' })], payments: [], banks: [], filed: [], manual: opening })
+  check('the rate the accountant confirmed counts without any kept: 1 000 USD at 1,25 is 800 €', noRates.entries.find((e) => e.key === 'd:usd-in')?.lines[0]?.cents === 80000)
 }
 
 done('units')

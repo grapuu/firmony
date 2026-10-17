@@ -26,6 +26,7 @@ import { CATEGORIES, entryFor, type PaidBy } from './booking'
 import type { AssetEntry } from './assets'
 import type { StockEntry } from './stock'
 import { readableName } from './copy'
+import { eurOf, rateFor, rateMicro, type RateMicro, type Rates } from './fx'
 import { centsOf } from './invoices'
 import { normalizeVs, type DocKind, type Exempt } from './match'
 import { bratislavaDay, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
@@ -197,7 +198,7 @@ export interface LedgerLine {
   what?: 'cost' | 'vat' | 'revenue' | 'payable' | 'receivable'
 }
 
-export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'asset' | 'stock' | 'internal'
+export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'asset' | 'stock' | 'internal' | 'fx'
 
 export interface LedgerEntry {
   /** Unique in the books: d:<document>, p:<payment>, v:<period>[:n], m:<stored entry>. */
@@ -236,9 +237,11 @@ export interface LedgerBank {
   id: string
   iban: string
   ledger: string
-  /** The balance the bank last said, and on which day. */
+  /** The balance the bank last said, and on which day (in the account's currency). */
   balanceCents: number | null
   balanceOn: string | null
+  /** Its currency, when not the euro (a foreign currency account). */
+  currency?: string | null
 }
 
 export interface ManualEntry {
@@ -286,6 +289,8 @@ export interface LedgerInput {
   assets?: AssetEntry[]
   /** The stock's entries (stock.ts, stockEntries): each month's receipts and issues, each count. */
   stock?: StockEntry[]
+  /** The ECB's reference rates of the currencies the documents and payments are in (fx-store.ts). */
+  rates?: Rates
 }
 
 /** An invoice's open item (saldokonto): what it comes to on its account and what of it was settled. */
@@ -312,8 +317,10 @@ export interface BookIssues {
   waiting: string[]
   /** Payments without a document, which the client is asked for. */
   missing: string[]
-  /** Payments in another currency than the euro, which are not booked. */
+  /** Payments in another currency than the euro without a rate of the day before them, which are not booked. */
   foreign: string[]
+  /** Booked documents in another currency without a rate (none given, none kept for the day before them): not in the books yet. */
+  unrated?: string[]
   /** Documents and payments dated before the books start: they belong to the accountant before us, or into the opening balances. */
   beforeStart: { docs: number; payments: number }
 }
@@ -358,22 +365,38 @@ interface Plan {
   /** The document's own day in the books. */
   on: string
   credit: boolean
+  /** In euros: a document in another currency at its rate. */
   gross: number
   /** What the bank moves to settle it: out minus, in plus. */
   expected: number
   data: VatData | null
+  /** In another currency than the euro, at `rate` (millionths; null when the amount was given in euros). */
+  foreign: boolean
+  rate: RateMicro | null
+  /** In another currency and no rate known: no entry until there is one. */
+  unrated: boolean
 }
 
-/** What the books need of a document: its day, whether it is a credit note, its amount and what settles it. Null when it makes no entry. */
-function planOf(doc: Doc, company: Company): Plan | null {
+/**
+ * What the books need of a document: its day, whether it is a credit note, its amount in euros and what settles it. A
+ * document in another currency at the rate the accountant confirmed, else the ECB's of the day before its day (§ 24 of
+ * the Act on Accounting), or at `gross` when its euros are known (a receipt paid from a euro account). Null when it
+ * makes no entry.
+ */
+function planOf(doc: Doc, company: Company, rates?: Rates, gross?: number): Plan | null {
   if (!isAccountingDoc(doc.kind) || doc.totalCents === null || doc.totalCents <= 0) return null
   const data = company.vatStatus === 'none' ? null : (vatOf(vatDocOf(doc), vatCompanyOf(company))?.data ?? null)
   const lines: { base: number; vat: number }[] = data ? data.lines : doc.linesHint
   const corrects = (data ? data.corrects : doc.correctsHint) ?? ''
   const credit = corrects !== '' && lines.reduce((sum, line) => sum + line.base + line.vat, 0) < 0
   const on = data?.suppliedOn ?? doc.suppliedOn ?? doc.issuedOn ?? bratislavaDay(doc.createdAt)
-  const expected = (doc.kind === 'invoice_out' ? 1 : -1) * (credit ? -1 : 1) * doc.totalCents
-  return { on, credit, gross: doc.totalCents, expected, data }
+  const currency = doc.currency ?? 'EUR'
+  const foreign = currency !== 'EUR'
+  const rate = foreign && gross === undefined ? (rateMicro(doc.fxRate) ?? (rates ? (rateFor(rates, currency, on)?.rate ?? null) : null)) : null
+  const amount = gross ?? (foreign ? (rate !== null ? eurOf(doc.totalCents, rate) : null) : doc.totalCents)
+  if (amount === null) return { on, credit, gross: 0, expected: 0, data, foreign, rate: null, unrated: true }
+  const expected = (doc.kind === 'invoice_out' ? 1 : -1) * (credit ? -1 : 1) * amount
+  return { on, credit, gross: amount, expected, data, foreign, rate, unrated: false }
 }
 
 /**
@@ -381,9 +404,9 @@ function planOf(doc: Doc, company: Company): Plan | null {
  * owed, what the company pays itself on what it bought from abroad), on the analytic accounts 343.100 and 343.200,
  * with the account that paid a receipt, and the other way for a credit note. Empty when the document makes none.
  */
-export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy; contra?: string | null }): LedgerLine[] {
-  const plan = planOf(doc, company)
-  if (!plan || !doc.category) return []
+export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy; contra?: string | null; rates?: Rates; gross?: number }): LedgerLine[] {
+  const plan = planOf(doc, company, how.rates, how.gross)
+  if (!plan || plan.unrated || !doc.category) return []
   const payer = company.vatStatus === 'payer'
   const { data, credit } = plan
   const sign = credit ? -1 : 1
@@ -436,14 +459,16 @@ export function receiptContra(receipt: { on: string; expected: number }, payment
 }
 
 /** For the booking form: a document's entry as the books will hold it, with the payment it is linked to. */
-export function bookingLines(doc: Doc, company: Company, payment: { bookedOn: string; amountCents: number; bankLedger: string; docs: number } | null): LedgerLine[] {
-  const plan = planOf(doc, company)
-  if (!plan) return []
+export function bookingLines(doc: Doc, company: Company, payment: { bookedOn: string; amountCents: number; bankLedger: string; docs: number; currency?: string } | null, rates?: Rates): LedgerLine[] {
+  // A receipt in another currency paid alone from a euro account is the euros the bank took.
+  const paidEuros = doc.kind === 'receipt' && payment && (doc.currency ?? 'EUR') !== 'EUR' && (payment.currency ?? 'EUR') === 'EUR' && payment.docs === 1 ? Math.abs(payment.amountCents) : undefined
+  const plan = planOf(doc, company, rates, paidEuros)
+  if (!plan || plan.unrated) return []
   if (doc.kind === 'receipt' && payment) {
     const { contra } = receiptContra(plan, { bookedOn: payment.bookedOn, amountCents: payment.amountCents, bank: payment.bankLedger }, payment.docs)
-    return documentLines(doc, company, { paidBy: 'bank', contra })
+    return documentLines(doc, company, { paidBy: 'bank', contra, rates, gross: paidEuros })
   }
-  const lines = documentLines(doc, company, { paidBy: payment ? 'bank' : doc.paidPrivately ? 'private' : doc.kind === 'receipt' ? 'cash' : 'unpaid' })
+  const lines = documentLines(doc, company, { paidBy: payment ? 'bank' : doc.paidPrivately ? 'private' : doc.kind === 'receipt' ? 'cash' : 'unpaid', rates })
   // A received invoice the owner paid himself: the company owes it to him now.
   if (doc.kind === 'invoice_in' && !payment && doc.paidPrivately && lines.length > 0)
     lines.push(plan.credit ? { md: OWNER, d: '321', cents: plan.gross, what: 'payable' } : { md: '321', d: OWNER, cents: plan.gross, what: 'payable' })
@@ -556,7 +581,7 @@ function settlementLines(owed: number, deducted: number): LedgerLine[] {
   return lines
 }
 
-const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, asset: 5, stock: 6, internal: 7 }
+const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, asset: 5, stock: 6, internal: 7, fx: 8 }
 
 /** The day the books start: the opening balances' day, else the contract's first day; null when neither is known. */
 export function booksStart(company: Pick<Company, 'startOn'>, manual: readonly ManualEntry[]): string | null {
@@ -578,7 +603,7 @@ export function buildBooks(input: LedgerInput): Books {
   const { company } = input
   const start = booksStart(company, input.manual)
   const entries: LedgerEntry[] = []
-  const issues: BookIssues = { unbooked: [], noEntry: [], classify: [], waiting: [], missing: [], foreign: [], beforeStart: { docs: 0, payments: 0 } }
+  const issues: BookIssues = { unbooked: [], noEntry: [], classify: [], waiting: [], missing: [], foreign: [], unrated: [], beforeStart: { docs: 0, payments: 0 } }
   const items = new Map<string, OpenItem>()
   const unposted = new Map<string, number>()
   const documented = new Set<string>()
@@ -590,18 +615,41 @@ export function buildBooks(input: LedgerInput): Books {
   // takes what is left, so the parts always make the payment).
   const docsOf = new Map<string, Doc[]>()
   for (const d of input.docs) if (d.paymentId) docsOf.set(d.paymentId, [...(docsOf.get(d.paymentId) ?? []), d])
+  const rates: Rates = input.rates ?? new Map()
+  // Each payment in euros: one of a foreign currency account at the ECB's rate of the day before it (§ 24 of the Act on
+  // Accounting); null when no rate is kept for it.
+  const eurosOf = new Map<string, number | null>()
+  for (const p of input.payments) {
+    if ((p.currency ?? 'EUR') === 'EUR') eurosOf.set(p.id, p.amountCents)
+    else {
+      const r = rateFor(rates, p.currency, p.bookedOn)
+      eurosOf.set(p.id, r ? eurOf(p.amountCents, r.rate) : null)
+    }
+  }
   const plans = new Map<string, Plan>()
   for (const d of input.docs) {
-    const plan = planOf(d, company)
+    let plan = planOf(d, company, rates)
+    // A receipt in another currency paid alone (a card abroad): the euros the bank took for it.
+    if (plan && d.kind === 'receipt' && plan.foreign && d.paymentId) {
+      const euros = eurosOf.get(d.paymentId)
+      const alone = (docsOf.get(d.paymentId) ?? []).filter((x) => isAccountingDoc(x.kind)).length === 1
+      if (alone && typeof euros === 'number' && euros !== 0) plan = planOf(d, company, rates, Math.abs(euros))
+    }
     if (plan) plans.set(d.id, plan)
     docDays.set(d.id, plan?.on ?? d.issuedOn ?? bratislavaDay(d.createdAt))
   }
+  /** The euros a document's entry is made of when they are not its own at a rate (a receipt paid alone from a euro account). */
+  const grossOf = (plan: Plan): number | undefined => (plan.foreign && plan.rate === null ? plan.gross : undefined)
   const shareOf = new Map<string, number>()
   for (const [paymentId, linked] of docsOf) {
     const p = payments.get(paymentId)
-    if (!p) continue
-    const accounting = linked.filter((d) => isAccountingDoc(d.kind)).sort((a, b) => (plans.get(a.id)?.on ?? '').localeCompare(plans.get(b.id)?.on ?? '') || a.id.localeCompare(b.id))
-    let left = p.amountCents
+    const euros = eurosOf.get(paymentId)
+    if (!p || euros === null || euros === undefined) continue
+    // Documents in another currency last: what the payment differs from their euros by is their exchange difference.
+    const accounting = linked
+      .filter((d) => isAccountingDoc(d.kind))
+      .sort((a, b) => Number(plans.get(a.id)?.foreign ?? false) - Number(plans.get(b.id)?.foreign ?? false) || (plans.get(a.id)?.on ?? '').localeCompare(plans.get(b.id)?.on ?? '') || a.id.localeCompare(b.id))
+    let left = euros
     accounting.forEach((d, i) => {
       const share = i === accounting.length - 1 ? left : (plans.get(d.id)?.expected ?? 0)
       shareOf.set(d.id, share)
@@ -612,6 +660,8 @@ export function buildBooks(input: LedgerInput): Books {
   // Documents.
   const booked = new Set<string>()
   const direct = new Set<string>()
+  /** The invoices in another currency at a rate, with their amount in it (in their open item's direction): revalued at each year's end, their payment's difference booked. */
+  const foreignOf = new Map<string, { currency: string; cents: number }>()
   for (const doc of input.docs) {
     if (!doc.bookedAt) {
       issues.unbooked.push(doc.id)
@@ -633,15 +683,20 @@ export function buildBooks(input: LedgerInput): Books {
         }
         continue
       }
+      if (plan.unrated) {
+        issues.unrated?.push(doc.id)
+        continue
+      }
       if (doc.kind === 'receipt' && pay) {
-        const usable = pay.currency === 'EUR' && inBooks(pay.bookedOn)
+        const euros = eurosOf.get(pay.id)
+        const usable = typeof euros === 'number' && inBooks(pay.bookedOn)
         const accounting = (docsOf.get(pay.id) ?? []).filter((d) => isAccountingDoc(d.kind)).length
-        const paid = usable ? receiptContra(plan, pay, accounting) : { contra: TRANSIT, on: plan.on }
+        const paid = usable ? receiptContra(plan, { ...pay, amountCents: euros }, accounting) : { contra: TRANSIT, on: plan.on }
         if (paid.contra !== TRANSIT) direct.add(doc.id)
         on = paid.on
-        lines = documentLines(doc, company, { paidBy: 'bank', contra: paid.contra })
+        lines = documentLines(doc, company, { paidBy: 'bank', contra: paid.contra, rates, gross: grossOf(plan) })
       } else {
-        lines = documentLines(doc, company, { paidBy: pay ? 'bank' : doc.paidPrivately ? 'private' : doc.kind === 'receipt' ? 'cash' : 'unpaid' })
+        lines = documentLines(doc, company, { paidBy: pay ? 'bank' : doc.paidPrivately ? 'private' : doc.kind === 'receipt' ? 'cash' : 'unpaid', rates, gross: grossOf(plan) })
       }
     }
     if (!plan || lines.length === 0) {
@@ -654,6 +709,7 @@ export function buildBooks(input: LedgerInput): Books {
       const account = doc.kind === 'invoice_out' ? '311' : '321'
       const item: OpenItem = { docId: doc.id, account, on: plan.on, dueOn: doc.dueOn, number: doc.number, party: doc.party, total: (plan.credit ? -1 : 1) * plan.gross, settled: 0 }
       items.set(doc.id, item)
+      if (plan.foreign && plan.rate !== null && doc.currency && doc.totalCents !== null) foreignOf.set(doc.id, { currency: doc.currency, cents: (plan.credit ? -1 : 1) * doc.totalCents })
       // A received invoice the owner paid himself: the company owes it to him now.
       if (doc.kind === 'invoice_in' && !pay && doc.paidPrivately) {
         entries.push({
@@ -672,13 +728,50 @@ export function buildBooks(input: LedgerInput): Books {
     }
   }
 
+  // Each year's end: an invoice in another currency still open at it, at the ECB's rate of that day (§ 24), the
+  // difference to 563 or 663 (Kurzové straty, Kurzové zisky; FR SR 931674); its payment later settles what
+  // it stands at since. A year whose rate is not kept yet (it has not ended) is not revalued.
+  const lastRateYear = Math.max(0, ...[...rates.values()].map((list) => Number(list[list.length - 1]?.[0].slice(0, 4) ?? 0)))
+  const docById = new Map(input.docs.map((d) => [d.id, d]))
+  const revalued = new Map<number, LedgerLine[]>()
+  const yearRate = (currency: string, y: number) => {
+    const r = rateFor(rates, currency, `${y}-12-31`, 'onOrBefore')
+    return r && r.day >= `${y}-12-28` ? r.rate : null
+  }
+  for (const [docId, f] of foreignOf) {
+    const item = items.get(docId)
+    const doc = docById.get(docId)
+    if (!item || !doc) continue
+    const payDay = doc.paymentId ? (payments.get(doc.paymentId)?.bookedOn ?? null) : null
+    let carrying = item.total
+    for (let y = Number(item.on.slice(0, 4)); y <= lastRateYear; y++) {
+      const end = `${y}-12-31`
+      if (item.on > end || !inBooks(end)) continue
+      if (payDay && payDay <= end) break
+      const rate = yearRate(f.currency, y)
+      if (rate === null) break
+      const value = eurOf(f.cents, rate)
+      const diff = value - carrying
+      if (diff !== 0) {
+        const grows = diff > 0
+        const line: LedgerLine =
+          item.account === '311' ? (grows ? { md: '311', d: '663', cents: diff } : { md: '563', d: '311', cents: -diff }) : grows ? { md: '563', d: '321', cents: diff } : { md: '321', d: '663', cents: -diff }
+        revalued.set(y, [...(revalued.get(y) ?? []), line])
+        item.settled -= diff
+        carrying = value
+      }
+    }
+  }
+  for (const [y, lines] of revalued) entries.push({ key: `fx:${y}`, on: `${y}-12-31`, kind: 'fx', number: `KR ${y}`, text: `Kurzové rozdiely k 31. 12. ${y}: pohľadávky a záväzky v cudzej mene`, docId: null, paymentId: null, manualId: null, lines })
+
   // Payments.
   for (const p of input.payments) {
     if (!inBooks(p.bookedOn)) {
       issues.beforeStart.payments++
       continue
     }
-    if (p.currency !== 'EUR') {
+    const amount = eurosOf.get(p.id) ?? null
+    if (amount === null) {
       issues.foreign.push(p.id)
       unposted.set(p.id, p.amountCents)
       continue
@@ -698,6 +791,13 @@ export function buildBooks(input: LedgerInput): Books {
         lines.push(lineOf(account, p.bank, share))
         const item = items.get(d.id)
         if (item) item.settled += account === '321' ? -share : share
+        // An invoice in another currency is settled whole by its payment: what is left of it is the exchange difference.
+        const left = item && foreignOf.has(d.id) ? item.total - item.settled : 0
+        if (item && left !== 0) {
+          if (item.account === '321') lines.push(left > 0 ? { md: '321', d: '663', cents: left } : { md: '563', d: '321', cents: -left })
+          else lines.push(left > 0 ? { md: '563', d: '311', cents: left } : { md: '311', d: '663', cents: -left })
+          item.settled = item.total
+        }
       }
       if (accounting.some((d) => !booked.has(d.id))) issues.waiting.push(p.id)
       if (lines.length > 0) {
@@ -716,11 +816,11 @@ export function buildBooks(input: LedgerInput): Books {
           lines,
         })
       }
-      if (p.amountCents - posted !== 0) unposted.set(p.id, p.amountCents - posted)
+      if (amount - posted !== 0) unposted.set(p.id, p.currency === 'EUR' ? amount - posted : p.amountCents)
       continue
     }
     const contra = paymentContra(p, input.payroll ?? [])
-    if (contra && p.amountCents !== 0) {
+    if (contra && amount !== 0) {
       const who = p.party ? readableName(p.party) : (p.note ?? '')
       entries.push({
         key: `p:${p.id}`,
@@ -731,7 +831,7 @@ export function buildBooks(input: LedgerInput): Books {
         docId: linked[0]?.id ?? null,
         paymentId: p.id,
         manualId: null,
-        lines: [lineOf(contra, p.bank, p.amountCents)],
+        lines: [lineOf(contra, p.bank, amount)],
       })
       continue
     }
@@ -809,6 +909,48 @@ export function buildBooks(input: LedgerInput): Books {
   // What the accountant wrote herself.
   for (const m of input.manual) {
     entries.push({ key: `m:${m.id}`, on: m.on, kind: m.kind, number: m.number ?? (m.kind === 'opening' ? 'PS' : ''), text: m.text, docId: null, paymentId: null, manualId: m.id, lines: m.lines })
+  }
+
+  // Each year's end: a foreign currency account's balance in its currency (from the last the bank said) at the ECB's rate
+  // of that day, against what the books hold in euros; the difference to 563 or 663. Not while a payment of it has no rate.
+  const startYear = start ? Number(start.slice(0, 4)) : null
+  for (const bank of input.banks) {
+    const currency = bank.currency ?? 'EUR'
+    if (currency === 'EUR' || bank.balanceCents === null || !bank.balanceOn || startYear === null) continue
+    const own = input.payments.filter((p) => p.bankId === bank.id)
+    if (own.some((p) => eurosOf.get(p.id) === null)) continue
+    for (let y = startYear; y <= lastRateYear; y++) {
+      const end = `${y}-12-31`
+      if (!inBooks(end)) continue
+      const rate = yearRate(currency, y)
+      if (rate === null) break
+      let foreign = bank.balanceCents
+      for (const p of own) {
+        if (p.bookedOn > end && p.bookedOn <= bank.balanceOn) foreign -= p.amountCents
+        if (p.bookedOn <= end && p.bookedOn > bank.balanceOn) foreign += p.amountCents
+      }
+      let carrying = 0
+      for (const e of entries) {
+        if (e.on > end) continue
+        for (const l of e.lines) {
+          if (l.md === bank.ledger) carrying += l.cents
+          if (l.d === bank.ledger) carrying -= l.cents
+        }
+      }
+      const diff = eurOf(foreign, rate) - carrying
+      if (diff !== 0)
+        entries.push({
+          key: `fxb:${y}:${bank.id}`,
+          on: end,
+          kind: 'fx',
+          number: `KR ${y}`,
+          text: `Kurzový rozdiel k 31. 12. ${y}: účet ${groupedIban(bank.iban)} (${currency})`,
+          docId: null,
+          paymentId: null,
+          manualId: null,
+          lines: [diff > 0 ? { md: bank.ledger, d: '663', cents: diff } : { md: '563', d: bank.ledger, cents: -diff }],
+        })
+    }
   }
 
   entries.sort((a, b) => a.on.localeCompare(b.on) || ORDER[a.kind] - ORDER[b.kind] || a.number.localeCompare(b.number) || a.key.localeCompare(b.key))
@@ -1043,6 +1185,8 @@ export function daysOverdue(item: OpenItem, today: string): number {
 
 export interface BankCheck {
   bank: LedgerBank
+  /** The account's currency: a foreign one is compared in it by nobody, its euros follow the rates. */
+  currency: string
   /** The day compared: the bank's balance day, or today when the bank has said none. */
   on: string
   ledger: number
@@ -1064,7 +1208,9 @@ export function bankChecks(books: Books, today: string): BankCheck[] {
       if (p && p.bankId === bank.id && p.bookedOn <= on) unposted += cents
     }
     const balance = bank.balanceCents
-    return { bank, on, ledger, balance, unposted, rest: balance === null ? null : balance - ledger - unposted }
+    const currency = bank.currency ?? 'EUR'
+    if (currency !== 'EUR') return { bank, currency, on, ledger, balance, unposted: 0, rest: null }
+    return { bank, currency, on, ledger, balance, unposted, rest: balance === null ? null : balance - ledger - unposted }
   })
 }
 
@@ -1137,7 +1283,7 @@ export function openingRows(lines: readonly LedgerLine[]): { account: string; md
 
 const csv = (rows: (string | number | null)[][]) => `﻿${rows.map((row) => row.map((cell) => csvCell(cell)).join(';')).join('\r\n')}\r\n`
 
-const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', asset: 'majetok', stock: 'sklad', internal: 'interný doklad' }
+const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', asset: 'majetok', stock: 'sklad', internal: 'interný doklad', fx: 'kurzové rozdiely' }
 
 /** The number a journal prints for an entry: the document's own, or what the entry is. */
 export function numberOf(e: LedgerEntry, books: Books): string {

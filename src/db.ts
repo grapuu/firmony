@@ -1,7 +1,7 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
-import { PERIOD_SCHEMA } from './app/period-schema'
+import { PERIOD_SCHEMA, documentsUpdateGuardWith } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
@@ -995,6 +995,20 @@ const MIGRATIONS: readonly string[][] = [
             ]),
       ]
     }),
+  ],
+  // Foreign currencies (src/app/fx.ts, 17 October 2026): the ECB's reference rates, the same for every company; the
+  // rate a document is converted at, guarded by the period lock like its amount; the currency of a bank account.
+  [
+    `CREATE TABLE IF NOT EXISTS fx_rates (
+      currency TEXT NOT NULL,
+      day TEXT NOT NULL,
+      rate TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL,
+      PRIMARY KEY (currency, day)
+    )`,
+    'ALTER TABLE documents ADD COLUMN fx_rate TEXT',
+    'ALTER TABLE accounts ADD COLUMN currency TEXT',
+    ...documentsUpdateGuardWith(['fx_rate']),
   ],
 ]
 

@@ -27,13 +27,14 @@ import { checkClosingPod } from './closing-pod.runtime.mjs'
 import { checkStock } from './stock.runtime.mjs'
 import { checkPayrollFull } from './payroll-full.runtime.mjs'
 import { checkTakeover } from './takeover.runtime.mjs'
+import { checkCurrency } from './currency.runtime.mjs'
 import { socialReporting } from '../.wrangler/dist/stores.js'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
-import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
+import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, ecbAnswer, registerAnswer, statementMail } from './pretend.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -72,6 +73,8 @@ const mf = new Miniflare(
           if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
           const answer = registerAnswer(request.url, lookups)
           if (answer) return new MfResponse(await answer.text(), { status: answer.status, headers: { 'content-type': 'application/json' } })
+          const ecb = ecbAnswer(request.url)
+          if (ecb) return new MfResponse(await ecb.text(), { status: ecb.status, headers: { 'content-type': 'text/xml' } })
           return new MfResponse('unexpected request', { status: 599 })
         },
       },
@@ -271,7 +274,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 31)
+check('health says the schema', (await res.json()).schema === 32)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -4756,6 +4759,7 @@ await checkClosingPod({ db, acc, lucia, nowS, day, unzip, capture: process.env.F
 await checkStock({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollFull({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkTakeover({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkCurrency({ db, acc, lucia, nowS, day })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

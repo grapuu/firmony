@@ -923,7 +923,7 @@ export function deferredTaxOf(i: DeferredInput): DeferredResult {
 // What keeps a closing from being filed
 // ---------------------------------------------------------------------------------------------------------------
 
-export type ClosingIssueCode = 'start' | 'unbooked' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'deferred' | 'stockCount' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
+export type ClosingIssueCode = 'start' | 'unbooked' | 'unrated' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'deferred' | 'stockCount' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
 
 /** block: the closing is not filed until it is resolved; warn: to look at. `count` things, `accounts` the ones meant. */
 export interface ClosingIssue {
@@ -962,6 +962,8 @@ export function closingIssues(args: {
   if (!books.start) block('start')
   const docs = [...i.unbooked, ...i.noEntry].filter((id) => (books.docDays.get(id) ?? null) === null || (books.docDays.get(id) as string) <= end)
   if (docs.length > 0) block('unbooked', docs.length)
+  const unrated = (i.unrated ?? []).filter((id) => (books.docDays.get(id) ?? end) <= end)
+  if (unrated.length > 0) block('unrated', unrated.length)
   const ofYear = (ids: string[]) => ids.filter((id) => (books.payments.get(id)?.bookedOn ?? '') <= end)
   const payments = new Set([...ofYear(i.missing), ...ofYear(i.waiting), ...ofYear(i.classify)])
   if (payments.size > 0) block('payments', payments.size)

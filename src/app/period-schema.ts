@@ -77,6 +77,12 @@ const companyFields = ['id', 'start_on', 'vat_payer', 'vat_7a', 'vat_quarterly',
 const actorAllowed = (row: string) => `EXISTS (SELECT 1 FROM users u JOIN companies c ON c.id = ${row}.company_id
   WHERE u.id = ${row}.changed_by AND (u.team = 'admin' OR (u.team = 'accountant' AND c.accountant_id = u.id)) AND c.purge_started_at IS NULL)`
 
+/** The documents' update guard made again with the columns added after it (step 32: the rate of a foreign currency). */
+export const documentsUpdateGuardWith = (columns: string[]): string[] => [
+  'DROP TRIGGER IF EXISTS documents_locked_update',
+  guard('documents', 'UPDATE', `(${changed([...docFields, ...columns])}) AND ((${postedDocLocked('OLD')} OR ${docLinked('OLD')}) OR (${postedDocLocked('NEW')} OR ${docLinked('NEW')}))`),
+]
+
 export const PERIOD_SCHEMA: string[] = [
   `CREATE TABLE period_locks (
     company_id TEXT PRIMARY KEY, through_on TEXT, version INTEGER NOT NULL CHECK (version > 0), change_id TEXT NOT NULL UNIQUE,

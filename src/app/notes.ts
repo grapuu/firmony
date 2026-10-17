@@ -110,7 +110,7 @@ function valuation(src: NotesSource): string[] {
     'Pohľadávky sa pri vzniku oceňujú menovitou hodnotou, pochybné pohľadávky sa znižujú opravnými položkami.',
     'Krátkodobý finančný majetok a peňažné prostriedky sa oceňujú menovitou hodnotou.',
     'Záväzky sa pri vzniku oceňujú menovitou hodnotou, rezervy očakávanou výškou záväzku.',
-    'Majetok a záväzky v cudzej mene sa prepočítavajú na eurá referenčným výmenným kurzom Európskej centrálnej banky v deň účtovného prípadu a ku dňu, ku ktorému sa zostavuje účtovná závierka.',
+    'Majetok a záväzky v cudzej mene sa prepočítavajú na eurá referenčným výmenným kurzom určeným a vyhláseným Európskou centrálnou bankou alebo Národnou bankou Slovenska v deň predchádzajúci dňu uskutočnenia účtovného prípadu a ku dňu, ku ktorému sa zostavuje účtovná závierka, kurzom vyhláseným v tento deň; kurzové rozdiely sa účtujú na účty 563 Kurzové straty a 663 Kurzové zisky.',
   ]
   if (src.size !== 'micro')
     out.push(

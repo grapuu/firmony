@@ -22,6 +22,7 @@
 //   statement (súhrnný výkaz) and documents in another currency without their euro amounts.
 import { CATEGORIES, type Category } from './booking'
 import type { DocKind } from './match'
+import { eurOf } from './fx'
 
 /**
  * How VAT falls on a document. Received: `domestic` (a Slovak payer charged VAT), `reverse` (a service, or goods
@@ -91,6 +92,8 @@ export interface VatDoc {
   totalCents: number | null
   vatCents: number | null
   currency: string | null
+  /** The rate of a document in another currency, as confirmed (millionths of the currency for a euro). */
+  rate?: number | null
   category: Category | null
   vatDeduct: boolean | null
   /** The reader's word that the supplier is based abroad. */
@@ -263,14 +266,28 @@ function deducts(doc: VatDoc): boolean {
   return doc.category ? (CATEGORIES[doc.category]?.deduct ?? true) : true
 }
 
+/** A document's amounts in euros at its rate, each rounded to the cent. */
+function inEuros(doc: VatDoc, rate: number): VatDoc {
+  const eur = (cents: number) => eurOf(cents, rate)
+  return {
+    ...doc,
+    currency: 'EUR',
+    totalCents: doc.totalCents === null ? null : eur(doc.totalCents),
+    vatCents: doc.vatCents === null ? null : eur(doc.vatCents),
+    lines: (doc.lines ?? []).map((line) => ({ ...line, base: eur(line.base), vat: eur(line.vat) })),
+  }
+}
+
 /**
  * What is proposed for a document until the accountant confirms it: the mode from who issued it and to whom, and
  * its lines from what the document breaks down by rate (an e-invoice always does), or else from its total and VAT.
  * A company that is not registered reports nothing; a person registered under § 7a reports only what it buys from
  * abroad, without a deduction. A corrective invoice keeps the signs it was read with (a credit note's are minus).
  */
-export function proposeVat(doc: VatDoc, company: VatCompany): VatData | null {
-  if (!isIssued(doc.kind) && !isReceived(doc.kind)) return null
+export function proposeVat(given: VatDoc, company: VatCompany): VatData | null {
+  if (!isIssued(given.kind) && !isReceived(given.kind)) return null
+  // A document in another currency with its rate: proposed in euros (§ 26, the rate of the day before the liability).
+  const doc = (given.currency ?? 'EUR') !== 'EUR' && given.rate ? inEuros(given, given.rate) : given
   const vatId = plainVatId(doc.partyVatId)
   const base: VatData = { mode: 'none', lines: [], suppliedOn: doc.suppliedOn ?? doc.issuedOn, vatId, corrects: doc.corrects ?? null, period: null }
   const total = doc.totalCents ?? 0

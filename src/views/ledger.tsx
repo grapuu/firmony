@@ -171,6 +171,7 @@ const Issues: FC<{ company: Company; books: Books; today: string }> = ({ company
   if (i.noEntry.length > 0) items.push({ text: L.issue.noEntry(i.noEntry.length), href: `/ucto/doklady/${i.noEntry[0]}`, go: L.go.queue })
   if (i.classify.length > 0) items.push({ text: L.issue.classify(i.classify.length), href: `${base}/platby`, go: L.go.payments })
   if (i.foreign.length > 0) items.push({ text: L.issue.foreign(i.foreign.length), href: `${base}/interne`, go: L.go.internal })
+  if ((i.unrated ?? []).length > 0) items.push({ text: L.issue.unrated((i.unrated ?? []).length), href: `/ucto/doklady/${i.unrated?.[0]}`, go: L.go.queue })
   if (cash < 0) items.push({ text: L.issue.cash(formatEurExact(cash)), href: `${base}/interne`, go: L.go.internal })
   if (i.waiting.length > 0) items.push({ text: L.issue.waiting(i.waiting.length), href: `/ucto/klienti/${company.id}#zauctovat`, go: L.go.queue, warn: true })
   if (i.missing.length > 0) items.push({ text: L.issue.missing(i.missing.length), href: `/ucto/klienti/${company.id}#chyba`, go: L.go.missing, warn: true })
@@ -224,6 +225,9 @@ const ResultCard: FC<{ tb: TrialBalance }> = ({ tb }) => (
   </section>
 )
 
+/** An amount in another currency, the Slovak way ("1 000,00 USD"). */
+const inCurrency = (cents: number, currency: string): string => `${formatEurExact(cents).replace(/\s?€$/, '')}\u00a0${currency}`
+
 const BankCard: FC<{ books: Books; today: string }> = ({ books, today }) => {
   const checks = bankChecks(books, today)
   if (checks.length === 0) return null
@@ -237,7 +241,23 @@ const BankCard: FC<{ books: Books; today: string }> = ({ books, today }) => {
           <p class="lbank__name">
             {c.bank.ledger} <span>{c.bank.iban.replace(/(.{4})/g, '$1 ').trim()}</span>
           </p>
-          {c.balance === null ? (
+          {c.currency !== 'EUR' ? (
+            <>
+              <dl class="kv">
+                {c.balance !== null ? (
+                  <div>
+                    <dt>{L.bankOn(dayName(c.on, today))}</dt>
+                    <dd>{inCurrency(c.balance, c.currency)}</dd>
+                  </div>
+                ) : null}
+                <div>
+                  <dt>{L.bankLedger}</dt>
+                  <dd>{formatEurExact(c.ledger)}</dd>
+                </div>
+              </dl>
+              <p class="info__source">{L.bankForeign}</p>
+            </>
+          ) : c.balance === null ? (
             <p class="info__lead">
               {L.bankNoBalance} <strong>{formatEurExact(c.ledger)}</strong>
             </p>
@@ -1106,7 +1126,7 @@ export const OpeningPage: FC<{ company: Company; form: OpeningForm; saved: Manua
 /** How many things keep the books from being whole: the issues the trial balance page lists as blocking. */
 export function blockingCount(books: Books, today: string): number {
   const i = books.issues
-  return (books.start ? 0 : 1) + i.unbooked.length + i.noEntry.length + i.classify.length + i.foreign.length + (balanceOf(books.entries, '211', today) < 0 ? 1 : 0)
+  return (books.start ? 0 : 1) + i.unbooked.length + i.noEntry.length + (i.unrated ?? []).length + i.classify.length + i.foreign.length + (balanceOf(books.entries, '211', today) < 0 ? 1 : 0)
 }
 
 export const LedgerCard: FC<{ company: Company; tb: TrialBalance; waiting: number }> = ({ company, tb, waiting }) => (

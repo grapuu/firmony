@@ -42,7 +42,7 @@ export function lockTarget(values: LockValues, current: string | null, today: st
 /** Known incomplete accounting in the interval must be resolved before it is frozen. Unknown document dates also need review. */
 export function lockBlockers(books: Books, through: string): { documents: number; payments: number } {
   const within = (day: string | null) => !day || (day <= through && (!books.start || day >= books.start))
-  const docs = new Set([...books.issues.unbooked, ...books.issues.noEntry].filter((id) => within(books.docDays.get(id) ?? null)))
+  const docs = new Set([...books.issues.unbooked, ...books.issues.noEntry, ...(books.issues.unrated ?? [])].filter((id) => within(books.docDays.get(id) ?? null)))
   const payments = new Set(
     [...books.issues.classify, ...books.issues.waiting, ...books.issues.missing, ...books.issues.foreign].filter((id) =>
       within(books.payments.get(id)?.bookedOn ?? null),

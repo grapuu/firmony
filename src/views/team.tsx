@@ -1172,6 +1172,9 @@ export interface BookValues {
   deduct: boolean
   remember: boolean
   account: string
+  /** The currency and the rate it is converted at (units for one euro), empty for the ECB's of the day before. */
+  currency: string
+  rate: string
 }
 
 /** What the form shows for a document: its own values, written the way they are typed. */
@@ -1192,6 +1195,8 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
     deduct: vatPayer && (d.vatDeduct ?? (category ? (CATEGORIES[category as keyof typeof CATEGORIES]?.deduct ?? true) : true)),
     remember: true,
     account: d.account ?? '',
+    currency: d.currency ?? 'EUR',
+    rate: d.fxRate ? d.fxRate.replace('.', ',') : '',
   }
 }
 
@@ -1216,6 +1221,10 @@ export interface BookPageProps {
   now: number
   errors: Partial<Record<keyof BookValues, string>>
   flash?: string | null
+  /** The currencies to pick (the ECB's), the ECB's rate of the day before the document, its total in euros. */
+  currencies?: string[]
+  rateProposal?: { rate: string; day: string } | null
+  inEuros?: number | null
 }
 
 const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: string; type?: string; mode?: 'decimal' | 'numeric' | 'text'; wide?: boolean; max?: number }> = ({
@@ -1237,7 +1246,7 @@ const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: 
   </div>
 )
 
-export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, values, ledgerLines, payment, candidates, paidBy, queueLeft, now, errors, flash }) => {
+export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, values, ledgerLines, payment, candidates, paidBy, queueLeft, now, errors, flash, currencies = [], rateProposal = null, inEuros = null }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const cents = (text: string) => {
     const m = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(text.replace(/\s/g, ''))
@@ -1375,6 +1384,32 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
             <Field name="due" label={t.book.due} value={values.due} error={errors.due} max={16} />
             <Field name="total" label={t.book.total} value={values.total} mode="decimal" error={errors.total} max={20} />
             <Field name="vat" label={t.book.vat} value={values.vat} mode="decimal" error={errors.vat} max={20} />
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-currency">
+                {t.book.currency}
+              </label>
+              <select id="b-currency" class="field__input" name="currency">
+                {[...new Set(['EUR', ...currencies, values.currency].filter(Boolean))].map((c) => (
+                  <option value={c} selected={values.currency === c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {values.currency !== 'EUR' ? (
+              <div class="fgrid__cell">
+                <label class="field__label" for="b-rate">
+                  {t.book.rate}
+                </label>
+                <input id="b-rate" class="field__input" name="rate" value={values.rate} inputmode="decimal" maxlength={16} autocomplete="off" aria-invalid={errors.rate ? 'true' : undefined} />
+                {errors.rate ? (
+                  <p class="field__error">{errors.rate}</p>
+                ) : (
+                  <p class="field__hint">{rateProposal ? t.book.rateHint(rateProposal.rate, rateProposal.day) : t.book.rateNone}</p>
+                )}
+                {inEuros !== null ? <p class="field__hint">{t.book.inEuros(formatEurExact(inEuros))}</p> : null}
+              </div>
+            ) : null}
             <Field name="vs" label={t.book.vs} value={values.vs} mode="numeric" max={20} />
             <Field name="account" label={t.book.account} value={values.account} mode="numeric" max={6} />
           </div>

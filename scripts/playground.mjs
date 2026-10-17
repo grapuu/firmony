@@ -19,7 +19,7 @@ import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
-import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from '../test/pretend.mjs'
+import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, ecbAnswer, registerAnswer, statementMail } from '../test/pretend.mjs'
 
 const root = new URL('..', import.meta.url).pathname
 const dist = join(root, '.wrangler/dist')
@@ -82,7 +82,9 @@ const mf = new Miniflare(convertV4MiniflareOptions({
         if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
         const answer = registerAnswer(request.url)
         if (answer) return new MfResponse(await answer.text(), { status: answer.status, headers: { 'content-type': 'application/json' } })
-        return new MfResponse('unexpected request', { status: 599 })
+        const ecb = ecbAnswer(request.url)
+          if (ecb) return new MfResponse(await ecb.text(), { status: ecb.status, headers: { 'content-type': 'text/xml' } })
+          return new MfResponse('unexpected request', { status: 599 })
       },
     },
     { name: 'pretend-mail', modules: true, compatibilityDate: '2026-10-01', script: PRETEND_MAIL },

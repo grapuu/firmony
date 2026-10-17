@@ -144,7 +144,24 @@ over. Bring this section up to date first whenever a session ends.
    before (`previousFrom`: books, prior, otherForm) and in the size group and the audit. Found on the way: every POST
    of the team was refused above 8 kB (a payroll month of 100 people, large opening balances, real receipts): the team
    side now takes 68 MB, the client's app 1 MB, the public pages still 8 kB (`LIMITS`). test/takeover.runtime.mjs.
-   Next by the order: foreign currencies, OSS, Intrastat, joint-stock companies. The site promises a
+   Foreign currencies (built 17 October 2026, schema step 32: `fx_rates`, `documents.fx_rate`, `accounts.currency`, the
+   documents' lock guard made again with `fx_rate`): `src/app/fx.ts` (§ 24 of the Act on Accounting and § 23, § 26 of
+   the VAT Act as FR SR's 931674, 812673 and 297846 explain them: the ECB's reference rate of the day before the
+   accounting case, the last one before a day without it; the rate of the balance sheet day; rates in millionths,
+   euros rounded to the cent), `src/app/fx-store.ts` (the schedule fetches eurofxref-hist-90d.xml once the ECB has
+   declared the day, at most once an hour; the pretend ECB in `test/pretend.mjs`). The books (`ledger.ts`): a document
+   in another currency at the rate the accountant confirmed on the booking form (Mena, Kurz za 1 €, the ECB's proposed
+   and kept when the field is left empty) or the kept rate of the day before its day; one without any is `unrated` and
+   said on the trial balance, the closing and the period lock; a receipt in another currency paid alone from a euro
+   account is the euros the bank took; an invoice in another currency is settled whole by its payment and the
+   difference goes to 563 or 663; an invoice still open at a year's end is revalued at that day's rate (entry
+   `fx:<year>`, kind 'fx', "KR <year>"); a payment of a foreign currency account at the rate of the day before it, and
+   the account revalued at each year's end from its balance in its currency (`fxb:<year>:<account>`); the bank card
+   shows such an account in its currency. VAT proposes a document's lines in euros at its rate. Not built: invoices the
+   client issues in another currency, a cash box in another currency, revaluation of other assets than receivables,
+   payables and bank accounts (advances, loans in a foreign currency booked by hand), the tax treatment of unrealised
+   differences. test/currency.runtime.mjs, units "Foreign currencies".
+   Next by the order: OSS, Intrastat, joint-stock companies. The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
@@ -1722,8 +1739,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1049 unit checks (17 October 2026, evening), including the takeover and the payroll review
-npm run test:runtime     # 1460 workerd checks on Node 24 (as GitHub runs them), including test/takeover.runtime.mjs
+npm test                 # 1064 unit checks (17 October 2026, evening), including foreign currencies
+npm run test:runtime     # 1466 workerd checks on Node 24 (as GitHub runs them), including test/currency.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

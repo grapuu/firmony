@@ -59,6 +59,7 @@ import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
+import { refreshRates } from './fx-store'
 import { endingOf, intakeOpen, serviceOpen } from './ending'
 import { exportYear, exportYears } from './export'
 import { beginExport, completeExport, confirmExport, exportReceipts } from './handover-store'
@@ -1858,6 +1859,12 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await billingScheduled(env, at, BRAND.origin)
   } catch (err) {
     console.error('billing failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    const b = bratislava(at)
+    await refreshRates(db, fetch, b.day, b.hour * 60 + b.minute >= 16 * 60 + 30)
+  } catch (err) {
+    console.error('the ECB rates failed', err instanceof Error ? err.name : 'error')
   }
   const stuck = await db
     .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")

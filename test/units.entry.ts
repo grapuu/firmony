@@ -53,6 +53,8 @@ export * as payMonth from '../src/app/pay-month'
 export * as payrollForm from '../src/app/payroll-form'
 export * as taxSettlement from '../src/app/tax-settlement'
 export * as tableRead from '../src/app/table-read'
+export * as fx from '../src/app/fx'
+export { lastDeclared } from '../src/app/fx-store'
 export * as takeover from '../src/app/takeover'
 export * as takeoverStore from '../src/app/takeover-store'
 

@@ -6,6 +6,7 @@ import { linkLockedSql } from './period-schema'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
 import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
+import { rateMicro } from './fx'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
 
@@ -125,6 +126,8 @@ export interface Doc {
   totalCents: number | null
   vatCents: number | null
   currency: string | null
+  /** The rate it is converted to euros at, as the accountant confirmed it (units of the currency for a euro, "25,308"). */
+  fxRate?: string | null
   category: Category | null
   proposal: 'ai' | 'rule' | null
   vatDeduct: boolean | null
@@ -269,7 +272,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp`
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate`
 export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
 
 export function docOf(row: Row): Doc {
@@ -297,6 +300,7 @@ export function docOf(row: Row): Doc {
     totalCents: num(row.total_cents),
     vatCents: num(row.vat_cents),
     currency: str(row.currency),
+    fxRate: str(row.fx_rate),
     category: str(row.category) as Category | null,
     proposal: str(row.proposal) as Doc['proposal'],
     vatDeduct: row.vat_deduct === null || row.vat_deduct === undefined ? null : row.vat_deduct === 1,
@@ -363,6 +367,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     totalCents: doc.totalCents,
     vatCents: doc.vatCents,
     currency: doc.currency,
+    rate: rateMicro(doc.fxRate),
     category: doc.category,
     vatDeduct: doc.vatDeduct,
     foreign: doc.foreign,

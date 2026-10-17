@@ -46,6 +46,8 @@ const IssueItem: FC<{ issue: ClosingIssue; company: Company; view: ClosingView }
         return [k.issue.unbooked(issue.count), `/ucto/klienti/${company.id}#zauctovat`, k.go.queue]
       case 'payments':
         return [k.issue.payments(issue.count), `${base}?rok=${y}`, k.go.book]
+      case 'unrated':
+        return [k.issue.unrated(issue.count), `${base}?rok=${y}`, k.go.book]
       case 'foreign':
         return [k.issue.foreign(issue.count), `${base}/interne`, k.go.internal]
       case 'cash':

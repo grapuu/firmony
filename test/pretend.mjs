@@ -65,6 +65,28 @@ export function registerAnswer(url, calls = []) {
   return Response.json({ results: [], license: 'CC BY 4.0' })
 }
 
+/**
+ * The ECB's file of the last ninety days, made for the test: every weekday's rates, USD 1,08 and CZK 25,3 moving a
+ * little each day. `ecbAnswer` counts the calls.
+ */
+export const ECB_CALLS = []
+export function ecbRate(currency, day) {
+  const n = Math.round(Date.parse(`${day}T00:00:00Z`) / 86_400_000) % 7
+  return currency === 'USD' ? (1.08 + n / 1000).toFixed(4) : (25.3 + n / 100).toFixed(3)
+}
+export function ecbAnswer(url) {
+  if (url !== 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml') return null
+  ECB_CALLS.push(url)
+  const days = []
+  for (let i = 0; i < 95; i++) {
+    const d = new Date(Date.now() - i * 86_400_000)
+    if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue
+    days.push(d.toISOString().slice(0, 10))
+  }
+  const cubes = days.map((day) => `<Cube time="${day}"><Cube currency="USD" rate="${ecbRate('USD', day)}"/><Cube currency="CZK" rate="${ecbRate('CZK', day)}"/></Cube>`).join('')
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?><gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref"><gesmes:subject>Reference rates</gesmes:subject><Cube>${cubes}</Cube></gesmes:Envelope>`, { headers: { 'content-type': 'text/xml' } })
+}
+
 /** Today in Bratislava, moved by a number of days, as YYYY-MM-DD. */
 function bratislavaDay(shift = 0) {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.now() + shift * 86400000))
