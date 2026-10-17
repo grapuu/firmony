@@ -13,16 +13,54 @@ import { Shell } from '../views/inside'
 import { FilingPage, FilingsPage, FilingQueuePage } from '../views/filings'
 import { changeDelivery, currentPackage, eventsOf, filingQueue, packageOf, packagesOf, type DeliveryChange } from './store'
 import { isDeliveryState } from './model'
+import { BUNDLE_ROWS, bundleItems, bundleZip, recordBundle, type BundleRow } from './bundle'
 
 type Env = { Bindings: AppBindings; Variables: { who: Who; filingCompany: Company } }
 type Ctx = Context<Env>
 export const filingRoutes = new Hono<Env>(), clientFilingRoutes = new Hono<Env>(), filingQueueRoutes = new Hono<Env>()
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date())
 const text = (v: unknown, n: number) => typeof v === 'string' ? v.trim().slice(0, n) : ''
-filingQueueRoutes.get('/', async (c) => {
+async function queue(c: Ctx, bundleState: { errors?: Record<string, string>; values?: Record<string, string>; recorded?: number } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who'), page = Math.min(10000, Math.max(1, Number.parseInt(c.req.query('strana') ?? '1', 10) || 1))
-  const [rows, counts, companies] = await Promise.all([filingQueue(c.env.DB, who.user, page), teamCounts(c.env.DB, who.user, false), companiesOf(c.env.DB, who.user.id)])
-  return c.html(html`<!doctype html>${<TeamShell user={who.user} place="deadlines" counts={counts} ownCompany={companies.length > 0} title="Podania na dokončenie"><FilingQueuePage rows={rows.slice(0, 50)} page={page} hasNext={rows.length > 50} /></TeamShell>}`)
+  const [rows, counts, companies, bundle] = await Promise.all([filingQueue(c.env.DB, who.user, page), teamCounts(c.env.DB, who.user, false), companiesOf(c.env.DB, who.user.id), bundleItems(c.env.DB, who.user)])
+  const recorded = bundleState.recorded ?? (Number.parseInt(c.req.query('zaevidovane') ?? '', 10) || 0)
+  return c.html(html`<!doctype html>${<TeamShell user={who.user} place="deadlines" counts={counts} ownCompany={companies.length > 0} title="Podania na dokončenie"><FilingQueuePage rows={rows.slice(0, 50)} page={page} hasNext={rows.length > 50} bundle={{ ...bundle, today: today(), recorded, errors: bundleState.errors ?? {}, values: bundleState.values ?? {} }} /></TeamShell>}`, status)
+}
+filingQueueRoutes.get('/', (c) => queue(c))
+// Everything to be sent, in one ZIP: the documents as saved with their podklady, sorted by the office they go to.
+filingQueueRoutes.get('/balik.zip', async (c) => {
+  const { toSend } = await bundleItems(c.env.DB, c.get('who').user)
+  if (toSend.length === 0) return c.redirect('/ucto/podania', 303)
+  return new Response(bundleZip(toSend, c.env.FILES), {
+    headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="firmony-na-podanie-${today()}.zip"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' },
+  })
+})
+// What she did on the portals, recorded in one form: the number of each submission and, when she has it, its receipt.
+filingQueueRoutes.post('/naraz', bodyLimit({ maxSize: 64 * 1024 * 1024, onError: (c) => queue(c as Ctx, { errors: { form: 'Potvrdenky spolu môžu mať najviac 64 MB. Priložte ich po častiach.' } }, 413) }), async (c) => {
+  const db = c.env.DB, who = c.get('who')
+  if (!(await withinLimit(db, 'filing-batch', who.user.id, 30, 3600))) return queue(c, { errors: { form: 'Príliš veľa záznamov za hodinu. Skúste to neskôr.' } }, 429)
+  const body = await c.req.parseBody({ all: true })
+  const keys = (Array.isArray(body.row) ? body.row : [body.row]).filter((k): k is string => typeof k === 'string' && /^[fm]-[A-Za-z0-9-]{1,64}$/.test(k)).slice(0, 2 * BUNDLE_ROWS)
+  const externalOn = text(body.externalOn, 20)
+  const values: Record<string, string> = { externalOn }
+  const rows: BundleRow[] = []
+  for (const key of keys) {
+    const file = body[`receipt:${key}`]
+    const row: BundleRow = {
+      key,
+      reference: text(body[`ref:${key}`], 161),
+      reason: text(body[`reason:${key}`], 1201),
+      checked: body[`ok:${key}`] === '1',
+      receipt: file instanceof File && file.size > 0 ? { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } : null,
+    }
+    values[`ref:${key}`] = row.reference
+    values[`reason:${key}`] = row.reason
+    if (row.checked) values[`ok:${key}`] = '1'
+    rows.push(row)
+  }
+  const outcome = await recordBundle(db, c.env.FILES, who.user, rows, externalOn, today())
+  if (Object.keys(outcome.errors).length > 0) return queue(c, { errors: outcome.errors, values, recorded: outcome.recorded }, 409)
+  return c.redirect(`/ucto/podania?zaevidovane=${outcome.recorded}`, 303)
 })
 async function frame(c: Ctx, node: unknown, status: ContentfulStatusCode = 200) {
   const who = c.get('who'), company = c.get('filingCompany'), team = new URL(c.req.url).pathname.startsWith('/ucto/')

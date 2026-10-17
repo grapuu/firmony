@@ -6920,3 +6920,31 @@ select.field__input {
   overflow-wrap: anywhere;
   user-select: all;
 }
+
+/* Filing in one go (17 October 2026): the ZIP to send, then one form for every number and receipt. */
+.notice--ok { background: var(--green-soft); color: var(--green); }
+.bundle { display: grid; gap: 18px; }
+.bundle__steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.bundle__steps li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 14px 16px; border-radius: 16px; background: var(--canvas); counter-increment: step; }
+.bundle__steps li > span { flex: 1 1 22rem; min-width: 0; color: var(--soft); }
+.bundle__steps li > span::before { content: counter(step) '. '; color: var(--blue); font-weight: 600; }
+.bundle__steps strong { color: var(--ink); font-weight: 600; }
+.bundle__form { display: grid; gap: 20px; }
+.bundle__day { max-width: 18rem; }
+.bundle__group { min-width: 0; margin: 0; padding: 0; border: 0; }
+.bundle__legend { padding: 0; margin-bottom: 4px; color: var(--ink); font-weight: 600; }
+.bundle__rows { display: grid; margin: 0; padding: 0; list-style: none; }
+.bundle-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 12px 24px; padding: 16px 0; border-top: 1px solid var(--line); }
+.bundle-row--error { border-top-color: var(--red); }
+.bundle-row__what { display: grid; align-content: start; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.bundle-row__what strong { color: var(--ink); font-weight: 600; }
+.bundle-row__what span { color: var(--soft); }
+.bundle-row__what .pill { justify-self: start; white-space: normal; }
+.bundle-row__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; min-width: 0; }
+.bundle-row__fields input { min-width: 0; max-width: 100%; }
+.bundle-row__wide { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+  .bundle-row, .bundle-row__fields { grid-template-columns: minmax(0, 1fr); }
+}
+.bundle__form > .btn { justify-self: start; min-width: 16rem; }
+@media (max-width: 760px) { .bundle__form > .btn { justify-self: stretch; min-width: 0; } }

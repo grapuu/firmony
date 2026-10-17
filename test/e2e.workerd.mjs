@@ -14,6 +14,7 @@ import { checkBilling } from './billing.runtime.mjs'
 import { checkBeforeStart } from './start.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
 import { checkFilings } from './filings.runtime.mjs'
+import { checkBundle } from './bundle.runtime.mjs'
 import { checkPayrollReports } from './payroll-reporting.runtime.mjs'
 import { checkPrehlad } from './prehlad.runtime.mjs'
 import { checkPayrollMigration } from './payroll-migration.runtime.mjs'
@@ -738,6 +739,22 @@ const as = (cookie) => ({
   async uploads(path, files, fieldName = 'file') {
     const form = new FormData()
     for (const file of files) form.append(fieldName, new Blob([file.bytes], { type: file.type ?? 'application/octet-stream' }), file.name)
+    const encoded = new Request('https://x/', { method: 'POST', body: form })
+    const body = new Uint8Array(await encoded.arrayBuffer())
+    return mf.dispatchFetch(`${site}${path}`, {
+      method: 'POST',
+      body,
+      redirect: 'manual',
+      headers: { 'content-type': encoded.headers.get('content-type'), 'content-length': String(body.length), 'cf-connecting-ip': '203.0.113.30', origin: site, cookie },
+    })
+  },
+  /** A multipart form of fields and files in the given order: [name, string] or [name, { name, bytes, type }]. */
+  async form(path, entries) {
+    const form = new FormData()
+    for (const [key, value] of entries) {
+      if (typeof value === 'string') form.append(key, value)
+      else form.append(key, new Blob([value.bytes], { type: value.type ?? 'application/octet-stream' }), value.name)
+    }
     const encoded = new Request('https://x/', { method: 'POST', body: form })
     const body = new Uint8Array(await encoded.arrayBuffer())
     return mf.dispatchFetch(`${site}${path}`, {
@@ -4728,6 +4745,7 @@ const handedClientRow = await handoverRow()
 check('the client row no longer asks for its handover once it was made', Boolean(handedClientRow) && !handedClientRow.includes('Odovzdanie mešká'))
 
 await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkBundle({ db, acc, lucia, nowS, day, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

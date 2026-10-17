@@ -47,7 +47,12 @@ over. Bring this section up to date first whenever a session ends.
    accountants he is looking at: doc. Ing. Alena Andrejovská, PhD. and Ing. Radoslav Bajus, PhD. (Katedra financií,
    EkF TUKE), offered the work as a lucrative side income. The order he was given (each with its time): texts for
    every size (done: `CUSTOM_PLAN` 'mieru', the card "Na mieru" under the plans, the third way in "Vediete väčšiu
-   firmu", no online order for it, the team sees "na mieru"); filing in one click; a load test with a large fictional
+   firmu", no online order for it, the team sees "na mieru"); filing in one click (done: `src/filings/bundle.ts`, on
+   /ucto/podania "Podanie jedným balíkom": `/ucto/podania/balik.zip` holds every current document to send, of the
+   filings and the payroll reports, in a folder per office and company with PREHLAD.txt, each fingerprint checked
+   again; `/ucto/podania/naraz` records every number and checked receipt in one form, each row through
+   `recordDelivery` against the rows she may work on now; an empty row changes nothing; test/bundle.runtime.mjs);
+   a load test with a large fictional
    company; fixed assets and depreciation; the closing of small and large entities; stock; full payroll (agreements,
    directors, sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS;
    foreign currencies, OSS, Intrastat and joint-stock companies. The site promises a large company only an offer
