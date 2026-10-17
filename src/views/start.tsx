@@ -14,11 +14,13 @@ export interface DetailsValues {
   situation: Situation
   name: string
   email: string
+  /** The director's email when somebody else sends the request: the link to the contract goes there. */
+  directorEmail: string
   phone: string
   note: string
 }
 
-export type DetailsErrors = Partial<Record<'company' | 'name' | 'email' | 'phone' | 'note' | 'form', string>>
+export type DetailsErrors = Partial<Record<'company' | 'name' | 'email' | 'directorEmail' | 'phone' | 'note' | 'form', string>>
 
 /** What the register said, as the page shows it. */
 export type CompanyState =
@@ -111,8 +113,9 @@ const Text: FC<{
   type?: string
   autocomplete?: string
   optional?: boolean
+  hint?: string
   inputmode?: 'email' | 'tel' | 'numeric' | 'text'
-}> = ({ name, label, value, error, type = 'text', autocomplete, optional, inputmode }) => (
+}> = ({ name, label, value, error, type = 'text', autocomplete, optional, hint, inputmode }) => (
   <div class="field">
     <label class="field__label" for={`f-${name}`}>
       {label}
@@ -127,8 +130,13 @@ const Text: FC<{
       autocomplete={autocomplete}
       inputmode={inputmode}
       aria-invalid={error ? 'true' : undefined}
-      aria-describedby={error ? `f-${name}-error` : undefined}
+      aria-describedby={[error ? `f-${name}-error` : '', hint ? `f-${name}-hint` : ''].filter(Boolean).join(' ') || undefined}
     />
+    {hint ? (
+      <p class="small" id={`f-${name}-hint`}>
+        {hint}
+      </p>
+    ) : null}
     {error ? (
       <p class="field__error" id={`f-${name}-error`}>
         {error}
@@ -201,6 +209,9 @@ export const StartDetails: FC<{
           </fieldset>
           <Text name="name" label={copy.start.name} value={values.name} error={errors.name} autocomplete="name" />
           <Text name="email" label={copy.start.email} value={values.email} error={errors.email} type="email" autocomplete="email" inputmode="email" />
+          {state.kind === 'found' ? (
+            <Text name="directorEmail" label={copy.start.directorEmail} hint={copy.start.directorEmailHint} value={values.directorEmail} error={errors.directorEmail} type="email" autocomplete="off" inputmode="email" optional />
+          ) : null}
           <Text name="phone" label={copy.start.phone} value={values.phone} error={errors.phone} type="tel" autocomplete="tel" optional />
           <div class="field">
             <label class="field__label" for="f-note">
@@ -224,6 +235,7 @@ export const StartDetails: FC<{
               </p>
             ) : null}
           </div>
+          {state.kind === 'found' ? <p class="details__next">{copy.start.next}</p> : null}
           <p class="small">
             {copy.start.privacy} <a href="/pravne-informacie#ochrana-udajov">{copy.start.privacyLink}</a>.
           </p>
@@ -235,12 +247,15 @@ export const StartDetails: FC<{
   )
 }
 
-/** After a request; when it became an order, the link to the contract waits in the mailbox. */
-export const Thanks: FC<{ order?: boolean }> = ({ order }) => (
+/** After a request: what comes next, the confirmation only when one went out, the notice period only for a switch. */
+export const Thanks: FC<{ order?: boolean; confirmed?: boolean; switching?: boolean }> = ({ order, confirmed = true, switching = false }) => (
   <Page>
-    <h1 class="h1">{order ? copy.thanks.orderTitle : copy.thanks.title}</h1>
-    <p class="lead">{order ? copy.thanks.orderLead : copy.thanks.lead}</p>
-    <p class="page__text">{copy.thanks.next}</p>
+    <h1 class="h1">{copy.thanks.title}</h1>
+    <p class="lead">
+      {order ? copy.thanks.orderLead : copy.thanks.lead}
+      {confirmed ? ` ${copy.thanks.confirmed}` : null}
+    </p>
+    {switching ? <p class="page__text">{copy.thanks.next}</p> : null}
     <p class="page__more">
       <a class="btn btn--line" href="/">
         {copy.thanks.back}

@@ -17,11 +17,10 @@ import { isPeriodLocked } from './app/periods'
 import { newLink, newToken, startSession } from './app/session'
 import { inboxCode } from './team/store'
 import { acceptStatements, acceptedAs, isClient, newOrderStatement, orderByToken, type Order } from './order'
-import { orderLinkMail } from './order-mail'
 import { bell, ringStatement } from './bell'
 import { startMonths } from './content/terms'
-import { approvedRelease, contractCatalogueHash, contractGate, resolveContract } from './contracts'
-import { OrderDone, OrderGone, OrderPage, TermsPage, type OrderErrors, type OrderValues } from './views/order'
+import { approvedRelease, contractCatalogueHash, contractGate, latestOrderReview, resolveContract } from './contracts'
+import { OrderAsked, OrderDone, OrderGone, OrderPage, TermsPage, type OrderErrors, type OrderValues } from './views/order'
 import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
@@ -186,7 +185,7 @@ app.get('/', (c) => {
 
 const startMeta: PageMeta = { title: `${copy.start.title} | ${BRAND.name}`, description: copy.meta.description, path: '/zacat', noindex: true }
 
-const emptyValues = (plan: string, situation: Situation): DetailsValues => ({ company: '', plan, situation, name: '', email: '', phone: '', note: '' })
+const emptyValues = (plan: string, situation: Situation): DetailsValues => ({ company: '', plan, situation, name: '', email: '', directorEmail: '', phone: '', note: '' })
 
 /** Looks the company up, within the limit for one connection. */
 async function companyState(c: Ctx, ico: string): Promise<CompanyState> {
@@ -247,6 +246,7 @@ app.post('/zacat', async (c) => {
     situation,
     name: field(body.name, 120),
     email: field(body.email, 200),
+    directorEmail: field(body.directorEmail, 200),
     phone: field(body.phone, 30),
     note: field(body.note, 2000),
   }
@@ -260,6 +260,7 @@ app.post('/zacat', async (c) => {
   const errors: DetailsErrors = {}
   if (values.name.length < 2) errors.name = copy.start.errors.name
   if (!EMAIL.test(values.email)) errors.email = copy.start.errors.email
+  if (values.directorEmail !== '' && !EMAIL.test(values.directorEmail)) errors.directorEmail = copy.start.errors.directorEmail
   if (values.phone !== '' && !PHONE.test(values.phone)) errors.phone = copy.start.errors.phone
   if (field(body.note, 5000).length > 1500) errors.note = copy.start.errors.note
   if (!fresh && !company && values.company.length < 2) errors.company = copy.start.errors.company
@@ -278,14 +279,14 @@ app.post('/zacat', async (c) => {
   const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
   // A confirmation goes to the address that was typed, at most twice a day, and carries nothing a stranger could
   // have typed into the form: the company only as the register names it. A company the register knows as an
-  // s. r. o. in business, and not yet a client, gets the contract in it: a director concludes it on the order's page.
+  // s. r. o. in business, and not yet a client, gets an order: once we have looked at what it needs (the review on
+  // /ucto/ziadosti), its director gets the link to the contract, to the director's own address when it was given.
   const confirm = await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)
-  let orderToken: string | null = null
   let orderStatement: D1PreparedStatement | null = null
-  if (confirm && ico && company && company.isSro && !company.terminated && !(await isClient(db, ico))) {
+  if (ico && company && company.isSro && !company.terminated && !(await isClient(db, ico))) {
     const directors = company.rpoId ? await lookupDirectors(company.rpoId) : null
-    orderToken = newToken()
-    orderStatement = await newOrderStatement(db, orderToken, {
+    // The token of this statement is sent to nobody: the review makes the one the director gets.
+    orderStatement = await newOrderStatement(db, newToken(), {
       requestId: id,
       ico,
       company: company.name,
@@ -294,7 +295,7 @@ app.post('/zacat', async (c) => {
       directors,
       plan: planById(plan)?.id ?? 'start',
       person: values.name,
-      email: values.email,
+      email: values.directorEmail || values.email,
       phone: values.phone || null,
     })
   }
@@ -317,10 +318,8 @@ app.post('/zacat', async (c) => {
     // To us a doorbell only: who asked and what is in /ucto/ziadosti, behind the sign-in.
     ringStatement(db, 'request', id, BRAND.email, bell.teamRequest(`${siteOrigin(c)}/ucto/ziadosti`)),
   ]
-  if (orderToken && orderStatement && company) {
-    const mail = orderLinkMail(company.name, planById(plan)?.id ?? 'start', `${siteOrigin(c)}/objednavka/${orderToken}`, ORDER.days)
-    statements.push(orderStatement, queueStatement(db, { key: `client:${id}`, to: values.email, subject: mail.subject, body: mail.body }))
-  } else if (confirm) {
+  if (orderStatement) statements.push(orderStatement)
+  if (confirm) {
     statements.push(
       queueStatement(db, {
         key: `client:${id}`,
@@ -329,7 +328,9 @@ app.post('/zacat', async (c) => {
         body: [
           'Dobrý deň,',
           '',
-          `ďakujeme za záujem o ${BRAND.name}. Vašu žiadosť sme dostali a ozveme sa ${REPLY_WITHIN}.`,
+          orderStatement
+            ? `ďakujeme za záujem o ${BRAND.name}. Vašu žiadosť sme dostali. ${REPLY_WITHIN.charAt(0).toUpperCase()}${REPLY_WITHIN.slice(1)} posúdime, či Vašej firme sedí štandardný balík, a konateľovi pošleme odkaz na zmluvu, ktorú uzavrie online.`
+            : `ďakujeme za záujem o ${BRAND.name}. Vašu žiadosť sme dostali a ozveme sa ${REPLY_WITHIN}.`,
           '',
           ...(company ? [`Firma: ${company.name}`] : []),
           `Balík: ${planName(plan)}`,
@@ -346,7 +347,12 @@ app.post('/zacat', async (c) => {
   }
   await db.batch(statements)
   later(c, flushOutbox(db, c.env.EMAIL))
-  return c.redirect(orderToken ? '/zacat/hotovo?zmluva=1' : '/zacat/hotovo', 303)
+  const next = new URLSearchParams()
+  if (orderStatement) next.set('zmluva', '1')
+  if (!confirm) next.set('potvrdenie', '0')
+  if (situation === 'switch') next.set('zmena', '1')
+  const query = next.toString()
+  return c.redirect(`/zacat/hotovo${query ? `?${query}` : ''}`, 303)
 })
 
 // ---------------------------------------------------------------------------
@@ -417,7 +423,11 @@ app.get('/investori/hotovo', (c) =>
 
 app.get('/zacat/hotovo', (c) => {
   const order = c.req.query('zmluva') === '1'
-  return page(c, { ...startMeta, title: `${order ? copy.thanks.orderTitle : copy.thanks.title} | ${BRAND.name}`, path: '/zacat/hotovo' }, <Thanks order={order} />)
+  return page(
+    c,
+    { ...startMeta, title: `${copy.thanks.title} | ${BRAND.name}`, path: '/zacat/hotovo' },
+    <Thanks order={order} confirmed={c.req.query('potvrdenie') !== '0'} switching={c.req.query('zmena') === '1'} />,
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -434,7 +444,8 @@ const orderMissing = (c: Ctx) => page(c, { title: `${copy.notFound.title} | ${BR
 
 async function orderClosed(c: Ctx, order: Order) {
   if (order.status === 'accepted') return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} contract={order.companyId ? await resolveContract(c.env.DB, order.companyId, order.termsVersion) : null} />)
-  if (order.status === 'expired') return page(c, orderMeta(copy.order.expiredTitle), <OrderGone kind="expired" />, 410)
+  if (order.status === 'expired')
+    return page(c, orderMeta(copy.order.expiredTitle), <OrderGone kind="expired" again={`/zacat?ico=${encodeURIComponent(order.ico)}&balik=${encodeURIComponent(order.plan)}`} />, 410)
   if (await isClient(c.env.DB, order.ico)) return page(c, orderMeta(copy.order.clientTitle), <OrderGone kind="client" />, 409)
   return null
 }
@@ -456,7 +467,34 @@ app.get('/objednavka/:token', async (c) => {
     directorName: '',
     agree: false,
   }
-  return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} gate={gate} />)
+  return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} gate={gate} stale={await staleReview(c.env.DB, order)} />)
+})
+
+/** A standard review whose seven days have passed: the director may ask for a new link. */
+async function staleReview(db: D1Database, order: Order): Promise<boolean> {
+  const review = await latestOrderReview(db, order.id)
+  return Boolean(review && review.decision === 'standard' && review.expires_at <= now())
+}
+
+// The director asks for a new link to an order whose review ran out: the request is open again and we are rung.
+app.post('/objednavka/:token/novy', async (c) => {
+  const db = c.env.DB
+  await ensureSchema(db)
+  const token = c.req.param('token')
+  const order = await orderByToken(db, token)
+  if (!order) return orderMissing(c)
+  const closed = await orderClosed(c, order)
+  if (closed) return closed
+  if (!(await staleReview(db, order))) return c.redirect(`/objednavka/${token}`, 303)
+  if (await withinLimit(db, 'order-renew', order.id, 3, 86400)) {
+    await db.batch([
+      db.prepare("UPDATE requests SET status = 'new' WHERE id = ? AND status <> 'client'").bind(order.requestId ?? ''),
+      db.prepare("INSERT INTO events (at, company_id, user_id, action, subject) VALUES (?, NULL, NULL, 'contract.link.requested', ?)").bind(now(), order.id),
+      ringStatement(db, 'order-renew', `${order.id}:${now()}`, BRAND.email, bell.teamRenew(`${siteOrigin(c)}/ucto/ziadosti/${order.requestId}/posudenie`)),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return page(c, orderMeta(copy.order.askedTitle), <OrderAsked />)
 })
 
 app.post('/objednavka/:token', async (c) => {

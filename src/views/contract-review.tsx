@@ -11,8 +11,11 @@ export const ContractReviewPage: FC<{
   review: OrderReview | null
   people: { id: string; name: string }[]
   released: boolean
+  /** When the director was last sent the link to the contract, or null. */
+  linkSentAt?: number | null
+  flash?: string
   error?: string
-}> = ({ requestId, order, offerHash, review, people, released, error }) => (
+}> = ({ requestId, order, offerHash, review, people, released, linkSentAt = null, flash, error }) => (
   <>
     <a class="back" href="/ucto/ziadosti">
       Žiadosti z webu
@@ -28,10 +31,35 @@ export const ContractReviewPage: FC<{
         Nové rozhodnutie predchádzajúce nenahrádza v histórii.
       </p>
     ) : null}
+    {flash ? (
+      <p class="flash" role="status">
+        <span class="tick" aria-hidden="true" />
+        {flash}
+      </p>
+    ) : null}
     {error ? (
       <p class="notice notice--error" role="alert">
         {error}
       </p>
+    ) : null}
+    {order && order.status === 'open' && review?.decision === 'standard' ? (
+      <section class="info">
+        <h2 class="info__title">Odkaz na zmluvu</h2>
+        <p class="info__lead">
+          {linkSentAt
+            ? `Poslali sme ho na ${order.email} ${new Intl.DateTimeFormat('sk-SK', { timeZone: 'Europe/Bratislava', day: 'numeric', month: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(linkSentAt * 1000))}. Nový odkaz nahradí predchádzajúci.`
+            : released
+              ? `Ešte sme ho neposlali. Pošleme ho na ${order.email}.`
+              : 'Pošleme ho, keď bude znenie zmluvy a cenníka schválené po právnom a poistnom posúdení.'}
+        </p>
+        {released && review.expires_at > Math.floor(Date.now() / 1000) ? (
+          <form method="post" action={`/ucto/ziadosti/${requestId}/odkaz`}>
+            <button class="btn btn--line" type="submit">
+              {linkSentAt ? 'Poslať nový odkaz' : 'Poslať odkaz'}
+            </button>
+          </form>
+        ) : null}
+      </section>
     ) : null}
     {order && order.status === 'open' ? (
       <form class="details" method="post" action={`/ucto/ziadosti/${requestId}/posudenie`}>

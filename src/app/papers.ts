@@ -6,8 +6,14 @@ import { APP, ENDING } from '../config'
 import { now } from '../db'
 import { eventStatement } from './store'
 
-/** The power of attorney the client signs (poa), and what the accountant hands over when the contract ends. */
-export type PaperKind = 'poa' | 'handover'
+/**
+ * The power of attorney the client signs (poa), what the accountant hands over when the contract ends (handover),
+ * and what the former accountant hands over when a company comes to us (takeover: books, an export, open items).
+ */
+export type PaperKind = 'poa' | 'handover' | 'takeover'
+
+/** Papers of books, in whatever form an accounting program gives them: downloaded, never shown. */
+const isBooks = (kind: PaperKind) => kind === 'handover' || kind === 'takeover'
 
 export interface PaperType {
   ext: string
@@ -104,7 +110,7 @@ const str = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 function paperOf(row: Row): Paper {
   return {
     id: String(row.id),
-    kind: row.kind === 'handover' ? 'handover' : 'poa',
+    kind: row.kind === 'handover' ? 'handover' : row.kind === 'takeover' ? 'takeover' : 'poa',
     createdAt: Number(row.created_at ?? 0),
     createdBy: str(row.created_by),
     createdByName: str(row.created_by_name),
@@ -176,14 +182,14 @@ export async function keepPaper(
 ): Promise<Kept> {
   if (!file || file.bytes.byteLength === 0) return { ok: false, reason: 'none' }
   if (file.bytes.byteLength > APP.fileBytes) return { ok: false, reason: 'large' }
-  const type = kind === 'handover' ? sniffHandover(file.bytes, file.name) : sniffPaper(file.bytes)
+  const type = isBooks(kind) ? sniffHandover(file.bytes, file.name) : sniffPaper(file.bytes)
   if (!type) return { ok: false, reason: 'type' }
   if (!files) return { ok: false, reason: 'storage' }
   const count = await db.prepare('SELECT COUNT(*) AS n FROM company_files WHERE company_id = ? AND kind = ? AND deleted_at IS NULL').bind(who.company, kind).first<{ n: number }>()
-  if ((count?.n ?? 0) >= (kind === 'handover' ? ENDING.handoverFiles : 20)) return { ok: false, reason: 'many' }
+  if ((count?.n ?? 0) >= (isBooks(kind) ? ENDING.handoverFiles : 20)) return { ok: false, reason: 'many' }
   const id = crypto.randomUUID()
   const key = `companies/${who.company}/papers/${id}.${type.ext}`
-  const base = file.name.replace(/\.[A-Za-z0-9]{1,6}$/, '').replace(/[^\p{L}\p{N} ._-]/gu, '_').trim().slice(0, 80) || (kind === 'handover' ? 'uctovnictvo' : 'plna-moc')
+  const base = file.name.replace(/\.[A-Za-z0-9]{1,6}$/, '').replace(/[^\p{L}\p{N} ._-]/gu, '_').trim().slice(0, 80) || (isBooks(kind) ? 'uctovnictvo' : 'plna-moc')
   const name = `${base}.${type.ext}`
   await files.put(key, file.bytes, { httpMetadata: { contentType: type.type } })
   try {
@@ -204,6 +210,20 @@ export async function keepPaper(
   return { ok: true, paper: { id, name, type } }
 }
 
+/**
+ * A whole upload of books looked at before any of it is kept: one file that cannot be taken, or more files than a
+ * company keeps, holds every file back. An upload is all or nothing, so nobody sends the same files twice to finish it.
+ */
+export async function booksRefused(db: D1Database, company: string, kind: 'handover' | 'takeover', files: File[]): Promise<'none' | 'large' | 'type' | 'many' | null> {
+  if (files.length === 0) return 'none'
+  for (const file of files) {
+    if (file.size > APP.fileBytes) return 'large'
+    if (!sniffHandover(new Uint8Array(await file.arrayBuffer()), file.name || '')) return 'type'
+  }
+  const count = await db.prepare('SELECT COUNT(*) AS n FROM company_files WHERE company_id = ? AND kind = ? AND deleted_at IS NULL').bind(company, kind).first<{ n: number }>()
+  return (count?.n ?? 0) + files.length > ENDING.handoverFiles ? 'many' : null
+}
+
 /** Marks a paper as checked by somebody of the team, once. */
 export function checkPaperStatement(db: D1Database, company: string, id: string, user: string): D1PreparedStatement {
   return db.prepare('UPDATE company_files SET checked_at = ?, checked_by = ? WHERE id = ? AND company_id = ? AND checked_at IS NULL').bind(now(), user, id, company)
@@ -214,7 +234,7 @@ export async function paperResponse(files: R2Bucket | undefined, paper: Paper): 
   const object = files ? await files.get(paper.r2Key) : null
   if (!object) return null
   // What the accountant hands over is downloaded, whatever it is; a power of attorney is shown when a browser can.
-  const type = paper.kind === 'handover' ? null : paperTypeOf(paper.fileType)
+  const type = isBooks(paper.kind) ? null : paperTypeOf(paper.fileType)
   const inline = type?.inline ?? false
   const name = paper.fileName.replace(/[^\p{L}\p{N}._ -]/gu, '_')
   const pdf = paper.fileType === 'application/pdf'

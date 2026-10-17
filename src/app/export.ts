@@ -2,7 +2,7 @@
 // documents, payments and issued invoices as CSV for Slovak Excel, the issued invoices as e-invoices, the messages,
 // and the contract with its terms. The client downloads it whenever it wants, and must before its data are deleted
 // ninety days after the contract ends (point 10.4 of the terms). Files are read one at a time, as the stream goes.
-import { BRAND } from '../config'
+import { BRAND, OFFLINE_TERMS } from '../config'
 import { csvCell, csvMoney } from '../team/store'
 import { zipName, zipStream, uniqueName, type ZipEntry } from '../zip'
 import { resolveContract, type ResolvedContract } from '../contracts'
@@ -97,7 +97,7 @@ function contractText(company: Company, order: ContractFacts | null, contract: R
     `Firma: ${s?.client.name ?? company.name}, IČO ${s?.client.ico ?? company.ico ?? 'neuvedené'}`]
   const at = s?.acceptedAt ?? order?.acceptedAt ?? company.contractAt
   const by = s?.signedBy ?? order?.signedBy ?? company.signedBy
-  if (at && by) lines.push(`Uzavretá online: ${moment(at)}, ${by}, konateľ`)
+  if (at && by) lines.push(company.termsVersion === OFFLINE_TERMS ? `Uzavretá písomne mimo aplikácie, podpísal(a) ${by}` : `Uzavretá online: ${moment(at)}, ${by}, konateľ`)
   if (s) lines.push(`Balík: ${s.plan.name}, ${csvMoney(s.plan.monthlyCents)} € mesačne bez DPH, do ${s.plan.docs} dokladov`,
     `Mzdy: ${csvMoney(s.catalogue.payrollCents)} € za človeka mesačne bez DPH`,
     `Závierka: ${csvMoney(s.catalogue.closingCents)} € bez DPH`, `Začiatok: ${s.startOn}`, `SHA-256 zmluva.json: ${contract.sha256}`)

@@ -3124,6 +3124,17 @@ select.field__input {
   gap: 12px;
 }
 
+.req__due {
+  color: var(--soft);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.req__due--late {
+  color: var(--red-ink);
+  font-weight: 600;
+}
+
 .req__actions {
   display: flex;
   flex-wrap: wrap;

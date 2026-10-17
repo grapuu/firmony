@@ -239,14 +239,32 @@ export interface SwitchPageProps {
   since: string | null
   until: string | null
   errors: { since?: string; until?: string }
+  /** What the former accountant handed over, as the client uploaded it. */
+  papers?: Paper[]
+  /** When the client told us that the letter went out. */
+  sentAt?: number | null
+  now?: number
+  flash?: string | null
+  error?: string | null
 }
 
-export const SwitchPage: FC<SwitchPageProps> = ({ company, values, since, until, errors }) => (
+export const SwitchPage: FC<SwitchPageProps> = ({ company, values, since, until, errors, papers = [], sentAt = null, now = 0, flash = null, error = null }) => (
   <>
     <header class="phead">
       <Heading first={s.title} second={s.serif} />
       <p class="phead__lead">{s.lead}</p>
     </header>
+    {flash ? (
+      <p class="flash" role="status">
+        <span class="tick" aria-hidden="true" />
+        {flash}
+      </p>
+    ) : null}
+    {error ? (
+      <p class="flash flash--error" role="alert">
+        {error}
+      </p>
+    ) : null}
     <div class="invoice invoice--side-first">
       <div class="invoice__paper">
         <LetterSheet company={company} values={values} since={since} until={until} startOn={company.startOn} />
@@ -297,6 +315,52 @@ export const SwitchPage: FC<SwitchPageProps> = ({ company, values, since, until,
               {app.home.write}
             </a>
           </p>
+        </section>
+        <section class="info" aria-labelledby="odoslane-t">
+          <h2 id="odoslane-t" class="info__title">
+            {sentAt ? s.sentTitleDone : s.sentTitle}
+          </h2>
+          {sentAt ? (
+            <p class="info__lead">{s.sentDone(whenName(sentAt, now))}</p>
+          ) : (
+            <>
+              <p class="info__lead">{s.sentLead}</p>
+              <form method="post" action="/app/prechod/odoslane">
+                <button class="btn btn--line" type="submit">
+                  {s.sentButton}
+                </button>
+              </form>
+            </>
+          )}
+        </section>
+        <section class="info" id="podklady" aria-labelledby="podklady-t">
+          <h2 id="podklady-t" class="info__title">
+            {s.papersTitle}
+          </h2>
+          <p class="info__lead">{s.papersLead}</p>
+          <form class="bankfile__form poa__form" method="post" action="/app/prechod/podklady" enctype="multipart/form-data">
+            <label class="btn btn--line" for="podklady-file">
+              {s.papersUpload}
+            </label>
+            <input id="podklady-file" class="add__file" type="file" name="file" multiple />
+            <button class="btn btn--blue" type="submit">
+              {s.papersSend}
+            </button>
+          </form>
+          {papers.length > 0 ? (
+            <ul class="plain">
+              {papers.map((paper) => (
+                <li class="plain__row plain__row--two">
+                  <a class="link plain__name" href={`/app/prechod/podklady/${paper.id}`}>
+                    {paper.fileName}
+                  </a>
+                  <span class="plain__sub">
+                    <span>{s.papersAdded(whenName(paper.createdAt, now), paper.createdByName)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
       </aside>
     </div>

@@ -26,7 +26,7 @@ import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
 import { filedReturns, taxPaid, type TaxPaid } from './vat-store'
-import { getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
+import { booksRefused, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
 import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
@@ -366,10 +366,12 @@ appRoutes.get('/', async (c) => {
                 EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'email') AS email,
                 EXISTS (SELECT 1 FROM company_files WHERE company_id = ?1 AND kind = 'poa') AS poa,
                 (SELECT COUNT(*) FROM members WHERE company_id = ?1) AS people,
-                (SELECT r.situation FROM companies co JOIN requests r ON r.id = co.request_id WHERE co.id = ?1) AS situation`,
+                (SELECT r.situation FROM companies co JOIN requests r ON r.id = co.request_id WHERE co.id = ?1) AS situation,
+                EXISTS (SELECT 1 FROM events WHERE company_id = ?1 AND action = 'switching.sent')
+                  OR EXISTS (SELECT 1 FROM company_files WHERE company_id = ?1 AND kind = 'takeover') AS switched`,
       )
       .bind(company)
-      .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null }>(),
+      .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null; switched: number }>(),
   ])
   const [suggested, filed] = await Promise.all([suggestions(db, company, missingAll), who.company.vatStatus === 'none' ? Promise.resolve([]) : filedReturns(db, company)])
   const paid = filed.length > 0 ? await taxPaid(db, company, filed) : new Map<string, TaxPaid>()
@@ -381,6 +383,7 @@ appRoutes.get('/', async (c) => {
     email: started?.email === 1,
     people: (started?.people ?? 1) > 1,
     switching: started?.situation === 'switch',
+    switched: started?.switched === 1,
   }
   const ready = bankReady(c.env)
   // A consent of Enable Banking or a token of Fio that ends; a statement from an account the company does not have
@@ -1212,8 +1215,18 @@ appRoutes.get('/plna-moc/:id', async (c) => {
   return answer ?? c.notFound()
 })
 
-/** The notice to the former accountant: what is typed in the side's form goes only into this page's address. */
-appRoutes.get('/prechod', async (c) => {
+/** When the company told us that the notice to its former accountant went out, or null. */
+async function switchingSentAt(db: D1Database, company: string): Promise<number | null> {
+  const row = await db.prepare("SELECT at FROM events WHERE company_id = ? AND action = 'switching.sent' ORDER BY id DESC LIMIT 1").bind(company).first<{ at: number }>()
+  return row?.at ?? null
+}
+
+/**
+ * The notice to the former accountant: what is typed in the side's form goes only into this page's address. Below
+ * it, what the former accountant hands over is uploaded here (the accountant takes it over on the client's page),
+ * and the client says when the letter went out, which ticks the step.
+ */
+async function switchPage(c: Ctx, notice: { flash?: string | null; error?: string | null } = {}, status?: ContentfulStatusCode) {
   const who = c.get('who')
   const q = (name: string, max: number) => (c.req.query(name) ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
   const values = { to: q('komu', 120), toAddress: q('adresa', 160), since: q('od', 20), until: q('do', 20) }
@@ -1222,13 +1235,76 @@ appRoutes.get('/prechod', async (c) => {
   const errors: { since?: string; until?: string } = {}
   if (since === null) errors.since = t.switching.dayHint
   if (until === null) errors.until = t.switching.dayHint
+  const [papers, sentAt] = await Promise.all([papersOf(c.env.DB, who.company.id, 'takeover'), switchingSentAt(c.env.DB, who.company.id)])
+  const ok = c.req.query('ok')
+  const flash = notice.flash ?? (ok === 'podklady' ? t.switching.papersFlash : ok === 'odoslane' ? t.switching.sentFlash : null)
   return shell(
     c,
     'company',
     t.switching.title,
-    <SwitchPage company={who.company} values={values} since={since ? dayName(since) : null} until={until ? dayName(until) : null} errors={errors} />,
-    since === null || until === null ? 422 : 200,
+    <SwitchPage
+      company={who.company}
+      values={values}
+      since={since ? dayName(since) : null}
+      until={until ? dayName(until) : null}
+      errors={errors}
+      papers={papers}
+      sentAt={sentAt}
+      now={now()}
+      flash={flash}
+      error={notice.error ?? null}
+    />,
+    status ?? (since === null || until === null ? 422 : 200),
   )
+}
+
+appRoutes.get('/prechod', (c) => switchPage(c))
+
+appRoutes.post('/prechod/odoslane', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  if (!(await switchingSentAt(db, who.company.id))) await db.batch([eventStatement(db, { company: who.company.id, user: who.user.id, action: 'switching.sent' })])
+  return c.redirect('/app/prechod?ok=odoslane', 303)
+})
+
+appRoutes.post('/prechod/podklady', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  if (!(await withinLimit(db, 'takeover', who.company.id, 30, 3600))) return switchPage(c, { error: t.messages.throttle }, 429)
+  const body = await c.req.parseBody({ all: true })
+  const raws = ([] as unknown[]).concat(body.file ?? [])
+  const files = raws.filter((raw): raw is File => typeof raw === 'object' && raw !== null && 'arrayBuffer' in raw && (raw as File).size > 0)
+  const answer = { none: [t.poa.none, 422], large: [t.poa.large, 422], type: [t.switching.papersRefused, 422], many: [t.switching.papersMany, 409], storage: [t.poa.noStorage, 503] } as const
+  if (files.length > ENDING.handoverAtOnce) return switchPage(c, { error: t.switching.papersAtOnce }, 422)
+  const refused = await booksRefused(db, who.company.id, 'takeover', files)
+  if (refused) return switchPage(c, { error: answer[refused][0] }, answer[refused][1])
+  const company = who.company
+  let rung = false
+  for (const file of files) {
+    const kept = await keepPaper(
+      db,
+      c.env.FILES,
+      { company: company.id, user: who.user.id },
+      'takeover',
+      { name: (file.name || 'podklady').slice(0, 120), bytes: new Uint8Array(await file.arrayBuffer()) },
+      (paper) => (rung ? [] : [ringStatement(db, 'takeover', paper.id, company.accountantEmail ?? BRAND.email, bell.teamTakeover(`${siteOrigin(c)}/ucto/klienti/${company.id}#prevzatie`))]),
+    )
+    if (!kept.ok) {
+      const [text, code] = answer[kept.reason]
+      return switchPage(c, { error: text }, code)
+    }
+    rung = true
+  }
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/app/prechod?ok=podklady#podklady', 303)
+})
+
+appRoutes.get('/prechod/podklady/:id', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const paper = ID.test(id) ? await getPaper(c.env.DB, who.company.id, id) : null
+  const answer = paper?.kind === 'takeover' ? await paperResponse(c.env.FILES, paper) : null
+  return answer ?? c.notFound()
 })
 
 // ---------------------------------------------------------------------------------------------------------------

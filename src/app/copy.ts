@@ -1,6 +1,6 @@
 // Every text of the client's app, in the words a founder uses and not an accountant's: a payment, a document,
 // "we need", never "párovanie", "MD/D" or "saldokonto". Typeset once, like the site's.
-import { APP, BRAND, OPERATOR } from '../config'
+import { APP, BRAND, OFFLINE_TERMS, OPERATOR } from '../config'
 import { formatEur, typeset, typesetAll } from '../format'
 import type { Exempt } from './match'
 
@@ -131,6 +131,8 @@ export const app = typesetAll({
       ].join('\n'),
   },
   home: {
+    welcomeTitle: 'Vitajte vo Firmony.',
+    welcomeSerif: 'Začnime štyrmi krokmi.',
     hello: (name: string) => typeset(`Dobrý deň, ${name}.`),
     missingTitle: (n: number) => typeset(n === 1 ? 'K jednej platbe chýba doklad.' : `K ${n} platbám chýbajú doklady.`),
     missingSerif: (n: number) => (n === 1 ? 'Stačí ho odfotiť.' : 'Stačí ich odfotiť.'),
@@ -775,14 +777,16 @@ export const app = typesetAll({
     },
   },
   contract: {
-    flash: 'Zmluva je uzavretá. Vitajte vo Firmony.',
+    flash: 'Zmluva je uzavretá.',
     title: 'Zmluva a plná moc',
     label: 'Zmluva',
     concluded: (when: string, who: string) => typeset(`Uzavretá online ${when}. Uzavrel(a) ${who}, konateľ.`),
     offline: 'Zmluvu sme uzavreli mimo aplikácie.',
+    paper: (who: string) => typeset(`Uzavretá písomne mimo aplikácie. Podpísal(a) ${who}.`),
     start: 'Začiatok',
     terms: 'Obchodné podmienky',
-    termsVersion: (version: string) => typeset(/^\d{4}-\d{2}-\d{2}$/.test(version) ? `znenie z ${dayName(version)}` : `znenie ${version}`),
+    termsVersion: (version: string) =>
+      typeset(version === OFFLINE_TERMS ? 'písomná zmluva' : /^\d{4}-\d{2}-\d{2}$/.test(version) ? `znenie z ${dayName(version)}` : `znenie ${version}`),
     open: 'Zmluva a podmienky',
     poa: 'Plná moc',
     poaOpen: 'Otvoriť',
@@ -1028,8 +1032,23 @@ export const app = typesetAll({
     steps: [
       'Konateľ list podpíše, perom alebo cez eID.',
       'Pošlite ho doterajšej účtovníčke e-mailom alebo doporučene. Kópiu si nechajte.',
-      `Podklady, ktoré Vám odovzdá, nahrajte sem medzi doklady. Export z účtovného programu nám môže poslať aj rovno na ${BRAND.email}.`,
+      'Podklady, ktoré Vám odovzdá (účtovné knihy, export z programu, zoznam neuhradených faktúr), nahrajte nižšie. Prevezmeme ich odtiaľ.',
     ],
+    sentTitle: 'List ste poslali?',
+    sentTitleDone: 'List je odoslaný',
+    sentLead: 'Dajte nám vedieť a tento krok si odškrtneme.',
+    sentButton: 'List sme poslali',
+    sentDone: (when: string) => typeset(`List ste poslali ${when}.`),
+    papersTitle: 'Podklady od doterajšej účtovníčky',
+    papersLead: 'PDF, export z účtovného programu (ZIP, XML, CSV, Excel) alebo fotky. Nahrajte všetko, čo Vám odovzdala; účtovníčka ich prevezme.',
+    papersUpload: 'Vybrať súbory',
+    papersSend: 'Nahrať',
+    papersAdded: (when: string, who: string | null) => typeset(`Nahrané ${when}${who ? `, ${who}` : ''}`),
+    papersFlash: 'Podklady sme dostali. Účtovníčka ich prevezme.',
+    sentFlash: 'Výborne. Krok prechodu je odškrtnutý.',
+    papersRefused: 'Tento súbor neprijmeme. Pošlite PDF, ZIP, XML, CSV, Excel alebo fotku.',
+    papersMany: 'Podkladov tu už máme toľko, koľko sa dá nahrať. Napíšte nám v Správach, ako prevezmeme ostatné.',
+    papersAtOnce: 'Naraz pošlite najviac 10 súborov.',
     dayHint: 'Dátum napíšte v tvare 31. 12. 2026.',
     letter: {
       from: 'Odosielateľ',
@@ -1052,7 +1071,7 @@ export const app = typesetAll({
         'podané daňové priznania, kontrolné a súhrnné výkazy, výkazy do poisťovní a účtovné závierky minulých rokov s potvrdeniami o podaní;',
         'zoznam podaní, ktoré sú rozpracované alebo ktorých termín sa blíži.',
       ],
-      electronic: `Podklady, ktoré máte v elektronickej podobe, prosíme poslať aj ako export z účtovného programu, na adresu ${BRAND.email}.`,
+      electronic: 'Podklady, ktoré máte v elektronickej podobe, prosíme odovzdať aj ako export z účtovného programu. Konateľ nám ich odovzdá.',
       revoke: 'Ku dňu skončenia zmluvy zároveň odvolávame plnomocenstvo, ktoré sme Vám udelili na zastupovanie pred finančnou správou, Sociálnou poisťovňou a zdravotnými poisťovňami.',
       thanks: 'Ďakujeme za doterajšiu spoluprácu.',
       sign: 'Za spoločnosť',

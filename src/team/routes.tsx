@@ -8,7 +8,7 @@ import { payrollReportRoutes } from '../payroll-reporting/routes'
 import { closureStatements, reportItems as payrollReportItems, runReopenBlocked } from '../payroll-reporting/store'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, ART, BRAND, ENDING, PLANS, TEAM } from '../config'
+import { APP, ART, BRAND, ENDING, OFFLINE_TERMS, PLANS, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
@@ -24,7 +24,7 @@ import { answerHeld, statementsOf } from '../app/statements'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
-import { retirePaperStatements, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
+import { booksRefused, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf, retirePaperStatements } from '../app/papers'
 import {
   LEVELS,
   checkDeclarationStatement,
@@ -119,7 +119,9 @@ import { sensitivePath } from '../security/policy'
 import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash } from '../contracts'
-import { orderOf } from '../order'
+import { startMonths } from '../content/terms'
+import { orderOf, type Order } from '../order'
+import { orderLinkMail } from '../order-mail'
 import { ContractReviewPage } from '../views/contract-review'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
@@ -157,7 +159,7 @@ import {
   type FilingPlan,
   type PeriodView,
 } from '../app/vat-store'
-import { currentWho, newLink, startSession } from '../app/session'
+import { currentWho, newLink, newToken, startSession } from '../app/session'
 import {
   checkStatement,
   clearExemptStatement,
@@ -511,7 +513,7 @@ async function clientPage(
 ) {
   const who = c.get('who')
   const db = c.env.DB
-  const [members, queue, toCheck, missing, messages, rules, accountants, papers, declared, risks, reports, handover] = await Promise.all([
+  const [members, queue, toCheck, missing, messages, rules, accountants, papers, declared, risks, reports, handover, takeover] = await Promise.all([
     membersOf(db, company.id),
     bookingQueue(db, who.user, true, company.id),
     paymentsToCheck(db, company.id),
@@ -524,6 +526,7 @@ async function clientPage(
     risksOf(db, company.id),
     reportsOf(db, company.id, { id: who.user.id, admin: isAdmin(who.user) }),
     papersOf(db, company.id, 'handover'),
+    papersOf(db, company.id, 'takeover'),
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
@@ -571,6 +574,7 @@ async function clientPage(
       risk={risks[0]?.level ?? null}
       openReports={reports.filter((r) => r.decision === null).length}
       handover={handover}
+      takeover={takeover}
       ending={endingOf(company, day)}
       earliestEnd={noticeEndsOn(day)}
       vat={<VatCard company={company} view={vat.view} needs7a={vat.needs7a} today={day} />}
@@ -623,8 +627,10 @@ teamRoutes.get('/klienti/novy', async (c) => {
     accountant: '',
     welcome: true,
     request: r?.id ?? '',
+    start: startMonths(dayOf(now()))[0] ?? '',
+    offline: false,
   }
-  return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={await accountantsList(c.env.DB)} errors={{}} />)
+  return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={await accountantsList(c.env.DB)} errors={{}} months={startMonths(dayOf(now()))} />)
 })
 
 teamRoutes.post('/klienti', async (c) => {
@@ -645,7 +651,10 @@ teamRoutes.post('/klienti', async (c) => {
     accountant: accountants.some((a) => a.id === text('uctovnicka', 64)) ? text('uctovnicka', 64) : '',
     welcome: body.uvitat === '1',
     request: ID.test(text('ziadost', 64)) ? text('ziadost', 64) : '',
+    start: text('start', 10),
+    offline: body.mimo === '1',
   }
+  const months = startMonths(dayOf(now()))
   const ico = values.ico === '' ? null : normalizeIco(values.ico)
   const errors: Partial<Record<keyof NewClientValues | 'form', string>> = {}
   if (values.ico !== '' && !ico) errors.ico = t.newClient.errors.ico
@@ -658,12 +667,16 @@ teamRoutes.post('/klienti', async (c) => {
       found = `${t.newClient.found} ${answer.found.name}`
     } else found = t.newClient.notFound
   }
-  if (body.akcia === 'register') return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={accountants} errors={errors} found={found} />)
+  if (body.akcia === 'register') return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={accountants} errors={errors} found={found} months={months} />)
   if (values.name.length < 2) errors.name = t.newClient.errors.name
   if (values.person.length < 2) errors.person = t.newClient.errors.person
   if (!EMAIL.test(values.email)) errors.email = t.newClient.errors.email
   if (ico && (await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL').bind(ico).first())) errors.ico = t.newClient.errors.exists
-  if (Object.keys(errors).length > 0) return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={accountants} errors={errors} found={found} />, 422)
+  if (!months.includes(values.start)) errors.start = t.newClient.errors.start
+  // A client is made by hand only with a contract signed on paper: the app then says so, and the first month counts
+  // for deadlines and the closing as it does for a contract concluded online.
+  if (!values.offline) errors.offline = t.newClient.errors.offline
+  if (Object.keys(errors).length > 0) return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={accountants} errors={errors} found={found} months={months} />, 422)
 
   const companyId = crypto.randomUUID()
   const existing = await userByEmail(db, values.email)
@@ -673,8 +686,11 @@ teamRoutes.post('/klienti', async (c) => {
   for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
   const statements: D1PreparedStatement[] = [
     db
-      .prepare('INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(companyId, ts, values.name, ico, values.address || null, values.vat ? 1 : 0, values.plan, inbox, values.accountant || null, values.request || null),
+      .prepare(
+        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, request_id, contract_at, terms_version, signed_by, start_on)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?)`,
+      )
+      .bind(companyId, ts, values.name, ico, values.address || null, values.vat ? 1 : 0, values.plan, inbox, values.accountant || null, values.request || null, ts, values.person, values.start),
     ...(existing ? [] : [db.prepare('INSERT INTO users (id, created_at, email, name) VALUES (?, ?, ?, ?)').bind(userId, ts, values.email, values.person)]),
     db.prepare("INSERT OR IGNORE INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'owner', ?, ?)").bind(companyId, userId, ts, who.user.id),
     eventStatement(db, { company: companyId, user: who.user.id, action: 'company.created', detail: { request: values.request || null } }),
@@ -942,6 +958,8 @@ teamRoutes.post('/klienti/:id/odovzdanie', async (c) => {
   if (files.length === 0) return clientPage(c, company, { handoverError: t.handover.errors.none }, 422)
   if (files.length > ENDING.handoverAtOnce) return clientPage(c, company, { handoverError: t.handover.errors.atOnce }, 422)
   const db = c.env.DB
+  const refused = await booksRefused(db, company.id, 'handover', files)
+  if (refused) return clientPage(c, company, { handoverError: t.handover.errors[refused] }, 422)
   const names: string[] = []
   for (const file of files) {
     const kept = await keepPaper(db, c.env.FILES, { company: company.id, user: who.user.id }, 'handover', {
@@ -962,6 +980,14 @@ teamRoutes.post('/klienti/:id/odovzdanie', async (c) => {
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}?ok=odovzdane#odovzdanie`, 303)
+})
+
+teamRoutes.get('/klienti/:id/prevzatie/:file', async (c) => {
+  const company = await companyParam(c)
+  const id = c.req.param('file')
+  const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
+  const answer = paper?.kind === 'takeover' ? await paperResponse(c.env.FILES, paper) : null
+  return answer ?? missingPage(c)
 })
 
 teamRoutes.get('/klienti/:id/odovzdanie/:file', async (c) => {
@@ -2629,9 +2655,40 @@ async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode =
   const row = await c.env.DB.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
   const order = row ? orderOf(row) : null
   const people = await c.env.DB.prepare("SELECT id, name FROM users WHERE team IN ('admin', 'accountant') ORDER BY name").all<{ id: string; name: string }>()
+  const sent = order
+    ? await c.env.DB.prepare("SELECT at FROM events WHERE action = 'contract.link.sent' AND subject = ? ORDER BY id DESC LIMIT 1").bind(order.id).first<{ at: number }>()
+    : null
   return shell(c, 'requests', 'Posúdenie pred podpisom', <ContractReviewPage requestId={id} order={order}
     offerHash={order ? await orderOfferHash(order) : ''} review={order ? await latestOrderReview(c.env.DB, order.id) : null}
-    people={people.results} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} error={error} />, status)
+    people={people.results} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} linkSentAt={sent?.at ?? null}
+    flash={c.req.query('ok') === 'odkaz' ? 'Odkaz na zmluvu sme poslali konateľovi.' : undefined} error={error} />, status)
+}
+
+/**
+ * The link to the contract goes to the director only once the order may be signed: a standard review that holds,
+ * and the release of the terms. A new link replaces the one before (its token is all an order has), and it lasts as
+ * long as the review does. The request counts as answered.
+ */
+async function sendOrderLink(c: Ctx, order: Order, requestId: string, user: string): Promise<boolean> {
+  const db = c.env.DB
+  const review = await latestOrderReview(db, order.id)
+  const ts = now()
+  if (!review || review.decision !== 'standard' || review.expires_at <= ts || order.status !== 'open') return false
+  if (!approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash())) return false
+  const token = newToken()
+  const tokenHash = await sha256Hex(token)
+  const days = Math.max(1, Math.floor((review.expires_at - ts) / 86400))
+  const mail = orderLinkMail(order.company, review.plan, `${siteOrigin(c)}/objednavka/${token}`, days)
+  // The email is keyed by its link, not by the second: two links sent in one second are two emails, and the one
+  // that works is always among them.
+  const results = await db.batch([
+    db.prepare("UPDATE orders SET token = ? WHERE id = ? AND status = 'open' AND expires_at > ?").bind(tokenHash, order.id, ts),
+    queueStatement(db, { key: `order-link:${order.id}:${tokenHash.slice(0, 16)}`, to: order.email, subject: mail.subject, body: mail.body }),
+    db.prepare("INSERT INTO events (at, company_id, user_id, action, subject) VALUES (?, NULL, ?, 'contract.link.sent', ?)").bind(ts, user, order.id),
+    db.prepare("UPDATE requests SET status = 'contacted' WHERE id = ? AND status IN ('new', 'contacted')").bind(requestId),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return (results[0]?.meta?.changes ?? 0) > 0
 }
 teamRoutes.get('/ziadosti/:id/posudenie', (c) => reviewPage(c))
 teamRoutes.post('/ziadosti/:id/posudenie', async (c) => {
@@ -2666,7 +2723,21 @@ teamRoutes.post('/ziadosti/:id/posudenie', async (c) => {
       WHERE id = ?1 AND status = 'open' AND expires_at > ?2`)
       .bind(order.id, ts, who.user.id, JSON.stringify({ decision, offerHash: hash, plan: plan.id, evidence, accountant: decision === 'standard' ? accountant : null })),
   ])
-  return c.redirect(`/ucto/ziadosti/${id}/posudenie`, 303)
+  // A standard scope goes to the director at once, when the terms are released; anything else the administrator
+  // answers in person (a scope of its own, or what is still missing), and the request stays open until then.
+  const sent = decision === 'standard' && (await sendOrderLink(c, order, id, who.user.id))
+  return c.redirect(`/ucto/ziadosti/${id}/posudenie${sent ? '?ok=odkaz' : ''}`, 303)
+})
+
+teamRoutes.post('/ziadosti/:id/odkaz', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const id = c.req.param('id')
+  if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
+  const row = await c.env.DB.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
+  const order = row ? orderOf(row) : null
+  if (!order || !(await sendOrderLink(c, order, id, who.user.id))) return reviewPage(c, 'Odkaz teraz poslať nemožno: zmluvu musí potvrdiť platné štandardné posúdenie a schválené znenie.', 409)
+  return c.redirect(`/ucto/ziadosti/${id}/posudenie?ok=odkaz`, 303)
 })
 
 teamRoutes.get('/tim', async (c) => {

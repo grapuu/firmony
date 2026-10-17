@@ -107,15 +107,59 @@ const Summary: FC<{ order: Order; months: string[] }> = ({ order, months }) => (
   </div>
 )
 
-export const OrderPage: FC<{ order: Order; token: string; months: string[]; values: OrderValues; errors: OrderErrors; gate: ContractGate }> = ({ order, token, months, values, errors, gate }) => {
+/**
+ * An order that cannot be signed yet shows where it stands and no form: we are still looking at it (or the terms
+ * wait for their release), it needs a scope of its own, something is missing, or its seven days have passed and a
+ * new link can be asked for with one click.
+ */
+const OrderWaiting: FC<{ order: Order; token: string; gate: ContractGate; stale: boolean }> = ({ order, token, gate, stale }) => {
+  const [title, lead] = stale
+    ? [o.staleTitle, o.staleLead]
+    : gate.reason === 'bespoke'
+      ? [o.bespokeTitle, o.bespokeLead]
+      : gate.reason === 'hold'
+        ? [o.holdTitle, o.holdLead]
+        : [o.waitTitle, o.waitLead]
+  return (
+    <Page>
+      <h1 class="h1">{title}</h1>
+      <p class="lead">{lead}</p>
+      <CompanyCard order={order} />
+      {stale ? (
+        <form class="page__more" method="post" action={`/objednavka/${token}/novy`}>
+          <button class="btn btn--blue" type="submit">
+            {o.staleButton}
+          </button>
+        </form>
+      ) : null}
+    </Page>
+  )
+}
+
+export const OrderAsked: FC = () => (
+  <Page>
+    <h1 class="h1">{o.askedTitle}</h1>
+    <p class="lead">{o.askedLead}</p>
+  </Page>
+)
+
+export const OrderPage: FC<{ order: Order; token: string; months: string[]; values: OrderValues; errors: OrderErrors; gate: ContractGate; stale?: boolean }> = ({
+  order,
+  token,
+  months,
+  values,
+  errors,
+  gate,
+  stale = false,
+}) => {
   const directors = order.directors ?? []
+  if (!gate.ready) return <OrderWaiting order={order} token={token} gate={gate} stale={stale} />
   return (
     <Page>
       <form class="order" method="post" action={`/objednavka/${token}`} novalidate>
         <h1 class="h1">{o.title}</h1>
         <p class="lead">{o.lead}</p>
         <input type="hidden" name="proposal" value={gate.offerHash} />
-        {!gate.ready ? <p class="notice" role="status">{gate.reason === 'bespoke' ? 'Pre Vašu firmu pripravíme individuálny rozsah služby. Tento štandardný balík zatiaľ nemožno podpísať.' : 'Ponuku ešte preverujeme. Pred podpisom Vám potvrdíme rozsah služby a zodpovednosť.'}</p> : null}
         <CompanyCard order={order} />
         <Summary order={order} months={months} />
         {errors.form ? (
@@ -129,7 +173,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
             <div class="choice__options">
               {PLANS.map((plan) => (
                 <label class="choice__option">
-                  <input type="radio" name="plan" id={`plan-${plan.id}`} value={plan.id} checked={values.plan === plan.id} disabled={gate.ready && gate.approval?.review.plan !== plan.id} />
+                  <input type="radio" name="plan" id={`plan-${plan.id}`} value={plan.id} checked={values.plan === plan.id} disabled={gate.approval?.review.plan !== plan.id} />
                   <span>
                     {plan.name} <span class="choice__hint">{formatEur(plan.price * 100)}</span>
                   </span>
@@ -204,7 +248,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
             </p>
             <Error id="o-agree-error" text={errors.agree} />
           </div>
-          <button class="btn btn--blue btn--large details__submit" type="submit" disabled={!gate.ready}>
+          <button class="btn btn--blue btn--large details__submit" type="submit">
             {o.submit}
           </button>
           <p class="small">{o.fine}</p>
@@ -258,7 +302,7 @@ export const OrderDone: FC<{ order: Order; contract: ResolvedContract | null }> 
 }
 
 /** A link that no longer works, or a company that is already a client. */
-export const OrderGone: FC<{ kind: 'expired' | 'client' }> = ({ kind }) => (
+export const OrderGone: FC<{ kind: 'expired' | 'client'; again?: string }> = ({ kind, again = '/zacat' }) => (
   <Page>
     <h1 class="h1">{kind === 'client' ? o.clientTitle : o.expiredTitle}</h1>
     <p class="lead">{kind === 'client' ? o.clientLead : o.expiredLead}</p>
@@ -268,8 +312,8 @@ export const OrderGone: FC<{ kind: 'expired' | 'client' }> = ({ kind }) => (
           {o.signIn}
         </a>
       ) : (
-        <a class="btn btn--line" href={`mailto:${BRAND.email}`}>
-          {BRAND.email}
+        <a class="btn btn--blue" href={again}>
+          {o.expiredAgain}
         </a>
       )}
     </p>

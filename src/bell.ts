@@ -48,9 +48,11 @@ export const bell = {
   // To the team.
   teamMessage: (link: string) => ring('nová správa od klienta', 'vo Firmony čaká nová správa od klienta:', link),
   teamPoa: (link: string) => ring('plná moc na overenie', 'klient nahral plnú moc. Overte ju a podajte ju na úrady:', link),
+  teamTakeover: (link: string) => ring('podklady od doterajšej účtovníčky', 'klient nahral podklady od doterajšej účtovníčky. Prevezmite ich:', link),
   teamDeclaration: (link: string) => ring('údaje klienta na overenie', 'klient vyplnil údaje pre zákon proti praniu špinavých peňazí. Overte ich:', link),
   teamReport: (link: string) => ring('interné oznámenie', 'vo Firmony čaká interné oznámenie neobvyklej obchodnej operácie na posúdenie:', link),
-  teamContract: (link: string) => ring('nová zmluva', 'klient uzavrel zmluvu online. Priraďte mu účtovníčku:', link),
+  teamContract: (link: string) => ring('nová zmluva', 'klient uzavrel zmluvu online. Jeho prvé kroky a účtovníčku nájdete tu:', link),
+  teamRenew: (link: string) => ring('nový odkaz na zmluvu', 'konateľ žiada nový odkaz na zmluvu, platnosť toho predchádzajúceho vypršala:', link),
   teamRequest: (link: string) => ring('nová žiadosť z webu', 'na webe prišla nová žiadosť:', link),
   teamNotice: (link: string) => ring('výpoveď zmluvy', 'klient vypovedal zmluvu alebo výpoveď vzal späť:', link),
   teamStatement: (link: string) => ring('výpis na kontrolu', 'výpis z banky klienta nenadväzuje na predchádzajúci, preto sme ho nezaúčtovali. Pozrite sa naň:', link),

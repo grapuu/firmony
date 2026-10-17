@@ -2,7 +2,7 @@
 // the work quickly: what waits is counted everywhere, a document is booked on one screen with its original
 // beside the form, and "Zaúčtovať a ďalší" goes straight to the next one.
 import type { Child, FC } from 'hono/jsx'
-import { APP, ART, BRAND, EKASA_VERIFY, INVESTORS, PLANS, type Art } from '../config'
+import { APP, ART, BRAND, EKASA_VERIFY, INVESTORS, OFFLINE_TERMS, PLANS, type Art } from '../config'
 import { formatEur, formatEurExact } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../app/copy'
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
@@ -309,6 +309,8 @@ export interface ClientPageProps {
   openReports: number
   /** The books handed over at the end, the contract's end once it has a last day, and the earliest end we can give. */
   handover: Paper[]
+  /** What the former accountant handed over, as the client uploaded it (/app/prechod). */
+  takeover?: Paper[]
   ending: Ending | null
   earliestEnd: string
   /** The form to end the contract from our side, as it was sent, with what is wrong with it. */
@@ -383,7 +385,11 @@ const ContractCard: FC<{
         {t.client.contract}
       </h2>
       <p class="info__lead">
-        {c.contractAt && c.signedBy ? t.client.contractOnline(dayName(dayOf(c.contractAt), today), c.signedBy, app.contract.termsVersion(c.termsVersion ?? '')) : t.client.contractOffline}
+        {c.termsVersion === OFFLINE_TERMS && c.contractAt && c.signedBy
+          ? t.client.contractPaper(dayName(dayOf(c.contractAt), today), c.signedBy)
+          : c.contractAt && c.signedBy
+            ? t.client.contractOnline(dayName(dayOf(c.contractAt), today), c.signedBy, app.contract.termsVersion(c.termsVersion ?? ''))
+            : t.client.contractOffline}
         {c.startOn ? ` ${t.client.start(dayName(c.startOn, today))}` : ''}
       </p>
       {ending && c.noticeAt ? (
@@ -767,6 +773,27 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
             end={p.end}
           />
           {p.ending ? <HandoverCard company={c} handover={p.handover} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
+          {p.takeover && p.takeover.length > 0 ? (
+            <section class="info" id="prevzatie" aria-labelledby="prevzatie-t">
+              <h2 id="prevzatie-t" class="info__title">
+                {t.client.takeover}
+              </h2>
+              <p class="info__lead">{t.client.takeoverLead}</p>
+              <ul class="plain">
+                {p.takeover.map((paper) => (
+                  <li class="plain__row plain__row--two">
+                    <a class="link plain__name" href={`/ucto/klienti/${c.id}/prevzatie/${paper.id}`}>
+                      {paper.fileName}
+                    </a>
+                    <span class="plain__sub">
+                      <span>{whenName(paper.createdAt, p.now)}</span>
+                      {paper.createdByName ? <span>{paper.createdByName}</span> : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {p.deadlines ?? null}
           {p.vat ?? null}
           {p.ledger ?? null}
@@ -1483,12 +1510,28 @@ export const RequestsPage: FC<{ requests: Request[]; investors: { total: number;
               <span class={`pill ${r.status === 'new' ? 'pill--amber' : r.status === 'client' ? 'pill--ok' : 'pill--grey'}`}>
                 {t.requests.status[r.status as keyof typeof t.requests.status] ?? r.status}
               </span>
+              {r.status === 'new' ? (
+                // The site promises an answer within one working day: the request says by when, and when it is late.
+                (() => {
+                  const due = responseDueAt(r.createdAt)
+                  return (
+                    <span class={`req__due${due < now ? ' req__due--late' : ''}`}>
+                      {due < now ? t.requests.late(whenName(due, now)) : t.requests.replyBy(whenName(due, now))}
+                    </span>
+                  )
+                })()
+              ) : null}
               {r.status === 'new' || r.status === 'contacted' ? (
                 <div class="req__actions">
-                  <a class="btn btn--line btn--small" href={`/ucto/ziadosti/${r.id}/posudenie`}>Posúdiť rozsah</a>
-                  <a class="btn btn--blue btn--small" href={`/ucto/klienti/novy?ziadost=${r.id}`}>
-                    {t.requests.make}
-                  </a>
+                  {r.hasOrder ? (
+                    <a class="btn btn--blue btn--small" href={`/ucto/ziadosti/${r.id}/posudenie`}>
+                      {t.requests.review}
+                    </a>
+                  ) : (
+                    <a class="btn btn--blue btn--small" href={`/ucto/klienti/novy?ziadost=${r.id}`}>
+                      {t.requests.make}
+                    </a>
+                  )}
                   {r.status === 'new' ? (
                     <form method="post" action={`/ucto/ziadosti/${r.id}`}>
                       <input type="hidden" name="stav" value="contacted" />
@@ -1532,14 +1575,19 @@ export interface NewClientValues {
   accountant: string
   welcome: boolean
   request: string
+  /** The first month of the service, YYYY-MM-01. */
+  start: string
+  /** Whether the administrator confirms that a contract was signed outside the app. */
+  offline: boolean
 }
 
-export const NewClientPage: FC<{ values: NewClientValues; accountants: { id: string; name: string }[]; errors: Partial<Record<keyof NewClientValues | 'form', string>>; found?: string | null }> = ({
-  values,
-  accountants,
-  errors,
-  found,
-}) => (
+export const NewClientPage: FC<{
+  values: NewClientValues
+  accountants: { id: string; name: string }[]
+  errors: Partial<Record<keyof NewClientValues | 'form', string>>
+  found?: string | null
+  months: string[]
+}> = ({ values, accountants, errors, found, months }) => (
   <>
     <a class="back" href={values.request ? '/ucto/ziadosti' : '/ucto'}>
       {values.request ? t.requests.title : t.nav.clients}
@@ -1605,6 +1653,19 @@ export const NewClientPage: FC<{ values: NewClientValues; accountants: { id: str
             </select>
           </div>
           <div class="fgrid__cell">
+            <label class="field__label" for="n-start">
+              {t.newClient.start}
+            </label>
+            <select id="n-start" class="field__input" name="start" aria-invalid={errors.start ? 'true' : undefined}>
+              {months.map((m) => (
+                <option value={m} selected={m === values.start}>
+                  {monthName(m)}
+                </option>
+              ))}
+            </select>
+            {errors.start ? <p class="field__error">{errors.start}</p> : null}
+          </div>
+          <div class="fgrid__cell">
             <label class="field__label" for="n-accountant">
               {t.newClient.accountant}
             </label>
@@ -1626,6 +1687,11 @@ export const NewClientPage: FC<{ values: NewClientValues; accountants: { id: str
           <input type="checkbox" name="uvitat" value="1" checked={values.welcome} />
           <span>{t.newClient.welcome}</span>
         </label>
+        <label class="tickbox">
+          <input type="checkbox" name="mimo" value="1" checked={values.offline} aria-invalid={errors.offline ? 'true' : undefined} />
+          <span>{t.newClient.offline}</span>
+        </label>
+        {errors.offline ? <p class="field__error">{errors.offline}</p> : null}
         <button class="btn btn--blue btn--large stack__submit" type="submit" name="akcia" value="zalozit">
           {t.newClient.create}
         </button>

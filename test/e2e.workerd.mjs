@@ -164,7 +164,12 @@ res = await post('/zacat', { ...good, email: 'nie-je-email' })
 page = await res.text()
 check('a wrong email is said at the field', res.status === 422 && page.includes('Skontrolujte, prosím, e-mail.') && page.includes('value="Jana Nová"'))
 res = await post('/zacat', { ...good, company: 'Spam s. r. o. www.spam.example', seen: 'Spam' })
-check('a request for an s. r. o. the register knows lands on thanks with the contract on its way', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmluva=1')
+check('a request for an s. r. o. the register knows lands on thanks that say what comes next', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmluva=1&zmena=1')
+page = (await (await get('/zacat/hotovo?zmluva=1&zmena=1')).text()).replace(/\u00a0/g, ' ')
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/thanks.html`, page)
+check('the thanks promise a review and then the link, the confirmation sent, and the notice period for a switch', page.includes('posúdime') && page.includes('konateľovi pošleme odkaz na zmluvu') && page.includes('Potvrdenie sme Vám poslali') && page.includes('výpovedná lehota'))
+page = (await (await get('/zacat/hotovo?potvrdenie=0')).text()).replace(/\u00a0/g, ' ')
+check('without a confirmation sent, the thanks do not claim one, nor speak of a former accountant', !page.includes('Potvrdenie sme Vám poslali') && !page.includes('výpovedná lehota'))
 let row = await db.prepare('SELECT * FROM requests ORDER BY created_at DESC LIMIT 1').first()
 check(
   "it is kept with the register's name, not the typed one",
@@ -191,6 +196,7 @@ check(
   Boolean(client) && client.replyTo === 'ahoj@firmony.ai' && client.text.startsWith('Dobrý deň,') && client.text.includes('Firma: europio s. r. o.'),
 )
 check('the confirmation repeats nothing a stranger typed', Boolean(client) && !client.text.includes('Výpovedná') && !client.text.includes('spam') && !client.text.includes('Jana'))
+check('it says what comes next and carries no link to a contract before we have looked at the company', Boolean(client) && client.text.includes('pošleme odkaz na zmluvu') && !client.text.includes('/objednavka/'))
 check('both messages are marked sent', (await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE sent_at IS NOT NULL').first())?.n === 2)
 
 res = await post('/zacat', { ...good, web: 'http://bot.example' })
@@ -210,6 +216,12 @@ await settle()
 mail = await sent()
 const third = mail.filter((m) => m.to === 'jana@example.sk')
 check('a third request from one address sends no third confirmation', third.length === 2, String(third.length))
+// Somebody who is not the director sends the request: the link to the contract will go to the director.
+res = await post('/zacat', { ...good, name: 'Asistentka Firmy', email: 'asistentka@example.sk', directorEmail: 'konatel@example.sk' }, { ip: '198.51.100.40' })
+const assistantOrder = await db.prepare("SELECT o.email, r.email AS asked FROM orders o JOIN requests r ON r.id = o.request_id WHERE r.email = 'asistentka@example.sk'").first()
+check("the order is for the director's address, the request keeps who asked", res.status === 303 && assistantOrder?.email === 'konatel@example.sk' && assistantOrder?.asked === 'asistentka@example.sk')
+res = await post('/zacat', { ...good, name: 'Asistentka Firmy', email: 'asistentka2@example.sk', directorEmail: 'nie-je-email' }, { ip: '198.51.100.40' })
+check("a director's address that is no address is said at its field", res.status === 422 && (await res.text()).includes('Skontrolujte, prosím, e-mail konateľa.'))
 
 // The limits
 for (let i = 0; i < 6; i++) await post('/zacat', { ...good, email: `n${i}@example.sk` }, { ip: '198.51.100.9' })
@@ -700,6 +712,19 @@ const as = (cookie) => ({
       headers: { 'content-type': encoded.headers.get('content-type'), 'content-length': String(body.length), 'cf-connecting-ip': '203.0.113.30', origin: site, cookie },
     })
   },
+  /** Several files in one form, as a browser sends a picker with `multiple`. */
+  async uploads(path, files, fieldName = 'file') {
+    const form = new FormData()
+    for (const file of files) form.append(fieldName, new Blob([file.bytes], { type: file.type ?? 'application/octet-stream' }), file.name)
+    const encoded = new Request('https://x/', { method: 'POST', body: form })
+    const body = new Uint8Array(await encoded.arrayBuffer())
+    return mf.dispatchFetch(`${site}${path}`, {
+      method: 'POST',
+      body,
+      redirect: 'manual',
+      headers: { 'content-type': encoded.headers.get('content-type'), 'content-length': String(body.length), 'cf-connecting-ip': '203.0.113.30', origin: site, cookie },
+    })
+  },
   post(path, fields) {
     const body = new URLSearchParams(fields).toString()
     return mf.dispatchFetch(`${site}${path}`, {
@@ -998,12 +1023,14 @@ check("and who wants the investors' tax return, with the brokers and the way", p
 res = await admin.get('/ucto/klienti/novy?ziadost=req-x')
 page = await res.text()
 check('the form starts from the request', page.includes('value="Nová firma s. r. o."') && page.includes('value="peter@nova-firma.test"') && page.includes('value="Peter Nový"'))
+const firstMonth = page.match(/<option value="(\d{4}-\d{2}-01)"/)?.[1] ?? ''
+check('it asks for the first month of the service, the launch at the earliest', firstMonth >= '2027-01-01', firstMonth)
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/new-client.html`, page)
 res = await acc.post('/ucto/klienti', { name: 'Iná s. r. o.', person: 'Ina', email: 'ina@ina.test', plan: 'start' })
 check('an accountant cannot make a client', res.status === 404 && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE name = 'Iná s. r. o.'").first())?.n === 0)
 res = await admin.post('/ucto/klienti', { ico: '57442452', name: 'Duplicitná', person: 'X Y', email: 'x@y.test', plan: 'start' })
 check('a company that is already ours is not made twice', res.status === 422 && /už.u.nás je/.test(await res.text()))
-const before3 = (await sent()).length
-res = await admin.post('/ucto/klienti', {
+const manualClient = {
   ico: '',
   name: 'Nová firma s. r. o.',
   address: '',
@@ -1013,8 +1040,16 @@ res = await admin.post('/ucto/klienti', {
   uctovnicka: lucia?.id ?? '',
   uvitat: '1',
   ziadost: 'req-x',
+  start: firstMonth,
   akcia: 'zalozit',
-})
+}
+res = await admin.post('/ucto/klienti', manualClient)
+check(
+  'a client is not made by hand without a contract signed on paper',
+  res.status === 422 && (await res.text()).includes('Bez podpísanej zmluvy') && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE name = 'Nová firma s. r. o.'").first())?.n === 0,
+)
+const before3 = (await sent()).length
+res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
 await settle()
 const made = await db
   .prepare(
@@ -1024,6 +1059,11 @@ const made = await db
 check(
   'the client, the person and the membership are made at once',
   res.status === 303 && made?.accountant_id === lucia?.id && made.plan === 'rast' && made.role === 'owner' && /^[a-z2-9]{8}$/.test(made.inbox),
+)
+const madeContract = await db.prepare('SELECT terms_version, start_on, signed_by FROM companies WHERE id = ?').bind(made?.id ?? '').first()
+check(
+  'with its paper contract, who signed it and its first month on it',
+  madeContract?.start_on === firstMonth && madeContract?.terms_version === 'offline' && madeContract?.signed_by === 'Peter Nový',
 )
 check('the request is marked as a client', (await db.prepare("SELECT status FROM requests WHERE id = 'req-x'").first())?.status === 'client')
 const welcome = (await sent()).slice(before3).find((m) => m.to === 'peter@nova-firma.test')
@@ -1639,6 +1679,44 @@ check(
 )
 res = await anna.get(`/app/prechod?od=${encodeURIComponent('32. 1. 2025')}`)
 check('a day that does not exist is said so', res.status === 422 && (await res.text()).includes(`v${NB}tvare`))
+
+// The letter goes out, and what the former accountant hands over comes in here, all of an upload or none of it
+res = await anna.post('/app/prechod/odoslane', {})
+await anna.post('/app/prechod/odoslane', {})
+check(
+  'the client says the letter went out, once',
+  res.status === 303 && res.headers.get('location') === '/app/prechod?ok=odoslane' &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'switching.sent' AND company_id = 'co-a'").first())?.n === 1,
+)
+const takeoverCsv = { name: 'saldokonto 2026.csv', type: 'text/csv', bytes: new TextEncoder().encode('Doklad;Suma\nFA-1;120,00\n') }
+const takeoverPdf = { name: 'súvaha.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n') }
+const notBooks = { name: 'program.exe', type: 'application/octet-stream', bytes: new Uint8Array([0x4d, 0x5a, 0, 0, 0x90, 0, 3, 0]) }
+res = await anna.uploads('/app/prechod/podklady', [takeoverCsv, notBooks])
+check(
+  'one file that cannot be taken keeps the whole upload back',
+  res.status === 422 && (await db.prepare("SELECT COUNT(*) AS n FROM company_files WHERE company_id = 'co-a' AND kind = 'takeover'").first())?.n === 0,
+)
+const beforeTakeover = (await sent()).length
+res = await anna.uploads('/app/prechod/podklady', [takeoverCsv, takeoverPdf])
+await settle()
+const takeoverRows = (await db.prepare("SELECT id, file_name FROM company_files WHERE company_id = 'co-a' AND kind = 'takeover' ORDER BY file_name").all()).results
+const takeoverBells = (await sent()).slice(beforeTakeover).filter((m) => m.subject === 'Firmony: podklady od doterajšej účtovníčky')
+check(
+  'the books handed over come in together, and the accountant is rung once, with nothing of them in the email',
+  res.status === 303 && res.headers.get('location') === '/app/prechod?ok=podklady#podklady' && takeoverRows.length === 2 &&
+    takeoverBells.length === 1 && takeoverBells[0].to === 'lucia@firmony.test' && takeoverBells[0].text.includes('/ucto/klienti/co-a#prevzatie') && !takeoverBells[0].text.includes('saldokonto'),
+  JSON.stringify(takeoverRows),
+)
+res = await anna.get('/app/prechod')
+page = await res.text()
+check('the client sees what it sent', takeoverRows.every((r) => page.includes(`/app/prechod/podklady/${r.id}`)))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/switch.html`, page)
+res = await anna.get(`/app/prechod/podklady/${takeoverRows[0]?.id}`)
+check('and can download it again', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment'))
+res = await acc.get(`/ucto/klienti/co-a/prevzatie/${takeoverRows[0]?.id}`)
+check('the accountant takes it over on the client page', res.status === 200 && (await res.text()).includes('FA-1;120,00'))
+res = await acc.get('/ucto/klienti/co-a')
+check('where it stands under its own heading', (await res.text()).includes('id="prevzatie"'))
 
 // Reminders: on Monday at nine, and on the 5th before the deadline; never to somebody who turned them off
 /** The moment in Bratislava of a day at 9:05, in milliseconds. */
@@ -3936,27 +4014,58 @@ await checkContractTransactions(db)
 
 const zeleny = { ico: '55012345', mode: 'company', plan: 'rast', situation: 'switch', name: 'Tomáš Dvorský', email: 'tomas@zelenydvor.test', phone: '', note: '' }
 res = await post('/zacat', zeleny, { ip: '198.51.100.20' })
-check('a request for an s. r. o. leads to the contract', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmluva=1')
-res = await get('/zacat/hotovo?zmluva=1')
-check('the thanks says the link is in the mailbox', (await res.text()).includes('Pozrite sa do e-mailu'))
+check('a request for an s. r. o. leads to a review before any contract', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmluva=1&zmena=1')
 await settle()
-const orderMail = (await sent()).find((m) => m.to === 'tomas@zelenydvor.test')
-const orderLink = orderMail?.text.match(/https:\/\/firmony\.ai(\/objednavka\/[A-Za-z0-9_-]{43})/)?.[1] ?? ''
-check(
-  "the email carries the link to the contract and the register's name",
-  Boolean(orderLink) && orderMail.subject === 'Firmony: zmluva pre Zelený dvor s. r. o.' && orderMail.text.includes('Firma: Zelený dvor s. r. o.'),
-  orderMail?.text,
-)
+const linkMails = async () => (await sent()).filter((m) => m.to === 'tomas@zelenydvor.test' && /\/objednavka\/[A-Za-z0-9_-]{43}/.test(m.text))
+check('nobody gets a link to a contract before we have looked at the company', (await linkMails()).length === 0)
 const orderRow = await db.prepare("SELECT * FROM orders WHERE ico = '55012345'").first()
 check(
-  'the order keeps a hash of the link and the directors in office',
+  'the order keeps a hash of a link and the directors in office',
   Boolean(orderRow) &&
-    !orderLink.includes(orderRow.token) &&
+    /^[0-9a-f]{64}$/.test(orderRow.token) &&
     JSON.parse(orderRow.directors)
       .map((d) => d.name)
       .join('|') === 'Mgr. Lucia Zelená|Tomáš Dvorský',
   orderRow?.directors,
 )
+const reviewPath = `/ucto/ziadosti/${orderRow.request_id}/posudenie`
+res = await admin.get('/ucto/ziadosti')
+page = (await res.text()).replace(/\u00a0/g, ' ')
+check('the request leads the administrator to the review, and says by when to answer', page.includes(`href="${reviewPath}"`) && page.includes('Posúdiť a poslať zmluvu') && /Odpovedať do|Odpoveď mešká/.test(page))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/requests.html`, page)
+res = await acc.get(reviewPath)
+check('an accountant cannot approve a contract intake', res.status === 404)
+res = await anna.get(reviewPath)
+check('a client cannot approve a contract intake', res.status === 404)
+res = await admin.get(reviewPath)
+const reviewHtml = await res.text()
+check('an administrator sees scope, capacity, authority and insurance checks', res.status === 200 && ['category', 'scope', 'cover', 'authority'].every((k) => reviewHtml.includes(`name="${k}"`)))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-review.html`, reviewHtml)
+const proposal = reviewHtml.match(/name="proposal" value="([a-f0-9]{64})"/)?.[1]
+const reviewFields = { proposal, decision: 'standard', plan: 'rast', evidence: 'TEST-ONLY qualification report', accountant: lucia.id, category: '1', scope: '1', cover: '1', authority: '1' }
+res = await admin.post(reviewPath, { ...reviewFields, category: '0' })
+check('standard approval without all controls is refused', res.status === 422 && !(await db.prepare('SELECT id FROM order_reviews WHERE order_id = ?').bind(orderRow.id).first()))
+res = await admin.post(reviewPath, { ...reviewFields, accountant: 'u-a' })
+check('a client cannot be named responsible accountant', res.status === 422)
+res = await admin.post(reviewPath, { ...reviewFields, proposal: 'b'.repeat(64) })
+check('an expert cannot approve stale company facts or tariffs', res.status === 409)
+res = await admin.post(reviewPath, { ...reviewFields, decision: 'bespoke' })
+await settle()
+check('a bespoke prospect has a recorded decision, and no link to a standard contract', res.status === 303 && (await linkMails()).length === 0)
+res = await admin.post(reviewPath, reviewFields)
+await settle()
+check('an approved standard scope sends the director the link at once', res.status === 303 && res.headers.get('location') === `${reviewPath}?ok=odkaz` && (await linkMails()).length === 1)
+const latestLink = async () => (await linkMails()).pop()?.text.match(/https:\/\/firmony\.ai(\/objednavka\/[A-Za-z0-9_-]{43})/)?.[1] ?? ''
+let orderLink = await latestLink()
+const orderMail = (await linkMails()).pop()
+check(
+  "the email carries the link to the contract, the register's name and the reviewed plan",
+  Boolean(orderLink) && orderMail.subject === 'Firmony: zmluva pre Zelený dvor s. r. o.' && orderMail.text.includes('Firma: Zelený dvor s. r. o.') && orderMail.text.includes('Balík: Rast') && orderMail.text.includes('Odkaz platí 7 dní'),
+  orderMail?.text,
+)
+check('the request counts as answered', (await db.prepare('SELECT status FROM requests WHERE id = ?').bind(orderRow.request_id).first())?.status === 'contacted')
+res = await admin.get(reviewPath)
+check('the review says when the link went out and offers a new one', (await res.text()).includes('Poslať nový odkaz'))
 res = await get(orderLink)
 page = await res.text()
 check(
@@ -3972,38 +4081,42 @@ check(
 check('the order page is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 const months = [...page.matchAll(/name="start" id="start-\d" value="(\d{4}-\d{2}-01)"/g)].map((m) => m[1])
 check('six months are offered, the launch the first of them at the earliest', months.length === 6 && months[0] >= '2027-01-01', months.join(' '))
-const proposal = page.match(/name="proposal" value="([a-f0-9]{64})"/)?.[1]
-check('an unreviewed order cannot be signed', /type="submit" disabled/.test(page) && Boolean(proposal))
+check('the page carries the reviewed proposal', page.includes(`name="proposal" value="${proposal}"`))
 const validContract = { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1', proposal }
-res = await post(orderLink, validContract, { ip: '198.51.100.21' })
-check('direct posting cannot bypass the missing expert review', res.status === 409 && (await db.prepare("SELECT status FROM orders WHERE id = ?").bind(orderRow.id).first())?.status === 'open')
-const reviewPath = `/ucto/ziadosti/${orderRow.request_id}/posudenie`
-res = await acc.get(reviewPath)
-check('an accountant cannot approve a contract intake', res.status === 404)
-res = await anna.get(reviewPath)
-check('a client cannot approve a contract intake', res.status === 404)
-res = await admin.get(reviewPath)
-const reviewHtml = await res.text()
-check('an administrator sees scope, capacity, authority and insurance checks', res.status === 200 && ['category', 'scope', 'cover', 'authority'].every((k) => reviewHtml.includes(`name="${k}"`)))
-if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-review.html`, reviewHtml)
-if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-blocked.html`, page)
-const reviewFields = { proposal, decision: 'standard', plan: 'rast', evidence: 'TEST-ONLY qualification report', accountant: lucia.id, category: '1', scope: '1', cover: '1', authority: '1' }
-res = await admin.post(reviewPath, { ...reviewFields, category: '0' })
-check('standard approval without all controls is refused', res.status === 422 && !(await db.prepare('SELECT id FROM order_reviews WHERE order_id = ?').bind(orderRow.id).first()))
-res = await admin.post(reviewPath, { ...reviewFields, accountant: 'u-a' })
-check('a client cannot be named responsible accountant', res.status === 422)
-res = await admin.post(reviewPath, { ...reviewFields, proposal: 'b'.repeat(64) })
-check('an expert cannot approve stale company facts or tariffs', res.status === 409)
-res = await admin.post(reviewPath, { ...reviewFields, decision: 'bespoke' })
-check('a bespoke prospect has a recorded decision, without a standard contract', res.status === 303)
-res = await post(orderLink, validContract, { ip: '198.51.100.21' })
-check('an individual service cannot be signed as a standard package', res.status === 409)
-res = await admin.post(reviewPath, reviewFields)
-check('an admin can approve the documented standard scope', res.status === 303)
 res = await admin.post(reviewPath, { ...reviewFields, decision: 'hold' })
+res = await get(orderLink)
+page = await res.text()
+check('the newest decision closes the form and says where it stands', res.status === 200 && page.includes('Potrebujeme ešte pár údajov') && !page.includes('name="agree"'))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-blocked.html`, page)
 res = await post(orderLink, validContract, { ip: '198.51.100.21' })
-check('the newest decision revokes an earlier approval', res.status === 409)
+check('and posting it directly signs nothing', res.status === 409 && (await db.prepare("SELECT status FROM orders WHERE id = ?").bind(orderRow.id).first())?.status === 'open')
 res = await admin.post(reviewPath, reviewFields)
+await settle()
+const previousLink = orderLink
+orderLink = await latestLink()
+check('a new approval sends a new link, and the one before opens nothing', orderLink !== previousLink && (await get(previousLink)).status === 404)
+// Seven days pass: the director asks for a new link with one click, and we are rung.
+await db
+  .prepare("INSERT INTO order_reviews (order_id, reviewed_at, reviewed_by, decision, offer_hash, plan, evidence, accountant_id, expires_at) SELECT order_id, reviewed_at, reviewed_by, decision, offer_hash, plan, evidence, accountant_id, ? FROM order_reviews WHERE order_id = ? ORDER BY id DESC LIMIT 1")
+  .bind(nowS - 60, orderRow.id)
+  .run()
+res = await get(orderLink)
+page = await res.text()
+check('a link whose review ran out says so and offers a new one', res.status === 200 && page.includes('Odkaz na podpis vypršal') && page.includes(`action="${orderLink}/novy"`))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-stale.html`, page)
+const beforeRenew = (await sent()).length
+res = await post(`${orderLink}/novy`, {}, { ip: '198.51.100.21' })
+await settle()
+check(
+  'asking for it opens the request again and rings us, with nothing of the company in the email',
+  res.status === 200 &&
+    (await res.text()).includes('Dali sme vedieť') &&
+    (await db.prepare('SELECT status FROM requests WHERE id = ?').bind(orderRow.request_id).first())?.status === 'new' &&
+    (await sent()).slice(beforeRenew).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: nový odkaz na zmluvu' && !m.text.includes('Zelený')),
+)
+res = await admin.post(reviewPath, reviewFields)
+await settle()
+orderLink = await latestLink()
 const noRelease = await mf.getWorker('firmony-unreleased')
 const unsignedBody = new URLSearchParams(validContract).toString()
 res = await noRelease.fetch(`${site}${orderLink}`, { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(unsignedBody)) }, body: unsignedBody })
@@ -4094,6 +4207,7 @@ check(
 res = await get('/app?ok=zmluva', { headers: { cookie: contractCookie } })
 page = await res.text()
 check('the new client lands in the app, welcomed', res.status === 200 && page.includes('Zmluva je uzavretá') && page.includes('Zelený dvor'))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/welcome.html`, page)
 check(
   'with who stands behind it first, the power of attorney, and the notice for the former accountant, which the request said',
   page.includes('Začíname') && page.indexOf('href="/app/vyhlasenie"') > 0 && page.indexOf('href="/app/vyhlasenie"') < page.indexOf('href="/app/plna-moc"') && page.includes('href="/app/prechod"'),
@@ -4156,14 +4270,18 @@ check(
     (await db.prepare("SELECT plan FROM orders WHERE ico = '55012345'").first())?.plan === 'rast',
 )
 res = await post('/zacat', { ...zeleny, email: 'iny@zelenydvor.test' }, { ip: '198.51.100.22' })
-check('a company that is already a client gets no second contract by email', res.status === 303 && res.headers.get('location') === '/zacat/hotovo')
+check('a company that is already a client gets no second contract by email', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmena=1')
 res = await get('/objednavka/' + 'x'.repeat(43))
 check('a link nobody was sent is not found', res.status === 404)
 // A link that ran out
-await db.prepare("UPDATE orders SET expires_at = 1 WHERE ico = '57442452'").run()
-const europioOrderToken = (await sent()).find((m) => m.to === 'jana@example.sk')?.text.match(/\/objednavka\/([A-Za-z0-9_-]{43})/)?.[1] ?? ''
+const europioOrderToken = 'e'.repeat(43)
+await db
+  .prepare("UPDATE orders SET token = ?, expires_at = 1 WHERE id = (SELECT id FROM orders WHERE ico = '57442452' ORDER BY created_at DESC, rowid DESC LIMIT 1)")
+  .bind(createHash('sha256').update(europioOrderToken).digest('hex'))
+  .run()
 res = await get(`/objednavka/${europioOrderToken}`)
-check('a link that ran out says so', res.status === 410 && (await res.text()).includes('Tento odkaz už neplatí'))
+page = await res.text()
+check('a link that ran out says so, and leads to a new request', res.status === 410 && page.includes('Tento odkaz už neplatí') && page.includes('href="/zacat?ico=57442452'))
 res = await get('/podmienky')
 page = await res.text()
 check(

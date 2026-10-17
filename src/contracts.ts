@@ -1,4 +1,4 @@
-import { CLOSING_PRICE, OPERATOR, PAYROLL_PRICE, PLANS, TERMS_VERSION, type PlanId } from './config'
+import { CLOSING_PRICE, OFFLINE_TERMS, OPERATOR, PAYROLL_PRICE, PLANS, TERMS_VERSION, type PlanId } from './config'
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, termsText, type TermsSection } from './content/terms'
 import archive20261013 from './content/terms-archive/2026-10-13.json'
 import { now, sha256Hex } from './db'
@@ -208,6 +208,15 @@ export async function resolveContract(db: D1Database, companyId: string, termsVe
       }
     }
   }
+  if (termsVersion === OFFLINE_TERMS)
+    return {
+      status: 'missing',
+      terms: null,
+      snapshot: null,
+      data: null,
+      sha256: null,
+      notice: 'Zmluvu sme s Vami uzavreli písomne mimo aplikácie. Jej podpísané znenie máte u seba; ak ho potrebujete, napíšte nám a pošleme kópiu.',
+    }
   if (termsVersion === archive20261013.version)
     return {
       status: 'archive',

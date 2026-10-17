@@ -149,20 +149,29 @@ export async function checkRestore({ db, files, annaCookie, site, today, nowS })
         (await targetFiles.list()).objects.length === 0,
     )
     await target.batch(tables.map((x) => target.prepare(x.sql)))
-    const inserts = []
+    // Inserts go in batches of at most fifty rows and about 200 kB of values, tables in the order they were created, so
+    // a parent row comes before the rows that name it. One batch of every row, and later batches of a hundred rows
+    // that carried whole contracts and filed XML, closed the local runtime's connection now and then; a real restore
+    // into D1 has the same kind of limits (a call's size, time and statements). Business triggers come after the data.
+    const batches = [[]]
+    let size = 0
     for (const [name, values] of rows)
       for (const row of values) {
         const cols = Object.keys(row)
-        inserts.push(
+        const bytes = cols.reduce((sum, key) => sum + (row[key] == null ? 0 : typeof row[key] === 'string' ? Buffer.byteLength(row[key]) : 16), 0)
+        const last = batches[batches.length - 1]
+        if (last.length > 0 && (last.length >= 50 || size + bytes > 200_000)) {
+          batches.push([])
+          size = 0
+        }
+        size += bytes
+        batches[batches.length - 1].push(
           target
             .prepare(`INSERT INTO ${quote(name)} (${cols.map(quote).join(',')}) VALUES (${cols.map(() => '?').join(',')})`)
             .bind(...cols.map((key) => row[key])),
         )
       }
-    // Inserts go in chunks of a hundred, tables in the order they were created, so a parent row comes before the rows
-    // that name it: one batch of every row ran into the local runtime's limits and closed its connection, and a real
-    // restore into D1 has the same limits (a call's time and statements). Business triggers come after the data.
-    for (let i = 0; i < inserts.length; i += 100) await target.batch([target.prepare('PRAGMA defer_foreign_keys = ON'), ...inserts.slice(i, i + 100)])
+    for (const batch of batches) if (batch.length > 0) await target.batch([target.prepare('PRAGMA defer_foreign_keys = ON'), ...batch])
     await target.batch(schema.filter((x) => x.type !== 'table').map((x) => target.prepare(x.sql)))
     let equal = true
     for (const [name, values] of rows)

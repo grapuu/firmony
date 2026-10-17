@@ -233,6 +233,8 @@ export interface FirstStepsState {
   people: boolean
   /** The company changes accountants (what its request said): the notice to the former one is offered. */
   switching: boolean
+  /** The notice went out, or the former accountant's papers are here: the step is done. */
+  switched?: boolean
 }
 
 /**
@@ -246,10 +248,9 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps
     { done: steps.poa, href: '/app/plna-moc', text: s.poa, optional: false },
     bankReady ? { done: steps.payments, href: '/app/banka#prepojit', text: s.bank, optional: false } : { done: steps.payments, href: '/app/banka#postup', text: s.payments, optional: false },
     { done: steps.upload, href: '/app/doklady#pridat', text: s.upload, optional: false },
-    ...(steps.switching ? [{ done: false, href: '/app/prechod', text: s.switching, optional: true }] : []),
+    ...(steps.switching ? [{ done: Boolean(steps.switched), href: '/app/prechod', text: s.switching, optional: true }] : []),
     { done: steps.email, href: '/app/firma#doklady-emailom', text: s.email, optional: true },
     { done: steps.people, href: '/app/firma#ludia', text: s.people, optional: true },
-    { done: false, href: '/app/firma#mobil', text: s.phone, optional: true },
   ]
   const done = list.filter((step) => !step.optional && step.done).length
   return (
@@ -290,6 +291,8 @@ export const Overview: FC<OverviewProps> = (props) => {
   const taxDue = props.deadlines.some((d) => d.href === '/app/dane' && d.tone === 'amber')
   // Ten days past the contract's last day nothing more is asked of the client: only the download is left.
   const ended = Boolean(props.closed)
+  // A new company with no payment yet is welcomed to its first steps; once payments come, what they lack leads.
+  const welcome = Boolean(props.steps) && !ended && props.paymentsCount === 0
   return (
     <div class="over">
       <div class="over__main">
@@ -301,6 +304,11 @@ export const Overview: FC<OverviewProps> = (props) => {
             <a class="btn btn--blue" href="/app/firma#stiahnut">
               {app.ending.download}
             </a>
+          </section>
+        ) : welcome ? (
+          <section class="hello" aria-labelledby="stav">
+            <p class="hello__name">{app.home.hello(props.firstName)}</p>
+            <Heading id="stav" first={app.home.welcomeTitle} second={app.home.welcomeSerif} />
           </section>
         ) : calm ? (
           <section class="calm" aria-labelledby="stav">

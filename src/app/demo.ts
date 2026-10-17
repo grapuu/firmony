@@ -11,7 +11,7 @@
 // sends a statement to the company's address every day with a movement: each payment came with one, kept with its
 // file as the bank would have sent it.
 // It exists only where the Worker is told so (DEMO=1 on a developer's own machine: src/app/routes.tsx).
-import { TERMS_VERSION } from '../config'
+import { OFFLINE_TERMS } from '../config'
 import { now } from '../db'
 import { COMPANY_COLUMNS, DOC_COLUMNS, DOC_FROM, companyOf, docOf, eventStatement, insertPaymentStatement, messageStatement, vatCompanyOf, vatDocOf } from './store'
 import { proposeVat } from './vat'
@@ -783,6 +783,8 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
   ])
   if (files) await files.put(poaKey, poaPdf, { httpMetadata: { contentType: 'application/pdf' } })
   const startOf = (days: number) => `${shift(today, days).slice(0, 7)}-01`
+  // A contract is signed before its first month: ten days before it, at noon.
+  const signedBefore = (start: string) => Math.floor(Date.parse(`${start}T12:00:00Z`) / 1000) - 10 * 86400
 
   await db.batch([
     // The team: Christian runs it, Lucia and Jana keep the books.
@@ -794,28 +796,30 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
     user(DEMO.secondUser, 'eva@firmony.test', 'Eva Kollárová', null),
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo, note, contract_at, terms_version, signed_by, start_on, dic, icdph, tax_office, tax_account)
-         VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?, ?, ?, ?, ?, '2120000007', 'SK2120000007', 'Košice', '7000123456')`,
+        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, demo, note, contract_at, terms_version, signed_by, start_on, dic, icdph, tax_office, tax_account)
+         VALUES (?, ?, ?, '55123406', ?, 1, ?, ?, ?, 1, ?, ?, ?, ?, ?, '2120000007', 'SK2120000007', 'Košice', '7000123456')`,
       )
       .bind(
         c1,
-        ts - 40 * 86400,
+        signedBefore(startOf(-40)),
         'Ukážková firma s. r. o.',
         'Hlavná 1, 040 01 Košice',
         'rast',
         'k7m2qx4d',
         DEMO.accountant,
         'Martin chce mať prehľad o DPH do 20. v mesiaci.',
-        ts - 41 * 86400,
-        TERMS_VERSION,
+        signedBefore(startOf(-40)),
+        OFFLINE_TERMS,
         'Martin Novák',
         startOf(-40),
       ),
+    // The sample companies signed on paper: they have no accepted online contract to show, and the app says so in
+    // words that are true for them. A contract concluded online is walked through by the runtime test instead.
     db
       .prepare(
-        'INSERT INTO companies (id, created_at, name, address, vat_payer, plan, inbox, accountant_id, demo, contract_at, terms_version, signed_by, start_on) VALUES (?, ?, ?, ?, 0, ?, ?, ?, 1, ?, ?, ?, ?)',
+        "INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, demo, contract_at, terms_version, signed_by, start_on) VALUES (?, ?, ?, '55987605', ?, 0, ?, ?, ?, 1, ?, ?, ?, ?)",
       )
-      .bind(c2, ts - 30 * 86400, 'Ateliér Nova s. r. o.', 'Mlynská 8, 040 01 Košice', 'start', 'n8w3pa5t', DEMO.accountant2, ts - 31 * 86400, TERMS_VERSION, 'Eva Kollárová', startOf(-30)),
+      .bind(c2, signedBefore(startOf(-30)), 'Ateliér Nova s. r. o.', 'Mlynská 8, 040 01 Košice', 'start', 'n8w3pa5t', DEMO.accountant2, signedBefore(startOf(-30)), OFFLINE_TERMS, 'Eva Kollárová', startOf(-30)),
     db
       .prepare(
         "INSERT INTO company_files (id, company_id, kind, created_at, created_by, file_name, file_type, file_size, r2_key, checked_at, checked_by) VALUES ('demo-poa-1', ?, 'poa', ?, ?, 'plnomocenstvo-podpisane.pdf', 'application/pdf', ?, ?, ?, ?)",

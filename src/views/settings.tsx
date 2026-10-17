@@ -1,6 +1,7 @@
 // Firma a nastavenia: the company's details as we keep them, its address for documents, its people (an owner
 // invites a partner or a colleague), the reminders, the app on the phone, the other companies, signing out.
 import type { FC } from 'hono/jsx'
+import { OFFLINE_TERMS } from '../config'
 import { app, dayName, whenName } from '../app/copy'
 import type { Ending } from '../app/ending'
 import type { Paper, PoaState } from '../app/papers'
@@ -245,7 +246,11 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
             <dl class="kv">
               <div>
                 <dt>{app.contract.label}</dt>
-                <dd class="kv__long">{company.contractAt && company.signedBy ? app.contract.concluded(dayName(dayOf(company.contractAt)), company.signedBy) : app.contract.offline}</dd>
+                <dd class="kv__long">{company.termsVersion === OFFLINE_TERMS && company.signedBy
+                    ? app.contract.paper(company.signedBy)
+                    : company.contractAt && company.signedBy
+                      ? app.contract.concluded(dayName(dayOf(company.contractAt)), company.signedBy)
+                      : app.contract.offline}</dd>
               </div>
               {company.startOn ? (
                 <div>

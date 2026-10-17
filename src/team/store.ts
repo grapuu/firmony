@@ -249,6 +249,8 @@ export interface Request {
   phone: string | null
   note: string | null
   status: string
+  /** Whether it became an order: the company is an s. r. o. in the register, so its director concludes online. */
+  hasOrder: boolean
 }
 
 function requestOf(row: Row): Request {
@@ -266,11 +268,18 @@ function requestOf(row: Row): Request {
     phone: s(row.phone),
     note: s(row.note),
     status: String(row.status),
+    hasOrder: Number(row.has_order ?? 0) === 1,
   }
 }
 
 export async function listRequests(db: D1Database, limit = 300): Promise<Request[]> {
-  const rows = await db.prepare("SELECT * FROM requests ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'contacted' THEN 1 ELSE 2 END, created_at DESC LIMIT ?").bind(limit).all<Row>()
+  const rows = await db
+    .prepare(
+      `SELECT r.*, EXISTS (SELECT 1 FROM orders o WHERE o.request_id = r.id) AS has_order FROM requests r
+       ORDER BY CASE r.status WHEN 'new' THEN 0 WHEN 'contacted' THEN 1 ELSE 2 END, r.created_at DESC LIMIT ?`,
+    )
+    .bind(limit)
+    .all<Row>()
   return rows.results.map(requestOf)
 }
 

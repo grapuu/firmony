@@ -393,6 +393,9 @@ export const PRIVACY_VERSION = '2026-10-14'
  */
 export const TERMS_VERSION = '2026-10-15'
 
+/** The terms version of a client created by hand with a contract signed on paper, outside the app. */
+export const OFFLINE_TERMS = 'offline'
+
 export const ORDER = {
   /** The link to an order works this many days. */
   days: 30,

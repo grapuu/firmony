@@ -13,26 +13,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // Stage 1 of closing the loop (17 October 2026): what one company's state does to the others, and to its client.
-  [
-    'src/app/bank.ts',
-    "valid_until < ?\n         AND company_id IN (SELECT id FROM companies WHERE purge_started_at IS NULL)`",
-    'valid_until < ?`',
-    "a frozen company's consent does not stop the others' expiry",
-  ],
-  ['src/app/purge.ts', '  if (revision === null) return thaw(db, companyId)', '  if (revision === null) return { files: 0, rows: 0 }', 'a freeze whose archive is no longer confirmed is lifted'],
-  ['src/db.ts', "    'DROP TRIGGER IF EXISTS bank_links_data_update',\n", '', 'a bank consent is no accounting data'],
-  [
-    'src/db.ts',
-    'OR OLD.side IS NOT NEW.side OR OLD.body IS NOT NEW.body OR OLD.payment_id IS NOT NEW.payment_id)\n        AND EXISTS',
-    'OR 1)\n        AND EXISTS',
-    'reading a message works while a handover is finalized',
-  ],
-  ['src/app/bank.ts', '  const keep = Boolean(touched?.touched)', '  const keep = false', "an account whose payments the books hold keeps them"],
-  ['src/security/routes.tsx', '    if (who.createdAt > now() - SECURITY.freshLinkSeconds) return null', '    if (false) return null', 'a fresh sign-in by link confirms a client'],
-  ['src/security/routes.tsx', "    return c.redirect(`/app/potvrdit?next=${encodeURIComponent(next)}`, 303)\n  }", '  }', 'an old sign-in is asked for a link, not for a key'],
-  ['src/app/routes.tsx', "  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : (next ?? to), 303)", "  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : to, 303)", 'the link leads back to where it was asked for'],
-  ['src/views/layout.tsx', '          <a class="top__login" href="/app/prihlasenie">', '          <a class="top__login" href="/app/prihlasenie-x">', 'the site has a way in'],
+  // Stage 2 of closing the loop (17 October 2026): from a request on the site to the first document.
+  ['src/team/routes.tsx', "if (!review || review.decision !== 'standard' || review.expires_at <= ts", 'if (!review || review.expires_at <= ts', 'a bespoke scope sends no link to a standard contract'],
+  ['src/index.tsx', "  return Boolean(review && review.decision === 'standard' && review.expires_at <= now())", "  return Boolean(review && review.decision === 'standard' && review.expires_at <= 0)", 'a link whose review ran out offers a new one'],
+  ['src/index.tsx', "      db.prepare(\"UPDATE requests SET status = 'new' WHERE id = ? AND status <> 'client'\")", "      db.prepare(\"UPDATE requests SET status = status WHERE id = ? AND status <> 'client'\")", 'asking for a new link opens the request again'],
+  ['src/index.tsx', "  if (situation === 'switch') next.set('zmena', '1')\n", '', 'the thanks speak of the former accountant'],
+  ['src/index.tsx', '      email: values.directorEmail || values.email,', '      email: values.email,', 'the order goes to the director'],
+  ['src/team/routes.tsx', '  if (!values.offline) errors.offline = t.newClient.errors.offline\n', '', 'a client is made by hand only with a paper contract'],
+  ['src/app/routes.tsx', "  if (refused) return switchPage(c, { error: answer[refused][0] }, answer[refused][1])\n", '', 'an upload of books is all or nothing'],
+  ['src/app/routes.tsx', "  if (!(await switchingSentAt(db, who.company.id))) await db.batch(", '  if (true) await db.batch(', 'the letter is said to have gone out once'],
+  ['src/app/routes.tsx', '(paper) => (rung ? [] : [ringStatement(', '(paper) => (false ? [] : [ringStatement(', 'the accountant is rung once for an upload'],
+  ['src/views/inside-pages.tsx', '  const welcome = Boolean(props.steps) && !ended && props.paymentsCount === 0', '  const welcome = Boolean(props.steps) && !ended', 'payments lead once they come'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname
