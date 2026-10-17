@@ -58,6 +58,21 @@ export function resultLine(company: Company, view: PeriodView): string {
   return v.zero
 }
 
+/**
+ * At most `ISSUES_SHOWN` issues of a kind, then how many more of it there are: a month of thousands of documents not
+ * booked would otherwise list each (the load test of 17 October 2026); the queue to book lists them all.
+ */
+const ISSUES_SHOWN = 25
+function capped(list: readonly Issue[]): (Issue | number)[] {
+  const byCode = new Map<string, Issue[]>()
+  for (const i of list) {
+    const group = byCode.get(i.code)
+    if (group) group.push(i)
+    else byCode.set(i.code, [i])
+  }
+  return [...byCode.values()].flatMap((group) => (group.length > ISSUES_SHOWN ? [...group.slice(0, ISSUES_SHOWN), group.length - ISSUES_SHOWN] : group))
+}
+
 const Issues: FC<{ company: Company; view: PeriodView; docs: Map<string, Doc> }> = ({ company, view, docs }) => {
   const blocks = view.result.issues.filter((i) => i.level === 'block')
   const warns = view.result.issues.filter((i) => i.level === 'warn')
@@ -103,7 +118,7 @@ const Issues: FC<{ company: Company; view: PeriodView; docs: Map<string, Doc> }>
                 </a>
               </li>
             ))}
-            {blocks.map(one)}
+            {capped(blocks).map((x) => (typeof x === 'number' ? <li class="vissue vissue--block">{v.more(x)}</li> : one(x)))}
           </ul>
         </>
       ) : null}
@@ -112,7 +127,7 @@ const Issues: FC<{ company: Company; view: PeriodView; docs: Map<string, Doc> }>
           <h2 class="info__title" id={first ? undefined : 'vyriesit-t'}>
             {v.warnings}
           </h2>
-          <ul class="vissues">{warns.map(one)}</ul>
+          <ul class="vissues">{capped(warns).map((x) => (typeof x === 'number' ? <li class="vissue vissue--warn">{v.more(x)}</li> : one(x)))}</ul>
         </>
       ) : null}
     </section>

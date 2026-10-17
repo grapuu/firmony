@@ -226,7 +226,11 @@ over. Bring this section up to date first whenever a session ends.
    later filing, the notice of the tax withheld as a file (FS's form), a micro a. s.'s own shares in the notes (the
    sentence says it has none), the reserve fund for own shares (row 089 of Úč POD, placed by hand), the supervisory
    board in the declaration. test/joint-stock.runtime.mjs, units "Joint-stock companies".
-   Next: the volume follow-ups (the books worked out per month and kept, the VAT page paged, client lists past 400).
+   Volume (18 October 2026, after midnight): the client's lists of payments and documents show 400 a page with
+   "Staršie" and "Novšie" (`?strana=`, `LIST_PAGE` in `src/app/routes.tsx`; they ended at 400 before); the VAT page shows
+   at most 25 issues of a kind and how many more (`capped` in `src/views/vat.tsx`: 166 kB became 51 kB at 300 documents
+   a month, a month of 3 000 was 1,5 MB). test/lists.runtime.mjs. Next for volume: the books worked out from every
+   document on each page (`booksOf`), to be kept per month and data revision.
    The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
@@ -1806,7 +1810,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1111 unit checks (17 October 2026, night), including joint-stock companies
-npm run test:runtime     # 1512 workerd checks on Node 24 (as GitHub runs them), including test/joint-stock.runtime.mjs
+npm run test:runtime     # 1516 workerd checks on Node 24 (as GitHub runs them), including test/lists.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

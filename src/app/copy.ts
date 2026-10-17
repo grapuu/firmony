@@ -1110,6 +1110,7 @@ export const app = typesetAll({
       sign: 'Za spoločnosť',
     },
   },
+  list: { newer: 'Novšie', older: 'Staršie' },
   search: {
     label: 'Hľadať',
     placeholder: 'Partner, suma alebo symbol',

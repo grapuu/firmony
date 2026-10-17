@@ -519,12 +519,12 @@ export async function peopleOf(db: D1Database, company: string): Promise<Person[
 /** unpaired: no document and none said to be needed, also before our books start (an invoice paid then is still paid). */
 export type PaymentFilter = 'missing' | 'unpaired' | 'done' | 'all'
 
-export async function listPayments(db: D1Database, company: string, filter: PaymentFilter, limit = 400, search = ''): Promise<Payment[]> {
+export async function listPayments(db: D1Database, company: string, filter: PaymentFilter, limit = 400, search = '', offset = 0): Promise<Payment[]> {
   const where = filter === 'missing' ? `AND ${MISSING}` : filter === 'unpaired' ? `AND ${UNPAIRED}` : filter === 'done' ? 'AND (p.exempt IS NOT NULL OR EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id))' : ''
   const { sql, binds } = searchSql(search, ['p.party', 'p.note', 'p.vs'], 'ABS(p.amount_cents)')
   const rows = await db
-    .prepare(`SELECT ${PAYMENT_COLUMNS} FROM ${PAYMENT_FROM} WHERE p.company_id = ? ${where} ${sql} ORDER BY p.booked_on DESC, p.created_at DESC LIMIT ?`)
-    .bind(company, ...binds, limit)
+    .prepare(`SELECT ${PAYMENT_COLUMNS} FROM ${PAYMENT_FROM} WHERE p.company_id = ? ${where} ${sql} ORDER BY p.booked_on DESC, p.created_at DESC, p.id LIMIT ? OFFSET ?`)
+    .bind(company, ...binds, limit, offset)
     .all<Row>()
   return rows.results.map(paymentOf)
 }
@@ -639,15 +639,15 @@ export function unlinkStatement(db: D1Database, company: string, doc: string): D
 
 export type DocFilter = 'all' | 'loose'
 
-export async function listDocuments(db: D1Database, company: string, filter: DocFilter = 'all', limit = 400, search = ''): Promise<Doc[]> {
+export async function listDocuments(db: D1Database, company: string, filter: DocFilter = 'all', limit = 400, search = '', offset = 0): Promise<Doc[]> {
   const { sql, binds } = searchSql(search, ['d.party', 'd.number', 'd.file_name', 'd.vs'], 'd.total_cents')
   const rows = await db
     .prepare(
       `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM}
        WHERE d.company_id = ? AND d.deleted_at IS NULL ${filter === 'loose' ? 'AND l.document_id IS NULL AND d.paid_privately = 0' : ''} ${sql}
-       ORDER BY d.created_at DESC LIMIT ?`,
+       ORDER BY d.created_at DESC, d.id LIMIT ? OFFSET ?`,
     )
-    .bind(company, ...binds, limit)
+    .bind(company, ...binds, limit, offset)
     .all<Row>()
   return rows.results.map(docOf)
 }

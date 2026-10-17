@@ -499,6 +499,31 @@ const SearchForm: FC<{ action: string; value: string }> = ({ action, value }) =>
   </form>
 )
 
+/** A page of a client's list: which, whether an older one follows, and the address the page number is added to. */
+export interface ListPage {
+  page: number
+  more: boolean
+  href: string
+}
+
+const ListPager: FC<{ pager?: ListPage }> = ({ pager }) =>
+  pager && (pager.page > 1 || pager.more) ? (
+    <nav class="lpager" aria-label={app.list.older}>
+      <span class="lpager__links">
+        {pager.page > 1 ? (
+          <a class="btn btn--line btn--small" href={`${pager.href}strana=${pager.page - 1}`}>
+            {app.list.newer}
+          </a>
+        ) : null}
+        {pager.more ? (
+          <a class="btn btn--line btn--small" href={`${pager.href}strana=${pager.page + 1}`}>
+            {app.list.older}
+          </a>
+        ) : null}
+      </span>
+    </nav>
+  ) : null
+
 export const PaymentsPage: FC<{
   filter: 'missing' | 'done' | 'all'
   payments: Payment[]
@@ -511,7 +536,8 @@ export const PaymentsPage: FC<{
   bank?: { links: BankLinkView[]; today: string; ready: boolean; lastStatement: number | null } | null
   /** Ten days past the contract's last day no statement is taken. */
   closed?: boolean
-}> = ({ filter, payments, missingCount, suggested, flash, warn, search = '', bank, closed = false }) => (
+  pager?: ListPage
+}> = ({ filter, payments, missingCount, suggested, flash, warn, search = '', bank, closed = false, pager }) => (
   <>
     <header class="phead">
       <Heading first={app.payments.title} />
@@ -555,6 +581,7 @@ export const PaymentsPage: FC<{
         </section>
       ))
     )}
+    <ListPager pager={pager} />
     {bank ? <BankCard links={bank.links} today={bank.today} ready={bank.ready} lastStatement={bank.lastStatement} /> : null}
     <section class="bankfile" aria-labelledby="vypis">
       <Tile art={ART.paperBank} size="md" />
@@ -829,7 +856,7 @@ export function groupIban(iban: string): string {
 // Doklady
 // ---------------------------------------------------------------------------------------------------------------
 
-export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: string; flash?: string | null; problems: string[]; search?: string; closed?: string | null }> = ({
+export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: string; flash?: string | null; problems: string[]; search?: string; closed?: string | null; pager?: ListPage }> = ({
   filter,
   docs,
   inbox,
@@ -837,6 +864,7 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
   problems,
   search = '',
   closed = null,
+  pager,
 }) => (
   <>
     <header class="phead">
@@ -874,6 +902,7 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
         ))
       )}
     </div>
+    <ListPager pager={pager} />
   </>
 )
 

@@ -450,6 +450,9 @@ appRoutes.get('/', async (c) => {
 // Payments
 // ---------------------------------------------------------------------------------------------------------------
 
+/** The client's lists of payments and documents show this many a page. */
+const LIST_PAGE = 400
+
 appRoutes.get('/platby', async (c) => {
   const who = c.get('who')
   const db = c.env.DB
@@ -457,7 +460,10 @@ appRoutes.get('/platby', async (c) => {
   const search = (c.req.query('hladat') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
   // A search looks through every payment, whatever tab was open.
   const filter = search ? 'all' : q === 'hotove' ? 'done' : q === 'vsetky' ? 'all' : 'missing'
-  const [payments, missingCount] = await Promise.all([listPayments(db, who.company.id, filter, 400, search), countMissing(db, who.company.id)])
+  // 400 a page, the newest first; one more is asked to know whether an older page follows.
+  const page = Math.max(1, Math.min(10_000, Math.floor(Number(c.req.query('strana')) || 1)))
+  const [found, missingCount] = await Promise.all([listPayments(db, who.company.id, filter, LIST_PAGE + 1, search, (page - 1) * LIST_PAGE), countMissing(db, who.company.id)])
+  const payments = found.slice(0, LIST_PAGE)
   const suggested = await suggestions(db, who.company.id, payments)
   const bank = serviceOpen(who.company, today())
     ? { links: await linksOf(db, who.company.id), today: today(), ready: bankReady(c.env), lastStatement: await lastEmailStatement(db, who.company.id) }
@@ -475,6 +481,7 @@ appRoutes.get('/platby', async (c) => {
       search={search}
       bank={bank}
       closed={closedIntake(who.company) !== null}
+      pager={{ page, more: found.length > LIST_PAGE, href: `/app/platby?${filter === 'done' ? 'filter=hotove&' : filter === 'all' && !search ? 'filter=vsetky&' : ''}${search ? `hladat=${encodeURIComponent(search)}&` : ''}` }}
     />,
   )
 })
@@ -587,12 +594,15 @@ appRoutes.get('/doklady', async (c) => {
   const who = c.get('who')
   const search = (c.req.query('hladat') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
   const filter = !search && c.req.query('filter') === 'bez-platby' ? 'loose' : 'all'
-  const docs = await listDocuments(c.env.DB, who.company.id, filter, 400, search)
+  const page = Math.max(1, Math.min(10_000, Math.floor(Number(c.req.query('strana')) || 1)))
+  const found = await listDocuments(c.env.DB, who.company.id, filter, LIST_PAGE + 1, search, (page - 1) * LIST_PAGE)
+  const docs = found.slice(0, LIST_PAGE)
+  const pageHref = `/app/doklady?${filter === 'loose' ? 'filter=bez-platby&' : ''}${search ? `hladat=${encodeURIComponent(search)}&` : ''}`
   return shell(
     c,
     'documents',
     t.documents.title,
-    <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} closed={closedIntake(who.company)} />,
+    <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} closed={closedIntake(who.company)} pager={{ page, more: found.length > LIST_PAGE, href: pageHref }} />,
   )
 })
 
