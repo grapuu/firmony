@@ -309,6 +309,26 @@ export function assetYear(assets: readonly Asset[], year: number): AssetYear {
   return out
 }
 
+/**
+ * The temporary differences of the register at a year's end, for deferred tax (§ 10(5) of the measure on accounting
+ * procedures): each asset in use and not disposed of, its residual value in the books against its tax base (the cost
+ * less the tax depreciation claimed). A book value above the tax base will be taxed later (taxable), one below it
+ * will lower the tax later (deductible). An intangible asset depreciates for tax as in the books, so it has none.
+ */
+export function temporaryDifferences(assets: readonly Asset[], year: number): { taxable: number; deductible: number } {
+  let taxable = 0
+  let deductible = 0
+  for (const a of assets) {
+    if (yearOf(a.inUseOn) > year || (a.disposedOn && yearOf(a.disposedOn) <= year)) continue
+    const book = bookState(a, `${year}-12`).residual
+    const claimed = taxSchedule(a).filter((t) => t.year <= year)
+    const tax = claimed.length > 0 ? (claimed[claimed.length - 1] as TaxYear).residual : a.costCents - (a.source === 'opening' ? a.priorTaxCents : 0)
+    if (book > tax) taxable += book - tax
+    else deductible += tax - book
+  }
+  return { taxable, deductible }
+}
+
 /** What a new or changed asset must be, said as the form says it; empty when it is fine. */
 export function assetErrors(a: Omit<Asset, 'id' | 'number'>): Partial<Record<'name' | 'account' | 'inUseOn' | 'cost' | 'group' | 'method' | 'months' | 'prior' | 'disposal', string>> {
   const e: ReturnType<typeof assetErrors> = {}

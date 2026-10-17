@@ -78,8 +78,11 @@ over. Bring this section up to date first whenever a session ends.
    receivable due after a year, a related party), the audit of § 19(1)(a) said; `closingBalancesByYear` reads every
    year in one pass; test/closing-pod.runtime.mjs); then, in this order: stock; full payroll (agreements, directors,
    sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS; foreign
-   currencies, OSS, Intrastat and joint-stock companies. Not yet in the closing of any size: deferred tax and the notes
-   (poznámky). The site promises a large company only an offer of its own until the software does each part; every
+   currencies, OSS, Intrastat and joint-stock companies. Deferred tax (built: § 10 of the measure MF/23054/2002-92 as
+   of 1 January 2026, required with the audit, never for a micro entity; the register's temporary differences
+   (`temporaryDifferences`), the provisions proposed, what she types, tax losses on her word; booked with the year's
+   tax document on 481.100 and 481.200 against 592, shown apart in rows 052 and 117). Not yet in the closing of any
+   size: the notes (poznámky). The site promises a large company only an offer of its own until the software does each part; every
    text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every

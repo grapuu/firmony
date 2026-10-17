@@ -36,11 +36,14 @@ export const PLACEMENT_ROWS = 8
 
 export type ClosingError = 'amount' | 'day' | 'year' | 'used' | 'nace' | 'employees' | 'account' | 'row'
 
-/** What the books propose that the form shows beside what was stored: the advances paid, the size group, the employees. */
+/** What the books propose that the form shows beside what was stored: the advances paid, the size group, the employees, deferred tax. */
 export interface ClosingFound {
   advances: number
   size: EntitySize
   employees: number
+  /** Whether deferred tax is accounted as the law has it, and the deductible differences the books propose (the provisions). */
+  deferred?: boolean
+  deferredDeductible?: number
 }
 
 const isSize = (value: unknown): value is EntitySize => typeof value === 'string' && (ENTITY_SIZES as readonly string[]).includes(value)
@@ -114,6 +117,10 @@ export function storedInputs(json: unknown): ClosingInputs {
     size: isSize(raw.size) ? raw.size : null,
     employees: employeesOk(raw.employees) ? raw.employees : null,
     placements: placementsOf(raw.placements),
+    deferred: bool(raw.deferred),
+    deferredTaxable: amountOk(raw.deferredTaxable) ? raw.deferredTaxable : null,
+    deferredDeductible: amountOk(raw.deferredDeductible) ? raw.deferredDeductible : null,
+    deferredLosses: raw.deferredLosses === true,
   }
 }
 
@@ -161,6 +168,10 @@ export function closingValues(year: number, inputs: ClosingInputs, proposal: Pro
     v[`ucet_${i}`] = p ? p.account : ''
     v[`riadok_${i}`] = p ? p.row.slice(1) : ''
   }
+  v.odlozena = (inputs.deferred ?? found.deferred ?? false) ? '1' : ''
+  v.od_zdanitelne = money(inputs.deferredTaxable ?? 0)
+  v.od_odpocitatelne = money(inputs.deferredDeductible ?? found.deferredDeductible ?? 0)
+  v.od_straty = inputs.deferredLosses ? '1' : ''
   return v
 }
 
@@ -271,5 +282,13 @@ export function readClosing(get: (name: string) => unknown, year: number, propos
     }
     if (!inputs.placements.some((p) => p.account === account && podLeafKind(p.row) === podLeafKind(row))) inputs.placements.push({ account, row })
   }
+  // Deferred tax: the tick against the law's default, the differences against the books' proposal.
+  const deferred = yes('odlozena')
+  inputs.deferred = deferred === (found.deferred ?? false) ? null : deferred
+  const taxableDiff = amount('od_zdanitelne')
+  inputs.deferredTaxable = taxableDiff === null || taxableDiff === 0 ? null : taxableDiff
+  const deductibleDiff = amount('od_odpocitatelne') ?? 0
+  inputs.deferredDeductible = deductibleDiff === (found.deferredDeductible ?? 0) ? null : deductibleDiff
+  inputs.deferredLosses = yes('od_straty')
   return { inputs, values, errors }
 }

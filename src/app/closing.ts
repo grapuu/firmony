@@ -35,7 +35,15 @@
 // Said plainly, what is left to the accountant: the rows the books cannot know (expenses that are no tax expenses but
 // those of representation and gifts, unpaid costs under § 17(19), tax depreciation, exempt income, losses of years
 // before us) are hers to type, each proposed where the books can; the notes (poznámky) are hers to write. Not built:
-// deferred tax, the relief rows, the special tax bases.
+// the relief rows, the special tax bases.
+//
+// Deferred tax (§ 10 of the measure MF/23054/2002-92 on accounting procedures for entrepreneurs, as in force on 1
+// January 2026, read on 17 October 2026): accounted by a company that must have its statements audited (§ 19 of the
+// Act), by any other one that decides so, never by a micro entity (§ 10(4)); from the temporary differences between
+// the book value of assets and liabilities and their tax base, tax losses and credits that may be used (§ 10(5) to
+// (9)), a deferred tax asset only as far as future taxable profit is probable (§ 10(11)); at the rate expected when it
+// is realised, else the rate of the next period (§ 10(14)); 592 against 481, the asset and the liability shown apart
+// (§ 10(15), (16)).
 import type { AssetYear } from './assets'
 import { podStatements, type Placement } from './closing-pod'
 import { balanceOf, synthetic, accountClass, type Books, type LedgerEntry } from './ledger'
@@ -718,6 +726,15 @@ export interface ClosingInputs {
   employees: number | null
   /** Accounts (or analytic accounts) the accountant put in a row of Úč POD of her own: a receivable due after a year, a related party. */
   placements: Placement[]
+  /**
+   * Deferred tax: whether it is accounted (null: as the law has it, when the statements must be audited), the temporary
+   * differences the books cannot know (taxable ones, deductible ones, null: the provisions in the books), and whether
+   * the tax losses left are counted (only when future taxable profit is probable).
+   */
+  deferred: boolean | null
+  deferredTaxable: number | null
+  deferredDeductible: number | null
+  deferredLosses: boolean
 }
 
 export const EMPTY_INPUTS: ClosingInputs = {
@@ -740,6 +757,10 @@ export const EMPTY_INPUTS: ClosingInputs = {
   size: null,
   employees: null,
   placements: [],
+  deferred: null,
+  deferredTaxable: null,
+  deferredDeductible: null,
+  deferredLosses: false,
 }
 
 /**
@@ -841,10 +862,64 @@ export function auditOf(year: SizeFigures | null, before: SizeFigures | null): '
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Deferred tax
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The analytic accounts of 481 the closing books deferred tax on: the asset and the liability, apart (§ 10(16)). */
+export const DEFERRED_ASSET = '481.100'
+export const DEFERRED_LIABILITY = '481.200'
+
+export interface DeferredInput {
+  on: boolean
+  /** The rate, per cent: the next period's by the year's taxable revenues (§ 10(14)). */
+  rate: number
+  /** The register's temporary differences (assets.ts, temporaryDifferences). */
+  assets: { taxable: number; deductible: number }
+  otherTaxable: number
+  otherDeductible: number
+  /** The tax losses left to deduct in later periods, the year's own too; counted only when `useLosses`. */
+  losses: number
+  useLosses: boolean
+  /** The balances of 481.100 and 481.200 at the year's end before the year's own booking (debit plus, credit minus). */
+  assetBefore: number
+  liabilityBefore: number
+}
+
+export interface DeferredResult {
+  on: boolean
+  rate: number
+  taxable: number
+  deductible: number
+  /** The deferred tax asset and liability at the year's end, each as a plus. */
+  asset: number
+  liability: number
+  /** The year's booking: what moves 481.100 and 481.200 to them, against 592; and 592 of it (a cost as a plus). */
+  lines: { md: string; d: string; cents: number }[]
+  expense: number
+}
+
+/** The deferred tax at the year's end and its booking: the differences at the rate, the change against what 481 holds. */
+export function deferredTaxOf(i: DeferredInput): DeferredResult {
+  const taxable = Math.max(0, i.assets.taxable + i.otherTaxable)
+  const deductible = Math.max(0, i.assets.deductible + i.otherDeductible + (i.useLosses ? i.losses : 0))
+  if (!i.on) return { on: false, rate: i.rate, taxable, deductible, asset: 0, liability: 0, lines: [], expense: 0 }
+  const asset = roundCents((deductible * i.rate) / 100)
+  const liability = roundCents((taxable * i.rate) / 100)
+  const lines: DeferredResult['lines'] = []
+  const toAsset = asset - i.assetBefore
+  if (toAsset > 0) lines.push({ md: DEFERRED_ASSET, d: '592', cents: toAsset })
+  else if (toAsset < 0) lines.push({ md: '592', d: DEFERRED_ASSET, cents: -toAsset })
+  const toLiability = liability + i.liabilityBefore
+  if (toLiability > 0) lines.push({ md: '592', d: DEFERRED_LIABILITY, cents: toLiability })
+  else if (toLiability < 0) lines.push({ md: DEFERRED_LIABILITY, d: '592', cents: -toLiability })
+  return { on: true, rate: i.rate, taxable, deductible, asset, liability, lines, expense: toLiability - toAsset }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // What keeps a closing from being filed
 // ---------------------------------------------------------------------------------------------------------------
 
-export type ClosingIssueCode = 'start' | 'unbooked' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
+export type ClosingIssueCode = 'start' | 'unbooked' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'deferred' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
 
 /** block: the closing is not filed until it is resolved; warn: to look at. `count` things, `accounts` the ones meant. */
 export interface ClosingIssue {
@@ -868,8 +943,8 @@ export function closingIssues(args: {
   company: Pick<Company, 'dic' | 'address'>
   nace: string
   statements: Pick<Statements, 'unplaced' | 'rounding'>
-  /** The tax of the year as computed (row 1050) and as booked (591); null while the year runs. */
-  tax: { computed: number; booked: number } | null
+  /** The tax of the year as computed (row 1050) and as booked (591), and the deferred tax's 592 the same; null while the year runs. */
+  tax: { computed: number; booked: number; deferred?: { computed: number; booked: number } } | null
   /** Whether the statements must be audited (§ 19), from `auditOf`. */
   audit?: 'yes' | 'maybe' | 'no'
 }): ClosingIssue[] {
@@ -892,6 +967,7 @@ export function closingIssues(args: {
   if (!args.company.address) block('address')
   if (!args.nace) block('nace')
   if (args.tax && args.tax.computed !== args.tax.booked) block('tax')
+  if (args.tax?.deferred && args.tax.deferred.computed !== args.tax.deferred.booked) block('deferred')
   if (balanceOf(books.entries, '261', end) !== 0) out.push({ code: 'transit', level: 'warn', count: 1 })
   if (args.statements.rounding !== 0) out.push({ code: 'rounding', level: 'warn', count: Math.abs(args.statements.rounding) })
   if (args.audit === 'yes') out.push({ code: 'audit', level: 'warn', count: 1 })

@@ -1596,9 +1596,9 @@ teamRoutes.post('/klienti/:id/zavierka/dan', async (c) => {
   const db = c.env.DB
   const who = c.get('who')
   const cents = view.tax.rows.r1050 ?? 0
-  const result = await db.batch(bookTaxStatements(db, company.id, view.year, cents, view.closing?.taxEntry ?? null, who.user.id, view.closing?.revision ?? 0))
+  const result = await db.batch(bookTaxStatements(db, company.id, view.year, cents, view.closing?.taxEntry ?? null, who.user.id, view.closing?.revision ?? 0, view.deferred.lines))
   if ((result[1]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
-  await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.tax', subject: String(view.year), detail: { cents } })])
+  await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.tax', subject: String(view.year), detail: { cents, deferred: view.deferred.expense } })])
   return c.redirect(`${back}&ok=zavierka-dan`, 303)
 })
 

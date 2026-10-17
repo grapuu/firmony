@@ -60,7 +60,7 @@ export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
   )
 
   // The size group confirmed, the employees typed, a receivable due after a year placed among the long-term ones.
-  const form = { rok: String(Y), velkost: 'large', zamestnanci: '60', ucet_0: '311.002', riadok_0: '45', nace: '70.10.0', cinnost: 'Vedenie firiem', zdanitelne: '700000' }
+  const form = { rok: String(Y), velkost: 'large', zamestnanci: '60', ucet_0: '311.002', riadok_0: '45', nace: '70.10.0', cinnost: 'Vedenie firiem', zdanitelne: '700000', odlozena: '1', od_zdanitelne: '50000', od_odpocitatelne: '10000' }
   res = await acc.post(base, { ...form, riadok_0: '41' })
   page = plain(await res.text())
   check('a sum row is no row to place an account in: said, nothing kept', res.status === 422 && page.includes('nie súčtový') && !(await db.prepare('SELECT 1 AS x FROM closings WHERE company_id = ?').bind(company).first()))
@@ -68,7 +68,7 @@ export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
   const inputs = JSON.parse((await db.prepare('SELECT inputs FROM closings WHERE company_id = ? AND year = ?').bind(company, Y).first())?.inputs ?? '{}')
   check(
     "kept: the employees and the placement; the group equal to the books' proposal follows them",
-    res.status === 303 && inputs.size === null && inputs.employees === 60 && JSON.stringify(inputs.placements) === JSON.stringify([{ account: '311.002', row: 'r045' }]),
+    res.status === 303 && inputs.size === null && inputs.employees === 60 && JSON.stringify(inputs.placements) === JSON.stringify([{ account: '311.002', row: 'r045' }]) && inputs.deferredTaxable === 5_000_000 && inputs.deferredDeductible === 1_000_000,
     JSON.stringify(inputs),
   )
   res = await acc.get(`${base}?rok=${Y}`)
@@ -80,9 +80,18 @@ export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
     page.includes('<td class="ltable__acct">045</td><td class="ltable__name">Ostatné pohľadávky z obchodného styku</td><td class="num">200 000</td>') && page.includes('<dt>Veľkostná skupina</dt><dd>Veľká účtovná jednotka</dd>'),
   )
 
+  check(
+    'deferred tax at 21 %: an asset of 2 100 € and a liability of 10 500 €, to be booked with the tax',
+    page.includes('Odložená daňová pohľadávka (riadok 052)</td><td class="vrows__amount">2 100,00 €') && page.includes('Odložený daňový záväzok (riadok 117)</td><td class="vrows__amount">10 500,00 €') && page.includes('a odložená daň 8 400,00 € na 592 a 481'),
+  )
   // The tax booked, the podklady saved: the files are the return and the statements of a large entity.
   res = await acc.post(`${base}/dan`, { rok: String(Y) })
-  check('the tax booked', res.status === 303)
+  const taxLines = JSON.parse((await db.prepare("SELECT lines FROM ledger_entries WHERE company_id = ? AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").bind(company).first())?.lines ?? '[]')
+  check(
+    'the tax booked with deferred tax in one internal document: 591/341, 481.100/592, 592/481.200',
+    res.status === 303 && taxLines.length === 3 && taxLines[1].md === '481.100' && taxLines[1].cents === 210_000 && taxLines[2].d === '481.200' && taxLines[2].cents === 1_050_000,
+    JSON.stringify(taxLines),
+  )
   res = await acc.post(`${base}/podane`, { rok: String(Y) })
   check('the podklady saved', res.status === 303 && res.headers.get('location') === `/ucto/klienti/${company}/podania?obdobie=${Y}`, res.headers.get('location'))
   const filed = JSON.parse((await db.prepare('SELECT filed FROM closings WHERE company_id = ? AND year = ?').bind(company, Y).first())?.filed ?? '{}')
@@ -97,7 +106,8 @@ export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
   )
   check(
     'with the machinery gross, corrected and net, the year before, the receivable in row 045 and the result',
-    xml.includes('<r014><s1>6000000</s1><s2>1000000</s2><s3>5000000</s3><s4>6000000</s4></r014>') && xml.includes('<r045><s1>200000</s1><s2>0</s2><s3>200000</s3>') && xml.includes('<r01><s1>700000</s1><s2>11000000</s2></r01>'),
+    xml.includes('<r014><s1>6000000</s1><s2>1000000</s2><s3>5000000</s3><s4>6000000</s4></r014>') && xml.includes('<r045><s1>200000</s1><s2>0</s2><s3>200000</s3>') && xml.includes('<r01><s1>700000</s1><s2>11000000</s2></r01>') &&
+      xml.includes('<r052><s1>2100</s1><s2>0</s2><s3>2100</s3>') && xml.includes('<r117><s5>10500</s5>') && xml.includes('<r59><s1>8400</s1>'),
     xml.slice(xml.indexOf('<telo>'), xml.indexOf('<telo>') + 600),
   )
   res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)

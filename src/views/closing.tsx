@@ -58,6 +58,8 @@ const IssueItem: FC<{ issue: ClosingIssue; company: Company; view: ClosingView }
         return [k.issue.nace, '#upravy', k.go.fix]
       case 'tax':
         return [k.issue.tax(formatEurExact(view.tax.rows.r1050 ?? 0), formatEurExact(view.booked)), null, null]
+      case 'deferred':
+        return [k.issue.deferred(formatEurExact(view.deferred.expense), formatEurExact(view.deferredBooked)), null, null]
       case 'transit':
         return [k.issue.transit, `${base}/ucet/261?rok=${y}&mesiac=12`, k.go.account]
       case 'rounding':
@@ -152,6 +154,43 @@ const TaxCard: FC<{ view: ClosingView }> = ({ view }) => {
       </table>
       {view.input.minimumExempt ? <p class="info__source">{k.minimumExempt}</p> : view.tax.minimumPaid ? <p class="info__source">{k.minimumPaid}</p> : null}
       <p class="info__source">{next.kind === 'none' ? k.advances.none : k.advances[next.kind](formatEurExact(next.each))}</p>
+    </section>
+  )
+}
+
+/** Deferred tax of a small or a large entity: the differences, the rate, the asset and the liability, the year's 592. */
+const DeferredCard: FC<{ view: ClosingView }> = ({ view }) => {
+  if (view.size === 'micro') return null
+  const d = view.deferred
+  const rows: [string, string, boolean][] = [
+    [k.deferredRows.assetsTaxable, formatEurExact(view.deferredAssets.taxable), false],
+    [k.deferredRows.assetsDeductible, formatEurExact(view.deferredAssets.deductible), false],
+    [k.deferredRows.taxable, formatEurExact(d.taxable), true],
+    [k.deferredRows.deductible, formatEurExact(d.deductible), true],
+    [k.deferredRows.rate, k.rate(d.rate), false],
+    [k.deferredRows.asset, formatEurExact(d.asset), true],
+    [k.deferredRows.liability, formatEurExact(d.liability), true],
+    [d.expense >= 0 ? k.deferredRows.expense : k.deferredRows.income, formatEurExact(Math.abs(d.expense)), true],
+  ]
+  return (
+    <section class="info" id="odlozena" aria-labelledby="odlozena-t">
+      <h2 id="odlozena-t" class="info__title">
+        {k.deferredTitle}
+      </h2>
+      {d.on ? (
+        <table class="vrows">
+          <tbody>
+            {rows.map(([label, value, sum]) => (
+              <tr class={sum ? 'vrows__sum' : undefined}>
+                <td class="vrows__what">{label}</td>
+                <td class="vrows__amount">{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p class="info__source">{k.deferredOff}</p>
+      )}
     </section>
   )
 }
@@ -307,6 +346,16 @@ const FormCard: FC<{ company: Company; view: ClosingView; values: ClosingValues;
             )}
           </div>
         </More>
+        {view.size === 'micro' ? null : (
+          <More title={k.sections.deferred} names={['odlozena', 'od_zdanitelne', 'od_straty']} values={values} errors={errors} filed={filed}>
+            <div class="fgrid">
+              <Tick name="odlozena" label={k.deferredTick} hint={k.deferredHint(view.found.deferred ?? false)} values={values} />
+              <Field name="od_zdanitelne" label={k.deferredTaxable} hint={k.deferredTaxableHint} values={values} errors={errors} wide />
+              <Field name="od_odpocitatelne" label={k.deferredDeductible} hint={k.deferredDeductibleHint} values={values} errors={errors} wide />
+              <Tick name="od_straty" label={k.deferredLosses} hint={k.deferredLossesHint} values={values} />
+            </div>
+          </More>
+        )}
         <More title={k.sections.a} names={[...TABLE_A]} values={values} errors={errors} filed={filed}>
           {TABLE_A.map((row, i) => (
             <AmountRow name={row} no={String(i + 1)} label={k.tableA[row] ?? row} values={values} errors={errors} proposed={inputs.tableA[row] === undefined && (p.tableA[row] ?? 0) > 0} />
@@ -507,7 +556,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
   const r = view.tax.rows
   const filed = view.closing?.filed ? view.closing : null
   const canFile = state === 'ready' || state === 'filed'
-  const toBook = !view.running && !filed && (r.r1050 ?? 0) !== view.booked
+  const toBook = !view.running && !filed && ((r.r1050 ?? 0) !== view.booked || view.deferred.expense !== view.deferredBooked)
   return (
     <section class="info vstatus" id="stav" aria-labelledby="stav-t">
       <header class="info__row">
@@ -563,7 +612,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
       {toBook ? (
         <form class="stack" method="post" action={`${base}/dan`}>
           <input type="hidden" name="rok" value={String(view.year)} />
-          <p class="info__source">{k.bookTaxLead(formatEurExact(r.r1050 ?? 0), view.year)}</p>
+          <p class="info__source">{k.bookTaxLead(formatEurExact(r.r1050 ?? 0), view.year, view.deferred.lines.length > 0 ? formatEurExact(view.deferred.expense) : null)}</p>
           <button class="btn btn--line stack__submit" type="submit">
             {k.bookTax}
           </button>
@@ -682,6 +731,7 @@ export const ClosingPage: FC<ClosingPageProps> = (p) => {
             <div class="pgrid__main">
               <IssuesCard company={c} view={view} />
               <TaxCard view={view} />
+              <DeferredCard view={view} />
               <StatementsCard view={view} />
               <FormCard company={c} view={view} values={p.values} errors={p.errors} />
               <p class="info__source vnotbuilt">{k.notBuilt}</p>

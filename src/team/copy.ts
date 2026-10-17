@@ -953,6 +953,7 @@ export const team = typesetAll({
       address: 'Doplňte sídlo firmy.',
       nace: 'Doplňte SK NACE hlavnej činnosti v úpravách nižšie.',
       tax: (computed: string, booked: string) => typeset(`Daň ${computed} nie je zaúčtovaná ako vyšla (v knihe ${booked}): zaúčtujte ju tlačidlom pri stave závierky.`),
+      deferred: (computed: string, booked: string) => typeset(`Odložená daň za rok (${computed}) nie je zaúčtovaná ako vyšla (v knihe ${booked}): zaúčtujte ju tlačidlom pri stave závierky.`),
       transit: 'Na účte 261 Peniaze na ceste zostal ku koncu roka zostatok.',
       rounding: (n: number, row: string) => typeset(`Zaokrúhlenie na celé eurá: rozdiel ${n} € sme pridali do riadku ${row} súvahy, aby výsledok sedel s výkazom ziskov a strát.`),
       audit: (year: number) =>
@@ -1009,6 +1010,7 @@ export const team = typesetAll({
     fromBooks: 'z kníh',
     sections: {
       placements: 'Preradenie účtov v závierke (malá a veľká účtovná jednotka)',
+      deferred: 'Odložená daň (malá a veľká účtovná jednotka)',
       a: 'Tabuľka A: výdavky, ktoré nie sú daňovými výdavkami',
       b: 'Tabuľka B: odpisy hmotného majetku',
       up: 'Ďalšie položky zvyšujúce výsledok',
@@ -1084,6 +1086,32 @@ export const team = typesetAll({
     employeesHint: (found: string) => typeset(`Z miezd: ${found}, podľa dní v pracovnom pomere. Čiastočné úväzky prepočítajte. Rozhoduje o veľkostnej skupine ďalších rokov aj o audite.`),
     placementsLead:
       'Účet, ktorý patrí do iného riadku, ako ho dáva tlačivo: pohľadávka splatná po roku, prepojená účtovná jednotka, zákonná rezerva. Napíšte účet alebo analytický účet a číslo riadku súvahy (311.002 a 45) alebo výkazu ziskov a strát (662.001 a 40). Zostatok na strane, na ktorú riadok nepatrí, zostane v riadku z tlačiva.',
+    deferredTick: 'Účtovať o odloženej dani',
+    deferredHint: (byLaw: boolean) =>
+      typeset(
+        byLaw
+          ? 'Firma má povinný audit, preto o odloženej dani účtuje (§ 10 ods. 4 postupov účtovania pre podnikateľov).'
+          : 'Povinné pri povinnom audite (§ 10 ods. 4 postupov účtovania pre podnikateľov), inak podľa rozhodnutia firmy. Mikro účtovná jednotka o nej neúčtuje.',
+      ),
+    deferredTaxable: 'Ďalšie zdaniteľné dočasné rozdiely',
+    deferredTaxableHint: 'Účtovná hodnota majetku vyššia alebo záväzku nižšia ako jeho daňová základňa, mimo evidencie majetku.',
+    deferredDeductible: 'Ďalšie odpočítateľné dočasné rozdiely',
+    deferredDeductibleHint: 'Z kníh: rezervy (riadky 119, 120, 137 a 138). Pridajte daňovo neuznané opravné položky a náklady podľa § 17 ods. 19 zaplatené až neskôr.',
+    deferredLosses: 'Odložená daňová pohľadávka aj z daňových strát',
+    deferredLossesHint: 'Len ak je pravdepodobné, že firma bude mať zdaniteľný zisk, voči ktorému straty uplatní (§ 10 ods. 11).',
+    deferredTitle: 'Odložená daň',
+    deferredRows: {
+      assetsTaxable: 'Zdaniteľné dočasné rozdiely z evidencie majetku',
+      assetsDeductible: 'Odpočítateľné dočasné rozdiely z evidencie majetku',
+      taxable: 'Zdaniteľné dočasné rozdiely spolu',
+      deductible: 'Odpočítateľné dočasné rozdiely spolu',
+      rate: 'Sadzba dane ďalšieho obdobia',
+      asset: 'Odložená daňová pohľadávka (riadok 052)',
+      liability: 'Odložený daňový záväzok (riadok 117)',
+      expense: 'Odložená daň v roku (592, náklad)',
+      income: 'Odložená daň v roku (592, výnos)',
+    },
+    deferredOff: 'O odloženej dani sa v tomto roku neúčtuje.',
     placementAccount: 'Účet',
     placementRow: 'Riadok',
     save: 'Uložiť a prepočítať',
@@ -1427,7 +1455,8 @@ export const team = typesetAll({
     late: (days: number) => typeset(`Lehota uplynula pred ${days} ${plural(days, 'dňom', 'dňami', 'dňami')}: podajte priznanie a závierku čo najskôr.`),
     taxBooked: (amount: string) => typeset(`Daň ${amount} je zaúčtovaná interným dokladom k 31. 12. (591 / 341).`),
     bookTax: 'Zaúčtovať daň',
-    bookTaxLead: (amount: string, year: number) => typeset(`Interný doklad k 31. 12. ${year}: 591 Splatná daň z príjmov / 341 Daň z príjmov, ${amount}. Doklad, ktorý daň zaúčtoval predtým, nahradí.`),
+    bookTaxLead: (amount: string, year: number, deferred: string | null) =>
+      typeset(`Interný doklad k 31. 12. ${year}: 591 Splatná daň z príjmov / 341 Daň z príjmov, ${amount}${deferred ? `, a odložená daň ${deferred} na 592 a 481` : ''}. Doklad, ktorý daň zaúčtoval predtým, nahradí.`),
     download: 'Stiahnuť daňové priznanie (XML)',
     downloadStatements: 'Stiahnuť účtovnú závierku (XML)',
     missingOriginal: 'Pri tomto staršom podaní sa pôvodné XML neuložilo. Vyžiadajte si originál podania z finančnej správy; aktuálny prepočet ho nenahrádza.',

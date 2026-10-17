@@ -7,7 +7,7 @@
 import { now } from '../db'
 import { deliveryStatusSql, revisableSql, safeJson, type DeliveryStatus, type FilingFile } from '../filings/model'
 import { booksOf } from './ledger-store'
-import { assetYear } from './assets'
+import { assetYear, temporaryDifferences } from './assets'
 import { assetsOf } from './assets-store'
 import { employeesOf } from './payroll-store'
 import type { Books } from './ledger'
@@ -18,13 +18,18 @@ import {
   closingBalancesByYear,
   closingDue,
   closingIssues,
+  deferredTaxOf,
+  DEFERRED_ASSET,
+  DEFERRED_LIABILITY,
   formOf,
   proposeSize,
   proposeTax,
   statementsFrom,
   taxInputOf,
   taxOf,
+  taxRate,
   type ClosingInputs,
+  type DeferredResult,
   type EntitySize,
   type SizeFigures,
   type SizeReason,
@@ -155,10 +160,12 @@ export function extendStatement(db: D1Database, company: string, year: number, t
 
 /**
  * The tax of a year booked by an internal document on its last day (591 against 341, the whole tax of row 1050: the
- * advances paid were booked to 341 already), in place of the one booked before; nought books nothing.
+ * advances paid were booked to 341 already; and deferred tax's change, 592 against 481.100 and 481.200), in place of
+ * the one booked before; nought books nothing.
  */
-export function bookTaxStatements(db: D1Database, company: string, year: number, cents: number, previous: string | null, by: string, revision: number): D1PreparedStatement[] {
-  const id = cents > 0 ? crypto.randomUUID() : null
+export function bookTaxStatements(db: D1Database, company: string, year: number, cents: number, previous: string | null, by: string, revision: number, deferred: readonly { md: string; d: string; cents: number }[] = []): D1PreparedStatement[] {
+  const lines = [...(cents > 0 ? [{ md: '591', d: '341', cents }] : []), ...deferred.filter((l) => l.cents > 0)]
+  const id = lines.length > 0 ? crypto.randomUUID() : null
   // D1 batch is one transaction. Claim the revision first; every ledger write below requires that exact claim.
   // A second request that read the same revision can neither delete the first entry nor insert a duplicate.
   const out = [
@@ -174,7 +181,7 @@ export function bookTaxStatements(db: D1Database, company: string, year: number,
      SELECT ?1, ?2, 'internal', ?3, s, printf('ID-%d-%03d', ?3, s), ?4, ?5, ?6, ?7, ?8
        FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS s FROM ledger_entries WHERE company_id = ?2 AND kind = 'internal' AND year = ?3)
        WHERE EXISTS (SELECT 1 FROM closings WHERE company_id = ?2 AND year = ?3 AND revision = ?9 AND tax_entry = ?1 AND filed_at IS NULL)`,
-  ).bind(id, company, year, `${year}-12-31`, `Daň z príjmov za rok ${year}`, JSON.stringify([{ md: '591', d: '341', cents }]), now(), by, revision + 1))
+  ).bind(id, company, year, `${year}-12-31`, `Daň z príjmov za rok ${year}`, JSON.stringify(lines), now(), by, revision + 1))
   return out
 }
 
@@ -255,6 +262,10 @@ export interface ClosingView {
   /** The year's figures for the size group and the audit, and whether the audit is required (§ 19). */
   figures: SizeFigures
   audit: 'yes' | 'maybe' | 'no'
+  /** Deferred tax: as computed for the year's end, with the register's differences, and the 592 the year's tax document books. */
+  deferred: DeferredResult
+  deferredAssets: { taxable: number; deductible: number }
+  deferredBooked: number
 }
 
 /** How many years before the one shown the size group is followed back (§ 2(10) looks at two; a chain of kept groups at more). */
@@ -306,6 +317,41 @@ export async function closingView(db: D1Database, company: Company, year: number
   const tax = taxOf(input)
   const booked = statements.accounts['591'] ?? 0
   const running = today <= `${year}-12-31`
+  // Deferred tax: never for a micro entity; by the law when the statements must be audited, else as she decides.
+  const deferredByLaw = size !== 'micro' && audit === 'yes'
+  const deferredOn = size !== 'micro' && (own.deferred ?? deferredByLaw)
+  const reserves = form === 'pod' ? ['r119', 'r120', 'r137', 'r138'].reduce((s, r) => s + Math.max(0, statements.balance[r] ?? 0), 0) : 0
+  const taxKey = closing?.taxEntry ? `m:${closing.taxEntry}` : null
+  let assetBefore = 0
+  let liabilityBefore = 0
+  let deferredBooked = 0
+  for (const e of books.entries) {
+    if (e.on > `${year}-12-31`) break
+    const own = e.key === taxKey
+    for (const l of e.lines) {
+      if (!own) {
+        if (l.md === DEFERRED_ASSET) assetBefore += l.cents
+        if (l.d === DEFERRED_ASSET) assetBefore -= l.cents
+        if (l.md === DEFERRED_LIABILITY) liabilityBefore += l.cents
+        if (l.d === DEFERRED_LIABILITY) liabilityBefore -= l.cents
+      } else {
+        if (l.md === '592') deferredBooked += l.cents
+        if (l.d === '592') deferredBooked -= l.cents
+      }
+    }
+  }
+  const deferredAssets = assets.length > 0 ? temporaryDifferences(assets, year) : { taxable: 0, deductible: 0 }
+  const deferred = deferredTaxOf({
+    on: deferredOn,
+    rate: taxRate(year + 1, input.taxable),
+    assets: deferredAssets,
+    otherTaxable: own.deferredTaxable ?? 0,
+    otherDeductible: own.deferredDeductible ?? reserves,
+    losses: tax.losses.reduce((sum, l) => sum + l.left, 0) + Math.max(0, -(tax.rows.r400 ?? 0)),
+    useLosses: own.deferredLosses,
+    assetBefore,
+    liabilityBefore,
+  })
   return {
     year,
     closing,
@@ -318,15 +364,26 @@ export async function closingView(db: D1Database, company: Company, year: number
     tax,
     paid,
     booked,
-    issues: closingIssues({ books, year, company, nace: own.nace, statements, tax: running ? null : { computed: tax.rows.r1050 ?? 0, booked }, audit }),
+    issues: closingIssues({
+      books,
+      year,
+      company,
+      nace: own.nace,
+      statements,
+      tax: running ? null : { computed: tax.rows.r1050 ?? 0, booked, deferred: { computed: deferred.expense, booked: deferredBooked } },
+      audit,
+    }),
     running,
     due: closing?.dueOn ?? closingDue(year, closing?.extendedTo ?? null),
     changed: closing?.filed ? changedSinceFiled(closing.filed, tax, statements) : null,
     size,
     sizeProposal,
     employees,
-    found: { advances: paid.advances, size: sizeProposal.size, employees: employeesFound },
+    found: { advances: paid.advances, size: sizeProposal.size, employees: employeesFound, deferred: deferredByLaw, deferredDeductible: reserves },
     figures: yearFigures,
     audit,
+    deferred,
+    deferredAssets,
+    deferredBooked,
   }
 }

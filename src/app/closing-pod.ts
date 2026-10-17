@@ -362,7 +362,7 @@ export function podStatements(balances: ReadonlyMap<string, number>, placements:
   const profit = empty(POD_PROFIT_ROWS)
   const unplaced: string[] = []
   const add = (lines: Lines, row: string, cents: number) => (lines[row] = (lines[row] ?? 0) + cents)
-  // A synthetic account's analytic ones together, unless the accountant placed one of them, or it is a bank's.
+  // A synthetic account's analytic ones together, unless the accountant placed one of them.
   const byAccount = new Map<string, number>()
   for (const [account, cents] of balances) {
     if (cents === 0) continue
@@ -373,7 +373,8 @@ export function podStatements(balances: ReadonlyMap<string, number>, placements:
       add(profit, row, cls === 6 ? -cents : cents)
       continue
     }
-    const own = synthetic(account) === '221' || placements.some((p) => p.account === account)
+    // A bank's accounts each by its side, and deferred tax's asset and liability apart (§ 10(16) of the measure on accounting procedures).
+    const own = synthetic(account) === '221' || synthetic(account) === '481' || placements.some((p) => p.account === account)
     const key = own ? account : synthetic(account)
     byAccount.set(key, (byAccount.get(key) ?? 0) + cents)
   }

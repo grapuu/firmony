@@ -3714,6 +3714,43 @@ async function zipped(entries, note) {
   check('stored ones are checked again', storedPod.size === 'large' && storedPod.employees === 61.5 && storedPod.placements.length === 1 && closingForm.storedInputs(JSON.stringify({ size: 'giant', employees: -1 })).size === null)
   const valuesPod = closingForm.closingValues(2026, { ...closing.EMPTY_INPUTS, placements: [{ account: '311.002', row: 'r045' }] }, prop, found3)
   check("the form's values: the proposed group and employees, a placement's row as its number", valuesPod.velkost === 'micro' && valuesPod.zamestnanci === '3,5' && valuesPod.ucet_0 === '311.002' && valuesPod.riadok_0 === '045' && valuesPod.ucet_1 === '')
+  // Deferred tax (§ 10 of the measure on accounting procedures, as in force on 1 January 2026)
+  const machine = { id: 'm1', number: 'M-2026-001', name: 'Stroj', account: '022', costCents: 1_000_000, inUseOn: '2026-03-15', taxGroup: 1, taxMethod: 'straight', car: false, bookMonths: 60, source: 'purchase', priorBookCents: 0, priorTaxCents: 0, priorTaxYears: 0, disposedOn: null, disposal: null }
+  check(
+    'the register\'s temporary differences: a book value above the tax base taxable, below it deductible; nothing of an asset disposed of or not yet in use',
+    JSON.stringify(assets.temporaryDifferences([machine], 2026)) === JSON.stringify({ taxable: 41663, deductible: 0 }) &&
+      JSON.stringify(assets.temporaryDifferences([{ ...machine, bookMonths: 12 }], 2026)) === JSON.stringify({ taxable: 0, deductible: 624997 }) &&
+      JSON.stringify(assets.temporaryDifferences([{ ...machine, disposedOn: '2026-11-30', disposal: 'sale' }, { ...machine, inUseOn: '2027-02-01' }], 2026)) === JSON.stringify({ taxable: 0, deductible: 0 }),
+    JSON.stringify([assets.temporaryDifferences([machine], 2026), assets.temporaryDifferences([{ ...machine, bookMonths: 12 }], 2026)]),
+  )
+  const dIn = { on: true, rate: 21, assets: { taxable: 41663, deductible: 0 }, otherTaxable: 0, otherDeductible: 100000, losses: 500000, useLosses: false, assetBefore: 0, liabilityBefore: 0 }
+  let dt = closing.deferredTaxOf(dIn)
+  check(
+    'the asset and the liability at the rate, booked apart against 592; a deferred income when the asset is the larger',
+    dt.asset === 21000 && dt.liability === 8749 && JSON.stringify(dt.lines) === JSON.stringify([{ md: '481.100', d: '592', cents: 21000 }, { md: '592', d: '481.200', cents: 8749 }]) && dt.expense === -12251,
+    JSON.stringify(dt),
+  )
+  dt = closing.deferredTaxOf({ ...dIn, assetBefore: 30000, liabilityBefore: -5000 })
+  check('a later year books only the change against what 481 holds', JSON.stringify(dt.lines) === JSON.stringify([{ md: '592', d: '481.100', cents: 9000 }, { md: '592', d: '481.200', cents: 3749 }]) && dt.expense === 12749)
+  check(
+    'tax losses count only when she says so; nothing when deferred tax is not accounted',
+    closing.deferredTaxOf({ ...dIn, useLosses: true }).asset === 126000 && closing.deferredTaxOf({ ...dIn, on: false }).lines.length === 0 && closing.deferredTaxOf({ ...dIn, on: false }).expense === 0,
+  )
+  const apart = closing.statementsOf({ entries: [entry('2026-12-31', ['481.100', '592', 21000], ['592', '481.200', 8749])] }, 2026, 'pod')
+  check('the deferred tax asset and liability stand apart in the balance sheet (rows 052 and 117), its cost in row 59', apart.balance.r052 === 21000 && apart.balance.r117 === 8749 && apart.profit.r59 === -12251 && apart.balance.r001 === apart.balance.r079)
+  check(
+    'deferred tax booked otherwise than computed keeps the closing back',
+    issues({}, { tax: { computed: 0, booked: 0, deferred: { computed: 8749, booked: 0 } } }).some((x) => x.code === 'deferred' && x.level === 'block') && !issues({}, { tax: { computed: 0, booked: 0, deferred: { computed: 5, booked: 5 } } }).some((x) => x.code === 'deferred'),
+  )
+  const foundD = { advances: 0, size: 'small', employees: 0, deferred: false, deferredDeductible: 100000 }
+  read = closingForm.readClosing(form({ odlozena: '1', od_zdanitelne: '500', od_odpocitatelne: '1000', od_straty: '1' }), 2026, prop, foundD)
+  check('deferred tax set against the law\'s default, the differences against the books\' proposal', read.inputs.deferred === true && read.inputs.deferredTaxable === 50000 && read.inputs.deferredDeductible === null && read.inputs.deferredLosses === true, JSON.stringify(read.inputs))
+  const valuesD = closingForm.closingValues(2026, { ...closing.EMPTY_INPUTS }, prop, { ...foundD, deferred: true })
+  check("the form's values: deferred tax on when the law has it, the provisions proposed", valuesD.odlozena === '1' && valuesD.od_odpocitatelne === '1000,00' && valuesD.od_zdanitelne === '' && valuesD.od_straty === '')
+  check('stored deferred inputs are checked again', (() => {
+    const st2 = closingForm.storedInputs(JSON.stringify({ deferred: true, deferredTaxable: 500, deferredDeductible: -1, deferredLosses: 'yes' }))
+    return st2.deferred === true && st2.deferredTaxable === 500 && st2.deferredDeductible === null && st2.deferredLosses === false
+  })())
   check(
     "a change of the statements' gross amounts since the filing is a change too",
     closing.changedSinceFiled({ rows: t.rows, balance: { ...fixed.balanceEur }, profit: { ...fixed.profitEur }, gross: { ...fixed.grossEur, r014: 1 } }, t, fixed).statements && !closing.changedSinceFiled({ rows: t.rows, balance: { ...fixed.balanceEur }, profit: { ...fixed.profitEur }, gross: { ...fixed.grossEur } }, t, fixed).statements,
