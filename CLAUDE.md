@@ -1,3 +1,50 @@
+# Start here (written on 17 October 2026 at 15:45, when the owner moved to a new chat)
+
+He asked for everything to be kept so that a new chat carries on ("chcem ísť do nového chatu a aby si mal dáta aj
+kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
+over. Bring this section up to date first whenever a session ends.
+
+1. **Where it stands.** The software is done: the client's app, the accountants' side, the books, VAT, payroll,
+   the closing, billing, the contract online, the end of a contract and the investors' sign-up, closed as one
+   circle in seven stages on 17 October 2026 ("Closing the loop" below). Everything is on GitHub, `grapuu/firmony`
+   (private), branch `main`, commit `76b81a0` or later; `claude/kruh` is the same commit. GitHub's checks (the
+   workflow "Checks": type check, units, runtime, visual, browser passkeys) passed on it. **Nothing is live**: there
+   is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
+   17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
+   merge" is history.
+2. **A new workspace.** Add the repository with `add_repo` (owner `grapuu`, repo `firmony`, access "push"), clone
+   it, `npm ci`. Node 24 for the runtime suite, as GitHub runs it (the workspace's own node may be 22):
+   `mkdir -p ~/node24 && ln -sf "$(npx -y node@24 -p process.execPath)" ~/node24/node`, then
+   `PATH=~/node24:$PATH npm run test:runtime`. Chromium for `test:ui` and `test:browser` is under
+   `/opt/pw-browsers` (`FIRMONY_CHROME=/opt/pw-browsers/chromium-<n>/chrome-linux/chrome`). Run `npm run check`,
+   `npm test` and the runtime suite once before changing anything ("Before pushing" has the counts).
+3. **What is next is his, not code**: his guide, in Slovak and in order, is `docs/spustenie.md` (the domain
+   first, because passkeys are bound to it; then D1 and R2 in the EU, the Worker from GitHub, email, the
+   Anthropic key, the first administrator at `/app/prvy-spravca`, the accountant, europio in Fakturácia, and what
+   comes before the first client). His word: firmony.io (69,90 € a year at Websupport), not bought yet; the code
+   says firmony.ai until he writes that it is bought (`DOMAIN` in `src/config.ts`, a route in `wrangler.jsonc`).
+   Besides: the meeting with the accountant he picked, about two weeks after 17 October (her pay is
+   `ACCOUNTANT_PAY`: 28, 55, 110 € a client, 5 € a payroll, 90 € a closing); the trade "Vedenie účtovníctva" for
+   europio; liability insurance; a lawyer for the terms, the contract and the power of attorney
+   (`CONTRACT_RELEASE` stays closed until the lawyer's and the insurer's references exist:
+   `/ucto/ziadosti/schvalenie`); the AML program signed and europio registered in goAML.
+4. **His first word in the new chat.** To "pokračuj" alone: three lines on where things stand, then what is
+   worth doing next with what it costs him in time, and his pick is waited for. When he writes that a step of the
+   guide is done, do the code side of it in one commit (the domain, the database id) and say what he clicks next.
+5. **Open with him, nothing decided:** the opening line of the site (the code has Codex's "Vy budujete firmu. My
+   strážime účtovníctvo."; the older "Postaráme sa o všetko. Vy rastiete." is his to bring back); the investors'
+   tax return is not built, its prices are a proposal (29, 49 and 89 €); Enable Banking is built and switched on
+   only at about 250 clients (900 € a month).
+6. **The picture he follows** is the artifact "Kruh Firmony" (https://claude.ai/artifact/6RwoEgbSJZx3hpdBafRN3M):
+   all seven stages full, and his steps before launch at the end. Its source was a scratch file of the session of
+   17 October; a new session reads the page with the Artifact tool (`action: "read"`, then the saved file) and
+   republishes to the same URL.
+7. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
+   starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
+   check passes and when he has asked for the work to be put there (his word of 15:32 on 17 October: "ak sú
+   skontrolované a funkčné perfektne dávaj ich ostro na GitHub"). Nothing is bought, no account is made and no
+   terms are accepted for him.
+
 Current social-reporting follow-up (17 October 2026): [docs/security/social-reporting.md](docs/security/social-reporting.md).
 Additive schema **22** prepares full R/O MVPP 2026 XML for supported ordinary full-month employment in
 2026/2027, with independent historical fund/rate/cap checks and official XSD validation. Verified RČ is shared
@@ -95,8 +142,8 @@ document, (3) Firmony's own billing, (4) one desk for the accountant, (5) texts 
 (7) a check of the whole circle by a reader who wrote none of it. The picture he follows is the artifact "Kruh
 Firmony" (https://claude.ai/artifact/6RwoEgbSJZx3hpdBafRN3M; its source is the scratchpad's `kruh/kruh.html` of that
 session, so a new session reads it with the Artifact tool and republishes to its URL). Nothing is merged or deployed
-by the builder. Open with him: the opening line ("Postaráme sa o všetko. Vy rastiete." stays until he picks
-Codex's "Vy budujete firmu. My strážime účtovníctvo." or keeps it).
+by the builder until his word of 15:32 (see "Start here"). Open with him: the opening line (the code has Codex's
+"Vy budujete firmu. My strážime účtovníctvo."; "Postaráme sa o všetko. Vy rastiete." is his to bring back).
 
 - Stage 1 (`640bb91`): a company in handover no longer stops the bank for the others; a freeze without a reason is
   lifted; schema step 24 (the archive's revision moves only when data change); an original is never deleted when a
