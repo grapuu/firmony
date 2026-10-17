@@ -4604,6 +4604,43 @@ select.field__input {
   padding-top: 0;
 }
 
+/* The people who want the investors' tax return, on the page of requests. */
+.investors {
+  margin-top: 24px;
+}
+
+.investors__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.investors__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.investors__email {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.investors__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
 /* The bank without an aggregator (14 October 2026): which bank, what to set there once, the statements that came,
    and a statement from an account the company does not have yet, which waits for the owner's yes. */
 .bankways,

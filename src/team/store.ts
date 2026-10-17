@@ -274,6 +274,32 @@ export async function listRequests(db: D1Database, limit = 300): Promise<Request
   return rows.results.map(requestOf)
 }
 
+export interface InvestorRequest {
+  email: string
+  createdAt: number
+  updatedAt: number
+  brokers: string[]
+  way: string | null
+}
+
+/** The people who want the investors' tax return, the newest first, and how many there are. */
+export async function listInvestors(db: D1Database, limit = 200): Promise<{ total: number; list: InvestorRequest[] }> {
+  const [count, rows] = await db.batch<Row>([
+    db.prepare('SELECT COUNT(*) AS n FROM investor_requests'),
+    db.prepare('SELECT email, created_at, updated_at, brokers, way FROM investor_requests ORDER BY updated_at DESC LIMIT ?').bind(limit),
+  ])
+  return {
+    total: Number(count?.results[0]?.n ?? 0),
+    list: (rows?.results ?? []).map((r) => ({
+      email: String(r.email),
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+      brokers: typeof r.brokers === 'string' && r.brokers !== '' ? r.brokers.split(',') : [],
+      way: typeof r.way === 'string' ? r.way : null,
+    })),
+  }
+}
+
 export async function getRequest(db: D1Database, id: string): Promise<Request | null> {
   const row = await db.prepare('SELECT * FROM requests WHERE id = ?').bind(id).first<Row>()
   return row ? requestOf(row) : null

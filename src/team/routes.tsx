@@ -215,6 +215,7 @@ import {
   getRequest,
   inboxCode,
   isAdmin,
+  listInvestors,
   listRequests,
   paidByOf,
   paymentsToCheck,
@@ -2602,7 +2603,8 @@ teamRoutes.get('/spravy', async (c) => {
 teamRoutes.get('/ziadosti', async (c) => {
   const who = c.get('who')
   if (!isAdmin(who.user)) return missingPage(c)
-  return shell(c, 'requests', t.requests.title, <RequestsPage requests={await listRequests(c.env.DB)} now={now()} flash={flashOf(c)} />)
+  const [requests, investors] = await Promise.all([listRequests(c.env.DB), listInvestors(c.env.DB)])
+  return shell(c, 'requests', t.requests.title, <RequestsPage requests={requests} investors={investors} now={now()} flash={flashOf(c)} />)
 })
 
 teamRoutes.post('/ziadosti/:id', async (c) => {

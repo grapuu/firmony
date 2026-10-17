@@ -2402,6 +2402,300 @@ textarea {
   text-decoration-color: #fff;
 }
 
+/* For investors (/investori): the brokers, three steps, what is counted, two ways, the bridge to companies, and the
+   closing form with the brokers to tick. -------------------------------------------------------------------- */
+
+.ibrokers {
+  padding-top: clamp(40px, 5vw, 64px);
+}
+
+.ibrokers__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px 28px;
+  text-align: center;
+}
+
+.ibrokers__lead {
+  color: var(--soft);
+  font-size: 0.9375rem;
+}
+
+.ibrokers__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ibrokers__name {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.isteps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-block: 0;
+  list-style: none;
+}
+
+.istep {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: clamp(24px, 2.8vw, 36px);
+}
+
+.istep__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.istep__n {
+  font-family: var(--serif);
+  font-size: 2.75rem;
+  font-style: italic;
+  line-height: 1;
+  color: var(--red);
+}
+
+.istep__text,
+.irule__text {
+  color: var(--soft);
+}
+
+.irules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-block: 0;
+  list-style: none;
+}
+
+.irule {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 10px;
+  padding: clamp(22px, 2.4vw, 30px);
+  border-radius: var(--r-card);
+  background: var(--mist);
+}
+
+.iways {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  max-width: calc(880px + 2 * var(--gutter));
+}
+
+.iway {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: clamp(28px, 3.4vw, 40px);
+}
+
+.iway--lead {
+  border-color: var(--blue-line);
+  box-shadow:
+    0 0 0 1px var(--blue-line),
+    var(--shadow-lg);
+}
+
+.iway__price {
+  display: grid;
+  gap: 4px;
+}
+
+.iway__amount {
+  font-family: var(--display);
+  font-size: clamp(2.5rem, 4vw, 3.25rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.iway__note {
+  color: var(--dim);
+  font-size: 0.9375rem;
+}
+
+.iway__points {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.iway__points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--text);
+}
+
+.iway__points .tick {
+  margin-top: 2px;
+}
+
+.iways__note {
+  margin-top: 18px;
+  text-align: center;
+}
+
+.ibridge {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: clamp(24px, 3vw, 40px);
+  border-radius: var(--r-panel);
+  background:
+    radial-gradient(80% 140% at 100% 100%, rgb(255 226 233 / 0.8) 0%, rgb(255 226 233 / 0) 60%),
+    var(--mist);
+}
+
+.ibridge__text p {
+  max-width: 40em;
+  margin-top: 6px;
+  color: var(--soft);
+}
+
+.iform {
+  gap: 20px;
+}
+
+.iform__group {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.iform__legend {
+  padding: 0;
+  margin-bottom: 10px;
+  color: #fff;
+  font-weight: 600;
+}
+
+.iform__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ichip {
+  position: relative;
+  display: inline-flex;
+}
+
+.ichip input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ichip span {
+  padding: 9px 16px;
+  border: 1px solid rgb(255 255 255 / 0.45);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+
+.ichip input:checked + span {
+  border-color: #fff;
+  background: #fff;
+  color: var(--blue);
+}
+
+.ichip input:focus-visible + span {
+  outline: 3px solid rgb(255 255 255 / 0.7);
+  outline-offset: 2px;
+}
+
+.final .iform .ico__label {
+  color: #fff;
+}
+
+/* An e-mail is longer than an IČO: it is set without the digits' spacing, and its row stacks sooner. */
+.ico__row--email .ico__input {
+  letter-spacing: 0;
+}
+
+@media (max-width: 960px) {
+  .isteps,
+  .irules {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .irules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ibridge {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .ibridge .btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 640px) {
+  .irules,
+  .iways {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ibridge {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 440px) {
+  .ico__row--email {
+    flex-direction: column;
+  }
+
+  .ico__row--email .ico__button {
+    width: 100%;
+  }
+}
+
 /* The footer --------------------------------------------------------------------------------------------- */
 
 .foot {

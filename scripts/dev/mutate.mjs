@@ -13,35 +13,37 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // The recapitulative statement (src/app/vat-summary.ts)
-  ['src/app/vat-summary.ts', 'if (summaryPeriodOf(periodOfDoc(doc, data, company), company) !== period) continue', 'if (periodOfDoc(doc, data, company) !== period) continue', '§ 7a by the calendar quarter'],
-  ['src/app/vat-summary.ts', "const code = data.mode === 'eu_service' ? '2' : ''", "const code = '2'", 'goods without a code'],
-  ['src/app/vat-summary.ts', "if (!vatId || !country || country === 'SK' || !isEuVatId(vatId)) {", 'if (!vatId || !country) {', 'a VAT number of another member state'],
-  ['src/app/vat-summary.ts', '    due = true\n    if (!doc.booked) {', '    due = true\n    if (false) {', 'an invoice not booked keeps it back'],
-  ['src/app/vat-summary.ts', 'Math.sign(cents) * Math.round(Math.abs(cents) / 100)', 'Math.floor(cents / 100)', 'whole euros, half up'],
-  ['src/app/vat-summary.ts', '.filter((row) => row.euros !== 0)', '', 'nothing left is no row'],
-  ['src/app/vat-summary.ts', "code: row.code === '1' || (row.code === '2' && stays) ? '0' : row.code", 'code: row.code', 'a wrong code cancelled with 0'],
-  ['src/app/vat-summary.ts', 'const changed = now.filter((row) => before.get(key(row))?.euros !== row.euros)', 'const changed = now', 'only the rows that change'],
-  ['src/app/vat-summary.ts', '    const kind = correctionKind(period, today)\n', "    const kind = 'O' as const\n", 'after the deadline a supplementary statement'],
-  ['src/app/vat-summary.ts', "rows: kind === 'O' ? rows : svDiff(filed.rows, rows)", 'rows', 'a supplementary statement holds the difference'],
-  ['src/app/vat-summary.ts', 'if (filed.rows === null || sameRows(filed.rows, rows))', 'if (filed.rows === null)', 'filed as it stands'],
-  ['src/app/vat-summary.ts', 'if (!due || (!blocked && rows.length === 0))', 'if (!due)', 'supplies that came to nothing'],
-  ['src/app/vat-summary.ts', "  if (today <= periodRange(period).to) return { ...base, state: 'running', plan: null }\n", '', 'the period running'],
-  ['src/app/vat-summary.ts', "if (company.status === 'payer' && isQuarter(period) && goods > GOODS_LIMIT)", 'if (false)', 'a quarter of goods above 50 000 €'],
-  // The tax day (src/app/vat.ts), the file (src/app/vat-xml.ts), what is kept (src/app/vat-store.ts)
-  ['src/app/vat.ts', "if (data.mode !== 'acquisition' && data.mode !== 'eu_goods') return supplied", "if (data.mode !== 'acquisition') return supplied", 'goods to the EU fall due by § 19(8)'],
-  ['src/app/vat-xml.ts', "el('celkovaHodnota', String(totalOf(rows)))", "el('celkovaHodnota', '')", 'the total on the first page'],
-  ['src/app/vat-xml.ts', 'for (let page = 0; page < Math.ceil(rows.length / 12); page++)', 'for (let page = 0; page < 1; page++)', 'as many pages as the rows need'],
-  ['src/app/vat-xml.ts', "(ROMAN[Number(period.slice(6)) - 1] ?? '') : '')}${el('rok'", "period.slice(6) : '')}${el('rok'", 'a quarter as I to IV'],
-  ['src/app/vat-store.ts', '  if (filed.prev)\n', '  if (false)\n', 'a correction taken back gives way'],
-  ['src/app/vat-store.ts', 'prev: f.prev ? { ...svData(f.prev), filedOn: f.prev.filedOn, filedAt: f.prev.filedAt, filedBy: f.prev.filedBy } : null', 'prev: null', 'a correction keeps the statement it corrects'],
-  ['src/app/vat-store.ts', "companyIssues(company).filter((issue) => issue !== 'office').length", '0', "the company's VAT number"],
-  // The deadlines and the pages
-  ['src/team/deadlines.ts', "day: fix === 'O' ? sv.deadline : today", 'day: sv.deadline', 'a supplementary statement for today'],
-  ['src/team/routes.tsx', 'const send = sv.plan ?? (sv.state === \'filed\' && sv.filed ? { kind: sv.filed.kind, rows: sv.filed.sent } : null)', 'const send = sv.plan', 'the file of a statement filed'],
-  ['src/team/routes.tsx', "  if (sv.state === 'filed') return c.redirect(`${back}&ok=sv-uz#suhrnny`, 303)\n", '', 'filed once'],
-  ['src/views/vat.tsx', "if (sv.state === 'none' && !sv.filed) return null", 'if (false) return null', 'no statement without supplies'],
-  ['src/views/deadlines.tsx', 'return d.fix ? t.what.summaryFix[d.fix](periodName(period)) : t.what.summary(periodName(period))', 'return t.what.summary(periodName(period))', 'the correction named'],
+  // Who signs up, and what is kept of it (index.tsx)
+  ['src/index.tsx', "  if (field(one('web'), 200) !== '') return c.redirect('/investori/hotovo', 303)\n", '', 'a bot that fills the hidden field is forgotten'],
+  [
+    'src/index.tsx',
+    '  const brokers = INVESTORS.brokers.map((b) => b.id).filter((id) => picked.includes(id)) as InvestorBroker[]',
+    '  const brokers = picked.map(String) as InvestorBroker[]',
+    'only brokers we know are kept',
+  ],
+  ['src/index.tsx', '  if (!EMAIL.test(values.email)) return page(c, meta, <InvestorsPage', '  if (false) return page(c, meta, <InvestorsPage', 'what is no email is refused'],
+  ['src/index.tsx', "  const at = one('forma') === 'zapis' ? 'final' : 'hero'", "  const at = 'hero'", 'a mistake is said at the form it was made in'],
+  ['src/index.tsx', "  if (!(await withinLimit(db, 'investor', connection(c), LIMITS.requestsPerHour, 3600))) {", '  if (false) {', 'sign-ups from one connection are limited'],
+  [
+    'src/index.tsx',
+    "  if (await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)) {\n    statements.push(\n      queueStatement(db, {\n        key: `investor:",
+    '  if (true) {\n    statements.push(\n      queueStatement(db, {\n        key: `investor:',
+    'two confirmations a day at most',
+  ],
+  ['src/index.tsx', "          copy.investors.mail.remove.replace(/\\u00a0/g, ' '),\n          '',\n", '', 'the confirmation says how to be forgotten'],
+  ['src/index.tsx', "  const urls = ['/', '/investori', '/podmienky'", "  const urls = ['/', '/podmienky'", 'the sitemap lists the investors page'],
+  // One row an address, a year from its last sign-up (db.ts)
+  ['src/db.ts', 'r.email.toLowerCase(), r.brokers.length', 'r.email, r.brokers.length', 'one row an address, whatever its letters'],
+  ['src/db.ts', 'brokers = COALESCE(excluded.brokers, investor_requests.brokers)', 'brokers = excluded.brokers', 'a sign-up without brokers keeps the ones before'],
+  ['src/db.ts', 'DO UPDATE SET updated_at = excluded.updated_at,', 'DO UPDATE SET updated_at = investor_requests.updated_at,', 'signing up again renews the year'],
+  ['src/db.ts', "    db.prepare('DELETE FROM investor_requests WHERE updated_at < ?').bind(ts - RETENTION.requestDays * 86400),\n", '', 'a sign-up is deleted after a year'],
+  // Who sees them
+  [
+    'src/team/routes.tsx',
+    'const [requests, investors] = await Promise.all([listRequests(c.env.DB), listInvestors(c.env.DB)])',
+    'const [requests, investors] = await Promise.all([listRequests(c.env.DB), Promise.resolve({ total: 0, list: [] })])',
+    'the administrator sees who signed up',
+  ],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

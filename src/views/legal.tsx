@@ -70,7 +70,7 @@ export const Legal: FC = () => (
       <h3 class="h4">Aké údaje spracúvame</h3>
       <p>
         {t(
-          'Keď vyplníte formulár: IČO, názov a sídlo firmy z Registra právnických osôb, Vaše meno, e-mail, telefón a poznámku, ak ich uvediete, zvolený balík a to, z akej kampane alebo z akého odkazu ste prišli, ak to bolo v adrese stránky. Kalkulačka na úvodnej stránke nič neukladá.',
+          'Keď vyplníte formulár: IČO, názov a sídlo firmy z Registra právnických osôb, Vaše meno, e-mail, telefón a poznámku, ak ich uvediete, zvolený balík a to, z akej kampane alebo z akého odkazu ste prišli, ak to bolo v adrese stránky. Keď sa zapíšete na daňové priznanie z investícií: e-mail, brokerov a cestu, ktoré zvolíte, a kampaň, z ktorej ste prišli. Kalkulačka na úvodnej stránke nič neukladá.',
         )}
       </p>
 
@@ -99,7 +99,7 @@ export const Legal: FC = () => (
       <h3 class="h4">Prečo a na akom základe</h3>
       <p>
         {t(
-          'Aby sme Vám odpovedali a pripravili ponuku. Ak žiadate za seba, ide o kroky pred uzavretím zmluvy na Vašu žiadosť (článok 6 ods. 1 písm. b) GDPR). Ak žiadate za firmu, ide o náš oprávnený záujem odpovedať jej zástupcovi (článok 6 ods. 1 písm. f) GDPR).',
+          'Aby sme Vám odpovedali a pripravili ponuku. Ak žiadate za seba, ide o kroky pred uzavretím zmluvy na Vašu žiadosť (článok 6 ods. 1 písm. b) GDPR). Ak žiadate za firmu, ide o náš oprávnený záujem odpovedať jej zástupcovi (článok 6 ods. 1 písm. f) GDPR). Ak sa zapíšete na daňové priznanie z investícií, uchovávame Váš e-mail, brokerov a cestu, ktorú ste zvolili, a použijeme ich len na to, aby sme Vám dali vedieť o spustení (článok 6 ods. 1 písm. b) GDPR).',
         )}
       </p>
       <p>
@@ -148,7 +148,7 @@ export const Legal: FC = () => (
       <h3 class="h4">Ako dlho ich uchovávame</h3>
       <p>
         {t(
-          `Žiadosti ${RETENTION.requestDays / 365 === 1 ? '12 mesiacov' : `${RETENTION.requestDays} dní`} od odoslania, ak z nich nevznikne zmluva. Odoslané e-maily ${RETENTION.outboxDays} dní. Odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
+          `Žiadosti ${RETENTION.requestDays / 365 === 1 ? '12 mesiacov' : `${RETENTION.requestDays} dní`} od odoslania, ak z nich nevznikne zmluva, a zápis na daňové priznanie z investícií rovnako dlho od posledného zápisu. Odoslané e-maily ${RETENTION.outboxDays} dní. Odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
         )}
       </p>
       <p>
