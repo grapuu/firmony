@@ -46,6 +46,7 @@
 // (§ 10(15), (16)).
 import type { AssetYear } from './assets'
 import { podStatements, type Placement } from './closing-pod'
+import { EMPTY_NOTES, type NotesInputs } from './notes'
 import { balanceOf, synthetic, accountClass, type Books, type LedgerEntry } from './ledger'
 import type { Company } from './store'
 import { workingDayFrom } from './vat'
@@ -735,6 +736,8 @@ export interface ClosingInputs {
   deferredTaxable: number | null
   deferredDeductible: number | null
   deferredLosses: boolean
+  /** What she adds to the notes (notes.ts). */
+  notes: NotesInputs
 }
 
 export const EMPTY_INPUTS: ClosingInputs = {
@@ -761,6 +764,7 @@ export const EMPTY_INPUTS: ClosingInputs = {
   deferredTaxable: null,
   deferredDeductible: null,
   deferredLosses: false,
+  notes: EMPTY_NOTES,
 }
 
 /**

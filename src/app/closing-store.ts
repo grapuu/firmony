@@ -7,7 +7,8 @@
 import { now } from '../db'
 import { deliveryStatusSql, revisableSql, safeJson, type DeliveryStatus, type FilingFile } from '../filings/model'
 import { booksOf } from './ledger-store'
-import { assetYear, temporaryDifferences } from './assets'
+import { assetYear, temporaryDifferences, type Asset } from './assets'
+import type { NotesSource } from './notes'
 import { assetsOf } from './assets-store'
 import { employeesOf } from './payroll-store'
 import type { Books } from './ledger'
@@ -64,6 +65,8 @@ export interface ClosingFiles {
   declaredOn: string
   return: FilingFile
   statements: FilingFile
+  /** The notes as they were when the podklady were saved: a PDF, which is ASCII text (pdf.ts). */
+  notes?: { name: string; text: string; sha256: string }
 }
 
 export interface Closing {
@@ -266,6 +269,30 @@ export interface ClosingView {
   deferred: DeferredResult
   deferredAssets: { taxable: number; deductible: number }
   deferredBooked: number
+  /** The register of assets, for the notes' depreciation plan; the day the year before's statements were approved here. */
+  assets: Asset[]
+  priorApproved: string | null
+}
+
+/** What the notes are made of: the company and the closing's year as the page shows it. */
+export function notesSource(company: Pick<Company, 'name' | 'ico' | 'dic' | 'address' | 'registerLine'>, view: ClosingView): NotesSource {
+  return {
+    company: { name: company.name, ico: company.ico, dic: company.dic, address: company.address, registerLine: company.registerLine },
+    year: view.year,
+    from: view.inputs.from ?? `${view.year}-01-01`,
+    size: view.size,
+    statements: view.statements,
+    previous: view.previous,
+    employees: view.employees,
+    nace: view.inputs.nace,
+    activity: view.inputs.activity,
+    priorApproved: view.priorApproved,
+    assets: view.assets,
+    tax: { rate: view.tax.rate, current: view.tax.rows.r1050 ?? 0 },
+    deferred: { on: view.deferred.on, asset: view.deferred.asset, liability: view.deferred.liability, rate: view.deferred.rate },
+    audit: view.audit,
+    notes: view.inputs.notes,
+  }
 }
 
 /** How many years before the one shown the size group is followed back (§ 2(10) looks at two; a chain of kept groups at more). */
@@ -385,5 +412,7 @@ export async function closingView(db: D1Database, company: Company, year: number
     deferred,
     deferredAssets,
     deferredBooked,
+    assets,
+    priorApproved: closings.find((k) => k.year === year - 1)?.inputs.approvedOn ?? null,
   }
 }

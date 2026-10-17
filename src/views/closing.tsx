@@ -8,7 +8,9 @@ import { formatCount, formatEurExact } from '../format'
 import { dayName } from '../app/copy'
 import { BALANCE_ROWS, ENTITY_SIZES, PROFIT_ROWS, TABLE_A, TABLE_B, extensionDays, type ClosingIssue, type Lines } from '../app/closing'
 import { POD_ASSET_ROWS, POD_BALANCE_SUMS, POD_LIABILITY_ROWS, POD_PROFIT_ROWS, POD_PROFIT_SUMS } from '../app/closing-pod'
-import { CREDIT_ROWS, LOSS_ROWS, PLACEMENT_ROWS, type ClosingErrors, type ClosingValues } from '../app/closing-form'
+import { CREDIT_ROWS, LOSS_ROWS, NOTE_TEXT, PLACEMENT_ROWS, type ClosingErrors, type ClosingValues } from '../app/closing-form'
+import { noteChecks } from '../app/notes'
+import { notesSource } from '../app/closing-store'
 import type { ClosingView } from '../app/closing-store'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
@@ -236,6 +238,23 @@ const Field: FC<{ name: string; label: string; hint?: string; values: ClosingVal
   </div>
 )
 
+/** A text of her own for the notes. */
+const Area: FC<{ name: string; label: string; hint?: string; values: ClosingValues }> = ({ name, label, hint, values }) => (
+  <div class="fgrid__cell fgrid__cell--wide">
+    <label class="field__label" for={`z-${name}`}>
+      {label}
+    </label>
+    <textarea id={`z-${name}`} class="field__input field__area" name={name} rows={3} maxlength={NOTE_TEXT} aria-describedby={hint ? `z-${name}-hint` : undefined}>
+      {values[name] ?? ''}
+    </textarea>
+    {hint ? (
+      <p class="field__hint" id={`z-${name}-hint`}>
+        {hint}
+      </p>
+    ) : null}
+  </div>
+)
+
 const Tick: FC<{ name: string; label: string; values: ClosingValues; hint?: string }> = ({ name, label, values, hint }) => (
   <div class="fgrid__cell fgrid__cell--wide">
     <label class="tickbox">
@@ -427,6 +446,15 @@ const FormCard: FC<{ company: Company; view: ClosingView; values: ClosingValues;
             <Field name="schvalena" label={k.approved} hint={k.approvedHint} values={values} errors={errors} mode="text" />
           </div>
         </fieldset>
+        <fieldset class="cform__section" disabled={filed}>
+          <legend class="cform__title">{k.sections.notes}</legend>
+          <div class="fgrid">
+            {view.size === 'micro' ? null : <Field name="poz_schvalena" label={k.notesPriorApproved} hint={k.notesPriorApprovedHint} values={values} errors={errors} mode="text" />}
+            <Area name="poz_udalosti" label={k.notesEvents} hint={k.notesEventsHint} values={values} />
+            <Area name="poz_zisk" label={k.notesProfit} values={values} />
+            <Area name="poz_ine" label={k.notesOther} values={values} />
+          </div>
+        </fieldset>
         {filed ? null : (
           <button class="btn btn--blue stack__submit" type="submit">
             {k.save}
@@ -547,6 +575,29 @@ const StatementsCard: FC<{ view: ClosingView }> = ({ view }) => (
         <StatementTable title={k.profit} rows={PROFIT_ROWS} labels={k.profitRows} sums={SUMS_PROFIT} current={view.statements.profitEur} previous={view.previous?.profitEur ?? null} />
       </>
     )}
+  </section>
+)
+
+/** The notes: the draft to download, and what it says that only the accountant can confirm. */
+const NotesCard: FC<{ company: Company; view: ClosingView; checks: string[] }> = ({ company, view, checks }) => (
+  <section class="info" id="poznamky" aria-labelledby="poznamky-t">
+    <h2 id="poznamky-t" class="info__title">
+      {k.notesTitle}
+    </h2>
+    <p class="info__lead">{view.closing?.filed?.files?.notes ? k.notesSaved : k.notesLead(view.statements.form)}</p>
+    {view.closing?.filed?.files?.notes ? null : (
+      <>
+        <p class="info__source">{k.notesChecksTitle}</p>
+        <ul class="cchecks">
+          {checks.map((c) => (
+            <li>{k.notesChecks[c] ?? c}</li>
+          ))}
+        </ul>
+      </>
+    )}
+    <a class="btn btn--line" href={`/ucto/klienti/${company.id}/zavierka/poznamky.pdf?rok=${view.year}`}>
+      {k.notesDownload}
+    </a>
   </section>
 )
 
@@ -733,6 +784,7 @@ export const ClosingPage: FC<ClosingPageProps> = (p) => {
               <TaxCard view={view} />
               <DeferredCard view={view} />
               <StatementsCard view={view} />
+              {view.running ? null : <NotesCard company={c} view={view} checks={noteChecks(notesSource(c, view))} />}
               <FormCard company={c} view={view} values={p.values} errors={p.errors} />
               <p class="info__source vnotbuilt">{k.notBuilt}</p>
             </div>

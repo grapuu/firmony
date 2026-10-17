@@ -4749,7 +4749,7 @@ check('the client row no longer asks for its handover once it was made', Boolean
 await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkBundle({ db, acc, lucia, nowS, day, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAssets({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
-await checkClosingPod({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkClosingPod({ db, acc, lucia, nowS, day, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

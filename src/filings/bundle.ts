@@ -9,7 +9,7 @@ import type { User } from '../app/store'
 import { now, sha256Hex } from '../db'
 import { payrollStatusSql, targetActiveSql } from '../payroll-reporting/sql'
 import { zipName, zipStream, uniqueName, type ZipEntry } from '../zip'
-import { activePackageSql, FILING_KINDS, type DeliveryState, type FilingType } from './model'
+import { activePackageSql, FILING_KINDS, safeJson, type DeliveryState, type FilingType } from './model'
 import { recordDelivery, type DeliveryChange } from './store'
 
 /** Where a document is filed, in the order the folders of the ZIP and the form's groups follow. */
@@ -51,6 +51,8 @@ export interface BundleItem {
   xml: string | null
   fileKey: string | null
   fileBytes: number | null
+  /** The financial statements' notes saved with their podklady (a PDF kept as text), attached beside them in eDane. */
+  notes: { text: string; sha256: string } | null
 }
 
 /** At most this many rows of each list: one page of work, and a form the Worker reads at once. */
@@ -61,12 +63,14 @@ const visible = `c.closed_at IS NULL AND c.demo = 0 AND c.purge_started_at IS NU
 /** What waits to be sent (prepared, or refused and to be sent again) and what was sent and waits for its receipt. */
 export async function bundleItems(db: D1Database, user: User): Promise<{ toSend: BundleItem[]; toConfirm: BundleItem[] }> {
   const filings = (await db.prepare(`SELECT 'filing' AS source, p.id, p.company_id, c.name AS company, c.ico, p.period, p.kind, p.status, p.revision,
-        (SELECT e.reference FROM filing_events e WHERE e.id = p.last_event) AS last_reference, p.name, p.sha256, p.xml, NULL AS file_key, NULL AS file_bytes
+        (SELECT e.reference FROM filing_events e WHERE e.id = p.last_event) AS last_reference, p.name, p.sha256, p.xml, NULL AS file_key, NULL AS file_bytes,
+        CASE WHEN p.kind = 'uz' THEN (SELECT ${safeJson('k.filed', '$.files.notes.text')} FROM closings k WHERE k.company_id = p.company_id AND CAST(k.year AS TEXT) = p.period) END AS notes_text,
+        CASE WHEN p.kind = 'uz' THEN (SELECT ${safeJson('k.filed', '$.files.notes.sha256')} FROM closings k WHERE k.company_id = p.company_id AND CAST(k.year AS TEXT) = p.period) END AS notes_sha
       FROM filing_packages p JOIN companies c ON c.id = p.company_id
       WHERE ${visible} AND p.status IN ('prepared', 'rejected', 'submitted') AND (${activePackageSql('p')})
       ORDER BY p.period, c.name, p.created_at, p.id LIMIT 201`).bind(user.team, user.id).all<Row>()).results
   const payroll = (await db.prepare(`SELECT 'payroll' AS source, p.id, t.company_id, c.name AS company, c.ico, t.period, t.kind, p.status, p.revision,
-        (SELECT e.reference FROM payroll_events e WHERE e.id = p.last_event) AS last_reference, p.name, p.sha256, NULL AS xml, p.file_key, p.file_bytes
+        (SELECT e.reference FROM payroll_events e WHERE e.id = p.last_event) AS last_reference, p.name, p.sha256, NULL AS xml, p.file_key, p.file_bytes, NULL AS notes_text, NULL AS notes_sha
       FROM payroll_targets t JOIN companies c ON c.id = t.company_id JOIN payroll_packages p ON p.id = t.package_id AND p.company_id = t.company_id
       WHERE ${visible} AND (${targetActiveSql('t', true)}) AND ${payrollStatusSql('t', 'p', true, true, true)} IN ('prepared', 'rejected', 'submitted')
       ORDER BY t.period, c.name, t.kind, p.id LIMIT 201`).bind(user.team, user.id).all<Row>()).results
@@ -81,7 +85,7 @@ export async function bundleItems(db: D1Database, user: User): Promise<{ toSend:
 interface Row {
   source: 'filing' | 'payroll'; id: string; company_id: string; company: string; ico: string | null; period: string; kind: string
   status: DeliveryState; revision: number; last_reference: string | null; name: string; sha256: string; xml: string | null
-  file_key: string | null; file_bytes: number | null
+  file_key: string | null; file_bytes: number | null; notes_text: string | null; notes_sha: string | null
 }
 
 function item(r: Row): BundleItem {
@@ -92,6 +96,7 @@ function item(r: Row): BundleItem {
     label: filing ? FILING_KINDS[r.kind as FilingType] : (PAYROLL_LABELS[r.kind] ?? 'Mzdový výkaz'),
     destination: Object.hasOwn(DESTINATIONS, destination) ? destination : 'fs', status: r.status, revision: Number(r.revision),
     lastReference: r.last_reference, name: r.name, rank: filing ? Object.keys(FILING_KINDS).indexOf(r.kind) : 10 + Object.keys(PAYROLL_LABELS).indexOf(r.kind), sha256: r.sha256, xml: r.xml, fileKey: r.file_key, fileBytes: r.file_bytes === null ? null : Number(r.file_bytes),
+    notes: typeof r.notes_text === 'string' && typeof r.notes_sha === 'string' ? { text: r.notes_text, sha256: r.notes_sha } : null,
   }
 }
 
@@ -124,6 +129,13 @@ export function bundleZip(items: BundleItem[], files: R2Bucket | undefined, at =
       }
       lines.push(`${name}\n  ${i.company}${i.ico ? `, IČO ${i.ico}` : ''} · ${i.label} · ${periodWords(i.period)} · podať: ${DESTINATIONS[i.destination].name}${i.status === 'rejected' ? ' · opätovné odoslanie po odmietnutí' : ''}\n  SHA-256 ${i.sha256}`)
       yield { name, when: at, data: async () => bytes }
+      // The statements' notes beside them, as eDane takes them: a PDF attached to the statements.
+      if (i.notes && (await sha256Hex(i.notes.text)) === i.notes.sha256) {
+        const notes = new TextEncoder().encode(i.notes.text)
+        const notesName = uniqueName(zipName(`${folder}/${i.period} Poznamky k zavierke.pdf`), taken)
+        lines.push(`${notesName}\n  ${i.company} · poznámky k účtovnej závierke · ${periodWords(i.period)} · priložiť k závierke ako PDF\n  SHA-256 ${i.notes.sha256}`)
+        yield { name: notesName, when: at, data: async () => notes }
+      }
     }
     const text = [
       'Firmony: balík na podanie',

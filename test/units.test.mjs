@@ -29,6 +29,8 @@ import {
   closingXml,
   closingForm,
   closingPod,
+  notes,
+  pdf as pdfWriter,
   payroll,
   payrollStore,
   payrollReporting as reports,
@@ -3751,6 +3753,57 @@ async function zipped(entries, note) {
     const st2 = closingForm.storedInputs(JSON.stringify({ deferred: true, deferredTaxable: 500, deferredDeductible: -1, deferredLosses: 'yes' }))
     return st2.deferred === true && st2.deferredTaxable === 500 && st2.deferredDeductible === null && st2.deferredLosses === false
   })())
+  // The notes to the statements (17 October 2026): the draft, and the PDF it is written in
+  const pdfDoc = { title: 'Skúška', header: { left: 'Poznámky Úč POD 3-01', right: 'IČO 12345679' }, blocks: [{ kind: 'title', text: 'Poznámky (zátvorky) \\ ľťď' }, { kind: 'table', columns: [{ label: 'A', width: 70 }, { label: 'B', width: 30, align: 'right' }], rows: Array.from({ length: 100 }, (_, i) => ({ cells: [`Riadok ${i}`, '−5 €'] })) }] }
+  const pdfSource = pdfWriter.pdfText(pdfDoc)
+  const offsetsOk = (() => {
+    const xref = Number(/startxref\n(\d+)/.exec(pdfSource)?.[1])
+    const table = pdfSource.slice(xref).split('\n').slice(2).filter((l) => / 00000 n $/.test(l)).map((l) => Number(l.slice(0, 10)))
+    return pdfSource.slice(xref).startsWith('xref') && table.length > 6 && table.every((o, i) => pdfSource.slice(o).startsWith(`${i + 1} 0 obj`))
+  })()
+  check(
+    'a PDF of plain ASCII whose cross-reference points at each object, pages broken with the table\'s head again, the Slovak letters by the font\'s own codes',
+    pdfSource.startsWith('%PDF-1.4\n') && /^[\x00-\x7f]*$/.test(pdfSource) && offsetsOk && /\/Count 3 /.test(pdfSource) && pdfSource.includes('157 /lcaron') && pdfSource.includes('(Pozn\\341mky \\(z\\341tvorky\\) \\\\ \\235\\252\\217)') && pdfSource.includes('(\\2265 \\200)') && pdfWriter.pdfOf(pdfDoc).length === pdfSource.length,
+    pdfSource.slice(0, 300),
+  )
+  check('widths as Helvetica has them, the wide caron letters wider', pdfWriter.textWidth('ľ', 10) > pdfWriter.textWidth('l', 10) && pdfWriter.textWidth('Aa 1', 1000) === 667 + 556 + 278 + 556 && pdfWriter.wrap('jedno dve tri štyri', pdfWriter.textWidth('jedno dve', 10), 10).length === 2)
+  const noteSrc = (size, fields = {}) => ({
+    company: { name: 'Ukážková firma s. r. o.', ico: '12345679', dic: '2120000007', address: 'Hlavná 1, 040 01 Košice', registerLine: 'Obchodný register Okresného súdu Košice I, oddiel Sro, vložka č. 12345/V' },
+    year: 2026, from: '2026-01-01', size, statements: size === 'micro' ? st : pod, previous: null, employees: 3.5, nace: '62.01.0', activity: 'Počítačové programovanie', priorApproved: null,
+    assets: [], tax: { rate: 21, current: 0 }, deferred: { on: false, asset: 0, liability: 0, rate: 21 }, audit: 'no', notes: { priorApproved: null, events: '', profit: '', other: '' }, ...fields,
+  })
+  const text = (doc) => doc.blocks.map((b) => (b.kind === 'table' ? b.rows.map((r) => r.cells.join(' | ')).join('\n') : b.text)).join('\n')
+  let notesDoc = notes.notesDocument(noteSrc('micro'))
+  check(
+    "a micro entity's notes: Úč MUJ 3-01 with IČO and DIČ on each page, its three articles, the employees, no events unless she wrote them",
+    notesDoc.header.left === 'Poznámky Úč MUJ 3-01' && notesDoc.header.right.includes('IČO 12345679') && notesDoc.header.right.includes('DIČ 2120000007') && ['Čl. I ', 'Čl. II ', 'Čl. III '].every((h) => text(notesDoc).includes(h)) && !text(notesDoc).includes('Čl. IV') && text(notesDoc).includes('zamestnancov počas účtovného obdobia: 3,5') && !text(notesDoc).includes('Udalosti po dni'),
+    text(notesDoc).slice(0, 400),
+  )
+  notesDoc = notes.notesDocument(noteSrc('small', { notes: { priorApproved: '2026-06-20', events: 'Firma kúpila budovu.', profit: 'Zisk sa prevedie na účet 428.', other: '' } }))
+  check(
+    "a small entity's: Úč POD 3-01, seven articles, the approval before, her events and her proposal for the profit",
+    notesDoc.header.left === 'Poznámky Úč POD 3-01' && ['Čl. I ', 'Čl. II ', 'Čl. III ', 'Čl. IV ', 'Čl. V ', 'Čl. VI ', 'Čl. VII '].every((h) => text(notesDoc).includes(h)) && !text(notesDoc).includes('Čl. VIII') && text(notesDoc).includes('schválená 20. 6. 2026') && text(notesDoc).includes('Firma kúpila budovu.') && text(notesDoc).includes('Zisk sa prevedie na účet 428.'),
+  )
+  const podPrev = closing.statementsOf({ entries: year }, 2026, 'pod')
+  const podNext = closing.statementsOf({ entries: [...year, entry('2027-02-01', ['221.001', '602', 10000]), entry('2027-03-01', ['022', '321', 500000]), entry('2027-12-31', ['551', '082', 50000]), entry('2027-06-01', ['221.001', '461', 300000])] }, 2027, 'pod')
+  const cf = notes.cashFlowOf(podNext, podPrev)
+  check(
+    'the cash flows from the two balance sheets: operations, investments and financing make the change of money exactly',
+    cf.operating + cf.investing + cf.financing === cf.end - cf.start && cf.investing === -5000 && cf.lines.find(([l]) => l.startsWith('Zmena stavu úverov'))?.[1] === 3000 && cf.lines[1][1] === 500,
+    JSON.stringify(cf),
+  )
+  notesDoc = notes.notesDocument(noteSrc('large', { year: 2027, statements: podNext, previous: podPrev, audit: 'yes', deferred: { on: true, asset: 21000, liability: 8749, rate: 21 } }))
+  check(
+    "a large entity's: the articles and the tables of its figures, the fixed assets, equity, the income tax and the cash flows",
+    text(notesDoc).includes('Čl. VIII') && text(notesDoc).includes('Samostatné hnuteľné veci a súbory | 0 € | 5 000 € | 0 € | 500 € | 0 € | 4 500 €') && text(notesDoc).includes('Prehľad peňažných tokov') && text(notesDoc).includes('Odložený daňový záväzok | 87 €') && text(notesDoc).includes('podlieha overeniu audítorom'),
+    text(notesDoc).slice(text(notesDoc).indexOf('Čl. VIII'), text(notesDoc).indexOf('Čl. VIII') + 500),
+  )
+  check(
+    'what the draft states that only she can confirm: the group, the bodies, what is off the balance sheet; the loans, the events and the approval before when they are in question',
+    notes.noteChecks(noteSrc('large', { statements: podNext, previous: podPrev })).join() === 'group,bodies,offBalance,longLiabilities,events,priorApproved' && notes.noteChecks(noteSrc('micro', { notes: { priorApproved: null, events: 'Nič.', profit: '', other: '' } })).join() === 'group,bodies,offBalance',
+  )
+  read = closingForm.readClosing(form({ poz_schvalena: '20. 6. 2026', poz_udalosti: ' Firma kúpila budovu.\r\n ', poz_zisk: 'Na 428.', poz_ine: '' }), 2026, prop, found3)
+  check("the notes' inputs read and stored", read.inputs.notes.priorApproved === '2026-06-20' && read.inputs.notes.events === 'Firma kúpila budovu.' && read.inputs.notes.profit === 'Na 428.' && closingForm.storedInputs(JSON.stringify({ notes: { priorApproved: '2026-02-30', events: 5, profit: 'x' } })).notes.profit === 'x')
   check(
     "a change of the statements' gross amounts since the filing is a change too",
     closing.changedSinceFiled({ rows: t.rows, balance: { ...fixed.balanceEur }, profit: { ...fixed.profitEur }, gross: { ...fixed.grossEur, r014: 1 } }, t, fixed).statements && !closing.changedSinceFiled({ rows: t.rows, balance: { ...fixed.balanceEur }, profit: { ...fixed.profitEur }, gross: { ...fixed.grossEur } }, t, fixed).statements,

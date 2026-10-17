@@ -1011,6 +1011,7 @@ export const team = typesetAll({
     sections: {
       placements: 'Preradenie účtov v závierke (malá a veľká účtovná jednotka)',
       deferred: 'Odložená daň (malá a veľká účtovná jednotka)',
+      notes: 'Poznámky k závierke',
       a: 'Tabuľka A: výdavky, ktoré nie sú daňovými výdavkami',
       b: 'Tabuľka B: odpisy hmotného majetku',
       up: 'Ďalšie položky zvyšujúce výsledok',
@@ -1112,6 +1113,26 @@ export const team = typesetAll({
       income: 'Odložená daň v roku (592, výnos)',
     },
     deferredOff: 'O odloženej dani sa v tomto roku neúčtuje.',
+    notesTitle: 'Poznámky k závierke',
+    notesLead: (form: 'muj' | 'pod') =>
+      typeset(`Návrh poznámok (${form === 'pod' ? 'Úč POD 3-01' : 'Úč MUJ 3-01'}) z kníh a z toho, čo doplníte v úpravách. Stiahnite ho ako PDF, skontrolujte a v eDane priložte k závierke.`),
+    notesSaved: 'Poznámky uložené s podkladmi: stiahnete presne tie, ktoré k nim patria.',
+    notesDownload: 'Stiahnuť poznámky (PDF)',
+    notesChecksTitle: 'Návrh tvrdí aj to, čo kniha nevie. Skontrolujte, že:',
+    notesChecks: {
+      group: 'firma nie je súčasťou konsolidovaného celku,',
+      bodies: 'členom orgánov neboli poskytnuté pôžičky, záruky ani plnenia na súkromné účely,',
+      offBalance: 'firma nemá podmienené záväzky ani významné povinnosti mimo súvahy,',
+      longLiabilities: 'zostatková doba splatnosti a zabezpečenie úverov sú ako v úverových zmluvách,',
+      events: 'po skončení roka nenastali významné udalosti; inak ich doplňte v úpravách,',
+      priorApproved: 'deň schválenia závierky za predchádzajúce obdobie je doplnený v úpravách.',
+    } as Record<string, string>,
+    notesPriorApproved: 'Deň schválenia závierky za predchádzajúce obdobie',
+    notesPriorApprovedHint: 'Ak ju uzatvárala predchádzajúca účtovníčka. Ak u nás, doplníme ho sami.',
+    notesEvents: 'Udalosti po skončení roka',
+    notesEventsHint: 'Prázdne: v poznámkach bude, že významné udalosti nenastali.',
+    notesProfit: 'Návrh na rozdelenie zisku alebo vyrovnanie straty',
+    notesOther: 'Ďalšie informácie do poznámok',
     placementAccount: 'Účet',
     placementRow: 'Riadok',
     save: 'Uložiť a prepočítať',
@@ -1461,7 +1482,7 @@ export const team = typesetAll({
     downloadStatements: 'Stiahnuť účtovnú závierku (XML)',
     missingOriginal: 'Pri tomto staršom podaní sa pôvodné XML neuložilo. Vyžiadajte si originál podania z finančnej správy; aktuálny prepočet ho nenahrádza.',
     downloadBlocked: 'Súbory pripravíme, keď bude všetko vyriešené.',
-    notes: 'Poznámky k závierke Firmony nepripravuje: v eDane ich priložte ako PDF. Závierku podajte samostatne v lehote na podanie priznania (§ 49 ods. 11 zákona o dani z príjmov); finančná správa ju uloží do registra účtovných závierok.',
+    notes: 'Poznámky k závierke pripravíme ako PDF; v eDane ich priložte k závierke. Závierku podajte samostatne v lehote na podanie priznania (§ 49 ods. 11 zákona o dani z príjmov); finančná správa ju uloží do registra účtovných závierok.',
     markLead: 'Uložte presné podklady. Potom si stiahnete práve tieto súbory pre eDane a v evidencii podaní zaevidujete odoslanie a samostatné potvrdenky priznania a závierky. Klient dostane údaje na úhradu s informáciou o nedoloženom prijatí.',
     mark: 'Uložiť podklady a otvoriť podania',
     unmark: 'Zrušiť označenie',
@@ -1475,7 +1496,7 @@ export const team = typesetAll({
     extendSave: 'Uložiť lehotu',
     open: 'Závierka a daň z príjmov',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: poznámky, odloženú daň, úľavy na dani, osobitné základy dane (§ 17f, § 51e), prílohu k § 13a a 13b a tabuľky C, E a G až J. Ak sa niečo z toho firmy týka, doplňte to v eDane.',
+      'Firmony zatiaľ nepripravuje: úľavy na dani, osobitné základy dane (§ 17f, § 51e), prílohu k § 13a a 13b a tabuľky C, E a G až J. Ak sa niečo z toho firmy týka, doplňte to v eDane.',
     /** What the client reads when the closing is filed: the tax to pay, by when and where, or the overpayment; the advances it brings. */
     clientMessage: (m: { year: number; left: string | null; paid: string | null; over: string | null; due: string; vs: string; account: string | null; advances: { kind: 'none' | 'quarterly' | 'monthly'; each: string } }) =>
       typeset(

@@ -110,7 +110,7 @@ export function sensitivePath(path: string, method: string): boolean {
   if (
     path.startsWith('/ucto/') &&
     (method === 'GET' || method === 'HEAD') &&
-    (/\/paska$/.test(path) || /\.(?:csv|xml)$/.test(path) || /\/(?:plna-moc|odovzdanie|prevzatie)\/[^/]+$/.test(path))
+    (/\/paska$/.test(path) || /\.(?:csv|xml|pdf)$/.test(path) || /\/(?:plna-moc|odovzdanie|prevzatie)\/[^/]+$/.test(path))
   )
     return true
   if (method !== 'GET' && method !== 'HEAD' && (path === '/ucto/tim' || /\/odovzdanie\/[^/]+\/odstranit$/.test(path) || /\/(?:posudenie|uvolnit|schvalit-uvolnenie|uzavriet)$/.test(path) || /^\/ucto\/fakturacia\/(?:europio|vystavit)$/.test(path))) return true

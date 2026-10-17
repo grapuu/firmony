@@ -81,8 +81,12 @@ over. Bring this section up to date first whenever a session ends.
    currencies, OSS, Intrastat and joint-stock companies. Deferred tax (built: § 10 of the measure MF/23054/2002-92 as
    of 1 January 2026, required with the audit, never for a micro entity; the register's temporary differences
    (`temporaryDifferences`), the provisions proposed, what she types, tax losses on her word; booked with the year's
-   tax document on 481.100 and 481.200 against 592, shown apart in rows 052 and 117). Not yet in the closing of any
-   size: the notes (poznámky). The site promises a large company only an offer of its own until the software does each part; every
+   tax document on 481.100 and 481.200 against 592, shown apart in rows 052 and 117). The notes (built:
+   `src/app/notes.ts` drafts Poznámky Úč MUJ 3-01 or Úč POD 3-01 by the size, the articles of the measures, a large
+   entity's tables and its cash flows by the indirect method; `src/app/pdf.ts` writes them as an ASCII PDF in the
+   viewer's Helvetica with the Slovak letters by /Differences; `/ucto/klienti/:id/zavierka/poznamky.pdf`, saved with
+   the podklady and put beside the statements in the filing bundle; what the draft says that only she can confirm is
+   listed on the page, `NOTE_CHECKS`). The site promises a large company only an offer of its own until the software does each part; every
    text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every

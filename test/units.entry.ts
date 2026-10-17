@@ -44,6 +44,8 @@ export * as assets from '../src/app/assets'
 export * as closingXml from '../src/app/closing-xml'
 export * as closingForm from '../src/app/closing-form'
 export * as closingPod from '../src/app/closing-pod'
+export * as notes from '../src/app/notes'
+export * as pdf from '../src/app/pdf'
 export * as payroll from '../src/app/payroll'
 export * as payrollStore from '../src/app/payroll-store'
 

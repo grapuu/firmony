@@ -9,6 +9,7 @@ import { moneyText } from './vat-form'
 import { naceParts } from './closing-xml'
 import { canonicalAccount } from './ledger'
 import { podLeafKind, podRowKinds, type Placement } from './closing-pod'
+import type { NotesInputs } from './notes'
 import {
   ENTITY_SIZES,
   EMPTY_INPUTS,
@@ -33,6 +34,8 @@ export const LOSS_ROWS = LOSS_YEARS
 export const CREDIT_ROWS = MINIMUM_CREDIT_YEARS
 /** The rows of the form for accounts placed in a row of Úč POD of the accountant's own. */
 export const PLACEMENT_ROWS = 8
+/** The longest text she may add to the notes, each part. */
+export const NOTE_TEXT = 3000
 
 export type ClosingError = 'amount' | 'day' | 'year' | 'used' | 'nace' | 'employees' | 'account' | 'row'
 
@@ -121,7 +124,15 @@ export function storedInputs(json: unknown): ClosingInputs {
     deferredTaxable: amountOk(raw.deferredTaxable) ? raw.deferredTaxable : null,
     deferredDeductible: amountOk(raw.deferredDeductible) ? raw.deferredDeductible : null,
     deferredLosses: raw.deferredLosses === true,
+    notes: notesOf(raw.notes, day),
   }
+}
+
+/** The notes' inputs as stored, each checked again. */
+function notesOf(value: unknown, day: (v: unknown) => string | null): NotesInputs {
+  const v = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  const text = (x: unknown) => (typeof x === 'string' ? x.slice(0, NOTE_TEXT) : '')
+  return { priorApproved: day(v.priorApproved), events: text(v.events), profit: text(v.profit), other: text(v.other) }
 }
 
 /** The first day of a year's tax period, and the minimum tax's exemption the books propose for it (a first period). */
@@ -172,6 +183,10 @@ export function closingValues(year: number, inputs: ClosingInputs, proposal: Pro
   v.od_zdanitelne = money(inputs.deferredTaxable ?? 0)
   v.od_odpocitatelne = money(inputs.deferredDeductible ?? found.deferredDeductible ?? 0)
   v.od_straty = inputs.deferredLosses ? '1' : ''
+  v.poz_schvalena = inputs.notes.priorApproved ? textDay(inputs.notes.priorApproved) : ''
+  v.poz_udalosti = inputs.notes.events
+  v.poz_zisk = inputs.notes.profit
+  v.poz_ine = inputs.notes.other
   return v
 }
 
@@ -290,5 +305,15 @@ export function readClosing(get: (name: string) => unknown, year: number, propos
   const deductibleDiff = amount('od_odpocitatelne') ?? 0
   inputs.deferredDeductible = deductibleDiff === (found.deferredDeductible ?? 0) ? null : deductibleDiff
   inputs.deferredLosses = yes('od_straty')
+  // The notes: the day the statements before were approved, and her own texts.
+  const prior = dayOfText(text('poz_schvalena'))
+  if (prior === null || (prior !== '' && prior > `${year + 1}-12-31`)) errors.poz_schvalena = 'day'
+  const long = (name: string) => {
+    const raw = get(name)
+    const value = typeof raw === 'string' ? raw.replace(/\r\n/g, '\n').trim().slice(0, NOTE_TEXT) : ''
+    values[name] = value
+    return value
+  }
+  inputs.notes = { priorApproved: prior || null, events: long('poz_udalosti'), profit: long('poz_zisk'), other: long('poz_ine') }
   return { inputs, values, errors }
 }

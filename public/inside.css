@@ -6643,6 +6643,15 @@ select.field__input {
   min-width: 0;
 }
 
+/* What the draft notes state that only the accountant can confirm. */
+.cchecks {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  color: var(--dim);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 /* Accounts placed in a row of Úč POD of the accountant's own: the account, the row. */
 .cplace {
   display: grid;

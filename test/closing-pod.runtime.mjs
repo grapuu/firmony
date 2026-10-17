@@ -6,7 +6,7 @@ import { check } from './check.mjs'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { validateXML } from 'xmllint-wasm'
 
-export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
+export async function checkClosingPod({ db, acc, lucia, nowS, day, unzip, capture }) {
   const plain = (text) => text.replace(/ /g, ' ')
   const validXml = async (xml, schema) => {
     const result = await validateXML({ xml: [{ fileName: 'x.xml', contents: xml }], schema: [{ fileName: schema, contents: readFileSync(new URL(`./xsd/${schema}`, import.meta.url), 'utf8') }] })
@@ -60,7 +60,7 @@ export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
   )
 
   // The size group confirmed, the employees typed, a receivable due after a year placed among the long-term ones.
-  const form = { rok: String(Y), velkost: 'large', zamestnanci: '60', ucet_0: '311.002', riadok_0: '45', nace: '70.10.0', cinnost: 'Vedenie firiem', zdanitelne: '700000', odlozena: '1', od_zdanitelne: '50000', od_odpocitatelne: '10000' }
+  const form = { rok: String(Y), velkost: 'large', zamestnanci: '60', ucet_0: '311.002', riadok_0: '45', nace: '70.10.0', cinnost: 'Vedenie firiem', zdanitelne: '700000', odlozena: '1', od_zdanitelne: '50000', od_odpocitatelne: '10000', poz_udalosti: 'TEST-ONLY udalosť po skončení roka' }
   res = await acc.post(base, { ...form, riadok_0: '41' })
   page = plain(await res.text())
   check('a sum row is no row to place an account in: said, nothing kept', res.status === 422 && page.includes('nie súčtový') && !(await db.prepare('SELECT 1 AS x FROM closings WHERE company_id = ?').bind(company).first()))
@@ -83,6 +83,15 @@ export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
   check(
     'deferred tax at 21 %: an asset of 2 100 € and a liability of 10 500 €, to be booked with the tax',
     page.includes('Odložená daňová pohľadávka (riadok 052)</td><td class="vrows__amount">2 100,00 €') && page.includes('Odložený daňový záväzok (riadok 117)</td><td class="vrows__amount">10 500,00 €') && page.includes('a odložená daň 8 400,00 € na 592 a 481'),
+  )
+  check('the page offers the notes with what to check in them', page.includes('Stiahnuť poznámky (PDF)') && page.includes('členom orgánov neboli poskytnuté pôžičky') && !page.includes('po skončení roka nenastali významné udalosti; inak'))
+  res = await acc.get(`${base}/poznamky.pdf?rok=${Y}`)
+  const draft = await res.text()
+  if (capture) writeFileSync(`${capture}/notes.pdf`, draft)
+  check(
+    "the notes' draft as a PDF: a large entity's, Úč POD 3-01 with IČO and DIČ, the tables and her events",
+    res.status === 200 && res.headers.get('content-type') === 'application/pdf' && (res.headers.get('content-disposition') ?? '').includes(`Poznamky_50888885_${Y}.pdf`) && draft.startsWith('%PDF-1.4') && draft.includes('(Pozn\\341mky \\332\\201 POD 3-01)') && draft.includes('(I\\215O 50888885   DI\\215 2120888885)') && draft.includes('\\215l. VIII') && draft.includes('TEST-ONLY udalos\\252 po skon\\201en\\355 roka'),
+    draft.slice(0, 200),
   )
   // The tax booked, the podklady saved: the files are the return and the statements of a large entity.
   res = await acc.post(`${base}/dan`, { rok: String(Y) })
@@ -109,6 +118,17 @@ export async function checkClosingPod({ db, acc, lucia, nowS, day, capture }) {
     xml.includes('<r014><s1>6000000</s1><s2>1000000</s2><s3>5000000</s3><s4>6000000</s4></r014>') && xml.includes('<r045><s1>200000</s1><s2>0</s2><s3>200000</s3>') && xml.includes('<r01><s1>700000</s1><s2>11000000</s2></r01>') &&
       xml.includes('<r052><s1>2100</s1><s2>0</s2><s3>2100</s3>') && xml.includes('<r117><s5>10500</s5>') && xml.includes('<r59><s1>8400</s1>'),
     xml.slice(xml.indexOf('<telo>'), xml.indexOf('<telo>') + 600),
+  )
+  res = await acc.get(`${base}/poznamky.pdf?rok=${Y}`)
+  check('after the podklady are saved, the notes are the ones saved with them', res.status === 200 && (await res.text()) === filed.files?.notes?.text && filed.files.notes.name === `Poznamky_50888885_${Y}.pdf`)
+  res = await acc.get('/ucto/podania/balik.zip')
+  const zip = res.status === 200 ? unzip(new Uint8Array(await res.arrayBuffer())) : null
+  const notesFile = zip?.find((f) => f.name.includes('(ICO 50888885)/') && f.name.endsWith(`${Y} Poznamky k zavierke.pdf`))
+  const overview = new TextDecoder().decode(zip?.find((f) => f.name === 'PREHLAD.txt')?.data ?? new Uint8Array())
+  check(
+    'the filing bundle holds the notes beside the statements, as saved, said in the overview',
+    Boolean(notesFile?.ok) && new TextDecoder().decode(notesFile.data) === filed.files.notes.text && zip.some((f) => f.name.includes('(ICO 50888885)/') && f.name.endsWith('.xml')) && overview.includes('poznámky k účtovnej závierke'),
+    zip?.map((f) => f.name).join(' | '),
   )
   res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
   const dppo = await res.text()

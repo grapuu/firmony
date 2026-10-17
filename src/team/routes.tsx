@@ -86,7 +86,9 @@ import { VatCard, VatPage, type VatForm } from '../views/vat'
 import { ClosingPage, closingState, type ClosingState } from '../views/closing'
 import { extensionDays, tableF } from '../app/closing'
 import { closingValues, readClosing, type ClosingErrors, type ClosingValues } from '../app/closing-form'
-import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
+import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, notesSource, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
+import { notesDocument } from '../app/notes'
+import { pdfText } from '../app/pdf'
 import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
 import { CHILD_ROWS, EmployeePage, PayrollPage, PayslipPage, type FieldErrors, type MonthState, type PayOrders, type SlipLine } from '../views/payroll'
 import {
@@ -1615,8 +1617,35 @@ async function closingFiles(company: Company, view: ClosingView, declaredOn: str
       minimumHalf: view.input.minimumHalf, minimumExempt: view.input.minimumExempt, tableF: tableF(view.statements),
     })),
     statements: await make(`${view.statements.form === 'pod' ? 'UZPOD' : 'UZMUJ'}_${company.ico ?? company.id}_${view.year}.xml`, statementsXml(filer, view.statements, view.previous, { year: view.year, from, preparedOn: declaredOn, approvedOn: view.inputs.approvedOn, size: view.size })),
+    notes: await (async () => {
+      const made = await make(notesName(company, view.year), pdfText(notesDocument(notesSource(company, view))))
+      return { name: made.name, text: made.xml, sha256: made.sha256 }
+    })(),
   }
 }
+
+/** The notes' file name: Poznamky_<IČO>_<year>.pdf. */
+const notesName = (company: Company, year: number): string => `Poznamky_${company.ico ?? company.id}_${year}.pdf`
+
+/** The notes to the statements as a PDF: the ones saved with the podklady, else the draft from the books as they stand. */
+teamRoutes.get('/klienti/:id/zavierka/poznamky.pdf', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const found = await closingOfForm(c, company, c.req.query('rok'))
+  if (!found) return missingPage(c)
+  const { view } = found
+  const saved = view.closing?.filed?.files?.notes
+  if (saved && (await sha256Hex(saved.text)) !== saved.sha256) return c.text('Uložený dokument sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+  const text = saved?.text ?? pdfText(notesDocument(notesSource(company, view)))
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'closing.notes.downloaded', subject: String(view.year) })])
+  return new Response(text, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${saved?.name ?? notesName(company, view.year)}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
 
 /** The return or the statements as a file, for "Načítať zo súboru" in eDane or on the portal. */
 teamRoutes.get('/klienti/:id/zavierka/:file', async (c) => {
