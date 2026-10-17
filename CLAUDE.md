@@ -164,6 +164,10 @@ Codex's "Vy budujete firmu. My strážime účtovníctvo." or keeps it).
   - 16 rules taken out once (`scripts/dev/mutate.mjs`); units 866, runtime 1320 on Node 24, the visual test with
     five more pages at 1440, 390 and 320 px. Commit: see the log ("Close the loop: the check of the whole circle
     (stage 7)").
+- On main since 17 October 2026 at about 15:40, his word of 15:32: "ak su skontrolovane a funkcne perfetkne davaj
+  ich ostra na github ... chcem aby tato cast bola hotova, a riesime uz len omacky okolo ako su potvrdenia zivnost
+  uctovnik". The seven commits of the loop were pushed to `main` after `npm run test:browser` (31) passed as well;
+  there is still no Worker, so nothing went live. What is left is his: the steps of `docs/spustenie.md`.
 
 ## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 19:05)
 
