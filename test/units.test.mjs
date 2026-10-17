@@ -241,6 +241,27 @@ for (const [name, value] of [
   ['timestamp as string', JSON.stringify({ ...release, validUntil: '2000000000' })],
   ['null', 'null'],
 ]) check(`contract signing stays closed: ${name}`, contracts.approvedRelease(value, catalogueHash, 1900000000) === null)
+{
+  // The page that prepares the approval: what it makes is what the gate takes, and it says why one does not hold.
+  const made = contracts.releaseValue(catalogueHash, 'JUDr. Test, 3. 11. 2026', 'Poisťovňa Test, 12345', '2027-12-31')
+  const parsed = JSON.parse(made)
+  check(
+    'the prepared approval is one the gate takes, through the whole day in Bratislava',
+    contracts.approvedRelease(made, catalogueHash, 1800000000)?.legalReview === 'JUDr. Test, 3. 11. 2026' &&
+      new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date((parsed.validUntil - 1) * 1000)) === '2027-12-31' &&
+      new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(parsed.validUntil * 1000)) === '2028-01-01' &&
+      JSON.parse(contracts.releaseValue(catalogueHash, 'x'.repeat(5), 'y'.repeat(5), '2027-07-31')).validUntil === Date.UTC(2027, 6, 31, 22) / 1000,
+    made,
+  )
+  const states = [
+    [undefined, 'missing'], ['', 'missing'], ['{', 'unreadable'], ['null', 'unreadable'],
+    [JSON.stringify({ ...release, catalogueHash: 'a'.repeat(64) }), 'other'],
+    [JSON.stringify({ ...release, validUntil: 1900000000 }), 'expired'],
+    [JSON.stringify({ ...release, legalReview: '' }), 'unreadable'],
+    [JSON.stringify(release), 'valid'],
+  ].map(([raw, want]) => [want, contracts.releaseState(raw, catalogueHash, 1900000000).state])
+  check('the page says why an approval does not hold', states.every(([want, got]) => want === got), JSON.stringify(states))
+}
 const originalPrice = config.PLANS[0].price
 config.PLANS[0].price += 1
 check('a price edit invalidates the approved catalogue without a version change', await contracts.contractCatalogueHash() !== catalogueHash)
@@ -1382,10 +1403,10 @@ async function zipped(entries, note) {
 {
   const text = terms.termsText().replace(/ /g, ' ')
   check(
-    'the terms promise ten days for the last month, thirty for the handover, ninety to download, then deleting',
-    /10\.4 .*10 dní po jej skončení.*Do 30 dní.*90 dní po skončení zmluvy.*bodu 8\.8/.test(text) && /8\.8 .*po uplynutí 90 dní od skončenia ich vymažeme.*päť rokov/.test(text),
+    'the terms promise ten days for the last month, thirty for the handover, access until deleting, ninety days once confirmed or a year without it',
+    /10\.4 .*10 dní po jej skončení.*Do 30 dní.*potvrdíte.*kým údaje nevymažeme podľa bodu 8\.8/.test(text) && /8\.8 .*po uplynutí 90 dní od skončenia, keď potvrdíte.*inak rok po skončení zmluvy.*päť rokov/.test(text),
   )
-  check("the figures of the terms are the config's", config.ENDING.intakeDays === 10 && config.ENDING.handoverDays === 30 && config.ENDING.keepDays === 90 && config.ENDING.recordsYears === 5)
+  check("the figures of the terms are the config's", config.ENDING.intakeDays === 10 && config.ENDING.handoverDays === 30 && config.ENDING.keepDays === 90 && config.ENDING.unconfirmedDays === 365 && config.ENDING.recordsYears === 5)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -3152,6 +3173,13 @@ async function zipped(entries, note) {
       "what presses on the team's home: ours late or within a week, never the client's part nor what still runs",
       press.length === 1 && press[0].kind === 'vat' && press[0].period === '2026-09' && !press.some((d) => d.kind === 'docs') && dues.pressing(list, '2026-10-10').length === 0,
       JSON.stringify(press.map((d) => `${d.kind}:${d.period}:${d.state}`)),
+    )
+  }
+  {
+    const row = { company: co(), missing: 0, toBook: 0, reading: 0, toCheck: 0, waiting: null, poa: 'checked', declaration: 'checked', openReports: 0, handover: 0 }
+    check(
+      'a client is done only with nothing waiting, the handover not owed and nothing of ours pressing',
+      teamStore.clientDone(row, false, 0) && !teamStore.clientDone(row, false, 1) && !teamStore.clientDone(row, true, 0) && !teamStore.clientDone({ ...row, toBook: 1 }, false, 0) && !teamStore.clientDone({ ...row, poa: 'waiting' }, false, 0),
     )
   }
   // The client's own list (app/deadlines.ts) is read from the same dues, so the client and the team never disagree.

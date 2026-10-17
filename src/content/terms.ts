@@ -37,9 +37,9 @@ const SECTIONS: TermsSection[] = [
     title: 'Čo pre Vás robíme',
     points: [
       'Vedieme Vaše účtovníctvo v sústave podvojného účtovníctva podľa zákona č. 431/2002 Z. z. o účtovníctve, z dokladov, ktoré nám dodáte, a z pohybov na Vašich bankových účtoch.',
-      'Podľa objednaného balíka ďalej pripravujeme a podávame priznania k DPH, kontrolné a súhrnné výkazy, pri registrácii podľa § 7a zákona o DPH priznania za mesiace, v ktorých vznikne povinnosť ich podať, spracúvame mzdy, odvody a hlásenia za ľudí, ktorých nám nahlásite, a pripravujeme prehľady o preddavkoch na daň.',
-      'Raz ročne, za cenu podľa cenníka, zostavíme účtovnú závierku a pripravíme a podáme daňové priznanie k dani z príjmov právnickej osoby.',
-      `K službe patrí aplikácia ${BRAND.name}: pridávanie dokladov, prepojenie banky, vystavovanie faktúr, termíny a správy s účtovníčkou. Na otázky k Vášmu účtovníctvu odpovedáme ${REPLY_WITHIN}.`,
+      'Podľa objednaného balíka ďalej pripravujeme a podávame priznania k DPH, kontrolné a súhrnné výkazy a pri registrácii podľa § 7a zákona o DPH priznania za mesiace, v ktorých vznikne povinnosť ich podať. Spracúvame mzdy, odvody, hlásenia a prehľady o preddavkoch na daň zamestnancov v pracovnom pomere s mesačnou mzdou, ktorých nám nahlásite. Dohody o prácach vykonávaných mimo pracovného pomeru, odmeny konateľov a iné príjmy spracujeme len po dohode podľa bodu 2.6.',
+      'Raz ročne, za cenu podľa cenníka, zostavíme účtovnú závierku mikro účtovnej jednotky a pripravíme a podáme daňové priznanie k dani z príjmov právnickej osoby. Závierku inej účtovnej jednotky urobíme len po dohode podľa bodu 2.6.',
+      `K službe patrí aplikácia ${BRAND.name}: pridávanie dokladov, pohyby na účtoch, vystavovanie faktúr, termíny a správy s účtovníčkou. Na otázky k Vášmu účtovníctvu odpovedáme ${REPLY_WITHIN}.`,
       'Prácu vykonávajú naši účtovníci vrátane externých spolupracovníkov. Za ich prácu zodpovedáme, akoby sme ju vykonali sami. Doklady čítame aj pomocou umelej inteligencie a výsledok vždy kontroluje človek.',
       'Nie sme daňoví poradcovia a daňové poradenstvo neposkytujeme. Služba nezahŕňa audit, znalecké posudky, zastupovanie v daňovej kontrole nad rámec predloženia podkladov, účtovníctvo za obdobia pred dňom začiatku ani opravu chýb z čias pred nami. Tieto práce urobíme len po dohode, za cenu dohodnutú vopred.',
     ],
@@ -58,9 +58,9 @@ const SECTIONS: TermsSection[] = [
   {
     title: 'Cena a platby',
     points: [
-      `Mesačná cena je cena Vášho balíka podľa cenníka na stránke ${domain} v deň uzavretia zmluvy a je uvedená v objednávke. Za mzdy sa k nej pripočíta cena za každého človeka podľa cenníka. Ceny sú bez DPH. Kým nie sme platiteľom DPH, DPH nepripočítavame; keď sa ním staneme, pripočítame ju v zákonnej sadzbe.`,
-      `Každý balík je určený pre počet dokladov za mesiac uvedený v cenníku. Mesiac, v ktorom ich bude viac, vyúčtujeme ako najbližší vyšší balík. Ak ich bude viac ako ${PLANS[PLANS.length - 1]?.docs ?? 0} za mesiac, dohodneme sa na cene; kým sa nedohodneme, účtujeme cenu najvyššieho balíka, a ak sa nedohodneme, môžeme zmluvu vypovedať.`,
-      'Cenu fakturujeme mesačne vopred so splatnosťou 14 dní, prevodom na účet uvedený na faktúre. Závierku a daňové priznanie fakturujeme po ich podaní.',
+      `Mesačná cena je cena Vášho balíka podľa cenníka na stránke ${domain} v deň uzavretia zmluvy a je uvedená v objednávke. Za mzdy sa k nej pripočíta cena podľa cenníka za každého človeka, ktorého firma v danom mesiaci zamestnávala. Ceny sú bez DPH. Kým nie sme platiteľom DPH, DPH nepripočítavame; keď sa ním staneme, pripočítame ju v zákonnej sadzbe.`,
+      `Každý balík je určený pre počet dokladov za mesiac uvedený v cenníku. Rátajú sa doklady, ktoré v danom mesiaci pribudli v aplikácii, vrátane faktúr, ktoré ste v nej vystavili; nerátame ten istý doklad poslaný dvakrát, vymazaný doklad ani naše faktúry Vám. Mesiac, v ktorom ich bude viac, vyúčtujeme ako najbližší vyšší balík. Ak ich bude viac ako ${PLANS[PLANS.length - 1]?.docs ?? 0} za mesiac, dohodneme sa na cene; kým sa nedohodneme, účtujeme cenu najvyššieho balíka, a ak sa nedohodneme, môžeme zmluvu vypovedať.`,
+      'Cenu balíka fakturujeme mesačne vopred. Mzdy a rozdiel za mesiac vyúčtovaný ako vyšší balík fakturujeme za uplynulý mesiac na tej istej faktúre. Závierku a daňové priznanie fakturujeme po ich podaní. Faktúry sú splatné do 14 dní prevodom na účet uvedený na faktúre a nájdete ich v aplikácii.',
       'Práce mimo balíka podľa bodu 2.6 fakturujeme podľa dohody.',
       'Ak ste v omeškaní s platbou viac ako 30 dní, môžeme po upozornení v aplikácii najmenej 10 dní vopred pozastaviť prácu až do zaplatenia. Za následky pozastavenia nezodpovedáme. Pri omeškaní môžeme požadovať úrok z omeškania podľa Obchodného zákonníka.',
       'Ceny môžeme zmeniť. Zmenu oznámime v aplikácii najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď má zmena nastať.',
@@ -103,7 +103,7 @@ const SECTIONS: TermsSection[] = [
       'Využívame ďalších sprostredkovateľov a dávate nám na to všeobecný súhlas: Cloudflare, Inc. (servery, databáza, súbory a e-maily, údaje uložené v Európskej únii), Anthropic, PBC (čítanie dokladov umelou inteligenciou v USA na základe štandardných zmluvných doložiek, bez použitia na trénovanie), Enable Banking Oy (čítanie pohybov na účtoch s Vaším súhlasom, Fínsko) a našich externých účtovníkov (Slovensko). O pridaní alebo výmene sprostredkovateľa Vás vopred informujeme v aplikácii. Môžete namietať, a ak sa nedohodneme, zmluvu vypovedať.',
       'Pomôžeme Vám pri vybavovaní žiadostí dotknutých osôb, pri zabezpečení údajov a pri oznamovaní porušenia ich ochrany. O porušení ochrany Vašich údajov Vás upovedomíme bez zbytočného odkladu, najneskôr do 48 hodín od jeho zistenia.',
       'Na požiadanie Vám poskytneme informácie, ktoré preukazujú, že povinnosti sprostredkovateľa plníme, a po predchádzajúcej dohode umožníme primeranú kontrolu.',
-      'Po skončení zmluvy Vám údaje vrátime podľa bodu 10.4 a po uplynutí 90 dní od skončenia ich vymažeme. Ponecháme len zmluvu, plnú moc a údaje z Vašej identifikácie podľa bodu 9.1, ktoré musíme uchovávať päť rokov od skončenia zmluvy, a potom ich vymažeme tiež.',
+      'Po skončení zmluvy Vám údaje vrátime podľa bodu 10.4. Vymažeme ich po uplynutí 90 dní od skončenia, keď potvrdíte, že ste ich prevzali, inak rok po skončení zmluvy; otvorený prípad alebo podanie, ktoré ešte nie je vybavené, výmaz odloží. Ponecháme len zmluvu, plnú moc a údaje z Vašej identifikácie podľa bodu 9.1, ktoré musíme uchovávať päť rokov od skončenia zmluvy, a potom ich vymažeme tiež.',
     ],
   },
   {
@@ -120,7 +120,7 @@ const SECTIONS: TermsSection[] = [
       'Zmluva sa uzatvára na dobu neurčitú.',
       'Každá strana ju môže vypovedať aj bez udania dôvodu: Vy v aplikácii v časti Firma a nastavenia, my správou v aplikácii. Výpovedná lehota je jeden mesiac a začína plynúť prvým dňom mesiaca nasledujúceho po doručení výpovede. Výpoveď, ktorú ste podali v aplikácii, tam môžete do konca výpovednej lehoty vziať späť; s takým späťvzatím vopred súhlasíme.',
       'Od zmluvy môžeme odstúpiť, ak ste v omeškaní s platbou viac ako 60 dní, ak nám ani po upozornení opakovane nedodávate doklady, alebo z dôvodov podľa bodu 9.3. Vy môžete od zmluvy odstúpiť, ak ani po upozornení opakovane porušujeme svoje povinnosti.',
-      'Po skončení zmluvy dokončíme práce za obdobia, za ktoré ste zaplatili; doklady a platby za posledný mesiac zmluvy prijímame ešte 10 dní po jej skončení. Do 30 dní od skončenia Vám v aplikácii odovzdáme účtovníctvo a jeho export v bežnom formáte a vzdáme sa plnej moci. Všetky doklady, platby, faktúry a správy si v aplikácii stiahnete kedykoľvek, za každý rok ako jeden súbor, a to až 90 dní po skončení zmluvy; potom prístup do aplikácie skončí a údaje vymažeme podľa bodu 8.8. Doklady a účtovníctvo ste povinní uchovávať Vy. Závierku za rok, v ktorom zmluva skončila, urobíme len po dohode.',
+      'Po skončení zmluvy dokončíme práce za obdobia, za ktoré ste zaplatili; doklady a platby za posledný mesiac zmluvy prijímame ešte 10 dní po jej skončení. Do 30 dní od skončenia Vám v aplikácii odovzdáme účtovníctvo a jeho export v bežnom formáte a vzdáme sa plnej moci. Všetky doklady, platby, faktúry a správy si v aplikácii stiahnete kedykoľvek, za každý rok ako jeden súbor, a ich prevzatie tam potvrdíte. Prístup do aplikácie trvá, kým údaje nevymažeme podľa bodu 8.8. Doklady a účtovníctvo ste povinní uchovávať Vy. Závierku za rok, v ktorom zmluva skončila, urobíme len po dohode.',
     ],
   },
   {

@@ -87,7 +87,7 @@ export const copy = typesetAll({
       { id: 'doklady', title: 'Doklady a banka', text: 'Zaúčtujeme každý doklad a spárujeme platby.' },
       { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za Vás.' },
       { id: 'efaktury', title: 'E-faktúry', text: 'Prijmeme ich za Vás. Povinné sú od 1. 1. 2027.' },
-      { id: 'mzdy', title: 'Mzdy', text: `Výplaty, odvody a hlásenia, ${eur(PAYROLL_PRICE)} mesačne za človeka.` },
+      { id: 'mzdy', title: 'Mzdy', text: `Výplaty, odvody a hlásenia zamestnancov, ${eur(PAYROLL_PRICE)} mesačne za človeka.` },
       { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
       { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
     ],
@@ -274,7 +274,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete, ešte 90 dní po skončení zmluvy.',
+        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete aj po skončení zmluvy.',
       },
       {
         q: 'Ako spolu budeme komunikovať?',
@@ -506,7 +506,7 @@ export const copy = typesetAll({
     noVat: 'bez DPH',
     yearly: 'raz ročne',
     startChosen: 'podľa voľby nižšie',
-    invoicesValue: 'mesačne vopred, splatnosť 14 dní',
+    invoicesValue: 'balík mesačne vopred, mzdy a doklady navyše za uplynulý mesiac, splatnosť 14 dní',
     noticeValue: 'jeden mesiac, bez viazanosti',
     docsValue: `za mesiac do ${APP.docsByDay}. dňa nasledujúceho mesiaca`,
     answersValue: REPLY_WITHIN,

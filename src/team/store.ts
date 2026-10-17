@@ -1,5 +1,6 @@
 // The accountants' side in the database. An accountant sees the companies she is assigned to; an administrator
 // sees all of them. Every function that reads a company's things is given the user and checks it.
+import { MAIL } from '../config'
 import { now } from '../db'
 import { type Category, type PaidBy } from '../app/booking'
 import { COMPANY_COLUMNS, DOC_FROM, MISSING, companyOf, docOf, type Company, type Doc, type Team, type User } from '../app/store'
@@ -106,6 +107,24 @@ export async function endedCompanies(db: D1Database): Promise<{ id: string; name
     .prepare('SELECT id, name, ico, ends_on, purged_at FROM companies WHERE purged_at IS NOT NULL AND demo = 0 ORDER BY ends_on DESC LIMIT 200')
     .all<{ id: string; name: string; ico: string | null; ends_on: string; purged_at: number }>()
   return rows.results.map((r) => ({ id: r.id, name: r.name, ico: r.ico, endsOn: r.ends_on, purgedAt: r.purged_at }))
+}
+
+/**
+ * A client with nothing waiting on anybody: nothing to book or check, no unanswered message, the power of attorney and
+ * the identification checked, no open report, the books handed over when owed, and nothing of ours late or due within
+ * a week (`pressing`, team/deadlines.ts).
+ */
+export function clientDone(row: ClientRow, owed: boolean, pressing: number): boolean {
+  return row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked' && row.declaration === 'checked' && row.openReports === 0 && !owed && pressing === 0
+}
+
+/** Emails the outbox gave up on in the last two weeks: a doorbell nobody heard, for the administrator to look into. */
+export async function failedMail(db: D1Database): Promise<{ n: number; error: string | null }> {
+  const row = await db
+    .prepare('SELECT COUNT(*) AS n, MAX(error) AS error FROM outbox WHERE sent_at IS NULL AND attempts >= ? AND created_at > ?')
+    .bind(MAIL.maxAttempts, now() - 14 * 86400)
+    .first<{ n: number; error: string | null }>()
+  return { n: Number(row?.n ?? 0), error: row?.error ?? null }
 }
 
 /**

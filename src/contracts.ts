@@ -90,6 +90,37 @@ export async function orderOfferHash(order: Order, catalogueHash = ''): Promise<
     }),
   )
 }
+/** What the approval set on the Worker says about today's terms and prices, for the page that prepares a new one. */
+export type ReleaseState =
+  | { state: 'valid' | 'expired'; until: number }
+  | { state: 'missing' | 'unreadable' | 'other' }
+export function releaseState(raw: string | undefined, hash: string, at = now()): ReleaseState {
+  if (!raw || raw.trim() === '') return { state: 'missing' }
+  let r: unknown
+  try {
+    r = JSON.parse(raw)
+  } catch {
+    return { state: 'unreadable' }
+  }
+  if (!r || typeof r !== 'object') return { state: 'unreadable' }
+  const release = r as Partial<ContractRelease>
+  if (typeof release.catalogueHash !== 'string' || !Number.isSafeInteger(release.validUntil)) return { state: 'unreadable' }
+  if (release.catalogueHash !== hash) return { state: 'other' }
+  if (approvedRelease(raw, hash, at)) return { state: 'valid', until: release.validUntil as number }
+  if ((release.validUntil as number) <= at) return { state: 'expired', until: release.validUntil as number }
+  return { state: 'unreadable' }
+}
+
+/** The value of CONTRACT_RELEASE for today's terms and prices, valid through the given day in Bratislava: until the
+ * midnight that ends it (an hour or two before midnight UTC, by the season). */
+export function releaseValue(hash: string, legalReview: string, insuranceReview: string, day: string): string {
+  const [y = 0, m = 1, d = 1] = day.split('-').map(Number)
+  const local = (ms: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(ms))
+  const midnight = [1, 2, 0].map((hours) => Date.UTC(y, m - 1, d + 1) - hours * 3600_000).find((ms) => local(ms) !== day && local(ms - 1000) === day)
+  const release: ContractRelease = { catalogueHash: hash, legalReview, insuranceReview, validUntil: Math.floor((midnight ?? Date.UTC(y, m - 1, d, 22)) / 1000) }
+  return JSON.stringify(release)
+}
+
 export async function latestOrderReview(db: D1Database, orderId: string): Promise<OrderReview | null> {
   return db.prepare('SELECT * FROM order_reviews WHERE order_id = ? ORDER BY id DESC LIMIT 1').bind(orderId).first<OrderReview>()
 }

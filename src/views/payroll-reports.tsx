@@ -13,7 +13,7 @@ const tone = (p: ReportItem) => p.sourceChanged ? 'red' : DELIVERY_TONE[p.status
 export const PayrollReportsPage: FC<{ company: Company; items: ReportItem[]; runs: RunEvidence[]; base: string; user?: User; today: string; frozen: boolean; period?: string; page?: number; hasNext?: boolean; error?: string; values?: Record<string, string> }> = ({ company, items, runs, base, user, today, frozen, period, page = 1, hasNext, error, values = {} }) => <div class="filing-work">
   <Heading first="Mzdové podania" second="a potvrdenky" />
   <p class="info__lead">{company.name}. Každá poisťovňa a finančná správa majú vlastný výkaz, obdobie a potvrdenie.</p>
-  <p><a class="link" href={user ? `/ucto/klienti/${company.id}/mzdy${period ? `?obdobie=${period}` : ''}` : '/app/podania'}>Späť na prehľad</a>{period ? <> · <a class="link" href={base}>Všetky obdobia</a></> : null}</p>
+  <p><a class="link" href={user ? `/ucto/klienti/${company.id}/mzdy${period ? `?obdobie=${period}` : ''}` : '/app/dane'}>Späť na dane</a>{period ? <> · <a class="link" href={base}>Všetky obdobia</a></> : null}</p>
   {error ? <p class="notice notice--error" role="alert">{error}</p> : null}
   {frozen ? <p class="notice">Účtovníctvo je uzamknuté na odovzdanie. Výkazy a dôkazy sú dostupné na čítanie.</p> : null}
   {runs.map((r) => <section class="info payroll-evidence" id={`vyplata-${r.period}`}>

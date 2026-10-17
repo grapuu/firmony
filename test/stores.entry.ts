@@ -15,7 +15,7 @@ export { purgeCompany, forgetRecords } from '../src/app/purge'
 export { keepFilesFor } from '../src/app/intake'
 export { teamClients, waitingThreads, teamCounts } from '../src/team/store'
 
-export { contractCatalogueHash, orderOfferHash, contractGate, resolveContract } from '../src/contracts'
+export { approvedRelease, contractCatalogueHash, orderOfferHash, contractGate, resolveContract } from '../src/contracts'
 export { acceptStatements, orderOf } from '../src/order'
 export { openIncident, reviewHold, requestRelease, approveRelease, closeIncident, assignIncident, evidenceBlocked, getIncident } from '../src/incidents/store'
 

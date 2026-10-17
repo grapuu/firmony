@@ -28,7 +28,7 @@ import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
-import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
@@ -745,9 +745,19 @@ res = await get('/ucto/ukazka')
 check('the sample team does not exist on the live Worker', res.status === 404)
 
 // The first administrator: whoever reads the public mailbox, while the team is empty
+res = await get('/app/prvy-spravca')
+page = await res.text()
+const firstCode = page.match(/<code>([A-Za-z0-9_-]{43})<\/code>/)?.[1]
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/first-admin.html`, page)
+check(
+  'while the team is empty, a page gives the three settings with a code made now and kept nowhere',
+  res.status === 200 && Boolean(firstCode) && page.includes('TEAM_BOOTSTRAP_EXPIRES_AT') && (res.headers.get('cache-control') ?? '').includes('no-store') && !(await db.prepare('SELECT 1 AS x FROM users WHERE team IS NOT NULL').first()),
+)
+check('each visit makes another code', (await (await get('/app/prvy-spravca')).text()).match(/<code>([A-Za-z0-9_-]{43})<\/code>/)?.[1] !== firstCode)
 const boss = await signIn('ahoj@firmony.ai')
 const bossRow = await db.prepare("SELECT id, team, name FROM users WHERE email = 'ahoj@firmony.ai'").first()
 check('the explicitly configured bootstrap account becomes the first verified administrator', bossRow?.team === 'admin' && bossRow.name === 'Christian Juhás' && boss.location === '/ucto')
+check('once somebody of the team exists, the page is gone', (await get('/app/prvy-spravca')).status === 404)
 const admin = as(boss.cookie)
 res = await admin.get('/ucto')
 page = await res.text()
@@ -1005,6 +1015,27 @@ res = await admin.get('/ucto/ziadosti')
 page = await res.text()
 check('the administrator sees the request', page.includes('Nová firma s. r. o.'))
 check("and who wants the investors' tax return, with the brokers and the way", page.includes('investor@example.sk') && page.includes('XTB, Interactive Brokers') && page.includes('Za neho'))
+check('with signing released, the requests page says nothing of the approval', !page.includes('Ako povoliť podpisovanie'))
+res = await admin.get('/ucto/ziadosti/schvalenie')
+page = await res.text()
+check(
+  'the approval page says that signing holds, until when, and for which wording and prices',
+  res.status === 200 && page.includes('Podpisovanie je povolené do') && page.includes(await contractCatalogueHash()) && !page.includes('id="hodnota"'),
+)
+res = await admin.get('/ucto/ziadosti/schvalenie?pravne=JUD&poistne=Poistovna%20Test%2C%20123&do=1.%201.%202020')
+page = plain(await res.text())
+check('it prepares nothing from a reference too short or a day gone', res.status === 422 && page.includes('Napíšte aspoň 5 znakov') && page.includes('Deň musí byť v budúcnosti') && !page.includes('id="hodnota"'))
+res = await admin.get('/ucto/ziadosti/schvalenie?pravne=JUDr.%20Test%2C%203.%2011.%202026&poistne=Poistovna%20Test%2C%20123&do=31.%2012.%202099')
+page = await res.text()
+{
+  const raw = page.match(/<code class="release__value">([^<]*)<\/code>/)?.[1] ?? ''
+  const value = raw.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+  const made = approvedRelease(value, await contractCatalogueHash(), Math.floor(Date.now() / 1000))
+  check('it prepares the value the gate takes, with the references as typed', res.status === 200 && made?.legalReview === 'JUDr. Test, 3. 11. 2026' && made?.insuranceReview === 'Poistovna Test, 123', value)
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-release.html`, page)
+}
+res = await acc.get('/ucto/ziadosti/schvalenie')
+check('an accountant gets nothing at the approval page', res.status === 404)
 res = await admin.get('/ucto/klienti/novy?ziadost=req-x')
 page = await res.text()
 check('the form starts from the request', page.includes('value="Nová firma s. r. o."') && page.includes('value="peter@nova-firma.test"') && page.includes('value="Peter Nový"'))
@@ -2827,6 +2858,18 @@ check(
     res.status === 200 && page.includes('Dnes na rade') && homeHtml.includes(`/ucto/klienti/co-a/dph?obdobie=${old}`) && !/tbl__row--done[^>]*href="\/ucto\/klienti\/co-a"/.test(homeHtml),
   )
   if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/team-home.html`, homeHtml)
+  // Email that every attempt failed to send is the administrator's to see: clients would not know of their messages.
+  await db
+    .prepare("INSERT INTO outbox (id, recipient, subject, body, created_at, attempts, error) VALUES ('failed-mail-test', 'x@x.test', 'S', 'B', ?, 10, 'TestRefused')")
+    .bind(nowS)
+    .run()
+  const flagged = plain(await (await admin.get('/ucto')).text())
+  const unflagged = plain(await (await acc.get('/ucto')).text())
+  check(
+    'the administrator is told of email that could not be sent, with why, and an accountant is not',
+    flagged.includes('1 e-mail sme ani po opakovaných pokusoch neodoslali (TestRefused)') && !unflagged.includes('neodoslali'),
+  )
+  await db.prepare("DELETE FROM outbox WHERE id = 'failed-mail-test'").run()
   res = await acc.get('/ucto/klienti/co-b/dph')
   check('never of a client that is not hers', res.status === 404)
 
@@ -4226,7 +4269,7 @@ check(
 
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-accepted.html`, page)
 const exactContract = await resolveContract(db, madeCompany.id, '2099-01-01')
-check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-15')
+check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-17')
 check('the acceptance digest covers the exact stored UTF-8 bytes', exactContract.sha256 === createHash('sha256').update(exactContract.data).digest('hex'))
 check('approval and exact tariff evidence are retained with the contract', exactContract.snapshot.catalogue.payrollCents === 1500 && exactContract.snapshot.catalogue.closingCents === 24900 && exactContract.snapshot.approval.accountantId === lucia.id)
 let immutableContract = false
@@ -4416,7 +4459,7 @@ res = await anna.get('/app/platby')
 check('nor a statement', !(await res.text()).includes('action="/app/banka"'))
 res = await anna.get('/app')
 page = (await res.text()).replace(/ /g, ' ')
-check('the line says until when to download, and leads there', page.includes('si stiahnite do') && page.includes('href="/app/firma#stiahnut"'))
+check('the line says when the data go and why, and leads to the download', page.includes('si stiahnite a potvrďte ich prevzatie') && page.includes('keď prevzatie potvrdíte, inak rok po skončení zmluvy') && page.includes('href="/app/firma#stiahnut"'))
 
 // Everything of the company, a year at a time
 /** The files of a ZIP as an unzipper reads them, each checked against its local header and its sum. */

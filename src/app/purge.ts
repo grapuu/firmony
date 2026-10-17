@@ -10,10 +10,10 @@
 import { ENDING } from '../config'
 import { now } from '../db'
 import { bankReady, closeSession, type BankEnv } from './bank'
-import { purgeFloor, recordsFloor } from './ending'
+import { purgeFloor, recordsFloor, unconfirmedFloor } from './ending'
 import { eventStatement } from './store'
 import { exportYears } from './export'
-import { confirmedRevision } from './handover-store'
+import { confirmedRevision, dataRevision } from './handover-store'
 import { bratislava } from './remind'
 import { evidenceBlocked, PURGE_GRACE_SECONDS } from '../incidents/store'
 import { pendingFilingsSql } from '../filings/model'
@@ -65,7 +65,15 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
   const db = env.DB
   // A hold keeps everything as it is, the freeze included: evidence is not changed while a case is open.
   if (await evidenceBlocked(db, companyId)) return { files: 0, rows: 0 }
-  const revision = await confirmedRevision(db, companyId, await exportYears(db, companyId))
+  // The client confirms that the archive of every year arrived before anything is deleted. One who never does is not
+  // kept forever: a year past the last day the data go all the same (points 8.8 and 10.4 of the terms).
+  // A company with nothing to take along has nothing to confirm.
+  const years = await exportYears(db, companyId)
+  let revision = years.length === 0 ? await dataRevision(db, companyId) : await confirmedRevision(db, companyId, years)
+  if (revision === null) {
+    const ended = await db.prepare('SELECT ends_on FROM companies WHERE id = ?').bind(companyId).first<{ ends_on: string | null }>()
+    if (ended?.ends_on && ended.ends_on < unconfirmedFloor(today)) revision = await dataRevision(db, companyId)
+  }
   if (revision === null) return thaw(db, companyId)
   // Freeze new writes before any external file deletion. A change since the handover check cancels this claim.
   const claim = await db.prepare(`UPDATE companies SET purge_started_at = COALESCE(purge_started_at, ?) WHERE id = ? AND purged_at IS NULL AND demo = 0 AND ends_on < ?

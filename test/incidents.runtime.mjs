@@ -350,6 +350,21 @@ export async function checkIncidents({ db, files, admin, anna, acc, lucia, secur
     .run()
   await purgeCompany({ DB: db, FILES: files }, 'co-paper-upload', today)
 
+  // The client never confirmed its archives: kept while it may still take them, gone a year past the last day.
+  await make('co-unconfirmed')
+  await purgeCompany({ DB: db, FILES: files }, 'co-unconfirmed', today)
+  check('an archive not confirmed keeps the data within the year after the end', (await db.prepare("SELECT purge_started_at FROM companies WHERE id = 'co-unconfirmed'").first()).purge_started_at === null)
+  await db.prepare('UPDATE companies SET ends_on = ? WHERE id = ?').bind(day(-370), 'co-unconfirmed').run()
+  await purgeCompany({ DB: db, FILES: files }, 'co-unconfirmed', today)
+  await db.prepare('UPDATE companies SET purge_started_at = ? WHERE id = ?').bind(nowS - 86401, 'co-unconfirmed').run()
+  await purgeCompany({ DB: db, FILES: files }, 'co-unconfirmed', today)
+  check(
+    'a year past the last day the data go all the same, the original file too',
+    Boolean((await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-unconfirmed'").first()).purged_at) &&
+      !(await db.prepare("SELECT id FROM documents WHERE company_id = 'co-unconfirmed'").first()) &&
+      !(await files.head('companies/co-unconfirmed/documents/original.pdf')),
+  )
+
   await make('co-records-evidence', 'purged')
   await db.prepare("UPDATE companies SET ends_on = '2010-01-01' WHERE id = 'co-records-evidence'").run()
   const recordCase = await openIncident(db, root, input('co-records-evidence'))

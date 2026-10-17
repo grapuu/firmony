@@ -353,6 +353,41 @@ export const LinkSent: FC = () => (
   </>
 )
 
+/** The values the first administrator puts into the Worker's settings, with a code made just now and kept nowhere. */
+export const FirstAdmin: FC<{ code: string; expires: number; until: string }> = ({ code, expires, until }) => (
+  <>
+    <Tile art={ART.key} size="lg" eager />
+    <Heading first={app.firstAdmin.title} second={app.firstAdmin.serif} small />
+    <p class="door__lead">{app.firstAdmin.lead}</p>
+    <ol class="door__steps">
+      {app.firstAdmin.steps.map((step) => (
+        <li>{step}</li>
+      ))}
+    </ol>
+    <dl class="kv door__values">
+      <div>
+        <dt>TEAM_BOOTSTRAP_EMAIL</dt>
+        <dd>{app.firstAdmin.email}</dd>
+      </div>
+      <div>
+        <dt>TEAM_BOOTSTRAP_TOKEN</dt>
+        <dd class="kv__long">
+          <code>{code}</code>
+        </dd>
+      </div>
+      <div>
+        <dt>TEAM_BOOTSTRAP_EXPIRES_AT</dt>
+        <dd class="kv__long">
+          <code>{String(expires)}</code> ({app.firstAdmin.until(until)})
+        </dd>
+      </div>
+    </dl>
+    <a class="btn btn--line door__button" href="/app/prvy-spravca">
+      {app.firstAdmin.again}
+    </a>
+  </>
+)
+
 export const Enter: FC<{ token: string; next?: string }> = ({ token, next }) => (
   <>
     <Tile art={ART.key} size="lg" eager />

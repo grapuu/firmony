@@ -85,6 +85,54 @@ price. The service starts on 1 January 2027; until then the site collects non-bi
 The owner does not use a terminal: everything has to work by pushing to `main`, and anything he must do himself
 is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: verdict first, short.
 
+## Closing the loop (17 October 2026, from 10:19; branch `claude/kruh`)
+
+His word: the whole software "na 100 % hotový", every piece of noise out or merged, the project a closed circle with
+no dashed line ("ten kruh chcem, aby bol celý plynule uzavretý"); he has picked an accountant and meets her in about
+two weeks; the trade licence and the rest of the online steps come after the software is ready. He was given seven
+stages (about five working days) and is told after each: (1) critical faults, (2) from a request to the first
+document, (3) Firmony's own billing, (4) one desk for the accountant, (5) texts that are true, (6) operations,
+(7) a check of the whole circle by a reader who wrote none of it. The picture he follows is the artifact "Kruh
+Firmony" (https://claude.ai/artifact/6RwoEgbSJZx3hpdBafRN3M; its source is the scratchpad's `kruh/kruh.html` of that
+session, so a new session reads it with the Artifact tool and republishes to its URL). Nothing is merged or deployed
+by the builder. Open with him: the opening line ("Postaráme sa o všetko. Vy rastiete." stays until he picks
+Codex's "Vy budujete firmu. My strážime účtovníctvo." or keeps it).
+
+- Stage 1 (`640bb91`): a company in handover no longer stops the bank for the others; a freeze without a reason is
+  lifted; schema step 24 (the archive's revision moves only when data change); an original is never deleted when a
+  write is uncertain; removing an account keeps the payments already worked on; a client without a passkey confirms
+  an archive by a fresh link; the night's jobs run step by step.
+- Stage 2 (`7dabc08`): a request becomes an order that waits for the administrator's review, and only then is a
+  contract link sent; a link run out asks for a new one; a client is made by hand only with a paper contract
+  (`OFFLINE_TERMS`); the switch of accountants in the app (the letter sent, what the former one handed over, taken
+  over on the client page).
+- Stage 3 (`f3fe4a9`, schema 25): europio is a company in the app (the operator) and bills every client from what
+  the app knows (`src/team/billing.ts`): the plan in advance, a month above the plan as the next plan, payroll for
+  each person employed, the closing once filed; the invoice arrives among the client's documents and is paid by
+  itself from europio's statement.
+- Stage 4 (`e78baa4`): one truth for deadlines. A filing sent and waiting for its receipt is never late; the team's
+  home opens with "Dnes na rade" (ours, late or due within a week, `pressing`); a client with something pressing is
+  never ticked as done (`clientDone` in `src/team/store.ts`). The client's overview reads the team's deadlines
+  (`companyDeadlines`, `clientDeadlines` in `src/app/deadlines.ts`). Payments before the books start
+  (`booksFromSql`: the opening entry's day, else the contract's first day) ask for no document and no statement
+  (`MISSING`; pairing still sees them through the filter 'unpaired'). Filing files (VAT, control statement,
+  summary statement, closing) are served only from saved podklady. Removed: the monthly CSV (the books' own files
+  replace it), new hand marks of payroll reports (an old one can only be undone), long dashes anywhere (a unit check).
+- Stage 5 (texts that are true): the terms say what billing does (`TERMS_VERSION` 2026-10-17: payroll per person
+  employed in employment with a monthly wage, what a document is, when each part is billed, the closing of a micro
+  entity), and the deletion as the code does it: 90 days after the end once every year's archive is confirmed,
+  else a year after the end (`ENDING.unconfirmedDays`, `unconfirmedFloor`; an open case or an unfinished filing
+  postpones it). The app, the FAQ and the legal page say the same; no text promises ten years of access.
+- Stage 6 (operations): `/app/prvy-spravca` gives the first administrator's settings (item 7 below), `keep_vars`
+  in `wrangler.jsonc`, and email that could not be sent in fourteen days is flagged on the team's home
+  (`failedMail`). `/ucto/ziadosti/schvalenie` (administrators) says whether `CONTRACT_RELEASE` holds and why not
+  (`releaseState`: missing, unreadable, for other terms or prices, expired) and prepares the value from the
+  lawyer's and the insurer's references and a last day (`releaseValue`: valid until the midnight that ends that day
+  in Bratislava); nothing is stored. The domain is one constant (`DOMAIN` in `src/config.ts`; his word was
+  firmony.io, still to buy, so it still says firmony.ai). His guide, in Slovak and in the order that works (the
+  domain first, because passkeys are bound to it): `docs/spustenie.md`. A separate doc for it was refused by the
+  tooling as not asked for; it is offered to him.
+
 ## Where things stand (written on the night of 12 to 13 October 2026, brought up to date on 14 October at 19:05)
 
 - Built in one evening, at his word "pracuj na maximum": the brand and the website as the company's presentation
@@ -308,6 +356,9 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
 
 ## What he has to do before it is live (each a few clicks)
 
+The same in his words and in the order that works: `docs/spustenie.md` (17 October 2026). Signing online opens
+only with `CONTRACT_RELEASE`, which `/ucto/ziadosti/schvalenie` prepares once a lawyer and an insurer have looked.
+
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
    nameservers to Cloudflare.
 2. GitHub: done on 13 October 2026 (`grapuu/firmony`, private, `main` pushed).
@@ -328,9 +379,14 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
    keeps and how long (documents ten years by the accounting act, s. 35), and the email that arrives at a
    company's address (sender and subject kept 90 days, the attachments as documents). Written on 13 October 2026
    (`PRIVACY_VERSION` 2026-10-13), with Enable Banking, the accountants and the AML records.
-7. The first administrator: once email works, he signs in at /app/prihlasenie with `ahoj@firmony.ai`
-   (`TEAM.bootstrapEmail`): while nobody of the team exists, that address becomes the administrator
-   ("Christian Juhás"). Then he adds accountants on /ucto/tim; each signs in with her own email.
+7. The first administrator (since 17 October 2026): while nobody of the team exists, `/app/prvy-spravca` shows the
+   three settings with a random code made on the spot and kept nowhere: `TEAM_BOOTSTRAP_EMAIL` (his address, Text),
+   `TEAM_BOOTSTRAP_TOKEN` (the code, **Secret**), `TEAM_BOOTSTRAP_EXPIRES_AT` (unix seconds, 48 hours on, Text). He
+   adds them on the Worker (Settings, Variables and Secrets), signs in at /app/prihlasenie with that address, enters
+   the same code under Zabezpečenie prístupu, registers a passkey and a second one on another device, then deletes the
+   code's secret. The page answers 404 once anybody of the team exists. `"keep_vars": true` in `wrangler.jsonc` keeps
+   settings added as Text through every deploy. Then he adds accountants on /ucto/tim; each signs in with her own
+   email. Recovering an administrator who lost every passkey needs two other administrators (docs/security/access.md).
 8. Before the page is public: at least one accountant agreed (his to-do list of 12 October: call 3 to 5 freelance
    accountants to confirm 28/55/110 € a client, 5 € a payroll and 90 € a closing), the trade licence "vedenie účtovníctva" added to europio, liability
    insurance, and a digital postman (Qvalia was the lead: ask for its per-client API price).
@@ -921,8 +977,9 @@ on one screen, a document booked on one screen with its original beside the form
   klientovi", which clears the mark and writes to the client with the payment), the messages with a reply box
   (the client is emailed "Firmony: máte novú správu"), payments without a document with "Pripomenúť klientovi"
   (a message listing them, and an email), the company's data (DIČ, IČ DPH, VAT payer, the note for the team; plan
-  and accountant for the administrator), its people, the CSV for the accountant's program by month (UTF-8 with
-  BOM, ';', amounts as "12,40", no cell that Excel would run), and the suppliers' rules.
+  and accountant for the administrator), its people, and the suppliers' rules. (The monthly CSV "for the
+  accountant's program" was removed on 17 October 2026: the books' own files, `dennik.csv` and the rest, are the one
+  truth.)
 - Booking (/ucto/doklady and /ucto/doklady/:id): the queue of all her clients, oldest first. One screen: the
   original (a photo, or a PDF framed beside the form; a phone gets the link), the form (kind, what it is for as a
   category with its account, supplier, IČO, number, dates typed "11. 10. 2026", amounts, VAT, VS, another account),
@@ -1476,12 +1533,12 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 690 unit checks, including contract releases and the Slovak working-day response clock
-npm run test:runtime     # 844 workerd checks, including contract evidence/races and the accounting/export/purge regression
+npm test                 # 849 unit checks (17 October 2026), including contract releases and the Slovak working-day response clock
+npm run test:runtime     # 1298 workerd checks on Node 24 (as GitHub runs them), including contract evidence/races and the purge
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (26)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (12)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 

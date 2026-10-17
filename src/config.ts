@@ -1,12 +1,17 @@
 // Everything a page states as a fact lives here: the brand, the company behind it, the plans and the limits.
 // Change a price or a limit here and every page, email and test follows.
 
+/** The site's domain. Once the owner has bought his (firmony.io was his word), this one line changes, and so do the
+ * route in wrangler.jsonc, the email routing in Cloudflare, and the tests that name the domain. */
+export const DOMAIN = 'firmony.ai'
+
 export const BRAND = {
   name: 'Firmony',
-  /** Where the site lives. Links in emails and the canonical address of every page are built from it. */
-  origin: 'https://firmony.ai',
+  /** Where the site lives. Links in emails, the canonical address of every page and the passkeys of the team are
+   * bound to it: a passkey registered at another address does not work here. */
+  origin: `https://${DOMAIN}`,
   /** The public mailbox: shown on the site, Reply-To of every email to a client, and where requests are reported. */
-  email: 'ahoj@firmony.ai',
+  email: `ahoj@${DOMAIN}`,
   /** The day the service starts, as the pages say it. */
   launch: '1. januára 2027',
 } as const
@@ -122,7 +127,7 @@ export const RETENTION = {
 } as const
 
 export const MAIL = {
-  from: 'ahoj@firmony.ai',
+  from: `ahoj@${DOMAIN}`,
   name: 'Firmony',
   maxAttempts: 10,
 } as const
@@ -253,6 +258,8 @@ export const ENDING = {
   intakeDays: 10,
   handoverDays: 30,
   keepDays: 90,
+  /** Days past the last day after which a company's data go even though the client never confirmed its archives. */
+  unconfirmedDays: 365,
   recordsYears: 5,
   /** Companies whose data the schedule deletes in one run (each is a few hundred statements and the files). */
   perRun: 3,
@@ -391,7 +398,7 @@ export const PRIVACY_VERSION = '2026-10-14'
  * (src/content/terms.ts): acceptance keeps the complete wording and tariffs with SHA-256. Signing also requires
  * explicit legal/insurance release approval and a documented review of the particular order.
  */
-export const TERMS_VERSION = '2026-10-15'
+export const TERMS_VERSION = '2026-10-17'
 
 /** The terms version of a client created by hand with a contract signed on paper, outside the app. */
 export const OFFLINE_TERMS = 'offline'

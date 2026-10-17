@@ -11,7 +11,7 @@ import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
-import { ConfirmByLink, Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
+import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
@@ -187,6 +187,18 @@ appRoutes.post('/prihlasenie', async (c) => {
 })
 
 appRoutes.get('/prihlasenie/poslane', (c) => render(c, <Door title={t.login.sentTitle}>{<LinkSent />}</Door>))
+
+// The first administrator, while nobody of the team exists: the three settings to put into the Worker, with a code made
+// now and kept nowhere. It means nothing until the account's owner puts it there (security/policy.ts, bootstrapReady).
+appRoutes.get('/prvy-spravca', async (c) => {
+  const db = c.env.DB
+  await ensureSchema(db)
+  if (await db.prepare('SELECT 1 AS x FROM users WHERE team IS NOT NULL LIMIT 1').first()) return c.notFound()
+  const expires = now() + 48 * 3600
+  const until = bratislava(expires * 1000)
+  c.header('Cache-Control', 'no-store')
+  return render(c, <Door title={t.firstAdmin.title}>{<FirstAdmin code={newToken()} expires={expires} until={`${dayName(until.day)} o ${until.hour}:${String(until.minute).padStart(2, '0')}`} />}</Door>)
+})
 
 // The link from the email asks for one click: a mail scanner that opens links by itself must not use it up.
 appRoutes.get('/vstup', async (c) => {

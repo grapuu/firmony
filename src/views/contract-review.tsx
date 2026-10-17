@@ -1,8 +1,110 @@
 import type { FC } from 'hono/jsx'
-import { PLANS } from '../config'
-import type { OrderReview } from '../contracts'
+import { OPERATOR, PLANS, TERMS_VERSION } from '../config'
+import type { OrderReview, ReleaseState } from '../contracts'
 import type { Order } from '../order'
+import { team as t } from '../team/copy'
 import { Heading } from './inside'
+
+export interface ReleaseForm {
+  legal: string
+  insurance: string
+  until: string
+  errors: { legal?: string; insurance?: string; until?: string }
+}
+
+/** The approval of today's terms and prices: where it stands, and the value to set on the Worker once a lawyer and
+ * an insurer have looked at them. Nothing on this page is stored: the value lives only on the Worker. */
+export const ContractReleasePage: FC<{ state: ReleaseState; untilText: string | null; hash: string; form: ReleaseForm | null; value: string | null }> = ({
+  state,
+  untilText,
+  hash,
+  form,
+  value,
+}) => (
+  <>
+    <a class="back" href="/ucto/ziadosti">
+      {t.requests.title}
+    </a>
+    <header class="phead">
+      <Heading first={t.release.title} second={t.release.serif} />
+      <p class="phead__lead">{t.release.lead}</p>
+    </header>
+    <div class="release">
+    {state.state === 'valid' ? (
+      <p class="flash" role="status">
+        <span class="tick" aria-hidden="true" />
+        {t.release.state.valid(untilText ?? '')}
+      </p>
+    ) : (
+      <p class="notice notice--error" role="alert">
+        {state.state === 'expired' ? t.release.state.expired(untilText ?? '') : t.release.state[state.state]}
+      </p>
+    )}
+    <section class="info">
+      <h2 class="info__title">{t.release.what}</h2>
+      <ul class="steps">
+        <li>{t.release.terms(TERMS_VERSION)}</li>
+        <li>{t.release.prices}</li>
+        <li>{t.release.operator(OPERATOR.name)}</li>
+      </ul>
+      <dl class="kv">
+        <div>
+          <dt>{t.release.hash}</dt>
+          <dd class="kv__long">
+            <code>{hash}</code>
+          </dd>
+        </div>
+      </dl>
+    </section>
+    <section class="info">
+    <form class="stack" method="get" action="/ucto/ziadosti/schvalenie#hodnota" novalidate>
+      <h2 class="info__title">{t.release.form}</h2>
+      <div class="field">
+        <label class="field__label" for="schvalenie-pravne">
+          {t.release.legal}
+        </label>
+        <input id="schvalenie-pravne" class="field__input" name="pravne" value={form?.legal ?? ''} maxlength={240} autocomplete="off"
+          aria-invalid={form?.errors.legal ? 'true' : undefined} />
+        <p class="field__hint">{t.release.legalHint}</p>
+        {form?.errors.legal ? <p class="field__error">{form.errors.legal}</p> : null}
+      </div>
+      <div class="field">
+        <label class="field__label" for="schvalenie-poistne">
+          {t.release.insurance}
+        </label>
+        <input id="schvalenie-poistne" class="field__input" name="poistne" value={form?.insurance ?? ''} maxlength={240} autocomplete="off"
+          aria-invalid={form?.errors.insurance ? 'true' : undefined} />
+        <p class="field__hint">{t.release.insuranceHint}</p>
+        {form?.errors.insurance ? <p class="field__error">{form.errors.insurance}</p> : null}
+      </div>
+      <div class="field">
+        <label class="field__label" for="schvalenie-do">
+          {t.release.until}
+        </label>
+        <input id="schvalenie-do" class="field__input" name="do" value={form?.until ?? ''} maxlength={20} placeholder={t.release.untilHint} autocomplete="off"
+          aria-invalid={form?.errors.until ? 'true' : undefined} />
+        {form?.errors.until ? <p class="field__error">{form.errors.until}</p> : null}
+      </div>
+      <button class="btn btn--line stack__submit" type="submit">
+        {t.release.prepare}
+      </button>
+    </form>
+    </section>
+    {value ? (
+      <section class="info" id="hodnota">
+        <h2 class="info__title">{t.release.value}</h2>
+        <ol class="steps">
+          {t.release.steps.map((step) => (
+            <li>{step}</li>
+          ))}
+        </ol>
+        <p class="info__subtitle">CONTRACT_RELEASE</p>
+        <code class="release__value">{value}</code>
+      </section>
+    ) : null}
+    </div>
+  </>
+)
 
 export const ContractReviewPage: FC<{
   requestId: string
@@ -24,7 +126,14 @@ export const ContractReviewPage: FC<{
       <Heading first="Posúdenie" second="pred podpisom" />
       <p class="phead__lead">{order?.company ?? 'Pre túto žiadosť nie je otvorená online objednávka.'}</p>
     </header>
-    {!released ? <p class="notice">Podpisovanie je zablokované: chýba platné schválenie tohto znenia a cenníka po právnom a poistnom posúdení.</p> : null}
+    {!released ? (
+      <p class="notice">
+        Podpisovanie je zablokované: chýba platné schválenie tohto znenia a cenníka po právnom a poistnom posúdení.{' '}
+        <a class="link" href="/ucto/ziadosti/schvalenie">
+          {t.release.link}
+        </a>
+      </p>
+    ) : null}
     {review ? (
       <p class="notice">
         Posledné rozhodnutie: {review.decision === 'standard' ? 'štandardný balík' : review.decision === 'bespoke' ? 'individuálny rozsah' : 'pozastavené'}.

@@ -118,11 +118,11 @@ import { dataRevision } from '../app/handover-store'
 import { sensitivePath } from '../security/policy'
 import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
-import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash } from '../contracts'
+import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
 import { orderOf, type Order } from '../order'
 import { orderLinkMail } from '../order-mail'
-import { ContractReviewPage } from '../views/contract-review'
+import { ContractReleasePage, ContractReviewPage, type ReleaseForm } from '../views/contract-review'
 import { BillingPage } from '../views/billing'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
@@ -214,6 +214,7 @@ import {
   bookingQueue,
   canSee,
   endedCompanies,
+  failedMail,
   getRequest,
   inboxCode,
   isAdmin,
@@ -451,12 +452,13 @@ async function accountantsList(db: D1Database): Promise<{ id: string; name: stri
 
 teamRoutes.get('/', async (c) => {
   const who = c.get('who')
-  const [rows, ended, { dues }] = await Promise.all([
+  const [rows, ended, { dues }, mail] = await Promise.all([
     teamClients(c.env.DB, who.user, demoOn(c)),
     isAdmin(who.user) ? endedCompanies(c.env.DB) : Promise.resolve([]),
     teamDeadlines(c.env.DB, who.user, demoOn(c), dayOf(now())),
+    isAdmin(who.user) ? failedMail(c.env.DB) : Promise.resolve(null),
   ])
-  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} ended={ended} now={now()} flash={flashOf(c)} />)
+  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} mail={mail} ended={ended} now={now()} flash={flashOf(c)} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2733,7 +2735,33 @@ teamRoutes.get('/ziadosti', async (c) => {
   const who = c.get('who')
   if (!isAdmin(who.user)) return missingPage(c)
   const [requests, investors] = await Promise.all([listRequests(c.env.DB), listInvestors(c.env.DB)])
-  return shell(c, 'requests', t.requests.title, <RequestsPage requests={requests} investors={investors} now={now()} flash={flashOf(c)} />)
+  const released = Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))
+  return shell(c, 'requests', t.requests.title, <RequestsPage requests={requests} investors={investors} now={now()} released={released} flash={flashOf(c)} />)
+})
+
+// What the approval on the Worker says, and the value a new one takes: the hash of today's terms and prices with the
+// references the owner types. Nothing is stored here; the value lives only on the Worker (CONTRACT_RELEASE).
+teamRoutes.get('/ziadosti/schvalenie', async (c) => {
+  if (!isAdmin(c.get('who').user)) return missingPage(c)
+  const hash = await contractCatalogueHash()
+  const state = releaseState(c.env.CONTRACT_RELEASE, hash)
+  const untilText = state.state === 'valid' || state.state === 'expired' ? textDay(dayOf(state.until)) : null
+  const q = (name: string) => (c.req.query(name) ?? '').trim()
+  const asked = ['pravne', 'poistne', 'do'].some((name) => c.req.query(name) !== undefined)
+  let form: ReleaseForm | null = null
+  let value: string | null = null
+  if (asked) {
+    form = { legal: q('pravne').slice(0, 240), insurance: q('poistne').slice(0, 240), until: q('do').slice(0, 20), errors: {} }
+    const reference = (s: string) => s.length >= 5 && s.length <= 240
+    if (!reference(form.legal)) form.errors.legal = t.release.errors.reference
+    if (!reference(form.insurance)) form.errors.insurance = t.release.errors.reference
+    const day = dayOfText(form.until)
+    if (!day) form.errors.until = t.release.errors.day
+    else if (day <= dayOf(now())) form.errors.until = t.release.errors.past
+    if (day && Object.keys(form.errors).length === 0) value = releaseValue(hash, form.legal, form.insurance, day)
+  }
+  c.header('Cache-Control', 'no-store')
+  return shell(c, 'requests', t.release.title, <ContractReleasePage state={state} untilText={untilText} hash={hash} form={form} value={value} />, form && !value ? 422 : 200)
 })
 
 teamRoutes.post('/ziadosti/:id', async (c) => {

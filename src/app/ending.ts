@@ -57,6 +57,9 @@ export const intakeFloor = (today: string): string => addDays(today, -ENDING.int
 /** The day whose companies are past their access: `c.ends_on < ?` bound to this day means deleted today. */
 export const purgeFloor = (today: string): string => addDays(today, -ENDING.keepDays)
 
+/** The day whose companies are past the year that waits for the client's confirmation of its archives: `c.ends_on < ?`. */
+export const unconfirmedFloor = (today: string): string => addDays(today, -ENDING.unconfirmedDays)
+
 /** The day whose companies are past the five years the law keeps their identification: `c.ends_on < ?`. */
 export function recordsFloor(today: string): string {
   const y = Number(today.slice(0, 4)) - ENDING.recordsYears

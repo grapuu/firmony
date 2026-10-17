@@ -13,20 +13,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // Stage 4 of closing the loop (17 October 2026): one desk for the accountant, one truth for the client.
-  ['src/team/deadlines.ts', " && due.deliveryStatus !== 'submitted' })", ' })', 'sent and waiting for its receipt is never late'],
-  ['src/team/deadlines.ts', "  return dues.filter((d) => DUE_SIDE[d.kind] === 'ours' && d.state !== 'done' && d.state !== 'running' && (d.late || d.day <= week))", "  return dues.filter((d) => d.state !== 'done' && (d.late || d.day <= week))", 'only ours presses, and not what still runs'],
-  ['src/app/store.ts', " AND p.booked_on >= ${booksFromSql('p.company_id')}`", '`', 'a payment before the books asks for no document'],
-  ['src/app/store.ts', " : String(row.booked_on) < String(row.books_from ?? '') ? 'before'", ' : false ? \'before\'', 'a payment before the books says why on its page'],
-  ['src/app/statements.ts', "          AND ?2 >= ${booksFromSql('?1')}`", "          AND ?2 = ?2`", 'no statement is due of a month before the books'],
-  ['src/app/deadlines.ts', '    if (ours(month)) months.add(month)', '    months.add(month)', 'no documents of a month before the contract'],
-  ['src/app/deadlines.ts', '  const shown = dues.filter((d) => d.state !== \'done\' || d.day >= day)', '  const shown = dues', 'what was done leaves once its day has passed'],
-  ['src/app/deadlines.ts', '  if (!closing && closingIsOurs(company, year))', '  if (!closing)', 'no closing of a year that is not ours'],
-  ['src/views/team.tsx', ' && owed === null && !due', ' && owed === null', 'a client with something pressing is not done'],
-  ['src/views/vat.tsx', '      {filed ? (\n        // The files are the ones saved', '      {true ? (\n        // The files are the ones saved', 'no VAT file before the podklady are saved'],
-  ['src/views/vat.tsx', "      {sv.state === 'filed' ? (", "      {sv.state === 'filed' || sv.plan ? (", 'no summary file before its podklady are saved'],
-  ['src/team/routes.tsx', '  if (!snapshot) {\n    if (view.running)', '  if (false) {\n    if (view.running)', 'no closing file before its podklady are saved'],
-  ['src/team/routes.tsx', "  if (body.zrusit !== '1') return c.text('Bad request', 400)\n", '', 'no new manual payroll mark'],
+  // Stages 5 and 6 of closing the loop (17 October 2026): texts that are true, and what running it needs.
+  ['src/app/purge.ts', '    if (ended?.ends_on && ended.ends_on < unconfirmedFloor(today)) revision = await dataRevision(db, companyId)\n', '', 'an unconfirmed archive is deleted a year after the end'],
+  ['src/app/purge.ts', ' && ended.ends_on < unconfirmedFloor(today))', ')', 'an unconfirmed archive is kept within the year'],
+  ['src/team/store.ts', ' && !owed && pressing === 0', ' && !owed', 'a client with something pressing is not done'],
+  ['src/team/store.ts', 'attempts >= ? AND created_at > ?', 'attempts > ? AND created_at > ?', 'email that every attempt failed is flagged'],
+  ['src/team/routes.tsx', "    isAdmin(who.user) ? failedMail(c.env.DB) : Promise.resolve(null),", '    failedMail(c.env.DB),', 'only the administrator is told of failed email'],
+  ['src/app/routes.tsx', "  if (await db.prepare('SELECT 1 AS x FROM users WHERE team IS NOT NULL LIMIT 1').first()) return c.notFound()\n", '', 'the first administrator page is gone once the team exists'],
+  ['src/contracts.ts', "  if (release.catalogueHash !== hash) return { state: 'other' }\n", '', 'an approval of other terms is said to be one'],
+  ['src/contracts.ts', '  const midnight = [1, 2, 0]', '  const midnight = [0]', 'a prepared approval lasts through its last day in Bratislava'],
+  ['src/team/routes.tsx', '    else if (day <= dayOf(now())) form.errors.until = t.release.errors.past\n', '', 'no approval is prepared for a day gone'],
+  ['src/team/routes.tsx', "teamRoutes.get('/ziadosti/schvalenie', async (c) => {\n  if (!isAdmin(c.get('who').user)) return missingPage(c)\n", "teamRoutes.get('/ziadosti/schvalenie', async (c) => {\n", 'only an administrator prepares the approval'],
+  ['src/team/routes.tsx', '    if (!reference(form.legal)) form.errors.legal = t.release.errors.reference\n', '', 'an approval needs the lawyer\'s reference'],
+  ['src/payroll-reporting/model.ts', "  sp: 'Mesačný výkaz pre Sociálnu poisťovňu',", "  sp: 'Mesačný výkaz \u2014 Sociálna poisťovňa',", 'no long dash in any text'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

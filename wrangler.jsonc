@@ -18,6 +18,10 @@
 
   // Until the domain is bought the site is reachable at its workers.dev address, which tells search engines to
   // stay away (X-Robots-Tag in src/index.tsx). The custom domain comes as a route once it is in the account.
+  // Settings added in the dashboard as plain text (ENABLE_BANKING_APP, the first administrator's e-mail and expiry,
+  // CONTRACT_RELEASE) stay when a push to main deploys a new version; without this, every deploy would remove them.
+  "keep_vars": true,
+
   "workers_dev": true,
   "preview_urls": false,
 

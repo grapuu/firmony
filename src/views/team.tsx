@@ -18,7 +18,7 @@ import type { StatementView } from '../app/statements'
 import type { DeclarationState, Level } from '../app/aml'
 import { addDays, endingOf, type Ending } from '../app/ending'
 import { team as t } from '../team/copy'
-import type { ClientRow, InvestorRequest, QueueDoc, Request, Rule, TeamMember, Thread, ToCheck } from '../team/store'
+import { clientDone, type ClientRow, type InvestorRequest, type QueueDoc, type Request, type Rule, type TeamMember, type Thread, type ToCheck } from '../team/store'
 import { Tile } from './home'
 import { BarMenu, Flash, Heading, InsideHead, planName } from './inside'
 import { dayOf, groupIban, whenName } from './inside-pages'
@@ -158,7 +158,7 @@ export interface EndedCompany {
 
 const TODAY_SHOWN = 8
 
-export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; ended?: EndedCompany[]; now: number; flash?: string | null }> = ({ user, rows, dues = [], ended = [], now, flash }) => {
+export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; mail?: { n: number; error: string | null } | null; ended?: EndedCompany[]; now: number; flash?: string | null }> = ({ user, rows, dues = [], mail = null, ended = [], now, flash }) => {
   const sum = (pick: (row: ClientRow) => number) => rows.reduce((total, row) => total + pick(row), 0)
   const waiting = rows.filter((row) => row.waiting !== null).length
   const admin = user.team === 'admin'
@@ -195,6 +195,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; e
             <a class="link" href="/ucto/terminy?kto=my">{t.clients.today.all}</a>
           </span>
         </div>
+        {mail && mail.n > 0 ? <p class="flag">{t.clients.today.mailFailed(mail.n, mail.error)}</p> : null}
         {urgent.length === 0 ? (
           <p class="info__empty">{t.clients.today.empty}</p>
         ) : (
@@ -248,7 +249,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; e
             // Past the last day the books are owed to the client: within thirty days, then it is late.
             const owed = ending && ending.phase !== 'ending' && row.handover === 0 ? (dayOf(now) > ending.handoverBy ? 'late' : 'due') : null
             const due = byCompany.get(row.company.id)
-            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked' && row.declaration === 'checked' && row.openReports === 0 && owed === null && !due
+            const done = clientDone(row, owed !== null, due ? due.late + due.soon : 0)
             return (
               <a class={`tbl__row${done ? ' tbl__row--done' : ''}`} role="row" href={`/ucto/klienti/${row.company.id}`}>
                 <span class="tbl__company" role="cell">
@@ -1481,13 +1482,27 @@ const Investors: FC<{ investors: { total: number; list: InvestorRequest[] }; now
   </section>
 )
 
-export const RequestsPage: FC<{ requests: Request[]; investors: { total: number; list: InvestorRequest[] }; now: number; flash?: string | null }> = ({ requests, investors, now, flash }) => (
+export const RequestsPage: FC<{ requests: Request[]; investors: { total: number; list: InvestorRequest[] }; now: number; released?: boolean; flash?: string | null }> = ({
+  requests,
+  investors,
+  now,
+  released = true,
+  flash,
+}) => (
   <>
     <header class="phead">
       <Heading first={t.requests.title} second={t.requests.serif} />
       <p class="phead__lead">{t.requests.lead}</p>
     </header>
     <Flash text={flash} />
+    {released ? null : (
+      <p class="notice">
+        {t.release.blocked}{' '}
+        <a class="link" href="/ucto/ziadosti/schvalenie">
+          {t.release.link}
+        </a>
+      </p>
+    )}
     {requests.length === 0 ? (
       <section class="nothing">
         <Tile art={ART.envelope} size="lg" />

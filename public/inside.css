@@ -1777,6 +1777,24 @@
   font-size: 0.9375rem;
 }
 
+/* The first administrator's page: the steps in order, then the three settings with their values. */
+.door__steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.3em;
+  text-align: left;
+}
+
+.door__values {
+  text-align: left;
+}
+
+.door__values code {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
 .door__form {
   display: grid;
   gap: 8px;
@@ -6869,4 +6887,22 @@ select.field__input {
   color: var(--soft);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* The approval of the contract: its state, what it covers, the form and the value, one under another. */
+.release {
+  display: grid;
+  gap: 16px;
+}
+
+/* The value of CONTRACT_RELEASE to paste on the Worker: one block, wrapped anywhere, easy to select whole. */
+.release__value {
+  display: block;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--mist);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
