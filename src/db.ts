@@ -703,6 +703,36 @@ const MIGRATIONS: readonly string[][] = [
       BEGIN INSERT INTO company_data_revisions (company_id, revision) VALUES (NEW.id, 1)
         ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
   ],
+  // 25 (17 October 2026): Firmony's own invoices to its clients. europio s. r. o. is a company in the app (operator),
+  // whose invoices bill what billing_items claims, once for each key; billing_invoices says which client an invoice is
+  // for and whether its copy reached the client's documents; billing_tariffs keeps the prices of a paper contract.
+  [
+    'ALTER TABLE companies ADD COLUMN operator INTEGER NOT NULL DEFAULT 0',
+    'CREATE UNIQUE INDEX IF NOT EXISTS companies_operator ON companies (operator) WHERE operator = 1',
+    `CREATE TABLE IF NOT EXISTS billing_tariffs (
+      company_id TEXT PRIMARY KEY,
+      data TEXT NOT NULL CHECK (json_valid(data)),
+      created_at INTEGER NOT NULL,
+      created_by TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS billing_invoices (
+      invoice_id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      month TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      delivered_at INTEGER
+    )`,
+    'CREATE INDEX IF NOT EXISTS billing_invoices_client ON billing_invoices (client_id, created_at)',
+    `CREATE TABLE IF NOT EXISTS billing_items (
+      client_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      invoice_id TEXT NOT NULL,
+      cents INTEGER NOT NULL,
+      PRIMARY KEY (client_id, key)
+    )`,
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

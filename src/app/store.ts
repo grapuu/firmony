@@ -93,7 +93,8 @@ export interface Payment {
 }
 
 export type DocStatus = 'reading' | 'read' | 'manual'
-export type DocSource = 'upload' | 'email' | 'einvoice' | 'issued'
+/** How a document came: uploaded, by email, as an e-invoice, issued here, or as Firmony's own invoice to the client. */
+export type DocSource = 'upload' | 'email' | 'einvoice' | 'issued' | 'firmony'
 
 export interface Doc {
   id: string

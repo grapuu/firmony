@@ -26,6 +26,7 @@ import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
 import { filedReturns, taxPaid, type TaxPaid } from './vat-store'
+import { billingScheduled, billRows } from '../team/billing-store'
 import { booksRefused, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
 import { bell, ringStatement } from '../bell'
@@ -373,7 +374,11 @@ appRoutes.get('/', async (c) => {
       .bind(company)
       .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null; switched: number }>(),
   ])
-  const [suggested, filed] = await Promise.all([suggestions(db, company, missingAll), who.company.vatStatus === 'none' ? Promise.resolve([]) : filedReturns(db, company)])
+  const [suggested, filed, bills] = await Promise.all([
+    suggestions(db, company, missingAll),
+    who.company.vatStatus === 'none' ? Promise.resolve([]) : filedReturns(db, company),
+    billRows(db, day, company, 24).then((rows) => rows.filter((r) => r.state !== 'paid')),
+  ])
   const paid = filed.length > 0 ? await taxPaid(db, company, filed) : new Map<string, TaxPaid>()
   const steps = {
     declaration: started?.declaration === 1,
@@ -407,7 +412,7 @@ appRoutes.get('/', async (c) => {
       figures={figures}
       month={monthName(`${month}-01`)}
       today={day}
-      deadlines={deadlinesFor(who.company, day, new Map(byMonth.results.map((r) => [r.month, r.n])), { filed, paid })}
+      deadlines={deadlinesFor(who.company, day, new Map(byMonth.results.map((r) => [r.month, r.n])), { filed, paid }, bills)}
       inbox={inboxAddress(who.company)}
       accountant={who.company.accountantName}
       last={messages[0] ?? null}
@@ -1043,7 +1048,7 @@ async function companyPage(
 ) {
   const who = c.get('who')
   const db = c.env.DB
-  const [people, companies, papers, declared, years, handover, receipts] = await Promise.all([
+  const [people, companies, papers, declared, years, handover, receipts, bills] = await Promise.all([
     peopleOf(db, who.company.id),
     companiesOf(db, who.user.id),
     papersOf(db, who.company.id, 'poa'),
@@ -1051,6 +1056,7 @@ async function companyPage(
     exportYears(db, who.company.id),
     papersOf(db, who.company.id, 'handover'),
     exportReceipts(db, who.company.id),
+    billRows(db, today(), who.company.id, 24),
   ])
   const me = people.find((p) => p.id === who.user.id) ?? { ...who.user, role: who.role }
   return shell(
@@ -1075,6 +1081,7 @@ async function companyPage(
       handover={handover}
       receipts={receipts}
       downloadError={extra.download ?? null}
+      bills={bills}
     />,
     status,
   )
@@ -1831,6 +1838,11 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await purgeEnded(env, bratislava(at).day)
   } catch (err) {
     console.error('deleting ended companies failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    await billingScheduled(env, at, BRAND.origin)
+  } catch (err) {
+    console.error('billing failed', err instanceof Error ? err.name : 'error')
   }
   const stuck = await db
     .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")

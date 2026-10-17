@@ -44,6 +44,8 @@ export const bell = {
   contract: (link: string) =>
     ring('zmluva je uzavretá', `zmluva je uzavretá, ďakujeme za dôveru. Zmluvu, obchodné podmienky a prvé kroky nájdete v aplikácii. Prihláste sa týmto odkazom (${days}):`, link),
   welcome: (link: string) => ring('vitajte', `Vaša firma je pripravená vo Firmony. Prihláste sa týmto odkazom (${days}):`, link),
+  invoice: (link: string) => ring('nová faktúra od Firmony', 'vo Firmony na Vás čaká nová faktúra za naše služby. Nájdete ju po prihlásení:', link),
+  invoiceOverdue: (link: string) => ring('faktúra po splatnosti', 'faktúru za naše služby od Vás zatiaľ nevidíme zaplatenú. Podrobnosti nájdete po prihlásení:', link),
 
   // To the team.
   teamMessage: (link: string) => ring('nová správa od klienta', 'vo Firmony čaká nová správa od klienta:', link),
@@ -55,6 +57,7 @@ export const bell = {
   teamRenew: (link: string) => ring('nový odkaz na zmluvu', 'konateľ žiada nový odkaz na zmluvu, platnosť toho predchádzajúceho vypršala:', link),
   teamRequest: (link: string) => ring('nová žiadosť z webu', 'na webe prišla nová žiadosť:', link),
   teamNotice: (link: string) => ring('výpoveď zmluvy', 'klient vypovedal zmluvu alebo výpoveď vzal späť:', link),
+  teamBilling: (month: string, link: string) => ring(`faktúry klientom za ${month}`, `faktúry klientom za ${month} sú pripravené. Skontrolujte ich a vystavte:`, link),
   teamStatement: (link: string) => ring('výpis na kontrolu', 'výpis z banky klienta nenadväzuje na predchádzajúci, preto sme ho nezaúčtovali. Pozrite sa naň:', link),
 }
 

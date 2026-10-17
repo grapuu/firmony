@@ -171,7 +171,22 @@ export async function checkRestore({ db, files, annaCookie, site, today, nowS })
             .bind(...cols.map((key) => row[key])),
         )
       }
-    for (const batch of batches) if (batch.length > 0) await target.batch([target.prepare('PRAGMA defer_foreign_keys = ON'), ...batch])
+    // The local runtime is reached over a kept-alive HTTP connection that it may close between two calls; a batch
+    // that met a closed connection never reached it and is sent again. One that did reach it and is sent again fails
+    // on its own primary keys, which says it was written; the comparison below proves every row either way.
+    const send = async (batch) => {
+      try {
+        await target.batch(batch)
+      } catch (error) {
+        if (error?.cause?.code !== 'UND_ERR_SOCKET') throw error
+        try {
+          await target.batch(batch)
+        } catch (again) {
+          if (!/UNIQUE|PRIMARY KEY/.test(String(again?.message))) throw again
+        }
+      }
+    }
+    for (const batch of batches) if (batch.length > 0) await send([target.prepare('PRAGMA defer_foreign_keys = ON'), ...batch])
     await target.batch(schema.filter((x) => x.type !== 'table').map((x) => target.prepare(x.sql)))
     let equal = true
     for (const [name, values] of rows)

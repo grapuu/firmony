@@ -13,17 +13,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // Stage 2 of closing the loop (17 October 2026): from a request on the site to the first document.
-  ['src/team/routes.tsx', "if (!review || review.decision !== 'standard' || review.expires_at <= ts", 'if (!review || review.expires_at <= ts', 'a bespoke scope sends no link to a standard contract'],
-  ['src/index.tsx', "  return Boolean(review && review.decision === 'standard' && review.expires_at <= now())", "  return Boolean(review && review.decision === 'standard' && review.expires_at <= 0)", 'a link whose review ran out offers a new one'],
-  ['src/index.tsx', "      db.prepare(\"UPDATE requests SET status = 'new' WHERE id = ? AND status <> 'client'\")", "      db.prepare(\"UPDATE requests SET status = status WHERE id = ? AND status <> 'client'\")", 'asking for a new link opens the request again'],
-  ['src/index.tsx', "  if (situation === 'switch') next.set('zmena', '1')\n", '', 'the thanks speak of the former accountant'],
-  ['src/index.tsx', '      email: values.directorEmail || values.email,', '      email: values.email,', 'the order goes to the director'],
-  ['src/team/routes.tsx', '  if (!values.offline) errors.offline = t.newClient.errors.offline\n', '', 'a client is made by hand only with a paper contract'],
-  ['src/app/routes.tsx', "  if (refused) return switchPage(c, { error: answer[refused][0] }, answer[refused][1])\n", '', 'an upload of books is all or nothing'],
-  ['src/app/routes.tsx', "  if (!(await switchingSentAt(db, who.company.id))) await db.batch(", '  if (true) await db.batch(', 'the letter is said to have gone out once'],
-  ['src/app/routes.tsx', '(paper) => (rung ? [] : [ringStatement(', '(paper) => (false ? [] : [ringStatement(', 'the accountant is rung once for an upload'],
-  ['src/views/inside-pages.tsx', '  const welcome = Boolean(props.steps) && !ended && props.paymentsCount === 0', '  const welcome = Boolean(props.steps) && !ended', 'payments lead once they come'],
+  // Stage 3 of closing the loop (17 October 2026): Firmony's own invoices to its clients.
+  ['src/team/billing.ts', '    if (cents > 0 && !f.billed.has(key)) lines.push(', '    if (cents > 0) lines.push(', 'what was billed is billed no more'],
+  ['src/team/billing.ts', '    const until = last && last < f.month ? last : f.month', '    const until = f.month', 'nothing of the plan after the last month'],
+  ['src/team/billing.ts', '  const usedUntil = last && last < addMonths(f.month, -1) ? last : addMonths(f.month, -1)', '  const usedUntil = last && last < f.month ? last : f.month', 'the month that runs is not counted before it ends'],
+  ['src/team/billing.ts', '  if (docs <= own.docs) return { plan: own, agree: false }', '  if (docs < own.docs) return { plan: own, agree: false }', 'as many documents as the plan is for cost nothing more'],
+  ['src/team/billing.ts', "    if (String(year) >= first.slice(0, 4)) line(", '    line(', 'a closing only for a year we kept'],
+  ['src/team/billing-store.ts', " AND d.source <> 'firmony'", '', 'our own invoice is no document of the client'],
+  ['src/team/billing-store.ts', ' AND d.duplicate_of IS NULL', '', 'a duplicate counts once'],
+  ['src/team/billing-store.ts', "    if (r.status === 'submitted' || r.status === 'accepted') closings.set(", '    if (true) closings.set(', 'a closing is billed once filed'],
+  ['src/db.ts', '      PRIMARY KEY (client_id, key)\n', '      created INTEGER\n', 'a key cannot be billed twice'],
+  ['src/team/routes.tsx', ' AND (reminded_at IS NULL OR reminded_at <= ?4)', '', 'a reminder once a week'],
+  ['src/team/routes.tsx', '    paperTariffStatement(db, companyId, who.user.id),\n', '', 'a paper contract keeps its prices'],
+  ['src/app/deadlines.ts', "    out.push({ day: bill.dueOn, label: t.bills.deadline(bill.number)", "    void ({ day: bill.dueOn, label: t.bills.deadline(bill.number)", 'an unpaid invoice is among the client deadlines'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

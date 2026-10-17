@@ -3768,6 +3768,7 @@ async function zipped(entries, note) {
 }
 
 await checkPrehlad()
+await (await import('./billing.units.mjs')).checkBillingRules()
 await (await import('./health.units.mjs')).checkHealth()
 await (await import('./social.units.mjs')).checkSocial()
 done('units')

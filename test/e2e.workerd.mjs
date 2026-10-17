@@ -10,6 +10,7 @@ import { checkContractTransactions } from './contracts.runtime.mjs'
 import { checkSecurity } from './security.runtime.mjs'
 import { checkIncidents } from './incidents.runtime.mjs'
 import { checkRestore } from './restore.runtime.mjs'
+import { checkBilling } from './billing.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
 import { checkFilings } from './filings.runtime.mjs'
 import { checkPayrollReports } from './payroll-reporting.runtime.mjs'
@@ -243,7 +244,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 24)
+check('health says the schema', (await res.json()).schema === 25)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -1061,6 +1062,7 @@ check(
   res.status === 303 && made?.accountant_id === lucia?.id && made.plan === 'rast' && made.role === 'owner' && /^[a-z2-9]{8}$/.test(made.inbox),
 )
 const madeContract = await db.prepare('SELECT terms_version, start_on, signed_by FROM companies WHERE id = ?').bind(made?.id ?? '').first()
+check('the price list of that day is kept as what it is billed by', Boolean(await db.prepare('SELECT 1 AS x FROM billing_tariffs WHERE company_id = ?').bind(made?.id ?? '').first()))
 check(
   'with its paper contract, who signed it and its first month on it',
   madeContract?.start_on === firstMonth && madeContract?.terms_version === 'offline' && madeContract?.signed_by === 'Peter Nový',
@@ -4242,13 +4244,14 @@ const acceptedExport = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { h
 const acceptedZip = unzip(new Uint8Array(await acceptedExport.arrayBuffer()))
 const exactJson = acceptedZip?.find((f) => f.name === 'zmluva.json')
 check('a client can export the exact accepted snapshot with a matching checksum', acceptedExport.status === 200 && exactJson && createHash('sha256').update(exactJson.data).digest('hex') === exactContract.sha256 && acceptedZip.some((f) => f.name === 'zmluva.sha256'))
+await checkBilling({ db, files, admin, acc, client: as(contractCookie), companyId: madeCompany.id, today: day(0), sent, settle, get, capture: process.env.FIRMONY_CAPTURE_DIR })
 const triggerSql = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'contract_snapshots_immutable'").first()).sql
 await db.exec('DROP TRIGGER contract_snapshots_immutable')
 await db.prepare("UPDATE contract_snapshots SET data = '{}' WHERE company_id = ?").bind(madeCompany.id).run()
 res = await get('/app/zmluva', { headers: { cookie: contractCookie } })
 check('corruption shows an explicit failure instead of substituting new terms', res.status === 200 && (await res.text()).includes('Uloženú zmluvu sa nepodarilo overiť'))
 res = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { headers: { cookie: contractCookie } })
-check('a corrupt contract blocks a purportedly complete export', res.status === 409)
+check('a corrupt contract blocks a purportedly complete export', res.status === 409, `${res.status} ${res.headers.get('location')}`)
 await db.prepare('UPDATE contract_snapshots SET data = ? WHERE company_id = ?').bind(exactContract.data, madeCompany.id).run()
 await db.prepare(triggerSql).run()
 res = await get('/app/plna-moc', { headers: { cookie: contractCookie } })

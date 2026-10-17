@@ -10,6 +10,8 @@ import type { Company, Person } from '../app/store'
 import { Flash, Heading, planName } from './inside'
 import { dayOf } from './inside-pages'
 import type { ExportReceipt } from '../app/handover-store'
+import type { BillRow } from '../team/billing-store'
+import { ClientBills } from './billing'
 
 export interface CompanyPageProps {
   company: Company
@@ -34,6 +36,8 @@ export interface CompanyPageProps {
   handover: Paper[]
   receipts?: ExportReceipt[]
   downloadError?: string | null
+  /** Firmony's invoices to the company. */
+  bills?: BillRow[]
 }
 
 const POA_PILL: Record<PoaState, string> = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' }
@@ -178,7 +182,7 @@ const Download: FC<{ years: string[]; handover: Paper[]; today: string; owner: b
   )
 }
 
-export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, receipts = [], downloadError }) => {
+export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, receipts = [], downloadError, bills = [] }) => {
   const owner = me.role === 'owner'
   const others = companies.filter((other) => other.id !== company.id)
   return (
@@ -293,6 +297,8 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
             </p>
             <Notice company={company} owner={owner} today={today} end={noticeEnd} ending={ending} error={errors.notice} />
           </section>
+
+          <ClientBills rows={bills} today={today} />
 
           <Download years={years} handover={handover} today={today} error={downloadError} owner={owner} receipts={receipts} />
 

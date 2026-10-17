@@ -8,7 +8,7 @@ import { payrollReportRoutes } from '../payroll-reporting/routes'
 import { closureStatements, reportItems as payrollReportItems, runReopenBlocked } from '../payroll-reporting/store'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, ART, BRAND, ENDING, OFFLINE_TERMS, PLANS, TEAM } from '../config'
+import { APP, ART, BRAND, ENDING, OFFLINE_TERMS, OPERATOR, PLANS, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
@@ -123,6 +123,8 @@ import { startMonths } from '../content/terms'
 import { orderOf, type Order } from '../order'
 import { orderLinkMail } from '../order-mail'
 import { ContractReviewPage } from '../views/contract-review'
+import { BillingPage } from '../views/billing'
+import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
 import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
@@ -694,6 +696,8 @@ teamRoutes.post('/klienti', async (c) => {
     ...(existing ? [] : [db.prepare('INSERT INTO users (id, created_at, email, name) VALUES (?, ?, ?, ?)').bind(userId, ts, values.email, values.person)]),
     db.prepare("INSERT OR IGNORE INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'owner', ?, ?)").bind(companyId, userId, ts, who.user.id),
     eventStatement(db, { company: companyId, user: who.user.id, action: 'company.created', detail: { request: values.request || null } }),
+    // The price list of the day the paper contract was signed: what the client is billed by (billing-store.ts).
+    paperTariffStatement(db, companyId, who.user.id),
   ]
   if (values.request) statements.push(db.prepare("UPDATE requests SET status = 'client' WHERE id = ?").bind(values.request))
   if (values.welcome) {
@@ -2624,6 +2628,134 @@ teamRoutes.get('/spravy', async (c) => {
   const who = c.get('who')
   const threads = await waitingThreads(c.env.DB, who.user, demoOn(c))
   return shell(c, 'inbox', t.inbox.title, <InboxPage threads={threads} now={now()} />)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fakturácia: Firmony's own invoices to its clients (billing-store.ts), for the administrator
+// ---------------------------------------------------------------------------------------------------------------
+
+async function billingPage(c: Ctx, notice: { flash?: string | null; error?: string | null } = {}, status: ContentfulStatusCode = 200) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const month = today.slice(0, 7)
+  const operator = await operatorOf(db)
+  const [bills, rows] = operator ? await Promise.all([billingDrafts(db, month), billRows(db, today)]) : [[], []]
+  const ok = c.req.query('ok')
+  const vystavene = Number(c.req.query('n') ?? '0')
+  const flash =
+    notice.flash ??
+    (ok === 'europio' ? t.billing.setup.done : ok === 'vystavene' ? t.billing.result.issued(vystavene) : ok === 'dorucena' ? t.billing.result.delivered : ok === 'pripomenute' ? t.billing.result.reminded : null)
+  return shell(
+    c,
+    'billing',
+    t.billing.title,
+    <BillingPage operator={operator} month={month} today={today} bills={bills} rows={rows} months={startMonths(today).slice(0, 6)} flash={flash} error={notice.error ?? null} />,
+    status,
+  )
+}
+
+teamRoutes.get('/fakturacia', (c) => (isAdmin(c.get('who').user) ? billingPage(c) : missingPage(c)))
+
+// europio s. r. o. as the company that issues: its facts from the config, its account for payments, the month its own
+// books start, and the administrator as its owner, so that its own documents and bank come in like a client's.
+teamRoutes.post('/fakturacia/europio', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const db = c.env.DB
+  if (await operatorOf(db)) return billingPage(c, { error: t.billing.setup.errors.exists }, 409)
+  const body = await c.req.parseBody()
+  const iban = typeof body.iban === 'string' ? plainIban(body.iban) : ''
+  const start = typeof body.start === 'string' ? body.start : ''
+  if (!isIban(iban)) return billingPage(c, { error: t.billing.setup.errors.iban }, 422)
+  if (!startMonths(dayOf(now())).includes(start)) return billingPage(c, { error: t.billing.setup.errors.start }, 422)
+  const id = crypto.randomUUID()
+  let inbox = inboxCode()
+  for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
+  const ts = now()
+  try {
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO companies (id, created_at, name, ico, dic, address, register_line, vat_payer, vat_7a, plan, inbox, start_on, operator, invoice_iban, invoice_due_days)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 'start', ?, ?, 1, ?, 14)`,
+        )
+        .bind(id, ts, OPERATOR.name, OPERATOR.companyId.replace(/\s/g, ''), OPERATOR.taxId, `${OPERATOR.street}, ${OPERATOR.postalCity}`, OPERATOR.register, inbox, start, iban),
+      db.prepare("INSERT INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'owner', ?, ?)").bind(id, who.user.id, ts, who.user.id),
+      eventStatement(db, { company: id, user: who.user.id, action: 'billing.operator', detail: { start } }),
+    ])
+  } catch {
+    // Two administrators at once: the unique index lets one of them make europio.
+    return billingPage(c, { error: t.billing.setup.errors.exists }, 409)
+  }
+  return c.redirect('/ucto/fakturacia?ok=europio', 303)
+})
+
+// Issues the invoices of this month: one client's (after its notes were checked), or every one that has no note.
+teamRoutes.post('/fakturacia/vystavit', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const db = c.env.DB
+  const operator = await operatorOf(db)
+  if (!operator) return c.redirect('/ucto/fakturacia', 303)
+  const body = await c.req.parseBody()
+  const which = typeof body.klient === 'string' ? body.klient : ''
+  const today = dayOf(now())
+  const bills = (await billingDrafts(db, today.slice(0, 7))).filter((bill) => issuable(bill) && (which === 'vsetci' ? bill.draft.flags.length === 0 : bill.company.id === which))
+  if (bills.length === 0) return billingPage(c, { error: t.billing.result.empty }, 409)
+  let issued = 0
+  for (const bill of bills) {
+    const done = await issueBill(c.env, operator, bill, who.user.id, today, siteOrigin(c))
+    if (done.result === 'iban') return billingPage(c, { error: t.billing.result.iban }, 409)
+    if (done.result === 'billed') return billingPage(c, { error: t.billing.result.billed }, 409)
+    if (done.result === 'issued') issued++
+  }
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/ucto/fakturacia?ok=vystavene&n=${issued}#vystavene`, 303)
+})
+
+teamRoutes.post('/fakturacia/:invoice/dorucit', async (c) => {
+  if (!isAdmin(c.get('who').user)) return missingPage(c)
+  const id = c.req.param('invoice')
+  if (!ID.test(id)) return missingPage(c)
+  const done = await deliverBill(c.env, id, siteOrigin(c))
+  if (done === 'missing') return missingPage(c)
+  later(c, flushOutbox(c.env.DB, c.env.EMAIL))
+  return c.redirect('/ucto/fakturacia?ok=dorucena#vystavene', 303)
+})
+
+// An unpaid invoice past its due day: a message in the client's app and a doorbell, at most once a week.
+teamRoutes.post('/fakturacia/:invoice/pripomenut', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const db = c.env.DB
+  const id = c.req.param('invoice')
+  const today = dayOf(now())
+  const row = ID.test(id) ? (await billRows(db, today, null, 1000)).find((r) => r.invoiceId === id) : undefined
+  const operator = await operatorOf(db)
+  if (!row || !operator) return missingPage(c)
+  if (row.state !== 'overdue') return c.redirect('/ucto/fakturacia#vystavene', 303)
+  const ts = now()
+  const message = crypto.randomUUID()
+  const members = await membersOf(db, row.clientId)
+  // The invoice takes the moment first, on its own: of two clicks within the week only the first finds it free.
+  const claimed = await db
+    .prepare('UPDATE invoices SET reminded_at = ?1 WHERE id = ?2 AND company_id = ?3 AND (reminded_at IS NULL OR reminded_at <= ?4)')
+    .bind(ts, id, operator.id, ts - REMIND_EVERY)
+    .run()
+  if ((claimed.meta?.changes ?? 0) === 0) return billingPage(c, { error: t.billing.result.remindedRecently }, 409)
+  try {
+    await db.batch([
+      messageStatement(db, { id: message, company: row.clientId, author: who.user.id, side: 'firmony', body: remindMessage(row.number, row.totalCents, row.dueOn, operator.invoiceIban), payment: null }),
+      eventStatement(db, { company: row.clientId, user: who.user.id, action: 'billing.reminded', subject: id }),
+      ...members.map((m) => ringStatement(db, 'invoice-overdue', `${id}:${ts}`, m.email, bell.invoiceOverdue(`${siteOrigin(c)}/app/firma#faktury-firmony`))),
+    ])
+  } catch (error) {
+    // Nothing reached the client: the week is given back.
+    await db.prepare('UPDATE invoices SET reminded_at = NULL WHERE id = ? AND reminded_at = ?').bind(id, ts).run()
+    throw error
+  }
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/ucto/fakturacia?ok=pripomenute#vystavene', 303)
 })
 
 teamRoutes.get('/ziadosti', async (c) => {

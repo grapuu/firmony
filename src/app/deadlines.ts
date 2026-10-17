@@ -37,6 +37,8 @@ export function deadlinesFor(
   day: string,
   missingByMonth: Map<string, number>,
   vat: { filed: FiledReturn[]; paid: Map<string, TaxPaid> } = { filed: [], paid: new Map() },
+  /** Firmony's own invoices to the company that are not paid yet: the client pays them, by their due day. */
+  bills: readonly { number: string; totalCents: number; dueOn: string }[] = [],
 ): Deadline[] {
   const month = day.slice(0, 7)
   const date = Number(day.slice(8, 10))
@@ -80,5 +82,7 @@ export function deadlinesFor(
   const year = Number(day.slice(0, 4))
   const closingYear = day.slice(5) <= '03-31' ? year - 1 : year
   out.push({ day: `${closingYear + 1}-03-31`, label: t.deadline.closing(String(closingYear)), state: t.deadline.ours, tone: 'blue' })
+  for (const bill of bills)
+    out.push({ day: bill.dueOn, label: t.bills.deadline(bill.number), state: t.bills.deadlineState(formatEurExact(bill.totalCents)), tone: 'amber', href: '/app/firma#faktury-firmony' })
   return out.sort((a, b) => a.day.localeCompare(b.day))
 }

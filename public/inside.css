@@ -6820,3 +6820,29 @@ select.field__input {
 .filing-event { border-top: 1px solid var(--line, #e7e9ee); padding-top: 1rem; }
 .filing-event h3 { font-size: 1rem; }
 .filing-pagination { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+
+/* Fakturácia (views/billing.tsx): what each client is billed, line by line, and the invoices issued. */
+.billing {
+  display: grid;
+  gap: 20px;
+}
+
+.bill__lines {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.bill__lines li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  color: var(--dim);
+  font-size: 0.875rem;
+}
+
+.bill__lines li span:last-child {
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -107,7 +107,8 @@ export async function newOrderStatement(db: D1Database, token: string, o: NewOrd
 
 /** Whether a company with this IČO is already a client (a second contract for it is not taken online). */
 export async function isClient(db: D1Database, ico: string): Promise<boolean> {
-  return Boolean(await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL AND demo = 0').bind(ico).first())
+  // europio, which issues Firmony's invoices, keeps its own books in the app, and is no client of itself.
+  return Boolean(await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL AND demo = 0 AND operator = 0').bind(ico).first())
 }
 
 export interface Acceptance {
