@@ -110,7 +110,8 @@ app.use('*', async (c, next) => {
     if (declared === undefined) return c.text('Length required', 411)
     const length = Number(declared)
     if (!Number.isInteger(length) || length < 0) return c.text('Bad request', 400)
-    if (length > (UPLOADS.test(url.pathname) ? APP.uploadBytes : LIMITS.formBytes)) return c.text('Too large', 413)
+    const allowed = UPLOADS.test(url.pathname) ? APP.uploadBytes : /^\/ucto\//.test(url.pathname) ? LIMITS.teamFormBytes : /^\/app\//.test(url.pathname) ? LIMITS.appFormBytes : LIMITS.formBytes
+    if (length > allowed) return c.text('Too large', 413)
   }
   await next()
   const inside = /^\/(app|ucto|auth|f)(\/|$)/.test(url.pathname)

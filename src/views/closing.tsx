@@ -564,7 +564,7 @@ const StatementsCard: FC<{ view: ClosingView }> = ({ view }) => (
       {k.statementsTitle}
     </h2>
     <p class="info__lead">{k.statementsLead(view.statements.form, k.sizes[view.size] ?? '')}</p>
-    {view.previous ? null : <p class="info__source">{k.noPrevious}</p>}
+    {view.previousFrom === 'books' ? null : <p class="info__source">{view.previousFrom === 'prior' ? k.previousTaken : view.previousFrom === 'otherForm' ? k.previousOtherForm : k.noPrevious}</p>}
     {view.statements.form === 'pod' ? (
       <>
         <AssetsTable view={view} />

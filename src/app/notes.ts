@@ -63,6 +63,9 @@ const eur = (cents: number): string => `${cents < 0 ? '−' : ''}${String(Math.r
 /** Whole euros already rounded (the statements' euro lines). */
 const whole = (n: number): string => eur(n * 100)
 
+/** A year before taken over from the column of the period before: total assets net without their gross. */
+const netOnly = (s: Statements): boolean => s.grossEur.r001 === undefined && (s.balanceEur.r001 ?? 0) !== 0
+
 /** The rows of the balance sheet (whole euros) and their sum, from either form's lines. */
 const row = (lines: Lines | undefined, key: string): number => lines?.[key] ?? 0
 
@@ -221,6 +224,9 @@ export function notesDocument(src: NotesSource): PdfDocument {
 function largeTables(src: NotesSource): PdfBlock[] {
   const st = src.statements
   const pr = src.previous
+  // The year before taken over from the column of the period before carries only the net: its gross and correction are unknown, not nought.
+  const grossKnown = !pr || !netOnly(pr)
+  const start = (lines: Record<string, number> | undefined, r: string) => (grossKnown ? whole(row(lines, r)) : '')
   const labels: Record<string, string> = {
     r003: 'Dlhodobý nehmotný majetok', r004: 'Aktivované náklady na vývoj', r005: 'Softvér', r006: 'Oceniteľné práva', r007: 'Goodwill', r008: 'Ostatný dlhodobý nehmotný majetok', r009: 'Obstarávaný dlhodobý nehmotný majetok', r010: 'Preddavky na dlhodobý nehmotný majetok',
     r011: 'Dlhodobý hmotný majetok', r012: 'Pozemky', r013: 'Stavby', r014: 'Samostatné hnuteľné veci a súbory', r015: 'Pestovateľské celky trvalých porastov', r016: 'Základné stádo a ťažné zvieratá', r017: 'Ostatný dlhodobý hmotný majetok', r018: 'Obstarávaný dlhodobý hmotný majetok', r019: 'Preddavky na dlhodobý hmotný majetok', r020: 'Opravná položka k nadobudnutému majetku',
@@ -244,7 +250,7 @@ function largeTables(src: NotesSource): PdfBlock[] {
       ],
       rows: fixedRows.map((r) => ({
         bold: sumRow(r),
-        cells: [labels[r] as string, whole(row(pr?.grossEur, r)), whole(row(st.grossEur, r)), whole(row(pr?.fixEur, r)), whole(row(st.fixEur, r)), whole(row(pr?.balanceEur, r)), whole(row(st.balanceEur, r))],
+        cells: [labels[r] as string, start(pr?.grossEur, r), whole(row(st.grossEur, r)), start(pr?.fixEur, r), whole(row(st.fixEur, r)), whole(row(pr?.balanceEur, r)), whole(row(st.balanceEur, r))],
       })),
     },
   ]
@@ -360,7 +366,7 @@ export function cashFlowOf(st: Statements, pr: Statements): { operating: number;
 }
 
 function cashFlows(src: NotesSource): PdfBlock[] {
-  if (!src.previous || src.previous.form !== 'pod') return [{ kind: 'text', text: '7. Prehľad peňažných tokov: predchádzajúce účtovné obdobie nie je v účtovnej knihe Firmony; prehľad sa zostaví z oboch súváh.' }]
+  if (!src.previous || src.previous.form !== 'pod' || netOnly(src.previous)) return [{ kind: 'text', text: '7. Prehľad peňažných tokov: predchádzajúce účtovné obdobie nie je v účtovnej knihe Firmony; prehľad sa zostaví z oboch súváh.' }]
   const cf = cashFlowOf(src.statements, src.previous)
   const bold = new Set(['A. Peňažné toky z prevádzkovej činnosti', 'C. Peňažné toky z finančnej činnosti'])
   return [

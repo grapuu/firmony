@@ -6,12 +6,19 @@ const assert=(ok,message)=>{if(!ok)throw Error(message)}
 const money=(s)=>{assert(typeof s==='string'&&/^\d+\.\d{2}$/.test(s),'Exact decimal amount');return BigInt(s.replace('.',''))}
 const funds={np:[140,140],sp:[1400,400],ip:[300,300],pvn:[50,100],up:[80,0],gp:[25,0],rfs:[475,0],pfp:[50,0]}
 const PENSION=new Set(['sp','ip','rfs']),GENERAL=new Set(['np','pvn','pfp','gp'])
-/** The funds a type may pay to: a labour relationship with a regular income all, an irregular one pensions with accident and guarantee, a director no accident, guarantee or support. */
+/**
+ * The funds a type may pay to: an employment all; an irregular agreement and any student's agreement pensions with
+ * accident and guarantee; a regular agreement all but the support in short-time work, its unemployment insurance whole
+ * (the Agency's table of agreements); a director no accident, guarantee or support.
+ */
 function allowed(type,director) {
   if (director) return new Set(type==='ZECN'?['sp','ip','rfs']:['np','sp','ip','pvn','rfs'])
-  if (['ZECD1N','ZECD2N','ZECD3N','ZECD3NV'].includes(type)) return new Set(['sp','ip','up','gp','rfs'])
+  if (['ZECD1N','ZECD2N','ZECD3','ZECD3V','ZECD3N','ZECD3NV'].includes(type)) return new Set(['sp','ip','up','gp','rfs'])
+  if (type.startsWith('ZECD')) return new Set(['np','sp','ip','pvn','up','gp','rfs'])
   return new Set(Object.keys(funds))
 }
+/** The employer's unemployment insurance is whole (1 %) where no support in short-time work is paid: a director, an agreement. */
+const wholeUnemployment=(type,director)=>director||type.startsWith('ZECD')
 export function readSocialXml(xml) {
   assert(XMLValidator.validate(xml)===true,'Well formed social XML')
   const root=new XMLParser({ignoreAttributes:false,parseTagValue:false,parseAttributeValue:false,ignoreDeclaration:true}).parse(xml).mvpp
@@ -36,7 +43,7 @@ export function readSocialXml(xml) {
     for(const [fund,[erRate,eeRate]] of Object.entries(funds)) {
       if (fund==='pfp'&&director) continue
       const tag=fund[0].toUpperCase()+fund.slice(1),erBase=money(r[`@_vz${tag}`]),er=money(r[`@_${fund}Zamtel`])
-      const rate=BigInt(fund==='pvn'&&director?100:erRate)
+      const rate=BigInt(fund==='pvn'&&wholeUnemployment(type,director)?100:erRate)
       let ee=0n
       if (eeRate) {assert(money(r[`@_vzZec${tag}`])===erBase,'The employee base is the employer base');ee=money(r[`@_${fund}Zamnec`])}
       else assert(!(`@_${fund}Zamnec` in r)&&!(`@_vzZec${tag}` in r),'No unused employee insurance')

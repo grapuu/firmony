@@ -965,6 +965,37 @@ const MIGRATIONS: readonly string[][] = [
       ]
     }),
   ],
+  // Taking the books over (src/app/takeover.ts, 17 October 2026): the financial statements the accountant before filed,
+  // one row a year; the documents and assets of an import marked with it.
+  [
+    `CREATE TABLE IF NOT EXISTS prior_statements (
+      company_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      form TEXT NOT NULL CHECK (form IN ('muj', 'pod')),
+      data TEXT NOT NULL,
+      file_name TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      PRIMARY KEY (company_id, year)
+    )`,
+    'ALTER TABLE documents ADD COLUMN takeover TEXT',
+    'ALTER TABLE assets ADD COLUMN takeover TEXT',
+    ...['INSERT', 'UPDATE', 'DELETE'].flatMap((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return [
+        `CREATE TRIGGER prior_statements_data_${action.toLowerCase()} AFTER ${action} ON prior_statements BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+        ...(action === 'DELETE'
+          ? []
+          : [
+              `CREATE TRIGGER prior_statements_purging_${action.toLowerCase()} BEFORE ${action} ON prior_statements
+                WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+                BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+            ]),
+      ]
+    }),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

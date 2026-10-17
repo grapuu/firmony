@@ -37,6 +37,9 @@ import {
   payMonth,
   payrollForm,
   taxSettlement,
+  tableRead,
+  takeover,
+  takeoverStore,
   prehlad as prehladUnit,
   payrollReporting as reports,
   periods,
@@ -65,7 +68,7 @@ import {
   zip,
 } from '../.wrangler/tmp/units-bundle.mjs'
 import { validateXML } from 'xmllint-wasm'
-import { crc32 as nodeCrc32 } from 'node:zlib'
+import { crc32 as nodeCrc32, deflateRawSync } from 'node:zlib'
 import { check, done } from './check.mjs'
 import { camtXml } from './pretend.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
@@ -4023,7 +4026,7 @@ async function zipped(entries, note) {
   check('below the deduction only accident and guarantee insurance, rounded down each', s.socialEmployee === 0 && s.socialEmployer === 120 + 37)
   s = slip({ period: '2027-01', gross: 30000, contract: 'dobps', exemption: true })
   check('the deduction is 300 € from 2027', s.exemption === 30000 && s.socialEmployee === 0)
-  check('a pensioner on an agreement with an irregular income claims no deduction', slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true }).exemption === 0)
+  check('a pensioner on an agreement claims the deduction with an irregular income too (the table of agreements, section 7)', slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true }).exemption === 20000 && slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true }).socialEmployee === 800)
   s = slip({ gross: 40000, contract: 'dovp', regular: true, pension: 'old', exemption: true })
   check(
     'an old-age pensioner on an agreement with a regular income: neither sickness, unemployment nor disability insurance, the deduction off the base, no health insurance',
@@ -4032,16 +4035,27 @@ async function zipped(entries, note) {
   )
   s = slip({ contract: 'employment', pension: 'old' })
   check(
-    'an old-age pensioner in employment: no disability and no unemployment insurance (nor the support), health as anybody',
-    s.socialEmployee === 1400 + 4000 && s.socialEmployer === 1400 + 14000 + 250 + 800 + 4750 && s.healthEmployee === 5000,
+    'an old-age pensioner in employment: no disability and no unemployment insurance, the support in short-time work kept (the Agency, 27 April 2022), health as anybody',
+    s.socialEmployee === 1400 + 4000 && s.socialEmployer === 1400 + 14000 + 500 + 250 + 800 + 4750 && s.social.employer.unemployment === undefined && s.healthEmployee === 5000,
     JSON.stringify(s.social),
   )
   s = slip({ contract: 'employment', pension: 'invalid70' })
-  check('a disability pension above 70 %: no unemployment insurance, disability insurance kept', s.social.employee.unemployment === undefined && s.social.employer.support === undefined && s.social.employee.disability === 3000)
+  check('a disability pension above 70 %: no unemployment insurance, disability insurance and the support kept', s.social.employee.unemployment === undefined && s.social.employer.unemployment === undefined && s.social.employer.support === 500 && s.social.employee.disability === 3000)
+  s = slip({ contract: 'employment', pension: 'service' })
+  check('a service pension after the retirement age: no disability insurance, unemployment insurance kept', s.social.employee.disability === undefined && s.social.employer.disability === undefined && s.social.employee.unemployment === 1000 && s.social.employer.unemployment === 500 && s.social.employer.support === 500)
+  s = slip({ contract: 'dovp', regular: true })
+  check('a regular agreement: the employer\'s unemployment insurance whole, 1 %, no support in short-time work', s.social.employer.unemployment === 1000 && s.social.employer.support === undefined && s.socialEmployer === 1400 + 14000 + 3000 + 1000 + 250 + 800 + 4750)
+  s = slip({ gross: 40000, contract: 'dobps', regular: true })
+  check("a student's agreement with a regular income: insured as an irregular one, only its report differs", s.regular === true && s.social.employee.sickness === undefined && s.socialEmployee === 1600 + 1200 && s.healthInsured === false)
   s = slip({ contract: 'employment', exemption: true })
   check('the deduction is no employment\'s', s.exemption === 0 && s.socialEmployee === 9400)
   s = slip({ contract: 'dopc', regular: true, pension: 'invalid', exemption: true, gross: 30000 })
-  check('a disability pensioner on an agreement keeps disability and health insurance, not sickness', s.healthInsured === true && s.socialEmployee === 400 + 300 && s.social.employee.sickness === undefined, JSON.stringify(s.social))
+  check('a disability pensioner on an agreement keeps disability insurance; no sickness and no health insurance (VšZP: any pension of old age, disability or service)', s.healthInsured === false && s.healthEmployee === 0 && s.socialEmployee === 400 + 300 && s.social.employee.sickness === undefined, JSON.stringify(s.social))
+  check('a pensioner pays no minimum health advance: the state insures him too', slip({ gross: 20000, contract: 'employment', pension: 'old' }).healthTopUp === 0 && slip({ gross: 20000, contract: 'employment' }).healthTopUp > 0)
+  {
+    const three = slip({ gross: 60000, declaration: true, children: [{ name: 'A', born: '2016-01-01' }, { name: 'B', born: '2018-01-01' }, { name: 'C', born: '2020-01-01' }] })
+    check('each child\'s bonus makes the whole bonus to the cent', three.bonusByChild.reduce((sum, c) => sum + c.amount, 0) === three.bonus && three.bonus > 0, JSON.stringify({ bonus: three.bonus, by: three.bonusByChild }))
+  }
   s = slip({ gross: 150000, sickPay: 34000, declaration: true })
   check(
     'sick pay is taxed with the wage and is no assessment base',
@@ -4552,6 +4566,294 @@ await (await import('./social.units.mjs')).checkSocial()
   check('a wrong line keeps all back, each said by its line', pasted.moves.length === 0 && pasted.errors.length === 2 && pasted.errors[0].startsWith('Riadok 1:') && pasted.errors[1].includes('neznámy kód X-9'), JSON.stringify(pasted.errors))
   const pastedItems = stock.parseItemsCsv('kód;názov;jednotka;druh\nA-1;Jablká;kg;tovar\nB-2;Lepidlo;ks;materiál\nA-1;Znova;ks;tovar', new Set())
   check('pasted items: a code twice is said', pastedItems.items.length === 0 && pastedItems.errors.length === 1 && pastedItems.errors[0].startsWith('Riadok 4:') && stock.parseItemsCsv('A-1;Jablká;kg;tovar\nB-2;Lepidlo;ks;112', new Set()).items.length === 2)
+}
+
+// Taking a client over (17 October 2026): files of the program before read into the opening balances, the open
+// items, the assets, the employees and the statements she filed.
+{
+  // Text and tables
+  const cp1250 = new Uint8Array([0xda, 0xe8, 0x65, 0x74, 0x3b, 0x8a, 0x74, 0x61, 0x76])
+  check('text in Windows-1250 (Účet;Štav) and in UTF-8 with its mark', tableRead.decodeText(cp1250) === 'Účet;Štav' && tableRead.decodeText(new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('Účet')])) === 'Účet')
+  const utf16 = new Uint8Array([0xff, 0xfe, ...[...'Účet\tSuma'].flatMap((ch) => [ch.charCodeAt(0) & 0xff, ch.charCodeAt(0) >> 8])])
+  check("Excel's Unicode text (UTF-16 with its mark) is read, not refused for its noughts", tableRead.decodeText(utf16) === 'Účet\tSuma')
+  check(
+    'a CSV with semicolons and quotes, rows pasted from Excel with tabs, and commas',
+    JSON.stringify(tableRead.parseDelimited('Účet;Názov\n311;"Odberatelia; tuzemsko"\n321;"Dodávatelia ""A"""\n')) === JSON.stringify([['Účet', 'Názov'], ['311', 'Odberatelia; tuzemsko'], ['321', 'Dodávatelia "A"']]) &&
+      JSON.stringify(tableRead.parseDelimited('Účet\tKS\r\n211\t120,50\r\n')) === JSON.stringify([['Účet', 'KS'], ['211', '120,50']]) &&
+      JSON.stringify(tableRead.parseDelimited('a,b\n1,2')) === JSON.stringify([['a', 'b'], ['1', '2']]),
+  )
+  check(
+    'amounts as the programs write them, in cents',
+    tableRead.amountOf('1 234,56') === 123456 && tableRead.amountOf('1234.56') === 123456 && tableRead.amountOf('-1.234,56') === -123456 && tableRead.amountOf('(12,40)') === -1240 && tableRead.amountOf('12,40 €') === 1240 && tableRead.amountOf('500-') === -50000 && tableRead.amountOf('') === null && Number.isNaN(tableRead.amountOf('abc')),
+  )
+  check(
+    'days as the programs write them, an Excel day number too (45658 is 1 January 2025)',
+    tableRead.dayOf('31.12.2026') === '2026-12-31' && tableRead.dayOf('1. 3. 2026') === '2026-03-01' && tableRead.dayOf('2026-12-31') === '2026-12-31' && tableRead.dayOf('45658') === '2025-01-01' && tableRead.dayOf('31.2.2026') === null && tableRead.dayOf('') === null,
+  )
+  check('a heading "KS MD" is found before the plain "KS"', JSON.stringify(tableRead.findColumns([['Účet', 'KS', 'KS MD']], { a: ['účet'], ksMd: ['ks md'], ks: ['ks'] }, ['a'])?.cols) === JSON.stringify({ a: 0, ksMd: 2, ks: 1 }))
+
+  // An Excel workbook made here: a ZIP of its parts, deflated, with shared and inline strings and a skipped column.
+  const zipOf = (files) => {
+    const local = []
+    const central = []
+    let offset = 0
+    for (const [name, text] of Object.entries(files)) {
+      const raw = Buffer.from(text, 'utf8')
+      const data = deflateRawSync(raw)
+      const nameBytes = Buffer.from(name, 'utf8')
+      const head = Buffer.alloc(30)
+      head.writeUInt32LE(0x04034b50, 0)
+      head.writeUInt16LE(20, 4)
+      head.writeUInt16LE(8, 8)
+      head.writeUInt32LE(nodeCrc32(raw), 14)
+      head.writeUInt32LE(data.length, 18)
+      head.writeUInt32LE(raw.length, 22)
+      head.writeUInt16LE(nameBytes.length, 26)
+      local.push(head, nameBytes, data)
+      const dir = Buffer.alloc(46)
+      dir.writeUInt32LE(0x02014b50, 0)
+      dir.writeUInt16LE(20, 4)
+      dir.writeUInt16LE(20, 6)
+      dir.writeUInt16LE(8, 10)
+      dir.writeUInt32LE(nodeCrc32(raw), 16)
+      dir.writeUInt32LE(data.length, 20)
+      dir.writeUInt32LE(raw.length, 24)
+      dir.writeUInt16LE(nameBytes.length, 28)
+      dir.writeUInt32LE(offset, 42)
+      central.push(dir, nameBytes)
+      offset += 30 + nameBytes.length + data.length
+    }
+    const dirBytes = Buffer.concat(central)
+    const end = Buffer.alloc(22)
+    end.writeUInt32LE(0x06054b50, 0)
+    end.writeUInt16LE(Object.keys(files).length, 8)
+    end.writeUInt16LE(Object.keys(files).length, 10)
+    end.writeUInt32LE(dirBytes.length, 12)
+    end.writeUInt32LE(offset, 16)
+    return new Uint8Array(Buffer.concat([...local, dirBytes, end]))
+  }
+  const xlsx = zipOf({
+    'xl/workbook.xml': '<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Predvaha" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/sharedStrings.xml': '<sst><si><t>Účet</t></si><si><r><t>Konečný </t></r><r><t>stav</t></r></si><si><t>Pokladnica &amp; ceniny</t></si></sst>',
+    'xl/worksheets/sheet1.xml':
+      '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>1</v></c></row><row r="2"><c r="A2"><v>211</v></c><c r="B2" t="s"><v>2</v></c><c r="C2"><v>120.5</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>221.001</t></is></c><c r="C3"><v>-30</v></c></row></sheetData></worksheet>',
+  })
+  const table = await tableRead.readTable(xlsx)
+  check('an Excel workbook: its first sheet, shared, rich and inline strings, a column left empty', table.format === 'xlsx' && JSON.stringify(table.rows) === JSON.stringify([['Účet', '', 'Konečný stav'], ['211', 'Pokladnica & ceniny', '120.5'], ['221.001', '', '-30']]), JSON.stringify(table))
+  check(
+    'an old .xls is said, a binary file is refused, an empty one is empty',
+    (await tableRead.readTable(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 1, 2]))).error === 'xls' && (await tableRead.readTable(new Uint8Array([65, 0, 66]))).error === 'unreadable' && (await tableRead.readTable(new Uint8Array([]))).error === 'empty',
+  )
+
+  // The trial balance
+  const expected = '211:12050/0 221.001:600000/0 221.002:400000/0 311:246000/0 321:0/123000 411:0/500000 428:0/70000 431:0/565050'
+  const linesOf = (tb) => tb.lines.map((l) => `${l.account}:${l.md}/${l.d}`).join(' ')
+  const omega = takeover.trialBalance(
+    tableRead.parseDelimited(
+      [
+        'Obratová predvaha k 31.12.2026',
+        'Účet;Názov;PS MD;PS D;Obrat MD;Obrat D;KS MD;KS D',
+        '211;Pokladnica;100,00;;20,50;;120,50;',
+        '221;Bankové účty;;;;;10 000,00;',
+        '221001;Tatra banka;;;;;6 000,00;',
+        '221002;SLSP;;;;;4 000,00;',
+        '311;Odberatelia;;;;;2 460,00;',
+        '321;Dodávatelia;;;;;;1 230,00',
+        '411;Základné imanie;;;;;;5 000,00',
+        '428;Nerozdelený zisk;;;;;;700,00',
+        '518;Ostatné služby;;;;;6 349,50;',
+        '602;Tržby z predaja služieb;;;;;;12 000,00',
+        'Trieda 6 spolu;;;;;;;12 000,00',
+        '701;Začiatočný účet súvahový;;;;;;',
+        '901;Podsúvahový;;;;;5,00;',
+      ].join('\n'),
+    ),
+  )
+  check(
+    'a trial balance with KS MD and KS D: every balance-sheet account, a synthetic account by its analytic ones, the year\'s costs and revenues as the result on 431, totals and class 9 left out',
+    linesOf(omega) === expected && omega.md === 1258050 && omega.d === 1258050 && omega.result === 565050 && omega.issues.length === 0,
+    linesOf(omega),
+  )
+  const pohoda = takeover.trialBalance(
+    tableRead.parseDelimited(
+      ['Účet\tNázov účtu\tPočiatočný stav\tObraty MD\tObraty D\tKonečný stav', '211 Pokladnica\t\t\t\t\t120,50', '221.001\t\t\t\t\t6 000,00', '221.002\t\t\t\t\t4000', '311\t\t\t\t\t2460', '321\t\t\t\t\t-1 230,00', '411\t\t\t\t\t-5000', '428\t\t\t\t\t700,00 D', '518\t\t\t\t\t6349,5', '602\t\t\t\t\t-12000'].join('\n'),
+    ),
+  )
+  check('a trial balance with one signed closing balance (and "700,00 D"), the account at the start of its cell', linesOf(pohoda) === expected, linesOf(pohoda))
+  const turnover = takeover.trialBalance(tableRead.parseDelimited(['Účet;PS;Obrat MD;Obrat D', '211;100;20,50;', '221.001;5000;1000;', '221.002;4000;;', '311;;2460;', '321;-1000;;230', '411;-5000;;', '428;-700;;', '518;;6349,50;', '602;;;12000'].join('\n')))
+  check('a trial balance without closing balances: the opening one with the turnover', linesOf(turnover) === expected, linesOf(turnover))
+  const long = takeover.trialBalance(tableRead.parseDelimited('Účet;KS\n3432001;100,00\n343.200;-100,00\nx;1'))
+  check('an analytic account of more than three digits is said with its line, never left out quietly', long.issues.length === 1 && long.issues[0].line === 2 && long.issues[0].what.startsWith('3432001'))
+  check('a table without an account and a balance is said', takeover.trialBalance([['Názov', 'Suma']]).noColumns && takeover.trialBalance(tableRead.parseDelimited('Účet;Názov\n211;Pokladnica')).noColumns)
+  check('an amount that is none is said with its line', takeover.trialBalance(tableRead.parseDelimited('Účet;KS MD;KS D\n211;12,x;')).issues[0]?.line === 2)
+
+  // The open items
+  const open = takeover.openItems(
+    tableRead.parseDelimited(
+      [
+        'Druh;Číslo dokladu;VS;Partner;IČO;Dátum vystavenia;Dátum splatnosti;Suma celkom;Zostáva uhradiť',
+        'FV;20260101;20260101;Odberateľ a. s.;12345678;15.12.2026;14.01.2027;1 230,00;1 230,00',
+        'FP;D-77;;Dodávateľ s. r. o.;87654321;20.12.2026;03.01.2027;615,00;300,00',
+        'FV;20260102;20260102;Iný;;10.12.2026;24.12.2026;100,00;0,00',
+        'Spolu;;;;;;;1 945,00;1 530,00',
+      ].join('\n'),
+    ),
+    null,
+  )
+  check(
+    'open items: each with what is left, its side by its kind, its symbol and partner; paid ones and totals left out',
+    open.issues.length === 0 &&
+      open.items.length === 2 &&
+      JSON.stringify(open.items[0]) === JSON.stringify({ side: 'issued', number: '20260101', vs: '20260101', party: 'Odberateľ a. s.', ico: '12345678', issuedOn: '2026-12-15', dueOn: '2027-01-14', cents: 123000, line: 2 }) &&
+      open.items[1].side === 'received' && open.items[1].cents === 30000 && open.items[1].vs === null,
+    JSON.stringify(open),
+  )
+  const sideless = tableRead.parseDelimited('Číslo faktúry;Suma\n77;10,00')
+  check('a list that does not say the side: refused without the choice, read with it', takeover.openItems(sideless, null).issues.length === 1 && takeover.openItems(sideless, 'received').items[0]?.side === 'received' && takeover.openItems(sideless, 'received').items[0]?.vs === '77')
+  const wrong = takeover.openItems(tableRead.parseDelimited('Účet;Číslo dokladu;Suma;Dátum splatnosti\n311;A1;-5,00;\n311;A2;5,00;31.2.2027\n321;A3;5,00;\n321;A3;6,00;'), null)
+  check('a credit note, a wrong day and a number twice are said with their lines', wrong.items.length === 1 && wrong.issues.map((i) => i.line).join() === '2,3,5', JSON.stringify(wrong.issues))
+
+  const pohodaXml = `<?xml version="1.0" encoding="UTF-8"?>
+<dat:dataPack xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd" xmlns:inv="http://www.stormware.cz/schema/version_2/invoice.xsd" xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd" id="exp" ico="12345679" application="POHODA" version="2.0">
+<dat:dataPackItem id="1" version="2.0"><inv:invoice version="2.0"><inv:invoiceHeader><inv:invoiceType>issuedInvoice</inv:invoiceType><inv:number><typ:numberRequested>20260101</typ:numberRequested></inv:number><inv:symVar>20260101</inv:symVar><inv:date>2026-12-15</inv:date><inv:dateDue>2027-01-14</inv:dateDue><inv:partnerIdentity><typ:address><typ:company>Odberateľ a. s.</typ:company><typ:ico>12345678</typ:ico></typ:address></inv:partnerIdentity></inv:invoiceHeader><inv:invoiceSummary><inv:homeCurrency><typ:priceNone>0</typ:priceNone><typ:priceLow>0</typ:priceLow><typ:priceLowVAT>0</typ:priceLowVAT><typ:priceLowSum>0</typ:priceLowSum><typ:priceHigh>1000</typ:priceHigh><typ:priceHighVAT>230</typ:priceHighVAT><typ:priceHighSum>1230</typ:priceHighSum></inv:homeCurrency></inv:invoiceSummary></inv:invoice></dat:dataPackItem>
+<dat:dataPackItem id="2" version="2.0"><inv:invoice version="2.0"><inv:invoiceHeader><inv:invoiceType>receivedInvoice</inv:invoiceType><inv:number><typ:numberRequested>D-77</typ:numberRequested></inv:number><inv:date>2026-12-20</inv:date><inv:partnerIdentity><typ:address><typ:company>Dodávateľ s. r. o.</typ:company></typ:address></inv:partnerIdentity></inv:invoiceHeader><inv:invoiceSummary><inv:homeCurrency><typ:priceNone>615</typ:priceNone></inv:homeCurrency></inv:invoiceSummary></inv:invoice></dat:dataPackItem>
+</dat:dataPack>`
+  const fromPohoda = takeover.pohodaInvoices(pohodaXml)
+  check(
+    "Pohoda's XML of invoices: issued and received, the sum of its rates with VAT, the partner",
+    fromPohoda?.items.length === 2 && fromPohoda.items[0].side === 'issued' && fromPohoda.items[0].cents === 123000 && fromPohoda.items[0].ico === '12345678' && fromPohoda.items[1].side === 'received' && fromPohoda.items[1].cents === 61500 && fromPohoda.items[1].number === 'D-77',
+    JSON.stringify(fromPohoda),
+  )
+  check('XML that is no export of invoices is none', takeover.pohodaInvoices('<dokument/>') === null && takeover.pohodaInvoices('nie je xml <') === null)
+
+  // Fixed assets
+  const assetsRead = takeover.assetRows(
+    tableRead.parseDelimited(
+      [
+        'Inventárne číslo;Názov;Dátum zaradenia;Vstupná cena;Odpisová skupina;Spôsob odpisovania;Daňové oprávky;Účtovné oprávky;Počet rokov odpisovania',
+        'HM-1;Server;15.03.2024;4 800,00;2;zrýchlené;2 742,86;2 000,00;2',
+        'NM-1;Softvér;01.02.2025;3 000,00;;;;1 000,00;',
+        'HM-2;Stroj;01.01.2020;10 000,00;9;rovnomerné;;;',
+      ].join('\n'),
+    ),
+  )
+  check(
+    'a register of assets: the group, the method, what was depreciated in tax and in the books; intangible without a group; a group that is none said',
+    assetsRead.assets.length === 2 &&
+      JSON.stringify(assetsRead.assets[0]) ===
+        JSON.stringify({ name: 'Server', account: '022', inUseOn: '2024-03-15', costCents: 480000, taxGroup: 2, accelerated: true, priorTaxCents: 274286, priorBookCents: 200000, priorTaxYears: 2, note: 'Inventárne číslo u predchodcu: HM-1', line: 2 }) &&
+      assetsRead.assets[1].account === '013' && assetsRead.assets[1].taxGroup === null && assetsRead.assets[1].priorBookCents === 100000 &&
+      assetsRead.issues.length === 1 && assetsRead.issues[0].line === 4,
+    JSON.stringify(assetsRead),
+  )
+  check(
+    'the register numbers the assets taken over past every number used, by the year put in use',
+    JSON.stringify(takeoverStore.assetNumbers(['M-2024-001', 'M-2024-003', 'M-2025-002', 'iné'], [{ inUseOn: '2024-05-01' }, { inUseOn: '2024-06-01' }, { inUseOn: '2023-01-01' }])) === JSON.stringify(['M-2024-004', 'M-2024-005', 'M-2023-001']),
+  )
+
+  // Employees
+  const people = takeover.personRows(
+    tableRead.parseDelimited(
+      [
+        'Meno a priezvisko;Dátum narodenia;Zdravotná poisťovňa;Dátum nástupu;Mesačná mzda;Druh pomeru;IBAN;Úväzok',
+        'Jana Testová;01.02.1990;25 VšZP;01.03.2024;1 800,00;pracovný pomer;SK89 1100 0000 0026 2900 0001;40',
+        'Peter Brigádnik;;Dôvera;01.06.2025;400;dohoda o brigádnickej práci študentov;;20',
+        'Eva Bezpoistky;;;01.06.2025;400;;;',
+      ].join('\n'),
+    ),
+  )
+  check(
+    'employees: the insurer by its code or name, the relationship by its words, the IBAN; one without an insurer said',
+    people.people.length === 2 &&
+      people.people[0].insurer === '25' && people.people[0].contract === 'employment' && people.people[0].wage === 180000 && people.people[0].iban === 'SK8911000000002629000001' && people.people[0].weeklyHours === 4000 &&
+      people.people[1].insurer === '24' && people.people[1].contract === 'dobps' && people.people[1].weeklyHours === 2000 &&
+      people.issues.length === 1 && people.issues[0].line === 4,
+    JSON.stringify(people),
+  )
+
+  // The statements filed before: read back from the files Firmony itself writes for eDane.
+  let n = 0
+  const entry = (on, ...lines) => ({ key: `t${n++}`, on, kind: 'internal', number: '', text: '', docId: null, paymentId: null, manualId: null, lines: lines.map(([md, d, cents]) => ({ md, d, cents })) })
+  const books = [
+    { ...entry('2025-01-01', ['221.001', '701', 500000], ['701', '411', 500000]), kind: 'opening' },
+    entry('2025-03-10', ['311', '602', 1230000]),
+    entry('2025-03-20', ['221.001', '311', 1230000]),
+    entry('2025-04-05', ['518', '221.001', 100000]),
+    entry('2026-03-10', ['311', '602', 2000000]),
+    entry('2026-04-05', ['022', '321', 480000]),
+  ]
+  const filer = { name: 'Prevzatá s. r. o.', ico: '12345679', dic: '2120000007', address: 'Hlavná 1, 040 01 Košice', registerLine: 'Obchodný register Okresného súdu Košice I, oddiel Sro, vložka č. 1/V', nace: '62.01.0', activity: 'Programovanie' }
+  const nonzero = (o) => JSON.stringify(Object.fromEntries(Object.entries(o).filter(([, v]) => v !== 0).sort(([a], [b]) => (a < b ? -1 : 1))))
+  const muj25 = closing.statementsOf({ entries: books }, 2025)
+  const muj26 = closing.statementsOf({ entries: books }, 2026)
+  const mujXml = closingXml.statementsXml(filer, muj26, muj25, { year: 2026, from: '2026-01-01', preparedOn: '2027-03-15' })
+  const taken = takeover.priorStatements(mujXml)
+  check(
+    'Úč MUJ filed before: the year from its own column and the year before from the column of the period before, row by row, with the size figures',
+    taken?.length === 2 &&
+      taken[0].year === 2026 && taken[0].form === 'muj' && taken[0].ico === '12345679' &&
+      nonzero(taken[0].balanceEur) === nonzero(muj26.balanceEur) && nonzero(taken[0].profitEur) === nonzero(muj26.profitEur) &&
+      taken[0].turnover === muj26.profitEur.r01 * 100 && taken[0].assetsNet === muj26.balanceEur.r01 * 100 &&
+      taken[1].year === 2025 && nonzero(taken[1].balanceEur) === nonzero(muj25.balanceEur),
+    JSON.stringify(taken),
+  )
+  const pod25 = closing.statementsOf({ entries: books }, 2025, 'pod')
+  const pod26 = closing.statementsOf({ entries: books }, 2026, 'pod')
+  const podTaken = takeover.priorStatements(closingXml.statementsXml(filer, pod26, pod25, { year: 2026, from: '2026-01-01', preparedOn: '2027-03-15', size: 'small' }))
+  check(
+    'Úč POD filed before: the gross, the correction and the net of the year, the net of the year before (its gross unknown)',
+    podTaken?.length === 2 &&
+      podTaken[0].form === 'pod' && nonzero(podTaken[0].grossEur) === nonzero(pod26.grossEur) && nonzero(podTaken[0].balanceEur) === nonzero(pod26.balanceEur) && podTaken[0].assetsGross === pod26.grossEur.r001 * 100 &&
+      nonzero(podTaken[1].balanceEur) === nonzero(pod25.balanceEur) && Object.keys(podTaken[1].grossEur).length === 0,
+    JSON.stringify(podTaken?.[1]),
+  )
+  const asStatements = takeoverStore.statementsOfPrior(taken[0])
+  check('the statements taken over stand where the closing reads the year before: the rows as filed, the size figures', asStatements.form === 'muj' && asStatements.balanceEur === taken[0].balanceEur && asStatements.turnover === taken[0].turnover && asStatements.unplaced.length === 0)
+  check('a file that is no statements of eDane is none', takeover.priorStatements('<dokument><hlavicka/></dokument>') === null && takeover.priorStatements('<a') === null)
+
+  // An open item taken over is settled in the books by the payment that comes later.
+  const co = { id: 'c1', name: 'Firma s. r. o.', icdph: null, vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2027-01-01', vatCarry: 0 }
+  const item = {
+    id: 'old',
+    companyId: 'c1',
+    createdAt: Date.parse('2027-01-05T10:00:00Z') / 1000,
+    source: 'takeover',
+    kind: 'invoice_in',
+    number: 'D-77',
+    party: 'Dodávateľ s. r. o.',
+    partyIco: null,
+    issuedOn: '2026-12-20',
+    dueOn: '2027-01-03',
+    totalCents: 30000,
+    vatCents: 0,
+    currency: 'EUR',
+    category: null,
+    vatDeduct: null,
+    account: null,
+    bookedAt: 1,
+    paidPrivately: false,
+    paymentId: 'p1',
+    vat: { mode: 'none', lines: [], suppliedOn: null, vatId: null, corrects: null, period: null },
+    partyVatId: null,
+    suppliedOn: null,
+    foreign: null,
+    correctsHint: null,
+    linesHint: [],
+  }
+  const payment = { id: 'p1', bookedOn: '2027-01-10', amountCents: -30000, currency: 'EUR', party: 'Dodávateľ s. r. o.', vs: null, note: null, exempt: null, exemptNote: null, contra: null, bankId: 'b1', bank: '221.001' }
+  const opening = [{ id: 'ps', kind: 'opening', number: 'PS', on: '2027-01-01', text: 'Počiatočné stavy', lines: [{ md: '221.001', d: '701', cents: 100000 }, { md: '701', d: '321', cents: 30000 }, { md: '701', d: '411', cents: 70000 }], createdAt: 1, createdByName: null }]
+  const settled = ledger.buildBooks({ company: co, docs: [item], payments: [payment], banks: [{ id: 'b1', iban: 'SK3112000000198742637541', ledger: '221.001', balanceCents: 70000, balanceOn: '2027-01-10' }], filed: [], manual: opening })
+  const paid = settled.entries.find((e) => e.paymentId === 'p1')
+  check(
+    'an invoice taken over stands in the open items, its payment settles 321 and waits for nothing',
+    paid?.lines.map((l) => `${l.md}/${l.d}:${l.cents}`).join() === '321/221.001:30000' && settled.items.find((i) => i.docId === 'old')?.settled === 30000 && settled.issues.waiting.length === 0 && settled.issues.beforeStart.docs === 1,
+    JSON.stringify({ paid, items: settled.items, issues: settled.issues }),
+  )
+  const unpaid = ledger.buildBooks({ company: co, docs: [{ ...item, paymentId: null }], payments: [], banks: [], filed: [], manual: opening })
+  check('an invoice taken over and not yet paid is open in the saldokonto by what is left', unpaid.items.length === 1 && unpaid.items[0].total === 30000 && unpaid.items[0].settled === 0 && unpaid.entries.every((e) => e.docId !== 'old'))
+  const uploaded = ledger.buildBooks({ company: co, docs: [{ ...item, source: 'upload', paymentId: null }], payments: [], banks: [], filed: [], manual: opening })
+  check('an old invoice the client uploaded (paid before us) is no open item', uploaded.items.length === 0)
 }
 
 done('units')

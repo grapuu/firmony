@@ -11,6 +11,7 @@ import { assetYear, temporaryDifferences, type Asset } from './assets'
 import type { NotesSource } from './notes'
 import { assetsOf } from './assets-store'
 import { employeesOf } from './payroll-store'
+import { priorStatementsOf, statementsOfPrior } from './takeover-store'
 import type { Books } from './ledger'
 import {
   auditOf,
@@ -242,8 +243,10 @@ export interface ClosingView {
   closing: Closing | null
   books: Books
   statements: Statements
-  /** The year before, when the books hold it (the statements show it beside), on the same forms. */
+  /** The year before, when the books hold it or the former accountant's statements were taken over on the same form (the statements show it beside). */
   previous: Statements | null
+  /** Where the year before comes from; `otherForm` when it was taken over on the other form (Úč MUJ against Úč POD) and so is not shown. */
+  previousFrom: 'books' | 'prior' | 'otherForm' | null
   proposal: Proposal
   /** What the accountant set (the activity of the last year that has one when this one has none). */
   inputs: ClosingInputs
@@ -302,7 +305,7 @@ export function notesSource(company: Pick<Company, 'name' | 'ico' | 'dic' | 'add
 const SIZE_YEARS = 6
 
 export async function closingView(db: D1Database, company: Company, year: number, today: string, loaded?: { books?: Books; closings?: Closing[] }): Promise<ClosingView> {
-  const [books, closings, paid, assets, staff, stockRow] = await Promise.all([
+  const [books, closings, paid, assets, staff, stockRow, prior] = await Promise.all([
     loaded?.books ?? booksOf(db, company),
     loaded?.closings ?? closingsOf(db, company.id),
     incomePaid(db, company.id, year),
@@ -319,6 +322,7 @@ export async function closingView(db: D1Database, company: Company, year: number
       )
       .bind(company.id, String(year))
       .first<Row>(),
+    priorStatementsOf(db, company.id),
   ])
   const stock = stockRow ? { method: stockRow.method === 'B' ? ('B' as const) : ('A' as const), valuation: stockRow.valuation === 'fifo' ? ('fifo' as const) : ('average' as const), items: stockRow.items === 1, inYear: stockRow.in_year === 1, yearEnd: stockRow.year_end === 1 } : null
   const closing = closings.find((k) => k.year === year) ?? null
@@ -327,7 +331,9 @@ export async function closingView(db: D1Database, company: Company, year: number
   const earlier = closings.find((k) => k.year < year && k.inputs.nace)?.inputs
   const own = stored.nace || !earlier ? stored : { ...stored, nace: earlier.nace, activity: stored.activity || earlier.activity }
   // Every year the size group looks at, in one pass over the books; the figures of the years the books hold whole.
-  const first = books.start ? Math.min(year, Number(books.start.slice(0, 4))) : year
+  // The statements taken over from the accountant before reach back as far as she filed them.
+  const priorYears = [...prior.keys()].filter((y) => y < year)
+  const first = Math.min(books.start ? Math.min(year, Number(books.start.slice(0, 4))) : year, ...priorYears)
   const years = Array.from({ length: year - Math.max(first, year - SIZE_YEARS) + 1 }, (_, i) => Math.max(first, year - SIZE_YEARS) + i)
   const balances = closingBalancesByYear(books.entries, years)
   const inputsOf = (y: number) => closings.find((k) => k.year === y)?.inputs ?? null
@@ -339,8 +345,10 @@ export async function closingView(db: D1Database, company: Company, year: number
   }
   const figures = new Map<number, SizeFigures>()
   for (const y of years) {
-    if (y >= year || !whole(y)) continue
-    const st = statementsFrom(balances.get(y) ?? new Map(), y, 'pod')
+    if (y >= year) continue
+    const taken = prior.get(y)
+    if (!whole(y) && !taken) continue
+    const st = whole(y) ? statementsFrom(balances.get(y) ?? new Map(), y, 'pod') : taken!
     figures.set(y, { year: y, assetsNet: st.assetsNet, assetsGross: st.assetsGross, turnover: st.turnover, employees: inputsOf(y)?.employees ?? averageEmployees(staff, y) })
   }
   const chosen = new Map<number, EntitySize>()
@@ -349,7 +357,10 @@ export async function closingView(db: D1Database, company: Company, year: number
   const size = own.size ?? sizeProposal.size
   const form = formOf(size)
   const statements = statementsFrom(balances.get(year) ?? new Map(), year, form, own.placements)
-  const previous = books.start && books.start < `${year}-01-01` ? statementsFrom(balances.get(year - 1) ?? new Map(), year - 1, form, own.placements) : null
+  const before = prior.get(year - 1)
+  const fromBooks = !!books.start && books.start < `${year}-01-01`
+  const previousFrom = fromBooks ? 'books' : before ? (before.form === form ? 'prior' : 'otherForm') : null
+  const previous = fromBooks ? statementsFrom(balances.get(year - 1) ?? new Map(), year - 1, form, own.placements) : previousFrom === 'prior' && before ? statementsOfPrior(before) : null
   const employeesFound = averageEmployees(staff, year)
   const employees = own.employees ?? employeesFound
   const yearFigures: SizeFigures = { year, assetsNet: statements.assetsNet, assetsGross: statements.assetsGross, turnover: statements.turnover, employees }
@@ -400,6 +411,7 @@ export async function closingView(db: D1Database, company: Company, year: number
     books,
     statements,
     previous,
+    previousFrom,
     proposal,
     inputs: own,
     input,

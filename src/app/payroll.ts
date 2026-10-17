@@ -74,20 +74,26 @@ export const isContract = (v: unknown): v is ContractKind => typeof v === 'strin
 /** An agreement outside employment (dohoda). */
 export const isAgreement = (k: ContractKind): boolean => k === 'dovp' || k === 'dopc' || k === 'dobps'
 
-/** A pension the person draws, as far as the insurance minds it: old age (also early old-age, a service pension after the age), disability up to 70 %, above it. */
-export const PENSIONS = ['none', 'old', 'invalid', 'invalid70'] as const
+/**
+ * A pension the person draws, as far as the insurance minds it (the Agency's tables of 2026, footnotes * and **): old
+ * age or early old age; disability up to 70 %; disability above 70 %; a service pension after the retirement age.
+ */
+export const PENSIONS = ['none', 'old', 'invalid', 'invalid70', 'service'] as const
 export type PensionKind = (typeof PENSIONS)[number]
 export const isPension = (v: unknown): v is PensionKind => typeof v === 'string' && (PENSIONS as readonly string[]).includes(v)
 
-/** Whether a relationship can have a regular monthly income: an employment always does, a student's agreement never (its student is insured only for old age and disability). */
-export const regularOf = (kind: ContractKind, regular: boolean): boolean => (kind === 'employment' ? true : kind === 'dobps' ? false : regular)
+/**
+ * Whether a relationship has a regular monthly income: an employment always does; an agreement, a student's too (§ 4(2)
+ * of Act 461/2003), as agreed. A student's agreement is insured the same either way; the income decides its report.
+ */
+export const regularOf = (kind: ContractKind, regular: boolean): boolean => (kind === 'employment' ? true : regular)
 
 /**
- * Who may claim the deduction: a student on a student's agreement, a pensioner on another agreement with a regular
- * monthly income (the Agency's monthly report has the codes ZECD1V and ZECD2V for them, regular only, and ZECD3V and
- * ZECD3NV for students).
+ * Who may claim the deduction: a student on a student's agreement, a pensioner on another agreement, a regular or an
+ * irregular income alike (the Agency's table of agreements, section 7). The monthly report has no type for a
+ * pensioner's irregular income with it (ZECD1V and ZECD2V are regular): that row is prepared outside (social.ts).
  */
-export const exemptionAllowed = (kind: ContractKind, pension: PensionKind, regular: boolean): boolean => kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none' && regular)
+export const exemptionAllowed = (kind: ContractKind, pension: PensionKind, _regular?: boolean): boolean => kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none')
 
 /** The monthly minimum wage for an hour (a 40-hour week: 174 hours), in thousandths of a euro: 5,259 € in 2026. */
 export const minimumHourly = (y: PayrollYear): number => Math.round((y.minimumWage * 10) / 174)
@@ -124,30 +130,44 @@ export const HEALTH = { employee: 500, employer: 1100 } as const
 /** The kinds of social insurance whose base the deduction lowers (pension insurance and the reserve fund). */
 const PENSION_KINDS: readonly SocialKind[] = ['oldAge', 'disability', 'reserve']
 
-/** The rates of social insurance of a relationship and a pension (the Agency's tables of 2026). */
+/**
+ * The rates of social insurance of a relationship and a pension (the Agency's tables of 2026 and its table of
+ * agreements; its notice of 27 April 2022 on the support in short-time work):
+ * - a regular income is insured whole; an irregular one and a student's agreement for old age, disability, accident,
+ *   guarantee and the reserve fund;
+ * - the support in short-time work (0,5 % of the employer's unemployment insurance) is an employment's alone: an
+ *   agreement and a director pay the employer's unemployment insurance whole, 1 %, and a director no accident or
+ *   guarantee insurance;
+ * - old age, early old age and a service pension after the retirement age: no disability insurance; old age, early
+ *   old age and a disability above 70 %: no unemployment insurance, while the support stays for an employment;
+ * - a pensioner on an agreement is insured for pensions only: no sickness, no unemployment.
+ */
 export function socialRates(kind: ContractKind, regular: boolean, pension: PensionKind): { employee: Partial<Record<SocialKind, number>>; employer: Partial<Record<SocialKind, number>> } {
-  const full = regularOf(kind, regular)
-  const director = kind === 'director'
+  const full = kind !== 'dobps' && regularOf(kind, regular)
   const employee: Partial<Record<SocialKind, number>> = full ? { ...SOCIAL_EMPLOYEE } : { oldAge: 400, disability: 300 }
   const employer: Partial<Record<SocialKind, number>> = full ? { ...SOCIAL_EMPLOYER } : { oldAge: 1400, disability: 300, guarantee: 25, accident: 80, reserve: 475 }
-  if (director) {
+  if (full && kind !== 'employment') {
+    delete employer.support
+    employer.unemployment = 100
+  }
+  if (kind === 'director') {
     delete employer.guarantee
     delete employer.accident
-    if (full) {
-      delete employer.support
-      employer.unemployment = 100
-    }
   }
-  if (pension === 'old') for (const side of [employee, employer]) delete side.disability
-  if (pension === 'old' || pension === 'invalid70') for (const side of [employee, employer]) for (const k of ['unemployment', 'support'] as const) delete side[k]
-  // A pensioner on an agreement is insured for pensions only, whatever its income (the Agency's table of agreements):
-  // no sickness and no unemployment insurance.
+  if (pension === 'old' || pension === 'service') for (const side of [employee, employer]) delete side.disability
+  if (pension === 'old' || pension === 'invalid70') for (const side of [employee, employer]) delete side.unemployment
   if (isAgreement(kind) && pension !== 'none') for (const side of [employee, employer]) for (const k of ['sickness', 'unemployment', 'support'] as const) delete side[k]
   return { employee, employer }
 }
 
-/** Whether the person is an employee for health insurance: not a student on a student's agreement, nor a pensioner of old age on another agreement. */
-export const healthInsured = (kind: ContractKind, pension: PensionKind): boolean => !(kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension === 'old'))
+/**
+ * Whether the person is an employee for health insurance: not a student on a student's agreement, nor anybody drawing
+ * a pension of old age, early old age, disability, or service after the retirement age on another agreement (VšZP).
+ */
+export const healthInsured = (kind: ContractKind, pension: PensionKind): boolean => !(kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none'))
+
+/** A pensioner is insured by the state as well (§ 11(7) of Act 580/2004), so the minimum advance does not reach the month (VšZP: lowered by the days of the state's insurance). */
+export const stateInsured = (pension: PensionKind | undefined): boolean => isPension(pension) && pension !== 'none'
 
 /** The share of the partial base the child bonus may reach, by the number of children (§ 33(6)). */
 export const BONUS_CAP = [0, 2900, 3600, 4300, 5000, 5700, 6400] as const
@@ -308,7 +328,7 @@ export function payslip(input: PayInput): Payslip {
   // The minimum advance: the employee's and the employer's rate of the subsistence minimum, each rounded down (VšZP:
   // 45,45 € in 2026), by the days employed; what the two fall short of it the employee pays (§ 16a).
   let healthTopUp = 0
-  if (insured && !input.healthMinimumExempt && !input.disabled) {
+  if (insured && !input.healthMinimumExempt && !input.disabled && !stateInsured(pension)) {
     const days = Math.min(monthDays(input.period), Math.max(0, input.minimumDays ?? input.days))
     const whole = floorCents((y.subsistence * HEALTH.employee) / half / 10000) + floorCents((y.subsistence * HEALTH.employer) / half / 10000)
     const minimum = floorCents((whole * days) / monthDays(input.period))
@@ -330,8 +350,11 @@ export function payslip(input: PayInput): Payslip {
   const cap = ((BONUS_CAP[Math.min(reduced.length, 6)] ?? 0) * Math.max(0, partialBase)) / 10000
   const whole = reduced.reduce((s, c) => s + c.amount, 0)
   const scale = whole > cap ? cap / whole : 1
-  const bonusByChild = reduced.map((c) => ({ name: c.name, amount: roundCents(c.amount * scale) }))
   const bonus = roundCents(Math.min(whole, cap))
+  // Each child's share rounded, the rounding left over given to the last, so that the children make the bonus.
+  const bonusByChild = reduced.map((c) => ({ name: c.name, amount: roundCents(c.amount * scale) }))
+  const last = bonusByChild[bonusByChild.length - 1]
+  if (last) last.amount += bonus - bonusByChild.reduce((s, c) => s + c.amount, 0)
   const withheld = advance - bonus
   const settlementTax = Math.round(input.settlement?.tax ?? 0)
   const settlementBonus = Math.round(input.settlement?.bonus ?? 0)

@@ -343,7 +343,7 @@ export const app = typesetAll({
     vat: 'Z toho DPH',
     vs: 'Variabilný symbol',
     iban: 'Platiť na účet',
-    source: { upload: 'Nahrali ste ho', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra', issued: 'Vystavili ste ho vo Firmony', firmony: 'Naša faktúra za služby Firmony' },
+    source: { upload: 'Nahrali ste ho', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra', issued: 'Vystavili ste ho vo Firmony', firmony: 'Naša faktúra za služby Firmony', takeover: 'Prevzali sme ho od predchádzajúceho účtovníka' },
     original: 'Otvoriť originál',
     payment: 'Platba',
     noPayment: 'Zatiaľ k nemu nemáme platbu.',

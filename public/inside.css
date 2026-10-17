@@ -7107,3 +7107,11 @@ a.wtable__name {
 .stock-card td + td {
   padding-left: 14px;
 }
+
+/* Taking a client over (17 October 2026): the lines that could not be read, the lists read, the statements filed before. */
+.takeover__lines { margin: 8px 0 0; padding-left: 1.2em; font-size: 0.875rem; overflow-wrap: anywhere; }
+.takeover__list { display: grid; gap: 10px; margin: 0 0 14px; padding: 0; list-style: none; }
+.takeover__item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border-radius: 14px; background: var(--canvas); }
+.takeover__item > span { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.takeover__meta { color: var(--soft); font-size: 0.8125rem; }
+.takeover__day { max-width: 12rem; }

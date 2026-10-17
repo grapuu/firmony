@@ -97,7 +97,14 @@ over. Bring this section up to date first whenever a session ends.
    `weekly_hours`, `leave_days`, the table `sick_leaves`): `src/app/payroll.ts` insures each relationship by the Agency's
    tables (employment; DoVP, DoPČ, DoBPŠ regular or irregular; a director's remuneration without accident and guarantee
    insurance, 1 % unemployment whole; pensions; the deduction 200 € in 2026, 300 € from 2027; students on DoBPŠ and
-   old-age pensioners on agreements outside health insurance); `src/app/pay-month.ts` works a month out of its parts
+   every pensioner (old age, early old age, disability, service after the age) on DoVP or DoPČ outside health
+   insurance; corrected on 17 October 2026 after an independent review, each point read on socpoist.sk and vszp.sk:
+   the support in short-time work is an employment's alone, so a regular agreement pays the employer's unemployment
+   insurance whole, 1 %, and a pensioner in employment keeps the support while losing unemployment insurance; a service
+   pension after the age (`'service'`) drops disability insurance only; a pensioner claims the deduction with an
+   irregular income too (that row has no MVPP type and is prepared outside); a pensioner pays no minimum health advance
+   (`stateInsured`); a student's agreement may have a regular income (ZECD3, ZECD3V), insured the same; each child's
+   bonus adds up to the bonus; an annual settlement's refund is settled by the April wage, an underpayment by December); `src/app/pay-month.ts` works a month out of its parts
    (the wage by weekdays less absences, an hourly wage by hours, holiday and obstacles at the average earnings of § 134,
    overtime 25 %, night 40 %, Saturday 50 %, Sunday 100 % of the minimum hourly wage, a public holiday 100 %, bonus)
    and sick pay by Act 462/2003 read on slov-lex (calendar days 1 to 14, 25 % and 55 %, the daily base proposed from
@@ -109,7 +116,10 @@ over. Bring this section up to date first whenever a session ends.
    days, the deduction off the pension base, hours proposed from the payroll (`pay.paid`); a pensioner's deduction needs
    a regular income (the codes ZECD1V and ZECD2V) and a pensioner on an agreement has no sickness insurance; the 514
    leaves out the state-insured (`healthInsuredCoverageSql`, the generation trigger replaced in step 29, no target for
-   them alone); PREHLAD takes sick pay into row 00 and the child bonus into row 05 and section II (rows A to C).
+   them alone); PREHLAD takes sick pay into row 00 and the child bonus into row 05 and section II (rows A to C). Left
+   open by the review, not changed: whether the minimum health advance applies with the deductible item claimed
+   (§ 16a of Act 580/2004), the annual bonus for months without income (FR SR 549090), sick days in the base period
+   (§ 54 of Act 461/2003), the minimum hourly wage for a shorter statutory week (174 hours always).
    Stage 3 (the annual settlement, schema step 30 `tax_settlements`): `src/app/tax-settlement.ts` (§ 38: the partial
    base of the year here and at the employers before, the taxpayer's part with the 2026 reduction 14 661,11 € less a
    third, the spouse's, supplementary pension saving up to 180 €, a pension off the part, the bands, the year's bonus by
@@ -117,8 +127,24 @@ over. Bring this section up to date first whenever a session ends.
    the result, the month to settle in; never changed once that month is closed), the settlement on the month's slip
    (`settlementTax`, `settlementBonus`) and in the overview's row 02 (down to the advances; the rest the employer's own,
    asked of the tax office) and row 05; `/mzdy/potvrdenie` the statement of taxable income; the annual report's figures
-   (its eForm for 2026 is published in 2027: then its XML). Next by the order: migration from Pohoda, Omega, Money,
-   KROS; then foreign currencies, OSS, Intrastat, joint-stock companies. The site promises a
+   (its eForm for 2026 is published in 2027: then its XML). Migration from Pohoda, Omega, Money, KROS (built
+   17 October 2026, schema step 31: `prior_statements`, `documents.takeover`, `assets.takeover`): `src/app/table-read.ts`
+   reads a file of any program (.xlsx by its own ZIP reader, CSV or text in UTF-8, UTF-16 or Windows-1250, rows pasted)
+   and finds the columns by their Slovak or Czech headings; `src/app/takeover.ts` reads the trial balance (closing
+   balances KS MD/D, one signed, or PS with turnover; analytic accounts over a synthetic one; costs and revenues as the
+   result on 431; a longer analytic number said), the open items (a table or Pohoda's XML of invoices), the register of
+   assets, the employees and the statements filed before (UZMUJ or UZPOD from eDane: the year and the year before from
+   its column); `/ucto/klienti/:id/prevzatie` (linked from the client page's books card and the opening balances):
+   the trial balance fills the opening balances' form to check and save (800 rows), the open items become booked
+   documents before the books start with no VAT of ours (`openItemsStatements`, one JSON parameter a thousand rows), an
+   item after the start or one already among the documents refuses the list, the assets become opening assets, the
+   employees whoever is not in payroll yet; every list all or none with its lines said; a list removed whole while
+   nothing of it was used. The books put an open item taken over in the saldokonto and the payment that comes settles
+   it on 311 or 321 (`ledger.ts`, source 'takeover' only). The closing reads the statements taken over as the year
+   before (`previousFrom`: books, prior, otherForm) and in the size group and the audit. Found on the way: every POST
+   of the team was refused above 8 kB (a payroll month of 100 people, large opening balances, real receipts): the team
+   side now takes 68 MB, the client's app 1 MB, the public pages still 8 kB (`LIMITS`). test/takeover.runtime.mjs.
+   Next by the order: foreign currencies, OSS, Intrastat, joint-stock companies. The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
@@ -1696,8 +1722,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1013 unit checks (17 October 2026, evening), including full payroll and the annual settlement
-npm run test:runtime     # 1430 workerd checks on Node 24 (as GitHub runs them), including test/payroll-full.runtime.mjs
+npm test                 # 1049 unit checks (17 October 2026, evening), including the takeover and the payroll review
+npm run test:runtime     # 1460 workerd checks on Node 24 (as GitHub runs them), including test/takeover.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

@@ -625,6 +625,12 @@ export function buildBooks(input: LedgerInput): Books {
     if (plan) {
       if (!inBooks(plan.on)) {
         issues.beforeStart.docs++
+        // An open item taken over from the accountant before (takeover.ts): the opening balances hold it on 311 or 321,
+        // so it stands in the open items and the payment that comes later settles it there.
+        if (doc.source === 'takeover' && (doc.kind === 'invoice_in' || doc.kind === 'invoice_out')) {
+          booked.add(doc.id)
+          items.set(doc.id, { docId: doc.id, account: doc.kind === 'invoice_out' ? '311' : '321', on: plan.on, dueOn: doc.dueOn, number: doc.number, party: doc.party, total: plan.gross, settled: 0 })
+        }
         continue
       }
       if (doc.kind === 'receipt' && pay) {

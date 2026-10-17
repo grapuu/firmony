@@ -995,13 +995,19 @@ export interface OpeningForm {
   errors: { day?: boolean; rows?: Record<number, OpeningError>; unbalanced?: { md: number; d: number } }
 }
 
-export const OpeningPage: FC<{ company: Company; form: OpeningForm; saved: ManualEntry | null; flash?: string | null }> = ({ company, form, saved, flash }) => {
+export const OpeningPage: FC<{ company: Company; form: OpeningForm; saved: ManualEntry | null; flash?: string | null; note?: string | null }> = ({ company, form, saved, flash, note }) => {
   const base = bookPath(company)
   const e = form.errors
   const errors = e.rows ?? {}
   return (
     <>
       <LedgerHead company={company} tab="opening" title={L.openingTitle} lead={L.openingLead} flash={flash} />
+      <Flash text={note} tone="warn" />
+      <p class="ldown">
+        <a class="link" href={`/ucto/klienti/${company.id}/prevzatie`}>
+          {t.takeover.open}
+        </a>
+      </p>
       <section class="info lopening" aria-labelledby="ps-t">
         <h2 id="ps-t" class="info__title">
           {saved ? `${L.openingTitle}, ${dayName(saved.on)}` : L.openingNone}
@@ -1121,6 +1127,9 @@ export const LedgerCard: FC<{ company: Company; tb: TrialBalance; waiting: numbe
       </a>
       <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/mzdy`}>
         {t.payroll.open}
+      </a>
+      <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/prevzatie`}>
+        {t.takeover.open}
       </a>
     </div>
   </section>

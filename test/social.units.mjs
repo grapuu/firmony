@@ -38,16 +38,18 @@ export async function checkSocial() {
     kind('dovp',50000,{contract:'dovp',regular:false}),
     kind('director',80000,{contract:'director',regular:false}),
     kind('director-regular',120000,{contract:'director',regular:true}),
-    kind('student',30000,{contract:'dobps',exemption:true}),
+    kind('student',30000,{contract:'dobps',regular:false,exemption:true}),
     kind('pensioner',40000,{contract:'dopc',regular:true,pension:'old',exemption:true}),
     kind('pensioner-irregular',40000,{contract:'dovp',regular:false,pension:'old'}),
     kind('old-employee',150000,{contract:'employment',pension:'old'}),
+    kind('student-regular',30000,{contract:'dobps',regular:true}),
+    kind('agreement-regular',100000,{contract:'dovp',regular:true}),
   ]
   const all=p.socialTotals(period,JSON.stringify(kinds),today)
   const type=(id)=>all.rows.find((r)=>r.employeeId===id)?.typZec
   check(
-    'each relationship has its type of the report: ZECD1N, ZECN, ZEC, ZECD3NV, ZECD2V, ZECD1N, ZEC',
-    all.issues.length===0&&type('dovp')==='ZECD1N'&&type('director')==='ZECN'&&type('director-regular')==='ZEC'&&type('student')==='ZECD3NV'&&type('pensioner')==='ZECD2V'&&type('pensioner-irregular')==='ZECD1N'&&type('old-employee')==='ZEC',
+    'each relationship has its type of the report: ZECD1N, ZECN, ZEC, ZECD3NV, ZECD2V, ZECD1N, ZEC, ZECD3 (a regular student\'s agreement), ZECD1',
+    all.issues.length===0&&type('dovp')==='ZECD1N'&&type('director')==='ZECN'&&type('director-regular')==='ZEC'&&type('student')==='ZECD3NV'&&type('pensioner')==='ZECD2V'&&type('pensioner-irregular')==='ZECD1N'&&type('old-employee')==='ZEC'&&type('student-regular')==='ZECD3'&&type('agreement-regular')==='ZECD1',
     JSON.stringify(all.issues),
   )
   const kindPeople=new Map(kinds.map((l,i)=>[l.employeeId,{identifier:`90101012${String(i).padStart(2,'0')}`,icpv:`0000000001${String(i).padStart(2,'0')}`,hours:4000,mode:'known'}]))
@@ -64,10 +66,17 @@ export async function checkSocial() {
     row(3)['@_vzSp']==='100.00'&&row(3)['@_vzRfs']==='100.00'&&row(3)['@_vzUp']==='300.00'&&row(3)['@_vzGp']==='300.00'&&row(4)['@_vzSp']==='200.00'&&row(4)['@_vzIp']==='0.00'&&row(4)['@_vzNp']==='0.00',
     JSON.stringify([row(3),row(4)]),
   )
+  check(
+    'a regular agreement: the employer\'s unemployment insurance whole (1 %), no support in short-time work; a pensioner in employment keeps the support',
+    row(8)['@_pvnZamtel']==='10.00'&&row(8)['@_pfpZamtel']==='0.00'&&row(8)['@_vzPfp']==='0.00'&&row(6)['@_pvnZamtel']==='0.00'&&row(6)['@_pfpZamtel']==='7.50'&&row(7)['@_npZamnec']==='0.00'&&row(7)['@_pvnZamtel']==='0.00',
+    JSON.stringify([row(6),row(7),row(8)]),
+  )
   const tampered=structuredClone(kinds[0]);tampered.slip.social.employer.accident+=1
   check('a slip whose funds do not agree with its relationship is never reported',p.socialTotals(period,JSON.stringify([tampered]),today).issues.length>0)
-  const irregularDeduction=kind('wrong',40000,{contract:'dovp',regular:false,pension:'old'});irregularDeduction.slip.exemption=20000
-  check('nor a deduction its relationship cannot have',p.socialTotals(period,JSON.stringify([irregularDeduction]),today).issues.length>0)
+  const employmentDeduction=kind('wrong',40000,{contract:'employment'});employmentDeduction.slip.exemption=20000
+  check('nor a deduction its relationship cannot have',p.socialTotals(period,JSON.stringify([employmentDeduction]),today).issues.some((i)=>i.includes('odpočítateľnú položku')))
+  const irregularDeduction=kind('irregular-pensioner',40000,{contract:'dovp',regular:false,pension:'old',exemption:true})
+  check("a pensioner's irregular agreement with the deduction has no type in MVPP 2026: it is prepared outside, never reported without it",irregularDeduction.slip.exemption===20000&&p.socialTotals(period,JSON.stringify([irregularDeduction]),today).issues.some((i)=>i.includes('Pripravte ho odborne externe')))
   check('missing, duplicate or inconsistent closed social fields cannot be replaced with zeros',p.socialTotals(period,'not JSON',today).issues.length>0&&p.socialTotals(period,JSON.stringify([lines[0],lines[0]]),today).issues.length>0&&p.socialTotals(period,JSON.stringify([{...lines[0],slip:{...lines[0].slip,socialEmployee:0}}]),today).issues.length>0&&p.socialTotals(period,JSON.stringify([{...lines[0],slip:{...lines[0].slip,rulesYear:undefined}}]),today).issues.length>0)
   const p27='2027-09',slip27=payroll.payslip({...base,period:p27,gross:2000000}),t27=p.socialTotals(p27,JSON.stringify([{employeeId:'above-cap',name:'TEST 2027',gross:2000000,days:30,slip:slip27}]),'2027-10-17')
   const xml27=p.socialXml(p27,t27,{...input,declaredOn:'2027-10-17'},company.ico,'2027-10-12',people)

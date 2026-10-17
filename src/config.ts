@@ -97,8 +97,15 @@ export const LIMITS = {
   requestsPerHour: 6,
   /** Confirmations to one email address in a day: the form cannot be used to flood somebody's mailbox. */
   confirmationsPerDay: 2,
-  /** Bytes a posted form may have. */
+  /** Bytes a posted form of the public pages may have. */
   formBytes: 8_000,
+  /**
+   * Bytes a form of the client's app may have (an invoice of many lines), and of the team's side: a payroll month of a
+   * hundred people, the opening balances of a large company, a list taken over, receipts in one package (each route
+   * that takes files sets its own limit below this one). Nothing of a body is read before the sign-in is checked.
+   */
+  appFormBytes: 1_000_000,
+  teamFormBytes: 68_000_000,
 } as const
 
 /**

@@ -22,16 +22,24 @@ type EmployeeAmounts = Record<keyof typeof EMPLOYEE,number>
 type EmployerAmounts = Record<Fund,number>
 const PENSION_FUNDS = new Set<Fund>(['oldAge','disability','reserve'])
 type Contract = 'employment'|'dovp'|'dopc'|'dobps'|'director'
-type Pension = 'none'|'old'|'invalid'|'invalid70'
-/** The funds a relationship pays to, each side, by the Agency's tables of 2026. */
+type Pension = 'none'|'old'|'invalid'|'invalid70'|'service'
+/**
+ * The funds a relationship pays to, each side, by the Agency's tables of 2026: a student's agreement as an irregular
+ * income whatever its income; the support in short-time work an employment's alone (an agreement and a director pay
+ * the employer's unemployment insurance whole, its rate below); old age and a service pension after the age without
+ * disability insurance, old age and a disability above 70 % without unemployment insurance (the support stays); a
+ * pensioner on an agreement insured for pensions only.
+ */
 function fundsOf(contract:Contract,regular:boolean,pension:Pension):{employee:Set<keyof typeof EMPLOYEE>;employer:Set<Fund>} {
-  const employee=new Set<keyof typeof EMPLOYEE>(regular?['sickness','oldAge','disability','unemployment']:['oldAge','disability'])
-  const employer=new Set<Fund>(regular?['sickness','oldAge','disability','unemployment','support','guarantee','accident','reserve']:['oldAge','disability','guarantee','accident','reserve'])
-  if (contract==='director') {employer.delete('guarantee');employer.delete('accident');employer.delete('support')}
+  const full=regular&&contract!=='dobps'
+  const employee=new Set<keyof typeof EMPLOYEE>(full?['sickness','oldAge','disability','unemployment']:['oldAge','disability'])
+  const employer=new Set<Fund>(full?['sickness','oldAge','disability','unemployment','support','guarantee','accident','reserve']:['oldAge','disability','guarantee','accident','reserve'])
+  if (contract!=='employment') employer.delete('support')
+  if (contract==='director') {employer.delete('guarantee');employer.delete('accident')}
   const agreement=contract==='dovp'||contract==='dopc'||contract==='dobps'
   const drop=(...funds:Fund[])=>{for (const f of funds) {employer.delete(f);employee.delete(f as keyof typeof EMPLOYEE)}}
-  if (pension==='old') drop('disability','unemployment','support')
-  if (pension==='invalid70') drop('unemployment','support')
+  if (pension==='old'||pension==='service') drop('disability')
+  if (pension==='old'||pension==='invalid70') drop('unemployment')
   if (agreement&&pension!=='none') drop('sickness','unemployment','support')
   return {employee,employer}
 }
@@ -59,7 +67,7 @@ export interface SocialRow {
 export interface SocialTotals { rows:SocialRow[]; employee:EmployeeAmounts; employer:EmployerAmounts; employeeTotal:number; employerTotal:number; total:number; issues:string[] }
 const cents = (v:unknown):v is number => Number.isSafeInteger(v) && (v as number)>=0 && (v as number)<=9_999_999_999
 const floor = (base:number,rate:number) => Number(BigInt(base)*BigInt(rate)/10000n)
-const CONTRACTS=new Set(['employment','dovp','dopc','dobps','director']),PENSIONS=new Set(['none','old','invalid','invalid70'])
+const CONTRACTS=new Set(['employment','dovp','dopc','dobps','director']),PENSIONS=new Set(['none','old','invalid','invalid70','service'])
 export function socialTotals(period:string,json:string,today:string):SocialTotals {
   const issues=new Set<string>(),rows:SocialRow[]=[],seen=new Set<string>(),year=Number(period.slice(0,4))
   const cap=year===2026||year===2027?CAPS[year]:null,deductionMax=year===2026||year===2027?DEDUCTION[year]:0
@@ -73,15 +81,15 @@ export function socialTotals(period:string,json:string,today:string):SocialTotal
     const s=l.slip
     if (!cap||!s||s.period!==period||s.rulesYear!==year||![l.gross,s.gross,s.socialBase,s.socialEmployee,s.socialEmployer].every(cents)||s.gross!==l.gross||!Number.isInteger(l.days)||l.days<1||l.days>monthDays(period)||s.socialBase!==Math.min(s.gross,cap)||!s.social?.employee||!s.social?.employer) {issues.add('Uzavretá páska nemá konzistentné sumy, dni alebo vymeriavací základ. Prepočítajte mesiac.');continue}
     const contract:Contract=s.contract===undefined?'employment':s.contract,pension:Pension=s.pension===undefined?'none':s.pension
-    const regular=contract==='employment'?true:contract==='dobps'?false:s.regular===true
+    const regular=contract==='employment'?true:s.regular===true
     const deduction=s.exemption===undefined?0:s.exemption
-    if (!CONTRACTS.has(contract)||!PENSIONS.has(pension)||!cents(deduction)||deduction>Math.min(deductionMax,s.socialBase)||deduction>0&&!(contract==='dobps'||(contract==='dovp'||contract==='dopc')&&pension!=='none'&&regular)) {issues.add('Uzavretá páska má neznámy vzťah alebo odpočítateľnú položku. Prepočítajte mesiac.');continue}
+    if (!CONTRACTS.has(contract)||!PENSIONS.has(pension)||!cents(deduction)||deduction>Math.min(deductionMax,s.socialBase)||deduction>0&&!(contract==='dobps'||(contract==='dovp'||contract==='dopc')&&pension!=='none')) {issues.add('Uzavretá páska má neznámy vzťah alebo odpočítateľnú položku. Prepočítajte mesiac.');continue}
     const typZec=typeOf(contract,regular,deduction>0)
     if (!typZec) {issues.add(`Pre vzťah zamestnanca ${typeof l.name==='string'?l.name:''} nemá výkaz MVPP 2026 typ. Pripravte ho odborne externe.`);continue}
     const funds=fundsOf(contract,regular,pension),pensionBase=s.socialBase-deduction
     const baseOf=(f:Fund)=>f==='accident'?s.gross:PENSION_FUNDS.has(f)?pensionBase:s.socialBase
     const employee=Object.fromEntries(Object.keys(EMPLOYEE).map((k)=>[k,funds.employee.has(k as keyof typeof EMPLOYEE)?floor(baseOf(k as Fund),EMPLOYEE[k as keyof typeof EMPLOYEE]):0])) as EmployeeAmounts
-    const employer=Object.fromEntries(Object.keys(EMPLOYER).map((k)=>[k,funds.employer.has(k as Fund)?floor(baseOf(k as Fund),k==='unemployment'&&contract==='director'?100:EMPLOYER[k as Fund]):0])) as EmployerAmounts
+    const employer=Object.fromEntries(Object.keys(EMPLOYER).map((k)=>[k,funds.employer.has(k as Fund)?floor(baseOf(k as Fund),k==='unemployment'&&contract!=='employment'?100:EMPLOYER[k as Fund]):0])) as EmployerAmounts
     const stored=(side:Record<string,unknown>,expected:Record<string,number>,allowed:Set<string>)=>Object.keys(side).every((k)=>allowed.has(k)&&cents(side[k])&&side[k]===expected[k])&&[...allowed].every((k)=>side[k]===expected[k])
     if (!stored(s.social.employee,employee,funds.employee)||!stored(s.social.employer,employer,funds.employer)||Object.values(employee).reduce((a,v)=>a+v,0)!==s.socialEmployee||Object.values(employer).reduce((a,v)=>a+v,0)!==s.socialEmployer) {issues.add('Uložené sociálne odvody nezodpovedajú pravidlám vzťahu zamestnanca. Použite odborné spracovanie.');continue}
     const paid=l.pay&&Number.isSafeInteger(l.pay.paid)&&l.pay.paid>=0&&l.pay.paid<=monthDays(period)*2400?l.pay.paid:null

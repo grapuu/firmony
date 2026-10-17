@@ -124,7 +124,11 @@ import {
 } from '../app/payroll-store'
 import { addDays } from '../app/ending'
 import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
-import { leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay-month'
+import { addDay, leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay-month'
+import { decodeText, parseDelimited, readTable } from '../app/table-read'
+import { assetRows, openItems, personRows, pohodaInvoices, priorStatements as takeoverPrior, trialBalance as takeoverTrial, type LineIssue, type OpenItem } from '../app/takeover'
+import { assetNumbers, assetRowsStatements, batchesOf, openItemsStatements, peopleStatements, priorListOf, priorStatementStatement, removeBatchStatements, removePriorStatement } from '../app/takeover-store'
+import { TakeoverPage, type TakeoverPageProps } from '../views/takeover'
 import { hundredthsOf, hundredthsText, partsValues, readParts, tenThousandthsOf, tenThousandthsText } from '../app/payroll-form'
 import { EMPTY_SETTLEMENT, settle, type SettlementInputs } from '../app/tax-settlement'
 import { settledInClosed, settlementStatement, settlementsOf, yearIncome } from '../app/tax-settlement-store'
@@ -447,6 +451,8 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.nobody
     case 'mzdy-zamestnanec':
       return t.payroll.flashes.employee
+    case 'mzdy-prevzati':
+      return t.takeover.flashes.people ?? null
     case 'mzdy-nastavenie':
       return t.payroll.flashes.settings
     case 'mzdy-nepodporovane':
@@ -2328,7 +2334,7 @@ async function settlementPage(c: Ctx, company: Company, asked: unknown, form?: {
   const years: number[] = []
   for (let y = Number(today.slice(0, 4)); y >= first && years.length < 6; y--) years.unshift(y)
   const closedMonths = new Set(runs.filter((r) => r.closedOn).map((r) => r.period))
-  const months = Array.from({ length: 6 }, (_, i) => `${year + 1}-${String(i + 1).padStart(2, '0')}`).filter((m) => !closedMonths.has(m))
+  const months = Array.from({ length: 12 }, (_, i) => `${year + 1}-${String(i + 1).padStart(2, '0')}`).filter((m) => !closedMonths.has(m))
   const rows: SettlementRow[] = supported
     ? employees.flatMap((e) => {
         const income = yearIncome(e.id, runs, year)
@@ -2412,10 +2418,13 @@ teamRoutes.post('/klienti/:id/mzdy/rocne', async (c) => {
     pension: amount('dochodok'),
     settleIn,
   }
-  if (settleIn && (settleIn < `${year + 1}-01` || runs.some((r) => r.closedOn && r.period === settleIn) || !supportsPayrollPeriod(settleIn))) errors.zuctovat = t.payroll.settlement.errors.settleIn
+  const result = settle(year, yearIncome(employee.id, runs, year), employee.children, inputs)
+  // § 38 (the Financial Directorate, 405687 and 903886): what is refunded (an overpayment, the bonus owed) with the wage for April at the latest; an underpayment
+  // withheld by the end of the year the settlement is made in.
+  const latest = result.taxDifference < 0 || result.bonusDifference > 0 ? `${year + 1}-04` : `${year + 1}-12`
+  if (settleIn && (settleIn < `${year + 1}-01` || settleIn > latest || runs.some((r) => r.closedOn && r.period === settleIn) || !supportsPayrollPeriod(settleIn))) errors.zuctovat = t.payroll.settlement.errors.settleIn
   if (settleIn && !inputs.requested) errors.poziadal = t.payroll.settlement.errors.requested
   if (Object.keys(errors).length > 0) return settlementPage(c, company, year, { employeeId: employee.id, values, errors })
-  const result = settle(year, yearIncome(employee.id, runs, year), employee.children, inputs)
   await db.batch([
     settlementStatement(db, company.id, employee.id, year, inputs, result, c.get('who').user.id, now()),
     eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'payroll.settlement', subject: `${employee.id}:${year}` }),
@@ -3092,7 +3101,7 @@ teamRoutes.post('/klienti/:id/kniha/interne/:entry/odstranit', async (c) => {
 
 const money = (cents: number | null): string => (cents === null ? '' : moneyText(cents))
 
-async function openingPage(c: Ctx, company: Company, form: OpeningForm | null, status: ContentfulStatusCode = 200) {
+async function openingPage(c: Ctx, company: Company, form: OpeningForm | null, status: ContentfulStatusCode = 200, note: string | null = null) {
   const saved = (await manualEntries(c.env.DB, company.id)).find((m) => m.kind === 'opening') ?? null
   const rows: OpeningRowValue[] = form?.rows ?? (saved ? openingRows(saved.lines).map((r) => ({ account: r.account, md: money(r.md), d: money(r.d) })) : [])
   const filled = rows.filter((r) => r.account || r.md || r.d)
@@ -3102,7 +3111,7 @@ async function openingPage(c: Ctx, company: Company, form: OpeningForm | null, s
     c,
     'clients',
     `${t.ledger.openingTitle}: ${company.name}`,
-    <OpeningPage company={company} form={{ day, rows: form ? rows : shown, errors: form?.errors ?? {} }} saved={saved} flash={status === 200 ? flashOf(c) : null} />,
+    <OpeningPage company={company} form={{ day, rows: form ? rows : shown, errors: form?.errors ?? {} }} saved={saved} flash={status === 200 && !note ? flashOf(c) : null} note={note} />,
     status,
   )
 }
@@ -3112,7 +3121,8 @@ teamRoutes.get('/klienti/:id/kniha/pociatocne', async (c) => {
   return company ? openingPage(c, company, null) : missingPage(c)
 })
 
-const OPENING_ROWS = 80
+// A large company's trial balance taken over (Prevzatie) has hundreds of accounts.
+const OPENING_ROWS = 800
 
 teamRoutes.post('/klienti/:id/kniha/pociatocne', async (c) => {
   const company = await companyParam(c)
@@ -3138,6 +3148,260 @@ teamRoutes.post('/klienti/:id/kniha/pociatocne', async (c) => {
     eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'ledger.opening', subject: id, detail: { on: day, lines: read.lines.length, total: read.md } }),
   ])
   return c.redirect(`${bookPath(company, 'opening')}?ok=kniha-ps`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Taking a client over from the accountant before (takeover.ts reads the files, takeover-store.ts writes)
+// ---------------------------------------------------------------------------------------------------------------
+
+const takeoverPath = (company: Company) => `/ucto/klienti/${company.id}/prevzatie`
+
+/** The day the books begin: the opening balances' day, else the contract's first day. */
+async function booksStart(db: D1Database, company: Company): Promise<string | null> {
+  const opening = (await manualEntries(db, company.id)).find((m) => m.kind === 'opening')
+  return opening?.on ?? company.startOn ?? null
+}
+
+async function takeoverPage(c: Ctx, company: Company, extra: { error?: TakeoverPageProps['error']; values?: Partial<TakeoverPageProps['values']> } = {}, status: ContentfulStatusCode = 200) {
+  const db = c.env.DB
+  const [start, prior, batches] = await Promise.all([booksStart(db, company), priorListOf(db, company.id), batchesOf(db, company.id)])
+  const ok = c.req.query('ok')
+  return shell(
+    c,
+    'clients',
+    `${t.takeover.open}: ${company.name}`,
+    <TakeoverPage
+      company={company}
+      start={start}
+      prior={prior}
+      batches={batches}
+      error={extra.error ?? null}
+      values={{ day: extra.values?.day ?? textDay(start ?? `${dayOf(now()).slice(0, 4)}-01-01`), side: extra.values?.side ?? '', rows: extra.values?.rows ?? {} }}
+      flash={status === 200 && ok ? (t.takeover.flashes[ok] ?? null) : null}
+    />,
+    status,
+  )
+}
+
+/** At most this many bytes of a list (a large company's open items or register as .xlsx). */
+const TAKEOVER_BYTES = 20_000_000
+
+type Upload = { bytes: Uint8Array } | { text: string }
+
+async function uploadOf(body: Record<string, unknown>): Promise<Upload | null> {
+  const file = body.subor
+  if (file instanceof File && file.size > 0) return { bytes: new Uint8Array(await file.arrayBuffer()) }
+  const text = typeof body.riadky === 'string' ? body.riadky : ''
+  return text.trim() ? { text: text.slice(0, TAKEOVER_BYTES) } : null
+}
+
+/** An upload as XML when it is one (Pohoda's invoices, the statements from eDane). */
+function xmlOf(u: Upload): string | null {
+  const text = 'text' in u ? u.text : u.bytes.length <= TAKEOVER_BYTES ? decodeText(u.bytes) : ''
+  return /^\s*</.test(text) ? text : null
+}
+
+async function tableOf(u: Upload): Promise<string[][] | string> {
+  const e = t.takeover.errors
+  if ('text' in u) return parseDelimited(u.text)
+  if (u.bytes.length > TAKEOVER_BYTES) return e.unreadable
+  const table = await readTable(u.bytes)
+  return 'error' in table ? e[table.error] : table.rows
+}
+
+/** The lines that could not be read, as the card says them: the first thirty, and how many more. */
+const issueLines = (issues: readonly LineIssue[]): string[] => [...issues.slice(0, 30).map((i) => t.takeover.errors.line(i.line, i.what)), ...(issues.length > 30 ? [t.takeover.errors.more(issues.length - 30)] : [])]
+
+const pastedOf = (body: Record<string, unknown>) => (typeof body.riadky === 'string' ? body.riadky.slice(0, 200_000) : '')
+
+teamRoutes.get('/klienti/:id/prevzatie', async (c) => {
+  const company = await companyParam(c)
+  return company ? takeoverPage(c, company) : missingPage(c)
+})
+
+/** The trial balance: read into the opening balances' form, which she checks and saves there; nothing is stored here. */
+teamRoutes.post('/klienti/:id/prevzatie/predvaha', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const e = t.takeover.errors
+  const day = typeof body.datum === 'string' ? body.datum.trim().slice(0, 20) : ''
+  const refuse = (text: string, lines?: string[]) => takeoverPage(c, company, { error: { card: 'trial', text, lines }, values: { day, rows: { trial: pastedOf(body) } } }, 422)
+  const upload = await uploadOf(body)
+  if (!upload) return refuse(e.none)
+  const rows = await tableOf(upload)
+  if (typeof rows === 'string') return refuse(rows)
+  if (rows.length === 0) return refuse(e.empty)
+  const read = takeoverTrial(rows)
+  if (read.noColumns) return refuse(e.columns(t.takeover.columns.trial))
+  if (read.issues.length > 0) return refuse(e.lines, issueLines(read.issues))
+  if (read.lines.length === 0) return refuse(e.nothing)
+  if (read.lines.length > OPENING_ROWS) return refuse(e.lines, [e.more(read.lines.length - OPENING_ROWS)])
+  const filled = read.lines.map((l) => ({ account: l.account, md: l.md ? moneyText(l.md) : '', d: l.d ? moneyText(l.d) : '' }))
+  const rowsShown = [...filled, ...Array.from({ length: Math.min(8, OPENING_ROWS - filled.length) }, () => ({ account: '', md: '', d: '' }))]
+  return openingPage(c, company, { day: day || textDay((await booksStart(c.env.DB, company)) ?? `${dayOf(now()).slice(0, 4)}-01-01`), rows: rowsShown, errors: {} }, 200, t.takeover.trial.note(read.lines.length, read.result !== 0 ? formatEurExact(read.result) : null))
+})
+
+/** The open items: every one becomes a document of the import before the books start, all or none. */
+teamRoutes.post('/klienti/:id/prevzatie/saldokonto', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const e = t.takeover.errors
+  const side = body.strana === 'issued' || body.strana === 'received' ? body.strana : null
+  const refuse = (text: string, lines?: string[], status: ContentfulStatusCode = 422) => takeoverPage(c, company, { error: { card: 'items', text, lines }, values: { side: side ?? '', rows: { items: pastedOf(body) } } }, status)
+  const start = await booksStart(db, company)
+  if (!start) return refuse(e.noStart, undefined, 409)
+  const upload = await uploadOf(body)
+  if (!upload) return refuse(e.none)
+  const xml = xmlOf(upload)
+  let read: { items: OpenItem[]; issues: LineIssue[] }
+  if (xml !== null) {
+    const pohoda = pohodaInvoices(xml)
+    if (!pohoda) return refuse(e.xml)
+    read = pohoda
+  } else {
+    const rows = await tableOf(upload)
+    if (typeof rows === 'string') return refuse(rows)
+    if (rows.length === 0) return refuse(e.empty)
+    const table = openItems(rows, side)
+    if (table.noColumns) return refuse(e.columns(t.takeover.columns.items))
+    read = table
+  }
+  const known = await db.prepare("SELECT kind, number FROM documents WHERE company_id = ? AND deleted_at IS NULL AND number IS NOT NULL AND kind IN ('invoice_in', 'invoice_out')").bind(company.id).all<{ kind: string; number: string }>()
+  const taken = new Set(known.results.map((r) => `${r.kind}:${r.number}`))
+  const issues = [...read.issues]
+  for (const item of read.items) {
+    if (item.issuedOn && item.issuedOn >= start) issues.push({ line: item.line, what: `${item.number}: ${e.after}` })
+    else if (taken.has(`${item.side === 'issued' ? 'invoice_out' : 'invoice_in'}:${item.number}`)) issues.push({ line: item.line, what: `${item.number}: ${e.duplicate}` })
+  }
+  if (issues.length > 0) return refuse(e.lines, issueLines(issues.sort((a, b) => a.line - b.line)))
+  if (read.items.length === 0) return refuse(e.nothing)
+  const batch = crypto.randomUUID()
+  const by = c.get('who').user.id
+  try {
+    await db.batch([
+      ...openItemsStatements(db, company.id, batch, read.items, addDay(start, -1), by),
+      eventStatement(db, { company: company.id, user: by, action: 'takeover.items', subject: batch, detail: { count: read.items.length, cents: read.items.reduce((sum, i) => sum + i.cents, 0) } }),
+    ])
+  } catch (err) {
+    if (isPeriodLocked(err)) return refuse(e.locked, undefined, 409)
+    throw err
+  }
+  return c.redirect(`${takeoverPath(company)}?ok=items#prevzatie-batch`, 303)
+})
+
+/** The register of fixed assets: each asset one of the opening balances, all or none. */
+teamRoutes.post('/klienti/:id/prevzatie/majetok', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const e = t.takeover.errors
+  const refuse = (text: string, lines?: string[], status: ContentfulStatusCode = 422) => takeoverPage(c, company, { error: { card: 'assets', text, lines }, values: { rows: { assets: pastedOf(body) } } }, status)
+  const start = await booksStart(db, company)
+  if (!start) return refuse(e.noStart, undefined, 409)
+  const upload = await uploadOf(body)
+  if (!upload) return refuse(e.none)
+  const rows = await tableOf(upload)
+  if (typeof rows === 'string') return refuse(rows)
+  if (rows.length === 0) return refuse(e.empty)
+  const read = assetRows(rows)
+  if (read.noColumns) return refuse(e.columns(t.takeover.columns.assets))
+  const issues = [...read.issues]
+  for (const a of read.assets) if (a.inUseOn >= start) issues.push({ line: a.line, what: `${a.name}: ${e.assetAfter}` })
+  if (issues.length > 0) return refuse(e.lines, issueLines(issues.sort((a, b) => a.line - b.line)))
+  if (read.assets.length === 0) return refuse(e.nothing)
+  const used = await db.prepare('SELECT number FROM assets WHERE company_id = ?').bind(company.id).all<{ number: string }>()
+  const numbers = assetNumbers(used.results.map((r) => String(r.number)), read.assets)
+  const batch = crypto.randomUUID()
+  const by = c.get('who').user.id
+  try {
+    await db.batch([...assetRowsStatements(db, company.id, batch, read.assets, numbers, by), eventStatement(db, { company: company.id, user: by, action: 'takeover.assets', subject: batch, detail: { count: read.assets.length } })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return refuse(e.locked, undefined, 409)
+    throw err
+  }
+  return c.redirect(`${takeoverPath(company)}?ok=assets#prevzatie-batch`, 303)
+})
+
+/** The employees: whoever is not in payroll yet (by name and start), all or none. */
+teamRoutes.post('/klienti/:id/prevzatie/zamestnanci', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const e = t.takeover.errors
+  const refuse = (text: string, lines?: string[]) => takeoverPage(c, company, { error: { card: 'people', text, lines }, values: { rows: { people: pastedOf(body) } } }, 422)
+  const upload = await uploadOf(body)
+  if (!upload) return refuse(e.none)
+  const rows = await tableOf(upload)
+  if (typeof rows === 'string') return refuse(rows)
+  if (rows.length === 0) return refuse(e.empty)
+  const read = personRows(rows)
+  if (read.noColumns) return refuse(e.columns(t.takeover.columns.people))
+  if (read.issues.length > 0) return refuse(e.lines, issueLines(read.issues))
+  const known = new Set((await employeesOf(db, company.id)).map((p) => `${p.name.toLowerCase()}|${p.startedOn}`))
+  const fresh = read.people.filter((p) => !known.has(`${p.name.toLowerCase()}|${p.startedOn}`))
+  if (fresh.length === 0) return refuse(e.nothing)
+  const by = c.get('who').user.id
+  await db.batch([...peopleStatements(db, company.id, fresh, by), eventStatement(db, { company: company.id, user: by, action: 'takeover.people', detail: { count: fresh.length } })])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-prevzati#zamestnanci`, 303)
+})
+
+/** The statements the accountant before filed, from eDane's XML: the year's, and the year before's where none is kept. */
+teamRoutes.post('/klienti/:id/prevzatie/zavierka', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const e = t.takeover.errors
+  const refuse = (text: string) => takeoverPage(c, company, { error: { card: 'prior', text } }, 422)
+  const file = body.subor
+  if (!(file instanceof File) || file.size === 0) return refuse(e.none)
+  if (file.size > TAKEOVER_BYTES) return refuse(e.priorXml)
+  const found = takeoverPrior(decodeText(new Uint8Array(await file.arrayBuffer())))
+  if (!found) return refuse(e.priorXml)
+  const own = found[0]!
+  if (company.ico && own.ico && own.ico.padStart(8, '0') !== company.ico.padStart(8, '0')) return refuse(e.ico(own.ico))
+  const by = c.get('who').user.id
+  await db.batch([
+    ...found.map((s, i) => priorStatementStatement(db, company.id, s, file.name || 'zavierka.xml', by, i > 0)),
+    eventStatement(db, { company: company.id, user: by, action: 'takeover.statements', subject: String(own.year), detail: { form: own.form, years: found.map((s) => s.year) } }),
+  ])
+  return c.redirect(`${takeoverPath(company)}?ok=prior#prevzatie-prior`, 303)
+})
+
+teamRoutes.post('/klienti/:id/prevzatie/zavierka/:year/odstranit', async (c) => {
+  const company = await companyParam(c)
+  const year = Number(c.req.param('year'))
+  if (!company || !Number.isInteger(year) || year < 2000 || year > 2100) return missingPage(c)
+  const db = c.env.DB
+  const removed = await removePriorStatement(db, company.id, year).run()
+  if ((removed.meta?.changes ?? 0) === 0) return missingPage(c)
+  await db.batch([eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'takeover.statements.removed', subject: String(year) })])
+  return c.redirect(`${takeoverPath(company)}?ok=priorRemoved#prevzatie-prior`, 303)
+})
+
+/** A list read by mistake, removed whole while nothing of it was used. */
+teamRoutes.post('/klienti/:id/prevzatie/zoznam/:batch/odstranit', async (c) => {
+  const company = await companyParam(c)
+  const id = c.req.param('batch')
+  if (!company || !ID.test(id)) return missingPage(c)
+  const db = c.env.DB
+  const batch = (await batchesOf(db, company.id)).find((b) => b.id === id)
+  if (!batch) return missingPage(c)
+  if (batch.used > 0) return takeoverPage(c, company, { error: { card: 'batch', text: t.takeover.errors.used } }, 409)
+  const by = c.get('who').user.id
+  try {
+    const results = await db.batch([...removeBatchStatements(db, company.id, id, by), eventStatement(db, { company: company.id, user: by, action: 'takeover.removed', subject: id, detail: { kind: batch.kind, count: batch.count } })])
+    if (results.slice(0, 2).every((r) => (r.meta?.changes ?? 0) === 0)) return takeoverPage(c, company, { error: { card: 'batch', text: t.takeover.errors.used } }, 409)
+  } catch (err) {
+    if (isPeriodLocked(err)) return takeoverPage(c, company, { error: { card: 'batch', text: t.takeover.errors.locked } }, 409)
+    throw err
+  }
+  return c.redirect(`${takeoverPath(company)}?ok=batch#prevzatie-batch`, 303)
 })
 
 /** The books as files for Slovak Excel: the journal and the general ledger of a year, the trial balance, the open items. */
