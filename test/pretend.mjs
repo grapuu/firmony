@@ -81,6 +81,9 @@ export async function readerAnswer(request, calls = []) {
   calls.push(body)
   if (!request.headers.get('x-api-key')) return Response.json({ type: 'error', error: { type: 'authentication_error' } }, { status: 401 })
   const tool = body?.tools?.[0]?.name
+  // A test's photo may say what is written on it: the bytes PRETEND and a JSON object of the tool's fields.
+  const data = body?.messages?.[0]?.content?.find((part) => part.source)?.source?.data
+  const said = data ? /PRETEND(\{.*\})/s.exec(Buffer.from(data, 'base64').toString('utf8')) : null
   return Response.json({
     id: 'msg_pretend',
     type: 'message',
@@ -91,7 +94,18 @@ export async function readerAnswer(request, calls = []) {
         type: 'tool_use',
         id: 'toolu_pretend',
         name: tool,
-        input: { je_doklad: true, typ: 'blocek', druha_strana: 'Kaviareň Na rohu s. r. o.', ico_druhej_strany: '50123456', datum_vystavenia: bratislavaDay(-1), suma_celkom: '12.40', dph_celkom: '2.07', mena: 'EUR', kategoria: 'representation' },
+        input: {
+          je_doklad: true,
+          typ: 'blocek',
+          druha_strana: 'Kaviareň Na rohu s. r. o.',
+          ico_druhej_strany: '50123456',
+          datum_vystavenia: bratislavaDay(-1),
+          suma_celkom: '12.40',
+          dph_celkom: '2.07',
+          mena: 'EUR',
+          kategoria: 'representation',
+          ...(said ? JSON.parse(said[1]) : {}),
+        },
       },
     ],
     stop_reason: 'tool_use',

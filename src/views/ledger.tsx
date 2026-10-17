@@ -57,13 +57,13 @@ const signedExact = (cents: number): string => `${cents > 0 ? '+' : ''}${formatE
 /** A turnover: a dim nought when there was none. */
 const Turnover: FC<{ cents: number }> = ({ cents }) => (cents === 0 ? <span class="lzero">0,00</span> : <>{amount(cents)}</>)
 
-export type LedgerTab = 'trial' | 'journal' | 'saldo' | 'payments' | 'internal' | 'opening'
-const TABS: readonly LedgerTab[] = ['trial', 'journal', 'saldo', 'payments', 'internal', 'opening']
-const TAB_PATH: Record<LedgerTab, string> = { trial: '', journal: '/dennik', saldo: '/saldokonto', payments: '/platby', internal: '/interne', opening: '/pociatocne' }
+export type LedgerTab = 'trial' | 'journal' | 'saldo' | 'payments' | 'internal' | 'opening' | 'periods'
+const TABS: readonly LedgerTab[] = ['trial', 'journal', 'saldo', 'payments', 'internal', 'opening', 'periods']
+const TAB_PATH: Record<LedgerTab, string> = { trial: '', journal: '/dennik', saldo: '/saldokonto', payments: '/platby', internal: '/interne', opening: '/pociatocne', periods: '/obdobia' }
 
 export const bookPath = (company: Company, tab: LedgerTab = 'trial'): string => `/ucto/klienti/${company.id}/kniha${TAB_PATH[tab]}`
 
-const LedgerHead: FC<{ company: Company; tab: LedgerTab | null; title: string; second?: string; lead?: string; flash?: string | null; error?: string | null; query?: string }> = (p) => (
+export const LedgerHead: FC<{ company: Company; tab: LedgerTab | null; title: string; second?: string; lead?: string; flash?: string | null; error?: string | null; query?: string }> = (p) => (
   <>
     <a class="back" href={`/ucto/klienti/${p.company.id}`}>
       {p.company.name}
@@ -271,6 +271,7 @@ const Downloads: FC<{ company: Company; year: number; month: number }> = ({ comp
 }
 
 export interface TrialPageProps {
+  lockedThrough?: string | null
   company: Company
   books: Books
   tb: TrialBalance
@@ -287,6 +288,7 @@ export const TrialPage: FC<TrialPageProps> = (p) => {
   return (
     <>
       <LedgerHead company={p.company} tab="trial" title={L.title} lead={L.lead} flash={p.flash} query={query(p.year, p.month)} />
+      {p.lockedThrough ? <p class="flash">Uzamknuté do {dayName(p.lockedThrough)}. <a href={bookPath(p.company, 'periods')}>Spravovať uzamknutie období</a></p> : null}
       <div class="ltop">
         <Issues company={p.company} books={p.books} today={p.today} />
         <div class="lpair">
@@ -729,8 +731,8 @@ export const PaymentsPage: FC<PaymentsPageProps> = (p) => {
         ) : (
           <ul class="lpays">
             {p.payments.map((x) => {
-              const effective = paymentContra(x)
-              const reason = reasonAccount(x)
+              const effective = paymentContra(x, p.books.payroll)
+              const reason = reasonAccount(x, p.books.payroll)
               const mine = x.contra !== null && effective === x.contra
               const failed = p.error?.payment === x.id
               const what = x.party ? readableName(x.party) : (x.note ?? '')
@@ -1065,8 +1067,16 @@ export const LedgerCard: FC<{ company: Company; tb: TrialBalance; waiting: numbe
       {waiting > 0 ? <span class="pill pill--amber">{L.cardIssues(waiting)}</span> : null}
     </header>
     <p class="info__lead">{L.cardResult(tb.result >= 0, formatEurExact(Math.abs(tb.result)), tb.year)}</p>
-    <a class="btn btn--line btn--small" href={bookPath(company)}>
-      {L.cardOpen}
-    </a>
+    <div class="info__acts">
+      <a class="btn btn--line btn--small" href={bookPath(company)}>
+        {L.cardOpen}
+      </a>
+      <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/zavierka`}>
+        {t.closing.open}
+      </a>
+      <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/mzdy`}>
+        {t.payroll.open}
+      </a>
+    </div>
   </section>
 )

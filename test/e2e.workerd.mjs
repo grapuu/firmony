@@ -1,15 +1,35 @@
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
 // email service and the pretend register of test/pretend.mjs. Nothing leaves the machine.
 //
-//   npx wrangler deploy --dry-run --outdir .wrangler/dist && node --no-warnings test/e2e.workerd.mjs
+//   npm run test:runtime
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { check, done } from './check.mjs'
-import { readFileSync } from 'node:fs'
+import { checkPeriodLocks } from './periods.runtime.mjs'
+import { checkSupportQueue } from './support.runtime.mjs'
+import { checkContractTransactions } from './contracts.runtime.mjs'
+import { checkSecurity } from './security.runtime.mjs'
+import { checkIncidents } from './incidents.runtime.mjs'
+import { checkRestore } from './restore.runtime.mjs'
+import { checkAutomation } from './automation.runtime.mjs'
+import { checkFilings } from './filings.runtime.mjs'
+import { checkPayrollReports } from './payroll-reporting.runtime.mjs'
+import { checkPrehlad } from './prehlad.runtime.mjs'
+import { checkPayrollMigration } from './payroll-migration.runtime.mjs'
+import { checkHealthReports } from './health.runtime.mjs'
+import { checkHealthMigration } from './health-migration.runtime.mjs'
+import { checkSocialReports } from './social.runtime.mjs'
+import { checkSocialMigration } from './social-migration.runtime.mjs'
+import { socialReporting } from '../.wrangler/dist/stores.js'
+import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
+import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
+if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
 const lookups = []
 const readings = []
 // The bank of Firma A: what it holds is set by the part of the test that reads it.
@@ -21,6 +41,9 @@ const fioFeed = { transactions: [], closing: 0 }
 const fio = pretendFio({ iban: 'SK2283300000002801234567', tokens: [FIO_TOKEN], transactions: () => fioFeed.transactions, closing: () => fioFeed.closing })
 const mf = new Miniflare(
   convertV4MiniflareOptions({
+    // Miniflare otherwise fetches https://workers.cloudflare.com/cf.json for Request.cf metadata.
+    // Fixtures and all services are local; explicitly disable that independent metadata fetch as well.
+    cf: false,
     unsafeTriggerHandlers: true,
     workers: [
       {
@@ -30,7 +53,7 @@ const mf = new Miniflare(
         compatibilityDate: '2026-10-01',
         d1Databases: { DB: 'firmony-e2e' },
         r2Buckets: { FILES: 'firmony-e2e-files' },
-        bindings: { ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
+        bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.ai', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
           const banked = await bank.answer(request)
@@ -44,6 +67,7 @@ const mf = new Miniflare(
           return new MfResponse('unexpected request', { status: 599 })
         },
       },
+      { name: 'firmony-unreleased', modulesRoot: dist, modules: [{ type: 'ESModule', path: `${dist}/index.js` }], compatibilityDate: '2026-10-01', d1Databases: { DB: 'firmony-e2e' } },
       { name: 'pretend-mail', modules: true, compatibilityDate: '2026-10-01', script: PRETEND_MAIL },
     ],
   }),
@@ -67,7 +91,8 @@ const NB = ' '
 let res = await get('/')
 let page = await res.text()
 check('the home page answers', res.status === 200)
-check('it says the promise', page.includes('Postaráme sa o') && page.includes('Vy rastiete.'))
+check('it puts the client in the story and explains the agreed scope', page.includes('Vy budujete firmu.') && page.includes('My strážime účtovníctvo.') && page.includes('dohodnutú účtovnú agendu'))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
   'it names the prices of all three plans',
   [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)),
@@ -206,7 +231,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 5)
+check('health says the schema', (await res.json()).schema === 22)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -491,7 +516,6 @@ page = await res.text()
 check('the messages show, with the payment they are about', page.includes('čo s touto platbou?') && /K.platbe: Cerpacia Stanica/.test(page))
 
 // A session that has expired opens nothing
-const { createHash } = await import('node:crypto')
 const oldToken = 'A'.repeat(43)
 await db
   .prepare("INSERT INTO sessions (id, user_id, company_id, created_at, expires_at) VALUES (?, 'u-a', 'co-a', ?, ?)")
@@ -517,7 +541,30 @@ check('every change is on record', (await db.prepare("SELECT COUNT(*) AS n FROM 
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Signs a browser in by the link in its email, from a connection of its own. */
-async function signIn(email) {
+const authenticators = new Map()
+async function verifyBrowser(email, browserCookie) {
+  const user = await db.prepare('SELECT id, team FROM users WHERE email = ?').bind(email).first()
+  let key = authenticators.get(email)
+  const registering = !key
+  if (!key) { key = await authenticator(); authenticators.set(email, key) }
+  let code = email === 'ahoj@firmony.ai' ? TEST_BOOTSTRAP : ''
+  if (registering && user.team && !code) {
+    code = 'G'.repeat(42) + String(authenticators.size % 10)
+    const grant = createHash('sha256').update(code).digest('hex')
+    const adminId = (await db.prepare("SELECT id FROM users WHERE team = 'admin' LIMIT 1").first()).id
+    await db.prepare("INSERT INTO auth_grants (id, user_id, kind, source, created_at, created_by, evidence, expires_at) VALUES (?, ?, 'enroll', 'admin', ?, ?, 'TEST-ONLY fixture identity', ?)")
+      .bind(grant, user.id, Math.floor(Date.now() / 1000), adminId, Math.floor(Date.now() / 1000) + 3600).run()
+  }
+  const api = jsonClient(mf, site, browserCookie, `203.0.113.${100 + authenticators.size}`)
+  const r = await api('/auth/options', { action: registering ? 'register' : 'authenticate', code, next: user.team ? '/ucto' : '/app' })
+  if (r.status !== 200) throw new Error(`fixture options ${email}: ${r.status} ${await r.text()}`)
+  const options = await r.json()
+  const response = registering ? await key.register(options.options) : await key.authenticate(options.options)
+  const confirmed = await api('/auth/verify', { id: options.id, response, name: 'TEST-ONLY passkey' })
+  if (confirmed.status !== 200) throw new Error(`fixture confirmation ${email}: ${confirmed.status} ${JSON.stringify(await confirmed.json())}; ${JSON.stringify(await db.prepare("SELECT detail FROM events WHERE action = 'auth.failed' ORDER BY rowid DESC LIMIT 1").first())}`)
+  return { cookie: (confirmed.headers.get('set-cookie') ?? '').split(';')[0], location: (await confirmed.json()).to }
+}
+async function emailOnly(email) {
   const n = (await sent()).length
   await post('/app/prihlasenie', { email }, { ip: '203.0.113.30' })
   await settle()
@@ -529,11 +576,16 @@ async function signIn(email) {
   const r = await post('/app/vstup', { t }, { ip: '203.0.113.30' })
   return { cookie: (r.headers.get('set-cookie') ?? '').split(';')[0], location: r.headers.get('location'), mail }
 }
+async function signIn(email) {
+  const pending = await emailOnly(email)
+  return { ...await verifyBrowser(email, pending.cookie), mail: pending.mail }
+}
 const as = (cookie) => ({
   get: (path) => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.30', cookie } }),
-  async upload(path, file) {
+  async upload(path, file, fields = {}, fieldName = 'file') {
     const form = new FormData()
-    form.append('file', new Blob([file.bytes], { type: file.type ?? 'application/octet-stream' }), file.name)
+    for (const [key, value] of Object.entries(fields)) form.append(key, String(value))
+    form.append(fieldName, new Blob([file.bytes], { type: file.type ?? 'application/octet-stream' }), file.name)
     const encoded = new Request('https://x/', { method: 'POST', body: form })
     const body = new Uint8Array(await encoded.arrayBuffer())
     return mf.dispatchFetch(`${site}${path}`, {
@@ -563,7 +615,7 @@ check('the sample team does not exist on the live Worker', res.status === 404)
 // The first administrator: whoever reads the public mailbox, while the team is empty
 const boss = await signIn('ahoj@firmony.ai')
 const bossRow = await db.prepare("SELECT id, team, name FROM users WHERE email = 'ahoj@firmony.ai'").first()
-check('the public mailbox becomes the first administrator', bossRow?.team === 'admin' && bossRow.name === 'Christian Juhás' && boss.location === '/ucto')
+check('the explicitly configured bootstrap account becomes the first verified administrator', bossRow?.team === 'admin' && bossRow.name === 'Christian Juhás' && boss.location === '/ucto')
 const admin = as(boss.cookie)
 res = await admin.get('/ucto')
 page = await res.text()
@@ -607,6 +659,9 @@ for (const path of ['/ucto/klienti/co-b', '/ucto/doklady/db-1', '/ucto/subory/db
 }
 res = await acc.post('/ucto/platby/pb-1/kontrola', { ok: '1' })
 check('nor can she touch a payment of another accountant', res.status === 404)
+
+const security = await checkSecurity({ db, mf, site, admin, anna, acc, as, signIn, emailOnly, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkIncidents({ db, files, admin, anna, acc, lucia, security, nowS, today: day(0), day, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 
 // Booking: the reader's proposal, an entry, a rule for the supplier
 res = await acc.get(`/ucto/doklady/${cafeDoc?.id}`)
@@ -703,6 +758,61 @@ check(
   )?.deleted_at === null,
 )
 
+// eKasa receipts are known by their own codes: one receipt photographed twice is one even when its amount was read
+// wrong the second time, and two receipts of one number and amount (a till starts again at 1 each month) are two.
+const pretendPhoto = (name, fields) => ({ name, type: 'image/jpeg', bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode(`PRETEND${JSON.stringify(fields)}`)]) })
+const ekasaDocs = async (names) =>
+  (await db.prepare(`SELECT id, file_name, duplicate_of, ekasa_uid, ekasa_okp, total_cents FROM documents WHERE file_name IN (${names.map(() => '?').join(', ')}) ORDER BY created_at, rowid`).bind(...names).all()).results
+const coffee = { druha_strana: 'Kaviareň Pod hradom', datum_vystavenia: day(-2), cislo_dokladu: '118', suma_celkom: '3.80', dph_celkom: '0.71' }
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava.jpg', { ...coffee, ekasa_uid: 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A', ekasa_okp: 'c44b3977 0e415cc6 ee663aa1 776c973a a143b660' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava-znova.jpg', { ...coffee, suma_celkom: '3.30', ekasa_uid: '0-7dbcda8a56ee426dbcda8a56ee426d1b' })] })
+await settle(600)
+const [coffee1, coffee2] = await ekasaDocs(['kava.jpg', 'kava-znova.jpg'])
+check(
+  "the receipt's eKasa codes are kept as the Financial Administration writes them",
+  coffee1?.ekasa_uid === 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A' && coffee1.ekasa_okp === 'C44B3977-0E415CC6-EE663AA1-776C973A-A143B660' && coffee1.duplicate_of === null,
+  JSON.stringify(coffee1),
+)
+check(
+  'one eKasa receipt photographed twice is one, though its amount and a character of its code were read wrong',
+  coffee2?.duplicate_of === coffee1?.id && coffee2.total_cents === 330 && coffee2.ekasa_uid === 'O-7DBCDA8A56EE426DBCDA8A56EE426D1B',
+  JSON.stringify(coffee2),
+)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava-tretia.jpg', { ...coffee, suma_celkom: '3.30', datum_vystavenia: day(-7), ekasa_uid: 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('kava-stvrta.jpg', { ...coffee, suma_celkom: '', ekasa_okp: 'C44B3977-0E415CC6-EE663AA1-776C973A-A143B660' })] })
+await settle(600)
+const [coffee3, coffee4] = await ekasaDocs(['kava-tretia.jpg', 'kava-stvrta.jpg'])
+check(
+  'a third photo with its amount and day read wrong is known by its code, as the first one, never as a duplicate',
+  coffee3?.duplicate_of === coffee1?.id && coffee3.total_cents === 330,
+  JSON.stringify(coffee3),
+)
+check('and one whose amount could not be read at all', coffee4?.duplicate_of === coffee1?.id && coffee4.total_cents === null, JSON.stringify(coffee4))
+res = await acc.get(`/ucto/doklady/${coffee1?.id}`)
+page = await res.text()
+check(
+  'the accountant sees the code and where to check it',
+  /eKasa UID<\/span><span class="book__codevalue">O-7DBCDA8A56EE426DBCDA8A56EE426D1A</.test(page) && page.includes('href="https://opd.financnasprava.sk/"'),
+)
+const parking = { druha_strana: 'Parkovisko Centrum s. r. o.', ico_druhej_strany: '50999888', cislo_dokladu: '1', suma_celkom: '2.00', dph_celkom: '0.37', kategoria: 'travel' }
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('parkovanie-1.jpg', { ...parking, datum_vystavenia: day(-35), ekasa_uid: 'O-0F3A6C1E9B2D4E58A7C3F1B0D9E2A4C6' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('parkovanie-2.jpg', { ...parking, datum_vystavenia: day(-5), ekasa_uid: 'O-B84E21D7C5A9F3E0D6B2A8C4E1F7D3B9' })] })
+await settle(600)
+res = await appPost('/app/doklady', {}, { files: [pretendPhoto('parkovanie-3.jpg', { ...parking, datum_vystavenia: day(-5) })] })
+await settle(600)
+const [parking1, parking2, parking3] = await ekasaDocs(['parkovanie-1.jpg', 'parkovanie-2.jpg', 'parkovanie-3.jpg'])
+check('two receipts of one number and amount are two when their codes differ', parking1?.duplicate_of === null && parking2?.duplicate_of === null, JSON.stringify([parking1, parking2]))
+check('without a code, the number and the amount still tell a duplicate', parking3?.duplicate_of === parking2?.id, JSON.stringify(parking3))
+for (const d of [coffee1, coffee2, coffee3, coffee4, parking1, parking2, parking3]) await anna.post(`/app/doklady/${d?.id}/zmazat`, {})
+check(
+  'and the client can delete them all',
+  (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE (file_name LIKE 'kava%' OR file_name LIKE 'parkovanie-%') AND deleted_at IS NULL").first())?.n === 0,
+)
+await checkAutomation({ db, acc, anna, nowS, day, appPost, pretendPhoto, settle, capture: process.env.FIRMONY_CAPTURE_DIR })
+
 // The export for her accounting program
 res = await acc.get(`/ucto/klienti/co-a/export?mesiac=${day(-1).slice(0, 7)}`)
 const csvBytes = new Uint8Array(await res.arrayBuffer())
@@ -754,7 +864,7 @@ res = await appPost('/app/spravy', { sprava: 'A ešte jedna vec.' })
 await settle()
 check('a second message before anybody looked rings nothing more', (await sent()).slice(before2b).filter((m) => m.to === 'lucia@firmony.test').length === 1)
 res = await acc.get('/ucto/spravy')
-check('and waits in her inbox', (await res.text()).includes('A ešte jedna vec.'))
+check('and the original unanswered question still waits in her inbox', (await res.text()).includes('čo s touto platbou?'))
 res = await acc.post('/ucto/klienti/co-a/spravy', { sprava: 'Rozumiem, zaúčtujeme ho podľa výpisu.' })
 await settle()
 check(
@@ -766,6 +876,8 @@ check('answered, nothing waits', (await res.text()).includes('Všetkým klientom
 jar = annaCookie
 res = await appGet('/app/spravy')
 check('the client reads the answer under her name', (await res.text()).includes('Lucia Horváthová'))
+
+await checkSupportQueue({ db, acc, admin, anna, nowS, lucia, boss: bossRow })
 
 // A request from the site becomes a client in one form, with a welcome email that signs in
 await db
@@ -969,6 +1081,8 @@ check('who gets an email with a link that lasts days', Boolean(invitation) && in
 res = await post('/app/vstup', { t: invToken }, { ip: '203.0.113.33' })
 const janSession = as((res.headers.get('set-cookie') ?? '').split(';')[0])
 check('and is in the company with it', res.status === 303 && (await (await janSession.get('/app')).text()).includes('Firma A s. r. o.'))
+res = await janSession.get(`/app/export?rok=${day(0).slice(0, 4)}`)
+check('an ordinary member cannot download employee personal data in the complete archive', res.status === 403)
 res = await anna.post('/app/firma/pozvat', { meno: 'Ján Spoločník', email: 'JAN@firma-a.test' })
 check('somebody who is in already is not invited twice', res.status === 409)
 res = await janSession.post('/app/firma/pozvat', { meno: 'Cudzí', email: 'cudzi@x.test' })
@@ -1337,12 +1451,14 @@ check(
     (await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body.includes('beriem späť'),
 )
 
-// The contract inside the app: the terms in full, numbered, to save or print
+// A legacy version number is not proof of the accepted wording.
+await db.prepare("UPDATE companies SET terms_version = '2026-10-13' WHERE id = 'co-a'").run()
+// The contract inside the app: the archived release is clearly labelled.
 res = await anna.get('/app/zmluva')
 page = await res.text()
 check(
   'the contract and its terms are in the app',
-  res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-11-1"') && page.includes('Firma A s. r. o.') && page.includes('data-print'),
+  res.status === 200 && page.includes('Obchodné podmienky služby Firmony') && page.includes('id="bod-11-1"') && page.includes('Firma A s. r. o.') && page.includes('data-print') && page.includes('Archívne znenie'),
 )
 
 res = await anna.get('/app')
@@ -2561,6 +2677,10 @@ check(
   res = await anna.get('/app')
   check('and the overview no longer asks', !plain(await res.text()).includes('Zaplaťte 11,50 €'))
 
+  // Compatibility fixture: an imported pre-registry manual filing, with no delivery IDs.
+  // New prepared/accepted workflows and proof guards are exercised separately in filings.runtime.mjs.
+  await db.prepare("UPDATE vat_returns SET delivery = NULL WHERE company_id = 'co-a' AND period = ?").bind(old).run()
+
   // A document booked after filing changes the figures. The deadline has passed: a supplementary return with rows 36
   // and 37, and a supplementary control statement with the new line alone.
   await db
@@ -2573,7 +2693,7 @@ check(
   page = plain(await res.text())
   check(
     'a document booked after filing: the page says which rows changed, that a supplementary return is due, and its rows 36 and 37',
-    page.includes('Zmenené po podaní') &&
+    page.includes('Zmenené po uložení') &&
       page.includes('Zmenené riadky: 03, 04, 17, 32, 35.') &&
       page.includes('treba dodatočné priznanie') &&
       page.includes('Stiahnuť dodatočné priznanie') &&
@@ -2631,7 +2751,7 @@ check(
   check(
     'marked as filed: the period now comes to 57,50 €, due by the end of the month after the finding',
     res.status === 303 &&
-      (res.headers.get('location') ?? '').includes('ok=dph-opravene') &&
+      (res.headers.get('location') ?? '').includes('/podania?obdobie=') &&
       dRow?.kind === 'D' &&
       dRow.pay_cents === 1150 + 4600 &&
       dRow.found_on === found &&
@@ -2647,10 +2767,10 @@ check(
   )
   res = await anna.get('/app/dane')
   page = plain(await res.text())
-  check('the client sees what is left of it, with the QR code', page.includes('Dodatočné priznanie podané') && page.includes('Zaplatili ste už 11,50 € z 57,50 €') && page.includes('PAY by square'))
+  check('the client sees what is left of it, with the QR code', page.includes('Dodatočné podklady pripravené') && page.includes('Zaplatili ste už 11,50 € z 57,50 €') && page.includes('PAY by square'))
   res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
   page = plain(await res.text())
-  check('and the period stands filed again', page.includes('Podané') && !page.includes('Zmenené po podaní'))
+  check('and the period stands filed again', page.includes('Podklady uložené') && !page.includes('Zmenené po uložení'))
   res = await acc.get(`/ucto/klienti/co-a/dph/kontrolny-vykaz.xml?obdobie=${old}`)
   check('its files are the ones filed', (await res.text()).includes('KOpr="2"'))
 
@@ -2922,9 +3042,753 @@ check(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Every client's deadlines on one screen: the VAT periods as the VAT page has them, one never filed, the
+// recapitulative statement filed from the VAT page, corrected and taken back, the client's documents, the closing of
+// last year, a mark of what the app does not file itself
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const MONTHS = ['január', 'február', 'marec', 'apríl', 'máj', 'jún', 'júl', 'august', 'september', 'október', 'november', 'december']
+  const monthBack = (n) => {
+    const d = new Date(`${day(0).slice(0, 7)}-15T12:00:00Z`)
+    d.setUTCMonth(d.getUTCMonth() - n)
+    return d.toISOString().slice(0, 7)
+  }
+  const nameOf = (month) => `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`
+  /** The rows of the screen, each as its text, with the client's name in it. */
+  const rowsOf = (html) => [...html.matchAll(/<li class="due[^"]*">([\s\S]*?)<\/li>/g)].map((m) => plain(m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')))
+  const rowOf = (html, ...words) => rowsOf(html).find((r) => words.every((w) => r.includes(w)))
+  const last = monthBack(1)
+  const year = Number(day(0).slice(0, 4))
+  const at = Math.floor(Date.parse(`${last}-12T10:00:00Z`) / 1000)
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, start_on, icdph, tax_office) VALUES ('co-t', ?, 'Termíny s. r. o.', '50999992', 'Hlavná 10, 040 01 Košice', 1, 'rast', 'terminy1', ?, ?, 'SK2120999992', 'Košice')",
+      )
+      .bind(nowS, lucia?.id ?? '', `${monthBack(6)}-01`),
+    db
+      .prepare("INSERT INTO companies (id, created_at, name, ico, vat_payer, plan, inbox, accountant_id, start_on) VALUES ('co-t2', ?, 'Závierka s. r. o.', '50999993', 0, 'start', 'terminy2', ?, ?)")
+      .bind(nowS, lucia?.id ?? '', `${year - 1}-01-01`),
+    // Every month of ours filed but the fifth one back, which the screen works out no more: it is overdue as it is.
+    ...[6, 4, 3, 2].map((n) =>
+      db
+        .prepare("INSERT INTO vat_returns (company_id, period, filed_at, filed_on, filed_by, rows, kv_rows, pay_cents, refund_cents, due_on, kind) VALUES ('co-t', ?, ?, ?, ?, '{}', 0, 0, 0, ?, 'R')")
+        .bind(monthBack(n), nowS, day(-1), lucia?.id ?? '', day(-1)),
+    ),
+    // Last month: an invoice issued at home and a service supplied to Germany, both booked, and a payment without a document.
+    db
+      .prepare(
+        "INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_ico, number, vs, issued_on, total_cents, vat_cents, currency, category, booked_at, booked_by) VALUES ('t-out', 'co-t', ?, 'upload', 'read', 'test', 'invoice_out', 'Odberateľ s. r. o.', '12345679', '2026T01', '2026T01', ?, 12300, 2300, 'EUR', 'sales', ?, ?)",
+      )
+      .bind(at, `${last}-12`, at, lucia?.id ?? ''),
+    db
+      .prepare(
+        `INSERT INTO documents (id, company_id, created_at, source, status, read_by, kind, party, party_vat_id, number, issued_on, total_cents, vat_cents, currency, category, booked_at, booked_by, vat_mode, vat_lines)
+         VALUES ('t-eu', 'co-t', ?, 'upload', 'read', 'test', 'invoice_out', 'Kunde GmbH', 'DE123456789', '2026T02', ?, 100000, 0, 'EUR', 'sales', ?, ?, 'eu_service', '[{"rate":0,"base":100000,"vat":0,"deduct":0}]')`,
+      )
+      .bind(at, `${last}-14`, at, lucia?.id ?? ''),
+    db.prepare("INSERT INTO accounts (id, company_id, iban, ledger) VALUES ('acc-t', 'co-t', 'SK6809000000000999999992', '221.001')"),
+    db
+      .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pt-1', 'co-t', 'acc-t', ?, ?, -4500, 'Papiernictvo', 't1')")
+      .bind(nowS, `${last}-20`),
+  ])
+
+  res = await acc.get('/ucto')
+  page = await res.text()
+  check('the team finds its deadlines in the column', page.includes('href="/ucto/terminy"') && page.includes('Termíny'))
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('the screen of deadlines answers, without a script or a style of its own', res.status === 200 && !/<script>/.test(page) && !/ style=/i.test(page) && page.includes('Čo kedy podať.'))
+  check(
+    'last month is ready to be filed, as its VAT page says',
+    Boolean(rowOf(page, 'Termíny s. r. o.', `DPH a kontrolný výkaz za ${nameOf(last)}`, 'Pripravené na podanie')),
+    rowsOf(page).filter((r) => r.includes('Termíny s. r. o.')).join(' | '),
+  )
+  check('a month of ours never filed, older than the ones worked out, is overdue', Boolean(rowOf(page, 'Termíny s. r. o.', `DPH a kontrolný výkaz za ${nameOf(monthBack(5))}`, 'Nepodané', 'po termíne')))
+  check('internal marks without receipts remain on the work queue', Boolean(rowOf(page, 'Termíny s. r. o.', `za ${nameOf(monthBack(3))}`, 'Prijatie nedoložené')))
+  const sv = rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)
+  check('the service supplied to Germany asks for the recapitulative statement, ready, its file on the VAT page', Boolean(sv) && sv.includes('Pripravené na podanie') && !sv.includes('Označiť ako podané'), sv)
+  check("the client's documents of last month, the client's to bring", Boolean(rowOf(page, 'Termíny s. r. o.', `Doklady za ${nameOf(last)}`, 'Chýba 1 doklad', 'Úloha klienta')))
+  check(`the closing of ${year - 1} is ours: the books were ours at its end`, Boolean(rowOf(page, 'Závierka s. r. o.', `Účtovná závierka a daňové priznanie za rok ${year - 1}`, 'Pripraviť a podať')))
+  check("the accountant sees her own clients' deadlines and nobody else's", !page.includes('Firma B s. r. o.'))
+  check('each leads to where it is done', page.includes(`/ucto/klienti/co-t/dph?obdobie=${last}`) && page.includes(`/ucto/klienti/co-t/dph?obdobie=${last}#suhrnny`) && page.includes('/ucto/klienti/co-t#chyba'))
+  res = await acc.get('/ucto/klienti/co-t')
+  page = plain(await res.text())
+  check("the client's page has its own deadlines", page.includes('id="terminy"') && Boolean(rowOf(page, `DPH a kontrolný výkaz za ${nameOf(last)}`, 'Pripravené na podanie')))
+
+  res = await acc.get('/ucto/terminy?kto=my')
+  page = plain(await res.text())
+  check('ours alone: no documents of the client', !rowOf(page, 'Doklady za') && Boolean(rowOf(page, 'Termíny s. r. o.', 'DPH a kontrolný výkaz')))
+  res = await acc.get('/ucto/terminy?kto=klient')
+  page = plain(await res.text())
+  check("the client's alone: no filing of ours", Boolean(rowOf(page, 'Doklady za')) && !rowOf(page, 'DPH a kontrolný výkaz'))
+
+  // The recapitulative statement: its file from the VAT page, against the eForm's own schema, marked as filed
+  const validXml = async (xml, schema) =>
+    (await validateXML({ xml: [{ fileName: 'x.xml', contents: xml }], schema: [{ fileName: schema, contents: readFileSync(new URL(`./xsd/${schema}`, import.meta.url), 'utf8') }] })).valid
+  const svPage = async () => plain(await (await acc.get(`/ucto/klienti/co-t/dph?obdobie=${last}`)).text())
+  page = await svPage()
+  check(
+    "the VAT page has the period's recapitulative statement: the customer, the services' code, the value in whole euros",
+    page.includes(`Súhrnný výkaz za ${nameOf(last)}`) && page.includes('DE 123456789') && page.includes('Služby (kód 2)') && page.includes('1 000 €') && page.includes('Stiahnuť súhrnný výkaz (XML)'),
+  )
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  let svXml = await res.text()
+  check(
+    "its file, as the eForm writes it and valid against the eForm's schema",
+    res.status === 200 &&
+      (res.headers.get('content-disposition') ?? '').includes(`SVDPH_SK2120999992_${last}.xml`) &&
+      svXml.includes('<zaznam><kodStatu>DE</kodStatu><idCislo>123456789</idCislo><hodnota>1000</hodnota><kod>2</kod></zaznam>') &&
+      svXml.includes('<celkovaHodnota>1000</celkovaHodnota>') &&
+      (await validXml(svXml, 'svdph2020.xsd')),
+  )
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  const svFiled = await db.prepare("SELECT filed_on, data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first()
+  check(
+    'marked as filed with what its file held',
+    res.status === 303 && (res.headers.get('location') ?? '').includes('/podania?obdobie=') && JSON.parse(svFiled?.data ?? '{}').rows?.[0]?.euros === 1000 && JSON.parse(svFiled?.data ?? '{}').kind === 'R',
+    JSON.stringify(svFiled),
+  )
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  check('marked again, it stays one', (res.headers.get('location') ?? '').includes('ok=sv-uz') && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'vat.summary.filed'").first())?.n === 1)
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  check('the file of a statement filed is the one that was filed', res.status === 200 && (await res.text()).includes('<riadny>1</riadny>'))
+  check('a period without supplies to the EU shows no statement', !plain(await (await acc.get(`/ucto/klienti/co-t/dph?obdobie=${monthBack(2)}`)).text()).includes('Súhrnný výkaz za'))
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('a prepared summary remains open until its receipt is recorded', Boolean(rowOf(page, 'Súhrnný výkaz za', 'Podklady pripravené')))
+  res = await acc.get('/ucto/terminy?hotove=1')
+  page = plain(await res.text())
+  check('a prepared summary is never shown as accepted', !rowOf(page, 'Termíny s. r. o.', `Súhrnný výkaz za ${nameOf(last)}`)?.includes('Prijatie podateľňou doložené'))
+
+  // Compatibility fixture: the old manually recorded statement predates receipt IDs.
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).run()
+
+  // The invoice changed after the filing: a corrective statement before the deadline, a supplementary one after it
+  await db.prepare(`UPDATE documents SET vat_lines = '[{"rate":0,"base":120000,"vat":0,"deduct":0}]' WHERE id = 't-eu'`).run()
+  page = await svPage()
+  const fix = page.includes('Stiahnuť opravný súhrnný výkaz') ? 'O' : page.includes('Stiahnuť dodatočný súhrnný výkaz') ? 'D' : null
+  check('changed after it was filed, the page says so and offers the correction', page.includes('Zmenené po uložení') && fix !== null && page.includes('Uložiť opravené podklady'))
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('so does the screen of deadlines', Boolean(rowOf(page, 'Termíny s. r. o.', `${fix === 'O' ? 'Opravný' : 'Dodatočný'} súhrnný výkaz za ${nameOf(last)}`)))
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  svXml = await res.text()
+  check(
+    'the correction: its kind, the row with its right value, valid',
+    (res.headers.get('content-disposition') ?? '').includes(`SVDPH_${fix}_SK2120999992_${last}.xml`) &&
+      svXml.includes(fix === 'O' ? '<opravny>1</opravny>' : '<dodatocny>1</dodatocny>') &&
+      svXml.includes('<hodnota>1200</hodnota>') &&
+      (await validXml(svXml, 'svdph2020.xsd')),
+  )
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  const corrected = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
+  check('the correction marked, over the statement it corrects', (res.headers.get('location') ?? '').includes('/podania?obdobie=') && corrected.kind === fix && corrected.rows?.[0]?.euros === 1200 && corrected.prev?.rows?.[0]?.euros === 1000)
+  page = await svPage()
+  check('prepared again as the books stand, with a safe reopen action', page.includes(fix === 'O' ? 'Opravné podklady uložené' : 'Dodatočné podklady uložené') && page.includes('Znovu otvoriť neodoslané alebo odmietnuté podklady'))
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/zrusit', { obdobie: last })
+  const back = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
+  check('the correction taken back gives way to the statement it corrected', back.kind === 'R' && back.rows?.[0]?.euros === 1000 && back.prev === null && (await svPage()).includes('Zmenené po uložení'))
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/zrusit', { obdobie: last })
+  check('and that taken back, nothing is filed', (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'sv'").first())?.n === 0 && (await svPage()).includes('Pripravený'))
+  await db.prepare(`UPDATE documents SET vat_lines = '[{"rate":0,"base":100000,"vat":0,"deduct":0}]' WHERE id = 't-eu'`).run()
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: day(0).slice(0, 7) })
+  check('a period without supplies to the EU has no statement to mark', (res.headers.get('location') ?? '').includes('ok=sv-netreba') && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0)
+  res = await acc.post('/ucto/klienti/co-b/dph/suhrnny-vykaz/podane', { obdobie: last })
+  check("nor a statement of a client that is not hers", res.status === 404)
+
+  // What the app does not file itself (a month's payroll reports), marked as filed and taken back
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, spat: '/ucto/terminy?kto=my' })
+  check(
+    'marked as filed: kept once, on record, and back to the screen as it was',
+    res.status === 303 &&
+      res.headers.get('location') === '/ucto/terminy?kto=my&ok=oznacene' &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'mz' AND period = ?").bind(last).first())?.n === 1 &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'filing.marked'").first())?.n === 1,
+  )
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, spat: '/ucto/klienti/co-t' })
+  check(
+    "marked again from the client's page, it stays one, and back to that page",
+    res.headers.get('location') === '/ucto/klienti/co-t?ok=oznacene' && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 1,
+  )
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, zrusit: '1', spat: 'https://evil.example/' })
+  check(
+    'taken back; a way back to elsewhere is not followed',
+    res.headers.get('location') === '/ucto/terminy?ok=neoznacene' && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0,
+  )
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: day(0).slice(0, 7) })
+  check('a month that has not ended cannot be marked', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'priznanie', obdobie: last })
+  check('nor anything but what the app does not file itself', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'sv', obdobie: last })
+  check('nor the recapitulative statement, which the VAT page marks with what was filed', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'closing', obdobie: String(year - 1) })
+  check('nor the closing, which its own page marks', res.status === 400)
+  res = await acc.post('/ucto/klienti/co-b/podane', { druh: 'mz', obdobie: last })
+  check("nor anything of a client that is not hers", res.status === 404)
+  res = await mf.dispatchFetch(`${site}/ucto/klienti/co-t/podane`, {
+    method: 'POST',
+    body: `druh=mz&obdobie=${last}`,
+    redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example', cookie: luc.cookie, 'cf-connecting-ip': '203.0.113.30' },
+  })
+  check('nor from another site', res.status === 403 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0)
+  res = await acc.get('/ucto/terminy')
+  check('the closing leads to its page', plain(await res.text()).includes(`/ucto/klienti/co-t2/zavierka?rok=${year - 1}`))
+  await db.prepare('INSERT INTO closings (company_id, year, filed_on, filed_at, filed_by, pay_cents, due_on) VALUES (?, ?, ?, ?, ?, 0, ?)').bind('co-t2', year - 1, day(0), nowS, lucia?.id ?? '', day(0)).run()
+  res = await acc.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('an old closing without receipt remains open', res.status === 200 && Boolean(rowOf(page, 'Závierka s. r. o.', 'Prijatie nedoložené')))
+
+  // The administrator sees everybody's, and chooses an accountant's.
+  res = await admin.get('/ucto/terminy')
+  page = plain(await res.text())
+  check('the administrator sees every client, with its accountant', Boolean(rowOf(page, 'Termíny s. r. o.', 'Lucia Horváthová')))
+  check("on a phone, the place that does not fit the administrator's five tabs is in the bar's menu", page.includes('<a class="barmenu__item" href="/ucto/tim"'))
+  res = await admin.get(`/ucto/terminy?uctovnicka=${lucia?.id}`)
+  check("one accountant's clients", Boolean(rowOf(plain(await res.text()), 'Termíny s. r. o.')))
+  res = await admin.get('/ucto/terminy?uctovnicka=none')
+  check('the clients of nobody', res.status === 200 && !rowOf(plain(await res.text()), 'Termíny s. r. o.'))
+  res = await acc.get('/ucto/terminy?uctovnicka=none')
+  check('an accountant sees her own whatever the address says', Boolean(rowOf(plain(await res.text()), 'Termíny s. r. o.')))
+  res = await anna.get('/ucto/terminy')
+  check('a client gets nothing there', res.status === 404)
+
+  // What this part made goes, so that what follows finds things as before.
+  await db.batch([
+    db.prepare("DELETE FROM documents WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM payments WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM accounts WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM vat_returns WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM filings WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM closings WHERE company_id IN ('co-t', 'co-t2')"),
+    // Isolated fixture disposal follows the controlled retention boundary after its prepared sources were removed.
+    db.prepare("UPDATE companies SET purge_started_at = ? WHERE id IN ('co-t', 'co-t2')").bind(nowS),
+    db.prepare("DELETE FROM filing_events WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM filing_packages WHERE company_id IN ('co-t', 'co-t2')"),
+    db.prepare("DELETE FROM companies WHERE id IN ('co-t', 'co-t2')"),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Monthly recapitulative statements of a quarterly VAT payer, including late reclassification of a filed quarter.
+{
+  const date = new Date(`${day(0)}T12:00:00Z`)
+  const first = new Date(Date.UTC(date.getUTCFullYear(), Math.floor(date.getUTCMonth() / 3) * 3 - 6, 1))
+  const y = first.getUTCFullYear()
+  const months = [0, 1, 2].map((i) => `${y}-${String(first.getUTCMonth() + i + 1).padStart(2, '0')}`)
+  const quarter = `${y}-Q${Math.floor(first.getUTCMonth() / 3) + 1}`
+  const base = '/ucto/klienti/co-sv/dph'
+  const plain = (s) => s.replace(/\u00a0/g, ' ')
+  await db.prepare("INSERT INTO companies (id, created_at, name, ico, dic, icdph, address, vat_payer, vat_quarterly, vat_since, tax_office, plan, inbox, accountant_id, start_on) VALUES ('co-sv', ?, 'Mesačné výkazy s. r. o.', '50999993', '2120999993', 'SK2120999993', 'Hlavná 10, 040 01 Košice', 1, 1, ?, 'Košice', 'rast', 'suhrnny1', ?, ?)").bind(nowS, `${months[0]}-01`, lucia.id, `${months[0]}-01`).run()
+  const amounts = [3000000, 2500000, 100000]
+  for (let i = 0; i < 3; i++) await db.prepare(`INSERT INTO documents (id, company_id, created_at, source, status, kind, party, number, issued_on, supplied_on, total_cents, vat_cents, currency, category, booked_at, vat_mode, vat_lines, party_vat_id, vat_period)
+    VALUES (?, 'co-sv', ?, 'web', 'read', 'invoice_out', 'EU Kunde', ?, ?, ?, ?, 0, 'EUR', 'sales', ?, ?, ?, 'CZ12345678', ?)`)
+    .bind(`sv-${i}`, nowS, `SV-${i}`, `${months[i]}-15`, `${months[i]}-15`, amounts[i], nowS, i < 2 ? 'eu_goods' : 'eu_service', JSON.stringify([{ rate: 0, base: amounts[i], vat: 0, deduct: 0 }]), quarter).run()
+  res = await acc.get(`${base}?obdobie=${quarter}`)
+  let html = await res.text()
+  check('a quarterly VAT page shows three monthly SV cards and submits each actual month', res.status === 200 && months.every((m) => html.includes(`id="suhrnny-${m}"`) && html.includes(`name="obdobie" value="${m}"`)) && plain(html).includes('Priznanie DPH zostáva štvrťročné'))
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/monthly-sv.html`, html)
+  const valid = async (xml) => (await validateXML({ xml: [{ fileName: 'sv.xml', contents: xml }], schema: [{ fileName: 'sv.xsd', contents: readFileSync(new URL('./xsd/svdph2020.xsd', import.meta.url), 'utf8') }] })).valid
+  const originals = []
+  for (let i = 0; i < 3; i++) {
+    res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[i]}`)
+    const xml = await res.text(); originals.push(xml)
+    check(`monthly XML ${months[i]} contains only its month, with the schema and monthly filename`, res.status === 200 && res.headers.get('content-disposition').includes(months[i]) && xml.includes(`<mesiac>${Number(months[i].slice(-2))}</mesiac><stvrtrok></stvrtrok>`) && xml.includes(`<hodnota>${amounts[i] / 100}</hodnota>`) && await valid(xml))
+  }
+  res = await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: quarter })
+  check('posting the old quarterly SV period cannot create an invalid filing', res.headers.get('location').includes('sv-blokovane') && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv'").first()).n === 0)
+  res = await acc.get(`${base}/priznanie.xml?obdobie=${quarter}`)
+  check('the VAT return itself still downloads for the whole quarter', res.status === 200 && res.headers.get('content-disposition')?.includes(quarter), JSON.stringify({ status: res.status, location: res.headers.get('location'), body: (await res.text()).slice(0, 300) }))
+  res = await acc.get('/ucto/terminy')
+  html = await res.text()
+  check('deadlines point a monthly SV to its card inside the quarterly VAT page', html.includes(`obdobie=${quarter}#suhrnny-${months[0]}`))
+  for (const month of months) await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: month })
+  let rows = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND kind = 'sv' ORDER BY period").all()
+  check('three months are filed separately with the exact XML snapshots and SHA-256', rows.results.length === 3 && rows.results.every((r, i) => { const f = JSON.parse(r.data).file; return r.period === months[i] && f.xml === originals[i] && f.sha256 === createHash('sha256').update(f.xml).digest('hex') }))
+  await db.prepare("UPDATE companies SET name = 'Nový názov firmy' WHERE id = 'co-sv'").run()
+  res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}&povodne=1`)
+  check('a filed monthly SV replays its original bytes even after filer details change', res.status === 200 && await res.text() === originals[0])
+  // The following arithmetic cases model imported legacy filings. These prepared fixtures have not been sent:
+  // preserve their immutable package history, but make the legacy source explicit instead of inventing receipts.
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv'").run()
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3100000, vat: 0, deduct: 0 }])).run()
+  res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}`)
+  const correctedXml = await res.text()
+  check('a changed monthly SV prepares a valid supplementary file for only the changed month', res.status === 200 && correctedXml.includes('<dodatocny>1</dodatocny>') && correctedXml.includes('<hodnota>31000</hodnota>') && await valid(correctedXml))
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[0] })
+  let latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).first()
+  check('monthly correction preserves the prior original snapshot', JSON.parse(latest.data).prev.file.xml === originals[0])
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).run()
+  // Two corrections prepared from the very same data revision, even within one second.
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3200000, vat: 0, deduct: 0 }])).run()
+  const company = companyOf(await db.prepare("SELECT * FROM companies WHERE id = 'co-sv'").first())
+  const documents = await docsAround(db, 'co-sv', `${y - 1}-Q${quarter.slice(-1)}`, quarter)
+  const revision = await dataRevision(db, 'co-sv')
+  const view = svViewsOf(company, quarter, documents, await summariesFiled(db, 'co-sv'), day(0)).views[0]
+  const xml = summaryXml({ name: company.name, icdph: company.icdph, address: company.address }, months[0], view.plan.rows, view.plan.kind, day(0))
+  const file = { name: `SVDPH_D_SK2120999993_${months[0]}.xml`, xml, sha256: createHash('sha256').update(xml).digest('hex') }
+  const competing = await Promise.all([0, 1].map(() => db.batch([fileSummaryStatement(db, 'co-sv', view, view.plan, lucia.id, day(0), file, revision)])))
+  check('same-revision monthly corrections accept exactly one write without losing the prior chain', competing.filter((r) => r[0].meta.changes > 0).length === 1 && JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).first()).data).prev.prev.file.xml === originals[0])
+  res = await anna.get(`${base}?obdobie=${quarter}`)
+  check('a client cannot access the monthly SV workflow', res.status === 404)
+  res = await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: '2026-99' })
+  check('an invalid SV month is refused instead of silently filing another period', res.status === 400)
+  // A quarter was already filed before omitted goods were discovered: reclassify it, do not duplicate its last month.
+  await db.prepare("DELETE FROM filings WHERE company_id = 'co-sv'").run()
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3000000, vat: 0, deduct: 0 }])).run()
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-1'").bind(JSON.stringify([{ rate: 0, base: 1500000, vat: 0, deduct: 0 }])).run()
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: quarter })
+  const quarterFiled = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).data)
+  await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv' AND period = ?").bind(quarter).run()
+  await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-1'").bind(JSON.stringify([{ rate: 0, base: 2500000, vat: 0, deduct: 0 }])).run()
+  res = await acc.get(`${base}?obdobie=${quarter}`); html = await res.text()
+  check('a newly required monthly sequence explains how to reclassify the already filed quarter', plain(html).includes('Zaradiť podaný výkaz k poslednému mesiacu'))
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/monthly-sv-transition.html`, html)
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[2] })
+  check('a regular last-month filing is blocked while a filed quarter already represents it', (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()).n === 0)
+  await acc.post(`${base}/suhrnny-vykaz/obdobie`, { obdobie: quarter })
+  latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()
+  check('reclassification keeps the original quarter XML, source period and filing history', latest && JSON.parse(latest.data).sourcePeriod === quarter && JSON.parse(latest.data).file.xml === quarterFiled.file.xml && (await db.prepare("SELECT COUNT(*) AS n FROM filing_history WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).n > 0 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).n === 0)
+  res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[2]}`)
+  const lastCorrection = await res.text()
+  check('the last-month supplementary file cancels supplies belonging to earlier months', res.status === 200 && lastCorrection.includes('<dodatocny>1</dodatocny>') && lastCorrection.includes('<hodnota>0</hodnota>') && await valid(lastCorrection))
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[2] })
+  latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()
+  check('the last-month correction retains the reclassified original in its chain', JSON.parse(latest.data).prev.file.xml === quarterFiled.file.xml && JSON.parse(latest.data).prev.sourcePeriod === quarter)
+  const exported = await exportYear({ DB: db, FILES: files }, company, String(y), null, day(0))
+  const contents = unzip(new Uint8Array(await new Response(exported.body).arrayBuffer()))
+  check('the annual handover includes current SV XML and the original filed quarter from history', contents.some((f) => f.name.startsWith('podania/sv/') && new TextDecoder().decode(f.data) === quarterFiled.file.xml) && contents.some((f) => f.name === 'data/historia-podani.json'))
+  const currentFirst = Math.floor(date.getUTCMonth() / 3) * 3 + 1
+  const activeMonth = `${date.getUTCFullYear()}-${String(currentFirst).padStart(2, '0')}`
+  const inQuarter = `${date.getUTCFullYear()}-Q${Math.ceil(currentFirst / 3)}`
+  const nextMonth = `${date.getUTCFullYear()}-${String(currentFirst + 1).padStart(2, '0')}-15`
+  await db.prepare(`INSERT INTO documents (id, company_id, created_at, source, status, kind, number, issued_on, supplied_on, total_cents, vat_cents, currency, category, booked_at, vat_mode, vat_lines, party_vat_id, vat_period)
+    VALUES ('sv-current', 'co-sv', ?, 'web', 'read', 'invoice_out', 'SV-CURRENT', ?, ?, 10000, 0, 'EUR', 'sales', ?, 'eu_service', '[{"rate":0,"base":10000,"vat":0,"deduct":0}]', 'CZ12345678', ?)`).bind(nowS, `${activeMonth}-10`, `${activeMonth}-10`, nowS, inQuarter).run()
+  const due = await teamDeadlines(db, { ...lucia, team: 'accountant' }, false, nextMonth, { company: 'co-sv' })
+  check('the real deadline loader includes a completed monthly SV inside the VAT quarter still running', due.dues.some((d) => d.kind === 'summary' && d.period === activeMonth && d.state === 'ready'), JSON.stringify(due.dues.map((d) => ({ kind: d.kind, period: d.period, state: d.state }))))
+  await db.batch([
+    db.prepare("DELETE FROM filings WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM filing_history WHERE company_id = 'co-sv'"),
+    db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-sv'").bind(nowS),
+    db.prepare("DELETE FROM filing_events WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM filing_packages WHERE company_id = 'co-sv'"),
+    db.prepare("DELETE FROM documents WHERE company_id = 'co-sv'"), db.prepare("DELETE FROM companies WHERE id = 'co-sv'"), db.prepare("DELETE FROM company_data_revisions WHERE company_id = 'co-sv'"),
+  ])
+}
+
+// The closing of last year: the statements and the return from the books, what keeps them back, the accountant's
+// adjustments, the tax booked, the files against the official schemas, a deadline moved by a notice, the mark that
+// they were filed with what the client reads and pays, and the mark taken back
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const validXml = async (xml, schema) =>
+    (await validateXML({ xml: [{ fileName: 'x.xml', contents: xml }], schema: [{ fileName: schema, contents: readFileSync(new URL(`./xsd/${schema}`, import.meta.url), 'utf8') }] })).valid
+  const Y = Number(day(0).slice(0, 4)) - 1
+  const base = '/ucto/klienti/co-k/zavierka'
+  let seq = 0
+  const entry = (on, md, d, cents) =>
+    db
+      .prepare("INSERT INTO ledger_entries (id, company_id, kind, year, seq, number, on_date, text, lines, created_at, created_by) VALUES (?, 'co-k', 'internal', ?, ?, ?, ?, 'Test', ?, ?, ?)")
+      .bind(`k-e${++seq}`, Y, seq, `ID-${Y}-9${String(seq).padStart(2, '0')}`, on, JSON.stringify([{ md, d, cents }]), nowS, lucia?.id ?? '')
+  // A year of a young company: capital paid in, a sale paid, services paid, representation, and an advance on the income tax paid to its account.
+  await db.batch([
+    db
+      .prepare(
+        "INSERT INTO companies (id, created_at, name, ico, dic, address, register_line, vat_payer, plan, inbox, accountant_id, start_on, tax_account) VALUES ('co-k', ?, 'Závierková s. r. o.', '50999994', '2120999994', 'Hlavná 12, 040 01 Košice', 'Obchodný register Okresného súdu Košice I, oddiel Sro, vložka č. 99999/V', 0, 'start', 'zavierka1', ?, ?, '1234567890')",
+      )
+      .bind(nowS, lucia?.id ?? '', `${Y}-01-01`),
+    db.prepare("INSERT INTO accounts (id, company_id, iban, ledger) VALUES ('acc-k', 'co-k', 'SK6809000000000999999994', '221.001')"),
+    db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-k', ?, 'jana@zavierkova.test', 'Jana Závierková')").bind(nowS),
+    db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('co-k', 'u-k', 'owner', ?)").bind(nowS),
+    entry(`${Y}-01-02`, '353', '411', 500000),
+    entry(`${Y}-01-05`, '221.001', '353', 500000),
+    entry(`${Y}-03-10`, '311', '602', 4000000),
+    entry(`${Y}-03-20`, '221.001', '311', 4000000),
+    entry(`${Y}-04-05`, '518', '321', 1500000),
+    entry(`${Y}-04-20`, '321', '221.001', 1500000),
+    entry(`${Y}-05-01`, '513', '221.001', 20000),
+    db
+      .prepare(
+        "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, party_iban, vs, exempt, ref) VALUES ('pk-1', 'co-k', 'acc-k', ?, ?, -50000, 'Daňový úrad', 'SK1281805002240123456789', ?, 'state', 'k1')",
+      )
+      .bind(nowS, `${Y}-06-15`, `110006${Y}`),
+    // VAT shares an advance's symbol, not its account: it is no advance.
+    db
+      .prepare(
+        "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, party_iban, vs, exempt, ref) VALUES ('pk-0', 'co-k', 'acc-k', ?, ?, -30000, 'Daňový úrad', 'SK2581805002400123456789', ?, 'state', 'k0')",
+      )
+      .bind(nowS, `${Y}-04-25`, `110003${Y}`),
+  ])
+
+  res = await acc.get('/ucto/klienti/co-k')
+  check("the client's page leads to the closing", (await res.text()).includes(`href="${base}"`))
+  res = await acc.get(base)
+  page = plain(await res.text())
+  check('the closing page answers with last year, without a script or a style of its own', res.status === 200 && !/<script>/.test(page) && !/ style=/i.test(page) && page.includes(`za rok ${Y}`))
+  check(
+    'the return from the books: the result, representation, the advance the bank shows, 10 %',
+    page.includes('24 800,00 €') && page.includes('200,00 €') && page.includes('Zaplatené preddavky') && page.includes('500,00 €') && page.includes('10 %'),
+  )
+  check(
+    'the statements in whole euros: the bank, the advance and the VAT paid as receivables, the capital',
+    page.includes('<td class="num">29 000</td>') && page.includes('<td class="num">800</td>') && page.includes('<td class="num">29 800</td>') && page.includes('<td class="num">5 000</td>') && page.includes('Výkaz ziskov a strát'),
+  )
+  check('what keeps it back: the activity, the tax not booked', page.includes('Doplňte SK NACE hlavnej činnosti') && page.includes('nie je zaúčtovaná ako vyšla') && page.includes('Treba vyriešiť'))
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  check('no file while something keeps it back', res.status === 303 && res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-blokovane`)
+  res = await acc.post(`${base}/podane`, { rok: String(Y) })
+  check('nor can it be marked as filed', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-blokovane` && !(await db.prepare("SELECT 1 AS x FROM closings WHERE company_id = 'co-k'").first()))
+
+  // The adjustments
+  const form = { rok: String(Y), a06: '200,00', a16: '100', zdanitelne: '40000,00', mikro: '1', od: `1. 1. ${Y}`, preddavky: '500,00', nace: '62.01', cinnost: 'Počítačové programovanie' }
+  res = await acc.post(base, form)
+  page = plain(await res.text())
+  check('a code that is no SK NACE is said, and nothing is kept', res.status === 422 && page.includes('SK NACE napíšte ako 62.01.0.') && !(await db.prepare("SELECT 1 AS x FROM closings WHERE company_id = 'co-k'").first()))
+  res = await acc.post(base, { ...form, nace: '62.01.0' })
+  let row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  let inputs = JSON.parse(row?.inputs ?? '{}')
+  check(
+    "kept: what differs from the books' proposal, not what equals it",
+    res.status === 303 && res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-ulozene#dan` && inputs.tableA?.a16 === 10000 && inputs.tableA?.a06 === undefined && inputs.nace === '62.01.0' && inputs.advances === null,
+    row?.inputs,
+  )
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  check('recomputed: 300 € that are no tax expenses, a base of 25 100 €, a tax of 2 510 €, 2 010 € to pay', page.includes('300,00 €') && page.includes('25 100,00 €') && page.includes('2 510,00 €') && page.includes('2 010,00 €'))
+
+  // The tax booked
+  res = await acc.post(`${base}/dan`, { rok: String(Y) })
+  const taxEntry = await db.prepare("SELECT * FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first()
+  row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  check(
+    'the tax booked by an internal document on the last day of the year: 591 against 341',
+    res.status === 303 && taxEntry?.on_date === `${Y}-12-31` && JSON.parse(taxEntry?.lines ?? '[]')[0]?.md === '591' && JSON.parse(taxEntry?.lines ?? '[]')[0]?.cents === 251000 && row?.tax_entry === taxEntry?.id,
+  )
+  res = await acc.post(`${base}/dan`, { rok: String(Y) })
+  check(
+    'booked again, it replaces the one before',
+    (await db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first())?.n === 1,
+  )
+  const staleClosing = (await closingsOf(db, 'co-k')).find((k) => k.year === Y)
+  const competing = await Promise.all([
+    db.batch(bookTaxStatements(db, 'co-k', Y, 251000, staleClosing.taxEntry, lucia.id, staleClosing.revision)),
+    db.batch(bookTaxStatements(db, 'co-k', Y, 251000, staleClosing.taxEntry, lucia.id, staleClosing.revision)),
+  ])
+  check('two tax bookings from the same revision accept exactly one and leave one active 591/341 entry', competing.filter((r) => r[1].meta.changes > 0).length === 1 && (await db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first()).n === 1, JSON.stringify(competing.map((r) => r[1].meta)))
+  const [staleFiled] = await db.batch([fileClosingStatement(db, 'co-k', Y, { rows: {}, balance: {}, profit: {}, advancesNext: { kind: 'none', each: 0 } }, 0, `${Y + 1}-03-31`, lucia.id, day(0), staleClosing.revision)])
+  check('a filing prepared before the tax booking cannot claim the new closing revision', staleFiled.meta.changes === 0 && (await db.prepare("SELECT filed_at FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()).filed_at === null)
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  check('ready now, the tax in the statements and in the books', page.includes('Pripravené') && page.includes('je zaúčtovaná interným dokladom') && page.includes('22 290') && !page.includes('Čo treba vyriešiť'))
+
+  // The files, against the Financial Administration's own schemas
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  let xml = await res.text()
+  check(
+    'the tax return as a file of DPPOv25, valid against its schema',
+    res.status === 200 && (res.headers.get('content-disposition') ?? '').includes(`DPPO_2120999994_${Y}.xml`) && (await validXml(xml, 'dppo2025.xsd')),
+    xml.slice(0, 300),
+  )
+  check(
+    'with the computation, the micro-taxpayer, the advance and the activity',
+    xml.includes('<r100>24800.00</r100>') && xml.includes('<r130>300.00</r130>') && xml.includes('<r1010>500.00</r1010>') && xml.includes('<r1100>2010.00</r1100>') && xml.includes('<mikrodanovnikPar2w>1</mikrodanovnikPar2w>') && xml.includes('<k1>62</k1><k2>01</k2><k3>0</k3><cinnost>Počítačové programovanie</cinnost>'),
+  )
+  res = await acc.get(`${base}/zavierka.xml?rok=${Y}`)
+  xml = await res.text()
+  check(
+    'the financial statements as a file of UZMUJv14, valid, the tax in them',
+    res.status === 200 && (await validXml(xml, 'uzmuj2014.xsd')) && xml.includes('<r36><s1>2510</s1>') && xml.includes('<r38><s1>22290</s1>') && xml.includes('<r22><s1>29000</s1>') && xml.includes('<r19><s1>300</s1>') && xml.includes('<r41><s1>2010</s1>'),
+    xml.slice(xml.indexOf('<telo>'), xml.indexOf('<telo>') + 300),
+  )
+
+  // A deadline moved by a notice
+  res = await acc.post(`${base}/lehota`, { rok: String(Y), lehota: `${Y + 1}-06-15` })
+  check('a day that is no end of a month a notice may move to is refused', res.status === 400)
+  res = await acc.post(`${base}/lehota`, { rok: String(Y), lehota: `${Y + 1}-06-30` })
+  row = await db.prepare("SELECT extended_to FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  check('the end of June is kept', res.status === 303 && row?.extended_to === `${Y + 1}-06-30`)
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  // Late once it has passed (a day off around it may move it a few days on).
+  const lateSaid = page.includes('Lehota uplynula')
+  check('and said on the page, late only once it has passed', page.includes('Lehota predĺžená oznámením do 30. júna') && (day(0) > `${Y + 1}-07-05` ? lateSaid : day(0) < `${Y + 1}-06-28` ? !lateSaid : true))
+
+  // Filed
+  res = await acc.post(`${base}/podane`, { rok: String(Y) })
+  row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  const told = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-k' ORDER BY created_at DESC, rowid DESC").first()
+  check(
+    'marked as filed: once, with what was filed, the tax to pay by the moved deadline',
+    res.status === 303 && res.headers.get('location') === `/ucto/klienti/co-k/podania?obdobie=${Y}` && row?.filed_at && row.pay_cents === 201000 && row.due_on === `${Y + 1}-06-30` && JSON.parse(row.filed).rows.r1050 === 251000,
+  )
+  check(
+    'the client reads what to pay, by when, to the income tax account, with the symbol of the year',
+    Boolean(told) && plain(told.body).includes('2 010,00 €') && plain(told.body).includes('8180 5002 2412 3456 7890') && told.body.includes(`170099${Y}`) && plain(told.body).includes('do 30. júna'),
+    told?.body,
+  )
+  check('on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-k' AND action = 'closing.filed'").first())?.n === 1)
+  const frozen = JSON.parse(row.filed)
+  const saleBefore = await db.prepare("SELECT lines FROM ledger_entries WHERE id = 'k-e3'").first()
+  await db.prepare("UPDATE ledger_entries SET lines = ? WHERE id = 'k-e3'").bind(JSON.stringify([{ md: '311', d: '602', cents: 9000000 }])).run()
+  await db.prepare("UPDATE companies SET name = 'Zmenená firma', address = 'Iná 1, 811 01 Bratislava' WHERE id = 'co-k'").run()
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  const frozenReturn = await res.text()
+  check('after books and filer details change, the filed return remains byte-for-byte identical', res.status === 200 && frozenReturn === frozen.files.return.xml && frozenReturn.includes('<r1050>2510.00</r1050>') && !frozenReturn.includes('Zmenená firma'))
+  res = await acc.get(`${base}/zavierka.xml?rok=${Y}`)
+  check('the filed statements also replay their exact saved XML and filename', res.status === 200 && await res.text() === frozen.files.statements.xml && res.headers.get('content-disposition').includes(frozen.files.statements.name))
+  res = await acc.get(`${base}?rok=${Y}`)
+  const changedDraft = plain(await res.text())
+  check('a changed unsent annual draft asks to reopen rather than implying submission', res.status === 200 && changedDraft.includes('Po uložení podkladov sa výpočet zmenil') && !changedDraft.includes('Od podania sa zmenil výpočet') && !changedDraft.includes('tick--green'))
+  const lateTax = await db.batch(bookTaxStatements(db, 'co-k', Y, 999999, row.tax_entry, lucia.id, row.revision))
+  check('even a direct stale booking cannot touch tax entries after filing', lateTax[1].meta.changes === 0 && (await db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = 'co-k' AND text LIKE 'Daň z príjmov%' AND deleted_at IS NULL").first()).n === 1)
+  await db.prepare("UPDATE ledger_entries SET lines = ? WHERE id = 'k-e3'").bind(saleBefore.lines).run()
+  await db.prepare("UPDATE companies SET name = 'Závierková s. r. o.', address = 'Hlavná 12, 040 01 Košice' WHERE id = 'co-k'").run()
+  const legacy = { ...frozen }; delete legacy.files
+  await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-k' AND year = ?").bind(JSON.stringify(legacy), Y).run()
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  check('a legacy filing without saved XML does not silently regenerate an original from today\'s books', res.status === 409 && plain(await res.text()).includes('pôvodné XML neuložilo'))
+  await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-k' AND year = ?").bind(JSON.stringify(frozen), Y).run()
+  const jana = as((await signIn('jana@zavierkova.test')).cookie)
+  res = await jana.get('/app/dane')
+  page = plain(await res.text())
+  check(
+    "in the client's taxes: the income tax of the year, to its account, with its symbol and a QR code for the bank",
+    res.status === 200 && page.includes(`Daň z príjmov za rok ${Y}`) && page.includes('2 010,00 €') && page.includes('8180 5002 2412 3456 7890') && page.includes(`170099${Y}`) && page.includes('PAY by square'),
+  )
+  res = await acc.post(`${base}/podane`, { rok: String(Y) })
+  check('marked again, nothing more happens', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-uz` && (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE company_id = 'co-k'").first())?.n === 1)
+  res = await acc.get(`${base}?rok=${Y}`)
+  page = plain(await res.text())
+  check('prepared, its adjustments are closed and its tax is not booked again', page.includes('Podklady uložené') && page.includes('<fieldset class="cform__section" disabled') && !page.includes('Zaúčtovať daň') && page.includes('Znovu otvoriť neodoslané alebo odmietnuté podklady'))
+  res = await acc.post(base, { ...form, nace: '62.01.0', a16: '999' })
+  check('nor are its adjustments kept', res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-uz` && JSON.parse((await db.prepare("SELECT inputs FROM closings WHERE company_id = 'co-k'").first())?.inputs ?? '{}').tableA?.a16 === 10000)
+
+  // The deadlines: the closing done, the income tax the client's to pay until the bank shows it paid
+  res = await acc.get('/ucto/terminy?hotove=1')
+  page = plain(await res.text())
+  check('on the screen of deadlines the tax is the client\'s to pay', page.includes(`Úhrada dane z príjmov za rok ${Y}`) && page.includes('Na úhradu 2 010,00 €'))
+  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pk-3', 'co-k', 'acc-k', ?, ?, -201000, 'Daňový úrad', ?, 'k3')").bind(nowS, day(0), `170099${Y - 1}`).run()
+  res = await acc.get('/ucto/terminy')
+  check("the tax of another year is not this year's", plain(await res.text()).includes(`Úhrada dane z príjmov za rok ${Y}`))
+  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pk-2', 'co-k', 'acc-k', ?, ?, -201000, 'Daňový úrad', ?, 'k2')").bind(nowS, day(0), `170099${Y}`).run()
+  res = await acc.get('/ucto/terminy')
+  check('paid with the symbol of the year, it is no longer open', !plain(await res.text()).includes(`Úhrada dane z príjmov za rok ${Y}`))
+
+  // Who may, and from where
+  res = await anna.get(base)
+  check('a client gets nothing there', res.status === 404)
+  res = await acc.get('/ucto/klienti/co-b/zavierka')
+  check("nor does an accountant at a client that is not hers", res.status === 404)
+  res = await mf.dispatchFetch(`${site}${base}/zrusit`, {
+    method: 'POST',
+    body: `rok=${Y}`,
+    redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example', cookie: luc.cookie, 'cf-connecting-ip': '203.0.113.30' },
+  })
+  check('nor does anything come from another site', res.status === 403 && (await db.prepare("SELECT filed_at FROM closings WHERE company_id = 'co-k'").first())?.filed_at)
+
+  // The year that runs: worked out, not filed
+  res = await acc.get(`${base}?rok=${Y + 1}`)
+  page = plain(await res.text())
+  check('the year that runs is worked out ahead, nothing filed of it', res.status === 200 && page.includes('Rok ešte beží') && !page.includes('Označiť ako podané'))
+  res = await acc.post(`${base}/podane`, { rok: String(Y + 1) })
+  check('nor can it be marked', res.headers.get('location') === `${base}?rok=${Y + 1}&ok=zavierka-bezi`)
+  res = await acc.post(`${base}/podane`, { rok: '1999' })
+  check('a year the books do not have is no year', res.status === 400)
+
+  // The mark taken back
+  res = await acc.post(`${base}/zrusit`, { rok: String(Y) })
+  row = await db.prepare("SELECT * FROM closings WHERE company_id = 'co-k' AND year = ?").bind(Y).first()
+  const undone = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-k' ORDER BY created_at DESC, rowid DESC").first()
+  check(
+    'taken back: not filed, what was set stays, the client told',
+    res.status === 303 && row?.filed_at === null && row.pay_cents === null && JSON.parse(row.inputs).nace === '62.01.0' && undone?.body.includes('rušíme'),
+  )
+  const archived = await db.prepare("SELECT data FROM closing_history WHERE company_id = 'co-k' AND year = ? ORDER BY id DESC LIMIT 1").bind(Y).first()
+  check('reopening a filed closing preserves the complete previous filing in history', JSON.parse(JSON.parse(archived.data).filed).files.return.xml === frozenReturn)
+
+  await db.batch([
+    db.prepare("DELETE FROM payments WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM accounts WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM ledger_entries WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM closings WHERE company_id = 'co-k'"),
+    db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-k'").bind(nowS),
+    db.prepare("DELETE FROM filing_events WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM filing_packages WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM messages WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM members WHERE company_id = 'co-k'"),
+    db.prepare("DELETE FROM sessions WHERE user_id = 'u-k'"),
+    db.prepare("DELETE FROM users WHERE id = 'u-k'"),
+    db.prepare("DELETE FROM companies WHERE id = 'co-k'"),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payroll: an employee, last month's payslip worked out, the month closed (booked, the client told what to pay and
+// where), its deadlines and reports, a payroll payment's account, the month opened again
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const monthBack = (n) => {
+    const d = new Date(`${day(0).slice(0, 7)}-15T12:00:00Z`)
+    d.setUTCMonth(d.getUTCMonth() - n)
+    return d.toISOString().slice(0, 7)
+  }
+  const last = monthBack(1)
+  const current = day(0).slice(0, 7)
+  const base = '/ucto/klienti/co-w/mzdy'
+  await db
+    .prepare(
+      "INSERT INTO companies (id, created_at, name, ico, dic, address, vat_payer, plan, inbox, accountant_id, start_on, tax_account) VALUES ('co-w', ?, 'Mzdová s. r. o.', '50999995', '2120999995', 'Hlavná 14, 040 01 Košice', 0, 'rast', 'mzdy1', ?, ?, '1234567890')",
+    )
+    .bind(nowS, lucia?.id ?? '', `${monthBack(3)}-01`)
+    .run()
+
+  res = await acc.get(base)
+  page = plain(await res.text())
+  check('the payroll page answers, without a script or a style of its own, and asks for the first employee', res.status === 200 && !/<script>/.test(page) && !/ style=/i.test(page) && page.includes('Firma zatiaľ nemá zamestnancov'))
+  const employee = {
+    meno: 'Ján Mzdový',
+    narodeny: '1. 1. 1990',
+    poistovna: '25',
+    nastup: skDay(`${monthBack(3)}-01`),
+    skoncenie: '',
+    mzda: '1500',
+    iban: 'SK31 1200 0000 1987 4263 7541',
+    vyhlasenie: '1',
+    dieta_0: 'Andrea',
+    narodene_0: '2. 4. 2016',
+  }
+  res = await acc.post(`${base}/zamestnanec`, { ...employee, meno: 'J', iban: 'SK00 1234' })
+  page = plain(await res.text())
+  check('an employee without a name or with an IBAN that is none is refused, field by field', res.status === 422 && page.includes('Napíšte meno a priezvisko.') && page.includes('Toto číslo účtu nie je platný IBAN.'))
+  res = await acc.post(`${base}/zamestnanec`, employee)
+  const kept = await db.prepare("SELECT * FROM employees WHERE company_id = 'co-w'").first()
+  check(
+    'an employee kept: the wage, the insurer, the declaration, the child',
+    res.status === 303 && kept?.wage_cents === 150000 && kept.insurer === '25' && kept.declaration === 1 && JSON.parse(kept.children)[0]?.born === '2016-04-02' && kept.iban === 'SK3112000000198742637541',
+  )
+
+  // Last month, worked out and kept
+  res = await acc.get(base)
+  page = plain(await res.text())
+  const net = last < '2027' ? '1 234,51 €' : '1 238,20 €'
+  check(`last month is offered with the wage and its payslip: ${net} to pay out`, res.status === 200 && page.includes(`name="hruba_${kept?.id}"`) && page.includes(net) && page.includes('Čo zaplatiť'), page.slice(page.indexOf('Na výplatu'), page.indexOf('Na výplatu') + 300))
+  const payday = `${current}-10`
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: 'veľa', vyplata: skDay(payday), akcia: 'ulozit' })
+  check('an income that is no amount is said', res.status === 422 && plain(await res.text()).includes('Sumu napíšte v eurách'))
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'ulozit' })
+  let run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
+  check('kept while open: the income and the payday', res.status === 303 && run?.payday === payday && JSON.parse(run.lines)[0]?.gross === 150000 && run.closed_at === null)
+
+  // Closed: booked, and the client told what to pay
+  res = await acc.post(base, { obdobie: current, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(`${current}-28`), akcia: 'uzavriet' })
+  check('the month that runs cannot be closed', res.headers.get('location') === `${base}?obdobie=${current}&ok=mzdy-bezi`)
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'uzavriet' })
+  run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
+  const slip = JSON.parse(run?.lines ?? '[]')[0]?.slip
+  check('closed once, with the payslip as it was worked out', res.status === 303 && run?.closed_at && slip?.gross === 150000 && slip.bonus === 10000 && slip.net === (last < '2027' ? 123451 : 123820), JSON.stringify(slip))
+  const told = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-w' ORDER BY created_at DESC, rowid DESC").first()
+  check(
+    'the client reads what to pay and where: the net wage to the employee\'s account, the insurers, the tax office with the month\'s symbol',
+    Boolean(told) && plain(told.body).includes(`Ján Mzdový: ${net} na SK31 1200 0000 1987 4263 7541`) && told.body.includes('Sociálna poisťovňa') && told.body.includes('VšZP') && told.body.includes(`VS 1100${last.slice(5, 7)}${last.slice(0, 4)}`) && plain(told.body).includes('8180 5002 5912 3456 7890'),
+    told?.body,
+  )
+  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1800', vyplata: skDay(payday), akcia: 'uzavriet' })
+  check('closed, it is not closed again nor changed', res.headers.get('location') === `${base}?obdobie=${last}&ok=mzdy-uz` && JSON.parse((await db.prepare("SELECT lines FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first())?.lines ?? '[]')[0]?.gross === 150000)
+  res = await acc.get(`/ucto/klienti/co-w/kniha/dennik?rok=${last.slice(0, 4)}&mesiac=${Number(last.slice(5, 7))}`)
+  page = plain(await res.text())
+  check('in the books: the month\'s payroll on its last day', page.includes('Mzdy za') && page.includes('521') && page.includes('336.100') && page.includes('524'))
+  res = await acc.get(`${base}/paska?obdobie=${last}&zamestnanec=${kept?.id}`)
+  check('the payslip to print', res.status === 200 && plain(await res.text()).includes('Výplatná páska'))
+
+  // A payroll payment: the Social Insurance Agency's sum goes to 336.100
+  await db.prepare("INSERT INTO accounts (id, company_id, iban, ledger) VALUES ('acc-w', 'co-w', 'SK6809000000000999999995', '221.001')").run()
+  await db
+    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, exempt, ref) VALUES ('pw-1', 'co-w', 'acc-w', ?, ?, ?, 'Sociálna poisťovňa', 'payroll', 'w1')")
+    .bind(nowS, payday <= day(0) ? payday : day(0), -(slip.socialEmployee + slip.socialEmployer))
+    .run()
+  res = await acc.get(`/ucto/klienti/co-w/kniha/platby?rok=${day(0).slice(0, 4)}`)
+  page = plain(await res.text())
+  check("a payroll payment of the Social Insurance Agency's sum is booked to 336.100", page.includes('336.100'))
+
+  // The deadlines
+  res = await acc.get('/ucto/terminy?hotove=1')
+  page = plain(await res.text())
+  check('closed payroll has separate insurer deadlines and an actual-payment review', page.includes('Mzdy za') && page.includes('Uzavreté') && page.includes('Sociálna poisťovňa') && page.includes('VšZP') && page.includes('Výplatu treba overiť'))
+  res = await acc.post('/ucto/klienti/co-w/podane', { druh: 'mz', obdobie: last })
+  check('the reports marked as filed', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-w' AND kind = 'mz'").first())?.n === 1)
+
+  // The settings
+  res = await acc.post(`${base}/nastavenie`, { den: '40', sp_iban: 'SK00', sp_vs: 'abc' })
+  check('settings that are none are said', res.status === 422)
+  res = await acc.post(`${base}/nastavenie`, { den: '10', sp_iban: 'SK31 1200 0000 1987 4263 7541', sp_vs: '1234567890', zp_iban_25: '', zp_vs_25: '4567' })
+  const settings = JSON.parse((await db.prepare("SELECT payroll FROM companies WHERE id = 'co-w'").first())?.payroll ?? '{}')
+  check('kept: the payday, the Social Insurance Agency, the insurer', res.status === 303 && settings.payday === 10 && settings.social?.vs === '1234567890' && settings.health?.['25']?.vs === '4567')
+
+  // Who may
+  res = await anna.get(base)
+  check('a client gets nothing there', res.status === 404)
+  res = await acc.get('/ucto/klienti/co-b/mzdy')
+  check('nor does an accountant at a client that is not hers', res.status === 404)
+
+  // Opened again
+  res = await acc.post(`${base}/otvorit`, { obdobie: last })
+  run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
+  const undone = await db.prepare("SELECT body FROM messages WHERE company_id = 'co-w' ORDER BY created_at DESC, rowid DESC").first()
+  check('opened again: not closed, its incomes kept, the client told', res.status === 303 && run?.closed_at === null && JSON.parse(run.lines)[0]?.gross === 150000 && undone?.body.includes('rušíme'))
+  const payrollArchive = await db.prepare("SELECT data FROM payroll_history WHERE company_id = 'co-w' AND period = ? ORDER BY id DESC LIMIT 1").bind(last).first()
+  check('reopening payroll preserves the previously closed payslip before any recalculation', JSON.parse(JSON.parse(payrollArchive.data).lines)[0].slip.net === slip.net)
+
+  // A closed snapshot is retained even beyond the navigation window and the years supported for new calculations.
+  const historical = '2025-01'
+  const historicalLines = JSON.parse(run.lines).map((line) => ({ ...line, slip: { ...line.slip, period: historical, net: 112233 } }))
+  await db.prepare("INSERT INTO payroll_runs (company_id, period, payday, lines, closed_at, closed_on, closed_by) VALUES ('co-w', ?, '2025-02-10', ?, ?, '2025-02-10', ?)").bind(historical, JSON.stringify(historicalLines), nowS, lucia.id).run()
+  res = await acc.get(`${base}?obdobie=${historical}`)
+  page = plain(await res.text())
+  check('a historical closed payroll remains in navigation with its stored net, without recalculation', res.status === 200 && page.includes(`obdobie=${historical}`) && page.includes('1 122,33 €'))
+  res = await acc.get(`${base}/paska?obdobie=${historical}&zamestnanec=${kept.id}`)
+  check('a historical payslip is downloadable outside the recent six months and supported years', res.status === 200 && plain(await res.text()).includes('1 122,33 €'))
+  res = await acc.post(`${base}/otvorit`, { obdobie: historical })
+  check('a closed historical payroll cannot be reopened into unsupported calculation rules', res.headers.get('location')?.includes('mzdy-nepodporovane') && (await db.prepare("SELECT closed_at FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(historical).first())?.closed_at === nowS)
+  await db.prepare("INSERT INTO payroll_runs (company_id, period, payday, lines) VALUES ('co-w', '2030-01', '2030-02-10', '[]')").run()
+  res = await acc.get(`${base}?obdobie=2030-01`)
+  check('an unsupported open year explains the missing rules instead of inventing a payslip', res.status === 200 && plain(await res.text()).includes('Pravidlá chýbajú'))
+  res = await acc.post(base, { obdobie: '2030-01', akcia: 'uzavriet' })
+  check('an unsupported year cannot be computed or closed by posting directly', res.headers.get('location')?.includes('mzdy-nepodporovane') && (await db.prepare("SELECT closed_at FROM payroll_runs WHERE company_id = 'co-w' AND period = '2030-01'").first())?.closed_at === null)
+
+  // Synthetic fixture: reopen the unsent source, then use the controlled retention state for cleanup.
+  await db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-w'").bind(nowS).run()
+  await db.batch([
+    db.prepare("DELETE FROM payments WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM accounts WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM employees WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_runs WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_health_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_social_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_social_inputs WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_social_relations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_health_ids WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_target_reviews WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_events WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_packages WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_targets WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_payouts WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_closures WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM filings WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM messages WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM companies WHERE id = 'co-w'"),
+  ])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // The order: a request for a company the register knows as an s. r. o. becomes a contract concluded online by a
 // director the register names (Zelený dvor s. r. o.: two directors in office, one whose office ended).
 // ---------------------------------------------------------------------------------------------------------------
+
+await checkContractTransactions(db)
 
 const zeleny = { ico: '55012345', mode: 'company', plan: 'rast', situation: 'switch', name: 'Tomáš Dvorský', email: 'tomas@zelenydvor.test', phone: '', note: '' }
 res = await post('/zacat', zeleny, { ip: '198.51.100.20' })
@@ -2964,6 +3828,53 @@ check(
 check('the order page is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 const months = [...page.matchAll(/name="start" id="start-\d" value="(\d{4}-\d{2}-01)"/g)].map((m) => m[1])
 check('six months are offered, the launch the first of them at the earliest', months.length === 6 && months[0] >= '2027-01-01', months.join(' '))
+const proposal = page.match(/name="proposal" value="([a-f0-9]{64})"/)?.[1]
+check('an unreviewed order cannot be signed', /type="submit" disabled/.test(page) && Boolean(proposal))
+const validContract = { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1', proposal }
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
+check('direct posting cannot bypass the missing expert review', res.status === 409 && (await db.prepare("SELECT status FROM orders WHERE id = ?").bind(orderRow.id).first())?.status === 'open')
+const reviewPath = `/ucto/ziadosti/${orderRow.request_id}/posudenie`
+res = await acc.get(reviewPath)
+check('an accountant cannot approve a contract intake', res.status === 404)
+res = await anna.get(reviewPath)
+check('a client cannot approve a contract intake', res.status === 404)
+res = await admin.get(reviewPath)
+const reviewHtml = await res.text()
+check('an administrator sees scope, capacity, authority and insurance checks', res.status === 200 && ['category', 'scope', 'cover', 'authority'].every((k) => reviewHtml.includes(`name="${k}"`)))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-review.html`, reviewHtml)
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-blocked.html`, page)
+const reviewFields = { proposal, decision: 'standard', plan: 'rast', evidence: 'TEST-ONLY qualification report', accountant: lucia.id, category: '1', scope: '1', cover: '1', authority: '1' }
+res = await admin.post(reviewPath, { ...reviewFields, category: '0' })
+check('standard approval without all controls is refused', res.status === 422 && !(await db.prepare('SELECT id FROM order_reviews WHERE order_id = ?').bind(orderRow.id).first()))
+res = await admin.post(reviewPath, { ...reviewFields, accountant: 'u-a' })
+check('a client cannot be named responsible accountant', res.status === 422)
+res = await admin.post(reviewPath, { ...reviewFields, proposal: 'b'.repeat(64) })
+check('an expert cannot approve stale company facts or tariffs', res.status === 409)
+res = await admin.post(reviewPath, { ...reviewFields, decision: 'bespoke' })
+check('a bespoke prospect has a recorded decision, without a standard contract', res.status === 303)
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
+check('an individual service cannot be signed as a standard package', res.status === 409)
+res = await admin.post(reviewPath, reviewFields)
+check('an admin can approve the documented standard scope', res.status === 303)
+res = await admin.post(reviewPath, { ...reviewFields, decision: 'hold' })
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
+check('the newest decision revokes an earlier approval', res.status === 409)
+res = await admin.post(reviewPath, reviewFields)
+const noRelease = await mf.getWorker('firmony-unreleased')
+const unsignedBody = new URLSearchParams(validContract).toString()
+res = await noRelease.fetch(`${site}${orderLink}`, { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', 'content-type': 'application/x-www-form-urlencoded', 'content-length': String(Buffer.byteLength(unsignedBody)) }, body: unsignedBody })
+check('a worker without legal and insurance release stays closed despite an approved order', res.status === 409, `${res.status}: ${await res.text()}`)
+res = await get(orderLink)
+page = await res.text()
+check('only the specifically reviewed plan is offered for signing', !/type="submit" disabled/.test(page) && /value="firma"[^>]*disabled/.test(page))
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-ready.html`, page)
+res = await post(orderLink, { ...validContract, proposal: 'a'.repeat(64) }, { ip: '198.51.100.21' })
+check('a stale proposal is refused before creating a company', res.status === 409 && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 0)
+res = await post(orderLink, { ...validContract, proposal: '' }, { ip: '198.51.100.21' })
+check('a missing proposal digest cannot be bypassed by a direct post', res.status === 409)
+res = await post(orderLink, { ...validContract, plan: 'firma' }, { ip: '198.51.100.21' })
+check('changing the package requires a fresh scope decision', res.status === 409)
+
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Peter Starý', agree: '1' }, { ip: '198.51.100.21' })
 check('a director whose office ended cannot conclude it', res.status === 422 && (await res.text()).includes('Vyberte, prosím, konateľa'))
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Tomáš Dvorský' }, { ip: '198.51.100.21' })
@@ -2975,8 +3886,8 @@ check('a plan that does not exist is refused', res.status === 422)
 check('nothing is created before the contract', (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 0)
 res = await post(orderLink, { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1' }, { origin: 'https://evil.example', ip: '198.51.100.21' })
 check('a contract posted from another site is refused', res.status === 403)
-res = await post(orderLink, { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1' }, { ip: '198.51.100.21' })
-const contractCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
+res = await post(orderLink, validContract, { ip: '198.51.100.21' })
+let contractCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
 check(
   'the contract is concluded and the browser is signed in',
   res.status === 303 && res.headers.get('location') === '/app?ok=zmluva' && contractCookie.startsWith('__Host-firmony='),
@@ -2986,7 +3897,7 @@ const madeCompany = await db.prepare("SELECT * FROM companies WHERE ico = '55012
 check(
   'the company is created with the contract on it',
   madeCompany?.name === 'Zelený dvor s. r. o.' &&
-    madeCompany?.plan === 'rast' &&
+    madeCompany?.plan === 'rast' && madeCompany?.accountant_id === lucia.id &&
     madeCompany?.vat_payer === 1 &&
     madeCompany?.signed_by === 'Tomáš Dvorský' &&
     madeCompany?.start_on === months[1] &&
@@ -3049,6 +3960,39 @@ check(
   'the contract in the app names who concluded it and the price of that day',
   res.status === 200 && page.includes('Tomáš Dvorský, konateľ') && page.includes('169 € mesačne bez DPH') && page.includes('Obchodné podmienky služby Firmony'),
 )
+
+if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-accepted.html`, page)
+const exactContract = await resolveContract(db, madeCompany.id, '2099-01-01')
+check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-15')
+check('the acceptance digest covers the exact stored UTF-8 bytes', exactContract.sha256 === createHash('sha256').update(exactContract.data).digest('hex'))
+check('approval and exact tariff evidence are retained with the contract', exactContract.snapshot.catalogue.payrollCents === 1500 && exactContract.snapshot.catalogue.closingCents === 24900 && exactContract.snapshot.approval.accountantId === lucia.id)
+let immutableContract = false
+try { await db.prepare("UPDATE contract_snapshots SET data = '{}' WHERE company_id = ?").bind(madeCompany.id).run() } catch { immutableContract = true }
+check('ordinary SQL cannot overwrite an accepted contract', immutableContract)
+let retainedContract = false
+try { await db.prepare('DELETE FROM contract_snapshots WHERE company_id = ?').bind(madeCompany.id).run() } catch { retainedContract = true }
+check('an active client contract cannot be deleted', retainedContract)
+let immutableReview = false
+try { await db.prepare("UPDATE order_reviews SET decision = 'hold' WHERE order_id = ?").bind(orderRow.id).run() } catch { immutableReview = true }
+check('review history cannot be overwritten', immutableReview)
+const missingContract = await resolveContract(db, 'co-b', 'unknown-release')
+check('an unknown old version never falls back to current terms', missingContract.status === 'missing' && missingContract.terms === null)
+const oldContract = await resolveContract(db, 'co-a', '2026-10-13')
+check('the legacy archive keeps the actual old liability cap and its uncertainty warning', oldContract.status === 'archive' && oldContract.terms.text.includes('dvanásťnásobku') && oldContract.notice.includes('nie je dôkaz'))
+contractCookie = (await verifyBrowser('tomas@zelenydvor.test', contractCookie)).cookie
+const acceptedExport = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { headers: { cookie: contractCookie } })
+const acceptedZip = unzip(new Uint8Array(await acceptedExport.arrayBuffer()))
+const exactJson = acceptedZip?.find((f) => f.name === 'zmluva.json')
+check('a client can export the exact accepted snapshot with a matching checksum', acceptedExport.status === 200 && exactJson && createHash('sha256').update(exactJson.data).digest('hex') === exactContract.sha256 && acceptedZip.some((f) => f.name === 'zmluva.sha256'))
+const triggerSql = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'contract_snapshots_immutable'").first()).sql
+await db.exec('DROP TRIGGER contract_snapshots_immutable')
+await db.prepare("UPDATE contract_snapshots SET data = '{}' WHERE company_id = ?").bind(madeCompany.id).run()
+res = await get('/app/zmluva', { headers: { cookie: contractCookie } })
+check('corruption shows an explicit failure instead of substituting new terms', res.status === 200 && (await res.text()).includes('Uloženú zmluvu sa nepodarilo overiť'))
+res = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { headers: { cookie: contractCookie } })
+check('a corrupt contract blocks a purportedly complete export', res.status === 409)
+await db.prepare('UPDATE contract_snapshots SET data = ? WHERE company_id = ?').bind(exactContract.data, madeCompany.id).run()
+await db.prepare(triggerSql).run()
 res = await get('/app/plna-moc', { headers: { cookie: contractCookie } })
 page = (await res.text()).replace(/\u00a0/g, ' ')
 check(
@@ -3238,6 +4182,14 @@ check(
 check('every file in it reads, every sum right', archive !== null && archive.length > 6 && archive.every((f) => f.ok), archive?.map((f) => f.name).join(' | '))
 const named = (name) => archive?.find((f) => f.name === name)
 const text = (f) => new TextDecoder().decode(f?.data ?? new Uint8Array())
+await checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, today: day(0), files, unzip, text })
+
+const validManifest = (contents) => {
+  const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
+  return m.files.length === contents.length - 1 && m.files.every((record) => { const file = contents.find((f) => f.name === record.name); return file && file.data.length === record.bytes && createHash('sha256').update(file.data).digest('hex') === record.sha256 })
+}
+check('the handover manifest verifies every file by name, byte length and SHA-256', validManifest(archive))
+check('lossless payroll, employee, filing and history data are included even in a year with no payroll', ['data/zamestnanci.json', 'data/mzdy.json', 'data/historia-miezd.json', 'data/zavierky.json', 'data/historia-zavierok.json', 'data/podania.json', 'data/dph.json', 'data/interne-doklady.json'].every((name) => named(name)))
 check(
   'it holds what it says: the lists, the messages, the contract',
   ['citajte.txt', 'doklady.csv', 'platby.csv', 'faktury.csv', 'spravy.txt', 'zmluva.txt'].every((n) => named(n)),
@@ -3310,29 +4262,150 @@ check(
   'and downloads them, never shown in the browser',
   res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && new Uint8Array(await res.arrayBuffer()).length === ledger.length,
 )
-res = await get(`/app/odovzdanie/${handed?.id}`, { headers: { cookie: (await signIn('boris@firma-b.test')).cookie } })
+const handoverForeign = as((await signIn('boris@firma-b.test')).cookie)
+res = await handoverForeign.get(`/app/odovzdanie/${handed?.id}`)
 check('nobody of another company gets them', res.status === 404)
 res = await admin.get('/ucto')
 page = await res.text()
-check('the list no longer asks for the handover once it was made', !page.includes('Odovzdanie mešká'))
+const handedClientRow = page.match(/<a class="tbl__row[^>]*href="\/ucto\/klienti\/co-a"[\s\S]*?<\/a>/)?.[0]
+check('the client row no longer asks for its handover once it was made', Boolean(handedClientRow) && !handedClientRow.includes('Odovzdanie mešká'))
+
+await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
+await checkSocialReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
+await checkPayrollMigration({ db, nowS, day })
+await checkHealthMigration({ db, nowS, day })
+await checkSocialMigration({ db, nowS, day })
+await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
 await setEnd(day(-91))
 const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").all()
+// A recapitulative statement marked as filed while the contract ran, and a closing.
+await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES ('co-a', 'sv', '2026-01', ?, ?, NULL)").bind(day(-120), nowS).run()
+await db.prepare("INSERT INTO closings (company_id, year, inputs, filed_on, filed_at) VALUES ('co-a', 2025, '{}', ?, ?)").bind(day(-120), nowS).run()
+await db.prepare("INSERT INTO employees (id, company_id, name, insurer, started_on, wage_cents, created_at) VALUES ('emp-a', 'co-a', 'Zamestnanec A', '25', '2026-01-01', 100000, ?)").bind(nowS).run()
+await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('co-a', '2026-01', '[]')").run()
+const exportedSlip = payslip({ period: '2026-01', gross: 100000, days: 31, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false })
+const exportedLine = { employeeId: 'emp-a', name: 'Zamestnanec A', insurer: '25', gross: 100000, days: 31, iban: null, health: { disabled:false, minimumExempt:false, deductionClaimed:false }, slip: exportedSlip }
+await db.prepare("UPDATE payroll_runs SET payday = '2026-02-10', lines = ?, closed_at = ?, closed_on = ?, closed_by = ? WHERE company_id = 'co-a' AND period = '2026-01'").bind(JSON.stringify([exportedLine]), nowS, day(0), lucia.id).run()
+const handoverPayrollCompany = companyOf(await db.prepare("SELECT * FROM companies WHERE id = 'co-a'").first())
+const handoverPayrollUser = await db.prepare('SELECT * FROM users WHERE id = ?').bind(lucia.id).first()
+await payrollReporting.initializeClosedRun(db, handoverPayrollCompany, '2026-01', handoverPayrollUser)
+await payrollReporting.recordPayout(db, await payrollReporting.closureOf(db, 'co-a', '2026-01'), handoverPayrollUser, { paidOn: '2026-02-10', reportPeriod: '2026-02', reference: 'TEST ONLY final settled payroll', reason: '', checked: true, revision: 0 }, day(0))
+const handoverPayrollAdmin = await db.prepare("SELECT * FROM users WHERE team = 'admin' ORDER BY id LIMIT 1").first()
+await payrollReporting.recordPayout(db, await payrollReporting.closureOf(db, 'co-a', '2026-01'), handoverPayrollAdmin, { paidOn: '2026-02-10', reportPeriod: '2026-01', reference: 'TEST ONLY final settled payroll', reason: 'TEST expert corrected synthetic reporting period', checked: true, revision: 1 }, day(0))
+const extraHandoverTarget = (await payrollReporting.reportItems(db, 'co-a')).find((r) => r.kind === 'tax' && r.period === '2026-02')
+const extraHandoverScope = await payrollGeneration.reviewScope(db, 'co-a', extraHandoverTarget.id)
+const extraHandoverReview = await payrollGeneration.retireTarget(db, files, 'co-a', extraHandoverTarget.id, handoverPayrollAdmin, { revision: extraHandoverScope.revision, reason: 'TEST no actual report was sent and all income belongs to the independently reviewed January period', reference: 'TEST final expert scope resolution', checked: true })
+check('a synthetic unsent incorrect period has retained expert resolution before final handover', extraHandoverReview.ok)
+const originalXml = '<?xml version="1.0" encoding="UTF-8"?><fixture>original archived filing</fixture>'
+const originalSnapshot = JSON.stringify({ rows: { r1050: 0 }, balance: {}, profit: {}, advancesNext: { kind: 'none', each: 0 }, files: { version: 1, declaredOn: day(0), return: { name: 'DPPO_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') }, statements: { name: 'UZ_A.xml', xml: originalXml, sha256: createHash('sha256').update(originalXml).digest('hex') } } })
+await db.prepare("UPDATE closings SET filed = ? WHERE company_id = 'co-a' AND year = 2025").bind(originalSnapshot).run()
 await tick(Date.now())
 await settle(500)
+check('ninety days and an uploaded handover PDF cannot delete unacknowledged accounting data', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first()).purged_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM employees WHERE company_id = 'co-a'").first()).n === 1)
+// Complete the current fixture's external delivery before acknowledging its final handover. These originals are
+// TEST_ONLY evidence, never responses from an authority. Old, inactive prepared packages remain in the archive.
+const pendingHandover = (await db.prepare("SELECT * FROM filing_packages WHERE company_id = 'co-a' AND status <> 'accepted'").all()).results
+for (const pkg of pendingHandover) if (await currentPackage(db, pkg)) {
+  res = await acc.upload(`/ucto/klienti/co-a/podania/${pkg.id}/stav`, { name: 'TEST-ONLY-final-receipt.xml', type: 'application/xml', bytes: new TextEncoder().encode(`<TEST_ONLY form="${pkg.kind}" reference="TEST-FINAL-${pkg.id}"/>`) }, { to: 'accepted', revision: String(pkg.revision), externalOn: day(0), reference: `TEST-FINAL-${pkg.id}`, channel: 'TEST-ONLY', checked: '1', reason: 'TEST-ONLY final handover proof' }, 'receipt')
+  check(`current ${pkg.kind} delivery is completed before its final acknowledged archive`, res.status === 303)
+}
+for (const target of (await payrollReporting.reportItems(db, 'co-a')).filter((r) => r.active)) {
+  const finalGenerationPlan = target.kind === 'tax' ? await payrollGeneration.generationPlan(db, 'co-a', target.id, day(0)) : null
+  let saved
+  if (target.kind === 'sp') {
+    let review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    if (!review.identities.length) {
+      await socialReporting.recordSocialFact(db,review,handoverPayrollUser,review.token,{employee:'emp-a',section:'identity',revision:0,value:'9010101234',mode:'',reference:'TEST final verified original identity',reason:'',checked:true})
+      review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    }
+    await socialReporting.recordSocialFact(db,review,handoverPayrollUser,review.token,{employee:'emp-a',section:'relation',revision:0,value:'000000009999',mode:'',reference:'TEST final registered legal relationship',reason:'',checked:true})
+    review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    await socialReporting.recordSocialFact(db,review,handoverPayrollUser,review.token,{employee:'emp-a',section:'hours',revision:0,value:'160',mode:'known',reference:'TEST final verified analytical hours',reason:'',checked:true})
+    review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    saved=await socialReporting.generateSocial(db,files,review,handoverPayrollUser,review.token,{name:handoverPayrollCompany.name,payer:'6333333300',iban:'SK3112000000198742637541',firstName:'TEST',lastName:'Reviewer',phone:'00421900000000',email:'test@example.test',preparedBy:'TEST final social reviewer',declaredOn:day(0),kind:'R',reason:'',reference:'TEST final complete ordinary social scope',checked:true},day(0))
+  } else if (target.kind === 'health25') {
+    await healthReporting.recordHealthIdentity(db,'co-a',target.id,'emp-a',handoverPayrollUser,{revision:0,identifier:'9010101234',reference:'TEST final verified employee identity',reason:'',checked:true})
+    const review=await healthReporting.healthPlan(db,'co-a',target.id,day(0))
+    saved=await healthReporting.generateHealth(db,files,review,handoverPayrollUser,review.token,{name:handoverPayrollCompany.name,dic:handoverPayrollCompany.dic,payer:'6333333300',branch:'2500',iban:'SK3112000000198742637541',phone:'',email:'',sendOn:day(0),batch:'1',kind:'N',reason:'',reference:'TEST final complete health source review',checked:true},day(0))
+  } else saved = finalGenerationPlan ? await payrollGeneration.generatePrehlad(db, files, finalGenerationPlan, handoverPayrollUser, finalGenerationPlan.token, { dic: handoverPayrollCompany.dic, name: handoverPayrollCompany.name, street: 'TEST street', number: '12', postal: '04001', city: 'Košice', preparedBy: 'TEST final handover reviewer', phone: '', email: '', declaredOn: day(0), kind: 'R', foundOn: '', representation: 'company', reason: '', reference: 'TEST final complete monthly scope review', checked: true }, day(0)) : await payrollReporting.saveReport(db, files, target, handoverPayrollUser, { revision: target.revision, variant: 'TEST ONLY final report', checked: true, reason: '', file: { name: 'TEST_ONLY-final-payroll.xml', bytes: new TextEncoder().encode(`<TEST_ONLY recipient="${target.kind}"/>`) } })
+  const result = saved.ok && await payrollReporting.changeReportDelivery(db, files, await payrollReporting.reportPackage(db, 'co-a', saved.id), handoverPayrollUser, { to: 'accepted', revision: 0, externalOn: day(0), reference: `TEST-PAYROLL-FINAL-${target.kind}`, channel: 'TEST ONLY', checked: true, reason: '', receipt: { name: 'TEST_ONLY-final-receipt.xml', bytes: new TextEncoder().encode(`<TEST_ONLY receipt="${target.kind}"/>`) } }, day(0))
+  check(`current payroll ${target.kind} evidence completes before final acknowledged handover`, result?.ok)
+}
+const handoverYears = await exportYears(db, 'co-a')
+check('a closing-only year is offered for export', handoverYears.includes('2025'))
+const interrupted = await beginExport(db, 'co-a', '2026', 'u-a')
+const refusedIncomplete = await confirmExport(db, 'co-a', interrupted.id)
+check('an incomplete stream cannot be acknowledged even by calling the storage function directly', refusedIncomplete.meta.changes === 0)
+await db.prepare("UPDATE employees SET wage_cents = 100001 WHERE id = 'emp-a'").run()
+const refusedChanged = await completeExport(db, interrupted.id)
+check('a dataset changing during export cannot be marked complete', refusedChanged.meta.changes === 0)
+await db.prepare("UPDATE employees SET wage_cents = 100000 WHERE id = 'emp-a'").run()
+let received = []
+for (const y of handoverYears) {
+  res = await anna.get(`/app/export?rok=${y}`)
+  const contents = unzip(new Uint8Array(await res.arrayBuffer()))
+  check(`the complete archive of ${y} verifies before acknowledgement`, res.status === 200 && validManifest(contents))
+  const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
+  received.push(m.receipt)
+  if (y === '2026') check('closed payslips are exported from the stored snapshot with every employee', JSON.parse(text(contents.find((f) => f.name === 'mzdy/2026-01/uzavrete-pasky.json')))[0].slip.net === exportedSlip.net && JSON.parse(text(contents.find((f) => f.name === 'data/zamestnanci.json')))[0].name === 'Zamestnanec A')
+  if (y === '2025') check('the archive contains the original filed XML without recalculation', text(contents.find((f) => f.name === 'podania/2025/priznanie.xml')) === originalXml && JSON.parse(text(contents.find((f) => f.name === 'data/historia-zavierok.json'))).length > 0)
+}
+res = await anna.post('/app/export/potvrdit', { export: received[0] })
+check('acknowledgement requires the explicit received-content checkbox', res.status === 422)
+const borisExporter = as((await signIn('boris@firma-b.test')).cookie)
+res = await borisExporter.post('/app/export/potvrdit', { export: received[0], potvrdit: '1' })
+check('one company cannot acknowledge another company\'s archive', res.status === 409)
+res = await anna.post('/app/export/potvrdit', { export: received[0], potvrdit: '1' })
+check('the owner can acknowledge a fully completed current archive', res.status === 303)
+await tick(Date.now()); await settle(100)
+check('acknowledging only one of several years still blocks deletion', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first()).purged_at === null)
+for (const id of received.slice(1)) await anna.post('/app/export/potvrdit', { export: id, potvrdit: '1' })
+await db.prepare("UPDATE employees SET wage_cents = 110000 WHERE id = 'emp-a'").run()
+await tick(Date.now()); await settle(100)
+check('a change after acknowledged exports invalidates handover and prevents deletion', (await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-a'").first()).purged_at === null && await confirmedRevision(db, 'co-a', handoverYears) === null)
+res = await anna.post('/app/export/potvrdit', { export: received[0], potvrdit: '1' })
+check('a stale acknowledgement is refused', res.status === 409)
+for (const y of handoverYears) {
+  res = await anna.get(`/app/export?rok=${y}`)
+  const contents = unzip(new Uint8Array(await res.arrayBuffer()))
+  const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
+  await anna.post('/app/export/potvrdit', { export: m.receipt, potvrdit: '1' })
+}
+await tick(Date.now()); await settle(500)
+const stagedPurge = await db.prepare("SELECT purge_started_at, purge_delete_started_at, purged_at FROM companies WHERE id = 'co-a'").first()
+check('the schedule observes the full intervention window before deleting acknowledged data', stagedPurge.purge_started_at !== null && stagedPurge.purge_delete_started_at === null && stagedPurge.purged_at === null)
+await db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-a'").bind(nowS - 86401).run()
+await tick(Date.now()); await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
 check("the schedule deletes the company's data after its ninety days", typeof purgedRow?.purged_at === 'number' && typeof purgedRow.closed_at === 'number' && purgedRow.name === 'Firma A s. r. o.')
+let frozenWrite = false
+try { await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('co-a', '2026-02', '[]')").run() } catch { frozenWrite = true }
+check('a completed purge cannot receive fresh accounting writes after its handover was finalized', frozenWrite)
 const leftover = await db
   .prepare(
     `SELECT (SELECT COUNT(*) FROM documents WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payments WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM messages WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM invoices WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM accounts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM members WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM bank_links WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_files WHERE company_id = 'co-a' AND kind <> 'poa')
        + (SELECT COUNT(*) FROM vat_returns WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM ledger_entries WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM companies WHERE id = 'co-a' AND tax_account IS NOT NULL)
-       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') AS n`,
+       + (SELECT COUNT(*) FROM statements WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filings WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM closings WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM employees WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_runs WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM closing_history WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_history WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM filing_history WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM filing_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filing_events WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_target_reviews WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_health_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_health_ids WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_social_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_social_inputs WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_social_relations WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_closures WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_payouts WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_targets WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_events WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,
   )
   .first()
-check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
+check('documents, payments, messages, invoices, accounts, people, the handover, the VAT filed, the filings marked, the closings, the employees and their payroll, the books and the statements are gone', leftover?.n === 0, JSON.stringify(leftover))
 const objects = await files.list({ prefix: 'companies/co-a/' })
 check(
   'and so are their files, all but the power of attorney',

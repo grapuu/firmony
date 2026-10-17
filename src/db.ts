@@ -1,6 +1,15 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
+import { PERIOD_SCHEMA } from './app/period-schema'
+import { CONTRACT_SCHEMA } from './contract-schema'
+import { SECURITY_SCHEMA } from './security/schema'
+import { INCIDENT_SCHEMA } from './incidents/schema'
+import { FILING_SCHEMA } from './filings/schema'
+import { PAYROLL_REPORTING_SCHEMA } from './payroll-reporting/schema'
+import { PAYROLL_REVIEW_SCHEMA } from './payroll-reporting/review-schema'
+import { PAYROLL_HEALTH_SCHEMA } from './payroll-reporting/health-schema'
+import { PAYROLL_SOCIAL_SCHEMA } from './payroll-reporting/social-schema'
 
 export const now = (): number => Math.floor(Date.now() / 1000)
 
@@ -470,6 +479,187 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE bank_links ADD COLUMN token TEXT',
     'ALTER TABLE companies ADD COLUMN bank_setup TEXT',
   ],
+  // Every client's deadlines on one screen (src/team/deadlines.ts). What the app does not file itself yet is marked
+  // here as filed once the accountant filed it elsewhere, so that its deadline does not stay open: the recapitulative
+  // statement (kind 'sv', the period of the VAT return it belongs to, or the quarter of a person registered under § 7a)
+  // and the annual closing with the corporate income tax return (kind 'closing', the year). One row a filing.
+  [
+    `CREATE TABLE IF NOT EXISTS filings (
+      company_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      period TEXT NOT NULL,
+      filed_on TEXT NOT NULL,
+      filed_at INTEGER NOT NULL,
+      filed_by TEXT,
+      PRIMARY KEY (company_id, kind, period)
+    )`,
+  ],
+  // The annual closing and the corporate income tax return (src/app/closing.ts, 14 October 2026): one row a company's
+  // year, with what the accountant set for it (closing-form.ts), the deadline a notice moved (§ 49(3)), the internal
+  // document that books the tax, and once filed, what was filed and what the client was told to pay by when. The mark of
+  // a closing filed moves here from `filings` (step 6), which keeps the recapitulative statement.
+  [
+    `CREATE TABLE IF NOT EXISTS closings (
+      company_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      inputs TEXT,
+      saved_at INTEGER,
+      saved_by TEXT,
+      extended_to TEXT,
+      tax_entry TEXT,
+      filed_on TEXT,
+      filed_at INTEGER,
+      filed_by TEXT,
+      filed TEXT,
+      pay_cents INTEGER,
+      due_on TEXT,
+      PRIMARY KEY (company_id, year)
+    )`,
+    "INSERT OR IGNORE INTO closings (company_id, year, filed_on, filed_at, filed_by) SELECT company_id, CAST(period AS INTEGER), filed_on, filed_at, filed_by FROM filings WHERE kind = 'closing'",
+    "DELETE FROM filings WHERE kind = 'closing'",
+  ],
+  // Payroll (src/app/payroll.ts, 14 October 2026): a company's employees in an employment relationship, each month's
+  // run (the incomes typed while it is open, the payslips as they were once closed: what the books, the client's
+  // message and the deadlines read), and the company's payroll settings (the payday, the accounts and payer numbers at
+  // the Social Insurance Agency and the health insurers).
+  [
+    `CREATE TABLE IF NOT EXISTS employees (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      born_on TEXT,
+      insurer TEXT NOT NULL,
+      started_on TEXT NOT NULL,
+      ended_on TEXT,
+      wage_cents INTEGER NOT NULL,
+      declaration INTEGER NOT NULL DEFAULT 0,
+      disabled INTEGER NOT NULL DEFAULT 0,
+      health_deduction INTEGER NOT NULL DEFAULT 0,
+      health_exempt INTEGER NOT NULL DEFAULT 0,
+      children TEXT NOT NULL DEFAULT '[]',
+      iban TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER
+    )`,
+    'CREATE INDEX IF NOT EXISTS employees_company ON employees (company_id)',
+    `CREATE TABLE IF NOT EXISTS payroll_runs (
+      company_id TEXT NOT NULL,
+      period TEXT NOT NULL,
+      payday TEXT,
+      lines TEXT NOT NULL DEFAULT '[]',
+      saved_at INTEGER,
+      saved_by TEXT,
+      closed_at INTEGER,
+      closed_on TEXT,
+      closed_by TEXT,
+      PRIMARY KEY (company_id, period)
+    )`,
+    'ALTER TABLE companies ADD COLUMN payroll TEXT',
+  ],
+  // eKasa receipts (src/app/ekasa.ts, 14 October 2026): the receipt's identifier and the seller's verification code
+  // as the reader wrote them, which tell one receipt from another.
+  ['ALTER TABLE documents ADD COLUMN ekasa_uid TEXT', 'ALTER TABLE documents ADD COLUMN ekasa_okp TEXT'],
+  // The recapitulative statement (src/app/vat-summary.ts, 14 October 2026): what a statement marked as filed held
+  // (its rows, the rows its file sent, and the filing it replaced), so that a change after it asks for a correction.
+  ['ALTER TABLE filings ADD COLUMN data TEXT'],
+  // Compare-and-swap for a closing's writes; keep the original values when a filed closing or a closed payroll is reopened.
+  [
+    'ALTER TABLE closings ADD COLUMN revision INTEGER NOT NULL DEFAULT 0',
+    `CREATE TABLE closing_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, company_id TEXT NOT NULL, year INTEGER NOT NULL,
+      archived_at INTEGER NOT NULL, data TEXT NOT NULL
+    )`,
+    'CREATE INDEX closing_history_company ON closing_history (company_id, year)',
+    `CREATE TRIGGER closing_history_update AFTER UPDATE ON closings
+      WHEN OLD.inputs IS NOT NULL OR OLD.tax_entry IS NOT NULL OR OLD.filed_at IS NOT NULL
+      BEGIN INSERT INTO closing_history (company_id, year, archived_at, data)
+        VALUES (OLD.company_id, OLD.year, unixepoch(), json_object(
+          'inputs', OLD.inputs, 'saved_at', OLD.saved_at, 'saved_by', OLD.saved_by, 'extended_to', OLD.extended_to,
+          'tax_entry', OLD.tax_entry, 'filed_on', OLD.filed_on, 'filed_at', OLD.filed_at, 'filed_by', OLD.filed_by,
+          'filed', OLD.filed, 'pay_cents', OLD.pay_cents, 'due_on', OLD.due_on, 'revision', OLD.revision)); END`,
+    `CREATE TABLE payroll_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, company_id TEXT NOT NULL, period TEXT NOT NULL,
+      archived_at INTEGER NOT NULL, data TEXT NOT NULL
+    )`,
+    'CREATE INDEX payroll_history_company ON payroll_history (company_id, period)',
+    `CREATE TRIGGER payroll_history_update AFTER UPDATE ON payroll_runs
+      WHEN OLD.closed_at IS NOT NULL AND (OLD.closed_at IS NOT NEW.closed_at OR OLD.lines IS NOT NEW.lines)
+      BEGIN INSERT INTO payroll_history (company_id, period, archived_at, data)
+        VALUES (OLD.company_id, OLD.period, unixepoch(), json_object(
+          'payday', OLD.payday, 'lines', OLD.lines, 'saved_at', OLD.saved_at, 'saved_by', OLD.saved_by,
+          'closed_at', OLD.closed_at, 'closed_on', OLD.closed_on, 'closed_by', OLD.closed_by)); END`,
+  ],
+  // A completed export is acknowledged by the owner. Any subsequent accounting change invalidates that handover.
+  [
+    'ALTER TABLE companies ADD COLUMN purge_started_at INTEGER',
+    'ALTER TABLE companies ADD COLUMN purge_checked_at INTEGER',
+    'CREATE TABLE company_data_revisions (company_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0)',
+    `CREATE TABLE export_receipts (
+      id TEXT PRIMARY KEY, company_id TEXT NOT NULL, year TEXT NOT NULL, revision INTEGER NOT NULL,
+      user_id TEXT NOT NULL, created_at INTEGER NOT NULL, completed_at INTEGER, confirmed_at INTEGER
+    )`,
+    'CREATE INDEX export_receipts_company ON export_receipts (company_id, revision, year)',
+    ...['documents', 'payments', 'links', 'accounts', 'bank_links', 'statements', 'invoices', 'messages', 'supplier_rules', 'vat_returns', 'filings', 'closings', 'closing_history', 'employees', 'payroll_runs', 'payroll_history', 'ledger_entries', 'company_files'].flatMap((table) => [
+      ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+        const row = action === 'DELETE' ? 'OLD' : 'NEW'
+        return `CREATE TRIGGER ${table}_data_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+      }),
+      ...['INSERT', 'UPDATE'].map((action) => `CREATE TRIGGER ${table}_purging_${action.toLowerCase()} BEFORE ${action} ON ${table}
+        WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+        BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
+    ]),
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER invoice_lines_data_${action.toLowerCase()} AFTER ${action} ON invoice_lines BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) SELECT company_id, 1 FROM invoices WHERE id = ${row}.invoice_id
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map((action) => `CREATE TRIGGER invoice_lines_purging_${action.toLowerCase()} BEFORE ${action} ON invoice_lines
+      WHEN EXISTS (SELECT 1 FROM invoices i JOIN companies c ON c.id = i.company_id WHERE i.id = NEW.invoice_id AND c.purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
+    `CREATE TRIGGER companies_data_update AFTER UPDATE OF name, ico, dic, icdph, address, register_line, payroll, tax_account, start_on, ends_on, vat_payer, vat_7a, vat_quarterly, vat_since, tax_office, vat_carry ON companies BEGIN
+      INSERT INTO company_data_revisions (company_id, revision) VALUES (NEW.id, 1)
+      ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+    `CREATE TRIGGER companies_purging_update BEFORE UPDATE OF name, ico, dic, icdph, address, register_line, payroll, tax_account, start_on, ends_on, vat_payer, vat_7a, vat_quarterly, vat_since, tax_office, vat_carry ON companies
+      WHEN OLD.purge_started_at IS NOT NULL AND NEW.purged_at IS NULL BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+  ],
+  // SV originals survive corrections, cancellation of a mark and reclassification from a quarter to its last month.
+  [
+    `CREATE TABLE filing_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, company_id TEXT NOT NULL, kind TEXT NOT NULL, period TEXT NOT NULL,
+      archived_at INTEGER NOT NULL, data TEXT NOT NULL
+    )`,
+    'CREATE INDEX filing_history_company ON filing_history (company_id, kind, period)',
+    `CREATE TRIGGER filing_history_update AFTER UPDATE ON filings WHEN OLD.kind = 'sv' AND OLD.data IS NOT NEW.data BEGIN
+      INSERT INTO filing_history (company_id, kind, period, archived_at, data) VALUES (OLD.company_id, OLD.kind, OLD.period, unixepoch(),
+        json_object('filed_on', OLD.filed_on, 'filed_at', OLD.filed_at, 'filed_by', OLD.filed_by, 'data', OLD.data)); END`,
+    `CREATE TRIGGER filing_history_delete BEFORE DELETE ON filings WHEN OLD.kind = 'sv'
+      AND NOT EXISTS (SELECT 1 FROM companies WHERE id = OLD.company_id AND purge_started_at IS NOT NULL) BEGIN
+      INSERT INTO filing_history (company_id, kind, period, archived_at, data) VALUES (OLD.company_id, OLD.kind, OLD.period, unixepoch(),
+        json_object('filed_on', OLD.filed_on, 'filed_at', OLD.filed_at, 'filed_by', OLD.filed_by, 'data', OLD.data)); END`,
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER filing_history_data_${action.toLowerCase()} AFTER ${action} ON filing_history BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map((action) => `CREATE TRIGGER filing_history_purging_${action.toLowerCase()} BEFORE ${action} ON filing_history
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
+  ],
+  // A continuous period lock, its transition history and transactional guards on accounting sources.
+  PERIOD_SCHEMA,
+  CONTRACT_SCHEMA,
+  SECURITY_SCHEMA,
+  INCIDENT_SCHEMA,
+  FILING_SCHEMA,
+  PAYROLL_REPORTING_SCHEMA,
+  PAYROLL_REVIEW_SCHEMA,
+  PAYROLL_HEALTH_SCHEMA,
+  PAYROLL_SOCIAL_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

@@ -1,0 +1,2 @@
+# Official schemas are pinned byte for byte, including original line endings and whitespace.
+test/xsd/*.xsd -text -whitespace

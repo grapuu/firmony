@@ -316,7 +316,7 @@ export async function getInvoice(db: D1Database, company: string, id: string): P
 /** The invoices a company issued in a year, by their number (drafts are no invoices). */
 export async function issuedInYear(db: D1Database, company: string, year: string): Promise<StoredInvoice[]> {
   const rows = await db
-    .prepare(`SELECT ${INVOICE_COLUMNS} FROM invoices i LEFT JOIN users u ON u.id = i.created_by WHERE i.company_id = ? AND i.status = 'issued' AND substr(i.issued_on, 1, 4) = ? ORDER BY i.seq, i.created_at LIMIT 20000`)
+    .prepare(`SELECT ${INVOICE_COLUMNS} FROM invoices i LEFT JOIN users u ON u.id = i.created_by WHERE i.company_id = ? AND i.status = 'issued' AND substr(i.issued_on, 1, 4) = ? ORDER BY i.seq, i.created_at`)
     .bind(company, year)
     .all<Row>()
   return rows.results.map(invoiceOf)

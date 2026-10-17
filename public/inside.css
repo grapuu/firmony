@@ -464,6 +464,27 @@
   justify-content: center;
 }
 
+.support-row .row__end {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  max-width: 21rem;
+}
+
+.support-row .row__end .pill {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.support-row .row__sub {
+  overflow-wrap: anywhere;
+}
+
 /* Prehľad --------------------------------------------------------------------------------------------------- */
 
 .over {
@@ -2871,6 +2892,19 @@ select.field__input {
   color: var(--soft);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* An eKasa receipt's code under its name, typed whole: it fills its line and wraps anywhere, never at its dash alone. */
+.book__code {
+  display: grid;
+  min-width: 0;
+  color: var(--soft);
+}
+
+.book__codevalue {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
 }
 
 .book__file {
@@ -6270,3 +6304,471 @@ select.field__input {
     padding-left: 8px;
   }
 }
+
+/* Termíny (the team): every client's deadlines in groups by how soon they come. A row is the day, what it is with the
+   client under it, where it stands, and the mark for what the app does not file itself yet. Overdue is the one red
+   thing on the screen. */
+.count--red {
+  background: var(--red-soft);
+  color: var(--red-ink);
+}
+
+.fig__value--late,
+.date__num--late {
+  color: var(--red-ink);
+}
+
+.dues__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-bottom: 26px;
+}
+
+.dues__bar .filters {
+  margin-bottom: 0;
+}
+
+.dues__done {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.dues__who {
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
+
+.dues__who .field__input {
+  flex: 0 1 220px;
+}
+
+.dues {
+  margin-bottom: 18px;
+}
+
+.dues__list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.due {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.due__text {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.due__what {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.due__what:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.due__sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.due__late {
+  color: var(--red-ink);
+  font-weight: 600;
+}
+
+.due__act:empty {
+  display: none;
+}
+
+.due--done .due__what,
+.due--done .date__num {
+  color: var(--soft);
+}
+
+/* In the side column of a client's page the state and the mark go under the text, as on a phone. */
+.dues__list--card {
+  margin-bottom: 14px;
+}
+
+.dues__list--card .due {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.dues__list--card .due > .pill,
+.dues__list--card .due > .due__act {
+  grid-column: 2;
+  justify-self: start;
+}
+
+@media (max-width: 700px) {
+  .due {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .due > .pill,
+  .due > .due__act {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .dues__who {
+    margin-left: 0;
+  }
+}
+
+/* The closing page (views/closing.tsx) ------------------------------------------------------------------------ */
+
+/* Buttons side by side at the foot of a card. */
+.info__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vrows__sum td {
+  font-weight: 700;
+}
+
+/* The statements: a caption over each table, the sums in bold (ltable__syn). */
+.cstate {
+  margin-top: 18px;
+}
+
+.cstate__title {
+  padding-bottom: 10px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* The adjustments: a section for each table of the return, each row its number, what it is and its amount. */
+.cform {
+  display: grid;
+  gap: 26px;
+}
+
+.cform__section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cform__title {
+  padding: 0 0 2px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.crow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 156px;
+  align-items: center;
+  gap: 6px 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.crow__no {
+  color: var(--blue);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.crow__label {
+  color: var(--ink);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.crow__books {
+  display: block;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.crow .field__input,
+.cpast .field__input {
+  min-height: 42px;
+  font-size: 1rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.crow .field__error {
+  grid-column: 2 / -1;
+}
+
+/* Losses and minimum taxes of years before: the year, the amount, what was used of it, row by row. */
+.cpast {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 12px;
+}
+
+.cpast__head {
+  color: var(--dim);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.cpast__cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .crow {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .crow .field__input {
+    grid-column: 2;
+  }
+
+  .cpast {
+    grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* A part of the adjustments seldom needed, folded: its title is the switch. */
+.cform__more {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.cform__more > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.cform__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cform__more > summary::after {
+  content: '+';
+  flex: none;
+  color: var(--blue);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.cform__more[open] > summary::after {
+  content: '−';
+}
+
+.cform__more > .cform__section {
+  margin-top: 12px;
+}
+
+/* Payroll (views/payroll.tsx) ---------------------------------------------------------------------------------- */
+
+/* The month's card and its form (both grid items) shrink with the column; the table scrolls inside it (lscroll). */
+.wmonth,
+.wmonth > form {
+  min-width: 0;
+}
+
+.wtable {
+  min-width: 700px;
+}
+
+.wtable__name {
+  display: block;
+  font-weight: 600;
+}
+
+.wtable__sub {
+  display: block;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.wtable .field__input.wtable__input {
+  width: 128px;
+  min-height: 40px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wform {
+  margin-top: 14px;
+}
+
+/* A payslip's lines: the sums strong, each kind of insurance indented under its sum. */
+.wslip {
+  margin: 8px 0;
+}
+
+.kv .kv__sub dt {
+  padding-left: 14px;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.kv .kv__sub dd {
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.kv .kv__strong dt,
+.kv .kv__strong dd {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* What to pay: each payee, the sum, by when, where. */
+.wpays {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wpay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.wpay__who {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.wpay__due {
+  color: var(--dim);
+  font-size: 0.875rem;
+}
+
+.wpay__acct {
+  flex-basis: 100%;
+  color: var(--soft);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.wpay__list {
+  display: grid;
+  flex-basis: 100%;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wpay__list .wpay__acct {
+  display: block;
+}
+
+/* The children of an employee: a name and a day, side by side. */
+.wkids {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px 16px;
+}
+
+.wsheet {
+  max-width: 720px;
+}
+
+@media print {
+  .wsheet__print {
+    display: none;
+  }
+}
+
+/* Period controls and the permanent transition history. */
+.period-forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; }
+.period-forms > .info { min-width: 0; }
+.period-form { display: grid; gap: 10px; margin-top: 18px; }
+.period-form .field__input { min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; }
+.period-form .btn { justify-self: start; white-space: normal; }
+.period-history { margin: 18px 0; padding-left: 24px; }
+.period-history li { padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.period-history p { margin: 6px 0 0; }
+
+#stav-uzamknutia .info__source { overflow-wrap: anywhere; }
+
+/* The acceptance digest must wrap even on narrow screens and in print. */
+.contract__digest { overflow-wrap: anywhere; }
+
+.contract-status { margin-bottom: 16px; }
+.contract-status--saved { background: var(--blue-soft); color: var(--blue); }
+
+@media screen and (max-width: 600px) {
+  .contract__points { padding: 14px; }
+  .contract .kv div { flex-direction: column; gap: 4px; }
+  .contract .kv dd { max-width: none; text-align: left; }
+}
+
+/* Account security uses native passkeys; controls remain readable on small devices. */
+.security { width: 100%; max-width: 720px; margin-inline: auto; }
+.security .door__card { display: grid; gap: 20px; }
+.security__setup summary { cursor: pointer; color: var(--blue); font-weight: 600; }
+.security__setup .door__form { margin-top: 16px; }
+.security__keys ul { list-style: none; padding: 0; }
+.security__keys li { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.security__keys .security__grant { display: grid; }
+.security__code { display: block; overflow-wrap: anywhere; margin: 12px 0; padding: 12px; background: white; border-radius: 8px; }
+
+.incident-list { display: grid; gap: 14px; margin-top: 24px; }
+.incident-card { display: grid; gap: 10px; overflow-wrap: anywhere; }
+.incident-new summary { cursor: pointer; color: var(--blue); font-weight: 600; }
+.incident-new .details { margin-top: 20px; }
+.incident-history { padding-left: 20px; display: grid; gap: 16px; overflow-wrap: anywhere; }
+
+.incident-head { overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .info .incident-facts > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .info .incident-facts dd { max-width: 100%; margin-left: 0; text-align: left; }
+}
+
+/* Delivery work: long references wrap without widening the mobile page. */
+.filing-work { display: grid; gap: 20px; }
+.filing-work > p { margin: 0; }
+.filing-work .info .kv dt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.filing-work .info .kv dd { max-width: 62%; }
+.filing-card, .filing-document, .filing-history, .filing-form { overflow-wrap: anywhere; }
+.filing-card .pill { white-space: normal; }
+.filing-form input, .filing-form select, .filing-form textarea { min-width: 0; max-width: 100%; }
+.filing-history { display: grid; gap: 1.25rem; }
+.filing-event { border-top: 1px solid var(--line, #e7e9ee); padding-top: 1rem; }
+.filing-event h3 { font-size: 1rem; }
+.filing-pagination { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }

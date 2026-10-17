@@ -2,7 +2,8 @@
 // Claude's (Anthropic's API, READER in config.ts); an e-invoice is read by our own code (xml.ts). Without the key,
 // or when the reader cannot say, the document goes to the accountant, and the client is told only that.
 import { READER } from '../config'
-import { CATEGORIES, CATEGORY_IDS, isCategory } from './booking'
+import { CATEGORIES, CATEGORY_IDS, dayOfText, isCategory } from './booking'
+import { ekasaOkp, ekasaUid } from './ekasa'
 import { toCents, type Reading } from './xml'
 import type { DocKind } from './match'
 
@@ -64,6 +65,14 @@ const TOOL = {
       datum_dodania: { type: 'string', description: 'Dátum dodania tovaru alebo služby, ak je na doklade uvedený osobitne. RRRR-MM-DD' },
       sidlo_v_zahranici: { type: 'boolean', description: 'Či druhá strana sídli mimo Slovenska.' },
       opravuje_fakturu: { type: 'string', description: 'Ak je to dobropis alebo opravná faktúra: číslo faktúry, ktorú opravuje.' },
+      ekasa_uid: {
+        type: 'string',
+        description: 'Pri bločku z eKasy: unikátny identifikátor dokladu (UID), písmeno, pomlčka a 32 znakov 0 až 9 a A až F, napríklad O-7DBCDA8A56EE426DBCDA8A56EE426D1A. Prepíš ho znak po znaku; off-line doklad ho nemá.',
+      },
+      ekasa_okp: {
+        type: 'string',
+        description: 'Pri bločku z eKasy: overovací kód (OKP), päť skupín po 8 znakov 0 až 9 a A až F oddelených pomlčkou. Prepíš ho znak po znaku.',
+      },
       dph_podla_sadzieb: {
         type: 'array',
         description: 'Základ dane a DPH pre každú sadzbu, ako sú na doklade rozpísané. Pri dobropise so znamienkom mínus.',
@@ -87,7 +96,7 @@ const KINDS: Record<string, DocKind> = { blocek: 'receipt', faktura_prijata: 'in
 const clean = (value: unknown, max = 160): string | null => (typeof value === 'string' && value.trim() !== '' ? value.trim().slice(0, max) : null)
 const isoDay = (value: unknown): string | null => {
   const text = clean(value, 20)
-  return text && /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(text)) ? text : null
+  return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? dayOfText(text) || null : null
 }
 
 /** What the reader wrote, checked field by field: anything that is not what it should be is left out. */
@@ -100,7 +109,7 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
   const currency = clean(input.mena, 10)?.toUpperCase() ?? null
   const vatId = clean(input.ic_dph_druhej_strany, 20)?.replace(/[\s.-]/g, '').toUpperCase() ?? null
   return {
-    kind: KINDS[String(input.typ)] ?? 'other',
+    kind: typeof input.typ === 'string' && Object.hasOwn(KINDS, input.typ) ? KINDS[input.typ] ?? 'other' : 'other',
     party: clean(input.druha_strana),
     partyIco: ico && /^\d{6,8}$/.test(ico) ? ico.padStart(8, '0') : null,
     partyIban: iban && /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(iban) ? iban : null,
@@ -117,6 +126,8 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
     foreign: typeof input.sidlo_v_zahranici === 'boolean' ? input.sidlo_v_zahranici : null,
     corrects: clean(input.opravuje_fakturu, 40),
     vatLines: ratesOf(input.dph_podla_sadzieb),
+    ekasaUid: ekasaUid(input.ekasa_uid),
+    ekasaOkp: ekasaOkp(input.ekasa_okp),
   }
 }
 
@@ -171,8 +182,8 @@ export async function readDocument(key: string | undefined, file: { kind: FileKi
   }
   if (!answer.ok) return { manual: `status ${answer.status}` }
   const body = (await answer.json().catch(() => null)) as { content?: { type: string; name?: string; input?: Record<string, unknown> }[] } | null
-  const used = body?.content?.find((part) => part.type === 'tool_use' && part.name === TOOL.name)
-  if (!used?.input) return { manual: 'not an answer' }
+  const used = Array.isArray(body?.content) ? body.content.find((part) => part?.type === 'tool_use' && part.name === TOOL.name) : null
+  if (!used?.input || typeof used.input !== 'object' || Array.isArray(used.input)) return { manual: 'not an answer' }
   const reading = readingFrom(used.input)
   return reading ? { reading, by: READER.model } : { manual: 'not a document' }
 }

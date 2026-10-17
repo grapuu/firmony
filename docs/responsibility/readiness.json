@@ -1,0 +1,64 @@
+{
+  "asOf": "2026-10-15",
+  "decision": "NO-GO",
+  "scope": "activation of guarantees and production contract signing",
+  "gates": [
+    {
+      "id": "legal",
+      "requirement": "Advokátske schválenie celého kontraktu a náhrady sankcií",
+      "status": "UNKNOWN",
+      "owner": null,
+      "evidence": null,
+      "approvedAt": null
+    },
+    {
+      "id": "insurance",
+      "requirement": "Záväzné krytie presného rozsahu vrátane garancií a termínov",
+      "status": "UNKNOWN",
+      "owner": null,
+      "evidence": null,
+      "approvedAt": null
+    },
+    {
+      "id": "capacity",
+      "requirement": "Vlastná likvidita a klientsky aj portfóliový stresový scenár",
+      "status": "UNKNOWN",
+      "owner": null,
+      "evidence": null,
+      "approvedAt": null
+    },
+    {
+      "id": "experts",
+      "requirement": "Odborný garant, zastupiteľnosť, oprávnenia a kapacita",
+      "status": "UNKNOWN",
+      "owner": null,
+      "evidence": null,
+      "approvedAt": null
+    },
+    {
+      "id": "claims-retention",
+      "requirement": "Register škôd a preukázané zastavenie výmazu pri nároku",
+      "status": "UNKNOWN",
+      "owner": null,
+      "evidence": null,
+      "approvedAt": null
+    },
+    {
+      "id": "operations",
+      "requirement": "Obnova, bezpečnosť, dôkazy podaní a núdzové postupy",
+      "status": "UNKNOWN",
+      "owner": null,
+      "evidence": null,
+      "approvedAt": null
+    },
+    {
+      "id": "enterprise",
+      "requirement": "Individuálna kvalifikácia väčších príležitostí",
+      "status": "UNKNOWN",
+      "owner": null,
+      "evidence": null,
+      "approvedAt": null
+    }
+  ],
+  "codeChanges": "Implemented and subject to commit-specific CI; passing code checks does not approve these business gates."
+}

@@ -2,10 +2,14 @@
 // same "not found" as for anything that does not exist. Every company, document and payment is checked against
 // what the user may see (an accountant her own clients, an administrator everybody).
 import { Hono, type Context } from 'hono'
+import { filingFile, packageOf, prepareFiling } from '../filings/store'
+import { filingRoutes, filingQueueRoutes } from '../filings/routes'
+import { payrollReportRoutes } from '../payroll-reporting/routes'
+import { closureStatements, reportItems as payrollReportItems, runReopenBlocked } from '../payroll-reporting/store'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { APP, ART, BRAND, ENDING, PLANS, TEAM } from '../config'
-import { ensureSchema, now } from '../db'
+import { ensureSchema, now, sha256Hex } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
@@ -13,14 +17,14 @@ import { bell, ringStatement } from '../bell'
 import { lookupCompany } from '../rpo'
 import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
-import { app, dayName, readableName, signed, whenName } from '../app/copy'
+import { app, dayName, monthName, readableName, signed, whenName } from '../app/copy'
 import { endingOf } from '../app/ending'
 import { linksOf } from '../app/bank'
 import { answerHeld, statementsOf } from '../app/statements'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
-import { checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
+import { retirePaperStatements, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from '../app/papers'
 import {
   LEVELS,
   checkDeclarationStatement,
@@ -55,6 +59,9 @@ import {
   type Books,
 } from '../app/ledger'
 import { booksOf, contraStatement, internalStatement, manualEntries, openingStatements, removeInternalStatement } from '../app/ledger-store'
+import { changeLockStatement, lockHistory, periodLock } from '../app/period-store'
+import { lockBlockers, lockTarget, type LockValues } from '../app/periods'
+import { PeriodPage, type PeriodPageProps } from '../views/periods'
 import {
   AccountPage,
   InternalPage,
@@ -72,17 +79,59 @@ import {
   type OpeningRowValue,
 } from '../views/ledger'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
+import { ClosingPage, closingState, type ClosingState } from '../views/closing'
+import { extensionDays, tableF } from '../app/closing'
+import { closingValues, readClosing, type ClosingErrors, type ClosingValues } from '../app/closing-form'
+import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
+import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
+import { CHILD_ROWS, EmployeePage, PayrollPage, PayslipPage, type FieldErrors, type MonthState, type PayOrders, type SlipLine } from '../views/payroll'
+import {
+  INSURERS,
+  closeRunStatement,
+  employeeStatement,
+  employeesOf,
+  isInsurer,
+  monthRange,
+  monthSlips,
+  paydayOf,
+  payrollSettingsOf,
+  reopenRunStatement,
+  runTotals,
+  runsOf,
+  saveRunStatement,
+  settingsStatement,
+  type Employee,
+  type Insurer,
+  type PayrollSettings,
+  type PayrollRun,
+} from '../app/payroll-store'
+import { addDays } from '../app/ending'
+import { supportsPayrollPeriod } from '../app/payroll'
+import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
-import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, prevPeriod, vatOf, type VatData } from '../app/vat'
-import { returnXml, statementXml } from '../app/vat-xml'
+import { isPeriod, isQuarter, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
+import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
+import { quarterOf, summaryLookbackFrom, summaryPeriodOf, type SvView, type SvFiled } from '../app/vat-summary'
+import { dataRevision } from '../app/handover-store'
+import { sensitivePath } from '../security/policy'
+import { securityGate } from '../security/routes'
+import { incidentRoutes } from '../incidents/routes'
+import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash } from '../contracts'
+import { orderOf } from '../order'
+import { ContractReviewPage } from '../views/contract-review'
+import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
+import { MARKED_KINDS, closingIsOurs } from './deadlines'
+import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
 import {
   docPreview,
   docsAround,
   fileStatement,
   filedReturns,
   groupedIban,
+  INCOME_PREFIX,
+  WAGE_PREFIX,
   leftToPay,
   overpaid,
   payable,
@@ -90,6 +139,13 @@ import {
   planFiling,
   selfVatOf,
   stripOf,
+  summaryFiled,
+  svViewOf,
+  svViewsOf,
+  summariesFiled,
+  reclassifySummaryStatements,
+  fileSummaryStatement,
+  unfileSummaryStatement,
   taxAccountOf,
   taxIban,
   taxPaid,
@@ -233,6 +289,8 @@ teamRoutes.use('*', async (c, next) => {
       404,
     )
   }
+  const security = await securityGate(c, who, sensitivePath(new URL(c.req.url).pathname, c.req.method))
+  if (security) return security
   c.set('who', who)
   await next()
 })
@@ -305,6 +363,60 @@ function flashOf(c: Ctx): string | null {
       return t.vat.flashes.correctedKv
     case 'dph-netreba':
       return t.vat.flashes.notNeeded
+    case 'sv-podany':
+      return t.vat.sv.flashes.filed
+    case 'sv-opraveny':
+      return t.vat.sv.flashes.corrected
+    case 'sv-zruseny':
+      return t.vat.sv.flashes.unfiled
+    case 'sv-blokovane':
+      return t.vat.sv.flashes.blocked
+    case 'sv-bezi':
+      return t.vat.sv.flashes.running
+    case 'sv-uz':
+      return t.vat.sv.flashes.already
+    case 'sv-netreba':
+      return t.vat.sv.flashes.none
+    case 'sv-zmeneny':
+      return t.vat.sv.flashes.stale
+    case 'zavierka-ulozene':
+      return t.closing.flashes.saved
+    case 'zavierka-dan':
+      return t.closing.flashes.booked
+    case 'zavierka-podane':
+      return t.closing.flashes.filed
+    case 'zavierka-zrusene':
+      return t.closing.flashes.unfiled
+    case 'zavierka-blokovane':
+      return t.closing.flashes.blocked
+    case 'zavierka-bezi':
+      return t.closing.flashes.running
+    case 'zavierka-uz':
+      return t.closing.flashes.already
+    case 'zavierka-lehota':
+      return t.closing.flashes.extended
+    case 'zavierka-zmenena':
+      return t.closing.flashes.stale
+    case 'mzdy-ulozene':
+      return t.payroll.flashes.saved
+    case 'mzdy-uzavrete':
+      return t.payroll.flashes.closed
+    case 'mzdy-otvorene':
+      return t.payroll.flashes.reopened
+    case 'mzdy-bezi':
+      return t.payroll.flashes.running
+    case 'mzdy-uz':
+      return t.payroll.flashes.already
+    case 'mzdy-zmenene':
+      return 'Podklady sa medzitým zmenili. Obnovte stránku a skontrolujte aktuálne mzdy; uzávierku sme nevytvorili.'
+    case 'mzdy-nikto':
+      return t.payroll.flashes.nobody
+    case 'mzdy-zamestnanec':
+      return t.payroll.flashes.employee
+    case 'mzdy-nastavenie':
+      return t.payroll.flashes.settings
+    case 'mzdy-nepodporovane':
+      return t.payroll.unsupported
     case 'kniha-ucet':
       return t.ledger.flashes.account
     case 'kniha-interny':
@@ -313,6 +425,10 @@ function flashOf(c: Ctx): string | null {
       return t.ledger.flashes.removed
     case 'kniha-ps':
       return t.ledger.flashes.opening
+    case 'oznacene':
+      return t.deadlines.flashes.marked
+    case 'neoznacene':
+      return t.deadlines.flashes.unmarked
     default:
       return null
   }
@@ -330,6 +446,54 @@ teamRoutes.get('/', async (c) => {
   const who = c.get('who')
   const [rows, ended] = await Promise.all([teamClients(c.env.DB, who.user, demoOn(c)), isAdmin(who.user) ? endedCompanies(c.env.DB) : Promise.resolve([])])
   return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} ended={ended} now={now()} flash={flashOf(c)} />)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Every client's deadlines on one screen
+// ---------------------------------------------------------------------------------------------------------------
+
+teamRoutes.get('/terminy', async (c) => {
+  const who = c.get('who')
+  const admin = isAdmin(who.user)
+  const today = dayOf(now())
+  const kto = c.req.query('kto')
+  const side: DueFilter = kto === 'my' ? 'ours' : kto === 'klient' ? 'client' : 'all'
+  const accountants = admin ? await accountantsList(c.env.DB) : []
+  const asked = c.req.query('uctovnicka') ?? ''
+  // Only the administrator chooses whose clients; an accountant sees her own whatever the address says.
+  const accountant = admin && (asked === 'none' || accountants.some((a) => a.id === asked)) ? asked : ''
+  const { dues } = await teamDeadlines(c.env.DB, who.user, demoOn(c), today, { accountant: accountant || null })
+  return shell(
+    c,
+    'deadlines',
+    t.deadlines.title,
+    <DeadlinesPage user={who.user} dues={dues} today={today} side={side} done={c.req.query('hotove') === '1'} accountant={accountant} accountants={accountants} flash={flashOf(c)} />,
+  )
+})
+
+/** Where a form of the deadlines goes back to: the screen with its filters, or a client's page; nothing else. */
+const BACK = /^\/ucto\/(?:terminy|klienti\/[A-Za-z0-9-]{1,64})(?:\?[A-Za-z0-9=&_-]{0,200})?$/
+
+// A filing the app does not make yet (a month's payroll reports), marked as filed elsewhere, or the mark taken back.
+// The closing and the recapitulative statement have their own pages, which mark them with what was filed.
+teamRoutes.post('/klienti/:id/podane', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const kind = body.druh === MARKED_KINDS.payroll ? MARKED_KINDS.payroll : null
+  const period = typeof body.obdobie === 'string' ? body.obdobie : ''
+  // Payroll reports of a month that has ended.
+  if (!kind || !isPeriod(period) || periodRange(period).to >= today || period.includes('Q')) return c.text('Bad request', 400)
+  const undo = body.zrusit === '1'
+  await db.batch([
+    undo ? unmarkFilingStatement(db, company.id, kind, period) : markFilingStatement(db, company.id, kind, period, who.user.id, today, now()),
+    eventStatement(db, { company: company.id, user: who.user.id, action: undo ? 'filing.unmarked' : 'filing.marked', subject: `${kind}:${period}` }),
+  ])
+  const back = typeof body.spat === 'string' && BACK.test(body.spat) ? body.spat : '/ucto/terminy'
+  return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=${undo ? 'neoznacene' : 'oznacene'}`, 303)
 })
 
 async function clientPage(
@@ -362,7 +526,14 @@ async function clientPage(
   ])
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
-  const [banks, vat, books, statements] = await Promise.all([linksOf(db, company.id), vatSummary(db, company, day), booksOf(db, company), statementsOf(db, company.id, 6)])
+  const [banks, vat, books, statements, due] = await Promise.all([
+    linksOf(db, company.id),
+    vatSummary(db, company, day),
+    booksOf(db, company),
+    statementsOf(db, company.id, 6),
+    // The company was checked against the user above; the sample companies count here as well.
+    teamDeadlines(db, who.user, true, day, { company: company.id }),
+  ])
   const active = banks.find((l) => l.status === 'active')
   const ended = banks.find((l) => l.status === 'expired')
   const mailed = statements.find((st) => st.source === 'email')
@@ -403,6 +574,7 @@ async function clientPage(
       earliestEnd={noticeEndsOn(day)}
       vat={<VatCard company={company} view={vat.view} needs7a={vat.needs7a} today={day} />}
       ledger={<LedgerCard company={company} tb={trialBalance(books, Number(day.slice(0, 4)), Number(day.slice(5, 7)))} waiting={blockingCount(books, day)} />}
+      deadlines={<DeadlinesCard dues={due.dues} today={day} companyId={company.id} />}
       statements={statements}
       {...extra}
     />,
@@ -806,11 +978,8 @@ teamRoutes.post('/klienti/:id/odovzdanie/:file/odstranit', async (c) => {
   const paper = company && ID.test(id) ? await getPaper(c.env.DB, company.id, id) : null
   if (!company || !paper || paper.kind !== 'handover') return missingPage(c)
   const db = c.env.DB
-  await db.batch([
-    db.prepare("DELETE FROM company_files WHERE id = ? AND company_id = ? AND kind = 'handover'").bind(paper.id, company.id),
-    eventStatement(db, { company: company.id, user: who.user.id, action: 'handover.removed', subject: paper.id }),
-  ])
-  if (c.env.FILES) await c.env.FILES.delete(paper.r2Key)
+  const result = await db.batch(retirePaperStatements(db, company.id, paper.id, who.user.id))
+  if (!result[0]?.meta.changes) return c.text('Príloha sa medzitým zmenila. Obnovte stránku.', 409)
   return c.redirect(`/ucto/klienti/${company.id}?ok=odstranene#odovzdanie`, 303)
 })
 
@@ -928,6 +1097,36 @@ function choicesOf(get: (name: string) => unknown): FilingChoices {
 /** A correction is made only from books that could be filed: nothing unbooked or unclear in the period. */
 const correctionBlocked = (view: PeriodView): boolean => view.state === 'changed' && (view.companyIssues.length > 0 || view.result.issues.some((i) => i.level === 'block'))
 
+/** The recapitulative statement of a VAT period's statement period (a quarter under § 7a), with its own documents. */
+async function svWithDocs(db: D1Database, company: Company, period: string, today: string) {
+  const revision = await dataRevision(db, company.id)
+  const sv = summaryPeriodOf(period, { status: company.vatStatus })
+  const [docs, filed] = await Promise.all([docsAround(db, company.id, summaryLookbackFrom(sv), quarterOf(sv)), summariesFiled(db, company.id)])
+  return { ...svViewsOf(company, sv, docs, filed, today), docs, filed, revision }
+}
+
+/** SV accepts its own month, even when the VAT return uses a quarter. Never silently substitutes another filing period. */
+function summaryParam(company: Company, value: unknown, today: string): string | null {
+  if (company.vatStatus === 'none' || typeof value !== 'string' || !isPeriod(value) || periodRange(value).from > today) return null
+  return summaryPeriodOf(value, { status: company.vatStatus })
+}
+
+const summaryBack = (company: Company, period: string): string => {
+  const vat = company.vatQuarterly ? quarterOf(period) : isQuarter(period) ? `${period.slice(0, 4)}-${String((Number(period.slice(-1)) - 1) * 3 + 1).padStart(2, '0')}` : period
+  return `/ucto/klienti/${company.id}/dph?obdobie=${vat}`
+}
+
+function selectedSummary(company: Company, period: string, loaded: Awaited<ReturnType<typeof svWithDocs>>, today: string): SvView {
+  return loaded.views.find((v) => v.period === period) ?? svViewOf(company, period, loaded.docs, loaded.filed.get(period) ?? null, today, loaded.schedule)
+}
+
+async function summarySnapshot(company: Company, period: string, kind: 'R' | 'O' | 'D', rows: NonNullable<SvView['plan']>['rows'], today: string): Promise<NonNullable<SvFiled['file']>> {
+  const xml = summaryXml({ name: company.name, icdph: company.icdph as string, address: company.address }, period, rows, kind, today)
+  const name = `SVDPH${kind === 'R' ? '' : `_${kind}`}_${company.icdph}_${period}.xml`
+  const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(xml)))].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return { name, xml, sha256 }
+}
+
 /** The plan for a period, unless something keeps it from being filed. */
 function vatPlan(company: Company, view: PeriodView, filed: FiledReturn[], today: string, choices: FilingChoices): FilingPlan | null {
   if (correctionBlocked(view) || !company.icdph || !company.taxOffice || company.vatStatus === 'none') return null
@@ -941,7 +1140,11 @@ teamRoutes.get('/klienti/:id/dph', async (c) => {
   const today = dayOf(now())
   const period = periodParam(company, c.req.query('obdobie'), today)
   const periods = stripOf(company, period, today)
-  const [docs, filed] = await Promise.all([docsAround(db, company.id, periods[0] ?? period, periods[periods.length - 1] ?? period), filedReturns(db, company.id)])
+  const [docs, filed, summary] = await Promise.all([
+    docsAround(db, company.id, periods[0] ?? period, periods[periods.length - 1] ?? period),
+    filedReturns(db, company.id),
+    company.vatStatus === 'none' ? null : svWithDocs(db, company, period, today),
+  ])
   const strip = periods.map((p) => viewOf(company, p, docs, filed, today))
   const view = strip.find((s) => s.period === period) ?? viewOf(company, period, docs, filed, today)
   // Not registered: what was bought from abroad in the periods shown asks for a registration under § 7a.
@@ -956,23 +1159,38 @@ teamRoutes.get('/klienti/:id/dph', async (c) => {
       view={view}
       plan={vatPlan(company, view, filed, today, {})}
       strip={strip}
-      docs={new Map(docs.map((d) => [d.id, d]))}
+      docs={new Map([...docs, ...(summary?.docs ?? [])].map((d) => [d.id, d]))}
       needs7a={docs.filter((d) => needs.has(d.id))}
+      summaries={summary?.views ?? []}
+      summarySchedule={summary?.schedule ?? null}
+      legacySummary={summary?.legacy ?? null}
       today={today}
       flash={flashOf(c)}
     />,
   )
 })
 
-/** The return or the control statement as a file, for "Načítať zo súboru" in eDane or on the portal. */
+/** The return, the control statement or the recapitulative statement as a file, for "Načítať zo súboru" in eDane or on the portal. */
 teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
   const company = await companyParam(c)
   const file = c.req.param('file')
-  if (!company || (file !== 'priznanie.xml' && file !== 'kontrolny-vykaz.xml')) return missingPage(c)
+  if (!company || (file !== 'priznanie.xml' && file !== 'kontrolny-vykaz.xml' && file !== 'suhrnny-vykaz.xml')) return missingPage(c)
   const today = dayOf(now())
+  if (file === 'suhrnny-vykaz.xml') {
+    const sv = summaryParam(company, c.req.query('obdobie'), today)
+    return sv ? summaryFile(c, company, sv, today) : missingPage(c)
+  }
   const period = periodParam(company, c.req.query('obdobie'), today)
   const { view, filed } = await vatView(c.env.DB, company, period, today)
   const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
+  if (view.state === 'filed') {
+    const id = view.filed?.delivery?.[file === 'kontrolny-vykaz.xml' ? 'kv' : 'vat']
+    if (id) {
+      const saved = await packageOf(c.env.DB, company.id, id)
+      if (!saved || await sha256Hex(saved.xml) !== saved.sha256) return c.text('Uložený dokument chýba alebo sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+      return new Response(saved.xml, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="${saved.name}"`, 'Cache-Control': 'private, no-store' } })
+    }
+  }
   if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
   const plan = vatPlan(
     company,
@@ -1006,6 +1224,99 @@ teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
 })
 
 /**
+ * The recapitulative statement's file: what is to be filed now (a regular statement, or the correction of the one
+ * filed), or the one filed, with the day it was declared; none while the period runs or something keeps it back.
+ */
+async function summaryFile(c: Ctx, company: Company, period: string, today: string): Promise<Response> {
+  const loaded = await svWithDocs(c.env.DB, company, period, today)
+  const sv = selectedSummary(company, period, loaded, today)
+  const back = `${summaryBack(company, period)}#suhrnny`
+  const original = c.req.query('povodne') === '1'
+  const saved = loaded.filed.get(period)
+  if (original && !saved?.file) return c.text(t.vat.sv.missingOriginal, 409)
+  const send = sv.plan ?? (sv.state === 'filed' && sv.filed ? { kind: sv.filed.kind, rows: sv.filed.sent } : null)
+  if (!original && sv.state === 'running') return c.redirect(back.replace('#', '&ok=sv-bezi#'), 303)
+  if (!original && sv.state === 'none') return c.redirect(back.replace('#', '&ok=sv-netreba#'), 303)
+  if (!original && (!send || !company.icdph)) return c.redirect(back.replace('#', '&ok=sv-blokovane#'), 303)
+  if (!original && sv.state === 'filed' && !sv.filed?.file) return c.text(t.vat.sv.missingOriginal, 409)
+  const snapshot = original || sv.state === 'filed' ? saved?.file : await summarySnapshot(company, sv.period, send!.kind, send!.rows, today)
+  if (!snapshot) return c.text(t.vat.sv.missingOriginal, 409)
+  if (await sha256Hex(snapshot.xml) !== snapshot.sha256) return c.text('Uložený dokument sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+  if (snapshot.attemptId) {
+    const pkg = await packageOf(c.env.DB, company.id, snapshot.attemptId)
+    if (!pkg || pkg.kind !== 'sv' || pkg.xml !== snapshot.xml || pkg.sha256 !== snapshot.sha256) return c.text('Pôvodný dokument sa nezhoduje s evidenciou podania. Prípad musí preveriť účtovný tím.', 409)
+  }
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'vat.summary.downloaded', subject: sv.period, detail: { kind: original ? saved?.kind : send?.kind, original } })])
+  return new Response(snapshot.xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${snapshot.name}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+}
+
+/** The recapitulative statement marked as filed, with what its file held; a correction over the statement it corrects. */
+teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/podane', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const period = summaryParam(company, body.obdobie, today)
+  if (!period) return c.text('Bad request', 400)
+  const back = summaryBack(company, period)
+  const db = c.env.DB
+  const loaded = await svWithDocs(db, company, period, today)
+  const sv = selectedSummary(company, period, loaded, today)
+  if (sv.state === 'filed') return c.redirect(`${back}&ok=sv-uz#suhrnny`, 303)
+  if (sv.state === 'none') return c.redirect(`${back}&ok=sv-netreba#suhrnny`, 303)
+  if (sv.state === 'running') return c.redirect(`${back}&ok=sv-bezi#suhrnny`, 303)
+  if (!sv.plan) return c.redirect(`${back}&ok=sv-blokovane#suhrnny`, 303)
+  const original = await summarySnapshot(company, sv.period, sv.plan.kind, sv.plan.rows, today)
+  const snapshot = await filingFile(original.name, original.xml)
+  const [done] = await db.batch([
+    fileSummaryStatement(db, company.id, sv, sv.plan, who.user.id, today, snapshot, loaded.revision),
+    prepareFiling(db, company.id, 'sv', sv.period, snapshot, who.user.id),
+  ])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=sv-zmeneny#suhrnny`, 303)
+  const correction = sv.filed !== null
+  await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: correction ? 'vat.summary.corrected' : 'vat.summary.filed', subject: sv.period, detail: { kind: sv.plan.kind, rows: sv.plan.rows.length } })])
+  return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${sv.period}`, 303)
+})
+
+/** A mark set by mistake taken back: a correction gives way to the statement it replaced. */
+teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/zrusit', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const period = summaryParam(company, body.obdobie, today)
+  if (!period) return c.text('Bad request', 400)
+  const db = c.env.DB
+  const revision = await dataRevision(db, company.id)
+  const filed = await summaryFiled(db, company.id, period)
+  const [gone] = filed ? await db.batch([unfileSummaryStatement(db, company.id, period, filed, revision)]) : []
+  if (filed && (gone?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'vat.summary.unfiled', subject: period, detail: { kind: filed.kind } })])
+  return c.redirect(`${summaryBack(company, period)}&ok=sv-zruseny#suhrnny`, 303)
+})
+
+teamRoutes.post('/klienti/:id/dph/suhrnny-vykaz/obdobie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const today = dayOf(now())
+  const body = await c.req.parseBody()
+  const period = summaryParam(company, body.obdobie, today)
+  if (!period || !isQuarter(period)) return c.text('Bad request', 400)
+  const loaded = await svWithDocs(c.env.DB, company, period, today)
+  if (!loaded.schedule.monthly || !loaded.legacy || loaded.legacy.rows === null) return c.redirect(`${summaryBack(company, period)}&ok=sv-zmeneny#suhrnny`, 303)
+  const [done] = await c.env.DB.batch(reclassifySummaryStatements(c.env.DB, company.id, period, loaded.legacy, loaded.revision))
+  if ((done?.meta?.changes ?? 0) > 0) await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: 'vat.summary.reclassified', subject: period })])
+  return c.redirect(`${summaryBack(company, period)}&ok=sv-zmeneny#suhrnny`, 303)
+})
+
+/**
  * The return marked as filed: once, with what was filed in it, and the client told what to pay and where. A period
  * filed whose books changed takes a correction the same way, in place of the filing it corrects; a correction of the
  * control statement alone is none of the client's business and tells the client nothing.
@@ -1019,6 +1330,7 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
   const period = periodParam(company, body.obdobie, today)
   const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
   const db = c.env.DB
+  const revision = await dataRevision(db, company.id)
   const { view, filed } = await vatView(db, company, period, today)
   if (view.state === 'filed') return c.redirect(`${back}&ok=dph-uz`, 303)
   if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
@@ -1032,8 +1344,22 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
           choicesOf((name) => body[name]),
         )
       : null
-  if (!plan) return c.redirect(`${back}&ok=dph-blokovane`, 303)
-  const [done] = await db.batch([fileStatement(db, company.id, plan, who.user.id, today)])
+  if (!plan || company.vatStatus === 'none' || !company.icdph || !company.taxOffice) return c.redirect(`${back}&ok=dph-blokovane`, 303)
+  const filer = { name: company.name, icdph: company.icdph, address: company.address, taxOffice: company.taxOffice, status: company.vatStatus }
+  const returnFile = plan.returnNeeded ? await filingFile(
+    `DPH${plan.kind === 'R' ? '' : `_${plan.kind}`}_${company.icdph}_${period}.xml`,
+    returnXml(filer, period, plan.rows, { declaredOn: today, nothing: plan.nothing, fastRefund: plan.fast, kind: plan.kind, foundOn: plan.foundOn }),
+  ) : null
+  const kvFile = plan.kv ? await filingFile(
+    `KVDPH${plan.kv.kind === 'R' ? '' : `_${plan.kv.kind}`}_${company.icdph}_${period}.xml`,
+    statementXml(filer, period, plan.kv.sent, plan.kv.kind),
+  ) : null
+  const delivery = { ...(plan.replaces?.delivery ?? {}), ...(returnFile ? { vat: returnFile.attemptId } : {}), ...(kvFile ? { kv: kvFile.attemptId } : {}) }
+  const [done] = await db.batch([
+    fileStatement(db, company.id, plan, who.user.id, today, delivery, revision),
+    ...(returnFile ? [prepareFiling(db, company.id, 'vat', period, returnFile, who.user.id)] : []),
+    ...(kvFile ? [prepareFiling(db, company.id, 'kv', period, kvFile, who.user.id)] : []),
+  ])
   if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=dph-uz`, 303)
   const detail = {
     kind: plan.kind,
@@ -1047,7 +1373,7 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
   const action = plan.replaces ? 'vat.corrected' : 'vat.filed'
   if (!plan.returnNeeded) {
     await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action, subject: period, detail })])
-    return c.redirect(`${back}&ok=dph-kv`, 303)
+    return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${period}`, 303)
   }
   const ret = { payCents: plan.pay }
   const paid = (await taxPaid(db, company.id, [{ period } as FiledReturn])).get(period)
@@ -1073,7 +1399,7 @@ teamRoutes.post('/klienti/:id/dph/podane', async (c) => {
     ...(await ringClient(c, company, id)),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
-  return c.redirect(`${back}&ok=${plan.replaces ? 'dph-opravene' : 'dph-podane'}`, 303)
+  return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${period}`, 303)
 })
 
 /** A mark set by mistake taken back; the client, who was told what to pay, is told that it does not stand. A correction
@@ -1105,6 +1431,575 @@ teamRoutes.post('/klienti/:id/dph/zrusit', async (c) => {
     later(c, flushOutbox(db, c.env.EMAIL))
   }
   return c.redirect(`/ucto/klienti/${company.id}/dph?obdobie=${period}&ok=dph-zrusene`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The closing: a year's financial statements and corporate income tax return (closing.ts), the accountant's
+// adjustments, the tax booked, their files, the deadline a notice moved, and the mark that they were filed
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The years of the books one may open a closing of, the oldest first: the last five, none before the books start. */
+function closingYears(books: Books, today: string): number[] {
+  const start = books.start ? Number(books.start.slice(0, 4)) : null
+  return bookYears(books, today)
+    .filter((y) => start === null || y >= start)
+    .slice(0, 5)
+    .reverse()
+}
+
+/** The year of the address when the books have it; else last year when its closing is ours, else the newest. */
+function closingYear(company: Company, asked: unknown, years: number[], today: string): number | null {
+  const n = typeof asked === 'string' && /^\d{4}$/.test(asked) ? Number(asked) : Number.NaN
+  if (years.includes(n)) return n
+  const last = Number(today.slice(0, 4)) - 1
+  if (years.includes(last) && closingIsOurs(company, last)) return last
+  return years[years.length - 1] ?? null
+}
+
+/** A year asked for by a form, put together; null when the books do not have it. */
+async function closingOfForm(c: Ctx, company: Company, asked: unknown): Promise<{ view: ClosingView; today: string } | null> {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const [books, closings] = await Promise.all([booksOf(db, company), closingsOf(db, company.id)])
+  const n = typeof asked === 'string' && /^\d{4}$/.test(asked) ? Number(asked) : Number.NaN
+  if (!closingYears(books, today).includes(n)) return null
+  return { view: await closingView(db, company, n, today, { books, closings }), today }
+}
+
+async function closingPage(c: Ctx, company: Company, asked: unknown, form?: { values: ClosingValues; errors: ClosingErrors }) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const [books, closings] = await Promise.all([booksOf(db, company), closingsOf(db, company.id)])
+  const years = closingYears(books, today)
+  const year = closingYear(company, asked, years, today)
+  const view = year === null ? null : await closingView(db, company, year, today, { books, closings })
+  const states = years.map((y): { year: number; state: ClosingState } => ({
+    year: y,
+    state: view && y === view.year ? closingState(view) : closings.some((k) => k.year === y && k.filed) ? 'filed' : today <= `${y}-12-31` ? 'running' : 'open',
+  }))
+  return shell(
+    c,
+    'clients',
+    `${t.closing.title}${year ? ` ${year}` : ''}: ${company.name}`,
+    <ClosingPage
+      company={company}
+      view={view}
+      years={states}
+      ours={year !== null && closingIsOurs(company, year)}
+      values={form?.values ?? (view ? closingValues(view.year, view.inputs, view.proposal, { advances: view.paid.advances }) : {})}
+      errors={form?.errors ?? {}}
+      today={today}
+      flash={form ? null : flashOf(c)}
+      error={form ? t.closing.flashes.fix : null}
+    />,
+    form ? 422 : 200,
+  )
+}
+
+teamRoutes.get('/klienti/:id/zavierka', async (c) => {
+  const company = await companyParam(c)
+  return company ? closingPage(c, company, c.req.query('rok')) : missingPage(c)
+})
+
+/** The accountant's adjustments, kept while the closing is not filed. */
+teamRoutes.post('/klienti/:id/zavierka', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const found = await closingOfForm(c, company, body.rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const read = readClosing((name) => body[name], view.year, view.proposal, { advances: view.paid.advances })
+  if (Object.keys(read.errors).length > 0) return closingPage(c, company, String(view.year), { values: read.values, errors: read.errors })
+  const db = c.env.DB
+  const who = c.get('who')
+  await db.batch([saveInputsStatement(db, company.id, view.year, read.inputs, who.user.id), eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.saved', subject: String(view.year) })])
+  return c.redirect(`${back}&ok=zavierka-ulozene#dan`, 303)
+})
+
+/** The tax of the year booked as computed: an internal document on its last day, in place of the one booked before. */
+teamRoutes.post('/klienti/:id/zavierka/dan', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const found = await closingOfForm(c, company, (await c.req.parseBody()).rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  const cents = view.tax.rows.r1050 ?? 0
+  const result = await db.batch(bookTaxStatements(db, company.id, view.year, cents, view.closing?.taxEntry ?? null, who.user.id, view.closing?.revision ?? 0))
+  if ((result[1]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
+  await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.tax', subject: String(view.year), detail: { cents } })])
+  return c.redirect(`${back}&ok=zavierka-dan`, 303)
+})
+
+/** Produce both files together; at filing they become an immutable snapshot, including the filer and filenames. */
+async function closingFiles(company: Company, view: ClosingView, declaredOn: string): Promise<ClosingFiles> {
+  const filer: ClosingFiler = { name: company.name, ico: company.ico, dic: company.dic, address: company.address, registerLine: company.registerLine, nace: view.inputs.nace, activity: view.inputs.activity }
+  const from = view.inputs.from ?? `${view.year}-01-01`
+  const make = async (name: string, xml: string) => ({ name, xml, sha256: [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(xml)))].map((b) => b.toString(16).padStart(2, '0')).join('') })
+  return {
+    version: 1,
+    declaredOn,
+    return: await make(`DPPO_${company.dic ?? company.ico ?? company.id}_${view.year}.xml`, dppoXml(filer, view.tax, {
+      year: view.year, from, to: `${view.year}-12-31`, declaredOn, kind: 'R', micro: view.input.micro,
+      minimumHalf: view.input.minimumHalf, minimumExempt: view.input.minimumExempt, tableF: tableF(view.statements),
+    })),
+    statements: await make(`UZMUJ_${company.ico ?? company.id}_${view.year}.xml`, statementsXml(filer, view.statements, view.previous, { year: view.year, from, preparedOn: declaredOn, approvedOn: view.inputs.approvedOn })),
+  }
+}
+
+/** The return or the statements as a file, for "Načítať zo súboru" in eDane or on the portal. */
+teamRoutes.get('/klienti/:id/zavierka/:file', async (c) => {
+  const company = await companyParam(c)
+  const file = c.req.param('file')
+  if (!company || (file !== 'priznanie.xml' && file !== 'zavierka.xml')) return missingPage(c)
+  const found = await closingOfForm(c, company, c.req.query('rok'))
+  if (!found) return missingPage(c)
+  const { view, today } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  const state = closingState(view)
+  if (state !== 'ready' && state !== 'filed') return c.redirect(`${back}&ok=zavierka-blokovane`, 303)
+  const statements = file === 'zavierka.xml'
+  const snapshot = view.closing?.filed
+  // Never fabricate an original for a legacy filing that did not store its XML.
+  if (snapshot && !snapshot.files) return c.text(t.closing.missingOriginal, 409)
+  const files = snapshot?.files ?? await closingFiles(company, view, today)
+  const saved = statements ? files.statements : files.return
+  const { xml, name } = saved
+  if (await sha256Hex(xml) !== saved.sha256) return c.text('Uložený dokument sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+  if (saved.attemptId) {
+    const pkg = await packageOf(c.env.DB, company.id, saved.attemptId)
+    if (!pkg || pkg.kind !== (statements ? 'uz' : 'dppo') || pkg.xml !== xml || pkg.sha256 !== saved.sha256) return c.text('Pôvodný dokument sa nezhoduje s evidenciou podania. Prípad musí preveriť účtovný tím.', 409)
+  }
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: statements ? 'closing.statements.downloaded' : 'closing.return.downloaded', subject: String(view.year) })])
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
+
+/** The deadline a notice moved (§ 49(3)), or the notice taken back. */
+teamRoutes.post('/klienti/:id/zavierka/lehota', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const found = await closingOfForm(c, company, body.rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  const to = typeof body.lehota === 'string' ? body.lehota : ''
+  if (to !== '' && !extensionDays(view.year).some((d) => d.day === to)) return c.text('Bad request', 400)
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  await db.batch([extendStatement(db, company.id, view.year, to || null), eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.extended', subject: String(view.year), detail: { to: to || null } })])
+  return c.redirect(`${back}&ok=zavierka-lehota`, 303)
+})
+
+/** The closing marked as filed: once, with what was filed, and the client told what to pay, by when and where. */
+teamRoutes.post('/klienti/:id/zavierka/podane', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const found = await closingOfForm(c, company, (await c.req.parseBody()).rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view, today } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  if (closingState(view) !== 'ready') return c.redirect(`${back}&ok=zavierka-blokovane`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  const r = view.tax.rows
+  const pay = r.r1100 ?? 0
+  const generated = await closingFiles(company, view, today)
+  const files = { ...generated, return: await filingFile(generated.return.name, generated.return.xml), statements: await filingFile(generated.statements.name, generated.statements.xml) }
+  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, advancesNext: view.tax.advancesNext, files }
+  const [done] = await db.batch([
+    fileClosingStatement(db, company.id, view.year, snapshot, pay, view.due, who.user.id, today, view.closing?.revision ?? 0),
+    prepareFiling(db, company.id, 'dppo', String(view.year), files.return, who.user.id),
+    prepareFiling(db, company.id, 'uz', String(view.year), files.statements, who.user.id),
+  ])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
+  const left = Math.max(0, pay - view.paid.tax)
+  const over = Math.max(0, -(r.r1101 ?? 0)) + Math.max(0, view.paid.tax - pay)
+  const id = crypto.randomUUID()
+  const text = t.closing.clientMessage({
+    year: view.year,
+    left: left > 0 ? formatEurExact(left) : null,
+    paid: left > 0 && view.paid.tax > 0 ? formatEurExact(view.paid.tax) : null,
+    over: over > 0 ? formatEurExact(over) : null,
+    due: dayName(view.due),
+    vs: incomeSymbol(view.year),
+    account: company.taxAccount ? groupedIban(taxIban(company.taxAccount, INCOME_PREFIX)) : null,
+    advances: { kind: view.tax.advancesNext.kind, each: formatEurExact(view.tax.advancesNext.each) },
+  })
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.filed', subject: String(view.year), detail: { pay, r1050: r.r1050 ?? 0, r1101: r.r1101 ?? 0 } }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/ucto/klienti/${company.id}/podania?obdobie=${view.year}`, 303)
+})
+
+/** A mark set by mistake taken back; the client, who was told what to pay, is told that it does not stand. */
+teamRoutes.post('/klienti/:id/zavierka/zrusit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const year = typeof body.rok === 'string' && /^\d{4}$/.test(body.rok) ? Number(body.rok) : null
+  if (!year) return c.text('Bad request', 400)
+  const db = c.env.DB
+  const who = c.get('who')
+  const [gone] = await db.batch([unfileClosingStatement(db, company.id, year)])
+  if ((gone?.meta?.changes ?? 0) > 0) {
+    const id = crypto.randomUUID()
+    await db.batch([
+      messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: t.closing.clientUnfiled(year), payment: null }),
+      eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.unfiled', subject: String(year) }),
+      ...(await ringClient(c, company, id)),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect(`/ucto/klienti/${company.id}/zavierka?rok=${year}&ok=zavierka-zrusene`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payroll: a month's payslips (payroll.ts), the month closed and the client told what to pay, the employees, the
+// payroll settings, an employee's payslip
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Recent work plus every stored month. Historical closed payslips must never expire from navigation. */
+function payrollMonths(employees: readonly Employee[], today: string, runs: readonly PayrollRun[]): string[] {
+  const current = today.slice(0, 7)
+  const first = employees.reduce<string | null>((min, e) => (!min || e.startedOn < min ? e.startedOn : min), null)?.slice(0, 7) ?? current
+  const out: string[] = []
+  for (let m = current; out.length < 6 && m >= first; m = prevPeriod(m)) out.unshift(m)
+  return [...new Set([...out, ...runs.map((r) => r.period).filter((p) => /^\d{4}-(0[1-9]|1[0-2])$/.test(p))])].sort()
+}
+
+/** The month of the address when it is one of them; else last month when it is, else this one. */
+function payrollPeriod(asked: unknown, months: readonly string[], today: string): string {
+  if (typeof asked === 'string' && months.includes(asked)) return asked
+  const last = prevPeriod(today.slice(0, 7))
+  return months.includes(last) ? last : today.slice(0, 7)
+}
+
+async function payrollData(db: D1Database, company: Company) {
+  const [employees, runs, row] = await Promise.all([employeesOf(db, company.id), runsOf(db, company.id), db.prepare('SELECT payroll FROM companies WHERE id = ?').bind(company.id).first<{ payroll: string | null }>()])
+  return { employees, runs, settings: payrollSettingsOf(row?.payroll ?? null) }
+}
+
+/** What the company pays for a month and where: each employee's net wage, the Social Insurance Agency, each health insurer, the tax office. */
+function payOrders(company: Company, period: string, slips: readonly SlipLine[], employees: readonly Employee[], settings: PayrollSettings, payday: string): PayOrders {
+  const totals = runTotals(slips)
+  const iban = new Map(employees.map((e) => [e.id, e.iban]))
+  return {
+    payday,
+    employees: slips.map((l) => ({ name: l.name, amount: l.slip.net, iban: iban.get(l.employeeId) ?? null })),
+    social: { amount: totals.social, iban: settings.social.iban, vs: settings.social.vs },
+    health: (Object.entries(totals.health) as [Insurer, number][]).map(([code, amount]) => ({ code, amount, iban: settings.health[code]?.iban ?? null, vs: settings.health[code]?.vs ?? null })),
+    tax: { amount: totals.tax, iban: company.taxAccount ? taxIban(company.taxAccount, WAGE_PREFIX) : null, vs: `1100${period.slice(5, 7)}${period.slice(0, 4)}`, due: workingDayFrom(addDays(payday, 5)) },
+  }
+}
+
+const settingsValues = (s: PayrollSettings): Record<string, string> => {
+  const v: Record<string, string> = { den: s.payday ? String(s.payday) : '', sp_iban: s.social.iban ?? '', sp_vs: s.social.vs ?? '' }
+  for (const code of Object.keys(INSURERS) as Insurer[]) {
+    v[`zp_iban_${code}`] = s.health[code]?.iban ?? ''
+    v[`zp_vs_${code}`] = s.health[code]?.vs ?? ''
+  }
+  return v
+}
+
+async function payrollPage(
+  c: Ctx,
+  company: Company,
+  asked: unknown,
+  forms: { month?: { values: Record<string, string>; errors: FieldErrors }; settings?: { values: Record<string, string>; errors: FieldErrors } } = {},
+) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const { employees, runs, settings } = await payrollData(db, company)
+  const months = payrollMonths(employees, today, runs)
+  const period = payrollPeriod(asked, months, today)
+  const run = runs.find((r) => r.period === period) ?? null
+  const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : !supportsPayrollPeriod(m) ? 'unsupported' : today <= monthRange(m).to ? 'running' : 'open')
+  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run)
+  const payday = run?.payday ?? paydayOf(period, settings)
+  const insurers = [...new Set<Insurer>([...employees.map((e) => e.insurer), ...(Object.keys(settings.health) as Insurer[])])]
+  const failed = Boolean(forms.month || forms.settings)
+  return shell(
+    c,
+    'clients',
+    `${t.payroll.title}: ${company.name}`,
+    <PayrollPage
+      company={company}
+      period={period}
+      months={months.map((m) => ({ period: m, state: stateOf(m) }))}
+      state={stateOf(period)}
+      employees={employees}
+      slips={slips}
+      run={run}
+      reports={run?.closedOn ? await payrollReportItems(db, company.id, period) : []}
+      reopenBlocked={run?.closedOn ? await runReopenBlocked(db, company.id, period) : false}
+      totals={runTotals(slips)}
+      orders={payOrders(company, period, slips, employees, settings, payday)}
+      values={forms.month?.values ?? { vyplata: textDay(payday) }}
+      errors={forms.month?.errors ?? {}}
+      settings={{ values: forms.settings?.values ?? settingsValues(settings), errors: forms.settings?.errors ?? {}, insurers }}
+      today={today}
+      flash={failed ? null : flashOf(c)}
+      error={failed ? t.payroll.flashes.fix : null}
+    />,
+    failed ? 422 : 200,
+  )
+}
+
+teamRoutes.get('/klienti/:id/mzdy', async (c) => {
+  const company = await companyParam(c)
+  return company ? payrollPage(c, company, c.req.query('obdobie')) : missingPage(c)
+})
+
+/** The incomes typed and the payday: kept, or the month closed with them and the client told what to pay. */
+teamRoutes.post('/klienti/:id/mzdy', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const sourceRevision = await dataRevision(db, company.id)
+  const { employees, runs, settings } = await payrollData(db, company)
+  const months = payrollMonths(employees, today, runs)
+  const period = typeof body.obdobie === 'string' && months.includes(body.obdobie) ? body.obdobie : null
+  if (!period) return c.text('Bad request', 400)
+  const back = `/ucto/klienti/${company.id}/mzdy?obdobie=${period}`
+  const run = runs.find((r) => r.period === period) ?? null
+  if (run?.closedOn) return c.redirect(`${back}&ok=mzdy-uz`, 303)
+  if (!supportsPayrollPeriod(period)) return c.redirect(`${back}&ok=mzdy-nepodporovane`, 303)
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const proposed = monthSlips(period, employees, run)
+  const lines = proposed.map((l) => {
+    const name = `hruba_${l.employeeId}`
+    const text = typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 14) : ''
+    values[name] = text
+    const cents = centsOf(text)
+    if (cents === null || Number.isNaN(cents) || cents < 0) errors[name] = t.payroll.errors.amount
+    return { employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: cents !== null && cents >= 0 ? cents : 0 }
+  })
+  const paydayText = typeof body.vyplata === 'string' ? body.vyplata.trim().slice(0, 16) : ''
+  values.vyplata = paydayText
+  const payday = dayOfText(paydayText)
+  if (!payday || payday < `${period}-01`) errors.vyplata = t.payroll.errors.paydayDate
+  if (Object.keys(errors).length > 0 || !payday) return payrollPage(c, company, period, { month: { values, errors } })
+  const close = body.akcia === 'uzavriet'
+  if (!close) {
+    await db.batch([saveRunStatement(db, company.id, period, payday, lines, who.user.id, now()), eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.saved', subject: period })])
+    return c.redirect(`${back}&ok=mzdy-ulozene`, 303)
+  }
+  if (today <= monthRange(period).to) return c.redirect(`${back}&ok=mzdy-bezi`, 303)
+  if (lines.length === 0) return c.redirect(`${back}&ok=mzdy-nikto`, 303)
+  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null })
+  const evidenceId = crypto.randomUUID(), closedAt = now()
+  const [done] = await db.batch([
+    closeRunStatement(db, company.id, period, payday, slips, who.user.id, today, closedAt, evidenceId, sourceRevision),
+    ...await closureStatements(db, company, { company_id: company.id, period, payday, lines: JSON.stringify(slips), closed_at: closedAt, evidence_id: evidenceId }, evidenceId, who.user.id),
+  ])
+  if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=mzdy-zmenene`, 303)
+  const orders = payOrders(company, period, slips, employees, settings, payday)
+  const iban = (value: string | null) => (value ? groupedIban(value) : null)
+  const text = t.payroll.clientMessage({
+    month: monthName(`${period}-01`),
+    payday: dayName(payday),
+    employees: orders.employees.map((e) => ({ name: e.name, amount: formatEurExact(e.amount), iban: iban(e.iban) })),
+    social: orders.social.amount > 0 ? { amount: formatEurExact(orders.social.amount), iban: iban(orders.social.iban), vs: orders.social.vs } : null,
+    health: orders.health.map((h) => ({ name: INSURERS[h.code], amount: formatEurExact(h.amount), iban: iban(h.iban), vs: h.vs })),
+    tax: orders.tax.amount > 0 ? { amount: formatEurExact(orders.tax.amount), iban: iban(orders.tax.iban), vs: orders.tax.vs, due: dayName(orders.tax.due) } : null,
+  })
+  const id = crypto.randomUUID()
+  await db.batch([
+    messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: text, payment: null }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.closed', subject: period, detail: { employees: slips.length, gross: runTotals(slips).gross } }),
+    ...(await ringClient(c, company, id)),
+  ])
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`${back}&ok=mzdy-uzavrete`, 303)
+})
+
+/** A month closed by mistake opened again; the client, who was told what to pay, is told that it does not stand. */
+teamRoutes.post('/klienti/:id/mzdy/otvorit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const period = typeof body.obdobie === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(body.obdobie) ? body.obdobie : null
+  if (!period) return c.text('Bad request', 400)
+  if (!supportsPayrollPeriod(period)) return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${period}&ok=mzdy-nepodporovane`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  const [gone] = await db.batch([reopenRunStatement(db, company.id, period)])
+  if ((gone?.meta?.changes ?? 0) > 0) {
+    const id = crypto.randomUUID()
+    await db.batch([
+      messageStatement(db, { id, company: company.id, author: who.user.id, side: 'firmony', body: t.payroll.clientReopened(monthName(`${period}-01`)), payment: null }),
+      eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.reopened', subject: period }),
+      ...(await ringClient(c, company, id)),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${period}&ok=mzdy-otvorene`, 303)
+})
+
+/** The payroll settings: the payday, and the accounts and payer numbers at the Social Insurance Agency and the health insurers. */
+teamRoutes.post('/klienti/:id/mzdy/nastavenie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const den = text('den', 2)
+  values.den = den
+  const day = den === '' ? null : Number(den)
+  if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31)) errors.den = t.payroll.errors.payday
+  const pair = (ibanName: string, vsName: string) => {
+    const i = text(ibanName, 34)
+    const v = text(vsName, 10)
+    values[ibanName] = i
+    values[vsName] = v
+    if (i !== '' && !isIban(i)) errors[ibanName] = t.payroll.errors.iban
+    if (v !== '' && !/^\d{1,10}$/.test(v)) errors[vsName] = t.payroll.errors.vs
+    return { iban: i !== '' && isIban(i) ? plainIban(i) : null, vs: /^\d{1,10}$/.test(v) ? v : null }
+  }
+  const settings: PayrollSettings = { payday: errors.den ? null : day, social: pair('sp_iban', 'sp_vs'), health: {} }
+  for (const code of Object.keys(INSURERS) as Insurer[]) {
+    if (!(`zp_iban_${code}` in body) && !(`zp_vs_${code}` in body)) continue
+    settings.health[code] = pair(`zp_iban_${code}`, `zp_vs_${code}`)
+  }
+  if (Object.keys(errors).length > 0) return payrollPage(c, company, body.obdobie, { settings: { values, errors } })
+  const db = c.env.DB
+  await db.batch([settingsStatement(db, company.id, settings), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'payroll.settings' })])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-nastavenie#nastavenie`, 303)
+})
+
+const employeeValues = (e: Employee | null): Record<string, string> => {
+  const v: Record<string, string> = {
+    meno: e?.name ?? '',
+    narodeny: e?.bornOn ? textDay(e.bornOn) : '',
+    poistovna: e?.insurer ?? '25',
+    nastup: e ? textDay(e.startedOn) : '',
+    skoncenie: e?.endedOn ? textDay(e.endedOn) : '',
+    mzda: e ? moneyText(e.wage) : '',
+    iban: e?.iban ? groupedIban(e.iban) : '',
+    vyhlasenie: e?.declaration ? '1' : '',
+    ztp: e?.disabled ? '1' : '',
+    op: e?.healthDeduction ? '1' : '',
+    vynimka: e?.healthExempt ? '1' : '',
+  }
+  for (let i = 0; i < CHILD_ROWS; i++) {
+    v[`dieta_${i}`] = e?.children[i]?.name ?? ''
+    v[`narodene_${i}`] = e?.children[i] ? textDay(e.children[i]?.born ?? '') : ''
+  }
+  return v
+}
+
+teamRoutes.get('/klienti/:id/mzdy/zamestnanec', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asked = c.req.query('id')
+  const employee = asked ? ((await employeesOf(c.env.DB, company.id)).find((e) => e.id === asked) ?? null) : null
+  if (asked && !employee) return missingPage(c)
+  return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: employee?.id ?? null, values: employeeValues(employee), errors: {} }} />)
+})
+
+teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const existing = typeof body.id === 'string' && ID.test(body.id) ? ((await employeesOf(db, company.id)).find((e) => e.id === body.id) ?? null) : null
+  if (typeof body.id === 'string' && body.id !== '' && !existing) return missingPage(c)
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const field = (name: string, max: number) => {
+    values[name] = text(name, max)
+    return values[name] as string
+  }
+  const name = field('meno', 80)
+  if (name.length < 2) errors.meno = t.payroll.errors.name
+  const born = dayOfText(field('narodeny', 16), 1900)
+  if (born === null) errors.narodeny = t.payroll.errors.day
+  const insurer = field('poistovna', 2)
+  if (!isInsurer(insurer)) errors.poistovna = t.payroll.errors.insurer
+  const started = dayOfText(field('nastup', 16))
+  if (!started) errors.nastup = t.payroll.errors.day
+  const ended = dayOfText(field('skoncenie', 16))
+  if (ended === null) errors.skoncenie = t.payroll.errors.day
+  else if (ended && started && ended < started) errors.skoncenie = t.payroll.errors.ended
+  const wage = centsOf(field('mzda', 14))
+  if (wage === null || Number.isNaN(wage) || wage < 0) errors.mzda = t.payroll.errors.amount
+  const iban = field('iban', 34)
+  if (iban !== '' && !isIban(iban)) errors.iban = t.payroll.errors.iban
+  for (const tick of ['vyhlasenie', 'ztp', 'op', 'vynimka']) values[tick] = body[tick] === '1' ? '1' : ''
+  const children: { name: string; born: string }[] = []
+  for (let i = 0; i < CHILD_ROWS; i++) {
+    const childName = field(`dieta_${i}`, 80)
+    const childBorn = dayOfText(field(`narodene_${i}`, 16))
+    if (childName === '' && childBorn === '') continue
+    if (childName.length < 1 || !childBorn) errors[`dieta_${i}`] = t.payroll.errors.child
+    else children.push({ name: childName, born: childBorn })
+  }
+  if (Object.keys(errors).length > 0 || !started || wage === null || !isInsurer(insurer))
+    return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: existing?.id ?? null, values, errors }} />, 422)
+  const employee: Employee = {
+    id: existing?.id ?? crypto.randomUUID(),
+    name,
+    bornOn: born || null,
+    insurer,
+    startedOn: started,
+    endedOn: ended || null,
+    wage,
+    declaration: values.vyhlasenie === '1',
+    disabled: values.ztp === '1',
+    healthDeduction: values.op === '1',
+    healthExempt: values.vynimka === '1',
+    children,
+    iban: iban !== '' ? plainIban(iban) : null,
+  }
+  await db.batch([
+    employeeStatement(db, company.id, employee, c.get('who').user.id, now()),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: existing ? 'employee.changed' : 'employee.added', subject: employee.id }),
+  ])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-zamestnanec#zamestnanci`, 303)
+})
+
+/** An employee's payslip of a month, to print. */
+teamRoutes.get('/klienti/:id/mzdy/paska', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const today = dayOf(now())
+  const { employees, runs } = await payrollData(c.env.DB, company)
+  const months = payrollMonths(employees, today, runs)
+  const period = c.req.query('obdobie') ?? ''
+  if (!months.includes(period)) return missingPage(c)
+  const run = runs.find((r) => r.period === period) ?? null
+  if (!run?.closedOn && !supportsPayrollPeriod(period)) return missingPage(c)
+  const line = monthSlips(period, employees, run).find((l) => l.employeeId === c.req.query('zamestnanec'))
+  if (!line) return missingPage(c)
+  return shell(c, 'clients', `${t.payroll.payslip}: ${line.name}`, <PayslipPage company={company} period={period} line={line} today={today} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1175,8 +2070,52 @@ teamRoutes.get('/klienti/:id/kniha', async (c) => {
     c,
     'clients',
     `${t.ledger.title}: ${b.company.name}`,
-    <TrialPage company={b.company} books={b.books} tb={trialBalance(b.books, b.year, b.month)} years={b.years} year={b.year} month={b.month} today={b.today} flash={flashOf(c)} />,
+    <TrialPage company={b.company} books={b.books} tb={trialBalance(b.books, b.year, b.month)} years={b.years} year={b.year} month={b.month} today={b.today} lockedThrough={(await periodLock(c.env.DB, b.company.id))?.through} flash={flashOf(c)} />,
   )
+})
+
+async function periodsPage(c: Ctx, company: Company, extra: Partial<Pick<PeriodPageProps, 'values' | 'error' | 'blockers'>> = {}, status: ContentfulStatusCode = 200) {
+  const db = c.env.DB
+  const revision = await dataRevision(db, company.id)
+  // Company settings also affect the books; read them after the revision, rather than reuse an earlier route lookup.
+  const currentCompany = await teamCompany(db, c.get('who').user, company.id)
+  if (!currentCompany) return missingPage(c)
+  const [lock, history, books] = await Promise.all([periodLock(db, company.id), lockHistory(db, company.id), booksOf(db, currentCompany)])
+  return shell(c, 'clients', `Uzamknutie období: ${company.name}`, <PeriodPage company={company} lock={lock} history={history} revision={revision} today={dayOf(now())} start={books.start}
+    flash={c.req.query('ok') === 'uzamknute' ? 'Obdobie je uzamknuté.' : c.req.query('ok') === 'otvorene' ? 'Obdobie je otvorené. Dôvod je uložený v histórii.' : null} {...extra} />, status)
+}
+
+teamRoutes.get('/klienti/:id/kniha/obdobia', async (c) => {
+  const company = await companyParam(c)
+  return company ? periodsPage(c, company) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/kniha/obdobia', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = (key: string) => typeof body[key] === 'string' ? (body[key] as string).trim() : ''
+  const values: LockValues = { action: text('akcia'), month: text('mesiac'), reason: text('dovod') }
+  const fail = (error: string, status: ContentfulStatusCode = 422, blockers?: PeriodPageProps['blockers']) => periodsPage(c, company, { values, error, blockers }, status)
+  const version = Number(text('verzia')), revision = Number(text('revizia'))
+  const db = c.env.DB
+  const currentRevision = await dataRevision(db, company.id)
+  const currentCompany = await teamCompany(db, c.get('who').user, company.id)
+  if (!currentCompany) return missingPage(c)
+  const [lock, books] = await Promise.all([periodLock(db, company.id), booksOf(db, currentCompany)])
+  if (!/^\d+$/.test(text('verzia')) || !/^\d+$/.test(text('revizia')) || !Number.isSafeInteger(version) || !Number.isSafeInteger(revision)
+    || version !== (lock?.version ?? 0) || revision !== currentRevision) return fail('Údaje sa medzičasom zmenili. Skontrolujte aktuálny stav a odošlite formulár znova.', 409)
+  const target = lockTarget(values, lock?.through ?? null, dayOf(now()), books.start)
+  if ('error' in target) return fail(target.error)
+  if (values.reason.length > 1000) return fail('Poznámka môže mať najviac 1 000 znakov.')
+  if (values.action === 'lock' && target.through) {
+    if (!books.start) return fail('Najprv nastavte začiatok účtovníctva alebo počiatočné stavy.')
+    const blockers = lockBlockers(books, target.through)
+    if (blockers.documents + blockers.payments > 0) return fail('Vybrané obdobie obsahuje nedoriešené účtovné zápisy.', 422, blockers)
+  }
+  const result = await changeLockStatement(db, company.id, target.through, values.reason, c.get('who').user.id, version, revision).run()
+  if ((result.meta?.changes ?? 0) === 0) return fail('Údaje sa medzičasom zmenili. Skontrolujte aktuálny stav a odošlite formulár znova.', 409)
+  return c.redirect(`${bookPath(company, 'periods')}?ok=${values.action === 'lock' ? 'uzamknute' : 'otvorene'}`, 303)
 })
 
 teamRoutes.get('/klienti/:id/kniha/dennik', async (c) => {
@@ -1681,6 +2620,53 @@ teamRoutes.post('/ziadosti/:id', async (c) => {
   return c.redirect('/ucto/ziadosti', 303)
 })
 
+async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode = 200) {
+  if (!isAdmin(c.get('who').user)) return missingPage(c)
+  const id = c.req.param('id') ?? ''
+  if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
+  const row = await c.env.DB.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
+  const order = row ? orderOf(row) : null
+  const people = await c.env.DB.prepare("SELECT id, name FROM users WHERE team IN ('admin', 'accountant') ORDER BY name").all<{ id: string; name: string }>()
+  return shell(c, 'requests', 'Posúdenie pred podpisom', <ContractReviewPage requestId={id} order={order}
+    offerHash={order ? await orderOfferHash(order) : ''} review={order ? await latestOrderReview(c.env.DB, order.id) : null}
+    people={people.results} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} error={error} />, status)
+}
+teamRoutes.get('/ziadosti/:id/posudenie', (c) => reviewPage(c))
+teamRoutes.post('/ziadosti/:id/posudenie', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const id = c.req.param('id')
+  if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
+  const db = c.env.DB
+  const row = await db.prepare('SELECT * FROM orders WHERE request_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').bind(id).first<Record<string, unknown>>()
+  const order = row ? orderOf(row) : null
+  if (!order || order.status !== 'open') return reviewPage(c, 'Objednávka už nie je otvorená.', 409)
+  const body = await c.req.parseBody()
+  const text = (v: unknown) => typeof v === 'string' ? v.trim() : ''
+  const decision = text(body.decision)
+  const evidence = text(body.evidence)
+  const accountant = text(body.accountant)
+  const plan = PLANS.find((p) => p.id === body.plan)
+  const hash = await orderOfferHash(order)
+  if (body.proposal !== hash) return reviewPage(c, 'Návrh sa zmenil. Posúďte aktuálne údaje znova.', 409)
+  if (!['standard', 'bespoke', 'hold'].includes(decision) || evidence.length < 12 || evidence.length > 240 || !plan)
+    return reviewPage(c, 'Vyberte rozhodnutie a balík a uveďte referenciu na odborné posúdenie (12 až 240 znakov).', 422)
+  if (decision === 'standard' && (!['category', 'scope', 'cover', 'authority'].every((k) => body[k] === '1')
+    || !await db.prepare("SELECT 1 AS x FROM users WHERE id = ? AND team IN ('admin', 'accountant')").bind(accountant).first()))
+    return reviewPage(c, 'Štandardné prijatie vyžaduje všetky kontroly a zodpovedného člena tímu.', 422)
+  const ts = now()
+  await db.batch([
+    db.prepare(`INSERT INTO order_reviews (order_id, reviewed_at, reviewed_by, decision, offer_hash, plan, evidence, accountant_id, expires_at)
+      SELECT id, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 FROM orders WHERE id = ?1 AND status = 'open' AND expires_at > ?2`)
+      .bind(order.id, ts, who.user.id, decision, hash, plan.id, evidence, decision === 'standard' ? accountant : null, Math.min(order.expiresAt, ts + 7 * 86400)),
+    db.prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail)
+      SELECT ?2, NULL, ?3, 'contract.reviewed', id, ?4 FROM orders
+      WHERE id = ?1 AND status = 'open' AND expires_at > ?2`)
+      .bind(order.id, ts, who.user.id, JSON.stringify({ decision, offerHash: hash, plan: plan.id, evidence, accountant: decision === 'standard' ? accountant : null })),
+  ])
+  return c.redirect(`/ucto/ziadosti/${id}/posudenie`, 303)
+})
+
 teamRoutes.get('/tim', async (c) => {
   const who = c.get('who')
   if (!isAdmin(who.user)) return missingPage(c)
@@ -1702,17 +2688,30 @@ teamRoutes.post('/tim', async (c) => {
   if (!EMAIL.test(values.email)) errors.email = t.people.errors.email
   if (Object.keys(errors).length > 0) return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={errors} />, 422)
   const existing = await userByEmail(db, values.email)
+  if (existing?.id === who.user.id && values.role !== 'admin') return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={{ email: 'Vlastnú rolu správcu nemožno týmto formulárom znížiť.' }} />, 422)
   const id = existing?.id ?? crypto.randomUUID()
-  await db.batch([
+  const changed = await db.batch([
     existing
-      ? db.prepare('UPDATE users SET team = ? WHERE id = ?').bind(values.role, id)
-      : db.prepare('INSERT INTO users (id, created_at, email, name, team) VALUES (?, ?, ?, ?, ?)').bind(id, now(), values.email, values.name, values.role),
+      ? db.prepare("UPDATE users SET team = ?1 WHERE id = ?2 AND EXISTS (SELECT 1 FROM users WHERE id = ?3 AND team = 'admin') AND (?1 = 'admin' OR team IS NOT 'admin' OR EXISTS (SELECT 1 FROM users WHERE team = 'admin' AND id <> ?2))").bind(values.role, id, who.user.id)
+      : db.prepare("INSERT INTO users (id, created_at, email, name, team) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?6 AND team = 'admin')").bind(id, now(), values.email, values.name, values.role, who.user.id),
+    ...(existing && existing.id !== who.user.id ? [
+      db.prepare("DELETE FROM sessions WHERE user_id = ?1 AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team = 'admin') AND EXISTS (SELECT 1 FROM users WHERE id = ?1 AND team = ?3)").bind(id, who.user.id, values.role),
+      db.prepare("DELETE FROM login_links WHERE user_id = ?1 AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team = 'admin') AND EXISTS (SELECT 1 FROM users WHERE id = ?1 AND team = ?3)").bind(id, who.user.id, values.role),
+    ] : []),
+  ])
+  if (!changed[0]?.meta.changes) return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={{ email: 'Oprávnenia sa zmenili. Obnovte stránku a skontrolujte tím.' }} />, 409)
+  await db.batch([
     eventStatement(db, { company: null, user: who.user.id, action: 'team.added', subject: id, detail: { role: values.role } }),
     queueStatement(db, { key: `team:${id}:${values.role}`, to: values.email, subject: t.people.inviteSubject, body: t.people.inviteBody(values.name, `${siteOrigin(c)}/app/prihlasenie`) }),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect('/ucto/tim?ok=tim', 303)
 })
+
+teamRoutes.route('/incidenty', incidentRoutes)
+teamRoutes.route('/podania', filingQueueRoutes)
+teamRoutes.route('/klienti/:companyId/podania', filingRoutes)
+teamRoutes.route('/klienti/:companyId/mzdove-podania', payrollReportRoutes)
 
 teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/prihlasenie', 303)))
 

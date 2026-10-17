@@ -167,15 +167,38 @@ export function easter(year: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-/** Days off in Slovakia that a deadline on the 25th can meet (dni pracovného pokoja), besides weekends. */
-const FIXED_DAYS_OFF = ['01-01', '01-06', '05-01', '05-08', '07-05', '08-29', '09-15', '11-01', '11-17', '12-24', '12-25', '12-26']
+/**
+ * Days off in Slovakia that a deadline can meet (dni pracovného pokoja), besides weekends and Easter: Act No. 241/1993
+ * Z. z. as amended by Act No. 261/2025 Z. z. (in force from 1 November 2025, read on 14 October 2026 in its consolidated
+ * text on slov-lex.sk). 1 September has not been a day off since 2024, nor has 17 November since 1 November 2025 (§ 2(3));
+ * 8 May and 15 September are not days off in 2026 alone (the transitional § 4b), and are again from 2027 unless a later
+ * act says otherwise.
+ */
+const FIXED_DAYS_OFF = ['01-01', '01-06', '05-01', '07-05', '08-29', '11-01', '12-24', '12-25', '12-26']
+
+function isDayOff(day: string): boolean {
+  const date = day.slice(5)
+  const year = Number(day.slice(0, 4))
+  if (FIXED_DAYS_OFF.includes(date)) return true
+  if (date === '05-08' || date === '09-15') return year !== 2026
+  if (date === '09-01') return year < 2024
+  if (date === '11-17') return year < 2025
+  return false
+}
 
 export function isWorkingDay(day: string): boolean {
   const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
   if (weekday === 0 || weekday === 6) return false
-  if (FIXED_DAYS_OFF.includes(day.slice(5))) return false
+  if (isDayOff(day)) return false
   const sunday = easter(Number(day.slice(0, 4)))
   return day !== addDays(sunday, -2) && day !== addDays(sunday, 1)
+}
+
+/** The day itself when it is a working day, else the next working day (§ 27(2) of the Tax Procedure Code). */
+export function workingDayFrom(day: string): string {
+  let d = day
+  while (!isWorkingDay(d)) d = addDays(d, 1)
+  return d
 }
 
 /**
@@ -183,9 +206,7 @@ export function isWorkingDay(day: string): boolean {
  * § 78a(7)), moved to the next working day when it falls on a weekend or a day off (§ 27(2) of the Tax Procedure Code).
  */
 export function filingDeadline(period: string): string {
-  let day = addDays(periodRange(period).to, 25)
-  while (!isWorkingDay(day)) day = addDays(day, 1)
-  return day
+  return workingDayFrom(addDays(periodRange(period).to, 25))
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -296,15 +317,16 @@ export function vatOf(doc: VatDoc, company: VatCompany): { data: VatData; propos
 
 /**
  * The day a document's VAT falls due (vznik daňovej povinnosti, or the right to deduct): the day of supply, or of
- * issue when it names none. Goods acquired from another member state fall due on the 15th of the month after the
- * acquisition, or on the day of the invoice when it was issued before then (§ 20(1)).
+ * issue when it names none. Goods acquired from another member state, and goods supplied to one free of tax, fall
+ * due on the 15th of the month after the acquisition or the supply, or on the day of the invoice when it was issued
+ * before then (§ 20(1), § 19(8)).
  */
 export function taxDay(doc: VatDoc, data: VatData): string {
   const supplied = data.suppliedOn ?? doc.issuedOn ?? doc.receivedOn
-  if (data.mode !== 'acquisition') return supplied
+  if (data.mode !== 'acquisition' && data.mode !== 'eu_goods') return supplied
   const fifteenth = `${periodOf(addDays(`${supplied.slice(0, 7)}-28`, 7), false)}-15`
   if (!doc.issuedOn || doc.issuedOn >= fifteenth) return fifteenth
-  // An invoice issued before the goods were acquired does not bring the tax before the acquisition itself.
+  // An invoice issued before the goods were acquired or supplied does not bring the tax before that.
   return doc.issuedOn > supplied ? doc.issuedOn : supplied
 }
 
@@ -510,6 +532,10 @@ export type IssueCode =
   | 'domestic7a'
   | 'mismatch'
   | 'before'
+  | 'svVatId'
+  | 'svMonthly'
+  | 'svQuarterly'
+  | 'svPeriodChange'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */

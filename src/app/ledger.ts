@@ -188,7 +188,7 @@ export interface LedgerLine {
   what?: 'cost' | 'vat' | 'revenue' | 'payable' | 'receivable'
 }
 
-export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'internal'
+export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'internal'
 
 export interface LedgerEntry {
   /** Unique in the books: d:<document>, p:<payment>, v:<period>[:n], m:<stored entry>. */
@@ -210,6 +210,8 @@ export interface LedgerPayment {
   amountCents: number
   currency: string
   party: string | null
+  /** The other side's account, when the bank gave it: a tax paid to the State Treasury is told by its prefix. */
+  partyIban?: string | null
   vs: string | null
   note: string | null
   exempt: Exempt | null
@@ -241,6 +243,24 @@ export interface ManualEntry {
   createdByName: string | null
 }
 
+/** A month's payroll closed (payroll-store.ts), as the books take it: the wages, each side's insurance, the tax withheld. */
+export interface LedgerPayroll {
+  period: string
+  gross: number
+  socialEmployee: number
+  socialEmployer: number
+  healthEmployee: number
+  healthEmployer: number
+  /** The advances withheld less the bonuses (minus: the bonuses paid over them). */
+  tax: number
+  /** What each payment of it comes to: the Social Insurance Agency's, each health insurer's, the tax office's. */
+  pays: { social: number; health: number[]; tax: number }
+}
+
+/** The analytic accounts of 336: the Social Insurance Agency and the health insurers. */
+export const SOCIAL_ACCOUNT = '336.100'
+export const HEALTH_ACCOUNT = '336.200'
+
 export interface LedgerInput {
   company: Company
   /** Every document of the company that is not deleted, booked or not. */
@@ -249,6 +269,8 @@ export interface LedgerInput {
   banks: LedgerBank[]
   filed: FiledReturn[]
   manual: ManualEntry[]
+  /** The months of payroll closed. */
+  payroll?: LedgerPayroll[]
 }
 
 /** An invoice's open item (saldokonto): what it comes to on its account and what of it was settled. */
@@ -291,8 +313,12 @@ export interface Books {
   unposted: Map<string, number>
   /** The payments booked by their documents (an invoice paid, a receipt paid by card), not by an account of their own. */
   documented: Set<string>
+  /** The day each document belongs to, booked or not (its entry's, else the day it was issued); null when it has none yet. */
+  docDays: Map<string, string | null>
   payments: Map<string, LedgerPayment>
   banks: LedgerBank[]
+  /** The months of payroll closed, which tell a payroll payment's account. */
+  payroll: LedgerPayroll[]
 }
 
 const RI: readonly DocKind[] = ['receipt', 'invoice_in', 'invoice_out']
@@ -413,13 +439,42 @@ export function bookingLines(doc: Doc, company: Company, payment: { bookedOn: st
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
+ * Which tax a payment to the State Treasury pays, by the prefix of the account it went to (IBAN SKkk 8180 PPPPPP
+ * AAAAAAAAAA): 500240 VAT, 500224 the income tax of a legal person and its advances, 500259 the tax withheld from
+ * wages. Null for any other account, or when the bank did not say where the money went.
+ */
+export function treasuryTax(iban: string | null | undefined): 'vat' | 'income' | 'wage' | 'other' | null {
+  const plain = (iban ?? '').replace(/\s/g, '').toUpperCase()
+  const m = /^SK\d{2}8180(\d{6})\d{10}$/.exec(plain)
+  if (!m) return null
+  return m[1] === '500240' ? 'vat' : m[1] === '500224' ? 'income' : m[1] === '500259' ? 'wage' : 'other'
+}
+
+/**
  * The account of a payment's reason, when it says it plainly: a bank's fee 568 and its interest 662, money between the
  * company's own accounts 261 (both sides of a transfer meet there), VAT paid to or refunded by the tax office 343.300
- * (its variable symbol begins 1100), capital paid in 353, money the owner lent or got back 365, wages paid 331. Null
- * when the accountant decides (a tax other than VAT, insurance, anything else).
+ * (its variable symbol begins 1100, and it went to VAT's account if the bank says where), the income tax and its
+ * advances 341 (the account of the income tax of legal persons, prefix 500224: an advance's symbol begins 1100 as
+ * VAT's does; the tax of a year has its own, 170099 and the year), capital paid in 353, money the owner lent or got
+ * back 365, wages paid 331, and of payroll the sums a closed month owes the Social Insurance Agency (336.100), a health
+ * insurer (336.200) and the tax office (342, also by its account's prefix 500259). Null when the accountant decides
+ * (another tax, insurance, anything else).
  */
-export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'note' | 'exempt' | 'exemptNote'>): string | null {
-  if (p.exempt === 'state' && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE
+export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'note' | 'exempt' | 'exemptNote' | 'partyIban'>, payroll: readonly LedgerPayroll[] = []): string | null {
+  const tax = p.exempt === 'state' || p.exempt === 'payroll' ? treasuryTax(p.partyIban) : null
+  if (tax === 'income') return '341'
+  if (tax === 'wage') return '342'
+  // Payroll paid out: the sum due to the Social Insurance Agency, to a health insurer or to the tax office of a month
+  // closed is that, whether the client marked it "payroll" or the app took it for the state's (the Agency's and VšZP's
+  // accounts are at the State Treasury too); anything else marked "payroll" is wages.
+  if ((p.exempt === 'payroll' || p.exempt === 'state') && p.amountCents < 0) {
+    const out = -p.amountCents
+    if (payroll.some((r) => r.pays.social === out)) return SOCIAL_ACCOUNT
+    if (payroll.some((r) => r.pays.health.includes(out))) return HEALTH_ACCOUNT
+    if (payroll.some((r) => r.pays.tax === out)) return '342'
+  }
+  if (p.exempt === 'state' && (tax === 'vat' || tax === null) && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE
+  if (p.exempt === 'state' && tax === null && /^170099\d{4}$/.test(normalizeVs(p.vs))) return '341'
   switch (p.exempt) {
     case 'bank':
       return p.amountCents < 0 ? '568' : '662'
@@ -443,10 +498,11 @@ export function paymentsWithoutDocuments(books: Books, year: number): LedgerPaym
 }
 
 /** The account a payment without a document is booked against: the accountant's, else its reason's. */
-export function paymentContra(p: LedgerPayment): string | null {
+export function paymentContra(p: LedgerPayment, payroll: readonly LedgerPayroll[] = []): string | null {
   const given = canonicalAccount(p.contra)
   if (given && synthetic(given) !== '221') return given
-  return reasonAccount(p)
+  // A later payroll must never reclassify an earlier payment, including one in a locked period.
+  return reasonAccount(p, payroll.filter((run) => run.period <= p.bookedOn.slice(0, 7)))
 }
 
 const lineOf = (account: string, bank: string, cents: number): LedgerLine => (cents < 0 ? { md: account, d: bank, cents: -cents } : { md: bank, d: account, cents })
@@ -484,7 +540,7 @@ function settlementLines(owed: number, deducted: number): LedgerLine[] {
   return lines
 }
 
-const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, internal: 4 }
+const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, internal: 5 }
 
 /** The day the books start: the opening balances' day, else the contract's first day; null when neither is known. */
 export function booksStart(company: Pick<Company, 'startOn'>, manual: readonly ManualEntry[]): string | null {
@@ -510,6 +566,7 @@ export function buildBooks(input: LedgerInput): Books {
   const items = new Map<string, OpenItem>()
   const unposted = new Map<string, number>()
   const documented = new Set<string>()
+  const docDays = new Map<string, string | null>()
   const payments = new Map(input.payments.map((p) => [p.id, p]))
   const inBooks = (day: string) => !start || day >= start
 
@@ -521,6 +578,7 @@ export function buildBooks(input: LedgerInput): Books {
   for (const d of input.docs) {
     const plan = planOf(d, company)
     if (plan) plans.set(d.id, plan)
+    docDays.set(d.id, plan?.on ?? d.issuedOn ?? bratislavaDay(d.createdAt))
   }
   const shareOf = new Map<string, number>()
   for (const [paymentId, linked] of docsOf) {
@@ -639,7 +697,7 @@ export function buildBooks(input: LedgerInput): Books {
       if (p.amountCents - posted !== 0) unposted.set(p.id, p.amountCents - posted)
       continue
     }
-    const contra = paymentContra(p)
+    const contra = paymentContra(p, input.payroll ?? [])
     if (contra && p.amountCents !== 0) {
       const who = p.party ? readableName(p.party) : (p.note ?? '')
       entries.push({
@@ -697,6 +755,23 @@ export function buildBooks(input: LedgerInput): Books {
     }
   }
 
+  // Payroll of each month closed, on its last day: the wages, the employee's insurance and tax withheld from them,
+  // the employer's insurance on top.
+  for (const r of input.payroll ?? []) {
+    const end = periodRange(r.period).to
+    if (!inBooks(end)) continue
+    const lines: LedgerLine[] = [
+      { md: '521', d: '331', cents: r.gross },
+      { md: '331', d: SOCIAL_ACCOUNT, cents: r.socialEmployee },
+      { md: '331', d: HEALTH_ACCOUNT, cents: r.healthEmployee },
+      r.tax >= 0 ? { md: '331', d: '342', cents: r.tax } : { md: '342', d: '331', cents: -r.tax },
+      { md: '524', d: SOCIAL_ACCOUNT, cents: r.socialEmployer },
+      { md: '524', d: HEALTH_ACCOUNT, cents: r.healthEmployer },
+    ].filter((l) => l.cents > 0)
+    if (lines.length > 0)
+      entries.push({ key: `w:${r.period}`, on: end, kind: 'payroll', number: `MZDY ${r.period.slice(5, 7)}/${r.period.slice(0, 4)}`, text: `Mzdy za ${periodName(r.period)}`, docId: null, paymentId: null, manualId: null, lines })
+  }
+
   // What the accountant wrote herself.
   for (const m of input.manual) {
     entries.push({ key: `m:${m.id}`, on: m.on, kind: m.kind, number: m.number ?? (m.kind === 'opening' ? 'PS' : ''), text: m.text, docId: null, paymentId: null, manualId: m.id, lines: m.lines })
@@ -704,7 +779,7 @@ export function buildBooks(input: LedgerInput): Books {
 
   entries.sort((a, b) => a.on.localeCompare(b.on) || ORDER[a.kind] - ORDER[b.kind] || a.number.localeCompare(b.number) || a.key.localeCompare(b.key))
   const openItems = [...items.values()].sort((a, b) => (a.dueOn ?? a.on).localeCompare(b.dueOn ?? b.on) || a.docId.localeCompare(b.docId))
-  return { start, entries, items: openItems, issues, unposted, documented, payments, banks: input.banks }
+  return { start, entries, items: openItems, issues, unposted, documented, docDays, payments, banks: input.banks, payroll: input.payroll ?? [] }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1028,7 +1103,7 @@ export function openingRows(lines: readonly LedgerLine[]): { account: string; md
 
 const csv = (rows: (string | number | null)[][]) => `﻿${rows.map((row) => row.map((cell) => csvCell(cell)).join(';')).join('\r\n')}\r\n`
 
-const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', internal: 'interný doklad' }
+const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', internal: 'interný doklad' }
 
 /** The number a journal prints for an entry: the document's own, or what the entry is. */
 export function numberOf(e: LedgerEntry, books: Books): string {

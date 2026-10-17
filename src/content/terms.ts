@@ -1,7 +1,7 @@
 // The terms a client accepts when the contract is concluded online: the contract for keeping the accounts between
 // europio s. r. o. and a company, with the agreement on processing personal data (GDPR, art. 28) as its article 8.
-// A business-to-business contract under the Commercial Code (§ 269 ods. 2); written on 13 October 2026 and not yet
-// read by a lawyer. Every figure comes from src/config.ts. A point refers to another as "bod 2.6"; the unit checks
+// A B2B proposal under the Commercial Code (§ 269 ods. 2), awaiting lawyer and underwriter approval. Signing
+// is closed without CONTRACT_RELEASE and an order review. Old contracts keep their original wording. The checks
 // hold every such reference to a point that exists. Bump TERMS_VERSION with every change of the wording.
 import { APP, BRAND, OPERATOR, ORDER, PLANS, REPLY_WITHIN, TERMS_VERSION } from '../config'
 import { typeset } from '../format'
@@ -52,7 +52,7 @@ const SECTIONS: TermsSection[] = [
       'Konateľ podpíše plnú moc, aby sme Vás mohli zastupovať pred finančnou správou, a ak spracúvame mzdy, aj pred Sociálnou poisťovňou a zdravotnými poisťovňami.',
       'Bez zbytočného odkladu nám oznámite zmeny, ktoré sa týkajú účtovníctva a daní (napríklad registráciu pre DPH, nového zamestnanca alebo zmenu sídla), a na naše otázky odpoviete spravidla do piatich pracovných dní.',
       'Za to, že doklady a údaje sú pravdivé a úplné, zodpovedáte Vy. Za vedenie účtovníctva podľa zákona zodpovedá účtovná jednotka, teda Vaša firma, aj keď ho vedieme my.',
-      'Ak doklady alebo informácie prídu neskoro alebo neúplné, podáme v termíne to, čo sa z dostupných podkladov podať dá, a upozorníme Vás na to. Za následky oneskorených alebo neúplných podkladov nezodpovedáme.',
+      'Ak chýbajú podklady alebo informácie, bez zbytočného odkladu Vás upozorníme, čo chýba, na dotknutý termín a na možné následky. Dohodneme zákonný postup nápravy; nebudeme vedome podávať nesprávne údaje. Vplyv Vašej súčinnosti na prípadnú škodu sa posudzuje podľa bodu 6.4, nie automatickým vylúčením našej zodpovednosti.',
     ],
   },
   {
@@ -76,10 +76,12 @@ const SECTIONS: TermsSection[] = [
   {
     title: 'Zodpovednosť',
     points: [
-      'Podania urobíme včas, ak máme podklady v termíne podľa bodu 3.1.',
-      'Ak Vám vznikne pokuta, úrok z omeškania alebo iná sankcia od úradov výlučne našou chybou, napríklad preto, že sme zmeškali termín, hoci sme mali všetky podklady včas, uhradíme Vám ju.',
-      'Zmluvné strany vzhľadom na § 379 Obchodného zákonníka považujú za škodu, ktorú mohli pri uzavretí zmluvy predvídať, najviac sumu rovnajúcu sa dvanásťnásobku mesačnej ceny Vášho balíka za jeden kalendárny rok. To neplatí pre škodu spôsobenú úmyselne.',
-      'Za škodu nezodpovedáme, ak ju spôsobili nepravdivé, neúplné alebo oneskorené doklady či informácie od Vás, Vaše rozhodnutia alebo výpadky bánk a štátnych systémov, ktoré sme nemohli ovplyvniť.',
+      'Za riadne a včasné vykonanie dohodnutých služieb zodpovedáme podľa zmluvy a právnych predpisov vrátane § 373 a nasl. Obchodného zákonníka. Použitie softvéru, umelej inteligencie alebo našich spolupracovníkov samo osebe túto zodpovednosť nevylučuje. Zákonná zodpovednosť účtovnej jednotky podľa bodu 3.5 tým nie je dotknutá.',
+      'Ak porušením našej povinnosti spôsobíme Vašej firme škodu, nahradíme ju v zákonnom rozsahu. To zahŕňa aj preukázanú pokutu alebo úrok uložený Vašej firme, ak za túto škodu zodpovedáme a jej náhradu právny predpis pripúšťa. Posudzuje sa konkrétna povinnosť, jej porušenie, príčinná súvislosť a výška škody; nejde o prevzatie všetkých sankcií bez ohľadu na príčinu.',
+      'Daň alebo odvod, ktorý by ste museli zaplatiť aj pri správnom postupe, sám osebe nie je škodou spôsobenou našou chybou. Tým sa nevylučuje posúdenie nezvratnej straty zákonného nároku, napríklad odpočtu, ktorú spôsobilo porušenie našej povinnosti. Predvídateľnosť a rozsah škody sa posudzujú podľa zákona; tieto podmienky nestanovujú paušálny limit vo výške mesačných poplatkov.',
+      'Nesprávne alebo oneskorené podklady, pokyn klienta či výpadok tretej strany zohľadníme len podľa ich preukázaného vplyvu a právnych predpisov. Nie sú všeobecným zbavením našej povinnosti odborne kontrolovať dohodnutý rozsah, včas upozorniť a predchádzať škode. Náhrada sa neposkytuje dvakrát za tú istú škodu; prípadné spoluspôsobenie a povinnosť škodu zmierniť sa posudzujú podľa zákona.',
+      'Pri zistení chyby zabezpečíme bezodkladnú ochranu lehôt, preverenie a nápravu v našom rozsahu bez ďalšej odmeny. Oznámite nám rozhodnutie úradu, známe okolnosti a podklady bez zbytočného odkladu; neskoršie oznámenie samo osebe neruší Váš nárok. O jeho vplyve na škodu rozhodujú okolnosti a zákon. Chránime Vaše právo na opravné prostriedky; oznámenie škody nenahrádza ich podanie ani neodkladá úhradu povinnosti úradu.',
+      'Poistné krytie a prípadné osobitné zabezpečenie preukazujeme iba v skutočne dohodnutom rozsahu. Rozhodnutie poisťovne ani jej limit nemenia našu zákonnú alebo zmluvnú povinnosť nahradiť škodu. Všeobecné poistenie samo osebe neznamená krytie každej sankcie alebo osobitnej garancie. Širšie záruky, individuálny rozsah alebo zabezpečenie platia len podľa osobitnej písomnej dohody.',
     ],
   },
   {

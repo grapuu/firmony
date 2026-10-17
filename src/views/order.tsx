@@ -2,13 +2,13 @@
 // main points stand in a bordered table at the top (the way his contracts are made: what matters first, the rest in
 // the terms), and follow the plan and the month chosen below them without a script (`:has()` in app.css).
 import type { Child, FC } from 'hono/jsx'
-import { CLOSING_PRICE, PAYROLL_PRICE, PLANS, planById } from '../config'
+import { BRAND, CLOSING_PRICE, PAYROLL_PRICE, PLANS } from '../config'
 import { copy } from '../copy'
 import { formatEur, typeset } from '../format'
 import { formatIco } from '../ico'
 import type { Order } from '../order'
+import type { ContractGate, ResolvedContract } from '../contracts'
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, longDate } from '../content/terms'
-import { BRAND } from '../config'
 
 const o = copy.order
 
@@ -107,13 +107,15 @@ const Summary: FC<{ order: Order; months: string[] }> = ({ order, months }) => (
   </div>
 )
 
-export const OrderPage: FC<{ order: Order; token: string; months: string[]; values: OrderValues; errors: OrderErrors }> = ({ order, token, months, values, errors }) => {
+export const OrderPage: FC<{ order: Order; token: string; months: string[]; values: OrderValues; errors: OrderErrors; gate: ContractGate }> = ({ order, token, months, values, errors, gate }) => {
   const directors = order.directors ?? []
   return (
     <Page>
       <form class="order" method="post" action={`/objednavka/${token}`} novalidate>
         <h1 class="h1">{o.title}</h1>
         <p class="lead">{o.lead}</p>
+        <input type="hidden" name="proposal" value={gate.offerHash} />
+        {!gate.ready ? <p class="notice" role="status">{gate.reason === 'bespoke' ? 'Pre Vašu firmu pripravíme individuálny rozsah služby. Tento štandardný balík zatiaľ nemožno podpísať.' : 'Ponuku ešte preverujeme. Pred podpisom Vám potvrdíme rozsah služby a zodpovednosť.'}</p> : null}
         <CompanyCard order={order} />
         <Summary order={order} months={months} />
         {errors.form ? (
@@ -127,7 +129,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
             <div class="choice__options">
               {PLANS.map((plan) => (
                 <label class="choice__option">
-                  <input type="radio" name="plan" id={`plan-${plan.id}`} value={plan.id} checked={values.plan === plan.id} />
+                  <input type="radio" name="plan" id={`plan-${plan.id}`} value={plan.id} checked={values.plan === plan.id} disabled={gate.ready && gate.approval?.review.plan !== plan.id} />
                   <span>
                     {plan.name} <span class="choice__hint">{formatEur(plan.price * 100)}</span>
                   </span>
@@ -202,7 +204,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
             </p>
             <Error id="o-agree-error" text={errors.agree} />
           </div>
-          <button class="btn btn--blue btn--large details__submit" type="submit">
+          <button class="btn btn--blue btn--large details__submit" type="submit" disabled={!gate.ready}>
             {o.submit}
           </button>
           <p class="small">{o.fine}</p>
@@ -213,8 +215,8 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
 }
 
 /** An order that was accepted: what was agreed, and the way into the app. */
-export const OrderDone: FC<{ order: Order }> = ({ order }) => {
-  const plan = planById(order.plan)
+export const OrderDone: FC<{ order: Order; contract: ResolvedContract | null }> = ({ order, contract }) => {
+  const plan = contract?.snapshot?.plan
   return (
     <Page>
       <h1 class="h1">{o.doneTitle}</h1>
@@ -223,11 +225,11 @@ export const OrderDone: FC<{ order: Order }> = ({ order }) => {
       <div class="summary">
         <table class="summary__table">
           <tbody>
-            {plan ? (
+            {order.priceCents !== null ? (
               <tr>
                 <th scope="row">{o.rows.plan}</th>
                 <td>
-                  {plan.name}, {formatEur(order.priceCents ?? plan.price * 100)} {o.noVat}
+                  {plan?.name ?? order.plan}, {formatEur(order.priceCents)} {o.noVat}
                 </td>
               </tr>
             ) : null}
@@ -275,11 +277,12 @@ export const OrderGone: FC<{ kind: 'expired' | 'client' }> = ({ kind }) => (
 )
 
 /** The terms in full, numbered as the contract refers to them ("bod 3.1"). */
-export const TermsPage: FC = () => (
+export const TermsPage: FC<{ released?: boolean }> = ({ released = false }) => (
   <Page wide>
     <article class="legal terms">
       <h1 class="h1">{typeset(TERMS_TITLE)}</h1>
       <p class="lead">{typeset(TERMS_SUBTITLE)}</p>
+      {!released ? <p class="notice">Návrh pred spustením služby. Toto znenie čaká na právne a poistné schválenie a nemení už uzavreté zmluvy.</p> : null}
       {TERMS.map((section, i) => (
         <section class="terms__section" id={`clanok-${i + 1}`}>
           <h2 class="h3">

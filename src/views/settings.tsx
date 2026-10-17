@@ -8,6 +8,7 @@ import type { DeclarationState } from '../app/aml'
 import type { Company, Person } from '../app/store'
 import { Flash, Heading, planName } from './inside'
 import { dayOf } from './inside-pages'
+import type { ExportReceipt } from '../app/handover-store'
 
 export interface CompanyPageProps {
   company: Company
@@ -30,6 +31,7 @@ export interface CompanyPageProps {
   /** The years there is anything to download, the newest first, and the books the accountant handed over. */
   years: string[]
   handover: Paper[]
+  receipts?: ExportReceipt[]
   downloadError?: string | null
 }
 
@@ -121,7 +123,7 @@ const Notice: FC<{ company: Company; owner: boolean; today: string; end: string;
 const c = app.company
 
 /** Everything of the company, a year at a time, and the books the accountant handed over at the end. */
-const Download: FC<{ years: string[]; handover: Paper[]; today: string; error?: string | null }> = ({ years, handover, today, error }) => {
+const Download: FC<{ years: string[]; handover: Paper[]; today: string; owner: boolean; receipts: ExportReceipt[]; error?: string | null }> = ({ years, handover, today, owner, receipts, error }) => {
   const d = app.download
   return (
     <section class="info" id="stiahnut" aria-labelledby="stiahnut-t">
@@ -129,8 +131,9 @@ const Download: FC<{ years: string[]; handover: Paper[]; today: string; error?: 
         {d.title}
       </h2>
       <p class="info__lead">{d.lead}</p>
+      <p class="info__source">{d.receiptLead} <a class="link" href="/app/firma#stiahnut">{d.refresh}</a></p>
       {error ? <p class="field__error">{error}</p> : null}
-      {years.length === 0 ? (
+      {!owner ? <p class="info__source">{d.onlyOwner}</p> : years.length === 0 ? (
         <p class="info__empty">{d.empty}</p>
       ) : (
         <ul class="plain">
@@ -144,6 +147,13 @@ const Download: FC<{ years: string[]; handover: Paper[]; today: string; error?: 
           ))}
         </ul>
       )}
+      {receipts.map((receipt) => receipt.confirmed ? <p class="info__source">{d.confirmed(receipt.year)}</p> : owner ? (
+        <form class="stack" method="post" action="/app/export/potvrdit">
+          <input type="hidden" name="export" value={receipt.id} />
+          <label class="tickbox"><input type="checkbox" name="potvrdit" value="1" /><span>{d.confirm(receipt.year)}</span></label>
+          <button class="btn btn--line btn--small" type="submit">{d.confirmButton}</button>
+        </form>
+      ) : null)}
       {handover.length > 0 ? (
         <>
           <h3 class="info__subtitle">{d.handover}</h3>
@@ -167,7 +177,7 @@ const Download: FC<{ years: string[]; handover: Paper[]; today: string; error?: 
   )
 }
 
-export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, downloadError }) => {
+export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, receipts = [], downloadError }) => {
   const owner = me.role === 'owner'
   const others = companies.filter((other) => other.id !== company.id)
   return (
@@ -279,7 +289,7 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
             <Notice company={company} owner={owner} today={today} end={noticeEnd} ending={ending} error={errors.notice} />
           </section>
 
-          <Download years={years} handover={handover} today={today} error={downloadError} />
+          <Download years={years} handover={handover} today={today} error={downloadError} owner={owner} receipts={receipts} />
 
           <section class="info" id="doklady-emailom" aria-labelledby="mail-t">
             <h2 id="mail-t" class="info__title">

@@ -2,6 +2,7 @@
 // reaches another company's payments or documents by guessing an id. Whether a payment still needs a document
 // is read from links and exempt every time and never stored on its own.
 import { NEXT_BANK_LEDGER, now } from '../db'
+import { linkLockedSql } from './period-schema'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
 import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
@@ -137,6 +138,9 @@ export interface Doc {
   foreign: boolean | null
   correctsHint: string | null
   linesHint: VatLine[]
+  /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
+  ekasaUid: string | null
+  ekasaOkp: string | null
 }
 
 export interface Message {
@@ -242,7 +246,8 @@ function paymentOf(row: Row): Payment {
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
-  d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party`
+  d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
+  d.ekasa_uid, d.ekasa_okp`
 export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
 
 export function docOf(row: Row): Doc {
@@ -287,6 +292,8 @@ export function docOf(row: Row): Doc {
     foreign: row.foreign_party === null || row.foreign_party === undefined ? null : row.foreign_party === 1,
     correctsHint: str(row.corrects),
     linesHint: isVatMode(row.vat_mode) ? [] : vatLinesOf(row.vat_lines),
+    ekasaUid: str(row.ekasa_uid),
+    ekasaOkp: str(row.ekasa_okp),
   }
 }
 
@@ -400,13 +407,17 @@ export interface Who {
   company: Company | null
   role: string | null
   session: string
+  createdAt: number
+  verifiedAt: number | null
+  verifiedCredential: string | null
 }
 
 /** The user (and company, while still a member) of a session that has not expired. */
 export async function whoBySession(db: D1Database, sessionId: string): Promise<Who | null> {
   const row = await db
     .prepare(
-      `SELECT u.id AS u_id, u.name AS u_name, u.email AS u_email, u.team AS u_team, u.reminders AS u_reminders, m.role AS m_role,
+      `SELECT u.id AS u_id, u.name AS u_name, u.email AS u_email, u.team AS u_team, u.reminders AS u_reminders, m.role AS m_role, s.created_at AS session_created_at,
+              CASE WHEN EXISTS (SELECT 1 FROM passkeys k WHERE k.id = s.credential_id AND k.user_id = u.id) THEN s.verified_at END AS verified_at, s.credential_id,
               ${COMPANY_COLUMNS}
        FROM sessions s
        JOIN users u ON u.id = s.user_id
@@ -419,7 +430,7 @@ export async function whoBySession(db: D1Database, sessionId: string): Promise<W
     .first<Row>()
   if (!row) return null
   const company = row.id ? companyOf(row) : null
-  return { user: userOf(row, 'u_'), company, role: company ? str(row.m_role) : null, session: sessionId }
+  return { user: userOf(row, 'u_'), company, role: company ? str(row.m_role) : null, session: sessionId, createdAt: Number(row.session_created_at), verifiedAt: num(row.verified_at), verifiedCredential: str(row.credential_id) }
 }
 
 export function eventStatement(db: D1Database, e: { company: string | null; user: string | null; action: string; subject?: string | null; detail?: unknown }): D1PreparedStatement {
@@ -565,6 +576,7 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
        FROM documents d JOIN payments p ON p.company_id = d.company_id
        WHERE d.id = ? AND p.id = ? AND p.company_id = ? AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
          AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id)
+         ${how === 'auto' ? `AND NOT ${linkLockedSql('p.id', 'd.id')}` : ''}
          ${alone ? 'AND NOT EXISTS (SELECT 1 FROM links WHERE payment_id = p.id)' : ''}`,
     )
     .bind(how, by, now(), doc, payment, company)
@@ -677,7 +689,7 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
     .prepare(
       `UPDATE documents SET status = 'read', read_by = ?, kind = ?, party = ?, party_ico = ?, party_iban = ?, number = ?, vs = ?,
          issued_on = ?, due_on = ?, total_cents = ?, vat_cents = ?, currency = ?, category = ?, proposal = ?,
-         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?
+         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?, ekasa_uid = ?, ekasa_okp = ?
        WHERE id = ? AND company_id = ? AND status = 'reading'`,
     )
     .bind(
@@ -696,6 +708,8 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
       reading.category ?? null,
       reading.category ? 'ai' : null,
       ...vatHints(reading),
+      reading.ekasaUid ?? null,
+      reading.ekasaOkp ?? null,
       doc,
       company,
     )
@@ -727,18 +741,37 @@ export function ruleUpsertStatement(db: D1Database, company: string, key: string
     .bind(company, key, name, category, vatDeduct ? 1 : 0, now(), by)
 }
 
-/** Marks a document as a suspected duplicate of an older one of the company; such a document is never paired by itself. */
+/**
+ * Marks a document as a suspected duplicate of an older one of the company; such a document is never paired by
+ * itself. Looked at: the latest documents of the same amount and, for an eKasa receipt, those with its codes or of
+ * its day (a code or the amount may have been read wrong once).
+ */
 export async function markDuplicate(db: D1Database, company: string, doc: string): Promise<string | null> {
   const self = await getDocument(db, company, doc)
-  if (!self || self.totalCents === null) return null
-  const rows = await db
-    .prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.id <> ? AND d.deleted_at IS NULL AND d.total_cents = ? AND d.created_at <= ? ORDER BY d.created_at LIMIT 20`)
-    .bind(company, doc, self.totalCents, self.createdAt)
-    .all<Row>()
-  const twin = rows.results.map(docOf).find((other) => sameDocument(self, other))
+  if (!self) return null
+  const others = (await duplicateCandidates(db, company, self, false)).filter((other) => sameDocument(self, other))
+  const twin = others.find((other) => !other.duplicateOf) ?? others[0]
   if (!twin) return null
   await db.prepare('UPDATE documents SET duplicate_of = ? WHERE id = ? AND company_id = ? AND duplicate_of IS NULL').bind(twin.id, doc, company).run()
   return twin.id
+}
+
+/** Ingestion order breaks same-second ties. Newer candidates are only unbooked documents awaiting review. */
+async function duplicateCandidates(db: D1Database, company: string, self: Doc, newer: boolean): Promise<Doc[]> {
+  const codes = Boolean(self.ekasaUid || self.ekasaOkp)
+  if (self.totalCents === null && !codes) return []
+  const compare = newer ? '>' : '<', order = newer ? 'ASC' : 'DESC'
+  const rows = await db
+    .prepare(
+      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ?1 AND d.id <> ?2 AND d.deleted_at IS NULL
+         AND (d.created_at ${compare} ?3 OR (d.created_at = ?3 AND d.rowid ${compare} (SELECT rowid FROM documents WHERE id = ?2 AND company_id = ?1)))
+         ${newer ? 'AND d.booked_at IS NULL' : ''}
+         AND (d.total_cents = ?4 OR d.ekasa_uid = ?5 OR d.ekasa_okp = ?6 OR (?7 = 1 AND d.issued_on = ?8 AND (d.ekasa_uid IS NOT NULL OR d.ekasa_okp IS NOT NULL)))
+       ORDER BY d.created_at ${order}, d.rowid ${order} LIMIT 50`,
+    )
+    .bind(company, self.id, self.createdAt, self.totalCents, self.ekasaUid, self.ekasaOkp, codes ? 1 : 0, self.issuedOn)
+    .all<Row>()
+  return rows.results.map(docOf)
 }
 
 export function manualStatement(db: D1Database, company: string, doc: string, why: string): D1PreparedStatement {
@@ -800,7 +833,9 @@ export async function matchCompany(db: D1Database, company: string): Promise<num
   const results = await db.batch(
     auto.flatMap(([payment, doc]) => [
       linkStatement(db, company, payment, doc, 'auto', null, true),
-      eventStatement(db, { company, user: null, action: 'link.auto', subject: payment, detail: { doc, min: AUTO_SCORE } }),
+      // Same transaction: a skipped or concurrently claimed pair must not create a false accounting event.
+      db.prepare("INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?, ?, NULL, 'link.auto', ?, ? WHERE changes() > 0")
+        .bind(now(), company, payment, JSON.stringify({ doc, min: AUTO_SCORE })),
     ]),
   )
   return results.filter((result, index) => index % 2 === 0 && (result.meta?.changes ?? 0) > 0).length
@@ -822,6 +857,11 @@ export async function afterReading(db: D1Database, company: string, doc: string)
   if (!d) return
   await db.batch([ruleStatement(db, company, doc, supplierKey(d.partyIco, d.party))])
   await markDuplicate(db, company, doc)
+  // OCR can finish in the opposite order from upload. Once the older original is readable, recheck its
+  // newer unbooked copies as well; otherwise deterministic ordering would miss this asynchronous case.
+  for (const other of await duplicateCandidates(db, company, d, true)) {
+    if (!other.duplicateOf && sameDocument(d, other)) await markDuplicate(db, company, other.id)
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -885,7 +925,6 @@ export async function importEntries(db: D1Database, company: string, accountId: 
   const sameAs = (e: Entry, p: (typeof others)[number]) =>
     p.booked_on === e.bookedOn && p.amount_cents === e.amountCents && (!p.vs || !e.vs || p.vs === e.vs) && (!p.party_iban || !e.partyIban || p.party_iban === e.partyIban)
   const fresh: D1PreparedStatement[] = []
-  const reasons: (string | null)[] = []
   for (const entry of entries) {
     // Known from this source by its reference: the insert below leaves it, and it takes no other payment's place.
     if (!mine.has(entry.ref)) {
@@ -897,15 +936,14 @@ export async function importEntries(db: D1Database, company: string, accountId: 
       }
     }
     const reason = autoExempt(entry, own)
-    reasons.push(reason)
     fresh.push(insertPaymentStatement(db, company, accountId, entry, reason, source))
   }
   for (let i = 0; i < fresh.length; i += 50) {
     const results = await db.batch(fresh.slice(i, i + 50))
-    results.forEach((result, j) => {
+    results.forEach((result) => {
       if ((result.meta?.changes ?? 0) > 0) {
         out.added++
-        if (reasons[i + j]) out.exempt++
+        if ((result.results[0] as { exempt?: string | null } | undefined)?.exempt) out.exempt++
       } else out.known++
     })
   }
@@ -939,7 +977,9 @@ export function insertPaymentStatement(db: D1Database, company: string, account:
   return db
     .prepare(
       `INSERT OR IGNORE INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, party_iban, vs, ss, ks, note, card, ref, source, exempt, exempt_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+         CASE WHEN EXISTS (SELECT 1 FROM period_locks WHERE company_id = ?2 AND through_on >= ?5) THEN NULL ELSE ?17 END,
+         CASE WHEN EXISTS (SELECT 1 FROM period_locks WHERE company_id = ?2 AND through_on >= ?5) THEN NULL ELSE ?18 END) RETURNING exempt`,
     )
     .bind(
       crypto.randomUUID(),

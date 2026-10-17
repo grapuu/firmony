@@ -1,7 +1,7 @@
 // The deployable bundle in the Workers runtime on http://127.0.0.1:8787, with a local database and the stand-ins
 // of test/pretend.mjs. Build it first:
 //
-//   npx wrangler deploy --dry-run --outdir .wrangler/dist && node --no-warnings scripts/playground.mjs
+//   node test/build.mjs && node --no-warnings scripts/playground.mjs
 //
 // IČO 57442452 is found in the register, 35757442 makes the register fail, anything else is unknown.
 // What was "sent" is at /playground/mail. /playground/koniec?dni=20 puts the sample company twenty days past the
@@ -15,6 +15,7 @@
 // letters and digits is taken by the pretend Fio. EB=1 in front of the command adds Enable Banking with its pretend
 // bank, as it was built on 13 October 2026.
 import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
@@ -51,10 +52,13 @@ const fio = pretendFio({
     { id: 26101402, date: bratislavaDay(-1), amount: -160, party: 'Slovak Telekom, a.s.', account: 'SK2111000000002612345678', vs: '7781202611', message: 'Internet' },
   ],
 })
+// Ephemeral, local-only provisioning; this is never used by the deployed Worker.
+const playgroundActivation = randomBytes(32).toString('base64url')
 const withBank = process.env.EB === '1'
 
 // Written in the long-standing option names and converted, so the script survives Miniflare's own renames.
 const mf = new Miniflare(convertV4MiniflareOptions({
+  cf: false,
   // For /cdn-cgi/local/email, which /playground/vypis sends the bank's email through.
   unsafeTriggerHandlers: true,
   d1Persist: join(root, '.wrangler/playground-d1'),
@@ -67,7 +71,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({
       compatibilityDate: '2026-10-01',
       d1Databases: { DB: 'firmony-playground' },
       r2Buckets: { FILES: 'firmony-files' },
-      bindings: { DEMO: '1', ANTHROPIC_API_KEY: 'pretend', ...(withBank ? { ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey } : {}) },
+      bindings: { DEMO: '1', TEAM_BOOTSTRAP_EMAIL: 'spravca@firmony.test', TEAM_BOOTSTRAP_TOKEN: playgroundActivation, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), ANTHROPIC_API_KEY: 'pretend', ...(withBank ? { ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey } : {}) },
       serviceBindings: { EMAIL: 'pretend-mail' },
       async outboundService(request) {
         const banked = await bank.answer(request)
@@ -206,4 +210,7 @@ createServer(async (req, res) => {
     res.writeHead(500)
     res.end(String(err))
   }
-}).listen(port, '127.0.0.1', () => console.log(`playground on http://127.0.0.1:${port}`))
+}).listen(port, '127.0.0.1', () => {
+  console.log(`playground on http://localhost:${port}`)
+  console.log(`Local demo first-key activation (one hour): ${playgroundActivation}`)
+})

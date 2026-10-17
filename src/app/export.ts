@@ -5,33 +5,49 @@
 import { BRAND } from '../config'
 import { csvCell, csvMoney } from '../team/store'
 import { zipName, zipStream, uniqueName, type ZipEntry } from '../zip'
-import { termsText } from '../content/terms'
+import { resolveContract, type ResolvedContract } from '../contracts'
 import { CATEGORIES } from './booking'
-import { dayName, readableName } from './copy'
+import { readableName } from './copy'
 import { issuedInYear, invoiceLines, ublOf } from './invoices'
 import type { Exempt } from './match'
 import { bratislava } from './remind'
 import { generalLedgerCsv, journalCsv, saldoCsv, trialBalance, trialCsv } from './ledger'
 import { booksOf } from './ledger-store'
 import { DOC_COLUMNS, DOC_FROM, docOf, type Company, type Doc } from './store'
+import { handoverData } from './handover-data'
+import { fileHash } from './read'
 
 type Row = Record<string, unknown>
 
 /** The years a company has anything of, the newest first. */
 export async function exportYears(db: D1Database, company: string): Promise<string[]> {
-  const rows = await db
-    .prepare(
-      `SELECT DISTINCT y FROM (
-         SELECT substr(COALESCE(issued_on, date(created_at, 'unixepoch')), 1, 4) AS y FROM documents WHERE company_id = ?1 AND deleted_at IS NULL
-         UNION SELECT substr(booked_on, 1, 4) FROM payments WHERE company_id = ?1
-         UNION SELECT substr(issued_on, 1, 4) FROM invoices WHERE company_id = ?1 AND status = 'issued'
-         UNION SELECT strftime('%Y', created_at, 'unixepoch') FROM messages WHERE company_id = ?1
-         UNION SELECT substr(COALESCE(to_on, from_on, date(created_at, 'unixepoch')), 1, 4) FROM statements WHERE company_id = ?1 AND status IN ('taken', 'known', 'held')
-       ) WHERE y GLOB '[12][0-9][0-9][0-9]' ORDER BY y DESC`,
-    )
-    .bind(company)
-    .all<{ y: string }>()
-  return rows.results.map((r) => r.y)
+  const selects = [
+    "SELECT substr(COALESCE(issued_on, date(created_at, 'unixepoch')), 1, 4) AS y FROM documents WHERE company_id = ?1 AND deleted_at IS NULL",
+    "SELECT substr(booked_on, 1, 4) AS y FROM payments WHERE company_id = ?1",
+    "SELECT substr(issued_on, 1, 4) AS y FROM invoices WHERE company_id = ?1 AND status = 'issued'",
+    "SELECT strftime('%Y', created_at, 'unixepoch') AS y FROM messages WHERE company_id = ?1",
+    "SELECT substr(COALESCE(to_on, from_on, date(created_at, 'unixepoch')), 1, 4) AS y FROM statements WHERE company_id = ?1 AND status IN ('taken', 'known', 'held')",
+    "SELECT substr(period, 1, 4) AS y FROM payroll_runs WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM payroll_history WHERE company_id = ?1",
+    "SELECT CAST(year AS TEXT) AS y FROM closings WHERE company_id = ?1",
+    "SELECT CAST(year AS TEXT) AS y FROM closing_history WHERE company_id = ?1",
+    "SELECT CAST(year AS TEXT) AS y FROM ledger_entries WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM filings WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM filing_history WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM filing_packages WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM payroll_closures WHERE company_id = ?1",
+    "SELECT substr(paid_on, 1, 4) AS y FROM payroll_payouts WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM payroll_targets WHERE company_id = ?1",
+    "SELECT substr(COALESCE(through_on, before_on), 1, 4) AS y FROM period_lock_history WHERE company_id = ?1",
+    "SELECT substr(period, 1, 4) AS y FROM vat_returns WHERE company_id = ?1",
+    "SELECT substr(started_on, 1, 4) AS y FROM employees WHERE company_id = ?1",
+    "SELECT substr(COALESCE(start_on, date(created_at, 'unixepoch')), 1, 4) AS y FROM companies WHERE id = ?1",
+  ]
+  // D1 limits compound SELECT terms; keep each query small even as more accounting tables are added.
+  const batches = []
+  for (let i = 0; i < selects.length; i += 5) batches.push(db.prepare(`SELECT DISTINCT y FROM (${selects.slice(i, i + 5).join(' UNION ')}) WHERE y GLOB '[12][0-9][0-9][0-9]'`).bind(company).all<{ y: string }>())
+  const rows = await Promise.all(batches)
+  return [...new Set(rows.flatMap((r) => r.results.map((v) => v.y)))].sort().reverse()
 }
 
 const KINDS: Record<string, string> = { receipt: 'Bloček', invoice_in: 'Prijatá faktúra', invoice_out: 'Vydaná faktúra', other: 'Iný doklad' }
@@ -75,14 +91,20 @@ export interface ContractFacts {
   startOn: string | null
 }
 
-function contractText(company: Company, order: ContractFacts | null): string {
-  const lines = ['Zmluva o vedení účtovníctva', '', `Firma: ${company.name}${company.ico ? `, IČO ${company.ico}` : ''}`]
-  if (company.contractAt && company.signedBy) lines.push(`Uzavretá online: ${moment(company.contractAt)}, ${company.signedBy}, konateľ`)
-  if (order) lines.push(`Balík: ${order.plan}${order.priceCents !== null ? `, ${csvMoney(order.priceCents)} € mesačne bez DPH` : ''}`)
-  if (company.startOn) lines.push(`Začiatok: ${dayName(company.startOn).replace(/ /g, ' ')}`)
-  if (company.endsOn) lines.push(`Koniec: ${dayName(company.endsOn).replace(/ /g, ' ')}`)
-  if (company.termsVersion) lines.push(`Obchodné podmienky: znenie ${company.termsVersion}`)
-  lines.push('', termsText().replace(/ /g, ' '))
+function contractText(company: Company, order: ContractFacts | null, contract: ResolvedContract): string {
+  const s = contract.snapshot
+  const lines = ['Zmluva o vedení účtovníctva', '', contract.notice, '',
+    `Firma: ${s?.client.name ?? company.name}, IČO ${s?.client.ico ?? company.ico ?? 'neuvedené'}`]
+  const at = s?.acceptedAt ?? order?.acceptedAt ?? company.contractAt
+  const by = s?.signedBy ?? order?.signedBy ?? company.signedBy
+  if (at && by) lines.push(`Uzavretá online: ${moment(at)}, ${by}, konateľ`)
+  if (s) lines.push(`Balík: ${s.plan.name}, ${csvMoney(s.plan.monthlyCents)} € mesačne bez DPH, do ${s.plan.docs} dokladov`,
+    `Mzdy: ${csvMoney(s.catalogue.payrollCents)} € za človeka mesačne bez DPH`,
+    `Závierka: ${csvMoney(s.catalogue.closingCents)} € bez DPH`, `Začiatok: ${s.startOn}`, `SHA-256 zmluva.json: ${contract.sha256}`)
+  else if (order) lines.push(`Balík: ${order.plan}${order.priceCents !== null ? `, ${csvMoney(order.priceCents)} € mesačne bez DPH` : ''}; úplný historický cenník nebol uložený.`)
+  if (!s && company.startOn) lines.push(`Začiatok: ${company.startOn}`)
+  if (company.endsOn) lines.push(`Koniec: ${company.endsOn}`)
+  if (contract.terms) lines.push('', contract.terms.text.replace(/\u00a0/g, ' '))
   return `${lines.join('\r\n')}\r\n`
 }
 
@@ -106,7 +128,17 @@ function readme(company: Company, year: string, has: { invoices: boolean; messag
     )
   }
   lines.push(
-    'zmluva.txt      zmluva a obchodné podmienky',
+    'odobrane-prilohy/  prílohy vyradené z bežného prehľadu, uchované do riadeného výmazu; čas a osoba v data/prilohy.json',
+    'data/           úplné údaje miezd, zamestnancov, podaní a účtovných zápisov vo formáte JSON vrátane histórie; sumy sú v centoch',
+    'mzdy/           uložené uzavreté výplatné pásky ako JSON a prehľad pre Excel; bez nového prepočtu',
+    'mzdy/podania/   pôvodné mzdové výkazy; zdroje, overené výplaty a úplná história sú v data/',
+    'podania/potvrdenky/  pôvodné skontrolované potvrdenky daňových aj mzdových podaní',
+    'podania/        pôvodné uložené XML podaných závierok a ich predchádzajúcich verzií, ak sa pri podaní uložili',
+    'odovzdane/      súbory a plné moci, ktoré Vám účtovníčka sprístupnila',
+    'zmluva.txt      prijaté znenie alebo výslovné upozornenie na chýbajúci pôvodný záznam',
+    'zmluva.json     presný záznam novšej zmluvy a jej cenníka, ak bol pri uzavretí uložený; zmluva.sha256 obsahuje jeho kontrolný súčet',
+    'manifest.json   zoznam všetkých súborov, ich veľkostí a kontrolných súčtov SHA-256',
+    'Pri staršom podaní bez uloženého XML zostávajú pôvodné uložené údaje v data/; originál XML si vyžiadajte z finančnej správy.',
     '',
     'Súbory CSV otvoríte v Exceli: sú v kódovaní UTF-8 a stĺpce oddeľuje bodkočiarka.',
     'Účtovné doklady a účtovníctvo uchovávajte desať rokov (§ 35 zákona č. 431/2002 Z. z. o účtovníctve).',
@@ -124,21 +156,35 @@ export async function exportYear(
   year: string,
   order: ContractFacts | null,
   today: string,
+  completion?: { id: string; revision: number; onComplete: () => Promise<void> },
 ): Promise<{ name: string; body: ReadableStream<Uint8Array> }> {
   const db = env.DB
+  const contract = await resolveContract(db, company.id, company.termsVersion)
+  if (contract.status === 'corrupt') throw new Error(contract.notice)
+  const at = Math.floor(Date.now() / 1000)
+  const [snapshots, papers, receipts, payrollFiles] = await Promise.all([
+    handoverData(db, company.id, year, at),
+    db.prepare('SELECT id, kind, file_name, created_at, r2_key, deleted_at FROM company_files WHERE company_id = ? ORDER BY id').bind(company.id).all<{ id: string; kind: string; file_name: string; created_at: number; r2_key: string; deleted_at: number | null }>(),
+    db.prepare(`SELECT e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ?1 AND substr(p.period, 1, 4) = ?2 AND e.file_key IS NOT NULL
+      UNION ALL SELECT 'payroll-' || e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM payroll_events e JOIN payroll_packages p ON p.id = e.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE e.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND e.file_key IS NOT NULL
+      UNION ALL SELECT 'review-' || r.id, r.at, r.file_key, r.file_bytes, r.file_sha256 FROM payroll_target_reviews r JOIN payroll_targets t ON t.id = r.target_id WHERE r.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND r.file_key IS NOT NULL ORDER BY 1`)
+      .bind(company.id, year).all<{ id: string; at: number; file_key: string; file_bytes: number; file_sha256: string }>(),
+    db.prepare(`SELECT p.id, p.name, p.file_key, p.file_bytes, p.sha256, p.created_at, t.kind, t.period FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ? AND substr(t.period, 1, 4) = ? ORDER BY p.id`)
+      .bind(company.id, year).all<{ id: string; name:string; file_key: string; file_bytes: number; sha256: string; created_at: number; kind: string; period: string }>(),
+  ])
   const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows] = await Promise.all([
     db
       .prepare(
         `SELECT ${DOC_COLUMNS}, p.booked_on AS paid_on, p.amount_cents AS paid_cents FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
          WHERE d.company_id = ? AND d.deleted_at IS NULL AND substr(COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), 1, 4) = ?
-         ORDER BY COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), d.created_at LIMIT 50000`,
+         ORDER BY COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), d.created_at`,
       )
       .bind(company.id, year)
       .all<Row>(),
     db
       .prepare(
         `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.ss, p.ks, p.note, p.exempt, p.exempt_note, a.iban AS account_iban
-         FROM payments p JOIN accounts a ON a.id = p.account_id WHERE p.company_id = ? AND substr(p.booked_on, 1, 4) = ? ORDER BY p.booked_on, p.rowid LIMIT 50000`,
+         FROM payments p JOIN accounts a ON a.id = p.account_id WHERE p.company_id = ? AND substr(p.booked_on, 1, 4) = ? ORDER BY p.booked_on, p.rowid`,
       )
       .bind(company.id, year)
       .all<Row>(),
@@ -150,7 +196,7 @@ export async function exportYear(
     db
       .prepare(
         `SELECT m.created_at, m.side, u.name AS author_name, m.body FROM messages m LEFT JOIN users u ON u.id = m.author
-         WHERE m.company_id = ? AND strftime('%Y', m.created_at, 'unixepoch') = ? ORDER BY m.created_at, m.rowid LIMIT 50000`,
+         WHERE m.company_id = ? AND strftime('%Y', m.created_at, 'unixepoch') = ? ORDER BY m.created_at, m.rowid`,
       )
       .bind(company.id, year)
       .all<{ created_at: number; side: string; author_name: string | null; body: string }>(),
@@ -160,7 +206,7 @@ export async function exportYear(
       .prepare(
         `SELECT iban, created_at, source, number, from_on, to_on, opening_cents, closing_cents, entries, status, file_key FROM statements
          WHERE company_id = ? AND status IN ('taken', 'known', 'held') AND substr(COALESCE(to_on, from_on, date(created_at, 'unixepoch')), 1, 4) = ?
-         ORDER BY COALESCE(to_on, from_on, ''), created_at, part LIMIT 20000`,
+         ORDER BY COALESCE(to_on, from_on, ''), created_at, part`,
       )
       .bind(company.id, year)
       .all<{
@@ -324,8 +370,8 @@ export async function exportYear(
 
   const encoder = new TextEncoder()
   const text = (value: string) => async () => encoder.encode(value)
-  const at = Math.floor(Date.now() / 1000)
   const files = env.FILES
+  if (!files && (docs.some(({ file }) => file) || statementFiles.size > 0 || papers.results.length > 0 || receipts.results.length > 0 || payrollFiles.results.length > 0)) throw new Error('Archive file storage is unavailable')
   async function* entries(): AsyncGenerator<ZipEntry> {
     yield {
       name: 'citajte.txt',
@@ -343,7 +389,33 @@ export async function exportYear(
       yield { name: 'uctovnictvo/predvaha.csv', when: at, data: text(trialCsv(trialBalance(books, bookYear, 12))) }
       yield { name: 'uctovnictvo/saldokonto.csv', when: at, data: text(saldoCsv(books, bratislava(Date.now()).day)) }
     }
-    yield { name: 'zmluva.txt', when: at, data: text(contractText(company, order)) }
+    yield { name: 'zmluva.txt', when: at, data: text(contractText(company, order, contract)) }
+    if (contract.data && contract.sha256) {
+      yield { name: 'zmluva.json', when: at, data: text(contract.data) }
+      yield { name: 'zmluva.sha256', when: at, data: text(`${contract.sha256}  zmluva.json\n`) }
+    }
+    yield* snapshots
+    for (const report of payrollFiles.results) yield {
+      name: zipName(/^[NO]514\d{4}\.\d{3}$/.test(report.name) ? `mzdy/podania/${report.kind}-${report.period}-${report.id}/${report.name}` : `mzdy/podania/${report.kind}-${report.period}-${report.id}.${report.file_key.split('.').pop()}`), when: report.created_at,
+      data: async () => {
+        const object = await files?.get(report.file_key)
+        if (!object) throw new Error('Payroll report missing from archive')
+        const bytes = new Uint8Array(await object.arrayBuffer())
+        if (bytes.length !== report.file_bytes || await fileHash(bytes) !== report.sha256) throw new Error('Payroll report checksum mismatch')
+        return bytes
+      },
+    }
+    for (const receipt of receipts.results) yield {
+      name: zipName(`podania/potvrdenky/${receipt.id}.${receipt.file_key.split('.').pop()}`), when: receipt.at,
+      data: async () => {
+        const object = await files?.get(receipt.file_key)
+        if (!object) throw new Error('Filing receipt missing from archive')
+        const bytes = new Uint8Array(await object.arrayBuffer())
+        if (bytes.length !== receipt.file_bytes || await fileHash(bytes) !== receipt.file_sha256) throw new Error('Filing receipt checksum mismatch')
+        return bytes
+      },
+    }
+    for (const paper of papers.results) yield { name: uniqueName(zipName(`${paper.deleted_at === null ? 'odovzdane' : 'odobrane-prilohy'}/${paper.kind}-${paper.id}-${paper.file_name}`), taken), when: paper.created_at, data: async () => { const object = await files?.get(paper.r2_key); return object ? new Uint8Array(await object.arrayBuffer()) : null } }
     for (const { invoice, file } of invoiceFiles) {
       yield { name: file, when: invoice.createdAt, data: async () => encoder.encode(ublOf(invoice, await invoiceLines(db, invoice.id), company)) }
     }
@@ -371,6 +443,17 @@ export async function exportYear(
       }
     }
   }
+  async function* verifiedEntries(): AsyncGenerator<ZipEntry> {
+    const manifest: { name: string; bytes: number; sha256: string }[] = []
+    for await (const entry of entries()) yield { ...entry, data: async () => {
+      const bytes = await entry.data()
+      if (!bytes) throw new Error(`Archive source missing: ${entry.name}`)
+      const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('')
+      manifest.push({ name: zipName(entry.name), bytes: bytes.length, sha256 })
+      return bytes
+    } }
+    yield { name: 'manifest.json', when: at, data: text(JSON.stringify({ format: 'firmony-accounting-handover', version: 1, company: company.id, year, createdAt: at, receipt: completion?.id ?? null, revision: completion?.revision ?? null, files: manifest }, null, 2)) }
+  }
   const slug =
     (company.ico ?? company.name)
       .normalize('NFD')
@@ -380,6 +463,6 @@ export async function exportYear(
       .toLowerCase() || 'firma'
   return {
     name: `firmony-${slug}-${year}.zip`,
-    body: zipStream(entries(), (names) => `Tieto súbory sa do archívu nezmestili. Napíšte nám do správ a pošleme Vám ich zvlášť:\r\n\r\n${names.join('\r\n')}\r\n`),
+    body: zipStream(verifiedEntries(), undefined, { strict: true, onComplete: completion?.onComplete }),
   }
 }

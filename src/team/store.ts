@@ -20,9 +20,33 @@ export function canSee(user: User, company: Pick<Company, 'accountantId'>): bool
 }
 
 /** The SQL that limits companies (alias c) to what a user of the team may see. */
-function visible(user: User, demo: boolean): { sql: string; binds: unknown[] } {
+export function visible(user: User, demo: boolean): { sql: string; binds: unknown[] } {
   const own = isAdmin(user) ? '' : 'AND c.accountant_id = ?'
   return { sql: `c.closed_at IS NULL ${own} ${demo ? '' : 'AND c.demo = 0'}`, binds: isAdmin(user) ? [] : [user.id] }
+}
+
+/** Only an explicit personal reply closes the response clock. Filing notices, reminders and read receipts do
+ * not answer a client's question, even when generated on behalf of a named accountant. The event and author
+ * must belong to the same company/message. Stable ordering handles several messages within one second.
+ * Restrict the CTE to visible companies before inspecting conversations.
+ */
+function unansweredSql(v: ReturnType<typeof visible>): string {
+  return `WITH visible_companies AS (SELECT c.id FROM companies c WHERE ${v.sql}),
+    answers AS (
+      SELECT m.company_id, m.created_at, m.rowid AS seq,
+        ROW_NUMBER() OVER (PARTITION BY m.company_id ORDER BY m.created_at DESC, m.rowid DESC) AS position
+      FROM events e JOIN messages m ON m.id = e.subject AND m.company_id = e.company_id AND m.author = e.user_id
+      JOIN visible_companies vc ON vc.id = m.company_id
+      WHERE e.action = 'message.answered' AND m.side = 'firmony' AND m.author IS NOT NULL
+    ), unanswered AS (
+      SELECT m.id, m.company_id, m.created_at, m.body, m.author,
+        ROW_NUMBER() OVER (PARTITION BY m.company_id ORDER BY m.created_at, m.rowid) AS position,
+        COUNT(*) OVER (PARTITION BY m.company_id) AS pending_count
+      FROM messages m JOIN visible_companies vc ON vc.id = m.company_id
+      LEFT JOIN answers a ON a.company_id = m.company_id AND a.position = 1
+      WHERE m.side = 'client' AND (a.company_id IS NULL OR m.created_at > a.created_at
+        OR (m.created_at = a.created_at AND m.rowid > a.seq))
+    )`
 }
 
 export interface ClientRow {
@@ -46,19 +70,20 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
   const v = visible(user, demo)
   const rows = await db
     .prepare(
-      `SELECT ${COMPANY_COLUMNS},
+      `${unansweredSql(v)} SELECT ${COMPANY_COLUMNS},
          (SELECT COUNT(*) FROM payments p WHERE p.company_id = c.id AND ${MISSING}) AS missing,
          (SELECT COUNT(*) FROM documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL AND d.booked_at IS NULL AND d.status IN ('read', 'manual')) AS to_book,
          (SELECT COUNT(*) FROM documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL AND d.status = 'reading') AS reading,
          (SELECT COUNT(*) FROM payments p WHERE p.company_id = c.id AND p.exempt IS NOT NULL AND p.checked_at IS NULL AND p.exempt_by <> 'auto')
            + (SELECT COUNT(*) FROM statements s WHERE s.company_id = c.id AND s.status = 'held') AS to_check,
-         (SELECT CASE WHEN m.side = 'client' THEN m.created_at END FROM messages m WHERE m.company_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS waiting,
+         pending.created_at AS waiting,
          ${POA_STATE_SQL} AS poa,
          ${DECLARATION_STATE_SQL} AS declaration,
          ${OPEN_REPORTS_SQL} AS open_reports,
-         (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover') AS handover
+         (SELECT COUNT(*) FROM company_files f WHERE f.company_id = c.id AND f.kind = 'handover' AND f.deleted_at IS NULL) AS handover
        FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id
-       WHERE ${v.sql}
+       JOIN visible_companies vc ON vc.id = c.id
+       LEFT JOIN unanswered pending ON pending.company_id = c.id AND pending.position = 1
        ORDER BY c.name COLLATE NOCASE`,
     )
     .bind(...v.binds)
@@ -132,23 +157,23 @@ export interface Thread {
   body: string
   at: number
   author: string | null
+  pending: number
 }
 
-/** Companies whose newest message is the client's: they wait for an answer, the longest waiting first. */
+/** Oldest unanswered client message per visible company, longest waiting first. */
 export async function waitingThreads(db: D1Database, user: User, demo: boolean): Promise<Thread[]> {
   const v = visible(user, demo)
   const rows = await db
     .prepare(
-      `SELECT ${COMPANY_COLUMNS}, m.body AS m_body, m.created_at AS m_at, u.name AS m_author
+      `${unansweredSql(v)} SELECT ${COMPANY_COLUMNS}, m.body AS m_body, m.created_at AS m_at, u.name AS m_author, m.pending_count
        FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id
-       JOIN messages m ON m.id = (SELECT id FROM messages WHERE company_id = c.id ORDER BY created_at DESC, rowid DESC LIMIT 1)
+       JOIN unanswered m ON m.company_id = c.id AND m.position = 1
        LEFT JOIN users u ON u.id = m.author
-       WHERE ${v.sql} AND m.side = 'client'
-       ORDER BY m.created_at`,
+       ORDER BY m.created_at, c.id`,
     )
     .bind(...v.binds)
     .all<Row>()
-  return rows.results.map((row) => ({ company: companyOf(row), body: String(row.m_body), at: Number(row.m_at), author: typeof row.m_author === 'string' ? row.m_author : null }))
+  return rows.results.map((row) => ({ company: companyOf(row), body: String(row.m_body), at: Number(row.m_at), author: typeof row.m_author === 'string' ? row.m_author : null, pending: Number(row.pending_count) }))
 }
 
 export interface ToCheck {
@@ -265,7 +290,7 @@ export async function teamCounts(db: D1Database, user: User, demo: boolean): Pro
   const [queue, inbox] = await db.batch<{ n: number }>([
     db.prepare(`SELECT COUNT(*) AS n FROM documents d JOIN companies c ON c.id = d.company_id WHERE d.deleted_at IS NULL AND d.booked_at IS NULL AND d.status IN ('read', 'manual') AND ${v.sql}`).bind(...v.binds),
     db
-      .prepare(`SELECT COUNT(*) AS n FROM companies c WHERE ${v.sql} AND (SELECT side FROM messages m WHERE m.company_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) = 'client'`)
+      .prepare(`${unansweredSql(v)} SELECT COUNT(*) AS n FROM unanswered WHERE position = 1`)
       .bind(...v.binds),
   ])
   return { queue: queue?.results[0]?.n ?? 0, inbox: inbox?.results[0]?.n ?? 0, requests: isAdmin(user) ? await newRequests(db) : 0 }

@@ -68,9 +68,9 @@ export const PAYROLL_PRICE = 15
 
 /**
  * What a freelance accountant is paid (his yes of 13 October 2026, 22:04): a client a month by plan, a person's
- * payroll a month, a closing. Her work is the check, the returns and the answers; the app does the rest. Shown on no
- * page; with the prices above it leaves at least 60 % after her pay, the bank, the e-invoices, the reading and a
- * reserve of 2 % for our own errors.
+ * payroll a month, a closing. Her planned work is the review, returns and answers. Shown on no
+ * page. These are planning assumptions, not a verified margin: actual economics depend on measured onboarding,
+ * review, support, corrections and production vendor charges.
  */
 export const ACCOUNTANT_PAY = { start: 28, rast: 55, firma: 110, payroll: 5, closing: 90 } as const
 
@@ -309,13 +309,31 @@ export const STATEMENTS = {
   dueDay: 1,
 } as const
 
-/** The people of Firmony: who becomes the first administrator, and how long a welcome link works. */
+/** Team display defaults and welcome-link duration. Provisioning requires explicit SecurityBindings. */
 export const TEAM = {
-  /** Whoever signs in with this address while nobody of the team exists becomes the first administrator. */
-  bootstrapEmail: BRAND.email,
   bootstrapName: 'Christian Juhás',
   /** The link in the email that welcomes a new client works this many days, once. */
   welcomeDays: 7,
+} as const
+
+/**
+ * Every client's deadlines on one screen (the team's /ucto/terminy, src/team/deadlines.ts): how far ahead a deadline
+ * is shown, how long what was done stays listed, and which VAT periods are worked out from the documents.
+ */
+export const DEADLINES = {
+  /** What still runs (a period, a month, a contract) is shown once its deadline is this many days ahead or nearer;
+   *  what can be done now always is. */
+  aheadDays: 45,
+  /** What was done is listed (when asked for) while its deadline is at most this many days past. */
+  doneDays: 45,
+  /** The VAT periods worked out in full: the ones that ended in the last four months (a quarterly payer's last two). */
+  vatMonths: 4,
+  /** A payer's periods older than those, never filed, are listed as overdue without being worked out: at most this many. */
+  olderPeriods: 24,
+  /** Companies whose documents are read in one batch. */
+  batch: 40,
+  /** The months of payroll listed: the one that runs and the ones before it. */
+  payrollMonths: 3,
 } as const
 
 /**
@@ -331,6 +349,13 @@ export const READER = {
   pdfBytes: 25_000_000,
 } as const
 
+/**
+ * The Financial Administration's "Over doklad" on the web, where anyone checks a receipt of an eKasa till by its
+ * identifier (UID) or, off-line, by its verification code (OKP) and what goes with it (§ 18(1) and (3) of Act No.
+ * 384/2025 Z. z.). The accountant opens it herself; Firmony asks it nothing (src/app/ekasa.ts).
+ */
+export const EKASA_VERIFY = 'https://opd.financnasprava.sk/'
+
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
 export const PRIVACY_VERSION = '2026-10-14'
 
@@ -338,9 +363,10 @@ export const PRIVACY_VERSION = '2026-10-14'
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an
  * s. r. o. becomes an order; its link goes by email to the address that was typed, and a director (konateľ) named
  * in the register accepts the terms on the order's page. Bump TERMS_VERSION with every change of the terms
- * (src/content/terms.ts): an accepted order keeps the version it accepted.
+ * (src/content/terms.ts): acceptance keeps the complete wording and tariffs with SHA-256. Signing also requires
+ * explicit legal/insurance release approval and a documented review of the particular order.
  */
-export const TERMS_VERSION = '2026-10-13'
+export const TERMS_VERSION = '2026-10-15'
 
 export const ORDER = {
   /** The link to an order works this many days. */

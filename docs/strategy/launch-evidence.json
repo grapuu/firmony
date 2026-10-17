@@ -1,0 +1,18 @@
+{
+  "asOf": "2026-10-15",
+  "scope": "Navrhovaná riadená účtovná služba pre kvalifikované slovenské servisné s. r. o.; produkcia neoverená",
+  "decision": "NO-GO",
+  "rule": "Všetky relevantné kritické brány musia mať platný nezávisle skontrolovaný dôkaz PASS. UNKNOWN nie je PASS.",
+  "gates": [
+    { "id": "G1", "name": "Účtovná správnosť", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G2", "name": "Právo a zodpovednosť", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G3", "name": "Bezpečnosť", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G4", "name": "Obnova D1 a R2", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G5", "name": "Autorizované podania", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G6", "name": "Bankové dáta", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G7", "name": "eFaktúra podľa rozsahu 2027", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G8", "name": "Odborník, zástupca a kapacita", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G9", "name": "Prevzatie a odovzdanie", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null },
+    { "id": "G10", "name": "Ekonomika a kvalifikácia pilotu", "critical": true, "status": "unknown", "owner": null, "evidence": null, "reviewedAt": null }
+  ]
+}

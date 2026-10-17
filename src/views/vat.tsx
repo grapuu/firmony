@@ -1,20 +1,23 @@
 // The team's VAT page of a client: the return and the control statement of one period as the books give them, what
 // keeps them from being filed (each with the document to open), the files the Financial Administration takes, and the
-// mark that they were filed, which sends the client what to pay. vat.ts works it all out; nothing here computes.
+// mark that they were filed, which sends the client what to pay; and the recapitulative statement of the period.
+// vat.ts and vat-summary.ts work it all out; nothing here computes.
 import type { FC } from 'hono/jsx'
-import { formatEurExact } from '../format'
+import { DeliveryNotice } from './filings'
+import { formatEur, formatEurExact } from '../format'
 import { dayName, dayShort, readableName } from '../app/copy'
 import { textDay } from '../app/booking'
 import type { Company, Doc, User } from '../app/store'
-import { ROWS, correctionKind, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
+import { ROWS, correctionKind, filingDeadline, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
 import { FORM_RATES, type FormRate, type VatErrorCode, type VatErrors, type VatValues } from '../app/vat-form'
 import { payable, periodName, type FilingPlan, type PeriodState, type PeriodView } from '../app/vat-store'
+import { totalOf, wholeEuros, type SvRow, type SvState, type SvView, type SvFiled, type SvSchedule } from '../app/vat-summary'
 import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
 
 const v = t.vat
 
-const STATE_PILL: Record<PeriodState, string> = { filed: 'pill--ok', changed: 'pill--amber', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', none: 'pill--grey' }
+const STATE_PILL: Record<PeriodState, string> = { filed: 'pill--blue', changed: 'pill--amber', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', none: 'pill--grey' }
 
 /** "03", "01a": a row as the form numbers it. */
 const rowNo = (row: string) => row.slice(1)
@@ -326,15 +329,21 @@ const StatusCard: FC<{ company: Company; view: PeriodView; plan: FilingPlan | nu
         </div>
       </dl>
       {view.filed ? (
+        <DeliveryNotice status={view.filed.deliveryStatus} href={`/ucto/klienti/${company.id}/podania?obdobie=${view.period}`} />
+      ) : null}
+      {view.state === 'changed' && !plan && view.filed?.deliveryStatus && ['prepared', 'rejected', 'review'].includes(view.filed.deliveryStatus) ? (
+        <p class="notice">Podklady sa zmenili. Neodoslané alebo odmietnuté podklady najprv znovu otvorte tlačidlom nižšie. Ak majú dokumenty rozdielny stav doručenia, prípad preverí odborný správca; nevytvárame automaticky nesprávny typ opravného priznania.</p>
+      ) : null}
+      {view.filed ? (
         <p class="vstatus__filed">
-          <span class="tick tick--green" aria-hidden="true" /> {v.filed(dayName(view.filed.filedOn, today), view.filed.filedByName ?? '', view.filed.kind)}
+          {v.filed(dayName(view.filed.filedOn, today), view.filed.filedByName ?? '', view.filed.kind)}
         </p>
       ) : null}
       {view.result.rows.r34 > 0 ? <p class="info__lead">{v.carried(formatEurExact(view.result.rows.r34))}</p> : null}
       {view.running ? <p class="info__lead">{v.running(dayName(periodRange(view.period).to, today))}</p> : null}
       {view.state === 'none' ? <p class="info__lead">{v.nothing7a}</p> : null}
       {view.state === 'blocked' ? <p class="vstatus__blocked">{v.blocked(blocks)}</p> : null}
-      {changed ? (
+      {changed && plan ? (
         <p class="flag">
           {view.changed.length > 0 ? (kind === 'O' ? v.changedO : v.changedD(dayName(plan?.dueOn ?? view.deadline, today))) : kind === 'O' ? v.changedKvO : v.changedKvD}
           {view.changed.length > 0 ? ` ${v.changedRows(view.changed.map(rowNo).join(', '))}` : null}
@@ -348,16 +357,168 @@ const StatusCard: FC<{ company: Company; view: PeriodView; plan: FilingPlan | nu
         <p class="info__source">{v.correctionBlocked}</p>
       ) : null}
       {toPay > 0 && !company.taxAccount && (view.state === 'ready' || view.state === 'filed' || view.state === 'changed') ? <p class="flag">{v.accountMissing}</p> : null}
-      {view.filed ? (
+      {view.filed && (view.filed.canReprepare || !view.filed.delivery?.vat && !view.filed.delivery?.kv) ? (
         <form method="post" action={`${base}/zrusit`}>
           <input type="hidden" name="obdobie" value={view.period} />
           <button class="btn btn--text" type="submit">
-            {view.filed.prev ? v.unmarkCorrection : v.unmark}
+            {view.filed.canReprepare ? 'Znovu otvoriť neodoslané alebo odmietnuté podklady' : view.filed.prev ? v.unmarkCorrection : v.unmark}
           </button>
         </form>
       ) : null}
     </section>
   )
+}
+
+const SV_PILL: Record<SvState, string> = { none: 'pill--grey', running: 'pill--grey', blocked: 'pill--amber', ready: 'pill--blue', filed: 'pill--blue', changed: 'pill--amber' }
+
+/** Whole euros as the statement has them: "1 000 €", "−120 €". */
+const euros = (n: number) => formatEur(n * 100)
+
+const SvRows: FC<{ rows: SvRow[] }> = ({ rows }) => (
+  <ul class="plain">
+    {rows.map((row) => (
+      <li class="plain__row">
+        <span class="plain__name">
+          {row.country} {row.number}
+        </span>
+        <span class="plain__sub">
+          <span>{v.sv.code[row.code]}</span>
+          <span>{euros(row.euros)}</span>
+        </span>
+      </li>
+    ))}
+  </ul>
+)
+
+/**
+ * The recapitulative statement of the period (a quarter for a person registered under § 7a): each customer's row with
+ * its invoices, what keeps it back, its file and the mark, or the correction a change after the mark asks for.
+ */
+const SummaryCard: FC<{ company: Company; sv: SvView; docs: Map<string, Doc>; today: string; showEmpty?: boolean }> = ({ company, sv, docs, today, showEmpty }) => {
+  if (sv.state === 'none' && !sv.filed && !showEmpty) return null
+  const base = `/ucto/klienti/${company.id}/dph`
+  const s = v.sv
+  const blocks = sv.issues.filter((i) => i.level === 'block')
+  const one = (i: Issue) => {
+    const d = i.doc ? docs.get(i.doc) : undefined
+    return (
+      <li class="vissue vissue--block">
+        <span class="vissue__text">
+          {d ? <span class="vissue__doc">{docLine(d)}</span> : null}
+          <span>{v.issue[i.code]}</span>
+        </span>
+        {i.doc ? (
+          <a class="btn btn--line btn--small" href={`/ucto/doklady/${i.doc}`}>
+            {v.open}
+          </a>
+        ) : null}
+      </li>
+    )
+  }
+  return (
+    <section class="info" id={`suhrnny-${sv.period}`} aria-labelledby={`suhrnny-${sv.period}-t`}>
+      <header class="info__row">
+        <h3 id={`suhrnny-${sv.period}-t`} class="info__title">
+          {s.title(periodName(sv.period))}
+        </h3>
+        <span class={`pill ${SV_PILL[sv.state]}`}>{s.state[sv.state]}</span>
+      </header>
+      <p class="info__lead">
+        {s.deadline(dayName(sv.deadline, today))}
+        {company.vatStatus === 'reg7a' ? ` ${s.lead7a}` : ''}
+      </p>
+      {sv.lines.length > 0 ? (
+        <ul class="plain">
+          {sv.lines.map((line) => (
+            <li class="plain__row plain__row--two">
+              <span class="plain__name">
+                {line.country} {line.number}
+              </span>
+              <span class="plain__sub">
+                <span>{s.code[line.code]}</span>
+                <span>{euros(wholeEuros(line.cents))}</span>
+              </span>
+              <details class="vrows__docs">
+                <summary>{v.docs(line.docs.length)}</summary>
+                <DocLinks ids={line.docs} docs={docs} />
+              </details>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {sv.rows.length > 0 ? <p class="info__source">{s.total(euros(totalOf(sv.rows)))}</p> : null}
+      {blocks.length > 0 ? (
+        <ul class="vissues">
+          {blocks.map(one)}
+        </ul>
+      ) : null}
+      {sv.filed ? (
+        <DeliveryNotice status={sv.filed.deliveryStatus} href={`/ucto/klienti/${company.id}/podania?obdobie=${sv.period}`} />
+      ) : null}
+      {sv.filed ? (
+        <p class="vstatus__filed">
+          {s.filed(dayName(sv.filed.filedOn, today), sv.filed.filedByName ?? '', sv.filed.kind)}
+        </p>
+      ) : null}
+      {sv.state === 'none' ? <p class="info__lead">{s.flashes.none}</p> : null}
+      {sv.state === 'running' ? <p class="info__lead">{s.running(dayName(sv.endsOn, today))}</p> : null}
+      {sv.state === 'changed' && sv.plan ? <p class="flag">{today <= sv.deadline ? s.changedO : s.changedD}</p> : null}
+      {sv.state === 'changed' && !sv.plan && sv.filed?.deliveryStatus && ['prepared', 'rejected', 'review'].includes(sv.filed.deliveryStatus) ? <p class="notice">Podklady sa zmenili. Neodoslané alebo odmietnuté podklady najprv znovu otvorte. Sporné potvrdenie preverí odborný správca pred prípravou ďalšieho podania.</p> : null}
+      {sv.plan && sv.plan.kind === 'D' ? (
+        <>
+          <p class="info__source">{s.sends}</p>
+          <SvRows rows={sv.plan.rows} />
+        </>
+      ) : null}
+      {(sv.state === 'blocked' || (sv.state === 'changed' && !sv.plan)) ? <p class="info__source">{s.blocked}</p> : null}
+      {sv.plan || sv.state === 'filed' ? (
+        <form class="vfile" method="get" action={`${base}/suhrnny-vykaz.xml`}>
+          <input type="hidden" name="obdobie" value={sv.period} />
+          <div class="vstatus__files">
+            <button class="btn btn--blue" type="submit">
+              {s.download[sv.plan?.kind ?? sv.filed?.kind ?? 'R']}
+            </button>
+          </div>
+          {sv.plan ? (
+            <div class="stack vfile__mark">
+              <p class="info__lead">{s.markLead}</p>
+              <button class="btn btn--line stack__submit" type="submit" formaction={`${base}/suhrnny-vykaz/podane`} formmethod="post">
+                {sv.filed ? s.markCorrection : s.mark}
+              </button>
+            </div>
+          ) : null}
+        </form>
+      ) : null}
+      {sv.filed?.file ? <a class="link" href={`${base}/suhrnny-vykaz.xml?obdobie=${sv.period}&povodne=1`}>{s.original}</a> : null}
+      {sv.filed && (!sv.filed.file?.attemptId || ['prepared', 'rejected'].includes(sv.filed.deliveryStatus ?? 'unverified')) ? (
+        <form method="post" action={`${base}/suhrnny-vykaz/zrusit`}>
+          <input type="hidden" name="obdobie" value={sv.period} />
+          <button class="btn btn--text" type="submit">
+            {sv.filed.file?.attemptId ? 'Znovu otvoriť neodoslané alebo odmietnuté podklady' : sv.filed.prev ? s.unmarkCorrection : s.unmark}
+          </button>
+        </form>
+      ) : null}
+    </section>
+  )
+}
+
+const SummarySection: FC<{ company: Company; views: SvView[]; schedule: SvSchedule | null; legacy: SvFiled | null; docs: Map<string, Doc>; today: string }> = ({ company, views, schedule, legacy, docs, today }) => {
+  if (!schedule) return null
+  const monthlyQuarter = company.vatQuarterly && schedule.monthly
+  if (!monthlyQuarter && !legacy && !views.some((view) => view.state !== 'none')) return null
+  return <section class="stack" id="suhrnny" aria-labelledby="suhrnny-t">
+    <h2 class="info__title" id="suhrnny-t">{v.sv.heading}</h2>
+    {monthlyQuarter ? <p class="info__lead">{v.sv.monthlyLead}{schedule.crossedIn ? ` ${v.sv.transition(periodName(schedule.crossedIn), dayName(filingDeadline(schedule.crossedIn), today))}` : ''}</p> : null}
+    {legacy ? <div class="info">
+      <p class="flag">{v.sv.reclassifyLead}</p>
+      {legacy.file ? <a class="link" href={`/ucto/klienti/${company.id}/dph/suhrnny-vykaz.xml?obdobie=${schedule.quarter}&povodne=1`}>{v.sv.original}</a> : null}
+      {legacy.rows === null ? <p class="info__source">{v.sv.reclassifyMissing}</p> : !views.some((view) => view.period === schedule.periods[2] && view.filed) ? <form method="post" action={`/ucto/klienti/${company.id}/dph/suhrnny-vykaz/obdobie`}>
+        <input type="hidden" name="obdobie" value={schedule.quarter} />
+        <button type="submit" class="btn btn--line">{v.sv.reclassify}</button>
+      </form> : <p class="info__source">{v.sv.reclassifyConflict}</p>}
+    </div> : null}
+    {views.map((sv) => <SummaryCard company={company} sv={sv} docs={docs} today={today} showEmpty={monthlyQuarter} />)}
+  </section>
 }
 
 export interface VatPageProps {
@@ -372,6 +533,10 @@ export interface VatPageProps {
   needs7a: Doc[]
   /** What would be filed now (the files and the mark), or null when nothing can be. */
   plan: FilingPlan | null
+  /** The recapitulative statement of the period's statement period; null for a company that is not registered. */
+  summaries: SvView[]
+  summarySchedule: SvSchedule | null
+  legacySummary: SvFiled | null
   today: string
   flash?: string | null
   error?: string | null
@@ -406,6 +571,7 @@ export const VatPage: FC<VatPageProps> = (p) => {
               <Issues company={c} view={p.view} docs={p.docs} />
               <RowsCard view={p.view} docs={p.docs} />
               <StatementCard company={c} view={p.view} docs={p.docs} />
+              <SummarySection company={c} views={p.summaries} schedule={p.summarySchedule} legacy={p.legacySummary} docs={p.docs} today={p.today} />
               <p class="info__source vnotbuilt">{v.notBuilt}</p>
             </div>
             <aside class="pgrid__side">

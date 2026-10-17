@@ -2,7 +2,7 @@
 // the work quickly: what waits is counted everywhere, a document is booked on one screen with its original
 // beside the form, and "Zaúčtovať a ďalší" goes straight to the next one.
 import type { Child, FC } from 'hono/jsx'
-import { APP, ART, BRAND, PLANS, type Art } from '../config'
+import { APP, ART, BRAND, EKASA_VERIFY, PLANS, type Art } from '../config'
 import { formatEur, formatEurExact } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../app/copy'
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
@@ -25,16 +25,22 @@ import { dayOf, groupIban, whenName } from './inside-pages'
 import { Wordmark } from './layout'
 import { InvoiceSheet } from './invoices'
 import type { Line, StoredInvoice } from '../app/invoices'
+import { responseDueAt } from '../team/support'
 
-export type TeamPlace = 'clients' | 'queue' | 'inbox' | 'requests' | 'people'
+export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'people' | 'incidents'
 
 const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean }[] = [
   { place: 'clients', href: '/ucto', label: t.nav.clients, short: t.nav.short.clients, art: ART.tree },
+  { place: 'deadlines', href: '/ucto/terminy', label: t.nav.deadlines, short: t.nav.short.deadlines, art: ART.paperReturn },
   { place: 'queue', href: '/ucto/doklady', label: t.nav.queue, short: t.nav.short.queue, art: ART.paperInvoice },
   { place: 'inbox', href: '/ucto/spravy', label: t.nav.inbox, short: t.nav.short.inbox, art: ART.chat },
+  { place: 'incidents', href: '/ucto/incidenty', label: 'Incidenty', short: 'Incidenty', art: ART.lens },
   { place: 'requests', href: '/ucto/ziadosti', label: t.nav.requests, short: t.nav.short.requests, art: ART.envelope, admin: true },
   { place: 'people', href: '/ucto/tim', label: t.nav.people, short: t.nav.short.people, art: ART.lens, admin: true },
 ]
+
+/** A phone's tab bar holds five places; the others are in the bar's menu. */
+const TABS = 5
 
 export interface TeamShellProps {
   user: User
@@ -80,6 +86,7 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
               ) : null}
             </nav>
             <div class="side__foot">
+              <a class="side__out" href="/auth?next=%2Fucto">Zabezpečenie prístupu</a>
               <span class="side__user">{user.name}</span>
               <span class="side__email">{user.email}</span>
               <form method="post" action="/app/odhlasit">
@@ -93,6 +100,11 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
             <header class="bar">
               <Wordmark href="/ucto" label={t.nav.clients} />
               <BarMenu label={user.team ? t.nav.role[user.team] : t.nav.label} user={user}>
+                {items.slice(TABS).map((item) => (
+                  <a class="barmenu__item" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
+                    {item.label}
+                  </a>
+                ))}
                 {ownCompany ? (
                   <a class="barmenu__item" href="/app">
                     {t.nav.own}
@@ -106,7 +118,7 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
           </div>
         </div>
         <nav class="tabs tabs--team" aria-label={t.nav.label}>
-          {items.slice(0, 5).map((item) => (
+          {items.slice(0, TABS).map((item) => (
             <a class="tabs__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
               <span class="tabs__icon">
                 {item.art ? <img class="tabs__img" src={item.art.small?.src ?? item.art.src} alt="" width="30" height="30" /> : null}
@@ -155,6 +167,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompa
         ) : null}
       </header>
       <Flash text={flash} />
+      <p><a class="btn btn--line" href="/ucto/podania">Podania na dokončenie</a></p>
       <dl class="figs__grid figs__grid--four">
         <div class="fig">
           <dt>{t.clients.toBook}</dt>
@@ -305,6 +318,8 @@ export interface ClientPageProps {
   vat?: Child
   /** The books in short (views/ledger.tsx). */
   ledger?: Child
+  /** The client's deadlines (views/deadlines.tsx). */
+  deadlines?: Child
   /** The newest statements of the bank, and every one that waits (app/statements.ts). */
   statements?: StatementView[]
   /** The company's details as they were sent, with what is wrong with them. */
@@ -507,6 +522,7 @@ const HandoverCard: FC<{ company: Company; handover: Paper[]; ending: Ending; no
           ))}
         </ul>
       )}
+      <p class="small">Odobratie vyradí prílohu z bežného prehľadu. Originál s históriou zostáva v plnom archíve do riadeného výmazu.</p>
       <form class="stack" method="post" action={`/ucto/klienti/${c.id}/odovzdanie`} enctype="multipart/form-data">
         <label class="field__label" for="odovzdanie-subory">
           {t.handover.files}
@@ -625,6 +641,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           </a>
         ) : null}
         <a href="#zmluva">{p.declaration === 'checked' ? t.client.poaState[p.poa] : t.aml.state[p.declaration]}</a>
+        <a href="#terminy">{t.deadlines.title}</a>
         <a href={`/ucto/klienti/${c.id}/dph`}>{t.client.vatCard}</a>
         <a href={`/ucto/klienti/${c.id}/kniha`}>{t.ledger.card}</a>
         <a href="#udaje">{t.client.details}</a>
@@ -750,6 +767,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
             end={p.end}
           />
           {p.ending ? <HandoverCard company={c} handover={p.handover} ending={p.ending} now={p.now} error={p.handoverError} /> : null}
+          {p.deadlines ?? null}
           {p.vat ?? null}
           {p.ledger ?? null}
           <section class="info" id="udaje" aria-labelledby="udaje-t">
@@ -1022,6 +1040,7 @@ export const InboxPage: FC<{ threads: Thread[]; now: number }> = ({ threads, now
     <header class="phead">
       <Heading first={t.inbox.title} second={t.inbox.serif} />
       <p class="phead__lead">{t.inbox.lead}</p>
+      <p class="phead__lead">{t.inbox.target}</p>
     </header>
     {threads.length === 0 ? (
       <section class="nothing">
@@ -1030,20 +1049,30 @@ export const InboxPage: FC<{ threads: Thread[]; now: number }> = ({ threads, now
       </section>
     ) : (
       <ul class="rows rows--card">
-        {threads.map((th) => (
-          <li class="row">
-            <a class="row__link" href={`/ucto/klienti/${th.company.id}#spravy`}>
-              <Tile art={ART.chat} size="sm" />
-              <span class="row__text">
-                <span class="row__title">{th.company.name}</span>
-                <span class="row__sub row__sub--text">{th.body}</span>
-              </span>
-              <span class="row__end">
-                <span class="pill pill--blue">{t.inbox.waiting(whenName(th.at, now))}</span>
-              </span>
-            </a>
-          </li>
-        ))}
+        {threads.map((th) => {
+          const due = responseDueAt(th.at)
+          const late = now > due
+          return (
+            <li class="row support-row">
+              <a class="row__link" href={`/ucto/klienti/${th.company.id}#spravy`}>
+                <Tile art={ART.chat} size="sm" />
+                <span class="row__text">
+                  <span class="row__title">{th.company.name}</span>
+                  <span class="row__sub row__sub--text">{th.body}</span>
+                  <span class="row__sub">{t.inbox.owner(th.company.accountantName)}</span>
+                  <span class="row__sub">{t.inbox.pending(th.pending)}</span>
+                </span>
+                <span class="row__end">
+                  <span class="pill pill--blue">{t.inbox.waiting(whenName(th.at, now))}</span>
+                  <span class={`pill${late ? ' pill--red' : ''}`}>
+                    {late ? `${t.inbox.late} · ` : ''}
+                    <time datetime={new Date(due * 1000).toISOString()}>{t.inbox.due(whenName(due, now))}</time>
+                  </span>
+                </span>
+              </a>
+            </li>
+          )
+        })}
       </ul>
     )}
   </>
@@ -1211,6 +1240,17 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
           ) : (
             <p class="info__empty">{t.book.noFile}</p>
           )}
+          {d.ekasaUid || d.ekasaOkp ? (
+            <p class="book__origfoot">
+              <span class="book__code">
+                <span>{t.book.ekasaCode(d.ekasaUid ? 'UID' : 'OKP')}</span>
+                <span class="book__codevalue">{d.ekasaUid ?? d.ekasaOkp}</span>
+              </span>
+              <a class="link" href={EKASA_VERIFY} target="_blank" rel="noopener">
+                {t.book.ekasaVerify}
+              </a>
+            </p>
+          ) : null}
         </div>
         <form class="book__form" method="post" action={`/ucto/doklady/${d.id}`} novalidate>
           {d.proposal ? <p class="book__proposal">{d.proposal === 'rule' ? t.book.proposalRule : t.book.proposalAi}</p> : null}
@@ -1416,6 +1456,7 @@ export const RequestsPage: FC<{ requests: Request[]; now: number; flash?: string
               </span>
               {r.status === 'new' || r.status === 'contacted' ? (
                 <div class="req__actions">
+                  <a class="btn btn--line btn--small" href={`/ucto/ziadosti/${r.id}/posudenie`}>Posúdiť rozsah</a>
                   <a class="btn btn--blue btn--small" href={`/ucto/klienti/novy?ziadost=${r.id}`}>
                     {t.requests.make}
                   </a>

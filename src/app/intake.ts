@@ -1,6 +1,7 @@
 // What comes in: files a client adds on a page, and the attachments of email forwarded to a company's address
 // for documents. Each is checked by what its bytes are, kept once (the same file twice is one document), written
 // down, and read: an e-invoice at once by our own code, a photo or a PDF by the reader after the answer.
+import { linkLockedSql } from './period-schema'
 import type { AppBindings } from './routes'
 import { FILE_TYPES, fileHash, readDocument, sniff, type FileKind } from './read'
 import {
@@ -55,6 +56,8 @@ export async function keepFilesFor(
   const bucket = env.FILES
   const kept: Kept = { added: 0, known: [], ids: [], statements: noStatements() }
   if (!bucket) return { kept, work: null }
+  if (payment && (await db.prepare(`SELECT 1 AS locked WHERE ${linkLockedSql('?1', 'NULL')}`).bind(payment).first())) throw new Error('FIRMONY_PERIOD_LOCKED')
+  const uploadedKeys: string[] = []
   const toRead: string[] = []
   const readNow: string[] = []
   const statements: D1PreparedStatement[] = []
@@ -79,6 +82,7 @@ export async function keepFilesFor(
     const id = crypto.randomUUID()
     const key = `companies/${company.id}/documents/${id}.${EXTENSIONS[file.kind]}`
     await bucket.put(key, file.bytes, { httpMetadata: { contentType: FILE_TYPES[file.kind] } })
+    uploadedKeys.push(key)
     let reading: Reading | null = null
     let status: 'reading' | 'read' | 'manual' = 'reading'
     let readBy: string | null = null
@@ -96,7 +100,13 @@ export async function keepFilesFor(
     kept.added++
     kept.ids.push(id)
   }
-  if (statements.length > 0) await db.batch(statements)
+  try {
+    if (statements.length > 0) await db.batch(statements)
+  } catch (error) {
+    // A lock may have been set while files were uploading. The rejected transaction must leave no orphan objects.
+    if (uploadedKeys.length) await bucket.delete(uploadedKeys)
+    throw error
+  }
   for (const id of readNow) await afterReading(db, company.id, id)
   const work = kept.added > 0 ? readAll(env, company, toRead, payment === null || files.some((f) => f.kind === 'xml')) : null
   return { kept, work }

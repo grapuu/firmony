@@ -2,6 +2,7 @@
 // accounts, and the entry the accountant is offered. The client never sees any of this; the accountant always
 // confirms it. The books themselves (the journal, every account, the trial balance) are worked out from what she
 // confirms by ledger.ts, with this same entry.
+import { sameReceipt, type EkasaCodes } from './ekasa'
 import { nameWords } from './match'
 import type { DocKind } from './match'
 
@@ -40,7 +41,7 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
 export const CATEGORY_IDS = Object.keys(CATEGORIES) as Category[]
 
 export function isCategory(value: unknown): value is Category {
-  return typeof value === 'string' && value in CATEGORIES
+  return typeof value === 'string' && Object.hasOwn(CATEGORIES, value)
 }
 
 /** The categories that fit a kind of document: revenue for an issued invoice, costs for everything else. */
@@ -128,29 +129,39 @@ export function supplierKey(ico: string | null | undefined, name: string | null 
   return words.length > 0 ? `name:${words.join(' ')}` : null
 }
 
-/** A suspected duplicate: the same kind and amount, and the same number, or the same supplier on the same day. */
+/**
+ * A suspected duplicate: one eKasa receipt by its codes; otherwise the same supplier, kind and amount, with
+ * the same number or, for unnumbered documents, the same day. Numbers are not unique across suppliers.
+ */
 export function sameDocument(
-  a: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null },
-  b: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null },
+  a: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null } & EkasaCodes,
+  b: { kind: string | null; totalCents: number | null; number: string | null; party: string | null; partyIco: string | null; issuedOn: string | null } & EkasaCodes,
 ): boolean {
+  // An eKasa receipt is known by its own codes, even when its amount was read wrong once (src/app/ekasa.ts).
+  const receipt = sameReceipt(a, b)
+  if (receipt !== null) return receipt
   if (a.totalCents === null || a.totalCents !== b.totalCents || a.kind !== b.kind) return false
+  // Two known, different IČOs override a similar name. When one is missing, compare both names instead.
+  const aIco = supplierKey(a.partyIco, null), bIco = supplierKey(b.partyIco, null)
+  const aName = supplierKey(null, a.party), bName = supplierKey(null, b.party)
+  const sameSupplier = aIco && bIco ? aIco === bIco : aName !== null && aName === bName
+  if (!sameSupplier || (a.issuedOn && b.issuedOn && a.issuedOn !== b.issuedOn)) return false
   const plain = (n: string | null) => (n ?? '').replace(/[\s/-]/g, '').toUpperCase()
   if (plain(a.number) !== '' && plain(a.number) === plain(b.number)) return true
-  const sameSupplier = supplierKey(a.partyIco, a.party) !== null && supplierKey(a.partyIco, a.party) === supplierKey(b.partyIco, b.party)
-  return sameSupplier && a.issuedOn !== null && a.issuedOn === b.issuedOn && plain(a.number) === plain(b.number)
+  return a.issuedOn !== null && a.issuedOn === b.issuedOn && plain(a.number) === '' && plain(b.number) === ''
 }
 
 /** A day as an accountant types it: 11. 10. 2026. */
 export const textDay = (day: string): string => `${Number(day.slice(8, 10))}. ${Number(day.slice(5, 7))}. ${day.slice(0, 4)}`
 
-/** "11. 10. 2026", "11.10.2026" or "2026-10-11" as 2026-10-11; '' when empty; null when it is no day. */
-export function dayOfText(text: string): string | null {
+/** "11. 10. 2026", "11.10.2026" or "2026-10-11" as 2026-10-11; '' when empty; null when it is no day (or before `since`, a year: a birth day may be in the 1900s). */
+export function dayOfText(text: string, since = 2000): string | null {
   const plain = text.replace(/\s/g, '')
   if (plain === '') return ''
   const sk = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(plain)
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(plain)
   const [y, m, d] = sk ? [Number(sk[3]), Number(sk[2]), Number(sk[1])] : iso ? [Number(iso[1]), Number(iso[2]), Number(iso[3])] : [0, 0, 0]
-  if (y < 2000 || y > 2100) return null
+  if (y < since || y > 2100) return null
   const day = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
   const check = new Date(`${day}T12:00:00Z`)
   return check.getUTCFullYear() === y && check.getUTCMonth() + 1 === m && check.getUTCDate() === d ? day : null

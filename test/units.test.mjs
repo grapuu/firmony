@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { checkPrehlad } from './prehlad.units.mjs'
 import {
   aml,
   appCopy,
@@ -11,6 +12,7 @@ import {
   decodePayBySquare,
   deadlines,
   demo,
+  ekasa,
   ending,
   fio,
   format,
@@ -18,6 +20,21 @@ import {
   invoices,
   ledger,
   ledgerStore,
+  dues,
+  dueViews,
+  closing,
+  closingXml,
+  closingForm,
+  payroll,
+  payrollStore,
+  payrollReporting as reports,
+  periods,
+  support,
+  security,
+  isEvidenceHeld,
+  filings,
+  validateChange,
+  contracts,
   match,
   orderLinkMail,
   papers,
@@ -31,6 +48,7 @@ import {
   vat,
   vatForm,
   vatStore,
+  vatSummary,
   vatXml,
   xml,
   zip,
@@ -42,6 +60,25 @@ import { camtXml } from './pretend.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
 const NB = ' '
+
+// Recorded submission, a checked receipt and statutory corrections are separate decisions.
+{
+  const user = { id: 'accountant', team: 'accountant' }, pkg = { status: 'prepared', revision: 0 }
+  const input = { to: 'accepted', revision: 0, externalOn: '2026-10-16', reference: 'TEST-ONLY-1234', reason: '', channel: 'TEST-ONLY', checked: true, receipt: { name: 'TEST_ONLY.xml', bytes: new TextEncoder().encode('<TEST_ONLY/>') } }
+  const invalid = (extra) => validateChange(pkg, user, { ...input, ...extra }, '2026-10-16') !== null
+  check('filing enums reject prototype keys and unknown delivery states', ['constructor', '__proto__', 'toString', 'done'].every((s) => !filings.isDeliveryState(s)) && ['constructor', '__proto__', 'all'].every((s) => !filings.isFilingType(s)))
+  check('a receipt may establish acceptance directly from preparation', validateChange(pkg, user, input, '2026-10-16') === null)
+  check('an unconfirmed attachment cannot establish acceptance', invalid({ checked: false }) && invalid({ receipt: undefined }) && invalid({ receipt: { ...input.receipt, bytes: new Uint8Array() } }))
+  check('filing dates reject impossible, empty, noncanonical and future days', ['', '2026-02-30', '2026-13-01', '2026-1-01', '2026-10-17'].every((externalOn) => invalid({ externalOn })))
+  check('a stale receipt revision is rejected before storage', invalid({ revision: 1 }))
+  check('receipt references need meaningful identifiers and a delivery channel', invalid({ reference: '    ' }) && invalid({ reference: ' abc ' }) && invalid({ reference: 'x'.repeat(161) }) && invalid({ channel: ' ' }))
+  check('a refusal needs a reason and original proof', invalid({ to: 'rejected' }) && invalid({ to: 'rejected', reason: 'TEST-ONLY reason', receipt: undefined }) && validateChange(pkg, user, { ...input, to: 'rejected', reason: 'TEST-ONLY signing failure' }, '2026-10-16') === null)
+  check('reviewing accepted evidence is restricted to an administrator', !filings.canTransition('accepted', 'review', false) && filings.canTransition('accepted', 'review', true) && !filings.canTransition('accepted', 'prepared', true) && !filings.canTransition('review', 'accepted', false))
+  check('resending after refusal needs a documented next step', validateChange({ status: 'rejected', revision: 0 }, user, { ...input, to: 'submitted', reason: '' }, '2026-10-16') !== null)
+  check('legacy delivery references tolerate malformed JSON and reject unknown kinds', JSON.stringify(filings.deliveryIds('{broken')) === '{}' && JSON.stringify(filings.deliveryIds({ vat: 'id-1', mystery: 'id-2', kv: '../outside' })) === '{"vat":"id-1"}')
+  const wrapped = { cause: { cause: new Error('D1_ERROR: FIRMONY_FILING_SENT') } }, cyclic = {}; cyclic.cause = cyclic
+  check('delivery guards recognize wrapped database errors and tolerate cycles', filings.isFilingSent(wrapped) && !filings.isFilingSent(cyclic))
+}
 
 // The company ID
 check('IČO with spaces', ico.normalizeIco('57 442 452') === '57442452')
@@ -188,7 +225,31 @@ check(
   'the terms say a month above the limit is the next plan',
   terms.termsText().includes('vyúčtujeme ako najbližší vyšší balík') && terms.termsText().includes(`viac ako ${config.PLANS[config.PLANS.length - 1].docs} za mesiac`),
 )
-check('the terms keep the cap on damages to what can be foreseen (§ 379)', terms.termsText().includes('§ 379 Obchodného zákonníka') && terms.termsText().includes('dvanásťnásobku'))
+check('proposed liability does not disguise twelve fees as foreseeable loss', !terms.termsText().includes('dvanásťnásobku') && terms.termsText().includes('§ 373') && terms.termsText().includes('príčinná súvislosť'))
+check('insurer decisions do not erase the provider obligation', terms.termsText().includes('Rozhodnutie poisťovne ani jej limit nemenia našu'))
+check('late input is assessed causally, with a duty to warn', terms.termsText().includes('nie automatickým vylúčením našej zodpovednosti') && !terms.termsText().includes('výlučne našou'))
+check('lawfully due tax is distinct from irreversible loss of a lawful deduction', terms.termsText().includes('nezvratnej straty zákonného nároku') && terms.termsText().includes('sám osebe nie je škodou'))
+const catalogueHash = await contracts.contractCatalogueHash()
+const release = { catalogueHash, legalReview: 'fixture-lawyer-report', insuranceReview: 'fixture-underwriter-report', validUntil: 2000000000 }
+check('a release approval is bound to the full catalogue', contracts.approvedRelease(JSON.stringify(release), catalogueHash, 1900000000)?.catalogueHash === catalogueHash)
+for (const [name, value] of [
+  ['absent', undefined], ['malformed', '{'], ['too long', 'x'.repeat(2049)],
+  ['wrong catalogue', JSON.stringify({ ...release, catalogueHash: 'a'.repeat(64) })],
+  ['no lawyer reference', JSON.stringify({ ...release, legalReview: '' })],
+  ['no insurance reference', JSON.stringify({ ...release, insuranceReview: ' ' })],
+  ['expired', JSON.stringify({ ...release, validUntil: 1900000000 })],
+  ['timestamp as string', JSON.stringify({ ...release, validUntil: '2000000000' })],
+  ['null', 'null'],
+]) check(`contract signing stays closed: ${name}`, contracts.approvedRelease(value, catalogueHash, 1900000000) === null)
+const originalPrice = config.PLANS[0].price
+config.PLANS[0].price += 1
+check('a price edit invalidates the approved catalogue without a version change', await contracts.contractCatalogueHash() !== catalogueHash)
+config.PLANS[0].price = originalPrice
+const originalPoint = terms.TERMS[0].points[0]
+terms.TERMS[0].points[0] += ' changed'
+check('a wording edit invalidates approval even with an unchanged version label', await contracts.contractCatalogueHash() !== catalogueHash)
+terms.TERMS[0].points[0] = originalPoint
+
 check('the months to start in begin with the launch', terms.startMonths('2026-10-13').join(' ') === '2027-01-01 2027-02-01 2027-03-01 2027-04-01 2027-05-01 2027-06-01')
 check('after the launch they begin with the next month, over a new year', terms.startMonths('2027-11-20').slice(0, 3).join(' ') === '2027-12-01 2028-01-01 2028-02-01')
 check('a date is written in words', terms.longDate('2027-01-01') === '1. januára 2027')
@@ -638,6 +699,50 @@ check(
 check('a picture that is no document is none', reader.readingFrom({ je_doklad: false, suma_celkom: '10' }) === null)
 const odd = reader.readingFrom({ je_doklad: true, typ: 'neviem', datum_vystavenia: '12. 10. 2026', suma_celkom: '-5', iban_druhej_strany: 'xx', mena: 'eura' })
 check('what is not what it should be is left out', odd?.kind === 'other' && odd.issuedOn === null && odd.totalCents === null && odd.partyIban === null && odd.currency === null)
+for (const value of ['2026-02-29', '2026-02-31', '2026-04-31', '2026-13-01']) {
+  const invalid = reader.readingFrom({ je_doklad: true, datum_vystavenia: value, datum_splatnosti: value, datum_dodania: value })
+  check(`an AI calendar date must exist: ${value}`, invalid.issuedOn === null && invalid.dueOn === null && invalid.suppliedOn === null)
+}
+check('valid leap days survive AI validation', reader.readingFrom({ je_doklad: true, datum_vystavenia: '2028-02-29' }).issuedOn === '2028-02-29')
+check('AI categories and kinds reject inherited object names', ['__proto__', 'constructor', 'toString'].every((value) => {
+  const invalid = reader.readingFrom({ je_doklad: true, typ: value, kategoria: value })
+  return !booking.isCategory(value) && invalid.kind === 'other' && invalid.category === null
+}))
+{
+  const fetchBefore = globalThis.fetch
+  try {
+    for (const content of [{ invalid: true }, [null], [{ type: 'tool_use', name: 'zapis_doklad', input: [] }]]) {
+      globalThis.fetch = async () => Response.json({ content })
+      const result = await reader.readDocument('test-only', { kind: 'jpeg', bytes: bytes(0xff, 0xd8, 0xff) }, { name: 'Test', ico: null })
+      check('a malformed AI response goes to a person without an exception', result.manual === 'not an answer')
+    }
+  } finally { globalThis.fetch = fetchBefore }
+}
+
+// eKasa receipts (src/app/ekasa.ts): the codes as the Financial Administration's description of the eKasa interface
+// writes them (2.7 the identifier, 2.2 the verification code), and one receipt told from another by them
+const UID = 'O-7DBCDA8A56EE426DBCDA8A56EE426D1A'
+const OKP = 'C44B3977-0E415CC6-EE663AA1-776C973A-A143B660'
+const misread = (code, n) => code.slice(0, code.length - n) + [...code.slice(code.length - n)].map((ch) => (ch === 'F' ? 'E' : 'F')).join('')
+const ekasaRead = reader.readingFrom({ je_doklad: true, typ: 'blocek', suma_celkom: '3.80', ekasa_uid: ' o-7dbcda8a56ee426dbcda8a56ee426d1a', ekasa_okp: 'C44B3977-0E415CC6' })
+check("the reader's eKasa codes are kept when they are codes", ekasaRead?.ekasaUid === UID && ekasaRead.ekasaOkp === null, JSON.stringify(ekasaRead))
+check(
+  'an identifier is a letter, a dash and 32 hexadecimal characters, a nought for the letter O put right',
+  ekasa.ekasaUid(UID.toLowerCase()) === UID && ekasa.ekasaUid(`0${UID.slice(1)}`) === UID && ekasa.ekasaUid(`O - ${UID.slice(2, 18)} ${UID.slice(18)}`) === UID,
+)
+check(
+  'anything else is no identifier',
+  ekasa.ekasaUid(UID.slice(0, -1)) === null && ekasa.ekasaUid(`${UID.slice(0, -1)}G`) === null && ekasa.ekasaUid(UID.slice(2)) === null && ekasa.ekasaUid(`${UID}0`) === null && ekasa.ekasaUid(42) === null,
+)
+check(
+  'a verification code is five blocks of eight, however it was written',
+  ekasa.ekasaOkp(OKP.replace(/-/g, '').toLowerCase()) === OKP && ekasa.ekasaOkp(OKP.replace(/-/g, ' ')) === OKP && ekasa.ekasaOkp(OKP) === OKP,
+)
+check('or it is none', ekasa.ekasaOkp(OKP.slice(0, 35)) === null && ekasa.ekasaOkp(`X${OKP.slice(1)}`) === null && ekasa.ekasaOkp(UID) === null && ekasa.ekasaOkp(null) === null)
+check('one receipt read twice with up to four characters wrong is one', ekasa.sameReceipt({ ekasaUid: UID }, { ekasaUid: misread(UID, 4) }) === true && ekasa.sameReceipt({ ekasaOkp: OKP }, { ekasaOkp: misread(OKP, 4) }) === true)
+check('five wrong is another receipt', ekasa.sameReceipt({ ekasaUid: UID }, { ekasaUid: misread(UID, 5) }) === false && ekasa.sameReceipt({ ekasaOkp: OKP }, { ekasaOkp: misread(OKP, 5) }) === false)
+check('either code agreeing is enough', ekasa.sameReceipt({ ekasaUid: UID, ekasaOkp: OKP }, { ekasaUid: misread(UID, 9), ekasaOkp: OKP }) === true)
+check('nothing to compare says nothing', ekasa.sameReceipt({ ekasaUid: UID }, { ekasaOkp: OKP }) === null && ekasa.sameReceipt({}, { ekasaUid: UID }) === null)
 
 // The app's words
 check(
@@ -792,12 +897,31 @@ check(
 check('or by nothing', booking.supplierKey(null, null) === null)
 const docA = { kind: 'receipt', totalCents: 1240, number: null, party: 'Kaviareň Na rohu', partyIco: '50123456', issuedOn: '2026-10-12' }
 check('the same receipt twice is a suspected duplicate', booking.sameDocument(docA, { ...docA }))
-check('the same number and amount is one', booking.sameDocument({ ...docA, number: '2026/118', partyIco: null, party: 'A' }, { ...docA, number: '2026118', partyIco: null, party: 'B' }))
+check('the same supplier, number and amount identifies a suspected duplicate', booking.sameDocument({ ...docA, number: '2026/118' }, { ...docA, number: '2026118' }))
+check('two different suppliers can issue the same invoice number and amount', !booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '1', partyIco: '50999888' }))
+check('different names with no IČO do not share an invoice sequence', !booking.sameDocument({ ...docA, number: '1', partyIco: null, party: 'Dodávateľ Alfa' }, { ...docA, number: '1', partyIco: null, party: 'Dodávateľ Beta' }))
+check('missing supplier identity cannot establish a duplicate from number alone', !booking.sameDocument({ ...docA, number: '1', partyIco: null, party: null }, { ...docA, number: '1', partyIco: null, party: null }))
+check('one missing IČO can fall back to the matching supplier name', booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '1', partyIco: null }))
+check('reused receipt numbers on different dates stay separate', !booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '1', issuedOn: '2026-10-11' }))
 check(
   'another amount, another day, or another number is not',
   !booking.sameDocument(docA, { ...docA, totalCents: 1250 }) &&
     !booking.sameDocument(docA, { ...docA, issuedOn: '2026-10-11' }) &&
     !booking.sameDocument({ ...docA, number: '1' }, { ...docA, number: '2' }),
+)
+check('an eKasa receipt is known by its code, whatever amount was read', booking.sameDocument({ ...docA, ekasaUid: UID }, { ...docA, totalCents: 1210, ekasaUid: misread(UID, 1) }))
+check(
+  'two receipts of one number and amount are two when their codes differ (a till starts again at 1 each month)',
+  !booking.sameDocument({ ...docA, number: '1', ekasaUid: UID }, { ...docA, number: '1', ekasaUid: misread(UID, 12) }),
+)
+check('a receipt without a code is judged as before', booking.sameDocument({ ...docA, number: '1', ekasaUid: UID }, { ...docA, number: '1' }))
+const sampleCodes = ['demo-doc-6', 'demo-doc-12'].map((id) => demo.sampleCodes(id))
+check(
+  'the sample receipts carry codes of the right form, each its own, the same on every run',
+  sampleCodes.every((c) => ekasa.ekasaUid(c.uid) === c.uid && ekasa.ekasaOkp(c.okp) === c.okp) &&
+    ekasa.sameReceipt({ ekasaUid: sampleCodes[0].uid, ekasaOkp: sampleCodes[0].okp }, { ekasaUid: sampleCodes[1].uid, ekasaOkp: sampleCodes[1].okp }) === false &&
+    demo.sampleCodes('demo-doc-6').uid === sampleCodes[0].uid,
+  JSON.stringify(sampleCodes),
 )
 check('a day typed the Slovak way', booking.dayOfText('11. 10. 2026') === '2026-10-11' && booking.dayOfText('1.2.2027') === '2027-02-01' && booking.dayOfText('2026-10-11') === '2026-10-11')
 check('a day that does not exist is none', booking.dayOfText('31. 2. 2026') === null && booking.dayOfText('zajtra') === null && booking.dayOfText('11. 10. 1999') === null)
@@ -1219,6 +1343,17 @@ async function zipped(entries, note) {
   // 21:04:10 UTC on 13 October is 23:04:10 in Bratislava (summer time)
   check('a file is dated by the wall time in Bratislava', files?.[0]?.time === ((23 << 11) | (4 << 5) | 5) && files?.[0]?.date === (((2026 - 1980) << 9) | (10 << 5) | 13))
   check('a name cannot climb out of the archive', zip.zipName('../../etc/passwd') === '_/_/etc/passwd' && zip.zipName('a//b') === 'a/b' && zip.zipName('.htaccess') === '_htaccess')
+  let completed = false
+  const strict = (source) => zip.zipStream(source, undefined, { strict: true, onComplete: async () => { completed = true } })
+  let missingFailed = false
+  try { await new Response(strict([{ name: 'missing.pdf', when: at, data: async () => null }])).arrayBuffer() } catch { missingFailed = true }
+  check('a strict handover archive fails on a missing source and never records completion', missingFailed && !completed)
+  const strictBytes = new Uint8Array(await new Response(strict([{ name: 'present.txt', when: at, data: async () => enc.encode('kept') }])).arrayBuffer())
+  check('completion is recorded only after the complete, readable ZIP has been emitted', completed && unzip(strictBytes)?.[0]?.sumOk)
+  completed = false
+  const cancelled = strict([{ name: 'cancelled.txt', when: at, data: async () => enc.encode('kept') }]).getReader()
+  await cancelled.read(); await cancelled.cancel()
+  check('a cancelled archive does not count as a completed handover', !completed)
 }
 
 // The end of a contract: the last day, ten days for the last month's documents, thirty for the handover, ninety to download
@@ -1427,6 +1562,8 @@ async function zipped(entries, note) {
     'goods from the EU fall due on the invoice when it came before the 15th of the next month, else on the 15th',
     acq('2027-01-12') === '2027-01-12' && acq('2027-02-20') === '2027-02-15' && acq('2027-02-14') === '2027-02-14' && acq('2027-01-05') === '2027-01-10',
   )
+  const toEu = (issuedOn) => vat.taxDay(doc({ kind: 'invoice_out', issuedOn }), v('eu_goods', [[0, 100, 0]], { suppliedOn: '2027-01-10' }))
+  check('goods supplied to the EU the same way (§ 19(8)): an invoice issued late falls in the month of the 15th', toEu('2027-01-12') === '2027-01-12' && toEu('2027-02-20') === '2027-02-15')
   const late = doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-27' })
   const lateData = v('domestic', [[23, 1000, 230, 230]], { suppliedOn: '2027-01-20' })
   check('a deduction belongs to the month of supply when the invoice came by its deadline', vat.periodOfDoc(doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-25' }), lateData, payer) === '2027-01')
@@ -2105,6 +2242,159 @@ async function zipped(entries, note) {
   )
 }
 
+// The recapitulative statement (súhrnný výkaz, § 80 of the VAT Act; the poučenie to SVDPHv20), and its file against the
+// eForm's own schema
+{
+  const SV_XSD = readFileSync(new URL('./xsd/svdph2020.xsd', import.meta.url), 'utf8')
+  const valid = async (xml) => {
+    const result = await validateXML({ xml: [{ fileName: 'sv.xml', contents: xml }], schema: [{ fileName: 'sv.xsd', contents: SV_XSD }] })
+    return { ok: result.valid, why: result.errors.map((e) => e.message).join(' | ') }
+  }
+  const payer = { status: 'payer', quarterly: false, since: null }
+  let n = 0
+  const sale = (vatId, base, mode = 'eu_service', fields = {}) => ({
+    id: `s${++n}`,
+    kind: 'invoice_out',
+    number: `2027000${n}`,
+    party: 'Kunde',
+    partyIco: null,
+    issuedOn: '2027-01-15',
+    receivedOn: '2027-01-15',
+    totalCents: base,
+    vatCents: 0,
+    currency: 'EUR',
+    category: 'sales',
+    vatDeduct: null,
+    booked: true,
+    vat: { mode, lines: [{ rate: 0, base, vat: 0, deduct: 0 }], suppliedOn: '2027-01-15', vatId, corrects: null, period: null },
+    ...fields,
+  })
+  const docs = [sale('DE123456789', 80000), sale('de 123 456 789', 20049), sale('CZ12345678', 1_000_050, 'eu_goods'), sale('EL094259216', 150)]
+  const { lines, issues } = vatSummary.summaryLines(payer, '2027-01', docs)
+  const rows = vatSummary.rowsOf(lines)
+  check(
+    "each customer's total by its VAT number, goods without a code and services with 2, in whole euros half up",
+    JSON.stringify(rows) ===
+      JSON.stringify([
+        { country: 'CZ', number: '12345678', euros: 10001, code: '' },
+        { country: 'DE', number: '123456789', euros: 1000, code: '2' },
+        { country: 'EL', number: '094259216', euros: 2, code: '2' },
+      ]) && issues.length === 0,
+    JSON.stringify(rows),
+  )
+  check('the total of the first page is the sum of the rows', vatSummary.totalOf(rows) === 11003)
+  check(
+    'a credit note lowers the customer in its own period, and nothing left is no row',
+    vatSummary.rowsOf(vatSummary.summaryLines(payer, '2027-01', [sale('DE123456789', 80000), sale('DE123456789', -80000, 'eu_service', { vat: { ...sale('x', 0).vat, vatId: 'DE123456789', lines: [{ rate: 0, base: -80000, vat: 0, deduct: 0 }], corrects: '20270001' } })]).lines).length === 0 &&
+      vatSummary.rowsOf(vatSummary.summaryLines(payer, '2027-01', [sale('DE123456789', -12350)]).lines)[0]?.euros === -124,
+  )
+  check(
+    'a customer without a VAT number of another member state keeps it back, and so does an invoice not booked',
+    vatSummary.summaryLines(payer, '2027-01', [sale(null, 1000), sale('SK2020000000', 1000), sale('US123456789', 1000)]).issues.filter((i) => i.code === 'svVatId').length === 3 &&
+      vatSummary.summaryLines(payer, '2027-01', [sale('DE123456789', 1000, 'eu_service', { booked: false })]).issues[0]?.code === 'unbooked',
+  )
+  check('what is not the period is not in it', vatSummary.summaryLines(payer, '2027-02', docs).lines.length === 0 && !vatSummary.summaryLines(payer, '2027-02', docs).due)
+  check(
+    '§ 7a: the calendar quarter; a quarterly payer the quarter only within the goods limit',
+    vatSummary.summaryPeriodOf('2027-02', { status: 'reg7a' }) === '2027-Q1' &&
+      vatSummary.summaryPeriodOf('2027-02', payer) === '2027-02' &&
+      vatSummary.summaryLines({ ...payer, quarterly: true }, '2027-Q1', [sale('CZ12345678', 5_000_100, 'eu_goods')]).issues.some((i) => i.code === 'svMonthly') &&
+      !vatSummary.summaryLines({ ...payer, quarterly: true }, '2027-Q1', [sale('CZ12345678', 5_000_000, 'eu_goods'), sale('DE123456789', 9_000_000)]).issues.some((i) => i.code === 'svMonthly'),
+  )
+
+  const quarterly = { ...payer, quarterly: true }
+  const goodsOn = (on, cents) => {
+    const d = sale('CZ12345678', cents, 'eu_goods')
+    return { ...d, issuedOn: on, receivedOn: on, vat: { ...d.vat, suppliedOn: on } }
+  }
+  const quarterlyView = (d) => vatSummary.summaryView(quarterly, '2027-Q1', d, null, 0, '2027-04-02')
+  check('exceeding the current-quarter goods limit blocks the plan rather than merely warning', quarterlyView([goodsOn('2027-01-15', 5_000_001)]).state === 'blocked' && quarterlyView([goodsOn('2027-01-15', 5_000_001)]).plan === null)
+  check('any of the previous four quarters can require monthly SV, including across a year boundary', ['2026-01-15', '2026-04-15', '2026-07-15', '2026-10-15'].every((on) => quarterlyView([goodsOn(on, 5_000_001), goodsOn('2027-01-15', 10000)]).plan === null))
+  check('exactly 50 000 € stays eligible and the fifth previous quarter has expired', quarterlyView([goodsOn('2026-01-15', 5_000_000), goodsOn('2027-01-15', 10000)]).state === 'ready' && quarterlyView([goodsOn('2025-12-15', 5_000_001), goodsOn('2027-01-15', 10000)]).state === 'ready')
+  const monthlyGoods = [goodsOn('2027-01-15', 3_000_000), goodsOn('2027-02-15', 2_500_000)]
+  const monthlySchedule = vatSummary.summarySchedule(quarterly, '2027-Q1', monthlyGoods)
+  check('quarterly VAT produces three independent monthly SV periods when the second month crosses the limit', monthlySchedule.monthly && monthlySchedule.crossedIn === '2027-02' && monthlySchedule.periods.join() === '2027-01,2027-02,2027-03')
+  const janView = (today, filed = null, d = monthlyGoods) => vatSummary.summaryView(quarterly, '2027-01', d, filed, 0, today)
+  check('a prior month waits for the end of the crossing month, with the crossing month\'s deadline', janView('2027-02-20').state === 'running' && janView('2027-03-01').state === 'ready' && janView('2027-03-01').endsOn === '2027-02-28' && janView('2027-03-01').deadline === '2027-03-25')
+  check('monthly SV assigns only its own tax-day supplies, independently of the VAT quarter override', janView('2027-03-01', null, monthlyGoods.map((d) => ({ ...d, vat: { ...d.vat, period: '2027-Q2' } }))).rows[0]?.euros === 30000)
+  const filedJan = { kind: 'R', filedOn: '2027-03-01', filedAt: 1, filedBy: null, rows: [{ country: 'CZ', number: '12345678', euros: 29000, code: '' }], sent: [], prev: null }
+  check('the transition deadline controls corrective versus supplementary monthly SV too', janView('2027-03-02', filedJan).plan?.kind === 'O' && janView('2027-03-26', filedJan).plan?.kind === 'D')
+  check('filing the first monthly SV does not remove the delayed deadline of the transition', vatSummary.summarySchedule(quarterly, '2027-Q1', monthlyGoods, ['2027-01']).crossedIn === '2027-02')
+  check('FR SR example: October and November 2023 share 27 December after the holiday adjustment', vatSummary.summaryView(quarterly, '2023-10', [goodsOn('2023-10-15', 4_000_000), goodsOn('2023-11-15', 2_000_000)], null, 0, '2023-12-01').deadline === '2023-12-27')
+  check('goods history is loaded from the first of the four preceding quarters', vatSummary.summaryLookbackFrom('2027-02') === '2026-Q1' && vatSummary.summaryLookbackFrom('2027-Q4') === '2026-Q4')
+  check('service values alone never force monthly SV for a quarterly payer', !vatSummary.summarySchedule(quarterly, '2027-Q1', [sale('DE123456789', 9_000_000)]).monthly)
+  check('an existing monthly filing sequence stays monthly even after later invoice edits remove the threshold', vatSummary.summarySchedule(quarterly, '2027-Q1', [], ['2027-01']).monthly)
+  check('the first month of a new quarter can already have monthly SV deadlines while its VAT quarter runs', dues.summaryWindow({ vatStatus: 'payer', vatQuarterly: true, vatSince: '2026-01-01', startOn: '2026-01-01', endsOn: null }, '2027-02-05').includes('2027-Q1'))
+
+  // States, and the corrections a change after filing asks for
+  const view = (filed, today, d = docs) => vatSummary.summaryView(payer, '2027-01', d, filed, 0, today)
+  check('the period running, then ready by the 25th', view(null, '2027-01-20').state === 'running' && view(null, '2027-02-03').state === 'ready' && view(null, '2027-02-03').plan?.kind === 'R' && view(null, '2027-02-03').deadline === '2027-02-25')
+  check('nothing supplied, nothing to file', view(null, '2027-02-03', []).state === 'none' && view(null, '2027-02-03', [sale('DE123456789', 1000, 'domestic')]).state === 'none')
+  check('supplies that came to nothing (an invoice and its credit note) leave nothing to file', view(null, '2027-02-03', [sale('DE123456789', 80000), sale('DE123456789', -80000)]).state === 'none')
+  check('the company without its VAT number keeps it back', vatSummary.summaryView(payer, '2027-01', docs, null, 1, '2027-02-03').state === 'blocked')
+  const filed = (fileRows) => ({ kind: 'R', filedOn: '2027-02-10', filedAt: 1, filedBy: null, rows: fileRows, sent: fileRows, prev: null })
+  check('filed as it stands', view(filed(rows), '2027-02-11').state === 'filed' && view(filed(null), '2027-02-11').state === 'filed')
+  const before = [rows[0], { ...rows[1], euros: 900 }, { country: 'AT', number: 'U12345678', euros: 300, code: '2' }]
+  check('changed before the deadline: a corrective statement with every row', view(filed(before), '2027-02-20').state === 'changed' && JSON.stringify(view(filed(before), '2027-02-20').plan) === JSON.stringify({ kind: 'O', rows }))
+  const late = view(filed(before), '2027-03-02').plan
+  check(
+    'after it: a supplementary one with the rows that change, a row that is no more at nought first',
+    late?.kind === 'D' &&
+      JSON.stringify(late.rows) ===
+        JSON.stringify([
+          { country: 'AT', number: 'U12345678', euros: 0, code: '2' },
+          { country: 'DE', number: '123456789', euros: 1000, code: '2' },
+          { country: 'EL', number: '094259216', euros: 2, code: '2' },
+        ]),
+    JSON.stringify(late),
+  )
+  check(
+    "a code put right is cancelled with the code 0 (the poučenie's example 13), a wrong VAT number keeps its code (example 10)",
+    JSON.stringify(vatSummary.svDiff([{ country: 'DK', number: '33333333', euros: 180000, code: '1' }], [{ country: 'DK', number: '33333333', euros: 180000, code: '' }])) ===
+      JSON.stringify([
+        { country: 'DK', number: '33333333', euros: 0, code: '0' },
+        { country: 'DK', number: '33333333', euros: 180000, code: '' },
+      ]) &&
+      JSON.stringify(vatSummary.svDiff([{ country: 'CZ', number: '222222222', euros: 80000, code: '2' }], [{ country: 'CZ', number: '122222222', euros: 80000, code: '2' }])) ===
+        JSON.stringify([
+          { country: 'CZ', number: '222222222', euros: 0, code: '2' },
+          { country: 'CZ', number: '122222222', euros: 80000, code: '2' },
+        ]) &&
+      JSON.stringify(vatSummary.svDiff([{ country: 'CZ', number: '102030405', euros: 40000, code: '' }], [{ country: 'CZ', number: '102030405', euros: 30000, code: '' }, { country: 'CZ', number: '102030405', euros: 10000, code: '2' }])) ===
+        JSON.stringify([
+          { country: 'CZ', number: '102030405', euros: 30000, code: '' },
+          { country: 'CZ', number: '102030405', euros: 10000, code: '2' },
+        ]),
+  )
+  check('changed while something keeps it back: no file until it is resolved', vatSummary.summaryView(payer, '2027-01', docs, filed(before), 1, '2027-03-02').plan === null)
+
+  // The file
+  const filer = { name: 'Termíny & spol. s. r. o.', icdph: 'SK2120999992', address: 'Hlavná 10, 040 01 Košice' }
+  const xml = vatXml.summaryXml(filer, '2027-01', rows, 'R', '2027-02-03')
+  let result = await valid(xml)
+  check('the regular statement is valid against the eForm form.471 schema', result.ok, result.why)
+  check(
+    'written as the eForm writes it: SK and ten digits, 1 and 0, the month without its nought, the rows, the total, the day in three numbers',
+    xml.includes('<identifikacneCislo><kodStatu>SK</kodStatu><dic>2120999992</dic></identifikacneCislo>') &&
+      xml.includes('<druhSV><riadny>1</riadny><opravny>0</opravny><dodatocny>0</dodatocny></druhSV>') &&
+      xml.includes('<obdobie><mesiac>1</mesiac><stvrtrok></stvrtrok><rok>2027</rok></obdobie>') &&
+      xml.includes('<zaznam><kodStatu>DE</kodStatu><idCislo>123456789</idCislo><hodnota>1000</hodnota><kod>2</kod></zaznam>') &&
+      xml.includes('<celkovaHodnota>11003</celkovaHodnota>') &&
+      xml.includes('<riadok>Termíny &amp; spol. s. r. o.</riadok>') &&
+      xml.includes('<datumVyhlasenia><den>3</den><mesiac>2</mesiac><rok>2027</rok></datumVyhlasenia>') &&
+      (xml.match(/<zaznam>/g) ?? []).length === 12 &&
+      (xml.match(/<zaznamCast2>/g) ?? []).length === 12,
+  )
+  const many = Array.from({ length: 13 }, (_, i) => ({ country: 'DE', number: String(100000000 + i), euros: 10, code: '2' }))
+  const two = vatXml.summaryXml(filer, '2027-Q1', many, 'D', '2027-05-03')
+  result = await valid(two)
+  check(
+    'a quarter as I to IV, a supplementary one, and thirteen rows on two pages',
+    result.ok && two.includes('<stvrtrok>I</stvrtrok>') && two.includes('<mesiac></mesiac>') && two.includes('<dodatocny>1</dodatocny>') && (two.match(/<strana>/g) ?? []).length === 2,
+    result.why,
+  )
+}
+
 // The books: the journal, the trial balance, the open items and the bank, worked out from documents and payments
 {
   const NB = ' '
@@ -2584,4 +2874,900 @@ async function zipped(entries, note) {
   check('the open items as a file', plain(ledger.saldoCsv(books, '2026-10-14')).includes('311;20260001;Zákazník s. r. o.;2026-09-10;2026-09-24;246,00;0,00;246,00;20'))
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Every client's deadlines on one screen (the team's /ucto/terminy)
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const plain = (text) => text.replace(/\u00a0/g, ' ')
+  const co = (fields = {}) => ({
+    id: 'c1',
+    name: 'Firma s. r. o.',
+    createdAt: Date.parse('2026-01-05T10:00:00Z') / 1000,
+    icdph: 'SK2120000007',
+    address: 'Hlavná 1, 040 01 Košice',
+    taxOffice: 'Košice',
+    vatStatus: 'payer',
+    vatQuarterly: false,
+    vatSince: null,
+    startOn: '2026-09-01',
+    endsOn: null,
+    noticeSide: null,
+    taxAccount: null,
+    vatCarry: 0,
+    ...fields,
+  })
+  const doc = (fields = {}) => ({
+    id: 'd1',
+    companyId: 'c1',
+    createdAt: Date.parse('2026-09-20T10:00:00Z') / 1000,
+    kind: 'invoice_out',
+    number: '20260001',
+    party: 'Zákazník s. r. o.',
+    partyIco: '12345679',
+    issuedOn: '2026-09-18',
+    dueOn: null,
+    totalCents: 12300,
+    vatCents: 2300,
+    currency: 'EUR',
+    category: 'sales',
+    vatDeduct: null,
+    bookedAt: 1,
+    vat: { mode: 'domestic', lines: [{ rate: 23, base: 10000, vat: 2300, deduct: 0 }], suppliedOn: null, vatId: null, corrects: null, period: null },
+    partyVatId: null,
+    suppliedOn: null,
+    foreign: null,
+    correctsHint: null,
+    linesHint: [],
+    ...fields,
+  })
+  const euService = (fields = {}) =>
+    doc({
+      id: 'eu1',
+      party: 'Kunde GmbH',
+      partyIco: null,
+      partyVatId: 'DE123456789',
+      totalCents: 100000,
+      vatCents: 0,
+      vat: { mode: 'eu_service', lines: [{ rate: 0, base: 100000, vat: 0, deduct: 0 }], suppliedOn: null, vatId: 'DE123456789', corrects: null, period: null },
+      ...fields,
+    })
+  const filedOf = (period, fields = {}) => ({
+    period,
+    filedAt: 0,
+    filedOn: vat.filingDeadline(period),
+    filedBy: null,
+    filedByName: null,
+    rows: { ...vat.emptyRows(), r03: 10000, r04: 2300, r17: 2300, r32: 2300, r35: 2300 },
+    kvRows: 1,
+    payCents: 2300,
+    refundCents: 0,
+    dueOn: vat.filingDeadline(period),
+    kind: 'R',
+    fast: false,
+    carried: 0,
+    kv: null,
+    foundOn: null,
+    prev: null,
+    raw: '{}',
+    ...fields,
+  })
+  /** A period filed as its documents stand: the rows and the control statement are the period's now. */
+  const filedFrom = (company, period, docs, fields = {}) => {
+    const r = vatStore.viewOf(company, period, docs, [], vat.filingDeadline(period)).result
+    const kv = vat.kvFileOf(r.kv)
+    return filedOf(period, { deliveryStatus: 'accepted', rows: r.rows, payCents: r.rows.r35, kv: r.statement ? { kind: 'R', full: kv, sent: kv } : null, ...fields })
+  }
+  /** The deadlines of a company on a day, from its documents and returns, as the store hands them over. */
+  const run = (company, today, { docs = [], filed = [], paid = new Map(), filings = new Set(), svFiled = new Map(), closings = [], missing = new Map(), handover = 0 } = {}) => {
+    const window = dues.vatWindow(company, today)
+    const svPeriods = [...new Set(window.map((p) => vatSummary.summaryPeriodOf(p, { status: company.vatStatus })))]
+    return dues.deadlinesOf(
+      company,
+      {
+        views: window.map((p) => vatStore.viewOf(company, p, docs, filed, today)),
+        summaries: svPeriods.map((p) => vatStore.svViewOf(company, p, docs, svFiled.get(p) ?? null, today)),
+        filed,
+        paid,
+        filings,
+        closings,
+        missing,
+        handover,
+      },
+      today,
+    )
+  }
+  const find = (list, kind, period) => list.find((d) => d.kind === kind && (period === undefined || d.period === period))
+
+  // The holidays a deadline moves past (Act No. 241/1993 Z. z. as amended by Act No. 261/2025 Z. z.)
+  check(
+    '17 November is a working day from 2025, 8 May and 15 September in 2026 alone, 1 September since 2024',
+    vat.isWorkingDay('2026-11-17') &&
+      vat.isWorkingDay('2025-11-17') &&
+      !vat.isWorkingDay('2023-11-17') &&
+      vat.isWorkingDay('2026-05-08') &&
+      vat.isWorkingDay('2026-09-15') &&
+      !vat.isWorkingDay('2027-09-15') &&
+      !vat.isWorkingDay('2028-05-08') &&
+      vat.isWorkingDay('2026-09-01') &&
+      !vat.isWorkingDay('2026-12-24') &&
+      !vat.isWorkingDay('2027-01-06'),
+  )
+  check('the next working day of a weekend and of Easter', vat.workingDayFrom('2026-10-25') === '2026-10-26' && vat.workingDayFrom('2029-03-31') === '2029-04-03' && vat.workingDayFrom('2026-10-14') === '2026-10-14')
+  check('the closing is due on 31 March, or the next working day', closing.closingDeadline(2026) === '2027-03-31' && closing.closingDeadline(2028) === '2029-04-03' && closing.closingDeadline(2029) === '2030-04-01')
+  check(
+    'a notice moves it to the end of a month, three months on or six with income from abroad, a day off to the next working day',
+    closing.extensionDays(2026).map((d) => `${d.day}${d.abroad ? '*' : ''}`).join() === '2027-04-30,2027-05-31,2027-06-30,2027-07-31*,2027-08-31*,2027-09-30*' &&
+      closing.closingDue(2026, '2027-07-31') === '2027-08-02' &&
+      closing.closingDue(2026, '2027-06-30') === '2027-06-30' &&
+      closing.closingDue(2026, null) === '2027-03-31',
+  )
+
+  // Which VAT periods are worked out
+  check('the periods that ended in the last four months, not before our first', dues.vatWindow(co({ startOn: '2026-01-01' }), '2026-10-14').join() === '2026-06,2026-07,2026-08,2026-09')
+  check('none before the contract started, nor before the registration', dues.vatWindow(co({ startOn: '2026-09-01' }), '2026-10-14').join() === '2026-09' && dues.vatWindow(co({ startOn: null, vatSince: '2026-08-10' }), '2026-10-14').join() === '2026-08,2026-09')
+  check('a quarterly payer: the last two quarters', dues.vatWindow(co({ startOn: '2026-01-01', vatQuarterly: true }), '2026-10-14').join() === '2026-Q2,2026-Q3')
+  check(
+    'nothing for a company not registered, nor for one whose contract starts later, nor after its last month',
+    dues.vatWindow(co({ vatStatus: 'none' }), '2026-10-14').length === 0 &&
+      dues.vatWindow(co({ startOn: '2027-01-01' }), '2026-10-14').length === 0 &&
+      dues.vatWindow(co({ startOn: '2026-01-01', endsOn: '2026-07-31' }), '2026-10-14').join() === '2026-06,2026-07',
+  )
+
+  // The VAT return of a period, as the VAT page has it
+  let list = run(co(), '2026-10-14', { docs: [doc()] })
+  let item = find(list, 'vat', '2026-09')
+  check('a period ready to be filed, by the 26th (the 25th is a Sunday)', item?.state === 'ready' && item.day === '2026-10-26' && !item.late, JSON.stringify(item))
+  check('the period that runs is ahead of it, its return by the 25th of the next month', find(list, 'vat', '2026-10')?.state === 'running' && find(list, 'vat', '2026-10')?.day === '2026-11-25')
+  item = find(run(co({ taxOffice: null }), '2026-10-14', { docs: [doc(), doc({ id: 'd2', bookedAt: null })] }), 'vat', '2026-09')
+  check('blocked, with how many things keep it back', item?.state === 'blocked' && item.count === 2, JSON.stringify(item))
+  item = find(run(co(), '2026-10-27', { docs: [doc()] }), 'vat', '2026-09')
+  check('past its deadline and not filed it is late', item?.state === 'ready' && item.late)
+  list = run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])] })
+  check('filed, it is done, and its tax is the client\'s to pay', find(list, 'vat', '2026-09')?.state === 'done' && find(list, 'vatPay', '2026-09')?.state === 'open' && find(list, 'vatPay', '2026-09')?.cents === 2300 && find(list, 'vatPay', '2026-09')?.late)
+  list = run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-20' }]]) })
+  check('paid, the tax is done too', find(list, 'vatPay', '2026-09')?.state === 'done')
+  check(
+    '§ 7a: 5 € or less is not paid, and nothing is filed for a month without tax',
+    !find(run(co({ vatStatus: 'reg7a' }), '2026-10-14', { filed: [filedOf('2026-09', { payCents: 450 })] }), 'vatPay') && !find(run(co({ vatStatus: 'reg7a' }), '2026-10-14'), 'vat'),
+  )
+  check(
+    '§ 7a: a month with a document not booked is not "nothing to file" until it is booked',
+    vatStore.viewOf(co({ vatStatus: 'reg7a' }), '2026-09', [doc({ kind: 'invoice_in', bookedAt: null, vat: null })], [], '2026-10-14').state === 'blocked' &&
+      vatStore.viewOf(co({ vatStatus: 'reg7a' }), '2026-09', [doc({ kind: 'invoice_in', vat: { mode: 'none', lines: [], suppliedOn: null, vatId: null, corrects: null, period: null } })], [], '2026-10-14').state === 'none',
+  )
+  // Changed after filing: corrective before the deadline, supplementary after it
+  const twice = [doc(), doc({ id: 'd2', number: '20260002', issuedOn: '2026-09-28' })]
+  for (const deliveryStatus of ['prepared', 'rejected', 'review']) {
+    const filed = { ...filedFrom(co(), '2026-09', [doc()]), deliveryStatus }
+    const changed = vatStore.viewOf(co(), '2026-09', twice, [filed], '2026-11-03')
+    const pending = run(co(), '2026-11-03', { docs: twice, filed: [filed] })
+    check(`changed ${deliveryStatus} documents require review or reopening before statutory corrections`, vatStore.planFiling(co(), changed, [filed], '2026-11-03') === null && !find(pending, 'vatFix', '2026-09') && find(pending, 'vat', '2026-09')?.state === 'blocked')
+  }
+  item = find(run(co(), '2026-10-21', { docs: twice, filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vatFix', '2026-09')
+  check('changed before the deadline: a corrective return by it', item?.fix === 'O' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
+  item = find(run(co(), '2026-11-03', { docs: twice, filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vatFix', '2026-09')
+  check('after it: a supplementary return by the end of the month after today', item?.fix === 'D' && item.day === '2026-12-31' && !item.late, JSON.stringify(item))
+  // A payer's older periods never filed
+  list = run(co({ startOn: '2026-03-01' }), '2026-10-14', { docs: [doc()], filed: [filedOf('2026-03'), filedOf('2026-05')] })
+  check(
+    'periods of ours older than the ones worked out and never filed are overdue',
+    list.filter((d) => d.kind === 'vat' && d.state === 'open').map((d) => d.period).join() === '2026-04' && find(list, 'vat', '2026-04')?.late,
+    list.map((d) => `${d.kind}:${d.period}:${d.state}`).join(' '),
+  )
+
+  // The recapitulative statement
+  list = run(co(), '2026-10-14', { docs: [doc(), euService()] })
+  item = find(list, 'summary')
+  check('a service to another member state: the recapitulative statement of the period, ready by its deadline', item?.period === '2026-09' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
+  const svFiledOf = (rows, fields = {}) => ({ deliveryStatus: 'accepted', kind: 'R', filedOn: '2026-10-20', filedAt: 1, filedBy: null, rows, sent: rows ?? [], prev: null, ...fields })
+  const deRow = { country: 'DE', number: '123456789', euros: 1000, code: '2' }
+  check('filed as the books stand, it is done', find(run(co(), '2026-10-21', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([deRow])]]) }), 'summary')?.state === 'done')
+  item = find(run(co(), '2026-10-21', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([{ ...deRow, euros: 900 }])]]) }), 'summary')
+  check('changed after it was filed: a corrective statement by the deadline', item?.fix === 'O' && item.state === 'ready' && item.day === '2026-10-26', JSON.stringify(item))
+  item = find(run(co(), '2026-11-03', { docs: [doc(), euService()], svFiled: new Map([['2026-09', svFiledOf([{ ...deRow, euros: 900 }])]]) }), 'summary')
+  check('after it a supplementary one: no deadline in § 80(8), so today, never late', item?.fix === 'D' && item.day === '2026-11-03' && !item.late, JSON.stringify(item))
+  item = find(run(co(), '2026-10-14', { docs: [doc(), euService({ partyVatId: null, vat: { ...euService().vat, vatId: 'SK2020000000' } })] }), 'summary')
+  check('a customer without a VAT number of another member state keeps it back', item?.state === 'blocked' && item.count === 1, JSON.stringify(item))
+  check('so does the company without its own VAT number, but not without a tax office (the statement names none)', find(run(co({ icdph: null }), '2026-10-14', { docs: [doc(), euService()] }), 'summary')?.state === 'blocked' && find(run(co({ taxOffice: null }), '2026-10-14', { docs: [doc(), euService()] }), 'summary')?.state === 'ready')
+  item = find(run(co({ vatStatus: 'reg7a', startOn: '2026-01-01' }), '2026-10-14', { docs: [euService({ issuedOn: '2026-08-10', createdAt: Date.parse('2026-08-11T10:00:00Z') / 1000 })] }), 'summary')
+  check('§ 7a: for the calendar quarter', item?.period === '2026-Q3' && item.day === '2026-10-26' && item.state === 'ready', JSON.stringify(item))
+  item = find(run(co({ vatStatus: 'reg7a', startOn: '2026-01-01' }), '2026-12-15', { docs: [euService({ issuedOn: '2026-10-10', createdAt: Date.parse('2026-10-11T10:00:00Z') / 1000 })] }), 'summary')
+  check('while its quarter runs, it runs', item?.period === '2026-Q4' && item.state === 'running' && item.day === '2027-01-25', JSON.stringify(item))
+
+  // The client's documents
+  list = run(co({ vatStatus: 'none' }), '2026-10-14', { missing: new Map([['2026-09', 3], ['2026-10', 2]]) })
+  check('documents of a month by the 10th of the next, late past it', find(list, 'docs', '2026-09')?.day === '2026-10-10' && find(list, 'docs', '2026-09')?.late && find(list, 'docs', '2026-09')?.count === 3)
+  check('the month that runs is not late', find(list, 'docs', '2026-10')?.state === 'running' && !find(list, 'docs', '2026-10')?.late)
+  check('nothing is asked once the contract stopped taking documents', !find(run(co({ vatStatus: 'none', endsOn: '2026-08-31' }), '2026-10-14', { missing: new Map([['2026-08', 3]]) }), 'docs'))
+
+  // The closing
+  check(
+    'the closing of last year by 31 March: ours when we kept the books at its end',
+    find(run(co({ vatStatus: 'none', startOn: '2026-06-01' }), '2027-01-05'), 'closing', '2026')?.day === '2027-03-31' &&
+      !find(run(co({ vatStatus: 'none', startOn: '2027-01-01' }), '2027-01-05'), 'closing') &&
+      !find(run(co({ vatStatus: 'none', startOn: '2026-06-01', endsOn: '2026-12-31' }), '2027-01-05'), 'closing') &&
+      Boolean(find(run(co({ vatStatus: 'none', startOn: '2026-06-01', endsOn: '2027-01-31' }), '2027-01-05'), 'closing')),
+  )
+  check('a company made by the team counts from the day it was made', Boolean(find(run(co({ vatStatus: 'none', startOn: null }), '2027-02-01'), 'closing', '2026')))
+  const kFact = (fields = {}) => ({ deliveryStatus: 'accepted', year: 2026, filed: false, extendedTo: null, payCents: 0, dueOn: null, paid: 0, ...fields })
+  check(
+    'late past its day, done once its page marks it filed',
+    find(run(co({ vatStatus: 'none' }), '2027-04-02'), 'closing')?.late && find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ filed: true })] }), 'closing')?.state === 'done',
+  )
+  check(
+    'a notice moves its day, and it is not late before it',
+    find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ extendedTo: '2027-06-30' })] }), 'closing')?.day === '2027-06-30' &&
+      find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ extendedTo: '2027-06-30' })] }), 'closing')?.late === false,
+  )
+  item = find(run(co({ vatStatus: 'none' }), '2027-03-20', { closings: [kFact({ filed: true, payCents: 120000, dueOn: '2027-03-31', paid: 20000 })] }), 'taxPay', '2026')
+  check('a filed closing asks the client for its income tax by the deadline, less what was paid', item?.state === 'open' && item.cents === 100000 && item.day === '2027-03-31' && !item.late, JSON.stringify(item))
+  check(
+    'paid, it is done; nothing to pay asks for nothing',
+    find(run(co({ vatStatus: 'none' }), '2027-03-20', { closings: [kFact({ filed: true, payCents: 120000, dueOn: '2027-03-31', paid: 120000 })] }), 'taxPay')?.state === 'done' &&
+      !find(run(co({ vatStatus: 'none' }), '2027-03-20', { closings: [kFact({ filed: true, payCents: 0, dueOn: '2027-03-31' })] }), 'taxPay'),
+  )
+  check(
+    'what is done is never late, whatever its day',
+    find(run(co({ vatStatus: 'none' }), '2027-04-02', { closings: [kFact({ filed: true })] }), 'closing')?.late === false &&
+      find(run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])] }), 'vat', '2026-09')?.late === false,
+  )
+
+  // The handover at the end
+  check(
+    'the books handed over within thirty days of the end',
+    find(run(co({ vatStatus: 'none', endsOn: '2026-09-30' }), '2026-10-14'), 'handover')?.day === '2026-10-30' &&
+      find(run(co({ vatStatus: 'none', endsOn: '2026-10-20' }), '2026-10-14'), 'handover')?.state === 'running' &&
+      find(run(co({ vatStatus: 'none', endsOn: '2026-09-30' }), '2026-10-14', { handover: 2 }), 'handover')?.state === 'done',
+  )
+
+  // What is shown, and in which group
+  check(
+    'what still runs is shown once it is 45 days near, what can be done now always',
+    !find(run(co({ vatStatus: 'none', endsOn: '2027-01-31' }), '2026-10-14'), 'handover') && find(run(co({ vatStatus: 'none', startOn: '2026-01-01' }), '2027-01-02'), 'closing')?.day === '2027-03-31',
+  )
+  check(
+    'what was done stays 45 days',
+    Boolean(find(run(co(), '2026-11-14', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-20' }]]) }), 'vatPay', '2026-09')) &&
+      !find(run(co(), '2026-12-14', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-20' }]]) }), 'vatPay', '2026-09'),
+  )
+  check(
+    'the groups',
+    dues.groupOf({ state: 'open', late: true, day: '2026-10-10' }, '2026-10-14') === 'late' &&
+      dues.groupOf({ state: 'ready', late: false, day: '2026-10-21' }, '2026-10-14') === 'week' &&
+      dues.groupOf({ state: 'ready', late: false, day: '2026-11-10' }, '2026-10-14') === 'month' &&
+      dues.groupOf({ state: 'running', late: false, day: '2026-11-25' }, '2026-10-14') === 'later' &&
+      dues.groupOf({ state: 'done', late: false, day: '2026-10-10' }, '2026-10-14') === 'done',
+  )
+  const figs = dues.dueFigures(run(co(), '2026-10-21', { docs: [doc()], missing: new Map([['2026-09', 1]]) }), '2026-10-21')
+  check('the figures: late, within a week, ready, the client\'s', figs.late === 1 && figs.week === 1 && figs.ready === 1 && figs.client === 1, JSON.stringify(figs))
+
+  // In words, and where each is done
+  const row = (fields) => ({ companyId: 'c1', period: '2026-09', day: '2026-10-26', state: 'open', late: false, count: 0, cents: 0, fix: null, company: { id: 'c1', vatStatus: 'payer' }, ...fields })
+  check(
+    'what it is, in words',
+    plain(dueViews.dueWhat(row({ kind: 'vat' }))) === 'DPH a kontrolný výkaz za september 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'vat', company: { id: 'c1', vatStatus: 'reg7a' } }))) === 'Priznanie k DPH za september 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'vatFix', fix: 'D' }))) === 'Dodatočné priznanie k DPH za september 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'summary', period: '2026-Q3' }))) === 'Súhrnný výkaz za 3. štvrťrok 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'closing', period: '2026' }))) === 'Účtovná závierka a daňové priznanie za rok 2026' &&
+      plain(dueViews.dueWhat(row({ kind: 'taxPay', period: '2026' }))) === 'Úhrada dane z príjmov za rok 2026',
+  )
+  check(
+    'where it stands, in words',
+    plain(dueViews.dueState(row({ kind: 'docs', count: 3 }))) === 'Chýbajú 3 doklady' &&
+      plain(dueViews.dueState(row({ kind: 'vatPay', cents: 123456 }))) === 'Na úhradu 1 234,56 €' &&
+      plain(dueViews.dueState(row({ kind: 'vat', state: 'blocked', count: 2 }))) === 'Treba vyriešiť: 2' &&
+      plain(dueViews.dueState(row({ kind: 'summary', state: 'done' }))) === 'Podaný' &&
+      plain(dueViews.dueState(row({ kind: 'taxPay', cents: 100000 }))) === 'Na úhradu 1 000,00 €' &&
+      plain(dueViews.dueState(row({ kind: 'taxPay', state: 'done' }))) === 'Zaplatené',
+  )
+  check(
+    "where it is done: the period on the VAT page, a quarter of § 7a by its first month, a quarterly payer's quarter as it is",
+    dueViews.dueHref(row({ kind: 'vat' })) === '/ucto/klienti/c1/dph?obdobie=2026-09' &&
+      dueViews.dueHref(row({ kind: 'summary', period: '2026-Q3', company: { id: 'c1', vatStatus: 'reg7a' } })) === '/ucto/klienti/c1/dph?obdobie=2026-07#suhrnny' &&
+      dueViews.dueHref(row({ kind: 'summary', period: '2026-Q3', company: { id: 'c1', vatStatus: 'payer' } })) === '/ucto/klienti/c1/dph?obdobie=2026-Q3#suhrnny' &&
+      dueViews.dueHref(row({ kind: 'docs' })) === '/ucto/klienti/c1#chyba' &&
+      dueViews.dueHref(row({ kind: 'closing', period: '2026' })) === '/ucto/klienti/c1/zavierka?rok=2026' &&
+      dueViews.dueHref(row({ kind: 'taxPay', period: '2026' })) === '/ucto/klienti/c1/zavierka?rok=2026',
+  )
+  check('the filters in the address', dueViews.deadlinesHref({ side: 'ours', done: true, accountant: '' }) === '/ucto/terminy?kto=my&hotove=1' && dueViews.deadlinesHref({ side: 'all', done: false, accountant: '' }) === '/ucto/terminy')
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The closing of a micro company: the financial statements and the corporate income tax return
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const xsd = (name) => readFileSync(new URL(`./xsd/${name}`, import.meta.url), 'utf8')
+  const valid = async (xml, schema, name) => {
+    const result = await validateXML({ xml: [{ fileName: `${name}.xml`, contents: xml }], schema: [{ fileName: `${name}.xsd`, contents: schema }] })
+    return { ok: result.valid, why: result.errors.map((e) => e.message).join(' | ') }
+  }
+  let n = 0
+  const entry = (on, ...lines) => ({ key: `e${n++}`, on, kind: 'internal', number: '', text: '', docId: null, paymentId: null, manualId: null, lines: lines.map(([md, d, cents]) => ({ md, d, cents })) })
+  // A year of a young company: capital subscribed and paid in, a sale, services, representation, a gift, the bank.
+  const year = [
+    { ...entry('2026-01-01', ['353', '701', 500000], ['701', '411', 500000]), kind: 'opening' },
+    entry('2026-02-01', ['221.001', '353', 500000]),
+    entry('2026-03-10', ['311', '602', 1230000]),
+    entry('2026-03-20', ['221.001', '311', 1230000]),
+    entry('2026-04-05', ['518', '321', 100000]),
+    entry('2026-04-20', ['321', '221.001', 100000]),
+    entry('2026-05-01', ['513', '221.001', 12050]),
+    entry('2026-06-01', ['543', '221.001', 5000]),
+    entry('2026-07-01', ['568', '221.001', 1234]),
+    entry('2026-08-01', ['221.001', '662', 123]),
+    entry('2026-12-31', ['518', '321', 50000]),
+  ]
+  const st = closing.statementsOf({ entries: year }, 2026)
+  check(
+    'the profit and loss account: sales, services with representation, other costs, interest and the bank, the result before tax',
+    st.profit.r03 === 1230000 && st.profit.r11 === 162050 && st.profit.r17 === 5000 && st.profit.r24 === 123 && st.profit.r33 === 1234 && st.profit.r35 === 1061839 && st.profit.r38 === 1061839,
+    JSON.stringify(st.profit),
+  )
+  check(
+    'the balance sheet: the bank, the capital paid in, a supplier unpaid, and the result that makes it balance',
+    st.balance.r22 === 1611839 && st.balance.r27 === 500000 && st.balance.r28 === 0 && st.balance.r39 === 50000 && st.balance.r33 === 1061839 && st.balance.r01 === st.balance.r24,
+    JSON.stringify({ r22: st.balance.r22, r27: st.balance.r27, r39: st.balance.r39, r33: st.balance.r33 }),
+  )
+  check(
+    'in whole euros, the result the same on both statements',
+    st.balanceEur.r22 === 16118 && st.profitEur.r11 === 1621 && st.profitEur.r38 === 10618 && st.balanceEur.r33 === 10618 && st.rounding === 0 && st.unplaced.length === 0,
+    JSON.stringify({ r22: st.balanceEur.r22, r38: st.profitEur.r38, r33: st.balanceEur.r33 }),
+  )
+  check('the accounts the return reads', st.accounts['513'] === 12050 && st.accounts['543'] === 5000 && st.accounts['662'] === 123 && st.accounts['602'] === 1230000)
+  const odd = closing.statementsOf({ entries: [entry('2027-01-10', ['221.001', '602', 10000]), entry('2027-01-11', ['518', '221.001', 50]), entry('2027-01-12', ['501', '221.001', 50])] }, 2027)
+  check(
+    'rounding that would part the results is put in row 22, and said',
+    odd.profitEur.r38 === 98 && odd.balanceEur.r33 === 98 && odd.balanceEur.r22 === 98 && odd.rounding === -1 && odd.balanceEur.r01 === odd.balanceEur.r24,
+    JSON.stringify({ r38: odd.profitEur.r38, r33: odd.balanceEur.r33, r22: odd.balanceEur.r22, rounding: odd.rounding }),
+  )
+  const lastYear = closing.statementsOf({ entries: [...year, entry('2027-02-01', ['221.001', '602', 10000])] }, 2027)
+  check('the next year opens with last year\'s result on 431, which stands with the results of the years before', lastYear.balance.r32 === 1061839 && lastYear.balance.r33 === 10000 && lastYear.profit.r03 === 10000)
+  check(
+    'an overdraft is a loan, a customer who paid ahead a liability, the VAT the tax office owes a receivable',
+    (() => {
+      const s = closing.statementsOf(
+        { entries: [entry('2026-03-01', ['221.001', '411', 100000]), entry('2026-03-01', ['518', '221.002', 30000]), entry('2026-03-02', ['221.001', '311', 1000]), entry('2026-03-03', ['343.100', '221.001', 2300])] },
+        2026,
+      )
+      return s.balance.r44 === 30000 && s.balance.r39 === 1000 && s.balance.r19 === 2300 && s.balance.r22 === 98700
+    })(),
+  )
+  check('an account the form has no row for is said', closing.statementsOf({ entries: [entry('2026-03-01', ['221.001', '414', 1000])] }, 2026).unplaced.join() === '414')
+
+  // The tax
+  const input = (fields = {}) => ({
+    year: 2026,
+    result: 0,
+    revenues: 0,
+    costs: 0,
+    tableA: {},
+    tableB: {},
+    typed: {},
+    taxable: 0,
+    losses: [],
+    lossDeduct: null,
+    micro: false,
+    minimumExempt: false,
+    minimumHalf: false,
+    months: 12,
+    minimumCredits: [],
+    advances: 0,
+    withheld: 0,
+    ...fields,
+  })
+  const E = (euros) => Math.round(euros * 100)
+  check('the rate by the taxable revenues: 10 % up to 100 000 €, 21 %, 24 % above 5 000 000 €; 15 % up to 60 000 € in 2024', closing.taxRate(2026, E(92000)) === 10 && closing.taxRate(2026, E(100000)) === 10 && closing.taxRate(2026, E(520000)) === 21 && closing.taxRate(2026, E(5000001)) === 24 && closing.taxRate(2024, E(60000)) === 15 && closing.taxRate(2024, E(60001)) === 21)
+  check(
+    'the minimum tax by the taxable revenues, with the band above 5 000 000 € from 2026',
+    closing.minimumTax(2026, E(50000)) === E(340) && closing.minimumTax(2026, E(62000)) === E(960) && closing.minimumTax(2026, E(250001)) === E(1920) && closing.minimumTax(2026, E(500001)) === E(3840) && closing.minimumTax(2026, E(6000000)) === E(11520) && closing.minimumTax(2025, E(6000000)) === E(3840),
+  )
+  let t = closing.taxOf(input({ result: -E(1200), taxable: E(62000) }))
+  check('a loss with 62 000 € of taxable revenues pays the minimum tax of 960 € (the Financial Directorate\'s example)', t.rows.r810 === E(960) && t.rows.r820 === E(960) && t.rows.r900 === E(960) && t.rows.r1050 === E(960) && t.rows.r1100 === E(960) && t.minimumPaid, JSON.stringify(t.rows))
+  t = closing.taxOf(input({ result: E(3000), taxable: E(50000) }))
+  check('a tax of 300 € under the minimum of 340 €: 340 € is paid, 40 € may be credited later', t.rows.r600 === E(300) && t.rows.r1050 === E(340) && t.rows.r830 === E(40), JSON.stringify(t.rows))
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableA: { a06: E(500) }, typed: { r210: E(2000) } }))
+  check(
+    'representation added, interest taxed by withholding taken out, 10 %: row 400 28 500 €, tax 2 850 €',
+    t.rows.r130 === E(500) && t.rows.r200 === E(500) && t.rows.r300 === E(2000) && t.rows.r400 === E(28500) && t.rows.r550 === 10 && t.rows.r600 === E(2850) && t.rows.r1050 === E(2850) && t.tableA.r06 === E(500) && t.tableA.r17 === E(500),
+    JSON.stringify(t.rows),
+  )
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), advances: E(2000) }))
+  check('the advances paid lower what is to pay', t.rows.r1040 === E(2000) && t.rows.r1100 === E(1000) && t.rows.r1101 === 0)
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), advances: E(4000) }))
+  check('more advances than tax: an overpayment', t.rows.r1100 === 0 && t.rows.r1101 === -E(1000))
+  t = closing.taxOf(input({ result: E(3449.9), taxable: E(40000), advances: E(340) }))
+  check('a tax to pay of 5 € or less is not paid', t.rows.r1050 === E(344.99) && t.rows.r1100 === 0 && t.rows.r1101 === 0, JSON.stringify(t.rows))
+  t = closing.taxOf(input({ result: E(12000), taxable: E(55000), micro: true, losses: [{ year: 2023, amount: E(5000), usedBefore: 0 }, { year: 2024, amount: E(16000), usedBefore: 0 }] }))
+  check(
+    'a micro-taxpayer deducts losses up to the whole base, the oldest first (KROS\'s example): 5 000 and 7 000, 9 000 left',
+    t.rows.r410 === E(12000) && t.losses[0].now === E(5000) && t.losses[1].now === E(7000) && t.losses[1].left === E(9000) && t.rows.r500 === 0,
+    JSON.stringify(t.losses),
+  )
+  t = closing.taxOf(input({ result: E(80000), taxable: E(400000), losses: [{ year: 2022, amount: E(100000), usedBefore: E(10000) }] }))
+  check('any other taxpayer up to half of the base: 40 000 of the 90 000 left', t.rows.r410 === E(40000) && t.losses[0].left === E(50000) && t.rows.r500 === E(40000) && t.rows.r600 === E(8400))
+  t = closing.taxOf(input({ year: 2025, result: E(3000), taxable: E(40000), micro: true, losses: [{ year: 2020, amount: E(1000), usedBefore: 0 }, { year: 2021, amount: E(4000), usedBefore: 0 }] }))
+  check('a loss of 2020 only up to half even for a micro-taxpayer, a loss of 2021 up to the rest (the Directorate\'s example)', t.losses[0].now === E(1000) && t.losses[1].now === E(2000) && t.rows.r410 === E(3000))
+  t = closing.taxOf(input({ result: E(3000), taxable: E(40000), losses: [{ year: 2020, amount: E(1000), usedBefore: 0 }] }))
+  check('a loss older than five periods is not deducted', t.rows.r410 === 0 && t.losses.length === 0)
+  t = closing.taxOf(input({ result: E(12000), taxable: E(55000), micro: true, losses: [{ year: 2024, amount: E(16000), usedBefore: 0 }], lossDeduct: E(9000) }))
+  check('the accountant may deduct less of a loss', t.rows.r410 === E(9000) && t.losses[0].left === E(7000))
+  t = closing.taxOf(input({ result: -E(500), taxable: E(10000), minimumExempt: true }))
+  check('a company in its first period pays no minimum tax', t.rows.r810 === 0 && t.rows.r1050 === 0 && t.rows.r1100 === 0 && !t.minimumPaid)
+  check(
+    'a shorter period pays its share of the minimum tax, a company employing the disabled half (§ 46b(3), (6))',
+    closing.taxOf(input({ taxable: E(10000), months: 3 })).rows.r810 === E(85) && closing.taxOf(input({ taxable: E(62000), months: 7 })).rows.r810 === E(560) && closing.taxOf(input({ taxable: E(62000), minimumHalf: true })).rows.r810 === E(480),
+  )
+  t = closing.taxOf(input({ result: E(8000), taxable: E(40000), minimumCredits: [{ year: 2024, amount: E(340), usedBefore: 0 }, { year: 2025, amount: E(200), usedBefore: 0 }] }))
+  check(
+    'the minimum tax paid over earlier tax is credited on the tax above the minimum, the oldest first',
+    t.rows.r800 === E(800) && t.rows.r910 === E(460) && t.rows.r920 === E(460) && t.rows.r1000 === E(340) && t.rows.r1050 === E(340) && t.minimumCredits[0].now === E(340) && t.minimumCredits[1].now === E(120) && t.minimumCredits[1].left === E(80),
+    JSON.stringify(t.rows),
+  )
+  check(
+    'the advances the next period brings: monthly above 16 600 €, quarterly above 5 000 € (the Directorate\'s figures)',
+    (() => {
+      const monthly = closing.taxOf(input({ result: E(178500), taxable: E(500000) }))
+      const quarterly = closing.taxOf(input({ result: E(75835.33), taxable: E(500000) }))
+      const none = closing.taxOf(input({ result: E(26791.8), taxable: E(90000) }))
+      return monthly.rows.r1110 === E(37485) && monthly.advancesNext.kind === 'monthly' && monthly.advancesNext.each === E(3123.75) && quarterly.rows.r1110 === E(15925.42) && quarterly.advancesNext.each === E(3981.36) && none.rows.r1110 === E(2679.18) && none.advancesNext.kind === 'none'
+    })(),
+  )
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableB: { b01: E(1200), b02: E(1000) } }))
+  check('the books depreciated more than the tax allows: Table B row 6, the difference added in row 150', t.tableBUsed && t.tableB.r06 === E(1000) && t.rows.r150 === E(200) && t.rows.r250 === 0 && t.rows.r400 === E(30200))
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableB: { b01: E(1200), b02: E(1500), b04: E(100) } }))
+  check('less: the difference taken off in row 250, what is not claimed lowering row 6', t.tableB.r06 === E(1400) && t.rows.r150 === 0 && t.rows.r250 === E(200) && t.rows.r400 === E(29800))
+  check('no depreciation, no Table B', !closing.taxOf(input({ result: E(100), taxable: E(100) })).tableBUsed)
+  const proposal = closing.proposeTax(st)
+  check(
+    'the books propose the result, the taxable revenues, the interest, representation and gifts',
+    proposal.result === 1061839 && proposal.taxable === 1230123 && proposal.r210 === 123 && proposal.tableA.a06 === 12050 && proposal.tableA.a08 === 5000 && proposal.tableB.b01 === 0,
+    JSON.stringify(proposal),
+  )
+  check(
+    'depreciation in the books is proposed as the tax depreciation too: nothing is added back unasked',
+    (() => {
+      const dep = closing.proposeTax(closing.statementsOf({ entries: [entry('2026-12-31', ['551', '082', 40000])] }, 2026))
+      return dep.tableB.b01 === 40000 && dep.tableB.b02 === 40000 && closing.taxOf(closing.taxInputOf(2026, dep, closing.EMPTY_INPUTS, { advances: 0 })).rows.r150 === 0
+    })(),
+  )
+  let ti = closing.taxInputOf(2026, proposal, closing.EMPTY_INPUTS, { advances: 30000 })
+  check(
+    "the return's input: the books' proposal, a micro-taxpayer by the taxable revenues, the advances the bank shows, a whole year that pays the minimum tax",
+    ti.result === 1061839 && ti.tableA.a06 === 12050 && ti.typed.r210 === 123 && ti.micro && ti.advances === 30000 && ti.months === 12 && !ti.minimumExempt,
+    JSON.stringify(ti),
+  )
+  ti = closing.taxInputOf(2026, proposal, { ...closing.EMPTY_INPUTS, tableA: { a06: 0, a16: 5000 }, taxable: E(70000), from: '2026-05-04', advances: 0 }, { advances: 30000 })
+  check(
+    "what the accountant set goes over it: a first period from its founding pays no minimum tax and counts its months, revenues over 60 000 € are no micro-taxpayer's",
+    ti.tableA.a06 === 0 && ti.tableA.a16 === 5000 && ti.tableA.a08 === 5000 && !ti.micro && ti.minimumExempt && ti.months === 8 && ti.advances === 0,
+    JSON.stringify(ti),
+  )
+  check('she may say otherwise of both', (() => {
+    const own = closing.taxInputOf(2026, proposal, { ...closing.EMPTY_INPUTS, micro: false, from: '2026-05-04', minimumExempt: false }, { advances: 0 })
+    return !own.micro && !own.minimumExempt
+  })())
+  check('Table F: the revenues, the costs, the result before tax', JSON.stringify(closing.tableF(st)) === JSON.stringify({ r01: 1230123, r02: 168284, r03: 1061839 }))
+
+  // The files, against the Financial Administration's own schemas
+  const filer = { name: 'Ukážková firma s. r. o.', ico: '12345679', dic: '2120000007', address: 'Hlavná 1, 040 01 Košice', registerLine: 'Obchodný register Okresného súdu Košice I, oddiel Sro, vložka č. 12345/V', nace: '62.01.0', activity: 'Počítačové programovanie' }
+  check('an SK NACE code in its parts', JSON.stringify(closingXml.naceParts('62.01.0')) === JSON.stringify({ k1: '62', k2: '01', k3: '0' }) && closingXml.naceParts('620100') === null && JSON.stringify(closingXml.naceParts('62010')) === JSON.stringify({ k1: '62', k2: '01', k3: '0' }))
+  t = closing.taxOf(input({ result: proposal.result, taxable: proposal.taxable, tableA: proposal.tableA, typed: { r210: proposal.r210 }, micro: true, losses: [{ year: 2025, amount: E(800), usedBefore: 0 }], minimumCredits: [{ year: 2025, amount: E(340), usedBefore: 0 }], advances: E(100) }))
+  const dppo = closingXml.dppoXml(filer, t, { year: 2026, from: '2026-01-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'R', micro: true, minimumHalf: false, minimumExempt: false, tableF: closing.tableF(st) })
+  let v = await valid(dppo, xsd('dppo2025.xsd'), 'dppo')
+  check('the tax return is valid against DPPOv25', v.ok, v.why)
+  check(
+    'it holds the computation, Tables A, D, F and K, and who files it',
+    dppo.includes(`<r100>${(1061839 / 100).toFixed(2)}</r100>`) &&
+      dppo.includes('<r550>10</r550>') &&
+      dppo.includes('<mikrodanovnikPar2w>1</mikrodanovnikPar2w>') &&
+      dppo.includes('<tabA><r01></r01>') &&
+      dppo.includes('<r06>120.50</r06>') &&
+      dppo.includes('<tabDs04><datumOd>01.01.2025</datumOd><datumDo>31.12.2025</datumDo><r01>800.00</r01>') &&
+      dppo.includes('<tabF><r01>12301.23</r01><r02>1682.84</r02><r03>10618.39</r03></tabF>') &&
+      dppo.includes('<vyskaKladnehoRozdielu>340.00</vyskaKladnehoRozdielu>') &&
+      dppo.includes('<priezvisko>Juhás</priezvisko><meno>Christian</meno>') &&
+      dppo.includes('<k1>62</k1><k2>01</k2><k3>0</k3>'),
+    dppo.slice(dppo.indexOf('<telo>'), dppo.indexOf('<telo>') + 400),
+  )
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), advances: E(4000) }))
+  v = await valid(closingXml.dppoXml(filer, t, { year: 2026, from: '2026-03-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'D', foundOn: '2027-05-02', micro: false, minimumHalf: false, minimumExempt: true, tableF: { r01: 0, r02: 0, r03: 0 } }), xsd('dppo2025.xsd'), 'dppo-d')
+  check('so is a supplementary one with an overpayment, of a first period', v.ok, v.why)
+  const uz = closingXml.statementsXml(filer, st, lastYear, { year: 2026, from: '2026-01-01', preparedOn: '2027-03-15' })
+  v = await valid(uz, xsd('uzmuj2014.xsd'), 'uzmuj')
+  check('the financial statements are valid against UZMUJv14', v.ok, v.why)
+  check(
+    'in whole euros, this year and the year before, the register named',
+    uz.includes('<r22><s1>16118</s1>') && uz.includes('<r38><s1>10618</s1>') && uz.includes('<datumK><den>31</den><mesiac>12</mesiac><rok>2026</rok></datumK>') && uz.includes('oddiel Sro'),
+    uz.slice(0, 600),
+  )
+  v = await valid(closingXml.statementsXml(filer, st, null, { year: 2026, from: '2026-05-01', preparedOn: '2027-03-15', approvedOn: '2027-06-10' }), xsd('uzmuj2014.xsd'), 'uzmuj-first')
+  check('so are those of a first year, without a year before', v.ok, v.why)
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000), tableB: { b01: E(1200), b02: E(1000) } }))
+  const withB = closingXml.dppoXml(filer, t, { year: 2026, from: '2026-01-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'R', micro: false, minimumHalf: false, minimumExempt: false, tableF: { r01: 0, r02: 0, r03: 0 } })
+  v = await valid(withB, xsd('dppo2025.xsd'), 'dppo-b')
+  check('Table B goes with row 150, valid', v.ok && withB.includes('<tabB><r01>1200.00</r01><r02>1000.00</r02><r03>0.00</r03><r04>0.00</r04><r05>0.00</r05><r06>1000.00</r06></tabB>') && withB.includes('<r150>200.00</r150>'), v.why)
+
+  // What keeps a closing from being filed
+  const books = (fields = {}) => ({
+    start: '2026-01-01',
+    entries: [],
+    issues: { unbooked: [], noEntry: [], classify: [], waiting: [], missing: [], foreign: [], beforeStart: { docs: 0, payments: 0 } },
+    docDays: new Map(),
+    payments: new Map(),
+    ...fields,
+  })
+  const issues = (fields = {}, args = {}) =>
+    closing.closingIssues({ books: books(fields), year: 2026, company: { dic: '2120000007', address: 'Hlavná 1, Košice' }, nace: '62.01.0', statements: { unplaced: [], rounding: 0 }, tax: { computed: 0, booked: 0 }, ...args })
+  check('books that are whole, with everything the forms ask for, keep nothing back', issues().length === 0)
+  const pay = (id, bookedOn) => [id, { id, bookedOn }]
+  let found = issues({
+    issues: { unbooked: ['d1', 'd2', 'd3'], noEntry: ['d4'], classify: ['p1'], waiting: ['p2'], missing: ['p3', 'p4'], foreign: ['p5'], beforeStart: { docs: 0, payments: 0 } },
+    docDays: new Map([['d1', '2026-12-30'], ['d2', '2027-01-05'], ['d3', null], ['d4', '2026-03-01']]),
+    payments: new Map([pay('p1', '2026-06-01'), pay('p2', '2026-12-31'), pay('p3', '2026-11-11'), pay('p4', '2027-01-02'), pay('p5', '2026-02-02')]),
+  })
+  check(
+    "documents of the year or of no day yet, and the year's payments not in the books, keep it back; the next year's do not",
+    found.find((x) => x.code === 'unbooked')?.count === 3 && found.find((x) => x.code === 'payments')?.count === 3 && found.find((x) => x.code === 'foreign')?.count === 1 && found.every((x) => x.level === 'block'),
+    JSON.stringify(found),
+  )
+  found = issues({ start: null, entries: [entry('2026-05-01', ['501', '211', 500]), entry('2026-05-02', ['261', '221.001', 100])] }, { company: { dic: null, address: null }, nace: '', statements: { unplaced: ['414'], rounding: -1 }, tax: { computed: 34000, booked: 0 } })
+  check(
+    'no start, cash below nought, an account without a row, no tax number, seat or activity, the tax not booked; money in transit and the rounding to look at',
+    ['start', 'cash', 'unplaced', 'dic', 'address', 'nace', 'tax'].every((code) => found.some((x) => x.code === code && x.level === 'block')) &&
+      found.find((x) => x.code === 'unplaced')?.accounts?.join() === '414' &&
+      found.some((x) => x.code === 'transit' && x.level === 'warn') &&
+      found.find((x) => x.code === 'rounding')?.count === 1,
+    JSON.stringify(found),
+  )
+  check('while the year runs the tax is not asked to be booked', !issues({}, { tax: null }).some((x) => x.code === 'tax'))
+  t = closing.taxOf(input({ result: E(30000), taxable: E(92000) }))
+  const ch = closing.changedSinceFiled({ rows: { ...t.rows, r100: E(29000), r1050: E(2900) }, balance: { ...st.balanceEur }, profit: { ...st.profitEur } }, t, st)
+  check(
+    'what changed since the filing: the rows of the return, and whether either statement',
+    ch.rows.join() === 'r100,r1050' &&
+      !ch.statements &&
+      closing.changedSinceFiled({ rows: t.rows, balance: { ...st.balanceEur, r01: 1 }, profit: { ...st.profitEur } }, t, st).statements &&
+      closing.changedSinceFiled({ rows: t.rows, balance: { ...st.balanceEur }, profit: { ...st.profitEur, r38: 1 } }, t, st).statements,
+  )
+
+  // The accountant's adjustments, read and stored
+  const prop = { result: E(30000), revenues: E(92000), costs: E(62000), taxable: E(92000), r210: 123, tableA: { a06: 12050, a08: 0 }, tableB: { b01: 0, b02: 0 } }
+  const form = (fields) => (name) => fields[name]
+  let read = closingForm.readClosing(form({ a06: '120,50', a16: '300', r210: '1,23', zdanitelne: '92 000', preddavky: '250', nace: '62010', cinnost: 'Počítačové programovanie', od: '1. 1. 2026' }), 2026, prop, { advances: 25000 })
+  check(
+    "what equals the books' proposal is not stored, so it follows the books; what differs is",
+    Object.keys(read.errors).length === 0 &&
+      read.inputs.tableA.a06 === undefined &&
+      read.inputs.tableA.a16 === 30000 &&
+      read.inputs.typed.r210 === undefined &&
+      read.inputs.taxable === null &&
+      read.inputs.micro === null &&
+      read.inputs.minimumExempt === null &&
+      read.inputs.advances === null &&
+      read.inputs.from === null &&
+      read.inputs.nace === '62.01.0',
+    JSON.stringify(read),
+  )
+  check('an emptied proposal is a nought she set', closingForm.readClosing(form({ a06: '', zdanitelne: '92000' }), 2026, prop, { advances: 0 }).inputs.tableA.a06 === 0)
+  read = closingForm.readClosing(form({ mikro: '1', zdanitelne: '70000', oslobodena: '1', od: '4. 5. 2026', strata_rok_0: '2024', strata_suma_0: '800', kredit_rok_0: '2025', kredit_suma_0: '340', kredit_pred_0: '100', odpocet: '500', schvalena: '20. 6. 2027' }), 2026, prop, { advances: 0 })
+  check(
+    'the ticks stored only against the proposal, the losses and the credits, the founding, the approval',
+    read.inputs.micro === true &&
+      read.inputs.minimumExempt === null &&
+      read.inputs.from === '2026-05-04' &&
+      read.inputs.taxable === 7000000 &&
+      read.inputs.losses[0]?.year === 2024 &&
+      read.inputs.losses[0]?.amount === 80000 &&
+      read.inputs.minimumCredits[0]?.usedBefore === 10000 &&
+      read.inputs.lossDeduct === 50000 &&
+      read.inputs.approvedOn === '2027-06-20',
+    JSON.stringify(read.inputs),
+  )
+  read = closingForm.readClosing(form({ a01: 'veľa', od: '1. 1. 2025', strata_rok_0: '2019', strata_suma_0: '100', kredit_rok_0: '2025', kredit_suma_0: '100', kredit_pred_0: '200', nace: '62', schvalena: '31. 12. 2026' }), 2026, prop, { advances: 0 })
+  check(
+    'what is wrong is said field by field: no amount, a day out of the year, a loss too old, more used than there was, a code that is none, an approval before the end',
+    read.errors.a01 === 'amount' && read.errors.od === 'day' && read.errors.strata_rok_0 === 'year' && read.errors.kredit_pred_0 === 'used' && read.errors.nace === 'nace' && read.errors.schvalena === 'day' && read.values.a01 === 'veľa',
+    JSON.stringify(read.errors),
+  )
+  const stored = closingForm.storedInputs(JSON.stringify({ tableA: { a06: 100, a07: -5, a99: 3 }, taxable: 'x', micro: true, losses: [{ year: 2024, amount: 500, usedBefore: 900 }, { year: 2023, amount: 500, usedBefore: 0 }], nace: 'abc', from: '2026-02-30' }))
+  check(
+    'what is stored is checked again: a wrong value follows the books',
+    stored.tableA.a06 === 100 && stored.tableA.a07 === undefined && stored.taxable === null && stored.micro === true && stored.losses.length === 1 && stored.nace === '' && stored.from === null && closingForm.storedInputs('{').losses.length === 0,
+    JSON.stringify(stored),
+  )
+  const values = closingForm.closingValues(2026, { ...closing.EMPTY_INPUTS, losses: [{ year: 2024, amount: 80000, usedBefore: 0 }] }, prop, { advances: 25000 })
+  check(
+    "the form's values: what is stored, else what the books propose",
+    values.a06 === '120,50' && values.a01 === '' && values.r210 === '1,23' && values.zdanitelne === '92000,00' && values.mikro === '' && values.od === '1. 1. 2026' && values.preddavky === '250,00' && values.strata_rok_0 === '2024' && values.strata_suma_0 === '800,00',
+    JSON.stringify(values),
+  )
+
+  // The income tax paid to the State Treasury, in the books
+  check(
+    "the income tax by its account's prefix, or by its own symbol when the bank does not say where the money went",
+    ledger.reasonAccount({ amountCents: -34000, vs: '1700992026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '341' &&
+      ledger.reasonAccount({ amountCents: -34000, vs: '1100032026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '343.300',
+  )
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payroll: an employee's month, against figures the authorities and the profession published
+// ---------------------------------------------------------------------------------------------------------------
+{
+  const y26 = payroll.payrollYear(2026)
+  const y27 = payroll.payrollYear(2027)
+  check(
+    "the non-taxable part's twelfth and the monthly bands, as the Financial Directorate gives them for 2026; 2027 from the subsistence minimum of July 2026",
+    payroll.nonTaxableMonth(y26) === 49723 &&
+      payroll.nonTaxableYear(y27) === 619962 &&
+      payroll.nonTaxableMonth(y27) === 51664 &&
+      payroll.monthlyBands(y26).join() === '366528,502910,625086' &&
+      Math.round(154.8 * y27.subsistence) === 4570006,
+  )
+  check('the social insurance cap: 16 764 € in 2026, 17 820 € in 2027', payroll.socialCap(y26) === 1676400 && payroll.socialCap(y27) === 1782000)
+  let unsupported = false
+  try { payroll.payrollYear(2030) } catch (e) { unsupported = e instanceof RangeError }
+  check('an unsupported payroll year cannot silently borrow another year\'s rules', unsupported && payroll.supportsPayrollPeriod('2026-09') && !payroll.supportsPayrollPeriod('2025-09') && !payroll.supportsPayrollPeriod('2026-13'))
+  const pay = (fields) => payroll.payslip({ period: '2026-10', gross: 0, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false, days: 31, ...fields })
+  let p = pay({ gross: 150000, children: [{ name: 'Andrea', born: '2016-04-02' }] })
+  check(
+    "SuperFaktúra's 1 500 € with a daughter: insurance 216 €, an advance of 149,49 €, the bonus of 100 €, 1 234,51 € paid",
+    p.socialEmployee === 14100 && p.healthEmployee === 7500 && p.partialBase === 128400 && p.advance === 14949 && p.bonus === 10000 && p.withheld === 4949 && p.net === 123451,
+    JSON.stringify(p),
+  )
+  p = pay({ period: '2027-01', gross: 97200 })
+  check(
+    "the minimum wage of 2027: each social amount rounded down (91,36 €), 48,60 € to health, 59,93 € of tax, 772,11 € paid, 1 323,85 € the employer's cost (Bezúčto)",
+    p.socialEmployee === 9136 && p.social.employee.sickness === 1360 && p.healthEmployee === 4860 && p.advance === 5993 && p.net === 77211 && p.employerCost === 132385 && p.socialEmployer === 24493,
+    JSON.stringify(p),
+  )
+  p = pay({ gross: 2000000, declaration: false })
+  check(
+    'above the cap: social insurance from 16 764 € (the Agency\'s 234,69 € and 2 346,96 €), accident insurance and health from the whole',
+    p.socialBase === 1676400 && p.social.employee.sickness === 23469 && p.social.employer.oldAge === 234696 && p.social.employer.accident === 16000 && p.healthEmployer === 220000,
+  )
+  check('the bands: 10 000 € without the declaration, 19 %, 25 %, 30 % and 35 % of their parts, rounded once', pay({ gross: 1000000, declaration: false }).advance === 221209)
+  p = pay({ gross: 20000 })
+  check('the minimum health advance of 2026 is 45,45 €: what 200 € falls short of it the employee pays', p.healthEmployee + p.healthEmployer === 4545 && p.healthTopUp === 1345)
+  check(
+    'shared by the days employed, and not paid by one with an exception',
+    pay({ period: '2026-09', gross: 10000, days: 15 }).healthTopUp === 2272 - 1600 && pay({ gross: 20000, healthMinimumExempt: true }).healthTopUp === 0,
+  )
+  check(
+    'the deductible item below 570 €: 550 € leaves 510 € to the employee\'s health; 300 € leaves nothing (but the minimum)',
+    payroll.healthDeductible(55000) === 4000 && pay({ gross: 55000, healthDeduction: true }).healthEmployee === 2550 && payroll.healthDeductible(30000) === 30000 && payroll.healthDeductible(57000) === 0,
+  )
+  check('a person with a disability: 2,5 % and 5,5 %', pay({ gross: 150000, disabled: true }).healthEmployee === 3750 && pay({ gross: 150000, disabled: true }).healthEmployer === 8250)
+  p = pay({ period: '2026-09', gross: 50000, days: 15, healthDeduction: true })
+  check('the deductible item follows days employed: 500 € for half of September leaves 70 € deducted and 21,50 € employee insurance', p.healthDeduction === 7000 && p.healthEmployee === 2150, JSON.stringify(p))
+  check('a partial-month deductible is rounded up to a cent, including income below 380 €', payroll.healthDeductible(50000, 1, 31) === 452 && payroll.healthDeductible(30000, 15, 30) === 15000 && payroll.healthDeductible(50000, 0, 30) === 0)
+  p = pay({ gross: 10000, disabled: true })
+  check('disability itself exempts a low wage from the minimum health advance', p.healthEmployee === 250 && p.healthEmployer === 550 && p.healthTopUp === 0, JSON.stringify(p))
+  check(
+    "the child bonus by age: 100 € to the month the child turns 15, 50 € to the month it turns 18, from the month it is born",
+    payroll.childBonus({ name: 'a', born: '2012-05-10' }, '2027-05') === 10000 &&
+      payroll.childBonus({ name: 'a', born: '2012-05-10' }, '2027-06') === 5000 &&
+      payroll.childBonus({ name: 'b', born: '2009-03-01' }, '2027-03') === 5000 &&
+      payroll.childBonus({ name: 'b', born: '2009-03-01' }, '2027-04') === 0 &&
+      payroll.childBonus({ name: 'c', born: '2026-10-20' }, '2026-10') === 10000 &&
+      payroll.childBonus({ name: 'c', born: '2026-10-20' }, '2026-09') === 0,
+  )
+  p = pay({ gross: 46000, children: [{ name: 'a', born: '2020-01-01' }, { name: 'b', born: '2022-01-01' }] })
+  check('a low wage: two children\'s bonus at most 36 % of the partial base, 141,75 € of 460 € (Peniaze.sk)', p.partialBase === 39376 && p.bonus === 14175 && p.withheld < 0 && p.net === 46000 - 4324 - 2300 + 14175, JSON.stringify(p))
+  p = pay({ gross: 300000, children: [{ name: 'a', born: '2016-01-01' }, { name: 'b', born: '2010-01-01' }] })
+  check('a high one: each child\'s bonus lowered by a tenth of the base above 2 286 € (KROS\'s 3 000 €: 71,80 € and 21,80 €)', p.partialBase === 256800 && p.bonus === 9360 && p.bonusByChild.map((c) => c.amount).join() === '7180,2180', JSON.stringify(p.bonusByChild))
+  check('no declaration, no non-taxable part and no bonus', pay({ gross: 150000, declaration: false, children: [{ name: 'a', born: '2016-01-01' }] }).bonus === 0 && pay({ gross: 150000, declaration: false }).nonTaxable === 0)
+  const t = payroll.payrollTotals([
+    { ...pay({ gross: 150000 }), insurer: '25' },
+    { ...pay({ gross: 200000 }), insurer: '24' },
+    { ...pay({ gross: 100000 }), insurer: '25' },
+  ])
+  check('the month\'s sums: the Social Insurance Agency, each health insurer, the tax office, the employees', t.gross === 450000 && t.health['25'] === 7500 + 16500 + 5000 + 11000 && t.health['24'] === 10000 + 22000 && t.social === 51900 + 69200 + 34600 && t.tax === 14949 + 23081 + 6817 && t.net === 340353, JSON.stringify(t))
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Payroll: the months, the payday, the books, the deadlines
+// ---------------------------------------------------------------------------------------------------------------
+{
+  check(
+    "the payday: the agreed day of the next month (the last of a shorter one), else the next month's last day",
+    payrollStore.paydayOf('2026-10', { payday: 10 }) === '2026-11-10' &&
+      payrollStore.paydayOf('2026-10', { payday: 31 }) === '2026-11-30' &&
+      payrollStore.paydayOf('2026-10', { payday: null }) === '2026-11-30' &&
+      payrollStore.paydayOf('2026-12', { payday: 5 }) === '2027-01-05',
+  )
+  check(
+    'the days of a month employed',
+    payrollStore.daysEmployed({ startedOn: '2026-10-15', endedOn: null }, '2026-10') === 17 &&
+      payrollStore.daysEmployed({ startedOn: '2026-01-01', endedOn: '2026-10-10' }, '2026-10') === 10 &&
+      payrollStore.daysEmployed({ startedOn: '2026-11-01', endedOn: null }, '2026-10') === 0 &&
+      payrollStore.daysEmployed({ startedOn: '2026-12-15', endedOn: null }, '2026-10') === 0 &&
+      payrollStore.daysEmployed({ startedOn: '2026-01-01', endedOn: '2026-08-31' }, '2026-10') === 0,
+  )
+  const employee = (fields = {}) => ({ id: 'e1', name: 'Ján', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, ...fields })
+  let slips = payrollStore.monthSlips('2026-10', [employee({ startedOn: '2026-10-16' }), employee({ id: 'e2', startedOn: '2026-12-01' })], null)
+  check('an open month proposes the wage, a share of it for part of the month; nobody who was not employed', slips.length === 1 && slips[0].gross === 77419 && slips[0].days === 16)
+  slips = payrollStore.monthSlips('2026-10', [employee()], { period: '2026-10', payday: '2026-11-10', lines: [{ employeeId: 'e1', name: 'Ján', insurer: '25', gross: 160000 }], closedOn: null, closedByName: null })
+  check('the income typed for the month counts', slips[0].gross === 160000 && slips[0].slip.gross === 160000)
+  const closed = { period: '2026-09', payday: '2026-10-10', lines: slips.map((l) => ({ ...l })), closedOn: '2026-10-05', closedByName: 'Lucia' }
+  const lp = payrollStore.ledgerPayroll(closed)
+  const s1 = slips[0].slip
+  check(
+    'a closed month as the books take it: the sums, and what each payment of it comes to',
+    lp.gross === 160000 && lp.socialEmployee === s1.socialEmployee && lp.tax === s1.withheld && lp.pays.social === s1.socialEmployee + s1.socialEmployer && lp.pays.health.join() === String(s1.healthEmployee + s1.healthEmployer) && payrollStore.ledgerPayroll({ ...closed, closedOn: null }) === null,
+  )
+  const pay = (amountCents, fields = {}) => ({ amountCents, vs: null, note: null, exempt: 'payroll', exemptNote: null, partyIban: null, ...fields })
+  check(
+    "a payroll payment's account: the Social Insurance Agency's sum, a health insurer's, the tax office's (also by its prefix), else wages",
+    ledger.reasonAccount(pay(-lp.pays.social), [lp]) === '336.100' &&
+      ledger.reasonAccount(pay(-lp.pays.health[0]), [lp]) === '336.200' &&
+      ledger.reasonAccount(pay(-lp.tax), [lp]) === '342' &&
+      ledger.reasonAccount(pay(-123, { partyIban: 'SK1981805002590123456789' }), [lp]) === '342' &&
+      ledger.reasonAccount(pay(-s1.net), [lp]) === '331' &&
+      ledger.reasonAccount(pay(-lp.pays.social), []) === '331' &&
+      ledger.reasonAccount(pay(-lp.pays.social, { exempt: 'state', partyIban: 'SK7381800000007000155733' }), [lp]) === '336.100' &&
+      ledger.reasonAccount(pay(-777, { exempt: 'state', partyIban: 'SK7381800000007000155733' }), [lp]) === null,
+  )
+  check('a birth day may be in the 1900s, a document\'s not', booking.dayOfText('1. 1. 1990', 1900) === '1990-01-01' && booking.dayOfText('1. 1. 1990') === null)
+  const books = ledger.buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'none' }, docs: [], payments: [], banks: [], filed: [], manual: [], payroll: [lp] })
+  const entry = books.entries.find((e) => e.key === 'w:2026-09')
+  check(
+    "the month's entry on its last day: 521 against 331, the employee's insurance and tax from 331, the employer's 524",
+    entry?.on === '2026-09-30' &&
+      entry.kind === 'payroll' &&
+      entry.lines.some((l) => l.md === '521' && l.d === '331' && l.cents === 160000) &&
+      entry.lines.some((l) => l.md === '331' && l.d === '336.100' && l.cents === s1.socialEmployee) &&
+      entry.lines.some((l) => l.md === '331' && l.d === '342' && l.cents === s1.withheld) &&
+      entry.lines.some((l) => l.md === '524' && l.d === '336.100' && l.cents === s1.socialEmployer) &&
+      entry.lines.some((l) => l.md === '524' && l.d === '336.200' && l.cents === s1.healthEmployer),
+    JSON.stringify(entry),
+  )
+
+  // The deadlines
+  const co = (fields = {}) => ({ id: 'c1', name: 'Firma', vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: null, address: 'x', ...fields })
+  const facts = (payroll) => ({ views: [], filed: [], paid: new Map(), filings: new Set(), closings: [], missing: new Map(), handover: 0, payroll })
+  const run = (payroll, today, filings = new Set()) => dues.deadlinesOf(co(), { ...facts(payroll), filings }, today)
+  const pf = (fields = {}) => ({ first: '2026-08-01', last: null, payday: 10, closed: new Map(), ...fields })
+  let list = run(pf(), '2026-10-14')
+  const find = (kind, period) => list.find((d) => d.kind === kind && d.period === period)
+  check(
+    'each month with employees closed by its payday, the next working day (10 October 2026 is a Saturday); the month that runs runs',
+    find('payroll', '2026-09')?.day === '2026-10-12' && find('payroll', '2026-09')?.late && find('payroll', '2026-10')?.state === 'running' && find('payroll', '2026-08')?.state === 'open' && !find('payroll', '2026-07'),
+    JSON.stringify(list),
+  )
+  list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14')
+  check('closed: done, by its own payday; its reports then to file', find('payroll', '2026-09')?.state === 'done' && find('payrollReports', '2026-09')?.state === 'open' && find('payrollReports', '2026-09')?.day === '2026-10-09')
+  list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14', new Set(['mz:2026-09']))
+  check('a manual payroll marker never proves acceptance', find('payrollReports', '2026-09')?.state === 'open' && find('payrollReports', '2026-09')?.deliveryStatus === 'unverified')
+  list = run(pf({ last: '2026-08-31' }), '2026-10-14')
+  check('nothing after the last employee left', !find('payroll', '2026-09') && Boolean(find('payroll', '2026-08')))
+  check('a company without employees has no payroll', !dues.deadlinesOf(co(), facts(undefined), '2026-10-14').some((d) => d.kind === 'payroll'))
+}
+
+// Continuous locks: strict month parsing, completed periods, direction, reason and full/partial reopening.
+{
+  const pick = (action, month, reason = '') => periods.lockTarget({ action, month, reason }, '2026-09-30', '2026-10-15', '2026-01-01')
+  check('the current month cannot be locked', 'error' in pick('lock', '2026-10'))
+  check('a completed later year can be locked through December', periods.lockTarget({ action: 'lock', month: '2025-12', reason: '' }, null, '2026-10-15').through === '2025-12-31')
+  check('an already locked month does not hide a stale intent', 'error' in pick('lock', '2026-09'))
+  check('reopening needs a meaningful reason', 'error' in pick('open', '2026-09', 'oprava'))
+  check('partial reopening keeps earlier months locked', pick('open', '2026-09', 'Oprava nesprávneho účtu').through === '2026-08-31')
+  check('reopening from the start removes the whole lock', pick('open', '2026-01', 'Oprava počiatočných stavov').through === null)
+  check('reopening across New Year keeps the previous December', periods.lockTarget({ action: 'open', month: '2026-01', reason: 'Oprava účtovania januára' }, '2026-02-28', '2026-10-15', '2025-01-01').through === '2025-12-31')
+  check('invalid and out-of-range months are rejected', ['2026-00', '2026-13', '2026-9', '2026-Q3', '2026-09extra', '0000-01'].every((month) => 'error' in pick('lock', month)))
+  check('unknown actions are rejected', 'error' in pick('erase', '2026-09'))
+  check('an open future month cannot be reopened', 'error' in pick('open', '2026-10', 'Oprava budúceho mesiaca'))
+  check('the lock cannot precede the books', 'error' in periods.lockTarget({ action: 'lock', month: '2025-12', reason: '' }, null, '2026-10-15', '2026-01-01'))
+  check('wrapped D1 lock errors are recognized without exposing SQL', periods.isPeriodLocked({ cause: new Error('D1_ERROR: FIRMONY_PERIOD_LOCKED: SQLITE_CONSTRAINT') }) && !periods.isPeriodLocked(new Error('other error')))
+  const issues = { unbooked: ['old', 'future', 'undated'], noEntry: ['old'], classify: ['p1'], waiting: ['p1'], missing: ['p2'], foreign: [] }
+  const b = { start: '2026-01-01', issues, docDays: new Map([['old', '2026-09-01'], ['future', '2026-10-01']]), payments: new Map([['p1', { bookedOn: '2026-09-30' }], ['p2', { bookedOn: '2026-10-01' }]]) }
+  const blocked = periods.lockBlockers(b, '2026-09-30')
+  check('readiness counts only protected dates, deduplicates and includes undated documents', blocked.documents === 2 && blocked.payments === 1)
+  const pay = { amountCents: -12345, vs: null, note: null, exempt: 'payroll', exemptNote: null, contra: null, bookedOn: '2026-09-30' }
+  const run = { period: '2026-10', pays: { social: 12345, health: [], tax: 0 } }
+  check('a later closed payroll cannot reclassify an earlier payment', ledger.paymentContra(pay, [run]) === '331' && ledger.paymentContra({ ...pay, bookedOn: '2026-10-31' }, [run]) === '336.100')
+}
+
+// Response clocks preserve local time across weekends, holidays and both daylight-saving changes.
+{
+  const cases = [
+    ['2026-10-15T08:20:30Z', '2026-10-16T08:20:30Z', 'ordinary next working day'],
+    ['2026-10-16T08:20:30Z', '2026-10-19T08:20:30Z', 'Friday to Monday'],
+    ['2026-10-17T20:15:00Z', '2026-10-19T20:15:00Z', 'weekend arrival'],
+    ['2026-10-18T22:30:00Z', '2026-10-19T22:30:00Z', 'UTC Sunday is already Monday in Bratislava'],
+    ['2026-10-23T08:00:00Z', '2026-10-26T09:00:00Z', 'autumn DST keeps 10:00 local'],
+    ['2026-03-27T09:00:00Z', '2026-03-30T08:00:00Z', 'spring DST keeps 10:00 local'],
+    ['2026-04-02T08:00:00Z', '2026-04-07T08:00:00Z', 'Good Friday and Easter Monday'],
+    ['2026-05-07T08:00:00Z', '2026-05-08T08:00:00Z', '8 May is a working day in 2026'],
+    ['2027-05-07T08:00:00Z', '2027-05-10T08:00:00Z', 'May 2027 weekend'],
+    ['2026-09-14T08:00:00Z', '2026-09-15T08:00:00Z', '15 September exception in 2026'],
+    ['2027-09-14T08:00:00Z', '2027-09-16T08:00:00Z', '15 September off in 2027'],
+    ['2026-12-23T09:00:00Z', '2026-12-28T09:00:00Z', 'Christmas holidays and weekend'],
+    ['2026-12-31T22:59:59Z', '2027-01-04T22:59:59Z', 'year end at local 23:59:59'],
+    ['2026-11-16T09:00:00Z', '2026-11-17T09:00:00Z', '17 November is a working day'],
+  ]
+  for (const [from, expected, name] of cases) check(`support: ${name}`, new Date(support.responseDueAt(Date.parse(from) / 1000) * 1000).toISOString() === expected.replace('Z', '.000Z'))
+  let refused = false
+  try { support.responseDueAt(Number.NaN) } catch { refused = true }
+  check('support: an invalid clock is refused', refused)
+}
+
+// Authentication boundaries are independent of the route's tenant authorization.
+{
+  check('return addresses reject external, normalized external and non-application destinations', ['//evil.example/ucto', '/\\\\evil.example/ucto', 'https://firmony.ai/app', '/auth/grants', '/application', '/ucto-other'].every((s) => security.safeNext(s) === '/app'))
+  check('return addresses preserve valid internal paths and queries', security.safeNext('/ucto/klienti/x?rok=2026#doklady') === '/ucto/klienti/x?rok=2026#doklady')
+  check('key management can resume on its own page without copying nested return addresses', security.safeNext('/auth?next=https://evil.example') === '/auth')
+  for (const [action, page] of [
+    ['/app/export/potvrdit', '/app/firma#stiahnut'],
+    ['/app/faktury', '/app/faktury/nova'],
+    ['/app/platby/x/bez-dokladu', '/app/platby/x'],
+    ['/app/doklady/x/odpojit', '/app/doklady/x'],
+    ['/app/faktury/x/poslat', '/app/faktury/x'],
+    ['/app/firma/ludia/x/odobrat', '/app/firma'],
+    ['/app/banka/x/nacitat', '/app/banka'],
+    ['/ucto/klienti/x/odovzdanie/y/odstranit', '/ucto/klienti/x#odovzdanie'],
+    ['/ucto/klienti/x/dph/suhrnny-vykaz/podane', '/ucto/klienti/x/dph'],
+    ['/ucto/klienti/x/zavierka/podane', '/ucto/klienti/x/zavierka'],
+    ['/ucto/klienti/x/podania/y/stav', '/ucto/klienti/x/podania/y'],
+    ['/ucto/klienti/x/mzdy/otvorit', '/ucto/klienti/x/mzdy'],
+    ['/ucto/klienti/x/kniha/interne/y/odstranit', '/ucto/klienti/x/kniha/interne'],
+    ['/ucto/incidenty/x/schvalit-uvolnenie', '/ucto/incidenty/x'],
+    ['/ucto/doklady/x/platba', '/ucto/doklady/x'],
+    ['/ucto/ziadosti/x/posudenie', '/ucto/ziadosti/x/posudenie'],
+    ['/ucto/tim', '/ucto/tim'],
+    ['//evil.example/app/firma', '/app'],
+    ['/ucto/unknown/action', '/ucto'],
+  ]) check(`blocked action resumes on a work page: ${action}`, security.actionReturn(action) === page)
+  check('re-verification keeps the selected accounting period on the same work page', security.actionReturn('/ucto/klienti/x/dph/podane', 'https://firmony.ai/ucto/klienti/x/dph?mesiac=2026-08') === '/ucto/klienti/x/dph?mesiac=2026-08')
+  check('handover return keeps its section while copying safe work-page filters', security.actionReturn('/ucto/klienti/x/odovzdanie/y/odstranit', 'https://firmony.ai/ucto/klienti/x?rok=2025') === '/ucto/klienti/x?rok=2025#odovzdanie')
+  for (const referrer of ['https://evil.example/ucto/klienti/x/dph?mesiac=2020-01', 'https://firmony.ai/ucto/klienti/other/dph?mesiac=2020-01', 'https://firmony.ai/ucto/klienti/x/export?rok=2025', 'not a URL']) {
+    check('a referrer cannot replace the safe work destination', security.actionReturn('/ucto/klienti/x/dph/podane', referrer) === '/ucto/klienti/x/dph')
+  }
+  check('passkeys are bound to the canonical HTTPS production origin', security.relyingParty('https://firmony.ai/auth/options', {})?.rpID === 'firmony.ai' && security.relyingParty('http://firmony.ai/auth/options', {}) === null && security.relyingParty('https://preview.example/auth/options', { DEMO: '1' }) === null)
+  check('local passkeys require an explicit demo flag', security.relyingParty('http://localhost:8787/auth', {}) === null && security.relyingParty('http://localhost:8787/auth', { DEMO: '1' })?.rpID === 'localhost')
+  const bootstrap = { TEAM_BOOTSTRAP_EMAIL: 'owner@example.test', TEAM_BOOTSTRAP_TOKEN: 'x'.repeat(43), TEAM_BOOTSTRAP_EXPIRES_AT: '1100' }
+  check('bootstrap never defaults to a public mailbox or an unlimited deadline', security.bootstrapReady(bootstrap, 1000) && !security.bootstrapReady({}, 1000) && !security.bootstrapReady({ ...bootstrap, TEAM_BOOTSTRAP_EXPIRES_AT: '' }, 1000) && !security.bootstrapReady(bootstrap, 1100))
+  const who = { verifiedAt: 1000, verifiedCredential: 'key' }
+  check('freshness needs the credential, rejects future timestamps and expires at the boundary', security.verifiedRecently(who, 1100, 300) && !security.verifiedRecently(who, 1300, 300) && !security.verifiedRecently(who, 999, 300) && !security.verifiedRecently({ ...who, verifiedCredential: null }, 1100, 300))
+  check('exports, payroll downloads, role changes and retention release require recent verification', [['/app/export','GET'], ['/app/export/potvrdit','POST'], ['/ucto/klienti/co/export','HEAD'], ['/ucto/klienti/co/export','GET'], ['/ucto/klienti/co/dennik.csv','GET'], ['/ucto/klienti/co/paska','GET'], ['/ucto/tim','POST'], ['/ucto/incidenty/x/schvalit-uvolnenie','POST']].every(([p,m]) => security.sensitivePath(p,m)))
+  check('ordinary work does not receive an accidental repeated-verification requirement', !security.sensitivePath('/ucto/doklady','GET') && !security.sensitivePath('/ucto/klienti/x/spravy','POST'))
+  const e = { cause: { cause: new Error('D1_ERROR: Evidence hold prevents deletion') } }
+  check('retention errors are recognized through nested causes and tolerate cycles', isEvidenceHeld(e) && !isEvidenceHeld(new Error('other')) && (() => { const x = {}; x.cause = x; return !isEvidenceHeld(x) })())
+}
+
+// Monthly reports use each recipient's period, never a planned payday as evidence of cash payment.
+{
+  check('report kinds reject inherited object names', reports.isReportKind('sp') && !reports.isReportKind('constructor') && !reports.isReportKind('__proto__') && !payrollStore.isInsurer('constructor'))
+  check('payroll periods reject quarters and impossible months', reports.isMonth('2026-09') && ['2026-9','2026-00','2026-13','2026-Q3'].every((p) => !reports.isMonth(p)))
+  check('the FS deadline follows the independently reviewed reporting period across New Year', reports.taxReportDue('2026-12') === '2027-02-01' && reports.taxReportDue('2026-10') === '2026-11-30')
+  check('insurer operational dates do not borrow tax weekend extensions', reports.reportDue('sp','2026-10-10') === '2026-10-10' && reports.reportDue('health25','2026-10-10') === '2026-10-13')
+  const line = (insurer, gross = 0) => ({ insurer, gross, slip: {} })
+  check('every represented insurer needs evidence even with zero contribution', reports.requiredInsurers([line('25'),line('24',100),line('25')]).join() === '24,25')
+  check('incomplete and unknown payroll snapshots fail closed', [[],null,[line('constructor')],[line('25',-1)],[{insurer:'25',gross:100}]].every((v) => reports.requiredInsurers(v) === null))
+  const input = { revision:0, paidOn:'2026-10-12', reportPeriod:'2026-09', reference:'TEST bank statement 123', reason:'', checked:true }
+  const valid = (v = {}, current = 0, admin = false) => reports.payoutError({...input,...v},current,admin,'2026-10-16','2026-09')
+  check('an accountant can attest a past complete actual payout', valid() === null)
+  check('payout rejects future, impossible and pre-source dates', ['2026-10-17','2026-02-30','2026-08-31',''].every((paidOn) => Boolean(valid({paidOn}))))
+  check('payout confirmation needs explicit verification and a usable reference', Boolean(valid({checked:false})) && Boolean(valid({reference:'plan'})))
+  check('payout corrections require current revision, admin and a reason', Boolean(valid({},1,true)) && Boolean(valid({revision:1},1,false)) && Boolean(valid({revision:1},1,true)) && valid({revision:1,reason:'TEST correction after bank review'},1,true) === null)
+  const base = { views:[],filed:[],paid:new Map(),filings:new Set(),closings:[],missing:new Map(),handover:0 }
+  const company = {id:'co',vatStatus:'none',startOn:'2026-01-01',createdAt:0,endsOn:null}
+  const payrollReports = [
+    {id:'sp',kind:'sp',period:'2026-09',due:'2026-10-10',status:'accepted',sourceChanged:false},
+    {id:'zp',kind:'health25',period:'2026-09',due:'2026-10-13',status:'prepared',sourceChanged:false},
+    {id:'tax',kind:'tax',period:'2026-10',due:'2026-11-30',status:'accepted',sourceChanged:true},
+  ]
+  const list = dues.deadlinesOf(company,{...base,payrollReports},'2026-10-16').filter((d) => d.kind === 'payrollReport')
+  check('acceptance closes only the matching current recipient deadline', list.find((d) => d.reportId === 'sp')?.state === 'done' && list.find((d) => d.reportId === 'zp')?.state === 'open' && list.find((d) => d.reportId === 'tax')?.state === 'blocked')
+  check('recipient deadlines link directly to their own evidence', dueViews.dueHref({...list[1],company}) === '/ucto/klienti/co/mzdove-podania/zp')
+  check('payroll evidence mutations resume on GET work pages after verification', security.actionReturn('/ucto/klienti/co/mzdove-podania/vyplata','https://firmony.ai/ucto/klienti/co/mzdove-podania?obdobie=2026-09') === '/ucto/klienti/co/mzdove-podania?obdobie=2026-09' && security.actionReturn('/ucto/klienti/co/mzdove-podania/t/verzie/p/stav') === '/ucto/klienti/co/mzdove-podania/t/verzie/p')
+  check('payroll originals and all evidence mutations require fresh verification', [['/ucto/klienti/co/mzdove-podania/zalozit','POST'],['/ucto/klienti/co/mzdove-podania/vyplata','POST'],['/ucto/klienti/co/mzdove-podania/t/subor','POST'],['/ucto/klienti/co/mzdove-podania/t/verzie/p/stav','POST'],['/app/mzdove-podania/t/verzie/p/dokument','GET'],['/app/mzdove-podania/t/verzie/p/potvrdenka/e','GET']].every(([p,m]) => security.sensitivePath(p,m)))
+  const cyclic = {}; cyclic.cause = cyclic
+  check('payroll source guards recognize nested errors without looping', reports.payrollBlocked({cause:new Error('FIRMONY_PAYROLL_REPORTED')}) && !reports.payrollBlocked(cyclic))
+}
+
+await checkPrehlad()
+await (await import('./health.units.mjs')).checkHealth()
+await (await import('./social.units.mjs')).checkSocial()
 done('units')

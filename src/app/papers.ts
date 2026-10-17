@@ -123,7 +123,7 @@ export async function papersOf(db: D1Database, company: string, kind: PaperKind)
     .prepare(
       `SELECT f.*, cb.name AS created_by_name, kb.name AS checked_by_name
        FROM company_files f LEFT JOIN users cb ON cb.id = f.created_by LEFT JOIN users kb ON kb.id = f.checked_by
-       WHERE f.company_id = ? AND f.kind = ? ORDER BY f.created_at DESC, f.rowid DESC LIMIT 20`,
+       WHERE f.company_id = ? AND f.kind = ? AND f.deleted_at IS NULL ORDER BY f.created_at DESC, f.rowid DESC LIMIT 20`,
     )
     .bind(company, kind)
     .all<Row>()
@@ -135,7 +135,7 @@ export async function getPaper(db: D1Database, company: string, id: string): Pro
     .prepare(
       `SELECT f.*, cb.name AS created_by_name, kb.name AS checked_by_name
        FROM company_files f LEFT JOIN users cb ON cb.id = f.created_by LEFT JOIN users kb ON kb.id = f.checked_by
-       WHERE f.id = ? AND f.company_id = ?`,
+       WHERE f.id = ? AND f.company_id = ? AND f.deleted_at IS NULL`,
     )
     .bind(id, company)
     .first<Row>()
@@ -151,8 +151,8 @@ export function poaStateOf(papers: Paper[]): PoaState {
 }
 
 /** The same as SQL over a company aliased c, for lists. */
-export const POA_STATE_SQL = `CASE WHEN EXISTS (SELECT 1 FROM company_files f WHERE f.company_id = c.id AND f.kind = 'poa' AND f.checked_at IS NOT NULL) THEN 'checked'
-  WHEN EXISTS (SELECT 1 FROM company_files f WHERE f.company_id = c.id AND f.kind = 'poa') THEN 'waiting' ELSE 'missing' END`
+export const POA_STATE_SQL = `CASE WHEN EXISTS (SELECT 1 FROM company_files f WHERE f.company_id = c.id AND f.kind = 'poa' AND f.deleted_at IS NULL AND f.checked_at IS NOT NULL) THEN 'checked'
+  WHEN EXISTS (SELECT 1 FROM company_files f WHERE f.company_id = c.id AND f.kind = 'poa' AND f.deleted_at IS NULL) THEN 'waiting' ELSE 'missing' END`
 
 export interface NewPaper {
   name: string
@@ -179,20 +179,26 @@ export async function keepPaper(
   const type = kind === 'handover' ? sniffHandover(file.bytes, file.name) : sniffPaper(file.bytes)
   if (!type) return { ok: false, reason: 'type' }
   if (!files) return { ok: false, reason: 'storage' }
-  const count = await db.prepare('SELECT COUNT(*) AS n FROM company_files WHERE company_id = ? AND kind = ?').bind(who.company, kind).first<{ n: number }>()
+  const count = await db.prepare('SELECT COUNT(*) AS n FROM company_files WHERE company_id = ? AND kind = ? AND deleted_at IS NULL').bind(who.company, kind).first<{ n: number }>()
   if ((count?.n ?? 0) >= (kind === 'handover' ? ENDING.handoverFiles : 20)) return { ok: false, reason: 'many' }
   const id = crypto.randomUUID()
   const key = `companies/${who.company}/papers/${id}.${type.ext}`
   const base = file.name.replace(/\.[A-Za-z0-9]{1,6}$/, '').replace(/[^\p{L}\p{N} ._-]/gu, '_').trim().slice(0, 80) || (kind === 'handover' ? 'uctovnictvo' : 'plna-moc')
   const name = `${base}.${type.ext}`
   await files.put(key, file.bytes, { httpMetadata: { contentType: type.type } })
-  await db.batch([
-    db
-      .prepare('INSERT INTO company_files (id, company_id, kind, created_at, created_by, file_name, file_type, file_size, r2_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, who.company, kind, now(), who.user, name, type.type, file.bytes.byteLength, key),
-    eventStatement(db, { company: who.company, user: who.user, action: `${kind}.added`, subject: id, detail: { type: type.ext } }),
-    ...extra({ id, name }),
-  ])
+  try {
+    await db.batch([
+      db
+        .prepare('INSERT INTO company_files (id, company_id, kind, created_at, created_by, file_name, file_type, file_size, r2_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, who.company, kind, now(), who.user, name, type.type, file.bytes.byteLength, key),
+      eventStatement(db, { company: who.company, user: who.user, action: `${kind}.added`, subject: id, detail: { type: type.ext } }),
+      ...extra({ id, name }),
+    ])
+  } catch (error) {
+    // This UUID belongs only to the failed, uncommitted upload, never to an existing accounting record.
+    await files.delete(key)
+    throw error
+  }
   return { ok: true, paper: { id, name, type } }
 }
 
@@ -219,4 +225,15 @@ export async function paperResponse(files: R2Bucket | undefined, paper: Paper): 
       'X-Frame-Options': pdf ? 'SAMEORIGIN' : 'DENY',
     },
   })
+}
+
+/** Retire from normal access while keeping the original and its provenance until controlled company retention. */
+export function retirePaperStatements(db: D1Database, company: string, id: string, user: string): D1PreparedStatement[] {
+  const ts = now(), nonce = crypto.randomUUID()
+  return [
+    db.prepare("UPDATE company_files SET deleted_at = ?1, deleted_by = ?2, retire_nonce = ?3 WHERE id = ?4 AND company_id = ?5 AND kind = 'handover' AND deleted_at IS NULL").bind(ts, user, nonce, id, company),
+    db.prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail)
+      SELECT ?1, company_id, ?2, 'handover.removed', id, json_object('fileName', file_name, 'r2Key', r2_key, 'retainedUntilControlledPurge', 1)
+      FROM company_files WHERE id = ?4 AND company_id = ?5 AND retire_nonce = ?3`).bind(ts, user, nonce, id, company),
+  ]
 }

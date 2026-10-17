@@ -13,16 +13,22 @@ import { lookupCompany, lookupDirectors, type Company } from './rpo'
 import { appRoutes, appScheduled, xmlResponse, type AppBindings } from './app/routes'
 import { invoiceByToken, invoiceLines } from './app/invoices'
 import { getCompany, userByEmail } from './app/store'
+import { isPeriodLocked } from './app/periods'
 import { newLink, newToken, startSession } from './app/session'
 import { inboxCode } from './team/store'
 import { acceptStatements, acceptedAs, isClient, newOrderStatement, orderByToken, type Order } from './order'
 import { orderLinkMail } from './order-mail'
 import { bell, ringStatement } from './bell'
 import { startMonths } from './content/terms'
+import { approvedRelease, contractCatalogueHash, contractGate, resolveContract } from './contracts'
 import { OrderDone, OrderGone, OrderPage, TermsPage, type OrderErrors, type OrderValues } from './views/order'
 import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
+import { securityRoutes } from './security/routes'
+import { isEvidenceHeld } from './incidents/store'
+import { isFilingSent } from './filings/model'
+import { payrollBlocked } from './payroll-reporting/model'
 import { Home, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
@@ -107,7 +113,7 @@ app.use('*', async (c, next) => {
     if (length > (UPLOADS.test(url.pathname) ? APP.uploadBytes : LIMITS.formBytes)) return c.text('Too large', 413)
   }
   await next()
-  const inside = /^\/(app|ucto|f)(\/|$)/.test(url.pathname)
+  const inside = /^\/(app|ucto|auth|f)(\/|$)/.test(url.pathname)
   if (!c.res.headers.has('Content-Security-Policy')) c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
   // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
@@ -360,7 +366,7 @@ const bratislavaToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Euro
 const orderMissing = (c: Ctx) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: '/objednavka', noindex: true }, <NotFound />, 404)
 
 async function orderClosed(c: Ctx, order: Order) {
-  if (order.status === 'accepted') return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} />)
+  if (order.status === 'accepted') return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} contract={order.companyId ? await resolveContract(c.env.DB, order.companyId, order.termsVersion) : null} />)
   if (order.status === 'expired') return page(c, orderMeta(copy.order.expiredTitle), <OrderGone kind="expired" />, 410)
   if (await isClient(c.env.DB, order.ico)) return page(c, orderMeta(copy.order.clientTitle), <OrderGone kind="client" />, 409)
   return null
@@ -375,14 +381,15 @@ app.get('/objednavka/:token', async (c) => {
   if (closed) return closed
   const months = startMonths(bratislavaToday())
   const directors = order.directors ?? []
+  const gate = await contractGate(c.env.DB, c.env, order)
   const values: OrderValues = {
-    plan: planById(order.plan)?.id ?? 'start',
+    plan: planById(gate.approval?.review.plan ?? order.plan)?.id ?? 'start',
     start: months[0] ?? '',
     director: directors.length === 1 ? (directors[0]?.name ?? '') : '',
     directorName: '',
     agree: false,
   }
-  return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} />)
+  return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} gate={gate} />)
 })
 
 app.post('/objednavka/:token', async (c) => {
@@ -403,6 +410,7 @@ app.post('/objednavka/:token', async (c) => {
     agree: body.agree === '1',
   }
   const errors: OrderErrors = {}
+  const gate = await contractGate(db, c.env, order)
   const plan = planById(values.plan)
   if (!plan) errors.plan = copy.order.errors.plan
   if (!months.includes(values.start)) errors.start = copy.order.errors.start
@@ -416,9 +424,15 @@ app.post('/objednavka/:token', async (c) => {
   } else if (values.directorName.length >= 5 && values.directorName.includes(' ')) signedBy = values.directorName
   else errors.directorName = copy.order.errors.directorName
   if (!values.agree) errors.agree = copy.order.errors.agree
-  const form = (status: 422 | 429 | 500, extra: OrderErrors = {}) =>
-    page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{ ...errors, ...extra }} />, status)
+  const form = (status: 409 | 422 | 429 | 500, extra: OrderErrors = {}) =>
+    page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{ ...errors, ...extra }} gate={gate} />, status)
   if (Object.keys(errors).length > 0 || !plan) return form(422, { form: copy.order.errors.summary })
+  if (!gate.ready || !gate.approval) return form(409, { form: 'Ponuku ešte preverujeme. Zmluvu môžete uzavrieť až po potvrdení rozsahu služby.' })
+  if (body.proposal !== gate.offerHash) {
+    values.agree = false
+    return form(409, { form: 'Ponuka sa zmenila. Prečítajte si aktuálne podmienky a potvrďte ich znova.' })
+  }
+  if (plan.id !== gate.approval.review.plan) return form(409, { form: 'Vybraný balík potrebuje nové potvrdenie rozsahu služby. Napíšte nám, prosím.' })
   if (!(await withinLimit(db, 'order', connection(c), ORDER.acceptsPerHour, 3600))) return form(429, { form: copy.order.errors.throttle })
 
   const existing = await userByEmail(db, order.email)
@@ -426,12 +440,17 @@ app.post('/objednavka/:token', async (c) => {
   const userId = existing?.id ?? crypto.randomUUID()
   let inbox = inboxCode()
   for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
-  const accepted = acceptStatements(db, order, { plan: plan.id, startOn: values.start, signedBy, ipHash: await sha256Hex(`order:${connection(c)}`) }, { companyId, userId, existingUser: Boolean(existing), inbox })
+  const accepted = await acceptStatements(db, order, { plan: plan.id, startOn: values.start, signedBy, ipHash: await sha256Hex(`order:${connection(c)}`), approval: gate.approval }, { companyId, userId, existingUser: Boolean(existing), inbox })
   await db.batch(accepted.statements)
   if (!(await acceptedAs(db, order.id, companyId))) {
-    // Concluded a moment ago by another click, or the link ran out while the form was open.
+    // Another acceptance, expiry or a newer scope decision may have won the race with this batch.
     const again = await orderByToken(db, token)
-    return (again && (await orderClosed(c, again))) || form(500, { form: copy.order.errors.failed })
+    const closedAgain = again && await orderClosed(c, again)
+    if (closedAgain) return closedAgain
+    values.agree = false
+    return page(c, orderMeta(copy.order.title), <OrderPage order={again ?? order} token={token} months={months} values={values}
+      errors={{ form: 'Stav ponuky sa medzitým zmenil. Pred podpisom potrebujeme opäť potvrdiť rozsah služby.' }}
+      gate={await contractGate(db, c.env, again ?? order)} />, 409)
   }
 
   // The client gets a doorbell with the sign-in link: the contract and its terms are read in the app (/app/zmluva).
@@ -446,8 +465,8 @@ app.post('/objednavka/:token', async (c) => {
   return c.redirect(where ? '/app?ok=zmluva' : '/app/prihlasenie', 303)
 })
 
-app.get('/podmienky', (c) =>
-  page(c, { title: `Obchodné podmienky | ${BRAND.name}`, description: typeset(`Obchodné podmienky služby ${BRAND.name}: zmluva o vedení účtovníctva a o spracúvaní osobných údajov.`), path: '/podmienky' }, <TermsPage />),
+app.get('/podmienky', async (c) =>
+  page(c, { title: `Obchodné podmienky | ${BRAND.name}`, description: typeset(`Obchodné podmienky služby ${BRAND.name}: zmluva o vedení účtovníctva a o spracúvaní osobných údajov.`), path: '/podmienky' }, <TermsPage released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} />),
 )
 
 // ---------------------------------------------------------------------------
@@ -477,6 +496,7 @@ app.get('/f/:token/xml', async (c) => {
   return xmlResponse(found.invoice, await invoiceLines(c.env.DB, found.invoice.id), seller)
 })
 
+app.route('/auth', securityRoutes)
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
 
@@ -500,6 +520,12 @@ app.get('/healthz', async (c) => {
 app.notFound((c) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: new URL(c.req.url).pathname, noindex: true }, <NotFound />, 404))
 
 app.onError((err, c) => {
+  if (payrollBlocked(err)) return c.text('Uzávierku sme neotvorili. Už má evidované odoslanie výkazu alebo skutočné vyplatenie príjmov. Originály zostávajú zachované; opravu musí posúdiť odborný správca v evidencii mzdových podaní.', 409)
+  if (isFilingSent(err)) return page(c, { title: 'Podanie má evidované doručenie', description: '', path: c.req.path, noindex: true }, <main class="section"><h1>Podanie sme nezrušili</h1><p>Máme k nemu evidované odoslanie alebo potvrdenie. Históriu zachováme. Opravu vyriešte cez evidenciu podaní alebo s odborným správcom.</p><a href="/ucto/terminy">Späť na termíny</a></main>, 409)
+  if (isEvidenceHeld(err)) return c.text('Tento záznam musíme uchovať. Vymazanie sme nevykonali. Obráťte sa na zodpovedného správcu.', 409)
+  if (isPeriodLocked(err)) return page(c, { title: 'Uzamknuté účtovné obdobie', description: '', path: c.req.path, noindex: true },
+    <section class="section"><h1>Účtovné obdobie je uzamknuté.</h1><p>Zmenu sme neuložili. Účtovníčka musí najprv otvoriť príslušné obdobie v Účtovnej knihe, v časti Uzamknutie období, a uviesť dôvod.</p>
+      <a class="btn btn--line" href={c.req.path.startsWith('/ucto') ? '/ucto' : '/app'}>Späť do aplikácie</a></section>, 409)
   console.error('request failed', err instanceof Error ? err.name : 'error')
   return c.text('Niečo sa pokazilo. Skúste to znova o chvíľu.', 500)
 })

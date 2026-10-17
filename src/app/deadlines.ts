@@ -3,6 +3,7 @@ import { APP } from '../config'
 import { formatEurExact } from '../format'
 import { app as t, monthName } from './copy'
 import type { Company } from './store'
+import { DELIVERY_LABELS } from '../filings/model'
 import { filingDeadline, periodOf, prevPeriod } from './vat'
 import { leftToPay, payable, periodName, type FiledReturn, type TaxPaid } from './vat-store'
 
@@ -71,7 +72,7 @@ export function deadlinesFor(
     const filed = vat.filed.find((f) => f.period === of)
     if (filed && toPay(filed) > 0) out.push(pay(filed))
     else if (filed)
-      out.push({ day: filed.dueOn, label: company.vatStatus === 'payer' ? t.deadline.vat(periodName(of)) : t.taxes.period(periodName(of)), state: t.deadline.vatFiled, tone: 'ok', href: '/app/dane' })
+      out.push({ day: filed.dueOn, label: company.vatStatus === 'payer' ? t.deadline.vat(periodName(of)) : t.taxes.period(periodName(of)), state: DELIVERY_LABELS[filed.deliveryStatus ?? 'unverified'], tone: filed.deliveryStatus === 'accepted' ? 'ok' : 'amber', href: '/app/podania' })
     else if (company.vatStatus === 'payer') out.push({ day: filingDeadline(of), label: t.deadline.vat(periodName(of)), state: t.deadline.ours, tone: 'blue' })
     // A tax filed earlier and not paid yet, or the difference of a supplementary return, stays on the list until it is paid.
     for (const f of vat.filed) if (f.period !== of && left(f) > 0) out.push(pay(f))

@@ -114,11 +114,26 @@ interface SampleDoc {
   fileName?: string
 }
 
+/** A sample receipt's eKasa codes (src/app/ekasa.ts), made up from its id and the same on every run. */
+export function sampleCodes(id: string): { uid: string; okp: string } {
+  let x = 2166136261
+  for (const ch of id) x = Math.imul(x ^ ch.charCodeAt(0), 16777619) >>> 0
+  let hex = ''
+  while (hex.length < 72) {
+    x = (x + 0x9e3779b9) >>> 0
+    let z = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0
+    z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35) >>> 0
+    hex += ((z ^ (z >>> 16)) >>> 0).toString(16).toUpperCase().padStart(8, '0')
+  }
+  return { uid: `O-${hex.slice(0, 32)}`, okp: (hex.slice(32, 72).match(/.{8}/g) ?? []).join('-') }
+}
+
 /** The lines of a sample original: an invoice on A5, a receipt on a till's narrow paper. */
 function originalOf(d: SampleDoc, today: string, buyer: string): { pdf: Uint8Array; name: string } {
   const o = d.original ?? { party: d.party, number: d.number ?? '', total: d.total, vat: d.vat ?? 0, item: d.kind === 'invoice_out' ? 'Navrh a sadzba katalogu' : 'Sluzby podla objednavky' }
   if (d.kind === 'receipt') {
     const base = o.total - o.vat
+    const codes = sampleCodes(d.id)
     return {
       name: d.fileName ?? `blocek-${d.id.slice(-1)}.pdf`,
       pdf: demoPdf(226, 360, [
@@ -131,7 +146,10 @@ function originalOf(d: SampleDoc, today: string, buyer: string): { pdf: Uint8Arr
         { text: `Zaklad 23 %             ${euro(base)}` },
         { text: `DPH 23 %                ${euro(o.vat)}` },
         { text: 'Platba karta', gap: 10 },
-        { text: 'eKasa  OKP 7f3a 91c2 0d44', size: 8, gap: 10 },
+        { text: 'Kod pokladnice 88812345678900001', size: 7, gap: 10 },
+        { text: `UID: ${codes.uid}`, size: 7 },
+        { text: `OKP: ${codes.okp.slice(0, 27)}`, size: 7 },
+        { text: `     ${codes.okp.slice(27)}`, size: 7 },
       ]),
     }
   }
@@ -710,8 +728,8 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
         .prepare(
           `INSERT INTO documents (id, company_id, created_at, source, added_by, file_key, file_type, file_name, file_bytes, status, read_by,
              kind, party, party_ico, party_iban, number, vs, issued_on, due_on, total_cents, vat_cents, currency,
-             category, proposal, vat_deduct, booked_at, booked_by, duplicate_of, paid_privately, party_vat_id, foreign_party)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EUR', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             category, proposal, vat_deduct, booked_at, booked_by, duplicate_of, paid_privately, party_vat_id, foreign_party, ekasa_uid, ekasa_okp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EUR', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           d.id,
@@ -744,6 +762,8 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
           d.privately ? 1 : 0,
           read ? (d.vatId ?? null) : null,
           read && d.foreign !== undefined ? (d.foreign ? 1 : 0) : null,
+          read && d.kind === 'receipt' ? sampleCodes(d.id).uid : null,
+          read && d.kind === 'receipt' ? sampleCodes(d.id).okp : null,
         ),
     )
   }
@@ -968,6 +988,7 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
       payment: null,
       body: 'Áno, stačí ju preposlať na Vašu adresu pre doklady. K platbe ju priradíme sami. Túto už máme.',
     }),
+    eventStatement(db, { company: c1, user: DEMO.accountant, action: 'message.answered', subject: 'demo-msg-3' }),
     db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = ? AND id IN ('demo-msg-1', 'demo-msg-2')").bind(ts, c1),
     messageStatement(db, {
       id: 'demo-msg-21',
