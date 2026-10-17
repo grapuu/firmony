@@ -3471,6 +3471,13 @@ textarea {
   }
 }
 
+/* With the way in beside the button there is no room for the name on the narrowest phones: the glass F stays. */
+@media (max-width: 359px) {
+  .top .wordmark__name {
+    display: none;
+  }
+}
+
 @media (max-width: 400px) {
   .top__cta {
     padding-inline: 12px;
