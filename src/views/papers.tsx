@@ -2,6 +2,7 @@
 // with the request to hand over the books. Each is a sheet to save as a PDF or to print, as an invoice is, with what
 // to do beside it. The company's own data fill them in; what we do not know stays a line to write on.
 import type { FC } from 'hono/jsx'
+import { signerRole } from '../rpo'
 import { OPERATOR } from '../config'
 import { app, dayName } from '../app/copy'
 import type { Company } from '../app/store'
@@ -26,19 +27,19 @@ const Blank: FC<{ wide?: boolean }> = ({ wide }) => (
 )
 
 /** A party of a deed or a letter, as one sentence: name, seat, IČO, register, who acts for it. */
-const PartyLine: FC<{ name: string; address: string | null; ico: string | null; register: string | null; director: string | null; tail?: string }> = ({ name, address, ico, register, director, tail }) => (
+const PartyLine: FC<{ name: string; address: string | null; ico: string | null; register: string | null; director: string | null; role: string; tail?: string }> = ({ name, address, ico, register, director, role, tail }) => (
   <p class="deed__party">
     <strong class="deed__name">{name}</strong>, {p.sheet.seat} {address ?? <Blank wide />}, {p.sheet.ico} {ico ? formatIco(ico) : <Blank />}
-    {register ? `, ${registeredIn(register)}` : ''}, {p.sheet.acting} {director ?? <Blank wide />}, {p.sheet.director}
+    {register ? `, ${registeredIn(register)}` : ''}, {p.sheet.acting} {director ?? <Blank wide />}, {role}
     {tail ? (tail.startsWith('(') ? ` ${tail}` : `, ${tail}`) : ''}
   </p>
 )
 
-const Sign: FC<{ label: string; name: string | null; of: string }> = ({ label, name, of }) => (
+const Sign: FC<{ label: string; name: string | null; role: string; of: string }> = ({ label, name, role, of }) => (
   <div class="deed__sign">
     <span class="deed__signlabel">{label}</span>
     <span class="deed__line" aria-hidden="true" />
-    <span class="deed__signname">{name ? `${name}, ${p.sheet.director}` : <Blank wide />}</span>
+    <span class="deed__signname">{name ? `${name}, ${role}` : <Blank wide />}</span>
     <span class="deed__signof">{of}</span>
   </div>
 )
@@ -51,7 +52,7 @@ export const PoaSheet: FC<{ company: Company }> = ({ company }) => {
       <h2 class="deed__title">{sh.title}</h2>
       <section class="deed__block">
         <p class="deed__label">{sh.principal}</p>
-        <PartyLine name={company.name} address={company.address} ico={company.ico} register={company.registerLine} director={company.signedBy} tail={sh.principalTail} />
+        <PartyLine name={company.name} address={company.address} ico={company.ico} register={company.registerLine} director={company.signedBy} role={signerRole(company.legalForm, company.signedRole)} tail={sh.principalTail} />
       </section>
       <p class="deed__grants">{sh.grants}</p>
       <section class="deed__block">
@@ -62,6 +63,7 @@ export const PoaSheet: FC<{ company: Company }> = ({ company }) => {
           ico={OPERATOR.companyId.replace(/\s/g, '')}
           register={OPERATOR.register}
           director="Christian Juhás"
+          role={sh.director}
           tail={sh.agentTail}
         />
       </section>
@@ -79,8 +81,8 @@ export const PoaSheet: FC<{ company: Company }> = ({ company }) => {
         {sh.place} <Blank /> {sh.on} <Blank />
       </p>
       <div class="deed__signs">
-        <Sign label={sh.principalSign} name={company.signedBy} of={company.name} />
-        <Sign label={sh.accept} name="Christian Juhás" of={OPERATOR.name} />
+        <Sign label={sh.principalSign} name={company.signedBy} role={signerRole(company.legalForm, company.signedRole)} of={company.name} />
+        <Sign label={sh.accept} name="Christian Juhás" role={sh.director} of={OPERATOR.name} />
       </div>
     </article>
   )
@@ -227,7 +229,7 @@ export const LetterSheet: FC<{ company: Company; values: SwitchValues; since: st
       <p>{l.revoke}</p>
       <p>{l.thanks}</p>
       <div class="deed__signs deed__signs--one">
-        <Sign label={l.sign} name={company.signedBy} of={company.name} />
+        <Sign label={l.sign} name={company.signedBy} role={signerRole(company.legalForm, company.signedRole)} of={company.name} />
       </div>
     </article>
   )

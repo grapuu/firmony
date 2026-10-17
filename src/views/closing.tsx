@@ -16,6 +16,8 @@ import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
 import { bookPath } from './ledger'
 import { Flash, Heading } from './inside'
+import { textDay } from '../app/booking'
+import { dividendTaxDue, reserveMinimum, withheldOf, type LegalFormKind } from '../app/distribution'
 
 const k = t.closing
 
@@ -743,6 +745,119 @@ const ExtendCard: FC<{ company: Company; view: ClosingView; today: string }> = (
   )
 }
 
+
+/** The distribution form's values: as kept, else the approval day of the statements and the reserve fund's minimum. */
+export function distributionValues(view: ClosingView, form: LegalFormKind): Record<string, string> {
+  const d = view.closing?.distribution
+  const money = (cents: number) => (cents > 0 ? `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}` : '')
+  if (d) return { schvalene: textDay(d.approvedOn), rezerva: money(d.reserve), krytie: money(d.cover), dividendy: money(d.dividends), fyzicke: money(d.people), vyplata: d.payoutOn ? textDay(d.payoutOn) : '' }
+  return { schvalene: view.inputs.approvedOn ? textDay(view.inputs.approvedOn) : '', rezerva: money(reserveMinimum(form, view.equity).cents), krytie: '', dividendy: '', fyzicke: '', vyplata: '' }
+}
+
+const DistributionCard: FC<{ company: Company; view: ClosingView; form: { values: Record<string, string>; errors: string[] } | null; today: string }> = ({ company, view, form, today }) => {
+  const g = k.distribution
+  const e = view.equity
+  const legal = company.legalForm ?? 'sro'
+  const min = reserveMinimum(legal, e)
+  const d = view.closing?.distribution ?? null
+  const values = form?.values ?? distributionValues(view, legal)
+  const base = `/ucto/klienti/${company.id}/zavierka`
+  const field = (name: string, label: string, hint?: string) => (
+    <div class="fgrid__cell">
+      <label class="field__label" for={`roz-${name}`}>
+        {label}
+      </label>
+      <input id={`roz-${name}`} class="field__input" name={name} value={values[name] ?? ''} maxlength={16} inputmode={name === 'schvalene' || name === 'vyplata' ? undefined : 'decimal'} />
+      {hint ? <p class="field__hint">{hint}</p> : null}
+    </div>
+  )
+  return (
+    <section class="info" id="rozdelenie" aria-labelledby="roz-t">
+      <h2 id="roz-t" class="info__title">
+        {g.title}
+      </h2>
+      <p class="info__lead">{view.running ? g.running : g.lead}</p>
+      <dl class="kv">
+        <div class="kv__strong">
+          <dt>{g.result}</dt>
+          <dd>{formatEurExact(e.result)}</dd>
+        </div>
+        <div>
+          <dt>{g.capital}</dt>
+          <dd>{formatEurExact(e.capital)}</dd>
+        </div>
+        <div>
+          <dt>{g.reserve}</dt>
+          <dd>{formatEurExact(e.reserve)}</dd>
+        </div>
+        <div>
+          <dt>{g.retained}</dt>
+          <dd>{formatEurExact(e.retained)}</dd>
+        </div>
+        <div>
+          <dt>{g.losses}</dt>
+          <dd>{formatEurExact(e.losses)}</dd>
+        </div>
+      </dl>
+      {view.running ? null : (
+        <>
+          <p class="info__source">
+            {e.result > 0 ? (legal === 'as' || legal === 'jsa' ? g.minimumAs : g.minimumSro)(min.rate, formatEurExact(min.cap), formatEurExact(min.cents)) : e.result < 0 ? g.loss : g.none}
+          </p>
+          {form && form.errors.length > 0 ? (
+            <ul class="vissues">
+              {form.errors.map((code) => (
+                <li class="vissue">{g.issues[code] ?? code}</li>
+              ))}
+            </ul>
+          ) : null}
+          {d ? <p class="info__lead">{g.booked(textDay(d.approvedOn))}</p> : null}
+          {d && d.payoutOn && d.people > 0 ? (
+            <>
+              <p class={!d.taxFiledOn && today > dividendTaxDue(d.payoutOn) ? 'flag' : 'info__lead'}>{g.withheld(formatEurExact(withheldOf(view.year, d)), dayName(dividendTaxDue(d.payoutOn), today))}</p>
+              {d.taxFiledOn ? <p class="info__source">{g.taxFiled(textDay(d.taxFiledOn))}</p> : null}
+              <form method="post" action={`${base}/dividendy`}>
+                <input type="hidden" name="rok" value={String(view.year)} />
+                <input type="hidden" name="akcia" value={d.taxFiledOn ? 'zrusit' : 'podane'} />
+                <button class="btn btn--line btn--small" type="submit">
+                  {d.taxFiledOn ? g.unmarkTax : g.markTax}
+                </button>
+              </form>
+            </>
+          ) : null}
+          <form class="fgrid" method="post" action={`${base}/rozdelenie`} novalidate>
+            <input type="hidden" name="rok" value={String(view.year)} />
+            {field('schvalene', g.approvedOn)}
+            {e.result > 0 ? (
+              <>
+                {field('rezerva', g.reserveAmount)}
+                {field('krytie', g.cover)}
+                {field('dividendy', g.dividends)}
+                {field('fyzicke', g.people, g.peopleHint)}
+                {field('vyplata', g.payoutOn)}
+              </>
+            ) : null}
+            <div class="fgrid__cell fgrid__cell--wide">
+              <button class="btn btn--blue" type="submit" name="akcia" value="zauctovat">
+                {d ? g.rebook : g.book}
+              </button>
+            </div>
+          </form>
+          {d ? (
+            <form method="post" action={`${base}/rozdelenie`}>
+              <input type="hidden" name="rok" value={String(view.year)} />
+              <input type="hidden" name="akcia" value="zrusit" />
+              <button class="btn btn--line btn--small" type="submit">
+                {g.unbook}
+              </button>
+            </form>
+          ) : null}
+        </>
+      )}
+    </section>
+  )
+}
+
 export interface ClosingPageProps {
   company: Company
   /** The year shown, put together; null when the books have no year yet. */
@@ -756,6 +871,8 @@ export interface ClosingPageProps {
   today: string
   flash?: string | null
   error?: string | null
+  /** The distribution's form after a refused send. */
+  distribution?: { values: Record<string, string>; errors: string[] } | null
 }
 
 export const ClosingPage: FC<ClosingPageProps> = (p) => {
@@ -788,6 +905,7 @@ export const ClosingPage: FC<ClosingPageProps> = (p) => {
               <TaxCard view={view} />
               <DeferredCard view={view} />
               <StatementsCard view={view} />
+              <DistributionCard company={c} view={view} form={p.distribution ?? null} today={p.today} />
               {view.running ? null : <NotesCard company={c} view={view} checks={noteChecks(notesSource(c, view))} />}
               <FormCard company={c} view={view} values={p.values} errors={p.errors} />
               <p class="info__source vnotbuilt">{k.notBuilt}</p>

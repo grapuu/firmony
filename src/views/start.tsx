@@ -87,7 +87,7 @@ const CompanyBlock: FC<{ state: CompanyState; carry: Carry; plan: string }> = ({
         <p class="company__meta">
           {c.address ? `${c.address}, ` : ''}IČO {formatIco(c.ico)}
         </p>
-        {c.terminated ? <p class="notice">{copy.start.terminated}</p> : !c.isSro ? <p class="notice">{copy.start.notSro}</p> : null}
+        {c.terminated ? <p class="notice">{copy.start.terminated}</p> : !c.form ? <p class="notice">{copy.start.notSro}</p> : null}
         <p class="company__foot">
           <a class="link" href={again}>
             {copy.start.other}

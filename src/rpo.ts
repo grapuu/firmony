@@ -18,6 +18,8 @@ export interface Company {
   registerLine: string | null
   /** The register's word for the legal form, when it gives one. */
   legalForm: string | null
+  /** The legal forms we take online (by the register's code, else by the name): s. r. o., a. s., j. s. a. */
+  form: LegalForm | null
   isSro: boolean
   /** The day the company ceased to exist, when it did. */
   terminated: string | null
@@ -89,6 +91,36 @@ export function registerLineOf(source: RpoResult['sourceRegister']): string | nu
 }
 
 const SRO = /\bs\.\s*r\.\s*o\.|\bspol\.\s*s\s*r\.\s*o\.|\bs\.r\.o\b/i
+const AS = /\ba\.\s*s\.(?!\s*r)|akciová spoločnosť/i
+const JSA = /\bj\.\s*s\.\s*a\.|jednoduchá spoločnosť na akcie/i
+
+/**
+ * The legal forms a contract is concluded online with, by the code of the register's list of legal forms (CL000056,
+ * seen on 17 October 2026: 112 Spoločnosť s ručením obmedzeným, 121 Akciová spoločnosť, 125 Jednoduchá spoločnosť na
+ * akcie). Their statutory body is the director (konateľ) of an s. r. o. or the board of directors (predstavenstvo).
+ */
+export type LegalForm = 'sro' | 'as' | 'jsa'
+export const LEGAL_FORM_CODES: Readonly<Record<LegalForm, string>> = { sro: '112', as: '121', jsa: '125' }
+export const LEGAL_FORM_NAMES: Readonly<Record<LegalForm, string>> = { sro: 'Spoločnosť s ručením obmedzeným', as: 'Akciová spoločnosť', jsa: 'Jednoduchá spoločnosť na akcie' }
+/** The signer's role as a paper names it after their name: the register's word in small letters, else the form's usual one. */
+export function signerRole(form: LegalForm | null | undefined, role: string | null | undefined): string {
+  const word = (role ?? '').trim()
+  if (word) return word.charAt(0).toLowerCase() + word.slice(1)
+  return form === 'as' || form === 'jsa' ? 'člen predstavenstva' : 'konateľ'
+}
+export const isLegalForm = (value: unknown): value is LegalForm => value === 'sro' || value === 'as' || value === 'jsa'
+
+/** A legal form from the register's code, else from its word or the company's name; null for any other form. */
+export function legalFormOf(code: string | null | undefined, word: string | null | undefined, name: string | null | undefined): LegalForm | null {
+  const known = (Object.entries(LEGAL_FORM_CODES) as [LegalForm, string][]).find(([, c]) => c === code)
+  if (known) return known[0]
+  if (code) return null
+  const text = `${word ?? ''} ${name ?? ''}`
+  if (/ručením obmedzeným/i.test(word ?? '') || SRO.test(name ?? '')) return 'sro'
+  if (JSA.test(text)) return 'jsa'
+  if (AS.test(text)) return 'as'
+  return null
+}
 
 /** The company the register knows under this IČO, read from its answer; null when it knows none. */
 export function readCompany(ico: string, answer: unknown): Company | null {
@@ -110,7 +142,8 @@ export function readCompany(ico: string, answer: unknown): Company | null {
     rpoId: result.id === undefined || result.id === null ? null : String(result.id),
     registerLine: registerLineOf(result.sourceRegister),
     legalForm,
-    isSro: form?.code === '112' || /ručením obmedzeným/i.test(legalForm ?? '') || SRO.test(name),
+    form: legalFormOf(form?.code, legalForm, name),
+    isSro: legalFormOf(form?.code, legalForm, name) === 'sro',
     terminated: result.termination ?? null,
   }
 }
@@ -132,7 +165,7 @@ export async function lookupCompany(ico: string, fetcher: typeof fetch = fetch):
   }
 }
 
-/** A director as the register names one: "Christian Juhás", "Konateľ". */
+/** A member of the statutory body as the register names one: "Christian Juhás", "Konateľ" or "Predseda predstavenstva". */
 export interface Director {
   name: string
   role: string
@@ -140,34 +173,95 @@ export interface Director {
 
 interface RpoPerson extends Dated {
   stakeholderType?: { value?: string; code?: string }
+  statutoryBodyMember?: { value?: string; code?: string }
   personName?: { formatedName?: string; givenNames?: string[]; familyNames?: string[] }
   fullName?: string
 }
 
+/** The statutory bodies of the forms we take (CL010113): 3 a director (konateľ), 99 the board of directors (predstavenstvo). */
+const STATUTORY = new Set(['3', '99'])
+
 /**
- * The directors in office, read from the register's detail of an entity (GET .../rpo/v1/entity/<id>, seen on
- * 13 October 2026: `statutoryBodies`, each with `stakeholderType` "Konateľ" and `personName.formatedName`). One
- * that has ended (`validTo` in the past) is left out.
+ * The members of the statutory body in office, read from the register's detail of an entity (GET .../rpo/v1/entity/<id>,
+ * seen on 13 and 17 October 2026: `statutoryBodies`, each with `stakeholderType` "Konateľ" (3) or "Predstavenstvo"
+ * (99), a board member's `statutoryBodyMember` "Predseda predstavenstva", "Podpredseda predstavenstva" or "Člen
+ * predstavenstva", and `personName.formatedName`). One that has ended (`validTo` in the past) is left out; so is any
+ * other body when the statutory one is named.
  */
 export function readDirectors(answer: unknown, today: string = new Date().toISOString().slice(0, 10)): Director[] {
   const bodies = (answer as { statutoryBodies?: RpoPerson[] } | null)?.statutoryBodies
   if (!Array.isArray(bodies)) return []
+  const current = bodies.filter((b) => !(b.validTo && b.validTo.slice(0, 10) < today))
+  const statutory = current.filter((b) => STATUTORY.has(b.stakeholderType?.code ?? '') || /konate|predstavenstv/i.test(b.stakeholderType?.value ?? ''))
   const out: Director[] = []
-  for (const body of bodies) {
-    if (body.validTo && body.validTo.slice(0, 10) < today) continue
+  for (const body of statutory.length > 0 ? statutory : current) {
     const person = body.personName
     const joined = [...(person?.givenNames ?? []), ...(person?.familyNames ?? [])].join(' ')
     const name = (person?.formatedName || joined || body.fullName || '').replace(/\s+/g, ' ').trim()
     if (name.length < 2 || out.some((d) => d.name === name)) continue
-    out.push({ name, role: body.stakeholderType?.value?.trim() || 'Konateľ' })
+    const type = body.stakeholderType?.value?.trim() || ''
+    const member = body.statutoryBodyMember?.value?.trim() || ''
+    out.push({ name, role: member || (/predstavenstv/i.test(type) ? 'Člen predstavenstva' : type || 'Konateľ') })
   }
   return out
 }
 
+/**
+ * How the statutory body acts for the company (spôsob konania), as the register writes it in `authorizations`: the
+ * entries in force that are not about a proxy (prokúra), joined.
+ */
+export function readActing(answer: unknown, today: string = new Date().toISOString().slice(0, 10)): string | null {
+  const list = (answer as { authorizations?: ({ value?: string } & Dated)[] } | null)?.authorizations
+  if (!Array.isArray(list)) return null
+  const texts = list
+    .filter((a) => !(a.validTo && a.validTo.slice(0, 10) < today))
+    .map((a) => (a.value ?? '').replace(/\s+/g, ' ').trim())
+    .filter((v) => v.length > 0 && !/prokur/i.test(v))
+  return texts.length > 0 ? texts.join(' ') : null
+}
+
+export type ActingMode = 'alone' | 'joint' | 'unknown'
+
+/**
+ * Whether one member may conclude the contract alone: by the register's words, "samostatne" (alone) without anything
+ * that asks for more than one ("spoločne", "dvaja", "aspoň", "najmenej", "všetci", "spolu s"); a text that says
+ * both (the chairman alone, or two members together) or neither is for a person to read.
+ */
+export function actingMode(text: string | null | undefined): ActingMode {
+  if (!text) return 'unknown'
+  const t = text.toLowerCase()
+  const joint = /spoločne|spolu s|\bdvaja\b|\bdvoch\b|\btraja\b|\boba\b|\bobaja\b|aspoň|najmenej|všetci/.test(t)
+  const alone = /samostatn/.test(t)
+  return alone && !joint ? 'alone' : joint && !alone ? 'joint' : 'unknown'
+}
+
+/** Whether a contract may be concluded online by one member: the only member in office, or one who acts alone. */
+export function oneMayConclude(form: LegalForm | null, directors: readonly Director[] | null, acting: string | null): boolean {
+  if (directors === null || directors.length === 0) return form === 'sro' || form === null
+  if (directors.length === 1) return true
+  return actingMode(acting) === 'alone'
+}
+
 export const RPO_ENTITY = 'https://api.statistics.sk/rpo/v1/entity'
 
-/** The directors of an entity, or null when the register does not answer within four seconds. */
-export async function lookupDirectors(rpoId: string, fetcher: typeof fetch = fetch): Promise<Director[] | null> {
+/** What the detail of an entity says: its statutory body, its legal form and how the body acts. */
+export interface Entity {
+  directors: Director[]
+  form: LegalForm | null
+  formCode: string | null
+  acting: string | null
+}
+
+export function readEntity(answer: unknown, today?: string): Entity {
+  const forms = (answer as { legalForms?: ({ value?: { value?: string; code?: string } } & Dated)[] } | null)?.legalForms
+  const form = current(Array.isArray(forms) ? forms : undefined)?.value
+  const names = (answer as { fullNames?: ({ value?: string } & Dated)[] } | null)?.fullNames
+  const name = current(Array.isArray(names) ? names : undefined)?.value ?? null
+  return { directors: readDirectors(answer, today), form: legalFormOf(form?.code, form?.value, name), formCode: form?.code ?? null, acting: readActing(answer, today) }
+}
+
+/** The detail of an entity, or null when the register does not answer within four seconds. */
+export async function lookupEntity(rpoId: string, fetcher: typeof fetch = fetch): Promise<Entity | null> {
   if (!/^\d{1,12}$/.test(rpoId)) return null
   try {
     const res = await fetcher(`${RPO_ENTITY}/${rpoId}?showHistoricalData=false&showOrganizationUnits=false`, {
@@ -175,8 +269,13 @@ export async function lookupDirectors(rpoId: string, fetcher: typeof fetch = fet
       signal: AbortSignal.timeout(4000),
     })
     if (!res.ok) return null
-    return readDirectors(await res.json())
+    return readEntity(await res.json())
   } catch {
     return null
   }
+}
+
+/** The directors of an entity, or null when the register does not answer within four seconds. */
+export async function lookupDirectors(rpoId: string, fetcher: typeof fetch = fetch): Promise<Director[] | null> {
+  return (await lookupEntity(rpoId, fetcher))?.directors ?? null
 }

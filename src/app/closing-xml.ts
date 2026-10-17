@@ -37,6 +37,8 @@ export interface ClosingFiler {
   /** SK NACE of its main activity, "62.01.0", and the activity in words. */
   nace: string
   activity: string
+  /** Its legal form, as the register's list codes it (112 s. r. o., 121 a. s., 125 j. s. a.); 112 when not given. */
+  legalForm?: string
 }
 
 export interface ReturnOptions {
@@ -156,7 +158,7 @@ export function dppoXml(filer: ClosingFiler, tax: TaxResult, opts: ReturnOptions
     '<hlavicka>',
     el('dic', filer.dic ?? ''),
     el('ico', filer.ico ?? ''),
-    el('pravnaForma', '112'),
+    el('pravnaForma', filer.legalForm ?? '112'),
     group('typDP', [el('rdp', flag(opts.kind === 'R')), el('odp', flag(opts.kind === 'O')), el('ddp', flag(opts.kind === 'D'))]),
     group('zdanovacieObdobie', [el('od', textDay(opts.from)), el('do', textDay(opts.to))]),
     group('skNace', [el('k1', nace.k1), el('k2', nace.k2), el('k3', nace.k3), el('cinnost', filer.activity)]),

@@ -46,8 +46,9 @@ import { summaryPeriodOf, type SvView } from '../app/vat-summary'
 import { registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
 import { nextQuarter, ossDue, quarterOfDay, quarterRange } from '../app/oss'
 import { FLOWS, intrastatDue, monthEnd, sinceOf, settingsOf } from '../app/intrastat'
+import { dividendTaxDue } from '../app/distribution'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'oss' | 'intrastat' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'summary' | 'oss' | 'intrastat' | 'dividendTax' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
@@ -58,6 +59,7 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   summary: 'ours',
   oss: 'ours',
   intrastat: 'ours',
+  dividendTax: 'ours',
   closing: 'ours',
   payroll: 'ours',
   payrollReports: 'ours',
@@ -119,6 +121,8 @@ export interface ClosingFact {
   paid: number
   /** The advances the filed return brings for the next period (closing.ts, `advancesNext`). */
   advances?: { kind: 'none' | 'quarterly' | 'monthly'; each: number }
+  /** The year's distribution: the tax withheld on dividends paid to natural persons, its payout day, and the notice marked. */
+  dividends?: { withheld: number; payoutOn: string; filedOn: string | null }
 }
 
 /** A company's payroll as the deadlines read it: the months it had employees, its payday, the months closed with their paydays. */
@@ -272,6 +276,13 @@ export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
   const ossDues = [...ossDeadlines(company, facts.oss ?? new Set(), today), ...intrastatDeadlines(company, facts.intrastat ?? new Set(), today)]
+  // The tax withheld on dividends paid to natural persons and its notice (distribution.ts), by the 15th after the payout.
+  for (const k of facts.closings)
+    if (k.dividends && k.dividends.withheld > 0) {
+      const day = dividendTaxDue(k.dividends.payoutOn)
+      const done = k.dividends.filedOn !== null
+      ossDues.push({ companyId: company.id, kind: 'dividendTax', period: String(k.year), day, state: done ? 'done' : 'open', late: !done && today > day, count: 0, cents: k.dividends.withheld, fix: null })
+    }
   const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage' | 'registration'>>) =>
     // Sent and waiting for its receipt is not late, whenever the receipt comes: what was ours to do by the day is done.
     out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day && due.deliveryStatus !== 'submitted' })
@@ -412,7 +423,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, oss: 2, intrastat: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, oss: 2, intrastat: 2, dividendTax: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

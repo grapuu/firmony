@@ -53,7 +53,7 @@ export function normalizeIban(iban: string | null | undefined): string {
   return (iban ?? '').replace(/\s/g, '').toUpperCase()
 }
 
-const LEGAL_FORMS = /\b(s\s*r\s*o|spol|a\s*s|k\s*s|v\s*o\s*s|sro|as|ltd|gmbh|inc|llc|se|ag|plc)\b/g
+const LEGAL_FORMS = /\b(s\s*r\s*o|spol|j\s*s\s*a|a\s*s|k\s*s|v\s*o\s*s|sro|as|jsa|ltd|gmbh|inc|llc|se|ag|plc)\b/g
 const STOP = new Set(['slovakia', 'slovensko', 'bratislava', 'kosice', 'zilina', 'presov', 'nitra', 'trnava', 'banska', 'bystrica', 'platba', 'kartou', 'nakup', 'pos'])
 
 /** The words of a name that tell it apart: no accents, no legal form, no city, nothing shorter than four letters. */

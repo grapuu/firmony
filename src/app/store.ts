@@ -8,6 +8,7 @@ import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDo
 import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
 import { rateMicro } from './fx'
 import { settingsOf, type IntrastatSettings } from './intrastat'
+import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
 
@@ -53,6 +54,9 @@ export interface Company {
   ossSince?: string | null
   /** Intrastat (intrastat.ts): the months each flow is reported from and the usual values; absent when never set. */
   intrastat?: IntrastatSettings
+  /** The legal form (rpo.ts): kept since 17 October 2026, else read from the name; and the role of the member who concluded the contract. */
+  legalForm?: LegalForm | null
+  signedRole?: string | null
   /** The tax office the returns are addressed to, as the forms name it. */
   taxOffice: TaxOffice | null
   /** The number of the company's personal tax account (osobný účet daňovníka), to which VAT is paid. */
@@ -174,7 +178,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 /** The columns of a company with its accountant's name, over the aliases c and acc. */
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
-  c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
+  c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
   c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
@@ -201,6 +205,8 @@ export function companyOf(row: Row): Company {
     invoiceFooter: str(row.invoice_footer),
     contractAt: num(row.contract_at),
     signedBy: str(row.signed_by),
+    signedRole: str(row.signed_role),
+    legalForm: isLegalForm(row.legal_form) ? row.legal_form : legalFormOf(null, null, String(row.name)),
     termsVersion: str(row.terms_version),
     startOn: str(row.start_on),
     noticeAt: num(row.notice_at),

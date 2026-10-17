@@ -1,4 +1,5 @@
 import { now, sha256Hex } from '../db'
+import { LEGAL_FORM_CODES } from '../rpo'
 import { dataRevision } from '../app/handover-store'
 import { companyOf, type Company, type User } from '../app/store'
 import { fileHash } from '../app/read'
@@ -46,7 +47,7 @@ export async function generatePrehlad(db: D1Database, files: R2Bucket | undefine
   if (plan.totals.issues.length) return { ok: false, error: plan.totals.issues[0] }
   const error = prehladInputError(values, plan.target.period, today, plan.company, plan.hasPoa, Boolean(plan.target.package_id))
   if (error) return { ok: false, error }
-  const xml = prehladXml(plan.target.period, plan.totals, values), bytes = new TextEncoder().encode(xml)
+  const xml = prehladXml(plan.target.period, plan.totals, values, LEGAL_FORM_CODES[plan.company.legalForm ?? 'sro']), bytes = new TextEncoder().encode(xml)
   const details = JSON.stringify({ version: 1, format: PREHLAD_FORMAT, xsdSha256: PREHLAD_XSD_SHA256, sourceHash: plan.sourceHash, fileSha256: await fileHash(bytes), reviewedDataRevision: plan.revision, input: values, totals: plan.totals, company: { id: plan.company.id, ico: plan.company.ico, dic: plan.company.dic }, sourceClosures: plan.sources.map((s) => s.id) })
   return saveReport(db, files, plan.target, user, { revision: plan.target.revision, variant: `${PREHLAD_FORMAT} · ${values.kind === 'R' ? 'riadny' : 'opravný'}`, reason: values.reason, checked: true,
     file: { name: `${PREHLAD_FORMAT}-${plan.target.period}-${values.kind}.xml`, bytes }, expectedDataRevision: plan.revision, expectedSourceHash: plan.sourceHash,

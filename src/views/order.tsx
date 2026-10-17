@@ -7,6 +7,7 @@ import { copy } from '../copy'
 import { formatEur, typeset } from '../format'
 import { formatIco } from '../ico'
 import type { Order } from '../order'
+import { oneMayConclude } from '../rpo'
 import type { ContractGate, ResolvedContract } from '../contracts'
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, longDate } from '../content/terms'
 
@@ -154,6 +155,23 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
 }) => {
   const directors = order.directors ?? []
   if (!gate.ready) return <OrderWaiting order={order} token={token} gate={gate} stale={stale} />
+  const acting = order.acting ? (
+    <p class="small">
+      <strong>{o.acting}:</strong> {order.acting}
+    </p>
+  ) : null
+  if (!oneMayConclude(order.legalForm ?? 'sro', order.directors, order.acting))
+    return (
+      <Page>
+        <div class="order">
+          <h1 class="h1">{o.jointTitle}</h1>
+          <p class="lead">{o.jointLead}</p>
+          <CompanyCard order={order} />
+          {acting}
+          <Summary order={order} months={months} />
+        </div>
+      </Page>
+    )
   return (
     <Page>
       <form class="order" method="post" action={`/objednavka/${token}`} novalidate>
@@ -161,6 +179,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
         <p class="lead">{o.lead}</p>
         <input type="hidden" name="proposal" value={gate.offerHash} />
         <CompanyCard order={order} />
+        {acting}
         <Summary order={order} months={months} />
         {errors.form ? (
           <p class="notice notice--error" role="alert">

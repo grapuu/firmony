@@ -28,8 +28,8 @@ const SECTIONS: TermsSection[] = [
     title: 'Zmluvné strany a uzavretie zmluvy',
     points: [
       `Službu ${BRAND.name} poskytuje spoločnosť ${OPERATOR.name}, so sídlom ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísaná ${OPERATOR.registeredIn} (ďalej „my“ alebo „poskytovateľ“).`,
-      'Klientom je obchodná spoločnosť, ktorá si službu objedná a v mene ktorej koná jej konateľ (ďalej „Vy“ alebo „klient“).',
-      `Zmluva vzniká, keď konateľ klienta na stránke objednávky potvrdí tieto podmienky tlačidlom „Uzavrieť zmluvu“. Zmluvu tvorí objednávka (firma, balík, cena a deň začiatku) a tieto podmienky. Zmluvu aj podmienky v znení, s ktorým bola uzavretá, nájdete v aplikácii ${BRAND.name}, kde si ich môžete kedykoľvek pozrieť, uložiť a vytlačiť.`,
+      'Klientom je obchodná spoločnosť (spoločnosť s ručením obmedzeným, akciová spoločnosť alebo jednoduchá spoločnosť na akcie), ktorá si službu objedná a v mene ktorej koná jej štatutárny orgán, konateľ alebo predstavenstvo, spôsobom zapísaným v obchodnom registri (ďalej „Vy“ alebo „klient“).',
+      `Zmluva vzniká, keď konateľ alebo člen predstavenstva klienta, ktorý podľa obchodného registra koná v jeho mene sám, na stránke objednávky potvrdí tieto podmienky tlačidlom „Uzavrieť zmluvu“. Ak v mene klienta konajú viacerí spoločne, uzatvárame zmluvu písomne s podpismi všetkých z nich. Zmluvu tvorí objednávka (firma, balík, cena a deň začiatku) a tieto podmienky. Zmluvu aj podmienky v znení, s ktorým bola uzavretá, nájdete v aplikácii ${BRAND.name}, kde si ich môžete kedykoľvek pozrieť, uložiť a vytlačiť.`,
       'Zmluvu uzatvárajú podnikatelia pri svojej podnikateľskej činnosti a riadi sa Obchodným zákonníkom (§ 269 ods. 2). Predpisy na ochranu spotrebiteľa sa na ňu nevzťahujú.',
     ],
   },
@@ -37,7 +37,7 @@ const SECTIONS: TermsSection[] = [
     title: 'Čo pre Vás robíme',
     points: [
       'Vedieme Vaše účtovníctvo v sústave podvojného účtovníctva podľa zákona č. 431/2002 Z. z. o účtovníctve, z dokladov, ktoré nám dodáte, a z pohybov na Vašich bankových účtoch.',
-      'Podľa objednaného balíka ďalej pripravujeme a podávame priznania k DPH, kontrolné a súhrnné výkazy a pri registrácii podľa § 7a zákona o DPH priznania za mesiace, v ktorých vznikne povinnosť ich podať. Spracúvame mzdy, odvody, hlásenia a prehľady o preddavkoch na daň zamestnancov v pracovnom pomere s mesačnou mzdou, ktorých nám nahlásite; nástup nového zamestnanca nám oznámte v aplikácii najneskôr tri pracovné dni pred ním, aby sme ho stihli prihlásiť do Sociálnej poisťovne, a skončenie pracovného pomeru hneď, ako o ňom viete. Dohody o prácach vykonávaných mimo pracovného pomeru, odmeny konateľov a iné príjmy spracujeme len po dohode podľa bodu 2.6.',
+      'Podľa objednaného balíka ďalej pripravujeme a podávame priznania k DPH, kontrolné a súhrnné výkazy a pri registrácii podľa § 7a zákona o DPH priznania za mesiace, v ktorých vznikne povinnosť ich podať. Spracúvame mzdy, odvody, hlásenia a prehľady o preddavkoch na daň zamestnancov v pracovnom pomere s mesačnou mzdou, ktorých nám nahlásite; nástup nového zamestnanca nám oznámte v aplikácii najneskôr tri pracovné dni pred ním, aby sme ho stihli prihlásiť do Sociálnej poisťovne, a skončenie pracovného pomeru hneď, ako o ňom viete. Dohody o prácach vykonávaných mimo pracovného pomeru, odmeny členov orgánov spoločnosti a iné príjmy spracujeme len po dohode podľa bodu 2.6.',
       'Raz ročne, za cenu podľa cenníka, zostavíme účtovnú závierku mikro účtovnej jednotky a pripravíme a podáme daňové priznanie k dani z príjmov právnickej osoby. Závierku inej účtovnej jednotky urobíme len po dohode podľa bodu 2.6.',
       `K službe patrí aplikácia ${BRAND.name}: pridávanie dokladov, pohyby na účtoch, vystavovanie faktúr, termíny a správy s účtovníčkou. Na otázky k Vášmu účtovníctvu odpovedáme ${REPLY_WITHIN}.`,
       'Prácu vykonávajú naši účtovníci vrátane externých spolupracovníkov. Za ich prácu zodpovedáme, akoby sme ju vykonali sami. Doklady čítame aj pomocou umelej inteligencie a výsledok vždy kontroluje človek.',
@@ -49,7 +49,7 @@ const SECTIONS: TermsSection[] = [
     points: [
       `Doklady za každý mesiac nám dodáte najneskôr do ${APP.docsByDay}. dňa nasledujúceho mesiaca, v aplikácii alebo preposlaním na adresu Vašej firmy pre doklady, ktorú v aplikácii nájdete. Doklady musia byť úplné, čitateľné a musia zodpovedať skutočnosti.`,
       'Umožníte nám vidieť pohyby na účtoch firmy, a to prepojením banky v aplikácii alebo výpismi z banky.',
-      'Konateľ podpíše plnú moc, aby sme Vás mohli zastupovať pred finančnou správou, a ak spracúvame mzdy, aj pred Sociálnou poisťovňou a zdravotnými poisťovňami.',
+      'Ten, kto za Vás koná, podpíše plnú moc, aby sme Vás mohli zastupovať pred finančnou správou, a ak spracúvame mzdy, aj pred Sociálnou poisťovňou a zdravotnými poisťovňami.',
       'Bez zbytočného odkladu nám oznámite zmeny, ktoré sa týkajú účtovníctva a daní (napríklad registráciu pre DPH, nového zamestnanca alebo zmenu sídla), a na naše otázky odpoviete spravidla do piatich pracovných dní.',
       'Za to, že doklady a údaje sú pravdivé a úplné, zodpovedáte Vy. Za vedenie účtovníctva podľa zákona zodpovedá účtovná jednotka, teda Vaša firma, aj keď ho vedieme my.',
       'Ak chýbajú podklady alebo informácie, bez zbytočného odkladu Vás upozorníme, čo chýba, na dotknutý termín a na možné následky. Dohodneme zákonný postup nápravy; nebudeme vedome podávať nesprávne údaje. Vplyv Vašej súčinnosti na prípadnú škodu sa posudzuje podľa bodu 6.4, nie automatickým vylúčením našej zodpovednosti.',
@@ -97,7 +97,7 @@ const SECTIONS: TermsSection[] = [
     title: 'Spracúvanie osobných údajov v mene klienta',
     points: [
       'Na dokladoch, v mzdách a v účtovníctve sú osobné údaje Vašich zamestnancov, obchodných partnerov a ďalších ľudí. Ich prevádzkovateľom ste Vy a my sme sprostredkovateľom podľa článku 28 nariadenia (EÚ) 2016/679 (GDPR). Tento článok je zmluvou o spracúvaní osobných údajov.',
-      'Predmetom a účelom spracúvania je vedenie účtovníctva, daní a miezd podľa zmluvy, po dobu jej trvania. Spracúvame identifikačné a kontaktné údaje, údaje na dokladoch a o platbách a pri mzdách pracovnoprávne a mzdové údaje vrátane údajov o pracovnej neschopnosti. Dotknutými osobami sú zamestnanci, konatelia a spoločníci a obchodní partneri, ktorí sú fyzickými osobami.',
+      'Predmetom a účelom spracúvania je vedenie účtovníctva, daní a miezd podľa zmluvy, po dobu jej trvania. Spracúvame identifikačné a kontaktné údaje, údaje na dokladoch a o platbách a pri mzdách pracovnoprávne a mzdové údaje vrátane údajov o pracovnej neschopnosti. Dotknutými osobami sú zamestnanci, členovia orgánov spoločnosti, spoločníci a akcionári a obchodní partneri, ktorí sú fyzickými osobami.',
       'Údaje spracúvame len na Váš pokyn. Pokynom je táto zmluva a to, čo nám zadáte v aplikácii. Ak by bol pokyn v rozpore s právom, upozorníme Vás.',
       'Ľudia, ktorí s údajmi pracujú, sú viazaní mlčanlivosťou. Údaje chránime primeranými opatreniami: šifrovaným spojením, prístupom len pre oprávnených ľudí a databázou a súbormi uloženými v Európskej únii.',
       'Využívame ďalších sprostredkovateľov a dávate nám na to všeobecný súhlas: Cloudflare, Inc. (servery, databáza, súbory a e-maily, údaje uložené v Európskej únii), Anthropic, PBC (čítanie dokladov umelou inteligenciou v USA na základe štandardných zmluvných doložiek, bez použitia na trénovanie), Enable Banking Oy (čítanie pohybov na účtoch s Vaším súhlasom, Fínsko) a našich externých účtovníkov (Slovensko). O pridaní alebo výmene sprostredkovateľa Vás vopred informujeme v aplikácii. Môžete namietať, a ak sa nedohodneme, zmluvu vypovedať.',
@@ -109,8 +109,8 @@ const SECTIONS: TermsSection[] = [
   {
     title: 'Ochrana pred legalizáciou príjmov z trestnej činnosti',
     points: [
-      'Ako poskytovateľ účtovných služieb sme povinnou osobou podľa zákona č. 297/2008 Z. z. Pred začatím spolupráce a počas nej musíme identifikovať a overiť Vašu firmu, jej konateľa a konečných užívateľov výhod a poznať účel a povahu obchodného vzťahu.',
-      'Konateľ nám v aplikácii vyplní údaje o sebe, o konečných užívateľoch výhod a o činnosti firmy a ich zmeny nám tam bez zbytočného odkladu oznámi. Jeho totožnosť overíme z plnej moci podpísanej kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom); inak Vás požiadame o iný spôsob, ktorý zákon pripúšťa. Bez identifikácie službu začať nemôžeme.',
+      'Ako poskytovateľ účtovných služieb sme povinnou osobou podľa zákona č. 297/2008 Z. z. Pred začatím spolupráce a počas nej musíme identifikovať a overiť Vašu firmu, toho, kto v jej mene koná, a konečných užívateľov výhod a poznať účel a povahu obchodného vzťahu.',
+      'Konateľ alebo člen predstavenstva, ktorý zmluvu uzavrel, nám v aplikácii vyplní údaje o sebe, o konečných užívateľoch výhod a o činnosti firmy a ich zmeny nám tam bez zbytočného odkladu oznámi. Jeho totožnosť overíme z plnej moci podpísanej kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom); inak Vás požiadame o iný spôsob, ktorý zákon pripúšťa. Bez identifikácie službu začať nemôžeme.',
       'Ak to zákon vyžaduje, môžeme spoluprácu odmietnuť alebo ukončiť. Neobvyklú obchodnú operáciu sme povinní ohlásiť a o ohlásení Vás informovať nesmieme.',
     ],
   },

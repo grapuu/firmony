@@ -37,16 +37,55 @@ const ZELENY = {
 const ENTITIES = {
   19031841: {
     id: 19031841,
+    legalForms: [{ value: { value: 'Spoločnosť s ručením obmedzeným', code: '112', codelistCode: 'CL000056' }, validFrom: '2026-01-31' }],
     statutoryBodies: [{ stakeholderType: { value: 'Konateľ', code: '3', codelistCode: 'CL010113' }, personName: { formatedName: 'Christian Juhás', familyNames: ['Juhás'], givenNames: ['Christian'] }, validFrom: '2026-01-31' }],
+    authorizations: [{ value: 'Konateľ koná v mene spoločnosti samostatne.', validFrom: '2026-01-31' }],
   },
   19099999: {
     id: 19099999,
+    legalForms: [{ value: { value: 'Spoločnosť s ručením obmedzeným', code: '112' }, validFrom: '2025-03-01' }],
+    authorizations: [{ value: 'Každý konateľ koná v mene spoločnosti samostatne.', validFrom: '2025-03-01' }, { value: 'Prokurista koná spolu s konateľom.', validFrom: '2025-03-01' }],
     statutoryBodies: [
       { stakeholderType: { value: 'Konateľ', code: '3' }, personName: { formatedName: 'Mgr. Lucia Zelená', familyNames: ['Zelená'], givenNames: ['Lucia'] }, validFrom: '2025-03-01' },
       { stakeholderType: { value: 'Konateľ', code: '3' }, personName: { familyNames: ['Dvorský'], givenNames: ['Tomáš'] }, validFrom: '2025-03-01' },
       { stakeholderType: { value: 'Konateľ', code: '3' }, personName: { formatedName: 'Peter Starý' }, validFrom: '2025-03-01', validTo: '2026-02-28' },
     ],
   },
+}
+
+// Two joint-stock companies, made up: the board of one acts by two members together, the other's chairman alone.
+const STROJAREN = {
+  id: 19088888,
+  identifiers: [{ value: '36611111', validFrom: '2001-05-01' }],
+  fullNames: [{ value: 'TEST-ONLY Strojáreň a. s.', validFrom: '2001-05-01' }],
+  addresses: [{ validFrom: '2001-05-01', street: 'Priemyselná', regNumber: 0, buildingNumber: '3', postalCodes: ['04011'], municipality: { value: 'Košice' }, country: { value: 'Slovenská republika' } }],
+  sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2001-05-01' }], registrationNumbers: [{ value: 'Sa/1234/V', validFrom: '2001-05-01' }] },
+}
+const INOVA = {
+  id: 19077777,
+  identifiers: [{ value: '56622222', validFrom: '2024-02-01' }],
+  fullNames: [{ value: 'TEST-ONLY Inova, j. s. a.', validFrom: '2024-02-01' }],
+  addresses: [{ validFrom: '2024-02-01', street: 'Hlavná', regNumber: 0, buildingNumber: '8', postalCodes: ['04001'], municipality: { value: 'Košice' }, country: { value: 'Slovenská republika' } }],
+  sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2024-02-01' }], registrationNumbers: [{ value: 'Sja/77/V', validFrom: '2024-02-01' }] },
+}
+ENTITIES[19088888] = {
+  id: 19088888,
+  legalForms: [{ value: { value: 'Akciová spoločnosť', code: '121', codelistCode: 'CL000056' }, validFrom: '2001-05-01' }],
+  statutoryBodies: [
+    { stakeholderType: { value: 'Predstavenstvo', code: '99' }, statutoryBodyMember: { value: 'Predseda predstavenstva', code: '1' }, personName: { formatedName: 'Ing. Ján Kováč' }, validFrom: '2020-01-01' },
+    { stakeholderType: { value: 'Predstavenstvo', code: '99' }, statutoryBodyMember: { value: 'Člen predstavenstva', code: '3' }, personName: { formatedName: 'Eva Horná' }, validFrom: '2020-01-01' },
+    { stakeholderType: { value: 'Dozorná rada', code: '50' }, personName: { formatedName: 'Igor Dozorný' }, validFrom: '2020-01-01' },
+  ],
+  authorizations: [{ value: 'V mene spoločnosti konajú spoločne dvaja členovia predstavenstva.', validFrom: '2020-01-01' }],
+}
+ENTITIES[19077777] = {
+  id: 19077777,
+  legalForms: [{ value: { value: 'Jednoduchá spoločnosť na akcie', code: '125', codelistCode: 'CL000056' }, validFrom: '2024-02-01' }],
+  statutoryBodies: [
+    { stakeholderType: { value: 'Predstavenstvo', code: '99' }, statutoryBodyMember: { value: 'Predseda predstavenstva', code: '1' }, personName: { formatedName: 'Mária Nová' }, validFrom: '2024-02-01' },
+    { stakeholderType: { value: 'Predstavenstvo', code: '99' }, statutoryBodyMember: { value: 'Člen predstavenstva', code: '3' }, personName: { formatedName: 'Pavol Malý' }, validFrom: '2024-02-01' },
+  ],
+  authorizations: [{ value: 'Členovia predstavenstva konajú v mene spoločnosti samostatne.', validFrom: '2024-02-01' }],
 }
 
 /** The register's answer for a request the Worker sends, or null when the request is not for the register. */
@@ -61,6 +100,8 @@ export function registerAnswer(url, calls = []) {
   calls.push(ico)
   if (ico === '57442452') return new Response(europio, { headers: { 'content-type': 'application/json' } })
   if (ico === '55012345') return Response.json({ results: [ZELENY], license: 'CC BY 4.0' })
+  if (ico === '36611111') return Response.json({ results: [STROJAREN], license: 'CC BY 4.0' })
+  if (ico === '56622222') return Response.json({ results: [INOVA], license: 'CC BY 4.0' })
   if (ico === '35757442') return new Response('busy', { status: 503 })
   return Response.json({ results: [], license: 'CC BY 4.0' })
 }

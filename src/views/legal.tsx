@@ -76,7 +76,7 @@ export const Legal: FC = () => (
 
       <p>
         {t(
-          'Keď uzavriete zmluvu: meno konateľa, ktorý ju uzavrel, e-mail, na ktorý sme poslali odkaz na zmluvu, čas uzavretia, znenie obchodných podmienok a odtlačok (hash) adresy pripojenia, z ktorého bola uzavretá.',
+          'Keď uzavriete zmluvu: meno konateľa alebo člena predstavenstva, ktorý ju uzavrel, a jeho funkciu, e-mail, na ktorý sme poslali odkaz na zmluvu, čas uzavretia, znenie obchodných podmienok a odtlačok (hash) adresy pripojenia, z ktorého bola uzavretá.',
         )}
       </p>
       <p>
@@ -86,7 +86,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          'Kvôli zákonu č. 297/2008 Z. z. o ochrane pred legalizáciou príjmov z trestnej činnosti: plnú moc, ktorú konateľ podpíše, a údaje, ktoré konateľ vyplní v aplikácii o sebe a o konečných užívateľoch výhod (meno, rodné číslo alebo dátum narodenia, trvalý pobyt, štátnu príslušnosť, druh a číslo dokladu totožnosti a to, či ide o politicky exponovanú osobu), o činnosti firmy a o pôvode jej peňazí, a to, ako sme ich overili a do akého rizika sme firmu zaradili. V aplikácii ich vidí len majiteľ firmy a u nás ľudia, ktorí ich overujú.',
+          'Kvôli zákonu č. 297/2008 Z. z. o ochrane pred legalizáciou príjmov z trestnej činnosti: plnú moc, ktorú podpíše ten, kto za firmu koná, a údaje, ktoré vyplní v aplikácii o sebe a o konečných užívateľoch výhod (meno, rodné číslo alebo dátum narodenia, trvalý pobyt, štátnu príslušnosť, druh a číslo dokladu totožnosti a to, či ide o politicky exponovanú osobu), o činnosti firmy a o pôvode jej peňazí, a to, ako sme ich overili a do akého rizika sme firmu zaradili. V aplikácii ich vidí len majiteľ firmy a u nás ľudia, ktorí ich overujú.',
         )}
       </p>
       <p>
@@ -104,7 +104,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          'Zmluvu plníme s firmou. Údaje jej konateľa a ľudí, ktorí ju v aplikácii zastupujú, spracúvame na základe nášho oprávneného záujmu plniť zmluvu s firmou a vedieť preukázať, kto a kedy ju uzavrel (článok 6 ods. 1 písm. f) GDPR).',
+          'Zmluvu plníme s firmou. Údaje toho, kto v jej mene koná, a ľudí, ktorí ju v aplikácii zastupujú, spracúvame na základe nášho oprávneného záujmu plniť zmluvu s firmou a vedieť preukázať, kto a kedy ju uzavrel (článok 6 ods. 1 písm. f) GDPR).',
         )}
       </p>
       <p>

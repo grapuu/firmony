@@ -24,7 +24,7 @@ export function orderLinkMail(company: string, plan: string, link: string, days:
       `Firma: ${company}`,
       ...(chosen ? [`Balík: ${chosen.name}, ${eur(chosen.price)} mesačne bez DPH`] : []),
       '',
-      `Uzavrieť ju môže konateľ firmy. Odkaz platí ${days} dní.`,
+      `Uzavrieť ju môže konateľ alebo člen predstavenstva, ktorý za firmu koná sám. Odkaz platí ${days} dní.`,
       '',
       `Ak máte otázky, stačí odpovedať na tento e-mail. Ozveme sa ${REPLY_WITHIN}.`,
       '',

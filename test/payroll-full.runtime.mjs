@@ -84,7 +84,7 @@ export async function checkPayrollFull({ db, acc, lucia, nowS, day, capture }) {
   const raw = await (await acc.get(`${base}?obdobie=${M}`)).text()
   if (capture) writeFileSync(`${capture}/payroll-full.html`, raw)
   page = plain(raw)
-  check('the parts typed come back, the holiday pay and the sick pay stand on the slip', page.includes(`name="dovolenka_${jan}" value="2"`) && page.includes('Náhrada mzdy za dovolenku') && page.includes('Náhrada príjmu pri PN') && page.includes('Odmena konateľa'))
+  check('the parts typed come back, the holiday pay and the sick pay stand on the slip', page.includes(`name="dovolenka_${jan}" value="2"`) && page.includes('Náhrada mzdy za dovolenku') && page.includes('Náhrada príjmu pri PN') && page.includes('Odmena člena orgánu'))
   res = await acc.post(base, month({ [`dovolenka_${jan}`]: '2', [`nadcas_${jan}`]: '4', [`odmena_${jan}`]: '100', akcia: 'uzavriet' }))
   check('then closed', res.status === 303 && res.headers.get('location')?.includes('mzdy-uzavrete'), res.headers.get('location'))
   const lines = JSON.parse((await db.prepare('SELECT lines FROM payroll_runs WHERE company_id = ? AND period = ?').bind(company, M).first())?.lines ?? '[]')

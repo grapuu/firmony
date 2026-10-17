@@ -45,6 +45,7 @@ import {
 } from './closing'
 import { storedInputs, type ClosingFound } from './closing-form'
 import type { Company } from './store'
+import { distributionOf, equityOf, type Distribution, type EntryLine, type Equity } from './distribution'
 import { INCOME_PREFIX, TREASURY_BANK } from './vat-store'
 
 type Row = Record<string, unknown>
@@ -87,6 +88,9 @@ export interface Closing {
   /** The tax the filing asked the client to pay (row 1100), and by when. */
   payCents: number
   dueOn: string | null
+  /** The year's result distributed as the general meeting decided (distribution.ts), and the internal documents that book it. */
+  distribution: Distribution | null
+  distributionEntries: string[]
 }
 
 const numbers = (value: unknown): Record<string, number> =>
@@ -127,6 +131,8 @@ function closingOf(r: Row): Closing {
     filed: filedAt === null ? null : (filedOf(r.filed) ?? { rows: {}, balance: {}, profit: {}, advancesNext: { kind: 'none', each: 0 } }),
     payCents: Number(r.pay_cents ?? 0),
     dueOn: str(r.due_on),
+    distribution: distributionOf(r.distribution),
+    distributionEntries: (str(r.distribution_entry) ?? '').split(',').filter((id) => id.length > 0),
   }
 }
 
@@ -189,6 +195,48 @@ export function bookTaxStatements(db: D1Database, company: string, year: number,
   return out
 }
 
+/**
+ * A year's distribution kept and booked: the internal document of the approval day (distributionLines) and, once the
+ * dividends are paid to natural persons, the tax withheld on the day of the payout (364 against 342), in place of the
+ * documents booked before. Claimed by the closing's revision like the tax's document.
+ */
+export function bookDistributionStatements(
+  db: D1Database,
+  company: string,
+  year: number,
+  d: Distribution | null,
+  entries: { on: string; text: string; lines: EntryLine[] }[],
+  previous: readonly string[],
+  by: string,
+  revision: number,
+): D1PreparedStatement[] {
+  const made = entries.filter((e) => e.lines.length > 0).map((e) => ({ ...e, id: crypto.randomUUID() }))
+  const ids = made.map((e) => e.id).join(',') || null
+  const out = [
+    db.prepare('INSERT OR IGNORE INTO closings (company_id, year) VALUES (?, ?)').bind(company, year),
+    db.prepare('UPDATE closings SET distribution = ?, distribution_entry = ?, revision = revision + 1 WHERE company_id = ? AND year = ? AND revision = ?').bind(d ? JSON.stringify(d) : null, ids, company, year, revision),
+  ]
+  const claim = 'EXISTS (SELECT 1 FROM closings WHERE company_id = ? AND year = ? AND revision = ? AND distribution_entry IS ?)'
+  for (const id of previous) out.push(db.prepare(`UPDATE ledger_entries SET deleted_at = ?, deleted_by = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND ${claim}`).bind(now(), by, id, company, company, year, revision + 1, ids))
+  for (const e of made)
+    out.push(
+      db
+        .prepare(
+          `INSERT INTO ledger_entries (id, company_id, kind, year, seq, number, on_date, text, lines, created_at, created_by)
+           SELECT ?1, ?2, 'internal', ?3, s, printf('ID-%d-%03d', ?3, s), ?4, ?5, ?6, ?7, ?8
+             FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS s FROM ledger_entries WHERE company_id = ?2 AND kind = 'internal' AND year = ?3)
+             WHERE EXISTS (SELECT 1 FROM closings WHERE company_id = ?2 AND year = ?9 AND revision = ?10 AND distribution_entry IS ?11)`,
+        )
+        .bind(e.id, company, Number(e.on.slice(0, 4)), e.on, e.text, JSON.stringify(e.lines), now(), by, year, revision + 1, ids),
+    )
+  return out
+}
+
+/** The notice of the tax withheld on dividends marked as filed, or the mark taken back (the distribution's own field). */
+export function dividendTaxMarkStatement(db: D1Database, company: string, year: number, d: Distribution, on: string | null): D1PreparedStatement {
+  return db.prepare('UPDATE closings SET distribution = ?, revision = revision + 1 WHERE company_id = ? AND year = ?').bind(JSON.stringify({ ...d, taxFiledOn: on }), company, year)
+}
+
 /** The closing marked as filed, once: what was filed, the tax it asks for and by when. */
 export function fileClosingStatement(db: D1Database, company: string, year: number, filed: FiledClosing, payCents: number, dueOn: string, by: string, today: string, revision: number): D1PreparedStatement {
   return db
@@ -242,6 +290,8 @@ export interface ClosingView {
   year: number
   closing: Closing | null
   books: Books
+  /** The year's result after tax and the equity it is distributed against (distribution.ts). */
+  equity: Equity
   statements: Statements
   /** The year before, when the books hold it or the former accountant's statements were taken over on the same form (the statements show it beside). */
   previous: Statements | null
@@ -409,6 +459,7 @@ export async function closingView(db: D1Database, company: Company, year: number
     year,
     closing,
     books,
+    equity: equityOf(balances.get(year) ?? new Map()),
     statements,
     previous,
     previousFrom,

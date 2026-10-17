@@ -426,7 +426,7 @@ const contractOf = (text: string): ContractKind => {
   if (/dovp|vykonani prace/.test(t)) return 'dovp'
   if (/dopc|pracovnej cinnosti/.test(t)) return 'dopc'
   if (/dobps|brigad/.test(t)) return 'dobps'
-  if (/konatel|statutar/.test(t)) return 'director'
+  if (/konatel|statutar|predstavenstv|dozorn|clen organu|clenka organu/.test(t)) return 'director'
   return 'employment'
 }
 

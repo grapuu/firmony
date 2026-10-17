@@ -14,7 +14,7 @@ import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
 import { bell, ringStatement } from '../bell'
-import { lookupCompany } from '../rpo'
+import { LEGAL_FORM_CODES, isLegalForm, lookupCompany, oneMayConclude } from '../rpo'
 import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
 import { app, dayName, monthName, readableName, signed, whenName } from '../app/copy'
@@ -90,7 +90,7 @@ import { VatCard, VatPage, type VatForm } from '../views/vat'
 import { ClosingPage, closingState, type ClosingState } from '../views/closing'
 import { extensionDays, tableF } from '../app/closing'
 import { closingValues, readClosing, type ClosingErrors, type ClosingValues } from '../app/closing-form'
-import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, notesSource, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
+import { bookDistributionStatements, bookTaxStatements, closingView, dividendTaxMarkStatement, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, notesSource, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
 import { notesDocument } from '../app/notes'
 import { pdfText } from '../app/pdf'
 import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
@@ -131,6 +131,7 @@ import { knownCurrencies, ratesFor } from '../app/fx-store'
 import { isQuarterText, nextQuarter, ossXml, quarterOfDay, quarterRange } from '../app/oss'
 import { fileOssStatement, filedOssXml, ossQuarter, unfileOssStatement } from '../app/oss-store'
 import { OssPage } from '../views/oss'
+import { distributionIssues, distributionLines, withheldOf, type Distribution } from '../app/distribution'
 import {
   MEMBER_STATES,
   declarationsToSend,
@@ -470,6 +471,14 @@ function flashOf(c: Ctx): string | null {
       return t.closing.flashes.extended
     case 'zavierka-zmenena':
       return t.closing.flashes.stale
+    case 'rozdelenie-zauctovane':
+      return t.closing.distribution.flashes.booked ?? null
+    case 'rozdelenie-zrusene':
+      return t.closing.distribution.flashes.unbooked ?? null
+    case 'dividendy-podane':
+      return t.closing.distribution.flashes.taxFiled ?? null
+    case 'dividendy-zrusene':
+      return t.closing.distribution.flashes.taxUnfiled ?? null
     case 'mzdy-ulozene':
       return t.payroll.flashes.saved
     case 'mzdy-uzavrete':
@@ -754,6 +763,8 @@ teamRoutes.post('/klienti', async (c) => {
     request: ID.test(text('ziadost', 64)) ? text('ziadost', 64) : '',
     start: text('start', 10),
     offline: body.mimo === '1',
+    legalForm: isLegalForm(text('forma', 3)) ? text('forma', 3) : '',
+    role: text('funkcia', 60),
   }
   const months = startMonths(dayOf(now()))
   const ico = values.ico === '' ? null : normalizeIco(values.ico)
@@ -783,15 +794,18 @@ teamRoutes.post('/klienti', async (c) => {
   const existing = await userByEmail(db, values.email)
   const userId = existing?.id ?? crypto.randomUUID()
   const ts = now()
+  // The register's line for the contract and the papers, when the register answers.
+  const registered = ico ? await lookupCompany(ico) : null
+  const registerLine = registered && 'found' in registered && registered.found ? registered.found.registerLine : null
   let inbox = inboxCode()
   for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, request_id, contract_at, terms_version, signed_by, start_on)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?)`,
+        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, request_id, contract_at, terms_version, signed_by, start_on, legal_form, signed_role, register_line)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?, ?, ?, ?)`,
       )
-      .bind(companyId, ts, values.name, ico, values.address || null, values.vat ? 1 : 0, values.plan, inbox, values.accountant || null, values.request || null, ts, values.person, values.start),
+      .bind(companyId, ts, values.name, ico, values.address || null, values.vat ? 1 : 0, values.plan, inbox, values.accountant || null, values.request || null, ts, values.person, values.start, values.legalForm || null, values.role || null, registerLine),
     ...(existing ? [] : [db.prepare('INSERT INTO users (id, created_at, email, name) VALUES (?, ?, ?, ?)').bind(userId, ts, values.email, values.person)]),
     db.prepare("INSERT OR IGNORE INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'owner', ?, ?)").bind(companyId, userId, ts, who.user.id),
     eventStatement(db, { company: companyId, user: who.user.id, action: 'company.created', detail: { request: values.request || null } }),
@@ -895,6 +909,7 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
     carry: text('dph_prenos', 16),
     note: text('poznamka', 1000),
     oss: text('oss_od', 20),
+    legalForm: isLegalForm(text('pravna_forma', 3)) ? text('pravna_forma', 3) : '',
   }
   const dic = values.dic.replace(/\s/g, '')
   const icdph = values.icdph.replace(/\s/g, '').toUpperCase()
@@ -913,7 +928,7 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
   if (carry === null || Number.isNaN(carry) || carry < 0) errors.carry = t.client.detailsErrors.carry
   if (Object.keys(errors).length > 0) return clientPage(c, company, { details: { values, errors }, error: t.client.detailsFix }, 422)
   const db = c.env.DB
-  const sets = ['dic = ?', 'icdph = ?', 'vat_payer = ?', 'vat_7a = ?', 'vat_quarterly = ?', 'vat_since = ?', 'tax_office = ?', 'tax_account = ?', 'vat_carry = ?', 'note = ?', 'oss_since = ?']
+  const sets = ['dic = ?', 'icdph = ?', 'vat_payer = ?', 'vat_7a = ?', 'vat_quarterly = ?', 'vat_since = ?', 'tax_office = ?', 'tax_account = ?', 'vat_carry = ?', 'note = ?', 'oss_since = ?', 'legal_form = ?']
   const binds: unknown[] = [
     dic || null,
     icdph || null,
@@ -926,6 +941,7 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
     status === 'payer' ? (carry ?? 0) : 0,
     values.note || null,
     status !== 'none' ? ossSince || null : null,
+    values.legalForm || null,
   ]
   if (isAdmin(who.user)) {
     const plan = text('plan', 10)
@@ -2027,7 +2043,7 @@ async function closingOfForm(c: Ctx, company: Company, asked: unknown): Promise<
   return { view: await closingView(db, company, n, today, { books, closings }), today }
 }
 
-async function closingPage(c: Ctx, company: Company, asked: unknown, form?: { values: ClosingValues; errors: ClosingErrors }) {
+async function closingPage(c: Ctx, company: Company, asked: unknown, form?: { values: ClosingValues; errors: ClosingErrors }, distribution?: { values: Record<string, string>; errors: string[] }) {
   const db = c.env.DB
   const today = dayOf(now())
   const [books, closings] = await Promise.all([booksOf(db, company), closingsOf(db, company.id)])
@@ -2050,10 +2066,11 @@ async function closingPage(c: Ctx, company: Company, asked: unknown, form?: { va
       values={form?.values ?? (view ? closingValues(view.year, view.inputs, view.proposal, view.found) : {})}
       errors={form?.errors ?? {}}
       today={today}
-      flash={form ? null : flashOf(c)}
+      flash={form || distribution ? null : flashOf(c)}
       error={form ? t.closing.flashes.fix : null}
+      distribution={distribution ?? null}
     />,
-    form ? 422 : 200,
+    form || distribution ? 422 : 200,
   )
 }
 
@@ -2099,9 +2116,78 @@ teamRoutes.post('/klienti/:id/zavierka/dan', async (c) => {
   return c.redirect(`${back}&ok=zavierka-dan`, 303)
 })
 
+/**
+ * A year's result distributed as the general meeting decided (distribution.ts): kept with the closing and booked by an
+ * internal document on the approval day, and the tax withheld on dividends on the day of their payout; booked again
+ * in place of the documents before, or taken back.
+ */
+teamRoutes.post('/klienti/:id/zavierka/rozdelenie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const found = await closingOfForm(c, company, body.rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+  const db = c.env.DB
+  const who = c.get('who')
+  const closing = view.closing
+  if (body.akcia === 'zrusit') {
+    await db.batch([...bookDistributionStatements(db, company.id, view.year, null, [], closing?.distributionEntries ?? [], who.user.id, closing?.revision ?? 0), eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.distribution.removed', subject: String(view.year) })])
+    return c.redirect(`${back}&ok=rozdelenie-zrusene#rozdelenie`, 303)
+  }
+  const text = (name: string) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 20) : '')
+  const values: Record<string, string> = Object.fromEntries(['schvalene', 'rezerva', 'krytie', 'dividendy', 'fyzicke', 'vyplata'].map((n) => [n, text(n)]))
+  const amount = (name: string) => {
+    const v = values[name] ?? ''
+    if (v === '') return 0
+    const cents = centsOf(v)
+    return cents === null || Number.isNaN(cents) || cents < 0 ? null : cents
+  }
+  const amounts = { reserve: amount('rezerva'), cover: amount('krytie'), dividends: amount('dividendy'), people: amount('fyzicke') }
+  const approvedOn = dayOfText(values.schvalene ?? '') ?? ''
+  const payoutOn = values.vyplata ? (dayOfText(values.vyplata) ?? '') : null
+  if (Object.values(amounts).some((a) => a === null)) return closingPage(c, company, String(view.year), undefined, { values, errors: ['amount'] })
+  const d: Distribution = { approvedOn, reserve: amounts.reserve ?? 0, cover: amounts.cover ?? 0, dividends: amounts.dividends ?? 0, people: amounts.people ?? 0, payoutOn, taxFiledOn: closing?.distribution?.taxFiledOn ?? null }
+  const issues = distributionIssues(company.legalForm ?? 'sro', view.year, view.equity, d)
+  if (issues.length > 0) return closingPage(c, company, String(view.year), undefined, { values, errors: issues })
+  const withheld = d.payoutOn ? withheldOf(view.year, d) : 0
+  const entries = [
+    { on: d.approvedOn, text: `Rozdelenie výsledku hospodárenia za rok ${view.year}`, lines: distributionLines(view.equity, d) },
+    ...(d.payoutOn && withheld > 0 ? [{ on: d.payoutOn, text: `Daň zrazená z dividend za rok ${view.year}`, lines: [{ md: '364', d: '342', cents: withheld }] }] : []),
+  ]
+  try {
+    const result = await db.batch(bookDistributionStatements(db, company.id, view.year, d, entries, closing?.distributionEntries ?? [], who.user.id, closing?.revision ?? 0))
+    if ((result[1]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
+  } catch {
+    // The schema refuses a document in a locked period (period-schema.ts): nothing of the batch was written.
+    return closingPage(c, company, String(view.year), undefined, { values, errors: ['locked'] })
+  }
+  await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.distribution', subject: String(view.year), detail: { ...d, withheld } })])
+  return c.redirect(`${back}&ok=rozdelenie-zauctovane#rozdelenie`, 303)
+})
+
+/** The notice of the tax withheld on dividends marked as filed, or the mark taken back. */
+teamRoutes.post('/klienti/:id/zavierka/dividendy', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const found = await closingOfForm(c, company, body.rok)
+  if (!found) return c.text('Bad request', 400)
+  const { view, today } = found
+  const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
+  const d = view.closing?.distribution
+  if (!d || !d.payoutOn || d.people <= 0) return c.redirect(back, 303)
+  const db = c.env.DB
+  const filed = body.akcia === 'podane'
+  await db.batch([dividendTaxMarkStatement(db, company.id, view.year, d, filed ? today : null), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: filed ? 'closing.dividendTax.filed' : 'closing.dividendTax.unfiled', subject: String(view.year) })])
+  return c.redirect(`${back}&ok=${filed ? 'dividendy-podane' : 'dividendy-zrusene'}#rozdelenie`, 303)
+})
+
 /** Produce both files together; at filing they become an immutable snapshot, including the filer and filenames. */
 async function closingFiles(company: Company, view: ClosingView, declaredOn: string): Promise<ClosingFiles> {
-  const filer: ClosingFiler = { name: company.name, ico: company.ico, dic: company.dic, address: company.address, registerLine: company.registerLine, nace: view.inputs.nace, activity: view.inputs.activity }
+  const filer: ClosingFiler = { name: company.name, ico: company.ico, dic: company.dic, address: company.address, registerLine: company.registerLine, nace: view.inputs.nace, activity: view.inputs.activity, legalForm: LEGAL_FORM_CODES[company.legalForm ?? 'sro'] }
   const from = view.inputs.from ?? `${view.year}-01-01`
   const make = async (name: string, xml: string) => ({ name, xml, sha256: [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(xml)))].map((b) => b.toString(16).padStart(2, '0')).join('') })
   return {
@@ -4402,7 +4488,7 @@ async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode =
   return shell(c, 'requests', 'Posúdenie pred podpisom', <ContractReviewPage requestId={id} order={order}
     offerHash={order ? await orderOfferHash(order) : ''} review={order ? await latestOrderReview(c.env.DB, order.id) : null}
     people={people.results} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} linkSentAt={sent?.at ?? null}
-    flash={c.req.query('ok') === 'odkaz' ? 'Odkaz na zmluvu sme poslali konateľovi.' : c.req.query('ok') === 'obnovena' ? 'Objednávka platí ďalších 30 dní. Posúďte ju a odkaz pošleme konateľovi.' : undefined} error={error} />, status)
+    flash={c.req.query('ok') === 'odkaz' ? 'Odkaz na zmluvu sme poslali tomu, kto za firmu koná.' : c.req.query('ok') === 'obnovena' ? 'Objednávka platí ďalších 30 dní. Posúďte ju a odkaz pošleme tomu, kto za firmu koná.' : undefined} error={error} />, status)
 }
 
 /**
@@ -4411,6 +4497,8 @@ async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode =
  * long as the review does. The request counts as answered.
  */
 async function sendOrderLink(c: Ctx, order: Order, requestId: string, user: string): Promise<boolean> {
+  // Members who act only together sign on paper: no link goes to one of them (rpo.ts, oneMayConclude).
+  if (!oneMayConclude(order.legalForm ?? 'sro', order.directors, order.acting)) return false
   const db = c.env.DB
   const review = await latestOrderReview(db, order.id)
   const ts = now()
@@ -4493,6 +4581,7 @@ teamRoutes.post('/ziadosti/:id/odkaz', async (c) => {
   const id = c.req.param('id')
   if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
   const order = await latestOrderOfRequest(c.env.DB, id)
+  if (order && !oneMayConclude(order.legalForm ?? 'sro', order.directors, order.acting)) return reviewPage(c, 'Odkaz neposielame: za firmu nekoná jeden človek sám. Zmluvu podpíšu všetci, ktorí za firmu konajú, na papieri.', 409)
   if (!order || !(await sendOrderLink(c, order, id, who.user.id))) return reviewPage(c, 'Odkaz teraz poslať nemožno: zmluvu musí potvrdiť platné štandardné posúdenie a schválené znenie.', 409)
   return c.redirect(`/ucto/ziadosti/${id}/posudenie?ok=odkaz`, 303)
 })

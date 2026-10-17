@@ -1084,6 +1084,18 @@ const MIGRATIONS: readonly string[][] = [
       }),
     ),
   ],
+  // Joint-stock companies (17 October 2026): the legal form of an order and of a client (rpo.ts, LegalForm), how its
+  // statutory body acts as the register says it, the role of the member who concluded the contract, and a year's
+  // distribution of its result with the internal document that books it (distribution.ts).
+  [
+    'ALTER TABLE orders ADD COLUMN legal_form TEXT',
+    'ALTER TABLE orders ADD COLUMN acting TEXT',
+    'ALTER TABLE orders ADD COLUMN signed_role TEXT',
+    'ALTER TABLE companies ADD COLUMN legal_form TEXT',
+    'ALTER TABLE companies ADD COLUMN signed_role TEXT',
+    'ALTER TABLE closings ADD COLUMN distribution TEXT',
+    'ALTER TABLE closings ADD COLUMN distribution_entry TEXT',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

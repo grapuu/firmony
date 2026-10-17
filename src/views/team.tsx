@@ -390,6 +390,8 @@ export interface DetailsValues {
   note: string
   /** The day the company uses the one-stop shop (OSS) from; empty when it does not. */
   oss?: string
+  /** The legal form (rpo.ts), '' for another one. */
+  legalForm?: string
 }
 
 export type DetailsErrors = Partial<Record<'dic' | 'icdph' | 'since' | 'office' | 'account' | 'carry' | 'oss', string>>
@@ -401,6 +403,7 @@ export const detailsOf = (c: Company): DetailsValues => ({
   quarterly: c.vatQuarterly,
   since: c.vatSince ? textDay(c.vatSince) : '',
   oss: c.ossSince ? textDay(c.ossSince) : '',
+  legalForm: c.legalForm ?? '',
   office: c.taxOffice ?? '',
   account: c.taxAccount ?? '',
   carry: c.vatCarry > 0 ? moneyText(c.vatCarry) : '',
@@ -891,6 +894,16 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
             </h2>
             <p class="info__lead">{t.client.detailsLead}</p>
             <form class="stack" method="post" action={`/ucto/klienti/${c.id}/udaje`} novalidate>
+              <label class="field__label" for="pravna-forma">
+                {t.newClient.legalForm}
+              </label>
+              <select id="pravna-forma" class="field__input" name="pravna_forma">
+                {Object.entries(t.newClient.legalForms).map(([value, label]) => (
+                  <option value={value} selected={(d.legalForm ?? '') === value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
               <label class="field__label" for="dic">
                 {t.client.dic}
               </label>
@@ -1685,6 +1698,9 @@ export interface NewClientValues {
   start: string
   /** Whether the administrator confirms that a contract was signed outside the app. */
   offline: boolean
+  /** The legal form ('' for another one) and the signer's role, as the paper contract has them. */
+  legalForm?: string
+  role?: string
 }
 
 export const NewClientPage: FC<{
@@ -1731,6 +1747,25 @@ export const NewClientPage: FC<{
               {t.newClient.address}
             </label>
             <input id="n-address" class="field__input" name="address" value={values.address} maxlength={200} />
+          </div>
+          <div class="fgrid__cell">
+            <label class="field__label" for="n-form">
+              {t.newClient.legalForm}
+            </label>
+            <select id="n-form" class="field__input" name="forma">
+              {Object.entries(t.newClient.legalForms).map(([value, label]) => (
+                <option value={value} selected={(values.legalForm ?? 'sro') === value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div class="fgrid__cell">
+            <label class="field__label" for="n-role">
+              {t.newClient.role}
+            </label>
+            <input id="n-role" class="field__input" name="funkcia" value={values.role ?? ''} maxlength={60} />
+            <p class="field__hint">{t.newClient.roleHint}</p>
           </div>
           <div class="fgrid__cell">
             <label class="field__label" for="n-person">

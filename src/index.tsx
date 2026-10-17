@@ -9,7 +9,7 @@ import { typeset } from './format'
 import { connection, isLocal, later, siteOrigin } from './http'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
-import { lookupCompany, lookupDirectors, type Company } from './rpo'
+import { lookupCompany, lookupEntity, oneMayConclude, type Company } from './rpo'
 import { appRoutes, appScheduled, xmlResponse, type AppBindings } from './app/routes'
 import { invoiceByToken, invoiceLines } from './app/invoices'
 import { getCompany, userByEmail } from './app/store'
@@ -282,13 +282,15 @@ app.post('/zacat', async (c) => {
   const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
   // A confirmation goes to the address that was typed, at most twice a day, and carries nothing a stranger could
   // have typed into the form: the company only as the register names it. A company the register knows as an
-  // s. r. o. in business, and not yet a client, gets an order: once we have looked at what it needs (the review on
+  // s. r. o., a. s. or j. s. a. in business, and not yet a client, gets an order: once we have looked at what it needs (the review on
   // /ucto/ziadosti), its director gets the link to the contract, to the director's own address when it was given.
   // A company that asks for a scope agreed one by one makes no order: the team goes through its books first.
   const confirm = await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)
   let orderStatement: D1PreparedStatement | null = null
-  if (plan !== CUSTOM_PLAN && ico && company && company.isSro && !company.terminated && !(await isClient(db, ico))) {
-    const directors = company.rpoId ? await lookupDirectors(company.rpoId) : null
+  const entity = plan !== CUSTOM_PLAN && ico && company && company.form && !company.terminated && company.rpoId ? await lookupEntity(company.rpoId) : null
+  // The detail's legal form decides over the name's; another form than the three is no order.
+  const form = entity?.formCode ? entity.form : (company?.form ?? null)
+  if (plan !== CUSTOM_PLAN && ico && company && form && !company.terminated && !(await isClient(db, ico))) {
     // The token of this statement is sent to nobody: the review makes the one the director gets.
     orderStatement = await newOrderStatement(db, newToken(), {
       requestId: id,
@@ -296,7 +298,9 @@ app.post('/zacat', async (c) => {
       company: company.name,
       address: company.address || null,
       registerLine: company.registerLine,
-      directors,
+      directors: entity?.directors ?? null,
+      legalForm: form,
+      acting: entity?.acting ?? null,
       plan: planById(plan)?.id ?? 'start',
       person: values.name,
       email: values.directorEmail || values.email,
@@ -333,7 +337,7 @@ app.post('/zacat', async (c) => {
           'Dobrý deň,',
           '',
           orderStatement
-            ? `ďakujeme za záujem o ${BRAND.name}. Vašu žiadosť sme dostali. ${REPLY_WITHIN.charAt(0).toUpperCase()}${REPLY_WITHIN.slice(1)} posúdime, či Vašej firme sedí štandardný balík, a konateľovi pošleme odkaz na zmluvu, ktorú uzavrie online.`
+            ? `ďakujeme za záujem o ${BRAND.name}. Vašu žiadosť sme dostali. ${REPLY_WITHIN.charAt(0).toUpperCase()}${REPLY_WITHIN.slice(1)} posúdime, či Vašej firme sedí štandardný balík, a odkaz na zmluvu, ktorú uzavrie online, pošleme tomu, kto za firmu koná.`
             : `ďakujeme za záujem o ${BRAND.name}. Vašu žiadosť sme dostali a ozveme sa ${REPLY_WITHIN}.`,
           '',
           ...(company ? [`Firma: ${company.name}`] : []),
@@ -526,16 +530,21 @@ app.post('/objednavka/:token', async (c) => {
   if (!months.includes(values.start)) errors.start = copy.order.errors.start
   const directors = order.directors ?? []
   let signedBy = ''
+  let signedRole: string | null = null
   if (directors.length > 0) {
     // Only a director the register named in office: the name is taken as the register writes it.
     const chosen = directors.find((d) => d.name === values.director)
-    if (chosen) signedBy = chosen.name
-    else errors.director = copy.order.errors.director
+    if (chosen) {
+      signedBy = chosen.name
+      signedRole = chosen.role
+    } else errors.director = copy.order.errors.director
   } else if (values.directorName.length >= 5 && values.directorName.includes(' ')) signedBy = values.directorName
   else errors.directorName = copy.order.errors.directorName
   if (!values.agree) errors.agree = copy.order.errors.agree
   const form = (status: 409 | 422 | 429 | 500, extra: OrderErrors = {}) =>
     page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{ ...errors, ...extra }} gate={gate} />, status)
+  // Members who act only together do not conclude it online one by one (the register's manner of acting).
+  if (!oneMayConclude(order.legalForm ?? 'sro', order.directors, order.acting)) return form(409, { form: copy.order.errors.joint })
   if (Object.keys(errors).length > 0 || !plan) return form(422, { form: copy.order.errors.summary })
   if (!gate.ready || !gate.approval) return form(409, { form: 'Ponuku ešte preverujeme. Zmluvu môžete uzavrieť až po potvrdení rozsahu služby.' })
   if (body.proposal !== gate.offerHash) {
@@ -550,7 +559,7 @@ app.post('/objednavka/:token', async (c) => {
   const userId = existing?.id ?? crypto.randomUUID()
   let inbox = inboxCode()
   for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
-  const accepted = await acceptStatements(db, order, { plan: plan.id, startOn: values.start, signedBy, ipHash: await sha256Hex(`order:${connection(c)}`), approval: gate.approval }, { companyId, userId, existingUser: Boolean(existing), inbox })
+  const accepted = await acceptStatements(db, order, { plan: plan.id, startOn: values.start, signedBy, signedRole, ipHash: await sha256Hex(`order:${connection(c)}`), approval: gate.approval }, { companyId, userId, existingUser: Boolean(existing), inbox })
   await db.batch(accepted.statements)
   if (!(await acceptedAs(db, order.id, companyId))) {
     // Another acceptance, expiry or a newer scope decision may have won the race with this batch.

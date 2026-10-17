@@ -1,11 +1,11 @@
-// The order a request becomes when the register knows its company as an s. r. o.: a link to it goes by email to the
-// address that was typed (so whoever opens it can read that mailbox), and a director the register names accepts the
-// terms there. Accepting creates the company, the person's account and their membership in one batch, keeps who
+// The order a request becomes when the register knows its company as an s. r. o., an a. s. or a j. s. a.: a link to it
+// goes by email to the address that was typed (so whoever opens it can read that mailbox), and a member of the
+// statutory body the register names, who may act for it alone, accepts the terms there. Accepting creates the company, the person's account and their membership in one batch, keeps who
 // accepted which version when, and is done once: the UPDATE that closes the order is the first statement of the
 // batch and the rest only happens when it found the order open.
 import { ORDER, TERMS_VERSION, planById, type PlanId } from './config'
 import { now, sha256Hex } from './db'
-import type { Director } from './rpo'
+import { isLegalForm, type Director, type LegalForm } from './rpo'
 import { contractSnapshot, type ContractApproval } from './contracts'
 
 export interface Order {
@@ -19,6 +19,9 @@ export interface Order {
   registerLine: string | null
   /** The directors the register named when the request came, or null when it could not be asked. */
   directors: Director[] | null
+  /** The legal form (null for an order made before it was kept: an s. r. o.), and how the statutory body acts. */
+  legalForm: LegalForm | null
+  acting: string | null
   plan: string
   person: string
   email: string
@@ -26,6 +29,7 @@ export interface Order {
   status: 'open' | 'accepted' | 'expired'
   acceptedAt: number | null
   signedBy: string | null
+  signedRole: string | null
   startOn: string | null
   priceCents: number | null
   termsVersion: string | null
@@ -59,6 +63,8 @@ export function orderOf(row: Row): Order {
     address: str(row.address),
     registerLine: str(row.register_line),
     directors: directorsOf(row.directors),
+    legalForm: isLegalForm(row.legal_form) ? row.legal_form : null,
+    acting: str(row.acting),
     plan: String(row.plan),
     person: String(row.person),
     email: String(row.email),
@@ -66,6 +72,7 @@ export function orderOf(row: Row): Order {
     status: status === 'accepted' ? 'accepted' : status === 'open' && expires > now() ? 'open' : 'expired',
     acceptedAt: num(row.accepted_at),
     signedBy: str(row.signed_by),
+    signedRole: str(row.signed_role),
     startOn: str(row.start_on),
     priceCents: num(row.price_cents),
     termsVersion: str(row.terms_version),
@@ -88,6 +95,8 @@ export interface NewOrder {
   address: string | null
   registerLine: string | null
   directors: Director[] | null
+  legalForm: LegalForm | null
+  acting: string | null
   plan: string
   person: string
   email: string
@@ -99,10 +108,10 @@ export async function newOrderStatement(db: D1Database, token: string, o: NewOrd
   const ts = now()
   return db
     .prepare(
-      `INSERT INTO orders (id, token, created_at, expires_at, request_id, ico, company, address, register_line, directors, plan, person, email, phone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO orders (id, token, created_at, expires_at, request_id, ico, company, address, register_line, directors, plan, person, email, phone, legal_form, acting)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(crypto.randomUUID(), await sha256Hex(token), ts, ts + ORDER.days * 86400, o.requestId, o.ico, o.company, o.address, o.registerLine, o.directors ? JSON.stringify(o.directors) : null, o.plan, o.person, o.email, o.phone)
+    .bind(crypto.randomUUID(), await sha256Hex(token), ts, ts + ORDER.days * 86400, o.requestId, o.ico, o.company, o.address, o.registerLine, o.directors ? JSON.stringify(o.directors) : null, o.plan, o.person, o.email, o.phone, o.legalForm, o.acting)
 }
 
 /** The newest order made from a request from the site, or null. */
@@ -134,8 +143,9 @@ export async function isClient(db: D1Database, ico: string): Promise<boolean> {
 export interface Acceptance {
   plan: PlanId
   startOn: string
-  /** The director who accepted, as the register names them (or as typed when the register named nobody). */
+  /** The director who accepted, as the register names them (or as typed when the register named nobody), and their role. */
   signedBy: string
+  signedRole: string | null
   ipHash: string
   approval: ContractApproval
 }
@@ -164,20 +174,20 @@ export async function acceptStatements(db: D1Database, order: Order, a: Acceptan
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
-        `UPDATE orders SET status = 'accepted', accepted_at = ?3, company_id = ?2, signed_by = ?4, start_on = ?5, price_cents = ?6, terms_version = ?7, ip_hash = ?8, plan = ?9
+        `UPDATE orders SET status = 'accepted', accepted_at = ?3, company_id = ?2, signed_by = ?4, start_on = ?5, price_cents = ?6, terms_version = ?7, ip_hash = ?8, plan = ?9, signed_role = ?12
          WHERE id = ?1 AND status = 'open' AND expires_at > ?3
            AND EXISTS (SELECT 1 FROM order_reviews r JOIN users u ON u.id = r.accountant_id
              WHERE r.order_id = ?1 AND r.id = ?10 AND r.id = (SELECT MAX(id) FROM order_reviews WHERE order_id = ?1)
                AND r.decision = 'standard' AND r.offer_hash = ?11 AND r.expires_at > ?3 AND r.plan = ?9
                AND u.team IN ('admin', 'accountant'))`,
       )
-      .bind(order.id, ids.companyId, ts, a.signedBy, a.startOn, priceCents, TERMS_VERSION, a.ipHash, a.plan, a.approval.review.id, a.approval.offerHash),
+      .bind(order.id, ids.companyId, ts, a.signedBy, a.startOn, priceCents, TERMS_VERSION, a.ipHash, a.plan, a.approval.review.id, a.approval.offerHash, a.signedRole ?? null),
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, register_line, vat_payer, plan, inbox, request_id, order_id, contract_at, terms_version, signed_by, start_on, accountant_id)
-         SELECT ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?1, ?3, ?12, ?13, ?14, ?15 WHERE ${mine}`,
+        `INSERT INTO companies (id, created_at, name, ico, address, register_line, vat_payer, plan, inbox, request_id, order_id, contract_at, terms_version, signed_by, start_on, accountant_id, legal_form, signed_role)
+         SELECT ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?1, ?3, ?12, ?13, ?14, ?15, ?16, ?17 WHERE ${mine}`,
       )
-      .bind(order.id, ids.companyId, ts, order.company, order.ico, order.address, order.registerLine, plan?.vatPayer ? 1 : 0, a.plan, ids.inbox, order.requestId, TERMS_VERSION, a.signedBy, a.startOn, a.approval.review.accountant_id),
+      .bind(order.id, ids.companyId, ts, order.company, order.ico, order.address, order.registerLine, plan?.vatPayer ? 1 : 0, a.plan, ids.inbox, order.requestId, TERMS_VERSION, a.signedBy, a.startOn, a.approval.review.accountant_id, order.legalForm ?? 'sro', a.signedRole ?? null),
     db.prepare(`INSERT INTO contract_snapshots (company_id, order_id, accepted_at, terms_version, sha256, data)
       SELECT ?2, ?1, ?3, ?4, ?5, ?6 WHERE ${mine}`)
       .bind(order.id, ids.companyId, ts, TERMS_VERSION, frozen.sha256, frozen.data),
@@ -185,7 +195,7 @@ export async function acceptStatements(db: D1Database, order: Order, a: Acceptan
     db.prepare(`INSERT OR IGNORE INTO members (company_id, user_id, role, created_at) SELECT ?2, ?4, 'owner', ?3 WHERE ${mine}`).bind(order.id, ids.companyId, ts, ids.userId),
     db
       .prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?3, ?2, ?4, 'contract.accepted', ?1, ?5 WHERE ${mine}`)
-      .bind(order.id, ids.companyId, ts, ids.userId, JSON.stringify({ terms: TERMS_VERSION, signedBy: a.signedBy, plan: a.plan, startOn: a.startOn, sha256: frozen.sha256, review: a.approval.review.id, catalogueHash: a.approval.release.catalogueHash, release: a.approval.release })),
+      .bind(order.id, ids.companyId, ts, ids.userId, JSON.stringify({ terms: TERMS_VERSION, signedBy: a.signedBy, signedRole: a.signedRole, plan: a.plan, startOn: a.startOn, sha256: frozen.sha256, review: a.approval.review.id, catalogueHash: a.approval.release.catalogueHash, release: a.approval.release })),
   ]
   if (order.requestId) statements.push(db.prepare(`UPDATE requests SET status = 'client' WHERE id = ?4 AND ${mine}`).bind(order.id, ids.companyId, ts, order.requestId))
   return { companyId: ids.companyId, userId: ids.userId, inbox: ids.inbox, statements }

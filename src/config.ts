@@ -412,7 +412,7 @@ export const PRIVACY_VERSION = '2026-10-14'
  * (src/content/terms.ts): acceptance keeps the complete wording and tariffs with SHA-256. Signing also requires
  * explicit legal/insurance release approval and a documented review of the particular order.
  */
-export const TERMS_VERSION = '2026-10-17'
+export const TERMS_VERSION = '2026-10-18'
 
 /** The terms version of a client created by hand with a contract signed on paper, outside the app. */
 export const OFFLINE_TERMS = 'offline'

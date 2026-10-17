@@ -1,4 +1,5 @@
 import { closureCurrentSql, latestPayoutSql, socialPayrollStatusSql as payrollStatusSql, socialReportCurrentSql as reportCurrentSql, currentTargetActiveSql as targetActiveSql } from '../payroll-reporting/sql'
+import { distributionOf, withheldOf } from '../app/distribution'
 import { type PayrollReportFact } from '../payroll-reporting/model'
 import { deliveryStatusSql, safeJson, type DeliveryStatus } from '../filings/model'
 // What the team's screen of deadlines reads (src/team/deadlines.ts has the rules). Every company the user sees, in a
@@ -85,7 +86,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
     // The income tax of a year is paid with its own symbol, 170099 and the year (closing-store.ts).
     db
       .prepare(
-        `SELECT k.company_id, k.year, k.extended_to, k.filed_at, k.pay_cents, k.due_on, ${safeJson('k.filed', '$.advancesNext.kind')} AS advances_kind, ${safeJson('k.filed', '$.advancesNext.each')} AS advances_each, ${deliveryStatusSql('k.company_id', [safeJson('k.filed', '$.files.return.attemptId'), safeJson('k.filed', '$.files.statements.attemptId')])} AS delivery_status,
+        `SELECT k.company_id, k.year, k.extended_to, k.filed_at, k.pay_cents, k.due_on, k.distribution, ${safeJson('k.filed', '$.advancesNext.kind')} AS advances_kind, ${safeJson('k.filed', '$.advancesNext.each')} AS advances_each, ${deliveryStatusSql('k.company_id', [safeJson('k.filed', '$.files.return.attemptId'), safeJson('k.filed', '$.files.statements.attemptId')])} AS delivery_status,
                 (SELECT COALESCE(-SUM(p.amount_cents), 0) FROM payments p WHERE p.company_id = k.company_id AND p.amount_cents < 0 AND ltrim(p.vs, '0') = '170099' || k.year) AS paid
            FROM closings k JOIN companies c ON c.id = k.company_id WHERE ${sql}`,
       )
@@ -146,6 +147,11 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
     const last = String(r.last ?? '')
     payroll.set(id, { first: typeof r.first === 'string' ? r.first : null, last: last && last !== '9999-12-31' ? last : null, payday: settings.get(id)?.payday ?? null, closed: closedRuns.get(id) ?? new Map<string, string | null>(), initialized: new Set((runRows?.results ?? []).filter((r) => r.company_id === id && r.evidence_id).map((r) => String(r.period))), payoutPending: new Set((runRows?.results ?? []).filter((r) => r.company_id === id && r.evidence_id && r.needs_payout && !r.has_payout).map((r) => String(r.period))) })
   }
+  /** The tax withheld on a year's dividends, when they are paid to natural persons on a known day. */
+const dividendsFact = (year: number, raw: unknown): Pick<ClosingFact, 'dividends'> => {
+  const d = distributionOf(raw)
+  return d && d.payoutOn && d.people > 0 ? { dividends: { withheld: withheldOf(year, d), payoutOn: d.payoutOn, filedOn: d.taxFiledOn ?? null } } : {}
+}
   const closings = new Map<string, ClosingFact[]>()
   for (const r of closingRows?.results ?? [])
     push(closings, String(r.company_id), {
@@ -157,6 +163,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
       dueOn: typeof r.due_on === 'string' ? r.due_on : null,
       paid: Number(r.paid ?? 0),
       advances: { kind: r.advances_kind === 'monthly' || r.advances_kind === 'quarterly' ? r.advances_kind : 'none', each: Number(r.advances_each ?? 0) || 0 },
+      ...dividendsFact(Number(r.year), r.distribution),
     })
   const filings = new Map<string, Set<string>>()
   const summariesFiled = new Map<string, Map<string, SvFiled>>()

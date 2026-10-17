@@ -48,7 +48,7 @@ export interface HealthInput {
   sendOn: string; batch: string; kind: string; reason: string; reference: string; checked: boolean
 }
 export function healthInputError(v: HealthInput, period: string, targetKind: string, today: string, company: { name:string; ico:string|null; dic:string|null }, replacing: boolean): string | null {
-  if (!company.ico || !/^\d{8}$/.test(company.ico) || v.name !== company.name || !v.name || v.name.length > 80) return 'Overte obchodné meno a osemmiestne IČO slovenskej s. r. o.; údaje neskracujeme odhadom.'
+  if (!company.ico || !/^\d{8}$/.test(company.ico) || v.name !== company.name || !v.name || v.name.length > 80) return 'Overte obchodné meno a osemmiestne IČO slovenskej spoločnosti; údaje neskracujeme odhadom.'
   if (!/^\d{10}$/.test(v.payer) || !/^\d{4}$/.test(v.branch) || v.branch.slice(0,2) !== targetKind.slice(-2)) return 'Overte desaťmiestne číslo platiteľa a štvormiestny kód správnej poisťovne a pobočky.'
   if (v.dic && !/^\d{10}$/.test(v.dic) || company.dic && v.dic !== company.dic || !isIban(v.iban)) return 'Skontrolujte DIČ a vlastný IBAN zamestnávateľa. Neuvádzajte príjmový účet poisťovne.'
   if ([v.name,v.phone,v.email].some((s)=>/[|\p{Cc}\p{Cs}\uFFFE\uFFFF]/u.test(s)) || v.phone && !/^\+421\d{9}$/.test(v.phone) || v.email.length > 75 || v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return 'Skontrolujte kontakt; text nesmie obsahovať oddeľovač dávky ani riadiace znaky.'

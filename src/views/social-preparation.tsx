@@ -22,7 +22,7 @@ export const SocialPreparationPage:FC<{plan:SocialPlan;base:string;user:User;val
   return <div class="filing-work">
     <p><a class="link" href={`${base}/${plan.target.id}`}>Späť na výkaz a potvrdenky</a></p>
     <Heading first="Pripraviť výkaz SP" second={monthName(`${plan.target.period}-01`)}/>
-    <p class="info__lead">{plan.company.name} · MVPP 2026 · pracovné pomery, dohody a odmeny konateľov z uzavretých miezd</p>
+    <p class="info__lead">{plan.company.name} · MVPP 2026 · pracovné pomery, dohody a odmeny členov orgánov spoločnosti z uzavretých miezd</p>
     {error?<p class="notice notice--error" role="alert">{error}</p>:null}
     <section class="info"><h2 class="info__title">Úhrny z uzavretých miezd</h2><dl class="kv">
       <div><dt>Počet zamestnancov</dt><dd>{plan.totals.rows.length}</dd></div><div><dt>Poistné zamestnancov</dt><dd>{formatEurExact(plan.totals.employeeTotal)}</dd></div><div><dt>Poistné zamestnávateľa</dt><dd>{formatEurExact(plan.totals.employerTotal)}</dd></div><div><dt>Spolu na sociálne poistenie</dt><dd>{formatEurExact(plan.totals.total)}</dd></div><div><dt>Určený výplatný termín</dt><dd>{dayName(plan.closure.payday,v.declaredOn??'')}</dd></div>

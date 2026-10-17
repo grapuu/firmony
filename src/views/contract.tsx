@@ -1,5 +1,6 @@
 // Display acceptance-time evidence. Current terms and tariffs must never stand in for a missing old contract.
 import type { FC } from 'hono/jsx'
+import { signerRole } from '../rpo'
 import type { ResolvedContract } from '../contracts'
 import { formatEur } from '../format'
 import { app, dayName, whenName } from '../app/copy'
@@ -12,6 +13,7 @@ export interface ContractOrder {
   priceCents: number | null
   acceptedAt: number | null
   signedBy: string | null
+  signedRole?: string | null
   startOn: string | null
   termsVersion: string | null
 }
@@ -85,7 +87,7 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null; c
                 ) : null}
                 <div>
                   <dt>{p.concluded}</dt>
-                  <dd class="kv__long">{signedAt && signedBy ? p.concludedValue(whenName(signedAt, '1900-01-01'), signedBy) : p.offline}</dd>
+                  <dd class="kv__long">{signedAt && signedBy ? p.concludedValue(whenName(signedAt, '1900-01-01'), signedBy, signerRole(company.legalForm, order?.signedRole ?? company.signedRole)) : p.offline}</dd>
                 </div>
                 {company.endsOn ? (
                   <div>

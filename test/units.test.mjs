@@ -41,6 +41,7 @@ import {
   fx,
   oss,
   intrastat,
+  distribution,
   lastDeclared,
   takeover,
   takeoverStore,
@@ -3445,6 +3446,8 @@ async function zipped(entries, note) {
   const dppo = closingXml.dppoXml(filer, t, { year: 2026, from: '2026-01-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'R', micro: true, minimumHalf: false, minimumExempt: false, tableF: closing.tableF(st) })
   let v = await valid(dppo, xsd('dppo2025.xsd'), 'dppo')
   check('the tax return is valid against DPPOv25', v.ok, v.why)
+  const dppoAs = closingXml.dppoXml({ ...filer, name: 'Ukážková a. s.', legalForm: '121' }, t, { year: 2026, from: '2026-01-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'R', micro: true, minimumHalf: false, minimumExempt: false, tableF: closing.tableF(st) })
+  check("an a. s.'s return names its legal form, 121; an s. r. o.'s 112", dppoAs.includes('<pravnaForma>121</pravnaForma>') && dppo.includes('<pravnaForma>112</pravnaForma>') && (await valid(dppoAs, xsd('dppo2025.xsd'), 'dppo-as')).ok)
   check(
     'it holds the computation, Tables A, D, F and K, and who files it',
     dppo.includes(`<r100>${(1061839 / 100).toFixed(2)}</r100>`) &&
@@ -5096,6 +5099,87 @@ await (await import('./social.units.mjs')).checkSocial()
   check('the threshold: the window before the year, the year so far and the month it is crossed in', w.window === 0 && w.year === 110_000_000 && w.from === '2026-05' && intrastat.thresholdWatch(many, 'A', '2027-03', false).from === '2027-01')
   const bytes = intrastat.latin2('Žltá ťava, Öl, € a ñ')
   check('ISO-8859-2: Slovak and German letters as they are, a letter it lacks without its accent, anything else "?"', new TextDecoder('iso-8859-2').decode(bytes) === 'Žltá ťava, Öl, ? a n')
+}
+
+// Joint-stock companies (17 October 2026): the legal form and the board from the register, who may conclude online, and
+// a year's result distributed by the Commercial Code.
+{
+  check(
+    "the legal form by the register's code, else by the name",
+    rpo.legalFormOf('121', null, null) === 'as' && rpo.legalFormOf('125', null, null) === 'jsa' && rpo.legalFormOf('112', null, null) === 'sro' && rpo.legalFormOf('113', 'Verejná obchodná spoločnosť', 'X, v. o. s.') === null &&
+      rpo.legalFormOf(null, null, 'Strojáreň a. s.') === 'as' && rpo.legalFormOf(null, null, 'KLIMAK, j. s. a.') === 'jsa' && rpo.legalFormOf(null, null, 'Zelený dvor, spol. s r. o.') === 'sro' && rpo.legalFormOf(null, 'Akciová spoločnosť', 'Niečo') === 'as',
+  )
+  const entity = rpo.readEntity(
+    {
+      legalForms: [{ value: { value: 'Akciová spoločnosť', code: '121' }, validFrom: '2001-01-01' }],
+      statutoryBodies: [
+        { stakeholderType: { value: 'Predstavenstvo', code: '99' }, statutoryBodyMember: { value: 'Predseda predstavenstva' }, personName: { formatedName: 'Ján Kováč' } },
+        { stakeholderType: { value: 'Predstavenstvo', code: '99' }, personName: { givenNames: ['Eva'], familyNames: ['Horná'] } },
+        { stakeholderType: { value: 'Dozorná rada', code: '50' }, personName: { formatedName: 'Igor Dozorný' } },
+        { stakeholderType: { value: 'Predstavenstvo', code: '99' }, statutoryBodyMember: { value: 'Člen predstavenstva' }, personName: { formatedName: 'Starý Člen' }, validTo: '2020-01-01' },
+      ],
+      authorizations: [{ value: 'V mene spoločnosti konajú spoločne dvaja členovia predstavenstva.' }, { value: 'Prokurista koná samostatne.' }],
+    },
+    '2026-10-17',
+  )
+  check(
+    "the board in office with each member's role, the supervisory board left out, the manner of acting without the proxy's",
+    entity.form === 'as' && entity.directors.map((d) => `${d.name}:${d.role}`).join() === 'Ján Kováč:Predseda predstavenstva,Eva Horná:Člen predstavenstva' && entity.acting === 'V mene spoločnosti konajú spoločne dvaja členovia predstavenstva.',
+    JSON.stringify(entity),
+  )
+  check(
+    'one may conclude alone by the words of the register: "samostatne" without anything that asks for more; a mixed text is for a person',
+    rpo.actingMode('Konateľ koná v mene spoločnosti samostatne.') === 'alone' &&
+      rpo.actingMode('Členovia štatutárneho orgánu konajú samostatne.') === 'alone' &&
+      rpo.actingMode('V mene Spoločnosti konajú spoločne ktorýkoľvek dvaja členovia predstavenstva.') === 'joint' &&
+      rpo.actingMode('Vo všetkých veciach sú oprávnení konať najmenej dvaja členovia predstavenstva.') === 'joint' &&
+      rpo.actingMode('Konať sú oprávnení všetci členovia predstavenstva, pričom samostatne predseda predstavenstva.') === 'unknown' &&
+      rpo.actingMode(null) === 'unknown',
+  )
+  const two = [{ name: 'A B', role: 'Konateľ' }, { name: 'C D', role: 'Konateľ' }]
+  check(
+    'who concludes online: the only member, or one who acts alone; members who act together, or a board the register did not name, sign on paper',
+    rpo.oneMayConclude('sro', [two[0]], null) && rpo.oneMayConclude('sro', two, 'Každý konateľ koná samostatne.') && !rpo.oneMayConclude('sro', two, 'Konatelia konajú spoločne.') && !rpo.oneMayConclude('sro', two, null) && rpo.oneMayConclude('sro', null, null) && !rpo.oneMayConclude('as', null, null),
+  )
+  check('the role a paper writes after the name', rpo.signerRole('as', 'Predseda predstavenstva') === 'predseda predstavenstva' && rpo.signerRole('jsa', null) === 'člen predstavenstva' && rpo.signerRole('sro', '') === 'konateľ' && rpo.signerRole(null, null) === 'konateľ')
+
+  const balances = new Map([['411', -2_500_000], ['421', -50_000], ['428', -200_000], ['429', 30_000], ['602', -1_500_000], ['518', 400_000], ['591', 100_000], ['221.001', 3_520_000]])
+  const eq = distribution.equityOf(balances)
+  check("the year's equity: the result after tax, the capital, the fund, what was kept and the losses", eq.result === 1_000_000 && eq.capital === 2_500_000 && eq.reserve === 50_000 && eq.retained === 200_000 && eq.losses === 30_000, JSON.stringify(eq))
+  const minAs = distribution.reserveMinimum('as', eq)
+  const minSro = distribution.reserveMinimum('sro', eq)
+  const capped = distribution.reserveMinimum('sro', { ...eq, reserve: 240_000 })
+  check(
+    'the reserve fund: an a. s. 10 % of the profit until 20 % of the capital, an s. r. o. 5 % until 10 %, never past the cap, nothing out of a loss',
+    minAs.cents === 100_000 && minAs.cap === 500_000 && minSro.cents === 50_000 && minSro.cap === 250_000 && capped.cents === 10_000 && distribution.reserveMinimum('as', { ...eq, result: -5 }).cents === 0,
+  )
+  const d = (fields) => ({ approvedOn: '2027-05-15', reserve: 100_000, cover: 0, dividends: 0, people: 0, payoutOn: null, ...fields })
+  check(
+    "what keeps a distribution back: dividends before the fund's share, more than may be paid out, more to natural persons than the dividends, a day in the year itself, amounts out of a loss",
+    distribution.distributionIssues('as', 2026, eq, d({ reserve: 50_000, dividends: 100_000 })).join() === 'reserve' &&
+      distribution.distributionIssues('as', 2026, eq, d({ dividends: 1_100_000 })).join() === 'tooMuch' &&
+      distribution.distributionIssues('as', 2026, eq, d({ dividends: 100_000, people: 200_000 })).join() === 'people' &&
+      distribution.distributionIssues('as', 2026, eq, d({ approvedOn: '2026-12-31' })).join() === 'day' &&
+      distribution.distributionIssues('as', 2026, { ...eq, result: -10_000 }, d({ dividends: 1 })).join() === 'loss' &&
+      distribution.distributionIssues('as', 2026, eq, d({ cover: 30_000, dividends: 1_040_000 })).join() === '',
+  )
+  check(
+    'booked: the fund, old losses covered, dividends out of the profit and then out of what was kept, the rest kept; a loss carried to 429',
+    JSON.stringify(distribution.distributionLines(eq, d({ cover: 30_000, dividends: 1_000_000 }))) ===
+      JSON.stringify([
+        { md: '431', d: '421', cents: 100_000 },
+        { md: '431', d: '429', cents: 30_000 },
+        { md: '431', d: '364', cents: 870_000 },
+        { md: '428', d: '364', cents: 130_000 },
+      ]) &&
+      JSON.stringify(distribution.distributionLines(eq, d({ dividends: 400_000 }))) === JSON.stringify([{ md: '431', d: '421', cents: 100_000 }, { md: '431', d: '364', cents: 400_000 }, { md: '431', d: '428', cents: 500_000 }]) &&
+      JSON.stringify(distribution.distributionLines({ ...eq, result: -70_000 }, d({}))) === JSON.stringify([{ md: '429', d: '431', cents: 70_000 }]),
+  )
+  check(
+    'the tax withheld on dividends to natural persons: 7 %, 10 % of the profits of 2024; paid and noticed by the 15th after the payout, a working day',
+    distribution.withheldOf(2026, { people: 500_000 }) === 35_000 && distribution.withheldOf(2024, { people: 500_000 }) === 50_000 && distribution.dividendTaxDue('2027-05-20') === '2027-06-15' && distribution.dividendTaxDue('2026-10-02') === '2026-11-16' && distribution.dividendTaxDue('2026-12-10') === '2027-01-15',
+  )
+  check('a distribution read back, and nothing from a broken one', distribution.distributionOf(JSON.stringify(d({ dividends: 5, payoutOn: '2027-06-01' })))?.payoutOn === '2027-06-01' && distribution.distributionOf('{') === null && distribution.distributionOf(JSON.stringify({ reserve: 1 })) === null)
 }
 
 done('units')

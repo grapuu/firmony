@@ -32,6 +32,8 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind'
       return t.what.oss(`${period.slice(6)}. štvrťrok ${period.slice(0, 4)}`)
     case 'intrastat':
       return t.what.intrastat(period.slice(8), monthName(`${period.slice(0, 7)}-01`))
+    case 'dividendTax':
+      return t.what.dividendTax(period)
     case 'vatPay':
       return t.what.vatPay(periodName(period))
     case 'docs':
@@ -106,6 +108,8 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
       return `${base}/dph/oss?stvrtrok=${d.period}`
     case 'intrastat':
       return `${base}/intrastat?mesiac=${(d.period ?? '').slice(0, 7)}&tok=${(d.period ?? '').slice(8)}`
+    case 'dividendTax':
+      return `${base}/zavierka?rok=${d.period}#rozdelenie`
     case 'docs':
       return `${base}#chyba`
     case 'closing':
@@ -139,6 +143,7 @@ function noteOf(d: Due): string | null {
   if (d.kind === 'summary' && d.state !== 'done') return t.note.summary
   if (d.kind === 'oss' && d.state !== 'done') return t.note.oss
   if (d.kind === 'intrastat' && d.state !== 'done') return t.note.intrastat
+  if (d.kind === 'dividendTax' && d.state !== 'done') return t.note.dividendTax
   if (d.kind === 'payrollReports' && d.state !== 'done') return t.note.payrollReports
   return null
 }

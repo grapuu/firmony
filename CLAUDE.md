@@ -197,7 +197,37 @@ over. Bring this section up to date first whenever a session ends.
    moved without a document (own goods to a warehouse abroad, processing), items summed, the threshold watched on the
    screen of deadlines, the reports in the filing bundle, sending through the portal's web service. test/intrastat.runtime.mjs,
    units "Intrastat".
-   Next by the order: joint-stock companies. The site promises a
+   Joint-stock companies (built 17 October 2026, schema step 35: `orders.legal_form`, `orders.acting`,
+   `orders.signed_role`, `companies.legal_form`, `companies.signed_role`, `closings.distribution`,
+   `closings.distribution_entry`): `src/rpo.ts` reads the register's detail of an entity, seen live that day: the legal
+   form by its code (CL000056: 112 s. r. o., 121 a. s., 125 j. s. a.; else by the name), the statutory body (CL010113:
+   3 konateľ, 99 predstavenstvo, each member's role "Predseda predstavenstva" and the like; the supervisory board and
+   ended members left out) and the manner of acting (`authorizations`, the proxy's left out). An order is made for all
+   three forms; one member concludes online only when the register says the members act alone ("samostatne" and nothing
+   that asks for more) or there is only one (`oneMayConclude`); otherwise the order page, the review (which shows who
+   acts and how) and the link say the contract is signed on paper by all of them. This mended a gap of s. r. o. too:
+   two konatelia who act together were each allowed to conclude it alone. The signer's role is kept and printed on the
+   power of attorney, the letter to the former accountant, the contract and the archive (`signerRole`); the paper
+   contract's form takes the legal form and the role, and a client's details its legal form. The terms (TERMS_VERSION
+   2026-10-18), the site, the declaration, the privacy notice, payroll's labels and the import read the statutory body
+   for every form. The DPPO and the PREHLAD write the company's own `pravnaForma` (they had 112 fixed). The audit of
+   § 19(1)(a) of the Act on Accounting is the same for every company since 2026 (two of 4 000 000 €, 8 000 000 €, 50,
+   read in the versions of 1 June 2026 and 1 January 2027): nothing changed. A year's result distributed
+   (`src/app/distribution.ts`, the Commercial Code § 67, § 124, § 217, § 220h and the Income Tax Act § 43(1)(a), (11),
+   § 52zzz(4), § 52zzzb read on slov-lex that day): on the closing page (`#rozdelenie`) the result after tax, the
+   capital, the fund, what was kept and the losses; the reserve fund's minimum (an s. r. o. 5 % of the profit until
+   10 % of the capital, an a. s. and a j. s. a. 10 % until 20 %), no dividend before it, nothing paid out beyond the
+   profit and what was kept after the losses; booked by an internal document on the approval day (431 against 421,
+   429, 364, 428; a dividend beyond the profit 428 against 364; a loss 429 against 431) and the tax withheld on
+   dividends to natural persons (7 %, 10 % of the profits of 2024) on the payout day (364 against 342); its payment and
+   notice by the 15th after the payout is a deadline of ours (kind 'dividendTax'; the client's list says to pay it),
+   marked on the closing page. Not built: two or more signature lines on the power of attorney when members act
+   together (the paper contract is signed outside), the annual report (výročná správa) of an audited company and its
+   later filing, the notice of the tax withheld as a file (FS's form), a micro a. s.'s own shares in the notes (the
+   sentence says it has none), the reserve fund for own shares (row 089 of Úč POD, placed by hand), the supervisory
+   board in the declaration. test/joint-stock.runtime.mjs, units "Joint-stock companies".
+   Next: the volume follow-ups (the books worked out per month and kept, the VAT page paged, client lists past 400).
+   The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
@@ -1775,8 +1805,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1099 unit checks (17 October 2026, evening), including Intrastat
-npm run test:runtime     # 1501 workerd checks on Node 24 (as GitHub runs them), including test/intrastat.runtime.mjs
+npm test                 # 1111 unit checks (17 October 2026, night), including joint-stock companies
+npm run test:runtime     # 1512 workerd checks on Node 24 (as GitHub runs them), including test/joint-stock.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx'
 import { OPERATOR, ORDER, PLANS, TERMS_VERSION } from '../config'
 import type { OrderReview, ReleaseState } from '../contracts'
 import type { Order } from '../order'
+import { LEGAL_FORM_NAMES, oneMayConclude } from '../rpo'
 import { team as t } from '../team/copy'
 import { Heading } from './inside'
 
@@ -150,6 +151,20 @@ export const ContractReviewPage: FC<{
       <p class="notice notice--error" role="alert">
         {error}
       </p>
+    ) : null}
+    {order ? (
+      <section class="info" aria-labelledby="review-acting-t">
+        <h2 id="review-acting-t" class="info__title">
+          Kto za firmu koná
+        </h2>
+        <p class="info__lead">
+          {LEGAL_FORM_NAMES[order.legalForm ?? 'sro']}. {order.directors && order.directors.length > 0 ? order.directors.map((d) => `${d.name} (${d.role.toLowerCase()})`).join(', ') : 'Register štatutárny orgán neuviedol, overte ho v obchodnom registri.'}
+        </p>
+        <p class="info__source">Spôsob konania podľa registra: {order.acting ?? 'register ho neuviedol.'}</p>
+        {oneMayConclude(order.legalForm ?? 'sro', order.directors, order.acting) ? null : (
+          <p class="notice notice--error">Za firmu nekoná jeden človek sám, alebo to z registra nevieme určiť: online zmluvu jeden človek neuzavrie. Založte klienta na zmluvu podpísanú všetkými, ktorí za firmu konajú.</p>
+        )}
+      </section>
     ) : null}
     {order && order.status === 'expired' ? (
       <section class="info">

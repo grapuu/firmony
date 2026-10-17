@@ -27,7 +27,7 @@ export const PrehladPreparationPage: FC<{ plan: GenerationPlan; base: string; va
       <h2 class="info__title">Skontrolujte hlavičku a rozsah</h2>
       {field('name','Obchodné meno spoločnosti',111,true,'text',true)}
       {field('dic','DIČ',10,true,'text',Boolean(plan.company.dic))}
-      <p class="small">Podporovaná právna forma: slovenská spoločnosť s ručením obmedzeným (112).</p>
+      <p class="small">Podporované právne formy: spoločnosť s ručením obmedzeným (112), akciová spoločnosť (121) a jednoduchá spoločnosť na akcie (125).</p>
       {field('street','Ulica',30,false)}{field('number','Súpisné / orientačné číslo',11,false)}{field('postal','PSČ',5)}{field('city','Obec',60)}
       <div class="field"><label class="field__label" for="overview-kind">Druh prehľadu</label><select class="field__input" id="overview-kind" name="kind" required><option value="">Zvoľte podľa skutočného stavu</option><option value="R" selected={v.kind==='R'}>Riadny</option><option value="O" selected={v.kind==='O'}>Opravný</option></select></div>
       {field('foundOn','Dátum zistenia chyby · iba pri opravnom prehľade',10,false,'date')}

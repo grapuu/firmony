@@ -30,6 +30,7 @@ import { checkTakeover } from './takeover.runtime.mjs'
 import { checkCurrency } from './currency.runtime.mjs'
 import { checkOss } from './oss.runtime.mjs'
 import { checkIntrastat } from './intrastat.runtime.mjs'
+import { checkJointStock } from './joint-stock.runtime.mjs'
 import { socialReporting } from '../.wrangler/dist/stores.js'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -180,7 +181,7 @@ res = await post('/zacat', { ...good, company: 'Spam s. r. o. www.spam.example',
 check('a request for an s. r. o. the register knows lands on thanks that say what comes next', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmluva=1&zmena=1')
 page = (await (await get('/zacat/hotovo?zmluva=1&zmena=1')).text()).replace(/\u00a0/g, ' ')
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/thanks.html`, page)
-check('the thanks promise a review and then the link, the confirmation sent, and the notice period for a switch', page.includes('posúdime') && page.includes('konateľovi pošleme odkaz na zmluvu') && page.includes('Potvrdenie sme Vám poslali') && page.includes('výpovedná lehota'))
+check('the thanks promise a review and then the link, the confirmation sent, and the notice period for a switch', page.includes('posúdime') && page.includes('odkaz na zmluvu pošleme tomu, kto za firmu koná') && page.includes('Potvrdenie sme Vám poslali') && page.includes('výpovedná lehota'))
 page = (await (await get('/zacat/hotovo?potvrdenie=0')).text()).replace(/\u00a0/g, ' ')
 check('without a confirmation sent, the thanks do not claim one, nor speak of a former accountant', !page.includes('Potvrdenie sme Vám poslali') && !page.includes('výpovedná lehota'))
 let row = await db.prepare('SELECT * FROM requests ORDER BY created_at DESC LIMIT 1').first()
@@ -209,7 +210,7 @@ check(
   Boolean(client) && client.replyTo === 'ahoj@firmony.ai' && client.text.startsWith('Dobrý deň,') && client.text.includes('Firma: europio s. r. o.'),
 )
 check('the confirmation repeats nothing a stranger typed', Boolean(client) && !client.text.includes('Výpovedná') && !client.text.includes('spam') && !client.text.includes('Jana'))
-check('it says what comes next and carries no link to a contract before we have looked at the company', Boolean(client) && client.text.includes('pošleme odkaz na zmluvu') && !client.text.includes('/objednavka/'))
+check('it says what comes next and carries no link to a contract before we have looked at the company', Boolean(client) && client.text.includes('pošleme tomu, kto za firmu koná') && !client.text.includes('/objednavka/'))
 check('both messages are marked sent', (await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE sent_at IS NOT NULL').first())?.n === 2)
 
 res = await post('/zacat', { ...good, web: 'http://bot.example' })
@@ -234,7 +235,7 @@ res = await post('/zacat', { ...good, name: 'Asistentka Firmy', email: 'asistent
 const assistantOrder = await db.prepare("SELECT o.email, r.email AS asked FROM orders o JOIN requests r ON r.id = o.request_id WHERE r.email = 'asistentka@example.sk'").first()
 check("the order is for the director's address, the request keeps who asked", res.status === 303 && assistantOrder?.email === 'konatel@example.sk' && assistantOrder?.asked === 'asistentka@example.sk')
 res = await post('/zacat', { ...good, name: 'Asistentka Firmy', email: 'asistentka2@example.sk', directorEmail: 'nie-je-email' }, { ip: '198.51.100.40' })
-check("a director's address that is no address is said at its field", res.status === 422 && (await res.text()).includes('Skontrolujte, prosím, e-mail konateľa.'))
+check("a director's address that is no address is said at its field", res.status === 422 && (await res.text()).includes('Skontrolujte, prosím, e-mail toho, kto za firmu koná.'))
 
 // A larger company asks for a scope of its own (his word of 17 October 2026: every size of company). The way in
 // is on the home page twice, the choice is kept, and no online order is made: the team goes through its books first.
@@ -276,7 +277,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 34)
+check('health says the schema', (await res.json()).schema === 35)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -4338,7 +4339,7 @@ res = await post(orderLink, { ...validContract, plan: 'firma' }, { ip: '198.51.1
 check('changing the package requires a fresh scope decision', res.status === 409)
 
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Peter Starý', agree: '1' }, { ip: '198.51.100.21' })
-check('a director whose office ended cannot conclude it', res.status === 422 && (await res.text()).includes('Vyberte, prosím, konateľa'))
+check('a director whose office ended cannot conclude it', res.status === 422 && (await res.text()).includes('Vyberte, prosím, kto zmluvu uzatvára'))
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Tomáš Dvorský' }, { ip: '198.51.100.21' })
 check('without agreeing to the terms nothing is concluded', res.status === 422 && (await res.text()).includes('Bez súhlasu'))
 res = await post(orderLink, { plan: 'rast', start: '2026-11-01', director: 'Tomáš Dvorský', agree: '1' }, { ip: '198.51.100.21' })
@@ -4426,7 +4427,7 @@ check(
 
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-accepted.html`, page)
 const exactContract = await resolveContract(db, madeCompany.id, '2099-01-01')
-check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-17')
+check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-18')
 check('the acceptance digest covers the exact stored UTF-8 bytes', exactContract.sha256 === createHash('sha256').update(exactContract.data).digest('hex'))
 check('approval and exact tariff evidence are retained with the contract', exactContract.snapshot.catalogue.payrollCents === 1500 && exactContract.snapshot.catalogue.closingCents === 24900 && exactContract.snapshot.approval.accountantId === lucia.id)
 let immutableContract = false
@@ -4764,6 +4765,7 @@ await checkTakeover({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CA
 await checkCurrency({ db, acc, lucia, nowS, day })
 await checkOss({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkIntrastat({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkJointStock({ db, admin, acc, lucia, nowS, day, post, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
