@@ -1,7 +1,7 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
-import { PERIOD_SCHEMA, documentsUpdateGuardWith } from './app/period-schema'
+import { PERIOD_SCHEMA, closingsGuardsWithoutDistribution, documentsUpdateGuardWith } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
@@ -1096,6 +1096,9 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE closings ADD COLUMN distribution TEXT',
     'ALTER TABLE closings ADD COLUMN distribution_entry TEXT',
   ],
+  // A year's distribution kept with a closing whose year is locked (18 October 2026): the closings' period guards
+  // leave out the distribution and the revision (period-schema.ts).
+  closingsGuardsWithoutDistribution,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

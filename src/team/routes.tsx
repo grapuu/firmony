@@ -14,7 +14,7 @@ import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
 import { bell, ringStatement } from '../bell'
-import { intrastatFileOf, intrastatNext, markIntrastatFiled, markOssFiled, ringClient as ringOf } from './marks'
+import { fingerprint, intrastatFileOf, intrastatNext, markIntrastatFiled, markOssFiled, ringClient as ringOf } from './marks'
 import { LEGAL_FORM_CODES, isLegalForm, lookupCompany, oneMayConclude } from '../rpo'
 import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
@@ -88,10 +88,10 @@ import { insertItemStatement, insertMoveStatement, removeItemStatement, removeMo
 import { balanceOf as accountBalance } from '../app/ledger'
 import { isPeriodLocked } from '../app/periods'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
-import { ClosingPage, closingState, type ClosingState } from '../views/closing'
+import { ClosingPage, closingState, distributionValues, type ClosingState } from '../views/closing'
 import { extensionDays, tableF } from '../app/closing'
 import { closingValues, readClosing, type ClosingErrors, type ClosingValues } from '../app/closing-form'
-import { bookDistributionStatements, bookTaxStatements, closingView, dividendTaxMarkStatement, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, notesSource, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
+import { bookDistributionStatements, bookTaxStatements, closingView, taxUnbooked, dividendTaxMarkStatement, closingsOf, extendStatement, fileClosingStatement, incomeSymbol, notesSource, saveInputsStatement, unfileClosingStatement, type ClosingView, type ClosingFiles } from '../app/closing-store'
 import { notesDocument } from '../app/notes'
 import { pdfText } from '../app/pdf'
 import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
@@ -135,6 +135,7 @@ import { OssPage } from '../views/oss'
 import { distributionIssues, distributionLines, withheldOf, type Distribution } from '../app/distribution'
 import {
   MEMBER_STATES,
+  declarationsToSend,
   intrastatView,
   isFlow,
   isMonthText,
@@ -1359,11 +1360,14 @@ async function ossPage(c: Ctx, company: Company) {
   const open = quarters.find((q) => q === asked) ?? [...quarters].reverse().find((q) => q < quarterOfDay(today)) ?? quarters[quarters.length - 1] ?? quarterOfDay(today)
   const views = await ossQuarterViews(db, company.id, company.ossSince, quarters, today)
   const ok = c.req.query('ok')
+  const view = views.find((v) => v.quarter === open) ?? null
+  // The mark carries the file the page offers, so a change in between is not marked as filed.
+  const sig = view?.state === 'ready' && company.icdph ? await fingerprint(ossXml(company.icdph, view.quarter, view.lines, view.corrections)) : null
   return shell(
     c,
     'clients',
     `${t.oss.title}: ${company.name}`,
-    <OssPage company={company} quarters={views.map((v) => ({ quarter: v.quarter, state: v.state }))} view={views.find((v) => v.quarter === open) ?? null} today={today} flash={ok ? (t.oss.flashes[ok] ?? null) : null} />,
+    <OssPage company={company} quarters={views.map((v) => ({ quarter: v.quarter, state: v.state }))} view={view} sig={sig} today={today} flash={ok ? (t.oss.flashes[ok] ?? null) : null} />,
   )
 }
 
@@ -1401,7 +1405,8 @@ teamRoutes.post('/klienti/:id/dph/oss/podane', async (c) => {
   const quarter = typeof body.stvrtrok === 'string' && isQuarterText(body.stvrtrok) ? body.stvrtrok : null
   if (!quarter) return missingPage(c)
   const typed = dayOfText(typeof body.datum === 'string' ? body.datum : '')
-  const result = await markOssFiled(c.env.DB, company, quarter, typed || null, dayOf(now()), c.get('who').user.id, siteOrigin(c))
+  const sig = typeof body.sig === 'string' && body.sig !== '' ? body.sig.slice(0, 64) : undefined
+  const result = await markOssFiled(c.env.DB, company, quarter, typed || null, dayOf(now()), c.get('who').user.id, siteOrigin(c), sig)
   return c.redirect(`/ucto/klienti/${company.id}/dph/oss?stvrtrok=${quarter}&ok=${result === 'company' ? 'notReady' : result}`, 303)
 })
 
@@ -1464,6 +1469,10 @@ async function intrastatPage(c: Ctx, company: Company, settingsForm: { values: R
   const viewOf = (m: string, f: Flow) => intrastatView(docs, m, f, settings, filings.get(`${m}:${f}`) ?? [], today)
   if (!months.includes(month)) months.unshift(month)
   const ok = c.req.query('ok')
+  const view = viewOf(month, flow)
+  // The mark carries what the page shows, so a change of the documents in between is not marked as sent.
+  const toSend = declarationsToSend(view)
+  const sig = toSend ? await fingerprint(JSON.stringify(toSend)) : null
   return shell(
     c,
     'clients',
@@ -1472,7 +1481,8 @@ async function intrastatPage(c: Ctx, company: Company, settingsForm: { values: R
       company={company}
       settings={settings}
       months={months.map((m) => ({ month: m, A: viewOf(m, 'A').state, D: viewOf(m, 'D').state }))}
-      view={viewOf(month, flow)}
+      view={view}
+      sig={sig}
       watch={thresholdWatch(docs, flow, month, settings.agri)}
       docs={new Map(docs.map((d) => [d.id, d]))}
       today={today}
@@ -1528,7 +1538,8 @@ teamRoutes.post('/klienti/:id/intrastat/podane', async (c) => {
   const flow = body.tok
   if (!isMonthText(month) || !isFlow(flow)) return missingPage(c)
   const typed = dayOfText(typeof body.datum === 'string' ? body.datum : '')
-  const result = await markIntrastatFiled(c.env.DB, company, month, flow, typed || null, dayOf(now()), c.get('who').user.id)
+  const sig = typeof body.sig === 'string' && body.sig !== '' ? body.sig.slice(0, 64) : undefined
+  const result = await markIntrastatFiled(c.env.DB, company, month, flow, typed || null, dayOf(now()), c.get('who').user.id, sig)
   return c.redirect(`/ucto/klienti/${company.id}/intrastat?mesiac=${month}&tok=${flow}&ok=${result}`, 303)
 })
 
@@ -2072,23 +2083,40 @@ teamRoutes.post('/klienti/:id/zavierka/rozdelenie', async (c) => {
   const who = c.get('who')
   const closing = view.closing
   if (body.akcia === 'zrusit') {
-    await db.batch([...bookDistributionStatements(db, company.id, view.year, null, [], closing?.distributionEntries ?? [], who.user.id, closing?.revision ?? 0), eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.distribution.removed', subject: String(view.year) })])
+    try {
+      await db.batch([...bookDistributionStatements(db, company.id, view.year, null, [], closing?.distributionEntries ?? [], who.user.id, closing?.revision ?? 0), eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.distribution.removed', subject: String(view.year) })])
+    } catch (error) {
+      if (!isPeriodLocked(error)) throw error
+      return closingPage(c, company, String(view.year), undefined, { values: distributionValues(view, company.legalForm ?? 'sro'), errors: ['locked'] })
+    }
     return c.redirect(`${back}&ok=rozdelenie-zrusene#rozdelenie`, 303)
   }
   const text = (name: string) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 20) : '')
-  const values: Record<string, string> = Object.fromEntries(['schvalene', 'rezerva', 'krytie', 'dividendy', 'fyzicke', 'vyplata'].map((n) => [n, text(n)]))
+  const values: Record<string, string> = Object.fromEntries(['schvalene', 'rezerva', 'krytie', 'z_fondu', 'dividendy', 'fyzicke', 'ine_roky', 'vyplata'].map((n) => [n, text(n)]))
   const amount = (name: string) => {
     const v = values[name] ?? ''
     if (v === '') return 0
     const cents = centsOf(v)
     return cents === null || Number.isNaN(cents) || cents < 0 ? null : cents
   }
-  const amounts = { reserve: amount('rezerva'), cover: amount('krytie'), dividends: amount('dividendy'), people: amount('fyzicke') }
+  const amounts = { reserve: amount('rezerva'), cover: amount('krytie'), fromReserve: amount('z_fondu'), dividends: amount('dividendy'), people: amount('fyzicke'), peopleOther: amount('ine_roky') }
   const approvedOn = dayOfText(values.schvalene ?? '') ?? ''
   const payoutOn = values.vyplata ? (dayOfText(values.vyplata) ?? '') : null
   if (Object.values(amounts).some((a) => a === null)) return closingPage(c, company, String(view.year), undefined, { values, errors: ['amount'] })
-  const d: Distribution = { approvedOn, reserve: amounts.reserve ?? 0, cover: amounts.cover ?? 0, dividends: amounts.dividends ?? 0, people: amounts.people ?? 0, payoutOn, taxFiledOn: closing?.distribution?.taxFiledOn ?? null }
-  const issues = distributionIssues(company.legalForm ?? 'sro', view.year, view.equity, d)
+  const d: Distribution = {
+    approvedOn,
+    reserve: amounts.reserve ?? 0,
+    cover: amounts.cover ?? 0,
+    fromReserve: amounts.fromReserve ?? 0,
+    dividends: amounts.dividends ?? 0,
+    people: amounts.people ?? 0,
+    peopleOther: amounts.peopleOther ?? 0,
+    payoutOn,
+    taxFiledOn: closing?.distribution?.taxFiledOn ?? null,
+    basis: view.equity,
+  }
+  // The result is distributed after its tax: the tax of the year booked as computed first.
+  const issues = [...(taxUnbooked(view) ? (['tax'] as const) : []), ...distributionIssues(company.legalForm ?? 'sro', view.year, view.equity, d)]
   if (issues.length > 0) return closingPage(c, company, String(view.year), undefined, { values, errors: issues })
   const withheld = d.payoutOn ? withheldOf(view.year, d) : 0
   const entries = [
@@ -2098,8 +2126,9 @@ teamRoutes.post('/klienti/:id/zavierka/rozdelenie', async (c) => {
   try {
     const result = await db.batch(bookDistributionStatements(db, company.id, view.year, d, entries, closing?.distributionEntries ?? [], who.user.id, closing?.revision ?? 0))
     if ((result[1]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=zavierka-zmenena`, 303)
-  } catch {
+  } catch (error) {
     // The schema refuses a document in a locked period (period-schema.ts): nothing of the batch was written.
+    if (!isPeriodLocked(error)) throw error
     return closingPage(c, company, String(view.year), undefined, { values, errors: ['locked'] })
   }
   await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'closing.distribution', subject: String(view.year), detail: { ...d, withheld } })])
@@ -2119,7 +2148,12 @@ teamRoutes.post('/klienti/:id/zavierka/dividendy', async (c) => {
   if (!d || !d.payoutOn || d.people <= 0) return c.redirect(back, 303)
   const db = c.env.DB
   const filed = body.akcia === 'podane'
-  await db.batch([dividendTaxMarkStatement(db, company.id, view.year, d, filed ? today : null), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: filed ? 'closing.dividendTax.filed' : 'closing.dividendTax.unfiled', subject: String(view.year) })])
+  try {
+    await db.batch([dividendTaxMarkStatement(db, company.id, view.year, d, filed ? today : null), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: filed ? 'closing.dividendTax.filed' : 'closing.dividendTax.unfiled', subject: String(view.year) })])
+  } catch (error) {
+    if (!isPeriodLocked(error)) throw error
+    return closingPage(c, company, String(view.year), undefined, { values: distributionValues(view, company.legalForm ?? 'sro'), errors: ['locked'] })
+  }
   return c.redirect(`${back}&ok=${filed ? 'dividendy-podane' : 'dividendy-zrusene'}#rozdelenie`, 303)
 })
 

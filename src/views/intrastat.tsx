@@ -27,6 +27,8 @@ export interface IntrastatPageProps {
   today: string
   flash: string | null
   settingsForm: { values: Record<string, string>; errors: Record<string, string> } | null
+  /** The fingerprint of what goes next, carried by the mark. */
+  sig?: string | null
 }
 
 export const IntrastatPage: FC<IntrastatPageProps> = (p) => {
@@ -166,7 +168,7 @@ const MonthCard: FC<IntrastatPageProps> = ({ company, view: v, docs }) => {
   )
 }
 
-const SideCard: FC<IntrastatPageProps> = ({ company, view: v, today }) => {
+const SideCard: FC<IntrastatPageProps> = ({ company, view: v, today, sig }) => {
   const base = `/ucto/klienti/${company.id}/intrastat`
   const late = today > v.due && (v.state === 'ready' || v.state === 'blocked')
   const sendable = (v.state === 'ready' || v.state === 'changed') && v.issues.length === 0 && company.icdph && company.address
@@ -197,6 +199,7 @@ const SideCard: FC<IntrastatPageProps> = ({ company, view: v, today }) => {
           <form class="stack" method="post" action={`${base}/podane`}>
             <input type="hidden" name="mesiac" value={v.month} />
             <input type="hidden" name="tok" value={v.flow} />
+            {sig ? <input type="hidden" name="sig" value={sig} /> : null}
             <label class="field__label" for="istat-den">
               {k.filedOn}
             </label>

@@ -142,7 +142,11 @@ export async function checkIntrastat({ db, acc, lucia, nowS, day, capture }) {
       bytes.includes(0xfd),
     v.why,
   )
-  res = await acc.post(`${base}/podane`, { mesiac: month, tok: 'A', datum: '' })
+  const sig = /name="sig" value="([0-9a-f]{24})"/.exec(raw)?.[1] ?? ''
+  res = await acc.post(`${base}/podane`, { mesiac: month, tok: 'A', datum: '', sig: '0'.repeat(24) })
+  const none = await db.prepare('SELECT COUNT(*) AS n FROM intrastat_returns WHERE company_id = ?').bind(company).first()
+  check('a mark of reports other than the page showed is refused, nothing marked', sig !== '' && (res.headers.get('location') ?? '').includes('ok=stale') && none?.n === 0)
+  res = await acc.post(`${base}/podane`, { mesiac: month, tok: 'A', datum: '', sig })
   const filed = await db.prepare("SELECT seq, envelope, xml FROM intrastat_returns WHERE company_id = ? AND month = ? AND flow = 'A'").bind(company, month).first()
   check(
     'marked as sent with its reports and its file',

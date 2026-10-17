@@ -42,8 +42,8 @@ export async function ringClient(db: D1Database, company: Company, messageId: st
   return members.map((m) => ringStatement(db, 'answer', messageId, m.email, bell.answer(`${origin}/app/spravy`)))
 }
 
-/** What marking came to: done, someone marked it first, it is not ready (or changed since), or the company lacks its VAT number or address. */
-export type MarkResult = 'filed' | 'already' | 'notReady' | 'company'
+/** What marking came to: done, someone marked it first, it is not ready, it changed since it was shown or downloaded, or the company lacks its VAT number or address. */
+export type MarkResult = 'filed' | 'already' | 'notReady' | 'company' | 'stale'
 
 /** The day it was sent: the one typed, when after the period and not in the future, else today. */
 const sentOn = (typed: string | null, after: string, today: string): string => (typed && typed <= today && typed > after ? typed : today)
@@ -58,7 +58,7 @@ export async function markOssFiled(db: D1Database, company: Company, quarter: st
   if (view.filed) return 'already'
   if (view.state !== 'ready') return 'notReady'
   const xml = ossXml(company.icdph, quarter, view.lines, view.corrections)
-  if (expect !== undefined && expect !== (await fingerprint(xml))) return 'notReady'
+  if (expect !== undefined && expect !== (await fingerprint(xml))) return 'stale'
   const filedOn = sentOn(typed, quarterRange(quarter).to, today)
   const label = t.oss.quarter(quarter)
   const messageId = crypto.randomUUID()
@@ -97,7 +97,7 @@ export async function markIntrastatFiled(db: D1Database, company: Company, month
   const { psi, view, declarations, seq } = await intrastatNext(db, company, month, flow, today)
   if (!psi) return 'company'
   if (!declarations) return view.state === 'filed' ? 'already' : 'notReady'
-  if (expect !== undefined && expect !== (await fingerprint(JSON.stringify(declarations)))) return 'notReady'
+  if (expect !== undefined && expect !== (await fingerprint(JSON.stringify(declarations)))) return 'stale'
   const filedOn = sentOn(typed, `${month}-31`, today)
   const xml = intrastatFileOf(psi, month, flow, declarations, seq, filedOn)
   const done = await db.batch([

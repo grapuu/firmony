@@ -232,6 +232,24 @@ over. Bring this section up to date first whenever a session ends.
    later filing, the notice of the tax withheld as a file (FS's form), a micro a. s.'s own shares in the notes (the
    sentence says it has none), the reserve fund for own shares (row 089 of Úč POD, placed by hand), the supervisory
    board in the declaration. test/joint-stock.runtime.mjs, units "Joint-stock companies".
+   Mended after an independent review (18 October 2026, schema step 36): the closings' period guards leave out the
+   distribution and the revision (`closingsGuardsWithoutDistribution`; a year locked past its end no longer blocks
+   the distribution, which is decided in the next year and guarded by its documents' days; a lock error on taking it
+   back or marking the tax is said, not a 500); the reserve fund gets its share of every profit, dividends or not
+   (podnikajte.sk on § 124: at least 5 % of the net profit, up to 10 % of the capital); the result is distributed only
+   after the year's tax is booked as computed (`taxUnbooked`), and the distribution keeps the equity it was booked
+   against (`basis`) so a later change of the year is flagged on its card; a loss year may cover the loss out of what
+   was kept (428) or the reserve fund (421) and pay dividends out of what was kept after the losses; the part of the
+   dividends to natural persons paid out of profits taxed at the other rate (`peopleOther`: 2024's 10 %, or before
+   2024 at 7 % when the year is 2024) is asked and withheld at its rate, each part rounded to the cent (FS: rounding
+   is mathematical since 2020); `actingMode` says 'alone' only when "samostatne" is said of every member without an
+   amount's limit or a named office (the chairman alone, "nad 10 000 eur ... oboch"), and the proxy is left out also
+   as "prokúra"; the OSS and Intrastat pages' marks carry the fingerprint of what the page offers (`sig`, 'stale'
+   when it changed); goods that go back keep their origin (acquired goods the supplier's state, ours from the
+   settings); a goods line needs a mass above zero unless it has a supplementary unit. Left as they are: Intrastat's
+   envelope number repeats each year (month, flow, filing), the deadlines list the last four months of a flow and a
+   month done by its first report, a legal form left empty is read as s. r. o. (all clients before step 35 were), a
+   positive corrective invoice is reported as goods, the free equity reads only 411, 421, 428 and 429.
    Volume (18 October 2026, after midnight): the client's lists of payments and documents show 400 a page with
    "Staršie" and "Novšie" (`?strana=`, `LIST_PAGE` in `src/app/routes.tsx`; they ended at 400 before); the VAT page shows
    at most 25 issues of a kind and how many more (`capped` in `src/views/vat.tsx`: 166 kB became 51 kB at 300 documents
@@ -1815,8 +1833,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1111 unit checks (18 October 2026), including joint-stock companies
-npm run test:runtime     # 1521 workerd checks on Node 24 (as GitHub runs them), including test/bundle-extras.runtime.mjs
+npm test                 # 1117 unit checks (18 October 2026), including the review's fixes
+npm run test:runtime     # 1526 workerd checks on Node 24 (as GitHub runs them), including test/bundle-extras.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

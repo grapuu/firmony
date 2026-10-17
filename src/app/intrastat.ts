@@ -348,10 +348,11 @@ export function monthItems(docs: readonly IntrastatDoc[], month: string, flow: F
     let ok = true
     const made: Item[] = []
     g.lines.forEach((l, n) => {
-      const origin = l.origin ?? (flow === 'A' ? country : settings.origin)
+      // Where the goods came from: the supplier's state for what was acquired (also when it goes back), ours for what we dispatched.
+      const origin = l.origin ?? (doc.mode === 'acquisition' ? country : settings.origin)
       if (!isCn(l.cn) || l.cn === SIMPLIFIED_CN) bad.cn.push(doc.id)
       else if (l.su && l.quantity === null) bad.quantity.push(doc.id)
-      else if (l.grams === null && !l.su) bad.mass.push(doc.id)
+      else if ((l.grams === null || l.grams <= 0) && !l.su) bad.mass.push(doc.id)
       else if (!origin) bad.origin.push(doc.id)
       else {
         made.push({

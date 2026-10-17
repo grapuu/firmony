@@ -179,7 +179,8 @@ export async function recordExtras(
     if (e.kind === 'oss') result = await markOssFiled(db, e.company, e.period, typed, today, user.id, origin, tick.sig)
     else result = await markIntrastatFiled(db, e.company, e.period, e.flow as Flow, typed, today, user.id, tick.sig)
     if (result === 'filed') outcome.recorded++
-    else if (result === 'notReady') outcome.errors[tick.key] = 'Od stiahnutia balíka sa doklady zmenili. Stiahnite balík znova a odošlite nový súbor.'
+    else if (result === 'stale') outcome.errors[tick.key] = 'Od stiahnutia balíka sa doklady zmenili. Stiahnite balík znova a odošlite nový súbor.'
+    else if (result === 'notReady') outcome.errors[tick.key] = 'Už nie je pripravené na odoslanie. Otvorte stránku firmy.'
     else if (result === 'company') outcome.errors[tick.key] = 'Doplňte firme IČ DPH a adresu.'
   }
   return outcome

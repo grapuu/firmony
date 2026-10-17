@@ -17,11 +17,13 @@ export interface OssPageProps {
   view: OssView | null
   today: string
   flash: string | null
+  /** The fingerprint of the file the page offers, carried by the mark. */
+  sig?: string | null
 }
 
 const pill = (state: string) => (state === 'filed' ? 'pill--ok' : state === 'blocked' || state === 'changed' ? 'pill--red' : state === 'ready' ? 'pill--amber' : 'pill--grey')
 
-export const OssPage: FC<OssPageProps> = ({ company, quarters, view, today, flash }) => {
+export const OssPage: FC<OssPageProps> = ({ company, quarters, view, today, flash, sig }) => {
   const base = `/ucto/klienti/${company.id}/dph/oss`
   return (
     <>
@@ -50,14 +52,14 @@ export const OssPage: FC<OssPageProps> = ({ company, quarters, view, today, flas
               </a>
             ))}
           </nav>
-          {view ? <QuarterCard company={company} view={view} today={today} /> : null}
+          {view ? <QuarterCard company={company} view={view} today={today} sig={sig} /> : null}
         </>
       )}
     </>
   )
 }
 
-const QuarterCard: FC<{ company: Company; view: OssView; today: string }> = ({ company, view, today }) => {
+const QuarterCard: FC<{ company: Company; view: OssView; today: string; sig?: string | null }> = ({ company, view, today, sig }) => {
   const base = `/ucto/klienti/${company.id}/dph/oss`
   const q = view.quarter
   const late = today > view.due && view.state !== 'filed' && view.state !== 'changed'
@@ -166,6 +168,7 @@ const QuarterCard: FC<{ company: Company; view: OssView; today: string }> = ({ c
           {view.state === 'ready' ? (
             <form class="stack" method="post" action={`${base}/podane`}>
               <input type="hidden" name="stvrtrok" value={q} />
+              {sig ? <input type="hidden" name="sig" value={sig} /> : null}
               <label class="field__label" for="oss-den">
                 {k.filedOn}
               </label>

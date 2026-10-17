@@ -216,7 +216,7 @@ export function readActing(answer: unknown, today: string = new Date().toISOStri
   const texts = list
     .filter((a) => !(a.validTo && a.validTo.slice(0, 10) < today))
     .map((a) => (a.value ?? '').replace(/\s+/g, ' ').trim())
-    .filter((v) => v.length > 0 && !/prokur/i.test(v))
+    .filter((v) => v.length > 0 && !/prok[uú]r/i.test(v))
   return texts.length > 0 ? texts.join(' ') : null
 }
 
@@ -224,15 +224,20 @@ export type ActingMode = 'alone' | 'joint' | 'unknown'
 
 /**
  * Whether one member may conclude the contract alone: by the register's words, "samostatne" (alone) without anything
- * that asks for more than one ("spoločne", "dvaja", "aspoň", "najmenej", "všetci", "spolu s"); a text that says
- * both (the chairman alone, or two members together) or neither is for a person to read.
+ * that asks for more than one ("spoločne", "dvaja", "obaja", "oboch", "aspoň", "najmenej", "všetci", "spolu s"),
+ * without a limit of an amount (above which more may sign) and without naming one office (the chairman alone, which
+ * says nothing of the other members). A text that says both or neither is for a person to read, and the contract is
+ * concluded on paper.
  */
 export function actingMode(text: string | null | undefined): ActingMode {
   if (!text) return 'unknown'
   const t = text.toLowerCase()
-  const joint = /spoločne|spolu s|\bdvaja\b|\bdvoch\b|\btraja\b|\boba\b|\bobaja\b|aspoň|najmenej|všetci/.test(t)
+  const joint = /spoločne|spolu s|\bdvaja\b|\bdvoch\b|\btraja\b|\btroch\b|\boba\b|\bobaja\b|\bobidvaja\b|\bobidva\b|\boboch\b|\bobidvoch\b|\bobe\b|aspoň|najmenej|všetci/.test(t)
   const alone = /samostatn/.test(t)
-  return alone && !joint ? 'alone' : joint && !alone ? 'joint' : 'unknown'
+  // "samostatne" of one office, or up to an amount: whether a given member may act alone is not said.
+  const narrowed = /predsed|podpredsed|riaditeľ|\beur\b|€|\bsum[auy]\b|\bnad\s+\d|do\s+výšky|hodnot/.test(t)
+  if (alone && !joint && !narrowed) return 'alone'
+  return joint && !alone ? 'joint' : 'unknown'
 }
 
 /** Whether a contract may be concluded online by one member: the only member in office, or one who acts alone. */

@@ -10,14 +10,14 @@ import { BALANCE_ROWS, ENTITY_SIZES, PROFIT_ROWS, TABLE_A, TABLE_B, extensionDay
 import { POD_ASSET_ROWS, POD_BALANCE_SUMS, POD_LIABILITY_ROWS, POD_PROFIT_ROWS, POD_PROFIT_SUMS } from '../app/closing-pod'
 import { CREDIT_ROWS, LOSS_ROWS, NOTE_TEXT, PLACEMENT_ROWS, type ClosingErrors, type ClosingValues } from '../app/closing-form'
 import { noteChecks } from '../app/notes'
-import { notesSource } from '../app/closing-store'
+import { notesSource, taxUnbooked } from '../app/closing-store'
 import type { ClosingView } from '../app/closing-store'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
 import { bookPath } from './ledger'
 import { Flash, Heading } from './inside'
 import { textDay } from '../app/booking'
-import { dividendTaxDue, reserveMinimum, withheldOf, type LegalFormKind } from '../app/distribution'
+import { dividendTaxDue, reserveMinimum, sameEquity, withheldOf, type LegalFormKind } from '../app/distribution'
 
 const k = t.closing
 
@@ -613,7 +613,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
   const r = view.tax.rows
   const filed = view.closing?.filed ? view.closing : null
   const canFile = state === 'ready' || state === 'filed'
-  const toBook = !view.running && !filed && ((r.r1050 ?? 0) !== view.booked || view.deferred.expense !== view.deferredBooked)
+  const toBook = taxUnbooked(view)
   return (
     <section class="info vstatus" id="stav" aria-labelledby="stav-t">
       <header class="info__row">
@@ -750,8 +750,18 @@ const ExtendCard: FC<{ company: Company; view: ClosingView; today: string }> = (
 export function distributionValues(view: ClosingView, form: LegalFormKind): Record<string, string> {
   const d = view.closing?.distribution
   const money = (cents: number) => (cents > 0 ? `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}` : '')
-  if (d) return { schvalene: textDay(d.approvedOn), rezerva: money(d.reserve), krytie: money(d.cover), dividendy: money(d.dividends), fyzicke: money(d.people), vyplata: d.payoutOn ? textDay(d.payoutOn) : '' }
-  return { schvalene: view.inputs.approvedOn ? textDay(view.inputs.approvedOn) : '', rezerva: money(reserveMinimum(form, view.equity).cents), krytie: '', dividendy: '', fyzicke: '', vyplata: '' }
+  if (d)
+    return {
+      schvalene: textDay(d.approvedOn),
+      rezerva: money(d.reserve),
+      krytie: money(d.cover),
+      z_fondu: money(d.fromReserve ?? 0),
+      dividendy: money(d.dividends),
+      fyzicke: money(d.people),
+      ine_roky: money(d.peopleOther ?? 0),
+      vyplata: d.payoutOn ? textDay(d.payoutOn) : '',
+    }
+  return { schvalene: view.inputs.approvedOn ? textDay(view.inputs.approvedOn) : '', rezerva: money(reserveMinimum(form, view.equity).cents), krytie: '', z_fondu: '', dividendy: '', fyzicke: '', ine_roky: '', vyplata: '' }
 }
 
 const DistributionCard: FC<{ company: Company; view: ClosingView; form: { values: Record<string, string>; errors: string[] } | null; today: string }> = ({ company, view, form, today }) => {
@@ -811,7 +821,9 @@ const DistributionCard: FC<{ company: Company; view: ClosingView; form: { values
               ))}
             </ul>
           ) : null}
+          {taxUnbooked(view) ? <p class="info__source">{g.taxFirst}</p> : null}
           {d ? <p class="info__lead">{g.booked(textDay(d.approvedOn))}</p> : null}
+          {d?.basis && !sameEquity(d.basis, e) ? <p class="flag">{g.stale}</p> : null}
           {d && d.payoutOn && d.people > 0 ? (
             <>
               <p class={!d.taxFiledOn && today > dividendTaxDue(d.payoutOn) ? 'flag' : 'info__lead'}>{g.withheld(formatEurExact(withheldOf(view.year, d)), dayName(dividendTaxDue(d.payoutOn), today))}</p>
@@ -832,11 +844,17 @@ const DistributionCard: FC<{ company: Company; view: ClosingView; form: { values
               <>
                 {field('rezerva', g.reserveAmount)}
                 {field('krytie', g.cover)}
-                {field('dividendy', g.dividends)}
-                {field('fyzicke', g.people, g.peopleHint)}
-                {field('vyplata', g.payoutOn)}
+              </>
+            ) : e.result < 0 ? (
+              <>
+                {field('krytie', g.coverLoss)}
+                {field('z_fondu', g.fromReserve)}
               </>
             ) : null}
+            {field('dividendy', g.dividends)}
+            {field('fyzicke', g.people, g.peopleHint)}
+            {e.result > 0 && view.year === 2024 ? field('ine_roky', g.peopleOld, g.peopleOldHint) : view.year >= (e.result > 0 ? 2024 : 2025) ? field('ine_roky', g.people2024, g.people2024Hint) : null}
+            {field('vyplata', g.payoutOn)}
             <div class="fgrid__cell fgrid__cell--wide">
               <button class="btn btn--blue" type="submit" name="akcia" value="zauctovat">
                 {d ? g.rebook : g.book}

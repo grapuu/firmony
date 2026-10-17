@@ -5046,6 +5046,14 @@ await (await import('./social.units.mjs')).checkSocial()
   )
   const d = intrastat.monthItems(docs, '2026-09', 'D', settings)
   check("dispatches: Greece as GR, the partner's VAT number as given, the origin from the settings; no member state is said", d.items.length === 1 && d.items[0].country === 'GR' && d.items[0].partner === 'EL123456789' && d.items[0].origin === 'SK' && d.items[0].kg === 80 && d.items[0].euros === 1200 && d.issues.map((i) => i.code).join() === 'country', JSON.stringify(d))
+  const backLine = (origin) => g({ returned: true, lines: [{ cn: '84713000', description: null, origin, grams: 5000, su: null, quantity: null, cents: null }] })
+  const goneBack = intrastat.monthItems([doc('ret-a', { cents: -150000, vatId: 'EL123456789', goods: backLine(null) })], '2026-09', 'D', settings).items[0]
+  const cameBack = intrastat.monthItems([doc('ret-d', { mode: 'eu_goods', cents: -150000, vatId: 'AT123456789', goods: backLine(null) })], '2026-09', 'A', settings).items[0]
+  check(
+    "goods that go back keep their origin: acquired goods returned are of the supplier's state, our goods coming back of ours (review of 18 October 2026)",
+    goneBack?.origin === 'GR' && goneBack?.nature === '21' && cameBack?.origin === 'SK' && cameBack?.country === 'AT',
+    JSON.stringify([goneBack, cameBack]),
+  )
   const bad = intrastat.monthItems([doc('v', { cents: 300000, goods: g({ lines: [{ cn: '8471', description: null, origin: null, grams: 1, su: null, quantity: null, cents: null }] }) }), doc('w', { cents: 300000, goods: g({ lines: [{ cn: '84713000', description: null, origin: null, grams: 1, su: null, quantity: null, cents: 100 }] }) }), doc('x', { cents: 300000, goods: g({ lines: [{ cn: '84713000', description: null, origin: null, grams: null, su: 'p/st', quantity: null, cents: null }] }) })], '2026-09', 'A', settings)
   check('a code of fewer than eight digits, values that do not make the base, a supplementary unit without its quantity', bad.issues.map((i) => i.code).join() === 'cn,quantity,values', JSON.stringify(bad.issues))
 
@@ -5136,6 +5144,15 @@ await (await import('./social.units.mjs')).checkSocial()
       rpo.actingMode('Konať sú oprávnení všetci členovia predstavenstva, pričom samostatne predseda predstavenstva.') === 'unknown' &&
       rpo.actingMode(null) === 'unknown',
   )
+  check(
+    'acting alone only when the register says it of every member, without a limit of an amount (review of 18 October 2026)',
+    rpo.actingMode('V mene spoločnosti koná predseda predstavenstva samostatne.') === 'unknown' &&
+      rpo.actingMode('V mene spoločnosti koná každý konateľ samostatne; pri úkonoch nad 10 000 eur je potrebný podpis oboch konateľov.') === 'unknown' &&
+      rpo.actingMode('Konateľ koná samostatne do sumy 5 000 eur, nad túto sumu konajú obidvaja konatelia.') === 'unknown' &&
+      rpo.actingMode('Vo všetkých veciach koná a podpisuje každý konateľ samostatne. Podpisovanie: k obchodnému menu pripojí konateľ svoj podpis.') === 'alone' &&
+      rpo.actingMode('Konatelia konajú obidvaja spoločne.') === 'joint' &&
+      rpo.readActing({ authorizations: [{ value: 'Konatelia konajú spoločne.' }, { value: 'Prokúra je udelená ako samostatná.' }] }, '2026-10-18') === 'Konatelia konajú spoločne.',
+  )
   const two = [{ name: 'A B', role: 'Konateľ' }, { name: 'C D', role: 'Konateľ' }]
   check(
     'who concludes online: the only member, or one who acts alone; members who act together, or a board the register did not name, sign on paper',
@@ -5178,6 +5195,40 @@ await (await import('./social.units.mjs')).checkSocial()
   check(
     'the tax withheld on dividends to natural persons: 7 %, 10 % of the profits of 2024; paid and noticed by the 15th after the payout, a working day',
     distribution.withheldOf(2026, { people: 500_000 }) === 35_000 && distribution.withheldOf(2024, { people: 500_000 }) === 50_000 && distribution.dividendTaxDue('2027-05-20') === '2027-06-15' && distribution.dividendTaxDue('2026-10-02') === '2026-11-16' && distribution.dividendTaxDue('2026-12-10') === '2027-01-15',
+  )
+  check(
+    "the reserve fund gets its share of a profit whether or not anything is paid out (review of 18 October 2026)",
+    distribution.distributionIssues('sro', 2026, eq, d({ reserve: 0 })).join() === 'reserve' && distribution.distributionIssues('sro', 2026, eq, d({ reserve: 50_000 })).join() === '',
+  )
+  const loss = { ...eq, result: -20_000 }
+  check(
+    'a loss year: covered out of what was kept or the reserve fund, the rest carried, dividends out of what is left after the losses',
+    distribution.distributionIssues('as', 2026, loss, d({ reserve: 0, cover: 5_000, fromReserve: 10_000, dividends: 100_000 })).join() === '' &&
+      JSON.stringify(distribution.distributionLines(loss, d({ reserve: 0, cover: 5_000, fromReserve: 10_000, dividends: 100_000 }))) ===
+        JSON.stringify([
+          { md: '428', d: '431', cents: 5_000 },
+          { md: '421', d: '431', cents: 10_000 },
+          { md: '429', d: '431', cents: 5_000 },
+          { md: '428', d: '364', cents: 100_000 },
+        ]) &&
+      distribution.distributionIssues('as', 2026, loss, d({ reserve: 0, fromReserve: 60_000 })).join() === 'coverLoss,fund' &&
+      distribution.distributionIssues('as', 2026, loss, d({ reserve: 0, dividends: 150_001 })).join() === 'tooMuch' &&
+      distribution.distributionIssues('as', 2026, loss, d({ reserve: 0, dividends: 150_000 })).join() === '',
+  )
+  check(
+    'dividends to natural persons out of profits taxed at the other rate: only out of what was kept, 2024 at 10 %, before 2024 at 7 % when the year is 2024',
+    distribution.distributionIssues('as', 2026, eq, d({ cover: 30_000, dividends: 1_040_000, people: 500_000, peopleOther: 170_000 })).join() === '' &&
+      distribution.distributionIssues('as', 2026, eq, d({ cover: 30_000, dividends: 1_040_000, people: 500_000, peopleOther: 170_001 })).join() === 'other' &&
+      distribution.distributionIssues('as', 2023, eq, d({ cover: 30_000, dividends: 1_040_000, people: 500_000, peopleOther: 1 })).join() === 'other' &&
+      distribution.withheldOf(2026, { people: 500_000, peopleOther: 100_000 }) === 38_000 &&
+      distribution.withheldOf(2024, { people: 500_000, peopleOther: 100_000 }) === 47_000 &&
+      distribution.withheldOf(2025, { people: 100_000, peopleOther: 40_000, basis: loss }) === 8_200 &&
+      distribution.withheldOf(2024, { people: 100_000, basis: loss }) === 7_000,
+  )
+  const kept = distribution.distributionOf(JSON.stringify(d({ fromReserve: 3, peopleOther: 2, basis: loss })))
+  check(
+    'a distribution keeps the equity it was booked against, so a change of the year is seen',
+    kept?.fromReserve === 3 && kept.peopleOther === 2 && distribution.sameEquity(kept.basis, loss) && !distribution.sameEquity(kept.basis, eq),
   )
   check('a distribution read back, and nothing from a broken one', distribution.distributionOf(JSON.stringify(d({ dividends: 5, payoutOn: '2027-06-01' })))?.payoutOn === '2027-06-01' && distribution.distributionOf('{') === null && distribution.distributionOf(JSON.stringify({ reserve: 1 })) === null)
 }

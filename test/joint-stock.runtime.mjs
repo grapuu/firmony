@@ -63,44 +63,52 @@ export async function checkJointStock({ db, admin, acc, lucia, nowS, day, post, 
     entry(`${Y}-07-01`, '518', '221.001', 500_000),
   ])
   const base = `/ucto/klienti/${company}/zavierka`
-  page = plain(await (await acc.get(`${base}?rok=${Y}`)).text())
-  check(
-    "the closing shows the year's result and the reserve fund an a. s. owes: 10 % of the profit, until 20 % of the capital",
-    page.includes('Rozdelenie výsledku hospodárenia') && page.includes('najmenej 10 % zo zisku') && page.includes('1 000,00 €') && page.includes('5 000,00 €'),
-  )
+  const eur = (cents) => `${plain(new Intl.NumberFormat('sk-SK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100))} €`
+  const money = (cents) => `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`
   const approved = `${Y + 1}-03-15`
   const paid = `${Y + 1}-04-10`
   const text = (d) => `${Number(d.slice(8))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
-  res = await acc.post(`${base}/rozdelenie`, {
-    rok: String(Y),
-    akcia: 'zauctovat',
-    schvalene: text(approved),
-    rezerva: '500,00',
-    krytie: '',
-    dividendy: '5000,00',
-    fyzicke: '5000,00',
-    vyplata: text(paid),
-  })
-  check('dividends before the reserve fund has its legal share are refused', res.status === 422 && plain(await res.text()).includes('podiel na zisku sa určiť nedá'))
-  res = await acc.post(`${base}/rozdelenie`, { rok: String(Y), akcia: 'zauctovat', schvalene: text(approved), rezerva: '1000,00', krytie: '', dividendy: '9500,00', fyzicke: '', vyplata: '' })
+  const form = (fields) => ({ rok: String(Y), akcia: 'zauctovat', schvalene: text(approved), rezerva: '', krytie: '', z_fondu: '', dividendy: '', fyzicke: '', ine_roky: '', vyplata: '', ...fields })
+  res = await acc.post(`${base}/rozdelenie`, form({ rezerva: '1000,00', dividendy: '5000,00' }))
+  check('the result is distributed after its tax: refused while the tax of the year is not booked', res.status === 422 && plain(await res.text()).includes('Najprv zaúčtujte daň z príjmov roka'))
+  res = await acc.post(`${base}/dan`, { rok: String(Y) })
+  const taxEntry = await db.prepare("SELECT lines FROM ledger_entries WHERE company_id = ? AND deleted_at IS NULL AND on_date = ? AND lines LIKE '%591%'").bind(company, `${Y}-12-31`).first()
+  const tax = JSON.parse(taxEntry?.lines ?? '[]').find((l) => l.md === '591')?.cents ?? 0
+  const result = 1_000_000 - tax
+  const minimum = Math.ceil(result / 10)
+  page = plain(await (await acc.get(`${base}?rok=${Y}`)).text())
+  check(
+    "the closing shows the year's result after tax and the reserve fund an a. s. owes: 10 % of the profit, until 20 % of the capital",
+    res.status === 303 &&
+      tax > 0 &&
+      page.includes('Rozdelenie výsledku hospodárenia') &&
+      page.includes('najmenej 10 % zo zisku') &&
+      page.includes(eur(minimum)) &&
+      page.includes('5 000,00 €') &&
+      !page.includes('Najprv zaúčtujte daň'),
+    `${tax} ${eur(minimum)}`,
+  )
+  // The year's months locked through January after it: the distribution, booked in March, is kept with the locked year's closing.
+  await db
+    .prepare("INSERT INTO period_locks (company_id, through_on, version, change_id, changed_at, changed_by, reason) VALUES (?, ?, 1, 'lock-co-as', ?, ?, 'TEST-ONLY uzávierka')")
+    .bind(company, `${Y + 1}-01-31`, nowS, lucia.id)
+    .run()
+  res = await acc.post(`${base}/rozdelenie`, form({ rezerva: money(minimum - 100), dividendy: '5000,00', fyzicke: '5000,00', vyplata: text(paid) }))
+  check('dividends before the reserve fund has its legal share are refused', res.status === 422 && plain(await res.text()).includes('Do rezervného fondu treba dať aspoň zákonnú sumu'))
+  res = await acc.post(`${base}/rozdelenie`, form({ rezerva: money(minimum - 100) }))
+  check('the fund gets its share even when nothing is paid out', res.status === 422 && plain(await res.text()).includes('Do rezervného fondu treba dať aspoň zákonnú sumu'))
+  res = await acc.post(`${base}/rozdelenie`, form({ rezerva: money(minimum), dividendy: money(result - minimum + 100) }))
   check('more than the profit after the fund cannot be paid out', res.status === 422 && plain(await res.text()).includes('Rozdeľuje sa viac'))
-  res = await acc.post(`${base}/rozdelenie`, {
-    rok: String(Y),
-    akcia: 'zauctovat',
-    schvalene: text(approved),
-    rezerva: '1000,00',
-    krytie: '',
-    dividendy: '5000,00',
-    fyzicke: '5000,00',
-    vyplata: text(paid),
-  })
+  res = await acc.post(`${base}/rozdelenie`, form({ rezerva: money(minimum), dividendy: '5000,00', fyzicke: '5000,00', ine_roky: '100,00', vyplata: text(paid) }))
+  check('no part at the rate of other years when nothing comes out of what was kept', res.status === 422 && plain(await res.text()).includes('Časť zo ziskov s inou sadzbou dane'))
+  res = await acc.post(`${base}/rozdelenie`, form({ rezerva: money(minimum), dividendy: '5000,00', fyzicke: '5000,00', vyplata: text(paid) }))
   const entries = (
     await db.prepare("SELECT on_date, lines FROM ledger_entries WHERE company_id = ? AND deleted_at IS NULL AND text LIKE '%' || ? ORDER BY on_date").bind(company, String(Y)).all()
   ).results.filter((e) => e.on_date > `${Y}-12-31`)
   const lines = entries.flatMap((e) => JSON.parse(e.lines).map((l) => `${e.on_date}:${l.md}/${l.d}:${l.cents}`))
   check(
-    'booked on the day of the approval: the fund, the dividends, the rest kept; the tax of 7 % withheld on the day of the payout',
-    res.status === 303 && lines.join() === [`${approved}:431/421:100000`, `${approved}:431/364:500000`, `${approved}:431/428:400000`, `${paid}:364/342:35000`].join(),
+    'booked on the day of the approval though the year is locked: the fund, the dividends, the rest kept; the tax of 7 % withheld on the day of the payout',
+    res.status === 303 && lines.join() === [`${approved}:431/421:${minimum}`, `${approved}:431/364:500000`, `${approved}:431/428:${result - minimum - 500000}`, `${paid}:364/342:35000`].join(),
     lines.join(),
   )
   if (capture) writeFileSync(`${capture}/distribution.html`, await (await acc.get(`${base}?rok=${Y}`)).text())
@@ -111,7 +119,15 @@ export async function checkJointStock({ db, admin, acc, lucia, nowS, day, post, 
   )
   res = await acc.post(`${base}/dividendy`, { rok: String(Y), akcia: 'podane' })
   const marked = await db.prepare('SELECT distribution FROM closings WHERE company_id = ? AND year = ?').bind(company, Y).first()
-  check('the notice of the tax withheld marked as filed', res.status === 303 && Boolean(JSON.parse(marked?.distribution ?? '{}').taxFiledOn))
+  check('the notice of the tax withheld marked as filed, the year locked', res.status === 303 && Boolean(JSON.parse(marked?.distribution ?? '{}').taxFiledOn))
+  // The year's books changed after the distribution was booked (the lock lifted for it): the card says so.
+  await db
+    .prepare("UPDATE period_locks SET through_on = NULL, version = 2, change_id = 'unlock-co-as', changed_at = ?, changed_by = ?, reason = 'TEST-ONLY otvorenie roka' WHERE company_id = ?")
+    .bind(nowS, lucia.id, company)
+    .run()
+  await entry(`${Y}-11-30`, '518', '221.001', 10_000).run()
+  page = plain(await (await acc.get(`${base}?rok=${Y}`)).text())
+  check('a change of the year after the distribution was booked is said on its card', page.includes('Výsledok alebo vlastné imanie roka sa od zaúčtovania rozdelenia zmenili'))
   res = await acc.post(`${base}/rozdelenie`, { rok: String(Y), akcia: 'zrusit' })
   const left = await db.prepare('SELECT COUNT(*) AS n FROM ledger_entries WHERE company_id = ? AND deleted_at IS NULL AND on_date > ?').bind(company, `${Y}-12-31`).first()
   const gone = await db.prepare('SELECT distribution FROM closings WHERE company_id = ? AND year = ?').bind(company, Y).first()

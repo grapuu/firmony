@@ -232,6 +232,10 @@ export function bookDistributionStatements(
   return out
 }
 
+/** The year's tax not booked as computed (its own and the deferred tax), while the closing is not filed: the result to distribute is not final. */
+export const taxUnbooked = (view: Pick<ClosingView, 'running' | 'closing' | 'tax' | 'booked' | 'deferred' | 'deferredBooked'>): boolean =>
+  !view.running && !view.closing?.filed && ((view.tax.rows.r1050 ?? 0) !== view.booked || view.deferred.expense !== view.deferredBooked)
+
 /** The notice of the tax withheld on dividends marked as filed, or the mark taken back (the distribution's own field). */
 export function dividendTaxMarkStatement(db: D1Database, company: string, year: number, d: Distribution, on: string | null): D1PreparedStatement {
   return db.prepare('UPDATE closings SET distribution = ?, revision = revision + 1 WHERE company_id = ? AND year = ?').bind(JSON.stringify({ ...d, taxFiledOn: on }), company, year)

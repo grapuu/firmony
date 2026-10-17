@@ -83,6 +83,20 @@ export const documentsUpdateGuardWith = (columns: string[]): string[] => [
   guard('documents', 'UPDATE', `(${changed([...docFields, ...columns])}) AND ((${postedDocLocked('OLD')} OR ${docLinked('OLD')}) OR (${postedDocLocked('NEW')} OR ${docLinked('NEW')}))`),
 ]
 
+/**
+ * The closings' guards made again (step 36) so that a year's distribution, decided after the year by the general
+ * meeting and booked on its own days, may be kept with a closing whose year is locked: the closing's own fields stay
+ * guarded, the distribution's and the revision's do not, and an empty row may be made to hold it. The distribution's
+ * documents are guarded by their own days like every other.
+ */
+const CLOSING_FIELDS = ['inputs', 'saved_at', 'saved_by', 'extended_to', 'tax_entry', 'filed_on', 'filed_at', 'filed_by', 'filed', 'pay_cents', 'due_on']
+export const closingsGuardsWithoutDistribution: string[] = [
+  'DROP TRIGGER IF EXISTS closings_locked_insert',
+  'DROP TRIGGER IF EXISTS closings_locked_update',
+  guard('closings', 'INSERT', `(${CLOSING_FIELDS.map((f) => `NEW.${f} IS NOT NULL`).join(' OR ')}) AND ${locked('NEW.company_id', "NEW.year || '-12-31'")}`),
+  guard('closings', 'UPDATE', `(${changed(['company_id', 'year', ...CLOSING_FIELDS])}) AND (${locked('OLD.company_id', "OLD.year || '-12-31'")} OR ${locked('NEW.company_id', "NEW.year || '-12-31'")})`),
+]
+
 export const PERIOD_SCHEMA: string[] = [
   `CREATE TABLE period_locks (
     company_id TEXT PRIMARY KEY, through_on TEXT, version INTEGER NOT NULL CHECK (version > 0), change_id TEXT NOT NULL UNIQUE,

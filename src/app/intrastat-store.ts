@@ -85,12 +85,6 @@ export async function intrastatMonth(db: D1Database, company: Company, settings:
   return { view: intrastatView(docs, month, flow, settings, filings.get(`${month}:${flow}`) ?? [], today), docs }
 }
 
-/** The number of the next envelope (AAxxxxx): one more than the company has sent. */
-export async function nextEnvelope(db: D1Database, company: string): Promise<number> {
-  const row = await db.prepare('SELECT COUNT(*) AS n FROM intrastat_returns WHERE company_id = ?').bind(company).first<Row>()
-  return Number(row?.n ?? 0) + 1
-}
-
 /** A filing marked as sent, with its reports and its file; refused (no row) when another was marked in between. */
 export function fileIntrastatStatement(
   db: D1Database,
