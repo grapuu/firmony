@@ -13,6 +13,7 @@ import { payrollSettingsOf } from '../app/payroll-store'
 import { compareDues, deadlinesOf, summaryWindow, vatWindow, type ClosingFact, type Due, type MarkedKind, type PayrollFact } from './deadlines'
 import { handedOverSql, visible } from './store'
 import { REGISTRATION_EVENTS, registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
+import { healthInsured, isContract, isPension } from '../app/payroll'
 
 type Row = Record<string, unknown>
 
@@ -104,7 +105,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
       LEFT JOIN payroll_packages p ON p.id = t.package_id AND p.company_id = t.company_id WHERE ${sql} AND (${targetActiveSql('t')})`).bind(...binds),
     // Each employee for the registrations with the Social Insurance Agency and the insurers, and what was recorded as
     // filed: the newest record of a registration counts (taken back by mistake, it is open again).
-    db.prepare(`SELECT e.company_id, e.id, e.name, e.insurer, e.started_on, e.ended_on FROM employees e JOIN companies c ON c.id = e.company_id WHERE ${sql}`).bind(...binds),
+    db.prepare(`SELECT e.company_id, e.id, e.name, e.insurer, e.started_on, e.ended_on, e.contract, e.pension FROM employees e JOIN companies c ON c.id = e.company_id WHERE ${sql}`).bind(...binds),
     db
       .prepare(
         `SELECT ev.company_id, ev.subject, ev.action, ev.at FROM events ev JOIN companies c ON c.id = ev.company_id
@@ -176,7 +177,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
 
   const people = new Map<string, RegistrationEmployee[]>()
   for (const r of peopleRows?.results ?? [])
-    push(people, String(r.company_id), { id: String(r.id), name: String(r.name), insurer: String(r.insurer), startedOn: String(r.started_on), endedOn: typeof r.ended_on === 'string' ? r.ended_on : null })
+    push(people, String(r.company_id), registrationPerson(r))
   const registered = new Map<string, Map<string, string>>()
   for (const r of registeredRows?.results ?? []) {
     const id = String(r.company_id)
@@ -217,10 +218,20 @@ export function unmarkFilingStatement(db: D1Database, company: string, kind: Mar
   return db.prepare('DELETE FROM filings WHERE company_id = ? AND kind = ? AND period = ?').bind(company, kind, period)
 }
 
+/** A person as the registrations read them: a student on a student's agreement or an old-age pensioner on an agreement is no employee for health insurance. */
+const registrationPerson = (r: Row): RegistrationEmployee => ({
+  id: String(r.id),
+  name: String(r.name),
+  insurer: String(r.insurer),
+  startedOn: String(r.started_on),
+  endedOn: typeof r.ended_on === 'string' ? r.ended_on : null,
+  health: healthInsured(isContract(r.contract) ? r.contract : 'employment', isPension(r.pension) ? r.pension : 'none'),
+})
+
 /** One company's registrations with the Social Insurance Agency and the health insurers, for its payroll page. */
 export async function companyRegistrations(db: D1Database, company: Company, today: string): Promise<RegistrationDue[]> {
   const [people, marks] = await db.batch<Row>([
-    db.prepare('SELECT id, name, insurer, started_on, ended_on FROM employees WHERE company_id = ?').bind(company.id),
+    db.prepare('SELECT id, name, insurer, started_on, ended_on, contract, pension FROM employees WHERE company_id = ?').bind(company.id),
     db
       .prepare(`SELECT subject, action, at FROM events WHERE company_id = ? AND action IN ('${REGISTRATION_EVENTS.done}', '${REGISTRATION_EVENTS.undone}') ORDER BY id`)
       .bind(company.id),
@@ -230,6 +241,6 @@ export async function companyRegistrations(db: D1Database, company: Company, tod
     if (r.action === REGISTRATION_EVENTS.done) done.set(String(r.subject), bratislavaDay(Number(r.at)))
     else done.delete(String(r.subject))
   }
-  const employees = (people?.results ?? []).map((r) => ({ id: String(r.id), name: String(r.name), insurer: String(r.insurer), startedOn: String(r.started_on), endedOn: typeof r.ended_on === 'string' ? r.ended_on : null }))
+  const employees = (people?.results ?? []).map(registrationPerson)
   return registrationDues(employees, company.startOn ?? bratislavaDay(company.createdAt), company.endsOn, done, today)
 }

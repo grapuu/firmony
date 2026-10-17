@@ -1,15 +1,17 @@
 // The team's payroll of a client (/ucto/klienti/:id/mzdy): a month's payslips worked out from what the accountant
-// typed (the income of each employee), what the company pays and where once the month is closed, the employees and
-// the payroll settings, and an employee's payslip to print. payroll.ts works it all out; nothing here computes.
+// typed for each person (the month's wage or reward, holiday, absences, overtime, surcharges, a bonus), the sick leaves
+// with their daily base, what the company pays and where once the month is closed, the employees and the payroll
+// settings, and a person's payslip to print. pay-month.ts and payroll.ts work it all out; nothing here computes.
 import type { FC } from 'hono/jsx'
 import { formatEurExact } from '../format'
 import { dayName, monthName } from '../app/copy'
 import { textDay } from '../app/booking'
 import type { Payslip, SocialKind } from '../app/payroll'
-import { INSURERS, monthRange, type Employee, type Insurer, type PayrollRun, type RunLine } from '../app/payroll-store'
+import { INSURERS, monthRange, type Employee, type Insurer, type PayrollRun, type SlipLine } from '../app/payroll-store'
 import type { PayrollTotals } from '../app/payroll'
+import type { DvzProposal, SickLeave } from '../app/pay-month'
+import { PART_FIELDS, hundredthsText, partsFor, tenThousandthsText } from '../app/payroll-form'
 import { groupedIban } from '../app/vat-store'
-import { moneyText } from '../app/vat-form'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
@@ -21,14 +23,64 @@ import { registrationWhat } from './deadlines'
 const w = t.payroll
 
 export type MonthState = 'open' | 'closed' | 'running' | 'unsupported'
-const STATE_PILL: Record<MonthState, string> = { open: 'pill--amber', closed: 'pill--ok', running: 'pill--grey', unsupported: 'pill--amber' }
+const STATE_PILL: Record<MonthState, string> = {
+  open: 'pill--amber',
+  closed: 'pill--ok',
+  running: 'pill--grey',
+  unsupported: 'pill--amber',
+}
 
-export type SlipLine = RunLine & { slip: Payslip; days: number }
+export type { SlipLine }
 
 const base = (company: Company) => `/ucto/klienti/${company.id}/mzdy`
+const eurPerHour = (n: number) => `${tenThousandthsText(n)} €`
 
-/** One payslip's lines: what comes off the wage, the tax, what is paid out, and what the employer pays on top. */
-export const SlipDetail: FC<{ slip: Payslip }> = ({ slip }) => {
+/** A person's relationship in a few words: the contract, a regular income of an agreement or a director, a pension. */
+function contractLine(l: Pick<SlipLine, 'terms' | 'slip'>): string {
+  const kind = l.terms?.contract ?? l.slip.contract ?? 'employment'
+  const parts = [w.contracts[kind] ?? kind]
+  const regular = l.terms?.regular ?? l.slip.regular
+  if (kind !== 'employment' && kind !== 'dobps' && regular !== undefined) parts.push(w.regularShort(regular))
+  const pension = l.terms?.pension ?? l.slip.pension
+  if (pension && pension !== 'none') parts.push(w.pensionShort[pension] ?? pension)
+  return parts.join(' · ')
+}
+
+/** A month's pay, line by line, as it was worked out (older closed slips have the gross only). */
+const PayLines: FC<{ line: SlipLine }> = ({ line }) => {
+  const p = line.pay
+  if (!p) return null
+  const kind = line.terms?.contract ?? 'employment'
+  const item = (label: string, cents: number) =>
+    cents !== 0 ? (
+      <div>
+        <dt>{label}</dt>
+        <dd>{formatEurExact(cents)}</dd>
+      </div>
+    ) : null
+  return (
+    <>
+      {item(kind === 'employment' ? w.pay.wage : w.pay.reward, p.wage)}
+      {item(w.pay.holiday, p.holiday)}
+      {item(w.pay.publicHolidays, p.publicHolidays)}
+      {item(w.pay.obstacle, p.obstacle)}
+      {item(w.pay.overtime, p.overtime)}
+      {item(w.pay.surcharges, p.surcharges)}
+      {item(w.pay.bonus, p.bonus)}
+      {item(w.pay.other, p.other)}
+      {p.holiday + p.obstacle + p.overtime + p.surcharges + p.publicHolidays > 0 ? (
+        <div class="kv__sub">
+          <dt>{w.pay.average(eurPerHour(p.average))}</dt>
+          <dd />
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+/** One payslip's lines: what the month pays, what comes off it, the tax, what is paid out, and what the employer pays on top. */
+export const SlipDetail: FC<{ line: SlipLine }> = ({ line }) => {
+  const slip: Payslip = line.slip
   const item = (label: string, cents: number, strong = false) => (
     <div class={strong ? 'kv__strong' : undefined}>
       <dt>{label}</dt>
@@ -42,12 +94,37 @@ export const SlipDetail: FC<{ slip: Payslip }> = ({ slip }) => {
         <dd>{formatEurExact(cents)}</dd>
       </div>
     ))
+  const sick = line.sick
   return (
     <dl class="kv wslip">
-      {item(t.payroll.cols.gross, slip.gross, true)}
+      <PayLines line={line} />
+      {item(line.pay ? w.pay.gross : t.payroll.cols.gross, slip.gross, true)}
+      {(slip.sickPay ?? 0) > 0 ? item(w.pay.sick, slip.sickPay ?? 0) : null}
+      {(sick?.parts ?? [])
+        .filter((s) => s.amount > 0)
+        .map((s) => (
+          <div class="kv__sub">
+            <dt>
+              {textDay(s.from)} {'\u2013'} {textDay(s.to)}: {w.pay.sickDays(s.days25, s.days55, s.dvz === null ? '' : `${tenThousandthsText(s.dvz)} €`)}
+            </dt>
+            <dd>{formatEurExact(s.amount)}</dd>
+          </div>
+        ))}
       {item(w.lines.socialEmployee ?? '', -slip.socialEmployee)}
+      {(slip.exemption ?? 0) > 0 ? (
+        <div class="kv__sub">
+          <dt>{w.pay.exemption(formatEurExact(slip.exemption ?? 0))}</dt>
+          <dd />
+        </div>
+      ) : null}
       {social('employee')}
       {item(w.lines.healthEmployee ?? '', -slip.healthEmployee)}
+      {slip.healthInsured === false ? (
+        <div class="kv__sub">
+          <dt>{w.pay.noHealth}</dt>
+          <dd />
+        </div>
+      ) : null}
       {slip.healthDeduction > 0 ? item(w.lines.healthDeduction ?? '', slip.healthDeduction) : null}
       {slip.healthTopUp > 0 ? item(w.lines.healthTopUp ?? '', slip.healthTopUp) : null}
       {item(w.lines.partialBase ?? '', slip.partialBase)}
@@ -69,7 +146,12 @@ export interface PayOrders {
   payday: string
   employees: { name: string; amount: number; iban: string | null }[]
   social: { amount: number; iban: string | null; vs: string | null }
-  health: { code: Insurer; amount: number; iban: string | null; vs: string | null }[]
+  health: {
+    code: Insurer
+    amount: number
+    iban: string | null
+    vs: string | null
+  }[]
   tax: { amount: number; iban: string | null; vs: string; due: string }
 }
 
@@ -128,7 +210,11 @@ const PaysCard: FC<{ orders: PayOrders; today: string }> = ({ orders, today }) =
 )
 
 /** The registrations with the Social Insurance Agency and the health insurers: filed in their portals, recorded here. */
-const RegistrationsCard: FC<{ company: Company; registrations: RegistrationDue[]; today: string }> = ({ company, registrations, today }) => (
+const RegistrationsCard: FC<{
+  company: Company
+  registrations: RegistrationDue[]
+  today: string
+}> = ({ company, registrations, today }) => (
   <section class="info" id="prihlasenia" aria-labelledby="prihlasenia-t">
     <h2 id="prihlasenia-t" class="info__title">
       {w.registrations.title}
@@ -160,7 +246,19 @@ const RegistrationsCard: FC<{ company: Company; registrations: RegistrationDue[]
   </section>
 )
 
-const EmployeesCard: FC<{ company: Company; employees: Employee[]; today: string }> = ({ company, employees, today }) => (
+/** How much holiday a person has taken in the year, of how much. */
+export interface LeaveUse {
+  year: number
+  taken: number
+  entitled: number
+}
+
+const EmployeesCard: FC<{
+  company: Company
+  employees: Employee[]
+  leave: Record<string, LeaveUse>
+  today: string
+}> = ({ company, employees, leave, today }) => (
   <section class="info" id="zamestnanci" aria-labelledby="zamestnanci-t">
     <h2 id="zamestnanci-t" class="info__title">
       {w.employees.title}
@@ -169,17 +267,29 @@ const EmployeesCard: FC<{ company: Company; employees: Employee[]; today: string
       <p class="info__empty">{w.noEmployees}</p>
     ) : (
       <ul class="plain">
-        {employees.map((e) => (
-          <li class="plain__row plain__row--two">
-            <span class="plain__name">{e.name}</span>
-            <span class="plain__sub">
-              <span>{w.employees.line(dayName(e.startedOn, today), e.endedOn ? dayName(e.endedOn, today) : null, formatEurExact(e.wage), INSURERS[e.insurer])}</span>
-            </span>
-            <a class="btn btn--line btn--small plain__action" href={`${base(company)}/zamestnanec?id=${e.id}`}>
-              {w.employees.edit}
-            </a>
-          </li>
-        ))}
+        {employees.map((e) => {
+          const use = leave[e.id]
+          return (
+            <li class="plain__row plain__row--two">
+              <span class="plain__name">{e.name}</span>
+              <span class="plain__sub">
+                <span>
+                  {w.employees.line(
+                    w.contracts[e.contract] ?? e.contract,
+                    dayName(e.startedOn, today),
+                    e.endedOn ? dayName(e.endedOn, today) : null,
+                    e.wageKind === 'hourly' ? w.employees.hourly(formatEurExact(e.wage)) : formatEurExact(e.wage),
+                    INSURERS[e.insurer],
+                  )}
+                </span>
+                {use ? <span>{w.leave(use.year, hundredthsText(use.taken), hundredthsText(use.entitled))}</span> : null}
+              </span>
+              <a class="btn btn--line btn--small plain__action" href={`${base(company)}/zamestnanec?id=${e.id}`}>
+                {w.employees.edit}
+              </a>
+            </li>
+          )
+        })}
       </ul>
     )}
     <a class="btn btn--line btn--small" href={`${base(company)}/zamestnanec`}>
@@ -191,8 +301,18 @@ const EmployeesCard: FC<{ company: Company; employees: Employee[]; today: string
 export type SettingsValues = Record<string, string>
 export type FieldErrors = Partial<Record<string, string>>
 
-const Field: FC<{ id: string; name: string; label: string; value: string; hint?: string; error?: string; mode?: 'numeric' | 'text' | 'decimal'; max?: number }> = (p) => (
-  <div class="fgrid__cell fgrid__cell--wide">
+const Field: FC<{
+  id: string
+  name: string
+  label: string
+  value: string
+  hint?: string
+  error?: string
+  mode?: 'numeric' | 'text' | 'decimal'
+  max?: number
+  wide?: boolean
+}> = (p) => (
+  <div class={`fgrid__cell${p.wide === false ? '' : ' fgrid__cell--wide'}`}>
     <label class="field__label" for={p.id}>
       {p.label}
     </label>
@@ -201,7 +321,12 @@ const Field: FC<{ id: string; name: string; label: string; value: string; hint?:
   </div>
 )
 
-const SettingsCard: FC<{ company: Company; insurers: Insurer[]; values: SettingsValues; errors: FieldErrors }> = ({ company, insurers, values, errors }) => (
+const SettingsCard: FC<{
+  company: Company
+  insurers: Insurer[]
+  values: SettingsValues
+  errors: FieldErrors
+}> = ({ company, insurers, values, errors }) => (
   <section class="info" id="nastavenie" aria-labelledby="nastavenie-t">
     <h2 id="nastavenie-t" class="info__title">
       {w.settings.title}
@@ -214,7 +339,15 @@ const SettingsCard: FC<{ company: Company; insurers: Insurer[]; values: Settings
       {insurers.map((code) => (
         <>
           <Field id={`w-zp-iban-${code}`} name={`zp_iban_${code}`} label={w.settings.healthIban(INSURERS[code])} value={values[`zp_iban_${code}`] ?? ''} error={errors[`zp_iban_${code}`]} max={34} />
-          <Field id={`w-zp-vs-${code}`} name={`zp_vs_${code}`} label={w.settings.healthVs(INSURERS[code])} value={values[`zp_vs_${code}`] ?? ''} error={errors[`zp_vs_${code}`]} mode="numeric" max={10} />
+          <Field
+            id={`w-zp-vs-${code}`}
+            name={`zp_vs_${code}`}
+            label={w.settings.healthVs(INSURERS[code])}
+            value={values[`zp_vs_${code}`] ?? ''}
+            error={errors[`zp_vs_${code}`]}
+            mode="numeric"
+            max={10}
+          />
         </>
       ))}
       <div class="fgrid__cell fgrid__cell--wide">
@@ -225,6 +358,145 @@ const SettingsCard: FC<{ company: Company; insurers: Insurer[]; values: Settings
     </form>
   </section>
 )
+
+/** A sick leave as listed: its person, its days, its daily base (typed, or proposed and from which period). */
+export interface LeaveRow {
+  leave: SickLeave
+  name: string
+  proposal: DvzProposal | null
+}
+
+export interface SickForm {
+  id: string | null
+  values: Record<string, string>
+  errors: FieldErrors
+}
+
+/** The sick leaves: each with its daily base, a form to write one or change the one picked. */
+const SickCard: FC<{
+  company: Company
+  period: string
+  rows: LeaveRow[]
+  employees: Employee[]
+  form: SickForm
+}> = ({ company, period, rows, employees, form }) => {
+  const v = form.values
+  const e = form.errors
+  const dvzText = (r: LeaveRow) => {
+    if (r.leave.dvz !== null) return w.sick.typed(`${tenThousandthsText(r.leave.dvz)} €`)
+    const p = r.proposal
+    if (!p) return null
+    if (p.dvz !== null) return w.sick.proposed(`${tenThousandthsText(p.dvz)} €`, textDay(p.from), textDay(p.to))
+    return p.reason === 'missing' && p.month ? w.sick.reasons.missing(monthName(`${p.month}-01`)) : w.sick.reasons[p.reason === 'missing' ? 'none' : p.reason]
+  }
+  return (
+    <section class="info" id="pn" aria-labelledby="pn-t">
+      <h2 id="pn-t" class="info__title">
+        {w.sick.title}
+      </h2>
+      <p class="info__lead">{w.sick.lead}</p>
+      {rows.length === 0 ? (
+        <p class="info__empty">{w.sick.empty}</p>
+      ) : (
+        <ul class="plain">
+          {rows.map((r) => (
+            <li class="plain__row plain__row--two">
+              <span class="plain__name">{r.name}</span>
+              <span class="plain__sub">
+                <span>
+                  {textDay(r.leave.from)} {'\u2013'} {r.leave.to ? textDay(r.leave.to) : w.sick.lasts}
+                </span>
+                <span class={r.leave.dvz === null && r.proposal?.dvz === null ? 'field__error' : undefined}>{dvzText(r)}</span>
+              </span>
+              <span class="plain__action wsick__acts">
+                <a class="btn btn--line btn--small" href={`${base(company)}?obdobie=${period}&pn=${r.leave.id}#pn`}>
+                  {w.sick.edit}
+                </a>
+                <form method="post" action={`${base(company)}/pn/${r.leave.id}/odstranit`}>
+                  <input type="hidden" name="obdobie" value={period} />
+                  <button class="btn btn--text btn--small" type="submit">
+                    {w.sick.remove}
+                  </button>
+                </form>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {employees.length > 0 ? (
+        <form class="fgrid" method="post" action={`${base(company)}/pn`} novalidate>
+          <input type="hidden" name="obdobie" value={period} />
+          {form.id ? <input type="hidden" name="id" value={form.id} /> : null}
+          <div class="fgrid__cell fgrid__cell--wide">
+            <label class="field__label" for="pn-zamestnanec">
+              {w.sick.employee}
+            </label>
+            <select id="pn-zamestnanec" class="field__input" name="zamestnanec" aria-invalid={e.zamestnanec ? 'true' : undefined}>
+              {employees.map((x) => (
+                <option value={x.id} selected={v.zamestnanec === x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+            {e.zamestnanec ? <p class="field__error">{e.zamestnanec}</p> : null}
+          </div>
+          <Field id="pn-od" name="od" label={w.sick.from} value={v.od ?? ''} error={e.od} max={16} wide={false} />
+          <Field id="pn-do" name="do" label={w.sick.to} value={v.do ?? ''} hint={w.sick.toHint} error={e.do} max={16} wide={false} />
+          <Field id="pn-dvz" name="dvz" label={w.sick.dvz} value={v.dvz ?? ''} hint={w.sick.dvzHint} error={e.dvz} mode="decimal" max={14} />
+          <div class="fgrid__cell fgrid__cell--wide">
+            <button class="btn btn--line stack__submit" type="submit">
+              {form.id ? w.sick.save : w.sick.add}
+            </button>
+          </div>
+        </form>
+      ) : null}
+    </section>
+  )
+}
+
+/** The parts of a person's month to type, as its relationship has them; the wage (or hours) is in the table's own column. */
+const PartsFields: FC<{
+  line: SlipLine
+  values: Record<string, string>
+  errors: FieldErrors
+}> = ({ line, values, errors }) => {
+  const kind = line.terms?.contract ?? 'employment'
+  const wageKind = line.terms?.wageKind ?? 'monthly'
+  const keys = partsFor(kind, wageKind)
+  const average = line.proposals?.average
+  return (
+    <div class="wparts">
+      {keys.map((key) => {
+        const name = `${PART_FIELDS[key]}_${line.employeeId}`
+        const hint =
+          key === 'average' && average
+            ? w.averageHint(eurPerHour(average.average), average.source === 'quarter')
+            : key === 'hours' && line.pay && kind === 'employment'
+              ? w.hoursHint(hundredthsText(line.pay.worked))
+              : undefined
+        const label = key === 'wage' && kind !== 'employment' ? w.parts.reward : (w.parts[key] ?? key)
+        return (
+          <div class="wparts__cell">
+            <label class="field__label" for={`w-${name}`}>
+              {label}
+            </label>
+            <input
+              id={`w-${name}`}
+              class="field__input"
+              name={name}
+              value={values[name] ?? ''}
+              inputmode="decimal"
+              maxlength={16}
+              autocomplete="off"
+              aria-invalid={errors[name] ? 'true' : undefined}
+            />
+            {errors[name] ? <p class="field__error">{errors[name]}</p> : hint ? <p class="field__hint">{hint}</p> : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export interface PayrollPageProps {
   /** The registrations with the Social Insurance Agency and the health insurers (team/registrations.ts). */
@@ -240,10 +512,23 @@ export interface PayrollPageProps {
   run: PayrollRun | null
   totals: PayrollTotals
   orders: PayOrders
-  /** The incomes and the payday as typed (after an error) or as stored. */
+  /** The parts and the payday as typed (after an error) or as stored. */
   values: Record<string, string>
   errors: FieldErrors
-  settings: { values: SettingsValues; errors: FieldErrors; insurers: Insurer[] }
+  /** What keeps the month from being closed. */
+  issues?: {
+    employeeId: string
+    name: string
+    issue: 'absence' | 'sickBase'
+  }[]
+  leaves?: LeaveRow[]
+  sickForm?: SickForm
+  leave?: Record<string, LeaveUse>
+  settings: {
+    values: SettingsValues
+    errors: FieldErrors
+    insurers: Insurer[]
+  }
   today: string
   flash?: string | null
   error?: string | null
@@ -252,6 +537,7 @@ export interface PayrollPageProps {
 export const PayrollPage: FC<PayrollPageProps> = (p) => {
   const c = p.company
   const closed = p.state === 'closed'
+  const issues = p.issues ?? []
   return (
     <>
       <a class="back" href={`/ucto/klienti/${c.id}`}>
@@ -287,6 +573,16 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
               <p class="vstatus__filed">
                 <span class="tick tick--green" aria-hidden="true" /> {w.closedLine(dayName(p.run.closedOn, p.today), p.run.closedByName ?? '')}
               </p>
+            ) : null}
+            {!closed && issues.length > 0 ? (
+              <div class="notice wissues">
+                <strong>{w.issuesTitle}</strong>
+                <ul>
+                  {issues.map((i) => (
+                    <li>{i.issue === 'absence' ? w.issues.absence(i.name) : w.issues.sickBase(i.name)}</li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
             {p.state === 'unsupported' ? (
               <p class="info__lead">{w.unsupported}</p>
@@ -324,38 +620,14 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                       {p.slips.map((l) => (
                         <tr>
                           <td class="ltable__name">
-                            <span class="wtable__name">{l.name}</span>
-                            <span class="wtable__sub">{w.days(l.days)}</span>
-                            <details class="vrows__docs">
-                              <summary>{w.detail}</summary>
-                              <SlipDetail slip={l.slip} />
-                              <a class="link" href={`${base(c)}/paska?obdobie=${p.period}&zamestnanec=${l.employeeId}`}>
-                                {w.payslip}
-                              </a>
-                            </details>
+                            <a class="wtable__name" href={`#zlozky-${l.employeeId}`}>
+                              {l.name}
+                            </a>
+                            <span class="wtable__sub">
+                              {contractLine(l)} · {w.days(l.days)}
+                            </span>
                           </td>
-                          <td class="num">
-                            {closed ? (
-                              formatEurExact(l.slip.gross)
-                            ) : (
-                              <>
-                                <label class="sr" for={`w-g-${l.employeeId}`}>
-                                  {w.grossLabel(l.name)}
-                                </label>
-                                <input
-                                  id={`w-g-${l.employeeId}`}
-                                  class="field__input wtable__input"
-                                  name={`hruba_${l.employeeId}`}
-                                  value={p.values[`hruba_${l.employeeId}`] ?? moneyText(l.gross)}
-                                  inputmode="decimal"
-                                  maxlength={14}
-                                  autocomplete="off"
-                                  aria-invalid={p.errors[`hruba_${l.employeeId}`] ? 'true' : undefined}
-                                />
-                                {p.errors[`hruba_${l.employeeId}`] ? <p class="field__error">{p.errors[`hruba_${l.employeeId}`]}</p> : null}
-                              </>
-                            )}
-                          </td>
+                          <td class="num">{formatEurExact(l.slip.gross + (l.slip.sickPay ?? 0))}</td>
                           <td class="num">{formatEurExact(l.slip.socialEmployee)}</td>
                           <td class="num">{formatEurExact(l.slip.healthEmployee)}</td>
                           <td class="num">{formatEurExact(l.slip.withheld)}</td>
@@ -367,7 +639,7 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                       ))}
                       <tr class="ltable__sum">
                         <td>{w.total}</td>
-                        <td class="num">{formatEurExact(p.totals.gross)}</td>
+                        <td class="num">{formatEurExact(p.totals.gross + p.totals.sickPay)}</td>
                         <td class="num">{formatEurExact(p.slips.reduce((s, l) => s + l.slip.socialEmployee, 0))}</td>
                         <td class="num">{formatEurExact(p.slips.reduce((s, l) => s + l.slip.healthEmployee, 0))}</td>
                         <td class="num">{formatEurExact(p.totals.tax)}</td>
@@ -377,6 +649,38 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                     </tbody>
                   </table>
                 </div>
+                <div class="wpeople">
+                  {p.slips.map((l) => {
+                    const kind = l.terms?.contract ?? 'employment'
+                    const wrong = Object.keys(p.errors).some((k) => k.endsWith(`_${l.employeeId}`))
+                    const typed = partsFor(kind, l.terms?.wageKind ?? 'monthly').some((k) => {
+                      const v = p.values[`${PART_FIELDS[k]}_${l.employeeId}`]
+                      return k !== 'wage' && k !== 'hours' && v !== undefined && v !== ''
+                    })
+                    const open = !closed && (wrong || typed || p.slips.length <= 12)
+                    return (
+                      <details class="wperson" id={`zlozky-${l.employeeId}`} open={open ? true : undefined}>
+                        <summary>
+                          <span class="wperson__name">{l.name}</span> <span class="wperson__sub">{contractLine(l)}</span>
+                        </summary>
+                        {closed ? null : <PartsFields line={l} values={p.values} errors={p.errors} />}
+                        {p.slips.length <= 12 ? (
+                          <details class="vrows__docs">
+                            <summary>{w.detail}</summary>
+                            <SlipDetail line={l} />
+                            <a class="link" href={`${base(c)}/paska?obdobie=${p.period}&zamestnanec=${l.employeeId}`}>
+                              {w.payslip}
+                            </a>
+                          </details>
+                        ) : (
+                          <a class="link" href={`${base(c)}/paska?obdobie=${p.period}&zamestnanec=${l.employeeId}`}>
+                            {w.payslip}
+                          </a>
+                        )}
+                      </details>
+                    )
+                  })}
+                </div>
                 {closed ? null : (
                   <>
                     <p class="field__hint">{w.grossHint}</p>
@@ -385,7 +689,15 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                         <label class="field__label" for="w-vyplata">
                           {w.payday}
                         </label>
-                        <input id="w-vyplata" class="field__input" name="vyplata" value={p.values.vyplata ?? ''} maxlength={16} autocomplete="off" aria-invalid={p.errors.vyplata ? 'true' : undefined} />
+                        <input
+                          id="w-vyplata"
+                          class="field__input"
+                          name="vyplata"
+                          value={p.values.vyplata ?? ''}
+                          maxlength={16}
+                          autocomplete="off"
+                          aria-invalid={p.errors.vyplata ? 'true' : undefined}
+                        />
                         {p.errors.vyplata ? <p class="field__error">{p.errors.vyplata}</p> : <p class="field__hint">{w.paydayHint}</p>}
                       </div>
                     </div>
@@ -413,17 +725,34 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
               </form>
             ) : null}
           </section>
-          {closed ? <section class="info payroll-reports-summary"><h2 class="info__title">Mzdové podania a potvrdenky</h2>
-            <p>Uzavretie miezd ešte nepotvrdzuje odoslanie výkazov. Každý príjemca má samostatný výsledok.</p>
-            {(p.reports ?? []).filter((r) => r.active).map((r) => <p>{REPORT_KINDS[r.kind]} · {monthName(`${r.period}-01`)} <span class={`pill pill--${r.sourceChanged ? 'red' : DELIVERY_TONE[r.status]}`}>{r.sourceChanged ? 'Podklady sa zmenili' : r.pkg ? REPORT_LABELS[r.status] : 'Treba doložiť výkaz'}</span></p>)}
-            {p.reopenBlocked ? <p class="notice">Uzávierka už má evidované odoslanie alebo overenú výplatu príjmov. Pôvodné podklady zostávajú zachované; ďalšiu opravu posúdi odborný správca.</p> : null}
-            <a class="btn btn--line" href={`/ucto/klienti/${c.id}/mzdove-podania?obdobie=${p.period}`}>Otvoriť mzdové podania</a>
-          </section> : null}
+          {closed ? (
+            <section class="info payroll-reports-summary">
+              <h2 class="info__title">Mzdové podania a potvrdenky</h2>
+              <p>Uzavretie miezd ešte nepotvrdzuje odoslanie výkazov. Každý príjemca má samostatný výsledok.</p>
+              {(p.reports ?? [])
+                .filter((r) => r.active)
+                .map((r) => (
+                  <p>
+                    {REPORT_KINDS[r.kind]} · {monthName(`${r.period}-01`)}{' '}
+                    <span class={`pill pill--${r.sourceChanged ? 'red' : DELIVERY_TONE[r.status]}`}>
+                      {r.sourceChanged ? 'Podklady sa zmenili' : r.pkg ? REPORT_LABELS[r.status] : 'Treba doložiť výkaz'}
+                    </span>
+                  </p>
+                ))}
+              {p.reopenBlocked ? (
+                <p class="notice">Uzávierka už má evidované odoslanie alebo overenú výplatu príjmov. Pôvodné podklady zostávajú zachované; ďalšiu opravu posúdi odborný správca.</p>
+              ) : null}
+              <a class="btn btn--line" href={`/ucto/klienti/${c.id}/mzdove-podania?obdobie=${p.period}`}>
+                Otvoriť mzdové podania
+              </a>
+            </section>
+          ) : null}
           {p.slips.length > 0 ? <PaysCard orders={p.orders} today={p.today} /> : null}
+          <SickCard company={c} period={p.period} rows={p.leaves ?? []} employees={p.employees} form={p.sickForm ?? { id: null, values: {}, errors: {} }} />
           <p class="info__source vnotbuilt">{w.notBuilt}</p>
         </div>
         <aside class="pgrid__side">
-          <EmployeesCard company={c} employees={p.employees} today={p.today} />
+          <EmployeesCard company={c} employees={p.employees} leave={p.leave ?? {}} today={p.today} />
           <RegistrationsCard company={c} registrations={p.registrations ?? []} today={p.today} />
           <SettingsCard company={c} insurers={p.settings.insurers} values={p.settings.values} errors={p.settings.errors} />
         </aside>
@@ -440,15 +769,40 @@ export interface EmployeeForm {
 
 export const CHILD_ROWS = 4
 
+const Select: FC<{
+  id: string
+  name: string
+  label: string
+  value: string
+  options: Record<string, string>
+  error?: string
+  hint?: string
+}> = (p) => (
+  <div class="fgrid__cell fgrid__cell--wide">
+    <label class="field__label" for={p.id}>
+      {p.label}
+    </label>
+    <select id={p.id} class="field__input" name={p.name} aria-invalid={p.error ? 'true' : undefined}>
+      {Object.entries(p.options).map(([value, label]) => (
+        <option value={value} selected={p.value === value}>
+          {label}
+        </option>
+      ))}
+    </select>
+    {p.error ? <p class="field__error">{p.error}</p> : p.hint ? <p class="field__hint">{p.hint}</p> : null}
+  </div>
+)
+
 export const EmployeePage: FC<{ company: Company; form: EmployeeForm }> = ({ company, form }) => {
   const v = form.values
   const e = form.errors
-  const tick = (name: string, label: string) => (
+  const tick = (name: string, label: string, hint?: string, error?: string) => (
     <div class="fgrid__cell fgrid__cell--wide">
       <label class="tickbox">
         <input type="checkbox" name={name} value="1" checked={v[name] === '1'} />
         <span>{label}</span>
       </label>
+      {error ? <p class="field__error">{error}</p> : hint ? <p class="field__hint">{hint}</p> : null}
     </div>
   )
   return (
@@ -466,22 +820,24 @@ export const EmployeePage: FC<{ company: Company; form: EmployeeForm }> = ({ com
           {form.id ? <input type="hidden" name="id" value={form.id} /> : null}
           <Field id="z-meno" name="meno" label={w.form.name} value={v.meno ?? ''} error={e.meno} max={80} />
           <Field id="z-narodeny" name="narodeny" label={w.form.born} value={v.narodeny ?? ''} error={e.narodeny} max={16} />
-          <div class="fgrid__cell fgrid__cell--wide">
-            <label class="field__label" for="z-poistovna">
-              {w.form.insurer}
-            </label>
-            <select id="z-poistovna" class="field__input" name="poistovna" aria-invalid={e.poistovna ? 'true' : undefined}>
-              {(Object.keys(INSURERS) as Insurer[]).map((code) => (
-                <option value={code} selected={v.poistovna === code}>
-                  {INSURERS[code]} ({code})
-                </option>
-              ))}
-            </select>
-            {e.poistovna ? <p class="field__error">{e.poistovna}</p> : null}
-          </div>
+          <Select id="z-vztah" name="vztah" label={w.form.contract} value={v.vztah ?? 'employment'} options={w.contracts} error={e.vztah} />
+          {tick('pravidelny', w.form.regular, w.form.regularHint)}
+          <Select id="z-dochodok" name="dochodok" label={w.form.pension} value={v.dochodok ?? 'none'} options={w.pensions} />
+          {tick('oop', w.form.exemption, undefined, e.oop)}
+          <Select
+            id="z-poistovna"
+            name="poistovna"
+            label={w.form.insurer}
+            value={v.poistovna ?? '25'}
+            options={Object.fromEntries((Object.keys(INSURERS) as Insurer[]).map((code) => [code, `${INSURERS[code]} (${code})`]))}
+            error={e.poistovna}
+          />
           <Field id="z-nastup" name="nastup" label={w.form.started} value={v.nastup ?? ''} error={e.nastup} max={16} />
           <Field id="z-skoncenie" name="skoncenie" label={w.form.ended} value={v.skoncenie ?? ''} hint={w.form.endedHint} error={e.skoncenie} max={16} />
+          <Select id="z-odmenovanie" name="odmenovanie" label={w.form.wageKind} value={v.odmenovanie ?? 'monthly'} options={w.wageKinds} />
           <Field id="z-mzda" name="mzda" label={w.form.wage} value={v.mzda ?? ''} error={e.mzda} mode="decimal" max={14} />
+          <Field id="z-hodiny" name="hodiny" label={w.form.weeklyHours} value={v.hodiny ?? ''} error={e.hodiny} mode="decimal" max={6} />
+          <Field id="z-dovolenka" name="dovolenka" label={w.form.leaveDays} value={v.dovolenka ?? ''} hint={w.form.leaveHint} error={e.dovolenka} mode="decimal" max={6} />
           <Field id="z-iban" name="iban" label={w.form.iban} value={v.iban ?? ''} error={e.iban} max={34} />
           {tick('vyhlasenie', w.form.declaration)}
           {tick('ztp', w.form.disabled)}
@@ -496,7 +852,15 @@ export const EmployeePage: FC<{ company: Company; form: EmployeeForm }> = ({ com
                     <label class="field__label" for={`z-dieta-${i}`}>
                       {w.form.childName}
                     </label>
-                    <input id={`z-dieta-${i}`} class="field__input" name={`dieta_${i}`} value={v[`dieta_${i}`] ?? ''} maxlength={80} autocomplete="off" aria-invalid={e[`dieta_${i}`] ? 'true' : undefined} />
+                    <input
+                      id={`z-dieta-${i}`}
+                      class="field__input"
+                      name={`dieta_${i}`}
+                      value={v[`dieta_${i}`] ?? ''}
+                      maxlength={80}
+                      autocomplete="off"
+                      aria-invalid={e[`dieta_${i}`] ? 'true' : undefined}
+                    />
                     {e[`dieta_${i}`] ? <p class="field__error">{e[`dieta_${i}`]}</p> : null}
                   </div>
                   <div class="fgrid__cell">
@@ -520,8 +884,13 @@ export const EmployeePage: FC<{ company: Company; form: EmployeeForm }> = ({ com
   )
 }
 
-/** An employee's payslip for a month, to print or save as PDF (the written statement of § 130(5) of the Labour Code). */
-export const PayslipPage: FC<{ company: Company; period: string; line: SlipLine; today: string }> = ({ company, period, line, today }) => (
+/** A person's payslip for a month, to print or save as PDF (the written statement of § 130(5) of the Labour Code). */
+export const PayslipPage: FC<{
+  company: Company
+  period: string
+  line: SlipLine
+  today: string
+}> = ({ company, period, line, today }) => (
   <>
     <a class="back" href={`${base(company)}?obdobie=${period}`}>
       {w.form.back}
@@ -535,8 +904,11 @@ export const PayslipPage: FC<{ company: Company; period: string; line: SlipLine;
       <p class="info__lead">
         <strong>{line.name}</strong> · {company.name}
       </p>
-      <p class="info__source">{w.days(line.days)}</p>
-      <SlipDetail slip={line.slip} />
+      <p class="info__source">
+        {contractLine(line)} · {w.days(line.days)}
+        {line.pay && line.pay.worked > 0 ? ` · ${hundredthsText(line.pay.worked)} h` : ''}
+      </p>
+      <SlipDetail line={line} />
       <p class="info__source wsheet__print">
         {w.print} · {textDay(today)}
       </p>

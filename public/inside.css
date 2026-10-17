@@ -6825,6 +6825,74 @@ select.field__input {
   display: block;
 }
 
+/* Each person's month below the table: the parts to type, then the payslip folded. */
+.wpeople {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.wperson {
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--line);
+}
+
+.wperson > summary {
+  cursor: pointer;
+}
+
+.wperson__name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.wperson__sub {
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+a.wtable__name {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.wparts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px 12px;
+  margin: 10px 0 6px;
+}
+
+.wparts__cell {
+  min-width: 0;
+}
+
+.wperson .wslip {
+  max-width: 560px;
+}
+
+.wparts .field__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wissues ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.wsick__acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 /* The children of an employee: a name and a day, side by side. */
 .wkids {
   display: grid;

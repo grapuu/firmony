@@ -92,8 +92,20 @@ over. Bring this section up to date first whenever a session ends.
    receipts 132/131, 112/111, 123/613, issues 504, 501, 613, a count's shortage to 549 and surplus to 648 or 613 by § 11
    of the accounting procedures; method B by counts, each count on the account and back the next day; each month's
    receipts and issues one entry each; an issue that would leave the stock short refused; items and moves pasted from
-   another program, all or none; the closing asks for the year's count; test/stock.runtime.mjs). The site promises a large company only an offer of its own until the software does each part; every
-   text widens when a part lands.
+   another program, all or none; the closing asks for the year's count; test/stock.runtime.mjs). Full payroll, stage 1
+   (built 17 October 2026, schema step 28: employees' `contract`, `regular`, `pension`, `exemption`, `wage_kind`,
+   `weekly_hours`, `leave_days`, the table `sick_leaves`): `src/app/payroll.ts` insures each relationship by the Agency's
+   tables (employment; DoVP, DoPČ, DoBPŠ regular or irregular; a director's remuneration without accident and guarantee
+   insurance, 1 % unemployment whole; pensions; the deduction 200 € in 2026, 300 € from 2027; students on DoBPŠ and
+   old-age pensioners on agreements outside health insurance); `src/app/pay-month.ts` works a month out of its parts
+   (the wage by weekdays less absences, an hourly wage by hours, holiday and obstacles at the average earnings of § 134,
+   overtime 25 %, night 40 %, Saturday 50 %, Sunday 100 % of the minimum hourly wage, a public holiday 100 %, bonus)
+   and sick pay by Act 462/2003 read on slov-lex (calendar days 1 to 14, 25 % and 55 %, the daily base proposed from
+   the closed months of the decisive period, capped, rounded up); sick pay is taxed and no assessment base; the books
+   take 521, 523 (director), 527 (sick pay); the page has each person's parts below the table, the PN card, the
+   employee form with the relationship, the holiday taken; registrations skip health for the state-insured;
+   test/payroll-full.runtime.mjs. Next: the reports for every kind, then the annual settlement. The site promises a
+   large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
    check passes and when he has asked for the work to be put there (his word of 15:32 on 17 October: "ak sú

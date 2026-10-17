@@ -307,7 +307,8 @@ export async function closingView(db: D1Database, company: Company, year: number
     loaded?.closings ?? closingsOf(db, company.id),
     incomePaid(db, company.id, year),
     assetsOf(db, company.id),
-    employeesOf(db, company.id),
+    // Employments only: an agreement outside employment or a director's remuneration is no employee of the count.
+    employeesOf(db, company.id).then((all) => all.filter((e) => e.contract === 'employment')),
     db
       .prepare(
         `SELECT s.method, s.valuation,

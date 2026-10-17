@@ -25,6 +25,7 @@ import { checkSocialReports } from './social.runtime.mjs'
 import { checkSocialMigration } from './social-migration.runtime.mjs'
 import { checkClosingPod } from './closing-pod.runtime.mjs'
 import { checkStock } from './stock.runtime.mjs'
+import { checkPayrollFull } from './payroll-full.runtime.mjs'
 import { socialReporting } from '../.wrangler/dist/stores.js'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -269,7 +270,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 27)
+check('health says the schema', (await res.json()).schema === 28)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -4058,18 +4059,18 @@ check(
   res = await acc.get(base)
   page = plain(await res.text())
   const net = last < '2027' ? '1 234,51 €' : '1 238,20 €'
-  check(`last month is offered with the wage and its payslip: ${net} to pay out`, res.status === 200 && page.includes(`name="hruba_${kept?.id}"`) && page.includes(net) && page.includes('Čo zaplatiť'), page.slice(page.indexOf('Na výplatu'), page.indexOf('Na výplatu') + 300))
+  check(`last month is offered with the wage and its payslip: ${net} to pay out`, res.status === 200 && page.includes(`name="mzda_${kept?.id}"`) && page.includes(net) && page.includes('Čo zaplatiť'), page.slice(page.indexOf('Na výplatu'), page.indexOf('Na výplatu') + 300))
   const payday = `${current}-10`
-  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: 'veľa', vyplata: skDay(payday), akcia: 'ulozit' })
+  res = await acc.post(base, { obdobie: last, [`mzda_${kept?.id}`]: 'veľa', vyplata: skDay(payday), akcia: 'ulozit' })
   check('an income that is no amount is said', res.status === 422 && plain(await res.text()).includes('Sumu napíšte v eurách'))
-  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'ulozit' })
+  res = await acc.post(base, { obdobie: last, [`mzda_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'ulozit' })
   let run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
   check('kept while open: the income and the payday', res.status === 303 && run?.payday === payday && JSON.parse(run.lines)[0]?.gross === 150000 && run.closed_at === null)
 
   // Closed: booked, and the client told what to pay
-  res = await acc.post(base, { obdobie: current, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(`${current}-28`), akcia: 'uzavriet' })
+  res = await acc.post(base, { obdobie: current, [`mzda_${kept?.id}`]: '1500', vyplata: skDay(`${current}-28`), akcia: 'uzavriet' })
   check('the month that runs cannot be closed', res.headers.get('location') === `${base}?obdobie=${current}&ok=mzdy-bezi`)
-  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'uzavriet' })
+  res = await acc.post(base, { obdobie: last, [`mzda_${kept?.id}`]: '1500', vyplata: skDay(payday), akcia: 'uzavriet' })
   run = await db.prepare("SELECT * FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first()
   const slip = JSON.parse(run?.lines ?? '[]')[0]?.slip
   check('closed once, with the payslip as it was worked out', res.status === 303 && run?.closed_at && slip?.gross === 150000 && slip.bonus === 10000 && slip.net === (last < '2027' ? 123451 : 123820), JSON.stringify(slip))
@@ -4079,7 +4080,7 @@ check(
     Boolean(told) && plain(told.body).includes(`Ján Mzdový: ${net} na SK31 1200 0000 1987 4263 7541`) && told.body.includes('Sociálna poisťovňa') && told.body.includes('VšZP') && told.body.includes(`VS 1100${last.slice(5, 7)}${last.slice(0, 4)}`) && plain(told.body).includes('8180 5002 5912 3456 7890'),
     told?.body,
   )
-  res = await acc.post(base, { obdobie: last, [`hruba_${kept?.id}`]: '1800', vyplata: skDay(payday), akcia: 'uzavriet' })
+  res = await acc.post(base, { obdobie: last, [`mzda_${kept?.id}`]: '1800', vyplata: skDay(payday), akcia: 'uzavriet' })
   check('closed, it is not closed again nor changed', res.headers.get('location') === `${base}?obdobie=${last}&ok=mzdy-uz` && JSON.parse((await db.prepare("SELECT lines FROM payroll_runs WHERE company_id = 'co-w' AND period = ?").bind(last).first())?.lines ?? '[]')[0]?.gross === 150000)
   res = await acc.get(`/ucto/klienti/co-w/kniha/dennik?rok=${last.slice(0, 4)}&mesiac=${Number(last.slice(5, 7))}`)
   page = plain(await res.text())
@@ -4752,6 +4753,7 @@ await checkBundle({ db, acc, lucia, nowS, day, unzip, capture: process.env.FIRMO
 await checkAssets({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkClosingPod({ db, acc, lucia, nowS, day, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkStock({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPayrollFull({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

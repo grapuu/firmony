@@ -18,7 +18,7 @@ export async function checkSocialReports({db,files,acc,admin,lucia,nowS,day,sign
     ...[['sp-main','25',150000,0],['sp-zero','24',0,1]].map(([id,insurer,gross,exempt])=>db.prepare('INSERT INTO employees(id,company_id,name,insurer,started_on,wage_cents,declaration,health_exempt,created_at) VALUES(?,?,?,?,?,?,1,?,?)').bind(id,company,`TEST Employee ${id}`,insurer,`${older}-01`,gross,exempt,nowS)),
   ])
   const owner=as((await signIn('social-owner@firmony.test')).cookie),member=as((await signIn('social-member@firmony.test')).cookie),co=async()=>companyOf(await db.prepare('SELECT * FROM companies WHERE id=?').bind(company).first())
-  const close=async(of)=>{const d=new Date(`${of}-15T12:00:00Z`);d.setUTCMonth(d.getUTCMonth()+1);return acc.post(`/ucto/klienti/${company}/mzdy`,{obdobie:of,vyplata:`${d.toISOString().slice(0,7)}-12`,akcia:'uzavriet','hruba_sp-main':'1500','hruba_sp-zero':'0'})}
+  const close=async(of)=>{const d=new Date(`${of}-15T12:00:00Z`);d.setUTCMonth(d.getUTCMonth()+1);return acc.post(`/ucto/klienti/${company}/mzdy`,{obdobie:of,vyplata:`${d.toISOString().slice(0,7)}-12`,akcia:'uzavriet','mzda_sp-main':'1500','mzda_sp-zero':'0'})}
   let res=await close(period),targets=await p.reportItems(db,company),target=targets.find((t)=>t.kind==='sp')
   check('the real payroll close creates one SP obligation covering both represented insurers',res.status===303&&Boolean(target)&&targets.filter((t)=>t.kind.startsWith('health')).length===2)
   const closure=await p.closureOf(db,company,period),healthMain=targets.find((t)=>t.kind==='health25')

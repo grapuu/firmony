@@ -94,29 +94,38 @@ import { bookTaxStatements, closingView, closingsOf, extendStatement, fileClosin
 import { notesDocument } from '../app/notes'
 import { pdfText } from '../app/pdf'
 import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
-import { CHILD_ROWS, EmployeePage, PayrollPage, PayslipPage, type FieldErrors, type MonthState, type PayOrders, type SlipLine } from '../views/payroll'
+import { CHILD_ROWS, EmployeePage, PayrollPage, PayslipPage, type FieldErrors, type LeaveRow, type LeaveUse, type MonthState, type PayOrders, type SickForm, type SlipLine } from '../views/payroll'
 import {
   INSURERS,
   closeRunStatement,
+  closedMonthsOf,
+  storedLine,
   employeeStatement,
   employeesOf,
   isInsurer,
+  leaveTouchesClosed,
+  monthIssues,
   monthRange,
   monthSlips,
   paydayOf,
   payrollSettingsOf,
+  removeSickLeaveStatement,
   reopenRunStatement,
   runTotals,
   runsOf,
   saveRunStatement,
   settingsStatement,
+  sickLeaveStatement,
+  sickLeavesOf,
   type Employee,
   type Insurer,
   type PayrollSettings,
   type PayrollRun,
 } from '../app/payroll-store'
 import { addDays } from '../app/ending'
-import { supportsPayrollPeriod } from '../app/payroll'
+import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
+import { leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay-month'
+import { hundredthsOf, hundredthsText, partsValues, readParts, tenThousandthsOf, tenThousandthsText } from '../app/payroll-form'
 import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
@@ -439,6 +448,14 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.settings
     case 'mzdy-nepodporovane':
       return t.payroll.unsupported
+    case 'mzdy-doplnit':
+      return t.payroll.flashes.issues
+    case 'mzdy-pn':
+      return t.payroll.flashes.sick
+    case 'mzdy-pn-odstranena':
+      return t.payroll.flashes.sickRemoved
+    case 'mzdy-pn-uzavrete':
+      return t.payroll.errors.sickClosed
     case 'plna-moc-vratena':
       return t.client.poaReturned
     case 'plna-moc-dovod':
@@ -1794,8 +1811,13 @@ function payrollPeriod(asked: unknown, months: readonly string[], today: string)
 }
 
 async function payrollData(db: D1Database, company: Company) {
-  const [employees, runs, row] = await Promise.all([employeesOf(db, company.id), runsOf(db, company.id), db.prepare('SELECT payroll FROM companies WHERE id = ?').bind(company.id).first<{ payroll: string | null }>()])
-  return { employees, runs, settings: payrollSettingsOf(row?.payroll ?? null) }
+  const [employees, runs, row, leaves] = await Promise.all([
+    employeesOf(db, company.id),
+    runsOf(db, company.id),
+    db.prepare('SELECT payroll FROM companies WHERE id = ?').bind(company.id).first<{ payroll: string | null }>(),
+    sickLeavesOf(db, company.id),
+  ])
+  return { employees, runs, leaves, settings: payrollSettingsOf(row?.payroll ?? null) }
 }
 
 /** What the company pays for a month and where: each employee's net wage, the Social Insurance Agency, each health insurer, the tax office. */
@@ -1806,7 +1828,7 @@ function payOrders(company: Company, period: string, slips: readonly SlipLine[],
     payday,
     employees: slips.map((l) => ({ name: l.name, amount: l.slip.net, iban: iban.get(l.employeeId) ?? null })),
     social: { amount: totals.social, iban: settings.social.iban, vs: settings.social.vs },
-    health: (Object.entries(totals.health) as [Insurer, number][]).map(([code, amount]) => ({ code, amount, iban: settings.health[code]?.iban ?? null, vs: settings.health[code]?.vs ?? null })),
+    health: (Object.entries(totals.health) as [Insurer, number][]).filter(([, amount]) => amount > 0).map(([code, amount]) => ({ code, amount, iban: settings.health[code]?.iban ?? null, vs: settings.health[code]?.vs ?? null })),
     tax: { amount: totals.tax, iban: company.taxAccount ? taxIban(company.taxAccount, WAGE_PREFIX) : null, vs: `1100${period.slice(5, 7)}${period.slice(0, 4)}`, due: workingDayFrom(addDays(payday, 5)) },
   }
 }
@@ -1820,23 +1842,65 @@ const settingsValues = (s: PayrollSettings): Record<string, string> => {
   return v
 }
 
+/** Each line's parts as the form shows them: the month's wage as agreed in the table's column, an hourly person's hours left for the proposal. */
+function monthValues(slips: readonly SlipLine[], employees: readonly Employee[], payday: string): Record<string, string> {
+  const v: Record<string, string> = { vyplata: textDay(payday) }
+  for (const l of slips) {
+    const e = employees.find((x) => x.id === l.employeeId)
+    if (!e || !l.parts) continue
+    Object.assign(v, partsValues(l.parts, l.employeeId, e.contract, e.wageKind))
+    if (!(e.wageKind === 'hourly' && e.contract !== 'director')) v[`mzda_${l.employeeId}`] = moneyText(l.parts.wage ?? e.wage)
+  }
+  return v
+}
+
+/** How much holiday each employee took in a year (closed months as they were, open ones as typed), of the days owed. */
+function leaveUse(employees: readonly Employee[], runs: readonly PayrollRun[], year: number): Record<string, LeaveUse> {
+  const out: Record<string, LeaveUse> = {}
+  for (const e of employees) {
+    if (e.contract !== 'employment' || e.startedOn.slice(0, 4) > String(year) || (e.endedOn && e.endedOn.slice(0, 4) < String(year))) continue
+    const taken = runs.filter((r) => r.period.startsWith(`${year}-`)).reduce((s, r) => s + (r.lines.find((l) => l.employeeId === e.id)?.parts?.holidayDays ?? 0), 0)
+    out[e.id] = { year, taken, entitled: e.leaveDays ?? leaveEntitlement(e.bornOn, year) }
+  }
+  return out
+}
+
+/** The sick leaves as listed, the newest first, each with its daily base proposed when none was typed. */
+function leaveRows(leaves: readonly SickLeave[], employees: readonly Employee[], runs: readonly PayrollRun[]): LeaveRow[] {
+  return [...leaves]
+    .sort((a, b) => (a.from > b.from ? -1 : 1))
+    .flatMap((leave) => {
+      const e = employees.find((x) => x.id === leave.employeeId)
+      if (!e) return []
+      return [{ leave, name: e.name, proposal: leave.dvz === null ? proposeDvz(leave, e.startedOn, closedMonthsOf(e, runs, leave.from.slice(0, 7))) : null }]
+    })
+}
+
+const sickValues = (leave: SickLeave | null, employees: readonly Employee[]): Record<string, string> => ({
+  zamestnanec: leave?.employeeId ?? employees[0]?.id ?? '',
+  od: leave ? textDay(leave.from) : '',
+  do: leave?.to ? textDay(leave.to) : '',
+  dvz: leave?.dvz !== null && leave?.dvz !== undefined ? tenThousandthsText(leave.dvz) : '',
+})
+
 async function payrollPage(
   c: Ctx,
   company: Company,
   asked: unknown,
-  forms: { month?: { values: Record<string, string>; errors: FieldErrors }; settings?: { values: Record<string, string>; errors: FieldErrors } } = {},
+  forms: { month?: { values: Record<string, string>; errors: FieldErrors }; settings?: { values: Record<string, string>; errors: FieldErrors }; sick?: SickForm } = {},
 ) {
   const db = c.env.DB
   const today = dayOf(now())
-  const { employees, runs, settings } = await payrollData(db, company)
+  const { employees, runs, leaves, settings } = await payrollData(db, company)
   const months = payrollMonths(employees, today, runs)
   const period = payrollPeriod(asked, months, today)
   const run = runs.find((r) => r.period === period) ?? null
   const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : !supportsPayrollPeriod(m) ? 'unsupported' : today <= monthRange(m).to ? 'running' : 'open')
-  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run)
+  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run, { leaves, runs })
   const payday = run?.payday ?? paydayOf(period, settings)
   const insurers = [...new Set<Insurer>([...employees.map((e) => e.insurer), ...(Object.keys(settings.health) as Insurer[])])]
-  const failed = Boolean(forms.month || forms.settings)
+  const failed = Boolean(forms.month || forms.settings || forms.sick?.errors && Object.keys(forms.sick.errors).length > 0)
+  const editing = typeof c.req.query('pn') === 'string' ? (leaves.find((l) => l.id === c.req.query('pn')) ?? null) : null
   return shell(
     c,
     'clients',
@@ -1854,8 +1918,12 @@ async function payrollPage(
       reopenBlocked={run?.closedOn ? await runReopenBlocked(db, company.id, period) : false}
       totals={runTotals(slips)}
       orders={payOrders(company, period, slips, employees, settings, payday)}
-      values={forms.month?.values ?? { vyplata: textDay(payday) }}
+      values={forms.month?.values ?? monthValues(slips, employees, payday)}
       errors={forms.month?.errors ?? {}}
+      issues={stateOf(period) === 'closed' ? [] : monthIssues(slips)}
+      leaves={leaveRows(leaves, employees, runs)}
+      sickForm={forms.sick ?? { id: editing?.id ?? null, values: sickValues(editing, employees), errors: {} }}
+      leave={leaveUse(employees, runs, Number(period.slice(0, 4)))}
       settings={{ values: forms.settings?.values ?? settingsValues(settings), errors: forms.settings?.errors ?? {}, insurers }}
       today={today}
       flash={failed ? null : flashOf(c)}
@@ -1895,7 +1963,9 @@ teamRoutes.post('/klienti/:id/mzdy/prihlasenia', async (c) => {
   return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=${back ? 'prihlasenie-spat' : 'prihlasenie'}#prihlasenia`, 303)
 })
 
-/** The incomes typed and the payday: kept, or the month closed with them and the client told what to pay. */
+const PART_ERRORS = { amount: t.payroll.errors.amount, hours: t.payroll.errors.hours, days: t.payroll.errors.days, average: t.payroll.errors.average } as const
+
+/** The parts typed and the payday: kept, or the month closed with them and the client told what to pay. */
 teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
@@ -1904,7 +1974,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const body = await c.req.parseBody()
   const today = dayOf(now())
   const sourceRevision = await dataRevision(db, company.id)
-  const { employees, runs, settings } = await payrollData(db, company)
+  const { employees, runs, leaves, settings } = await payrollData(db, company)
   const months = payrollMonths(employees, today, runs)
   const period = typeof body.obdobie === 'string' && months.includes(body.obdobie) ? body.obdobie : null
   if (!period) return c.text('Bad request', 400)
@@ -1914,32 +1984,37 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   if (!supportsPayrollPeriod(period)) return c.redirect(`${back}&ok=mzdy-nepodporovane`, 303)
   const values: Record<string, string> = {}
   const errors: FieldErrors = {}
-  const proposed = monthSlips(period, employees, run)
+  const proposed = monthSlips(period, employees, run, { leaves, runs })
   const lines = proposed.map((l) => {
-    const name = `hruba_${l.employeeId}`
-    const text = typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 14) : ''
-    values[name] = text
-    const cents = centsOf(text)
-    if (cents === null || Number.isNaN(cents) || cents < 0) errors[name] = t.payroll.errors.amount
-    return { employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: cents !== null && cents >= 0 ? cents : 0 }
+    const e = employees.find((x) => x.id === l.employeeId)!
+    const read = readParts(body as Record<string, unknown>, l.employeeId, e.contract, e.wageKind, e.wage)
+    Object.assign(values, read.values)
+    for (const [name, code] of Object.entries(read.errors)) errors[name] = PART_ERRORS[code]
+    return { employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: 0, parts: read.parts }
   })
   const paydayText = typeof body.vyplata === 'string' ? body.vyplata.trim().slice(0, 16) : ''
   values.vyplata = paydayText
   const payday = dayOfText(paydayText)
   if (!payday || payday < `${period}-01`) errors.vyplata = t.payroll.errors.paydayDate
   if (Object.keys(errors).length > 0 || !payday) return payrollPage(c, company, period, { month: { values, errors } })
+  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null }, { leaves, runs })
+  const typed = slips.map((l) => ({ employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: l.gross, parts: l.parts }))
   const close = body.akcia === 'uzavriet'
   if (!close) {
-    await db.batch([saveRunStatement(db, company.id, period, payday, lines, who.user.id, now()), eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.saved', subject: period })])
+    await db.batch([saveRunStatement(db, company.id, period, payday, typed, who.user.id, now()), eventStatement(db, { company: company.id, user: who.user.id, action: 'payroll.saved', subject: period })])
     return c.redirect(`${back}&ok=mzdy-ulozene`, 303)
   }
   if (today <= monthRange(period).to) return c.redirect(`${back}&ok=mzdy-bezi`, 303)
   if (lines.length === 0) return c.redirect(`${back}&ok=mzdy-nikto`, 303)
-  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null })
+  if (monthIssues(slips).length > 0) {
+    await db.batch([saveRunStatement(db, company.id, period, payday, typed, who.user.id, now())])
+    return c.redirect(`${back}&ok=mzdy-doplnit`, 303)
+  }
   const evidenceId = crypto.randomUUID(), closedAt = now()
+  const stored = slips.map(storedLine)
   const [done] = await db.batch([
-    closeRunStatement(db, company.id, period, payday, slips, who.user.id, today, closedAt, evidenceId, sourceRevision),
-    ...await closureStatements(db, company, { company_id: company.id, period, payday, lines: JSON.stringify(slips), closed_at: closedAt, evidence_id: evidenceId }, evidenceId, who.user.id),
+    closeRunStatement(db, company.id, period, payday, stored, who.user.id, today, closedAt, evidenceId, sourceRevision),
+    ...await closureStatements(db, company, { company_id: company.id, period, payday, lines: JSON.stringify(stored), closed_at: closedAt, evidence_id: evidenceId }, evidenceId, who.user.id),
   ])
   if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=mzdy-zmenene`, 303)
   const orders = payOrders(company, period, slips, employees, settings, payday)
@@ -1983,6 +2058,66 @@ teamRoutes.post('/klienti/:id/mzdy/otvorit', async (c) => {
     later(c, flushOutbox(db, c.env.EMAIL))
   }
   return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${period}&ok=mzdy-otvorene`, 303)
+})
+
+/**
+ * A sick leave written or changed: its person (of this company), its first day within the employment, its last day
+ * (empty while it lasts), its daily base (empty: proposed). Never over another of the same person, never changing what
+ * a closed month paid.
+ */
+teamRoutes.post('/klienti/:id/mzdy/pn', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const { employees, runs, leaves } = await payrollData(db, company)
+  const period = text('obdobie', 7)
+  const existing = typeof body.id === 'string' && body.id !== '' ? (leaves.find((l) => l.id === body.id) ?? null) : null
+  if (typeof body.id === 'string' && body.id !== '' && !existing) return missingPage(c)
+  const values = { zamestnanec: text('zamestnanec', 64), od: text('od', 16), do: text('do', 16), dvz: text('dvz', 14) }
+  const errors: FieldErrors = {}
+  const employee = employees.find((e) => e.id === values.zamestnanec) ?? null
+  if (!employee || (existing && existing.employeeId !== employee.id)) errors.zamestnanec = t.payroll.errors.sickEmployee
+  const from = dayOfText(values.od)
+  if (!from) errors.od = t.payroll.errors.day
+  const to = dayOfText(values.do)
+  if (to === null) errors.do = t.payroll.errors.day
+  else if (to && from && to < from) errors.do = t.payroll.errors.sickTo
+  const dvz = tenThousandthsOf(values.dvz)
+  if (dvz !== null && (Number.isNaN(dvz) || dvz <= 0)) errors.dvz = t.payroll.errors.dvz
+  const leave: SickLeave | null = employee && from && to !== null ? { id: existing?.id ?? crypto.randomUUID(), employeeId: employee.id, from, to: to || null, dvz: dvz !== null && !Number.isNaN(dvz) ? dvz : null } : null
+  if (leave && employee && !errors.od) {
+    if (leave.from < employee.startedOn || (employee.endedOn && leave.from > employee.endedOn)) errors.od = t.payroll.errors.sickOutside
+    const end = (l: SickLeave) => l.to ?? '9999-12-31'
+    if (leaves.some((l) => l.id !== leave.id && l.employeeId === leave.employeeId && l.from <= end(leave) && leave.from <= end(l))) errors.od = t.payroll.errors.sickOverlap
+    else if (leaveTouchesClosed(existing, leave, runs, employee)) errors.od = t.payroll.errors.sickClosed
+  }
+  if (Object.keys(errors).length > 0 || !leave) return payrollPage(c, company, period, { sick: { id: existing?.id ?? null, values, errors } })
+  await db.batch([
+    sickLeaveStatement(db, company.id, leave, c.get('who').user.id, now()),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: existing ? 'payroll.sick.changed' : 'payroll.sick.added', subject: leave.id }),
+  ])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${encodeURIComponent(/^\d{4}-\d{2}$/.test(period) ? period : '')}&ok=mzdy-pn#pn`, 303)
+})
+
+/** A sick leave entered by mistake, removed (never one a closed month paid by). */
+teamRoutes.post('/klienti/:id/mzdy/pn/:leave/odstranit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const period = typeof body.obdobie === 'string' && /^\d{4}-\d{2}$/.test(body.obdobie) ? body.obdobie : ''
+  const { employees, runs, leaves } = await payrollData(db, company)
+  const leave = leaves.find((l) => l.id === c.req.param('leave'))
+  const employee = leave ? employees.find((e) => e.id === leave.employeeId) : undefined
+  if (!leave || !employee) return missingPage(c)
+  if (leaveTouchesClosed(leave, null, runs, employee)) return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${period}&ok=mzdy-pn-uzavrete#pn`, 303)
+  await db.batch([
+    removeSickLeaveStatement(db, company.id, leave.id, c.get('who').user.id, now()),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'payroll.sick.removed', subject: leave.id }),
+  ])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?obdobie=${period}&ok=mzdy-pn-odstranena#pn`, 303)
 })
 
 /** The payroll settings: the payday, and the accounts and payer numbers at the Social Insurance Agency and the health insurers. */
@@ -2030,6 +2165,13 @@ const employeeValues = (e: Employee | null): Record<string, string> => {
     ztp: e?.disabled ? '1' : '',
     op: e?.healthDeduction ? '1' : '',
     vynimka: e?.healthExempt ? '1' : '',
+    vztah: e?.contract ?? 'employment',
+    pravidelny: !e || regularOf(e.contract, e.regular) ? '1' : '',
+    dochodok: e?.pension ?? 'none',
+    oop: e?.exemption ? '1' : '',
+    odmenovanie: e?.wageKind ?? 'monthly',
+    hodiny: hundredthsText(e?.weeklyHours ?? 4000),
+    dovolenka: e?.leaveDays !== null && e?.leaveDays !== undefined ? hundredthsText(e.leaveDays) : '',
   }
   for (let i = 0; i < CHILD_ROWS; i++) {
     v[`dieta_${i}`] = e?.children[i]?.name ?? ''
@@ -2076,7 +2218,18 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
   if (wage === null || Number.isNaN(wage) || wage < 0) errors.mzda = t.payroll.errors.amount
   const iban = field('iban', 34)
   if (iban !== '' && !isIban(iban)) errors.iban = t.payroll.errors.iban
-  for (const tick of ['vyhlasenie', 'ztp', 'op', 'vynimka']) values[tick] = body[tick] === '1' ? '1' : ''
+  const contract = field('vztah', 16) || 'employment'
+  if (!isContract(contract)) errors.vztah = t.payroll.errors.contract
+  const pension = field('dochodok', 16) || 'none'
+  const wageKind = field('odmenovanie', 16) === 'hourly' ? 'hourly' : 'monthly'
+  values.odmenovanie = wageKind
+  const weekly = hundredthsOf(field('hodiny', 6) || '40')
+  if (weekly === null || Number.isNaN(weekly) || weekly < 100 || weekly > 4800) errors.hodiny = t.payroll.errors.weekly
+  const leaveText = field('dovolenka', 6)
+  const leaveDays = leaveText === '' ? null : hundredthsOf(leaveText)
+  if (leaveDays !== null && (Number.isNaN(leaveDays) || leaveDays < 2000 || leaveDays > 6000)) errors.dovolenka = t.payroll.errors.leave
+  for (const tick of ['vyhlasenie', 'ztp', 'op', 'vynimka', 'pravidelny', 'oop']) values[tick] = body[tick] === '1' ? '1' : ''
+  if (values.oop === '1' && isContract(contract) && isPension(pension) && !exemptionAllowed(contract, pension)) errors.oop = t.payroll.errors.exemption
   const children: { name: string; born: string }[] = []
   for (let i = 0; i < CHILD_ROWS; i++) {
     const childName = field(`dieta_${i}`, 80)
@@ -2085,7 +2238,7 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
     if (childName.length < 1 || !childBorn) errors[`dieta_${i}`] = t.payroll.errors.child
     else children.push({ name: childName, born: childBorn })
   }
-  if (Object.keys(errors).length > 0 || !started || wage === null || !isInsurer(insurer))
+  if (Object.keys(errors).length > 0 || !started || wage === null || !isInsurer(insurer) || !isContract(contract) || weekly === null)
     return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: existing?.id ?? null, values, errors }} />, 422)
   const employee: Employee = {
     id: existing?.id ?? crypto.randomUUID(),
@@ -2101,6 +2254,13 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
     healthExempt: values.vynimka === '1',
     children,
     iban: iban !== '' ? plainIban(iban) : null,
+    contract,
+    regular: regularOf(contract, values.pravidelny === '1'),
+    pension: isPension(pension) ? pension : 'none',
+    exemption: values.oop === '1',
+    wageKind,
+    weeklyHours: weekly,
+    leaveDays: leaveDays !== null && !Number.isNaN(leaveDays) ? leaveDays : null,
   }
   await db.batch([
     employeeStatement(db, company.id, employee, c.get('who').user.id, now()),
@@ -2114,13 +2274,13 @@ teamRoutes.get('/klienti/:id/mzdy/paska', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
   const today = dayOf(now())
-  const { employees, runs } = await payrollData(c.env.DB, company)
+  const { employees, runs, leaves } = await payrollData(c.env.DB, company)
   const months = payrollMonths(employees, today, runs)
   const period = c.req.query('obdobie') ?? ''
   if (!months.includes(period)) return missingPage(c)
   const run = runs.find((r) => r.period === period) ?? null
   if (!run?.closedOn && !supportsPayrollPeriod(period)) return missingPage(c)
-  const line = monthSlips(period, employees, run).find((l) => l.employeeId === c.req.query('zamestnanec'))
+  const line = monthSlips(period, employees, run, { leaves, runs }).find((l) => l.employeeId === c.req.query('zamestnanec'))
   if (!line) return missingPage(c)
   return shell(c, 'clients', `${t.payroll.payslip}: ${line.name}`, <PayslipPage company={company} period={period} line={line} today={today} />)
 })

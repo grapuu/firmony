@@ -25,9 +25,26 @@
 //   lowered by a tenth of the partial base above 1,5 times the average monthly wage of two years before. Since 2020 the
 //   amounts of the income tax are rounded mathematically to the cent (§ 47).
 //
-// Said plainly, what is not built: agreements outside employment (dohody), a director's remuneration, pensioners and
-// students (their insurance differs), sick pay and holiday pay worked out by the app (the accountant types the month's
-// income), the annual reconciliation (ročné zúčtovanie), wage deductions (exekúcie), meal allowances.
+// - Who is insured how (read on 17 October 2026; the Agency's pages "Tabuľky platenia poistného od 1. januára 2026" and
+//   "Poistné pri dohodároch", DAUČ 10. 9. 2025 on a director's remuneration, podnikajte.sk "Odvody dohodárov v roku 2026"):
+//   an employment or an agreement with a regular monthly income is insured as an employee; one with an irregular income
+//   (an agreement to perform a task, an agreement of irregular work, a student's agreement) only for old age and
+//   disability, the employer adding the guarantee, accident insurance and the reserve fund; a director's remuneration
+//   (a commercial relationship, no labour law) carries no accident and no guarantee insurance, and its unemployment
+//   insurance is the employer's 1 % whole (the support in short-time work is for labour relationships). A pensioner of old
+//   age, an early old-age or a service pension after the age pays no disability and no unemployment insurance; one with a
+//   disability pension above 70 % no unemployment insurance. A student on a student's agreement and a pensioner on an
+//   agreement may claim the deduction (odvodová odpočítateľná položka) for one agreement: 200 € a month in 2026 off the
+//   base of old age, disability and the reserve fund (300 € from 2027), accident and guarantee insurance from the whole.
+//   The same two are no employees for health insurance (the state pays for them).
+// - Sick pay (náhrada príjmu, Act No. 462/2003 Z. z. as of 1 January 2026, read on slov-lex): for calendar days from the
+//   first day of the incapacity, at most to its fourteenth; 25 % of the daily assessment base for days 1 to 3, 55 % for
+//   days 4 to 14; the base is the sickness insurance bases of the decisive period divided by its days, rounded down to four
+//   decimals, at most the day's share of twice the general assessment base of two years before; the sum is rounded up to
+//   the cent. It is taxed with the wage and no assessment base of the insurances (pay-month.ts works it out).
+//
+// Said plainly, what is not built: wage deductions (exekúcie), meal allowances, seasonal work (its 762 € deduction), a
+// collective agreement's higher rates, contributions to the supplementary pension saving.
 
 /** The figures of a year, in cents; the rates are in hundredths of a per cent (basis points). */
 export interface PayrollYear {
@@ -38,13 +55,36 @@ export interface PayrollYear {
   averageWage: number
   /** The monthly minimum wage. */
   minimumWage: number
+  /** The deduction a student or a pensioner may claim on one agreement (odvodová odpočítateľná položka). */
+  exemption: number
 }
 
 /** Verified for 2026; for 2027 from the subsistence minimum of 1 July 2026 (295,22 €) and the average wage of 2025 (1 620 €). */
 export const PAYROLL_YEARS: Readonly<Record<number, PayrollYear>> = {
-  2026: { year: 2026, subsistence: 28413, averageWage: 152400, minimumWage: 91500 },
-  2027: { year: 2027, subsistence: 29522, averageWage: 162000, minimumWage: 97200 },
+  2026: { year: 2026, subsistence: 28413, averageWage: 152400, minimumWage: 91500, exemption: 20000 },
+  2027: { year: 2027, subsistence: 29522, averageWage: 162000, minimumWage: 97200, exemption: 30000 },
 }
+
+/** The relationships a person is paid under. */
+export const CONTRACTS = ['employment', 'dovp', 'dopc', 'dobps', 'director'] as const
+export type ContractKind = (typeof CONTRACTS)[number]
+export const isContract = (v: unknown): v is ContractKind => typeof v === 'string' && (CONTRACTS as readonly string[]).includes(v)
+/** An agreement outside employment (dohoda). */
+export const isAgreement = (k: ContractKind): boolean => k === 'dovp' || k === 'dopc' || k === 'dobps'
+
+/** A pension the person draws, as far as the insurance minds it: old age (also early old-age, a service pension after the age), disability up to 70 %, above it. */
+export const PENSIONS = ['none', 'old', 'invalid', 'invalid70'] as const
+export type PensionKind = (typeof PENSIONS)[number]
+export const isPension = (v: unknown): v is PensionKind => typeof v === 'string' && (PENSIONS as readonly string[]).includes(v)
+
+/** Whether a relationship can have a regular monthly income: an employment always does, a student's agreement never (its student is insured only for old age and disability). */
+export const regularOf = (kind: ContractKind, regular: boolean): boolean => (kind === 'employment' ? true : kind === 'dobps' ? false : regular)
+
+/** Who may claim the deduction: a student on a student's agreement, a pensioner on another agreement. */
+export const exemptionAllowed = (kind: ContractKind, pension: PensionKind): boolean => kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none')
+
+/** The monthly minimum wage for an hour (a 40-hour week: 174 hours), in thousandths of a euro: 5,259 € in 2026. */
+export const minimumHourly = (y: PayrollYear): number => Math.round((y.minimumWage * 10) / 174)
 
 /** Whether a period has its own rules. Never substitute another year's legislation. */
 export function supportsPayrollPeriod(period: string): boolean {
@@ -75,6 +115,31 @@ export const SOCIAL_EMPLOYER: Readonly<Partial<Record<SocialKind, number>>> = {
 /** Health insurance in basis points: the employee and the employer, halved for a person with a disability. */
 export const HEALTH = { employee: 500, employer: 1100 } as const
 
+/** The kinds of social insurance whose base the deduction lowers (pension insurance and the reserve fund). */
+const PENSION_KINDS: readonly SocialKind[] = ['oldAge', 'disability', 'reserve']
+
+/** The rates of social insurance of a relationship and a pension (the Agency's tables of 2026). */
+export function socialRates(kind: ContractKind, regular: boolean, pension: PensionKind): { employee: Partial<Record<SocialKind, number>>; employer: Partial<Record<SocialKind, number>> } {
+  const full = regularOf(kind, regular)
+  const director = kind === 'director'
+  const employee: Partial<Record<SocialKind, number>> = full ? { ...SOCIAL_EMPLOYEE } : { oldAge: 400, disability: 300 }
+  const employer: Partial<Record<SocialKind, number>> = full ? { ...SOCIAL_EMPLOYER } : { oldAge: 1400, disability: 300, guarantee: 25, accident: 80, reserve: 475 }
+  if (director) {
+    delete employer.guarantee
+    delete employer.accident
+    if (full) {
+      delete employer.support
+      employer.unemployment = 100
+    }
+  }
+  if (pension === 'old') for (const side of [employee, employer]) delete side.disability
+  if (pension === 'old' || pension === 'invalid70') for (const side of [employee, employer]) for (const k of ['unemployment', 'support'] as const) delete side[k]
+  return { employee, employer }
+}
+
+/** Whether the person is an employee for health insurance: not a student on a student's agreement, nor a pensioner of old age on another agreement. */
+export const healthInsured = (kind: ContractKind, pension: PensionKind): boolean => !(kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension === 'old'))
+
 /** The share of the partial base the child bonus may reach, by the number of children (§ 33(6)). */
 export const BONUS_CAP = [0, 2900, 3600, 4300, 5000, 5700, 6400] as const
 
@@ -98,6 +163,15 @@ export interface PayInput {
   healthMinimumExempt: boolean
   /** The days of the month the employment lasted (the minimum health advance is shared by them). */
   days: number
+  /** Sick pay of the month (náhrada príjmu): taxed, no assessment base. */
+  sickPay?: number
+  /** The relationship (an employment when left out), whether its income is regular, the pension drawn, the deduction claimed. */
+  contract?: ContractKind
+  regular?: boolean
+  pension?: PensionKind
+  exemption?: boolean
+  /** The days the minimum health advance counts (the days employed less those of sickness benefit, when the state pays). */
+  minimumDays?: number
 }
 
 export interface Payslip {
@@ -105,6 +179,15 @@ export interface Payslip {
   /** Present on newly calculated slips; older closed snapshots remain readable without it. */
   rulesYear?: number
   gross: number
+  /** Sick pay (taxed, no assessment base); the relationship and its insurance as worked out. Older closed slips have none. */
+  sickPay?: number
+  contract?: ContractKind
+  regular?: boolean
+  pension?: PensionKind
+  /** The deduction taken off the base of pension insurance and the reserve fund, and that base. */
+  exemption?: number
+  pensionBase?: number
+  healthInsured?: boolean
   /** The social assessment base (capped) and each kind of insurance, the employee's and the employer's. */
   socialBase: number
   social: { employee: Partial<Record<SocialKind, number>>; employer: Partial<Record<SocialKind, number>> }
@@ -187,30 +270,39 @@ export function payslip(input: PayInput): Payslip {
   if (!supportsPayrollPeriod(input.period)) throw new RangeError(`Unsupported payroll period: ${input.period}`)
   const y = payrollYear(Number(input.period.slice(0, 4)))
   const gross = Math.max(0, Math.round(input.gross))
+  const sickPay = Math.max(0, Math.round(input.sickPay ?? 0))
+  const contract = input.contract ?? 'employment'
+  const pension = input.pension ?? 'none'
+  const regular = regularOf(contract, input.regular ?? true)
+  const rates = socialRates(contract, regular, pension)
   const socialBase = Math.min(gross, socialCap(y))
+  const exemption = input.exemption && exemptionAllowed(contract, pension) ? Math.min(socialBase, y.exemption) : 0
+  const pensionBase = socialBase - exemption
+  const baseOf = (kind: SocialKind) => (kind === 'accident' ? gross : PENSION_KINDS.includes(kind) ? pensionBase : socialBase)
   const employee: Partial<Record<SocialKind, number>> = {}
   const employer: Partial<Record<SocialKind, number>> = {}
-  for (const [kind, bp] of Object.entries(SOCIAL_EMPLOYEE) as [SocialKind, number][]) employee[kind] = floorCents((socialBase * bp) / 10000)
-  for (const [kind, bp] of Object.entries(SOCIAL_EMPLOYER) as [SocialKind, number][]) employer[kind] = floorCents(((kind === 'accident' ? gross : socialBase) * bp) / 10000)
+  for (const [kind, bp] of Object.entries(rates.employee) as [SocialKind, number][]) employee[kind] = floorCents((baseOf(kind) * bp) / 10000)
+  for (const [kind, bp] of Object.entries(rates.employer) as [SocialKind, number][]) employer[kind] = floorCents((baseOf(kind) * bp) / 10000)
   const socialEmployee = Object.values(employee).reduce((s, v) => s + (v ?? 0), 0)
   const socialEmployer = Object.values(employer).reduce((s, v) => s + (v ?? 0), 0)
 
+  const insured = healthInsured(contract, pension)
   const half = input.disabled ? 2 : 1
-  const healthDeduction = input.healthDeduction ? healthDeductible(gross, input.days, monthDays(input.period)) : 0
-  let healthEmployee = floorCents(((gross - healthDeduction) * HEALTH.employee) / half / 10000)
-  const healthEmployer = floorCents((gross * HEALTH.employer) / half / 10000)
+  const healthDeduction = insured && input.healthDeduction ? healthDeductible(gross, input.days, monthDays(input.period)) : 0
+  let healthEmployee = insured ? floorCents(((gross - healthDeduction) * HEALTH.employee) / half / 10000) : 0
+  const healthEmployer = insured ? floorCents((gross * HEALTH.employer) / half / 10000) : 0
   // The minimum advance: the employee's and the employer's rate of the subsistence minimum, each rounded down (VšZP:
   // 45,45 € in 2026), by the days employed; what the two fall short of it the employee pays (§ 16a).
   let healthTopUp = 0
-  if (!input.healthMinimumExempt && !input.disabled) {
-    const days = Math.min(monthDays(input.period), Math.max(0, input.days))
+  if (insured && !input.healthMinimumExempt && !input.disabled) {
+    const days = Math.min(monthDays(input.period), Math.max(0, input.minimumDays ?? input.days))
     const whole = floorCents((y.subsistence * HEALTH.employee) / half / 10000) + floorCents((y.subsistence * HEALTH.employer) / half / 10000)
     const minimum = floorCents((whole * days) / monthDays(input.period))
     healthTopUp = Math.max(0, minimum - healthEmployee - healthEmployer)
     healthEmployee += healthTopUp
   }
 
-  const partialBase = gross - socialEmployee - healthEmployee
+  const partialBase = gross + sickPay - socialEmployee - healthEmployee
   const nonTaxable = input.declaration ? Math.min(Math.max(0, partialBase), nonTaxableMonth(y)) : 0
   const taxBase = Math.max(0, partialBase - nonTaxable)
   const advance = bandTax(taxBase, y)
@@ -227,11 +319,18 @@ export function payslip(input: PayInput): Payslip {
   const bonusByChild = reduced.map((c) => ({ name: c.name, amount: roundCents(c.amount * scale) }))
   const bonus = roundCents(Math.min(whole, cap))
   const withheld = advance - bonus
-  const net = gross - socialEmployee - healthEmployee - withheld
+  const net = gross + sickPay - socialEmployee - healthEmployee - withheld
   return {
     period: input.period,
     rulesYear: y.year,
     gross,
+    sickPay,
+    contract,
+    regular,
+    pension,
+    exemption,
+    pensionBase,
+    healthInsured: insured,
     socialBase,
     social: { employee, employer },
     socialEmployee,
@@ -248,13 +347,18 @@ export function payslip(input: PayInput): Payslip {
     bonusByChild,
     withheld,
     net,
-    employerCost: gross + socialEmployer + healthEmployer,
+    employerCost: gross + sickPay + socialEmployer + healthEmployer,
   }
 }
+
+/** What a slip makes taxable: the assessment base and the sick pay (older slips have no sick pay). */
+export const taxableOf = (s: Pick<Payslip, 'gross' | 'sickPay'>): number => s.gross + (s.sickPay ?? 0)
 
 /** The sums of a month's payslips: what goes to the Social Insurance Agency, to each health insurer, to the tax office, and to the employees. */
 export interface PayrollTotals {
   gross: number
+  /** Sick pay of the month, paid by the employer (taxed, no assessment base). */
+  sickPay: number
   net: number
   social: number
   /** By the health insurer's code (24 Dôvera, 25 VšZP, 27 Union). */
@@ -269,6 +373,7 @@ export function payrollTotals(slips: readonly (Payslip & { insurer: string })[])
   for (const s of slips) health[s.insurer] = (health[s.insurer] ?? 0) + s.healthEmployee + s.healthEmployer
   return {
     gross: slips.reduce((t, s) => t + s.gross, 0),
+    sickPay: slips.reduce((t, s) => t + (s.sickPay ?? 0), 0),
     net: slips.reduce((t, s) => t + s.net, 0),
     social: slips.reduce((t, s) => t + s.socialEmployee + s.socialEmployer, 0),
     health,

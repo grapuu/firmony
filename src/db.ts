@@ -891,6 +891,48 @@ const MIGRATIONS: readonly string[][] = [
       ]
     })(),
   ],
+  // Full payroll (src/app/pay-month.ts, 17 October 2026): the relationship a person is paid under (an employment, an
+  // agreement outside employment, a director's remuneration), a regular income, a pension, the deduction claimed, an
+  // hourly wage, the hours of a week, the holiday agreed above the law's; and each sick leave with its daily base. A
+  // removed leave is marked, never deleted.
+  [
+    "ALTER TABLE employees ADD COLUMN contract TEXT NOT NULL DEFAULT 'employment'",
+    'ALTER TABLE employees ADD COLUMN regular INTEGER NOT NULL DEFAULT 1',
+    "ALTER TABLE employees ADD COLUMN pension TEXT NOT NULL DEFAULT 'none'",
+    'ALTER TABLE employees ADD COLUMN exemption INTEGER NOT NULL DEFAULT 0',
+    "ALTER TABLE employees ADD COLUMN wage_kind TEXT NOT NULL DEFAULT 'monthly'",
+    'ALTER TABLE employees ADD COLUMN weekly_hours INTEGER NOT NULL DEFAULT 4000',
+    'ALTER TABLE employees ADD COLUMN leave_days INTEGER',
+    `CREATE TABLE IF NOT EXISTS sick_leaves (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      from_on TEXT NOT NULL,
+      to_on TEXT,
+      dvz INTEGER,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER,
+      deleted_at INTEGER,
+      deleted_by TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS sick_leaves_employee ON sick_leaves (company_id, employee_id, from_on)',
+    ...['INSERT', 'UPDATE', 'DELETE'].flatMap((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return [
+        `CREATE TRIGGER sick_leaves_data_${action.toLowerCase()} AFTER ${action} ON sick_leaves BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+        ...(action === 'DELETE'
+          ? []
+          : [
+              `CREATE TRIGGER sick_leaves_purging_${action.toLowerCase()} BEFORE ${action} ON sick_leaves
+                WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+                BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+            ]),
+      ]
+    }),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

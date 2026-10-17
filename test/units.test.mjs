@@ -34,6 +34,8 @@ import {
   stock,
   payroll,
   payrollStore,
+  payMonth,
+  payrollForm,
   payrollReporting as reports,
   periods,
   support,
@@ -3926,9 +3928,10 @@ async function zipped(entries, note) {
       payrollStore.daysEmployed({ startedOn: '2026-12-15', endedOn: null }, '2026-10') === 0 &&
       payrollStore.daysEmployed({ startedOn: '2026-01-01', endedOn: '2026-08-31' }, '2026-10') === 0,
   )
-  const employee = (fields = {}) => ({ id: 'e1', name: 'Ján', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, ...fields })
+  const employee = (fields = {}) => ({ id: 'e1', name: 'Ján', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, contract: 'employment', regular: true, pension: 'none', exemption: false, wageKind: 'monthly', weeklyHours: 4000, leaveDays: null, ...fields })
   let slips = payrollStore.monthSlips('2026-10', [employee({ startedOn: '2026-10-16' }), employee({ id: 'e2', startedOn: '2026-12-01' })], null)
-  check('an open month proposes the wage, a share of it for part of the month; nobody who was not employed', slips.length === 1 && slips[0].gross === 77419 && slips[0].days === 16)
+  // October 2026 has 22 weekdays, 11 of them from the 16th: half the wage.
+  check('an open month proposes the wage, a share of it by the working days of part of the month; nobody who was not employed', slips.length === 1 && slips[0].gross === 75000 && slips[0].days === 16)
   slips = payrollStore.monthSlips('2026-10', [employee()], { period: '2026-10', payday: '2026-11-10', lines: [{ employeeId: 'e1', name: 'Ján', insurer: '25', gross: 160000 }], closedOn: null, closedByName: null })
   check('the income typed for the month counts', slips[0].gross === 160000 && slips[0].slip.gross === 160000)
   const closed = { period: '2026-09', payday: '2026-10-10', lines: slips.map((l) => ({ ...l })), closedOn: '2026-10-05', closedByName: 'Lucia' }
@@ -3992,6 +3995,169 @@ async function zipped(entries, note) {
   )
   list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14')
   check('once its payday has passed it is no longer listed (the bank is not read for it)', !find('payrollPay', '2026-09'))
+}
+
+// Full payroll (17 October 2026): every relationship's insurance, sick pay, the month's parts, the average earnings.
+{
+  const slip = (fields) => payroll.payslip({ period: '2026-10', gross: 100000, declaration: false, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false, days: 31, ...fields })
+  const sum = (o) => Object.values(o).reduce((s, v) => s + v, 0)
+  let s = slip({ gross: 50000, contract: 'dovp', regular: false })
+  check(
+    'an agreement with an irregular income: 7 % and 22,8 %, old age and disability, the employer adding guarantee, accident and the reserve fund; health 5 % and 11 %',
+    s.socialEmployee === 3500 && s.socialEmployer === 11400 && s.social.employer.guarantee === 125 && s.social.employer.accident === 400 && s.social.employee.sickness === undefined && s.healthEmployee === 2500 && s.healthEmployer === 5500,
+    JSON.stringify(s.social),
+  )
+  s = slip({ contract: 'director', regular: false })
+  check("a director's irregular remuneration: 7 % and 21,75 %, no accident and no guarantee insurance", s.socialEmployee === 7000 && s.socialEmployer === 21750 && s.social.employer.accident === undefined && s.social.employer.guarantee === undefined)
+  s = slip({ contract: 'director', regular: true })
+  check("a director's regular remuneration: 9,4 % and 24,15 %, the employer's unemployment insurance 1 % whole, no support in short-time work", s.socialEmployee === 9400 && s.socialEmployer === 24150 && s.social.employer.unemployment === 1000 && s.social.employer.support === undefined)
+  s = slip({ gross: 30000, contract: 'dobps', exemption: true })
+  check(
+    "a student's agreement with the deduction (200 € in 2026): pension insurance and the reserve fund from 100 €, accident and guarantee from 300 €; no health insurance",
+    s.exemption === 20000 && s.pensionBase === 10000 && s.socialEmployee === 700 && s.socialEmployer === 1400 + 300 + 475 + 240 + 75 && s.healthEmployee === 0 && s.healthEmployer === 0 && s.healthInsured === false,
+    JSON.stringify(s.social),
+  )
+  s = slip({ gross: 15000, contract: 'dobps', exemption: true })
+  check('below the deduction only accident and guarantee insurance, rounded down each', s.socialEmployee === 0 && s.socialEmployer === 120 + 37)
+  s = slip({ period: '2027-01', gross: 30000, contract: 'dobps', exemption: true })
+  check('the deduction is 300 € from 2027', s.exemption === 30000 && s.socialEmployee === 0)
+  s = slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true })
+  check(
+    'an old-age pensioner on an agreement: no disability insurance, the deduction off the base, no health insurance',
+    s.social.employee.disability === undefined && s.socialEmployee === 800 && s.socialEmployer === 2800 + 950 + 320 + 100 && s.healthEmployee === 0,
+    JSON.stringify(s.social),
+  )
+  s = slip({ contract: 'employment', pension: 'old' })
+  check(
+    'an old-age pensioner in employment: no disability and no unemployment insurance (nor the support), health as anybody',
+    s.socialEmployee === 1400 + 4000 && s.socialEmployer === 1400 + 14000 + 250 + 800 + 4750 && s.healthEmployee === 5000,
+    JSON.stringify(s.social),
+  )
+  s = slip({ contract: 'employment', pension: 'invalid70' })
+  check('a disability pension above 70 %: no unemployment insurance, disability insurance kept', s.social.employee.unemployment === undefined && s.social.employer.support === undefined && s.social.employee.disability === 3000)
+  s = slip({ contract: 'employment', exemption: true })
+  check('the deduction is no employment\'s', s.exemption === 0 && s.socialEmployee === 9400)
+  s = slip({ contract: 'dovp', regular: false, pension: 'invalid', exemption: true, gross: 20000 })
+  check('a disability pensioner on an agreement keeps health insurance', s.healthInsured === true && s.socialEmployee === 0)
+  s = slip({ gross: 150000, sickPay: 34000, declaration: true })
+  check(
+    'sick pay is taxed with the wage and is no assessment base',
+    s.socialBase === 150000 && s.partialBase === 150000 + 34000 - 14100 - 7500 && s.net === 150000 + 34000 - 14100 - 7500 - s.withheld && s.employerCost === 150000 + 34000 + s.socialEmployer + s.healthEmployer,
+  )
+  check('the minimum health advance counts only the days the state does not pay for', slip({ gross: 5000, minimumDays: 15 }).healthTopUp === 2199 - 800 && slip({ gross: 5000 }).healthTopUp === 4545 - 800)
+
+  check('the most a daily base may be: twice the general assessment base of two years before, a day of 365, four decimals down', payMonth.dailyBaseCap(2026) === 1002082 && payMonth.dailyBaseCap(2027) === 1065205)
+  const leave = (from, to, dvz, id = 'l1') => ({ id, employeeId: 'e1', from, to, dvz })
+  let m = payMonth.sickMonth('2026-10', [leave('2026-10-05', '2026-10-20', 500000)], '2026-01-01', null)
+  check(
+    'sick pay of a leave: days 1 to 3 at 25 %, 4 to 14 at 55 %, from the 15th the Agency pays; its weekdays lower the wage',
+    m.days === 16 && m.parts[0].days25 === 3 && m.parts[0].days55 === 11 && m.benefitDays === 2 && m.amount === 34000 && m.weekdays === 12 && m.workdays === 12,
+    JSON.stringify(m),
+  )
+  m = payMonth.sickMonth('2026-10', [leave('2026-09-28', '2026-10-03', 400000)], '2026-01-01', null)
+  check('a leave over the month\'s start counts its days from its first day', m.days === 3 && m.parts[0].days55 === 3 && m.amount === 6600)
+  m = payMonth.sickMonth('2026-10', [leave('2026-10-01', '2026-10-01', 333333)], '2026-01-01', null)
+  check('the sum is rounded up to the cent', m.amount === 834)
+  m = payMonth.sickMonth('2026-10', [leave('2026-10-01', '2026-10-01', 2000000)], '2026-01-01', null)
+  check('a daily base above the most is capped', m.parts[0].dvz === 1002082)
+  m = payMonth.sickMonth('2026-10', [leave('2026-10-10', null, null)], '2026-01-01', null)
+  check('a leave that lasts runs to the month\'s end; without a daily base it waits', m.days === 22 && m.missing.join() === 'l1' && m.amount === 0)
+  m = payMonth.sickMonth('2026-10', [leave('2026-10-10', null, 500000)], '2026-01-01', '2026-10-15')
+  check('only the days of the employment count', m.days === 6)
+
+  const closed = (period, sicknessBase, fields = {}) => ({ period, sicknessBase, earned: sicknessBase, worked: 16800, sickDays: 0, ...fields })
+  const jan_may = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'].map((p) => closed(p, 150000))
+  let d = payMonth.proposeDvz({ from: '2026-06-10' }, '2026-01-01', jan_may)
+  check('the daily base proposed: from the start of the insurance in the year to the end of the month before, its days', d.dvz === 496688 && d.from === '2026-01-01' && d.to === '2026-05-31' && d.days === 151, JSON.stringify(d))
+  d = payMonth.proposeDvz({ from: '2026-06-10' }, '2026-01-01', jan_may.filter((x) => x.period !== '2026-03'))
+  check('a month of it not closed here: the accountant gives it', d.dvz === null && d.reason === 'missing' && d.month === '2026-03')
+  d = payMonth.proposeDvz({ from: '2026-06-10' }, '2026-05-01', jan_may)
+  check('fewer than 90 days of insurance: the period reaches the open month, so the accountant gives it', d.dvz === null && d.reason === 'short')
+  const y2026 = Array.from({ length: 10 }, (_, i) => closed(`2026-${String(i + 3).padStart(2, '0')}`, 200000, i === 4 ? { sickDays: 5 } : {}))
+  d = payMonth.proposeDvz({ from: '2027-02-01' }, '2026-03-01', y2026)
+  check('insured since the year before: from its start to that year\'s end, less the days of incapacity', d.dvz === 664451 && d.from === '2026-03-01' && d.to === '2026-12-31' && d.days === 301, JSON.stringify(d))
+
+  const terms = (fields = {}) => ({ contract: 'employment', regular: true, wageKind: 'monthly', wage: 150000, dailyHours: 800, startedOn: '2026-01-01', endedOn: null, ...fields })
+  check('the quarter before a month', payMonth.quarterBefore('2026-01').join() === '2025-10,2025-11,2025-12' && payMonth.quarterBefore('2026-05').join() === '2026-01,2026-02,2026-03' && payMonth.quarterBefore('2026-07').join() === '2026-04,2026-05,2026-06')
+  let a = payMonth.proposeAverage('2026-07', terms(), ['2026-04', '2026-05', '2026-06'].map((p) => closed(p, 160000)))
+  check('the average earnings: the quarter\'s wage by its hours, four decimals up', a.source === 'quarter' && a.average === 95239)
+  a = payMonth.proposeAverage('2026-10', terms(), [])
+  check('without 21 days worked in the quarter: the probable earnings, the monthly wage by the month\'s working hours', a.source === 'probable' && a.average === 85228)
+  check(
+    'an hourly wage is its own probable earnings; never below the minimum wage for an hour (5,259 € in 2026)',
+    payMonth.proposeAverage('2026-10', terms({ wageKind: 'hourly', wage: 800 }), []).average === 80000 && payMonth.proposeAverage('2026-10', terms({ wage: 50000 }), []).average === 52590 && payroll.minimumHourly(payroll.payrollYear(2026)) === 5259,
+  )
+
+  const none = payMonth.sickMonth('2026-10', [], '2026-01-01', null)
+  const parts = (fields = {}) => ({ ...payMonth.EMPTY_PARTS, ...fields })
+  let p = payMonth.monthPay('2026-10', terms(), parts(), none, 95239)
+  check('a whole month: the wage, its working hours', p.wage === 150000 && p.gross === 150000 && p.worked === 17600 && p.weekdays === 22 && p.issues.length === 0)
+  const sick = payMonth.sickMonth('2026-10', [leave('2026-10-05', '2026-10-20', 500000)], '2026-01-01', null)
+  p = payMonth.monthPay('2026-10', terms(), parts({ holidayDays: 200 }), sick, 95239)
+  check(
+    'two days of holiday and a sick leave: the wage lowered by their weekdays, holiday pay at the average earnings, the sick pay beside the base',
+    p.wage === 54545 && p.holiday === 15238 && p.sick === 34000 && p.gross === 54545 + 15238 && p.earned === 54545 && p.worked === (22 - 14) * 800,
+    JSON.stringify(p),
+  )
+  p = payMonth.monthPay('2026-10', terms(), parts({ overtimeHours: 1000, nightHours: 800, saturdayHours: 800, sundayHours: 400, holidayWorkHours: 800 }), none, 95239)
+  check(
+    'overtime: its wage and 25 % of the average earnings; night 40 %, Saturday 50 %, Sunday 100 % of the minimum wage for an hour; a public holiday 100 % of the average',
+    p.overtime === 10904 && p.surcharges === 13509 && p.worked === 17600 + 1000,
+    JSON.stringify(p),
+  )
+  p = payMonth.monthPay('2026-12', terms({ wageKind: 'hourly', wage: 800 }), parts(), payMonth.sickMonth('2026-12', [], '2026-01-01', null), 80000)
+  check('an hourly wage: the working days\' hours, and its public holidays at the average earnings (24 and 25 December 2026)', p.wage === 134400 && p.publicHolidays === 12800 && p.worked === 16800, JSON.stringify(p))
+  p = payMonth.monthPay('2026-10', terms({ contract: 'dovp', regular: false, wage: 0 }), parts({ wage: 50000, hours: 2000, holidayDays: 200, overtimeHours: 500 }), none, 52590)
+  check('an agreement: the reward typed and its hours; no holiday, no overtime', p.wage === 50000 && p.worked === 2000 && p.holiday === 0 && p.overtime === 0 && p.gross === 50000)
+  p = payMonth.monthPay('2026-10', terms({ contract: 'director', regular: false, wage: 100000 }), parts({ bonus: 20000, nightHours: 800 }), none, 52590)
+  check("a director's remuneration as agreed, a bonus, no surcharge", p.wage === 100000 && p.gross === 120000 && p.surcharges === 0)
+  p = payMonth.monthPay('2026-10', terms(), parts({ holidayDays: 2500 }), none, 95239)
+  check('absences longer than the working time keep the month back', p.issues.includes('absence'))
+  p = payMonth.monthPay('2026-10', terms(), parts(), payMonth.sickMonth('2026-10', [leave('2026-10-10', null, null)], '2026-01-01', null), 95239)
+  check('so does a sick leave without a daily base', p.issues.includes('sickBase'))
+  check(
+    'the holiday a year: 20 days, 25 from the year the person turns 33',
+    payMonth.leaveEntitlement('1995-03-01', 2026) === 2000 && payMonth.leaveEntitlement('1993-12-31', 2026) === 2500 && payMonth.leaveEntitlement(null, 2026) === 2000,
+  )
+
+  check(
+    'hours, days and average earnings as typed and written',
+    payrollForm.hundredthsOf('7,5') === 750 && payrollForm.hundredthsOf('0.25') === 25 && payrollForm.hundredthsOf('') === null && Number.isNaN(payrollForm.hundredthsOf('x')) &&
+      payrollForm.hundredthsText(750) === '7,5' && payrollForm.hundredthsText(800) === '8' && payrollForm.hundredthsText(5) === '0,05' &&
+      payrollForm.tenThousandthsOf('9,1234') === 91234 && payrollForm.tenThousandthsOf('45 €') === 450000 && payrollForm.tenThousandthsText(91234) === '9,1234',
+  )
+  const read = payrollForm.readParts({ mzda_e1: '1500,00', dovolenka_e1: '1,5', nadcas_e1: 'veľa', odmena_e1: '200' }, 'e1', 'employment', 'monthly', 150000)
+  check('the parts read: the agreed wage kept as agreed, days in hundredths, a wrong figure said under its field', read.parts.wage === null && read.parts.holidayDays === 150 && read.parts.bonus === 20000 && read.errors.nadcas_e1 === 'hours')
+  check(
+    'the parts each relationship has',
+    payrollForm.partsFor('director', 'monthly').join() === 'wage,bonus,other' && payrollForm.partsFor('dovp', 'hourly')[0] === 'hours' && !payrollForm.partsFor('dopc', 'monthly').includes('holidayDays') && payrollForm.partsFor('employment', 'monthly').includes('overtimeHours'),
+  )
+
+  const employee = (fields = {}) => ({ id: 'e1', name: 'Ján', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, contract: 'employment', regular: true, pension: 'none', exemption: false, wageKind: 'monthly', weeklyHours: 4000, leaveDays: null, ...fields })
+  const runs = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'].map((period) => ({ period, payday: null, closedOn: `${period}-28`, closedByName: null, lines: payrollStore.monthSlips(period, [employee()], null).map(payrollStore.storedLine) }))
+  const june = payrollStore.monthSlips('2026-06', [employee(), employee({ id: 'e2', name: 'Eva', contract: 'director', regular: false, wage: 80000 })], null, { leaves: [leave('2026-06-10', '2026-06-12', null)], runs })
+  const jan = june.find((l) => l.employeeId === 'e1')
+  check(
+    "an open month with a sick leave: the daily base proposed from the closed months, sick pay on the slip, the proposals beside it",
+    jan.proposals.dvz.l1.dvz === 496688 && jan.sick.amount === Math.ceil((496688 * 75) / 10000) && jan.slip.sickPay === jan.sick.amount && jan.pay.wage < 150000,
+    JSON.stringify(jan.sick),
+  )
+  const lpJune = payrollStore.ledgerPayroll({ period: '2026-06', payday: null, closedOn: '2026-07-01', closedByName: null, lines: june.map(payrollStore.storedLine) })
+  check(
+    "the month's costs by account: wages 521, a director's remuneration 523, sick pay 527",
+    lpJune.costs.find((x) => x.account === '523')?.cents === 80000 && lpJune.costs.find((x) => x.account === '527')?.cents === jan.sick.amount && lpJune.gross === lpJune.costs.reduce((t, x) => t + x.cents, 0),
+    JSON.stringify(lpJune.costs),
+  )
+  check('a stored line keeps no proposal', !('proposals' in payrollStore.storedLine(jan)))
+  const regs = registrations.registrationDues([{ id: 's', name: 'Študent', insurer: '25', startedOn: '2026-10-01', endedOn: '2026-10-31', health: false }], '2026-01-01', null, new Map(), '2026-10-01')
+  check('a person the state insures: registered with the Social Insurance Agency only', regs.length === 3 && regs.every((r) => r.agency === 'social'), JSON.stringify(regs))
+  check(
+    "a change of a sick leave never reaches a closed month",
+    payrollStore.leaveTouchesClosed(null, leave('2026-05-10', '2026-05-12', 500000), runs, employee()) &&
+      !payrollStore.leaveTouchesClosed(null, leave('2026-06-10', '2026-06-12', 500000), runs, employee()) &&
+      !payrollStore.leaveTouchesClosed(leave('2026-05-28', null, 500000), leave('2026-05-28', '2026-06-03', 500000), runs, employee()) &&
+      payrollStore.leaveTouchesClosed(leave('2026-05-28', null, 500000), leave('2026-05-28', '2026-05-30', 500000), runs, employee()),
+  )
 }
 
 // Income tax advances (Act 595/2003 s. 42(1), (2), (7)): from the month after the return's filing deadline, by the end

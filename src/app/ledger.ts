@@ -108,6 +108,7 @@ export const CHART: Readonly<Record<string, string>> = {
   '513': 'Náklady na reprezentáciu',
   '518': 'Ostatné služby',
   '521': 'Mzdové náklady',
+  '523': 'Odmeny členom orgánov spoločnosti a družstva',
   '524': 'Zákonné sociálne poistenie',
   '527': 'Zákonné sociálne náklady',
   '531': 'Daň z motorových vozidiel',
@@ -254,7 +255,9 @@ export interface ManualEntry {
 /** A month's payroll closed (payroll-store.ts), as the books take it: the wages, each side's insurance, the tax withheld. */
 export interface LedgerPayroll {
   period: string
+  /** What the month costs in wages (the assessment base and the sick pay), and by account (521, 523, 527) when told. */
   gross: number
+  costs?: { account: string; cents: number }[]
   socialEmployee: number
   socialEmployer: number
   healthEmployee: number
@@ -774,7 +777,7 @@ export function buildBooks(input: LedgerInput): Books {
     const end = periodRange(r.period).to
     if (!inBooks(end)) continue
     const lines: LedgerLine[] = [
-      { md: '521', d: '331', cents: r.gross },
+      ...(r.costs ?? [{ account: '521', cents: r.gross }]).map((c) => ({ md: c.account, d: '331', cents: c.cents })),
       { md: '331', d: SOCIAL_ACCOUNT, cents: r.socialEmployee },
       { md: '331', d: HEALTH_ACCOUNT, cents: r.healthEmployee },
       r.tax >= 0 ? { md: '331', d: '342', cents: r.tax } : { md: '342', d: '331', cents: -r.tax },

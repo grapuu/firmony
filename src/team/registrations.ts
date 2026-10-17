@@ -24,6 +24,8 @@ export interface RegistrationEmployee {
   insurer: string
   startedOn: string
   endedOn: string | null
+  /** Whether the person is an employee for health insurance (not a student on a student's agreement, nor an old-age pensioner on an agreement); true when left out. */
+  health?: boolean
 }
 
 export interface RegistrationDue {
@@ -75,18 +77,19 @@ export function registrationDues(
   }
   const insurers = new Set<string>()
   for (const e of byStart) {
-    if (!insurers.has(e.insurer)) {
+    const health = e.health !== false
+    if (health && !insurers.has(e.insurer)) {
       insurers.add(e.insurer)
       if (ours(e.startedOn))
         add({ key: `employer:health:${e.insurer}`, agency: 'health', move: 'employer', name: null, insurer: e.insurer, day: workingDaysAfter(e.startedOn, 8) })
     }
     if (ours(e.startedOn)) {
       add({ key: `${e.id}:in:social`, agency: 'social', move: 'in', name: e.name, insurer: null, day: addDays(e.startedOn, -1) })
-      add({ key: `${e.id}:in:health`, agency: 'health', move: 'in', name: e.name, insurer: e.insurer, day: workingDaysAfter(e.startedOn, 8) })
+      if (health) add({ key: `${e.id}:in:health`, agency: 'health', move: 'in', name: e.name, insurer: e.insurer, day: workingDaysAfter(e.startedOn, 8) })
     }
     if (e.endedOn && ours(e.endedOn)) {
       add({ key: `${e.id}:out:social`, agency: 'social', move: 'out', name: e.name, insurer: null, day: addDays(e.endedOn, 8) })
-      add({ key: `${e.id}:out:health`, agency: 'health', move: 'out', name: e.name, insurer: e.insurer, day: workingDaysAfter(e.endedOn, 8) })
+      if (health) add({ key: `${e.id}:out:health`, agency: 'health', move: 'out', name: e.name, insurer: e.insurer, day: workingDaysAfter(e.endedOn, 8) })
     }
   }
   return dues.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))

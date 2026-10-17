@@ -18,6 +18,7 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['sklad-polozky', 'SELECT * FROM stock_items WHERE company_id = ?1 ORDER BY code'],
     ['sklad-pohyby', "SELECT * FROM stock_moves WHERE company_id = ?1 AND substr(on_date, 1, 4) = ?2 ORDER BY on_date, number"],
     ['zamestnanci', 'SELECT * FROM employees WHERE company_id = ?1 ORDER BY id'],
+    ['pracovne-neschopnosti', 'SELECT * FROM sick_leaves WHERE company_id = ?1 ORDER BY employee_id, from_on'],
     ['mzdy', 'SELECT * FROM payroll_runs WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY period'],
     ['historia-miezd', 'SELECT * FROM payroll_history WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],
     ['zavierky', 'SELECT * FROM closings WHERE company_id = ?1 AND year = ?2 ORDER BY year'],
@@ -88,7 +89,10 @@ export async function handoverData(db: D1Database, company: string, year: string
     if (run.closed_at === null || !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(run.period))) continue
     const lines = parsed(run.lines)
     if (!Array.isArray(lines)) continue
-    const rows = [['Zamestnanec', 'Poisťovňa', 'Hrubá mzda', 'Sociálne zamestnanca', 'Zdravotné zamestnanca', 'Daň po bonuse', 'Čistá mzda', 'Cena práce'], ...lines.map((line) => [line.name, line.insurer, ...['gross', 'socialEmployee', 'healthEmployee', 'withheld', 'net', 'employerCost'].map((k) => csvMoney(line.slip?.[k] ?? null))])]
+    const rows = [
+      ['Zamestnanec', 'Vzťah', 'Poisťovňa', 'Hrubá mzda', 'Náhrada príjmu pri PN', 'Sociálne zamestnanca', 'Zdravotné zamestnanca', 'Daň po bonuse', 'Čistá mzda', 'Cena práce'],
+      ...lines.map((line) => [line.name, line.slip?.contract ?? 'employment', line.insurer, ...['gross', 'sickPay', 'socialEmployee', 'healthEmployee', 'withheld', 'net', 'employerCost'].map((k) => csvMoney(line.slip?.[k] ?? (k === 'sickPay' ? 0 : null)))]),
+    ]
     entries.push(entry(`mzdy/${run.period}/pasky.csv`, `\uFEFF${rows.map((r) => r.map(csvCell).join(';')).join('\r\n')}\r\n`))
     entries.push(entry(`mzdy/${run.period}/uzavrete-pasky.json`, json(lines)))
   }

@@ -20,7 +20,7 @@ export async function checkHealthReports({db,files,acc,admin,lucia,nowS,day,sign
   ])
   const owner=as((await signIn('health-owner@firmony.test')).cookie),member=as((await signIn('health-member@firmony.test')).cookie)
   const co=()=>db.prepare('SELECT * FROM companies WHERE id=?').bind(company).first().then(companyOf)
-  const close=async(of)=>acc.post(`/ucto/klienti/${company}/mzdy`,{obdobie:of,vyplata:`${today.slice(0,7)}-12`,akcia:'uzavriet',...Object.fromEntries(employeeRows.map(([id,,gross])=>[`hruba_${id}`,String(gross/100)]))})
+  const close=async(of)=>acc.post(`/ucto/klienti/${company}/mzdy`,{obdobie:of,vyplata:`${today.slice(0,7)}-12`,akcia:'uzavriet',...Object.fromEntries(employeeRows.map(([id,,gross])=>[`mzda_${id}`,String(gross/100)]))})
   let res=await close(period),closure=await p.closureOf(db,company,period)
   check('actual monthly close stores insurance regimes alongside the immutable payslips',res.status===303&&Boolean(closure)&&JSON.parse(closure.lines).every((l)=>typeof l.health?.minimumExempt==='boolean'))
   let targets=await p.reportItems(db,company),target=targets.find((t)=>t.kind==='health25')
