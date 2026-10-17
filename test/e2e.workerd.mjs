@@ -28,6 +28,7 @@ import { checkStock } from './stock.runtime.mjs'
 import { checkPayrollFull } from './payroll-full.runtime.mjs'
 import { checkTakeover } from './takeover.runtime.mjs'
 import { checkCurrency } from './currency.runtime.mjs'
+import { checkOss } from './oss.runtime.mjs'
 import { socialReporting } from '../.wrangler/dist/stores.js'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -274,7 +275,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 32)
+check('health says the schema', (await res.json()).schema === 33)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -4760,6 +4761,7 @@ await checkStock({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTU
 await checkPayrollFull({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkTakeover({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkCurrency({ db, acc, lucia, nowS, day })
+await checkOss({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

@@ -14,7 +14,7 @@ pages.push('social-missing.html','social-ready.html','social-error.html','social
 pages.push('thanks.html', 'requests.html', 'contract-stale.html', 'new-client.html', 'switch.html', 'welcome.html', 'billing.html', 'client-bills.html')
 pages.push('team-home.html', 'vat-ready.html', 'payment-before.html', 'first-admin.html', 'contract-release.html')
 pages.push('payroll-registrations.html', 'handover-resign.html', 'contract-lapsed.html', 'team-people.html', 'client-poa.html')
-pages.push('podania-balik.html', 'assets.html', 'asset.html', 'closing-pod.html', 'stock.html', 'stock-item.html', 'payroll-full.html', 'settlement.html', 'takeover.html')
+pages.push('podania-balik.html', 'assets.html', 'asset.html', 'closing-pod.html', 'stock.html', 'stock-item.html', 'payroll-full.html', 'settlement.html', 'takeover.html', 'oss.html')
 for (const name of pages) await readFile(resolve(fixtures, name))
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon' }
 const server = createServer(async (req, res) => {

@@ -44,8 +44,9 @@ import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, period
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
 import { summaryPeriodOf, type SvView } from '../app/vat-summary'
 import { registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
+import { nextQuarter, ossDue, quarterOfDay, quarterRange } from '../app/oss'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'summary' | 'oss' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
@@ -54,6 +55,7 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   vat: 'ours',
   vatFix: 'ours',
   summary: 'ours',
+  oss: 'ours',
   closing: 'ours',
   payroll: 'ours',
   payrollReports: 'ours',
@@ -128,6 +130,26 @@ export interface PayrollFact {
   payoutPending?: Set<string>
 }
 
+/**
+ * The one-stop shop's returns of a company that uses it (oss.ts): each quarter since, the last five, by the last day
+ * of the month after it; done once marked as filed on its page.
+ */
+export function ossDeadlines(company: Pick<Company, 'id' | 'ossSince' | 'startOn' | 'createdAt' | 'endsOn'>, filed: ReadonlySet<string>, today: string): Due[] {
+  if (!company.ossSince) return []
+  const start = [company.ossSince, company.startOn ?? bratislavaDay(company.createdAt)].sort()[1] as string
+  const out: Due[] = []
+  const last = quarterOfDay(company.endsOn && company.endsOn < today ? company.endsOn : today)
+  const quarters: string[] = []
+  for (let q = quarterOfDay(start); q <= last; q = nextQuarter(q)) quarters.push(q)
+  for (const q of quarters.slice(-5)) {
+    const running = today <= quarterRange(q).to
+    const done = filed.has(q)
+    const day = ossDue(q)
+    out.push({ companyId: company.id, kind: 'oss', period: q, day, state: done ? 'done' : running ? 'running' : 'open', late: !done && !running && today > day, count: 0, cents: 0, fix: null })
+  }
+  return out
+}
+
 /** What a company's deadlines are worked out from. */
 export interface DueFacts {
   /** The VAT periods of `vatWindow`, worked out (viewOf), the oldest first. */
@@ -150,6 +172,8 @@ export interface DueFacts {
   employees?: RegistrationEmployee[]
   /** Each registration recorded as filed, with the day it was recorded. */
   registered?: Map<string, string>
+  /** The one-stop shop's quarters filed (oss.ts). */
+  oss?: Set<string>
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -218,6 +242,7 @@ export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly
 /** A company's deadlines: everything that can be done now, what still runs once it is `aheadDays` near, and what was done in the last weeks. */
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
+  const ossDues = ossDeadlines(company, facts.oss ?? new Set(), today)
   const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage' | 'registration'>>) =>
     // Sent and waiting for its receipt is not late, whenever the receipt comes: what was ours to do by the day is done.
     out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day && due.deliveryStatus !== 'submitted' })
@@ -342,6 +367,7 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
   // months, the closing in three); what was done for a few weeks.
   const ahead = addDays(today, DEADLINES.aheadDays)
   const back = addDays(today, -DEADLINES.doneDays)
+  out.push(...ossDues)
   return out.filter((d) => (d.state === 'done' ? d.day >= back : d.state !== 'running' || d.day <= ahead))
 }
 
@@ -357,7 +383,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, oss: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

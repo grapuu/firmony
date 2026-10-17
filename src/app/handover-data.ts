@@ -20,6 +20,7 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['zamestnanci', 'SELECT * FROM employees WHERE company_id = ?1 ORDER BY id'],
     ['pracovne-neschopnosti', 'SELECT * FROM sick_leaves WHERE company_id = ?1 ORDER BY employee_id, from_on'],
     ['zavierky-predchodcu', 'SELECT * FROM prior_statements WHERE company_id = ?1 ORDER BY year'],
+    ['oss-priznania', 'SELECT company_id, quarter, data, filed_on, filed_at, filed_by FROM oss_returns WHERE company_id = ?1 ORDER BY quarter'],
     ['rocne-zuctovania', 'SELECT * FROM tax_settlements WHERE company_id = ?1 AND year = CAST(?2 AS INTEGER) ORDER BY employee_id'],
     ['mzdy', 'SELECT * FROM payroll_runs WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY period'],
     ['historia-miezd', 'SELECT * FROM payroll_history WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],

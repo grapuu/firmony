@@ -19,10 +19,15 @@ export interface VatValues {
   period: string
   base: Record<FormRate, string>
   tax: Record<FormRate, string>
+  /** The one-stop shop: the member state of consumption, its rate (per cent, 25,5), the base and its VAT. */
+  country?: string
+  ossRate?: string
+  ossBase?: string
+  ossTax?: string
 }
 
-export type VatErrorCode = 'amount' | 'base' | 'negative' | 'lines' | 'id' | 'supplierId' | 'noTax' | 'zeroOnly' | 'mode' | 'date' | 'period'
-export type VatField = 'mode' | 'supplied' | 'vatId' | 'corrects' | 'period' | `base${FormRate}` | `tax${FormRate}`
+export type VatErrorCode = 'amount' | 'base' | 'negative' | 'lines' | 'id' | 'supplierId' | 'noTax' | 'zeroOnly' | 'mode' | 'date' | 'period' | 'country' | 'rate'
+export type VatField = 'mode' | 'supplied' | 'vatId' | 'corrects' | 'period' | `base${FormRate}` | `tax${FormRate}` | 'country' | 'ossRate' | 'ossBase' | 'ossTax'
 export type VatErrors = Partial<Record<VatField, VatErrorCode>>
 
 /** What VAT is reported by the mode: taxed (with VAT), or the base alone (supplied without VAT), or nothing. */
@@ -58,16 +63,24 @@ export function vatValues(data: VatData): VatValues {
     base[rate] = moneyText(line.base)
     if (rate !== 0) tax[rate] = moneyText(line.vat)
   }
+  const oss = data.mode === 'oss' ? data.lines[0] : undefined
   return {
     mode: data.mode,
     supplied: data.suppliedOn ? textDay(data.suppliedOn) : '',
     vatId: data.vatId ?? '',
     corrects: data.corrects ?? '',
     period: data.period ?? '',
-    base,
-    tax,
+    base: data.mode === 'oss' ? emptyRates() : base,
+    tax: data.mode === 'oss' ? emptyRates() : tax,
+    country: data.country ?? '',
+    ossRate: oss ? String(oss.rate).replace('.', ',') : '',
+    ossBase: oss ? moneyText(oss.base) : '',
+    ossTax: oss ? moneyText(oss.vat) : '',
   }
 }
+
+/** The member states of the one-stop shop (oss.ts): the EU's but Slovakia, Greece as EL, Northern Ireland as XI for goods. */
+export const OSS_STATES = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'EL', 'ES', 'FI', 'FR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'XI'] as const
 
 export interface VatContext {
   kind: DocKind | null
@@ -94,6 +107,10 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
     period: text('dph_obdobie', 10),
     base: emptyRates(),
     tax: emptyRates(),
+    country: text('dph_stat', 2).toUpperCase(),
+    ossRate: text('dph_oss_sadzba', 6),
+    ossBase: text('dph_oss_zaklad', 20),
+    ossTax: text('dph_oss_dan', 20),
   }
   for (const rate of FORM_RATES) {
     values.base[rate] = text(`dph_zaklad_${rate}`, 20)
@@ -111,6 +128,22 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
   const corrects = values.corrects.replace(/\s+/g, ' ')
   if (values.period !== '' && !(isPeriod(values.period) && ctx.periods.includes(values.period))) errors.period = 'period'
 
+  // The one-stop shop: one line at the member state's rate; the rows of the Slovak rates are not its.
+  if (mode === 'oss') {
+    const country = (OSS_STATES as readonly string[]).includes(values.country ?? '') ? (values.country as string) : null
+    if (!country) errors.country = 'country'
+    const rateText = (values.ossRate ?? '').replace(',', '.').replace(/\s|%/g, '')
+    const rate = /^\d{1,2}(\.\d{1,2})?$/.test(rateText) ? Number(rateText) : null
+    if (rate === null || rate <= 0 || rate >= 100) errors.ossRate = 'rate'
+    const base = centsOf(values.ossBase ?? '')
+    const given = centsOf(values.ossTax ?? '')
+    if (Number.isNaN(base) || (base === null && ctx.booking)) errors.ossBase = Number.isNaN(base) ? 'amount' : 'lines'
+    if (Number.isNaN(given)) errors.ossTax = 'amount'
+    const ossLines = base !== null && !Number.isNaN(base) && rate !== null ? [{ rate, base, vat: given !== null && !Number.isNaN(given) ? given : Math.round((base * rate) / 100), deduct: 0 }] : []
+    if (ossLines.some((line) => line.base < 0 || line.vat < 0) && corrects === '') errors.corrects = 'negative'
+    if (Object.keys(errors).length > 0) return { values, data: null, errors }
+    return { values, data: { mode, lines: ossLines, suppliedOn: supplied || null, vatId, corrects: corrects || null, period: values.period || null, country }, errors }
+  }
   const lines: VatLine[] = []
   const taxed = mode !== null && TAXED.includes(mode)
   const deducting = ctx.payer && ctx.deduct && isReceived(ctx.kind)

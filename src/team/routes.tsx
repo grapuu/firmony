@@ -128,6 +128,9 @@ import { addDay, leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay
 import { decodeText, parseDelimited, readTable } from '../app/table-read'
 import { eurOf, isCurrency, rateFor, rateMicro, rateText } from '../app/fx'
 import { knownCurrencies, ratesFor } from '../app/fx-store'
+import { isQuarterText, nextQuarter, ossXml, quarterOfDay, quarterRange } from '../app/oss'
+import { fileOssStatement, filedOssXml, ossQuarter, unfileOssStatement } from '../app/oss-store'
+import { OssPage } from '../views/oss'
 import { assetRows, openItems, personRows, pohodaInvoices, priorStatements as takeoverPrior, trialBalance as takeoverTrial, type LineIssue, type OpenItem } from '../app/takeover'
 import { assetNumbers, assetRowsStatements, batchesOf, openItemsStatements, peopleStatements, priorListOf, priorStatementStatement, removeBatchStatements, removePriorStatement } from '../app/takeover-store'
 import { TakeoverPage, type TakeoverPageProps } from '../views/takeover'
@@ -862,6 +865,7 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
     account: text('oud', 40),
     carry: text('dph_prenos', 16),
     note: text('poznamka', 1000),
+    oss: text('oss_od', 20),
   }
   const dic = values.dic.replace(/\s/g, '')
   const icdph = values.icdph.replace(/\s/g, '').toUpperCase()
@@ -871,6 +875,8 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
   if (dic !== '' && !/^\d{10}$/.test(dic)) errors.dic = t.client.detailsErrors.dic
   if (icdph !== '' && !/^SK\d{10}$/.test(icdph)) errors.icdph = t.client.detailsErrors.icdph
   if (since === null) errors.since = t.client.detailsErrors.since
+  const ossSince = dayOfText(values.oss ?? '')
+  if (ossSince === null) errors.oss = t.client.detailsErrors.since
   if (values.office !== '' && !isTaxOffice(values.office)) errors.office = t.client.detailsErrors.office
   if (values.account !== '' && !account) errors.account = t.client.detailsErrors.account
   // An excess deduction brought from before us: an amount in euros, or nothing.
@@ -878,7 +884,7 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
   if (carry === null || Number.isNaN(carry) || carry < 0) errors.carry = t.client.detailsErrors.carry
   if (Object.keys(errors).length > 0) return clientPage(c, company, { details: { values, errors }, error: t.client.detailsFix }, 422)
   const db = c.env.DB
-  const sets = ['dic = ?', 'icdph = ?', 'vat_payer = ?', 'vat_7a = ?', 'vat_quarterly = ?', 'vat_since = ?', 'tax_office = ?', 'tax_account = ?', 'vat_carry = ?', 'note = ?']
+  const sets = ['dic = ?', 'icdph = ?', 'vat_payer = ?', 'vat_7a = ?', 'vat_quarterly = ?', 'vat_since = ?', 'tax_office = ?', 'tax_account = ?', 'vat_carry = ?', 'note = ?', 'oss_since = ?']
   const binds: unknown[] = [
     dic || null,
     icdph || null,
@@ -890,6 +896,7 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
     account,
     status === 'payer' ? (carry ?? 0) : 0,
     values.note || null,
+    status !== 'none' ? ossSince || null : null,
   ]
   if (isAdmin(who.user)) {
     const plan = text('plan', 10)
@@ -1296,6 +1303,103 @@ teamRoutes.get('/klienti/:id/dph', async (c) => {
  * the portal: always the one saved with the filing's podklady, never one made on the fly, so what is loaded in eDane is
  * what the filing's evidence holds. Before the podklady are saved, the page says why there is no file yet.
  */
+// ---------------------------------------------------------------------------------------------------------------
+// The one-stop shop's quarterly return (oss.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The quarters of a company that uses the scheme: from its first to the one that runs, the last eight. */
+function ossQuarters(since: string, today: string): string[] {
+  const out: string[] = []
+  for (let q = quarterOfDay(since); q <= quarterOfDay(today); q = nextQuarter(q)) out.push(q)
+  return out.slice(-8)
+}
+
+async function ossPage(c: Ctx, company: Company) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  if (!company.ossSince) return shell(c, 'clients', `${t.oss.title}: ${company.name}`, <OssPage company={company} quarters={[]} view={null} today={today} flash={null} />)
+  const quarters = ossQuarters(company.ossSince, today)
+  const asked = c.req.query('stvrtrok') ?? ''
+  const open = quarters.find((q) => q === asked) ?? [...quarters].reverse().find((q) => q < quarterOfDay(today)) ?? quarters[quarters.length - 1] ?? quarterOfDay(today)
+  const views = await Promise.all(quarters.map((q) => ossQuarter(db, company.id, company.ossSince as string, q, today)))
+  const ok = c.req.query('ok')
+  return shell(
+    c,
+    'clients',
+    `${t.oss.title}: ${company.name}`,
+    <OssPage company={company} quarters={views.map((v) => ({ quarter: v.quarter, state: v.state }))} view={views.find((v) => v.quarter === open) ?? null} today={today} flash={ok ? (t.oss.flashes[ok] ?? null) : null} />,
+  )
+}
+
+teamRoutes.get('/klienti/:id/dph/oss', async (c) => {
+  const company = await companyParam(c)
+  return company ? ossPage(c, company) : missingPage(c)
+})
+
+/** The file: as filed once the quarter is marked, else as it stands (a ready quarter only). */
+teamRoutes.get('/klienti/:id/dph/oss.xml', async (c) => {
+  const company = await companyParam(c)
+  const quarter = c.req.query('stvrtrok') ?? ''
+  if (!company || !company.ossSince || !company.icdph || !isQuarterText(quarter)) return missingPage(c)
+  const db = c.env.DB
+  const kept = await filedOssXml(db, company.id, quarter)
+  let xml = kept
+  if (!xml) {
+    const view = await ossQuarter(db, company.id, company.ossSince, quarter, dayOf(now()))
+    if (view.state !== 'ready') return c.redirect(`/ucto/klienti/${company.id}/dph/oss?stvrtrok=${quarter}&ok=notReady`, 303)
+    xml = ossXml(company.icdph, quarter, view.lines, view.corrections)
+  }
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="OSS_${company.icdph}_${quarter.replace('-', '')}.xml"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
+
+teamRoutes.post('/klienti/:id/dph/oss/podane', async (c) => {
+  const company = await companyParam(c)
+  if (!company || !company.ossSince || !company.icdph) return missingPage(c)
+  const body = await c.req.parseBody()
+  const quarter = typeof body.stvrtrok === 'string' && isQuarterText(body.stvrtrok) ? body.stvrtrok : null
+  if (!quarter) return missingPage(c)
+  const db = c.env.DB
+  const today = dayOf(now())
+  const back = `/ucto/klienti/${company.id}/dph/oss?stvrtrok=${quarter}`
+  const view = await ossQuarter(db, company.id, company.ossSince, quarter, today)
+  if (view.filed) return c.redirect(`${back}&ok=already`, 303)
+  if (view.state !== 'ready') return c.redirect(`${back}&ok=notReady`, 303)
+  const typed = dayOfText(typeof body.datum === 'string' ? body.datum : '')
+  const filedOn = typed && typed <= today && typed > quarterRange(quarter).to ? typed : today
+  const xml = ossXml(company.icdph, quarter, view.lines, view.corrections)
+  const who = c.get('who')
+  const label = t.oss.quarter(quarter)
+  const messageId = crypto.randomUUID()
+  const body2 = view.total > 0 ? t.oss.message(label, formatEurExact(view.total), textDay(view.due)) : t.oss.messageNil(label)
+  const done = await db.batch([
+    fileOssStatement(db, company.id, view, xml, filedOn, who.user.id),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'oss.filed', subject: quarter, detail: { total: view.total } }),
+  ])
+  if ((done[0]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=already`, 303)
+  await db.batch([...(await ringClient(c, company, messageId)), messageStatement(db, { id: messageId, company: company.id, author: who.user.id, side: 'firmony', body: body2, payment: null })])
+  return c.redirect(`${back}&ok=filed`, 303)
+})
+
+teamRoutes.post('/klienti/:id/dph/oss/zrusit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const quarter = typeof body.stvrtrok === 'string' && isQuarterText(body.stvrtrok) ? body.stvrtrok : null
+  if (!quarter) return missingPage(c)
+  const db = c.env.DB
+  const back = `/ucto/klienti/${company.id}/dph/oss?stvrtrok=${quarter}`
+  const removed = await unfileOssStatement(db, company.id, quarter).run()
+  if ((removed.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=later`, 303)
+  await db.batch([eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'oss.unfiled', subject: quarter })])
+  return c.redirect(`${back}&ok=unfiled`, 303)
+})
+
 teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
   const company = await companyParam(c)
   const file = c.req.param('file')
@@ -3460,7 +3564,8 @@ async function candidatesFor(db: D1Database, company: string, d: Doc): Promise<P
  */
 async function vatFormOf(db: D1Database, company: Company, doc: Doc, typed?: { values: VatForm['values']; errors: VatForm['errors'] }): Promise<VatForm | null> {
   if (company.vatStatus === 'none') return null
-  const modes = modesFor(doc.kind)
+  // The one-stop shop only for a company that uses it, or a document that already has it.
+  const modes = modesFor(doc.kind).filter((m) => m !== 'oss' || company.ossSince || doc.vat?.mode === 'oss')
   if (modes.length === 0) return null
   const counted = vatOf(vatDocOf(doc), vatCompanyOf(company))
   if (!counted) return null
@@ -3683,8 +3788,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
     const v = vatRead.data
     statements.push(
       db
-        .prepare('UPDATE documents SET vat_mode = ?, vat_lines = ?, supplied_on = ?, party_vat_id = ?, corrects = ?, vat_period = ? WHERE id = ? AND company_id = ?')
-        .bind(v.mode, JSON.stringify(v.lines), v.suppliedOn, v.vatId, v.corrects, v.period, doc.id, company.id),
+        .prepare('UPDATE documents SET vat_mode = ?, vat_lines = ?, supplied_on = ?, party_vat_id = ?, corrects = ?, vat_period = ?, vat_country = ? WHERE id = ? AND company_id = ?')
+        .bind(v.mode, JSON.stringify(v.lines), v.suppliedOn, v.vatId, v.corrects, v.period, v.mode === 'oss' ? (v.country ?? null) : null, doc.id, company.id),
     )
   } else if (vatShown && !sameFamily) {
     statements.push(db.prepare('UPDATE documents SET vat_mode = NULL, vat_period = NULL WHERE id = ? AND company_id = ?').bind(doc.id, company.id))

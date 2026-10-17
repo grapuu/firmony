@@ -9,7 +9,7 @@ import { dayName, dayShort, readableName } from '../app/copy'
 import { textDay } from '../app/booking'
 import type { Company, Doc, User } from '../app/store'
 import { ROWS, correctionKind, filingDeadline, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
-import { FORM_RATES, type FormRate, type VatErrorCode, type VatErrors, type VatValues } from '../app/vat-form'
+import { FORM_RATES, OSS_STATES, type FormRate, type VatErrorCode, type VatErrors, type VatValues } from '../app/vat-form'
 import { payable, periodName, type FilingPlan, type PeriodState, type PeriodView } from '../app/vat-store'
 import { totalOf, wholeEuros, type SvRow, type SvState, type SvView, type SvFiled, type SvSchedule } from '../app/vat-summary'
 import { team as t } from '../team/copy'
@@ -576,6 +576,17 @@ export const VatPage: FC<VatPageProps> = (p) => {
             </div>
             <aside class="pgrid__side">
               <StatusCard company={c} view={p.view} plan={p.plan} today={p.today} />
+              {c.ossSince ? (
+                <section class="info" aria-labelledby="oss-link-t">
+                  <h2 id="oss-link-t" class="info__title">
+                    {t.oss.title}
+                  </h2>
+                  <p class="info__lead">{t.book.ossHint}</p>
+                  <a class="btn btn--line btn--small" href={`/ucto/klienti/${c.id}/dph/oss`}>
+                    {t.oss.open}
+                  </a>
+                </section>
+              ) : null}
             </aside>
           </div>
         </>
@@ -712,6 +723,50 @@ export const VatFields: FC<{ form: VatForm }> = ({ form }) => {
           {err('corrects') ? <p class="field__error">{err('corrects')}</p> : <p class="field__hint">{t.book.vatCorrectsHint}</p>}
         </div>
       </div>
+      {form.modes.includes('oss') ? (
+        <div class="vatbox__oss">
+          <p class="vatbox__note">
+            <strong>{t.book.ossTitle}.</strong> {t.book.ossHint}
+          </p>
+          <div class="fgrid">
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-dph-stat">
+                {t.book.ossState}
+              </label>
+              <select id="b-dph-stat" class="field__input" name="dph_stat" aria-invalid={e.country ? 'true' : undefined}>
+                <option value=""></option>
+                {OSS_STATES.map((c) => (
+                  <option value={c} selected={form.values.country === c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              {err('country') ? <p class="field__error">{err('country')}</p> : null}
+            </div>
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-dph-oss-sadzba">
+                {t.book.ossRate}
+              </label>
+              <input id="b-dph-oss-sadzba" class="field__input" name="dph_oss_sadzba" value={form.values.ossRate ?? ''} inputmode="decimal" maxlength={6} aria-invalid={e.ossRate ? 'true' : undefined} />
+              {err('ossRate') ? <p class="field__error">{err('ossRate')}</p> : null}
+            </div>
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-dph-oss-zaklad">
+                {t.book.vatBase}
+              </label>
+              <input id="b-dph-oss-zaklad" class="field__input" name="dph_oss_zaklad" value={form.values.ossBase ?? ''} inputmode="decimal" maxlength={16} aria-invalid={e.ossBase ? 'true' : undefined} />
+              {err('ossBase') ? <p class="field__error">{err('ossBase')}</p> : null}
+            </div>
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-dph-oss-dan">
+                {t.book.vatTax}
+              </label>
+              <input id="b-dph-oss-dan" class="field__input" name="dph_oss_dan" value={form.values.ossTax ?? ''} inputmode="decimal" maxlength={16} aria-invalid={e.ossTax ? 'true' : undefined} />
+              {err('ossTax') ? <p class="field__error">{err('ossTax')}</p> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <table class="vatlines">
         <thead>
           <tr>

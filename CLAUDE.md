@@ -161,7 +161,23 @@ over. Bring this section up to date first whenever a session ends.
    client issues in another currency, a cash box in another currency, revaluation of other assets than receivables,
    payables and bank accounts (advances, loans in a foreign currency booked by hand), the tax treatment of unrealised
    differences. test/currency.runtime.mjs, units "Foreign currencies".
-   Next by the order: OSS, Intrastat, joint-stock companies. The site promises a
+   The one-stop shop (built 17 October 2026, schema step 33: `documents.vat_country`, `companies.oss_since`,
+   `oss_returns`): `src/app/oss.ts` (the EU scheme as Forvis Mazars and Art. 366 of the Directive describe it: a
+   calendar quarter, by the end of the month after it and not moved, filed also when nothing was supplied, in euros at
+   the ECB's rate of the quarter's last day or the next declared, corrections of filed quarters in a later return; the
+   file DPOSS_EUv01, the EU's OSSVATReturnMSCON, kept as `test/xsd/dposs_eu01.xsd` byte for byte, SHA-256 4f0982aa...,
+   fetched through the browser pane because the shell cannot reach ekr.financnasprava.sk; the member states' standard
+   rates of 2026 tell STANDARD from REDUCED). The booking form offers the mode "Spotrebiteľovi v inom štáte EÚ (OSS)"
+   with the member state, its rate, the base and VAT to a company with "OSS od" in its details; such a supply is left
+   out of the Slovak return and booked on 343.400 (`VAT_OSS`). `/ucto/klienti/:id/dph/oss?stvrtrok=` (linked from the VAT
+   page): the quarters since, each running, waiting (the one before not filed), blocked (no state, no rate of the
+   quarter's end, a negative line, services to Northern Ireland, a supply not booked), ready, filed or changed since;
+   the lines, the corrections, each state's balance, the file `/dph/oss.xml`, the mark with its day (the client told the
+   tax and the deadline), the last quarter's mark taken back. The deadlines list it (kind 'oss', ours). Not built: the
+   import scheme (IOSS), supplies from a fixed establishment in another state (MSESTSupplies), the 10 000 € threshold
+   watched, the payment's account and reference (the client is sent to the portal's confirmation), the OSS return in
+   the filing bundle. test/oss.runtime.mjs, units "The one-stop shop".
+   Next by the order: Intrastat, joint-stock companies. The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
@@ -1739,8 +1755,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1064 unit checks (17 October 2026, evening), including foreign currencies
-npm run test:runtime     # 1466 workerd checks on Node 24 (as GitHub runs them), including test/currency.runtime.mjs
+npm test                 # 1076 unit checks (17 October 2026, evening), including the one-stop shop
+npm run test:runtime     # 1479 workerd checks on Node 24 (as GitHub runs them), including test/oss.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

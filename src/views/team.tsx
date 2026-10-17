@@ -388,9 +388,11 @@ export interface DetailsValues {
   account: string
   carry: string
   note: string
+  /** The day the company uses the one-stop shop (OSS) from; empty when it does not. */
+  oss?: string
 }
 
-export type DetailsErrors = Partial<Record<'dic' | 'icdph' | 'since' | 'office' | 'account' | 'carry', string>>
+export type DetailsErrors = Partial<Record<'dic' | 'icdph' | 'since' | 'office' | 'account' | 'carry' | 'oss', string>>
 
 export const detailsOf = (c: Company): DetailsValues => ({
   dic: c.dic ?? '',
@@ -398,6 +400,7 @@ export const detailsOf = (c: Company): DetailsValues => ({
   status: c.vatStatus,
   quarterly: c.vatQuarterly,
   since: c.vatSince ? textDay(c.vatSince) : '',
+  oss: c.ossSince ? textDay(c.ossSince) : '',
   office: c.taxOffice ?? '',
   account: c.taxAccount ?? '',
   carry: c.vatCarry > 0 ? moneyText(c.vatCarry) : '',
@@ -924,6 +927,11 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
               </label>
               <input id="dph-od" class="field__input" name="dph_od" value={d.since} maxlength={16} aria-invalid={de.since ? 'true' : undefined} />
               {de.since ? <FieldError text={de.since} /> : <p class="field__hint">{t.client.vatSinceHint}</p>}
+              <label class="field__label" for="oss-od">
+                {t.client.ossSince}
+              </label>
+              <input id="oss-od" class="field__input" name="oss_od" value={d.oss ?? ''} maxlength={16} aria-invalid={de.oss ? 'true' : undefined} />
+              {de.oss ? <FieldError text={de.oss} /> : <p class="field__hint">{t.client.ossSinceHint}</p>}
               <label class="field__label" for="danovy-urad">
                 {t.client.taxOffice}
               </label>

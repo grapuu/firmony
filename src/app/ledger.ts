@@ -151,6 +151,8 @@ export const CLASSES = ['Dlhodobý majetok', 'Zásoby', 'Finančné účty', 'Z�
 export const VAT_IN = '343.100'
 export const VAT_OUT = '343.200'
 export const VAT_SETTLE = '343.300'
+/** VAT owed in other member states through the one-stop shop (oss.ts), paid with its quarterly return. */
+export const VAT_OSS = '343.400'
 export const TRANSIT = '261'
 export const OWNER = '365'
 export const OPENING = '701'
@@ -159,6 +161,7 @@ const ANALYTICS: Readonly<Record<string, string>> = {
   [VAT_IN]: 'DPH na vstupe (odpočet)',
   [VAT_OUT]: 'DPH na výstupe',
   [VAT_SETTLE]: 'DPH, zúčtovanie s daňovým úradom',
+  [VAT_OSS]: 'DPH iných štátov EÚ (OSS)',
 }
 
 /**
@@ -414,8 +417,9 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
   let vatCents = 0
   let deduct = false
   let selfVat: { cents: number; deduct: boolean; deductCents: number } | null = null
+  const oss = data?.mode === 'oss'
   if (data) {
-    if (isIssued(doc.kind)) vatCents = payer && data.mode === 'domestic' ? sum((line) => line.vat) : 0
+    if (isIssued(doc.kind)) vatCents = (payer && data.mode === 'domestic') || oss ? sum((line) => line.vat) : 0
     else if (data.mode === 'domestic') {
       vatCents = payer ? sum((line) => line.deduct) : 0
       deduct = vatCents > 0
@@ -430,7 +434,7 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
     category: doc.category,
     totalCents: plan.gross,
     vatCents,
-    vatPayer: payer,
+    vatPayer: payer || oss,
     vatDeduct: deduct,
     paidBy: how.paidBy,
     // A company that keeps its goods continuously (stock.ts, method A) buys them to their acquisition (131).
@@ -443,7 +447,7 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
     .filter((line) => line.cents > 0)
     .map((line) => {
       const md = registered && line.md === '343' ? VAT_IN : (canonicalAccount(line.md) ?? line.md)
-      const d = registered && line.d === '343' ? VAT_OUT : (canonicalAccount(line.d) ?? line.d)
+      const d = line.d === '343' && oss ? VAT_OSS : registered && line.d === '343' ? VAT_OUT : (canonicalAccount(line.d) ?? line.d)
       return credit ? { md: d, d: md, cents: line.cents, what: line.what } : { md, d, cents: line.cents, what: line.what }
     })
 }

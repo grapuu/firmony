@@ -29,13 +29,14 @@ import { eurOf } from './fx'
  * with the place of supply at home, from a foreign person: the company pays the VAT, § 69(2) and (3)),
  * `acquisition` (goods from another member state, § 11). Issued: `domestic` (Slovak VAT charged), `eu_goods`
  * (§ 43), `eu_service` (the place of supply is in another member state and the customer pays the VAT, § 15(1)),
- * `export` (§ 47), `exempt` (§ 28 to 42), `outside` (the place of supply is outside the EU). `none`: no VAT to
- * report at all (a supplier who is no payer, an exempt purchase, or a company not registered).
+ * `export` (§ 47), `exempt` (§ 28 to 42), `outside` (the place of supply is outside the EU), `oss` (goods sold at a
+ * distance or services to consumers in another member state, its VAT declared in the one-stop shop, oss.ts). `none`:
+ * no VAT to report at all (a supplier who is no payer, an exempt purchase, or a company not registered).
  */
-export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'eu_goods' | 'eu_service' | 'export' | 'exempt' | 'outside' | 'none'
+export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'eu_goods' | 'eu_service' | 'export' | 'exempt' | 'outside' | 'oss' | 'none'
 
 export const RECEIVED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'none']
-export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'eu_goods', 'eu_service', 'export', 'exempt', 'outside', 'none']
+export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'eu_goods', 'eu_service', 'export', 'exempt', 'outside', 'oss', 'none']
 export const RATES = [23, 19, 5] as const
 
 export function isVatMode(value: unknown): value is VatMode {
@@ -62,6 +63,8 @@ export interface VatData {
   corrects: string | null
   /** The period the accountant put it in, when it is not the one the dates give. */
   period: string | null
+  /** The member state of consumption of a supply in the one-stop shop (`oss`): AT, DE, EL, XI. */
+  country?: string | null
 }
 
 export type VatStatus = 'payer' | 'reg7a' | 'none'
@@ -678,7 +681,8 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     const number = kvNumber(doc.number)
     const den = taxDay(doc, data)
     if ((doc.currency ?? 'EUR') !== 'EUR' && data.mode !== 'none' && data.lines.length === 0) issue('block', 'currency', doc.id)
-    if (data.mode === 'none' || data.mode === 'outside') continue
+    // The one-stop shop's supplies are taxed in the member state of consumption: its own return (oss.ts), not this one.
+    if (data.mode === 'none' || data.mode === 'outside' || data.mode === 'oss') continue
     if (data.mode === 'eu_service') {
       issue('warn', 'summary', doc.id)
       continue

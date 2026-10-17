@@ -56,7 +56,7 @@ export async function companyDeadlines(db: D1Database, company: string, today: s
 }
 
 async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], today: string): Promise<{ companies: Company[]; dues: DueRow[] }> {
-  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows] = await db.batch<Row>([
+  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows] = await db.batch<Row>([
     db
       .prepare(
         `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, ${handedOverSql('c')} AS handover
@@ -112,7 +112,11 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
           WHERE ${sql} AND ev.action IN ('${REGISTRATION_EVENTS.done}', '${REGISTRATION_EVENTS.undone}') ORDER BY ev.id`,
       )
       .bind(...binds),
+    // The one-stop shop's quarters filed (oss.ts).
+    db.prepare(`SELECT o.company_id, o.quarter FROM oss_returns o JOIN companies c ON c.id = o.company_id WHERE ${sql}`).bind(...binds),
   ])
+  const ossFiled = new Map<string, Set<string>>()
+  for (const r of ossRows?.results ?? []) ossFiled.set(String(r.company_id), (ossFiled.get(String(r.company_id)) ?? new Set<string>()).add(String(r.quarter)))
   const companies = (companyRows?.results ?? []).map(companyOf)
   const handover = new Map((companyRows?.results ?? []).map((r) => [String(r.id), Number(r.handover ?? 0)]))
   const filed = new Map<string, FiledReturn[]>()
@@ -206,6 +210,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
       handover: handover.get(company.id) ?? 0,
       employees: people.get(company.id) ?? [],
       registered: registered.get(company.id) ?? new Map<string, string>(),
+      oss: ossFiled.get(company.id) ?? new Set<string>(),
     }
     for (const due of deadlinesOf(company, facts, today)) dues.push({ ...due, company, companyName: company.name })
   }

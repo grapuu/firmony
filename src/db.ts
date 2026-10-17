@@ -1010,6 +1010,38 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE accounts ADD COLUMN currency TEXT',
     ...documentsUpdateGuardWith(['fx_rate']),
   ],
+  // The one-stop shop (src/app/oss.ts, 17 October 2026): the member state a document's VAT is owed in, the day a company
+  // uses the EU scheme from, and each quarter's return as it was filed (its rows and file), changed by nobody after.
+  [
+    'ALTER TABLE documents ADD COLUMN vat_country TEXT',
+    'ALTER TABLE companies ADD COLUMN oss_since TEXT',
+    ...documentsUpdateGuardWith(['fx_rate', 'vat_country']),
+    `CREATE TABLE IF NOT EXISTS oss_returns (
+      company_id TEXT NOT NULL,
+      quarter TEXT NOT NULL CHECK (quarter GLOB '[0-9][0-9][0-9][0-9]-Q[1-4]'),
+      data TEXT NOT NULL,
+      xml TEXT NOT NULL,
+      filed_on TEXT NOT NULL,
+      filed_at INTEGER NOT NULL,
+      filed_by TEXT,
+      PRIMARY KEY (company_id, quarter)
+    )`,
+    ...['INSERT', 'UPDATE', 'DELETE'].flatMap((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return [
+        `CREATE TRIGGER oss_returns_data_${action.toLowerCase()} AFTER ${action} ON oss_returns BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+        ...(action === 'DELETE'
+          ? []
+          : [
+              `CREATE TRIGGER oss_returns_purging_${action.toLowerCase()} BEFORE ${action} ON oss_returns
+                WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+                BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+            ]),
+      ]
+    }),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

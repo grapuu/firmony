@@ -48,6 +48,8 @@ export interface Company {
   vatQuarterly: boolean
   /** The day the registration took effect. */
   vatSince: string | null
+  /** The day the company uses the one-stop shop's EU scheme from (oss.ts); null when it does not. */
+  ossSince?: string | null
   /** The tax office the returns are addressed to, as the forms name it. */
   taxOffice: TaxOffice | null
   /** The number of the company's personal tax account (osobný účet daňovníka), to which VAT is paid. */
@@ -170,7 +172,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.tax_office, c.tax_account, c.vat_carry,
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.tax_office, c.tax_account, c.vat_carry,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
 export function companyOf(row: Row): Company {
@@ -206,6 +208,7 @@ export function companyOf(row: Row): Company {
     vatStatus: row.vat_payer === 1 ? 'payer' : row.vat_7a === 1 ? 'reg7a' : 'none',
     vatQuarterly: row.vat_payer === 1 && row.vat_quarterly === 1,
     vatSince: str(row.vat_since),
+    ossSince: str(row.oss_since),
     taxOffice: isTaxOffice(row.tax_office) ? row.tax_office : null,
     taxAccount: str(row.tax_account),
     vatCarry: num(row.vat_carry) ?? 0,
@@ -272,7 +275,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp, d.fx_rate`
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country`
 export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
 
 export function docOf(row: Row): Doc {
@@ -347,6 +350,7 @@ function vatDataOf(row: Row): VatData | null {
     vatId: str(row.party_vat_id),
     corrects: str(row.corrects),
     period: str(row.vat_period),
+    country: str(row.vat_country),
   }
 }
 

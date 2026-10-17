@@ -39,6 +39,7 @@ import {
   taxSettlement,
   tableRead,
   fx,
+  oss,
   lastDeclared,
   takeover,
   takeoverStore,
@@ -4931,6 +4932,68 @@ await (await import('./social.units.mjs')).checkSocial()
   )
   const noRates = ledger.buildBooks({ company: co, docs: [doc('usd-in', { totalCents: 100000, currency: 'USD', fxRate: '1.25' })], payments: [], banks: [], filed: [], manual: opening })
   check('the rate the accountant confirmed counts without any kept: 1 000 USD at 1,25 is 800 €', noRates.entries.find((e) => e.key === 'd:usd-in')?.lines[0]?.cents === 80000)
+}
+
+// The one-stop shop (17 October 2026): a quarter's return of supplies to consumers in other member states.
+{
+  const xsdText = readFileSync(new URL('./xsd/dposs_eu01.xsd', import.meta.url), 'utf8')
+  const validOss = async (xml, name) => {
+    const result = await validateXML({ xml: [{ fileName: `${name}.xml`, contents: xml }], schema: [{ fileName: 'dposs_eu01.xsd', contents: xsdText }] })
+    return { ok: result.valid, why: result.errors.map((e) => e.message).join(' | ') }
+  }
+  check('the quarter, its range and its deadline: the last day of the month after it, not moved', oss.quarterOfDay('2026-08-15') === '2026-Q3' && oss.quarterRange('2026-Q1').to === '2026-03-31' && oss.ossDue('2026-Q3') === '2026-10-31' && oss.ossDue('2026-Q4') === '2027-01-31' && oss.ossDue('2027-Q1') === '2027-04-30' && oss.nextQuarter('2026-Q4') === '2027-Q1' && oss.prevQuarter('2027-Q1') === '2026-Q4')
+  const supply = (id, fields) => ({ id, number: id, day: '2026-08-10', country: 'DE', goods: true, lines: [{ rate: 19, base: 10000, vat: 1900, deduct: 0 }], currency: 'EUR', fxRate: null, corrects: null, ...fields })
+  const rates = fx.ratesOf([{ currency: 'CZK', day: '2026-09-30', rate: '25.0' }, { currency: 'CZK', day: '2026-12-31', rate: '24.5' }])
+  const supplies = [
+    supply('a'),
+    supply('b', { lines: [{ rate: 19, base: 5000, vat: 950, deduct: 0 }] }),
+    supply('c', { country: 'AT', goods: false, lines: [{ rate: 20, base: 20000, vat: 4000, deduct: 0 }] }),
+    supply('d', { country: 'FR', lines: [{ rate: 5.5, base: 1000, vat: 55, deduct: 0 }] }),
+    supply('e', { country: 'CZ', currency: 'CZK', fxRate: 25500000, lines: [{ rate: 21, base: 4000, vat: 840, deduct: 0 }] }),
+    supply('f', { day: '2026-11-02' }),
+  ]
+  const q3 = oss.ossLines(supplies, '2026-Q3', rates)
+  const line = (c, r) => q3.lines.find((l) => l.country === c && l.rate === r)
+  check(
+    "a quarter's lines: each state's tax by kind and rate, the standard rate told from a reduced one, the next quarter's left out",
+    q3.issues.length === 0 && line('DE', 19)?.base === 15000 && line('DE', 19)?.vat === 2850 && line('DE', 19)?.standard && line('AT', 20)?.goods === false && line('FR', 5.5)?.standard === false && q3.lines.length === 4,
+    JSON.stringify(q3),
+  )
+  check("an amount in another currency at the ECB's rate of the quarter's last day: 40 € at 25,5 CZK is 1 020 CZK, at 25,0 it is 40,80 €", line('CZ', 21)?.base === 4080 && line('CZ', 21)?.vat === 857)
+  const bad = oss.ossLines([supply('x', { country: null }), supply('y', { country: 'XI', goods: false }), supply('z', { currency: 'USD', fxRate: 1080000 })], '2026-Q3', rates)
+  check('what keeps lines from being declared: no state, services to Northern Ireland, no rate of the quarter\'s end', bad.issues.map((i) => i.code).join() === 'country,rate,xi', JSON.stringify(bad.issues))
+  const credit = supply('g', { day: '2026-10-05', corrects: 'a', lines: [{ rate: 19, base: -2000, vat: -380, deduct: 0 }] })
+  check('a credit note belongs to the quarter of the invoice it corrects', oss.supplyQuarter(credit, [...supplies, credit]) === '2026-Q3' && oss.ossLines([...supplies, credit], '2026-Q4', rates).lines.every((l) => l.vat > 0))
+
+  const filedQ3 = { quarter: '2026-Q3', lines: q3.lines, corrections: [], filedOn: '2026-10-20' }
+  const after = [...supplies, credit]
+  const fixes = oss.ossCorrections('2026-Q4', [filedQ3], (q) => oss.ossLines(after, q, rates).lines)
+  check("a change of a filed quarter goes into the next return as each state's correction", fixes.length === 1 && fixes[0].quarter === '2026-Q3' && fixes[0].country === 'DE' && fixes[0].cents === -380, JSON.stringify(fixes))
+  const q4 = oss.ossLines(after, '2026-Q4', rates)
+  const { balances, total } = oss.ossBalances(q4.lines, fixes)
+  check("each state's balance is its tax and its corrections; the total due", balances.length === 1 && balances[0].country === 'DE' && balances[0].cents === 1900 - 380 && total === 1520)
+  const filedQ4 = { quarter: '2026-Q4', lines: q4.lines, corrections: fixes, filedOn: '2027-01-20' }
+  check('a correction filed once is not carried again', oss.ossCorrections('2027-Q1', [filedQ3, filedQ4], (q) => oss.ossLines(after, q, rates).lines).length === 0)
+
+  const xml = oss.ossXml('SK2120000007', '2026-Q4', q4.lines, fixes)
+  let v = await validOss(xml, 'oss')
+  check('the return is valid against DPOSS_EUv01: supplies, a correction, the balances, the total due', v.ok && xml.includes('<VATNumber issuedBy="SK">2120000007</VATNumber>') && xml.includes('<VATRate type="STANDARD">19.00</VATRate>') && xml.includes('<TotalVATAmountCorrection currency="EUR">-3.80</TotalVATAmountCorrection>') && xml.includes('<TotalVATAmountDue currency="EUR">15.20</TotalVATAmountDue>'), v.why)
+  v = await validOss(oss.ossXml('SK2120000007', '2026-Q3', q3.lines, []), 'oss-q3')
+  check('a quarter of four states, kinds and a reduced rate is valid too', v.ok, v.why)
+  const nil = oss.ossXml('SK2120000007', '2027-Q1', [], [])
+  v = await validOss(nil, 'oss-nil')
+  check('a quarter without supplies is filed with nought due', v.ok && !nil.includes('<Supplies>') && nil.includes('<TotalVATAmountDue currency="EUR">0.00</TotalVATAmountDue>'), v.why)
+
+  const view = (q, filed, today) => oss.ossView(q, '2026-07-01', after, filed, rates, today)
+  check(
+    "a quarter's state: running while it runs, ready after it, waiting while the one before is not filed, filed, changed once a later change reaches it",
+    view('2026-Q4', [], '2026-12-15').state === 'running' &&
+      view('2026-Q3', [], '2026-10-02').state === 'ready' &&
+      view('2026-Q4', [], '2027-01-05').state === 'waiting' &&
+      view('2026-Q4', [filedQ3], '2027-01-05').state === 'ready' &&
+      view('2026-Q3', [{ ...filedQ3, lines: oss.ossLines(supplies, '2026-Q3', rates).lines }], '2026-10-02').state === 'changed' &&
+      view('2026-Q3', [{ ...filedQ3, lines: oss.ossLines(after, '2026-Q3', rates).lines }], '2026-10-02').state === 'filed',
+  )
 }
 
 done('units')

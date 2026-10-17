@@ -28,6 +28,8 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind'
       return t.what.vatFix[d.fix ?? 'O'](periodName(period))
     case 'summary':
       return d.fix ? t.what.summaryFix[d.fix](periodName(period)) : t.what.summary(periodName(period))
+    case 'oss':
+      return t.what.oss(`${period.slice(6)}. štvrťrok ${period.slice(0, 4)}`)
     case 'vatPay':
       return t.what.vatPay(periodName(period))
     case 'docs':
@@ -98,6 +100,8 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
       const vat = d.company.vatQuarterly && !period.includes('Q') ? `${period.slice(0, 4)}-Q${Math.ceil(Number(period.slice(5, 7)) / 3)}` : month
       return `${base}/dph?obdobie=${vat}#suhrnny${d.company.vatQuarterly && !period.includes('Q') ? `-${period}` : ''}`
     }
+    case 'oss':
+      return `${base}/dph/oss?stvrtrok=${d.period}`
     case 'docs':
       return `${base}#chyba`
     case 'closing':
@@ -129,6 +133,7 @@ function noteOf(d: Due): string | null {
   if (d.kind === 'vat' && d.state === 'open') return t.note.older
   if (d.kind === 'summary' && d.fix === 'D') return t.note.summaryD
   if (d.kind === 'summary' && d.state !== 'done') return t.note.summary
+  if (d.kind === 'oss' && d.state !== 'done') return t.note.oss
   if (d.kind === 'payrollReports' && d.state !== 'done') return t.note.payrollReports
   return null
 }
