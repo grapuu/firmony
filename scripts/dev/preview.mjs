@@ -23,6 +23,8 @@ const PAGES = [
   { path: '/zacat/hotovo?zmluva=1', file: 'hotovo.html' },
   { path: '/pravne-informacie', file: 'pravne-informacie.html' },
   { path: '/podmienky', file: 'podmienky.html' },
+  { path: '/investori', file: 'investori.html' },
+  { path: '/investori/hotovo', file: 'investori-hotovo.html' },
 ]
 
 // The contract online: a request for an s. r. o. the pretend register knows (europio, with its director) becomes an
@@ -47,6 +49,8 @@ function local(href, from) {
   if (path === '/pravne-informacie') return `pravne-informacie.html${anchor}`
   if (path === '/podmienky') return `podmienky.html${anchor}`
   if (path === '/zacat/hotovo') return `hotovo.html${anchor}`
+  if (path === '/investori') return `investori.html${anchor}`
+  if (path === '/investori/hotovo') return `investori-hotovo.html${anchor}`
   if (path.startsWith('/objednavka/')) return `zmluva.html${anchor}`
   if (path === '/app/prihlasenie') return 'https://claude.ai/artifact/RiaH2Z4AzYHCM2EQw7EPhc'
   if (path.startsWith('/art/') || path.startsWith('/fonts/')) return path.slice(1)
@@ -64,6 +68,7 @@ const SAYS = {
   calc__form: 'Toto je náhľad: kalkulačka tu nepočíta. Na živom webe hneď ukáže porovnanie s Vašimi číslami.',
   details: 'Toto je náhľad: nič sa neodosiela. Na živom webe príde e-mail: firme, ktorú register pozná ako s. r. o., odkaz na zmluvu online, inak potvrdenie, a ozveme sa do jedného pracovného dňa.',
   order: 'Toto je náhľad: zmluva sa tu neuzatvára. Na živom webe ju konateľ uzavrie týmto tlačidlom, príde mu e-mail s podmienkami a hneď sa otvorí aplikácia.',
+  invest: 'Toto je náhľad: nič sa neodosiela. Na živom webe Vás zapíšeme, príde potvrdenie e-mailom a v januári správa o spustení.',
 }
 
 const SCRIPT = `<script>
@@ -71,11 +76,18 @@ document.documentElement.lang = 'sk';
 document.addEventListener('submit', function (event) {
   event.preventDefault();
   var form = event.target, says = ${JSON.stringify(SAYS)}, text = says.details;
+  var invest = form.getAttribute('action') === 'investori.html';
   for (var name in says) if (form.classList.contains(name)) text = says[name];
+  if (invest) text = says.invest;
   var note = form.querySelector('.preview-note');
   if (!note) { note = document.createElement('p'); note.className = 'preview-note'; note.setAttribute('role', 'status'); form.appendChild(note); }
   note.textContent = text;
-  if (form.classList.contains('ico')) {
+  if (invest) {
+    var thanks = document.createElement('a');
+    thanks.href = 'investori-hotovo.html';
+    thanks.textContent = ' Pozrieť, čo príde po zápise.';
+    note.appendChild(thanks);
+  } else if (form.classList.contains('ico')) {
     var more = document.createElement('a');
     more.href = 'zmluva.html';
     more.textContent = ' Pozrieť, ako vyzerá zmluva online.';

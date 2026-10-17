@@ -2,9 +2,9 @@ import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
-import { APP, BRAND, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById } from './config'
+import { APP, BRAND, INVESTORS, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
 import { copy } from './copy'
-import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, withinLimit } from './db'
+import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
 import { typeset } from './format'
 import { connection, isLocal, later, siteOrigin } from './http'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
@@ -33,6 +33,7 @@ import { Home, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
 import { NotFound, StartDetails, StartIco, Thanks, type CompanyState, type DetailsErrors, type DetailsValues, type Situation } from './views/start'
+import { InvestorsPage, InvestorsThanks, type InvestorValues } from './views/investors'
 
 export interface Bindings extends AppBindings {
   DB: D1Database
@@ -348,6 +349,72 @@ app.post('/zacat', async (c) => {
   return c.redirect(orderToken ? '/zacat/hotovo?zmluva=1' : '/zacat/hotovo', 303)
 })
 
+// ---------------------------------------------------------------------------
+// Firmony for investors: what it will be, and who wants it (one row an address)
+// ---------------------------------------------------------------------------
+
+const investorsMeta: PageMeta = { title: copy.investors.meta.title, description: copy.investors.meta.description, path: '/investori', ctaHref: '#zapis', ctaText: copy.investors.cta }
+
+app.get('/investori', (c) => {
+  const carry = carryFrom((name) => c.req.query(name))
+  return page(c, investorsMeta, <InvestorsPage carry={carry} values={{ email: '', brokers: [], way: null }} />)
+})
+
+app.post('/investori', async (c) => {
+  const body = await c.req.parseBody({ all: true })
+  const one = (name: string) => {
+    const value = body[name]
+    return Array.isArray(value) ? value[0] : value
+  }
+  const carry = carryFrom(one)
+  if (field(one('web'), 200) !== '') return c.redirect('/investori/hotovo', 303)
+  const picked = ([] as unknown[]).concat(body.broker ?? [])
+  const brokers = INVESTORS.brokers.map((b) => b.id).filter((id) => picked.includes(id)) as InvestorBroker[]
+  const way = (INVESTORS.ways as readonly string[]).includes(field(one('cesta'), 10)) ? (field(one('cesta'), 10) as InvestorWay) : null
+  const values: InvestorValues = { email: field(one('email'), 200), brokers, way }
+  // Which form it came from, so that a mistake is said at the form it was made in.
+  const at = one('forma') === 'zapis' ? 'final' : 'hero'
+  const meta = { ...investorsMeta, path: '/investori' }
+  if (!EMAIL.test(values.email)) return page(c, meta, <InvestorsPage carry={carry} values={values} error={copy.investors.errors.email} at={at} />, 422)
+  const db = c.env.DB
+  await ensureSchema(db)
+  if (!(await withinLimit(db, 'investor', connection(c), LIMITS.requestsPerHour, 3600))) {
+    return page(c, meta, <InvestorsPage carry={carry} values={values} error={copy.investors.errors.throttle} at={at} />, 429)
+  }
+  const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
+  const statements = [upsertInvestorStatement(db, { email: values.email, brokers, way, source, privacyVersion: PRIVACY_VERSION })]
+  // A confirmation to the address that was typed, at most twice a day, with nothing in it a stranger could have typed.
+  if (await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)) {
+    statements.push(
+      queueStatement(db, {
+        key: `investor:${values.email.toLowerCase()}:${now()}`,
+        to: values.email,
+        subject: copy.investors.mail.subject,
+        body: [
+          'Dobrý deň,',
+          '',
+          copy.investors.mail.lead.replace(/\u00a0/g, ' '),
+          '',
+          copy.investors.mail.remove.replace(/\u00a0/g, ' '),
+          '',
+          'Christian Juhás',
+          BRAND.name,
+          '',
+          `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, zapísanej ${OPERATOR.registeredIn}.`,
+        ].join('\n'),
+      }),
+    )
+  }
+  await db.batch(statements)
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect('/investori/hotovo', 303)
+})
+
+// Signed up: the header's button is the site's own again (the form it led to is behind them).
+app.get('/investori/hotovo', (c) =>
+  page(c, { title: `${copy.investors.thanks.title} | ${BRAND.name}`, description: copy.investors.meta.description, path: '/investori/hotovo', noindex: true }, <InvestorsThanks />),
+)
+
 app.get('/zacat/hotovo', (c) => {
   const order = c.req.query('zmluva') === '1'
   return page(c, { ...startMeta, title: `${order ? copy.thanks.orderTitle : copy.thanks.title} | ${BRAND.name}`, path: '/zacat/hotovo' }, <Thanks order={order} />)
@@ -503,7 +570,7 @@ app.route('/ucto', teamRoutes)
 app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /objednavka', 'Disallow: /app', 'Disallow: /ucto', 'Disallow: /f/', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
 
 app.get('/sitemap.xml', (c) => {
-  const urls = ['/', '/podmienky', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)
+  const urls = ['/', '/investori', '/podmienky', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)
   c.header('Content-Type', 'application/xml; charset=utf-8')
   return c.body(['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', ...urls, '</urlset>', ''].join('\n'))
 })
