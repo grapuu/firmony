@@ -1,10 +1,8 @@
 // The accountants' side in the database. An accountant sees the companies she is assigned to; an administrator
 // sees all of them. Every function that reads a company's things is given the user and checks it.
 import { now } from '../db'
-import { selfVatOf } from '../app/vat-store'
-import { CATEGORIES, entryFor, type Category, type PaidBy } from '../app/booking'
+import { type Category, type PaidBy } from '../app/booking'
 import { COMPANY_COLUMNS, DOC_FROM, MISSING, companyOf, docOf, type Company, type Doc, type Team, type User } from '../app/store'
-import type { DocKind } from '../app/match'
 import { POA_STATE_SQL, type PoaState } from '../app/papers'
 import { DECLARATION_STATE_SQL, OPEN_REPORTS_SQL, type DeclarationState } from '../app/aml'
 
@@ -359,72 +357,10 @@ export function csvMoney(cents: number | null): string {
   return `${negative ? '-' : ''}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, '0')}`
 }
 
-export interface ExportRow {
-  doc: Doc
-  paidOn: string | null
-  paidBy: PaidBy
-  bookedByName: string | null
-}
-
-/** The booked documents of a month (by their date, or the day they arrived when they have none), with their payment. */
-export async function exportRows(db: D1Database, company: string, month: string): Promise<ExportRow[]> {
-  const from = `${month}-01`
-  const [y, m] = month.split('-').map(Number) as [number, number]
-  const to = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`
-  const rows = await db
-    .prepare(
-      `SELECT ${DOC_COLUMNS_ALL}, p.booked_on AS paid_on FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
-       WHERE d.company_id = ? AND d.deleted_at IS NULL AND d.booked_at IS NOT NULL
-         AND COALESCE(d.issued_on, date(d.created_at, 'unixepoch')) >= ? AND COALESCE(d.issued_on, date(d.created_at, 'unixepoch')) < ?
-       ORDER BY COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), d.created_at`,
-    )
-    .bind(company, from, to)
-    .all<Row>()
-  return rows.results.map((row) => {
-    const doc = docOf(row)
-    const paidOn = typeof row.paid_on === 'string' ? row.paid_on : null
-    return { doc, paidOn, paidBy: paidByOf(doc, paidOn !== null), bookedByName: doc.bookedByName }
-  })
-}
-
 export function paidByOf(doc: Pick<Doc, 'paidPrivately' | 'kind'>, linked: boolean): PaidBy {
   if (linked) return 'bank'
   if (doc.paidPrivately) return 'private'
   return doc.kind === 'receipt' ? 'cash' : 'unpaid'
-}
-
-export function exportCsv(rows: ExportRow[], vatPayer: boolean, headers: readonly string[], kinds: Record<DocKind, string>, paidNames: Record<PaidBy, string>): string {
-  const lines = [headers.map(csvCell).join(';')]
-  for (const { doc, paidOn, paidBy, bookedByName } of rows) {
-    const entry = entryFor({ kind: doc.kind, category: doc.category, totalCents: doc.totalCents, vatCents: doc.vatCents, vatPayer, vatDeduct: doc.vatDeduct ?? false, paidBy, account: doc.account, selfVat: selfVatOf(doc.vat) })
-    const first = entry[0]
-    const vat = entry.find((line) => line.what === 'vat')
-    const base = doc.totalCents === null ? null : doc.totalCents - (doc.vatCents ?? 0)
-    lines.push(
-      [
-        doc.issuedOn ?? '',
-        doc.kind ? kinds[doc.kind] : '',
-        doc.number ?? '',
-        doc.party ?? '',
-        doc.partyIco ?? '',
-        csvMoney(doc.totalCents),
-        csvMoney(doc.vatCents),
-        csvMoney(base),
-        doc.category ? CATEGORIES[doc.category].name : '',
-        first?.md ?? '',
-        first?.d ?? '',
-        vat && doc.kind !== 'invoice_out' ? 'áno' : 'nie',
-        paidOn ?? '',
-        paidNames[paidBy],
-        doc.vs ?? '',
-        bookedByName ?? '',
-        doc.bookedAt ? new Date(doc.bookedAt * 1000).toISOString().slice(0, 10) : '',
-      ]
-        .map((value) => csvCell(value))
-        .join(';'),
-    )
-  }
-  return `﻿${lines.join('\r\n')}\r\n`
 }
 
 export function stamp(): number {

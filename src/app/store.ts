@@ -63,7 +63,8 @@ export interface User {
   reminders: boolean
 }
 
-export type PaymentState = 'missing' | 'done' | 'exempt'
+/** before: booked before our books start, so the former accountant's and no document of ours (point 5.2 of the terms). */
+export type PaymentState = 'missing' | 'done' | 'exempt' | 'before'
 
 export interface Payment {
   id: string
@@ -89,6 +90,8 @@ export interface Payment {
   /** The account the accountant gave a payment that has no document to book it by. */
   contra: string | null
   docs: number
+  /** The first day our books hold ('' when from the beginning); a payment before it is the former accountant's. */
+  booksFrom: string | null
   state: PaymentState
 }
 
@@ -207,13 +210,26 @@ export async function getCompany(db: D1Database, id: string): Promise<Company | 
   return row ? companyOf(row) : null
 }
 
+/**
+ * The first day our books hold, as SQL for a company's id: the opening balances' day, else the contract's first day,
+ * else '' (from the beginning). The same rule as `booksStart` in ledger.ts. What came before it is the former
+ * accountant's (point 5.2 of the terms): no document of ours is asked for it and no statement of it is due.
+ */
+export function booksFromSql(company: string): string {
+  return `COALESCE((SELECT MIN(le.on_date) FROM ledger_entries le WHERE le.company_id = ${company} AND le.kind = 'opening' AND le.deleted_at IS NULL),
+    (SELECT co.start_on FROM companies co WHERE co.id = ${company}), '')`
+}
+
 const PAYMENT_COLUMNS = `p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.ss, p.ks, p.note, p.card, p.source,
   p.exempt, p.exempt_note, p.exempt_by, eb.name AS exempt_by_name, p.checked_at, a.iban AS account_iban, a.ledger AS bank_ledger, p.contra,
-  (SELECT COUNT(*) FROM links l WHERE l.payment_id = p.id) AS docs`
+  (SELECT COUNT(*) FROM links l WHERE l.payment_id = p.id) AS docs, ${booksFromSql('p.company_id')} AS books_from`
 const PAYMENT_FROM = 'payments p JOIN accounts a ON a.id = p.account_id LEFT JOIN users eb ON eb.id = p.exempt_by'
 
-/** A payment that still needs a document, as SQL over the alias p. */
-export const MISSING = 'p.exempt IS NULL AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id)'
+/** A payment with no document paired and none said to be needed, as SQL over the alias p: what pairing looks at, whatever its day. */
+const UNPAIRED = 'p.exempt IS NULL AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id)'
+
+/** A payment that still needs a document from the client, as SQL over the alias p: unpaired, and within our books. */
+export const MISSING = `${UNPAIRED} AND p.booked_on >= ${booksFromSql('p.company_id')}`
 
 function paymentOf(row: Row): Payment {
   const docs = num(row.docs) ?? 0
@@ -240,7 +256,8 @@ function paymentOf(row: Row): Payment {
     bankLedger: str(row.bank_ledger) ?? '221',
     contra: str(row.contra),
     docs,
-    state: exempt ? 'exempt' : docs > 0 ? 'done' : 'missing',
+    booksFrom: str(row.books_from),
+    state: exempt ? 'exempt' : docs > 0 ? 'done' : String(row.booked_on) < String(row.books_from ?? '') ? 'before' : 'missing',
   }
 }
 
@@ -471,10 +488,11 @@ export async function peopleOf(db: D1Database, company: string): Promise<Person[
 // Payments
 // ---------------------------------------------------------------------------------------------------------------
 
-export type PaymentFilter = 'missing' | 'done' | 'all'
+/** unpaired: no document and none said to be needed, also before our books start (an invoice paid then is still paid). */
+export type PaymentFilter = 'missing' | 'unpaired' | 'done' | 'all'
 
 export async function listPayments(db: D1Database, company: string, filter: PaymentFilter, limit = 400, search = ''): Promise<Payment[]> {
-  const where = filter === 'missing' ? `AND ${MISSING}` : filter === 'done' ? 'AND (p.exempt IS NOT NULL OR EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id))' : ''
+  const where = filter === 'missing' ? `AND ${MISSING}` : filter === 'unpaired' ? `AND ${UNPAIRED}` : filter === 'done' ? 'AND (p.exempt IS NOT NULL OR EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id))' : ''
   const { sql, binds } = searchSql(search, ['p.party', 'p.note', 'p.vs'], 'ABS(p.amount_cents)')
   const rows = await db
     .prepare(`SELECT ${PAYMENT_COLUMNS} FROM ${PAYMENT_FROM} WHERE p.company_id = ? ${where} ${sql} ORDER BY p.booked_on DESC, p.created_at DESC LIMIT ?`)
@@ -827,7 +845,7 @@ async function looseRead(db: D1Database, company: string): Promise<Doc[]> {
 
 /** Pairs what is sure to belong together; says how many pairs were made. */
 export async function matchCompany(db: D1Database, company: string): Promise<number> {
-  const [payments, docs] = await Promise.all([listPayments(db, company, 'missing', 500), looseRead(db, company)])
+  const [payments, docs] = await Promise.all([listPayments(db, company, 'unpaired', 500), looseRead(db, company)])
   if (payments.length === 0 || docs.length === 0) return 0
   const { auto } = decide(payments.map(asMatchPayment), docs.map(asMatchDocument))
   if (auto.length === 0) return 0

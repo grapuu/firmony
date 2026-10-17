@@ -11,6 +11,7 @@ import { checkSecurity } from './security.runtime.mjs'
 import { checkIncidents } from './incidents.runtime.mjs'
 import { checkRestore } from './restore.runtime.mjs'
 import { checkBilling } from './billing.runtime.mjs'
+import { checkBeforeStart } from './start.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
 import { checkFilings } from './filings.runtime.mjs'
 import { checkPayrollReports } from './payroll-reporting.runtime.mjs'
@@ -943,23 +944,6 @@ check(
   (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE (file_name LIKE 'kava%' OR file_name LIKE 'parkovanie-%') AND deleted_at IS NULL").first())?.n === 0,
 )
 await checkAutomation({ db, acc, anna, nowS, day, appPost, pretendPhoto, settle, capture: process.env.FIRMONY_CAPTURE_DIR })
-
-// The export for her accounting program
-res = await acc.get(`/ucto/klienti/co-a/export?mesiac=${day(-1).slice(0, 7)}`)
-const csvBytes = new Uint8Array(await res.arrayBuffer())
-const csv = new TextDecoder().decode(csvBytes)
-check(
-  'booked documents of a month as CSV for Slovak Excel',
-  res.status === 200 &&
-    (res.headers.get('content-type') ?? '').startsWith('text/csv') &&
-    csvBytes[0] === 0xef &&
-    csvBytes[1] === 0xbb &&
-    csvBytes[2] === 0xbf &&
-    csv.includes('Kaviareň Na rohu s. r. o.;50123456;12,40;2,07;10,33;Reprezentácia;513;221'),
-  csv.split('\r\n')[1],
-)
-res = await acc.get('/ucto/klienti/co-b/export')
-check('never of a client that is not hers', res.status === 404)
 
 // A payment the client says needs no document: checked, or handed back with a message
 await db.prepare("UPDATE payments SET exempt = 'other', exempt_note = 'Bloček sa stratil', exempt_by = 'u-a' WHERE id = 'pa-fuel'").run()
@@ -2830,6 +2814,34 @@ check(
     page.slice(page.indexOf('Priznanie'), page.indexOf('Priznanie') + 400),
   )
   res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}`)
+  check('no file before the podklady are saved: what is loaded in eDane is what the evidence holds', res.status === 303 && (res.headers.get('location') ?? '').includes('ok=dph-ulozit'))
+  const readyHtml = await (await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)).text()
+  page = plain(readyHtml)
+  check('the page offers saving the podklady first, and no file yet', page.includes('Uložiť podklady a otvoriť podania') && !page.includes('Stiahnuť priznanie (XML)'))
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/vat-ready.html`, readyHtml)
+  res = await acc.get('/ucto')
+  const homeHtml = await res.text()
+  page = plain(homeHtml)
+  check(
+    "the team's home says what of ours presses today, and a client with it is not done",
+    res.status === 200 && page.includes('Dnes na rade') && homeHtml.includes(`/ucto/klienti/co-a/dph?obdobie=${old}`) && !/tbl__row--done[^>]*href="\/ucto\/klienti\/co-a"/.test(homeHtml),
+  )
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/team-home.html`, homeHtml)
+  res = await acc.get('/ucto/klienti/co-b/dph')
+  check('never of a client that is not hers', res.status === 404)
+
+  // Filed: once, with what was filed; the client is told in the app what to pay, where and with which symbol.
+  await db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = 'co-a' AND seen_at IS NULL").bind(nowS).run()
+  const beforeFile = (await sent()).length
+  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old })
+  await settle()
+  const filedRow = await db.prepare("SELECT pay_cents, refund_cents, kv_rows, filed_by FROM vat_returns WHERE company_id = 'co-a' AND period = ?").bind(old).first()
+  check(
+    'marked as filed, with what was filed',
+    res.status === 303 && filedRow?.pay_cents === 1150 && filedRow.refund_cents === 0 && filedRow.kv_rows === 2 && filedRow.filed_by === lucia?.id,
+    JSON.stringify(filedRow),
+  )
+  res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}`)
   const returnFile = await res.text()
   check(
     'the return as a file the portal takes, valid against its schema',
@@ -2848,20 +2860,6 @@ check(
     'the control statement too: A.1 and B.2, valid',
     res.status === 200 && kvFile.includes('<A1 F="2026901"') && kvFile.includes('<B2 Dod="SK2020123456" F="FA-77"') && (await validXml(kvFile, 'kv_dph_2025.xsd')),
     kvFile,
-  )
-  res = await acc.get('/ucto/klienti/co-b/dph')
-  check('never of a client that is not hers', res.status === 404)
-
-  // Filed: once, with what was filed; the client is told in the app what to pay, where and with which symbol.
-  await db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = 'co-a' AND seen_at IS NULL").bind(nowS).run()
-  const beforeFile = (await sent()).length
-  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old })
-  await settle()
-  const filedRow = await db.prepare("SELECT pay_cents, refund_cents, kv_rows, filed_by FROM vat_returns WHERE company_id = 'co-a' AND period = ?").bind(old).first()
-  check(
-    'marked as filed, with what was filed',
-    res.status === 303 && filedRow?.pay_cents === 1150 && filedRow.refund_cents === 0 && filedRow.kv_rows === 2 && filedRow.filed_by === lucia?.id,
-    JSON.stringify(filedRow),
   )
   const filedMsg = plain((await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' AND side = 'firmony' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body ?? '')
   check(
@@ -2920,7 +2918,8 @@ check(
     page.includes('Zmenené po uložení') &&
       page.includes('Zmenené riadky: 03, 04, 17, 32, 35.') &&
       page.includes('treba dodatočné priznanie') &&
-      page.includes('Stiahnuť dodatočné priznanie') &&
+      page.includes('Uložiť opravené podklady') &&
+      !page.includes('Stiahnuť dodatočné priznanie') &&
       page.includes('Riadok 36: +46,00 €. Riadok 37: +46,00 €.'),
     page.match(/Zmenené riadky[^.]*\./)?.[0],
   )
@@ -2931,7 +2930,7 @@ check(
     .run()
   res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
   page = plain(await res.text())
-  const heldBack = page.includes('Opravu pripravíme, keď bude všetko vyriešené.') && !page.includes('Stiahnuť dodatočné priznanie')
+  const heldBack = page.includes('Opravu pripravíme, keď bude všetko vyriešené.') && !page.includes('Uložiť opravené podklady')
   res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}`)
   check('a correction waits while a document of the month is not booked', heldBack && (res.headers.get('location') ?? '').includes('ok=dph-blokovane'))
   await db.prepare("DELETE FROM documents WHERE id = 'vat-unread'").run()
@@ -2940,6 +2939,25 @@ check(
   const found = day(-1)
   const dotted = `${found.slice(8, 10)}.${found.slice(5, 7)}.${found.slice(0, 4)}`
   res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}&zistene=${encodeURIComponent(skDay(found))}`)
+  check('the correction has no file before its podklady are saved either', res.status === 303 && (res.headers.get('location') ?? '').includes('ok=dph-ulozit'))
+  await db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = 'co-a' AND seen_at IS NULL").bind(nowS).run()
+  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old, zistene: skDay(found) })
+  await settle()
+  const dRow = await db.prepare("SELECT kind, pay_cents, found_on, due_on, prev FROM vat_returns WHERE company_id = 'co-a'").first()
+  const monthAfter = new Date(`${found.slice(0, 7)}-15T12:00:00Z`)
+  monthAfter.setUTCMonth(monthAfter.getUTCMonth() + 1)
+  check(
+    'marked as filed: the period now comes to 57,50 €, due by the end of the month after the finding',
+    res.status === 303 &&
+      (res.headers.get('location') ?? '').includes('/podania?obdobie=') &&
+      dRow?.kind === 'D' &&
+      dRow.pay_cents === 1150 + 4600 &&
+      dRow.found_on === found &&
+      dRow.due_on >= `${monthAfter.toISOString().slice(0, 7)}-28` &&
+      Boolean(dRow.prev),
+    JSON.stringify(dRow && { ...dRow, prev: Boolean(dRow.prev) }),
+  )
+  res = await acc.get(`/ucto/klienti/co-a/dph/priznanie.xml?obdobie=${old}`)
   const dFile = await res.text()
   check(
     'the supplementary return: marked so, with the day of finding, the whole figures and rows 36 and 37, valid',
@@ -2965,23 +2983,6 @@ check(
       !dKvFile.includes('<B2') &&
       (await validXml(dKvFile, 'kv_dph_2025.xsd')),
     dKvFile,
-  )
-  await db.prepare("UPDATE messages SET seen_at = ? WHERE company_id = 'co-a' AND seen_at IS NULL").bind(nowS).run()
-  res = await acc.post('/ucto/klienti/co-a/dph/podane', { obdobie: old, zistene: skDay(found) })
-  await settle()
-  const dRow = await db.prepare("SELECT kind, pay_cents, found_on, due_on, prev FROM vat_returns WHERE company_id = 'co-a'").first()
-  const monthAfter = new Date(`${found.slice(0, 7)}-15T12:00:00Z`)
-  monthAfter.setUTCMonth(monthAfter.getUTCMonth() + 1)
-  check(
-    'marked as filed: the period now comes to 57,50 €, due by the end of the month after the finding',
-    res.status === 303 &&
-      (res.headers.get('location') ?? '').includes('/podania?obdobie=') &&
-      dRow?.kind === 'D' &&
-      dRow.pay_cents === 1150 + 4600 &&
-      dRow.found_on === found &&
-      dRow.due_on >= `${monthAfter.toISOString().slice(0, 7)}-28` &&
-      Boolean(dRow.prev),
-    JSON.stringify(dRow && { ...dRow, prev: Boolean(dRow.prev) }),
   )
   const dMsg = plain((await db.prepare("SELECT body FROM messages WHERE company_id = 'co-a' AND side = 'firmony' ORDER BY created_at DESC, rowid DESC LIMIT 1").first())?.body ?? '')
   check(
@@ -3355,7 +3356,16 @@ check(
   page = await svPage()
   check(
     "the VAT page has the period's recapitulative statement: the customer, the services' code, the value in whole euros",
-    page.includes(`Súhrnný výkaz za ${nameOf(last)}`) && page.includes('DE 123456789') && page.includes('Služby (kód 2)') && page.includes('1 000 €') && page.includes('Stiahnuť súhrnný výkaz (XML)'),
+    page.includes(`Súhrnný výkaz za ${nameOf(last)}`) && page.includes('DE 123456789') && page.includes('Služby (kód 2)') && page.includes('1 000 €') && page.includes('Uložiť podklady a otvoriť podania') && !page.includes('Stiahnuť súhrnný výkaz (XML)'),
+  )
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  check('no file before its podklady are saved', res.status === 303 && (res.headers.get('location') ?? '').includes('ok=sv-ulozit'))
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  const svFiled = await db.prepare("SELECT filed_on, data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first()
+  check(
+    'marked as filed with what its file held',
+    res.status === 303 && (res.headers.get('location') ?? '').includes('/podania?obdobie=') && JSON.parse(svFiled?.data ?? '{}').rows?.[0]?.euros === 1000 && JSON.parse(svFiled?.data ?? '{}').kind === 'R',
+    JSON.stringify(svFiled),
   )
   res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
   let svXml = await res.text()
@@ -3366,13 +3376,6 @@ check(
       svXml.includes('<zaznam><kodStatu>DE</kodStatu><idCislo>123456789</idCislo><hodnota>1000</hodnota><kod>2</kod></zaznam>') &&
       svXml.includes('<celkovaHodnota>1000</celkovaHodnota>') &&
       (await validXml(svXml, 'svdph2020.xsd')),
-  )
-  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
-  const svFiled = await db.prepare("SELECT filed_on, data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first()
-  check(
-    'marked as filed with what its file held',
-    res.status === 303 && (res.headers.get('location') ?? '').includes('/podania?obdobie=') && JSON.parse(svFiled?.data ?? '{}').rows?.[0]?.euros === 1000 && JSON.parse(svFiled?.data ?? '{}').kind === 'R',
-    JSON.stringify(svFiled),
   )
   res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
   check('marked again, it stays one', (res.headers.get('location') ?? '').includes('ok=sv-uz') && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'vat.summary.filed'").first())?.n === 1)
@@ -3392,11 +3395,16 @@ check(
   // The invoice changed after the filing: a corrective statement before the deadline, a supplementary one after it
   await db.prepare(`UPDATE documents SET vat_lines = '[{"rate":0,"base":120000,"vat":0,"deduct":0}]' WHERE id = 't-eu'`).run()
   page = await svPage()
-  const fix = page.includes('Stiahnuť opravný súhrnný výkaz') ? 'O' : page.includes('Stiahnuť dodatočný súhrnný výkaz') ? 'D' : null
+  const fix = page.includes('opravný súhrnný výkaz so všetkými riadkami') ? 'O' : page.includes('dodatočný súhrnný výkaz obsahuje len riadky') ? 'D' : null
   check('changed after it was filed, the page says so and offers the correction', page.includes('Zmenené po uložení') && fix !== null && page.includes('Uložiť opravené podklady'))
   res = await acc.get('/ucto/terminy')
   page = plain(await res.text())
   check('so does the screen of deadlines', Boolean(rowOf(page, 'Termíny s. r. o.', `${fix === 'O' ? 'Opravný' : 'Dodatočný'} súhrnný výkaz za ${nameOf(last)}`)))
+  res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
+  check('nor before the correction\'s', res.status === 303 && (res.headers.get('location') ?? '').includes('ok=sv-ulozit'))
+  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
+  const corrected = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
+  check('the correction marked, over the statement it corrects', (res.headers.get('location') ?? '').includes('/podania?obdobie=') && corrected.kind === fix && corrected.rows?.[0]?.euros === 1200 && corrected.prev?.rows?.[0]?.euros === 1000)
   res = await acc.get(`/ucto/klienti/co-t/dph/suhrnny-vykaz.xml?obdobie=${last}`)
   svXml = await res.text()
   check(
@@ -3406,9 +3414,6 @@ check(
       svXml.includes('<hodnota>1200</hodnota>') &&
       (await validXml(svXml, 'svdph2020.xsd')),
   )
-  res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/podane', { obdobie: last })
-  const corrected = JSON.parse((await db.prepare("SELECT data FROM filings WHERE company_id = 'co-t' AND kind = 'sv' AND period = ?").bind(last).first())?.data ?? '{}')
-  check('the correction marked, over the statement it corrects', (res.headers.get('location') ?? '').includes('/podania?obdobie=') && corrected.kind === fix && corrected.rows?.[0]?.euros === 1200 && corrected.prev?.rows?.[0]?.euros === 1000)
   page = await svPage()
   check('prepared again as the books stand, with a safe reopen action', page.includes(fix === 'O' ? 'Opravné podklady uložené' : 'Dodatočné podklady uložené') && page.includes('Znovu otvoriť neodoslané alebo odmietnuté podklady'))
   res = await acc.post('/ucto/klienti/co-t/dph/suhrnny-vykaz/zrusit', { obdobie: last })
@@ -3422,24 +3427,16 @@ check(
   res = await acc.post('/ucto/klienti/co-b/dph/suhrnny-vykaz/podane', { obdobie: last })
   check("nor a statement of a client that is not hers", res.status === 404)
 
-  // What the app does not file itself (a month's payroll reports), marked as filed and taken back
+  // A month's payroll reports marked by hand before they were filed recipient by recipient: no new mark, an old one taken back
   res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, spat: '/ucto/terminy?kto=my' })
-  check(
-    'marked as filed: kept once, on record, and back to the screen as it was',
-    res.status === 303 &&
-      res.headers.get('location') === '/ucto/terminy?kto=my&ok=oznacene' &&
-      (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'mz' AND period = ?").bind(last).first())?.n === 1 &&
-      (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'filing.marked'").first())?.n === 1,
-  )
-  res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, spat: '/ucto/klienti/co-t' })
-  check(
-    "marked again from the client's page, it stays one, and back to that page",
-    res.headers.get('location') === '/ucto/klienti/co-t?ok=oznacene' && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 1,
-  )
+  check('no new manual mark is made: one mark never proved all of a month\'s reports', res.status === 400 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t' AND kind = 'mz'").first())?.n === 0)
+  await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES ('co-t', 'mz', ?, ?, ?, ?)").bind(last, day(0), nowS, lucia.id).run()
   res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: last, zrusit: '1', spat: 'https://evil.example/' })
   check(
-    'taken back; a way back to elsewhere is not followed',
-    res.headers.get('location') === '/ucto/terminy?ok=neoznacene' && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0,
+    'an old mark is taken back, on record; a way back to elsewhere is not followed',
+    res.headers.get('location') === '/ucto/terminy?ok=neoznacene' &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-t'").first())?.n === 0 &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-t' AND action = 'filing.unmarked'").first())?.n === 1,
   )
   res = await acc.post('/ucto/klienti/co-t/podane', { druh: 'mz', obdobie: day(0).slice(0, 7) })
   check('a month that has not ended cannot be marked', res.status === 400)
@@ -3515,22 +3512,24 @@ check(
   check('a quarterly VAT page shows three monthly SV cards and submits each actual month', res.status === 200 && months.every((m) => html.includes(`id="suhrnny-${m}"`) && html.includes(`name="obdobie" value="${m}"`)) && plain(html).includes('Priznanie DPH zostáva štvrťročné'))
   if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/monthly-sv.html`, html)
   const valid = async (xml) => (await validateXML({ xml: [{ fileName: 'sv.xml', contents: xml }], schema: [{ fileName: 'sv.xsd', contents: readFileSync(new URL('./xsd/svdph2020.xsd', import.meta.url), 'utf8') }] })).valid
+  res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}`)
+  check('a monthly SV has no file before its podklady are saved', res.status === 303 && res.headers.get('location').includes('sv-ulozit'))
+  res = await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: quarter })
+  check('posting the old quarterly SV period cannot create an invalid filing', res.headers.get('location').includes('sv-blokovane') && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv'").first()).n === 0)
+  res = await acc.get(`${base}/priznanie.xml?obdobie=${quarter}`)
+  check('the VAT return itself stays one for the whole quarter, waiting for its podklady', res.status === 303 && res.headers.get('location')?.includes(`obdobie=${quarter}`) && res.headers.get('location')?.includes('dph-ulozit'), JSON.stringify({ status: res.status, location: res.headers.get('location') }))
+  res = await acc.get('/ucto/terminy')
+  html = await res.text()
+  check('deadlines point a monthly SV to its card inside the quarterly VAT page', html.includes(`obdobie=${quarter}#suhrnny-${months[0]}`))
+  for (const month of months) await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: month })
   const originals = []
   for (let i = 0; i < 3; i++) {
     res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[i]}`)
     const xml = await res.text(); originals.push(xml)
     check(`monthly XML ${months[i]} contains only its month, with the schema and monthly filename`, res.status === 200 && res.headers.get('content-disposition').includes(months[i]) && xml.includes(`<mesiac>${Number(months[i].slice(-2))}</mesiac><stvrtrok></stvrtrok>`) && xml.includes(`<hodnota>${amounts[i] / 100}</hodnota>`) && await valid(xml))
   }
-  res = await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: quarter })
-  check('posting the old quarterly SV period cannot create an invalid filing', res.headers.get('location').includes('sv-blokovane') && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv'").first()).n === 0)
-  res = await acc.get(`${base}/priznanie.xml?obdobie=${quarter}`)
-  check('the VAT return itself still downloads for the whole quarter', res.status === 200 && res.headers.get('content-disposition')?.includes(quarter), JSON.stringify({ status: res.status, location: res.headers.get('location'), body: (await res.text()).slice(0, 300) }))
-  res = await acc.get('/ucto/terminy')
-  html = await res.text()
-  check('deadlines point a monthly SV to its card inside the quarterly VAT page', html.includes(`obdobie=${quarter}#suhrnny-${months[0]}`))
-  for (const month of months) await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: month })
   let rows = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND kind = 'sv' ORDER BY period").all()
-  check('three months are filed separately with the exact XML snapshots and SHA-256', rows.results.length === 3 && rows.results.every((r, i) => { const f = JSON.parse(r.data).file; return r.period === months[i] && f.xml === originals[i] && f.sha256 === createHash('sha256').update(f.xml).digest('hex') }))
+  check('three months are filed separately, and each file downloaded is its exact XML snapshot with its SHA-256', rows.results.length === 3 && rows.results.every((r, i) => { const f = JSON.parse(r.data).file; return r.period === months[i] && f.xml === originals[i] && f.sha256 === createHash('sha256').update(f.xml).digest('hex') }))
   await db.prepare("UPDATE companies SET name = 'Nový názov firmy' WHERE id = 'co-sv'").run()
   res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}&povodne=1`)
   check('a filed monthly SV replays its original bytes even after filer details change', res.status === 200 && await res.text() === originals[0])
@@ -3538,10 +3537,10 @@ check(
   // preserve their immutable package history, but make the legacy source explicit instead of inventing receipts.
   await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv'").run()
   await db.prepare("UPDATE documents SET vat_lines = ? WHERE id = 'sv-0'").bind(JSON.stringify([{ rate: 0, base: 3100000, vat: 0, deduct: 0 }])).run()
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[0] })
   res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[0]}`)
   const correctedXml = await res.text()
   check('a changed monthly SV prepares a valid supplementary file for only the changed month', res.status === 200 && correctedXml.includes('<dodatocny>1</dodatocny>') && correctedXml.includes('<hodnota>31000</hodnota>') && await valid(correctedXml))
-  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[0] })
   let latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).first()
   check('monthly correction preserves the prior original snapshot', JSON.parse(latest.data).prev.file.xml === originals[0])
   await db.prepare("UPDATE filings SET data = json_remove(data, '$.file.attemptId') WHERE company_id = 'co-sv' AND period = ?").bind(months[0]).run()
@@ -3575,10 +3574,10 @@ check(
   await acc.post(`${base}/suhrnny-vykaz/obdobie`, { obdobie: quarter })
   latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()
   check('reclassification keeps the original quarter XML, source period and filing history', latest && JSON.parse(latest.data).sourcePeriod === quarter && JSON.parse(latest.data).file.xml === quarterFiled.file.xml && (await db.prepare("SELECT COUNT(*) AS n FROM filing_history WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).n > 0 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(quarter).first()).n === 0)
+  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[2] })
   res = await acc.get(`${base}/suhrnny-vykaz.xml?obdobie=${months[2]}`)
   const lastCorrection = await res.text()
   check('the last-month supplementary file cancels supplies belonging to earlier months', res.status === 200 && lastCorrection.includes('<dodatocny>1</dodatocny>') && lastCorrection.includes('<hodnota>0</hodnota>') && await valid(lastCorrection))
-  await acc.post(`${base}/suhrnny-vykaz/podane`, { obdobie: months[2] })
   latest = await db.prepare("SELECT * FROM filings WHERE company_id = 'co-sv' AND period = ?").bind(months[2]).first()
   check('the last-month correction retains the reclassified original in its chain', JSON.parse(latest.data).prev.file.xml === quarterFiled.file.xml && JSON.parse(latest.data).prev.sourcePeriod === quarter)
   const exported = await exportYear({ DB: db, FILES: files }, company, String(y), null, day(0))
@@ -3706,25 +3705,9 @@ check(
   page = plain(await res.text())
   check('ready now, the tax in the statements and in the books', page.includes('Pripravené') && page.includes('je zaúčtovaná interným dokladom') && page.includes('22 290') && !page.includes('Čo treba vyriešiť'))
 
-  // The files, against the Financial Administration's own schemas
   res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
-  let xml = await res.text()
-  check(
-    'the tax return as a file of DPPOv25, valid against its schema',
-    res.status === 200 && (res.headers.get('content-disposition') ?? '').includes(`DPPO_2120999994_${Y}.xml`) && (await validXml(xml, 'dppo2025.xsd')),
-    xml.slice(0, 300),
-  )
-  check(
-    'with the computation, the micro-taxpayer, the advance and the activity',
-    xml.includes('<r100>24800.00</r100>') && xml.includes('<r130>300.00</r130>') && xml.includes('<r1010>500.00</r1010>') && xml.includes('<r1100>2010.00</r1100>') && xml.includes('<mikrodanovnikPar2w>1</mikrodanovnikPar2w>') && xml.includes('<k1>62</k1><k2>01</k2><k3>0</k3><cinnost>Počítačové programovanie</cinnost>'),
-  )
-  res = await acc.get(`${base}/zavierka.xml?rok=${Y}`)
-  xml = await res.text()
-  check(
-    'the financial statements as a file of UZMUJv14, valid, the tax in them',
-    res.status === 200 && (await validXml(xml, 'uzmuj2014.xsd')) && xml.includes('<r36><s1>2510</s1>') && xml.includes('<r38><s1>22290</s1>') && xml.includes('<r22><s1>29000</s1>') && xml.includes('<r19><s1>300</s1>') && xml.includes('<r41><s1>2010</s1>'),
-    xml.slice(xml.indexOf('<telo>'), xml.indexOf('<telo>') + 300),
-  )
+  check('ready, it has no file before its podklady are saved', res.status === 303 && res.headers.get('location') === `${base}?rok=${Y}&ok=zavierka-ulozit`)
+  check('the page offers saving them, and no file yet', page.includes('Uložiť podklady a otvoriť podania') && !page.includes('Stiahnuť daňové priznanie (XML)'))
 
   // A deadline moved by a notice
   res = await acc.post(`${base}/lehota`, { rok: String(Y), lehota: `${Y + 1}-06-15` })
@@ -3752,6 +3735,26 @@ check(
     told?.body,
   )
   check('on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id = 'co-k' AND action = 'closing.filed'").first())?.n === 1)
+  // The files saved with the podklady, against the Financial Administration's own schemas
+  res = await acc.get(`${base}/priznanie.xml?rok=${Y}`)
+  let xml = await res.text()
+  check(
+    'the tax return as a file of DPPOv25, valid against its schema',
+    res.status === 200 && (res.headers.get('content-disposition') ?? '').includes(`DPPO_2120999994_${Y}.xml`) && (await validXml(xml, 'dppo2025.xsd')),
+    xml.slice(0, 300),
+  )
+  check(
+    'with the computation, the micro-taxpayer, the advance and the activity',
+    xml.includes('<r100>24800.00</r100>') && xml.includes('<r130>300.00</r130>') && xml.includes('<r1010>500.00</r1010>') && xml.includes('<r1100>2010.00</r1100>') && xml.includes('<mikrodanovnikPar2w>1</mikrodanovnikPar2w>') && xml.includes('<k1>62</k1><k2>01</k2><k3>0</k3><cinnost>Počítačové programovanie</cinnost>'),
+  )
+  res = await acc.get(`${base}/zavierka.xml?rok=${Y}`)
+  xml = await res.text()
+  check(
+    'the financial statements as a file of UZMUJv14, valid, the tax in them',
+    res.status === 200 && (await validXml(xml, 'uzmuj2014.xsd')) && xml.includes('<r36><s1>2510</s1>') && xml.includes('<r38><s1>22290</s1>') && xml.includes('<r22><s1>29000</s1>') && xml.includes('<r19><s1>300</s1>') && xml.includes('<r41><s1>2010</s1>'),
+    xml.slice(xml.indexOf('<telo>'), xml.indexOf('<telo>') + 300),
+  )
+
   const frozen = JSON.parse(row.filed)
   const saleBefore = await db.prepare("SELECT lines FROM ledger_entries WHERE id = 'k-e3'").first()
   await db.prepare("UPDATE ledger_entries SET lines = ? WHERE id = 'k-e3'").bind(JSON.stringify([{ md: '311', d: '602', cents: 9000000 }])).run()
@@ -3940,9 +3943,9 @@ check(
   // The deadlines
   res = await acc.get('/ucto/terminy?hotove=1')
   page = plain(await res.text())
-  check('closed payroll has separate insurer deadlines and an actual-payment review', page.includes('Mzdy za') && page.includes('Uzavreté') && page.includes('Sociálna poisťovňa') && page.includes('VšZP') && page.includes('Výplatu treba overiť'))
+  check('closed payroll has separate insurer deadlines and an actual-payment review', page.includes('Mzdy za') && page.includes('Uzavreté') && page.includes('Sociálnu poisťovňu') && page.includes('VšZP') && page.includes('Výplatu treba overiť'))
   res = await acc.post('/ucto/klienti/co-w/podane', { druh: 'mz', obdobie: last })
-  check('the reports marked as filed', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-w' AND kind = 'mz'").first())?.n === 1)
+  check('the reports are not marked as filed by hand', res.status === 400 && (await db.prepare("SELECT COUNT(*) AS n FROM filings WHERE company_id = 'co-w' AND kind = 'mz'").first())?.n === 0)
 
   // The settings
   res = await acc.post(`${base}/nastavenie`, { den: '40', sp_iban: 'SK00', sp_vs: 'abc' })
@@ -4244,6 +4247,7 @@ const acceptedExport = await get(`/app/export?rok=${months[1].slice(0, 4)}`, { h
 const acceptedZip = unzip(new Uint8Array(await acceptedExport.arrayBuffer()))
 const exactJson = acceptedZip?.find((f) => f.name === 'zmluva.json')
 check('a client can export the exact accepted snapshot with a matching checksum', acceptedExport.status === 200 && exactJson && createHash('sha256').update(exactJson.data).digest('hex') === exactContract.sha256 && acceptedZip.some((f) => f.name === 'zmluva.sha256'))
+await checkBeforeStart({ db, client: as(contractCookie), companyId: madeCompany.id, today: day(0), capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkBilling({ db, files, admin, acc, client: as(contractCookie), companyId: madeCompany.id, today: day(0), sent, settle, get, capture: process.env.FIRMONY_CAPTURE_DIR })
 const triggerSql = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'contract_snapshots_immutable'").first()).sql
 await db.exec('DROP TRIGGER contract_snapshots_immutable')

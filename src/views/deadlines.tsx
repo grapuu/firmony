@@ -1,6 +1,6 @@
 // The team's screen of deadlines (/ucto/terminy): every client's deadlines grouped by how soon they come, each with the
-// place where it is acted on. What the app does not file itself yet (the recapitulative statement) is marked as filed
-// here. The rules are in team/deadlines.ts.
+// place where it is acted on. A month's payroll reports marked by hand before they were filed recipient by recipient
+// can have the mark taken back here. The rules are in team/deadlines.ts.
 import type { FC } from 'hono/jsx'
 import { DELIVERY_LABELS } from '../filings/model'
 import { REPORT_KINDS, REPORT_LABELS } from '../payroll-reporting/model'
@@ -66,7 +66,7 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
   }
 }
 
-const tone = (d: Due): string => (d.state === 'done' ? 'pill--ok' : d.late || d.sourceChanged || d.deliveryStatus === 'rejected' || d.deliveryStatus === 'review' ? 'pill--red' : d.state === 'ready' ? 'pill--blue' : d.state === 'running' ? 'pill--grey' : 'pill--amber')
+const tone = (d: Due): string => (d.state === 'done' ? 'pill--ok' : d.deliveryStatus === 'submitted' && !d.sourceChanged ? 'pill--blue' : d.late || d.sourceChanged || d.deliveryStatus === 'rejected' || d.deliveryStatus === 'review' ? 'pill--red' : d.state === 'ready' ? 'pill--blue' : d.state === 'running' ? 'pill--grey' : 'pill--amber')
 
 /** Where a deadline is acted on: the period on the VAT page, the client's missing documents, the closing's page, the handover. */
 export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | 'reportId'> & { company: Pick<DueRow['company'], 'id' | 'vatStatus'> & Partial<Pick<DueRow['company'], 'vatQuarterly'>> }): string {
@@ -141,16 +141,17 @@ export function deadlinesHref(p: { side: DueFilter; done: boolean; accountant: s
   return s ? `/ucto/terminy?${s}` : '/ucto/terminy'
 }
 
+/** A month's payroll reports marked as filed by hand before they were filed recipient by recipient: the mark can be taken back. */
 const MarkForm: FC<{ d: DueRow; back: string }> = ({ d, back }) => {
-  if (d.kind !== 'payrollReports' || d.payrollStage === 'payout' || !d.manualRecorded || !d.period || (d.state !== 'open' && d.state !== 'done')) return <span class="due__act" />
+  if (d.kind !== 'payrollReports' || d.payrollStage === 'payout' || !d.manualRecorded || !d.period) return <span class="due__act" />
   return (
     <form class="due__act" method="post" action={`/ucto/klienti/${d.company.id}/podane`}>
       <input type="hidden" name="druh" value={MARKED_KINDS.payroll} />
       <input type="hidden" name="obdobie" value={d.period} />
       <input type="hidden" name="spat" value={back} />
-      {d.state === 'done' || d.manualRecorded ? <input type="hidden" name="zrusit" value="1" /> : null}
+      <input type="hidden" name="zrusit" value="1" />
       <button class="btn btn--line btn--small" type="submit">
-        {d.state === 'done' || d.manualRecorded ? t.unmark : t.mark}
+        {t.unmark}
       </button>
     </form>
   )

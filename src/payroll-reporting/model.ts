@@ -6,11 +6,11 @@ import { workingDayFrom } from '../app/vat'
 import { DELIVERY_LABELS, type DeliveryStatus, type DeliveryState } from '../filings/model'
 
 export const REPORT_KINDS = {
-  sp: 'Mesačný výkaz – Sociálna poisťovňa',
-  health24: 'Mesačný výkaz – Dôvera',
-  health25: 'Mesačný výkaz – VšZP',
-  health27: 'Mesačný výkaz – Union',
-  tax: 'Mesačný prehľad – Finančná správa',
+  sp: 'Mesačný výkaz pre Sociálnu poisťovňu',
+  health24: 'Mesačný výkaz pre Dôveru',
+  health25: 'Mesačný výkaz pre VšZP',
+  health27: 'Mesačný výkaz pre Union',
+  tax: 'Mesačný prehľad pre finančnú správu',
 } as const
 export const REPORT_LABELS = { ...DELIVERY_LABELS, accepted: 'Prijatie príjemcom doložené', rejected: 'Príjemca výkaz odmietol' }
 export type ReportKind = keyof typeof REPORT_KINDS

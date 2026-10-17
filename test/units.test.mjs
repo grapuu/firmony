@@ -770,53 +770,6 @@ check(
 )
 check('amounts with their sign', appCopy.signed(120000) === `+1${NB}200${NB}€` && appCopy.signed(-1240) === `−12,40${NB}€`)
 
-// What is due
-const payerMonthly = { vatStatus: 'payer', vatQuarterly: false }
-const notRegistered = { vatStatus: 'none', vatQuarterly: false }
-let due = deadlines.deadlinesFor(payerMonthly, '2026-10-13', new Map([['2026-10', 3]]))
-check(
-  'a VAT payer in the middle of a month: 25 October 2026 is a Sunday, so the 26th',
-  due.map((d) => d.day).join() === '2026-10-26,2026-11-10,2027-03-31' && due[1].tone === 'amber' && due[0].tone === 'blue',
-  due.map((d) => `${d.day} ${d.label}`).join(' | '),
-)
-due = deadlines.deadlinesFor(notRegistered, '2026-11-05', new Map([['2026-10', 2]]))
-check('before the 10th the month before is still due', due.map((d) => d.day).join() === '2026-11-10,2026-12-10,2027-03-31' && due[0].state.includes('2'), due.map((d) => d.day).join())
-due = deadlines.deadlinesFor(notRegistered, '2026-11-20', new Map([['2026-10', 1]]))
-check('a month whose documents are late stays on the list', due[0].day === '2026-11-10' && due[0].tone === 'amber')
-due = deadlines.deadlinesFor(payerMonthly, '2027-01-05', new Map())
-check('over the turn of a year', due.map((d) => d.day).join() === '2027-01-10,2027-01-25,2027-02-10,2027-03-31' && due.some((d) => d.label.includes('rok 2026')), due.map((d) => d.day).join())
-due = deadlines.deadlinesFor(payerMonthly, '2026-10-28', new Map())
-check(
-  'after the deadline the next VAT return is due',
-  due.some((d) => d.day === '2026-11-25' && d.label.includes('október')),
-)
-due = deadlines.deadlinesFor({ vatStatus: 'payer', vatQuarterly: true }, '2027-04-10', new Map())
-check(
-  'a quarterly payer: the first quarter by 26 April 2027 (the 25th is a Sunday)',
-  due.some((d) => d.day === '2027-04-26' && d.label.includes('štvrťrok')),
-  due.map((d) => `${d.day} ${d.label}`).join(' | '),
-)
-const filedSep = { period: '2026-09', filedAt: 0, filedOn: '2026-10-20', filedBy: null, filedByName: null, rows: {}, kvRows: 2, payCents: 123456, refundCents: 0, dueOn: '2026-10-26' }
-due = deadlines.deadlinesFor(payerMonthly, '2026-10-21', new Map(), { filed: [filedSep], paid: new Map() })
-const payDue = due.find((d) => d.href === '/app/dane')
-check(
-  'a filed return asks to be paid, and leads to where',
-  payDue?.day === '2026-10-26' && payDue.tone === 'amber' && payDue.state.includes('1') && payDue.label.includes('Zaplatiť'),
-  JSON.stringify(payDue),
-)
-due = deadlines.deadlinesFor(payerMonthly, '2026-10-21', new Map(), { filed: [filedSep], paid: new Map([['2026-09', { cents: 123456, last: '2026-10-22' }]]) })
-check('a paid one says so', due.find((d) => d.href)?.tone === 'ok')
-due = deadlines.deadlinesFor(payerMonthly, '2026-10-21', new Map(), { filed: [filedSep], paid: new Map([['2026-09', { cents: 23456, last: '2026-10-22' }]]) })
-check('a part paid asks for the rest', due.find((d) => d.href)?.state === `Zaplaťte 1${NB}000,00${NB}€`, due.find((d) => d.href)?.state)
-due = deadlines.deadlinesFor(payerMonthly, '2026-11-03', new Map(), { filed: [filedSep], paid: new Map() })
-check('an unpaid one stays on the list past its deadline', due.some((d) => d.day === '2026-10-26' && d.tone === 'amber') && due.some((d) => d.day === '2026-11-25'))
-due = deadlines.deadlinesFor({ vatStatus: 'reg7a', vatQuarterly: false }, '2026-10-21', new Map(), { filed: [{ ...filedSep, payCents: 460 }], paid: new Map() })
-check(
-  '§ 7a: no return of its own to wait for, and 4,60 € is not paid',
-  !due.some((d) => d.state === 'Zaplaťte 4,60 €') && !due.some((d) => d.label.includes('kontrolný')),
-  due.map((d) => `${d.label} ${d.state}`).join(' | '),
-)
-
 const appTexts = []
 const walkApp = (value) =>
   typeof value === 'string' ? appTexts.push(value) : Array.isArray(value) ? value.forEach(walkApp) : value && typeof value === 'object' ? Object.values(value).forEach(walkApp) : null
@@ -827,6 +780,18 @@ check(
   appTexts.every((t) => !/[–—]/.test(t) && !/ - /.test(t) && !/"/.test(t)),
   appTexts.find((t) => /[–—"]/.test(t) || / - /.test(t)),
 )
+{
+  // Every text of the product, whatever file it lives in: no long dash (he asked for none), comments aside.
+  const { readdirSync } = await import('node:fs')
+  const walk = (dir) => readdirSync(new URL(`../${dir}`, import.meta.url), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${dir}/${e.name}`) : /\.tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : []))
+  const dashed = walk('src').flatMap((file) =>
+    readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+      .split('\n')
+      .map((line, i) => ({ file, n: i + 1, line: line.trim() }))
+      .filter(({ line }) => !line.startsWith('//') && !line.startsWith('*') && !line.startsWith('/*') && /[–—]/.test(line.replace(/\/\/.*$/, ''))),
+  )
+  check('no text anywhere in the product has a long dash', dashed.length === 0, dashed.slice(0, 3).map((d) => `${d.file}:${d.n}`).join(' '))
+}
 check(
   'in the app no one-letter word ends a line',
   appTexts.every((t) => !/(^|\s)[vszkouaiVSZKOUAI] /.test(t)),
@@ -3026,6 +2991,14 @@ async function zipped(entries, note) {
   check('filed, it is done, and its tax is the client\'s to pay', find(list, 'vat', '2026-09')?.state === 'done' && find(list, 'vatPay', '2026-09')?.state === 'open' && find(list, 'vatPay', '2026-09')?.cents === 2300 && find(list, 'vatPay', '2026-09')?.late)
   list = run(co(), '2026-10-27', { docs: [doc()], filed: [filedFrom(co(), '2026-09', [doc()])], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-20' }]]) })
   check('paid, the tax is done too', find(list, 'vatPay', '2026-09')?.state === 'done')
+  {
+    const as = (deliveryStatus) => find(run(co(), '2026-10-27', { docs: [doc()], filed: [{ ...filedFrom(co(), '2026-09', [doc()]), deliveryStatus }] }), 'vat', '2026-09')
+    check(
+      'sent and waiting for its receipt is never late; only saved and not sent is',
+      as('submitted')?.state === 'open' && as('submitted')?.late === false && as('prepared')?.late === true && as('accepted')?.late === false,
+      JSON.stringify([as('submitted'), as('prepared')]),
+    )
+  }
   check(
     '§ 7a: 5 € or less is not paid, and nothing is filed for a month without tax',
     !find(run(co({ vatStatus: 'reg7a' }), '2026-10-14', { filed: [filedOf('2026-09', { payCents: 450 })] }), 'vatPay') && !find(run(co({ vatStatus: 'reg7a' }), '2026-10-14'), 'vat'),
@@ -3171,6 +3144,52 @@ async function zipped(entries, note) {
       dueViews.dueHref(row({ kind: 'taxPay', period: '2026' })) === '/ucto/klienti/c1/zavierka?rok=2026',
   )
   check('the filters in the address', dueViews.deadlinesHref({ side: 'ours', done: true, accountant: '' }) === '/ucto/terminy?kto=my&hotove=1' && dueViews.deadlinesHref({ side: 'all', done: false, accountant: '' }) === '/ucto/terminy')
+
+  {
+    const list = run(co(), '2026-10-21', { docs: [doc()], missing: new Map([['2026-09', 1]]) })
+    const press = dues.pressing(list, '2026-10-21')
+    check(
+      "what presses on the team's home: ours late or within a week, never the client's part nor what still runs",
+      press.length === 1 && press[0].kind === 'vat' && press[0].period === '2026-09' && !press.some((d) => d.kind === 'docs') && dues.pressing(list, '2026-10-10').length === 0,
+      JSON.stringify(press.map((d) => `${d.kind}:${d.period}:${d.state}`)),
+    )
+  }
+  // The client's own list (app/deadlines.ts) is read from the same dues, so the client and the team never disagree.
+  const mine = (company, today, facts = {}, missing = new Map(), bills = []) => deadlines.clientDeadlines(company, run(company, today, { ...facts, missing }), today, missing, bills)
+  let mineList = mine(co(), '2026-10-13', { docs: [doc()] }, new Map([['2026-10', 3]]))
+  check(
+    "the client's list: the period that ended, the month's documents, the period that runs, the year's closing",
+    mineList.map((d) => d.day).join() === '2026-10-26,2026-11-10,2026-11-25,2027-03-31' && mineList[1].tone === 'amber' && mineList[0].tone === 'blue' && plain(mineList[0].label) === 'DPH a kontrolný výkaz za september 2026',
+    mineList.map((d) => `${d.day} ${plain(d.label)} ${d.state}`).join(' | '),
+  )
+  check('before the contract starts, nothing of the months before is the client\'s or ours', mine(co({ startOn: '2027-01-01' }), '2026-11-05').length === 0, JSON.stringify(mine(co({ startOn: '2027-01-01' }), '2026-11-05')))
+  mineList = mine(co({ startOn: '2027-01-01' }), '2027-01-15')
+  check(
+    'its first month: its documents, its VAT ahead, and the closing of its first year, not of the year before',
+    mineList.map((d) => d.day).join() === '2027-02-10,2027-02-25,2028-03-31' && !mineList.some((d) => d.label.includes('2026')),
+    mineList.map((d) => `${d.day} ${plain(d.label)}`).join(' | '),
+  )
+  mineList = mine(co({ vatStatus: 'none' }), '2026-11-05', {}, new Map([['2026-10', 2], ['2026-08', 1]]))
+  check(
+    'a month whose documents are late stays on the list, and before the 10th the month before is still due',
+    mineList.some((d) => d.day === '2026-09-10' && d.tone === 'amber') && mineList.some((d) => d.day === '2026-11-10' && plain(d.state) === 'Chýbajú 2 doklady') && mineList.some((d) => d.day === '2026-12-10'),
+    mineList.map((d) => `${d.day} ${plain(d.state)}`).join(' | '),
+  )
+  const filedSep = filedFrom(co(), '2026-09', [doc()])
+  let taxRow = mine(co(), '2026-10-21', { docs: [doc()], filed: [filedSep] }).find((d) => d.href === '/app/dane' && d.tone === 'amber')
+  check('a filed return asks to be paid, and leads to where', taxRow?.day === '2026-10-26' && plain(taxRow.state) === 'Zaplaťte 23,00 €' && plain(taxRow.label) === 'Zaplatiť DPH za september 2026', JSON.stringify(taxRow))
+  mineList = mine(co(), '2026-10-21', { docs: [doc()], filed: [filedSep], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-22' }]]) })
+  check('a paid one says so until its day', mineList.some((d) => d.label.includes('Zaplatiť') && d.tone === 'ok') && !mine(co(), '2026-10-27', { docs: [doc()], filed: [filedSep], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-22' }]]) }).some((d) => d.label.includes('Zaplatiť')))
+  check('an unpaid one stays past its day', mine(co(), '2026-11-03', { docs: [doc()], filed: [filedSep] }).some((d) => d.day === '2026-10-26' && d.tone === 'amber'))
+  const sent = mine(co(), '2026-10-21', { docs: [doc()], filed: [{ ...filedSep, deliveryStatus: 'submitted' }] }).find((d) => d.label.includes('kontrolný výkaz za september'))
+  check('our filing says where it stands and leads to the taxes', sent?.tone === 'blue' && sent.href === '/app/dane' && plain(sent.state) !== 'Podáme za Vás', JSON.stringify(sent))
+  check(
+    '§ 7a: no return of its own to wait for, and 4,50 € is not paid',
+    !mine(co({ vatStatus: 'reg7a' }), '2026-10-14', { filed: [filedOf('2026-09', { payCents: 450 })] }).some((d) => d.label.includes('Zaplatiť') || d.label.includes('kontrolný')),
+  )
+  taxRow = mine(co({ vatStatus: 'none', startOn: '2025-01-01' }), '2027-03-20', { closings: [kFact({ filed: true, payCents: 120000, dueOn: '2027-03-31', paid: 20000 })] }).find((d) => plain(d.label).includes('daň z príjmov'))
+  check('the income tax a closing asks for is the client\'s to pay', taxRow?.tone === 'amber' && plain(taxRow.state) === 'Zaplaťte 1 000,00 €' && taxRow.href === '/app/dane', JSON.stringify(taxRow))
+  check('a bill of ours waits among them', mine(co(), '2026-10-13', { docs: [doc()] }, new Map(), [{ number: '20260003', totalCents: 8900, dueOn: '2026-10-20' }]).some((d) => d.day === '2026-10-20' && d.href === '/app/firma#faktury-firmony'))
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -3730,7 +3749,7 @@ async function zipped(entries, note) {
   check('bootstrap never defaults to a public mailbox or an unlimited deadline', security.bootstrapReady(bootstrap, 1000) && !security.bootstrapReady({}, 1000) && !security.bootstrapReady({ ...bootstrap, TEAM_BOOTSTRAP_EXPIRES_AT: '' }, 1000) && !security.bootstrapReady(bootstrap, 1100))
   const who = { verifiedAt: 1000, verifiedCredential: 'key' }
   check('freshness needs the credential, rejects future timestamps and expires at the boundary', security.verifiedRecently(who, 1100, 300) && !security.verifiedRecently(who, 1300, 300) && !security.verifiedRecently(who, 999, 300) && !security.verifiedRecently({ ...who, verifiedCredential: null }, 1100, 300))
-  check('exports, payroll downloads, role changes and retention release require recent verification', [['/app/export','GET'], ['/app/export/potvrdit','POST'], ['/ucto/klienti/co/export','HEAD'], ['/ucto/klienti/co/export','GET'], ['/ucto/klienti/co/dennik.csv','GET'], ['/ucto/klienti/co/paska','GET'], ['/ucto/tim','POST'], ['/ucto/incidenty/x/schvalit-uvolnenie','POST']].every(([p,m]) => security.sensitivePath(p,m)))
+  check('exports, payroll downloads, role changes and retention release require recent verification', [['/app/export','GET'], ['/app/export/potvrdit','POST'], ['/ucto/klienti/co/kniha/dennik.csv','HEAD'], ['/ucto/klienti/co/kniha/dennik.csv','GET'], ['/ucto/klienti/co/paska','GET'], ['/ucto/tim','POST'], ['/ucto/incidenty/x/schvalit-uvolnenie','POST']].every(([p,m]) => security.sensitivePath(p,m)))
   check('ordinary work does not receive an accidental repeated-verification requirement', !security.sensitivePath('/ucto/doklady','GET') && !security.sensitivePath('/ucto/klienti/x/spravy','POST'))
   const e = { cause: { cause: new Error('D1_ERROR: Evidence hold prevents deletion') } }
   check('retention errors are recognized through nested causes and tolerate cycles', isEvidenceHeld(e) && !isEvidenceHeld(new Error('other')) && (() => { const x = {}; x.cause = x; return !isEvidenceHeld(x) })())

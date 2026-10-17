@@ -13,19 +13,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // Stage 3 of closing the loop (17 October 2026): Firmony's own invoices to its clients.
-  ['src/team/billing.ts', '    if (cents > 0 && !f.billed.has(key)) lines.push(', '    if (cents > 0) lines.push(', 'what was billed is billed no more'],
-  ['src/team/billing.ts', '    const until = last && last < f.month ? last : f.month', '    const until = f.month', 'nothing of the plan after the last month'],
-  ['src/team/billing.ts', '  const usedUntil = last && last < addMonths(f.month, -1) ? last : addMonths(f.month, -1)', '  const usedUntil = last && last < f.month ? last : f.month', 'the month that runs is not counted before it ends'],
-  ['src/team/billing.ts', '  if (docs <= own.docs) return { plan: own, agree: false }', '  if (docs < own.docs) return { plan: own, agree: false }', 'as many documents as the plan is for cost nothing more'],
-  ['src/team/billing.ts', "    if (String(year) >= first.slice(0, 4)) line(", '    line(', 'a closing only for a year we kept'],
-  ['src/team/billing-store.ts', " AND d.source <> 'firmony'", '', 'our own invoice is no document of the client'],
-  ['src/team/billing-store.ts', ' AND d.duplicate_of IS NULL', '', 'a duplicate counts once'],
-  ['src/team/billing-store.ts', "    if (r.status === 'submitted' || r.status === 'accepted') closings.set(", '    if (true) closings.set(', 'a closing is billed once filed'],
-  ['src/db.ts', '      PRIMARY KEY (client_id, key)\n', '      created INTEGER\n', 'a key cannot be billed twice'],
-  ['src/team/routes.tsx', ' AND (reminded_at IS NULL OR reminded_at <= ?4)', '', 'a reminder once a week'],
-  ['src/team/routes.tsx', '    paperTariffStatement(db, companyId, who.user.id),\n', '', 'a paper contract keeps its prices'],
-  ['src/app/deadlines.ts', "    out.push({ day: bill.dueOn, label: t.bills.deadline(bill.number)", "    void ({ day: bill.dueOn, label: t.bills.deadline(bill.number)", 'an unpaid invoice is among the client deadlines'],
+  // Stage 4 of closing the loop (17 October 2026): one desk for the accountant, one truth for the client.
+  ['src/team/deadlines.ts', " && due.deliveryStatus !== 'submitted' })", ' })', 'sent and waiting for its receipt is never late'],
+  ['src/team/deadlines.ts', "  return dues.filter((d) => DUE_SIDE[d.kind] === 'ours' && d.state !== 'done' && d.state !== 'running' && (d.late || d.day <= week))", "  return dues.filter((d) => d.state !== 'done' && (d.late || d.day <= week))", 'only ours presses, and not what still runs'],
+  ['src/app/store.ts', " AND p.booked_on >= ${booksFromSql('p.company_id')}`", '`', 'a payment before the books asks for no document'],
+  ['src/app/store.ts', " : String(row.booked_on) < String(row.books_from ?? '') ? 'before'", ' : false ? \'before\'', 'a payment before the books says why on its page'],
+  ['src/app/statements.ts', "          AND ?2 >= ${booksFromSql('?1')}`", "          AND ?2 = ?2`", 'no statement is due of a month before the books'],
+  ['src/app/deadlines.ts', '    if (ours(month)) months.add(month)', '    months.add(month)', 'no documents of a month before the contract'],
+  ['src/app/deadlines.ts', '  const shown = dues.filter((d) => d.state !== \'done\' || d.day >= day)', '  const shown = dues', 'what was done leaves once its day has passed'],
+  ['src/app/deadlines.ts', '  if (!closing && closingIsOurs(company, year))', '  if (!closing)', 'no closing of a year that is not ours'],
+  ['src/views/team.tsx', ' && owed === null && !due', ' && owed === null', 'a client with something pressing is not done'],
+  ['src/views/vat.tsx', '      {filed ? (\n        // The files are the ones saved', '      {true ? (\n        // The files are the ones saved', 'no VAT file before the podklady are saved'],
+  ['src/views/vat.tsx', "      {sv.state === 'filed' ? (", "      {sv.state === 'filed' || sv.plan ? (", 'no summary file before its podklady are saved'],
+  ['src/team/routes.tsx', '  if (!snapshot) {\n    if (view.running)', '  if (false) {\n    if (view.running)', 'no closing file before its podklady are saved'],
+  ['src/team/routes.tsx', "  if (body.zrusit !== '1') return c.text('Bad request', 400)\n", '', 'no new manual payroll mark'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname

@@ -25,7 +25,7 @@ import { securityGate } from '../security/routes'
 import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
-import { filedReturns, taxPaid, type TaxPaid } from './vat-store'
+import { filedReturns, taxPaid } from './vat-store'
 import { billingScheduled, billRows } from '../team/billing-store'
 import { booksRefused, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
@@ -52,7 +52,8 @@ import { lookupCompany } from '../rpo'
 import { normalizeIco } from '../ico'
 import { formatEur, formatEurExact } from '../format'
 import { app as t, dayName, monthName } from './copy'
-import { deadlinesFor, nextMonth } from './deadlines'
+import { clientDeadlines, nextMonth } from './deadlines'
+import { companyDeadlines } from '../team/deadlines-store'
 import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
@@ -86,6 +87,7 @@ import {
   listPayments,
   manualStatement,
   matchCompany,
+  MISSING,
   messageStatement,
   monthFigures,
   peopleOf,
@@ -356,7 +358,7 @@ appRoutes.get('/', async (c) => {
     db.prepare('SELECT COUNT(*) AS n FROM payments WHERE company_id = ?').bind(company).first<{ n: number }>(),
     db
       .prepare(
-        `SELECT substr(p.booked_on, 1, 7) AS month, COUNT(*) AS n FROM payments p WHERE p.company_id = ? AND p.exempt IS NULL AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id) GROUP BY 1`,
+        `SELECT substr(p.booked_on, 1, 7) AS month, COUNT(*) AS n FROM payments p WHERE p.company_id = ? AND ${MISSING} GROUP BY 1`,
       )
       .bind(company)
       .all<{ month: string; n: number }>(),
@@ -374,12 +376,11 @@ appRoutes.get('/', async (c) => {
       .bind(company)
       .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null; switched: number }>(),
   ])
-  const [suggested, filed, bills] = await Promise.all([
+  const [suggested, dues, bills] = await Promise.all([
     suggestions(db, company, missingAll),
-    who.company.vatStatus === 'none' ? Promise.resolve([]) : filedReturns(db, company),
+    companyDeadlines(db, company, day),
     billRows(db, day, company, 24).then((rows) => rows.filter((r) => r.state !== 'paid')),
   ])
-  const paid = filed.length > 0 ? await taxPaid(db, company, filed) : new Map<string, TaxPaid>()
   const steps = {
     declaration: started?.declaration === 1,
     poa: started?.poa === 1,
@@ -412,7 +413,7 @@ appRoutes.get('/', async (c) => {
       figures={figures}
       month={monthName(`${month}-01`)}
       today={day}
-      deadlines={deadlinesFor(who.company, day, new Map(byMonth.results.map((r) => [r.month, r.n])), { filed, paid }, bills)}
+      deadlines={clientDeadlines(who.company, dues, day, new Map(byMonth.results.map((r) => [r.month, r.n])), bills)}
       inbox={inboxAddress(who.company)}
       accountant={who.company.accountantName}
       last={messages[0] ?? null}

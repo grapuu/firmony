@@ -453,7 +453,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
       ) : view.booked > 0 ? (
         <p class="info__source">{k.taxBooked(formatEurExact(view.booked))}</p>
       ) : null}
-      {filed?.filed && !filed.filed.files ? <p class="flag">{k.missingOriginal}</p> : view.running ? null : canFile ? (
+      {filed?.filed && !filed.filed.files ? <p class="flag">{k.missingOriginal}</p> : view.running ? null : filed?.filed ? (
         <div class="vstatus__files">
           <a class="btn btn--blue" href={`${base}/priznanie.xml?rok=${view.year}`}>
             {k.download}
@@ -462,7 +462,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
             {k.downloadStatements}
           </a>
         </div>
-      ) : (
+      ) : canFile ? null : (
         <p class="info__source">{k.downloadBlocked}</p>
       )}
       {view.running ? null : <p class="info__source">{k.notes}</p>}
@@ -470,7 +470,7 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
         <form class="stack vfile__mark" method="post" action={`${base}/podane`}>
           <input type="hidden" name="rok" value={String(view.year)} />
           <p class="info__lead">{k.markLead}</p>
-          <button class="btn btn--line stack__submit" type="submit">
+          <button class="btn btn--blue stack__submit" type="submit">
             {k.mark}
           </button>
         </form>

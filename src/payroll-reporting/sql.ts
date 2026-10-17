@@ -19,7 +19,7 @@ export const pendingPayrollSql = (company: string, reviewed = false, health = fa
 export const payrollStatusSql = (target: string, pkg: string, reviewed = false, health = false, social = false) => `CASE WHEN ${pkg}.id IS NULL OR NOT (${reportCurrentSql(target, pkg, reviewed, health, social)}) THEN 'unverified' ELSE ${pkg}.status END`
 const visible = `c.closed_at IS NULL AND c.demo = 0 AND (?1 = 'admin' OR c.accountant_id = ?2)`
 export const payrollQueueSql = `SELECT t.id, t.company_id, c.name AS company_name, t.period, ${payrollStatusSql('t', 'p', true, true, true)} AS status, t.created_at,
-  NULL AS kind, CASE t.kind WHEN 'sp' THEN 'Mesačný výkaz – Sociálna poisťovňa' WHEN 'health24' THEN 'Mesačný výkaz – Dôvera' WHEN 'health25' THEN 'Mesačný výkaz – VšZP' WHEN 'health27' THEN 'Mesačný výkaz – Union' ELSE 'Mesačný prehľad – Finančná správa' END AS label,
+  NULL AS kind, CASE t.kind WHEN 'sp' THEN 'Mesačný výkaz pre Sociálnu poisťovňu' WHEN 'health24' THEN 'Mesačný výkaz pre Dôveru' WHEN 'health25' THEN 'Mesačný výkaz pre VšZP' WHEN 'health27' THEN 'Mesačný výkaz pre Union' ELSE 'Mesačný prehľad pre finančnú správu' END AS label,
   '/ucto/klienti/' || c.id || '/mzdove-podania/' || t.id AS href
   FROM payroll_targets t JOIN companies c ON c.id = t.company_id LEFT JOIN payroll_packages p ON p.id = t.package_id AND p.company_id = t.company_id
   WHERE ${visible} AND (${targetActiveSql('t', true)}) AND (p.status IS NOT 'accepted' OR NOT (${reportCurrentSql('t', 'p', true, true, true)}))

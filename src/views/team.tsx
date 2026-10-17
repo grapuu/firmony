@@ -26,18 +26,22 @@ import { Wordmark } from './layout'
 import { InvoiceSheet } from './invoices'
 import type { Line, StoredInvoice } from '../app/invoices'
 import { responseDueAt } from '../team/support'
+import { pressing } from '../team/deadlines'
+import type { DueRow } from '../team/deadlines-store'
+import { DueItem } from './deadlines'
 
 export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'billing' | 'people' | 'incidents'
 
-const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean }[] = [
+/** The team's places. `menu`: seldom used, so on a phone it is always in the bar's menu, never a tab. */
+const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean; menu?: boolean }[] = [
   { place: 'clients', href: '/ucto', label: t.nav.clients, short: t.nav.short.clients, art: ART.tree },
   { place: 'deadlines', href: '/ucto/terminy', label: t.nav.deadlines, short: t.nav.short.deadlines, art: ART.paperReturn },
   { place: 'queue', href: '/ucto/doklady', label: t.nav.queue, short: t.nav.short.queue, art: ART.paperInvoice },
   { place: 'inbox', href: '/ucto/spravy', label: t.nav.inbox, short: t.nav.short.inbox, art: ART.chat },
-  { place: 'incidents', href: '/ucto/incidenty', label: 'Incidenty', short: 'Incidenty', art: ART.lens },
   { place: 'requests', href: '/ucto/ziadosti', label: t.nav.requests, short: t.nav.short.requests, art: ART.envelope, admin: true },
   { place: 'billing', href: '/ucto/fakturacia', label: t.nav.billing, short: t.nav.short.billing, art: ART.savings, admin: true },
   { place: 'people', href: '/ucto/tim', label: t.nav.people, short: t.nav.short.people, art: ART.lens, admin: true },
+  { place: 'incidents', href: '/ucto/incidenty', label: t.nav.incidents, short: t.nav.short.incidents, art: ART.lens, menu: true },
 ]
 
 /** A phone's tab bar holds five places; the others are in the bar's menu. */
@@ -54,6 +58,8 @@ export interface TeamShellProps {
 
 export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany, title, children }) => {
   const items = NAV.filter((item) => !item.admin || user.team === 'admin')
+  const tabs = items.filter((item) => !item.menu).slice(0, TABS)
+  const menu = items.filter((item) => !tabs.includes(item))
   const count = (p: TeamPlace) => (p === 'queue' ? counts.queue : p === 'inbox' ? counts.inbox : p === 'requests' ? counts.requests : 0)
   return (
     <html lang="sk">
@@ -101,7 +107,7 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
             <header class="bar">
               <Wordmark href="/ucto" label={t.nav.clients} />
               <BarMenu label={user.team ? t.nav.role[user.team] : t.nav.label} user={user}>
-                {items.slice(TABS).map((item) => (
+                {menu.map((item) => (
                   <a class="barmenu__item" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
                     {item.label}
                   </a>
@@ -119,7 +125,7 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
           </div>
         </div>
         <nav class="tabs tabs--team" aria-label={t.nav.label}>
-          {items.slice(0, TABS).map((item) => (
+          {tabs.map((item) => (
             <a class="tabs__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
               <span class="tabs__icon">
                 {item.art ? <img class="tabs__img" src={item.art.small?.src ?? item.art.src} alt="" width="30" height="30" /> : null}
@@ -150,10 +156,21 @@ export interface EndedCompany {
   purgedAt: number
 }
 
-export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompany[]; now: number; flash?: string | null }> = ({ user, rows, ended = [], now, flash }) => {
+const TODAY_SHOWN = 8
+
+export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; ended?: EndedCompany[]; now: number; flash?: string | null }> = ({ user, rows, dues = [], ended = [], now, flash }) => {
   const sum = (pick: (row: ClientRow) => number) => rows.reduce((total, row) => total + pick(row), 0)
   const waiting = rows.filter((row) => row.waiting !== null).length
   const admin = user.team === 'admin'
+  const today = dayOf(now)
+  const urgent = pressing(dues, today)
+  const byCompany = new Map<string, { late: number; soon: number }>()
+  for (const d of urgent) {
+    const n = byCompany.get(d.companyId) ?? { late: 0, soon: 0 }
+    if (d.late) n.late++
+    else n.soon++
+    byCompany.set(d.companyId, n)
+  }
   return (
     <>
       <header class="phead phead--row">
@@ -168,7 +185,34 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompa
         ) : null}
       </header>
       <Flash text={flash} />
-      <p><a class="btn btn--line" href="/ucto/podania">Podania na dokončenie</a></p>
+      <section class="info today" aria-labelledby="dnes-t">
+        <div class="today__head">
+          <h2 id="dnes-t" class="info__title">
+            {t.clients.today.title}
+          </h2>
+          <span class="today__links">
+            <a class="link" href="/ucto/podania">Podania na dokončenie</a>
+            <a class="link" href="/ucto/terminy?kto=my">{t.clients.today.all}</a>
+          </span>
+        </div>
+        {urgent.length === 0 ? (
+          <p class="info__empty">{t.clients.today.empty}</p>
+        ) : (
+          <>
+            <p class="info__lead">{t.clients.today.lead}</p>
+            <ul class="dues__list today__list">
+              {urgent.slice(0, TODAY_SHOWN).map((d) => (
+                <DueItem d={d} today={today} admin={admin} back="/ucto/terminy?kto=my" />
+              ))}
+            </ul>
+            {urgent.length > TODAY_SHOWN ? (
+              <a class="link" href="/ucto/terminy?kto=my">
+                {t.clients.today.more(urgent.length - TODAY_SHOWN)}
+              </a>
+            ) : null}
+          </>
+        )}
+      </section>
       <dl class="figs__grid figs__grid--four">
         <div class="fig">
           <dt>{t.clients.toBook}</dt>
@@ -203,7 +247,8 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompa
             const ending = endingOf(row.company, dayOf(now))
             // Past the last day the books are owed to the client: within thirty days, then it is late.
             const owed = ending && ending.phase !== 'ending' && row.handover === 0 ? (dayOf(now) > ending.handoverBy ? 'late' : 'due') : null
-            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked' && row.declaration === 'checked' && row.openReports === 0 && owed === null
+            const due = byCompany.get(row.company.id)
+            const done = row.toBook === 0 && row.toCheck === 0 && row.waiting === null && row.poa === 'checked' && row.declaration === 'checked' && row.openReports === 0 && owed === null && !due
             return (
               <a class={`tbl__row${done ? ' tbl__row--done' : ''}`} role="row" href={`/ucto/klienti/${row.company.id}`}>
                 <span class="tbl__company" role="cell">
@@ -217,6 +262,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; ended?: EndedCompa
                     {row.declaration === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.declaration}`}>{t.aml.state[row.declaration]}</span>}
                     {row.poa === 'checked' ? null : <span class={`tbl__flag tbl__flag--${row.poa}`}>{t.client.poaState[row.poa]}</span>}
                     {row.openReports > 0 ? <span class="tbl__flag tbl__flag--report">{t.client.reportsOpen(row.openReports)}</span> : null}
+                    {due?.late ? <span class="tbl__flag tbl__flag--report">{t.clients.dueLate(due.late)}</span> : due ? <span class="tbl__flag tbl__flag--ends">{t.clients.dueSoon}</span> : null}
                     {ending ? <span class="tbl__flag tbl__flag--ends">{ending.phase === 'ending' ? t.client.ends(dayName(ending.endsOn)) : t.client.ended(dayName(ending.endsOn))}</span> : null}
                     {owed && ending ? (
                       <span class={`tbl__flag ${owed === 'late' ? 'tbl__flag--report' : 'tbl__flag--ends'}`}>
@@ -295,7 +341,6 @@ export interface ClientPageProps {
   rules: Rule[]
   accountants: { id: string; name: string }[]
   now: number
-  month: string
   flash?: string | null
   error?: string | null
   draft?: string
@@ -911,27 +956,6 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
               ))}
             </ul>
           </section>
-          <section class="info" aria-labelledby="export-t">
-            <h2 id="export-t" class="info__title">
-              {t.client.export}
-            </h2>
-            <p class="info__lead">{t.client.exportLead}</p>
-            <form class="inline" method="get" action={`/ucto/klienti/${c.id}/export`}>
-              <label class="sr" for="mesiac">
-                {t.client.export}
-              </label>
-              <select id="mesiac" class="field__input" name="mesiac">
-                {lastMonths(p.month, 13).map((m) => (
-                  <option value={m} selected={m === p.month}>
-                    {monthName(m)}
-                  </option>
-                ))}
-              </select>
-              <button class="btn btn--line" type="submit">
-                {t.client.exportButton}
-              </button>
-            </form>
-          </section>
           <section class="info" aria-labelledby="pravidla-t">
             <h2 id="pravidla-t" class="info__title">
               {t.client.rules}
@@ -962,21 +986,6 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
 
 const MONTHS = ['január', 'február', 'marec', 'apríl', 'máj', 'jún', 'júl', 'august', 'september', 'október', 'november', 'december']
 const monthName = (month: string) => `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`
-
-/** This month and the ones before it, newest first, as YYYY-MM. */
-function lastMonths(month: string, n: number): string[] {
-  let [y, m] = month.split('-').map(Number) as [number, number]
-  const out: string[] = []
-  for (let i = 0; i < n; i++) {
-    out.push(`${y}-${String(m).padStart(2, '0')}`)
-    m -= 1
-    if (m === 0) {
-      m = 12
-      y -= 1
-    }
-  }
-  return out
-}
 
 const QueueRow: FC<{ d: QueueDoc | Doc; company?: boolean }> = ({ d, company }) => (
   <li class="row">

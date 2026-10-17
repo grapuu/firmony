@@ -6450,6 +6450,30 @@ select.field__input {
   color: var(--soft);
 }
 
+/* The team's home: what of ours is late or due within a week, above the clients. */
+.today {
+  margin-bottom: 18px;
+}
+
+.today__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 18px;
+}
+
+.today__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 0.875rem;
+}
+
+.today__list {
+  margin-top: 0;
+}
+
 /* In the side column of a client's page the state and the mark go under the text, as on a phone. */
 .dues__list--card {
   margin-bottom: 14px;

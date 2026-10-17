@@ -1,18 +1,24 @@
-// What is due and when, for the overview of the client's app.
+// What is due and when, for the overview of the client's app. It is read from the same deadlines as the team's
+// screen (team/deadlines.ts, `deadlinesOf`), so the client and the accountant never see two different truths: what we
+// file and its state, the taxes the client pays, and only what falls within our contract (point 5.2 of the terms).
+// The client's own part is added here: the documents of the month that runs and of the month before, which the team
+// lists only once a payment of them has no document.
 import { APP } from '../config'
 import { formatEurExact } from '../format'
 import { app as t, monthName } from './copy'
-import type { Company } from './store'
+import { bratislavaDay, type Company } from './store'
 import { DELIVERY_LABELS } from '../filings/model'
-import { filingDeadline, periodOf, prevPeriod } from './vat'
-import { leftToPay, payable, periodName, type FiledReturn, type TaxPaid } from './vat-store'
+import { closingDue } from './closing'
+import { intakeOpen } from './ending'
+import { periodName } from './vat-store'
+import { closingIsOurs, type Due } from '../team/deadlines'
 
 export interface Deadline {
   day: string
   label: string
   state: string
   tone: 'ok' | 'amber' | 'blue'
-  /** Where the client acts on it: a tax to pay. */
+  /** Where the client acts on it or reads more: a tax to pay, a filing. */
   href?: string
 }
 
@@ -27,61 +33,57 @@ export function prevMonth(month: string): string {
 }
 
 /**
- * What is due and when: the month's documents by the 10th of the next month (ours to ask for, so that the VAT
- * return can be filed by the 25th), the VAT return and the control statement (a VAT payer; by the 25th after the
- * period, or the next working day), and the tax to pay once a return is filed, until it is paid; the annual closing
- * and the tax return by 31 March. Everything but the documents and paying is done by us.
+ * The client's list: the documents of a month by the 10th of the next (the month that runs, the month before until
+ * the 10th, and any month of ours whose payments still miss documents); what we file (VAT, its corrections, the
+ * closing) with its state; the taxes a filed return asks for, until paid; Firmony's own invoices not paid yet. What
+ * was done stays until its day has passed.
  */
-export function deadlinesFor(
-  company: Pick<Company, 'vatStatus' | 'vatQuarterly'>,
+export function clientDeadlines(
+  company: Pick<Company, 'vatStatus' | 'startOn' | 'createdAt' | 'endsOn' | 'noticeSide'>,
+  dues: readonly Due[],
   day: string,
   missingByMonth: Map<string, number>,
-  vat: { filed: FiledReturn[]; paid: Map<string, TaxPaid> } = { filed: [], paid: new Map() },
   /** Firmony's own invoices to the company that are not paid yet: the client pays them, by their due day. */
   bills: readonly { number: string; totalCents: number; dueOn: string }[] = [],
 ): Deadline[] {
-  const month = day.slice(0, 7)
-  const date = Number(day.slice(8, 10))
   const out: Deadline[] = []
-  const docs = (of: string) => {
-    const missing = missingByMonth.get(of) ?? 0
-    out.push({
-      day: `${nextMonth(of)}-${String(APP.docsByDay).padStart(2, '0')}`,
-      label: t.deadline.docs(monthName(`${of}-01`)),
-      state: t.deadline.docsState(missing),
-      tone: missing > 0 ? 'amber' : 'ok',
-    })
-  }
-  const last = prevMonth(month)
-  if (date <= APP.docsByDay || (missingByMonth.get(last) ?? 0) > 0) docs(last)
-  docs(month)
-  if (company.vatStatus !== 'none') {
-    const current = periodOf(day, company.vatQuarterly)
-    const ended = prevPeriod(current)
-    const of = day <= filingDeadline(ended) ? ended : current
-    const toPay = (f: FiledReturn) => payable({ vatStatus: company.vatStatus }, f)
-    const left = (f: FiledReturn) => leftToPay({ vatStatus: company.vatStatus }, f, vat.paid.get(f.period))
-    const pay = (f: FiledReturn): Deadline => {
-      const rest = left(f)
-      return {
-        day: f.dueOn,
-        label: t.deadline.vatPay(periodName(f.period)),
-        state: rest === 0 ? t.deadline.vatPaid : t.deadline.vatToPay(formatEurExact(rest)),
-        tone: rest === 0 ? 'ok' : 'amber',
-        href: '/app/dane',
-      }
+  const month = day.slice(0, 7)
+  const first = (company.startOn ?? bratislavaDay(company.createdAt)).slice(0, 7)
+  const lastOurs = company.endsOn ? company.endsOn.slice(0, 7) : null
+  const ours = (m: string) => m >= first && (!lastOurs || m <= lastOurs)
+
+  // The documents: what the client brings. A month with payments still missing documents is listed whatever its age
+  // (those are counted only within our books); the month before until the 10th; the month that runs.
+  if (intakeOpen(company, day)) {
+    const months = new Set([...missingByMonth].filter(([, n]) => n > 0).map(([m]) => m))
+    const last = prevMonth(month)
+    if (ours(last) && Number(day.slice(8, 10)) <= APP.docsByDay) months.add(last)
+    if (ours(month)) months.add(month)
+    for (const m of months) {
+      const missing = missingByMonth.get(m) ?? 0
+      out.push({ day: `${nextMonth(m)}-${String(APP.docsByDay).padStart(2, '0')}`, label: t.deadline.docs(monthName(`${m}-01`)), state: t.deadline.docsState(missing), tone: missing > 0 ? 'amber' : 'ok' })
     }
-    const filed = vat.filed.find((f) => f.period === of)
-    if (filed && toPay(filed) > 0) out.push(pay(filed))
-    else if (filed)
-      out.push({ day: filed.dueOn, label: company.vatStatus === 'payer' ? t.deadline.vat(periodName(of)) : t.taxes.period(periodName(of)), state: DELIVERY_LABELS[filed.deliveryStatus ?? 'unverified'], tone: filed.deliveryStatus === 'accepted' ? 'ok' : 'amber', href: '/app/podania' })
-    else if (company.vatStatus === 'payer') out.push({ day: filingDeadline(of), label: t.deadline.vat(periodName(of)), state: t.deadline.ours, tone: 'blue' })
-    // A tax filed earlier and not paid yet, or the difference of a supplementary return, stays on the list until it is paid.
-    for (const f of vat.filed) if (f.period !== of && left(f) > 0) out.push(pay(f))
   }
+
+  // What we file and what the client pays, as the team's screen has it; what was done until its day has passed.
+  const shown = dues.filter((d) => d.state !== 'done' || d.day >= day)
+  const filedState = (d: Due) => (d.deliveryStatus ? DELIVERY_LABELS[d.deliveryStatus] : t.deadline.ours)
+  let closing = false
+  for (const d of shown) {
+    const period = d.period ?? ''
+    if (d.kind === 'vat')
+      out.push({ day: d.day, label: company.vatStatus === 'payer' ? t.deadline.vat(periodName(period)) : t.taxes.period(periodName(period)), state: filedState(d), tone: d.state === 'done' ? 'ok' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
+    else if (d.kind === 'vatFix') out.push({ day: d.day, label: t.deadline.vatFix(d.fix ?? 'O', periodName(period)), state: t.deadline.ours, tone: 'blue' })
+    else if (d.kind === 'vatPay') out.push({ day: d.day, label: t.deadline.vatPay(periodName(period)), state: d.state === 'done' ? t.deadline.vatPaid : t.deadline.vatToPay(formatEurExact(d.cents)), tone: d.state === 'done' ? 'ok' : 'amber', href: '/app/dane' })
+    else if (d.kind === 'closing') {
+      closing = true
+      out.push({ day: d.day, label: t.deadline.closing(period), state: filedState(d), tone: d.state === 'done' ? 'ok' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
+    } else if (d.kind === 'taxPay') out.push({ day: d.day, label: t.deadline.taxPay(period), state: d.state === 'done' ? t.deadline.vatPaid : t.deadline.vatToPay(formatEurExact(d.cents)), tone: d.state === 'done' ? 'ok' : 'amber', href: '/app/dane' })
+  }
+  // The closing of the year that runs, when it is ours and the one before is not on the list.
   const year = Number(day.slice(0, 4))
-  const closingYear = day.slice(5) <= '03-31' ? year - 1 : year
-  out.push({ day: `${closingYear + 1}-03-31`, label: t.deadline.closing(String(closingYear)), state: t.deadline.ours, tone: 'blue' })
+  if (!closing && closingIsOurs(company, year)) out.push({ day: closingDue(year, null), label: t.deadline.closing(String(year)), state: t.deadline.ours, tone: 'blue' })
+
   for (const bill of bills)
     out.push({ day: bill.dueOn, label: t.bills.deadline(bill.number), state: t.bills.deadlineState(formatEurExact(bill.totalCents)), tone: 'amber', href: '/app/firma#faktury-firmony' })
   return out.sort((a, b) => a.day.localeCompare(b.day))

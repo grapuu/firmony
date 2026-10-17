@@ -14,8 +14,9 @@ export const team = typesetAll({
     requests: 'Žiadosti z webu',
     billing: 'Fakturácia',
     people: 'Tím',
+    incidents: 'Incidenty',
     own: 'Moja firma',
-    short: { clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', billing: 'Faktúry', people: 'Tím' },
+    short: { clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', billing: 'Faktúry', people: 'Tím', incidents: 'Incidenty' },
     role: { admin: 'Správca', accountant: 'Účtovníčka' },
   },
   deadlines: {
@@ -67,9 +68,8 @@ export const team = typesetAll({
       summaryD: 'Po termíne: dodatočný súhrnný výkaz len so zmenenými riadkami. Zákon mu lehotu neurčuje: podajte ho čím skôr.',
       payrollReports: 'Každá poisťovňa a finančná správa majú samostatnú evidenciu. Prehľad finančnej správy sa určuje podľa mesiaca skutočne vyplatených príjmov.',
     },
-    mark: 'Evidovať ručné odoslanie',
     unmark: 'Zrušiť označenie',
-    flashes: { marked: 'Odoslanie je označené ručne; prijatie jednotlivými príjemcami zatiaľ nie je doložené.', unmarked: 'Označenie sme zrušili.' },
+    flashes: { unmarked: 'Označenie sme zrušili.' },
     open: 'Otvoriť',
     cardEmpty: (days: number) => typeset(`Na najbližších ${days} dní nič otvorené.`),
     cardAll: 'Termíny všetkých klientov',
@@ -94,6 +94,15 @@ export const team = typesetAll({
     nobody: 'Bez účtovníčky',
     plan: (name: string) => typeset(`Balík ${name}`),
     columns: { company: 'Firma', book: 'Zaúčtovať', check: 'Skontrolovať', messages: 'Správy', missing: 'Chýba u klienta', accountant: 'Účtovníčka' },
+    today: {
+      title: 'Dnes na rade',
+      lead: 'Naše podania po termíne a tie, ktorých termín je do týždňa.',
+      empty: 'Nič nie je po termíne a do týždňa nič nekončí.',
+      all: 'Všetky termíny',
+      more: (n: number) => typeset(`a ďalšie (${n})`),
+    },
+    dueLate: (n: number) => typeset(`Po termíne: ${n}`),
+    dueSoon: 'Termín do týždňa',
   },
   client: {
     back: 'Klienti',
@@ -175,9 +184,6 @@ export const team = typesetAll({
     notePlaceholder: 'Len pre tím, klient ju nevidí.',
     save: 'Uložiť údaje',
     saved: 'Údaje sme uložili.',
-    export: 'Podklady pre účtovný program',
-    exportLead: 'Zaúčtované doklady za mesiac ako CSV: dátum, partner, sumy, DPH, účty MD a D a úhrada. Súbor otvoríte v Exceli alebo ho naimportujete do účtovného programu.',
-    exportButton: 'Stiahnuť CSV',
     rules: 'Pravidlá dodávateľov',
     rulesLead: 'Čo ste raz rozhodli pre dodávateľa, navrhneme pri jeho ďalších dokladoch.',
     rulesEmpty: 'Zatiaľ žiadne. Pravidlo vznikne, keď zaúčtujete doklad so zaškrtnutou voľbou „Zapamätať pre dodávateľa“.',
@@ -701,12 +707,10 @@ export const team = typesetAll({
     } as Record<string, string>,
     lines: (n: number) => typeset(`${n} ${plural(n, 'riadok', 'riadky', 'riadkov')}`),
     docs: (n: number) => typeset(`${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}`),
-    download: 'Stiahnuť priznanie (XML)',
-    downloadKv: 'Stiahnuť kontrolný výkaz (XML)',
     downloadKind: { R: 'Stiahnuť priznanie (XML)', O: 'Stiahnuť opravné priznanie (XML)', D: 'Stiahnuť dodatočné priznanie (XML)' } as Record<'R' | 'O' | 'D', string>,
     downloadKvKind: { R: 'Stiahnuť kontrolný výkaz (XML)', O: 'Stiahnuť opravný kontrolný výkaz (XML)', D: 'Stiahnuť dodatočný kontrolný výkaz (XML)' } as Record<'R' | 'O' | 'D', string>,
     markCorrection: 'Uložiť opravené podklady',
-    markCorrectionLead: 'Uložte presné opravené podklady. Odoslanie a potvrdenie každého dokumentu doplníte v evidencii podaní. Klientovi vysvetlíme zmenu s informáciou o nedoloženom prijatí.',
+    markCorrectionLead: 'Uložte presné opravené podklady. Potom si stiahnete práve tieto súbory pre eDane a odoslanie aj potvrdenku každého dokumentu doplníte v evidencii podaní. Klientovi vysvetlíme zmenu s informáciou o nedoloženom prijatí.',
     fastQ: 'Nadmerný odpočet: vrátiť do 30 dní po lehote (§ 79 ods. 2)?',
     fastYes: 'Áno, vrátiť do 30 dní',
     fastYesHint: 'Firma za posledných 6 mesiacov nemala nedoplatky na daniach, clách a odvodoch spolu nad 1 000 €.',
@@ -723,7 +727,7 @@ export const team = typesetAll({
     previousOpen: 'Otvoriť',
     downloadBlocked: 'Súbory pripravíme, keď bude všetko vyriešené.',
     markFiled: 'Uložiť podklady a otvoriť podania',
-    markLead: 'Uložte presné podklady. V ďalšom kroku zaevidujete odoslanie a samostatné potvrdenky priznania a kontrolného výkazu. Klient dostane údaje na úhradu s informáciou o nedoloženom prijatí.',
+    markLead: 'Uložte presné podklady. Potom si stiahnete práve tieto súbory pre eDane a v evidencii podaní zaevidujete odoslanie a samostatné potvrdenky priznania a kontrolného výkazu. Klient dostane údaje na úhradu s informáciou o nedoloženom prijatí.',
     unmark: 'Zrušiť označenie',
     unmarkCorrection: 'Zrušiť označenie opravy',
     filedFlash: 'Podklady uložené. Doručenie doložte v evidencii podaní.',
@@ -776,7 +780,7 @@ export const team = typesetAll({
       running: (end: string) => typeset(`Súbor pripravíme po skončení dňa ${end}, keď uplynie obdobie rozhodujúce pre podanie.`),
       blocked: 'Súbor pripravíme, keď bude vyriešené, čo bráni podaniu (vyššie).',
       download: { R: 'Stiahnuť súhrnný výkaz (XML)', O: 'Stiahnuť opravný súhrnný výkaz (XML)', D: 'Stiahnuť dodatočný súhrnný výkaz (XML)' } as Record<'R' | 'O' | 'D', string>,
-      markLead: 'Uložte presné podklady. V ďalšom kroku zaevidujete odoslanie súhrnného výkazu a jeho potvrdenku.',
+      markLead: 'Uložte presné podklady. Potom si stiahnete práve tento súbor pre eDane a v evidencii podaní zaevidujete odoslanie súhrnného výkazu a jeho potvrdenku.',
       mark: 'Uložiť podklady a otvoriť podania',
       markCorrection: 'Uložiť opravené podklady',
       filed: (day: string, who: string, kind: 'R' | 'O' | 'D') => typeset(`${kind === 'O' ? 'Opravné podklady uložené' : kind === 'D' ? 'Dodatočné podklady uložené' : 'Podklady uložené'} ${day}, ${who}`),
@@ -794,6 +798,7 @@ export const team = typesetAll({
         already: 'Súhrnný výkaz je už označený ako podaný.',
         none: 'Za toto obdobie sa súhrnný výkaz nepodáva: nie sú v ňom dodania do EÚ.',
         stale: 'Údaje alebo zaradenie podania sa zmenili. Skontrolujte aktuálne výkazy a ďalší postup.',
+        saveFirst: 'Súbor sa sťahuje len z uložených podkladov, aby ste do eDane nahrali presne to, čo evidujeme. Najprv podklady uložte.',
       },
     },
     /** What the client reads when a return is filed: what to pay, by when and where, or what comes back. */
@@ -816,7 +821,7 @@ export const team = typesetAll({
             : m.kind === 'D'
               ? `Pripravili sme dodatočné priznanie k DPH za ${m.label}.`
               : `Pripravili sme priznanie k DPH za ${m.label}.`,
-          'Prijatie podateľňou zatiaľ nie je doložené. Aktuálny stav nájdete v časti Dane – Podania a potvrdenky.',
+          'Prijatie podateľňou zatiaľ nie je doložené. Aktuálny stav nájdete v časti Dane, v podaniach a potvrdenkách.',
           m.left
             ? [
                 m.paid ? `Zaplatených ${m.paid} sme započítali.` : null,
@@ -850,6 +855,8 @@ export const team = typesetAll({
       running: 'Obdobie ešte beží.',
       already: 'Toto obdobie je už označené ako podané.',
       notNeeded: 'Tento súbor teraz podávať netreba.',
+      saveFirst: 'Súbor sa sťahuje len z uložených podkladov, aby ste do eDane nahrali presne to, čo evidujeme. Najprv podklady uložte.',
+      missingOriginal: 'Uložený dokument tohto obdobia chýba. Prípad musí preveriť účtovný tím.',
     },
   },
   closing: {
@@ -1109,7 +1116,7 @@ export const team = typesetAll({
     missingOriginal: 'Pri tomto staršom podaní sa pôvodné XML neuložilo. Vyžiadajte si originál podania z finančnej správy; aktuálny prepočet ho nenahrádza.',
     downloadBlocked: 'Súbory pripravíme, keď bude všetko vyriešené.',
     notes: 'Poznámky k závierke Firmony nepripravuje: v eDane ich priložte ako PDF. Závierku podajte samostatne v lehote na podanie priznania (§ 49 ods. 11 zákona o dani z príjmov); finančná správa ju uloží do registra účtovných závierok.',
-    markLead: 'Uložte presné podklady. V ďalšom kroku zaevidujete odoslanie a samostatné potvrdenky priznania a závierky. Klient dostane údaje na úhradu s informáciou o nedoloženom prijatí.',
+    markLead: 'Uložte presné podklady. Potom si stiahnete práve tieto súbory pre eDane a v evidencii podaní zaevidujete odoslanie a samostatné potvrdenky priznania a závierky. Klient dostane údaje na úhradu s informáciou o nedoloženom prijatí.',
     mark: 'Uložiť podklady a otvoriť podania',
     unmark: 'Zrušiť označenie',
     changed: (rows: string, statements: boolean) =>
@@ -1128,7 +1135,7 @@ export const team = typesetAll({
       typeset(
         [
           `Pripravili sme daňové priznanie k dani z príjmov a účtovnú závierku za rok ${m.year}.`,
-          'Prijatie podateľňou zatiaľ nie je doložené. Aktuálny stav nájdete v časti Dane – Podania a potvrdenky.',
+          'Prijatie podateľňou zatiaľ nie je doložené. Aktuálny stav nájdete v časti Dane, v podaniach a potvrdenkách.',
           m.left
             ? [
                 m.paid ? `Zaplatených ${m.paid} sme započítali.` : null,
@@ -1161,6 +1168,7 @@ export const team = typesetAll({
       already: 'Táto závierka je už označená ako podaná.',
       extended: 'Lehotu sme uložili.',
       stale: 'Závierka sa medzitým zmenila. Skontrolujte aktuálne údaje a akciu zopakujte.',
+      saveFirst: 'Súbory sa sťahujú len z uložených podkladov, aby ste do eDane nahrali presne to, čo evidujeme. Najprv podklady uložte.',
     },
   },
   payroll: {
@@ -1450,23 +1458,4 @@ export const team = typesetAll({
     messageEmpty: 'Napíšte, prosím, odpoveď.',
     messageLong: `Správa je pridlhá (najviac ${APP.messageChars} znakov).`,
   },
-  csv: [
-    'Dátum dokladu',
-    'Druh',
-    'Číslo',
-    'Partner',
-    'IČO',
-    'Suma s DPH',
-    'DPH',
-    'Základ',
-    'Na čo',
-    'MD',
-    'D',
-    'Odpočet DPH',
-    'Dátum úhrady',
-    'Úhrada',
-    'Variabilný symbol',
-    'Zaúčtovala',
-    'Zaúčtované',
-  ],
 })

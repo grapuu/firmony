@@ -13,7 +13,7 @@ import type { Exempt } from './match'
 import { bratislava } from './remind'
 import { generalLedgerCsv, journalCsv, saldoCsv, trialBalance, trialCsv } from './ledger'
 import { booksOf } from './ledger-store'
-import { DOC_COLUMNS, DOC_FROM, docOf, type Company, type Doc } from './store'
+import { DOC_COLUMNS, DOC_FROM, booksFromSql, docOf, type Company, type Doc } from './store'
 import { handoverData } from './handover-data'
 import { fileHash } from './read'
 
@@ -183,7 +183,7 @@ export async function exportYear(
       .all<Row>(),
     db
       .prepare(
-        `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.ss, p.ks, p.note, p.exempt, p.exempt_note, a.iban AS account_iban
+        `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.ss, p.ks, p.note, p.exempt, p.exempt_note, a.iban AS account_iban, p.booked_on < ${booksFromSql('p.company_id')} AS before_start
          FROM payments p JOIN accounts a ON a.id = p.account_id WHERE p.company_id = ? AND substr(p.booked_on, 1, 4) = ? ORDER BY p.booked_on, p.rowid`,
       )
       .bind(company.id, year)
@@ -329,7 +329,7 @@ export async function exportYear(
     ...payRows.results.map((p) => {
       const docsOf = byPayment.get(String(p.id)) ?? []
       const exempt = typeof p.exempt === 'string' ? (p.exempt as Exempt) : null
-      const state = docsOf.length > 0 ? 'máme' : exempt ? `netreba: ${EXEMPTS[exempt] ?? exempt}${typeof p.exempt_note === 'string' && p.exempt_note ? `, ${p.exempt_note}` : ''}` : 'chýba'
+      const state = docsOf.length > 0 ? 'máme' : exempt ? `netreba: ${EXEMPTS[exempt] ?? exempt}${typeof p.exempt_note === 'string' && p.exempt_note ? `, ${p.exempt_note}` : ''}` : p.before_start === 1 ? 'netreba: pred začiatkom našej zmluvy' : 'chýba'
       return [
         String(p.booked_on),
         String(p.account_iban ?? ''),

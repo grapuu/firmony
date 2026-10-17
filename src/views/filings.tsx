@@ -46,7 +46,7 @@ export const FilingsPage: FC<{ company: Company; packages: (Omit<FilingPackage, 
 const ACTION_LABELS: Partial<Record<DeliveryState, string>> = {
   submitted: 'Evidovať odoslanie mimo Firmony', accepted: 'Doložiť prijatie podateľňou', rejected: 'Evidovať odmietnutie', review: 'Otvoriť preverenie potvrdenia',
 }
-export const DeliveryForm: FC<{ action: string; revision: number; choices: DeliveryState[]; today: string; values?: Record<string, string>; channel?: string; payload?: string; labels?: Partial<Record<DeliveryState, string>> }> = ({ action, revision, choices, today, values = {}, channel = 'Finančná správa – OIZ', payload = 'uloženého XML', labels = ACTION_LABELS }) => (
+export const DeliveryForm: FC<{ action: string; revision: number; choices: DeliveryState[]; today: string; values?: Record<string, string>; channel?: string; payload?: string; labels?: Partial<Record<DeliveryState, string>> }> = ({ action, revision, choices, today, values = {}, channel = 'Osobná internetová zóna finančnej správy', payload = 'uloženého XML', labels = ACTION_LABELS }) => (
       <form class="stack filing-form" method="post" action={action} enctype="multipart/form-data">
         <input type="hidden" name="revision" value={revision} />
         <div class="field"><label class="field__label" for="filing-state">Čo evidujete</label><select class="field__input" id="filing-state" name="to">{choices.map((s) => <option value={s} selected={values.to === s}>{labels[s]}</option>)}</select></div>

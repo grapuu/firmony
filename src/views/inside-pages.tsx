@@ -704,6 +704,16 @@ export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose,
                 </form>
               </details>
             </section>
+          ) : p.state === 'before' ? (
+            <section class="have have--exempt" aria-labelledby="stav">
+              <div class="need__head">
+                <span class="tick tick--grey" aria-hidden="true" />
+                <h2 id="stav" class="need__title">
+                  {app.payment.beforeTitle}
+                </h2>
+              </div>
+              <p class="have__reason">{app.payment.beforeLead(dayName(p.booksFrom ?? p.bookedOn))}</p>
+            </section>
           ) : p.state === 'done' ? (
             <section class="have" aria-labelledby="stav">
               <div class="need__head">

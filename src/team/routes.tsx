@@ -127,7 +127,7 @@ import { BillingPage } from '../views/billing'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
-import { markFilingStatement, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
+import { teamDeadlines, unmarkFilingStatement } from './deadlines-store'
 import {
   docPreview,
   docsAround,
@@ -214,8 +214,6 @@ import {
   bookingQueue,
   canSee,
   endedCompanies,
-  exportCsv,
-  exportRows,
   getRequest,
   inboxCode,
   isAdmin,
@@ -368,6 +366,8 @@ function flashOf(c: Ctx): string | null {
       return t.vat.flashes.correctedKv
     case 'dph-netreba':
       return t.vat.flashes.notNeeded
+    case 'dph-ulozit':
+      return t.vat.flashes.saveFirst
     case 'sv-podany':
       return t.vat.sv.flashes.filed
     case 'sv-opraveny':
@@ -384,6 +384,8 @@ function flashOf(c: Ctx): string | null {
       return t.vat.sv.flashes.none
     case 'sv-zmeneny':
       return t.vat.sv.flashes.stale
+    case 'sv-ulozit':
+      return t.vat.sv.flashes.saveFirst
     case 'zavierka-ulozene':
       return t.closing.flashes.saved
     case 'zavierka-dan':
@@ -398,6 +400,8 @@ function flashOf(c: Ctx): string | null {
       return t.closing.flashes.running
     case 'zavierka-uz':
       return t.closing.flashes.already
+    case 'zavierka-ulozit':
+      return t.closing.flashes.saveFirst
     case 'zavierka-lehota':
       return t.closing.flashes.extended
     case 'zavierka-zmenena':
@@ -430,8 +434,6 @@ function flashOf(c: Ctx): string | null {
       return t.ledger.flashes.removed
     case 'kniha-ps':
       return t.ledger.flashes.opening
-    case 'oznacene':
-      return t.deadlines.flashes.marked
     case 'neoznacene':
       return t.deadlines.flashes.unmarked
     default:
@@ -449,8 +451,12 @@ async function accountantsList(db: D1Database): Promise<{ id: string; name: stri
 
 teamRoutes.get('/', async (c) => {
   const who = c.get('who')
-  const [rows, ended] = await Promise.all([teamClients(c.env.DB, who.user, demoOn(c)), isAdmin(who.user) ? endedCompanies(c.env.DB) : Promise.resolve([])])
-  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} ended={ended} now={now()} flash={flashOf(c)} />)
+  const [rows, ended, { dues }] = await Promise.all([
+    teamClients(c.env.DB, who.user, demoOn(c)),
+    isAdmin(who.user) ? endedCompanies(c.env.DB) : Promise.resolve([]),
+    teamDeadlines(c.env.DB, who.user, demoOn(c), dayOf(now())),
+  ])
+  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} ended={ended} now={now()} flash={flashOf(c)} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -479,8 +485,8 @@ teamRoutes.get('/terminy', async (c) => {
 /** Where a form of the deadlines goes back to: the screen with its filters, or a client's page; nothing else. */
 const BACK = /^\/ucto\/(?:terminy|klienti\/[A-Za-z0-9-]{1,64})(?:\?[A-Za-z0-9=&_-]{0,200})?$/
 
-// A filing the app does not make yet (a month's payroll reports), marked as filed elsewhere, or the mark taken back.
-// The closing and the recapitulative statement have their own pages, which mark them with what was filed.
+// A month's payroll reports marked as filed by hand, before they were filed one recipient at a time on their own page
+// (schema 19): such a mark can only be taken back. No new one is made: one mark never proved all of a month's reports.
 teamRoutes.post('/klienti/:id/podane', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
@@ -492,13 +498,13 @@ teamRoutes.post('/klienti/:id/podane', async (c) => {
   const period = typeof body.obdobie === 'string' ? body.obdobie : ''
   // Payroll reports of a month that has ended.
   if (!kind || !isPeriod(period) || periodRange(period).to >= today || period.includes('Q')) return c.text('Bad request', 400)
-  const undo = body.zrusit === '1'
+  if (body.zrusit !== '1') return c.text('Bad request', 400)
   await db.batch([
-    undo ? unmarkFilingStatement(db, company.id, kind, period) : markFilingStatement(db, company.id, kind, period, who.user.id, today, now()),
-    eventStatement(db, { company: company.id, user: who.user.id, action: undo ? 'filing.unmarked' : 'filing.marked', subject: `${kind}:${period}` }),
+    unmarkFilingStatement(db, company.id, kind, period),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'filing.unmarked', subject: `${kind}:${period}` }),
   ])
   const back = typeof body.spat === 'string' && BACK.test(body.spat) ? body.spat : '/ucto/terminy'
-  return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=${undo ? 'neoznacene' : 'oznacene'}`, 303)
+  return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=neoznacene`, 303)
 })
 
 async function clientPage(
@@ -567,7 +573,6 @@ async function clientPage(
       rules={rules}
       accountants={accountants}
       now={now()}
-      month={day.slice(0, 7)}
       flash={flashOf(c)}
       bankLine={bankLine}
       papers={papers}
@@ -842,22 +847,6 @@ teamRoutes.post('/klienti/:id/udaje', async (c) => {
   // An accountant who just handed the client to somebody else no longer sees it.
   const still = await teamCompany(db, who.user, company.id)
   return c.redirect(still ? `/ucto/klienti/${company.id}?ok=udaje#udaje` : '/ucto', 303)
-})
-
-teamRoutes.get('/klienti/:id/export', async (c) => {
-  const company = await companyParam(c)
-  if (!company) return missingPage(c)
-  const month = /^\d{4}-\d{2}$/.test(c.req.query('mesiac') ?? '') ? (c.req.query('mesiac') as string) : dayOf(now()).slice(0, 7)
-  const rows = await exportRows(c.env.DB, company.id, month)
-  const csv = exportCsv(rows, company.vatPayer, t.csv, t.book.kinds, { bank: t.book.paidBank, private: t.book.paidPrivate, cash: t.book.paidCash, unpaid: t.book.unpaid })
-  const name = `firmony-${(company.ico ?? company.name).replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}-${month}.csv`
-  return new Response(csv, {
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
-      'Cache-Control': 'private, no-store',
-    },
-  })
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1201,7 +1190,11 @@ teamRoutes.get('/klienti/:id/dph', async (c) => {
   )
 })
 
-/** The return, the control statement or the recapitulative statement as a file, for "Načítať zo súboru" in eDane or on the portal. */
+/**
+ * The return, the control statement or the recapitulative statement as a file, for "Načítať zo súboru" in eDane or on
+ * the portal: always the one saved with the filing's podklady, never one made on the fly, so what is loaded in eDane is
+ * what the filing's evidence holds. Before the podklady are saved, the page says why there is no file yet.
+ */
 teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
   const company = await companyParam(c)
   const file = c.req.param('file')
@@ -1214,44 +1207,20 @@ teamRoutes.get('/klienti/:id/dph/:file', async (c) => {
   const period = periodParam(company, c.req.query('obdobie'), today)
   const { view, filed } = await vatView(c.env.DB, company, period, today)
   const back = `/ucto/klienti/${company.id}/dph?obdobie=${period}`
+  const statement = file === 'kontrolny-vykaz.xml'
   if (view.state === 'filed') {
-    const id = view.filed?.delivery?.[file === 'kontrolny-vykaz.xml' ? 'kv' : 'vat']
-    if (id) {
-      const saved = await packageOf(c.env.DB, company.id, id)
-      if (!saved || await sha256Hex(saved.xml) !== saved.sha256) return c.text('Uložený dokument chýba alebo sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
-      return new Response(saved.xml, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="${saved.name}"`, 'Cache-Control': 'private, no-store' } })
-    }
+    const id = view.filed?.delivery?.[statement ? 'kv' : 'vat']
+    if (!id) return statement && !view.filed?.kv ? c.redirect(`${back}&ok=dph-netreba`, 303) : c.text(t.vat.flashes.missingOriginal, 409)
+    const saved = await packageOf(c.env.DB, company.id, id)
+    if (!saved || await sha256Hex(saved.xml) !== saved.sha256) return c.text('Uložený dokument chýba alebo sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
+    await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: statement ? 'vat.statement.downloaded' : 'vat.return.downloaded', subject: period, detail: { kind: view.filed?.kind ?? 'R' } })])
+    return new Response(saved.xml, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="${saved.name}"`, 'Cache-Control': 'private, no-store' } })
   }
   if (view.state === 'running') return c.redirect(`${back}&ok=dph-bezi`, 303)
-  const plan = vatPlan(
-    company,
-    view,
-    filed,
-    today,
-    choicesOf((name) => c.req.query(name)),
-  )
-  if (!plan || !company.icdph || !company.taxOffice || company.vatStatus === 'none') return c.redirect(`${back}&ok=dph-blokovane`, 303)
-  const statement = file === 'kontrolny-vykaz.xml'
+  const plan = vatPlan(company, view, filed, today, choicesOf((name) => c.req.query(name)))
+  if (!plan) return c.redirect(`${back}&ok=dph-blokovane`, 303)
   if (statement ? !plan.kv : !plan.returnNeeded) return c.redirect(`${back}&ok=dph-netreba`, 303)
-  const filer = { name: company.name, icdph: company.icdph, address: company.address, taxOffice: company.taxOffice, status: company.vatStatus }
-  // A file of a period filed is the one that was filed, with the day it was declared.
-  const declaredOn = view.state === 'filed' && view.filed ? view.filed.filedOn : today
-  const xml =
-    statement && plan.kv
-      ? statementXml(filer, period, plan.kv.sent, plan.kv.kind)
-      : returnXml(filer, period, plan.rows, { declaredOn, nothing: plan.nothing, fastRefund: plan.fast, kind: plan.kind, foundOn: plan.foundOn })
-  const kind = statement ? (plan.kv?.kind ?? 'R') : plan.kind
-  const name = `${statement ? 'KVDPH' : 'DPH'}${kind === 'R' ? '' : `_${kind}`}_${company.icdph}_${period}.xml`
-  await c.env.DB.batch([
-    eventStatement(c.env.DB, { company: company.id, user: c.get('who').user.id, action: statement ? 'vat.statement.downloaded' : 'vat.return.downloaded', subject: period, detail: { kind } }),
-  ])
-  return new Response(xml, {
-    headers: {
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${name}"`,
-      'Cache-Control': 'private, no-store',
-    },
-  })
+  return c.redirect(`${back}&ok=dph-ulozit`, 303)
 })
 
 /**
@@ -1270,7 +1239,9 @@ async function summaryFile(c: Ctx, company: Company, period: string, today: stri
   if (!original && sv.state === 'none') return c.redirect(back.replace('#', '&ok=sv-netreba#'), 303)
   if (!original && (!send || !company.icdph)) return c.redirect(back.replace('#', '&ok=sv-blokovane#'), 303)
   if (!original && sv.state === 'filed' && !sv.filed?.file) return c.text(t.vat.sv.missingOriginal, 409)
-  const snapshot = original || sv.state === 'filed' ? saved?.file : await summarySnapshot(company, sv.period, send!.kind, send!.rows, today)
+  // A file is the one saved with the podklady; before they are saved there is none to load in eDane.
+  if (!original && sv.state !== 'filed') return c.redirect(back.replace('#', '&ok=sv-ulozit#'), 303)
+  const snapshot = saved?.file
   if (!snapshot) return c.text(t.vat.sv.missingOriginal, 409)
   if (await sha256Hex(snapshot.xml) !== snapshot.sha256) return c.text('Uložený dokument sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
   if (snapshot.attemptId) {
@@ -1592,17 +1563,17 @@ teamRoutes.get('/klienti/:id/zavierka/:file', async (c) => {
   if (!company || (file !== 'priznanie.xml' && file !== 'zavierka.xml')) return missingPage(c)
   const found = await closingOfForm(c, company, c.req.query('rok'))
   if (!found) return missingPage(c)
-  const { view, today } = found
+  const { view } = found
   const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
-  if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
-  const state = closingState(view)
-  if (state !== 'ready' && state !== 'filed') return c.redirect(`${back}&ok=zavierka-blokovane`, 303)
   const statements = file === 'zavierka.xml'
   const snapshot = view.closing?.filed
-  // Never fabricate an original for a legacy filing that did not store its XML.
-  if (snapshot && !snapshot.files) return c.text(t.closing.missingOriginal, 409)
-  const files = snapshot?.files ?? await closingFiles(company, view, today)
-  const saved = statements ? files.statements : files.return
+  // The files are the ones saved with the podklady: none before, and never one made again for a filing that kept none.
+  if (!snapshot) {
+    if (view.running) return c.redirect(`${back}&ok=zavierka-bezi`, 303)
+    return c.redirect(`${back}&ok=${closingState(view) === 'ready' ? 'zavierka-ulozit' : 'zavierka-blokovane'}`, 303)
+  }
+  if (!snapshot.files) return c.text(t.closing.missingOriginal, 409)
+  const saved = statements ? snapshot.files.statements : snapshot.files.return
   const { xml, name } = saved
   if (await sha256Hex(xml) !== saved.sha256) return c.text('Uložený dokument sa nezhoduje s kontrolným odtlačkom. Prípad musí preveriť účtovný tím.', 409)
   if (saved.attemptId) {
@@ -2344,7 +2315,7 @@ teamRoutes.get('/doklady', async (c) => {
 /** Payments of the company that this document may belong to, best first. */
 async function candidatesFor(db: D1Database, company: string, d: Doc): Promise<Payment[]> {
   if (d.paymentId || d.totalCents === null) return []
-  const missing = await listPayments(db, company, 'missing', 300)
+  const missing = await listPayments(db, company, 'unpaired', 300)
   const { auto, suggest } = decide(
     missing.map((p) => ({ id: p.id, bookedOn: p.bookedOn, amountCents: p.amountCents, party: p.party, partyIban: p.partyIban, vs: p.vs })),
     [{ id: d.id, kind: d.kind, issuedOn: d.issuedOn, dueOn: d.dueOn, totalCents: d.totalCents, party: d.party, partyIban: d.partyIban, vs: d.vs }],

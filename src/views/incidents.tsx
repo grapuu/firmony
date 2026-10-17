@@ -26,7 +26,7 @@ const state = (i: Incident) =>
     : i.released_at
       ? 'Čaká na uzavretie prípadu'
       : i.preservation === 'too_late'
-        ? 'Mazanie už začalo – preveriť obnovu'
+        ? 'Mazanie už začalo, treba preveriť obnovu'
         : i.preservation === 'records_only'
           ? 'Uchované zostávajúce zmluvné záznamy'
           : 'Uchovanie aktívne'
@@ -82,7 +82,7 @@ export const IncidentsPage: FC<{
           <select class="field__input" id="incident-severity" name="severity">
             <option value="normal">Bežné preverenie</option>
             <option value="high">Vysoká</option>
-            <option value="critical">Kritická – okamžité riešenie</option>
+            <option value="critical">Kritická, rieši sa okamžite</option>
           </select>
         </div>
         <div class="field">
@@ -102,7 +102,7 @@ export const IncidentsPage: FC<{
             Zástupca
           </label>
           <select class="field__input" id="incident-backup" name="backup">
-            <option value="">Zatiaľ nepridelený – treba doplniť</option>
+            <option value="">Zatiaľ nepridelený, treba doplniť</option>
             {people.map((p) => (
               <option value={p.id}>{p.name}</option>
             ))}

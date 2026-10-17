@@ -29,8 +29,9 @@
 // - The payroll of a month with employees (app/payroll.ts): closed by its payday in the next month (the last day of it
 //   when no payday is agreed, § 143(2) of Act No. 461/2003 Z. z.), and once closed, its reports: the Social Insurance
 //   Agency's by the same day, the health insurers' within three days of it (§ 20 of Act No. 580/2004 Z. z.), the tax
-//   office's overview (prehľad) by the end of the next month (§ 39(9) and § 49 of Act No. 595/2003 Z. z.). The app does
-//   not file them yet: they are marked as filed (`filings`, kind 'mz'), listed by the earliest of their days.
+//   office's overview (prehľad) by the end of the next month (§ 39(9) and § 49 of Act No. 595/2003 Z. z.), each its own
+//   deadline with its own evidence (payroll-reporting). A month closed before that evidence existed is listed once, to
+//   have its evidence founded; a hand mark of such a month (`filings`, kind 'mz') proves nothing and can only be undone.
 // - The handover of the books at the end of a contract: within 30 days of its last day (point 10.4, ENDING.handoverDays).
 import { APP, DEADLINES } from '../config'
 import type { DeliveryStatus } from '../filings/model'
@@ -62,8 +63,8 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   taxPay: 'client',
 }
 
-/** Filings the app does not make yet, marked as filed by hand (`filings.kind`): a month's payroll reports. (The
- *  recapitulative statement, kind 'sv', is marked on the VAT page with what was filed.) */
+/** A month's payroll reports marked as filed by hand before they had evidence of their own (`filings.kind`); such a
+ *  mark is only ever taken back. (The recapitulative statement, kind 'sv', is saved on the VAT page with its file.) */
 export const MARKED_KINDS = { payroll: 'mz' } as const
 export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 
@@ -188,7 +189,8 @@ export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
   const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage'>>) =>
-    out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day })
+    // Sent and waiting for its receipt is not late, whenever the receipt comes: what was ours to do by the day is done.
+    out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day && due.deliveryStatus !== 'submitted' })
 
   if (company.vatStatus !== 'none') {
     const quarterly = company.vatQuarterly
@@ -318,6 +320,12 @@ const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, vat
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {
   if (a.state === 'done' && b.state === 'done' && a.day !== b.day) return b.day.localeCompare(a.day)
   return a.day.localeCompare(b.day) || a.companyName.localeCompare(b.companyName, 'sk') || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || (a.period ?? '').localeCompare(b.period ?? '')
+}
+
+/** What of ours presses (the team's home, and whether a client is done): late, or due within a week, and not merely running. */
+export function pressing<T extends Due>(dues: readonly T[], today: string): T[] {
+  const week = addDays(today, 7)
+  return dues.filter((d) => DUE_SIDE[d.kind] === 'ours' && d.state !== 'done' && d.state !== 'running' && (d.late || d.day <= week))
 }
 
 /** The figures above the list: overdue, due within a week, VAT ready to be filed, and what waits for the client. */

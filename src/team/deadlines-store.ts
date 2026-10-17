@@ -45,7 +45,15 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
     where.push('AND c.accountant_id = ?')
     binds.push(scope.accountant)
   }
-  const sql = where.join(' ')
+  return deadlinesWhere(db, where.join(' '), binds, today)
+}
+
+/** One company's deadlines, for its own app: the same rules and facts as the team's screen, so the two never disagree. */
+export async function companyDeadlines(db: D1Database, company: string, today: string): Promise<Due[]> {
+  return (await deadlinesWhere(db, 'c.id = ?', [company], today)).dues
+}
+
+async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], today: string): Promise<{ companies: Company[]; dues: DueRow[] }> {
   const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows] = await db.batch<Row>([
     db
       .prepare(
@@ -177,13 +185,6 @@ export async function teamDeadlines(db: D1Database, user: User, demo: boolean, t
   }
   dues.sort(compareDues)
   return { companies, dues }
-}
-
-/** A filing made outside the app, marked as filed; once (the key is the company, the kind and the period). */
-export function markFilingStatement(db: D1Database, company: string, kind: MarkedKind, period: string, by: string, today: string, at: number): D1PreparedStatement {
-  return db
-    .prepare('INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (company_id, kind, period) DO NOTHING')
-    .bind(company, kind, period, today, at, by)
 }
 
 /** A mark set by mistake, taken back. */

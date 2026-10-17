@@ -286,7 +286,7 @@ export async function checkSecurity({ db, mf, site, admin, anna, acc, as, signIn
     .prepare('UPDATE sessions SET verified_at = ? WHERE user_id = ?')
     .bind(Math.floor(Date.now() / 1000) - 301, target.id)
     .run()
-  res = await as(recoveredCookie).get('/ucto/klienti/co-a/export')
+  res = await as(recoveredCookie).get('/ucto/klienti/co-a/kniha/dennik.csv')
   check(
     'sensitive downloads demand recent verification rather than an old verified cookie',
     res.status === 303 && res.headers.get('location').startsWith('/auth?'),

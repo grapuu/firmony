@@ -213,8 +213,8 @@ const signedEur = (cents: number) => `${cents > 0 ? '+' : ''}${formatEurExact(ce
 
 /**
  * One form for a filing: the choices it takes (the box of § 79(2), and for a supplementary return the day its reason
- * was found and whether the excess deduction filed before has been settled), the files made with them, and the mark
- * that they were filed, sent with the same choices. No script: the files are fetched by GET, the mark is a POST.
+ * was found and whether the excess deduction filed before has been settled) and the button that saves the podklady
+ * made with them; once saved, the files saved, for eDane. No script: the save is a POST, the files are fetched by GET.
  */
 const FilingForm: FC<{ company: Company; view: PeriodView; plan: FilingPlan; today: string }> = ({ company, view, plan, today }) => {
   const base = `/ucto/klienti/${company.id}/dph`
@@ -271,22 +271,24 @@ const FilingForm: FC<{ company: Company; view: PeriodView; plan: FilingPlan; tod
           {plan.settlement ? <p class="info__lead">{v.settlement(signedEur(plan.settlement.r36), plan.settlement.r37 === null ? null : signedEur(plan.settlement.r37))}</p> : null}
         </>
       ) : null}
-      <div class="vstatus__files">
-        {plan.returnNeeded ? (
-          <button class="btn btn--blue" type="submit" formaction={`${base}/priznanie.xml`}>
-            {v.downloadKind[plan.kind]}
-          </button>
-        ) : null}
-        {plan.kv ? (
-          <button class="btn btn--line" type="submit" formaction={`${base}/kontrolny-vykaz.xml`}>
-            {v.downloadKvKind[plan.kv.kind]}
-          </button>
-        ) : null}
-      </div>
-      {filed ? null : (
+      {filed ? (
+        // The files are the ones saved with the podklady: what is loaded in eDane is what the evidence holds.
+        <div class="vstatus__files">
+          {plan.returnNeeded ? (
+            <button class="btn btn--blue" type="submit" formaction={`${base}/priznanie.xml`}>
+              {v.downloadKind[plan.kind]}
+            </button>
+          ) : null}
+          {plan.kv ? (
+            <button class="btn btn--line" type="submit" formaction={`${base}/kontrolny-vykaz.xml`}>
+              {v.downloadKvKind[plan.kv.kind]}
+            </button>
+          ) : null}
+        </div>
+      ) : (
         <div class="stack vfile__mark">
           <p class="info__lead">{plan.replaces ? v.markCorrectionLead : v.markLead}</p>
-          <button class="btn btn--line stack__submit" type="submit" formaction={`${base}/podane`} formmethod="post">
+          <button class="btn btn--blue stack__submit" type="submit" formaction={`${base}/podane`} formmethod="post">
             {plan.replaces ? v.markCorrection : v.markFiled}
           </button>
         </div>
@@ -471,25 +473,23 @@ const SummaryCard: FC<{ company: Company; sv: SvView; docs: Map<string, Doc>; to
         </>
       ) : null}
       {(sv.state === 'blocked' || (sv.state === 'changed' && !sv.plan)) ? <p class="info__source">{s.blocked}</p> : null}
-      {sv.plan || sv.state === 'filed' ? (
-        <form class="vfile" method="get" action={`${base}/suhrnny-vykaz.xml`}>
+      {sv.state === 'filed' ? (
+        // The file is the one saved with the podklady: what is loaded in eDane is what the evidence holds.
+        <div class="vstatus__files">
+          <a class="btn btn--blue" href={`${base}/suhrnny-vykaz.xml?obdobie=${sv.period}`}>
+            {s.download[sv.filed?.kind ?? 'R']}
+          </a>
+        </div>
+      ) : sv.plan ? (
+        <form class="stack vfile__mark" method="post" action={`${base}/suhrnny-vykaz/podane`}>
           <input type="hidden" name="obdobie" value={sv.period} />
-          <div class="vstatus__files">
-            <button class="btn btn--blue" type="submit">
-              {s.download[sv.plan?.kind ?? sv.filed?.kind ?? 'R']}
-            </button>
-          </div>
-          {sv.plan ? (
-            <div class="stack vfile__mark">
-              <p class="info__lead">{s.markLead}</p>
-              <button class="btn btn--line stack__submit" type="submit" formaction={`${base}/suhrnny-vykaz/podane`} formmethod="post">
-                {sv.filed ? s.markCorrection : s.mark}
-              </button>
-            </div>
-          ) : null}
+          <p class="info__lead">{s.markLead}</p>
+          <button class="btn btn--blue stack__submit" type="submit">
+            {sv.filed ? s.markCorrection : s.mark}
+          </button>
         </form>
       ) : null}
-      {sv.filed?.file ? <a class="link" href={`${base}/suhrnny-vykaz.xml?obdobie=${sv.period}&povodne=1`}>{s.original}</a> : null}
+      {sv.state !== 'filed' && sv.filed?.file ? <a class="link" href={`${base}/suhrnny-vykaz.xml?obdobie=${sv.period}&povodne=1`}>{s.original}</a> : null}
       {sv.filed && (!sv.filed.file?.attemptId || ['prepared', 'rejected'].includes(sv.filed.deliveryStatus ?? 'unverified')) ? (
         <form method="post" action={`${base}/suhrnny-vykaz/zrusit`}>
           <input type="hidden" name="obdobie" value={sv.period} />
