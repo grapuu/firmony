@@ -343,6 +343,8 @@ export interface MonthPay {
   earned: number
   /** Hours worked, in hundredths. */
   worked: number
+  /** Hours paid, worked or not (holiday, obstacles, public holidays), as the Agency's monthly report counts them; hundredths. */
+  paid: number
   /** The average hourly earnings used, in ten-thousandths. */
   average: number
   /** The working days of the month, of the employment, absent (hundredths of days). */
@@ -382,6 +384,7 @@ export function monthPay(period: string, terms: WorkTerms, parts: MonthParts, si
 
   let wage = 0
   let worked = 0
+  let paid = 0
   let publicHolidays = 0
   let hourlyBase = 0
   if (employment && terms.wageKind === 'monthly') {
@@ -390,6 +393,7 @@ export function monthPay(period: string, terms: WorkTerms, parts: MonthParts, si
     wage = money((base * Math.max(0, cal.employedWeekdays * daily - absentHours)) / fund)
     hourlyBase = base / 100 / fund
     worked = Math.max(0, cal.employedWorkdays * daily - workdayAbsence)
+    paid = Math.max(0, (cal.employedWeekdays - unpaidDays - sick.weekdays) * daily)
   } else if (employment) {
     const rate = terms.wage / 100
     const hours = parts.hours === null ? Math.max(0, cal.employedWorkdays * daily - workdayAbsence) : parts.hours / 100
@@ -398,13 +402,16 @@ export function monthPay(period: string, terms: WorkTerms, parts: MonthParts, si
     worked = hours
     const holidaysOff = cal.employedWeekdays - cal.employedWorkdays - (sick.weekdays - sick.workdays)
     publicHolidays = money(Math.max(0, holidaysOff) * daily * pz * 100)
+    paid = hours + holidayDays * daily + obstacleHours + Math.max(0, holidaysOff) * daily
   } else if (agreement && terms.wageKind === 'hourly') {
     const hours = (parts.hours ?? 0) / 100
     wage = money((terms.wage / 100) * hours * 100)
     worked = hours
+    paid = hours
   } else {
     wage = cal.range ? (parts.wage ?? terms.wage) : 0
     worked = agreement ? (parts.hours ?? 0) / 100 : 0
+    paid = worked
   }
 
   const holiday = money(holidayDays * daily * pz * 100)
@@ -430,6 +437,7 @@ export function monthPay(period: string, terms: WorkTerms, parts: MonthParts, si
     gross,
     earned: wage + overtime + surcharges + bonus + other,
     worked: Math.round((worked + overtimeHours) * 100),
+    paid: Math.round((paid + overtimeHours) * 100),
     average,
     weekdays: cal.weekdays,
     employedWeekdays: cal.employedWeekdays,

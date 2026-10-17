@@ -1,5 +1,5 @@
 import { check } from './check.mjs'
-import { healthReporting as h, payroll, payrollStore, security } from '../.wrangler/tmp/units-bundle.mjs'
+import { healthReporting as h, payroll, payrollStore, payrollReporting as reports, security } from '../.wrangler/tmp/units-bundle.mjs'
 import { readHealthText } from './health-text.mjs'
 
 export function checkHealth() {
@@ -18,6 +18,13 @@ export function checkHealth() {
   check('514 keeps the separate minimum top-up and the employer/employee assessment bases',parsed.rows[1].join('|')==='2|901010123|30|11,00|5,00|300,00|0,00|33,00|0,00|45,45|300,00|0,00|300,00|||0|12,45')
   check('514 preserves leading zeros and nine-digit insured identifiers without deriving them',parsed.rows[0][1]==='0010101234'&&parsed.rows[1][1]==='901010123')
   check('514 reports disabled rates separately with no minimum top-up',parsed.rows[2][3]==='5,50'&&parsed.rows[2][4]==='2,50'&&parsed.rows[2][15]==='1'&&parsed.rows[2][16]==='0,00')
+  // Agreements (17 October 2026): an agreement's person insured as an employee is reported; a student on a student's
+  // agreement or an old-age pensioner on an agreement is not, and no insurer is owed a report for them alone.
+  const agreement=(id,gross,fields)=>({employeeId:id,name:`TEST ${id}`,insurer:'25',gross,days:30,health:{disabled:false,deductionClaimed:false,minimumExempt:true},slip:payroll.payslip({period,gross,days:30,disabled:false,healthDeduction:false,healthMinimumExempt:true,declaration:false,children:[],...fields})})
+  const mixed=[agreement('dovp',40000,{contract:'dovp',regular:false}),agreement('student',30000,{contract:'dobps',exemption:true}),agreement('pensioner',40000,{contract:'dovp',regular:false,pension:'old'})]
+  const mixedTotals=h.healthTotals(period,kind,JSON.stringify(mixed),today)
+  check('an agreement is reported with its advances; the student and the pensioner the state insures are left out',mixedTotals.issues.length===0&&mixedTotals.rows.length===1&&mixedTotals.rows[0].employeeId==='dovp'&&mixedTotals.total===2000+4400&&mixedTotals.allEmployees===3,JSON.stringify(mixedTotals))
+  check('no health report is owed for people the state insures alone',reports.requiredInsurers(mixed.slice(1)).length===0&&reports.requiredInsurers(mixed).join()==='25')
   check('514 never substitutes an unverified identifier',!h.insuredId('')&&!h.insuredId('901010/1234')&&!h.insuredId('not known'))
   let refused=false;try{h.healthText(period,totals,v,company.ico,'2026-10-12',new Map())}catch{refused=true}check('514 cannot serialize missing insured identifiers',refused)
   check('514 preserves normative file naming and UTF-8 text without a BOM',h.healthFilename(period,'N')==='N5142609.001'&&h.healthFilename('2027-01','O')==='O5142701.001'&&!txt.startsWith('\uFEFF')&&txt.includes('Zdravotný'))

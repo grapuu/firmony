@@ -1,5 +1,5 @@
 import { PAYROLL_REVIEW_SCHEMA } from './review-schema'
-import { currentPendingPayrollSql, currentReportSql, healthIdentityCoverageSql, healthPendingPayrollSql, healthReportCurrentSql } from './sql'
+import { currentPendingPayrollSql, currentReportSql, healthIdentityCoverageSql, healthInsuredCoverageSql, healthPendingPayrollSql, healthReportCurrentSql } from './sql'
 
 const authority = (co: string, by: string) => `EXISTS (SELECT 1 FROM users u JOIN companies c ON c.id = ${co} WHERE u.id = ${by} AND (u.team = 'admin' OR u.team = 'accountant' AND c.accountant_id = u.id))`
 const held = (co: string) => `EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = ${co} AND released_at IS NULL) OR EXISTS (SELECT 1 FROM incidents WHERE company_id = ${co} AND closed_at IS NULL)`
@@ -41,4 +41,16 @@ export const PAYROLL_HEALTH_SCHEMA = [
     `CREATE TRIGGER ${table}_freeze BEFORE INSERT ON ${table} WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL) BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
     ...['INSERT','DELETE'].map((action)=>{const row=action==='INSERT'?'NEW':'OLD';return `CREATE TRIGGER ${table}_revision_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1) ON CONFLICT(company_id) DO UPDATE SET revision = revision + 1; END`}),
   ]),
+]
+
+/** Schema step 29: a health report's generation covers the people insured with the insurer as employees (healthInsuredCoverageSql). */
+export const PAYROLL_HEALTH_COVERAGE_SCHEMA = [
+  'DROP TRIGGER payroll_health_generations_create',
+  `CREATE TRIGGER payroll_health_generations_create BEFORE INSERT ON payroll_health_generations WHEN NOT (${authority('NEW.company_id','NEW.by_user')})
+    OR NOT EXISTS (SELECT 1 FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.id = NEW.package_id AND p.company_id = NEW.company_id
+      AND p.created_by = NEW.by_user AND p.status = 'prepared' AND p.revision = 0 AND p.previous_id IS t.package_id AND t.kind IN ('health24','health25','health27')
+      AND NEW.identities_json = ${healthInsuredCoverageSql('t')} AND json_array_length(NEW.identities_json) > 0
+      AND NOT EXISTS (SELECT 1 FROM json_each(NEW.identities_json) WHERE json_extract(value, '$.identity') IS NULL)
+      AND json_extract(NEW.details, '$.version') = 1 AND json_extract(NEW.details, '$.fileSha256') = p.sha256 AND json_extract(NEW.details, '$.sourceHash') = p.source_hash)
+    BEGIN SELECT RAISE(ABORT, 'FIRMONY_PAYROLL_AUTHORITY'); END`,
 ]

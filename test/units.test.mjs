@@ -4021,9 +4021,10 @@ async function zipped(entries, note) {
   check('below the deduction only accident and guarantee insurance, rounded down each', s.socialEmployee === 0 && s.socialEmployer === 120 + 37)
   s = slip({ period: '2027-01', gross: 30000, contract: 'dobps', exemption: true })
   check('the deduction is 300 € from 2027', s.exemption === 30000 && s.socialEmployee === 0)
-  s = slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true })
+  check('a pensioner on an agreement with an irregular income claims no deduction', slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true }).exemption === 0)
+  s = slip({ gross: 40000, contract: 'dovp', regular: true, pension: 'old', exemption: true })
   check(
-    'an old-age pensioner on an agreement: no disability insurance, the deduction off the base, no health insurance',
+    'an old-age pensioner on an agreement with a regular income: neither sickness, unemployment nor disability insurance, the deduction off the base, no health insurance',
     s.social.employee.disability === undefined && s.socialEmployee === 800 && s.socialEmployer === 2800 + 950 + 320 + 100 && s.healthEmployee === 0,
     JSON.stringify(s.social),
   )
@@ -4037,8 +4038,8 @@ async function zipped(entries, note) {
   check('a disability pension above 70 %: no unemployment insurance, disability insurance kept', s.social.employee.unemployment === undefined && s.social.employer.support === undefined && s.social.employee.disability === 3000)
   s = slip({ contract: 'employment', exemption: true })
   check('the deduction is no employment\'s', s.exemption === 0 && s.socialEmployee === 9400)
-  s = slip({ contract: 'dovp', regular: false, pension: 'invalid', exemption: true, gross: 20000 })
-  check('a disability pensioner on an agreement keeps health insurance', s.healthInsured === true && s.socialEmployee === 0)
+  s = slip({ contract: 'dopc', regular: true, pension: 'invalid', exemption: true, gross: 30000 })
+  check('a disability pensioner on an agreement keeps disability and health insurance, not sickness', s.healthInsured === true && s.socialEmployee === 400 + 300 && s.social.employee.sickness === undefined, JSON.stringify(s.social))
   s = slip({ gross: 150000, sickPay: 34000, declaration: true })
   check(
     'sick pay is taxed with the wage and is no assessment base',

@@ -33,10 +33,12 @@
 //   (a commercial relationship, no labour law) carries no accident and no guarantee insurance, and its unemployment
 //   insurance is the employer's 1 % whole (the support in short-time work is for labour relationships). A pensioner of old
 //   age, an early old-age or a service pension after the age pays no disability and no unemployment insurance; one with a
-//   disability pension above 70 % no unemployment insurance. A student on a student's agreement and a pensioner on an
-//   agreement may claim the deduction (odvodová odpočítateľná položka) for one agreement: 200 € a month in 2026 off the
-//   base of old age, disability and the reserve fund (300 € from 2027), accident and guarantee insurance from the whole.
-//   The same two are no employees for health insurance (the state pays for them).
+//   disability pension above 70 % no unemployment insurance; a pensioner on an agreement neither sickness nor
+//   unemployment insurance. A student on a student's agreement and a pensioner on an agreement with a regular income may
+//   claim the deduction (odvodová odpočítateľná položka) for one agreement: 200 € a month in 2026 off the base of old
+//   age, disability and the reserve fund (300 € from 2027), accident and guarantee insurance from the whole. A student
+//   on a student's agreement and an old-age pensioner on an agreement are no employees for health insurance (the state
+//   pays for them).
 // - Sick pay (náhrada príjmu, Act No. 462/2003 Z. z. as of 1 January 2026, read on slov-lex): for calendar days from the
 //   first day of the incapacity, at most to its fourteenth; 25 % of the daily assessment base for days 1 to 3, 55 % for
 //   days 4 to 14; the base is the sickness insurance bases of the decisive period divided by its days, rounded down to four
@@ -80,8 +82,12 @@ export const isPension = (v: unknown): v is PensionKind => typeof v === 'string'
 /** Whether a relationship can have a regular monthly income: an employment always does, a student's agreement never (its student is insured only for old age and disability). */
 export const regularOf = (kind: ContractKind, regular: boolean): boolean => (kind === 'employment' ? true : kind === 'dobps' ? false : regular)
 
-/** Who may claim the deduction: a student on a student's agreement, a pensioner on another agreement. */
-export const exemptionAllowed = (kind: ContractKind, pension: PensionKind): boolean => kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none')
+/**
+ * Who may claim the deduction: a student on a student's agreement, a pensioner on another agreement with a regular
+ * monthly income (the Agency's monthly report has the codes ZECD1V and ZECD2V for them, regular only, and ZECD3V and
+ * ZECD3NV for students).
+ */
+export const exemptionAllowed = (kind: ContractKind, pension: PensionKind, regular: boolean): boolean => kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none' && regular)
 
 /** The monthly minimum wage for an hour (a 40-hour week: 174 hours), in thousandths of a euro: 5,259 € in 2026. */
 export const minimumHourly = (y: PayrollYear): number => Math.round((y.minimumWage * 10) / 174)
@@ -134,6 +140,9 @@ export function socialRates(kind: ContractKind, regular: boolean, pension: Pensi
   }
   if (pension === 'old') for (const side of [employee, employer]) delete side.disability
   if (pension === 'old' || pension === 'invalid70') for (const side of [employee, employer]) for (const k of ['unemployment', 'support'] as const) delete side[k]
+  // A pensioner on an agreement is insured for pensions only, whatever its income (the Agency's table of agreements):
+  // no sickness and no unemployment insurance.
+  if (isAgreement(kind) && pension !== 'none') for (const side of [employee, employer]) for (const k of ['sickness', 'unemployment', 'support'] as const) delete side[k]
   return { employee, employer }
 }
 
@@ -276,7 +285,7 @@ export function payslip(input: PayInput): Payslip {
   const regular = regularOf(contract, input.regular ?? true)
   const rates = socialRates(contract, regular, pension)
   const socialBase = Math.min(gross, socialCap(y))
-  const exemption = input.exemption && exemptionAllowed(contract, pension) ? Math.min(socialBase, y.exemption) : 0
+  const exemption = input.exemption && exemptionAllowed(contract, pension, regular) ? Math.min(socialBase, y.exemption) : 0
   const pensionBase = socialBase - exemption
   const baseOf = (kind: SocialKind) => (kind === 'accident' ? gross : PENSION_KINDS.includes(kind) ? pensionBase : socialBase)
   const employee: Partial<Record<SocialKind, number>> = {}

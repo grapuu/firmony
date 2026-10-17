@@ -4,7 +4,7 @@ import { companyOf, type Company, type User } from '../app/store'
 import { payrollSettingsOf } from '../app/payroll-store'
 import { dayOfText } from '../app/booking'
 import type { Closure, ReportTarget } from './model'
-import { closureCurrentSql, currentTargetActiveSql, healthIdentityCoverageSql } from './sql'
+import { closureCurrentSql, currentTargetActiveSql, healthInsuredCoverageSql } from './sql'
 import { healthFilename, healthInputError, healthText, healthTotals, insuredId, HEALTH_FORMAT, HEALTH_SPEC_SHA256, type HealthInput, type HealthTotals } from './health'
 import { saveReport } from './store'
 import type { InsuredIdentity } from './insured-identities'
@@ -19,7 +19,7 @@ export async function healthPlan(db:D1Database, companyId:string, targetId:strin
   const revision=await dataRevision(db,companyId)
   const r=await db.batch<Record<string,unknown>>([
     db.prepare('SELECT * FROM companies WHERE id = ?').bind(companyId),
-    db.prepare(`SELECT t.*, (${currentTargetActiveSql('t')}) AS active, ${healthIdentityCoverageSql('t')} AS identities FROM payroll_targets t WHERE t.id = ? AND t.company_id = ? AND t.kind IN ('health24','health25','health27')`).bind(targetId,companyId),
+    db.prepare(`SELECT t.*, (${currentTargetActiveSql('t')}) AS active, ${healthInsuredCoverageSql('t')} AS identities FROM payroll_targets t WHERE t.id = ? AND t.company_id = ? AND t.kind IN ('health24','health25','health27')`).bind(targetId,companyId),
     db.prepare(`SELECT pc.* FROM payroll_closures pc JOIN payroll_targets t ON t.closure_id = pc.id AND t.company_id = pc.company_id WHERE t.id = ? AND t.company_id = ? AND (${closureCurrentSql('pc')})`).bind(targetId,companyId),
     db.prepare('SELECT i.* FROM payroll_health_ids i WHERE i.company_id = ? AND NOT EXISTS (SELECT 1 FROM payroll_health_ids n WHERE n.company_id = i.company_id AND n.employee_id = i.employee_id AND n.revision > i.revision) ORDER BY i.employee_id').bind(companyId),
     db.prepare('SELECT g.details FROM payroll_health_generations g JOIN payroll_packages p ON p.id = g.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE g.company_id = ? AND t.kind = (SELECT kind FROM payroll_targets WHERE id = ? AND company_id = ?) ORDER BY g.at DESC, g.rowid DESC LIMIT 1').bind(companyId,targetId,companyId),

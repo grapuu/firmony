@@ -42,10 +42,11 @@ export interface ReportItem extends ReportTarget {
   status: DeliveryStatus; sourceChanged: boolean; active: boolean; pkg: ReportPackage | null
 }
 export interface PayrollReportFact { id: string; kind: ReportKind; period: string; due: string; status: DeliveryStatus; sourceChanged: boolean }
+/** The health insurers a closed month reports to: those of the people insured as employees (not a student on a student's agreement, nor an old-age pensioner on an agreement). */
 export function requiredInsurers(lines: unknown): string[] | null {
   if (!Array.isArray(lines) || lines.length === 0) return null
   if (lines.some((l) => !l || typeof l !== 'object' || !['24', '25', '27'].includes(l.insurer) || !l.slip || typeof l.slip !== 'object' || !Number.isSafeInteger(l.gross) || l.gross < 0)) return null
-  return [...new Set<string>(lines.map((l) => l.insurer))].sort()
+  return [...new Set<string>(lines.filter((l) => l.slip.healthInsured !== false).map((l) => l.insurer))].sort()
 }
 export interface PayoutInput { paidOn: string; reportPeriod: string; reference: string; reason: string; checked: boolean; revision: number }
 export function payoutError(value: PayoutInput, current: number, admin: boolean, today: string, period: string): string | null {

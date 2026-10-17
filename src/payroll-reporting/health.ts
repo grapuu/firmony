@@ -27,13 +27,14 @@ export function healthTotals(period: string, kind: string, json: string, today: 
   for (const l of Array.isArray(lines) ? lines : []) {
     if (!l || typeof l.employeeId !== 'string' || !l.employeeId || ids.has(l.employeeId) || !isInsurer(l.insurer)) { issues.add('Zamestnanci v uzávierke sú neúplní alebo sa opakujú.'); continue }
     ids.add(l.employeeId)
-    if (`health${l.insurer}` !== kind) continue
+    // A student on a student's agreement or an old-age pensioner on an agreement is no employee for health insurance.
+    if (`health${l.insurer}` !== kind || l.slip?.healthInsured === false) continue
     if (!rates) continue
     const s = l.slip, h = l.health
     if (!h || ['disabled','minimumExempt','deductionClaimed'].some((k) => typeof h[k] !== 'boolean')) { issues.add('V staršej uzávierke nie sú uložené režimy zdravotného poistenia. Použite odborne pripravený externý výkaz; historickú mzdu neprepočítavame.'); continue }
     if (!s || s.period !== period || s.rulesYear !== Number(period.slice(0,4)) || ![l.gross,s.gross,s.healthDeduction,s.healthTopUp,s.healthEmployee,s.healthEmployer].every(cents) || s.gross !== l.gross || !Number.isInteger(l.days) || l.days < 1 || l.days > monthDays(period) || s.healthDeduction > s.gross || s.healthTopUp > s.healthEmployee || !h.deductionClaimed && s.healthDeduction !== 0 || (h.disabled || h.minimumExempt) && s.healthTopUp !== 0) { issues.add('Uzavretá páska nemá konzistentné sumy, dni alebo režim zdravotného poistenia.'); continue }
     const divisor = h.disabled ? 2 : 1
-    if (Math.floor(s.gross * rates.employer / divisor / 10000 + 1e-9) !== s.healthEmployer || Math.floor((s.gross-s.healthDeduction) * rates.employee / divisor / 10000 + 1e-9) !== s.healthEmployee-s.healthTopUp) { issues.add('Uložené odvody nezodpovedajú podporovanému bežnému pracovnému pomeru. Použite odborné spracovanie.'); continue }
+    if (Math.floor(s.gross * rates.employer / divisor / 10000 + 1e-9) !== s.healthEmployer || Math.floor((s.gross-s.healthDeduction) * rates.employee / divisor / 10000 + 1e-9) !== s.healthEmployee-s.healthTopUp) { issues.add('Uložené preddavky nezodpovedajú pravidlám zdravotného poistenia. Použite odborné spracovanie.'); continue }
     rows.push({ employeeId:l.employeeId, name:typeof l.name === 'string' ? l.name : 'Zamestnanec', days:l.days, gross:s.gross, base:s.gross-s.healthDeduction, deduction:s.healthDeduction, employee:s.healthEmployee, employer:s.healthEmployer, topUp:s.healthTopUp, disabled:h.disabled, exempt:h.minimumExempt || h.disabled })
   }
   if (!rows.length) issues.add('V podkladoch chýbajú podporovaní zamestnanci tejto poisťovne.')
@@ -52,7 +53,7 @@ export function healthInputError(v: HealthInput, period: string, targetKind: str
   if (v.dic && !/^\d{10}$/.test(v.dic) || company.dic && v.dic !== company.dic || !isIban(v.iban)) return 'Skontrolujte DIČ a vlastný IBAN zamestnávateľa. Neuvádzajte príjmový účet poisťovne.'
   if ([v.name,v.phone,v.email].some((s)=>/[|\p{Cc}\p{Cs}\uFFFE\uFFFF]/u.test(s)) || v.phone && !/^\+421\d{9}$/.test(v.phone) || v.email.length > 75 || v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return 'Skontrolujte kontakt; text nesmie obsahovať oddeľovač dávky ani riadiace znaky.'
   if (!['N','O'].includes(v.kind) || !/^\d{1,6}$/.test(v.batch) || Number(v.batch) < 1 || !v.sendOn || dayOfText(v.sendOn) !== v.sendOn || v.sendOn > today || v.sendOn < `${nextMonth(period)}-01`) return 'Zvoľte novú alebo opravnú dávku, jej poradové číslo a platný dátum po skončení obdobia.'
-  if (!v.checked || v.reference.trim().length < 12 || v.reference.length > 240 || v.reason.length > 1200 || replacing && v.reason.trim().length < 12) return 'Potvrďte úplnosť bežných miezd a referenciu odbornej kontroly. Ďalšia verzia potrebuje dôvod aspoň 12 znakov.'
+  if (!v.checked || v.reference.trim().length < 12 || v.reference.length > 240 || v.reason.length > 1200 || replacing && v.reason.trim().length < 12) return 'Potvrďte úplnosť miezd a referenciu odbornej kontroly. Ďalšia verzia potrebuje dôvod aspoň 12 znakov.'
   return null
 }
 export const insuredId = (v: string) => /^\d{9,10}$/.test(v)

@@ -5,6 +5,7 @@
 // books' 521, 523 and 527; a closed month's leave that can no longer change; the payslip.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
+import { healthReporting, socialReporting } from '../.wrangler/dist/stores.js'
 
 export async function checkPayrollFull({ db, acc, lucia, nowS, day, capture }) {
   const plain = (text) => text.replace(/\u00a0/g, ' ')
@@ -31,13 +32,15 @@ export async function checkPayrollFull({ db, acc, lucia, nowS, day, capture }) {
   res = await acc.post(`${base}/zamestnanec`, person({ meno: 'TEST-ONLY Peter Študent', narodeny: '1. 1. 2005', vztah: 'dobps', oop: '1' }))
   check("a student on a student's agreement with the deduction added", res.status === 303)
   res = await acc.post(`${base}/zamestnanec`, person({ meno: 'TEST-ONLY Mária Dôchodkyňa', narodeny: '1. 1. 1955', vztah: 'dovp', dochodok: 'old', oop: '1' }))
+  check("a pensioner's deduction on an agreement with an irregular income is refused", res.status === 422)
+  res = await acc.post(`${base}/zamestnanec`, person({ meno: 'TEST-ONLY Mária Dôchodkyňa', narodeny: '1. 1. 1955', vztah: 'dovp', dochodok: 'old', oop: '1', pravidelny: '1' }))
   check('an old-age pensioner on an agreement with the deduction added', res.status === 303)
   res = await acc.post(`${base}/zamestnanec`, person({ meno: 'TEST-ONLY Zlá', vztah: 'dovp', oop: '1' }))
   check('the deduction for an agreement of somebody who is neither a student nor a pensioner is refused', res.status === 422 && plain(await res.text()).includes('Odpočítateľnú položku si uplatní len'))
   const ids = Object.fromEntries((await db.prepare('SELECT id, name, contract, regular, pension, exemption FROM employees WHERE company_id = ?').bind(company).all()).results.map((r) => [r.name.split(' ')[1], r]))
   check(
     'each kept with its relationship, regular income, pension and deduction',
-    ids['Ján']?.contract === 'employment' && ids['Ján']?.regular === 1 && ids['Eva']?.contract === 'director' && ids['Eva']?.regular === 0 && ids['Peter']?.exemption === 1 && ids['Peter']?.regular === 0 && ids['Mária']?.pension === 'old',
+    ids['Ján']?.contract === 'employment' && ids['Ján']?.regular === 1 && ids['Eva']?.contract === 'director' && ids['Eva']?.regular === 0 && ids['Peter']?.exemption === 1 && ids['Peter']?.regular === 0 && ids['Mária']?.pension === 'old' && ids['Mária']?.regular === 1,
     JSON.stringify(ids),
   )
   const jan = ids['Ján'].id
@@ -97,7 +100,23 @@ export async function checkPayrollFull({ db, acc, lucia, nowS, day, capture }) {
   )
   check("Eva's remuneration: no accident nor guarantee insurance, 7 % hers", E.slip.contract === 'director' && E.slip.social.employer.accident === undefined && E.slip.socialEmployee === 5600)
   check("Peter's agreement: the deduction off 300 €, no health insurance, his hours kept", P.slip.exemption === 20000 && P.slip.healthInsured === false && P.slip.healthEmployee === 0 && P.pay.worked === 2000 && P.slip.socialEmployee === 700)
-  check("Mária's agreement: no disability insurance, no health insurance", R.slip.social.employee.disability === undefined && R.slip.healthInsured === false && R.slip.socialEmployee === 800)
+  check("Mária's agreement: neither sickness nor disability insurance, no health insurance", R.slip.social.employee.disability === undefined && R.slip.social.employee.sickness === undefined && R.slip.healthInsured === false && R.slip.socialEmployee === 800)
+  // The month's reports: the Agency's with every relationship and its type; VšZP's without those the state insures.
+  const targets = Object.fromEntries((await db.prepare('SELECT id, kind FROM payroll_targets WHERE company_id = ? AND period = ?').bind(company, M).all()).results.map((r) => [r.kind, r.id]))
+  check('the month owes the Agency and VšZP a report', Boolean(targets.sp) && Boolean(targets.health25), JSON.stringify(targets))
+  const social = await socialReporting.socialPlan(db, company, targets.sp, today)
+  const types = Object.fromEntries(social.totals.rows.map((r) => [r.employeeId, r.typZec]))
+  check(
+    "the Agency's report has each person with the type of the relationship, its hours proposed; only the verified facts wait",
+    social.totals.issues.length === 0 && types[jan] === 'ZEC' && types[eva] === 'ZECN' && types[peter] === 'ZECD3NV' && types[maria] === 'ZECD1V' && social.totals.rows.find((r) => r.employeeId === peter)?.paidHours === 2000 && social.issues.every((i) => /rodné číslo|IČPV|počet hodín/.test(i)),
+    JSON.stringify({ types, issues: social.issues }),
+  )
+  const health = await healthReporting.healthPlan(db, company, targets.health25, today)
+  check(
+    "VšZP's report has Ján and Eva, not the student nor the pensioner",
+    health.totals.issues.length === 0 && health.totals.rows.map((r) => r.employeeId).sort().join() === [jan, eva].sort().join() && JSON.parse(health.identitiesJson).length === 2,
+    JSON.stringify({ rows: health.totals.rows.map((r) => r.employeeId), issues: health.totals.issues }),
+  )
   const journal = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/dennik?rok=${M.slice(0, 4)}&mesiac=${Number(M.slice(5))}`)).text())
   check('the books: wages on 521, the remuneration on 523, sick pay on 527', journal.includes('/kniha/ucet/521') && journal.includes('/kniha/ucet/523') && journal.includes('/kniha/ucet/527'))
   res = await acc.post(`${base}/pn`, { obdobie: M, id: leave.id, zamestnanec: jan, od: sk(`${M}-05`), do: sk(`${M}-15`), dvz: '' })

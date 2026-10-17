@@ -32,7 +32,23 @@ export async function checkPrehlad() {
   check('a source from another earned month or an unreviewed report month cannot be guessed',p.prehladTotals(period,[{...source,period:'2026-08'}],today).issues.length>0 && p.prehladTotals(period,[{...source,report_period:null}],today).issues.length>0)
   check('duplicate source rows and corrupt closed slips are blocked',p.prehladTotals(period,[source,source],today).issues.length>0 && p.prehladTotals(period,[{...source,lines:'not JSON'}],today).issues.length>0 && p.prehladTotals(period,[{...source,lines:JSON.stringify([{...line,slip:{...slip,advance:NaN}}])}],today).issues.length>0)
   const bonus=payroll.payslip({period,gross:150000,days:30,declaration:true,children:[{name:'TEST child',born:'2020-01-01'}],disabled:false,healthDeduction:false,healthMinimumExempt:false})
-  check('child-bonus figures require the external expert path instead of being zeroed',p.prehladTotals(period,[{...source,lines:JSON.stringify([{...line,slip:bonus}])}],today).issues.length>0)
+  const withBonus=p.prehladTotals(period,[{...source,lines:JSON.stringify([{...line,slip:bonus}])}],today)
+  const bonusXml=p.prehladXml(period,withBonus,input)
+  result=await validateXML({xml:[{fileName:'bonus.xml',contents:bonusXml}],schema:[{fileName:'prehlad2026.xsd',contents:xsd}]})
+  check(
+    'the child bonus: row 05 and section II, row 08 the advances less it; the file validates',
+    withBonus.issues.length===0&&withBonus.bonus===10000&&result.valid&&bonusXml.includes('<r05>100.00</r05>')&&bonusXml.includes('<rA>100.00</rA>')&&bonusXml.includes('<rB>100.00</rB>')&&bonusXml.includes(`<r08>${((bonus.advance-10000)/100).toFixed(2)}</r08>`),
+    JSON.stringify(result.errors),
+  )
+  const low=payroll.payslip({period,gross:60000,days:30,declaration:true,children:[{name:'TEST child',born:'2020-01-01'}],disabled:false,healthDeduction:false,healthMinimumExempt:false})
+  const lowTotals=p.prehladTotals(period,[{...source,lines:JSON.stringify([{...line,gross:60000,slip:low}])}],today)
+  const lowXml=p.prehladXml(period,lowTotals,input)
+  check(
+    'a bonus above the advances: row 05 is the advances, row 08 nought, the rest of the employer\'s own money in row C',
+    low.bonus>low.advance&&lowTotals.bonusFromTax===low.advance&&lowTotals.bonusOwn===low.bonus-low.advance&&lowXml.includes('<r08>0.00</r08>')&&lowXml.includes(`<rC>${((low.bonus-low.advance)/100).toFixed(2)}</rC>`),
+  )
+  const sick=payroll.payslip({period,gross:100000,sickPay:30000,days:30,declaration:true,children:[],disabled:false,healthDeduction:false,healthMinimumExempt:false})
+  check('sick pay is taxable income of row 00',p.prehladTotals(period,[{...source,lines:JSON.stringify([{...line,gross:100000,slip:sick}])}],today).gross===130000)
   check('staff cannot copy an actual cash month into an unreviewed reporting period',Boolean(payrollReporting.payoutError({paidOn:'2026-10-12',reportPeriod:'',reference:'TEST bank settlement',checked:true,reason:'',revision:0},0,false,today,period)))
   check('PREHLAD resumes on preparation and scope review on evidence without POST replay',security.actionReturn('/ucto/klienti/co/mzdove-podania/t/generovat')==='/ucto/klienti/co/mzdove-podania/t/pripravit' && security.actionReturn('/ucto/klienti/co/mzdove-podania/t/preverit-rozsah')==='/ucto/klienti/co/mzdove-podania/t' && security.sensitivePath('/ucto/klienti/co/mzdove-podania/t/pripravit','GET'))
 }

@@ -104,7 +104,13 @@ over. Bring this section up to date first whenever a session ends.
    the closed months of the decisive period, capped, rounded up); sick pay is taxed and no assessment base; the books
    take 521, 523 (director), 527 (sick pay); the page has each person's parts below the table, the PN card, the
    employee form with the relationship, the holiday taken; registrations skip health for the state-insured;
-   test/payroll-full.runtime.mjs. Next: the reports for every kind, then the annual settlement. The site promises a
+   test/payroll-full.runtime.mjs. Stage 2 (reports, schema step 29): MVPP reports every relationship with its typZec
+   (ZEC, ZECN for a director without the support's attributes, ZECD1 to ZECD3 with N and V), partial months by their
+   days, the deduction off the pension base, hours proposed from the payroll (`pay.paid`); a pensioner's deduction needs
+   a regular income (the codes ZECD1V and ZECD2V) and a pensioner on an agreement has no sickness insurance; the 514
+   leaves out the state-insured (`healthInsuredCoverageSql`, the generation trigger replaced in step 29, no target for
+   them alone); PREHLAD takes sick pay into row 00 and the child bonus into row 05 and section II (rows A to C).
+   Next: the annual settlement. The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every

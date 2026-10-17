@@ -13,6 +13,7 @@ import {
   proposeAverage,
   proposeDvz,
   sickMonth,
+  sicknessInsured,
   type AverageProposal,
   type ClosedMonth,
   type DvzProposal,
@@ -159,7 +160,7 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
       e.contract,
       regularOf(e.contract, e.regular) ? 1 : 0,
       e.pension,
-      e.exemption && exemptionAllowed(e.contract, e.pension) ? 1 : 0,
+      e.exemption && exemptionAllowed(e.contract, e.pension, regularOf(e.contract, e.regular)) ? 1 : 0,
       e.wageKind,
       e.weeklyHours,
       e.leaveDays,
@@ -335,7 +336,8 @@ export function monthSlips(period: string, employees: readonly Employee[], run: 
       const parts: MonthParts = line?.parts ?? (line ? { ...EMPTY_PARTS, wage: 0, other: line.gross } : EMPTY_PARTS)
       const terms = termsOf(e)
       const closed = closedMonthsOf(e, context.runs ?? [], period)
-      const leaves = (context.leaves ?? []).filter((l) => l.employeeId === e.id)
+      // Sick pay is for those insured for sickness (an employment, a regular income, a regular director); another's leave lowers nothing.
+      const leaves = sicknessInsured(e.contract, e.regular, e.pension) ? (context.leaves ?? []).filter((l) => l.employeeId === e.id) : []
       const dvz: Record<string, DvzProposal> = {}
       const sick = sickMonth(period, leaves, e.startedOn, e.endedOn, (leave) => {
         if (leave.dvz !== null) return leave.dvz
@@ -344,7 +346,7 @@ export function monthSlips(period: string, employees: readonly Employee[], run: 
       })
       const average = proposeAverage(period, terms, closed)
       const pay = monthPay(period, terms, parts, sick, parts.average ?? average.average)
-      const exemption = e.exemption && exemptionAllowed(e.contract, e.pension)
+      const exemption = e.exemption && exemptionAllowed(e.contract, e.pension, terms.regular)
       return {
         employeeId: e.id,
         name: e.name,

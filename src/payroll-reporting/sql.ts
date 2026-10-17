@@ -53,6 +53,16 @@ export function healthIdentityCoverageSql(target: string): string { return `(SEL
   (SELECT json_extract(l.value, '$.employeeId') AS employee,
     (SELECT i.id FROM payroll_health_ids i WHERE i.company_id = ${target}.company_id AND i.employee_id = json_extract(l.value, '$.employeeId') ORDER BY i.revision DESC LIMIT 1) AS identity
     FROM payroll_closures pc, json_each(pc.lines) l WHERE pc.id = ${target}.closure_id AND pc.company_id = ${target}.company_id AND 'health' || json_extract(l.value, '$.insurer') = ${target}.kind ORDER BY employee) s)` }
+/**
+ * Schema step 29 (17 October 2026): the people of a health insurer's report are those insured with it as employees; a
+ * student on a student's agreement or an old-age pensioner on an agreement (the slip's `healthInsured` false) is left
+ * out, as the report leaves them out. Older slips have no such field and stay in.
+ */
+export function healthInsuredCoverageSql(target: string): string { return `(SELECT COALESCE(json_group_array(json_object('employee', s.employee, 'identity', s.identity)), '[]') FROM
+  (SELECT json_extract(l.value, '$.employeeId') AS employee,
+    (SELECT i.id FROM payroll_health_ids i WHERE i.company_id = ${target}.company_id AND i.employee_id = json_extract(l.value, '$.employeeId') ORDER BY i.revision DESC LIMIT 1) AS identity
+    FROM payroll_closures pc, json_each(pc.lines) l WHERE pc.id = ${target}.closure_id AND pc.company_id = ${target}.company_id AND 'health' || json_extract(l.value, '$.insurer') = ${target}.kind
+      AND COALESCE(json_extract(l.value, '$.slip.healthInsured'), 1) <> 0 ORDER BY employee) s)` }
 export const healthReportCurrentSql = (t: string, p: string) => reportCurrentSql(t,p,true,true)
 export const healthPendingPayrollSql = (c: string) => pendingPayrollSql(c,true,true)
 

@@ -29,7 +29,45 @@ export async function checkSocial() {
   check('another social file version needs a recorded reason',Boolean(error({},true))&&error({reason:'TEST checked complete replacement'},true)===null)
   check('even the first internally prepared corrective SP file requires its scope and reason',Boolean(error({kind:'O'}))&&error({kind:'O',reason:'TEST correction of an externally prepared first report'})===null)
   check('analytical hours accept exact decimals and explicit unknown without guessing from salary',p.socialHours('176,25','known',period)===17625&&p.socialHours('0','known',period)===0&&p.socialHours('','known',period)===null&&p.socialHours('','undetermined',period)===99900&&p.socialHours('0','undetermined',period)===null&&p.socialHours('999','known',period)===null&&p.socialHours('176.255','known',period)===null)
-  check('a partial month, current period or unsupported future rules block automatic social output',p.socialTotals(period,JSON.stringify([make('x',150000,{days:15})]),today).issues.length>0&&p.socialTotals('2026-10',JSON.stringify(lines),today).issues.length>0&&p.socialTotals('2028-09',JSON.stringify(lines),'2028-10-17').issues.length>0)
+  check('the current period or unsupported future rules block automatic social output',p.socialTotals('2026-10',JSON.stringify(lines),today).issues.length>0&&p.socialTotals('2028-09',JSON.stringify(lines),'2028-10-17').issues.length>0)
+  const partial=p.socialTotals(period,JSON.stringify([make('x',75000,{days:15})]),today)
+  check('a partial month reports its days of the relationship',partial.issues.length===0&&partial.rows[0].days===15)
+  // Every relationship the payroll works out (17 October 2026): its type, its funds, its bases, against the XSD.
+  const kind=(id,gross,fields)=>make(id,gross,{slip:payroll.payslip({...base,gross,...fields})})
+  const kinds=[
+    kind('dovp',50000,{contract:'dovp',regular:false}),
+    kind('director',80000,{contract:'director',regular:false}),
+    kind('director-regular',120000,{contract:'director',regular:true}),
+    kind('student',30000,{contract:'dobps',exemption:true}),
+    kind('pensioner',40000,{contract:'dopc',regular:true,pension:'old',exemption:true}),
+    kind('pensioner-irregular',40000,{contract:'dovp',regular:false,pension:'old'}),
+    kind('old-employee',150000,{contract:'employment',pension:'old'}),
+  ]
+  const all=p.socialTotals(period,JSON.stringify(kinds),today)
+  const type=(id)=>all.rows.find((r)=>r.employeeId===id)?.typZec
+  check(
+    'each relationship has its type of the report: ZECD1N, ZECN, ZEC, ZECD3NV, ZECD2V, ZECD1N, ZEC',
+    all.issues.length===0&&type('dovp')==='ZECD1N'&&type('director')==='ZECN'&&type('director-regular')==='ZEC'&&type('student')==='ZECD3NV'&&type('pensioner')==='ZECD2V'&&type('pensioner-irregular')==='ZECD1N'&&type('old-employee')==='ZEC',
+    JSON.stringify(all.issues),
+  )
+  const kindPeople=new Map(kinds.map((l,i)=>[l.employeeId,{identifier:`90101012${String(i).padStart(2,'0')}`,icpv:`0000000001${String(i).padStart(2,'0')}`,hours:4000,mode:'known'}]))
+  const kindXml=p.socialXml(period,all,input,company.ico,payday,kindPeople),kindRows=readSocialXml(kindXml).rows,row=(i)=>kindRows[i]
+  result=await validateXML({xml:[{fileName:'kinds.xml',contents:kindXml}],schema:[{fileName:'mvpp2026.xsd',contents:xsd}]})
+  check('the report of every relationship validates against the official XSD',result.valid,JSON.stringify(result.errors))
+  check(
+    "an irregular agreement: no sickness nor unemployment base; a director: no accident, guarantee or support, the support left out whole",
+    row(0)['@_vzNp']==='0.00'&&row(0)['@_npZamnec']==='0.00'&&row(0)['@_vzUp']==='500.00'&&row(0)['@_pfpZamtel']==='0.00'&&row(1)['@_vzUp']==='0.00'&&row(1)['@_upZamtel']==='0.00'&&row(1)['@_vzPfp']===undefined&&row(1)['@_pfpZamtel']===undefined&&row(2)['@_pvnZamtel']==='12.00',
+    JSON.stringify([row(0),row(1),row(2)]),
+  )
+  check(
+    "the deduction lowers the base of pension insurance and the reserve fund only; accident and guarantee from the whole",
+    row(3)['@_vzSp']==='100.00'&&row(3)['@_vzRfs']==='100.00'&&row(3)['@_vzUp']==='300.00'&&row(3)['@_vzGp']==='300.00'&&row(4)['@_vzSp']==='200.00'&&row(4)['@_vzIp']==='0.00'&&row(4)['@_vzNp']==='0.00',
+    JSON.stringify([row(3),row(4)]),
+  )
+  const tampered=structuredClone(kinds[0]);tampered.slip.social.employer.accident+=1
+  check('a slip whose funds do not agree with its relationship is never reported',p.socialTotals(period,JSON.stringify([tampered]),today).issues.length>0)
+  const irregularDeduction=kind('wrong',40000,{contract:'dovp',regular:false,pension:'old'});irregularDeduction.slip.exemption=20000
+  check('nor a deduction its relationship cannot have',p.socialTotals(period,JSON.stringify([irregularDeduction]),today).issues.length>0)
   check('missing, duplicate or inconsistent closed social fields cannot be replaced with zeros',p.socialTotals(period,'not JSON',today).issues.length>0&&p.socialTotals(period,JSON.stringify([lines[0],lines[0]]),today).issues.length>0&&p.socialTotals(period,JSON.stringify([{...lines[0],slip:{...lines[0].slip,socialEmployee:0}}]),today).issues.length>0&&p.socialTotals(period,JSON.stringify([{...lines[0],slip:{...lines[0].slip,rulesYear:undefined}}]),today).issues.length>0)
   const p27='2027-09',slip27=payroll.payslip({...base,period:p27,gross:2000000}),t27=p.socialTotals(p27,JSON.stringify([{employeeId:'above-cap',name:'TEST 2027',gross:2000000,days:30,slip:slip27}]),'2027-10-17')
   const xml27=p.socialXml(p27,t27,{...input,declaredOn:'2027-10-17'},company.ico,'2027-10-12',people)

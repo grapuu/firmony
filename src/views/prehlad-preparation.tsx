@@ -10,7 +10,7 @@ export const PrehladPreparationPage: FC<{ plan: GenerationPlan; base: string; va
   return <div class="filing-work">
     <p><a class="link" href={`${base}/${plan.target.id}`}>Späť na výkaz a potvrdenky</a></p>
     <Heading first="Pripraviť prehľad FS" second={monthName(`${period}-01`)} />
-    <p class="info__lead">{plan.company.name} · PREHLADv26 · bežné mzdy bez daňových bonusov a osobitných úprav</p>
+    <p class="info__lead">{plan.company.name} · PREHLADv26 · mzdy, odmeny, náhrady príjmu pri PN a daňový bonus na deti</p>
     {error ? <p class="notice notice--error" role="alert">{error}</p> : null}
     <section class="info"><h2 class="info__title">Úhrny z overených miezd</h2><dl class="kv">
       <div><dt>Zdaniteľné príjmy · riadok 0</dt><dd>{formatEurExact(plan.totals.gross)}</dd></div>
@@ -31,7 +31,7 @@ export const PrehladPreparationPage: FC<{ plan: GenerationPlan; base: string; va
       {field('preparedBy','Vypracoval(a)',100)}{field('phone','Kontaktný telefón',13,false,'tel')}{field('email','Kontaktný e-mail',254,false,'email')}{field('declaredOn','Dátum vypracovania',10,true,'date')}
       {field('reference','Referencia odbornej kontroly úplnosti',240)}
       <div class="field"><label class="field__label" for="overview-reason">Dôvod a rozsah ďalšej verzie{plan.target.package_id ? '' : ' · voliteľné'}</label><textarea class="field__input field__area" id="overview-reason" name="reason" maxlength={1200} minlength={plan.target.package_id ? 12 : undefined} required={Boolean(plan.target.package_id)}>{v.reason ?? ''}</textarea></div>
-      <label class="tickbox"><input type="checkbox" name="checked" value="1" required checked={v.checked==='1'} /><span>Overil(a) som firmu, zastúpenie, obdobie a všetky príjmy. Ide o bežné mzdy slovenskej s. r. o. bez bonusov, ročného zúčtovania dane alebo poistného, zahraničných a nepeňažných príjmov, ďalších opráv, preplatkov a žiadostí o vrátenie. Všetky údaje prehľadu sú úplné.</span></label>
+      <label class="tickbox"><input type="checkbox" name="checked" value="1" required checked={v.checked==='1'} /><span>Overil(a) som firmu, zastúpenie, obdobie a všetky príjmy. Prehľad nerieši zahraničné a nepeňažné príjmy, daňový bonus na zaplatené úroky, opravy za minulé obdobia ani žiadosť o vyplatenie bonusu nad preddavky (oddiel III); také prípady doplňte odborne. Všetky údaje prehľadu sú úplné.</span></label>
       <p class="small">Vznikne presné XML na odbornú kontrolu a podanie na portáli finančnej správy. Odoslanie a výslednú potvrdenku evidujte samostatne pri tomto súbore.</p>
       <button class="btn btn--blue stack__submit" type="submit">Vytvoriť a uložiť XML prehľadu</button>
     </form>}

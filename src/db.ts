@@ -8,7 +8,7 @@ import { INCIDENT_SCHEMA } from './incidents/schema'
 import { FILING_SCHEMA } from './filings/schema'
 import { PAYROLL_REPORTING_SCHEMA } from './payroll-reporting/schema'
 import { PAYROLL_REVIEW_SCHEMA } from './payroll-reporting/review-schema'
-import { PAYROLL_HEALTH_SCHEMA } from './payroll-reporting/health-schema'
+import { PAYROLL_HEALTH_COVERAGE_SCHEMA, PAYROLL_HEALTH_SCHEMA } from './payroll-reporting/health-schema'
 import { PAYROLL_SOCIAL_SCHEMA } from './payroll-reporting/social-schema'
 
 export const now = (): number => Math.floor(Date.now() / 1000)
@@ -932,7 +932,9 @@ const MIGRATIONS: readonly string[][] = [
             ]),
       ]
     }),
-  ],
+  ],  // A health insurer's report of a month covers the people insured with it as employees: a student on a student's
+  // agreement and an old-age pensioner on an agreement are left out of it, as the report leaves them out.
+  PAYROLL_HEALTH_COVERAGE_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

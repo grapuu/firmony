@@ -2229,7 +2229,7 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
   const leaveDays = leaveText === '' ? null : hundredthsOf(leaveText)
   if (leaveDays !== null && (Number.isNaN(leaveDays) || leaveDays < 2000 || leaveDays > 6000)) errors.dovolenka = t.payroll.errors.leave
   for (const tick of ['vyhlasenie', 'ztp', 'op', 'vynimka', 'pravidelny', 'oop']) values[tick] = body[tick] === '1' ? '1' : ''
-  if (values.oop === '1' && isContract(contract) && isPension(pension) && !exemptionAllowed(contract, pension)) errors.oop = t.payroll.errors.exemption
+  if (values.oop === '1' && isContract(contract) && isPension(pension) && !exemptionAllowed(contract, pension, regularOf(contract, values.pravidelny === '1'))) errors.oop = t.payroll.errors.exemption
   const children: { name: string; born: string }[] = []
   for (let i = 0; i < CHILD_ROWS; i++) {
     const childName = field(`dieta_${i}`, 80)
