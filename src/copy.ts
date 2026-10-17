@@ -271,7 +271,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Viete viesť aj väčšiu firmu?',
-        a: `Áno. Štandardné balíky sú pre firmy do ${largest.docs} dokladov mesačne. Pri väčšej firme najprv prejdeme agendu: počet dokladov a zamestnancov, majetok, zásoby a režimy DPH. Potom navrhneme rozsah, cenu a postup prechodu na mieru.`,
+        a: `Áno. Štandardné balíky sú pre firmy do ${largest.docs} dokladov mesačne. Pri väčšej firme najprv prejdeme agendu: počet dokladov a zamestnancov, majetok, zásoby a režimy DPH. Potom navrhneme rozsah, cenu a postup prechodu na mieru. Závierku pripravíme mikro, malej aj veľkej účtovnej jednotke.`,
       },
       {
         q: 'Ako prejdem od súčasnej účtovníčky?',

@@ -175,6 +175,7 @@ const pages = [
   ['team', 'Banka proti knihám', `/ucto/klienti/${company}/kniha/platby?rok=${year}`],
   ['team', 'DPH za mesiac', `/ucto/klienti/${company}/dph?obdobie=${lastMonth}`],
   ['team', 'Mzdy za mesiac (100 ľudí)', `/ucto/klienti/${company}/mzdy?obdobie=${lastMonth}`],
+  ['team', 'Závierka a daň z príjmov (rok)', `/ucto/klienti/${company}/zavierka?rok=${year}`],
   ['team', 'Podania na dokončenie', '/ucto/podania'],
   ['client', 'Prehľad klienta', '/app'],
   ['client', 'Platby klienta', '/app/platby?filter=vsetky'],

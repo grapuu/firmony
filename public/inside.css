@@ -6643,6 +6643,20 @@ select.field__input {
   min-width: 0;
 }
 
+/* Accounts placed in a row of Úč POD of the accountant's own: the account, the row. */
+.cplace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 8px 12px;
+  max-width: 360px;
+}
+
+.cplace .field__input {
+  min-height: 42px;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 640px) {
   .crow {
     grid-template-columns: 32px minmax(0, 1fr);

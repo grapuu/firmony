@@ -1,13 +1,25 @@
-// The annual closing of a micro company and its corporate income tax return, worked out from the books (ledger.ts).
-// Pure: what is stored is in closing-store.ts, the files in closing-xml.ts, the pages in views/closing.tsx; every rule
-// is checked in test/units.test.mjs, and both files against the official schemas (test/xsd).
+// The annual closing of a company and its corporate income tax return, worked out from the books (ledger.ts). Pure:
+// what is stored is in closing-store.ts, the files in closing-xml.ts, the pages in views/closing.tsx; every rule is
+// checked in test/units.test.mjs, and every file against the official schemas (test/xsd).
 //
-// What each rule leans on (read on 14 October 2026):
+// What each rule leans on (read on 14 October 2026, the size groups and the forms of a small and a large entity on 17
+// October 2026):
+// - The size group of a company (§ 2(5) to (13) of Act No. 431/2002 Z. z. on Accounting, as in force on 17 October
+//   2026): a micro entity meets two of total assets up to 450 000 €, net turnover up to 900 000 € and an average of up
+//   to 10 employees; a large one exceeds two of 5 000 000 €, 10 000 000 € and 50; a small one is in between, and so is
+//   one that fits none. A company is put in its group as of the first day of a period by the two periods just before,
+//   and changes it only after two periods in a row of another; a new company chooses its group, and keeps it in the next
+//   period too; a micro entity may proceed as a small one. Total assets are the balance sheet's net (§ 2(9)); the net
+//   turnover the revenue from sales of products, goods and services (§ 2(15)). The audit (§ 19(1)(a)): two of total
+//   assets gross above 4 000 000 €, net turnover above 8 000 000 € and more than 50 employees, at the closing's day and
+//   in the period before; the audited statements and the auditor's report are filed in the register within a year of
+//   the period's end when they are not ready by the deadline (§ 23a(5)).
 // - The financial statements of a micro entity (účtovná závierka mikro účtovnej jednotky): the balance sheet Súvaha
 //   Úč MUJ 1-01 (rows 01 to 45) and the profit and loss account Výkaz ziskov a strát Úč MUJ 2-01 (rows 01 to 38), in
 //   whole euros, each row with the accounts the eForm UZMUJv14 names beside it (the Financial Administration's
 //   form.301, measure MF/15464/2013-74 as amended by MF/18008/2014-74 and MF/14775/2017-74). A row the form names an
-//   account in twice (a receivable or a liability by its side) takes the balance by its side.
+//   account in twice (a receivable or a liability by its side) takes the balance by its side. The statements of a
+//   small or a large entity (Úč POD, the eForm UZPODv14) are in closing-pod.ts.
 // - The tax return DPPOv25 (form.622) and its poučenie MF/012187/2025-721: rows 100 to 1110 with their formulas, Table
 //   A (expenses that are no tax expenses), Table D (the losses deducted), Table F (the double entry's revenues, costs
 //   and result), Table K (the minimum tax credited). Act No. 595/2003 Z. z.: § 15 písm. b) the rate (from periods
@@ -23,8 +35,9 @@
 // Said plainly, what is left to the accountant: the rows the books cannot know (expenses that are no tax expenses but
 // those of representation and gifts, unpaid costs under § 17(19), tax depreciation, exempt income, losses of years
 // before us) are hers to type, each proposed where the books can; the notes (poznámky) are hers to write. Not built:
-// the return of a company that is not a micro entity (Úč POD), deferred tax, the relief rows, the special tax bases.
+// deferred tax, the relief rows, the special tax bases.
 import type { AssetYear } from './assets'
+import { podStatements, type Placement } from './closing-pod'
 import { balanceOf, synthetic, accountClass, type Books, type LedgerEntry } from './ledger'
 import type { Company } from './store'
 import { workingDayFrom } from './vat'
@@ -214,38 +227,156 @@ export function closingBalances(entries: readonly LedgerEntry[], year: number): 
   return out
 }
 
+/** A company's size group (§ 2(5) of the Act on Accounting): the micro entity files Úč MUJ, the small and the large Úč POD. */
+export type EntitySize = 'micro' | 'small' | 'large'
+export const ENTITY_SIZES: readonly EntitySize[] = ['micro', 'small', 'large']
+export const formOf = (size: EntitySize): 'muj' | 'pod' => (size === 'micro' ? 'muj' : 'pod')
+
+/**
+ * Every account's closing balance of each of the years asked, in one pass over the books (what `closingBalances` gives
+ * each of them): the costs and revenues of a year go to 431 when the next one begins.
+ */
+export function closingBalancesByYear(entries: readonly LedgerEntry[], years: readonly number[]): Map<number, Map<string, number>> {
+  const out = new Map<number, Map<string, number>>()
+  if (years.length === 0) return out
+  const wanted = new Set(years)
+  const last = Math.max(...years)
+  const base = new Map<string, number>()
+  let results = new Map<string, number>()
+  let current = Math.min(...years, entries.length > 0 ? Number((entries[0] as LedgerEntry).on.slice(0, 4)) : last)
+  const add = (map: Map<string, number>, account: string, cents: number) => map.set(account, (map.get(account) ?? 0) + cents)
+  const endYear = () => {
+    if (wanted.has(current)) {
+      const snapshot = new Map(base)
+      for (const [account, cents] of results) add(snapshot, account, cents)
+      out.set(current, snapshot)
+    }
+    for (const cents of results.values()) add(base, '431', cents)
+    results = new Map()
+    current++
+  }
+  for (const e of entries) {
+    const y = Number(e.on.slice(0, 4))
+    if (y > last) break
+    while (current < y) endYear()
+    for (const line of e.lines) {
+      for (const [account, cents] of [
+        [line.md, line.cents],
+        [line.d, -line.cents],
+      ] as const) {
+        const cls = accountClass(account)
+        if (cls === 7) continue
+        add(cls === 5 || cls === 6 ? results : base, account, cents)
+      }
+    }
+  }
+  while (current <= last) endYear()
+  return out
+}
+
 export interface Statements {
   year: number
-  /** In cents, as the books hold them. */
+  /** The forms they are on: Úč MUJ (a micro entity) or Úč POD (a small or a large one). */
+  form: 'muj' | 'pod'
+  /** In cents, as the books hold them; for Úč POD the net of each asset row. */
   balance: Lines
   profit: Lines
-  /** In whole euros, as the statements are filed; the rounding put in row 22 when the result would not otherwise agree. */
+  /** In whole euros, as the statements are filed; the rounding put in a row of money when the result would not otherwise agree. */
   balanceEur: Lines
   profitEur: Lines
   rounding: number
+  /** Úč POD: each asset row's gross amount and correction, in cents and in whole euros; empty for Úč MUJ. */
+  gross: Lines
+  fix: Lines
+  grossEur: Lines
+  fixEur: Lines
   /** Accounts with a balance the form has no row for (they would be lost from it). */
   unplaced: string[]
   /** Each cost and revenue account of the year (synthetic), a cost or a revenue as a plus: what the return's proposals read. */
   accounts: Record<string, number>
+  /** The result before tax, and the revenues and costs it is made of (Table F of the return), the income tax apart. */
+  result: number
+  revenues: number
+  costs: number
+  /** For the size group and the audit: the net turnover (§ 2(15)) and the total assets, net (§ 2(9)) and gross (§ 19(1)(a)). */
+  turnover: number
+  assetsNet: number
+  assetsGross: number
 }
 
-/** The financial statements of a micro entity for a year from its books: the balance sheet and the profit and loss account. */
-export function statementsOf(books: Pick<Books, 'entries'>, year: number): Statements {
-  const balances = closingBalances(books.entries, year)
+/**
+ * The financial statements for a year from its books: the balance sheet and the profit and loss account, of a micro
+ * entity (Úč MUJ) or of a small or a large one (Úč POD, closing-pod.ts, with the accountant's placements of accounts).
+ */
+export function statementsOf(books: Pick<Books, 'entries'>, year: number, form: 'muj' | 'pod' = 'muj', placements: readonly Placement[] = []): Statements {
+  return statementsFrom(closingBalances(books.entries, year), year, form, placements)
+}
+
+/** The statements of a year from its accounts' closing balances (`closingBalances`, `closingBalancesByYear`). */
+export function statementsFrom(balances: ReadonlyMap<string, number>, year: number, form: 'muj' | 'pod' = 'muj', placements: readonly Placement[] = []): Statements {
+  const accounts: Record<string, number> = {}
+  for (const [account, cents] of balances) {
+    const cls = accountClass(account)
+    if (cents !== 0 && (cls === 5 || cls === 6)) accounts[synthetic(account)] = (accounts[synthetic(account)] ?? 0) + (cls === 6 ? -cents : cents)
+  }
+  const pod = podStatements(balances, form === 'pod' ? placements : [])
+  const figures = { turnover: pod.profit.r01 ?? 0, assetsGross: pod.gross.r001 ?? 0 }
+  if (form === 'pod') {
+    const p = pod.profit
+    return {
+      year,
+      form,
+      balance: pod.balance,
+      profit: p,
+      balanceEur: pod.balanceEur,
+      profitEur: pod.profitEur,
+      rounding: pod.rounding,
+      gross: pod.gross,
+      fix: pod.fix,
+      grossEur: pod.grossEur,
+      fixEur: pod.fixEur,
+      unplaced: pod.unplaced,
+      accounts,
+      result: p.r56 ?? 0,
+      revenues: (p.r02 ?? 0) + (p.r29 ?? 0),
+      costs: (p.r10 ?? 0) + (p.r45 ?? 0),
+      ...figures,
+      assetsNet: pod.balance.r001 ?? 0,
+    }
+  }
+  const muj = mujStatements(balances)
+  const p = muj.profit
+  return {
+    year,
+    form,
+    ...muj,
+    gross: {},
+    fix: {},
+    grossEur: {},
+    fixEur: {},
+    accounts,
+    result: p.r35 ?? 0,
+    revenues: (p.r01 ?? 0) + (p.r20 ?? 0),
+    costs: (p.r08 ?? 0) + (p.r27 ?? 0),
+    ...figures,
+    assetsNet: muj.balance.r01 ?? 0,
+  }
+}
+
+/** The statements of a micro entity from every account's closing balance. */
+function mujStatements(balances: ReadonlyMap<string, number>): Pick<Statements, 'balance' | 'profit' | 'balanceEur' | 'profitEur' | 'rounding' | 'unplaced'> {
   const balance = empty(BALANCE_ROWS)
   const profit = empty(PROFIT_ROWS)
   const unplaced: string[] = []
-  const accounts: Record<string, number> = {}
   // A bank's accounts each by its own side (an overdraft is a loan, not less money); every other account by its synthetic one.
   const bySynthetic = new Map<string, number>()
   for (const [account, cents] of balances) {
     if (cents === 0) continue
     const cls = accountClass(account)
+    if (cls === 7) continue
     if (cls === 5 || cls === 6) {
       const row = profitRowOf(account)
-      const plus = cls === 6 ? -cents : cents
-      profit[row] = (profit[row] ?? 0) + plus
-      accounts[synthetic(account)] = (accounts[synthetic(account)] ?? 0) + plus
+      profit[row] = (profit[row] ?? 0) + (cls === 6 ? -cents : cents)
       continue
     }
     const key = synthetic(account) === '221' ? account : synthetic(account)
@@ -277,7 +408,7 @@ export function statementsOf(books: Pick<Books, 'entries'>, year: number): State
     balanceEur.r22 = (balanceEur.r22 ?? 0) + rounding
     balanceSums(balanceEur)
   }
-  return { year, balance, profit, balanceEur, profitEur, rounding, unplaced: unplaced.sort(), accounts }
+  return { balance, profit, balanceEur, profitEur, rounding, unplaced: unplaced.sort() }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -506,11 +637,8 @@ export function taxOf(input: TaxInput): TaxResult {
 }
 
 /** Table F: the revenues and costs of the year, and the result before tax (row 100). */
-export function tableF(statements: Statements): { r01: number; r02: number; r03: number } {
-  const p = statements.profit
-  const r01 = (p.r01 ?? 0) + (p.r20 ?? 0)
-  const r02 = (p.r08 ?? 0) + (p.r27 ?? 0)
-  return { r01, r02, r03: r01 - r02 }
+export function tableF(statements: Pick<Statements, 'revenues' | 'costs'>): { r01: number; r02: number; r03: number } {
+  return { r01: statements.revenues, r02: statements.costs, r03: statements.revenues - statements.costs }
 }
 
 /** What the books propose for a year's return; the accountant's inputs (closing-form.ts) override any of it. */
@@ -525,14 +653,13 @@ export interface Proposal {
 }
 
 /**
- * What the books propose for the return: the result before tax (row 100, the profit and loss account's row 35), the
+ * What the books propose for the return: the result before tax (row 100, row 35 of Úč MUJ, row 56 of Úč POD), the
  * taxable revenues (row 560: every revenue of class 6, which the accountant lowers by what is not subject to tax or
  * exempt), the interest on the company's accounts taxed by withholding (row 210, account 662), representation (Table A
  * row 6, account 513) and gifts (row 8, account 543), and the depreciation of account 551 in Table B, the tax
  * depreciation proposed the same until the accountant says otherwise (so that nothing is added back unasked).
  */
 export function proposeTax(statements: Statements, assets: AssetYear | null = null): Proposal {
-  const p = statements.profit
   const f = tableF(statements)
   const depreciation = Math.max(0, statements.accounts['551'] ?? 0)
   // With the register (17 October 2026): Table B holds the tangible assets only. The books' depreciation is 551 less
@@ -542,7 +669,7 @@ export function proposeTax(statements: Statements, assets: AssetYear | null = nu
   if (assets) {
     const outside = Math.max(0, depreciation - assets.bookTangible - assets.bookIntangible - assets.liquidated)
     return {
-      result: p.r35 ?? 0,
+      result: statements.result,
       revenues: f.r01,
       costs: f.r02,
       taxable: Math.max(0, f.r01),
@@ -552,7 +679,7 @@ export function proposeTax(statements: Statements, assets: AssetYear | null = nu
     }
   }
   return {
-    result: p.r35 ?? 0,
+    result: statements.result,
     revenues: f.r01,
     costs: f.r02,
     taxable: Math.max(0, f.r01),
@@ -586,6 +713,11 @@ export interface ClosingInputs {
   activity: string
   /** The day the statements were approved, when they were before they are filed. */
   approvedOn: string | null
+  /** The company's size group for the year (null follows the books' proposal) and its average number of employees (null: from payroll). */
+  size: EntitySize | null
+  employees: number | null
+  /** Accounts (or analytic accounts) the accountant put in a row of Úč POD of her own: a receivable due after a year, a related party. */
+  placements: Placement[]
 }
 
 export const EMPTY_INPUTS: ClosingInputs = {
@@ -605,6 +737,9 @@ export const EMPTY_INPUTS: ClosingInputs = {
   nace: '',
   activity: '',
   approvedOn: null,
+  size: null,
+  employees: null,
+  placements: [],
 }
 
 /**
@@ -637,10 +772,79 @@ export function taxInputOf(year: number, proposal: Proposal, inputs: ClosingInpu
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The size group and the audit
+// ---------------------------------------------------------------------------------------------------------------
+
+/** What puts a company in its size group for one period, and what the audit is judged by. */
+export interface SizeFigures {
+  year: number
+  assetsNet: number
+  assetsGross: number
+  turnover: number
+  employees: number
+}
+
+/** The group one period's figures fall into (§ 2(6) to (8)): two of three conditions; one that fits none is small (§ 2(10)). */
+export function sizeGroup(f: Pick<SizeFigures, 'assetsNet' | 'turnover' | 'employees'>): EntitySize {
+  const large = [f.assetsNet > E(5_000_000), f.turnover > E(10_000_000), f.employees > 50].filter(Boolean).length
+  if (large >= 2) return 'large'
+  const micro = [f.assetsNet <= E(450_000), f.turnover <= E(900_000), f.employees <= 10].filter(Boolean).length
+  return micro >= 2 ? 'micro' : 'small'
+}
+
+/** Why the books propose a group: both periods before fall into it, the period before's group is kept, or the books begin with the year. */
+export type SizeReason = 'two' | 'kept' | 'first'
+
+/**
+ * The size group the books propose for a year (§ 2(10) and (11)): the group both periods just before fall into; else
+ * the group of the period before, which a company keeps until two periods in a row put it in another (a new company
+ * keeps its own choice in its second period so); a micro entity in a year the books begin with (a new company chooses
+ * its group, one that came from another accountant keeps the one it had: the accountant sets either). `figures` are of
+ * the years the books hold whole, `chosen` the groups the accountant set, `first` the year the books begin with.
+ */
+export function proposeSize(year: number, figures: ReadonlyMap<number, SizeFigures>, chosen: ReadonlyMap<number, EntitySize>, first: number): { size: EntitySize; reason: SizeReason } {
+  let before: EntitySize | null = null
+  let out: { size: EntitySize; reason: SizeReason } = { size: 'micro', reason: 'first' }
+  for (let y = Math.min(first, year); y <= year; y++) {
+    const a = figures.get(y - 1)
+    const b = figures.get(y - 2)
+    out = a && b && sizeGroup(a) === sizeGroup(b) ? { size: sizeGroup(a), reason: 'two' } : before ? { size: before, reason: 'kept' } : { size: 'micro', reason: 'first' }
+    before = chosen.get(y) ?? out.size
+  }
+  return out
+}
+
+/** The average number of employees in a year by the days each was in employment (§ 2(6)(c)), to a tenth; part-time is not counted down. */
+export function averageEmployees(employees: readonly { startedOn: string; endedOn: string | null }[], year: number): number {
+  const day = 86_400_000
+  const from = Date.UTC(year, 0, 1)
+  const to = Date.UTC(year, 11, 31)
+  let days = 0
+  for (const e of employees) {
+    const start = Math.max(from, Date.parse(`${e.startedOn}T00:00:00Z`))
+    const end = Math.min(to, e.endedOn ? Date.parse(`${e.endedOn}T00:00:00Z`) : to)
+    if (end >= start) days += (end - start) / day + 1
+  }
+  return Math.round((days / ((to - from) / day + 1)) * 10) / 10
+}
+
+/**
+ * The audit (§ 19(1)(a)): required when two of total assets gross above 4 000 000 €, net turnover above 8 000 000 € and
+ * more than 50 employees are met at the closing's day and in the period before; `maybe` when the year meets them and
+ * the books do not hold the period before.
+ */
+export function auditOf(year: SizeFigures | null, before: SizeFigures | null): 'yes' | 'maybe' | 'no' {
+  const meets = (f: SizeFigures) => [f.assetsGross > E(4_000_000), f.turnover > E(8_000_000), f.employees > 50].filter(Boolean).length >= 2
+  if (!year || !meets(year)) return 'no'
+  if (!before) return 'maybe'
+  return meets(before) ? 'yes' : 'no'
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // What keeps a closing from being filed
 // ---------------------------------------------------------------------------------------------------------------
 
-export type ClosingIssueCode = 'start' | 'unbooked' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'transit' | 'rounding'
+export type ClosingIssueCode = 'start' | 'unbooked' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
 
 /** block: the closing is not filed until it is resolved; warn: to look at. `count` things, `accounts` the ones meant. */
 export interface ClosingIssue {
@@ -666,6 +870,8 @@ export function closingIssues(args: {
   statements: Pick<Statements, 'unplaced' | 'rounding'>
   /** The tax of the year as computed (row 1050) and as booked (591); null while the year runs. */
   tax: { computed: number; booked: number } | null
+  /** Whether the statements must be audited (§ 19), from `auditOf`. */
+  audit?: 'yes' | 'maybe' | 'no'
 }): ClosingIssue[] {
   const { books, year } = args
   const end = `${year}-12-31`
@@ -688,12 +894,17 @@ export function closingIssues(args: {
   if (args.tax && args.tax.computed !== args.tax.booked) block('tax')
   if (balanceOf(books.entries, '261', end) !== 0) out.push({ code: 'transit', level: 'warn', count: 1 })
   if (args.statements.rounding !== 0) out.push({ code: 'rounding', level: 'warn', count: Math.abs(args.statements.rounding) })
+  if (args.audit === 'yes') out.push({ code: 'audit', level: 'warn', count: 1 })
+  if (args.audit === 'maybe') out.push({ code: 'auditMaybe', level: 'warn', count: 1 })
   return out
 }
 
 /** The rows of the return, and whether the statements, that differ from what was filed: a correction to consider. */
-export function changedSinceFiled(filed: { rows: TaxRows; balance: Lines; profit: Lines }, tax: TaxResult, statements: Pick<Statements, 'balanceEur' | 'profitEur'>): { rows: string[]; statements: boolean } {
+export function changedSinceFiled(filed: { rows: TaxRows; balance: Lines; profit: Lines; gross?: Lines }, tax: TaxResult, statements: Pick<Statements, 'balanceEur' | 'profitEur' | 'grossEur'>): { rows: string[]; statements: boolean } {
   const rows = Object.keys({ ...filed.rows, ...tax.rows }).filter((row) => (filed.rows[row] ?? 0) !== (tax.rows[row] ?? 0))
   const differs = (a: Lines, b: Lines) => Object.keys({ ...a, ...b }).some((row) => (a[row] ?? 0) !== (b[row] ?? 0))
-  return { rows: rows.sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))), statements: differs(filed.balance, statements.balanceEur) || differs(filed.profit, statements.profitEur) }
+  return {
+    rows: rows.sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))),
+    statements: differs(filed.balance, statements.balanceEur) || differs(filed.profit, statements.profitEur) || differs(filed.gross ?? {}, statements.grossEur),
+  }
 }

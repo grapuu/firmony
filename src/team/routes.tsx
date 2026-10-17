@@ -1550,7 +1550,7 @@ async function closingPage(c: Ctx, company: Company, asked: unknown, form?: { va
       view={view}
       years={states}
       ours={year !== null && closingIsOurs(company, year)}
-      values={form?.values ?? (view ? closingValues(view.year, view.inputs, view.proposal, { advances: view.paid.advances }) : {})}
+      values={form?.values ?? (view ? closingValues(view.year, view.inputs, view.proposal, view.found) : {})}
       errors={form?.errors ?? {}}
       today={today}
       flash={form ? null : flashOf(c)}
@@ -1575,7 +1575,7 @@ teamRoutes.post('/klienti/:id/zavierka', async (c) => {
   const { view } = found
   const back = `/ucto/klienti/${company.id}/zavierka?rok=${view.year}`
   if (view.closing?.filed) return c.redirect(`${back}&ok=zavierka-uz`, 303)
-  const read = readClosing((name) => body[name], view.year, view.proposal, { advances: view.paid.advances })
+  const read = readClosing((name) => body[name], view.year, view.proposal, view.found)
   if (Object.keys(read.errors).length > 0) return closingPage(c, company, String(view.year), { values: read.values, errors: read.errors })
   const db = c.env.DB
   const who = c.get('who')
@@ -1614,7 +1614,7 @@ async function closingFiles(company: Company, view: ClosingView, declaredOn: str
       year: view.year, from, to: `${view.year}-12-31`, declaredOn, kind: 'R', micro: view.input.micro,
       minimumHalf: view.input.minimumHalf, minimumExempt: view.input.minimumExempt, tableF: tableF(view.statements),
     })),
-    statements: await make(`UZMUJ_${company.ico ?? company.id}_${view.year}.xml`, statementsXml(filer, view.statements, view.previous, { year: view.year, from, preparedOn: declaredOn, approvedOn: view.inputs.approvedOn })),
+    statements: await make(`${view.statements.form === 'pod' ? 'UZPOD' : 'UZMUJ'}_${company.ico ?? company.id}_${view.year}.xml`, statementsXml(filer, view.statements, view.previous, { year: view.year, from, preparedOn: declaredOn, approvedOn: view.inputs.approvedOn, size: view.size })),
   }
 }
 
@@ -1688,7 +1688,7 @@ teamRoutes.post('/klienti/:id/zavierka/podane', async (c) => {
   const pay = r.r1100 ?? 0
   const generated = await closingFiles(company, view, today)
   const files = { ...generated, return: await filingFile(generated.return.name, generated.return.xml), statements: await filingFile(generated.statements.name, generated.statements.xml) }
-  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, advancesNext: view.tax.advancesNext, files }
+  const snapshot = { rows: r, balance: view.statements.balanceEur, profit: view.statements.profitEur, ...(view.statements.form === 'pod' ? { gross: view.statements.grossEur } : {}), advancesNext: view.tax.advancesNext, files }
   const [done] = await db.batch([
     fileClosingStatement(db, company.id, view.year, snapshot, pay, view.due, who.user.id, today, view.closing?.revision ?? 0),
     prepareFiling(db, company.id, 'dppo', String(view.year), files.return, who.user.id),

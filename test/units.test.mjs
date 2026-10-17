@@ -28,6 +28,7 @@ import {
   closing,
   closingXml,
   closingForm,
+  closingPod,
   payroll,
   payrollStore,
   payrollReporting as reports,
@@ -3495,7 +3496,7 @@ async function zipped(entries, note) {
   // The accountant's adjustments, read and stored
   const prop = { result: E(30000), revenues: E(92000), costs: E(62000), taxable: E(92000), r210: 123, tableA: { a06: 12050, a08: 0 }, tableB: { b01: 0, b02: 0 } }
   const form = (fields) => (name) => fields[name]
-  let read = closingForm.readClosing(form({ a06: '120,50', a16: '300', r210: '1,23', zdanitelne: '92 000', preddavky: '250', nace: '62010', cinnost: 'Počítačové programovanie', od: '1. 1. 2026' }), 2026, prop, { advances: 25000 })
+  let read = closingForm.readClosing(form({ a06: '120,50', a16: '300', r210: '1,23', zdanitelne: '92 000', preddavky: '250', nace: '62010', cinnost: 'Počítačové programovanie', od: '1. 1. 2026' }), 2026, prop, { advances: 25000, size: 'micro', employees: 0 })
   check(
     "what equals the books' proposal is not stored, so it follows the books; what differs is",
     Object.keys(read.errors).length === 0 &&
@@ -3510,8 +3511,8 @@ async function zipped(entries, note) {
       read.inputs.nace === '62.01.0',
     JSON.stringify(read),
   )
-  check('an emptied proposal is a nought she set', closingForm.readClosing(form({ a06: '', zdanitelne: '92000' }), 2026, prop, { advances: 0 }).inputs.tableA.a06 === 0)
-  read = closingForm.readClosing(form({ mikro: '1', zdanitelne: '70000', oslobodena: '1', od: '4. 5. 2026', strata_rok_0: '2024', strata_suma_0: '800', kredit_rok_0: '2025', kredit_suma_0: '340', kredit_pred_0: '100', odpocet: '500', schvalena: '20. 6. 2027' }), 2026, prop, { advances: 0 })
+  check('an emptied proposal is a nought she set', closingForm.readClosing(form({ a06: '', zdanitelne: '92000' }), 2026, prop, { advances: 0, size: 'micro', employees: 0 }).inputs.tableA.a06 === 0)
+  read = closingForm.readClosing(form({ mikro: '1', zdanitelne: '70000', oslobodena: '1', od: '4. 5. 2026', strata_rok_0: '2024', strata_suma_0: '800', kredit_rok_0: '2025', kredit_suma_0: '340', kredit_pred_0: '100', odpocet: '500', schvalena: '20. 6. 2027' }), 2026, prop, { advances: 0, size: 'micro', employees: 0 })
   check(
     'the ticks stored only against the proposal, the losses and the credits, the founding, the approval',
     read.inputs.micro === true &&
@@ -3525,7 +3526,7 @@ async function zipped(entries, note) {
       read.inputs.approvedOn === '2027-06-20',
     JSON.stringify(read.inputs),
   )
-  read = closingForm.readClosing(form({ a01: 'veľa', od: '1. 1. 2025', strata_rok_0: '2019', strata_suma_0: '100', kredit_rok_0: '2025', kredit_suma_0: '100', kredit_pred_0: '200', nace: '62', schvalena: '31. 12. 2026' }), 2026, prop, { advances: 0 })
+  read = closingForm.readClosing(form({ a01: 'veľa', od: '1. 1. 2025', strata_rok_0: '2019', strata_suma_0: '100', kredit_rok_0: '2025', kredit_suma_0: '100', kredit_pred_0: '200', nace: '62', schvalena: '31. 12. 2026' }), 2026, prop, { advances: 0, size: 'micro', employees: 0 })
   check(
     'what is wrong is said field by field: no amount, a day out of the year, a loss too old, more used than there was, a code that is none, an approval before the end',
     read.errors.a01 === 'amount' && read.errors.od === 'day' && read.errors.strata_rok_0 === 'year' && read.errors.kredit_pred_0 === 'used' && read.errors.nace === 'nace' && read.errors.schvalena === 'day' && read.values.a01 === 'veľa',
@@ -3537,7 +3538,7 @@ async function zipped(entries, note) {
     stored.tableA.a06 === 100 && stored.tableA.a07 === undefined && stored.taxable === null && stored.micro === true && stored.losses.length === 1 && stored.nace === '' && stored.from === null && closingForm.storedInputs('{').losses.length === 0,
     JSON.stringify(stored),
   )
-  const values = closingForm.closingValues(2026, { ...closing.EMPTY_INPUTS, losses: [{ year: 2024, amount: 80000, usedBefore: 0 }] }, prop, { advances: 25000 })
+  const values = closingForm.closingValues(2026, { ...closing.EMPTY_INPUTS, losses: [{ year: 2024, amount: 80000, usedBefore: 0 }] }, prop, { advances: 25000, size: 'micro', employees: 0 })
   check(
     "the form's values: what is stored, else what the books propose",
     values.a06 === '120,50' && values.a01 === '' && values.r210 === '1,23' && values.zdanitelne === '92000,00' && values.mikro === '' && values.od === '1. 1. 2026' && values.preddavky === '250,00' && values.strata_rok_0 === '2024' && values.strata_suma_0 === '800,00',
@@ -3549,6 +3550,173 @@ async function zipped(entries, note) {
     "the income tax by its account's prefix, or by its own symbol when the bank does not say where the money went",
     ledger.reasonAccount({ amountCents: -34000, vs: '1700992026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '341' &&
       ledger.reasonAccount({ amountCents: -34000, vs: '1100032026', note: null, exempt: 'state', exemptNote: null, partyIban: null }) === '343.300',
+  )
+
+  // The closing of a small or a large company (17 October 2026): Úč POD, the size group, the audit
+  const pod = closing.statementsOf({ entries: year }, 2026, 'pod')
+  check(
+    "Úč POD's profit and loss account: services sold, services bought with representation, other costs, interest, the result before and after tax, the net turnover",
+    pod.form === 'pod' && pod.profit.r05 === 1230000 && pod.profit.r14 === 162050 && pod.profit.r26 === 5000 && pod.profit.r41 === 123 && pod.profit.r54 === 1234 && pod.profit.r56 === 1061839 && pod.profit.r61 === 1061839 && pod.profit.r01 === 1230000 && pod.profit.r28 === 1067950,
+    JSON.stringify(pod.profit),
+  )
+  check(
+    "its balance sheet: the bank, the capital paid in, a supplier unpaid, the result that balances it",
+    pod.balance.r073 === 1611839 && pod.gross.r073 === 1611839 && pod.fix.r073 === 0 && pod.balance.r082 === 500000 && pod.balance.r084 === 0 && pod.balance.r126 === 50000 && pod.balance.r100 === 1061839 && pod.balance.r001 === pod.balance.r079,
+    JSON.stringify({ r073: pod.balance.r073, r082: pod.balance.r082, r126: pod.balance.r126, r100: pod.balance.r100, r001: pod.balance.r001, r079: pod.balance.r079 }),
+  )
+  check(
+    'the same books give the same result, revenues and costs on either form, and the same proposal for the return',
+    pod.result === st.result && pod.revenues === st.revenues && pod.costs === st.costs && JSON.stringify(closing.tableF(pod)) === JSON.stringify(closing.tableF(st)) && JSON.stringify(closing.proposeTax(pod)) === JSON.stringify(proposal) && pod.turnover === 1230000 && st.turnover === 1230000 && pod.assetsNet === st.assetsNet,
+  )
+  const fixed = closing.statementsOf(
+    {
+      entries: [
+        { ...entry('2026-01-01', ['022', '701', 1000000], ['013', '701', 360000], ['112', '701', 50000], ['311', '701', 300000], ['701', '411', 1710000]), kind: 'opening' },
+        entry('2026-06-30', ['551', '082', 200000], ['551', '073', 120000]),
+        entry('2026-12-31', ['505', '191', 10000], ['547', '391', 30000], ['221.002', '461', 400000], ['221.001', '221.002', 450000]),
+      ],
+    },
+    2026,
+    'pod',
+  )
+  check(
+    'each asset with its gross amount, its correction and its net: a machine and software depreciated, material and receivables with their allowances, an overdraft a current loan',
+    fixed.gross.r014 === 1000000 && fixed.fix.r014 === 200000 && fixed.balance.r014 === 800000 && fixed.gross.r005 === 360000 && fixed.fix.r005 === 120000 && fixed.balance.r003 === 240000 && fixed.balance.r011 === 800000 && fixed.balance.r002 === 1040000 &&
+      fixed.fix.r035 === 10000 && fixed.balance.r035 === 40000 && fixed.fix.r057 === 30000 && fixed.balance.r057 === 270000 && fixed.balance.r121 === 400000 && fixed.balance.r139 === 50000 && fixed.balance.r073 === 450000 &&
+      fixed.gross.r001 === 1000000 + 360000 + 50000 + 300000 + 450000 && fixed.assetsGross === fixed.gross.r001 && fixed.balance.r001 === fixed.balance.r079,
+    JSON.stringify({ g: fixed.gross, f: fixed.fix, n: fixed.balance }).slice(0, 900),
+  )
+  check(
+    'in whole euros the gross, the correction and the net of each row, and the result agrees',
+    fixed.grossEur.r014 === 10000 && fixed.fixEur.r014 === 2000 && fixed.balanceEur.r014 === 8000 && fixed.balanceEur.r100 === fixed.profitEur.r61 && fixed.profitEur.r22 === 3200 && fixed.profitEur.r13 === 100 && fixed.profitEur.r25 === 300,
+    JSON.stringify({ r100: fixed.balanceEur.r100, r61: fixed.profitEur.r61, r22: fixed.profitEur.r22 }),
+  )
+  const placed = closing.statementsOf(
+    {
+      entries: [
+        { ...entry('2026-01-01', ['311.002', '701', 200000], ['311', '701', 100000], ['701', '411', 300000]), kind: 'opening' },
+        entry('2026-05-01', ['221.001', '662.001', 1000], ['221.001', '662', 500]),
+      ],
+    },
+    2026,
+    'pod',
+    [
+      { account: '311.002', row: 'r045' },
+      { account: '662.001', row: 'r40' },
+    ],
+  )
+  check(
+    "the accountant's placements: a receivable due after a year among the long-term ones, interest from a related party in its row; the rest stays where the form puts it",
+    placed.balance.r045 === 200000 && placed.balance.r057 === 100000 && placed.balance.r041 === 200000 && placed.profit.r40 === 1000 && placed.profit.r41 === 500 && placed.profit.r39 === 1500,
+    JSON.stringify({ r045: placed.balance.r045, r057: placed.balance.r057, r40: placed.profit.r40 }),
+  )
+  const loss = closing.statementsOf({ entries: [...year.slice(0, 2), entry('2026-05-01', ['518', '221.001', 80000]), entry('2027-02-01', ['221.001', '602', 10000])] }, 2027, 'pod')
+  check('a loss of the year before waits on 431, a minus among the losses of years before (row 099)', loss.balance.r099 === -80000 && loss.balance.r098 === 0 && loss.balance.r100 === 10000 && loss.balance.r001 === loss.balance.r079, JSON.stringify({ r098: loss.balance.r098, r099: loss.balance.r099 }))
+  const oddPod = closing.statementsOf({ entries: [entry('2027-01-10', ['221.001', '602', 10000]), entry('2027-01-11', ['518', '221.001', 50]), entry('2027-01-12', ['501', '221.001', 50])] }, 2027, 'pod')
+  check('rounding that would part the results goes to row 073 of Úč POD, and is said', oddPod.profitEur.r61 === 98 && oddPod.balanceEur.r100 === 98 && oddPod.grossEur.r073 === 98 && oddPod.rounding === -1 && oddPod.balanceEur.r001 === oddPod.balanceEur.r079)
+  check(
+    'every account of the chart has a row on Úč POD',
+    Object.keys(ledger.CHART).every((a) => ['7'].includes(a[0]) || closingPod.podRowKinds(a).length > 0),
+    Object.keys(ledger.CHART).filter((a) => a[0] !== '7' && closingPod.podRowKinds(a).length === 0).join(),
+  )
+  check(
+    'rows the accountant may place an account in: a leaf of its side, never a sum',
+    closingPod.podLeafKind('r045') === 'asset' && closingPod.podLeafKind('r041') === null && closingPod.podLeafKind('r138') === 'liability' && closingPod.podLeafKind('r100') === null && closingPod.podLeafKind('r40') === 'profit' && closingPod.podLeafKind('r39') === null &&
+      closingForm.podRowOf('311.002', '45') === 'r045' && closingForm.podRowOf('311', '126') === 'r126' && closingForm.podRowOf('022', '126') === null && closingForm.podRowOf('662', '40') === 'r40' && closingForm.podRowOf('662', '045') === null && closingForm.podRowOf('411', 'r41') === null,
+  )
+  // One pass over the books gives each year what closingBalances gives it.
+  const many = [...year, entry('2027-02-01', ['221.001', '602', 10000]), entry('2028-03-01', ['518', '221.001', 700])]
+  const byYear = closing.closingBalancesByYear(many, [2025, 2026, 2027, 2028])
+  const same = (a, b) => JSON.stringify([...a].filter(([, c]) => c !== 0).sort()) === JSON.stringify([...b].filter(([, c]) => c !== 0).sort())
+  check('the balances of every year in one pass, as each year alone', [2025, 2026, 2027, 2028].every((y) => same(byYear.get(y), closing.closingBalances(many, y))) && byYear.get(2025).size === 0)
+
+  // The size group (§ 2(6) to (11) of the Act on Accounting) and the audit (§ 19)
+  const fig = (year, assetsNet, turnover, employees, assetsGross = assetsNet) => ({ year, assetsNet: E(assetsNet), assetsGross: E(assetsGross), turnover: E(turnover), employees })
+  check(
+    'a period\'s group by two of three conditions; one that fits none is small',
+    closing.sizeGroup(fig(0, 400000, 1000000, 5)) === 'micro' &&
+      closing.sizeGroup(fig(0, 450000, 900000, 40)) === 'micro' &&
+      closing.sizeGroup(fig(0, 450001, 900001, 5)) === 'small' &&
+      closing.sizeGroup(fig(0, 6000000, 11000000, 20)) === 'large' &&
+      closing.sizeGroup(fig(0, 5000000, 10000000, 51)) === 'small' &&
+      closing.sizeGroup(fig(0, 6000000, 500000, 30)) === 'small',
+  )
+  const figs = new Map([
+    [2023, fig(2023, 300000, 800000, 4)],
+    [2024, fig(2024, 900000, 2000000, 12)],
+    [2025, fig(2025, 1200000, 2500000, 15)],
+    [2026, fig(2026, 7000000, 12000000, 60)],
+  ])
+  check(
+    'the group a year is put in: micro where the books begin, kept until two years in a row are of another, then theirs',
+    closing.proposeSize(2023, figs, new Map(), 2023).size === 'micro' && closing.proposeSize(2023, figs, new Map(), 2023).reason === 'first' &&
+      closing.proposeSize(2024, figs, new Map(), 2023).reason === 'kept' && closing.proposeSize(2025, figs, new Map(), 2023).size === 'micro' &&
+      closing.proposeSize(2026, figs, new Map(), 2023).size === 'small' && closing.proposeSize(2026, figs, new Map(), 2023).reason === 'two' &&
+      closing.proposeSize(2027, figs, new Map(), 2023).size === 'small' && closing.proposeSize(2027, figs, new Map(), 2023).reason === 'kept',
+  )
+  check(
+    "a group the accountant chose is the one kept: a new company's choice in its second period",
+    closing.proposeSize(2024, new Map(), new Map([[2023, 'large']]), 2023).size === 'large' && closing.proposeSize(2027, figs, new Map([[2026, 'large']]), 2023).size === 'large',
+  )
+  check(
+    'the average employees by the days in employment',
+    closing.averageEmployees([{ startedOn: '2020-01-01', endedOn: null }], 2026) === 1 &&
+      closing.averageEmployees([{ startedOn: '2026-07-01', endedOn: null }, { startedOn: '2025-01-01', endedOn: '2026-03-31' }], 2026) === 0.8 &&
+      closing.averageEmployees([{ startedOn: '2027-01-01', endedOn: null }], 2026) === 0,
+  )
+  check(
+    'the audit: two of gross assets above 4 000 000 €, turnover above 8 000 000 €, more than 50 employees, this year and the one before',
+    closing.auditOf(fig(2026, 3000000, 9000000, 10, 4500000), fig(2025, 3000000, 8500000, 10, 4100000)) === 'yes' &&
+      closing.auditOf(fig(2026, 3000000, 9000000, 10, 4500000), null) === 'maybe' &&
+      closing.auditOf(fig(2026, 3000000, 9000000, 10, 4500000), fig(2025, 3000000, 7000000, 10, 4100000)) === 'no' &&
+      closing.auditOf(fig(2026, 3000000, 7000000, 51, 3900000), fig(2025, 3000000, 9000000, 60, 4100000)) === 'no',
+  )
+  check(
+    'an audit is said on the closing, to look at',
+    issues({}, { audit: 'yes' }).some((x) => x.code === 'audit' && x.level === 'warn') && issues({}, { audit: 'maybe' }).some((x) => x.code === 'auditMaybe') && !issues({}, { audit: 'no' }).some((x) => x.code.startsWith('audit')),
+  )
+
+  // The file of Úč POD, against the Financial Administration's schema
+  const podBefore = closing.statementsOf({ entries: [...year, entry('2027-02-01', ['221.001', '602', 10000])] }, 2027, 'pod')
+  const uzpod = closingXml.statementsXml(filer, fixed, pod, { year: 2026, from: '2026-01-01', preparedOn: '2027-03-15', size: 'small' })
+  v = await valid(uzpod, xsd('uzpod2014.xsd'), 'uzpod')
+  check('the statements of a small entity are valid against UZPODv14', v.ok, v.why)
+  check(
+    'they say a small entity, and hold each asset row\'s gross, correction, net and the net before; equity and liabilities and the profit and loss account with the year before',
+    uzpod.includes('<typUzavierky><riadna>1</riadna><mimoriadna>0</mimoriadna><priebezna>0</priebezna><mala>1</mala><velka>0</velka></typUzavierky>') &&
+      uzpod.includes('<r014><s1>10000</s1><s2>2000</s2><s3>8000</s3><s4>0</s4></r014>') &&
+      uzpod.includes('<r073><s1>4500</s1><s2>0</s2><s3>4500</s3><s4>16118</s4></r073>') &&
+      uzpod.includes('<r121><s5>4000</s5><s6>0</s6></r121>') &&
+      uzpod.includes('<r05><s1>0</s1><s2>12300</s2></r05>'),
+    uzpod.slice(uzpod.indexOf('<telo>'), uzpod.indexOf('<telo>') + 500),
+  )
+  const large = closingXml.statementsXml(filer, podBefore, null, { year: 2027, from: '2027-01-01', preparedOn: '2028-03-15', approvedOn: '2028-06-10', size: 'large' })
+  v = await valid(large, xsd('uzpod2014.xsd'), 'uzpod-large')
+  check('so are those of a large entity without a year before', v.ok && large.includes('<mala>0</mala><velka>1</velka>') && large.includes('<datSchvalenia>10.06.2028</datSchvalenia>'), v.why)
+
+  // The accountant's size group, employees and placements, read and stored
+  const found3 = { advances: 0, size: 'micro', employees: 3.5 }
+  read = closingForm.readClosing(form({ velkost: 'small', zamestnanci: '12,5', ucet_0: '311002', riadok_0: '45', ucet_1: '662.001', riadok_1: 'r40', ucet_2: '311.002', riadok_2: '045' }), 2026, prop, found3)
+  check(
+    'a size group other than the books\', the employees typed, accounts placed (an analytic one written as the books write it; the same placement once)',
+    Object.keys(read.errors).length === 0 && read.inputs.size === 'small' && read.inputs.employees === 12.5 && JSON.stringify(read.inputs.placements) === JSON.stringify([{ account: '311.002', row: 'r045' }, { account: '662.001', row: 'r40' }]),
+    JSON.stringify(read),
+  )
+  read = closingForm.readClosing(form({ velkost: 'micro', zamestnanci: '3,5' }), 2026, prop, found3)
+  check("what equals the books' proposal is not stored", read.inputs.size === null && read.inputs.employees === null && read.inputs.placements.length === 0)
+  read = closingForm.readClosing(form({ velkost: 'huge', zamestnanci: 'veľa', ucet_0: '999', riadok_0: '45', ucet_1: '311', riadok_1: '41', ucet_2: '022', riadok_2: '126' }), 2026, prop, found3)
+  check(
+    'a group that is none follows the books; employees that are no number, an account that is none, a sum row and a row of the other side are said',
+    read.inputs.size === null && read.values.velkost === 'micro' && read.errors.zamestnanci === 'employees' && read.errors.ucet_0 === 'account' && read.errors.riadok_1 === 'row' && read.errors.riadok_2 === 'row',
+    JSON.stringify(read.errors),
+  )
+  const storedPod = closingForm.storedInputs(JSON.stringify({ size: 'large', employees: 61.5, placements: [{ account: '311.002', row: 'r045' }, { account: '311', row: 'r100' }, { account: 'x', row: 'r045' }, { account: '022', row: 'r126' }] }))
+  check('stored ones are checked again', storedPod.size === 'large' && storedPod.employees === 61.5 && storedPod.placements.length === 1 && closingForm.storedInputs(JSON.stringify({ size: 'giant', employees: -1 })).size === null)
+  const valuesPod = closingForm.closingValues(2026, { ...closing.EMPTY_INPUTS, placements: [{ account: '311.002', row: 'r045' }] }, prop, found3)
+  check("the form's values: the proposed group and employees, a placement's row as its number", valuesPod.velkost === 'micro' && valuesPod.zamestnanci === '3,5' && valuesPod.ucet_0 === '311.002' && valuesPod.riadok_0 === '045' && valuesPod.ucet_1 === '')
+  check(
+    "a change of the statements' gross amounts since the filing is a change too",
+    closing.changedSinceFiled({ rows: t.rows, balance: { ...fixed.balanceEur }, profit: { ...fixed.profitEur }, gross: { ...fixed.grossEur, r014: 1 } }, t, fixed).statements && !closing.changedSinceFiled({ rows: t.rows, balance: { ...fixed.balanceEur }, profit: { ...fixed.profitEur }, gross: { ...fixed.grossEur } }, t, fixed).statements,
   )
 }
 

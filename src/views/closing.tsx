@@ -1,13 +1,14 @@
-// The team's closing page of a client (/ucto/klienti/:id/zavierka): a year's financial statements of a micro entity and
-// its corporate income tax return as the books give them, what keeps them from being filed (each with where it is
+// The team's closing page of a client (/ucto/klienti/:id/zavierka): a year's financial statements (of a micro entity on
+// Úč MUJ, of a small or a large one on Úč POD with each asset's gross, correction and net) and its corporate income tax return as the books give them, what keeps them from being filed (each with where it is
 // resolved), the accountant's adjustments, the files the Financial Administration takes, the tax booked, the deadline a
 // notice moved, and the mark that it was filed, which sends the client what to pay. closing.ts works it all out.
 import type { FC } from 'hono/jsx'
 import { DeliveryNotice } from './filings'
 import { formatCount, formatEurExact } from '../format'
 import { dayName } from '../app/copy'
-import { BALANCE_ROWS, PROFIT_ROWS, TABLE_A, TABLE_B, extensionDays, type ClosingIssue, type Lines } from '../app/closing'
-import { CREDIT_ROWS, LOSS_ROWS, type ClosingErrors, type ClosingValues } from '../app/closing-form'
+import { BALANCE_ROWS, ENTITY_SIZES, PROFIT_ROWS, TABLE_A, TABLE_B, extensionDays, type ClosingIssue, type Lines } from '../app/closing'
+import { POD_ASSET_ROWS, POD_BALANCE_SUMS, POD_LIABILITY_ROWS, POD_PROFIT_ROWS, POD_PROFIT_SUMS } from '../app/closing-pod'
+import { CREDIT_ROWS, LOSS_ROWS, PLACEMENT_ROWS, type ClosingErrors, type ClosingValues } from '../app/closing-form'
 import type { ClosingView } from '../app/closing-store'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
@@ -60,7 +61,11 @@ const IssueItem: FC<{ issue: ClosingIssue; company: Company; view: ClosingView }
       case 'transit':
         return [k.issue.transit, `${base}/ucet/261?rok=${y}&mesiac=12`, k.go.account]
       case 'rounding':
-        return [k.issue.rounding(issue.count), null, null]
+        return [k.issue.rounding(issue.count, view.statements.form === 'pod' ? '073' : '22'), null, null]
+      case 'audit':
+        return [k.issue.audit(view.year), null, null]
+      case 'auditMaybe':
+        return [k.issue.auditMaybe, null, null]
     }
   })()
   return (
@@ -252,6 +257,7 @@ const More: FC<{ title: string; names: string[]; values: ClosingValues; errors: 
 )
 
 const pastNames = (prefix: string, rows: number): string[] => Array.from({ length: rows }, (_, i) => [`${prefix}_rok_${i}`, `${prefix}_suma_${i}`, `${prefix}_pred_${i}`]).flat()
+const placementNames = Array.from({ length: PLACEMENT_ROWS }, (_, i) => [`ucet_${i}`, `riadok_${i}`]).flat()
 
 const FormCard: FC<{ company: Company; view: ClosingView; values: ClosingValues; errors: ClosingErrors }> = ({ company, view, values, errors }) => {
   const inputs = view.inputs
@@ -267,6 +273,40 @@ const FormCard: FC<{ company: Company; view: ClosingView; values: ClosingValues;
       <p class="info__lead">{k.formLead}</p>
       <form class="cform" method="post" action={`/ucto/klienti/${company.id}/zavierka`} novalidate>
         <input type="hidden" name="rok" value={String(view.year)} />
+        <More title={k.sections.placements} names={placementNames} values={values} errors={errors} filed={filed}>
+          <p class="field__hint">{k.placementsLead}</p>
+          <div class="cplace">
+            <span class="cpast__head" aria-hidden="true">
+              {k.placementAccount}
+            </span>
+            <span class="cpast__head" aria-hidden="true">
+              {k.placementRow}
+            </span>
+            {Array.from({ length: PLACEMENT_ROWS }, (_, i) =>
+              (['ucet', 'riadok'] as const).map((part, j) => {
+                const name = `${part}_${i}`
+                return (
+                  <div class="cpast__cell">
+                    <label class="sr" for={`z-${name}`}>
+                      {j === 0 ? k.placementAccount : k.placementRow} {i + 1}
+                    </label>
+                    <input
+                      id={`z-${name}`}
+                      class="field__input"
+                      name={name}
+                      value={values[name] ?? ''}
+                      inputmode={part === 'riadok' ? 'numeric' : 'decimal'}
+                      maxlength={part === 'riadok' ? 5 : 10}
+                      autocomplete="off"
+                      aria-invalid={errors[name] ? 'true' : undefined}
+                    />
+                    {errors[name] ? <p class="field__error">{k.errors[errors[name] ?? 'amount']}</p> : null}
+                  </div>
+                )
+              }),
+            )}
+          </div>
+        </More>
         <More title={k.sections.a} names={[...TABLE_A]} values={values} errors={errors} filed={filed}>
           {TABLE_A.map((row, i) => (
             <AmountRow name={row} no={String(i + 1)} label={k.tableA[row] ?? row} values={values} errors={errors} proposed={inputs.tableA[row] === undefined && (p.tableA[row] ?? 0) > 0} />
@@ -317,6 +357,22 @@ const FormCard: FC<{ company: Company; view: ClosingView; values: ClosingValues;
         <fieldset class="cform__section" disabled={filed}>
           <legend class="cform__title">{k.sections.company}</legend>
           <div class="fgrid">
+            <div class="fgrid__cell fgrid__cell--wide">
+              <label class="field__label" for="z-velkost">
+                {k.size}
+              </label>
+              <select id="z-velkost" class="field__input" name="velkost" aria-describedby="z-velkost-hint">
+                {ENTITY_SIZES.map((size) => (
+                  <option value={size} selected={values.velkost === size}>
+                    {k.sizes[size]}
+                  </option>
+                ))}
+              </select>
+              <p class="field__hint" id="z-velkost-hint">
+                {k.sizeHint(view.sizeProposal.reason, (k.sizes[view.sizeProposal.size] ?? '').toLowerCase())}
+              </p>
+            </div>
+            <Field name="zamestnanci" label={k.employees} hint={k.employeesHint(String(view.found.employees).replace('.', ','))} values={values} errors={errors} mode="decimal" max={10} wide />
             <Field name="nace" label={k.nace} hint={k.naceHint} values={values} errors={errors} mode="text" max={12} />
             <Field name="cinnost" label={k.activity} hint={k.activityHint} values={values} errors={errors} mode="text" max={120} />
             <Field name="schvalena" label={k.approved} hint={k.approvedHint} values={values} errors={errors} mode="text" />
@@ -339,7 +395,7 @@ const SUMS_PROFIT = new Set(['r01', 'r08', 'r18', 'r19', 'r20', 'r27', 'r34', 'r
 /** Whole euros as the statements have them: "8 490", "−5". */
 const euros = (n: number): string => `${n < 0 ? '−' : ''}${formatCount(Math.abs(n))}`
 
-const StatementTable: FC<{ title: string; rows: readonly string[]; labels: Record<string, string>; sums: Set<string>; current: Lines; previous: Lines | null }> = ({ title, rows, labels, sums, current, previous }) => (
+const StatementTable: FC<{ title: string; rows: readonly string[]; labels: Record<string, string>; sums: ReadonlySet<string>; current: Lines; previous: Lines | null }> = ({ title, rows, labels, sums, current, previous }) => (
   <div class="lscroll">
     <table class="ltable cstate">
       <caption class="cstate__title">{title}</caption>
@@ -375,15 +431,73 @@ const StatementTable: FC<{ title: string; rows: readonly string[]; labels: Recor
   </div>
 )
 
+/** The assets of Úč POD: each row's gross amount, correction and net, the net of the year before beside. */
+const AssetsTable: FC<{ view: ClosingView }> = ({ view }) => {
+  const st = view.statements
+  const before = view.previous?.balanceEur ?? null
+  const shown = POD_ASSET_ROWS.filter((row) => POD_BALANCE_SUMS.has(row) || (st.grossEur[row] ?? 0) !== 0 || (st.fixEur[row] ?? 0) !== 0 || (before?.[row] ?? 0) !== 0)
+  return (
+    <div class="lscroll">
+      <table class="ltable cstate">
+        <caption class="cstate__title">{k.assets}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{k.row}</th>
+            <th scope="col" class="ltable__name">
+              <span class="sr">{k.assets}</span>
+            </th>
+            <th scope="col" class="num">
+              {k.gross}
+            </th>
+            <th scope="col" class="num">
+              {k.fix}
+            </th>
+            <th scope="col" class="num">
+              {k.net}
+            </th>
+            {before ? (
+              <th scope="col" class="num">
+                {k.previousNet}
+              </th>
+            ) : null}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((row) => (
+            <tr class={POD_BALANCE_SUMS.has(row) ? 'ltable__syn' : undefined}>
+              <td class="ltable__acct">{row.slice(1)}</td>
+              <td class="ltable__name">{k.podBalanceRows[row] ?? row}</td>
+              <td class="num">{euros(st.grossEur[row] ?? 0)}</td>
+              <td class="num">{euros(st.fixEur[row] ?? 0)}</td>
+              <td class="num">{euros(st.balanceEur[row] ?? 0)}</td>
+              {before ? <td class="num">{euros(before[row] ?? 0)}</td> : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 const StatementsCard: FC<{ view: ClosingView }> = ({ view }) => (
   <section class="info" id="zavierka" aria-labelledby="zavierka-t">
     <h2 id="zavierka-t" class="info__title">
       {k.statementsTitle}
     </h2>
-    <p class="info__lead">{k.statementsLead}</p>
+    <p class="info__lead">{k.statementsLead(view.statements.form, k.sizes[view.size] ?? '')}</p>
     {view.previous ? null : <p class="info__source">{k.noPrevious}</p>}
-    <StatementTable title={k.balance} rows={BALANCE_ROWS} labels={k.balanceRows} sums={SUMS_BALANCE} current={view.statements.balanceEur} previous={view.previous?.balanceEur ?? null} />
-    <StatementTable title={k.profit} rows={PROFIT_ROWS} labels={k.profitRows} sums={SUMS_PROFIT} current={view.statements.profitEur} previous={view.previous?.profitEur ?? null} />
+    {view.statements.form === 'pod' ? (
+      <>
+        <AssetsTable view={view} />
+        <StatementTable title={k.liabilities} rows={POD_LIABILITY_ROWS} labels={k.podBalanceRows} sums={POD_BALANCE_SUMS} current={view.statements.balanceEur} previous={view.previous?.balanceEur ?? null} />
+        <StatementTable title={k.profit} rows={POD_PROFIT_ROWS} labels={k.podProfitRows} sums={POD_PROFIT_SUMS} current={view.statements.profitEur} previous={view.previous?.profitEur ?? null} />
+      </>
+    ) : (
+      <>
+        <StatementTable title={k.balance} rows={BALANCE_ROWS} labels={k.balanceRows} sums={SUMS_BALANCE} current={view.statements.balanceEur} previous={view.previous?.balanceEur ?? null} />
+        <StatementTable title={k.profit} rows={PROFIT_ROWS} labels={k.profitRows} sums={SUMS_PROFIT} current={view.statements.profitEur} previous={view.previous?.profitEur ?? null} />
+      </>
+    )}
   </section>
 )
 
@@ -419,6 +533,10 @@ const StatusCard: FC<{ company: Company; view: ClosingView; ours: boolean; today
         <div>
           <dt>{(r.r1101 ?? 0) < 0 ? k.overLabel : k.payLabel}</dt>
           <dd>{formatEurExact((r.r1101 ?? 0) < 0 ? -(r.r1101 ?? 0) : (r.r1100 ?? 0))}</dd>
+        </div>
+        <div>
+          <dt>{k.sizeLabel}</dt>
+          <dd>{k.sizes[view.size]}</dd>
         </div>
         <div>
           <dt>{k.microLabel}</dt>

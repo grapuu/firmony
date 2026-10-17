@@ -69,10 +69,18 @@ over. Bring this section up to date first whenever a session ends.
    the books get the putting in use from 041/042, each ended month's depreciation on 551 in one entry, the disposal;
    the closing's Table B takes the register's tangible assets; changes reaching a locked period are refused by the
    schema; purge and the yearly archive (`data/majetok.json`) carry it; test/assets.runtime.mjs);
-   company; fixed assets and depreciation; the closing of small and large entities; stock; full payroll (agreements,
-   directors, sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS;
-   foreign currencies, OSS, Intrastat and joint-stock companies. The site promises a large company only an offer
-   of its own until the software does each part; every text widens when a part lands.
+   the closing of small and large entities (built: `src/app/closing-pod.ts`, Súvaha Úč POD 1-01 rows 001 to 145 with
+   gross, correction, net and the net before, Výkaz ziskov a strát Úč POD 2-01 rows 01 to 61, read from the eForm
+   UZPODv14, whose schema is `test/xsd/uzpod2014.xsd` byte for byte; `statementsXml` writes UZMUJv14 or UZPODv14 by the
+   form, the file `UZPOD_<IČO>_<year>.xml`; the size group by § 2(5) to (13) of the Act on Accounting read on slov-lex
+   (450 000 / 900 000 / 10, 5 000 000 / 10 000 000 / 50, two periods before, a new company's choice kept) proposed and
+   set in the closing's form with the average employees from payroll, accounts placed in a row of her own (a
+   receivable due after a year, a related party), the audit of § 19(1)(a) said; `closingBalancesByYear` reads every
+   year in one pass; test/closing-pod.runtime.mjs); then, in this order: stock; full payroll (agreements, directors,
+   sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS; foreign
+   currencies, OSS, Intrastat and joint-stock companies. Not yet in the closing of any size: deferred tax and the notes
+   (poznámky). The site promises a large company only an offer of its own until the software does each part; every
+   text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
    check passes and when he has asked for the work to be put there (his word of 15:32 on 17 October: "ak sú

@@ -43,6 +43,7 @@ export * as closing from '../src/app/closing'
 export * as assets from '../src/app/assets'
 export * as closingXml from '../src/app/closing-xml'
 export * as closingForm from '../src/app/closing-form'
+export * as closingPod from '../src/app/closing-pod'
 export * as payroll from '../src/app/payroll'
 export * as payrollStore from '../src/app/payroll-store'
 

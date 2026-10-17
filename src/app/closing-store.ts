@@ -9,16 +9,25 @@ import { deliveryStatusSql, revisableSql, safeJson, type DeliveryStatus, type Fi
 import { booksOf } from './ledger-store'
 import { assetYear } from './assets'
 import { assetsOf } from './assets-store'
+import { employeesOf } from './payroll-store'
 import type { Books } from './ledger'
 import {
+  auditOf,
+  averageEmployees,
   changedSinceFiled,
+  closingBalancesByYear,
   closingDue,
   closingIssues,
+  formOf,
+  proposeSize,
   proposeTax,
-  statementsOf,
+  statementsFrom,
   taxInputOf,
   taxOf,
   type ClosingInputs,
+  type EntitySize,
+  type SizeFigures,
+  type SizeReason,
   type ClosingIssue,
   type Lines,
   type Proposal,
@@ -27,18 +36,19 @@ import {
   type TaxResult,
   type TaxRows,
 } from './closing'
-import { storedInputs } from './closing-form'
+import { storedInputs, type ClosingFound } from './closing-form'
 import type { Company } from './store'
 import { INCOME_PREFIX, TREASURY_BANK } from './vat-store'
 
 type Row = Record<string, unknown>
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
 
-/** What was filed: the return's rows, the statements in whole euros, and the advances it brings for the next period. */
+/** What was filed: the return's rows, the statements in whole euros (Úč POD's gross amounts too), and the advances it brings for the next period. */
 export interface FiledClosing {
   rows: TaxRows
   balance: Lines
   profit: Lines
+  gross?: Lines
   advancesNext: TaxResult['advancesNext']
   files?: ClosingFiles
 }
@@ -82,6 +92,7 @@ function filedOf(json: unknown): FiledClosing | null {
       rows: numbers(v.rows),
       balance: numbers(v.balance),
       profit: numbers(v.profit),
+      ...(v.gross && typeof v.gross === 'object' ? { gross: numbers(v.gross) } : {}),
       advancesNext: { kind: kind === 'monthly' || kind === 'quarterly' ? kind : 'none', each: Number(v.advancesNext?.each ?? 0) || 0 },
       ...(v.files?.version === 1 && typeof v.files.return?.xml === 'string' && typeof v.files.return.name === 'string' && typeof v.files.statements?.xml === 'string' && typeof v.files.statements.name === 'string' ? { files: v.files } : {}),
     }
@@ -221,7 +232,7 @@ export interface ClosingView {
   closing: Closing | null
   books: Books
   statements: Statements
-  /** The year before, when the books hold it (the statements show it beside). */
+  /** The year before, when the books hold it (the statements show it beside), on the same forms. */
   previous: Statements | null
   proposal: Proposal
   /** What the accountant set (the activity of the last year that has one when this one has none). */
@@ -235,18 +246,62 @@ export interface ClosingView {
   running: boolean
   due: string
   changed: { rows: string[]; statements: boolean } | null
+  /** The size group the statements are made for, and the one the books propose with why; the employees counted. */
+  size: EntitySize
+  sizeProposal: { size: EntitySize; reason: SizeReason }
+  employees: number
+  /** What the form shows beside what was stored: the advances paid, the proposed size group, the employees from payroll. */
+  found: ClosingFound
+  /** The year's figures for the size group and the audit, and whether the audit is required (§ 19). */
+  figures: SizeFigures
+  audit: 'yes' | 'maybe' | 'no'
 }
 
+/** How many years before the one shown the size group is followed back (§ 2(10) looks at two; a chain of kept groups at more). */
+const SIZE_YEARS = 6
+
 export async function closingView(db: D1Database, company: Company, year: number, today: string, loaded?: { books?: Books; closings?: Closing[] }): Promise<ClosingView> {
-  const [books, closings, paid, assets] = await Promise.all([loaded?.books ?? booksOf(db, company), loaded?.closings ?? closingsOf(db, company.id), incomePaid(db, company.id, year), assetsOf(db, company.id)])
+  const [books, closings, paid, assets, staff] = await Promise.all([
+    loaded?.books ?? booksOf(db, company),
+    loaded?.closings ?? closingsOf(db, company.id),
+    incomePaid(db, company.id, year),
+    assetsOf(db, company.id),
+    employeesOf(db, company.id),
+  ])
   const closing = closings.find((k) => k.year === year) ?? null
-  const statements = statementsOf(books, year)
-  const previous = books.start && books.start < `${year}-01-01` ? statementsOf(books, year - 1) : null
-  const proposal = proposeTax(statements, assets.length > 0 ? assetYear(assets, year) : null)
   // The activity is the company's: what was set for the year, else the last year that has it.
   const stored = closing?.inputs ?? storedInputs(null)
   const earlier = closings.find((k) => k.year < year && k.inputs.nace)?.inputs
   const own = stored.nace || !earlier ? stored : { ...stored, nace: earlier.nace, activity: stored.activity || earlier.activity }
+  // Every year the size group looks at, in one pass over the books; the figures of the years the books hold whole.
+  const first = books.start ? Math.min(year, Number(books.start.slice(0, 4))) : year
+  const years = Array.from({ length: year - Math.max(first, year - SIZE_YEARS) + 1 }, (_, i) => Math.max(first, year - SIZE_YEARS) + i)
+  const balances = closingBalancesByYear(books.entries, years)
+  const inputsOf = (y: number) => closings.find((k) => k.year === y)?.inputs ?? null
+  const whole = (y: number): boolean => {
+    if (!books.start) return false
+    if (books.start <= `${y}-01-01`) return true
+    // A company founded in the year, whose books begin the day it was: its first period is whole.
+    return inputsOf(y)?.from === books.start
+  }
+  const figures = new Map<number, SizeFigures>()
+  for (const y of years) {
+    if (y >= year || !whole(y)) continue
+    const st = statementsFrom(balances.get(y) ?? new Map(), y, 'pod')
+    figures.set(y, { year: y, assetsNet: st.assetsNet, assetsGross: st.assetsGross, turnover: st.turnover, employees: inputsOf(y)?.employees ?? averageEmployees(staff, y) })
+  }
+  const chosen = new Map<number, EntitySize>()
+  for (const k of closings) if (k.inputs.size) chosen.set(k.year, k.inputs.size)
+  const sizeProposal = proposeSize(year, figures, chosen, first)
+  const size = own.size ?? sizeProposal.size
+  const form = formOf(size)
+  const statements = statementsFrom(balances.get(year) ?? new Map(), year, form, own.placements)
+  const previous = books.start && books.start < `${year}-01-01` ? statementsFrom(balances.get(year - 1) ?? new Map(), year - 1, form, own.placements) : null
+  const employeesFound = averageEmployees(staff, year)
+  const employees = own.employees ?? employeesFound
+  const yearFigures: SizeFigures = { year, assetsNet: statements.assetsNet, assetsGross: statements.assetsGross, turnover: statements.turnover, employees }
+  const audit = auditOf(yearFigures, figures.get(year - 1) ?? null)
+  const proposal = proposeTax(statements, assets.length > 0 ? assetYear(assets, year) : null)
   const input = taxInputOf(year, proposal, own, { advances: paid.advances })
   const tax = taxOf(input)
   const booked = statements.accounts['591'] ?? 0
@@ -263,9 +318,15 @@ export async function closingView(db: D1Database, company: Company, year: number
     tax,
     paid,
     booked,
-    issues: closingIssues({ books, year, company, nace: own.nace, statements, tax: running ? null : { computed: tax.rows.r1050 ?? 0, booked } }),
+    issues: closingIssues({ books, year, company, nace: own.nace, statements, tax: running ? null : { computed: tax.rows.r1050 ?? 0, booked }, audit }),
     running,
     due: closing?.dueOn ?? closingDue(year, closing?.extendedTo ?? null),
     changed: closing?.filed ? changedSinceFiled(closing.filed, tax, statements) : null,
+    size,
+    sizeProposal,
+    employees,
+    found: { advances: paid.advances, size: sizeProposal.size, employees: employeesFound },
+    figures: yearFigures,
+    audit,
   }
 }

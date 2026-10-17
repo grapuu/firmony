@@ -1,15 +1,17 @@
 // The files of the closing the Financial Administration takes: the corporate income tax return (DPPOv25, its schema
-// form.622.sk.xsd) and the financial statements of a micro entity (UZMUJv14, form.301.sk.xsd), written as the official
-// eForms write them, so that "Načítať zo súboru" in eDane or in the client's internet zone opens them as they are.
-// test/xsd holds both schemas, and the unit checks validate every file written here against them.
+// form.622.sk.xsd), the financial statements of a micro entity (UZMUJv14, form.301.sk.xsd) and of a small or a large
+// one (UZPODv14, form.302.sk.xsd), written as the official eForms write them, so that "Načítať zo súboru" in eDane or
+// in the client's internet zone opens them as they are. test/xsd holds the schemas, and the unit checks validate every
+// file written here against them.
 //
 // Every element the schema asks for is present, empty when the row is not filled; amounts of the return have two
 // decimals and a full stop, the statements' are whole euros; days are DD.MM.YYYY. A form for the period 2026 (DPPOv26)
 // is published by the Financial Directorate in January 2027: its schema replaces the one here then.
 import { BRAND, OPERATOR, TEAM } from '../config'
 import { addressParts, amount, nameLines } from './vat-xml'
-import type { Statements, TaxResult } from './closing'
+import type { EntitySize, Statements, TaxResult } from './closing'
 import { BALANCE_ROWS, PROFIT_ROWS } from './closing'
+import { POD_ASSET_ROWS, POD_LIABILITY_ROWS, POD_PROFIT_ROWS } from './closing-pod'
 
 const esc = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const el = (name: string, value: string | number = '') => `<${name}>${esc(String(value))}</${name}>`
@@ -220,26 +222,35 @@ export function dppoXml(filer: ClosingFiler, tax: TaxResult, opts: ReturnOptions
   ].join('\n')
 }
 
-/** The financial statements of a micro entity, as a file of UZMUJv14: the current year and the one before, in whole euros. */
-export function statementsXml(filer: ClosingFiler, current: Statements, previous: Statements | null, opts: { year: number; from: string; preparedOn: string; approvedOn?: string | null }): string {
+export interface StatementsOptions {
+  year: number
+  from: string
+  preparedOn: string
+  approvedOn?: string | null
+  /** The size group: a small or a large entity files Úč POD and says which it is. */
+  size?: EntitySize
+}
+
+/**
+ * The financial statements as a file: of a micro entity in UZMUJv14, of a small or a large one in UZPODv14 (the forms
+ * the statements were made on), the current year and the one before, in whole euros.
+ */
+export function statementsXml(filer: ClosingFiler, current: Statements, previous: Statements | null, opts: StatementsOptions): string {
   const a = addressParts(filer.address)
   const nace = naceParts(filer.nace) ?? { k1: '0', k2: '0', k3: '0' }
   const lines = nameLines(filer.name, 37, 2)
   const register = nameLines(filer.registerLine ?? '', 37, 2)
-  const pair = (row: string, mine: Record<string, number>, before: Record<string, number> | null) =>
-    group(row, [el('s1', mine[row] ?? 0), el('s2', before ? (before[row] ?? 0) : '')])
+  const pod = current.form === 'pod'
   const fromMonth = String(Number(opts.from.slice(5, 7)))
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<dokument>',
-    '<hlavicka>',
+  const before = previous && previous.form === current.form ? previous : null
+  const header = [
     group('datumK', [el('den', '31'), el('mesiac', '12'), el('rok', String(opts.year))]),
     el('dic', filer.dic ?? ''),
     el('ico', filer.ico ?? ''),
     group('skNace', [el('k1', nace.k1), el('k2', nace.k2), el('k3', nace.k3)]),
-    group('typUzavierky', [el('riadna', '1'), el('mimoriadna', '0'), el('priebezna', '0')]),
+    group('typUzavierky', [el('riadna', '1'), el('mimoriadna', '0'), el('priebezna', '0'), ...(pod ? [el('mala', flag(opts.size !== 'large')), el('velka', flag(opts.size === 'large'))] : [])]),
     group('obdobie', [group('od', [el('mesiac', fromMonth), el('rok', opts.from.slice(0, 4))]), group('do', [el('mesiac', '12'), el('rok', String(opts.year))])]),
-    group('bPredObdobie', previous ? [group('od', [el('mesiac', '1'), el('rok', String(opts.year - 1))]), group('do', [el('mesiac', '12'), el('rok', String(opts.year - 1))])] : [group('od', [el('mesiac'), el('rok')]), group('do', [el('mesiac'), el('rok')])]),
+    group('bPredObdobie', before ? [group('od', [el('mesiac', '1'), el('rok', String(opts.year - 1))]), group('do', [el('mesiac', '12'), el('rok', String(opts.year - 1))])] : [group('od', [el('mesiac'), el('rok')]), group('do', [el('mesiac'), el('rok')])]),
     group('prilozeneSucasti', [el('suvaha', '1'), el('vykazZiskovStrat', '1'), el('poznamky', '1')]),
     group('uctJednotka', [
       group('obchMeno', [el('riadok', lines[0] ?? ''), el('riadok', lines[1] ?? '')]),
@@ -247,12 +258,23 @@ export function statementsXml(filer: ClosingFiler, current: Statements, previous
     ]),
     el('datZostavenia', textDay(opts.preparedOn)),
     el('datSchvalenia', opts.approvedOn ? textDay(opts.approvedOn) : ''),
-    '</hlavicka>',
-    '<telo>',
-    group('ucMuj1Suvaha', BALANCE_ROWS.map((row) => pair(row, current.balanceEur, previous?.balanceEur ?? null))),
-    group('ucMuj2VykazZS', PROFIT_ROWS.map((row) => pair(row, current.profitEur, previous?.profitEur ?? null))),
-    '</telo>',
-    '</dokument>',
-    '',
-  ].join('\n')
+  ]
+  const pair = (row: string, mine: Record<string, number>, past: Record<string, number> | null, names: [string, string] = ['s1', 's2']) =>
+    group(row, [el(names[0], mine[row] ?? 0), el(names[1], past ? (past[row] ?? 0) : '')])
+  const body = pod
+    ? [
+        // Assets: the gross amount, the correction, the net, and the net of the year before; then equity and liabilities.
+        group('ucPod1Suvaha', [
+          ...POD_ASSET_ROWS.map((row) =>
+            group(row, [el('s1', current.grossEur[row] ?? 0), el('s2', current.fixEur[row] ?? 0), el('s3', current.balanceEur[row] ?? 0), el('s4', before ? (before.balanceEur[row] ?? 0) : '')]),
+          ),
+          ...POD_LIABILITY_ROWS.map((row) => pair(row, current.balanceEur, before?.balanceEur ?? null, ['s5', 's6'])),
+        ]),
+        group('ucPod2VykazZS', POD_PROFIT_ROWS.map((row) => pair(row, current.profitEur, before?.profitEur ?? null))),
+      ]
+    : [
+        group('ucMuj1Suvaha', BALANCE_ROWS.map((row) => pair(row, current.balanceEur, before?.balanceEur ?? null))),
+        group('ucMuj2VykazZS', PROFIT_ROWS.map((row) => pair(row, current.profitEur, before?.profitEur ?? null))),
+      ]
+  return ['<?xml version="1.0" encoding="UTF-8"?>', '<dokument>', '<hlavicka>', ...header, '</hlavicka>', '<telo>', ...body, '</telo>', '</dokument>', ''].join('\n')
 }
