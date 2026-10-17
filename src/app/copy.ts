@@ -84,6 +84,15 @@ export const app = typesetAll({
     settings: 'Firma a nastavenia',
     taxes: 'Dane',
   },
+  confirm: {
+    title: 'Potvrďte, že ste to Vy.',
+    lead: (email: string) =>
+      typeset(`Celý archív firmy sa sťahuje len hneď po prihlásení odkazom z e-mailu. Pošleme ho na ${email}. Po kliknutí v ňom sa vrátite sem a sťahovanie pôjde.`),
+    button: 'Poslať odkaz',
+    sentTitle: 'Pozrite sa do e-mailu.',
+    sentLead: (email: string) => typeset(`Odkaz je na ceste na ${email}. Platí ${APP.linkMinutes} minút. Po kliknutí v ňom budete späť pri sťahovaní.`),
+    again: 'Poslať nový odkaz',
+  },
   login: {
     title: 'Prihlásenie',
     serif: 'Bez hesla.',
@@ -597,6 +606,8 @@ export const app = typesetAll({
     endedLead: 'Platby sa z tejto banky nenačítavajú. Obnovte prístup, trvá to minútu.',
     failed: 'Posledné načítanie sa nepodarilo. Skúsime to znova sami.',
     renew: 'Obnoviť prístup',
+    droppedMessage: (iban: string) =>
+      typeset(`Účet ${iban.replace(/\s/g, '').replace(/(.{4})(?=.)/g, '$1 ')} nie je firemný, do Firmony sa dostal omylom. Jeho platby prosím vyraďte z účtovníctva.`),
     readNow: 'Načítať teraz',
     unlink: 'Odpojiť banku',
     unlinkLead: 'Platby, ktoré už máme, zostanú. Nové sa prestanú načítavať.',
@@ -621,6 +632,7 @@ export const app = typesetAll({
       vyprsalo: 'Prístup k banke vypršal. Obnovte ho.',
       odpojena: 'Banka je odpojená. Platby, ktoré už máme, zostávajú.',
       odobraty: 'Účet sme odobrali a jeho platby z banky vymazali.',
+      ponechany: 'Účet už nečítame. Niektoré jeho platby už účtovníčka spracovala, preto ich vyradí ona; napísali sme jej.',
       vela: 'Za poslednú hodinu ste načítanie spustili priveľakrát. Skúste to neskôr, platby sa medzitým načítajú aj samy.',
     },
     notice: {

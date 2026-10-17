@@ -26,6 +26,16 @@ const failure = (c: Ctx, message = 'Overenie sa nepodarilo. Skúste nový pokus.
 
 export async function securityGate(c: Context, who: Who, sensitive = false): Promise<Response | null> {
   const keys = await passkeysOf(c.env.DB, who.user.id)
+  // A client who has no passkey proves it is them the way they signed in: a session opened by a link from their email
+  // in the last quarter of an hour counts, and anything older is asked for a new link. Setting up a passkey needs that
+  // same fresh link, so this asks for nothing weaker, and a client is never sent to a page about keys they never had.
+  if (sensitive && !who.user.team && keys.length === 0) {
+    if (who.createdAt > now() - SECURITY.freshLinkSeconds) return null
+    const u = new URL(c.req.url)
+    const reads = c.req.method === 'GET' || c.req.method === 'HEAD'
+    const next = reads ? safeNext(`${u.pathname}${u.search}`) : actionReturn(u.pathname, c.req.header('referer'), u.origin)
+    return c.redirect(`/app/potvrdit?next=${encodeURIComponent(next)}`, 303)
+  }
   const requires = sensitive || Boolean(who.user.team) || keys.length > 0
   if (!requires || verifiedRecently(who, now(), sensitive ? SECURITY.sensitiveSeconds : SECURITY.teamSeconds)) return null
   const u = new URL(c.req.url)

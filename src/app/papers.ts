@@ -195,8 +195,10 @@ export async function keepPaper(
       ...extra({ id, name }),
     ])
   } catch (error) {
-    // This UUID belongs only to the failed, uncommitted upload, never to an existing accounting record.
-    await files.delete(key)
+    // This UUID belongs only to this upload. An interrupted answer may hide a batch that did commit: the file is
+    // deleted only when no row names it, so a kept paper never loses its original.
+    const used = await db.prepare('SELECT 1 AS x FROM company_files WHERE r2_key = ?').bind(key).first().catch(() => true)
+    if (!used) await files.delete(key)
     throw error
   }
   return { ok: true, paper: { id, name, type } }

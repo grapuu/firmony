@@ -353,18 +353,34 @@ export const LinkSent: FC = () => (
   </>
 )
 
-export const Enter: FC<{ token: string }> = ({ token }) => (
+export const Enter: FC<{ token: string; next?: string }> = ({ token, next }) => (
   <>
     <Tile art={ART.key} size="lg" eager />
     <Heading first={app.login.enterTitle} second={app.login.enterSerif} small />
     <p class="door__lead">{app.login.enterLead}</p>
     <form class="door__form" method="post" action="/app/vstup">
       <input type="hidden" name="t" value={token} />
+      {next ? <input type="hidden" name="n" value={next} /> : null}
       <button class="btn btn--blue btn--large door__button" type="submit">
         {app.login.enterButton}
       </button>
     </form>
   </>
+)
+
+/** A client confirms a sensitive step (the whole archive) by a new link from the email: no key, no password. */
+export const ConfirmByLink: FC<{ email: string; next: string; sent: boolean }> = ({ email, next, sent }) => (
+  <section class="nothing">
+    <Tile art={sent ? ART.envelope : ART.key} size="lg" />
+    <p class="nothing__title">{sent ? app.confirm.sentTitle : app.confirm.title}</p>
+    <p class="nothing__lead">{sent ? app.confirm.sentLead(email) : app.confirm.lead(email)}</p>
+    <form method="post" action="/app/potvrdit">
+      <input type="hidden" name="next" value={next} />
+      <button class={`btn ${sent ? 'btn--line' : 'btn--blue'}`} type="submit">
+        {sent ? app.confirm.again : app.confirm.button}
+      </button>
+    </form>
+  </section>
 )
 
 export const Expired: FC<{ noCompany?: boolean }> = ({ noCompany }) => (

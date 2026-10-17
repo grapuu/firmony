@@ -13,6 +13,8 @@ export const SECURITY = {
   challengeSeconds: 300,
   teamSeconds: 12 * 3600,
   sensitiveSeconds: 300,
+  /** A client without a passkey confirms a sensitive action by signing in afresh with a link from the email. */
+  freshLinkSeconds: 900,
   grantSeconds: 86400,
   requestsPerTenMinutes: 20,
 } as const

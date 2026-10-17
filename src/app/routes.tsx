@@ -11,7 +11,7 @@ import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
-import { Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
+import { ConfirmByLink, Door, Enter, Expired, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
@@ -20,7 +20,7 @@ import { answerAccount, statementById, statementDue, statementsOf, takeStatement
 import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
-import { bootstrapReady, sensitivePath, type SecurityBindings } from '../security/policy'
+import { bootstrapReady, safeNext, sensitivePath, type SecurityBindings } from '../security/policy'
 import { securityGate } from '../security/routes'
 import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
@@ -190,7 +190,8 @@ appRoutes.get('/vstup', async (c) => {
   await ensureSchema(c.env.DB)
   const token = c.req.query('t') ?? ''
   if (!(await linkUsable(c.env.DB, token))) return render(c, <Door title={t.login.expiredTitle}>{<Expired />}</Door>, 410)
-  return render(c, <Door title={t.login.enterTitle}>{<Enter token={token} />}</Door>)
+  const next = c.req.query('n')
+  return render(c, <Door title={t.login.enterTitle}>{<Enter token={token} next={next ? safeNext(next) : undefined} />}</Door>)
 })
 
 appRoutes.post('/vstup', async (c) => {
@@ -203,7 +204,9 @@ appRoutes.post('/vstup', async (c) => {
   const to = await startSession(c, db, user)
   if (!to) return render(c, <Door title={t.login.expiredTitle}>{<Expired noCompany />}</Door>, 403)
   const signedIn = await userById(db, user)
-  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : to, 303)
+  // A link asked for to confirm a sensitive step (the archive) leads back to it; any other address is the app's own.
+  const next = typeof body.n === 'string' && /^\/app(?:\/|$)/.test(safeNext(body.n)) ? safeNext(body.n) : null
+  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : (next ?? to), 303)
 })
 
 appRoutes.post('/odhlasit', async (c) => {
@@ -312,6 +315,8 @@ function flashOf(c: Ctx): string | null {
       return t.bank.flash.odpojena
     case 'ucet-odobraty':
       return t.bank.flash.odobraty
+    case 'ucet-ponechany':
+      return t.bank.flash.ponechany
     case 'ucet-pridany':
       return t.bank.statements.flash.confirmed(n)
     case 'vypis-nezauctovany':
@@ -811,8 +816,20 @@ appRoutes.post('/banka/ucet/:id/odobrat', async (c) => {
   const who = c.get('who')
   if (who.role !== 'owner') return bankPage(c, t.bank.onlyOwner, 403)
   const id = c.req.param('id')
-  const done = ID.test(id) ? await dropAccount(c.env.DB, who.company.id, who.user.id, id) : false
-  return c.redirect(done ? '/app/banka?ok=ucet-odobraty' : '/app/banka', 303)
+  const db = c.env.DB
+  const iban = ID.test(id) ? await db.prepare('SELECT iban FROM accounts WHERE id = ? AND company_id = ?').bind(id, who.company.id).first<{ iban: string }>() : null
+  const done = iban ? await dropAccount(db, who.company.id, who.user.id, id) : false
+  if (done === 'kept' && iban) {
+    // The books already hold some of its payments: the accountant takes them out, and the client's own words say so.
+    const message = crypto.randomUUID()
+    const unread = await db.prepare("SELECT 1 AS x FROM messages WHERE company_id = ? AND side = 'client' AND seen_at IS NULL LIMIT 1").bind(who.company.id).first()
+    await db.batch([
+      messageStatement(db, { id: message, company: who.company.id, author: who.user.id, side: 'client', body: t.bank.droppedMessage(iban.iban), payment: null }),
+      ...(unread ? [] : [ringStatement(db, 'message', message, who.company.accountantEmail ?? BRAND.email, bell.teamMessage(`${siteOrigin(c)}/ucto/klienti/${who.company.id}#spravy`))]),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect(done === 'kept' ? '/app/banka?ok=ucet-ponechany' : done ? '/app/banka?ok=ucet-odobraty' : '/app/banka', 303)
 })
 
 /** The owner says how the bank comes in (a bank that sends its statements by itself): the page then waits for the first. */
@@ -966,6 +983,27 @@ async function messagesPage(c: Ctx, extra: { error?: string; draft?: string } = 
     status,
   )
 }
+
+// A sensitive step of a client without a passkey (the whole archive) waits for a fresh sign-in by a link from the email.
+appRoutes.get('/potvrdit', (c) => {
+  const who = c.get('who')
+  const next = safeNext(c.req.query('next') ?? '/app')
+  return shell(c, 'company', t.confirm.title, <ConfirmByLink email={who.user.email} next={next} sent={c.req.query('poslane') === '1'} />)
+})
+
+appRoutes.post('/potvrdit', async (c) => {
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const next = safeNext(typeof body.next === 'string' ? body.next : '/app')
+  const db = c.env.DB
+  if (await withinLimit(db, 'link', who.user.email.toLowerCase(), APP.linksPerHour, 3600)) {
+    const { token, statement } = await newLink(db, who.user.id)
+    const link = `${siteOrigin(c)}/app/vstup?t=${token}&n=${encodeURIComponent(next)}`
+    await db.batch([statement, queueStatement(db, { key: `login:${crypto.randomUUID()}`, to: who.user.email, subject: t.login.mailSubject, body: t.login.mailBody(link) })])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect(`/app/potvrdit?poslane=1&next=${encodeURIComponent(next)}`, 303)
+})
 
 appRoutes.get('/spravy', (c) => messagesPage(c))
 
@@ -1696,12 +1734,17 @@ appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Mis
 export async function appScheduled(env: AppBindings, at: number = Date.now()): Promise<void> {
   const db = env.DB
   const ts = now()
-  try {
-    await remindAll(env, at)
-    await remindBankRenewals(env, at)
-    await remindStatements(env, at)
-  } catch (err) {
-    console.error('reminders failed', err instanceof Error ? err.name : 'error')
+  // Each reminder on its own: one that fails does not take the others with it.
+  for (const [name, remind] of [
+    ['documents', remindAll],
+    ['bank renewals', remindBankRenewals],
+    ['statements', remindStatements],
+  ] as const) {
+    try {
+      await remind(env, at)
+    } catch (err) {
+      console.error(`reminders (${name}) failed`, err instanceof Error ? err.name : 'error')
+    }
   }
   try {
     await readDue(env)
@@ -1717,13 +1760,21 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")
     .bind(ts - 120)
     .all<{ id: string; company_id: string; read_tries: number }>()
+  // A run has minutes, not hours: reading stops after four of them and the rest waits for the next run. One document
+  // that fails does not keep the others, or the clean-up below, from their turn.
+  const until = Date.now() + 240_000
   for (const row of stuck.results) {
-    const company = await getCompany(db, row.company_id)
-    if (!company) continue
-    if (row.read_tries >= 3) await db.batch([manualStatement(db, company.id, row.id, 'three tries')])
-    else {
-      await readOne(env, company, row.id)
-      await matchCompany(db, company.id)
+    if (Date.now() > until) break
+    try {
+      const company = await getCompany(db, row.company_id)
+      if (!company) continue
+      if (row.read_tries >= 3) await db.batch([manualStatement(db, company.id, row.id, 'three tries')])
+      else {
+        await readOne(env, company, row.id)
+        await matchCompany(db, company.id)
+      }
+    } catch (err) {
+      console.error('reading a document again failed', err instanceof Error ? err.name : 'error')
     }
   }
   await db.batch([db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(ts), db.prepare('DELETE FROM login_links WHERE expires_at < ?').bind(ts - 86400), db.prepare('DELETE FROM auth_challenges WHERE expires_at < ?').bind(ts)])

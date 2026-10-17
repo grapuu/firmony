@@ -103,8 +103,12 @@ export async function keepFilesFor(
   try {
     if (statements.length > 0) await db.batch(statements)
   } catch (error) {
-    // A lock may have been set while files were uploading. The rejected transaction must leave no orphan objects.
-    if (uploadedKeys.length) await bucket.delete(uploadedKeys)
+    // A lock may have been set while files were uploading: the rejected transaction must leave no orphan objects.
+    // An interrupted answer may also hide a batch that did commit, so only an object no document names is deleted.
+    for (const key of uploadedKeys) {
+      const used = await db.prepare('SELECT 1 AS x FROM documents WHERE file_key = ?').bind(key).first().catch(() => true)
+      if (!used) await bucket.delete(key)
+    }
     throw error
   }
   for (const id of readNow) await afterReading(db, company.id, id)

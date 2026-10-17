@@ -45,12 +45,28 @@ async function deletePrefix(files: R2Bucket, prefix: string, keep: Set<string> =
 const LONELY = `SELECT m.user_id FROM members m JOIN users u ON u.id = m.user_id
   WHERE m.company_id = ?1 AND u.team IS NULL AND NOT EXISTS (SELECT 1 FROM members o WHERE o.user_id = m.user_id AND o.company_id <> ?1)`
 
+/**
+ * A freeze whose reason is gone is lifted, while nothing has been deleted yet: the data changed since the client
+ * confirmed the archive (a draft thrown away during the day of grace) or a filing is pending again. Writes then work
+ * again, and the next run freezes it anew once the client has confirmed the current archive; before, such a company
+ * stayed frozen for good and every write to it failed. A hold or an open incident keeps the freeze as it is. Once the
+ * deletion has started, it is finished instead.
+ */
+async function thaw(db: D1Database, companyId: string): Promise<{ files: number; rows: number }> {
+  await db
+    .prepare('UPDATE companies SET purge_started_at = NULL WHERE id = ? AND purge_started_at IS NOT NULL AND purge_delete_started_at IS NULL AND purged_at IS NULL')
+    .bind(companyId)
+    .run()
+  return { files: 0, rows: 0 }
+}
+
 /** One company's data, deleted: the files first, then the rows in one batch, which either all go or none. */
 export async function purgeCompany(env: PurgeEnv, companyId: string, today = bratislava(Date.now()).day): Promise<{ files: number; rows: number }> {
   const db = env.DB
+  // A hold keeps everything as it is, the freeze included: evidence is not changed while a case is open.
   if (await evidenceBlocked(db, companyId)) return { files: 0, rows: 0 }
   const revision = await confirmedRevision(db, companyId, await exportYears(db, companyId))
-  if (revision === null) return { files: 0, rows: 0 }
+  if (revision === null) return thaw(db, companyId)
   // Freeze new writes before any external file deletion. A change since the handover check cancels this claim.
   const claim = await db.prepare(`UPDATE companies SET purge_started_at = COALESCE(purge_started_at, ?) WHERE id = ? AND purged_at IS NULL AND demo = 0 AND ends_on < ?
     AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = companies.id), 0) = ?
@@ -58,7 +74,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     AND NOT (${pendingPayrollSql('companies.id')})
     AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
     AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`).bind(now(), companyId, purgeFloor(today), revision).run()
-  if ((claim.meta?.changes ?? 0) === 0) return { files: 0, rows: 0 }
+  if ((claim.meta?.changes ?? 0) === 0) return thaw(db, companyId)
   // A full day between freezing writes and the irreversible phase gives operations a real intervention window.
   const destructive = await db.prepare(`UPDATE companies SET purge_delete_started_at = COALESCE(purge_delete_started_at, ?1)
     WHERE id = ?2 AND purged_at IS NULL AND purge_started_at <= ?3

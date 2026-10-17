@@ -673,6 +673,36 @@ const MIGRATIONS: readonly string[][] = [
       privacy_version TEXT NOT NULL
     )`,
   ],
+  // 24 (17 October 2026): only a change of the company's records changes the revision a confirmed archive stands
+  // for. A bank consent that runs out, a message being read or a company saved without a change touched it before,
+  // and so took away the client's confirmation without a reason, and an expired consent of a frozen company aborted
+  // the schedule's statement for every company. Reading a message stays possible while a handover is finalized.
+  [
+    'DROP TRIGGER IF EXISTS bank_links_data_insert',
+    'DROP TRIGGER IF EXISTS bank_links_data_update',
+    'DROP TRIGGER IF EXISTS bank_links_data_delete',
+    'DROP TRIGGER IF EXISTS messages_data_update',
+    `CREATE TRIGGER messages_data_update AFTER UPDATE ON messages
+      WHEN OLD.company_id IS NOT NEW.company_id OR OLD.created_at IS NOT NEW.created_at OR OLD.author IS NOT NEW.author
+        OR OLD.side IS NOT NEW.side OR OLD.body IS NOT NEW.body OR OLD.payment_id IS NOT NEW.payment_id
+      BEGIN INSERT INTO company_data_revisions (company_id, revision) VALUES (NEW.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+    'DROP TRIGGER IF EXISTS messages_purging_update',
+    `CREATE TRIGGER messages_purging_update BEFORE UPDATE ON messages
+      WHEN (OLD.company_id IS NOT NEW.company_id OR OLD.created_at IS NOT NEW.created_at OR OLD.author IS NOT NEW.author
+        OR OLD.side IS NOT NEW.side OR OLD.body IS NOT NEW.body OR OLD.payment_id IS NOT NEW.payment_id)
+        AND EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+    'DROP TRIGGER IF EXISTS companies_data_update',
+    `CREATE TRIGGER companies_data_update AFTER UPDATE OF name, ico, dic, icdph, address, register_line, payroll, tax_account, start_on, ends_on, vat_payer, vat_7a, vat_quarterly, vat_since, tax_office, vat_carry ON companies
+      WHEN OLD.name IS NOT NEW.name OR OLD.ico IS NOT NEW.ico OR OLD.dic IS NOT NEW.dic OR OLD.icdph IS NOT NEW.icdph
+        OR OLD.address IS NOT NEW.address OR OLD.register_line IS NOT NEW.register_line OR OLD.payroll IS NOT NEW.payroll
+        OR OLD.tax_account IS NOT NEW.tax_account OR OLD.start_on IS NOT NEW.start_on OR OLD.ends_on IS NOT NEW.ends_on
+        OR OLD.vat_payer IS NOT NEW.vat_payer OR OLD.vat_7a IS NOT NEW.vat_7a OR OLD.vat_quarterly IS NOT NEW.vat_quarterly
+        OR OLD.vat_since IS NOT NEW.vat_since OR OLD.tax_office IS NOT NEW.tax_office OR OLD.vat_carry IS NOT NEW.vat_carry
+      BEGIN INSERT INTO company_data_revisions (company_id, revision) VALUES (NEW.id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

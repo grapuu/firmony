@@ -231,7 +231,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 23)
+check('health says the schema', (await res.json()).schema === 24)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -256,7 +256,9 @@ check('it is for search engines and its forms carry the campaign', res.headers.g
 check('the header leads to the form on the page, and the menu marks the page', page.includes('href="#zapis"') && page.includes('href="/investori" aria-current="page"'))
 check('the dividend rate is said as it is for 2026', plain(page).includes('spravidla sadzbou 7 %') && plain(page).includes('sadzbou 19 až 35 %'))
 res = await get('/')
-check('the home page leads to it', (await res.text()).includes('href="/investori"'))
+const homeForLinks = await res.text()
+check('the home page leads to it', homeForLinks.includes('href="/investori"'))
+check('a client finds the way in from the site, in its header and its footer', (homeForLinks.match(/href="\/app\/prihlasenie"/g) ?? []).length === 2)
 const investorPairs = [
   ['email', 'Investor@Example.sk'],
   ['broker', 'xtb'],
@@ -1188,6 +1190,28 @@ const janSession = as((res.headers.get('set-cookie') ?? '').split(';')[0])
 check('and is in the company with it', res.status === 303 && (await (await janSession.get('/app')).text()).includes('Firma A s. r. o.'))
 res = await janSession.get(`/app/export?rok=${day(0).slice(0, 4)}`)
 check('an ordinary member cannot download employee personal data in the complete archive', res.status === 403)
+// An owner without a passkey downloads the archive right after signing in by a link; later a new link is asked for,
+// and it leads back to the download. No page about keys the client never set up.
+await db.prepare("UPDATE members SET role = 'owner' WHERE company_id = 'co-a' AND user_id = ?").bind(jan?.id ?? '').run()
+await db.prepare('UPDATE sessions SET created_at = created_at - 1000 WHERE user_id = ?').bind(jan?.id ?? '').run()
+const exportPath = `/app/export?rok=${day(0).slice(0, 4)}`
+res = await janSession.get(exportPath)
+check('an owner without a key and an old sign-in is asked for a fresh link, not for a key', res.status === 303 && res.headers.get('location') === `/app/potvrdit?next=${encodeURIComponent(exportPath)}`)
+const beforeConfirm = (await sent()).length
+res = await janSession.post('/app/potvrdit', { next: exportPath })
+await settle()
+const confirmMail = (await sent()).slice(beforeConfirm).find((m) => m.to === 'jan@firma-a.test')
+const confirmLink = confirmMail?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})&n=([^\s]+)/)
+check('the link goes to the owner and carries the way back', res.status === 303 && Boolean(confirmLink) && decodeURIComponent(confirmLink?.[2] ?? '') === exportPath)
+res = await post('/app/vstup', { t: confirmLink?.[1] ?? '', n: decodeURIComponent(confirmLink?.[2] ?? '') }, { ip: '203.0.113.33' })
+const freshJan = as((res.headers.get('set-cookie') ?? '').split(';')[0])
+check('the fresh sign-in leads straight back to the download', res.status === 303 && res.headers.get('location') === exportPath)
+res = await freshJan.get(exportPath)
+check('and the download starts', res.status === 200 && (res.headers.get('content-type') ?? '').includes('zip'))
+await res.arrayBuffer()
+res = await post('/app/vstup', { t: 'x'.repeat(43), n: 'https://evil.example/' }, { ip: '203.0.113.33' })
+check('a used or forged link leads nowhere else', res.status === 410)
+await db.prepare("UPDATE members SET role = 'member' WHERE company_id = 'co-a' AND user_id = ?").bind(jan?.id ?? '').run()
 res = await anna.post('/app/firma/pozvat', { meno: 'Ján Spoločník', email: 'JAN@firma-a.test' })
 check('somebody who is in already is not invited twice', res.status === 409)
 res = await janSession.post('/app/firma/pozvat', { meno: 'Cudzí', email: 'cudzi@x.test' })
@@ -2069,6 +2093,21 @@ check(
         .first()
     )?.n === 0,
 )
+// One whose payments the accountant has already worked on stays in the books: it is read no more, and she is told.
+await db.batch([
+  db.prepare("INSERT INTO accounts (id, company_id, iban, link_id, remote_id) VALUES ('acc-worked', 'co-a', 'SK5911000000002912345678', ?, 'remote-worked')").bind(bankLink?.id),
+  db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, ref, source, contra) VALUES ('pay-worked', 'co-a', 'acc-worked', ?, ?, -1500, 'worked-1', 'bank', '548')").bind(nowS, day(-2)),
+])
+const messagesBefore = (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE company_id = 'co-a' AND side = 'client'").first())?.n
+res = await anna.post('/app/banka/ucet/acc-worked/odobrat', {})
+check(
+  'an account whose payments the books already hold is read no more, its payments stay and the accountant is asked',
+  res.headers.get('location') === '/app/banka?ok=ucet-ponechany' &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM payments WHERE id = 'pay-worked'").first())?.n === 1 &&
+    (await db.prepare("SELECT link_id FROM accounts WHERE id = 'acc-worked'").first())?.link_id === null &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE company_id = 'co-a' AND side = 'client'").first())?.n === messagesBefore + 1,
+)
+await db.batch([db.prepare("DELETE FROM payments WHERE id = 'pay-worked'"), db.prepare("DELETE FROM accounts WHERE id = 'acc-worked'")])
 // The schedule reads a consent every six hours, never more often
 let callsNow = bank.calls.length
 await tick(Date.now())
@@ -4343,7 +4382,7 @@ check(
 )
 res = await anna.get('/app/export?rok=1999')
 check('a year without anything is not found', res.status === 404)
-check('the download is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'export.downloaded' AND company_id = 'co-a'").first())?.n === 1)
+check('the download is on record', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'export.downloaded' AND company_id = 'co-a' AND user_id = 'u-a'").first())?.n === 1)
 
 // The books handed over: by the accountant, in the app (the client has read what was written before)
 await anna.get('/app/spravy')
@@ -4484,6 +4523,39 @@ for (const y of handoverYears) {
 await tick(Date.now()); await settle(500)
 const stagedPurge = await db.prepare("SELECT purge_started_at, purge_delete_started_at, purged_at FROM companies WHERE id = 'co-a'").first()
 check('the schedule observes the full intervention window before deleting acknowledged data', stagedPurge.purge_started_at !== null && stagedPurge.purge_delete_started_at === null && stagedPurge.purged_at === null)
+// A frozen company's consent that runs out must not stop every other client's bank: the schedule's one statement
+// for all consents leaves it alone, and another company's consent still expires in the same run.
+const revisionOf = async (id) => (await db.prepare('SELECT revision FROM company_data_revisions WHERE company_id = ?').bind(id).first())?.revision ?? 0
+const frozenRevision = await revisionOf('co-a')
+await db.prepare("UPDATE companies SET purge_started_at = NULL WHERE id = 'co-a'").run()
+await db.batch([
+  db.prepare("INSERT INTO bank_links (id, company_id, created_at, bank, country, state, status, valid_until, kind) VALUES ('frozen-link', 'co-a', ?, 'Fio banka', 'SK', 'frozen-state', 'active', ?, 'fio')").bind(nowS, nowS - 60),
+  db.prepare("INSERT INTO bank_links (id, company_id, created_at, bank, country, state, status, valid_until, kind) VALUES ('other-link', 'co-b', ?, 'Fio banka', 'SK', 'other-state', 'active', ?, 'fio')").bind(nowS, nowS - 60),
+  db.prepare("INSERT INTO messages (id, company_id, created_at, author, side, body) VALUES ('frozen-message', 'co-a', ?, NULL, 'firmony', 'Archív máte stiahnutý.')").bind(nowS),
+  db.prepare("UPDATE company_data_revisions SET revision = ? WHERE company_id = 'co-a'").bind(frozenRevision),
+  db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-a'").bind(stagedPurge.purge_started_at),
+])
+await tick(Date.now()); await settle(300)
+check(
+  "a frozen company's ended consent does not keep another company's from expiring",
+  (await db.prepare("SELECT status FROM bank_links WHERE id = 'other-link'").first())?.status === 'expired' &&
+    (await db.prepare("SELECT status FROM bank_links WHERE id = 'frozen-link'").first())?.status === 'active',
+)
+check('a bank consent is no accounting data: it leaves the confirmed archive standing', (await revisionOf('co-a')) === frozenRevision && (await db.prepare("SELECT purge_started_at FROM companies WHERE id = 'co-a'").first())?.purge_started_at !== null)
+res = await anna.get('/app/spravy')
+check(
+  'a client reads the messages while the handover is finalized, and reading changes no confirmed archive',
+  res.status === 200 && (await db.prepare("SELECT seen_at FROM messages WHERE id = 'frozen-message'").first())?.seen_at !== null && (await revisionOf('co-a')) === frozenRevision,
+)
+// A freeze whose reason is gone is lifted before anything is deleted, and set again once the archive is confirmed.
+await db.prepare("UPDATE company_data_revisions SET revision = revision + 1 WHERE company_id = 'co-a'").run()
+await tick(Date.now()); await settle(300)
+check('a change of the data during the day of grace lifts the freeze instead of leaving the company stuck', (await db.prepare("SELECT purge_started_at, purged_at FROM companies WHERE id = 'co-a'").first())?.purge_started_at === null)
+await db.prepare("UPDATE company_data_revisions SET revision = revision - 1 WHERE company_id = 'co-a'").run()
+await tick(Date.now()); await settle(300)
+check('the confirmed archive freezes it again', (await db.prepare("SELECT purge_started_at FROM companies WHERE id = 'co-a'").first())?.purge_started_at !== null)
+await db.prepare("UPDATE companies SET purge_started_at = NULL WHERE id = 'co-a'").run()
+await db.prepare("DELETE FROM bank_links WHERE id IN ('frozen-link', 'other-link')").run()
 await db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-a'").bind(nowS - 86401).run()
 await tick(Date.now()); await settle(500)
 const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()

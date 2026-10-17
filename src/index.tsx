@@ -601,8 +601,8 @@ export default {
   fetch: app.fetch,
   /** Email to a company's address for documents (src/app/inbox.ts). */
   async email(message: ForwardableEmailMessage, env: Bindings, ctx: ExecutionContext) {
-    await ensureSchema(env.DB)
     try {
+      await ensureSchema(env.DB)
       await receiveMail(env, message, (work) => ctx.waitUntil(work.catch((err) => console.error('reading an email failed', err instanceof Error ? err.name : 'error'))))
     } catch (err) {
       console.error('an email failed', err instanceof Error ? err.name : 'error')
@@ -618,7 +618,11 @@ export default {
         } catch (err) {
           console.error('outbox failed', err instanceof Error ? err.name : 'error')
         }
-        await purge(env.DB)
+        try {
+          await purge(env.DB)
+        } catch (err) {
+          console.error('purge failed', err instanceof Error ? err.name : 'error')
+        }
         try {
           await appScheduled(env, event.scheduledTime)
         } catch (err) {

@@ -23,7 +23,7 @@ export const copy = typesetAll({
     description: `Účtovníctvo pre mladé s. r. o. Doklady, termíny a správy s účtovníčkou na jednom mieste. Rozsah služby podľa potrieb Vašej firmy. Od ${eur(start.price)} mesačne podľa počtu dokladov.`,
   },
   skip: 'Preskočiť na obsah',
-  nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
+  nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
   hero: {
     tag: 'Účtovníctvo pre mladé s. r. o.',

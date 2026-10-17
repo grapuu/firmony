@@ -412,9 +412,18 @@ export async function readLink(env: BankEnv, linkId: string, present: Present | 
 export async function readDue(env: BankEnv): Promise<number> {
   const db = env.DB
   const ts = now()
+  // One statement for every company: a company whose handover is being finalized refuses every write to its rows, so
+  // it is left out here, or its one consent would abort the batch and stop every other client's bank as well.
   await db.batch([
-    db.prepare("UPDATE bank_links SET status = 'expired' WHERE status = 'active' AND valid_until IS NOT NULL AND valid_until < ?").bind(ts),
-    db.prepare("DELETE FROM bank_links WHERE status = 'pending' AND created_at < ?").bind(ts - BANK.pendingSeconds),
+    db
+      .prepare(
+        `UPDATE bank_links SET status = 'expired' WHERE status = 'active' AND valid_until IS NOT NULL AND valid_until < ?
+         AND company_id IN (SELECT id FROM companies WHERE purge_started_at IS NULL)`,
+      )
+      .bind(ts),
+    db
+      .prepare("DELETE FROM bank_links WHERE status = 'pending' AND created_at < ? AND company_id IN (SELECT id FROM companies WHERE purge_started_at IS NULL)")
+      .bind(ts - BANK.pendingSeconds),
   ])
   // Enable Banking's consents only while its application is set up; Fio's tokens always (fio.ts).
   const due = await db
@@ -500,17 +509,29 @@ export function noticeOf(links: BankLinkView[], at: number = now()): BankNotice 
 }
 
 /**
- * Takes an account that is not the company's (a person's own account chosen at the bank by mistake) out: read no
- * more, and the payments the bank brought for it that no document hangs on are removed. A statement's are kept.
+ * Takes an account that is not the company's (a person's own account chosen at the bank by mistake) out: it is read
+ * no more at once. Its payments from the bank go with it only while the books have not touched any of them: none is
+ * paired with a document, given an account or checked by the accountant, and no month is locked. Otherwise they stay
+ * where they are, and the accountant is told, because taking them out would change books she has already worked on.
+ * A statement's payments are kept either way.
  */
-export async function dropAccount(db: D1Database, company: string, user: string, accountId: string): Promise<boolean> {
+export async function dropAccount(db: D1Database, company: string, user: string, accountId: string): Promise<'dropped' | 'kept' | false> {
   const account = await db.prepare('SELECT id FROM accounts WHERE id = ? AND company_id = ? AND link_id IS NOT NULL').bind(accountId, company).first<{ id: string }>()
   if (!account) return false
+  const touched = await db
+    .prepare(
+      `SELECT EXISTS (SELECT 1 FROM payments p WHERE p.account_id = ?1 AND p.company_id = ?2
+           AND (p.contra IS NOT NULL OR p.checked_at IS NOT NULL OR EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id)))
+         OR EXISTS (SELECT 1 FROM period_locks WHERE company_id = ?2 AND through_on IS NOT NULL) AS touched`,
+    )
+    .bind(accountId, company)
+    .first<{ touched: number }>()
+  const keep = Boolean(touched?.touched)
   await db.batch([
-    db.prepare("DELETE FROM payments WHERE account_id = ? AND company_id = ? AND source = 'bank' AND id NOT IN (SELECT payment_id FROM links)").bind(accountId, company),
+    ...(keep ? [] : [db.prepare("DELETE FROM payments WHERE account_id = ? AND company_id = ? AND source = 'bank'").bind(accountId, company)]),
     db.prepare('UPDATE accounts SET link_id = NULL, remote_id = NULL WHERE id = ? AND company_id = ?').bind(accountId, company),
-    db.prepare('DELETE FROM accounts WHERE id = ? AND company_id = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE account_id = ?)').bind(accountId, company, accountId),
-    eventStatement(db, { company, user, action: 'bank.account.dropped', subject: accountId }),
+    ...(keep ? [] : [db.prepare('DELETE FROM accounts WHERE id = ? AND company_id = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE account_id = ?)').bind(accountId, company, accountId)]),
+    eventStatement(db, { company, user, action: 'bank.account.dropped', subject: accountId, detail: { payments: keep ? 'kept' : 'removed' } }),
   ])
-  return true
+  return keep ? 'kept' : 'dropped'
 }

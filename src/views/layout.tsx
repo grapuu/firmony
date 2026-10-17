@@ -72,6 +72,9 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
               {copy.nav.investors}
             </a>
           </nav>
+          <a class="top__login" href="/app/prihlasenie">
+            {copy.nav.login}
+          </a>
           <a class="btn btn--blue btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
             {meta.ctaText ?? copy.nav.start}
           </a>
@@ -92,6 +95,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
               <a href="/#kalkulacka">{copy.footer.calc}</a>
               <a href="/#otazky">{copy.nav.faq}</a>
               <a href="/investori">{copy.nav.investors}</a>
+              <a href="/app/prihlasenie">{copy.nav.login}</a>
             </nav>
             <nav class="foot__col" aria-label={copy.footer.company}>
               <p class="foot__head">{copy.footer.company}</p>

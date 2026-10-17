@@ -13,37 +13,26 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // Who signs up, and what is kept of it (index.tsx)
-  ['src/index.tsx', "  if (field(one('web'), 200) !== '') return c.redirect('/investori/hotovo', 303)\n", '', 'a bot that fills the hidden field is forgotten'],
+  // Stage 1 of closing the loop (17 October 2026): what one company's state does to the others, and to its client.
   [
-    'src/index.tsx',
-    '  const brokers = INVESTORS.brokers.map((b) => b.id).filter((id) => picked.includes(id)) as InvestorBroker[]',
-    '  const brokers = picked.map(String) as InvestorBroker[]',
-    'only brokers we know are kept',
+    'src/app/bank.ts',
+    "valid_until < ?\n         AND company_id IN (SELECT id FROM companies WHERE purge_started_at IS NULL)`",
+    'valid_until < ?`',
+    "a frozen company's consent does not stop the others' expiry",
   ],
-  ['src/index.tsx', '  if (!EMAIL.test(values.email)) return page(c, meta, <InvestorsPage', '  if (false) return page(c, meta, <InvestorsPage', 'what is no email is refused'],
-  ['src/index.tsx', "  const at = one('forma') === 'zapis' ? 'final' : 'hero'", "  const at = 'hero'", 'a mistake is said at the form it was made in'],
-  ['src/index.tsx', "  if (!(await withinLimit(db, 'investor', connection(c), LIMITS.requestsPerHour, 3600))) {", '  if (false) {', 'sign-ups from one connection are limited'],
+  ['src/app/purge.ts', '  if (revision === null) return thaw(db, companyId)', '  if (revision === null) return { files: 0, rows: 0 }', 'a freeze whose archive is no longer confirmed is lifted'],
+  ['src/db.ts', "    'DROP TRIGGER IF EXISTS bank_links_data_update',\n", '', 'a bank consent is no accounting data'],
   [
-    'src/index.tsx',
-    "  if (await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)) {\n    statements.push(\n      queueStatement(db, {\n        key: `investor:",
-    '  if (true) {\n    statements.push(\n      queueStatement(db, {\n        key: `investor:',
-    'two confirmations a day at most',
+    'src/db.ts',
+    'OR OLD.side IS NOT NEW.side OR OLD.body IS NOT NEW.body OR OLD.payment_id IS NOT NEW.payment_id)\n        AND EXISTS',
+    'OR 1)\n        AND EXISTS',
+    'reading a message works while a handover is finalized',
   ],
-  ['src/index.tsx', "          copy.investors.mail.remove.replace(/\\u00a0/g, ' '),\n          '',\n", '', 'the confirmation says how to be forgotten'],
-  ['src/index.tsx', "  const urls = ['/', '/investori', '/podmienky'", "  const urls = ['/', '/podmienky'", 'the sitemap lists the investors page'],
-  // One row an address, a year from its last sign-up (db.ts)
-  ['src/db.ts', 'r.email.toLowerCase(), r.brokers.length', 'r.email, r.brokers.length', 'one row an address, whatever its letters'],
-  ['src/db.ts', 'brokers = COALESCE(excluded.brokers, investor_requests.brokers)', 'brokers = excluded.brokers', 'a sign-up without brokers keeps the ones before'],
-  ['src/db.ts', 'DO UPDATE SET updated_at = excluded.updated_at,', 'DO UPDATE SET updated_at = investor_requests.updated_at,', 'signing up again renews the year'],
-  ['src/db.ts', "    db.prepare('DELETE FROM investor_requests WHERE updated_at < ?').bind(ts - RETENTION.requestDays * 86400),\n", '', 'a sign-up is deleted after a year'],
-  // Who sees them
-  [
-    'src/team/routes.tsx',
-    'const [requests, investors] = await Promise.all([listRequests(c.env.DB), listInvestors(c.env.DB)])',
-    'const [requests, investors] = await Promise.all([listRequests(c.env.DB), Promise.resolve({ total: 0, list: [] })])',
-    'the administrator sees who signed up',
-  ],
+  ['src/app/bank.ts', '  const keep = Boolean(touched?.touched)', '  const keep = false', "an account whose payments the books hold keeps them"],
+  ['src/security/routes.tsx', '    if (who.createdAt > now() - SECURITY.freshLinkSeconds) return null', '    if (false) return null', 'a fresh sign-in by link confirms a client'],
+  ['src/security/routes.tsx', "    return c.redirect(`/app/potvrdit?next=${encodeURIComponent(next)}`, 303)\n  }", '  }', 'an old sign-in is asked for a link, not for a key'],
+  ['src/app/routes.tsx', "  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : (next ?? to), 303)", "  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : to, 303)", 'the link leads back to where it was asked for'],
+  ['src/views/layout.tsx', '          <a class="top__login" href="/app/prihlasenie">', '          <a class="top__login" href="/app/prihlasenie-x">', 'the site has a way in'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname
@@ -52,7 +41,7 @@ cpSync(root, copy, { recursive: true, filter: (path) => !/\/(\.git|\.wrangler|no
 symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'))
 const run = (command) => {
   try {
-    return { ok: true, out: execSync(command, { cwd: copy, stdio: 'pipe', timeout: 240_000 }).toString() }
+    return { ok: true, out: execSync(command, { cwd: copy, stdio: 'pipe', timeout: 900_000, env: { ...process.env } }).toString() }
   } catch (err) {
     return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? ''}` }
   }
@@ -68,7 +57,7 @@ for (const [file, from, to, what] of chosen) {
     continue
   }
   writeFileSync(path, original.replace(from, to))
-  const units = run('npm test')
+  const units = process.env.RUNTIME_ONLY ? { ok: true, out: '' } : run('npm test')
   const runtime = units.ok ? run('npm run test:runtime') : { ok: false, out: '' }
   writeFileSync(path, original)
   const fails = `${units.out}\n${runtime.out}`

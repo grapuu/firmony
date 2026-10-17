@@ -543,8 +543,28 @@ textarea {
   color: var(--blue);
 }
 
-.top__cta {
+.top__login {
   margin-left: auto;
+  margin-right: -16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.top__login:hover {
+  background: var(--mist);
+  color: var(--blue);
+}
+
+.top__cta {
+  margin-left: 0;
 }
 
 /* The opening -------------------------------------------------------------------------------------------- */
@@ -3454,6 +3474,16 @@ textarea {
 @media (max-width: 400px) {
   .top__cta {
     padding-inline: 12px;
+  }
+
+  .top__inner {
+    gap: 14px;
+  }
+
+  .top__login {
+    margin-right: -8px;
+    padding-inline: 6px;
+    font-size: 0.875rem;
   }
 
   .stat {

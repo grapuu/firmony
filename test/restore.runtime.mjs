@@ -49,7 +49,7 @@ export async function checkRestore({ db, files, annaCookie, site, today, nowS })
     .run()
   const schema = (
     await db
-      .prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND type IN ('table','index','trigger') ORDER BY type, name")
+      .prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND type IN ('table','index','trigger') ORDER BY type, rowid")
       .all()
   ).results.filter((x) => persistent(x.name) && persistent(x.tbl_name))
   const tables = schema.filter((x) => x.type === 'table')
@@ -159,8 +159,10 @@ export async function checkRestore({ db, files, annaCookie, site, today, nowS })
             .bind(...cols.map((key) => row[key])),
         )
       }
-    // All inserts share one deferred-FK transaction. Business triggers are installed only after the snapshot data.
-    await target.batch([target.prepare('PRAGMA defer_foreign_keys = ON'), ...inserts])
+    // Inserts go in chunks of a hundred, tables in the order they were created, so a parent row comes before the rows
+    // that name it: one batch of every row ran into the local runtime's limits and closed its connection, and a real
+    // restore into D1 has the same limits (a call's time and statements). Business triggers come after the data.
+    for (let i = 0; i < inserts.length; i += 100) await target.batch([target.prepare('PRAGMA defer_foreign_keys = ON'), ...inserts.slice(i, i + 100)])
     await target.batch(schema.filter((x) => x.type !== 'table').map((x) => target.prepare(x.sql)))
     let equal = true
     for (const [name, values] of rows)
