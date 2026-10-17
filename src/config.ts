@@ -65,6 +65,13 @@ export function planById(id: string | undefined): Plan | undefined {
   return PLANS.find((plan) => plan.id === id)
 }
 
+/**
+ * A request for a scope and price agreed one by one (his word of 17 October 2026: new, small, medium, large and very
+ * large companies). It is kept as the request's plan, makes no online order and waits for the team, who go through
+ * the company's books and offer a contract on paper (`OFFLINE_TERMS`).
+ */
+export const CUSTOM_PLAN = 'mieru'
+
 /** The annual closing and the corporate income tax return, once a year, for every plan (149 € until 13 October 2026). */
 export const CLOSING_PRICE = 249
 

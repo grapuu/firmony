@@ -1563,7 +1563,7 @@ export const RequestsPage: FC<{ requests: Request[]; investors: { total: number;
                 {r.phone ? <span>{r.phone}</span> : null}
               </p>
               <p class="req__sub">
-                <span>{t.clients.plan(PLANS.find((p) => p.id === r.plan)?.name ?? r.plan)}</span>
+                <span>{t.clients.plan(PLANS.find((p) => p.id === r.plan)?.name ?? t.requests.planOther[r.plan as keyof typeof t.requests.planOther] ?? r.plan)}</span>
                 <span>{t.requests.situation[r.situation as keyof typeof t.requests.situation] ?? r.situation}</span>
                 <span>{whenName(r.createdAt, now)}</span>
               </p>

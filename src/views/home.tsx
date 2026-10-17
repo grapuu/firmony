@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { EXAMPLE, compare, type CalcResult } from '../calc'
-import { ART, BRAND, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, type Art, type PlanId } from '../config'
+import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, type Art, type PlanId } from '../config'
 import { copy, planRows } from '../copy'
 import { formatEur } from '../format'
 
@@ -562,10 +562,28 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
           )
         })}
       </div>
+      <article class="plan-large" aria-labelledby="plan-large">
+        <div class="plan-large__top">
+          <Tile art={ART.seal} size="md" />
+          <span>
+            <h3 id="plan-large" class="plan__name">
+              {copy.pricing.large.title}
+            </h3>
+            <span class="plan__for">{copy.pricing.large.forWhom}</span>
+          </span>
+        </div>
+        <p class="plan-large__text">{copy.pricing.large.text}</p>
+        <div class="plan-large__side">
+          <span class="plan-large__price">{copy.pricing.large.price}</span>
+          <a class="btn btn--line" href={withCarry('/zacat', carry, { balik: CUSTOM_PLAN })}>
+            {copy.pricing.large.cta}
+          </a>
+        </div>
+      </article>
       <div class="pricing__fine">
         <p>{copy.pricing.included}</p>
         <p>
-          <strong>{copy.pricing.closing}</strong> {copy.pricing.vat} {copy.pricing.custom}
+          <strong>{copy.pricing.closing}</strong> {copy.pricing.vat}
         </p>
       </div>
       <ul class="promises">
@@ -685,6 +703,14 @@ const Paths: FC<{ carry: Carry }> = ({ carry }) => (
         <p class="path__text">{copy.paths.switching.text}</p>
         <a class="btn btn--line path__cta" href="#zacat">
           {copy.paths.switching.cta}
+        </a>
+      </article>
+      <article class="card path">
+        <Tile art={ART.tree} size="lg" />
+        <h3 class="h3">{copy.paths.large.title}</h3>
+        <p class="path__text">{copy.paths.large.text}</p>
+        <a class="btn btn--line path__cta" href={withCarry('/zacat', carry, { balik: CUSTOM_PLAN })}>
+          {copy.paths.large.cta}
         </a>
       </article>
     </div>

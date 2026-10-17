@@ -39,7 +39,20 @@ over. Bring this section up to date first whenever a session ends.
    all seven stages full, and his steps before launch at the end. Its source was a scratch file of the session of
    17 October; a new session reads the page with the Artifact tool (`action: "read"`, then the saved file) and
    republishes to the same URL.
-7. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
+8. **Every size of company (his word of 17 October 2026, 16:01).** Not only small s. r. o.: new, small, medium,
+   large and very large companies, and the software is to manage all of it, volume included, everything in our own
+   software (the accountant needs no tools of her own). Filing stays the accountant's, but as one package she submits
+   with a click. Real data not yet; a test with fictional data is welcome. His steps (the domain, Cloudflare, the
+   trade, goAML, the lawyer, insurance) wait until the product is perfect; the trade licence comes first of them. The
+   accountants he is looking at: doc. Ing. Alena Andrejovská, PhD. and Ing. Radoslav Bajus, PhD. (Katedra financií,
+   EkF TUKE), offered the work as a lucrative side income. The order he was given (each with its time): texts for
+   every size (done: `CUSTOM_PLAN` 'mieru', the card "Na mieru" under the plans, the third way in "Vediete väčšiu
+   firmu", no online order for it, the team sees "na mieru"); filing in one click; a load test with a large fictional
+   company; fixed assets and depreciation; the closing of small and large entities; stock; full payroll (agreements,
+   directors, sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS;
+   foreign currencies, OSS, Intrastat and joint-stock companies. The site promises a large company only an offer
+   of its own until the software does each part; every text widens when a part lands.
+9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
    check passes and when he has asked for the work to be put there (his word of 15:32 on 17 October: "ak sú
    skontrolované a funkčné perfektne dávaj ich ostro na GitHub"). Nothing is bought, no account is made and no

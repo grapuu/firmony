@@ -1,5 +1,5 @@
 import type { Child, FC } from 'hono/jsx'
-import { PLANS, planById } from '../config'
+import { CUSTOM_PLAN, PLANS, planById } from '../config'
 import { copy } from '../copy'
 import { formatEur, typeset } from '../format'
 import { formatIco } from '../ico'
@@ -38,6 +38,16 @@ const Page: FC<{ children: Child }> = ({ children }) => (
 )
 
 const ChosenPlan: FC<{ plan: string }> = ({ plan }) => {
+  if (plan === CUSTOM_PLAN) {
+    return (
+      <p class="chosen">
+        <span>{copy.start.chosen}</span>
+        <strong>
+          {copy.start.planCustom}, {copy.start.planCustomHint}
+        </strong>
+      </p>
+    )
+  }
   const chosen = planById(plan)
   if (!chosen) return null
   return (
@@ -191,7 +201,13 @@ export const StartDetails: FC<{
               </label>
             ))}
             <label class="choice__option">
-              <input type="radio" name="plan" value="neviem" checked={!planById(values.plan)} />
+              <input type="radio" name="plan" value={CUSTOM_PLAN} checked={values.plan === CUSTOM_PLAN} />
+              <span>
+                {copy.start.planCustom} <span class="choice__hint">{copy.start.planCustomHint}</span>
+              </span>
+            </label>
+            <label class="choice__option">
+              <input type="radio" name="plan" value="neviem" checked={!planById(values.plan) && values.plan !== CUSTOM_PLAN} />
               <span>{copy.start.planUnsure}</span>
             </label>
             </div>
@@ -248,11 +264,11 @@ export const StartDetails: FC<{
 }
 
 /** After a request: what comes next, the confirmation only when one went out, the notice period only for a switch. */
-export const Thanks: FC<{ order?: boolean; confirmed?: boolean; switching?: boolean }> = ({ order, confirmed = true, switching = false }) => (
+export const Thanks: FC<{ order?: boolean; confirmed?: boolean; switching?: boolean; custom?: boolean }> = ({ order, confirmed = true, switching = false, custom = false }) => (
   <Page>
     <h1 class="h1">{copy.thanks.title}</h1>
     <p class="lead">
-      {order ? copy.thanks.orderLead : copy.thanks.lead}
+      {custom ? copy.thanks.customLead : order ? copy.thanks.orderLead : copy.thanks.lead}
       {confirmed ? ` ${copy.thanks.confirmed}` : null}
     </p>
     {switching ? <p class="page__text">{copy.thanks.next}</p> : null}

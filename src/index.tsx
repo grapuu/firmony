@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
-import { APP, BRAND, INVESTORS, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
+import { APP, BRAND, CUSTOM_PLAN, INVESTORS, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
 import { copy } from './copy'
 import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
 import { typeset } from './format'
@@ -204,7 +204,8 @@ async function companyState(c: Ctx, ico: string): Promise<CompanyState> {
 
 app.get('/zacat', async (c) => {
   const carry = carryFrom((name) => c.req.query(name))
-  const plan = planById(c.req.query('balik'))?.id ?? ''
+  const asked = c.req.query('balik')
+  const plan = asked === CUSTOM_PLAN ? CUSTOM_PLAN : (planById(asked)?.id ?? '')
   if (c.req.query('nova') === '1') {
     return page(c, startMeta, <StartDetails carry={carry} state={{ kind: 'fresh' }} ico="" values={emptyValues(plan, 'fresh')} errors={{}} />)
   }
@@ -225,7 +226,7 @@ const SITUATIONS: readonly Situation[] = ['switch', 'fresh', 'other']
 
 const field = (value: unknown, max: number): string => (typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim().slice(0, max) : '')
 
-const planName = (id: string) => planById(id)?.name ?? copy.start.planUnsure
+const planName = (id: string) => (id === CUSTOM_PLAN ? copy.start.planCustom : (planById(id)?.name ?? copy.start.planUnsure))
 
 app.post('/zacat', async (c) => {
   const body = await c.req.parseBody()
@@ -235,7 +236,8 @@ app.post('/zacat', async (c) => {
 
   const fresh = body.mode === 'fresh'
   const ico = fresh ? null : normalizeIco(field(body.ico, 20))
-  const plan = planById(field(body.plan, 10))?.id ?? 'neviem'
+  const planRaw = field(body.plan, 10)
+  const plan = planRaw === CUSTOM_PLAN ? CUSTOM_PLAN : (planById(planRaw)?.id ?? 'neviem')
   const situationRaw = field(body.situation, 10) as Situation
   const situation: Situation = SITUATIONS.includes(situationRaw) ? situationRaw : fresh ? 'fresh' : 'switch'
   const values: DetailsValues = {
@@ -281,9 +283,10 @@ app.post('/zacat', async (c) => {
   // have typed into the form: the company only as the register names it. A company the register knows as an
   // s. r. o. in business, and not yet a client, gets an order: once we have looked at what it needs (the review on
   // /ucto/ziadosti), its director gets the link to the contract, to the director's own address when it was given.
+  // A company that asks for a scope agreed one by one makes no order: the team goes through its books first.
   const confirm = await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)
   let orderStatement: D1PreparedStatement | null = null
-  if (ico && company && company.isSro && !company.terminated && !(await isClient(db, ico))) {
+  if (plan !== CUSTOM_PLAN && ico && company && company.isSro && !company.terminated && !(await isClient(db, ico))) {
     const directors = company.rpoId ? await lookupDirectors(company.rpoId) : null
     // The token of this statement is sent to nobody: the review makes the one the director gets.
     orderStatement = await newOrderStatement(db, newToken(), {
@@ -351,6 +354,7 @@ app.post('/zacat', async (c) => {
   if (orderStatement) next.set('zmluva', '1')
   if (!confirm) next.set('potvrdenie', '0')
   if (situation === 'switch') next.set('zmena', '1')
+  if (plan === CUSTOM_PLAN) next.set('mieru', '1')
   const query = next.toString()
   return c.redirect(`/zacat/hotovo${query ? `?${query}` : ''}`, 303)
 })
@@ -426,7 +430,7 @@ app.get('/zacat/hotovo', (c) => {
   return page(
     c,
     { ...startMeta, title: `${copy.thanks.title} | ${BRAND.name}`, path: '/zacat/hotovo' },
-    <Thanks order={order} confirmed={c.req.query('potvrdenie') !== '0'} switching={c.req.query('zmena') === '1'} />,
+    <Thanks order={order} confirmed={c.req.query('potvrdenie') !== '0'} switching={c.req.query('zmena') === '1'} custom={c.req.query('mieru') === '1'} />,
   )
 })
 

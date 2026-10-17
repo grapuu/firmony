@@ -225,6 +225,26 @@ check("the order is for the director's address, the request keeps who asked", re
 res = await post('/zacat', { ...good, name: 'Asistentka Firmy', email: 'asistentka2@example.sk', directorEmail: 'nie-je-email' }, { ip: '198.51.100.40' })
 check("a director's address that is no address is said at its field", res.status === 422 && (await res.text()).includes('Skontrolujte, prosím, e-mail konateľa.'))
 
+// A larger company asks for a scope of its own (his word of 17 October 2026: every size of company). The way in
+// is on the home page twice, the choice is kept, and no online order is made: the team goes through its books first.
+res = await get('/')
+page = (await res.text()).replace(/ /g, ' ')
+check(
+  'the home page speaks to companies of every size and leads a larger one to an offer of its own',
+  page.includes('Účtovníctvo pre firmy každej veľkosti') && page.includes('Pre stredné a veľké firmy.') && page.includes('Vediete väčšiu firmu') && (page.match(/href="\/zacat\?balik=mieru"/g) ?? []).length === 2 && !page.includes('mladé'),
+)
+res = await get('/zacat?balik=mieru')
+page = (await res.text()).replace(/ /g, ' ')
+check('the first step names the offer of its own', res.status === 200 && page.includes('Na mieru, cena podľa rozsahu') && page.includes('name="balik" value="mieru"'))
+res = await get('/zacat?ico=57442452&balik=mieru')
+page = await res.text()
+check('the offer of its own is ticked among the plans', /value="mieru" checked/.test(page) && !/value="neviem" checked/.test(page))
+res = await post('/zacat', { ...good, plan: 'mieru', email: 'financie@example.sk' }, { ip: '198.51.100.60' })
+const large = await db.prepare("SELECT r.plan, (SELECT COUNT(*) FROM orders o WHERE o.request_id = r.id) AS orders FROM requests r WHERE r.email = 'financie@example.sk'").first()
+check('a request for a scope of its own is kept as such and makes no online order', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmena=1&mieru=1' && large?.plan === 'mieru' && large?.orders === 0, JSON.stringify(large))
+page = (await (await get('/zacat/hotovo?zmena=1&mieru=1')).text()).replace(/ /g, ' ')
+check('its thanks promise a talk about the books, then the offer', page.includes('prejdeme Vašu agendu') && page.includes('ponuku na mieru') && !page.includes('konateľovi pošleme odkaz'))
+
 // The limits
 for (let i = 0; i < 6; i++) await post('/zacat', { ...good, email: `n${i}@example.sk` }, { ip: '198.51.100.9' })
 res = await post('/zacat', { ...good, email: 'n7@example.sk' }, { ip: '198.51.100.9' })

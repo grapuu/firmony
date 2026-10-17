@@ -19,14 +19,14 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 
 export const copy = typesetAll({
   meta: {
-    title: `${BRAND.name}: účtovníctvo pre mladé firmy`,
-    description: `Účtovníctvo pre mladé s. r. o. Doklady, termíny a správy s účtovníčkou na jednom mieste. Rozsah služby podľa potrieb Vašej firmy. Od ${eur(start.price)} mesačne podľa počtu dokladov.`,
+    title: `${BRAND.name}: účtovníctvo pre firmy každej veľkosti`,
+    description: `Účtovníctvo pre nové, malé, stredné aj veľké firmy. Doklady, termíny a správy s účtovníčkou na jednom mieste. Balíky od ${eur(start.price)} mesačne podľa počtu dokladov, väčším firmám rozsah a cenu na mieru.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
   hero: {
-    tag: 'Účtovníctvo pre mladé s. r. o.',
+    tag: 'Účtovníctvo pre firmy každej veľkosti',
     first: 'Vy budujete firmu.',
     second: 'My strážime účtovníctvo.',
     lead: 'Doklady, termíny a správy s účtovníčkou na jednom mieste. Vy poznáte svoju firmu. My sa staráme o dohodnutú účtovnú agendu a ozveme sa, keď potrebujeme Vaše rozhodnutie.',
@@ -73,8 +73,8 @@ export const copy = typesetAll({
 
   /** The hug of the brand, read word by word. */
   statement: {
-    first: 'Ak Vás účtovníctvo stresuje, nie ste jediní.',
-    second: 'Spolu to dáme do poriadku.',
+    first: 'Účtovníctvo nemá brzdiť Vašu firmu.',
+    second: 'Postaráme sa, aby bežalo bez starostí.',
   },
 
   /** Everything in the price: pick one and see it. */
@@ -178,6 +178,14 @@ export const copy = typesetAll({
     closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne. Mzdy: ${eur(PAYROLL_PRICE)} mesačne za človeka.`,
     vat: 'Ceny sú bez DPH, DPH zatiaľ nepripočítavame.',
     custom: `Viac ako ${largest.docs} dokladov mesačne? Pripravíme Vám ponuku na mieru.`,
+    /** Beside the plans: the way in for a medium or large company, whose scope and price are agreed one by one. */
+    large: {
+      title: 'Na mieru',
+      forWhom: 'Pre stredné a veľké firmy.',
+      price: 'Cena podľa rozsahu',
+      text: `Stovky dokladov mesačne, desiatky zamestnancov, viac účtov či prevádzok. Najprv s Vami prejdeme agendu, potom navrhneme rozsah, cenu a postup prechodu.`,
+      cta: 'Chcem ponuku na mieru',
+    },
   },
 
   /** What we promise, said once and plainly, next to the prices. */
@@ -211,10 +219,10 @@ export const copy = typesetAll({
   },
 
   paths: {
-    first: 'Zakladáte firmu,',
-    second: 'alebo už beží?',
+    first: 'Začnite tam, kde ste.',
+    second: 'My nadviažeme.',
     fresh: {
-      title: 'Zakladáte s. r. o.',
+      title: 'Zakladáte firmu',
       text: 'Od prvého dňa poriadok v účtovníctve. Povieme Vám, čo treba pri štarte vybaviť.',
       cta: 'Zakladám firmu',
     },
@@ -223,12 +231,17 @@ export const copy = typesetAll({
       text: 'Výpoveď pre doterajšiu účtovníčku máte v aplikácii pripravenú, stačí ju podpísať. Podklady od nej nahráte k nám a prevezmeme ich.',
       cta: 'Chcem prejsť',
     },
+    large: {
+      title: 'Vediete väčšiu firmu',
+      text: 'Prejdeme s Vami agendu, navrhneme rozsah a cenu na mieru a prechod naplánujeme tak, aby žiadna povinnosť nezostala bez riešenia.',
+      cta: 'Chcem ponuku na mieru',
+    },
   },
 
   founder: {
     title: 'Kto za nami stojí',
     quote:
-      'Keď som si založil firmu, najviac nervov ma nestálo podnikanie, ale papiere okolo neho. Firmony robíme, aby sa o mladé firmy niekto postaral a ony mohli rásť.',
+      'Keď som si založil firmu, najviac nervov ma nestálo podnikanie, ale papiere okolo neho. Firmony robíme, aby sa o účtovníctvo každej firmy postaral niekto spoľahlivý a ona mohla rásť.',
     name: 'Christian Juhás',
     role: 'zakladateľ Firmony',
   },
@@ -255,6 +268,10 @@ export const copy = typesetAll({
       {
         q: 'Kto mi bude viesť účtovníctvo?',
         a: 'Účtovníčka s praxou, ktorá bude mať Vašu firmu na starosti. Rutinnú prácu za ňu urobí umelá inteligencia. Ona všetko skontroluje, podá priznania a odpovie na Vaše otázky.',
+      },
+      {
+        q: 'Viete viesť aj väčšiu firmu?',
+        a: `Áno. Štandardné balíky sú pre firmy do ${largest.docs} dokladov mesačne. Pri väčšej firme najprv prejdeme agendu: počet dokladov a zamestnancov, majetok, zásoby a režimy DPH. Potom navrhneme rozsah, cenu a postup prechodu na mieru.`,
       },
       {
         q: 'Ako prejdem od súčasnej účtovníčky?',
@@ -299,7 +316,7 @@ export const copy = typesetAll({
   },
 
   footer: {
-    tagline: 'Účtovníctvo pre mladé firmy.',
+    tagline: 'Účtovníctvo pre firmy každej veľkosti.',
     service: 'Služba',
     company: 'Spoločnosť',
     contact: 'Kontakt',
@@ -386,7 +403,7 @@ export const copy = typesetAll({
     },
     bridge: {
       title: 'Raz si možno založíte firmu.',
-      text: `${BRAND.name} vedie aj celé účtovníctvo pre s. r. o. Keď z investovania vznikne podnikanie, nemusíte hľadať nikoho iného.`,
+      text: `${BRAND.name} vedie aj celé účtovníctvo firiem. Keď z investovania vznikne podnikanie, nemusíte hľadať nikoho iného.`,
       link: 'Účtovníctvo pre firmy',
     },
     faq: [
@@ -421,7 +438,7 @@ export const copy = typesetAll({
       title: 'Ďakujeme. Zapísali sme Vás.',
       lead: `Keď spustíme priznania za rok ${INVESTORS.year}, napíšeme Vám. Bude to v januári, včas pred termínom 31. marca.`,
       back: 'Späť na stránku pre investorov',
-      firms: 'Máte aj firmu? Pozrite si účtovníctvo pre s. r. o.',
+      firms: 'Máte aj firmu? Pozrite si účtovníctvo pre firmy.',
     },
     mail: {
       subject: `${BRAND.name}: zapísali sme Vás`,
@@ -439,7 +456,7 @@ export const copy = typesetAll({
     other: 'Zadať iné IČO',
     source: 'Údaje z Registra právnických osôb, Štatistický úrad SR, licencia CC BY 4.0.',
     terminated: 'Register vedie túto firmu ako zaniknutú. Ak je to omyl, napíšte nám do poznámky.',
-    notSro: 'Firmony je zatiaľ pre s. r. o. Ak má Vaša firma inú právnu formu, napíšte nám to do poznámky a ozveme sa.',
+    notSro: 'Online uzatvárame zmluvy so spoločnosťami s ručením obmedzeným. Akciovej spoločnosti a iným právnym formám pripravíme zmluvu osobne, stačí odoslať žiadosť.',
     badIco: 'IČO má 8 číslic. Skontrolujte ho, prosím.',
     wrongIco: 'Toto IČO v registri nie je a nevyzerá správne. Skontrolujte ho, prosím.',
     failed: 'Register práve neodpovedá. Napíšte názov firmy sami, overíme ho neskôr.',
@@ -450,6 +467,8 @@ export const copy = typesetAll({
     companyNameFresh: 'Názov firmy, ak ho už máte',
     plan: 'Balík',
     planUnsure: 'Ešte neviem',
+    planCustom: 'Na mieru',
+    planCustomHint: 'cena podľa rozsahu',
     situation: 'Čo potrebujete',
     situations: { switch: 'Mením účtovníčku', fresh: 'Zakladám firmu', other: 'Iné' },
     name: 'Meno a priezvisko',
@@ -459,7 +478,7 @@ export const copy = typesetAll({
     phone: 'Telefón',
     optional: 'nepovinné',
     note: 'Poznámka',
-    notePlaceholder: 'Napríklad koľko dokladov máte mesačne alebo dokedy trvá Vaša výpovedná lehota.',
+    notePlaceholder: 'Napríklad koľko máte dokladov mesačne a zamestnancov, alebo dokedy trvá Vaša výpovedná lehota.',
     next: `Čo bude ďalej: ${REPLY_WITHIN} posúdime, či Vašej firme sedí štandardný balík. Ak áno, pošleme konateľovi odkaz na zmluvu a uzavrie ju online.`,
     privacy: 'Údaje použijeme len na to, aby sme Vám odpovedali a pripravili ponuku.',
     privacyLink: 'Ako s nimi zaobchádzame',
@@ -481,6 +500,7 @@ export const copy = typesetAll({
     title: 'Ďakujeme. Žiadosť máme.',
     orderLead: `${REPLY_WITHIN.charAt(0).toUpperCase()}${REPLY_WITHIN.slice(1)} posúdime, či Vašej firme sedí štandardný balík, a konateľovi pošleme odkaz na zmluvu. Uzavrie ju online.`,
     lead: `Ozveme sa ${REPLY_WITHIN}.`,
+    customLead: `Ozveme sa ${REPLY_WITHIN} a dohodneme, ako spolu prejdeme Vašu agendu. Potom Vám pripravíme ponuku na mieru.`,
     confirmed: 'Potvrdenie sme Vám poslali na e-mail.',
     next: 'Kým sa ozveme, pozrite sa do zmluvy so súčasnou účtovníčkou, aká dlhá je výpovedná lehota.',
     back: 'Späť na úvod',

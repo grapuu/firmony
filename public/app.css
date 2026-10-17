@@ -1903,6 +1903,47 @@ textarea {
   line-height: 1.4;
 }
 
+/* Below the sheet: the way in for a medium or large company, one wide row that answers the three plans. */
+.plan-large {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: clamp(20px, 3vw, 44px);
+  margin-top: 20px;
+  padding: clamp(24px, 2.8vw, 34px) clamp(22px, 2.6vw, 36px);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.plan-large__top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.plan-large__text {
+  max-width: 34em;
+  color: var(--soft);
+  text-wrap: pretty;
+}
+
+.plan-large__side {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.plan-large__price {
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
 .pricing__fine {
   display: grid;
   gap: 6px;
@@ -2135,18 +2176,19 @@ textarea {
   margin-top: 6px;
 }
 
-/* Two ways in -------------------------------------------------------------------------------------------- */
+/* Three ways in: a new company, a switch, a larger company ----------------------------------------------- */
 
 .paths {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
 
+/* The text takes what is left, so the three buttons stand on one line whatever the length of each text. */
 .path {
-  display: grid;
-  align-content: start;
-  justify-items: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 14px;
   padding: clamp(28px, 3.4vw, 44px);
 }
@@ -2156,6 +2198,7 @@ textarea {
 }
 
 .path__text {
+  flex: 1;
   max-width: 30em;
   color: var(--soft);
 }
@@ -3309,6 +3352,15 @@ textarea {
   .plan + .plan {
     border-top: 1px solid var(--line);
     border-left: 0;
+  }
+
+  .plan-large {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .plan-large__side {
+    justify-items: start;
   }
 
   .calc,
