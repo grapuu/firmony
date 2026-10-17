@@ -57,9 +57,9 @@ const signedExact = (cents: number): string => `${cents > 0 ? '+' : ''}${formatE
 /** A turnover: a dim nought when there was none. */
 const Turnover: FC<{ cents: number }> = ({ cents }) => (cents === 0 ? <span class="lzero">0,00</span> : <>{amount(cents)}</>)
 
-export type LedgerTab = 'trial' | 'journal' | 'saldo' | 'payments' | 'internal' | 'opening' | 'assets' | 'periods'
-const TABS: readonly LedgerTab[] = ['trial', 'journal', 'saldo', 'payments', 'internal', 'opening', 'assets', 'periods']
-const TAB_PATH: Record<LedgerTab, string> = { trial: '', journal: '/dennik', saldo: '/saldokonto', payments: '/platby', internal: '/interne', opening: '/pociatocne', assets: '/majetok', periods: '/obdobia' }
+export type LedgerTab = 'trial' | 'journal' | 'saldo' | 'payments' | 'internal' | 'opening' | 'assets' | 'stock' | 'periods'
+const TABS: readonly LedgerTab[] = ['trial', 'journal', 'saldo', 'payments', 'internal', 'opening', 'assets', 'stock', 'periods']
+const TAB_PATH: Record<LedgerTab, string> = { trial: '', journal: '/dennik', saldo: '/saldokonto', payments: '/platby', internal: '/interne', opening: '/pociatocne', assets: '/majetok', stock: '/sklad', periods: '/obdobia' }
 
 export const bookPath = (company: Company, tab: LedgerTab = 'trial'): string => `/ucto/klienti/${company.id}/kniha${TAB_PATH[tab]}`
 

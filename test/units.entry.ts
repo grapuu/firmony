@@ -46,6 +46,7 @@ export * as closingForm from '../src/app/closing-form'
 export * as closingPod from '../src/app/closing-pod'
 export * as notes from '../src/app/notes'
 export * as pdf from '../src/app/pdf'
+export * as stock from '../src/app/stock'
 export * as payroll from '../src/app/payroll'
 export * as payrollStore from '../src/app/payroll-store'
 

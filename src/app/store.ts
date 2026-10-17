@@ -39,6 +39,8 @@ export interface Company {
   noticeBy: string | null
   noticeSide: 'client' | 'firmony' | null
   endsOn: string | null
+  /** How the company keeps its stock (stock.ts): continuously (A), by its counts (B), or not at all. */
+  stockMethod?: 'A' | 'B' | null
   /** How the company is registered for VAT: a payer (§ 4), a person registered under § 7a, or neither. */
   vatStatus: VatStatus
   /** A payer filing for a calendar quarter. */
@@ -165,7 +167,8 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.tax_office, c.tax_account, c.vat_carry`
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.tax_office, c.tax_account, c.vat_carry,
+  (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
 export function companyOf(row: Row): Company {
   return {
@@ -196,6 +199,7 @@ export function companyOf(row: Row): Company {
     noticeBy: str(row.notice_by),
     noticeSide: row.notice_side === 'firmony' ? 'firmony' : row.notice_at ? 'client' : null,
     endsOn: str(row.ends_on),
+    stockMethod: row.stock_method === 'A' || row.stock_method === 'B' ? row.stock_method : null,
     vatStatus: row.vat_payer === 1 ? 'payer' : row.vat_7a === 1 ? 'reg7a' : 'none',
     vatQuarterly: row.vat_payer === 1 && row.vat_quarterly === 1,
     vatSince: str(row.vat_since),

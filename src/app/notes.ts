@@ -50,6 +50,8 @@ export interface NotesSource {
   deferred: { on: boolean; asset: number; liability: number; rate: number }
   audit: 'yes' | 'maybe' | 'no'
   notes: NotesInputs
+  /** How the company keeps its stock (stock.ts), when it does. */
+  stock?: { method: 'A' | 'B'; valuation: 'average' | 'fifo' } | null
 }
 
 /** What the draft states that only the accountant can confirm: the closing's page lists them beside the download. */
@@ -97,6 +99,11 @@ function depreciationPlan(src: NotesSource): string {
 function valuation(src: NotesSource): string[] {
   const out = [
     'Nakúpený dlhodobý majetok a zásoby sa oceňujú obstarávacou cenou, ktorá zahŕňa cenu obstarania a náklady s obstaraním súvisiace; majetok vytvorený vlastnou činnosťou vlastnými nákladmi.',
+    ...(src.stock
+      ? [
+          `O zásobách sa účtuje spôsobom ${src.stock.method === 'A' ? 'A (priebežne)' : 'B (stav zásob podľa inventúry ku dňu, ku ktorému sa zostavuje účtovná závierka)'}; úbytok zásob sa oceňuje ${src.stock.valuation === 'fifo' ? 'metódou FIFO, prvá cena na ocenenie prírastku sa použije ako prvá na ocenenie úbytku' : 'váženým aritmetickým priemerom'} (§ 25 ods. 5 zákona o účtovníctve).`,
+        ]
+      : []),
     'Pohľadávky sa pri vzniku oceňujú menovitou hodnotou, pochybné pohľadávky sa znižujú opravnými položkami.',
     'Krátkodobý finančný majetok a peňažné prostriedky sa oceňujú menovitou hodnotou.',
     'Záväzky sa pri vzniku oceňujú menovitou hodnotou, rezervy očakávanou výškou záväzku.',

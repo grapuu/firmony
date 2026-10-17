@@ -923,7 +923,7 @@ export function deferredTaxOf(i: DeferredInput): DeferredResult {
 // What keeps a closing from being filed
 // ---------------------------------------------------------------------------------------------------------------
 
-export type ClosingIssueCode = 'start' | 'unbooked' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'deferred' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
+export type ClosingIssueCode = 'start' | 'unbooked' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'deferred' | 'stockCount' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
 
 /** block: the closing is not filed until it is resolved; warn: to look at. `count` things, `accounts` the ones meant. */
 export interface ClosingIssue {
@@ -951,6 +951,8 @@ export function closingIssues(args: {
   tax: { computed: number; booked: number; deferred?: { computed: number; booked: number } } | null
   /** Whether the statements must be audited (§ 19), from `auditOf`. */
   audit?: 'yes' | 'maybe' | 'no'
+  /** The stock (stock.ts): how it is kept, and whether its items were counted in the year and on its last day. */
+  stock?: { method: 'A' | 'B'; items: boolean; inYear: boolean; yearEnd: boolean } | null
 }): ClosingIssue[] {
   const { books, year } = args
   const end = `${year}-12-31`
@@ -974,6 +976,13 @@ export function closingIssues(args: {
   if (args.tax?.deferred && args.tax.deferred.computed !== args.tax.deferred.booked) block('deferred')
   if (balanceOf(books.entries, '261', end) !== 0) out.push({ code: 'transit', level: 'warn', count: 1 })
   if (args.statements.rounding !== 0) out.push({ code: 'rounding', level: 'warn', count: Math.abs(args.statements.rounding) })
+  // The count of inventories (§ 29, § 30 of the Act): method B has no stock but the count of the year's last day;
+  // method A keeps it on the cards, and a count of the year is to be there.
+  const st = args.stock
+  if (st && st.items && args.tax) {
+    if (st.method === 'B' && !st.yearEnd) block('stockCount')
+    if (st.method === 'A' && !st.inYear) out.push({ code: 'stockCount', level: 'warn', count: 1 })
+  }
   if (args.audit === 'yes') out.push({ code: 'audit', level: 'warn', count: 1 })
   if (args.audit === 'maybe') out.push({ code: 'auditMaybe', level: 'warn', count: 1 })
   return out

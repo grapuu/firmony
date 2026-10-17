@@ -801,6 +801,96 @@ const MIGRATIONS: readonly string[][] = [
       ]
     }),
   ],
+  // 27 (17 October 2026): stock (src/app/stock.ts). How a company keeps it (continuously, method A, or by its counts,
+  // method B, and the valuation of what leaves), its items and their moves. The moves give the books their entries, so
+  // they are guarded as the books are; so is a change of the way stock is kept or valued, or of an item's kind, once
+  // anything it reaches is in a locked period.
+  [
+    `CREATE TABLE IF NOT EXISTS stock_settings (
+      company_id TEXT PRIMARY KEY,
+      method TEXT NOT NULL CHECK (method IN ('A', 'B')),
+      valuation TEXT NOT NULL DEFAULT 'average' CHECK (valuation IN ('average', 'fifo')),
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS stock_items (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('goods', 'material', 'products')),
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER,
+      deleted_at INTEGER,
+      UNIQUE (company_id, code)
+    )`,
+    `CREATE TABLE IF NOT EXISTS stock_moves (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      number TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('in', 'out', 'count')),
+      on_date TEXT NOT NULL,
+      quantity_milli INTEGER NOT NULL CHECK (quantity_milli >= 0 AND quantity_milli <= 1000000000000),
+      value_cents INTEGER CHECK (value_cents IS NULL OR (value_cents >= 0 AND value_cents <= 100000000000)),
+      document_id TEXT,
+      note TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      deleted_at INTEGER,
+      deleted_by TEXT,
+      UNIQUE (company_id, number)
+    )`,
+    'CREATE INDEX IF NOT EXISTS stock_moves_item ON stock_moves (company_id, item_id, on_date)',
+    'CREATE INDEX IF NOT EXISTS stock_items_company ON stock_items (company_id, code)',
+    ...(() => {
+      const lockedOn = (company: string, day: string) => `EXISTS (SELECT 1 FROM period_locks l JOIN companies c ON c.id = l.company_id
+        WHERE l.company_id = ${company} AND l.through_on IS NOT NULL AND c.purge_started_at IS NULL AND ${day} <= l.through_on)`
+      // Anything of a company's stock, or of one item, in a locked period: a move that is not removed, dated on or before the lock.
+      const movesLocked = (company: string, item: string | null) => `EXISTS (SELECT 1 FROM stock_moves m JOIN period_locks l ON l.company_id = m.company_id JOIN companies c ON c.id = m.company_id
+        WHERE m.company_id = ${company}${item ? ` AND m.item_id = ${item}` : ''} AND m.deleted_at IS NULL AND l.through_on IS NOT NULL AND c.purge_started_at IS NULL AND m.on_date <= l.through_on)`
+      const guards = (table: string, lock: Record<string, string>) =>
+        ['INSERT', 'UPDATE', 'DELETE'].flatMap((action) => {
+          const row = action === 'DELETE' ? 'OLD' : 'NEW'
+          const name = `${table}_${action.toLowerCase()}`
+          return [
+            ...(lock[action]
+              ? [`DROP TRIGGER IF EXISTS ${name}_locked`, `CREATE TRIGGER ${name}_locked BEFORE ${action} ON ${table} WHEN ${lock[action]} BEGIN SELECT RAISE(ABORT, 'FIRMONY_PERIOD_LOCKED'); END`]
+              : []),
+            `DROP TRIGGER IF EXISTS ${name}_data`,
+            `CREATE TRIGGER ${name}_data AFTER ${action} ON ${table} BEGIN
+              INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+              ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+            ...(action === 'DELETE'
+              ? []
+              : [
+                  `DROP TRIGGER IF EXISTS ${name}_purging`,
+                  `CREATE TRIGGER ${name}_purging BEFORE ${action} ON ${table}
+                    WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+                    BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+                ]),
+          ]
+        })
+      return [
+        ...guards('stock_moves', {
+          INSERT: lockedOn('NEW.company_id', 'NEW.on_date'),
+          UPDATE: `(${lockedOn('OLD.company_id', 'OLD.on_date')} OR ${lockedOn('NEW.company_id', 'NEW.on_date')})`,
+          DELETE: lockedOn('OLD.company_id', 'OLD.on_date'),
+        }),
+        ...guards('stock_items', {
+          UPDATE: `(OLD.kind IS NOT NEW.kind OR OLD.deleted_at IS NOT NEW.deleted_at) AND ${movesLocked('OLD.company_id', 'OLD.id')}`,
+          DELETE: movesLocked('OLD.company_id', 'OLD.id'),
+        }),
+        ...guards('stock_settings', {
+          INSERT: movesLocked('NEW.company_id', null),
+          UPDATE: `(OLD.method IS NOT NEW.method OR OLD.valuation IS NOT NEW.valuation) AND ${movesLocked('OLD.company_id', null)}`,
+          DELETE: movesLocked('OLD.company_id', null),
+        }),
+      ]
+    })(),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

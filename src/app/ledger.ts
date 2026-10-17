@@ -24,6 +24,7 @@
 import { csvCell, csvMoney } from '../team/store'
 import { CATEGORIES, entryFor, type PaidBy } from './booking'
 import type { AssetEntry } from './assets'
+import type { StockEntry } from './stock'
 import { readableName } from './copy'
 import { centsOf } from './invoices'
 import { normalizeVs, type DocKind, type Exempt } from './match'
@@ -55,7 +56,10 @@ export const CHART: Readonly<Record<string, string>> = {
   '081': 'Oprávky k stavbám',
   '082': 'Oprávky k samostatným hnuteľným veciam a súborom hnuteľných vecí',
   '089': 'Oprávky k ostatnému dlhodobému hmotnému majetku',
+  '111': 'Obstaranie materiálu',
   '112': 'Materiál na sklade',
+  '123': 'Výrobky',
+  '131': 'Obstaranie tovaru',
   '132': 'Tovar na sklade a v predajniach',
   '211': 'Pokladnica',
   '213': 'Ceniny',
@@ -124,6 +128,7 @@ export const CHART: Readonly<Record<string, string>> = {
   '601': 'Tržby za vlastné výrobky',
   '602': 'Tržby z predaja služieb',
   '604': 'Tržby za tovar',
+  '613': 'Zmena stavu výrobkov',
   '641': 'Tržby z predaja dlhodobého nehmotného majetku a dlhodobého hmotného majetku',
   '644': 'Zmluvné pokuty, penále a úroky z omeškania',
   '645': 'Ostatné pokuty, penále a úroky z omeškania',
@@ -191,7 +196,7 @@ export interface LedgerLine {
   what?: 'cost' | 'vat' | 'revenue' | 'payable' | 'receivable'
 }
 
-export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'asset' | 'internal'
+export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'asset' | 'stock' | 'internal'
 
 export interface LedgerEntry {
   /** Unique in the books: d:<document>, p:<payment>, v:<period>[:n], m:<stored entry>. */
@@ -276,6 +281,8 @@ export interface LedgerInput {
   payroll?: LedgerPayroll[]
   /** The register's entries (assets.ts, assetEntries): putting in use, each month's depreciation, each disposal. */
   assets?: AssetEntry[]
+  /** The stock's entries (stock.ts, stockEntries): each month's receipts and issues, each count. */
+  stock?: StockEntry[]
 }
 
 /** An invoice's open item (saldokonto): what it comes to on its account and what of it was settled. */
@@ -400,7 +407,8 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
     vatPayer: payer,
     vatDeduct: deduct,
     paidBy: how.paidBy,
-    account: doc.account,
+    // A company that keeps its goods continuously (stock.ts, method A) buys them to their acquisition (131).
+    account: doc.account ?? (company.stockMethod === 'A' && doc.category === 'goods' ? '131' : null),
     selfVat,
     contra: how.contra ?? null,
   })
@@ -545,7 +553,7 @@ function settlementLines(owed: number, deducted: number): LedgerLine[] {
   return lines
 }
 
-const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, asset: 5, internal: 6 }
+const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, asset: 5, stock: 6, internal: 7 }
 
 /** The day the books start: the opening balances' day, else the contract's first day; null when neither is known. */
 export function booksStart(company: Pick<Company, 'startOn'>, manual: readonly ManualEntry[]): string | null {
@@ -781,6 +789,12 @@ export function buildBooks(input: LedgerInput): Books {
   for (const a of input.assets ?? []) {
     if (!inBooks(a.on)) continue
     entries.push({ key: a.key, on: a.on, kind: 'asset', number: a.number, text: a.text, docId: null, paymentId: null, manualId: null, lines: a.lines.map((l) => ({ ...l })) })
+  }
+
+  // The stock's receipts, issues and counts.
+  for (const e of input.stock ?? []) {
+    if (!inBooks(e.on)) continue
+    entries.push({ key: e.key, on: e.on, kind: 'stock', number: e.number, text: e.text, docId: null, paymentId: null, manualId: null, lines: e.lines.map((l) => ({ ...l })) })
   }
 
   // What the accountant wrote herself.
@@ -1114,7 +1128,7 @@ export function openingRows(lines: readonly LedgerLine[]): { account: string; md
 
 const csv = (rows: (string | number | null)[][]) => `﻿${rows.map((row) => row.map((cell) => csvCell(cell)).join(';')).join('\r\n')}\r\n`
 
-const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', asset: 'majetok', internal: 'interný doklad' }
+const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', asset: 'majetok', stock: 'sklad', internal: 'interný doklad' }
 
 /** The number a journal prints for an entry: the document's own, or what the entry is. */
 export function numberOf(e: LedgerEntry, books: Books): string {

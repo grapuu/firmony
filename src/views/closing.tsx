@@ -60,6 +60,8 @@ const IssueItem: FC<{ issue: ClosingIssue; company: Company; view: ClosingView }
         return [k.issue.nace, '#upravy', k.go.fix]
       case 'tax':
         return [k.issue.tax(formatEurExact(view.tax.rows.r1050 ?? 0), formatEurExact(view.booked)), null, null]
+      case 'stockCount':
+        return [k.issue.stockCount(view.stock?.method ?? 'A', view.year), `${base}/sklad`, k.go.stock]
       case 'deferred':
         return [k.issue.deferred(formatEurExact(view.deferred.expense), formatEurExact(view.deferredBooked)), null, null]
       case 'transit':

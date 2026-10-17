@@ -76,7 +76,7 @@ over. Bring this section up to date first whenever a session ends.
    (450 000 / 900 000 / 10, 5 000 000 / 10 000 000 / 50, two periods before, a new company's choice kept) proposed and
    set in the closing's form with the average employees from payroll, accounts placed in a row of her own (a
    receivable due after a year, a related party), the audit of § 19(1)(a) said; `closingBalancesByYear` reads every
-   year in one pass; test/closing-pod.runtime.mjs); then, in this order: stock; full payroll (agreements, directors,
+   year in one pass; test/closing-pod.runtime.mjs); then, in this order: full payroll (agreements, directors,
    sick leave, holidays, overtime, the annual settlement); migration from Pohoda, Omega, Money, KROS; foreign
    currencies, OSS, Intrastat and joint-stock companies. Deferred tax (built: § 10 of the measure MF/23054/2002-92 as
    of 1 January 2026, required with the audit, never for a micro entity; the register's temporary differences
@@ -86,7 +86,13 @@ over. Bring this section up to date first whenever a session ends.
    entity's tables and its cash flows by the indirect method; `src/app/pdf.ts` writes them as an ASCII PDF in the
    viewer's Helvetica with the Slovak letters by /Differences; `/ucto/klienti/:id/zavierka/poznamky.pdf`, saved with
    the podklady and put beside the statements in the filing bundle; what the draft says that only she can confirm is
-   listed on the page, `NOTE_CHECKS`). The site promises a large company only an offer of its own until the software does each part; every
+   listed on the page, `NOTE_CHECKS`). Stock (built: `src/app/stock.ts`, `stock-store.ts`, `views/stock.tsx`, schema
+   step 27 `stock_settings`, `stock_items`, `stock_moves`, the books' tab "Sklad" at `/ucto/klienti/:id/kniha/sklad`;
+   § 25(5) of the Act, the weighted average or FIFO; method A continuously, goods bought to 131 (`Company.stockMethod`),
+   receipts 132/131, 112/111, 123/613, issues 504, 501, 613, a count's shortage to 549 and surplus to 648 or 613 by § 11
+   of the accounting procedures; method B by counts, each count on the account and back the next day; each month's
+   receipts and issues one entry each; an issue that would leave the stock short refused; items and moves pasted from
+   another program, all or none; the closing asks for the year's count; test/stock.runtime.mjs). The site promises a large company only an offer of its own until the software does each part; every
    text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every

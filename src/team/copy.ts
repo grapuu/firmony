@@ -954,13 +954,19 @@ export const team = typesetAll({
       nace: 'Doplňte SK NACE hlavnej činnosti v úpravách nižšie.',
       tax: (computed: string, booked: string) => typeset(`Daň ${computed} nie je zaúčtovaná ako vyšla (v knihe ${booked}): zaúčtujte ju tlačidlom pri stave závierky.`),
       deferred: (computed: string, booked: string) => typeset(`Odložená daň za rok (${computed}) nie je zaúčtovaná ako vyšla (v knihe ${booked}): zaúčtujte ju tlačidlom pri stave závierky.`),
+      stockCount: (method: 'A' | 'B', year: number) =>
+        typeset(
+          method === 'B'
+            ? `Pri spôsobe B je stav zásob v súvahe len z inventúry: zapíšte inventúru k 31. 12. ${year} v sklade.`
+            : `Do závierky patrí inventarizácia zásob (§ 29 a 30 zákona o účtovníctve): na skladových kartách nie je inventúra za rok ${year}.`,
+        ),
       transit: 'Na účte 261 Peniaze na ceste zostal ku koncu roka zostatok.',
       rounding: (n: number, row: string) => typeset(`Zaokrúhlenie na celé eurá: rozdiel ${n} € sme pridali do riadku ${row} súvahy, aby výsledok sedel s výkazom ziskov a strát.`),
       audit: (year: number) =>
         typeset(`Firma spĺňa podmienky povinného auditu (§ 19 zákona o účtovníctve): závierku overí audítor a k nej patrí výročná správa. Ak nie sú hotové v lehote, podajte neoverenú závierku a správu audítora s výročnou správou uložte do registra dodatočne, najneskôr do 31. 12. ${year + 1} (§ 23a ods. 5).`),
       auditMaybe: 'Firma v tomto roku spĺňa podmienky povinného auditu (§ 19 zákona o účtovníctve). Ak ich splnila aj v predchádzajúcom roku, ktorý v našej knihe nie je, závierku overí audítor a k nej patrí výročná správa.',
     },
-    go: { opening: 'Počiatočné stavy', queue: 'Na zaúčtovanie', book: 'Účtovná kniha', internal: 'Interné doklady', details: 'Údaje firmy', fix: 'Doplniť', account: 'Účet 261' },
+    go: { stock: 'Sklad', opening: 'Počiatočné stavy', queue: 'Na zaúčtovanie', book: 'Účtovná kniha', internal: 'Interné doklady', details: 'Údaje firmy', fix: 'Doplniť', account: 'Účet 261' },
     taxTitle: 'Daň z príjmov',
     row: 'Riadok',
     amountCol: 'Suma',
@@ -1694,7 +1700,7 @@ export const team = typesetAll({
   ledger: {
     title: 'Účtovná kniha',
     lead: 'Denník, hlavná kniha, predvaha a saldokonto sa skladajú samy zo zaúčtovaných dokladov, z platieb a z podaných priznaní DPH. Ručne sa píšu len interné doklady a počiatočné stavy.',
-    tabs: { trial: 'Predvaha', journal: 'Denník', saldo: 'Saldokonto', payments: 'Platby bez dokladu', internal: 'Interné doklady', opening: 'Počiatočné stavy', assets: 'Majetok', periods: 'Uzamknutie období' },
+    tabs: { trial: 'Predvaha', journal: 'Denník', saldo: 'Saldokonto', payments: 'Platby bez dokladu', internal: 'Interné doklady', opening: 'Počiatočné stavy', assets: 'Majetok', stock: 'Sklad', periods: 'Uzamknutie období' },
     year: 'Rok',
     through: 'Do mesiaca',
     month: 'Mesiac',
@@ -1754,7 +1760,7 @@ export const team = typesetAll({
     journalLead: 'Všetky zápisy mesiaca, ako idú dni.',
     jcols: { day: 'Dátum', doc: 'Doklad', text: 'Text', md: 'MD', d: 'D', amount: 'Suma' },
     journalEmpty: 'V tomto mesiaci nie je v knihe žiadny zápis.',
-    source: { opening: 'Počiatočné stavy', document: 'Doklad', payment: 'Výpis z účtu', vat: 'Priznanie DPH', payroll: 'Mzdy', asset: 'Majetok', internal: 'Interný doklad' },
+    source: { opening: 'Počiatočné stavy', document: 'Doklad', payment: 'Výpis z účtu', vat: 'Priznanie DPH', payroll: 'Mzdy', asset: 'Majetok', stock: 'Sklad', internal: 'Interný doklad' },
     noNumber: 'bez čísla',
     accountTitle: (account: string) => typeset(`Účet ${account}`),
     accountLead: 'Hlavná kniha: počiatočný stav, každý pohyb so zostatkom po ňom a konečný stav.',

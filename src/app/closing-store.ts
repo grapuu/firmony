@@ -272,6 +272,8 @@ export interface ClosingView {
   /** The register of assets, for the notes' depreciation plan; the day the year before's statements were approved here. */
   assets: Asset[]
   priorApproved: string | null
+  /** How the company keeps its stock, when it does. */
+  stock: { method: 'A' | 'B'; valuation: 'average' | 'fifo' } | null
 }
 
 /** What the notes are made of: the company and the closing's year as the page shows it. */
@@ -292,6 +294,7 @@ export function notesSource(company: Pick<Company, 'name' | 'ico' | 'dic' | 'add
     deferred: { on: view.deferred.on, asset: view.deferred.asset, liability: view.deferred.liability, rate: view.deferred.rate },
     audit: view.audit,
     notes: view.inputs.notes,
+    stock: view.stock,
   }
 }
 
@@ -299,13 +302,24 @@ export function notesSource(company: Pick<Company, 'name' | 'ico' | 'dic' | 'add
 const SIZE_YEARS = 6
 
 export async function closingView(db: D1Database, company: Company, year: number, today: string, loaded?: { books?: Books; closings?: Closing[] }): Promise<ClosingView> {
-  const [books, closings, paid, assets, staff] = await Promise.all([
+  const [books, closings, paid, assets, staff, stockRow] = await Promise.all([
     loaded?.books ?? booksOf(db, company),
     loaded?.closings ?? closingsOf(db, company.id),
     incomePaid(db, company.id, year),
     assetsOf(db, company.id),
     employeesOf(db, company.id),
+    db
+      .prepare(
+        `SELECT s.method, s.valuation,
+           EXISTS (SELECT 1 FROM stock_items i WHERE i.company_id = s.company_id AND i.deleted_at IS NULL) AS items,
+           EXISTS (SELECT 1 FROM stock_moves m WHERE m.company_id = s.company_id AND m.kind = 'count' AND m.deleted_at IS NULL AND substr(m.on_date, 1, 4) = ?2) AS in_year,
+           EXISTS (SELECT 1 FROM stock_moves m WHERE m.company_id = s.company_id AND m.kind = 'count' AND m.deleted_at IS NULL AND m.on_date = ?2 || '-12-31') AS year_end
+         FROM stock_settings s WHERE s.company_id = ?1`,
+      )
+      .bind(company.id, String(year))
+      .first<Row>(),
   ])
+  const stock = stockRow ? { method: stockRow.method === 'B' ? ('B' as const) : ('A' as const), valuation: stockRow.valuation === 'fifo' ? ('fifo' as const) : ('average' as const), items: stockRow.items === 1, inYear: stockRow.in_year === 1, yearEnd: stockRow.year_end === 1 } : null
   const closing = closings.find((k) => k.year === year) ?? null
   // The activity is the company's: what was set for the year, else the last year that has it.
   const stored = closing?.inputs ?? storedInputs(null)
@@ -399,6 +413,7 @@ export async function closingView(db: D1Database, company: Company, year: number
       statements,
       tax: running ? null : { computed: tax.rows.r1050 ?? 0, booked, deferred: { computed: deferred.expense, booked: deferredBooked } },
       audit,
+      stock,
     }),
     running,
     due: closing?.dueOn ?? closingDue(year, closing?.extendedTo ?? null),
@@ -414,5 +429,6 @@ export async function closingView(db: D1Database, company: Company, year: number
     deferredBooked,
     assets,
     priorApproved: closings.find((k) => k.year === year - 1)?.inputs.approvedOn ?? null,
+    stock: stock ? { method: stock.method, valuation: stock.valuation } : null,
   }
 }

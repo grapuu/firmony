@@ -31,6 +31,7 @@ import {
   closingPod,
   notes,
   pdf as pdfWriter,
+  stock,
   payroll,
   payrollStore,
   payrollReporting as reports,
@@ -2875,6 +2876,19 @@ async function zipped(entries, note) {
     general.slice(0, 300),
   )
   check('the open items as a file', plain(ledger.saldoCsv(books, '2026-10-14')).includes('311;20260001;Zákazník s. r. o.;2026-09-10;2026-09-24;246,00;0,00;246,00;20'))
+  // Stock (17 October 2026): a company keeping its goods continuously buys them to 131, the stock's entries reach the books
+  {
+    const goods = doc('tovar', { category: 'goods', totalCents: 12300, vatCents: 2300, vatDeduct: true, issuedOn: '2026-09-10' })
+    const a = ledger.buildBooks({ company: company({ stockMethod: 'A' }), docs: [goods], payments: [], banks: [], filed: [], manual: [], stock: [{ key: 's:in:2026-09', on: '2026-09-12', number: 'SKL 09/2026', text: 'Príjem na sklad za 09/2026', lines: [{ md: '132', d: '131', cents: 10000 }] }] })
+    const b = ledger.buildBooks({ company: company({ stockMethod: 'B' }), docs: [goods], payments: [], banks: [], filed: [], manual: [] })
+    check(
+      'method A buys goods to their acquisition (131) and the receipt moves them to the stock (132); method B buys them to costs (504)',
+      a.entries.find((e) => e.key === 'd:tovar')?.lines.some((l) => l.md === '131' && l.cents === 10000) &&
+        ledger.balanceOf(a.entries, '131', '2026-09-30') === 0 && ledger.balanceOf(a.entries, '132', '2026-09-30') === 10000 && a.entries.find((e) => e.key === 's:in:2026-09')?.kind === 'stock' &&
+        b.entries.find((e) => e.key === 'd:tovar')?.lines.some((l) => l.md === '504' && l.cents === 10000),
+      JSON.stringify(a.entries.map((e) => [e.key, e.lines])),
+    )
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -3674,6 +3688,14 @@ async function zipped(entries, note) {
       closing.auditOf(fig(2026, 3000000, 7000000, 51, 3900000), fig(2025, 3000000, 9000000, 60, 4100000)) === 'no',
   )
   check(
+    'the count of inventories: method B keeps the closing back without the count of the year\'s last day, method A warns without a count in the year; not while the year runs',
+    issues({}, { stock: { method: 'B', items: true, inYear: true, yearEnd: false } }).some((x) => x.code === 'stockCount' && x.level === 'block') &&
+      !issues({}, { stock: { method: 'B', items: true, inYear: true, yearEnd: true } }).some((x) => x.code === 'stockCount') &&
+      issues({}, { stock: { method: 'A', items: true, inYear: false, yearEnd: false } }).some((x) => x.code === 'stockCount' && x.level === 'warn') &&
+      !issues({}, { tax: null, stock: { method: 'B', items: true, inYear: false, yearEnd: false } }).some((x) => x.code === 'stockCount') &&
+      !issues({}, { stock: { method: 'B', items: false, inYear: false, yearEnd: false } }).some((x) => x.code === 'stockCount'),
+  )
+  check(
     'an audit is said on the closing, to look at',
     issues({}, { audit: 'yes' }).some((x) => x.code === 'audit' && x.level === 'warn') && issues({}, { audit: 'maybe' }).some((x) => x.code === 'auditMaybe') && !issues({}, { audit: 'no' }).some((x) => x.code.startsWith('audit')),
   )
@@ -4229,4 +4251,92 @@ await checkPrehlad()
 await (await import('./billing.units.mjs')).checkBillingRules()
 await (await import('./health.units.mjs')).checkHealth()
 await (await import('./social.units.mjs')).checkSocial()
+
+// ---------------------------------------------------------------------------------------------------------------
+// Stock (17 October 2026): valuation, the books' entries, what the accountant types and pastes
+// ---------------------------------------------------------------------------------------------------------------
+{
+  let k = 0
+  const mv = (kind, on, quantity, value = null, itemId = 'i1') => ({ id: `m${++k}`, itemId, number: `X-${k}`, kind, on, quantity: quantity * 1000, value, documentId: null, note: null, createdAt: k })
+  const A = { method: 'A', valuation: 'average' }
+  const F = { method: 'A', valuation: 'fifo' }
+  const moves = [mv('in', '2026-03-01', 10, 10000), mv('in', '2026-03-05', 10, 12000), mv('out', '2026-03-10', 5), mv('out', '2026-03-20', 15)]
+  let v = stock.valueItem(moves, A)
+  check(
+    'the weighted average: 10 at 10 € and 10 at 12 € make 11 €; 5 out cost 55 €, the last 15 the rest, the stock nought to the cent',
+    v[2].cost === 5500 && v[2].after.value === 16500 && v[3].cost === 16500 && v[3].after.quantity === 0 && v[3].after.value === 0,
+    JSON.stringify(v.map((m) => [m.cost, m.after])),
+  )
+  v = stock.valueItem(moves, F)
+  check('FIFO: 15 out take the first 10 at 10 € and 5 at 12 €; 5 at 12 € are left', v[2].cost === 5000 && v[2].after.value === 17000 && v[3].cost === 17000)
+  v = stock.valueItem([mv('in', '2026-03-01', 3, 1000), mv('out', '2026-03-02', 1), mv('out', '2026-03-03', 1), mv('out', '2026-03-04', 1)], A)
+  check('a third of 10 € three times: 3,33, 3,34 and 3,33 €, nothing lost or made by rounding', v[1].cost === 333 && v[2].cost === 334 && v[3].cost === 333 && v[3].after.value === 0)
+  v = stock.valueItem([mv('out', '2026-04-02', 2), mv('in', '2026-04-02', 5, 5000)], A)
+  check('in a day what comes in goes before what goes out', v[0].kind === 'in' && v[1].cost === 2000 && !stock.shortOf(v))
+  check('more out than there is is said', stock.shortOf(stock.valueItem([mv('in', '2026-04-01', 1, 100), mv('out', '2026-04-02', 2)], A))?.kind === 'out')
+  v = stock.valueItem([mv('in', '2026-05-01', 10, 11000), mv('count', '2026-05-31', 8), mv('count', '2026-06-30', 9)], A)
+  check(
+    'a count under method A: 2 short cost 22 € (a shortage), one found back at the average (a surplus)',
+    v[1].difference === -2000 && v[1].cost === -2200 && v[1].after.value === 8800 && v[2].difference === 1000 && v[2].cost === 1100 && v[2].after.value === 9900,
+  )
+  v = stock.valueItem([mv('count', '2026-12-31', 40, 52000), mv('count', '2027-12-31', 10, 15000)], { method: 'B', valuation: 'average' })
+  check('a count under method B is the stock, at its value', v[0].after.value === 52000 && v[1].after.quantity === 10000 && v[1].after.value === 15000)
+
+  const items = [
+    { id: 'g', code: 'T-1', name: 'Tovar', unit: 'ks', kind: 'goods' },
+    { id: 'm', code: 'M-1', name: 'Materiál', unit: 'kg', kind: 'material' },
+    { id: 'p', code: 'V-1', name: 'Výrobok', unit: 'ks', kind: 'products' },
+  ]
+  const all = [
+    mv('in', '2026-03-02', 10, 10000, 'g'),
+    mv('in', '2026-03-15', 5, 6000, 'g'),
+    mv('out', '2026-03-20', 6, null, 'g'),
+    mv('in', '2026-03-03', 100, 25000, 'm'),
+    mv('out', '2026-03-28', 40, null, 'm'),
+    mv('in', '2026-03-10', 4, 8000, 'p'),
+    mv('out', '2026-04-05', 1, null, 'p'),
+    mv('count', '2026-04-30', 8, null, 'g'),
+  ]
+  const entries = stock.stockEntries(A, items, all)
+  const of = (key) => entries.find((e) => e.key === key)
+  check(
+    "method A's entries: a month's receipts in one entry, its issues in another, each kind its line; a count's shortage of its own",
+    JSON.stringify(of('s:in:2026-03')?.lines) === JSON.stringify([{ md: '132', d: '131', cents: 16000 }, { md: '112', d: '111', cents: 25000 }, { md: '123', d: '613', cents: 8000 }]) &&
+      of('s:in:2026-03').on === '2026-03-15' && of('s:in:2026-03').number === 'SKL 03/2026' &&
+      JSON.stringify(of('s:out:2026-03')?.lines) === JSON.stringify([{ md: '504', d: '132', cents: 6400 }, { md: '501', d: '112', cents: 10000 }]) &&
+      JSON.stringify(of('s:out:2026-04')?.lines) === JSON.stringify([{ md: '613', d: '123', cents: 2000 }]) &&
+      JSON.stringify(entries.find((e) => e.key.startsWith('s:i:'))?.lines) === JSON.stringify([{ md: '549', d: '132', cents: 1067 }]),
+    JSON.stringify(entries),
+  )
+  const bEntries = stock.stockEntries({ method: 'B', valuation: 'average' }, items, [mv('count', '2026-12-31', 40, 52000, 'g'), mv('count', '2026-12-31', 10, 2000, 'm')])
+  check(
+    "method B's: the count puts the stock on its accounts on its day and takes it back the next",
+    bEntries.length === 2 && bEntries[0].on === '2026-12-31' && JSON.stringify(bEntries[0].lines) === JSON.stringify([{ md: '132', d: '504', cents: 52000 }, { md: '112', d: '501', cents: 2000 }]) &&
+      bEntries[1].on === '2027-01-01' && JSON.stringify(bEntries[1].lines) === JSON.stringify([{ md: '504', d: '132', cents: 52000 }, { md: '501', d: '112', cents: 2000 }]),
+  )
+  check('no way of keeping stock, no entries', stock.stockEntries(null, items, all).length === 0)
+  const summary = stock.stockSummary(A, items, all, '2026-03-31')
+  check('the stock of each item and kind at a day', summary.kinds.goods === 9600 && summary.kinds.material === 15000 && summary.kinds.products === 8000 && summary.items.find((r) => r.item.id === 'g')?.quantity === 9000)
+  check('quantities as typed and written', stock.quantityOf('1 250,125') === 1250125 && stock.quantityOf('0,5') === 500 && stock.quantityOf('-1') === null && stock.quantityOf('1,2345') === null && stock.quantityText(1250125) === '1 250,125' && stock.quantityText(500) === '0,5' && stock.quantityText(-2000) === '−2')
+
+  const form = (fields) => (name) => fields[name]
+  let item = stock.readItem(form({ kod: 'T-2', nazov: 'Skrutky', jednotka: 'bal', druh: 'material' }), new Set(['t-1']))
+  check('an item read', item.item?.code === 'T-2' && item.item.kind === 'material' && item.item.unit === 'bal')
+  item = stock.readItem(form({ kod: 't-1', nazov: '', jednotka: '12', druh: 'iné' }), new Set(['t-1']))
+  check('a code taken, no name, a unit that is no word, a kind that is none: each said', Boolean(item.errors.code && item.errors.name && item.errors.unit && item.errors.kind) && item.item === null)
+  let move = stock.readMove(form({ pohyb: 'in', polozka: 'g', den: '2026-03-02', mnozstvo: '10', hodnota: '100,00', doklad: 'd1', poznamka: 'Dodávka' }), A, items, new Set(['d1']))
+  check('a receipt read: its quantity in thousandths, its value in cents, its document', move.move?.quantity === 10000 && move.move.value === 10000 && move.move.documentId === 'd1')
+  move = stock.readMove(form({ pohyb: 'in', polozka: 'g', den: '2026-02-30', mnozstvo: '0', hodnota: '', doklad: 'cudzi' }), A, items, new Set())
+  check('a day that is none, no quantity, a receipt without value, a document not of the company: each said', Boolean(move.errors.on && move.errors.quantity && move.errors.value && move.errors.document))
+  move = stock.readMove(form({ pohyb: 'out', polozka: 'g', den: '2026-03-02', mnozstvo: '1' }), { method: 'B', valuation: 'average' }, items, new Set())
+  check('method B keeps counts only, each with its value', Boolean(move.errors.kind) && Boolean(stock.readMove(form({ pohyb: 'count', polozka: 'g', den: '2026-12-31', mnozstvo: '0' }), { method: 'B', valuation: 'average' }, items, new Set()).errors.value))
+  check('an issue keeps no value of its own: the valuation gives it', stock.readMove(form({ pohyb: 'out', polozka: 'g', den: '2026-03-02', mnozstvo: '1', hodnota: '5' }), A, items, new Set()).move?.value === null)
+  let pasted = stock.parseMovesCsv('Deň;Kód;Druh;Množstvo;Hodnota;Poznámka\n2.3.2026;T-1;príjem;10;100,00;Dodávka\n2026-03-20;t-1;Výdaj;6;;\n2026-04-30\tM-1\tinventúra\t8,5\t\t', A, items)
+  check('pasted moves: a heading skipped, days in either form, codes in any case, tabs or semicolons', pasted.errors.length === 0 && pasted.moves.length === 3 && pasted.moves[0].on === '2026-03-02' && pasted.moves[1].kind === 'out' && pasted.moves[2].quantity === 8500 && pasted.moves[2].itemId === 'm')
+  pasted = stock.parseMovesCsv('2026-03-02;T-1;príjem;10;\n2026-13-01;X-9;predaj;veľa;1', A, items)
+  check('a wrong line keeps all back, each said by its line', pasted.moves.length === 0 && pasted.errors.length === 2 && pasted.errors[0].startsWith('Riadok 1:') && pasted.errors[1].includes('neznámy kód X-9'), JSON.stringify(pasted.errors))
+  const pastedItems = stock.parseItemsCsv('kód;názov;jednotka;druh\nA-1;Jablká;kg;tovar\nB-2;Lepidlo;ks;materiál\nA-1;Znova;ks;tovar', new Set())
+  check('pasted items: a code twice is said', pastedItems.items.length === 0 && pastedItems.errors.length === 1 && pastedItems.errors[0].startsWith('Riadok 4:') && stock.parseItemsCsv('A-1;Jablká;kg;tovar\nB-2;Lepidlo;ks;112', new Set()).items.length === 2)
+}
+
 done('units')

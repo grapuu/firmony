@@ -81,6 +81,10 @@ import {
 import { AssetPage, AssetsPage, assetRow, emptyAssetValues, valuesOf as assetValuesOf, type AssetFormErrors, type AssetValues } from '../views/assets'
 import { DISPOSALS, assetErrors, assetKind, assetYear, isAssetAccount, type AssetAccount, type Disposal } from '../app/assets'
 import { assetsOf, disposeAssetStatement, insertAssetStatement, removeAssetStatement, updateAssetStatement, type AssetInput } from '../app/assets-store'
+import { StockItemPage, StockPage, type StockDocument } from '../views/stock'
+import { parseItemsCsv, parseMovesCsv, readItem, readMove, shortOf, stockSummary, valueItem, STOCK_ACCOUNTS, STOCK_KINDS, type ItemErrors, type ItemValues, type MoveErrors, type MoveValues, type StockKind, type StockMove } from '../app/stock'
+import { insertItemStatement, insertMoveStatement, removeItemStatement, removeMoveStatement, settingsStatement as stockSettingsStatement, stockOf, updateItemStatement, type Stock } from '../app/stock-store'
+import { balanceOf as accountBalance } from '../app/ledger'
 import { isPeriodLocked } from '../app/periods'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
 import { ClosingPage, closingState, type ClosingState } from '../views/closing'
@@ -2475,6 +2479,251 @@ teamRoutes.post('/klienti/:id/kniha/majetok/:asset/odstranit', async (c) => {
     throw err
   }
   return c.redirect(`${bookPath(company)}/majetok?ok=odstranene`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Stock (17 October 2026; src/app/stock.ts): items, receipts, issues and counts, pasted lists, each item's card
+// ---------------------------------------------------------------------------------------------------------------
+
+const STOCK_LOCKED = 'Toto zasahuje do uzamknutého obdobia. Najprv ho otvorte v časti Uzamknutie období.'
+
+/** The company's documents a receipt or an issue may name, the newest first. */
+async function stockDocuments(db: D1Database, company: string): Promise<StockDocument[]> {
+  const rows = await db
+    .prepare("SELECT id, number, party, issued_on FROM documents WHERE company_id = ? AND deleted_at IS NULL AND kind IN ('invoice_in', 'invoice_out', 'receipt') ORDER BY COALESCE(issued_on, '') DESC, created_at DESC LIMIT 300")
+    .bind(company)
+    .all<Record<string, unknown>>()
+  return rows.results.map((r) => ({ id: String(r.id), label: [r.number ?? 'bez čísla', r.party, typeof r.issued_on === 'string' ? dayName(r.issued_on) : null].filter(Boolean).join(', ') }))
+}
+
+const emptyMove = (day: string): MoveValues => ({ kind: 'in', item: '', on: day, quantity: '', value: '', document: '', note: '' })
+const emptyItem = (): ItemValues => ({ code: '', name: '', unit: 'ks', kind: 'goods' })
+
+/** What a set of new moves would leave short: the first item and move that would go below nought. */
+function stockShort(stock: Stock, added: readonly StockMove[]): { item: string; move: StockMove } | null {
+  if (!stock.settings || stock.settings.method === 'B') return null
+  for (const itemId of new Set(added.map((m) => m.itemId))) {
+    const moves = [...stock.moves.filter((m) => m.itemId === itemId), ...added.filter((m) => m.itemId === itemId)]
+    const short = shortOf(valueItem(moves, stock.settings))
+    if (short) return { item: stock.items.find((i) => i.id === itemId)?.code ?? itemId, move: short }
+  }
+  return null
+}
+
+async function stockPage(
+  c: Ctx,
+  company: Company,
+  form: { item?: { values: ItemValues; errors: ItemErrors }; move?: { values: MoveValues; errors: MoveErrors }; paste?: { moves: string; items: string; errors: string[] }; error?: string } = {},
+  status: ContentfulStatusCode = 200,
+) {
+  const today = dayOf(now())
+  const asked = c.req.query('ku') ?? ''
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today
+  const [stock, books, documents] = await Promise.all([stockOf(c.env.DB, company.id), booksOf(c.env.DB, company), stockDocuments(c.env.DB, company.id)])
+  const summary = stock.settings ? stockSummary(stock.settings, stock.items, stock.moves, day) : { items: stock.items.map((item) => ({ item, quantity: 0, value: 0 })), kinds: { goods: 0, material: 0, products: 0 } }
+  const bookValues = Object.fromEntries(STOCK_KINDS.map((k) => [k, accountBalance(books.entries, STOCK_ACCOUNTS[k].stock, day)])) as Record<StockKind, number>
+  const ok = c.req.query('ok')
+  const flash = ok === 'nastavenie' ? 'Spôsob vedenia skladu je uložený.' : ok === 'polozka' ? 'Položka je pridaná.' : ok === 'pohyb' ? 'Pohyb je zapísaný a zaúčtovaný.' : ok === 'vlozene' ? `Vložili sme ${c.req.query('n') ?? ''} riadkov.` : ok === 'odstranene' ? 'Odstránené.' : null
+  return shell(
+    c,
+    'clients',
+    `Sklad: ${company.name}`,
+    <StockPage
+      company={company}
+      settings={stock.settings}
+      rows={summary.items}
+      kinds={summary.kinds}
+      books={bookValues}
+      day={day}
+      documents={documents}
+      item={form.item ?? { values: emptyItem(), errors: {} }}
+      move={form.move ?? { values: { ...emptyMove(today), item: stock.items[0]?.id ?? '', kind: stock.settings?.method === 'B' ? 'count' : 'in' }, errors: {} }}
+      paste={form.paste ?? { moves: '', items: '', errors: [] }}
+      flash={status === 200 ? flash : null}
+      error={form.error ?? null}
+    />,
+    status,
+  )
+}
+
+teamRoutes.get('/klienti/:id/kniha/sklad', async (c) => {
+  const company = await companyParam(c)
+  return company ? stockPage(c, company) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/nastavenie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const method = body.sposob === 'B' ? 'B' : body.sposob === 'A' ? 'A' : null
+  const valuation = body.ocenenie === 'fifo' ? 'fifo' : 'average'
+  if (!method) return stockPage(c, company, { error: 'Vyberte spôsob A alebo B.' }, 422)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([stockSettingsStatement(c.env.DB, company.id, { method, valuation }, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.settings', subject: company.id, detail: { method, valuation } })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return stockPage(c, company, { error: STOCK_LOCKED }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/sklad?ok=nastavenie`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/polozky', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const stock = await stockOf(c.env.DB, company.id)
+  const read = readItem((name) => body[name], new Set(stock.items.map((i) => i.code.toLowerCase())))
+  if (!read.item) return stockPage(c, company, { item: { values: read.values, errors: read.errors } }, 422)
+  const id = crypto.randomUUID()
+  const who = c.get('who')
+  await c.env.DB.batch([insertItemStatement(c.env.DB, company.id, id, read.item, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.item.added', subject: id })])
+  return c.redirect(`${bookPath(company)}/sklad?ok=polozka`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/pohyby', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const [stock, documents] = await Promise.all([stockOf(c.env.DB, company.id), stockDocuments(c.env.DB, company.id)])
+  if (!stock.settings) return stockPage(c, company, { error: 'Najprv vyberte, ako firma vedie zásoby.' }, 422)
+  const read = readMove((name) => body[name], stock.settings, stock.items, new Set(documents.map((d) => d.id)))
+  if (!read.move) return stockPage(c, company, { move: { values: read.values, errors: read.errors } }, 422)
+  const id = crypto.randomUUID()
+  const at = now()
+  const short = stockShort(stock, [{ ...read.move, id, number: '~', createdAt: at }])
+  if (short) return stockPage(c, company, { move: { values: read.values, errors: { form: `Na sklade by chýbalo: položka ${short.item} by ${dayName(short.move.on)} klesla pod nulu. Skontrolujte množstvo a deň.` } } }, 422)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([insertMoveStatement(c.env.DB, company.id, id, read.move, who.user.id, at), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.move.added', subject: id, detail: { kind: read.move.kind } })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return stockPage(c, company, { move: { values: read.values, errors: { form: STOCK_LOCKED } } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/sklad?ok=pohyb`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/vlozit-polozky', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = typeof body.riadky === 'string' ? body.riadky.slice(0, 400_000) : ''
+  const stock = await stockOf(c.env.DB, company.id)
+  const parsed = parseItemsCsv(text, new Set(stock.items.map((i) => i.code.toLowerCase())))
+  if (parsed.errors.length > 0) return stockPage(c, company, { paste: { items: text, moves: '', errors: parsed.errors } }, 422)
+  const who = c.get('who')
+  const statements = parsed.items.map((item) => insertItemStatement(c.env.DB, company.id, crypto.randomUUID(), item, who.user.id))
+  for (let i = 0; i < statements.length; i += 200) await c.env.DB.batch(statements.slice(i, i + 200))
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.items.pasted', subject: company.id, detail: { count: parsed.items.length } })])
+  return c.redirect(`${bookPath(company)}/sklad?ok=vlozene&n=${parsed.items.length}`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/vlozit-pohyby', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = typeof body.riadky === 'string' ? body.riadky.slice(0, 400_000) : ''
+  const stock = await stockOf(c.env.DB, company.id)
+  if (!stock.settings) return stockPage(c, company, { error: 'Najprv vyberte, ako firma vedie zásoby.' }, 422)
+  const parsed = parseMovesCsv(text, stock.settings, stock.items)
+  if (parsed.errors.length > 0) return stockPage(c, company, { paste: { moves: text, items: '', errors: parsed.errors } }, 422)
+  const at = now()
+  // Each line its own moment, in the order pasted, so that moves of one day keep their order.
+  const moves = parsed.moves.map((m, i) => ({ ...m, id: crypto.randomUUID(), number: '~', createdAt: at + i / 1000 }))
+  const short = stockShort(stock, moves)
+  if (short) return stockPage(c, company, { paste: { moves: text, items: '', errors: [`Na sklade by chýbalo: položka ${short.item} by ${dayName(short.move.on)} klesla pod nulu. Nevložili sme nič.`] } }, 422)
+  const who = c.get('who')
+  // One transaction: the period lock refuses all of it, or none is refused.
+  const statements = moves.map((m) => insertMoveStatement(c.env.DB, company.id, m.id, m, who.user.id, m.createdAt))
+  try {
+    await c.env.DB.batch([...statements, eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.moves.pasted', subject: company.id, detail: { count: moves.length } })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return stockPage(c, company, { paste: { moves: text, items: '', errors: [STOCK_LOCKED] } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/sklad?ok=vlozene&n=${moves.length}`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/pohyby/:move/odstranit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const stock = await stockOf(c.env.DB, company.id)
+  const move = stock.moves.find((m) => m.id === c.req.param('move'))
+  if (!move) return missingPage(c)
+  // Removing a receipt may leave a later issue short.
+  if (stock.settings && stock.settings.method === 'A') {
+    const short = shortOf(valueItem(stock.moves.filter((m) => m.itemId === move.itemId && m.id !== move.id), stock.settings))
+    if (short) return c.redirect(`${bookPath(company)}/sklad/${move.itemId}?chyba=chyba`, 303)
+  }
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([removeMoveStatement(c.env.DB, company.id, move.id, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.move.removed', subject: move.id })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return c.redirect(`${bookPath(company)}/sklad/${move.itemId}?chyba=uzamknute`, 303)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/sklad/${move.itemId}?ok=odstranene`, 303)
+})
+
+async function stockItemPage(c: Ctx, company: Company, form: { values?: ItemValues; errors?: ItemErrors } = {}, status: ContentfulStatusCode = 200) {
+  const [stock, documents] = await Promise.all([stockOf(c.env.DB, company.id), stockDocuments(c.env.DB, company.id)])
+  const item = stock.items.find((i) => i.id === c.req.param('item'))
+  if (!item || !stock.settings) return missingPage(c)
+  const err = c.req.query('chyba')
+  const error = err === 'uzamknute' ? STOCK_LOCKED : err === 'chyba' ? 'Pohyb sme neodstránili: na sklade by potom chýbalo pri neskoršej výdajke.' : null
+  return shell(
+    c,
+    'clients',
+    `${item.name}: ${company.name}`,
+    <StockItemPage
+      company={company}
+      settings={stock.settings}
+      item={item}
+      moves={valueItem(stock.moves.filter((m) => m.itemId === item.id), stock.settings)}
+      documents={new Map(documents.map((d) => [d.id, d.label]))}
+      values={form.values ?? { code: item.code, name: item.name, unit: item.unit, kind: item.kind }}
+      errors={form.errors ?? {}}
+      flash={status === 200 && c.req.query('ok') === 'ulozene' ? 'Údaje sú uložené.' : status === 200 && c.req.query('ok') === 'odstranene' ? 'Pohyb sme odstránili.' : null}
+      error={error}
+    />,
+    status,
+  )
+}
+
+teamRoutes.get('/klienti/:id/kniha/sklad/:item', async (c) => {
+  const company = await companyParam(c)
+  return company ? stockItemPage(c, company) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/:item', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const stock = await stockOf(c.env.DB, company.id)
+  const item = stock.items.find((i) => i.id === c.req.param('item'))
+  if (!item) return missingPage(c)
+  const body = await c.req.parseBody()
+  const read = readItem((name) => body[name], new Set(stock.items.filter((i) => i.id !== item.id).map((i) => i.code.toLowerCase())))
+  if (!read.item) return stockItemPage(c, company, { values: read.values, errors: read.errors }, 422)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([updateItemStatement(c.env.DB, company.id, item.id, read.item), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.item.changed', subject: item.id })])
+  } catch (err) {
+    if (isPeriodLocked(err)) return stockItemPage(c, company, { values: read.values, errors: { form: STOCK_LOCKED } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/sklad/${item.id}?ok=ulozene`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/sklad/:item/odstranit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const stock = await stockOf(c.env.DB, company.id)
+  const item = stock.items.find((i) => i.id === c.req.param('item'))
+  if (!item) return missingPage(c)
+  const who = c.get('who')
+  const [done] = await c.env.DB.batch([removeItemStatement(c.env.DB, company.id, item.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.item.removed', subject: item.id })])
+  if ((done?.meta?.changes ?? 0) === 0) return stockItemPage(c, company, { errors: { form: 'Položku s pohybmi neodstránime: najprv odstráňte jej pohyby.' } }, 409)
+  return c.redirect(`${bookPath(company)}/sklad?ok=odstranene`, 303)
 })
 
 teamRoutes.get('/klienti/:id/kniha/interne', async (c) => {

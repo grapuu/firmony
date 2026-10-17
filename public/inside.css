@@ -5925,6 +5925,8 @@ select.field__input {
 
 /* A wide table scrolls inside its card; the page itself never does. */
 .lscroll {
+  /* A hidden label inside a table (.sr is absolute) stays within the scroll, not beyond the page. */
+  position: relative;
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -6990,3 +6992,50 @@ select.field__input {
 }
 .asset-table th + th, .asset-table td + td { padding-left: 16px; }
 .asset-table td.num { white-space: nowrap; }
+
+/* Stock (17 October 2026): the day the stock is shown at, the cards and the errors of a pasted list. */
+.stock-day {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 0 0 16px;
+}
+
+.stock-day .field {
+  margin: 0;
+}
+
+.stock-errors {
+  margin: 0 0 12px;
+  padding-left: 32px;
+}
+
+.stock-settings > summary {
+  cursor: pointer;
+}
+
+.stock-card form {
+  margin: 0;
+}
+
+/* Cards one after another under the books' tabs (the register of assets, the stock) keep their distance. */
+.ltabs ~ .info + .info {
+  margin-top: 16px;
+}
+
+.stock-table td:first-child,
+.stock-table td.num,
+.stock-card td:first-child,
+.stock-card td:nth-child(2),
+.stock-card td.num,
+.stock-kinds dd {
+  white-space: nowrap;
+}
+
+.stock-table th + th,
+.stock-table td + td,
+.stock-card th + th,
+.stock-card td + td {
+  padding-left: 14px;
+}
