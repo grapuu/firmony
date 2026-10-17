@@ -55,6 +55,8 @@ Hlavička ponúka vlastný účet firmy, číslo zamestnávateľa z nastavení a
 Desaťmiestne číslo zamestnávateľa SP sa nezamieňa s osemmiestnym IČO. IBAN je účet, z ktorého firma
 odvádza poistné, nie príjmový účet SP. Meno a priezvisko osoby plniacej povinnosti sa neskracujú ani
 nerozdeľujú odhadom. Údaje tejto osoby sa neoznačujú za zmenu kontaktov samotného zamestnávateľa.
+Príprava vyžaduje vyplnený telefón s medzinárodnou predvoľbou a e-mail tejto osoby, hoci XSD technicky
+pripúšťa prázdny text. Samotná XSD nie je úplnou vecnou kontrolou podania.
 Určený výplatný termín pochádza z uzávierky; dátum vypracovania nie je dôkaz bankovej úhrady.
 
 Náhľad je viazaný na zdroj, revíziu údajov, spoločnú identitu, IČPV a hodiny. Zápis znovu kontroluje
@@ -65,6 +67,7 @@ už uložený originál. Príprava aj citlivé zmeny vyžadujú čerstvé overen
 Oprava IČPV alebo hodín zneaktuálni dotknuté generované SP výkazy. Oprava spoločného rodného čísla
 otvorí preverenie dotknutých SP aj zdravotných výkazov. Starší súbor a jeho potvrdenka sa nemenia.
 Pracovný zoznam, termín a odovzdanie sa riadia aktuálnymi podkladmi. Ostatní príjemcovia sa nemenia.
+Pri už doloženom prijatí SP generovanie vyžaduje opravný typ O aj v SQL; ďalší riadny výkaz sa nevytvorí.
 Nová verzia po odoslanom, prijatom alebo preverovanom podaní vyžaduje správcu a dôvod. Samotná
 oprava podkladu nepodáva opravný výkaz. Každé prijatie sa dokladá nezávislou, skontrolovanou potvrdenkou.
 

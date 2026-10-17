@@ -24,6 +24,7 @@ export async function checkSocial() {
   check('a corrective MVPP is a complete replacement with all original-source employees',result.valid&&readSocialXml(corrected).rows.length===3&&corrected.includes('<typVykazu>O</typVykazu>'))
   const error=(v={},replace=false)=>p.socialInputError({...input,...v},period,today,company,replace)
   check('social preparation requires an explicit kind, full-scope review and employer identity',error()===null&&Boolean(error({kind:''}))&&Boolean(error({checked:false}))&&Boolean(error({payer:'63333333'}))&&Boolean(error({name:'Other company'}))&&Boolean(error({reference:''})))
+  check('SP preparation requires the responsible person’s actual phone and email even when XSD permits empty text',Boolean(error({phone:''}))&&Boolean(error({email:''})))
   check('the social header rejects invalid dates, accounts, controls and silently shortened names',Boolean(error({declaredOn:'2026-10-18'}))&&Boolean(error({declaredOn:'2026-02-31'}))&&Boolean(error({iban:'SK00'}))&&Boolean(error({firstName:'A'.repeat(25)}))&&Boolean(error({lastName:'X\u0001'}))&&Boolean(error({preparedBy:'X\uD800'})))
   check('another social file version needs a recorded reason',Boolean(error({},true))&&error({reason:'TEST checked complete replacement'},true)===null)
   check('even the first internally prepared corrective SP file requires its scope and reason',Boolean(error({kind:'O'}))&&error({kind:'O',reason:'TEST correction of an externally prepared first report'})===null)

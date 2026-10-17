@@ -53,7 +53,7 @@ export function socialInputError(v:SocialInput,period:string,today:string,compan
   if (!company.ico||!/^\d{8}$/.test(company.ico)||v.name!==company.name||!v.name.trim()||v.name.length>144||!/^\d{10}$/.test(v.payer)||!isIban(v.iban)) return 'Overte názov, IČO, číslo zamestnávateľa pridelené SP a vlastný IBAN, z ktorého odvádzate poistné.'
   const fields=[[v.name,144],[v.firstName,24],[v.lastName,36],[v.phone,50],[v.email,255],[v.preparedBy,30]] as const
   if (fields.some(([s,max])=>s.length>max||/[\p{Cc}\p{Cs}\uFFFE\uFFFF]/u.test(s))||!v.firstName.trim()||!v.lastName.trim()||!v.preparedBy.trim()) return 'Skontrolujte meno a priezvisko osoby plniacej povinnosti voči SP a vypracovateľa. Údaje neskracujeme odhadom.'
-  if (v.phone&&!/^(?:00\d{8,15}|\+\d{8,15})$/.test(v.phone)||v.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return 'Skontrolujte telefón s medzinárodnou predvoľbou a e-mail.'
+  if (!/^(?:00\d{8,15}|\+\d{8,15})$/.test(v.phone)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return 'Vyplňte telefón osoby plniacej povinnosti voči SP s medzinárodnou predvoľbou a jej e-mail.'
   if (!['R','O'].includes(v.kind)||!v.declaredOn||dayOfText(v.declaredOn)!==v.declaredOn||v.declaredOn>today||v.declaredOn<`${nextMonth(period)}-01`) return 'Zvoľte riadny alebo opravný výkaz a platný dátum vypracovania po skončení obdobia.'
   if (!v.checked||v.reference.trim().length<12||v.reference.length>240||v.reason.length>1200||(replacing||v.kind==='O')&&v.reason.trim().length<12) return 'Potvrďte úplnosť podporovaného rozsahu a referenciu kontroly; opravný alebo ďalší výkaz potrebuje dôvod aspoň 12 znakov.'
   return null

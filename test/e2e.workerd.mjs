@@ -4327,7 +4327,7 @@ for (const target of (await payrollReporting.reportItems(db, 'co-a')).filter((r)
     review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
     await socialReporting.recordSocialFact(db,review,handoverPayrollUser,review.token,{employee:'emp-a',section:'hours',revision:0,value:'160',mode:'known',reference:'TEST final verified analytical hours',reason:'',checked:true})
     review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
-    saved=await socialReporting.generateSocial(db,files,review,handoverPayrollUser,review.token,{name:handoverPayrollCompany.name,payer:'6333333300',iban:'SK3112000000198742637541',firstName:'TEST',lastName:'Reviewer',phone:'',email:'',preparedBy:'TEST final social reviewer',declaredOn:day(0),kind:'R',reason:'',reference:'TEST final complete ordinary social scope',checked:true},day(0))
+    saved=await socialReporting.generateSocial(db,files,review,handoverPayrollUser,review.token,{name:handoverPayrollCompany.name,payer:'6333333300',iban:'SK3112000000198742637541',firstName:'TEST',lastName:'Reviewer',phone:'00421900000000',email:'test@example.test',preparedBy:'TEST final social reviewer',declaredOn:day(0),kind:'R',reason:'',reference:'TEST final complete ordinary social scope',checked:true},day(0))
   } else if (target.kind === 'health25') {
     await healthReporting.recordHealthIdentity(db,'co-a',target.id,'emp-a',handoverPayrollUser,{revision:0,identifier:'9010101234',reference:'TEST final verified employee identity',reason:'',checked:true})
     const review=await healthReporting.healthPlan(db,'co-a',target.id,day(0))

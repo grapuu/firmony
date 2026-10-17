@@ -348,6 +348,8 @@ try {
   await socialForm.locator('input[name=iban]').fill('SK3112000000198742637541')
   await socialForm.locator('input[name=firstName]').fill('TEST')
   await socialForm.locator('input[name=lastName]').fill('Reviewer')
+  await socialForm.locator('input[name=phone]').fill('00421900000000')
+  await socialForm.locator('input[name=email]').fill('test@example.test')
   await socialForm.locator('input[name=preparedBy]').fill('TEST Browser reviewer')
   await socialForm.locator('select[name=kind]').selectOption('O')
   await socialForm.locator('textarea[name=reason]').fill('TEST complete replacement of the earlier external browser report')

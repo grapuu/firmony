@@ -13,14 +13,15 @@ import { saveReport } from './store'
 export interface SocialRelation { id:string; employee_id:string; revision:number; icpv:string; reference:string; reason:string }
 export interface SocialAnalytic { id:string; employee_id:string; closure_id:string; revision:number; hours_mode:HoursMode; hours:number; reference:string; reason:string }
 export interface SocialPlan {
-  company:Company; target:ReportTarget; closure:Closure; revision:number; token:string; totals:SocialTotals; issues:string[]; frozen:boolean
+  company:Company; target:ReportTarget; closure:Closure; revision:number; token:string; totals:SocialTotals; issues:string[]; frozen:boolean; requiresCorrection:boolean
   identities:InsuredIdentity[]; relations:SocialRelation[]; inputs:SocialAnalytic[]; factsJson:string; defaults:Record<string,string>
 }
 export async function socialPlan(db:D1Database,companyId:string,targetId:string,today:string):Promise<SocialPlan|null> {
   const revision=await dataRevision(db,companyId)
   const r=await db.batch<Record<string,unknown>>([
     db.prepare('SELECT * FROM companies WHERE id=?').bind(companyId),
-    db.prepare(`SELECT t.*,(${currentTargetActiveSql('t')}) AS active,${socialCoverageSql('t')} AS facts FROM payroll_targets t WHERE t.id=? AND t.company_id=? AND t.kind='sp'`).bind(targetId,companyId),
+    db.prepare(`SELECT t.*,(${currentTargetActiveSql('t')}) AS active,${socialCoverageSql('t')} AS facts,
+      EXISTS(SELECT 1 FROM payroll_packages p WHERE p.target_id=t.id AND p.company_id=t.company_id AND p.status='accepted') AS accepted FROM payroll_targets t WHERE t.id=? AND t.company_id=? AND t.kind='sp'`).bind(targetId,companyId),
     db.prepare(`SELECT pc.* FROM payroll_closures pc JOIN payroll_targets t ON t.closure_id=pc.id AND t.company_id=pc.company_id WHERE t.id=? AND t.company_id=? AND (${closureCurrentSql('pc')})`).bind(targetId,companyId),
     db.prepare('SELECT i.* FROM payroll_health_ids i WHERE i.company_id=? AND NOT EXISTS(SELECT 1 FROM payroll_health_ids n WHERE n.company_id=i.company_id AND n.employee_id=i.employee_id AND n.revision>i.revision) ORDER BY i.employee_id').bind(companyId),
     db.prepare('SELECT r.* FROM payroll_social_relations r WHERE r.company_id=? AND NOT EXISTS(SELECT 1 FROM payroll_social_relations n WHERE n.company_id=r.company_id AND n.employee_id=r.employee_id AND n.revision>r.revision) ORDER BY r.employee_id').bind(companyId),
@@ -46,7 +47,7 @@ export async function socialPlan(db:D1Database,companyId:string,targetId:string,
   const prior=(k:string)=>typeof previous[k]==='string'?previous[k] as string:''
   const defaults={name:company.name,payer:payrollSettingsOf(raw.payroll).social.vs??prior('payer'),iban:company.invoiceIban??prior('iban'),firstName:prior('firstName'),lastName:prior('lastName'),phone:prior('phone'),email:prior('email'),preparedBy:prior('preparedBy'),declaredOn:today,kind:'',reason:'',reference:'',checked:''}
   const factsJson=String(target.facts),token=await sha256Hex(JSON.stringify({version:1,format:SOCIAL_FORMAT,xsd:SOCIAL_XSD_SHA256,revision,target,sourceHash:closure.sha256,company:{id:company.id,ico:company.ico,name:company.name},factsJson,defaults,issues,frozen}))
-  return {company,target:target as unknown as ReportTarget,closure,revision,token,totals,issues,frozen,identities,relations,inputs,factsJson,defaults}
+  return {company,target:target as unknown as ReportTarget,closure,revision,token,totals,issues,frozen,requiresCorrection:Boolean(target.accepted),identities,relations,inputs,factsJson,defaults}
 }
 export interface SocialFactInput { employee:string; section:string; revision:number; value:string; mode:string; reference:string; reason:string; checked:boolean }
 export async function recordSocialFact(db:D1Database,plan:SocialPlan,user:User,token:string,v:SocialFactInput):Promise<{ok:boolean;error?:string}> {
@@ -72,6 +73,7 @@ export async function recordSocialFact(db:D1Database,plan:SocialPlan,user:User,t
 export async function generateSocial(db:D1Database,files:R2Bucket|undefined,plan:SocialPlan,user:User,token:string,v:SocialInput,today:string) {
   if (token!==plan.token) return {ok:false,error:'Podklady sa od otvorenia stránky zmenili. Obnovte a skontrolujte ich znova.'}
   if (plan.issues.length) return {ok:false,error:plan.issues[0]}
+  if (plan.requiresCorrection&&v.kind!=='O') return {ok:false,error:'Toto obdobie už má doložené prijatie SP. Pripravte úplný opravný výkaz O; ďalší riadny výkaz nevytvárame.'}
   const error=socialInputError(v,plan.target.period,today,plan.company,Boolean(plan.target.package_id))
   if (error) return {ok:false,error}
   const people=new Map(plan.totals.rows.map((r)=>{const i=plan.identities.find((i)=>i.employee_id===r.employeeId)!,p=plan.relations.find((p)=>p.employee_id===r.employeeId)!,a=plan.inputs.find((a)=>a.employee_id===r.employeeId)!;return [r.employeeId,{identifier:i.identifier,icpv:p.icpv,hours:a.hours,mode:a.hours_mode}]}))

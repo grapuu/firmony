@@ -75,6 +75,10 @@ export async function checkSocialReports({db,files,acc,admin,lucia,nowS,day,sign
   await db.prepare('UPDATE companies SET accountant_id=? WHERE id=?').bind(user.id,company).run()
   const accept=async(item,actor=user)=>p.changeReportDelivery(db,files,item.pkg,actor,{to:'accepted',revision:item.pkg.revision,externalOn:today,reference:`TEST-SP-SCOPE-${item.pkg.id}`,channel:'TEST ONLY recipient',checked:true,reason:'',receipt:{name:'TEST_ONLY-receipt.xml',bytes:new TextEncoder().encode(`<TEST_ONLY receipt="${item.pkg.id}"/>`)}},today)
   await accept(target)
+  reviewed=await plan();res=await admin.post(`${base}/${target.id}/generovat`,{...values,token:reviewed.token,reason:'TEST attempted second ordinary SP report'})
+  check('known prior SP acceptance requires a corrective report rather than another ordinary submission',res.status===409&&reviewed.requiresCorrection&&(await p.reportHistory(db,company,target.id)).length===1)
+  const forgedOrdinary=await s.generateSocial(db,files,{...reviewed,requiresCorrection:false},root,reviewed.token,{...values,checked:true,reason:'TEST bypassed application-only type check'},today)
+  check('SP SQL independently rejects an ordinary replacement of an accepted report',!forgedOrdinary.ok&&(await p.reportHistory(db,company,target.id)).length===1&&Boolean(await files.head(first.file_key)))
   for(const t of targets.filter((t)=>t.kind.startsWith('health'))) {
     const a=await h.healthPlan(db,company,t.id,today),saved=await h.generateHealth(db,files,a,user,a.token,{name:values.name,dic:'2126333666',payer:`00000000${t.kind.slice(-2)}`,branch:`${t.kind.slice(-2)}00`,iban:bank,phone:'',email:'',sendOn:today,batch:'1',kind:'N',reason:'',reference:'TEST complete health source from shared identity',checked:true},today)
     check('a verified SP identity is reusable by its own health recipient without another intake',saved.ok)

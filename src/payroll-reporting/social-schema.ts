@@ -46,6 +46,7 @@ export const PAYROLL_SOCIAL_SCHEMA = [
       AND p.created_by = NEW.by_user AND p.status = 'prepared' AND p.revision = 0 AND p.previous_id IS t.package_id AND t.kind = 'sp'
       AND NEW.facts_json = ${socialCoverageSql('t')} AND json_array_length(NEW.facts_json) > 0
       AND NOT EXISTS (SELECT 1 FROM json_each(NEW.facts_json) WHERE json_extract(value,'$.identity') IS NULL OR json_extract(value,'$.relation') IS NULL OR json_extract(value,'$.input') IS NULL)
+      AND (NOT EXISTS (SELECT 1 FROM payroll_packages prior WHERE prior.target_id = t.id AND prior.company_id = t.company_id AND prior.status = 'accepted') OR json_extract(NEW.details,'$.input.kind') = 'O')
       AND json_extract(NEW.details,'$.version') = 1 AND json_extract(NEW.details,'$.fileSha256') = p.sha256 AND json_extract(NEW.details,'$.sourceHash') = p.source_hash)
     BEGIN SELECT RAISE(ABORT,'FIRMONY_PAYROLL_AUTHORITY'); END`,
   ...replaceGuard('payroll_targets_update',healthReportCurrentSql('NEW','p'),socialReportCurrentSql('NEW','p')),
