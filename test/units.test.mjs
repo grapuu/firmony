@@ -40,6 +40,7 @@ import {
   tableRead,
   fx,
   oss,
+  intrastat,
   lastDeclared,
   takeover,
   takeoverStore,
@@ -4994,6 +4995,107 @@ await (await import('./social.units.mjs')).checkSocial()
       view('2026-Q3', [{ ...filedQ3, lines: oss.ossLines(supplies, '2026-Q3', rates).lines }], '2026-10-02').state === 'changed' &&
       view('2026-Q3', [{ ...filedQ3, lines: oss.ossLines(after, '2026-Q3', rates).lines }], '2026-10-02').state === 'filed',
   )
+}
+
+// Intrastat (17 October 2026): the monthly reports of goods moved to and from other member states.
+{
+  const xsdText = readFileSync(new URL('./xsd/instat62.xsd', import.meta.url), 'latin1').replace('encoding = "ISO-8859-2"', 'encoding = "UTF-8"')
+  const validInstat = async (xml, name) => {
+    const bytes = intrastat.latin2(xml)
+    const back = new TextDecoder('iso-8859-2').decode(bytes)
+    const result = await validateXML({ xml: [{ fileName: `${name}.xml`, contents: back.replace('encoding="ISO-8859-2"', 'encoding="UTF-8"') }], schema: [{ fileName: 'instat62.xsd', contents: xsdText }] })
+    return { ok: result.valid && back === xml, why: result.errors.map((e) => e.message).join(' | ') }
+  }
+  check('a VAT number\'s member state as Intrastat names it: EL is GR, Slovakia and a third country are none', intrastat.stateOfVatId('EL123456789') === 'GR' && intrastat.stateOfVatId('de 123456789') === 'DE' && intrastat.stateOfVatId('SK2020000000') === null && intrastat.stateOfVatId('CHE123456789') === null && intrastat.stateOfVatId('XI123456789') === 'XI')
+  check('the deadline: the fifteenth day after the month, a Sunday moved to Monday', intrastat.intrastatDue('2026-09') === '2026-10-15' && intrastat.intrastatDue('2026-10') === '2026-11-16' && intrastat.intrastatDue('2027-04') === '2027-05-17')
+  check('the value up to the whole euro and at least 1 €; the net mass in kilograms, under 1 kg up, otherwise half up', intrastat.reportEuros(100001) === 1001 && intrastat.reportEuros(100000) === 1000 && intrastat.reportEuros(40) === 1 && intrastat.reportKg(400) === 1 && intrastat.reportKg(1499) === 1 && intrastat.reportKg(1500) === 2 && intrastat.reportKg(12500) === 13)
+  check('the thresholds of 2026: 1 000 000 € each flow, 200 000 € and 400 000 € for agriculture and food; a later year keeps them until its own', intrastat.thresholdOf(2026, 'A', false) === 100_000_000 && intrastat.thresholdOf(2026, 'A', true) === 20_000_000 && intrastat.thresholdOf(2026, 'D', true) === 40_000_000 && intrastat.thresholdOf(2028, 'D', false) === 100_000_000)
+  const settings = { ...intrastat.settingsOf(JSON.stringify({ arrivals: '2026-01', dispatches: '2026-06', origin: 'SK', terms: 'EXW', nature: 'zz' })) }
+  check('settings read back with the usual values where none is valid', settings.arrivals === '2026-01' && settings.dispatches === '2026-06' && settings.nature === '11' && settings.transport === '3' && settings.terms === 'EXW' && settings.origin === 'SK' && intrastat.settingsOf(null).arrivals === null)
+  const g = (fields) => ({ ...intrastat.EMPTY_GOODS, ...fields })
+  const doc = (id, fields) => ({ id, number: id, party: 'TEST-ONLY', mode: 'acquisition', month: '2026-09', cents: 50000, vatId: 'DE123456789', booked: true, goods: null, ...fields })
+  const docs = [
+    doc('small'),
+    doc('big', { cents: 250000 }),
+    doc('lines', {
+      cents: 300000,
+      goods: g({ lines: [{ cn: '84713000', description: 'Notebooky', origin: 'CN', grams: 12500, su: 'p/st', quantity: 10000, cents: 200000 }, { cn: '85044095', description: null, origin: null, grams: 400, su: null, quantity: null, cents: null }] }),
+    }),
+    doc('out', { mode: 'eu_goods', cents: 120000, vatId: 'EL123456789', goods: g({ lines: [{ cn: '40082110', description: 'Rohože', origin: null, grams: 80000, su: null, quantity: null, cents: null }] }) }),
+    doc('nostate', { mode: 'eu_goods', cents: 30000, vatId: null }),
+    doc('credit', { cents: -20000 }),
+    doc('back', { mode: 'eu_goods', cents: -40000, vatId: 'AT123456789', goods: g({ returned: true }) }),
+    doc('later', { month: '2026-10' }),
+    doc('draft', { booked: false }),
+  ]
+  const a = intrastat.monthItems(docs, '2026-09', 'A', settings)
+  const item = (key) => a.items.find((i) => i.key === key)
+  check(
+    "arrivals: an invoice below 1 000 € simply, one with goods line by line, the line without a value takes the rest; the origin of an arrival without one is the state it came from",
+    item('small:s')?.cn === '99500000' && item('small:s')?.euros === 500 && item('small:s')?.partner === null && item('lines:0')?.euros === 2000 && item('lines:1')?.euros === 1000 && item('lines:1')?.origin === 'DE' && item('lines:0')?.kg === 13 && item('lines:0')?.quantity === 10 && item('lines:1')?.kg === 1 && item('lines:0')?.nature === '11' && item('lines:0')?.terms === 'EXW',
+    JSON.stringify(a.items),
+  )
+  check('a return of goods supplied before is an arrival with the nature 2/1', item('back:s')?.country === 'AT' && item('back:s')?.euros === 400 && intrastat.flowOf(docs.find((d) => d.id === 'back')) === 'A')
+  check(
+    'what keeps arrivals back: a document from 1 000 € without goods, one not booked; a credit note without goods coming back is only said; another month is left out',
+    a.issues.map((i) => `${i.code}:${i.ids.join('|')}`).join() === 'unbooked:draft,goods:big' && intrastat.creditNotes(docs, '2026-09').map((d) => d.id).join() === 'credit' && !a.items.some((i) => i.docId === 'later'),
+    JSON.stringify(a.issues),
+  )
+  const d = intrastat.monthItems(docs, '2026-09', 'D', settings)
+  check("dispatches: Greece as GR, the partner's VAT number as given, the origin from the settings; no member state is said", d.items.length === 1 && d.items[0].country === 'GR' && d.items[0].partner === 'EL123456789' && d.items[0].origin === 'SK' && d.items[0].kg === 80 && d.items[0].euros === 1200 && d.issues.map((i) => i.code).join() === 'country', JSON.stringify(d))
+  const bad = intrastat.monthItems([doc('v', { cents: 300000, goods: g({ lines: [{ cn: '8471', description: null, origin: null, grams: 1, su: null, quantity: null, cents: null }] }) }), doc('w', { cents: 300000, goods: g({ lines: [{ cn: '84713000', description: null, origin: null, grams: 1, su: null, quantity: null, cents: 100 }] }) }), doc('x', { cents: 300000, goods: g({ lines: [{ cn: '84713000', description: null, origin: null, grams: null, su: 'p/st', quantity: null, cents: null }] }) })], '2026-09', 'A', settings)
+  check('a code of fewer than eight digits, values that do not make the base, a supplementary unit without its quantity', bad.issues.map((i) => i.code).join() === 'cn,quantity,values', JSON.stringify(bad.issues))
+
+  const psi = { vatId: 'SK2020123456', name: 'TEST-ONLY Žltá ťava s. r. o.', ...intrastat.splitAddress('Hlavná 1, 040 01 Košice'), address: 'Hlavná 1, 040 01 Košice', contact: 'Lucia Horváthová', phone: null, email: 'ahoj@firmony.ai' }
+  check('the address in its parts', psi.street === 'Hlavná 1' && psi.postal === '04001' && psi.city === 'Košice')
+  const goodItems = a.items
+  const first = intrastat.firstDeclarations(goodItems)
+  const xml = intrastat.instatXml(psi, '2026-09', 'A', first, 9101, { date: '2026-10-10', time: '09:15:00' })
+  let v = await validInstat(xml, 'instat-a')
+  check('the arrivals report is valid against instat62.xsd and comes back the same from ISO-8859-2', v.ok && xml.includes('<envelopeId>AA09101</envelopeId>') && xml.includes('<functionCode>O</functionCode>') && xml.includes('<CN8Code>99500000</CN8Code>') && xml.includes('<CN8><CN8Code>84713000</CN8Code><SUCode>p/st</SUCode></CN8>') && xml.includes('<totalNumberLines>4</totalNumberLines>') && !xml.includes('partnerId'), v.why)
+  const dx = intrastat.instatXml(psi, '2026-09', 'D', intrastat.firstDeclarations(d.items), 9201, { date: '2026-10-10', time: '09:15:00' })
+  v = await validInstat(dx, 'instat-d')
+  check('the dispatches report carries the partner and the nature in its two codes', v.ok && dx.includes('<partnerId>EL123456789</partnerId>') && dx.includes('<NatureOfTransaction><natureOfTransactionACode>1</natureOfTransactionACode><natureOfTransactionBCode>1</natureOfTransactionBCode></NatureOfTransaction>') && dx.includes('<MSConsDestCode>GR</MSConsDestCode>'), v.why)
+  const nil = intrastat.instatXml(psi, '2026-10', 'A', intrastat.firstDeclarations([]), 10101, { date: '2026-11-10', time: '08:00:00' })
+  v = await validInstat(nil, 'instat-nil')
+  check('a month without goods is a nil report', v.ok && nil.includes('<functionCode>N</functionCode>') && !nil.includes('<Item>') && !nil.includes('totalNumberLines'), v.why)
+  check('more than 30 000 items go into further reports', intrastat.firstDeclarations(Array.from({ length: 30001 }, (_, n) => ({ ...goodItems[0], key: `k${n}` }))).map((x) => `${x.id}:${x.items.length}`).join() === '1:30000,2:1')
+
+  const filing = { seq: 1, filedOn: '2026-10-10', envelope: 9101, declarations: first }
+  const changedItems = goodItems.filter((i) => i.key !== 'small:s').map((i) => (i.key === 'lines:0' ? { ...i, euros: 2100 } : i))
+  const added = { ...goodItems[0], key: 'new:s', docId: 'new', euros: 77 }
+  const f = intrastat.followUpOf([filing], [...changedItems, added])
+  check('after filing: an item added, one changed, one gone', f.added.map((i) => i.key).join() === 'new:s' && f.changed.map((i) => i.key).join() === 'lines:0' && f.removed.map((i) => i.key).join() === 'small:s')
+  const follow = intrastat.followUpDeclarations([filing], f)
+  const o = follow.find((x) => x.fn === 'O')
+  const m = follow.find((x) => x.fn === 'M')
+  check(
+    'what follows: the new item in report 2, the changed and the gone in a correction of report 1 by their numbers, the gone with the value 0',
+    o?.id === 2 && o.items[0]?.no === 1 && m?.id === 1 && m.correction === 1 && m.items.map((i) => `${i.no}:${i.euros}`).join() === `${first[0].items.find((i) => i.key === 'small:s').no}:0,${first[0].items.find((i) => i.key === 'lines:0').no}:2100`,
+    JSON.stringify(follow.map((x) => ({ id: x.id, fn: x.fn, c: x.correction, items: x.items.map((i) => [i.key, i.no, i.euros]) }))),
+  )
+  const fx = intrastat.instatXml(psi, '2026-09', 'A', follow, 9102, { date: '2026-11-02', time: '10:00:00' })
+  v = await validInstat(fx, 'instat-m')
+  check('the supplementary and corrective reports are valid; the correction names its number in the series', v.ok && fx.includes('<functionCode>M</functionCode><previousDeclarationId>1</previousDeclarationId>') && fx.includes('<numberOfDeclarations>2</numberOfDeclarations>') && fx.includes('<invoicedAmount>0</invoicedAmount>'), v.why)
+  const second = { seq: 2, filedOn: '2026-11-02', envelope: 9102, declarations: follow }
+  check('once sent, nothing follows; another correction of report 1 is the second in its series', intrastat.isEmptyFollowUp(intrastat.followUpOf([filing, second], [...changedItems, added])) && intrastat.followUpDeclarations([filing, second], intrastat.followUpOf([filing, second], changedItems.map((i) => (i.key === 'lines:1' ? { ...i, euros: 999 } : i)).concat([added]))).find((x) => x.fn === 'M')?.correction === 2)
+
+  const view = (month, flow, filings, today, s = settings) => intrastat.intrastatView(docs.filter((x) => x.id !== 'big' && x.id !== 'draft'), month, flow, s, filings, today)
+  check(
+    "a month's state: not reported before the month in the settings, running, ready, filed, changed; blocked by what keeps it back",
+    view('2026-05', 'D', [], '2026-06-10').state === 'none' &&
+      view('2026-09', 'A', [], '2026-09-20').state === 'running' &&
+      view('2026-09', 'A', [], '2026-10-02').state === 'ready' &&
+      intrastat.intrastatView(docs, '2026-09', 'A', settings, [], '2026-10-02').state === 'blocked' &&
+      view('2026-09', 'A', [{ ...filing, declarations: intrastat.firstDeclarations(view('2026-09', 'A', [], '2026-10-02').items) }], '2026-10-12').state === 'filed' &&
+      view('2026-09', 'A', [{ ...filing, declarations: intrastat.firstDeclarations(goodItems.slice(1)) }], '2026-10-12').state === 'changed',
+  )
+  check('nothing to send while something blocks', intrastat.declarationsToSend(intrastat.intrastatView(docs, '2026-09', 'A', settings, [], '2026-10-02')) === null && intrastat.declarationsToSend(view('2026-09', 'A', [], '2026-10-02'))?.[0]?.fn === 'O')
+  const many = [doc('t1', { month: '2025-11', cents: 60_000_000 }), doc('t2', { month: '2026-02', cents: 30_000_000 }), doc('t3', { month: '2026-04', cents: 50_000_000 }), doc('t4', { month: '2026-05', cents: 30_000_000 })]
+  const w = intrastat.thresholdWatch(many, 'A', '2026-06', false)
+  check('the threshold: the window before the year, the year so far and the month it is crossed in', w.window === 0 && w.year === 110_000_000 && w.from === '2026-05' && intrastat.thresholdWatch(many, 'A', '2027-03', false).from === '2027-01')
+  const bytes = intrastat.latin2('Žltá ťava, Öl, € a ñ')
+  check('ISO-8859-2: Slovak and German letters as they are, a letter it lacks without its accent, anything else "?"', new TextDecoder('iso-8859-2').decode(bytes) === 'Žltá ťava, Öl, ? a n')
 }
 
 done('units')

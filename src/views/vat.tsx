@@ -587,6 +587,15 @@ export const VatPage: FC<VatPageProps> = (p) => {
                   </a>
                 </section>
               ) : null}
+              <section class="info" aria-labelledby="intrastat-link-t">
+                <h2 id="intrastat-link-t" class="info__title">
+                  {t.intrastat.title}
+                </h2>
+                <p class="info__lead">{t.intrastat.vatHint}</p>
+                <a class="btn btn--line btn--small" href={`/ucto/klienti/${c.id}/intrastat`}>
+                  {t.intrastat.open}
+                </a>
+              </section>
             </aside>
           </div>
         </>

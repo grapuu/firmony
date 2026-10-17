@@ -30,6 +30,8 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind'
       return d.fix ? t.what.summaryFix[d.fix](periodName(period)) : t.what.summary(periodName(period))
     case 'oss':
       return t.what.oss(`${period.slice(6)}. štvrťrok ${period.slice(0, 4)}`)
+    case 'intrastat':
+      return t.what.intrastat(period.slice(8), monthName(`${period.slice(0, 7)}-01`))
     case 'vatPay':
       return t.what.vatPay(periodName(period))
     case 'docs':
@@ -74,7 +76,7 @@ export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'pe
     case 'blocked':
       return t.state.blocked(d.count)
     case 'running':
-      return d.kind === 'handover' ? t.state.running.contract : d.kind === 'summary' && (d.period ?? '').includes('Q') ? t.state.running.quarter : t.state.running.period
+      return d.kind === 'handover' ? t.state.running.contract : d.kind === 'intrastat' ? t.state.running.month : d.kind === 'summary' && (d.period ?? '').includes('Q') ? t.state.running.quarter : t.state.running.period
     case 'done':
       return t.state.done[d.kind] ?? t.state.done.vat
     default:
@@ -102,6 +104,8 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
     }
     case 'oss':
       return `${base}/dph/oss?stvrtrok=${d.period}`
+    case 'intrastat':
+      return `${base}/intrastat?mesiac=${(d.period ?? '').slice(0, 7)}&tok=${(d.period ?? '').slice(8)}`
     case 'docs':
       return `${base}#chyba`
     case 'closing':
@@ -134,6 +138,7 @@ function noteOf(d: Due): string | null {
   if (d.kind === 'summary' && d.fix === 'D') return t.note.summaryD
   if (d.kind === 'summary' && d.state !== 'done') return t.note.summary
   if (d.kind === 'oss' && d.state !== 'done') return t.note.oss
+  if (d.kind === 'intrastat' && d.state !== 'done') return t.note.intrastat
   if (d.kind === 'payrollReports' && d.state !== 'done') return t.note.payrollReports
   return null
 }

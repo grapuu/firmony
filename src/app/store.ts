@@ -7,6 +7,7 @@ import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
 import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
 import { rateMicro } from './fx'
+import { settingsOf, type IntrastatSettings } from './intrastat'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
 
@@ -50,6 +51,8 @@ export interface Company {
   vatSince: string | null
   /** The day the company uses the one-stop shop's EU scheme from (oss.ts); null when it does not. */
   ossSince?: string | null
+  /** Intrastat (intrastat.ts): the months each flow is reported from and the usual values; absent when never set. */
+  intrastat?: IntrastatSettings
   /** The tax office the returns are addressed to, as the forms name it. */
   taxOffice: TaxOffice | null
   /** The number of the company's personal tax account (osobný účet daňovníka), to which VAT is paid. */
@@ -172,7 +175,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.tax_office, c.tax_account, c.vat_carry,
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
 export function companyOf(row: Row): Company {
@@ -209,6 +212,7 @@ export function companyOf(row: Row): Company {
     vatQuarterly: row.vat_payer === 1 && row.vat_quarterly === 1,
     vatSince: str(row.vat_since),
     ossSince: str(row.oss_since),
+    intrastat: settingsOf(row.intrastat),
     taxOffice: isTaxOffice(row.tax_office) ? row.tax_office : null,
     taxAccount: str(row.tax_account),
     vatCarry: num(row.vat_carry) ?? 0,

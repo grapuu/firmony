@@ -1041,6 +1041,48 @@ const MIGRATIONS: readonly string[][] = [
             ]),
       ]
     }),
+  ],  // Intrastat (src/app/intrastat.ts, 17 October 2026): a company's settings (the months each flow is reported from and the
+  // usual values), what the accountant said of each document's goods, and each filing as it was sent (its reports and file).
+  [
+    'ALTER TABLE companies ADD COLUMN intrastat TEXT',
+    `CREATE TABLE IF NOT EXISTS intrastat_goods (
+      company_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT,
+      PRIMARY KEY (company_id, document_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS intrastat_returns (
+      company_id TEXT NOT NULL,
+      month TEXT NOT NULL CHECK (month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
+      flow TEXT NOT NULL CHECK (flow IN ('A', 'D')),
+      seq INTEGER NOT NULL CHECK (seq >= 1),
+      envelope INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      xml TEXT NOT NULL,
+      filed_on TEXT NOT NULL,
+      filed_at INTEGER NOT NULL,
+      filed_by TEXT,
+      PRIMARY KEY (company_id, month, flow, seq)
+    )`,
+    ...['intrastat_goods', 'intrastat_returns'].flatMap((table) =>
+      ['INSERT', 'UPDATE', 'DELETE'].flatMap((action) => {
+        const row = action === 'DELETE' ? 'OLD' : 'NEW'
+        return [
+          `CREATE TRIGGER ${table}_data_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN
+            INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+            ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`,
+          ...(action === 'DELETE'
+            ? []
+            : [
+                `CREATE TRIGGER ${table}_purging_${action.toLowerCase()} BEFORE ${action} ON ${table}
+                  WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+                  BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+              ]),
+        ]
+      }),
+    ),
   ],
 ]
 

@@ -45,8 +45,9 @@ import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledRetur
 import { summaryPeriodOf, type SvView } from '../app/vat-summary'
 import { registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
 import { nextQuarter, ossDue, quarterOfDay, quarterRange } from '../app/oss'
+import { FLOWS, intrastatDue, monthEnd, sinceOf, settingsOf } from '../app/intrastat'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'oss' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'summary' | 'oss' | 'intrastat' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
@@ -56,6 +57,7 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   vatFix: 'ours',
   summary: 'ours',
   oss: 'ours',
+  intrastat: 'ours',
   closing: 'ours',
   payroll: 'ours',
   payrollReports: 'ours',
@@ -150,6 +152,31 @@ export function ossDeadlines(company: Pick<Company, 'id' | 'ossSince' | 'startOn
   return out
 }
 
+/**
+ * Intrastat of a company that reports a flow (intrastat.ts): each month since, the last four, by the fifteenth day
+ * after it (moved to a working day); done once its first report is marked as sent on its page. Its period is
+ * `${month}:${flow}`.
+ */
+export function intrastatDeadlines(company: Pick<Company, 'id' | 'intrastat' | 'startOn' | 'createdAt' | 'endsOn'>, filed: ReadonlySet<string>, today: string): Due[] {
+  const settings = company.intrastat ?? settingsOf(null)
+  const out: Due[] = []
+  const first = (company.startOn ?? bratislavaDay(company.createdAt)).slice(0, 7)
+  const last = (company.endsOn && company.endsOn < today ? company.endsOn : today).slice(0, 7)
+  for (const flow of FLOWS) {
+    const since = sinceOf(settings, flow)
+    if (!since) continue
+    const months: string[] = []
+    for (let m = since > first ? since : first; m <= last; m = m.endsWith('-12') ? `${Number(m.slice(0, 4)) + 1}-01` : `${m.slice(0, 5)}${String(Number(m.slice(5)) + 1).padStart(2, '0')}`) months.push(m)
+    for (const m of months.slice(-4)) {
+      const running = today <= monthEnd(m)
+      const done = filed.has(`${m}:${flow}`)
+      const day = intrastatDue(m)
+      out.push({ companyId: company.id, kind: 'intrastat', period: `${m}:${flow}`, day, state: done ? 'done' : running ? 'running' : 'open', late: !done && !running && today > day, count: 0, cents: 0, fix: null })
+    }
+  }
+  return out
+}
+
 /** What a company's deadlines are worked out from. */
 export interface DueFacts {
   /** The VAT periods of `vatWindow`, worked out (viewOf), the oldest first. */
@@ -174,6 +201,8 @@ export interface DueFacts {
   registered?: Map<string, string>
   /** The one-stop shop's quarters filed (oss.ts). */
   oss?: Set<string>
+  /** Intrastat's months sent, as `${month}:${flow}` (intrastat.ts). */
+  intrastat?: Set<string>
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -242,7 +271,7 @@ export function summaryWindow(company: Pick<Company, 'vatStatus' | 'vatQuarterly
 /** A company's deadlines: everything that can be done now, what still runs once it is `aheadDays` near, and what was done in the last weeks. */
 export function deadlinesOf(company: Company, facts: DueFacts, today: string): Due[] {
   const out: Due[] = []
-  const ossDues = ossDeadlines(company, facts.oss ?? new Set(), today)
+  const ossDues = [...ossDeadlines(company, facts.oss ?? new Set(), today), ...intrastatDeadlines(company, facts.intrastat ?? new Set(), today)]
   const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage' | 'registration'>>) =>
     // Sent and waiting for its receipt is not late, whenever the receipt comes: what was ours to do by the day is done.
     out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day && due.deliveryStatus !== 'submitted' })
@@ -383,7 +412,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, oss: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, oss: 2, intrastat: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

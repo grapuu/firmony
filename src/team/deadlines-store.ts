@@ -56,7 +56,7 @@ export async function companyDeadlines(db: D1Database, company: string, today: s
 }
 
 async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], today: string): Promise<{ companies: Company[]; dues: DueRow[] }> {
-  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows] = await db.batch<Row>([
+  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows, intrastatRows] = await db.batch<Row>([
     db
       .prepare(
         `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, ${handedOverSql('c')} AS handover
@@ -114,9 +114,13 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
       .bind(...binds),
     // The one-stop shop's quarters filed (oss.ts).
     db.prepare(`SELECT o.company_id, o.quarter FROM oss_returns o JOIN companies c ON c.id = o.company_id WHERE ${sql}`).bind(...binds),
+    // Intrastat's months whose first report was sent (intrastat.ts).
+    db.prepare(`SELECT i.company_id, i.month, i.flow FROM intrastat_returns i JOIN companies c ON c.id = i.company_id WHERE i.seq = 1 AND ${sql}`).bind(...binds),
   ])
   const ossFiled = new Map<string, Set<string>>()
   for (const r of ossRows?.results ?? []) ossFiled.set(String(r.company_id), (ossFiled.get(String(r.company_id)) ?? new Set<string>()).add(String(r.quarter)))
+  const intrastatSent = new Map<string, Set<string>>()
+  for (const r of intrastatRows?.results ?? []) intrastatSent.set(String(r.company_id), (intrastatSent.get(String(r.company_id)) ?? new Set<string>()).add(`${String(r.month)}:${String(r.flow)}`))
   const companies = (companyRows?.results ?? []).map(companyOf)
   const handover = new Map((companyRows?.results ?? []).map((r) => [String(r.id), Number(r.handover ?? 0)]))
   const filed = new Map<string, FiledReturn[]>()
@@ -211,6 +215,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
       employees: people.get(company.id) ?? [],
       registered: registered.get(company.id) ?? new Map<string, string>(),
       oss: ossFiled.get(company.id) ?? new Set<string>(),
+      intrastat: intrastatSent.get(company.id) ?? new Set<string>(),
     }
     for (const due of deadlinesOf(company, facts, today)) dues.push({ ...due, company, companyName: company.name })
   }

@@ -131,6 +131,35 @@ import { knownCurrencies, ratesFor } from '../app/fx-store'
 import { isQuarterText, nextQuarter, ossXml, quarterOfDay, quarterRange } from '../app/oss'
 import { fileOssStatement, filedOssXml, ossQuarter, unfileOssStatement } from '../app/oss-store'
 import { OssPage } from '../views/oss'
+import {
+  MEMBER_STATES,
+  declarationsToSend,
+  instatXml,
+  intrastatView,
+  isFlow,
+  isMonthText,
+  isNature,
+  isOrigin,
+  isPartnerId,
+  isRegion,
+  isTerms,
+  isTransport,
+  latin2,
+  reportMonth,
+  flowOf,
+  settingsOf,
+  splitAddress,
+  thresholdWatch,
+  SIMPLIFIED_LIMIT,
+  type DocGoods,
+  type Flow,
+  type GoodsLine,
+  type IntrastatDoc,
+  type IntrastatSettings,
+  type Psi,
+} from '../app/intrastat'
+import { fileIntrastatStatement, filedIntrastatXml, intrastatDocs, intrastatFilings, monthsBefore, removeGoodsStatement, saveGoodsStatement, saveSettingsStatement, unfileIntrastatStatement } from '../app/intrastat-store'
+import { GoodsPage, IntrastatPage } from '../views/intrastat'
 import { assetRows, openItems, personRows, pohodaInvoices, priorStatements as takeoverPrior, trialBalance as takeoverTrial, type LineIssue, type OpenItem } from '../app/takeover'
 import { assetNumbers, assetRowsStatements, batchesOf, openItemsStatements, peopleStatements, priorListOf, priorStatementStatement, removeBatchStatements, removePriorStatement } from '../app/takeover-store'
 import { TakeoverPage, type TakeoverPageProps } from '../views/takeover'
@@ -1398,6 +1427,331 @@ teamRoutes.post('/klienti/:id/dph/oss/zrusit', async (c) => {
   if ((removed.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=later`, 303)
   await db.batch([eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'oss.unfiled', subject: quarter })])
   return c.redirect(`${back}&ok=unfiled`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Intrastat (intrastat.ts): the monthly reports of goods moved to and from other member states
+// ---------------------------------------------------------------------------------------------------------------
+
+const prevMonthOf = (month: string): string => {
+  const [y, m] = month.split('-').map(Number) as [number, number]
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
+}
+
+/** "09/2027", "9/2027" or "2027-09" as 2027-09; '' for nothing; null when it is no month. */
+function monthOfText(text: string): string | null | '' {
+  const plain = text.trim()
+  if (plain === '') return ''
+  const a = /^(\d{1,2})\s*[/.]\s*(\d{4})$/.exec(plain)
+  const month = a ? `${a[2]}-${String(Number(a[1])).padStart(2, '0')}` : plain
+  return isMonthText(month) ? month : null
+}
+
+/** A decimal ("12,5", "1 250.25") in thousandths; null when empty, NaN when it is no number. */
+function thousandthsOf(text: string): number | null {
+  const plain = text.replace(/[\s ]/g, '')
+  if (plain === '') return null
+  const m = /^(\d{1,10})(?:[,.](\d{1,3}))?$/.exec(plain)
+  return m ? Number(m[1]) * 1000 + Number((m[2] ?? '').padEnd(3, '0')) : Number.NaN
+}
+
+const thousandthsText = (n: number | null): string => (n === null ? '' : `${Math.floor(n / 1000)}${n % 1000 ? `,${String(n % 1000).padStart(3, '0').replace(/0+$/, '')}` : ''}`)
+const centsText = (n: number | null): string => (n === null ? '' : `${Math.floor(n / 100)},${String(n % 100).padStart(2, '0')}`)
+
+const BRATISLAVA_TIME = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+
+/** The envelope's number (AAxxxxx): the month, the flow and the filing, so the file downloaded and the one kept agree. */
+const envelopeOf = (month: string, flow: Flow, seq: number): number => Number(`${month.slice(5, 7)}${flow === 'A' ? 1 : 2}${String(seq % 100).padStart(2, '0')}`)
+
+function psiOf(company: Company, s: IntrastatSettings): Psi | null {
+  if (!company.icdph || !company.address) return null
+  const a = splitAddress(company.address)
+  return { vatId: company.icdph, name: company.name, street: a.street, postal: a.postal, city: a.city, address: company.address, contact: s.contact ?? company.accountantName, phone: s.phone, email: s.email ?? company.accountantEmail ?? BRAND.email }
+}
+
+async function intrastatPage(c: Ctx, company: Company, settingsForm: { values: Record<string, string>; errors: Record<string, string> } | null = null, status: ContentfulStatusCode = 200) {
+  const db = c.env.DB
+  const today = dayOf(now())
+  const settings = company.intrastat ?? settingsOf(null)
+  const months: string[] = []
+  for (let m = today.slice(0, 7), i = 0; i < 12; m = prevMonthOf(m), i++) months.unshift(m)
+  const askedMonth = c.req.query('mesiac')
+  const askedFlow = c.req.query('tok')
+  const month = isMonthText(askedMonth) && askedMonth <= today.slice(0, 7) ? askedMonth : prevMonthOf(today.slice(0, 7))
+  // The threshold looks back to October two years before the month's year.
+  const earliest = [month, months[0] as string].sort()[0] as string
+  const [docs, filings] = await Promise.all([intrastatDocs(db, company, { from: `${Number(earliest.slice(0, 4)) - 2}-09-01` }), intrastatFilings(db, company.id)])
+  const flow: Flow = isFlow(askedFlow) ? askedFlow : settings.dispatches && !settings.arrivals ? 'D' : 'A'
+  const viewOf = (m: string, f: Flow) => intrastatView(docs, m, f, settings, filings.get(`${m}:${f}`) ?? [], today)
+  if (!months.includes(month)) months.unshift(month)
+  const ok = c.req.query('ok')
+  return shell(
+    c,
+    'clients',
+    `${t.intrastat.title}: ${company.name}`,
+    <IntrastatPage
+      company={company}
+      settings={settings}
+      months={months.map((m) => ({ month: m, A: viewOf(m, 'A').state, D: viewOf(m, 'D').state }))}
+      view={viewOf(month, flow)}
+      watch={thresholdWatch(docs, flow, month, settings.agri)}
+      docs={new Map(docs.map((d) => [d.id, d]))}
+      today={today}
+      flash={ok ? (t.intrastat.flashes[ok] ?? null) : null}
+      settingsForm={settingsForm}
+    />,
+    status,
+  )
+}
+
+teamRoutes.get('/klienti/:id/intrastat', async (c) => {
+  const company = await companyParam(c)
+  return company ? intrastatPage(c, company) : missingPage(c)
+})
+
+/** The file: as sent once marked (`podanie`), else what would go now (a ready month, or what follows a changed one). */
+teamRoutes.get('/klienti/:id/intrastat.xml', async (c) => {
+  const company = await companyParam(c)
+  const month = c.req.query('mesiac')
+  const flow = c.req.query('tok')
+  if (!company || !isMonthText(month) || !isFlow(flow)) return missingPage(c)
+  const db = c.env.DB
+  const back = `/ucto/klienti/${company.id}/intrastat?mesiac=${month}&tok=${flow}`
+  const seqText = c.req.query('podanie')
+  let xml: string | null = null
+  let seq = Number(seqText)
+  if (seqText) {
+    if (!Number.isInteger(seq) || seq < 1) return missingPage(c)
+    xml = await filedIntrastatXml(db, company.id, month, flow, seq)
+    if (!xml) return missingPage(c)
+  } else {
+    const settings = company.intrastat ?? settingsOf(null)
+    const psi = psiOf(company, settings)
+    if (!psi) return c.redirect(`${back}&ok=company`, 303)
+    const today = dayOf(now())
+    const [docs, filings] = await Promise.all([intrastatDocs(db, company, { from: monthsBefore(month, 3) }), intrastatFilings(db, company.id)])
+    const own = filings.get(`${month}:${flow}`) ?? []
+    const view = intrastatView(docs, month, flow, settings, own, today)
+    const declarations = declarationsToSend(view)
+    if (!declarations) return c.redirect(`${back}&ok=notReady`, 303)
+    seq = own.length + 1
+    xml = instatXml(psi, month, flow, declarations, envelopeOf(month, flow, seq), { date: today, time: BRATISLAVA_TIME.format(new Date()) })
+  }
+  return new Response(latin2(xml), {
+    headers: {
+      'Content-Type': 'application/xml; charset=iso-8859-2',
+      'Content-Disposition': `attachment; filename="INTRASTAT_${company.icdph ?? company.id}_${month.replace('-', '')}_${flow}${seq}.xml"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
+
+teamRoutes.post('/klienti/:id/intrastat/podane', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const month = body.mesiac
+  const flow = body.tok
+  if (!isMonthText(month) || !isFlow(flow)) return missingPage(c)
+  const db = c.env.DB
+  const today = dayOf(now())
+  const back = `/ucto/klienti/${company.id}/intrastat?mesiac=${month}&tok=${flow}`
+  const settings = company.intrastat ?? settingsOf(null)
+  const psi = psiOf(company, settings)
+  if (!psi) return c.redirect(`${back}&ok=company`, 303)
+  const [docs, filings] = await Promise.all([intrastatDocs(db, company, { from: monthsBefore(month, 3) }), intrastatFilings(db, company.id)])
+  const own = filings.get(`${month}:${flow}`) ?? []
+  const view = intrastatView(docs, month, flow, settings, own, today)
+  const declarations = declarationsToSend(view)
+  if (!declarations) return c.redirect(`${back}&ok=${view.state === 'filed' ? 'already' : 'notReady'}`, 303)
+  const typed = dayOfText(typeof body.datum === 'string' ? body.datum : '')
+  const end = `${month}-31`
+  const filedOn = typed && typed <= today && typed > end ? typed : today
+  const seq = own.length + 1
+  const xml = instatXml(psi, month, flow, declarations, envelopeOf(month, flow, seq), { date: filedOn, time: BRATISLAVA_TIME.format(new Date()) })
+  const who = c.get('who')
+  const done = await db.batch([
+    fileIntrastatStatement(db, company.id, month, flow, seq, envelopeOf(month, flow, seq), declarations, xml, filedOn, who.user.id),
+    eventStatement(db, { company: company.id, user: who.user.id, action: 'intrastat.filed', subject: `${month}:${flow}`, detail: { seq, declarations: declarations.length, items: declarations.reduce((n, d) => n + d.items.length, 0) } }),
+  ])
+  if ((done[0]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=already`, 303)
+  return c.redirect(`${back}&ok=filed`, 303)
+})
+
+teamRoutes.post('/klienti/:id/intrastat/zrusit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const month = body.mesiac
+  const flow = body.tok
+  if (!isMonthText(month) || !isFlow(flow)) return missingPage(c)
+  const db = c.env.DB
+  const back = `/ucto/klienti/${company.id}/intrastat?mesiac=${month}&tok=${flow}`
+  const removed = await unfileIntrastatStatement(db, company.id, month, flow).run()
+  if ((removed.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=notReady`, 303)
+  await db.batch([eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'intrastat.unfiled', subject: `${month}:${flow}` })])
+  return c.redirect(`${back}&ok=unfiled`, 303)
+})
+
+teamRoutes.post('/klienti/:id/intrastat/nastavenie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const values: Record<string, string> = {
+    dovoz: text('dovoz', 10),
+    vyvoz: text('vyvoz', 10),
+    agri: body.agri === '1' ? '1' : '',
+    druh: text('druh', 2),
+    doprava: text('doprava', 1),
+    podmienky: text('podmienky', 3),
+    region: text('region', 1),
+    povod: text('povod', 2).toUpperCase(),
+    kontakt: text('kontakt', 80),
+    telefon: text('telefon', 30),
+    email: text('email', 120),
+  }
+  const errors: Record<string, string> = {}
+  const arrivals = monthOfText(values.dovoz ?? '')
+  const dispatches = monthOfText(values.vyvoz ?? '')
+  if (arrivals === null) errors.dovoz = t.intrastat.settings.errors.month as string
+  if (dispatches === null) errors.vyvoz = t.intrastat.settings.errors.month as string
+  if (values.povod && !isOrigin(values.povod)) errors.povod = t.intrastat.settings.errors.origin as string
+  const month = typeof body.mesiac === 'string' ? body.mesiac : ''
+  const flow = typeof body.tok === 'string' ? body.tok : ''
+  if (Object.keys(errors).length > 0) {
+    return intrastatPage(c, company, { values, errors }, 422)
+  }
+  const old = company.intrastat ?? settingsOf(null)
+  const settings: IntrastatSettings = {
+    arrivals: arrivals || null,
+    dispatches: dispatches || null,
+    agri: values.agri === '1',
+    nature: isNature(values.druh) ? values.druh : old.nature,
+    transport: isTransport(values.doprava) ? values.doprava : old.transport,
+    terms: isTerms(values.podmienky) ? values.podmienky : old.terms,
+    region: isRegion(values.region) ? values.region : null,
+    origin: values.povod ? values.povod : null,
+    contact: values.kontakt || null,
+    phone: values.telefon || null,
+    email: values.email || null,
+  }
+  const db = c.env.DB
+  await db.batch([saveSettingsStatement(db, company.id, settings), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'intrastat.settings' })])
+  const q = isMonthText(month) && isFlow(flow) ? `mesiac=${month}&tok=${flow}&` : ''
+  return c.redirect(`/ucto/klienti/${company.id}/intrastat?${q}ok=settings#nastavenie`, 303)
+})
+
+/** A document's goods as the form shows them. */
+function goodsValues(doc: IntrastatDoc): Record<string, string> {
+  const g = doc.goods
+  const v: Record<string, string> = {}
+  if (!g) {
+    if (Math.abs(doc.cents) < SIMPLIFIED_LIMIT) v.zjednodusene = '1'
+    return v
+  }
+  g.lines.forEach((l, n) => {
+    v[`kn_${n}`] = l.cn
+    v[`povod_${n}`] = l.origin ?? ''
+    v[`kg_${n}`] = thousandthsText(l.grams)
+    v[`mj_${n}`] = l.su ?? ''
+    v[`mnozstvo_${n}`] = thousandthsText(l.quantity)
+    v[`hodnota_${n}`] = centsText(l.cents)
+    v[`opis_${n}`] = l.description ?? ''
+  })
+  if (g.simplified === true || (g.simplified === null && g.lines.length === 0 && Math.abs(doc.cents) < SIMPLIFIED_LIMIT)) v.zjednodusene = '1'
+  if (g.returned) v.vratene = '1'
+  if (g.skip) v.nevykazovat = '1'
+  v.druh = g.nature ?? ''
+  v.doprava = g.transport ?? ''
+  v.podmienky = g.terms ?? ''
+  v.region = g.region ?? ''
+  v.stat = g.country ?? ''
+  v.partner = g.partner ?? ''
+  v.mesiac = g.month ? `${g.month.slice(5, 7)}/${g.month.slice(0, 4)}` : ''
+  return v
+}
+
+async function goodsDoc(c: Ctx, company: Company): Promise<IntrastatDoc | null> {
+  const docs = await intrastatDocs(c.env.DB, company, { only: c.req.param('doc') })
+  return docs[0] ?? null
+}
+
+const goodsPage = (c: Ctx, company: Company, doc: IntrastatDoc, values: Record<string, string>, errors: Record<string, string>, status: ContentfulStatusCode = 200) =>
+  shell(c, 'clients', `${t.intrastat.goods.title}: ${company.name}`, <GoodsPage company={company} doc={doc} month={reportMonth(doc)} flow={flowOf(doc) ?? (doc.mode === 'acquisition' ? 'A' : 'D')} values={values} errors={errors} />, status)
+
+teamRoutes.get('/klienti/:id/intrastat/doklad/:doc', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const doc = await goodsDoc(c, company)
+  return doc ? goodsPage(c, company, doc, goodsValues(doc), {}) : missingPage(c)
+})
+
+teamRoutes.post('/klienti/:id/intrastat/doklad/:doc', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const doc = await goodsDoc(c, company)
+  if (!doc) return missingPage(c)
+  const db = c.env.DB
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const back = (d: IntrastatDoc, ok: string) => `/ucto/klienti/${company.id}/intrastat?mesiac=${reportMonth(d)}&tok=${flowOf(d) ?? (d.mode === 'acquisition' ? 'A' : 'D')}&ok=${ok}`
+  if (body.akcia === 'odstranit') {
+    await db.batch([removeGoodsStatement(db, company.id, doc.id), eventStatement(db, { company: company.id, user: who.user.id, action: 'intrastat.goods', subject: doc.id, detail: { removed: true } })])
+    return c.redirect(back({ ...doc, goods: null }, 'goodsRemoved'), 303)
+  }
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const values: Record<string, string> = {}
+  for (const [key, value] of Object.entries(body)) if (typeof value === 'string' && key.length <= 16) values[key] = value.trim().slice(0, 240)
+  const errors: Record<string, string> = {}
+  const e = t.intrastat.goods.errors
+  const lines: GoodsLine[] = []
+  for (let n = 0; n < 200; n++) {
+    const cnRaw = text(`kn_${n}`, 16).replace(/[\s.]/g, '')
+    const fields = ['povod', 'kg', 'mj', 'mnozstvo', 'hodnota', 'opis'].map((f) => text(`${f}_${n}`, 240))
+    if (cnRaw === '' && fields.every((f) => f === '')) continue
+    const [originRaw = '', kgRaw = '', su = '', qtyRaw = '', valueRaw = '', description = ''] = fields
+    const origin = originRaw.toUpperCase()
+    const grams = thousandthsOf(kgRaw)
+    const quantity = thousandthsOf(qtyRaw)
+    const cents = valueRaw === '' ? null : centsOf(valueRaw)
+    if (!/^\d{8}$/.test(cnRaw)) errors[`kn_${n}`] = e.cn as string
+    if (origin && !isOrigin(origin)) errors[`povod_${n}`] = e.origin as string
+    if (grams !== null && Number.isNaN(grams)) errors[`kg_${n}`] = e.kg as string
+    if (quantity !== null && Number.isNaN(quantity)) errors[`mnozstvo_${n}`] = e.quantity as string
+    if (cents !== null && (Number.isNaN(cents) || cents <= 0)) errors[`hodnota_${n}`] = e.value as string
+    lines.push({ cn: cnRaw, description: description || null, origin: origin || null, grams: grams !== null && !Number.isNaN(grams) ? grams : null, su: su || null, quantity: quantity !== null && !Number.isNaN(quantity) ? quantity : null, cents: cents !== null && !Number.isNaN(cents) ? cents : null })
+  }
+  const small = Math.abs(doc.cents) < SIMPLIFIED_LIMIT
+  const simplified = small ? body.zjednodusene === '1' : null
+  const skip = body.nevykazovat === '1'
+  const country = text('stat', 2).toUpperCase()
+  if (country && !(MEMBER_STATES as readonly string[]).includes(country)) errors.stat = e.origin as string
+  const partner = text('partner', 16).replace(/[\s.-]/g, '').toUpperCase()
+  if (partner && !isPartnerId(partner)) errors.partner = e.partner as string
+  const month = monthOfText(text('mesiac', 10))
+  if (month === null) errors.mesiac = e.month as string
+  if (!skip && simplified !== true && lines.length === 0) errors.none = e.none as string
+  if (Object.keys(errors).length > 0) return goodsPage(c, company, doc, values, errors, 422)
+  const druh = text('druh', 2)
+  const doprava = text('doprava', 1)
+  const podmienky = text('podmienky', 3)
+  const region = text('region', 1)
+  const goods: DocGoods = {
+    lines: simplified === true ? [] : lines,
+    simplified: small ? (simplified === true ? true : lines.length > 0 ? false : null) : null,
+    nature: isNature(druh) ? druh : null,
+    transport: isTransport(doprava) ? doprava : null,
+    terms: isTerms(podmienky) ? podmienky : null,
+    region: isRegion(region) ? region : null,
+    country: country || null,
+    partner: partner || null,
+    month: month || null,
+    returned: doc.cents < 0 && body.vratene === '1',
+    skip,
+  }
+  await db.batch([saveGoodsStatement(db, company.id, doc.id, goods, who.user.id), eventStatement(db, { company: company.id, user: who.user.id, action: 'intrastat.goods', subject: doc.id, detail: { lines: goods.lines.length, simplified: goods.simplified } })])
+  return c.redirect(back({ ...doc, goods }, 'goods'), 303)
 })
 
 teamRoutes.get('/klienti/:id/dph/:file', async (c) => {

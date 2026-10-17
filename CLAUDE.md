@@ -177,7 +177,27 @@ over. Bring this section up to date first whenever a session ends.
    import scheme (IOSS), supplies from a fixed establishment in another state (MSESTSupplies), the 10 000 € threshold
    watched, the payment's account and reference (the client is sent to the portal's confirmation), the OSS return in
    the filing bundle. test/oss.runtime.mjs, units "The one-stop shop".
-   Next by the order: Intrastat, joint-stock companies. The site promises a
+   Intrastat (built 17 October 2026, schema step 34: `companies.intrastat`, `intrastat_goods`, `intrastat_returns`):
+   `src/app/intrastat.ts` (read that day on intrastat.financnasprava.sk, the Statistical Office's handbook for 2026:
+   the threshold 1 000 000 € a flow, 200 000 € arrivals and 400 000 € dispatches for SK NACE 01, 02, 03, 10, 11, 12,
+   the window 1 October to 30 September before the year or the year so far; by the 15th after the month, the next
+   working day; the month of the VAT tax day; the value the VAT base up to the whole euro, at least 1 €; the mass in
+   whole kg, under 1 kg up; Greece GR; an invoice below 1 000 € simply as 9950 00 00; nil reports; later items in a
+   further regular report, errors by a corrective report M with the item's original number, a cancelled item at 0;
+   the file instat62.xsd, ISO-8859-2, kept as `test/xsd/instat62.xsd` byte for byte, SHA-256 03d5dd7c..., fetched
+   through the browser pane). Items come from booked documents (acquisition is arrivals A, eu_goods dispatches D, a
+   credit note only when its goods came back, as 2/1 in the other flow), one per kind of goods of a document (none
+   summed). `/ucto/klienti/:id/intrastat?mesiac=&tok=` (linked from the VAT page): twelve months, each flow's state
+   (not reported before the month in the settings, running, blocked, ready, sent, changed since), the items, the
+   threshold from the books, the settings (months each flow from, agriculture, nature, transport, terms, region,
+   origin, contact), the file `/intrastat.xml` (latin2, envelope AA plus month, flow and filing), the mark, the last
+   mark taken back; `/intrastat/doklad/:doc` a document's goods (lines with CN8, origin, mass, supplementary unit,
+   value; nature, transport, terms, region, state, partner, month, returned, skipped). The deadlines list each flow
+   (kind 'intrastat', ours). Not built: the CN tariff with its supplementary units (typed by the accountant), goods
+   moved without a document (own goods to a warehouse abroad, processing), items summed, the threshold watched on the
+   screen of deadlines, the reports in the filing bundle, sending through the portal's web service. test/intrastat.runtime.mjs,
+   units "Intrastat".
+   Next by the order: joint-stock companies. The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
    starts. No keys or passwords in chat; he pastes them into Cloudflare himself. Push to `main` only after every
@@ -1755,8 +1775,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1076 unit checks (17 October 2026, evening), including the one-stop shop
-npm run test:runtime     # 1479 workerd checks on Node 24 (as GitHub runs them), including test/oss.runtime.mjs
+npm test                 # 1099 unit checks (17 October 2026, evening), including Intrastat
+npm run test:runtime     # 1501 workerd checks on Node 24 (as GitHub runs them), including test/intrastat.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
