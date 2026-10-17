@@ -22,7 +22,7 @@ existenciu čísla v registri ani nevytvárame číslo z dátumu narodenia. Zahr
 potrebujú externý postup. Údaj sa uloží s osobou, časom a revíziou a používa sa aj pri ďalšej príprave.
 Stránka ukazuje maskovaný údaj. Príprava, oprava aj stiahnutie originálu vyžadujú čerstvé overenie prístupu.
 
-Opravu overeného identifikátora vykonáva správca s dôvodom. Pôvodný záznam sa nemení. Generované výkazy
+Opravu overeného identifikátora alebo referencie podkladu vykonáva správca s dôvodom. Pôvodný záznam sa nemení. Generované výkazy
 viazané na predchádzajúcu revíziu už neuzatvoria aktuálnu úlohu, termín ani odovzdanie. Originálny súbor
 a potvrdenka ostávajú historickým dôkazom. Ostatné poisťovne a bežné zmeny dnešnej karty zamestnanca
 neprepisujú minulý výkaz. Pri zákonnej zmene samotnej identity alebo viacerých pracovných vzťahoch musí

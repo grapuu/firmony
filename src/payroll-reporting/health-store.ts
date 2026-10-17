@@ -44,7 +44,7 @@ export async function recordHealthIdentity(db:D1Database, company:string, target
   const source=await db.prepare(`SELECT 1 AS present FROM payroll_targets t JOIN payroll_closures pc ON pc.id=t.closure_id AND pc.company_id=t.company_id, json_each(pc.lines) l WHERE t.id=? AND t.company_id=? AND 'health'||json_extract(l.value,'$.insurer')=t.kind AND json_extract(l.value,'$.employeeId')=? AND (${closureCurrentSql('pc')})`).bind(targetId,company,employee).first()
   if (!source) return {ok:false,error:'Zamestnanec nepatrí do aktuálnych podkladov tejto poisťovne.'}
   const old=await db.prepare('SELECT * FROM payroll_health_ids WHERE company_id=? AND employee_id=? ORDER BY revision DESC LIMIT 1').bind(company,employee).first<HealthIdentity>()
-  if ((old?.revision??0)!==v.revision || old?.identifier===v.identifier) return {ok:false,error:'Údaj sa zmenil alebo ho už evidujeme. Obnovte podklady.'}
+  if ((old?.revision??0)!==v.revision || old?.identifier===v.identifier && old.reference===v.reference.trim()) return {ok:false,error:'Údaj sa zmenil alebo ho už evidujeme. Obnovte podklady.'}
   try {
     await db.prepare('INSERT INTO payroll_health_ids(id,company_id,employee_id,revision,identifier,reference,reason,at,by_user) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),company,employee,v.revision+1,v.identifier,v.reference.trim(),v.reason.trim(),now(),user.id).run()
     return {ok:true}

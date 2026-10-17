@@ -99,6 +99,9 @@ export async function checkHealthReports({db,files,acc,admin,lucia,nowS,day,sign
   res=await admin.post(`${base}/${target.id}/poistenec`,identity('h-main',{revision:'1',identifier:'0010101235',reason:'TEST administrator corrected verified identity'}))
   target=await p.reportItem(db,company,target.id)
   check('an admin correction appends identity history and invalidates old accepted generated coverage',res.status===303&&target.sourceChanged&&target.status==='unverified'&&target.pkg.status==='accepted'&&(await db.prepare('SELECT COUNT(*) AS n FROM payroll_health_ids WHERE employee_id=?').bind('h-main').first()).n===2&&(await p.reportEvents(db,company,first.id)).length===1)
+  res=await admin.post(`${base}/${target.id}/poistenec`,identity('h-main',{revision:'2',identifier:'0010101235',reference:'TEST corrected original-document reference',reason:'TEST administrator corrected the evidence reference without changing identity'}))
+  const correctedIdentity=(await plan()).identities.find((i)=>i.employee_id==='h-main')
+  check('an admin can correct the evidence reference without inventing a different identifier',res.status===303&&correctedIdentity.revision===3&&correctedIdentity.identifier==='0010101235'&&correctedIdentity.reference==='TEST corrected original-document reference')
   check('identity correction reopens its deadline and work queue while leaving other insurers current',(await filingQueue(db,user)).some((r)=>r.id===target.id)&&(await teamDeadlines(db,user,false,today,{company})).dues.some((d)=>d.reportId===target.id&&d.state==='blocked')&&!(await p.reportItem(db,company,targets.find((t)=>t.kind==='health24').id)).sourceChanged)
   let frozen=false;try{await db.prepare('UPDATE companies SET purge_started_at=? WHERE id=?').bind(nowS,company).run()}catch{frozen=true}
   check('changed health identity alone prevents a falsely complete handover freeze',await pending()&&frozen)
