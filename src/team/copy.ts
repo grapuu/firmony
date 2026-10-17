@@ -400,6 +400,15 @@ export const team = typesetAll({
     status: { new: 'Nová', contacted: 'Kontaktovaná', client: 'Je klientom', declined: 'Odmietnutá' },
     situation: { switch: 'Mení účtovníčku', fresh: 'Zakladá firmu', other: 'Iné' },
     noCompany: 'Zatiaľ bez firmy',
+    investors: {
+      title: 'Investori',
+      lead: (n: number) => typeset(`${n} ${n === 1 ? 'človek čaká' : n >= 2 && n <= 4 ? 'ľudia čakajú' : 'ľudí čaká'} na daňové priznanie z investícií. Napíšeme im, keď ho spustíme.`),
+      empty: 'Na daňové priznanie z investícií sa zatiaľ nikto nezapísal.',
+      brokers: 'Brokeri',
+      way: { sam: 'Sám', 'za-mna': 'Za neho' } as Record<string, string>,
+      noWay: 'Bez voľby',
+      shown: (n: number) => typeset(`Zobrazených je najnovších ${n}.`),
+    },
   },
   newClient: {
     title: 'Nový klient',

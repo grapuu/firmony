@@ -11,6 +11,8 @@ export interface PageMeta {
   noindex?: boolean
   /** The link of the header's button: on the home page it scrolls to the form at its end. */
   ctaHref?: string
+  /** What the header's button says, where it is not the way to start with a company (the investors' page). */
+  ctaText?: string
 }
 
 /** His glass F beside the name, set in the blue sans, with a full stop in the red of the serif. */
@@ -66,9 +68,12 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
             <a href="/#cennik">{copy.nav.pricing}</a>
             <a href="/#kto-sme">{copy.nav.about}</a>
             <a href="/#otazky">{copy.nav.faq}</a>
+            <a href="/investori" aria-current={meta.path === '/investori' ? 'page' : undefined}>
+              {copy.nav.investors}
+            </a>
           </nav>
           <a class="btn btn--blue btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
-            {copy.nav.start}
+            {meta.ctaText ?? copy.nav.start}
           </a>
         </div>
       </header>
@@ -86,6 +91,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
               <a href="/#cennik">{copy.nav.pricing}</a>
               <a href="/#kalkulacka">{copy.footer.calc}</a>
               <a href="/#otazky">{copy.nav.faq}</a>
+              <a href="/investori">{copy.nav.investors}</a>
             </nav>
             <nav class="foot__col" aria-label={copy.footer.company}>
               <p class="foot__head">{copy.footer.company}</p>

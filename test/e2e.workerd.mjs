@@ -206,7 +206,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 5)
+check('health says the schema', (await res.json()).schema === 6)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -218,14 +218,117 @@ check('a slash at the end goes to the page', res.status === 301 && res.headers.g
 res = await mf.dispatchFetch('https://firmony.example.workers.dev/', { redirect: 'manual' })
 check('a preview address is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 
+// Firmony for investors: the page, and the people who want it
+res = await get('/investori?utm_source=xtb-komunita')
+page = await res.text()
+const plain = (html) => html.replace(/\u00a0/g, ' ')
+check('the investors page answers, with no script and nothing inline', res.status === 200 && !/<script/i.test(page) && !/ style=/i.test(page))
+check(
+  'it names the brokers and both ways with their prices',
+  ['XTB', 'Trading 212', 'Interactive Brokers', 'Revolut'].every((b) => page.includes(b)) && plain(page).includes('29 €') && plain(page).includes('49 € za všetkých') && plain(page).includes('89 €'),
+)
+check('it is for search engines and its forms carry the campaign', res.headers.get('x-robots-tag') === null && page.includes('name="utm_source" value="xtb-komunita"'))
+check('the header leads to the form on the page, and the menu marks the page', page.includes('href="#zapis"') && page.includes('href="/investori" aria-current="page"'))
+check('the dividend rate is said as it is for 2026', plain(page).includes('spravidla sadzbou 7 %') && plain(page).includes('sadzbou 19 až 35 %'))
+res = await get('/')
+check('the home page leads to it', (await res.text()).includes('href="/investori"'))
+const investorPairs = [
+  ['email', 'Investor@Example.sk'],
+  ['broker', 'xtb'],
+  ['broker', 'ibkr'],
+  ['broker', 'nieco-ine'],
+  ['cesta', 'sam'],
+  ['forma', 'zapis'],
+  ['utm_source', 'xtb-komunita'],
+]
+res = await post('/investori', investorPairs, { origin: 'https://evil.example', ip: '198.51.100.40' })
+check('a sign-up from another site is refused', res.status === 403)
+res = await post(
+  '/investori',
+  investorPairs.map(([k, v]) => [k, k === 'email' ? 'nie-je-email' : v]),
+  { ip: '198.51.100.40' },
+)
+page = await res.text()
+check(
+  'a wrong email is said once, at the form it was typed in, which keeps what was ticked',
+  res.status === 422 && page.split('takto nevyzerá správne').length === 2 && /value="xtb" checked/.test(page) && /value="ibkr" checked/.test(page) && /value="sam" checked/.test(page),
+)
+check('it is not kept', (await db.prepare('SELECT COUNT(*) AS n FROM investor_requests').first())?.n === 0)
+res = await post('/investori', investorPairs, { ip: '198.51.100.40' })
+check('a sign-up lands on thanks', res.status === 303 && res.headers.get('location') === '/investori/hotovo')
+let investor = await db.prepare('SELECT * FROM investor_requests').all()
+check(
+  'it is kept under the address in small letters, with the brokers we know, the way and the campaign',
+  investor.results.length === 1 &&
+    investor.results[0].email === 'investor@example.sk' &&
+    investor.results[0].brokers === 'xtb,ibkr' &&
+    investor.results[0].way === 'sam' &&
+    investor.results[0].source === '{"utm_source":"xtb-komunita"}',
+  JSON.stringify(investor.results),
+)
+// A confirmation is keyed by the second it was asked in (a double click is one email), so the next sign-ups wait a second.
+await settle(1100)
+res = await post('/investori', { email: 'investor@example.sk', cesta: 'za-mna' }, { ip: '198.51.100.40' })
+investor = await db.prepare('SELECT * FROM investor_requests').all()
+check(
+  'the same address again is the same row: its last way counts, the brokers stay',
+  res.status === 303 && investor.results.length === 1 && investor.results[0].way === 'za-mna' && investor.results[0].brokers === 'xtb,ibkr',
+)
+await settle(1100)
+res = await post('/investori', { email: 'INVESTOR@example.sk' }, { ip: '198.51.100.40' })
+check('a third time in a day is still taken', res.status === 303 && (await db.prepare('SELECT COUNT(*) AS n FROM investor_requests').first())?.n === 1)
+await settle()
+const investorMail = (await sent()).filter((m) => m.to.toLowerCase() === 'investor@example.sk')
+check(
+  'a confirmation goes out, twice a day at most, and repeats nothing that was typed',
+  investorMail.length === 2 &&
+    investorMail[0].subject === 'Firmony: zapísali sme Vás' &&
+    investorMail[0].replyTo === 'ahoj@firmony.ai' &&
+    investorMail[0].text.startsWith('Dobrý deň,') &&
+    investorMail[0].text.includes('odpíšte na tento e-mail a adresu vymažeme') &&
+    !/xtb|ibkr|Interactive/i.test(investorMail[0].text),
+  String(investorMail.length),
+)
+check('nobody of the team is rung for it', !(await sent()).some((m) => m.to === 'ahoj@firmony.ai' && /investor/i.test(m.subject + m.text)))
+res = await post('/investori', { email: 'bot@example.sk', web: 'http://bot.example' }, { ip: '198.51.100.40' })
+check(
+  'a bot that fills the hidden field is thanked and forgotten',
+  res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM investor_requests WHERE email = 'bot@example.sk'").first())?.n === 0,
+)
+for (let i = 0; i < 6; i++) await post('/investori', { email: `i${i}@example.sk` }, { ip: '198.51.100.41' })
+res = await post('/investori', { email: 'i7@example.sk' }, { ip: '198.51.100.41' })
+check('the seventh sign-up in an hour from one connection waits', res.status === 429 && (await res.text()).includes('priveľa zápisov'))
+res = await get('/investori/hotovo')
+page = await res.text()
+check('thanks says when we write, and is not for search engines', res.status === 200 && page.includes('Zapísali sme Vás') && page.includes('<meta name="robots" content="noindex"'))
+check('its header leads to no form it does not have', !page.includes('href="#zapis"') && page.includes('href="/zacat"'))
+res = await get('/sitemap.xml')
+check('the sitemap lists the investors page', (await res.text()).includes('https://firmony.ai/investori</loc>'))
+res = await get('/pravne-informacie')
+check('the privacy notice names the sign-up and how long it is kept', plain(await res.text()).includes('Keď sa zapíšete na daňové priznanie z investícií'))
+
 // The schedule deletes what the privacy notice says is deleted
 const old = Math.floor(Date.now() / 1000) - 400 * 86400
 await db.prepare("INSERT INTO requests (id, created_at, plan, situation, name, email, privacy_version) VALUES ('old', ?, 'start', 'other', 'Starý', 'old@example.sk', '2026-10-12')").bind(old).run()
+await db
+  .prepare(
+    "INSERT INTO investor_requests (id, created_at, updated_at, email, privacy_version) VALUES ('inv-old', ?, ?, 'stary-investor@example.sk', '2026-10-14'), ('inv-renewed', ?, ?, 'znova@example.sk', '2026-10-14')",
+  )
+  .bind(old, old, old, old)
+  .run()
+res = await post('/investori', { email: 'znova@example.sk' }, { ip: '198.51.100.42' })
+check('signing up again renews the year', res.status === 303)
 const worker = await mf.getWorker('firmony')
 await worker.scheduled({ cron: '*/15 * * * *' })
 await settle(500)
 check('a request older than a year is deleted', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 0)
 check('newer requests stay', (await count()) >= 4)
+check(
+  'a sign-up not renewed for a year is deleted, newer ones stay',
+  (await db.prepare("SELECT COUNT(*) AS n FROM investor_requests WHERE id = 'inv-old'").first())?.n === 0 &&
+    (await db.prepare("SELECT COUNT(*) AS n FROM investor_requests WHERE email = 'investor@example.sk'").first())?.n === 1,
+)
+check('a sign-up renewed within the year stays', (await db.prepare("SELECT COUNT(*) AS n FROM investor_requests WHERE id = 'inv-renewed'").first())?.n === 1)
 
 // ---------------------------------------------------------------------------------------------------------------
 // The client's app
@@ -775,7 +878,9 @@ await db
   .bind(nowS)
   .run()
 res = await admin.get('/ucto/ziadosti')
-check('the administrator sees the request', (await res.text()).includes('Nová firma s. r. o.'))
+page = await res.text()
+check('the administrator sees the request', page.includes('Nová firma s. r. o.'))
+check("and who wants the investors' tax return, with the brokers and the way", page.includes('investor@example.sk') && page.includes('XTB, Interactive Brokers') && page.includes('Za neho'))
 res = await admin.get('/ucto/klienti/novy?ziadost=req-x')
 page = await res.text()
 check('the form starts from the request', page.includes('value="Nová firma s. r. o."') && page.includes('value="peter@nova-firma.test"') && page.includes('value="Peter Nový"'))

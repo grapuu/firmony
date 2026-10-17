@@ -13,80 +13,36 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // What an emailed statement has to show before it touches the books (statements.ts)
+  // Who signs up, and what is kept of it (index.tsx)
+  ['src/index.tsx', "  if (field(one('web'), 200) !== '') return c.redirect('/investori/hotovo', 303)\n", '', 'a bot that fills the hidden field is forgotten'],
   [
-    'src/app/statements.ts',
-    "  if (!account) return trusted ? { status: 'taken' } : { status: 'confirm' }",
-    "  if (!account) return { status: 'taken' }",
-    'an account the company does not have waits for the owner',
+    'src/index.tsx',
+    '  const brokers = INVESTORS.brokers.map((b) => b.id).filter((id) => picked.includes(id)) as InvestorBroker[]',
+    '  const brokers = picked.map(String) as InvestorBroker[]',
+    'only brokers we know are kept',
   ],
-  ['src/app/statements.ts', "  if (trusted) return { status: 'taken' }\n", '', 'a member who adds it on a page is trusted'],
-  ['src/app/statements.ts', "  if (s.entries.every((e) => known.has(e.ref))) return { status: 'known' }\n", '', 'the same movements again are nothing new'],
-  ['src/app/statements.ts', '  if (sum !== s.closing.cents) return', '  if (false) return', 'figures that do not add up wait'],
-  ['src/app/statements.ts', "return { status: 'held', reason: { kind: 'unknown', opening: s.opening.cents } }", "return { status: 'taken' }", 'an account whose balance we do not know waits'],
-  ['src/app/statements.ts', '  if (starts < account.balanceOn) return', '  if (false) return', 'days the books already have wait'],
+  ['src/index.tsx', '  if (!EMAIL.test(values.email)) return page(c, meta, <InvestorsPage', '  if (false) return page(c, meta, <InvestorsPage', 'what is no email is refused'],
+  ['src/index.tsx', "  const at = one('forma') === 'zapis' ? 'final' : 'hero'", "  const at = 'hero'", 'a mistake is said at the form it was made in'],
+  ['src/index.tsx', "  if (!(await withinLimit(db, 'investor', connection(c), LIMITS.requestsPerHour, 3600))) {", '  if (false) {', 'sign-ups from one connection are limited'],
   [
-    'src/app/statements.ts',
-    "  return s.opening.cents === account.balanceCents ? { status: 'taken' } :",
-    "  return true ? { status: 'taken' } :",
-    'a statement that does not follow the last one waits',
+    'src/index.tsx',
+    "  if (await withinLimit(db, 'confirm', values.email.toLowerCase(), LIMITS.confirmationsPerDay, 86400)) {\n    statements.push(\n      queueStatement(db, {\n        key: `investor:",
+    '  if (true) {\n    statements.push(\n      queueStatement(db, {\n        key: `investor:',
+    'two confirmations a day at most',
   ],
-  ['src/app/statements.ts', "  const trusted = by.source === 'upload' && by.user !== null", '  const trusted = by.user !== null || true', 'an emailed statement is not trusted'],
-  ['src/app/statements.ts', '  if ((seen?.n ?? 0) > 0) {', '  if (false) {', 'the same file twice is taken once'],
+  ['src/index.tsx', "          copy.investors.mail.remove.replace(/\\u00a0/g, ' '),\n          '',\n", '', 'the confirmation says how to be forgotten'],
+  ['src/index.tsx', "  const urls = ['/', '/investori', '/podmienky'", "  const urls = ['/', '/podmienky'", 'the sitemap lists the investors page'],
+  // One row an address, a year from its last sign-up (db.ts)
+  ['src/db.ts', 'r.email.toLowerCase(), r.brokers.length', 'r.email, r.brokers.length', 'one row an address, whatever its letters'],
+  ['src/db.ts', 'brokers = COALESCE(excluded.brokers, investor_requests.brokers)', 'brokers = excluded.brokers', 'a sign-up without brokers keeps the ones before'],
+  ['src/db.ts', 'DO UPDATE SET updated_at = excluded.updated_at,', 'DO UPDATE SET updated_at = investor_requests.updated_at,', 'signing up again renews the year'],
+  ['src/db.ts', "    db.prepare('DELETE FROM investor_requests WHERE updated_at < ?').bind(ts - RETENTION.requestDays * 86400),\n", '', 'a sign-up is deleted after a year'],
+  // Who sees them
   [
-    'src/app/statements.ts',
-    "    const verdict = taken === 0 ? ({ status: 'taken' } as Verdict) : verdictOf(",
-    "    const verdict = true ? ({ status: 'taken' } as Verdict) : verdictOf(",
-    'after the yes the next ones still have to follow',
-  ],
-  ['src/app/statements.ts', "      if (verdict.status === 'held') rings.push(...(await ringFor(db, company, 'held', row.id, origin)))\n", '', 'the accountant is told of one that waits after the yes'],
-  ['src/app/statements.ts', '  if (!take_) {', '  if (false) {', 'the accountant can refuse a statement'],
-  ['src/app/statements.ts', "WHERE m.company_id = ? AND m.role = 'owner'\")", 'WHERE m.company_id = ?")', 'only the owners are asked about an account'],
-  ['src/app/statements.ts', "  const due = rows.results.some((a) => a.source !== 'email' && (", '  const due = rows.results.some((a) => (', 'statements the bank sends are not asked for'],
-  ['src/app/statements.ts', "\n          AND NOT EXISTS (SELECT 1 FROM bank_links l WHERE l.id = a.link_id AND l.status = 'active')", '', 'an account a link reads is not asked for'],
-  [
-    'src/app/statements.ts',
-    'SELECT ${COLUMNS} FROM statements WHERE id = ? AND company_id = ?`).bind(id, company)',
-    'SELECT ${COLUMNS} FROM statements WHERE id = ? AND (company_id = ? OR 1)`).bind(id, company)',
-    "a statement's file is its company's alone",
-  ],
-  // Rung at once, on the 3rd once a month
-  ['src/app/inbox.ts', '  if (kept.statements.confirm + kept.statements.held > 0) later(flushOutbox(db, env.EMAIL))\n', '', 'a statement that waits rings at once'],
-  ['src/app/remind.ts', '  if (b.date !== STATEMENT_DAY || b.hour !== 9 || b.minute >= 15) return 0', '  if (b.hour !== 9 || b.minute >= 15) return 0', 'the statement is asked for on the 3rd'],
-  [
-    'src/app/remind.ts',
-    "ringStatement(db, 'remind-statement', month, person.email, ring)",
-    "ringStatement(db, 'remind-statement', String(Date.now()), person.email, ring)",
-    'the statement is asked for once',
-  ],
-  // Where a statement goes, and who may answer
-  [
-    'src/app/intake.ts',
-    "    if (file.kind === 'xml') {\n      const taken = await takeStatementFile",
-    '    if (false) {\n      const taken = await takeStatementFile',
-    'a statement among documents goes to the bank',
-  ],
-  ['src/app/routes.tsx', "w.id === body.banka && w.way === 'monthly')", "w.id === body.banka && w.way === 'never')", 'a bank of once a month is remembered'],
-  [
-    'src/app/routes.tsx',
-    "  if (who.role !== 'owner') return bankPage(c, t.bank.onlyOwner, 403)\n  const id = c.req.param('id')\n  const body = await c.req.parseBody()\n  const done = ID.test(id) ? await answerAccount",
-    "  const id = c.req.param('id')\n  const body = await c.req.parseBody()\n  const done = ID.test(id) ? await answerAccount",
-    'only an owner answers about an account',
-  ],
-  ['src/views/bank.tsx', '    {owner ? (\n      <form class="stmtconfirm__actions"', '    {true ? (\n      <form class="stmtconfirm__actions"', 'a member is shown no answers'],
-  ['src/app/export.ts', "    if (statementList.length > 0) yield { name: 'vypisy.csv', when: at, data: text(statementsCsv) }\n", '', "the year's download holds the statements"],
-  ['src/app/purge.ts', "    db.prepare('DELETE FROM statements WHERE company_id = ?').bind(companyId),\n", '', 'the statements go with the company'],
-  // Fio banka (fio.ts) and its 30 seconds
-  ['src/app/fio.ts', "  if (res.status === 409) throw new FioError(409, 'soon')\n", '', 'too soon is said so'],
-  ['src/app/fio.ts', "    const ended = fio?.kind === 'token'", '    const ended = false', 'a token Fio no longer takes ends the link'],
-  ['src/app/fio.ts', '${String(98 - rest)', '${String(97 - rest)', 'the IBAN of an account number'],
-  ['src/app/fio.ts', '  const card = /kart/i.test(kind)', '  const card = false', 'a card payment of Fio is one'],
-  ['src/app/fio.ts', 'args.token, now())\n', 'args.token, null)\n', 'the first read counts against the 30 seconds'],
-  [
-    'src/app/routes.tsx',
-    "  if (link.kind === 'fio' && link.tried_at !== null && now() - link.tried_at < FIO.minSeconds) return c.redirect('/app/banka?ok=fio-skoro', 303)\n",
-    '',
-    'Fio is not asked again within 30 seconds',
+    'src/team/routes.tsx',
+    'const [requests, investors] = await Promise.all([listRequests(c.env.DB), listInvestors(c.env.DB)])',
+    'const [requests, investors] = await Promise.all([listRequests(c.env.DB), Promise.resolve({ total: 0, list: [] })])',
+    'the administrator sees who signed up',
   ],
 ]
 

@@ -1,6 +1,6 @@
 // Every visible text of the site, in Slovak, typeset once (src/format.ts). Prices and limits come from
 // src/config.ts, so a text can never say another figure than the plans have.
-import { APP, BRAND, CLOSING_PRICE, OPERATOR, ORDER, PAYROLL_PRICE, PLANS, REPLY_WITHIN, type Plan } from './config'
+import { APP, BRAND, CLOSING_PRICE, INVESTORS, OPERATOR, ORDER, PAYROLL_PRICE, PLANS, REPLY_WITHIN, type Plan } from './config'
 import { formatEur, typeset, typesetAll } from './format'
 
 const start = PLANS[0] as Plan
@@ -23,7 +23,7 @@ export const copy = typesetAll({
     description: `Postaráme sa o celé účtovníctvo Vašej s. r. o. Doklady stačí odfotiť. Zaúčtujeme ich, podáme priznanie k DPH aj daňové priznanie a postrážime termíny. Od ${eur(start.price)} mesačne podľa počtu dokladov.`,
   },
   skip: 'Preskočiť na obsah',
-  nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
+  nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
   hero: {
     tag: 'Účtovníctvo pre mladé s. r. o.',
@@ -312,6 +312,123 @@ export const copy = typesetAll({
     reply: `Odpovedáme ${REPLY_WITHIN}.`,
     imprint: `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísanej ${OPERATOR.registeredIn}. Ceny sú uvedené bez DPH.`,
     rights: '© 2026 europio s. r. o.',
+  },
+
+  /** Firmony for investors: the page /investori, collecting the people who want it until it starts. */
+  investors: {
+    meta: {
+      title: `Daňové priznanie z investícií | ${BRAND.name}`,
+      description: `Nahráte ročný výpis od brokera, ${BRAND.name} spočíta, čo sa zdaňuje a čo nie, a pripraví daňové priznanie za rok ${INVESTORS.year}. Alebo ho podáme za Vás. Spúšťame v januári ${INVESTORS.year + 1}.`,
+    },
+    cta: 'Zapísať sa',
+    hero: {
+      tag: 'Pre investorov',
+      first: 'Daňové priznanie z investícií.',
+      second: 'Hotové za pár minút.',
+      lead: 'Nahráte ročný výpis od brokera. Spočítame, čo sa zdaňuje a čo nie, a pripravíme priznanie, ktoré len podpíšete. Alebo ho podáme za Vás.',
+      note: `Spúšťame v januári ${INVESTORS.year + 1}, včas na priznanie za rok ${INVESTORS.year}.`,
+      how: 'Ako to funguje',
+    },
+    card: {
+      title: 'Dáme Vám vedieť',
+      text: `Zapíšte sa a priznanie za rok ${INVESTORS.year} budete mať hotové medzi prvými.`,
+      label: 'Váš e-mail',
+      placeholder: 'meno@email.sk',
+      button: 'Zapísať sa',
+      fine: 'Pošleme Vám len potvrdenie a správu o spustení.',
+    },
+    brokers: 'Začíname s brokermi, cez ktorých na Slovensku investuje najviac ľudí:',
+    steps: {
+      first: 'Tri kroky.',
+      second: 'Žiadne tabuľky.',
+      items: [
+        { title: 'Stiahnete ročný výpis', text: `V aplikácii brokera si stiahnete výpis obchodov a dividend za rok ${INVESTORS.year}. Ukážeme Vám presne kde.` },
+        { title: 'Nahráte ho do Firmony', text: 'Každý predaj spárujeme s jeho nákupom, prepočítame doláre na eurá a postrážime časový test.' },
+        { title: 'Priznanie je hotové', text: 'Dostanete priznanie, ktoré nahráte do eDane a podpíšete. Alebo ho za Vás podá naša účtovníčka.' },
+      ],
+    },
+    rules: {
+      first: 'Čo za Vás spočítame.',
+      second: 'Podľa zákona, nie odhadom.',
+      items: [
+        {
+          title: 'Predaj po roku',
+          text: 'Akcie a ETF z regulovaného trhu, ktoré ste držali viac ako rok, sú od dane oslobodené. Každý predaj porovnáme s nákupom a oslobodené obchody do priznania nedáme.',
+        },
+        {
+          title: 'Predaj do roka',
+          text: 'Zisk sa zdaňuje sadzbou 19 až 35 % podľa celého Vášho základu dane. Zisky a straty z predajov v jednom roku spočítame a uplatníme oslobodenie do 500 € ročne, ak naň máte nárok.',
+        },
+        {
+          title: 'Dividendy zo zahraničia',
+          text: 'Dividendy z akcií sa zdaňujú spravidla sadzbou 7 %. Ak zahraničie zrazilo viac, na Slovensku nič nedoplácate, no v priznaní byť musia. Výplaty z ETF nie sú dividendy a zdaňujú sa sadzbou 19 %. Aj tie rozlíšime.',
+        },
+        { title: 'Úroky u brokera', text: 'Úroky z hotovosti, ktorú ste nezainvestovali, sa zdaňujú sadzbou 19 %. Vo výpise ich nájdeme za Vás.' },
+        { title: 'Doláre na eurá', text: 'Každý nákup, predaj aj dividendu prepočítame kurzom Európskej centrálnej banky.' },
+        { title: 'Zdravotné odvody', text: 'Zo zisku z predaja do roka sa platí aj zdravotné poistenie. Povieme Vám, koľko a dokedy.' },
+      ],
+    },
+    ways: {
+      first: 'Sám, alebo za Vás.',
+      second: 'Vyberiete si.',
+      self: {
+        title: 'Sám',
+        price: `${INVESTORS.prices.self} €`,
+        priceNote: `za jedného brokera, ${INVESTORS.prices.selfAll} € za všetkých`,
+        points: ['Priznanie pripravené na podpis', 'Nahráte ho do eDane alebo vytlačíte', 'Výpočet každého obchodu na kontrolu'],
+      },
+      done: {
+        title: 'Za Vás',
+        price: `${INVESTORS.prices.done} €`,
+        priceNote: 'všetci brokeri',
+        points: ['Všetko, čo pri ceste Sám', 'Pred podaním ho skontroluje účtovníčka', 'Podáme ho za Vás na základe plnej moci'],
+      },
+      note: 'Ceny sú konečné, DPH sa k nim nepripočítava.',
+    },
+    bridge: {
+      title: 'Raz si možno založíte firmu.',
+      text: `${BRAND.name} vedie aj celé účtovníctvo pre s. r. o. Keď z investovania vznikne podnikanie, nemusíte hľadať nikoho iného.`,
+      link: 'Účtovníctvo pre firmy',
+    },
+    faq: [
+      { q: 'Musím podať priznanie, keď som akcie len kupoval?', a: 'Samotný nákup sa nezdaňuje. Priznanie riešite, keď ste predávali, alebo ste dostali dividendy či úroky.' },
+      { q: 'Musia byť dividendy v priznaní, keď daň zrazili v zahraničí?', a: 'Áno. Dividendy zo zahraničia patria do priznania, aj keď sa z nich na Slovensku nič nedoplatí.' },
+      {
+        q: 'Dokedy treba priznanie podať?',
+        a: `Za rok ${INVESTORS.year} do 31. marca ${INVESTORS.year + 1}. Kto má príjmy zo zahraničia, môže si lehotu oznámením predĺžiť až do 30. septembra ${INVESTORS.year + 1}.`,
+      },
+      { q: 'Čo kryptomeny?', a: 'Pripravujeme ich hneď po akciách a ETF. Zdaňujú sa inak, preto ich chceme mať presne, nie približne.' },
+      { q: 'Uvidíte do môjho účtu u brokera?', a: 'Nie. Pracujeme len s výpisom, ktorý si sami stiahnete. Prístup k Vášmu účtu nepotrebujeme.' },
+      {
+        q: 'Kto výpočet skontroluje?',
+        a: 'Pri ceste Za Vás ho pred podaním skontroluje účtovníčka. Pri ceste Sám uvidíte výpočet každého obchodu a porovnáte ho s výpisom.',
+      },
+    ],
+    final: {
+      title: 'Zapíšte sa. Ozveme sa v januári.',
+      lead: 'Povedzte nám, cez koho investujete, a pripravíme to najprv pre Vášho brokera.',
+      brokers: 'Cez koho investujete',
+      way: 'Ako to chcete',
+      ways: { sam: 'Sám, s pripraveným priznaním', 'za-mna': 'Za mňa, priznanie podajte Vy' },
+      button: 'Zapísať sa',
+      fine: 'Pošleme Vám len potvrdenie a správu o spustení.',
+      privacy: 'Ochrana údajov',
+    },
+    errors: {
+      email: 'Skontrolujte e-mail, takto nevyzerá správne.',
+      throttle: 'Z tohto pripojenia prišlo priveľa zápisov. Skúste to, prosím, o hodinu.',
+    },
+    thanks: {
+      title: 'Ďakujeme. Zapísali sme Vás.',
+      lead: `Keď spustíme priznania za rok ${INVESTORS.year}, napíšeme Vám. Bude to v januári, včas pred termínom 31. marca.`,
+      back: 'Späť na stránku pre investorov',
+      firms: 'Máte aj firmu? Pozrite si účtovníctvo pre s. r. o.',
+    },
+    mail: {
+      subject: `${BRAND.name}: zapísali sme Vás`,
+      lead: `ďakujeme za záujem. Keď spustíme daňové priznania z investícií za rok ${INVESTORS.year}, dáme Vám vedieť. Bude to v januári ${INVESTORS.year + 1}, včas pred termínom 31. marca.`,
+      remove: 'Ak ste sa nezapisovali Vy alebo si to rozmyslíte, odpíšte na tento e-mail a adresu vymažeme.',
+    },
   },
 
   start: {

@@ -188,6 +188,12 @@ is a few clicks in a dashboard. He writes Slovak, often dictated, reads little: 
   preview is version 13 (the sample company's bank sends its statements by email; "Banka" and "Nový účet" in its bar;
   every bank's steps; the next statement paying invoice 20260007; Fio linked; Lucia's statement to check).
 
+- From 14:05 (14 October 2026), the investors, as he was told at 14:02 ("Teraz idem na investorov ... asi 3 hodiny").
+  Built: "Firmony for investors" below, the page /investori that collects sign-ups until January 2027. Before the page
+  said a rate, each rule was read again on 14 October 2026 (sources under "What the page says, and where it was
+  read"): the dividend sentence was made "spravidla 7 %" (profits of 2024 are taxed at 10 %), and payouts of a
+  distributing ETF are said to be 19 % and no dividends. All checks passing (units 466, runtime 576); RESULTS.
+
 ## What he has to do before it is live (each a few clicks)
 
 1. Buy firmony.ai (Websupport or any registrar), add the domain to Cloudflare (free plan), point the registrar's
@@ -364,8 +370,9 @@ above 2,5 % or accountant cost above 40 € a client.
 - Pages: `/` (the opening with the card on the IČO, one month, four figures, the hug, everything in one price,
   AI and the accountant, the e-invoice date, prices, the comparison, two ways in, who is behind it, questions,
   the closing form),
-  `/zacat` (the IČO, then the details; `?balik=`, `?nova=1`), `/zacat/hotovo`, `/pravne-informacie` (company,
-  privacy, cookies), robots, sitemap, `/healthz`.
+  `/zacat` (the IČO, then the details; `?balik=`, `?nova=1`), `/zacat/hotovo`, `/investori` and `/investori/hotovo`
+  (the investors' sign-up, "Firmony for investors" below), `/pravne-informacie` (company, privacy, cookies), robots,
+  sitemap, `/healthz`.
 - The comparison is a GET form (`mesacne`, `za-doklad`, `doklady`, `zavierka`, `dph`, `ludia`) computed on the
   server in cents (`src/calc.ts`); before anything is typed it shows a worked example (60 € a month, 25
   documents at 5,20 €, closing 160 €: 2 440 € against 977 €).
@@ -375,7 +382,7 @@ above 2,5 % or accountant cost above 40 € a client.
   per address. Six requests an hour per connection (an IPv6 address counts by its /64). A hidden field catches
   bots. Campaign tags (utm_*, ref) travel with the forms and are kept with the request.
 - The schedule (every 15 minutes) sends the outbox and deletes what the privacy notice promises: requests after
-  365 days, sent email after 90, counters after 2 days.
+  365 days (an investor's sign-up 365 days after its last), sent email after 90, counters after 2 days.
 - Headers: CSP without anything inline or foreign, no framing, HSTS, `noindex` on `/zacat` and on any host but
   firmony.ai; http and www are redirected; a form is accepted only from our own pages and under 8 kB.
 
@@ -960,6 +967,60 @@ the books; worked out from what the app holds, never typed twice.
   statements, payroll's entries, another currency than the euro, a cash book of its own, a log of each change of a
   booked document beyond the events.
 
+## Firmony for investors (14 October 2026; `src/views/investors.tsx`, `INVESTORS` in `src/config.ts`, `copy.investors`)
+
+His word of 12:48: a tax return for people who invest through a broker, clicked through by themselves or done by us,
+under the same brand, to be shared by investors with an audience ("keď to používaš ako investor a si s tým spokojný,
+založíš si raz firmu, pôjdeš k nám"). He was told yes, as the way in, after the bank; the return itself is ready in
+December, and until then the page collects the people who want it. Nothing of the return is built yet.
+
+- The page /investori (in the header's menu and the footer; in the sitemap; for search engines): the site's own
+  parts (the panel of light with the card over its edge, his glass in tiles, the sheet of two ways, the questions,
+  the closing panel). The header's button is "Zapísať sa" and leads to the form on the page (`ctaHref`, `ctaText`
+  of `PageMeta`). Sections: the opening with the e-mail card, the brokers (XTB, Trading 212, Interactive Brokers,
+  Revolut), three steps, six rules it counts, the two ways with their prices, the bridge to the firms' accounting,
+  six questions, and the closing form, which also asks for the brokers (chips) and the way.
+- The prices are the builder's proposal, **not his decision**: Sám 29 € for one broker, 49 € for every broker, Za Vás
+  89 € (`INVESTORS.prices`), "Ceny sú konečné, DPH sa k nim nepripočítava." Ask him before the return is sold.
+- A sign-up (`POST /investori`): an e-mail, the brokers we know (anything else is dropped), the way (`sam`, `za-mna`)
+  and the campaign tags; `investor_requests`, schema step 6, one row an address in small letters
+  (`upsertInvestorStatement`): its last way counts, its brokers stay when a later sign-up names none, and a year
+  runs from the last sign-up (`purge`). Six an hour from one connection; a field nobody sees catches bots; a wrong
+  address is said at the form it was typed in, which keeps what was ticked (`forma=zapis`). A confirmation goes to
+  the address at most twice a day (the same counter as a request's), keyed by the second it was asked in (a double
+  click is one e-mail), with nothing that was typed and the way to be forgotten ("odpíšte na tento e-mail a adresu
+  vymažeme"; it replies to ahoj@). Nobody of the team is rung: the administrator sees them on /ucto/ziadosti
+  ("Investori", the newest 200 and how many there are); an accountant and a client get 404 there. The privacy notice
+  names what is kept, why and how long (`PRIVACY_VERSION` 2026-10-14). The sample has three in the playground.
+- What the page says, and where it was read (14 October 2026, through search and the summarising tool; **no statute
+  was read in the original**: the shell does not reach slov-lex and the browser pane was not connected):
+  - Shares and ETFs admitted to a regulated market (or a similar one abroad), held more than a year and not business
+    property, are exempt (§ 9 ods. 1 písm. k); the Financial Administration's answer 798719). A gain within the year
+    is taxed with the rest of the base at 19, 25, 30 and 35 % (boundaries 43 983,32, 60 349,21 and 75 010,32 € for
+    2026; answer 081400 and podnikajte.sk's numbers for 2026), after the 500 € exemption of § 9 ods. 1 písm. i):
+    a gain after expenses up to 500 € is exempt and not reported, above it only the rest is taxed (answers 798719 and
+    575795; the 500 € is shared with the other incomes of § 8 it covers). The sales of one year are summed (the
+    purchase price and the costs of buying and selling are the expenses); a net loss counts for nothing ("Pri
+    príjmoch z predaja cenných papierov nie je možné vykázať stratu", 575795).
+  - Dividends from abroad: 7 % for profits of 2017 to 2023 and from 2025, 10 % for profits of 2024, 35 % from a
+    non-cooperating state; tax withheld abroad is credited up to what the treaty allows, so nothing is paid when more
+    than 7 % was withheld; they go into Príloha 2 of DPFO typ B (answer 830591; Tatra banka's page). Payouts of a
+    distributing ETF are capital income at 19 %, not dividends; interest from abroad (§ 7) 19 % (081400; Tatra banka).
+  - Health insurance on a gain that is taxed: 16 % from 1 January 2026 to 31 December 2027; none on what is exempt,
+    on dividends or on interest (Tatra banka, "Zdaňovanie príjmov z investovania", state of 1 June 2026, updated
+    13 October 2026). The page says only that it is paid and that we say how much.
+  - The return for 2026 is due on 31 March 2027; with income from abroad it can be moved to 30 September 2027 by a
+    notice given by 31 March (podnikajte.sk). A return is due when taxable income exceeds 2 983,37 €.
+  - Crypto: not claimed (its rules were not settled in what was read); the page says it comes after shares and ETFs.
+- Still to read in the original before the return is built (static.slov-lex.sk/static/SK/ZZ/2003/595/, the pane):
+  § 8 (the expenses, the summing of sales, the loss), § 9 ods. 1 písm. i) and k) as in force for 2026, § 51e,
+  the crypto rules, the health insurance act on § 8, and how a foreign currency is converted for somebody who keeps
+  no books (the page says "kurzom Európskej centrálnej banky", without the day).
+- Next, the return itself (about two days): reading the yearly statements of XTB, Trading 212, Interactive Brokers
+  and Revolut (CSV or PDF as each gives them), pairing every sale with its purchase, the time test, the rates of the
+  ECB, the DPFO typ B as XML for eDane, and the paid flow (Sám, Za Vás with the accountant's check and the filing
+  under a power of attorney). The prices first, from him.
+
 ## Design (the sixth one, built on the afternoon of 13 October 2026)
 
 History: the first design (plum, mist, coral, Literata) he called "odporná ... jak z Wordu"; the second (black,
@@ -1041,10 +1102,10 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # unit checks (466): pairing, statements and what an emailed one must show, Fio, e-invoices, reading, invoices, PAY by square, the bank, prices, papers, doorbells, the declaration, the archive, the end, VAT, the books
-npm run test:runtime     # the deployable bundle in workerd (552): the site, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, to the deletion
+npm run test:runtime     # the deployable bundle in workerd (577): the site, the investors' sign-up, the order, and the app end to end, statements by email and Fio, VAT filed and corrected, the books, to the deletion
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
-node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (31)
+node scripts/dev/mutate.mjs [words]                 # takes this change's rules out one at a time (13)
 node scripts/dev/preview-app.mjs <folder> <photo>   # the clickable copy of the app (a fresh playground first)
 ```
 
@@ -1062,6 +1123,8 @@ A fresh sample company: remove
 Miniflare kept the data in a temporary folder of its own). `mutate.mjs` works in a copy in the system's temporary folder; replace its list with the next change's
 rules.
 
+The investors' page is `/investori`; the administrator's /ucto/ziadosti shows the three sample sign-ups under
+"Investori". `scripts/dev/preview.mjs` copies it into the site's preview (`investori.html`, `investori-hotovo.html`).
 In the playground IČO 57442452 is found (europio), 35757442 makes the register fail, anything else is unknown;
 `/playground/mail` shows what was "sent". To stop it: `pkill -f "node --no-warnings [s]cripts/playground"` in a
 command of its own (a command line that contains the start command is killed by the same pattern).

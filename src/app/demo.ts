@@ -1003,6 +1003,18 @@ export async function seedDemo(db: D1Database, today: string, files?: R2Bucket):
       )
       .bind('demo-req-2', ts - 26 * 3600, '12345679', 'Pekáreň Klások s. r. o.', 'Pekárska 3, 080 01 Prešov', 'Teraz máme účtovníčku, ktorá končí. Platitelia DPH, asi 60 dokladov mesačne.'),
 
+    // Three people who want the investors' tax return.
+    ...(
+      [
+        ['tomas.investuje@example.com', 'xtb,t212', 'sam', 2],
+        ['lenka.k@example.com', 'ibkr', 'za-mna', 20],
+        ['peter.etf@example.com', null, null, 50],
+      ] as const
+    ).map(([email, brokers, way, hours]) =>
+      db
+        .prepare("INSERT INTO investor_requests (id, created_at, updated_at, email, brokers, way, source, privacy_version) VALUES (?, ?, ?, ?, ?, ?, NULL, 'demo')")
+        .bind(`demo-inv-req-${hours}`, ts - hours * 3600, ts - hours * 3600, email, brokers, way),
+    ),
     eventStatement(db, { company: c1, user: null, action: 'demo.seeded' }),
   ])
 

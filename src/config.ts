@@ -89,6 +89,31 @@ export const LIMITS = {
   formBytes: 8_000,
 } as const
 
+/**
+ * Firmony for investors (proposed on 14 October 2026 at 12:48, his word "poď do toho"): the tax return of a person
+ * who invests through a broker, prepared from the broker's yearly report, or filed for them. Until it starts, the
+ * page /investori collects the people who want it. The prices are the builder's proposal, not his decision yet.
+ */
+export const INVESTORS = {
+  brokers: [
+    { id: 'xtb', name: 'XTB' },
+    { id: 't212', name: 'Trading 212' },
+    { id: 'ibkr', name: 'Interactive Brokers' },
+    { id: 'revolut', name: 'Revolut' },
+    { id: 'ine', name: 'Iný broker' },
+  ],
+  ways: ['sam', 'za-mna'],
+  /** Euros, proposals: one broker done by yourself, every broker and crypto by yourself, done by us. */
+  prices: { self: 29, selfAll: 49, done: 89 },
+  /** The tax period the first returns are for, and its deadlines (podnikajte.sk, read on 14 October 2026). */
+  year: 2026,
+  deadline: '2027-03-31',
+  deadlineForeign: '2027-09-30',
+} as const
+
+export type InvestorBroker = (typeof INVESTORS.brokers)[number]['id']
+export type InvestorWay = (typeof INVESTORS.ways)[number]
+
 /** How long things are kept, as the privacy notice says. */
 export const RETENTION = {
   requestDays: 365,

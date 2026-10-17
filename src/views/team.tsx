@@ -2,7 +2,7 @@
 // the work quickly: what waits is counted everywhere, a document is booked on one screen with its original
 // beside the form, and "Zaúčtovať a ďalší" goes straight to the next one.
 import type { Child, FC } from 'hono/jsx'
-import { APP, ART, BRAND, PLANS, type Art } from '../config'
+import { APP, ART, BRAND, INVESTORS, PLANS, type Art } from '../config'
 import { formatEur, formatEurExact } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, readableName, signed } from '../app/copy'
 import { CATEGORIES, CATEGORY_IDS, entryFor, textDay, type PaidBy } from '../app/booking'
@@ -18,7 +18,7 @@ import type { StatementView } from '../app/statements'
 import type { DeclarationState, Level } from '../app/aml'
 import { addDays, endingOf, type Ending } from '../app/ending'
 import { team as t } from '../team/copy'
-import type { ClientRow, QueueDoc, Request, Rule, TeamMember, Thread, ToCheck } from '../team/store'
+import type { ClientRow, InvestorRequest, QueueDoc, Request, Rule, TeamMember, Thread, ToCheck } from '../team/store'
 import { Tile } from './home'
 import { BarMenu, Flash, Heading, InsideHead, planName } from './inside'
 import { dayOf, groupIban, whenName } from './inside-pages'
@@ -1375,7 +1375,36 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
 // Žiadosti, nový klient, tím
 // ---------------------------------------------------------------------------------------------------------------
 
-export const RequestsPage: FC<{ requests: Request[]; now: number; flash?: string | null }> = ({ requests, now, flash }) => (
+/** The people who want the investors' tax return: who, which brokers, which way. */
+const Investors: FC<{ investors: { total: number; list: InvestorRequest[] }; now: number }> = ({ investors, now }) => (
+  <section class="info investors" id="investori" aria-labelledby="investori-t">
+    <h2 id="investori-t" class="info__title">
+      {t.requests.investors.title}
+    </h2>
+    {investors.total === 0 ? (
+      <p class="info__empty">{t.requests.investors.empty}</p>
+    ) : (
+      <>
+        <p class="info__lead">{t.requests.investors.lead(investors.total)}</p>
+        <ul class="investors__list">
+          {investors.list.map((r) => (
+            <li class="investors__item">
+              <span class="investors__email">{r.email}</span>
+              <span class="investors__meta">
+                {r.brokers.length > 0 ? <span>{r.brokers.map((id) => INVESTORS.brokers.find((b) => b.id === id)?.name ?? id).join(', ')}</span> : null}
+                <span>{r.way ? (t.requests.investors.way[r.way] ?? r.way) : t.requests.investors.noWay}</span>
+                <span>{whenName(r.updatedAt, now)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        {investors.total > investors.list.length ? <p class="info__source">{t.requests.investors.shown(investors.list.length)}</p> : null}
+      </>
+    )}
+  </section>
+)
+
+export const RequestsPage: FC<{ requests: Request[]; investors: { total: number; list: InvestorRequest[] }; now: number; flash?: string | null }> = ({ requests, investors, now, flash }) => (
   <>
     <header class="phead">
       <Heading first={t.requests.title} second={t.requests.serif} />
@@ -1447,6 +1476,7 @@ export const RequestsPage: FC<{ requests: Request[]; now: number; flash?: string
         ))}
       </ul>
     )}
+    <Investors investors={investors} now={now} />
   </>
 )
 

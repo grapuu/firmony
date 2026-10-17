@@ -470,6 +470,19 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE bank_links ADD COLUMN token TEXT',
     'ALTER TABLE companies ADD COLUMN bank_setup TEXT',
   ],
+  // 6 (14 October 2026): people who want their investments' tax return (the page /investori), one row an address.
+  [
+    `CREATE TABLE IF NOT EXISTS investor_requests (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      brokers TEXT,
+      way TEXT,
+      source TEXT,
+      privacy_version TEXT NOT NULL
+    )`,
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
@@ -551,11 +564,27 @@ export function insertRequestStatement(db: D1Database, r: NewRequest): D1Prepare
     .bind(r.id, now(), r.ico, r.company, r.address, r.companySource, r.plan, r.situation, r.name, r.email, r.phone, r.note, r.source, r.privacyVersion)
 }
 
+/**
+ * Somebody who wants the investors' tax return: one row an address, its last answer counts. Kept a year from the
+ * last time the address was sent, like a request.
+ */
+export function upsertInvestorStatement(db: D1Database, r: { email: string; brokers: string[]; way: string | null; source: string | null; privacyVersion: string }): D1PreparedStatement {
+  const ts = now()
+  return db
+    .prepare(
+      `INSERT INTO investor_requests (id, created_at, updated_at, email, brokers, way, source, privacy_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET updated_at = excluded.updated_at, brokers = COALESCE(excluded.brokers, investor_requests.brokers),
+         way = COALESCE(excluded.way, investor_requests.way), privacy_version = excluded.privacy_version`,
+    )
+    .bind(crypto.randomUUID(), ts, ts, r.email.toLowerCase(), r.brokers.length > 0 ? r.brokers.join(',') : null, r.way, r.source, r.privacyVersion)
+}
+
 /** What the privacy notice promises: requests a year, sent and received email ninety days, counters two days. */
 export async function purge(db: D1Database): Promise<void> {
   const ts = now()
   await db.batch([
     db.prepare('DELETE FROM requests WHERE created_at < ?').bind(ts - RETENTION.requestDays * 86400),
+    db.prepare('DELETE FROM investor_requests WHERE updated_at < ?').bind(ts - RETENTION.requestDays * 86400),
     db.prepare('DELETE FROM outbox WHERE created_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM inbound_mail WHERE received_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM throttle WHERE expires_at < ?').bind(ts),
