@@ -50,24 +50,31 @@ export async function ossData(db: D1Database, company: string): Promise<{ suppli
   return { supplies, unbooked, filed }
 }
 
-/** A quarter's return of a company that uses the scheme since `since`. */
-export async function ossQuarter(db: D1Database, company: string, since: string, quarter: string, today: string): Promise<OssView> {
+/** Quarters' returns of a company that uses the scheme since `since`, its supplies and rates loaded once. */
+export async function ossQuarterViews(db: D1Database, company: string, since: string, quarters: readonly string[], today: string): Promise<OssView[]> {
   const { supplies, unbooked, filed } = await ossData(db, company)
   const rates = await ratesFor(
     db,
     supplies.map((s) => s.currency),
   )
-  const from = `${quarter.slice(0, 4)}-${String(Number(quarter.slice(6)) * 3 - 2).padStart(2, '0')}-01`
-  const to = `${quarter.slice(0, 4)}-${String(Number(quarter.slice(6)) * 3).padStart(2, '0')}-31`
-  return ossView(
-    quarter,
-    since,
-    supplies,
-    filed,
-    rates,
-    today,
-    unbooked.filter((u) => u.day >= from && u.day <= to).map((u) => u.id),
-  )
+  return quarters.map((quarter) => {
+    const from = `${quarter.slice(0, 4)}-${String(Number(quarter.slice(6)) * 3 - 2).padStart(2, '0')}-01`
+    const to = `${quarter.slice(0, 4)}-${String(Number(quarter.slice(6)) * 3).padStart(2, '0')}-31`
+    return ossView(
+      quarter,
+      since,
+      supplies,
+      filed,
+      rates,
+      today,
+      unbooked.filter((u) => u.day >= from && u.day <= to).map((u) => u.id),
+    )
+  })
+}
+
+/** A quarter's return of a company that uses the scheme since `since`. */
+export async function ossQuarter(db: D1Database, company: string, since: string, quarter: string, today: string): Promise<OssView> {
+  return (await ossQuarterViews(db, company, since, [quarter], today))[0] as OssView
 }
 
 /** A quarter's return marked as filed, with what it declared and its file; once only. */

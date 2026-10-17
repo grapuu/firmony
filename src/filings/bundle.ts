@@ -11,6 +11,7 @@ import { payrollStatusSql, targetActiveSql } from '../payroll-reporting/sql'
 import { zipName, zipStream, uniqueName, type ZipEntry } from '../zip'
 import { activePackageSql, FILING_KINDS, safeJson, type DeliveryState, type FilingType } from './model'
 import { recordDelivery, type DeliveryChange } from './store'
+import type { ExtraFile } from './extras'
 
 /** Where a document is filed, in the order the folders of the ZIP and the form's groups follow. */
 export const DESTINATIONS = {
@@ -113,7 +114,7 @@ function fileName(i: BundleItem, ext: string): string {
  * saved with its podklady (its fingerprint checked again; one that differs is left out and named in the overview).
  * PREHLAD.txt says what each file is, where it goes and what to record afterwards.
  */
-export function bundleZip(items: BundleItem[], files: R2Bucket | undefined, at = now()): ReadableStream<Uint8Array> {
+export function bundleZip(items: BundleItem[], files: R2Bucket | undefined, at = now(), extras: readonly ExtraFile[] = []): ReadableStream<Uint8Array> {
   const taken = new Set<string>()
   const lines: string[] = []
   const skipped: string[] = []
@@ -137,12 +138,19 @@ export function bundleZip(items: BundleItem[], files: R2Bucket | undefined, at =
         yield { name: notesName, when: at, data: async () => notes }
       }
     }
+    // The one-stop shop's returns and Intrastat's reports (extras.ts), each to its own portal.
+    for (const e of extras) {
+      const name = uniqueName(zipName(e.name), taken)
+      lines.push(`${name}\n  ${e.line}`)
+      yield { name, when: at, data: async () => e.bytes }
+    }
     const text = [
       'Firmony: balík na podanie',
       '',
       'Každý súbor nahrajte na portáli úradu, ktorého priečinok ho obsahuje (Načítať zo súboru). Potom vo Firmony',
       'v časti Podania na dokončenie zapíšte čísla podaní a priložte potvrdenky, všetko jedným formulárom.',
       'Prijatie evidujeme až s potvrdenkou, ktorú ste skontrolovali.',
+      ...(extras.length ? ['Priznania OSS a hlásenia Intrastat po odoslaní v tom istom formulári len zaškrtnite ako odoslané.'] : []),
       '',
       ...lines,
       ...(skipped.length ? ['', 'Nezaradené:', ...skipped] : []),

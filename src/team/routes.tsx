@@ -8,12 +8,13 @@ import { payrollReportRoutes } from '../payroll-reporting/routes'
 import { closureStatements, reportItems as payrollReportItems, runReopenBlocked } from '../payroll-reporting/store'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, ART, BRAND, ENDING, OFFLINE_TERMS, OPERATOR, PLANS, TEAM } from '../config'
+import { APP, ART, ENDING, OFFLINE_TERMS, OPERATOR, PLANS, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
 import { bell, ringStatement } from '../bell'
+import { intrastatFileOf, intrastatNext, markIntrastatFiled, markOssFiled, ringClient as ringOf } from './marks'
 import { LEGAL_FORM_CODES, isLegalForm, lookupCompany, oneMayConclude } from '../rpo'
 import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
@@ -128,14 +129,12 @@ import { addDay, leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay
 import { decodeText, parseDelimited, readTable } from '../app/table-read'
 import { eurOf, isCurrency, rateFor, rateMicro, rateText } from '../app/fx'
 import { knownCurrencies, ratesFor } from '../app/fx-store'
-import { isQuarterText, nextQuarter, ossXml, quarterOfDay, quarterRange } from '../app/oss'
-import { fileOssStatement, filedOssXml, ossQuarter, unfileOssStatement } from '../app/oss-store'
+import { isQuarterText, nextQuarter, ossXml, quarterOfDay } from '../app/oss'
+import { filedOssXml, ossQuarter, ossQuarterViews, unfileOssStatement } from '../app/oss-store'
 import { OssPage } from '../views/oss'
 import { distributionIssues, distributionLines, withheldOf, type Distribution } from '../app/distribution'
 import {
   MEMBER_STATES,
-  declarationsToSend,
-  instatXml,
   intrastatView,
   isFlow,
   isMonthText,
@@ -149,7 +148,6 @@ import {
   reportMonth,
   flowOf,
   settingsOf,
-  splitAddress,
   thresholdWatch,
   SIMPLIFIED_LIMIT,
   type DocGoods,
@@ -157,9 +155,8 @@ import {
   type GoodsLine,
   type IntrastatDoc,
   type IntrastatSettings,
-  type Psi,
 } from '../app/intrastat'
-import { fileIntrastatStatement, filedIntrastatXml, intrastatDocs, intrastatFilings, monthsBefore, removeGoodsStatement, saveGoodsStatement, saveSettingsStatement, unfileIntrastatStatement } from '../app/intrastat-store'
+import { filedIntrastatXml, intrastatDocs, intrastatFilings, removeGoodsStatement, saveGoodsStatement, saveSettingsStatement, unfileIntrastatStatement } from '../app/intrastat-store'
 import { GoodsPage, IntrastatPage } from '../views/intrastat'
 import { assetRows, openItems, personRows, pohodaInvoices, priorStatements as takeoverPrior, trialBalance as takeoverTrial, type LineIssue, type OpenItem } from '../app/takeover'
 import { assetNumbers, assetRowsStatements, batchesOf, openItemsStatements, peopleStatements, priorListOf, priorStatementStatement, removeBatchStatements, removePriorStatement } from '../app/takeover-store'
@@ -851,13 +848,7 @@ teamRoutes.post('/klienti/:id/spravy', async (c) => {
  * carries nothing of the message). Rung once for what the company has not read yet: called before the new message
  * is written, it rings nothing while an earlier one is still unread.
  */
-async function ringClient(c: Ctx, company: Company, messageId: string): Promise<D1PreparedStatement[]> {
-  const db = c.env.DB
-  const unread = await db.prepare("SELECT 1 AS x FROM messages WHERE company_id = ? AND side = 'firmony' AND seen_at IS NULL LIMIT 1").bind(company.id).first()
-  if (unread) return []
-  const members = await membersOf(db, company.id)
-  return members.map((m) => ringStatement(db, 'answer', messageId, m.email, bell.answer(`${siteOrigin(c)}/app/spravy`)))
-}
+const ringClient = (c: Ctx, company: Company, messageId: string): Promise<D1PreparedStatement[]> => ringOf(c.env.DB, company, messageId, siteOrigin(c))
 
 teamRoutes.post('/klienti/:id/pripomenut', async (c) => {
   const who = c.get('who')
@@ -1366,7 +1357,7 @@ async function ossPage(c: Ctx, company: Company) {
   const quarters = ossQuarters(company.ossSince, today)
   const asked = c.req.query('stvrtrok') ?? ''
   const open = quarters.find((q) => q === asked) ?? [...quarters].reverse().find((q) => q < quarterOfDay(today)) ?? quarters[quarters.length - 1] ?? quarterOfDay(today)
-  const views = await Promise.all(quarters.map((q) => ossQuarter(db, company.id, company.ossSince as string, q, today)))
+  const views = await ossQuarterViews(db, company.id, company.ossSince, quarters, today)
   const ok = c.req.query('ok')
   return shell(
     c,
@@ -1409,26 +1400,9 @@ teamRoutes.post('/klienti/:id/dph/oss/podane', async (c) => {
   const body = await c.req.parseBody()
   const quarter = typeof body.stvrtrok === 'string' && isQuarterText(body.stvrtrok) ? body.stvrtrok : null
   if (!quarter) return missingPage(c)
-  const db = c.env.DB
-  const today = dayOf(now())
-  const back = `/ucto/klienti/${company.id}/dph/oss?stvrtrok=${quarter}`
-  const view = await ossQuarter(db, company.id, company.ossSince, quarter, today)
-  if (view.filed) return c.redirect(`${back}&ok=already`, 303)
-  if (view.state !== 'ready') return c.redirect(`${back}&ok=notReady`, 303)
   const typed = dayOfText(typeof body.datum === 'string' ? body.datum : '')
-  const filedOn = typed && typed <= today && typed > quarterRange(quarter).to ? typed : today
-  const xml = ossXml(company.icdph, quarter, view.lines, view.corrections)
-  const who = c.get('who')
-  const label = t.oss.quarter(quarter)
-  const messageId = crypto.randomUUID()
-  const body2 = view.total > 0 ? t.oss.message(label, formatEurExact(view.total), textDay(view.due)) : t.oss.messageNil(label)
-  const done = await db.batch([
-    fileOssStatement(db, company.id, view, xml, filedOn, who.user.id),
-    eventStatement(db, { company: company.id, user: who.user.id, action: 'oss.filed', subject: quarter, detail: { total: view.total } }),
-  ])
-  if ((done[0]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=already`, 303)
-  await db.batch([...(await ringClient(c, company, messageId)), messageStatement(db, { id: messageId, company: company.id, author: who.user.id, side: 'firmony', body: body2, payment: null })])
-  return c.redirect(`${back}&ok=filed`, 303)
+  const result = await markOssFiled(c.env.DB, company, quarter, typed || null, dayOf(now()), c.get('who').user.id, siteOrigin(c))
+  return c.redirect(`/ucto/klienti/${company.id}/dph/oss?stvrtrok=${quarter}&ok=${result === 'company' ? 'notReady' : result}`, 303)
 })
 
 teamRoutes.post('/klienti/:id/dph/oss/zrusit', async (c) => {
@@ -1473,17 +1447,6 @@ function thousandthsOf(text: string): number | null {
 
 const thousandthsText = (n: number | null): string => (n === null ? '' : `${Math.floor(n / 1000)}${n % 1000 ? `,${String(n % 1000).padStart(3, '0').replace(/0+$/, '')}` : ''}`)
 const centsText = (n: number | null): string => (n === null ? '' : `${Math.floor(n / 100)},${String(n % 100).padStart(2, '0')}`)
-
-const BRATISLAVA_TIME = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
-
-/** The envelope's number (AAxxxxx): the month, the flow and the filing, so the file downloaded and the one kept agree. */
-const envelopeOf = (month: string, flow: Flow, seq: number): number => Number(`${month.slice(5, 7)}${flow === 'A' ? 1 : 2}${String(seq % 100).padStart(2, '0')}`)
-
-function psiOf(company: Company, s: IntrastatSettings): Psi | null {
-  if (!company.icdph || !company.address) return null
-  const a = splitAddress(company.address)
-  return { vatId: company.icdph, name: company.name, street: a.street, postal: a.postal, city: a.city, address: company.address, contact: s.contact ?? company.accountantName, phone: s.phone, email: s.email ?? company.accountantEmail ?? BRAND.email }
-}
 
 async function intrastatPage(c: Ctx, company: Company, settingsForm: { values: Record<string, string>; errors: Record<string, string> } | null = null, status: ContentfulStatusCode = 200) {
   const db = c.env.DB
@@ -1541,17 +1504,12 @@ teamRoutes.get('/klienti/:id/intrastat.xml', async (c) => {
     xml = await filedIntrastatXml(db, company.id, month, flow, seq)
     if (!xml) return missingPage(c)
   } else {
-    const settings = company.intrastat ?? settingsOf(null)
-    const psi = psiOf(company, settings)
-    if (!psi) return c.redirect(`${back}&ok=company`, 303)
     const today = dayOf(now())
-    const [docs, filings] = await Promise.all([intrastatDocs(db, company, { from: monthsBefore(month, 3) }), intrastatFilings(db, company.id)])
-    const own = filings.get(`${month}:${flow}`) ?? []
-    const view = intrastatView(docs, month, flow, settings, own, today)
-    const declarations = declarationsToSend(view)
-    if (!declarations) return c.redirect(`${back}&ok=notReady`, 303)
-    seq = own.length + 1
-    xml = instatXml(psi, month, flow, declarations, envelopeOf(month, flow, seq), { date: today, time: BRATISLAVA_TIME.format(new Date()) })
+    const next = await intrastatNext(db, company, month, flow, today)
+    if (!next.psi) return c.redirect(`${back}&ok=company`, 303)
+    if (!next.declarations) return c.redirect(`${back}&ok=notReady`, 303)
+    seq = next.seq
+    xml = intrastatFileOf(next.psi, month, flow, next.declarations, seq, today)
   }
   return new Response(latin2(xml), {
     headers: {
@@ -1569,29 +1527,9 @@ teamRoutes.post('/klienti/:id/intrastat/podane', async (c) => {
   const month = body.mesiac
   const flow = body.tok
   if (!isMonthText(month) || !isFlow(flow)) return missingPage(c)
-  const db = c.env.DB
-  const today = dayOf(now())
-  const back = `/ucto/klienti/${company.id}/intrastat?mesiac=${month}&tok=${flow}`
-  const settings = company.intrastat ?? settingsOf(null)
-  const psi = psiOf(company, settings)
-  if (!psi) return c.redirect(`${back}&ok=company`, 303)
-  const [docs, filings] = await Promise.all([intrastatDocs(db, company, { from: monthsBefore(month, 3) }), intrastatFilings(db, company.id)])
-  const own = filings.get(`${month}:${flow}`) ?? []
-  const view = intrastatView(docs, month, flow, settings, own, today)
-  const declarations = declarationsToSend(view)
-  if (!declarations) return c.redirect(`${back}&ok=${view.state === 'filed' ? 'already' : 'notReady'}`, 303)
   const typed = dayOfText(typeof body.datum === 'string' ? body.datum : '')
-  const end = `${month}-31`
-  const filedOn = typed && typed <= today && typed > end ? typed : today
-  const seq = own.length + 1
-  const xml = instatXml(psi, month, flow, declarations, envelopeOf(month, flow, seq), { date: filedOn, time: BRATISLAVA_TIME.format(new Date()) })
-  const who = c.get('who')
-  const done = await db.batch([
-    fileIntrastatStatement(db, company.id, month, flow, seq, envelopeOf(month, flow, seq), declarations, xml, filedOn, who.user.id),
-    eventStatement(db, { company: company.id, user: who.user.id, action: 'intrastat.filed', subject: `${month}:${flow}`, detail: { seq, declarations: declarations.length, items: declarations.reduce((n, d) => n + d.items.length, 0) } }),
-  ])
-  if ((done[0]?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=already`, 303)
-  return c.redirect(`${back}&ok=filed`, 303)
+  const result = await markIntrastatFiled(c.env.DB, company, month, flow, typed || null, dayOf(now()), c.get('who').user.id)
+  return c.redirect(`/ucto/klienti/${company.id}/intrastat?mesiac=${month}&tok=${flow}&ok=${result}`, 303)
 })
 
 teamRoutes.post('/klienti/:id/intrastat/zrusit', async (c) => {

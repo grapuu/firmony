@@ -175,8 +175,8 @@ over. Bring this section up to date first whenever a session ends.
    the lines, the corrections, each state's balance, the file `/dph/oss.xml`, the mark with its day (the client told the
    tax and the deadline), the last quarter's mark taken back. The deadlines list it (kind 'oss', ours). Not built: the
    import scheme (IOSS), supplies from a fixed establishment in another state (MSESTSupplies), the 10 000 € threshold
-   watched, the payment's account and reference (the client is sent to the portal's confirmation), the OSS return in
-   the filing bundle. test/oss.runtime.mjs, units "The one-stop shop".
+   watched, the payment's account and reference (the client is sent to the portal's confirmation). In the filing
+   bundle since 18 October 2026 (below). test/oss.runtime.mjs, units "The one-stop shop".
    Intrastat (built 17 October 2026, schema step 34: `companies.intrastat`, `intrastat_goods`, `intrastat_returns`):
    `src/app/intrastat.ts` (read that day on intrastat.financnasprava.sk, the Statistical Office's handbook for 2026:
    the threshold 1 000 000 € a flow, 200 000 € arrivals and 400 000 € dispatches for SK NACE 01, 02, 03, 10, 11, 12,
@@ -195,8 +195,14 @@ over. Bring this section up to date first whenever a session ends.
    value; nature, transport, terms, region, state, partner, month, returned, skipped). The deadlines list each flow
    (kind 'intrastat', ours). Not built: the CN tariff with its supplementary units (typed by the accountant), goods
    moved without a document (own goods to a warehouse abroad, processing), items summed, the threshold watched on the
-   screen of deadlines, the reports in the filing bundle, sending through the portal's web service. test/intrastat.runtime.mjs,
-   units "Intrastat".
+   screen of deadlines, sending through the portal's web service. test/intrastat.runtime.mjs, units "Intrastat".
+   OSS and Intrastat in the filing bundle (built 18 October 2026, `src/filings/extras.ts`): the ready OSS returns (the
+   deadlines' last five quarters, ended) and the Intrastat reports to send (the last four months of each flow, ended,
+   first reports and what follows a changed month) of her companies go into `/ucto/podania/balik.zip` (folders `OSS/`
+   and `Intrastat/`, the Intrastat file in ISO-8859-2 dated at the download), listed under "Na odoslanie · OSS a
+   Intrastat" with a tick each; `/naraz` marks a ticked one through `team/marks.ts` (`markOssFiled`,
+   `markIntrastatFiled`, the same the company's pages use) only when the fingerprint the page carried (`sig:`) still
+   matches what would go, else it asks her to download again. test/bundle-extras.runtime.mjs.
    Joint-stock companies (built 17 October 2026, schema step 35: `orders.legal_form`, `orders.acting`,
    `orders.signed_role`, `companies.legal_form`, `companies.signed_role`, `closings.distribution`,
    `closings.distribution_entry`): `src/rpo.ts` reads the register's detail of an entity, seen live that day: the legal
@@ -1809,8 +1815,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1111 unit checks (17 October 2026, night), including joint-stock companies
-npm run test:runtime     # 1516 workerd checks on Node 24 (as GitHub runs them), including test/lists.runtime.mjs
+npm test                 # 1111 unit checks (18 October 2026), including joint-stock companies
+npm run test:runtime     # 1521 workerd checks on Node 24 (as GitHub runs them), including test/bundle-extras.runtime.mjs
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

@@ -3,7 +3,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { AppBindings } from '../app/routes'
-import { sha256Hex, withinLimit } from '../db'
+import { now, sha256Hex, withinLimit } from '../db'
 import { companiesOf, countMissing, unseenFromFirmony, type Company, type Who } from '../app/store'
 import { fileHash } from '../app/read'
 import { endingOf } from '../app/ending'
@@ -14,6 +14,8 @@ import { FilingPage, FilingsPage, FilingQueuePage } from '../views/filings'
 import { changeDelivery, currentPackage, eventsOf, filingQueue, packageOf, packagesOf, type DeliveryChange } from './store'
 import { isDeliveryState } from './model'
 import { BUNDLE_ROWS, bundleItems, bundleZip, recordBundle, type BundleRow } from './bundle'
+import { EXTRA_ROWS, bundleExtras, extraFiles, isExtraKey, recordExtras, type ExtraTick } from './extras'
+import { siteOrigin } from '../http'
 
 type Env = { Bindings: AppBindings; Variables: { who: Who; filingCompany: Company } }
 type Ctx = Context<Env>
@@ -22,16 +24,17 @@ const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratisl
 const text = (v: unknown, n: number) => typeof v === 'string' ? v.trim().slice(0, n) : ''
 async function queue(c: Ctx, bundleState: { errors?: Record<string, string>; values?: Record<string, string>; recorded?: number } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who'), page = Math.min(10000, Math.max(1, Number.parseInt(c.req.query('strana') ?? '1', 10) || 1))
-  const [rows, counts, companies, bundle] = await Promise.all([filingQueue(c.env.DB, who.user, page), teamCounts(c.env.DB, who.user, false), companiesOf(c.env.DB, who.user.id), bundleItems(c.env.DB, who.user)])
+  const [rows, counts, companies, bundle, extras] = await Promise.all([filingQueue(c.env.DB, who.user, page), teamCounts(c.env.DB, who.user, false), companiesOf(c.env.DB, who.user.id), bundleItems(c.env.DB, who.user), bundleExtras(c.env.DB, who.user, today())])
   const recorded = bundleState.recorded ?? (Number.parseInt(c.req.query('zaevidovane') ?? '', 10) || 0)
-  return c.html(html`<!doctype html>${<TeamShell user={who.user} place="deadlines" counts={counts} ownCompany={companies.length > 0} title="Podania na dokončenie"><FilingQueuePage rows={rows.slice(0, 50)} page={page} hasNext={rows.length > 50} bundle={{ ...bundle, today: today(), recorded, errors: bundleState.errors ?? {}, values: bundleState.values ?? {} }} /></TeamShell>}`, status)
+  return c.html(html`<!doctype html>${<TeamShell user={who.user} place="deadlines" counts={counts} ownCompany={companies.length > 0} title="Podania na dokončenie"><FilingQueuePage rows={rows.slice(0, 50)} page={page} hasNext={rows.length > 50} bundle={{ ...bundle, extras, today: today(), recorded, errors: bundleState.errors ?? {}, values: bundleState.values ?? {} }} /></TeamShell>}`, status)
 }
 filingQueueRoutes.get('/', (c) => queue(c))
 // Everything to be sent, in one ZIP: the documents as saved with their podklady, sorted by the office they go to.
 filingQueueRoutes.get('/balik.zip', async (c) => {
-  const { toSend } = await bundleItems(c.env.DB, c.get('who').user)
-  if (toSend.length === 0) return c.redirect('/ucto/podania', 303)
-  return new Response(bundleZip(toSend, c.env.FILES), {
+  const user = c.get('who').user
+  const [{ toSend }, extras] = await Promise.all([bundleItems(c.env.DB, user), bundleExtras(c.env.DB, user, today())])
+  if (toSend.length === 0 && extras.length === 0) return c.redirect('/ucto/podania', 303)
+  return new Response(bundleZip(toSend, c.env.FILES, now(), extraFiles(extras, today())), {
     headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="firmony-na-podanie-${today()}.zip"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' },
   })
 })
@@ -58,9 +61,19 @@ filingQueueRoutes.post('/naraz', bodyLimit({ maxSize: 64 * 1024 * 1024, onError:
     if (row.checked) values[`ok:${key}`] = '1'
     rows.push(row)
   }
+  // The returns of OSS and reports of Intrastat ticked as sent, each with the fingerprint of what was downloaded.
+  const ticks: ExtraTick[] = (Array.isArray(body.extra) ? body.extra : [body.extra])
+    .filter((k): k is string => typeof k === 'string' && isExtraKey(k))
+    .slice(0, 2 * EXTRA_ROWS)
+    .filter((key) => body[`sent:${key}`] === '1')
+    .map((key) => ({ key, sig: text(body[`sig:${key}`], 64) }))
   const outcome = await recordBundle(db, c.env.FILES, who.user, rows, externalOn, today())
-  if (Object.keys(outcome.errors).length > 0) return queue(c, { errors: outcome.errors, values, recorded: outcome.recorded }, 409)
-  return c.redirect(`/ucto/podania?zaevidovane=${outcome.recorded}`, 303)
+  const extra = await recordExtras(db, who.user, ticks, /^\d{4}-\d{2}-\d{2}$/.test(externalOn) ? externalOn : null, today(), siteOrigin(c))
+  const errors = { ...outcome.errors, ...extra.errors }
+  for (const key of Object.keys(extra.errors)) values[`sent:${key}`] = '1'
+  const recorded = outcome.recorded + extra.recorded
+  if (Object.keys(errors).length > 0) return queue(c, { errors, values, recorded }, 409)
+  return c.redirect(`/ucto/podania?zaevidovane=${recorded}`, 303)
 })
 async function frame(c: Ctx, node: unknown, status: ContentfulStatusCode = 200) {
   const who = c.get('who'), company = c.get('filingCompany'), team = new URL(c.req.url).pathname.startsWith('/ucto/')

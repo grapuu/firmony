@@ -30,6 +30,7 @@ import { checkTakeover } from './takeover.runtime.mjs'
 import { checkCurrency } from './currency.runtime.mjs'
 import { checkOss } from './oss.runtime.mjs'
 import { checkIntrastat } from './intrastat.runtime.mjs'
+import { checkBundleExtras } from './bundle-extras.runtime.mjs'
 import { checkJointStock } from './joint-stock.runtime.mjs'
 import { checkLists } from './lists.runtime.mjs'
 import { socialReporting } from '../.wrangler/dist/stores.js'
@@ -4766,6 +4767,7 @@ await checkTakeover({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CA
 await checkCurrency({ db, acc, lucia, nowS, day })
 await checkOss({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkIntrastat({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkBundleExtras({ db, acc, lucia, nowS, day, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkJointStock({ db, admin, acc, lucia, nowS, day, post, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkLists({ db, nowS, signIn, as })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })

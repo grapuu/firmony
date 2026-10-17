@@ -4,6 +4,7 @@ import { dayName } from '../app/copy'
 import { periodName } from '../app/vat-store'
 import { canTransition, DELIVERY_LABELS, DELIVERY_TONE, FILING_KINDS, TRANSITIONS, type DeliveryStatus, type DeliveryState, type FilingEvent, type FilingPackage, type FilingWorkItem } from '../filings/model'
 import { DESTINATIONS, rowKey, type BundleItem } from '../filings/bundle'
+import type { BundleExtra } from '../filings/extras'
 import { Heading } from './inside'
 import { dayOf } from './inside-pages'
 
@@ -17,6 +18,8 @@ export const DeliveryNotice: FC<{ status?: DeliveryStatus; href: string }> = ({ 
 export interface BundleView {
   toSend: BundleItem[]
   toConfirm: BundleItem[]
+  /** OSS returns and Intrastat reports ready to go (filings/extras.ts). */
+  extras?: BundleExtra[]
   today: string
   recorded: number
   errors: Record<string, string>
@@ -67,9 +70,41 @@ const BundleRowFields: FC<{ i: BundleItem; values: Record<string, string>; error
   )
 }
 
+/** An OSS return or an Intrastat report in the form: sent is a tick, its portal gives no receipt to keep. */
+const ExtraRowFields: FC<{ e: BundleExtra; values: Record<string, string>; error?: string }> = ({ e, values, error }) => (
+  <li class={`bundle-row${error ? ' bundle-row--error' : ''}`}>
+    <input type="hidden" name="extra" value={e.key} />
+    <input type="hidden" name={`sig:${e.key}`} value={e.sig} />
+    <div class="bundle-row__what">
+      <strong>{e.company.name}</strong>
+      <span>
+        {e.label} · {label(e.period)}
+      </span>
+      <a class="link small" href={e.href}>
+        Otvoriť
+      </a>
+    </div>
+    <div class="bundle-row__fields">
+      <label class="tickbox bundle-row__wide">
+        <input type="checkbox" name={`sent:${e.key}`} value="1" checked={values[`sent:${e.key}`] === '1'} />
+        <span>Odoslané {e.kind === 'oss' ? 'na portáli OSS' : 'na portáli Intrastat'}, súbor z tohto balíka</span>
+      </label>
+    </div>
+    {error ? (
+      <p class="field__error bundle-row__wide" role="alert">
+        {error}
+      </p>
+    ) : null}
+  </li>
+)
+
+const documents = (n: number) => (n === 1 ? '1 dokument' : n < 5 ? `${n} dokumenty` : `${n} dokumentov`)
+
 /** Filing in one go: everything to send in one ZIP, and one form for the numbers and receipts afterwards. */
 const Bundle: FC<{ b: BundleView }> = ({ b }) => {
-  if (b.toSend.length === 0 && b.toConfirm.length === 0) {
+  const extras = b.extras ?? []
+  const files = b.toSend.length + extras.length
+  if (b.toSend.length === 0 && b.toConfirm.length === 0 && extras.length === 0) {
     return b.recorded > 0 ? <p class="notice notice--ok">Zaevidované: {b.recorded}. Všetko je odoslané a doložené.</p> : null
   }
   const groups = Object.entries(DESTINATIONS)
@@ -91,20 +126,21 @@ const Bundle: FC<{ b: BundleView }> = ({ b }) => {
         </p>
       ) : null}
       <ol class="bundle__steps">
-        {b.toSend.length > 0 ? (
+        {files > 0 ? (
           <li>
             <span>
-              <strong>Stiahnite balík.</strong> {b.toSend.length === 1 ? '1 dokument' : b.toSend.length < 5 ? `${b.toSend.length} dokumenty` : `${b.toSend.length} dokumentov`} v priečinkoch podľa úradu, s prehľadom, čo kam patrí.
+              <strong>Stiahnite balík.</strong> {documents(files)} v priečinkoch podľa úradu, s prehľadom, čo kam patrí.
             </span>
             <a class="btn btn--blue" href="/ucto/podania/balik.zip">
               Stiahnuť balík na podanie
             </a>
           </li>
         ) : null}
-        {b.toSend.length > 0 ? (
+        {files > 0 ? (
           <li>
             <span>
-              <strong>Nahrajte súbory na portáloch.</strong> Na portáli finančnej správy cez Načítať zo súboru, výkazy poistného v elektronických pobočkách poisťovní.
+              <strong>Nahrajte súbory na portáloch.</strong> Na portáli finančnej správy cez Načítať zo súboru, výkazy poistného v elektronických pobočkách poisťovní
+              {extras.length > 0 ? ', priznania OSS na portáli OSS, hlásenia Intrastat na intrastat.financnasprava.sk' : ''}.
             </span>
           </li>
         ) : null}
@@ -129,6 +165,16 @@ const Bundle: FC<{ b: BundleView }> = ({ b }) => {
             </ul>
           </fieldset>
         ))}
+        {extras.length > 0 ? (
+          <fieldset class="bundle__group">
+            <legend class="bundle__legend">Na odoslanie · OSS a Intrastat</legend>
+            <ul class="plain bundle__rows">
+              {extras.map((e) => (
+                <ExtraRowFields e={e} values={b.values} error={b.errors[e.key]} />
+              ))}
+            </ul>
+          </fieldset>
+        ) : null}
         {b.toConfirm.length > 0 ? (
           <fieldset class="bundle__group">
             <legend class="bundle__legend">Odoslané, čakajú na potvrdenku</legend>
