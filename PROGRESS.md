@@ -1,5 +1,31 @@
 # Firmony: progress of the continuation
 
+## Insurer-scoped 514 preparation and verified identity history (Codex, 17 October 2026)
+
+Continues PR #8 on `codex/firmony-security-and-evidence`, remote parent
+`be6aa9d71da8985c766de32463c4c3a0e099a012`. Additive schema **21**; no merge or deployment.
+
+- Generates UTF-8 text batches 514 for supported ordinary employment, separately for Dôvera, VšZP
+  and Union. Uses closed contribution figures, separate minimum top-ups and the exact captured health
+  regime. Later edits to an employee card do not rewrite historical payroll. Legacy slips without the
+  captured regime stay on the external professional path; no missing facts are inferred.
+- Adds masked, professionally verified insured identifiers with immutable version/reference history.
+  Staff capture them once; admin corrections require reasons. A corrected identity invalidates affected
+  generated coverage, deadlines and handover completion while preserving files and receipts.
+- Header, source and identifier revisions bind the preview. SQL checks live role/assignment and concurrent
+  writes; one preview commits one exact report/origin record. Output is prepared, never automatically
+  submitted or accepted. Existing independent delivery/receipt and expert replacement controls remain.
+- Owners receive the same file and origin without a new administrative form. Invited members cannot
+  access employee files. Exports preserve the normative import filename, identity history and checked
+  original hashes. Incident protection, frozen handover, synthetic recovery and controlled purge include
+  the new records. Existing schemas 19–20 are preserved byte-for-byte.
+- Independent text-contract, HTTP, actual Chrome, layout and separate schema-20-upgrade scenarios cover
+  the implementation. Exact published-head check counts, artifact hash and visual review are recorded
+  in PR #8. These are synthetic records and receipts, not live insurer acknowledgements.
+- [Scope and primary sources](docs/security/health-reporting.md): official MZ SR 2026 text specification,
+  insurer guidance and explicit exclusions. Live import/results for every insurer, SP generation,
+  special employment, production recovery, staffing and legal/insurance approval remain open.
+
 ## Reviewed reporting periods and regular PREHLADv26 generation (Codex, 16 October 2026)
 
 Continues existing PR #8 on `codex/firmony-security-and-evidence`, remote parent

@@ -15,13 +15,15 @@ import { checkFilings } from './filings.runtime.mjs'
 import { checkPayrollReports } from './payroll-reporting.runtime.mjs'
 import { checkPrehlad } from './prehlad.runtime.mjs'
 import { checkPayrollMigration } from './payroll-migration.runtime.mjs'
+import { checkHealthReports } from './health.runtime.mjs'
+import { checkHealthMigration } from './health-migration.runtime.mjs'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, registerAnswer, statementMail } from './pretend.mjs'
-import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration } from '../.wrangler/dist/stores.js'
+import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
 if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, { recursive: true })
@@ -226,7 +228,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 20)
+check('health says the schema', (await res.json()).schema === 21)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -552,8 +554,8 @@ async function verifyBrowser(email, browserCookie) {
   }
   const api = jsonClient(mf, site, browserCookie, `203.0.113.${100 + authenticators.size}`)
   const r = await api('/auth/options', { action: registering ? 'register' : 'authenticate', code, next: user.team ? '/ucto' : '/app' })
+  if (r.status !== 200) throw new Error(`fixture options ${email}: ${r.status} ${await r.text()}`)
   const options = await r.json()
-  if (r.status !== 200) throw new Error(`fixture options ${email}: ${r.status} ${JSON.stringify(options)}`)
   const response = registering ? await key.register(options.options) : await key.authenticate(options.options)
   const confirmed = await api('/auth/verify', { id: options.id, response, name: 'TEST-ONLY passkey' })
   if (confirmed.status !== 200) throw new Error(`fixture confirmation ${email}: ${confirmed.status} ${JSON.stringify(await confirmed.json())}; ${JSON.stringify(await db.prepare("SELECT detail FROM events WHERE action = 'auth.failed' ORDER BY rowid DESC LIMIT 1").first())}`)
@@ -3761,6 +3763,8 @@ check(
     db.prepare("DELETE FROM employees WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_runs WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_health_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_health_ids WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_target_reviews WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_events WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_packages WHERE company_id = 'co-w'"),
@@ -4252,7 +4256,8 @@ check(
   'and downloads them, never shown in the browser',
   res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && new Uint8Array(await res.arrayBuffer()).length === ledger.length,
 )
-res = await get(`/app/odovzdanie/${handed?.id}`, { headers: { cookie: (await signIn('boris@firma-b.test')).cookie } })
+const handoverForeign = as((await signIn('boris@firma-b.test')).cookie)
+res = await handoverForeign.get(`/app/odovzdanie/${handed?.id}`)
 check('nobody of another company gets them', res.status === 404)
 res = await admin.get('/ucto')
 page = await res.text()
@@ -4262,7 +4267,9 @@ check('the client row no longer asks for its handover once it was made', Boolean
 await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
 await checkPayrollMigration({ db, nowS, day })
+await checkHealthMigration({ db, nowS, day })
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
@@ -4274,7 +4281,7 @@ await db.prepare("INSERT INTO closings (company_id, year, inputs, filed_on, file
 await db.prepare("INSERT INTO employees (id, company_id, name, insurer, started_on, wage_cents, created_at) VALUES ('emp-a', 'co-a', 'Zamestnanec A', '25', '2026-01-01', 100000, ?)").bind(nowS).run()
 await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('co-a', '2026-01', '[]')").run()
 const exportedSlip = payslip({ period: '2026-01', gross: 100000, days: 31, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false })
-const exportedLine = { employeeId: 'emp-a', name: 'Zamestnanec A', insurer: '25', gross: 100000, days: 31, iban: null, slip: exportedSlip }
+const exportedLine = { employeeId: 'emp-a', name: 'Zamestnanec A', insurer: '25', gross: 100000, days: 31, iban: null, health: { disabled:false, minimumExempt:false, deductionClaimed:false }, slip: exportedSlip }
 await db.prepare("UPDATE payroll_runs SET payday = '2026-02-10', lines = ?, closed_at = ?, closed_on = ?, closed_by = ? WHERE company_id = 'co-a' AND period = '2026-01'").bind(JSON.stringify([exportedLine]), nowS, day(0), lucia.id).run()
 const handoverPayrollCompany = companyOf(await db.prepare("SELECT * FROM companies WHERE id = 'co-a'").first())
 const handoverPayrollUser = await db.prepare('SELECT * FROM users WHERE id = ?').bind(lucia.id).first()
@@ -4301,7 +4308,12 @@ for (const pkg of pendingHandover) if (await currentPackage(db, pkg)) {
 }
 for (const target of (await payrollReporting.reportItems(db, 'co-a')).filter((r) => r.active)) {
   const finalGenerationPlan = target.kind === 'tax' ? await payrollGeneration.generationPlan(db, 'co-a', target.id, day(0)) : null
-  const saved = finalGenerationPlan ? await payrollGeneration.generatePrehlad(db, files, finalGenerationPlan, handoverPayrollUser, finalGenerationPlan.token, { dic: handoverPayrollCompany.dic, name: handoverPayrollCompany.name, street: 'TEST street', number: '12', postal: '04001', city: 'Košice', preparedBy: 'TEST final handover reviewer', phone: '', email: '', declaredOn: day(0), kind: 'R', foundOn: '', representation: 'company', reason: '', reference: 'TEST final complete monthly scope review', checked: true }, day(0)) : await payrollReporting.saveReport(db, files, target, handoverPayrollUser, { revision: target.revision, variant: 'TEST ONLY final report', checked: true, reason: '', file: { name: 'TEST_ONLY-final-payroll.xml', bytes: new TextEncoder().encode(`<TEST_ONLY recipient="${target.kind}"/>`) } })
+  let saved
+  if (target.kind === 'health25') {
+    await healthReporting.recordHealthIdentity(db,'co-a',target.id,'emp-a',handoverPayrollUser,{revision:0,identifier:'9010101234',reference:'TEST final verified employee identity',reason:'',checked:true})
+    const review=await healthReporting.healthPlan(db,'co-a',target.id,day(0))
+    saved=await healthReporting.generateHealth(db,files,review,handoverPayrollUser,review.token,{name:handoverPayrollCompany.name,dic:handoverPayrollCompany.dic,payer:'6333333300',branch:'2500',iban:'SK3112000000198742637541',phone:'',email:'',sendOn:day(0),batch:'1',kind:'N',reason:'',reference:'TEST final complete health source review',checked:true},day(0))
+  } else saved = finalGenerationPlan ? await payrollGeneration.generatePrehlad(db, files, finalGenerationPlan, handoverPayrollUser, finalGenerationPlan.token, { dic: handoverPayrollCompany.dic, name: handoverPayrollCompany.name, street: 'TEST street', number: '12', postal: '04001', city: 'Košice', preparedBy: 'TEST final handover reviewer', phone: '', email: '', declaredOn: day(0), kind: 'R', foundOn: '', representation: 'company', reason: '', reference: 'TEST final complete monthly scope review', checked: true }, day(0)) : await payrollReporting.saveReport(db, files, target, handoverPayrollUser, { revision: target.revision, variant: 'TEST ONLY final report', checked: true, reason: '', file: { name: 'TEST_ONLY-final-payroll.xml', bytes: new TextEncoder().encode(`<TEST_ONLY recipient="${target.kind}"/>`) } })
   const result = saved.ok && await payrollReporting.changeReportDelivery(db, files, await payrollReporting.reportPackage(db, 'co-a', saved.id), handoverPayrollUser, { to: 'accepted', revision: 0, externalOn: day(0), reference: `TEST-PAYROLL-FINAL-${target.kind}`, channel: 'TEST ONLY', checked: true, reason: '', receipt: { name: 'TEST_ONLY-final-receipt.xml', bytes: new TextEncoder().encode(`<TEST_ONLY receipt="${target.kind}"/>`) } }, day(0))
   check(`current payroll ${target.kind} evidence completes before final acknowledged handover`, result?.ok)
 }
@@ -4367,6 +4379,7 @@ const leftover = await db
        + (SELECT COUNT(*) FROM filing_history WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM filing_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filing_events WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_target_reviews WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_health_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_health_ids WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_closures WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_payouts WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_targets WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_events WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,

@@ -6,6 +6,7 @@ import { readFile, mkdir } from 'node:fs/promises'
 import { resolve, extname, sep } from 'node:path'
 import { randomBytes, createHash } from 'node:crypto'
 import { check, done } from './check.mjs'
+import { readHealthText } from './health-text.mjs'
 import { payslip } from '../.wrangler/dist/stores.js'
 
 const assets = resolve('public'),
@@ -244,7 +245,8 @@ try {
   const wageMonth = new Date(`${today.slice(0,7)}-15T12:00:00Z`); wageMonth.setUTCMonth(wageMonth.getUTCMonth()-1)
   const wagePeriod = wageMonth.toISOString().slice(0,7), payrollBase = `${origin}/ucto/klienti/browser-co/mzdove-podania`
   const slip = payslip({period:wagePeriod,gross:100000,days:30,declaration:true,children:[],disabled:false,healthDeduction:false,healthMinimumExempt:false})
-  await db.prepare("INSERT INTO payroll_runs (company_id,period,payday,lines,closed_at,closed_on,closed_by) VALUES ('browser-co',?,?,?, ?,?,'browser-admin')").bind(wagePeriod,today,JSON.stringify([{employeeId:'browser-employee',name:'TEST Employee',insurer:'25',gross:100000,days:30,slip}]),now,today).run()
+  await db.prepare("INSERT INTO employees(id,company_id,name,insurer,started_on,wage_cents,created_at) VALUES('browser-employee','browser-co','TEST Employee','25',?,100000,?)").bind(`${wagePeriod}-01`,now).run()
+  await db.prepare("INSERT INTO payroll_runs (company_id,period,payday,lines,closed_at,closed_on,closed_by) VALUES ('browser-co',?,?,?, ?,?,'browser-admin')").bind(wagePeriod,today,JSON.stringify([{employeeId:'browser-employee',name:'TEST Employee',insurer:'25',gross:100000,days:30,health:{disabled:false,minimumExempt:false,deductionClaimed:false},slip}]),now,today).run()
   await page.goto(`${payrollBase}?obdobie=${wagePeriod}`)
   await page.locator('.payroll-init button').click()
   await page.locator('.payroll-payout form').waitFor({state:'visible'})
@@ -299,6 +301,31 @@ try {
   const overviewXml=await readFile(await (await overviewDownload).path(),'utf8')
   check('the browser-generated overview preserves report month independently of payout month',overviewXml.includes(`<mesiac>${wagePeriod.slice(5)}</mesiac>`) && overviewXml.includes(`<datum>${today.slice(8,10)}.${today.slice(5,7)}.${today.slice(0,4)}</datum>`))
   await page.screenshot({path:'.wrangler/screens/390-prehlad-browser.png',fullPage:true})
+  const healthTarget=await db.prepare("SELECT * FROM payroll_targets WHERE company_id='browser-co' AND kind='health25'").first()
+  await page.goto(`${payrollBase}/${healthTarget.id}/pripravit`)
+  await page.locator('.health-id-form input[name=identifier]').fill('0010101234')
+  await page.locator('.health-id-form input[name=reference]').fill('TEST browser independently verified employee document')
+  await page.locator('.health-id-form input[name=checked]').check()
+  const identityResponse=page.waitForResponse((r)=>new URL(r.url()).pathname.endsWith('/poistenec')&&r.request().method()==='POST')
+  await page.locator('.health-id-form button[type=submit]').click()
+  await page.locator('.health-report-form').waitFor({state:'visible'})
+  check('the actual browser stores verified insured identity and shows a masked reusable record',(await identityResponse).status()===303&&await page.getByText('TEST Employee · overené, končí 1234',{exact:true}).count()===1)
+  await page.locator('.health-report-form input[name=payer]').fill('6333333300')
+  await page.locator('.health-report-form input[name=branch]').fill('2500')
+  await page.locator('.health-report-form input[name=iban]').fill('SK3112000000198742637541')
+  await page.locator('#health-kind').selectOption('N')
+  await page.locator('.health-report-form input[name=batch]').fill('1')
+  await page.locator('.health-report-form input[name=reference]').fill('TEST browser complete health payroll review')
+  await page.locator('.health-report-form input[name=checked]').check()
+  const healthResponse=page.waitForResponse((r)=>new URL(r.url()).pathname.endsWith('/generovat')&&r.request().method()==='POST')
+  await page.locator('.health-report-form button[type=submit]').click()
+  await page.getByRole('heading',{name:'Vytvorené vo Firmony',exact:true}).waitFor({state:'visible'})
+  check('the actual browser prepares a source-bound 514 batch without recording submission',(await healthResponse).status()===303&&(await db.prepare('SELECT p.status FROM payroll_packages p JOIN payroll_health_generations g ON g.package_id=p.id WHERE p.target_id=?').bind(healthTarget.id).first()).status==='prepared')
+  const healthDownload=page.waitForEvent('download')
+  await page.getByRole('link',{name:'Stiahnuť pôvodný výkaz',exact:true}).click()
+  const imported=await healthDownload,healthText=await readFile(await imported.path(),'utf8'),batch=readHealthText(healthText)
+  check('the browser downloads independent valid 514 text under its required import filename',imported.suggestedFilename()===`N514${wagePeriod.slice(2,4)}${wagePeriod.slice(5)}.001`&&batch.rows.length===1&&batch.rows[0][1]==='0010101234'&&batch.id[4]==='2500')
+  await page.screenshot({path:'.wrangler/screens/390-health-browser.png',fullPage:true})
 
   await db.batch([
     db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('browser-client', ?, 'browser-client@example.test', 'Klient prehliadača')").bind(now),
@@ -316,6 +343,8 @@ try {
   check('the customer browser sees payroll evidence without payout or accounting forms',await clientPage.getByText('TEST-BROWSER-PAYROLL-RECEIPT',{exact:false}).count()>0 && await clientPage.locator('.filing-form,.payroll-report-upload,.payroll-payout form').count()===0)
   await clientPage.goto(`${origin}/app/mzdove-podania/${overviewTarget.id}`)
   check('the customer browser sees generated overview provenance with no preparation controls',await clientPage.getByRole('heading',{name:'Vytvorené vo Firmony',exact:true}).count()===1 && await clientPage.locator('.prehlad-form,.payroll-report-upload,.filing-form').count()===0)
+  await clientPage.goto(`${origin}/app/mzdove-podania/${healthTarget.id}`)
+  check('the customer browser sees health origin with no identity collection or accounting form',await clientPage.getByText('ZP514-TXT-2026',{exact:false}).count()===1&&await clientPage.locator('.health-id-form,.health-report-form,.payroll-report-upload,.filing-form').count()===0)
   await clientContext.close()
   check('the authenticated work and filing forms have no uncaught browser errors', errors.length === 0)
   await mkdir('.wrangler/screens', { recursive: true })

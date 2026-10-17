@@ -17,6 +17,7 @@ Stav implementácie: **15. 10. 2026**. Tento balík nadväzuje na [zodpovednosť
 - [Podania, originály XML a doložené prijatie](filing-evidence.md) — doplnené 16. 10. 2026, schéma 18; manuálna odborná kontrola potvrdeniek.
 - [Mzdové podania podľa príjemcu](payroll-evidence.md) — schémy 19–20; overená výplata, samostatne potvrdené obdobie, originály a opravy.
 - [Generovanie PREHLADv26](payroll-generation.md) — bežné mzdy, zdrojová kontrola a nemenný pôvod XML; bez automatického odoslania.
+- [Zdravotné výkazy 514](health-reporting.md) — schéma 21; overení poistenci, uzavretý režim, textový import a opravy s históriou.
 - [Aktivácia, každodenná práca a obnova prístupov](access.md)
 - [Incident, súbeh s mazaním a uvoľnenie uchovania](evidence.md)
 - [Obnova D1/R2 a dôkazy pripravenosti](recovery.md)

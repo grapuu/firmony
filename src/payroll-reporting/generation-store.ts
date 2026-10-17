@@ -54,7 +54,8 @@ export async function generatePrehlad(db: D1Database, files: R2Bucket | undefine
 }
 export interface GenerationEvidence { package_id: string; company_id: string; format: string; details: string; sha256: string; at: number; by_user: string; by_name?: string | null }
 export async function generationOf(db: D1Database, company: string, packageId: string): Promise<GenerationEvidence | null> {
-  return db.prepare('SELECT g.*, u.name AS by_name FROM payroll_generations g LEFT JOIN users u ON u.id = g.by_user WHERE g.company_id = ? AND g.package_id = ?').bind(company, packageId).first<GenerationEvidence>()
+  return db.prepare(`SELECT g.package_id, g.company_id, g.format, g.details, g.sha256, g.at, g.by_user, u.name AS by_name FROM payroll_generations g LEFT JOIN users u ON u.id = g.by_user WHERE g.company_id = ?1 AND g.package_id = ?2
+    UNION ALL SELECT g.package_id, g.company_id, g.format, g.details, g.sha256, g.at, g.by_user, u.name AS by_name FROM payroll_health_generations g LEFT JOIN users u ON u.id = g.by_user WHERE g.company_id = ?1 AND g.package_id = ?2`).bind(company, packageId).first<GenerationEvidence>()
 }
 export interface TargetReview {
   id: string; company_id: string; target_id: string; data_revision: number; source_json: string; scope_json: string; reason: string; reference: string; at: number; by_user: string; by_name: string | null

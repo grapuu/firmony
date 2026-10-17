@@ -27,6 +27,8 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['verzie-mzdovych-podani', 'SELECT p.* FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ?1 AND substr(t.period, 1, 4) = ?2 ORDER BY p.id'],
     ['dorucenie-mzdovych-podani', 'SELECT e.* FROM payroll_events e JOIN payroll_packages p ON p.id = e.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE e.company_id = ?1 AND substr(t.period, 1, 4) = ?2 ORDER BY e.package_id, e.revision'],
     ['generovanie-mzdovych-podani', 'SELECT g.* FROM payroll_generations g JOIN payroll_packages p ON p.id = g.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE g.company_id = ?1 AND substr(t.period, 1, 4) = ?2 ORDER BY g.package_id'],
+    ['generovanie-zdravotnych-vykazov', 'SELECT g.* FROM payroll_health_generations g JOIN payroll_packages p ON p.id = g.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE g.company_id = ?1 AND substr(t.period, 1, 4) = ?2 ORDER BY g.package_id'],
+    ['identifikatory-poistencov', 'SELECT * FROM payroll_health_ids WHERE company_id = ?1 ORDER BY employee_id, revision'],
     ['preverenia-mzdovych-povinnosti', 'SELECT r.* FROM payroll_target_reviews r JOIN payroll_targets t ON t.id = r.target_id WHERE r.company_id = ?1 AND substr(t.period, 1, 4) = ?2 ORDER BY r.at, r.id'],
     ['verzie-podani', 'SELECT * FROM filing_packages WHERE company_id = ?1 AND substr(period, 1, 4) = ?2 ORDER BY id'],
     ['dorucenie-podani', 'SELECT e.* FROM filing_events e JOIN filing_packages p ON p.id = e.package_id WHERE e.company_id = ?1 AND substr(p.period, 1, 4) = ?2 ORDER BY e.package_id, e.revision'],
@@ -52,6 +54,7 @@ export async function handoverData(db: D1Database, company: string, year: string
   for (const c of tables.get('mzdove-uzavierky') ?? []) if (typeof c.source_json !== 'string' || await sha256Hex(c.source_json) !== c.sha256) throw new Error('Payroll closure checksum mismatch')
   for (const p of tables.get('verzie-mzdovych-podani') ?? []) if (typeof p.source_json !== 'string' || await sha256Hex(p.source_json) !== p.source_hash) throw new Error('Payroll report coverage checksum mismatch')
   for (const g of tables.get('generovanie-mzdovych-podani') ?? []) if (typeof g.details !== 'string' || await sha256Hex(g.details) !== g.sha256) throw new Error('Payroll generation evidence checksum mismatch')
+  for (const g of tables.get('generovanie-zdravotnych-vykazov') ?? []) if (typeof g.details !== 'string' || await sha256Hex(g.details) !== g.sha256) throw new Error('Health generation evidence checksum mismatch')
   for (const p of tables.get('verzie-podani') ?? []) {
     if (typeof p.xml !== 'string' || await sha256Hex(p.xml) !== p.sha256) throw new Error('Filing package checksum mismatch')
     entries.push(entry(`podania/dorucenie/${p.kind}-${p.period}-${p.id}.xml`, p.xml))

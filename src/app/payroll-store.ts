@@ -118,6 +118,8 @@ export interface RunLine {
   /** Once closed: the days of the month employed, and the payslip as it was. */
   days?: number
   slip?: Payslip
+  /** Immutable insurance regime used to compute this closed slip; never inferred from today's employee record. */
+  health?: { disabled: boolean; minimumExempt: boolean; deductionClaimed: boolean }
 }
 
 export interface PayrollRun {
@@ -143,6 +145,7 @@ function linesOf(json: unknown): RunLine[] {
               gross: l.gross as number,
               ...(Number.isInteger(l.days) ? { days: l.days as number } : {}),
               ...(l.slip && typeof l.slip === 'object' ? { slip: l.slip as Payslip } : {}),
+              ...(l.health && typeof l.health === 'object' ? { health: l.health as RunLine['health'] } : {}),
             },
           ]
         : [],
@@ -208,6 +211,7 @@ export function monthSlips(period: string, employees: readonly Employee[], run: 
         insurer: e.insurer,
         gross,
         days,
+        health: { disabled: e.disabled, minimumExempt: e.healthExempt, deductionClaimed: e.healthDeduction },
         slip: payslip({ period, gross, declaration: e.declaration, children: e.children, disabled: e.disabled, healthDeduction: e.healthDeduction, healthMinimumExempt: e.healthExempt, days }),
       }
     })

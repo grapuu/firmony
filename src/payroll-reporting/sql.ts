@@ -8,21 +8,21 @@ export const sourceRowsSql = (target: string, reviewed = false) => `SELECT pc.id
     AND (${closureCurrentSql('pc')}) AND (${latestPayoutSql('pp')}) ORDER BY pc.id`
 // Hashes are checked in application code; SQL conservatively catches changes in exact coverage identities as well.
 export const coverageJsonSql = (target: string, reviewed = false): string => `(SELECT COALESCE(json_group_array(json_object('id', s.id, 'sha256', s.sha256, 'payout_id', s.payout_id, 'paid_on', s.paid_on, 'revision', s.revision${reviewed ? ", 'report_period', s.report_period" : ''})), '[]') FROM (${sourceRowsSql(target, reviewed)}) s)`
-export const reportCurrentSql = (target: string, pkg: string, reviewed = false) => `(${pkg}.id IS NOT NULL AND CASE WHEN ${target}.kind = 'tax'
-  THEN ${pkg}.source_json = ${coverageJsonSql(target, reviewed)} ELSE EXISTS (SELECT 1 FROM payroll_closures pc WHERE pc.id = ${target}.closure_id AND pc.sha256 = ${pkg}.source_hash AND (${closureCurrentSql('pc')})) END)`
-export const pendingPayrollSql = (company: string, reviewed = false) => `(EXISTS (SELECT 1 FROM payroll_targets pt LEFT JOIN payroll_packages pp ON pp.id = pt.package_id AND pp.company_id = pt.company_id
-  WHERE pt.company_id = ${company} AND (${targetActiveSql('pt', reviewed)}) AND (pp.status IS NOT 'accepted' OR NOT (${reportCurrentSql('pt', 'pp', reviewed)})))
+export const reportCurrentSql = (target: string, pkg: string, reviewed = false, health = false): string => `(${pkg}.id IS NOT NULL AND CASE WHEN ${target}.kind = 'tax'
+  THEN ${pkg}.source_json = ${coverageJsonSql(target, reviewed)} ELSE EXISTS (SELECT 1 FROM payroll_closures pc WHERE pc.id = ${target}.closure_id AND pc.sha256 = ${pkg}.source_hash AND (${closureCurrentSql('pc')}))${health ? ` AND (NOT EXISTS (SELECT 1 FROM payroll_health_generations hg WHERE hg.package_id = ${pkg}.id) OR EXISTS (SELECT 1 FROM payroll_health_generations hg WHERE hg.package_id = ${pkg}.id AND hg.company_id = ${target}.company_id AND hg.identities_json = ${healthIdentityCoverageSql(target)}))` : ''} END)`
+export const pendingPayrollSql = (company: string, reviewed = false, health = false) => `(EXISTS (SELECT 1 FROM payroll_targets pt LEFT JOIN payroll_packages pp ON pp.id = pt.package_id AND pp.company_id = pt.company_id
+  WHERE pt.company_id = ${company} AND (${targetActiveSql('pt', reviewed)}) AND (pp.status IS NOT 'accepted' OR NOT (${reportCurrentSql('pt', 'pp', reviewed, health)})))
   OR EXISTS (SELECT 1 FROM payroll_closures pc WHERE pc.company_id = ${company} AND (${closureCurrentSql('pc')})
     AND (SELECT COALESCE(SUM(json_extract(value, '$.gross')), 0) FROM json_each(pc.lines)) > 0
     AND NOT EXISTS (SELECT 1 FROM payroll_payouts pp WHERE pp.closure_id = pc.id${reviewed ? ` AND pp.report_period IS NOT NULL AND (${latestPayoutSql('pp')})` : ''})))`
 
-export const payrollStatusSql = (target: string, pkg: string, reviewed = false) => `CASE WHEN ${pkg}.id IS NULL OR NOT (${reportCurrentSql(target, pkg, reviewed)}) THEN 'unverified' ELSE ${pkg}.status END`
+export const payrollStatusSql = (target: string, pkg: string, reviewed = false, health = false) => `CASE WHEN ${pkg}.id IS NULL OR NOT (${reportCurrentSql(target, pkg, reviewed, health)}) THEN 'unverified' ELSE ${pkg}.status END`
 const visible = `c.closed_at IS NULL AND c.demo = 0 AND (?1 = 'admin' OR c.accountant_id = ?2)`
-export const payrollQueueSql = `SELECT t.id, t.company_id, c.name AS company_name, t.period, ${payrollStatusSql('t', 'p', true)} AS status, t.created_at,
+export const payrollQueueSql = `SELECT t.id, t.company_id, c.name AS company_name, t.period, ${payrollStatusSql('t', 'p', true, true)} AS status, t.created_at,
   NULL AS kind, CASE t.kind WHEN 'sp' THEN 'Mesačný výkaz – Sociálna poisťovňa' WHEN 'health24' THEN 'Mesačný výkaz – Dôvera' WHEN 'health25' THEN 'Mesačný výkaz – VšZP' WHEN 'health27' THEN 'Mesačný výkaz – Union' ELSE 'Mesačný prehľad – Finančná správa' END AS label,
   '/ucto/klienti/' || c.id || '/mzdove-podania/' || t.id AS href
   FROM payroll_targets t JOIN companies c ON c.id = t.company_id LEFT JOIN payroll_packages p ON p.id = t.package_id AND p.company_id = t.company_id
-  WHERE ${visible} AND (${targetActiveSql('t', true)}) AND (p.status IS NOT 'accepted' OR NOT (${reportCurrentSql('t', 'p', true)}))
+  WHERE ${visible} AND (${targetActiveSql('t', true)}) AND (p.status IS NOT 'accepted' OR NOT (${reportCurrentSql('t', 'p', true, true)}))
   UNION ALL SELECT 'payroll-' || r.period || '-' || c.id, c.id, c.name, r.period, 'unverified', r.closed_at, NULL,
     CASE WHEN pc.id IS NULL THEN 'Založiť evidenciu mzdových podaní' ELSE 'Overiť výplatu a obdobie prehľadu FS' END,
     '/ucto/klienti/' || c.id || '/mzdove-podania?obdobie=' || r.period
@@ -48,3 +48,12 @@ export const currentCoverageJsonSql = (t: string) => coverageJsonSql(t, true)
 export const currentReportSql = (t: string, p: string) => reportCurrentSql(t, p, true)
 export const currentPendingPayrollSql = (c: string) => pendingPayrollSql(c, true)
 export const currentPayrollStatusSql = (t: string, p: string) => payrollStatusSql(t, p, true)
+
+// Version-20 wrappers above stay unchanged for the additive migrations. Runtime uses version 21 below.
+export function healthIdentityCoverageSql(target: string): string { return `(SELECT COALESCE(json_group_array(json_object('employee', s.employee, 'identity', s.identity)), '[]') FROM
+  (SELECT json_extract(l.value, '$.employeeId') AS employee,
+    (SELECT i.id FROM payroll_health_ids i WHERE i.company_id = ${target}.company_id AND i.employee_id = json_extract(l.value, '$.employeeId') ORDER BY i.revision DESC LIMIT 1) AS identity
+    FROM payroll_closures pc, json_each(pc.lines) l WHERE pc.id = ${target}.closure_id AND pc.company_id = ${target}.company_id AND 'health' || json_extract(l.value, '$.insurer') = ${target}.kind ORDER BY employee) s)` }
+export const healthReportCurrentSql = (t: string, p: string) => reportCurrentSql(t,p,true,true)
+export const healthPendingPayrollSql = (c: string) => pendingPayrollSql(c,true,true)
+export const healthPayrollStatusSql = (t: string, p: string) => payrollStatusSql(t,p,true,true)

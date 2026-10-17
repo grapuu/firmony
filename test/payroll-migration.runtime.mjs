@@ -2,15 +2,16 @@
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { createHash } from 'node:crypto'
 import { check } from './check.mjs'
-import { PAYROLL_REPORTING_SCHEMA as oldStep, PAYROLL_REVIEW_SCHEMA as upgrade, payrollReporting as p, payrollGeneration as g, companyOf, payslip, legacyPayrollCoverage, filingQueue } from '../.wrangler/dist/stores.js'
+import { PAYROLL_REPORTING_SCHEMA as oldStep, PAYROLL_REVIEW_SCHEMA as upgrade, PAYROLL_HEALTH_SCHEMA as healthUpgrade, payrollReporting as p, payrollGeneration as g, companyOf, payslip, legacyPayrollCoverage, filingQueue } from '../.wrangler/dist/stores.js'
 
 export async function checkPayrollMigration({db: current,nowS,day}) {
   check('the entire existing schema-19 step remains byte-for-byte unchanged',createHash('sha256').update(JSON.stringify(oldStep)).digest('hex')==='1d22f406cada72ce9dda6640d74e86f870afa46ed6312657fd3d9f1846874d1e')
+  check('the entire existing schema-20 step remains byte-for-byte unchanged',createHash('sha256').update(JSON.stringify(upgrade)).digest('hex')==='d78f2a456a90fe96aa901d77be9038acb5b072d5d4645c655e34bb7ed12235bc')
   const dist=new URL('../.wrangler/dist',import.meta.url).pathname
   const mf=new Miniflare(convertV4MiniflareOptions({cf:false,workers:[{name:'payroll-upgrade',modulesRoot:dist,modules:[{type:'ESModule',path:`${dist}/index.js`}],compatibilityDate:'2026-10-01',d1Databases:{DB:'payroll-upgrade'},r2Buckets:{FILES:'payroll-upgrade'},outboundService:()=>new Response('offline',{status:599})}]}))
   try {
     const db=await mf.getD1Database('DB'),files=await mf.getR2Bucket('FILES')
-    const schema=(await current.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND type IN ('table','index','trigger') ORDER BY type,name").all()).results.filter((r)=>!/^(?:sqlite_|_cf_)/.test(r.name) && !['payroll_generations','payroll_target_reviews'].includes(r.tbl_name))
+    const schema=(await current.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND type IN ('table','index','trigger') ORDER BY type,name").all()).results.filter((r)=>!/^(?:sqlite_|_cf_)/.test(r.name) && !['payroll_generations','payroll_target_reviews','payroll_health_ids','payroll_health_generations'].includes(r.tbl_name))
     const changed=['payroll_payouts_create','payroll_targets_create','payroll_targets_update','payroll_packages_create','payroll_pending_handover']
     const oldTrigger=(name)=>oldStep.find((sql)=>sql.startsWith(`CREATE TRIGGER ${name} `))
     const statements=schema.map((r)=>r.name==='payroll_payouts'&&r.type==='table'?oldStep.find((sql)=>sql.startsWith('CREATE TABLE payroll_payouts ')):r.type==='trigger'&&changed.includes(r.name)?oldTrigger(r.name):r.sql)
@@ -38,7 +39,7 @@ export async function checkPayrollMigration({db: current,nowS,day}) {
     const proof={name:'TEST_ONLY-old-proof.xml',bytes:new TextEncoder().encode('<TEST_ONLY receipt="old checked receipt"/>')}
     const accepted=await p.changeReportDelivery(db,files,await p.reportPackage(db,company,'old-package'),user,{to:'accepted',revision:0,externalOn:today,reference:'TEST-LEGACY-ACCEPTED',channel:'TEST ONLY',checked:true,reason:'',receipt:proof},today)
     check('the independent pre-upgrade database contains the old accepted exact-file workflow',accepted.ok && !(await db.prepare("PRAGMA table_info('payroll_payouts')").all()).results.some((r)=>r.name==='report_period'))
-    await db.batch(upgrade.map((sql)=>db.prepare(sql)))
+    await db.batch([...upgrade,...healthUpgrade].map((sql)=>db.prepare(sql)))
     const legacy=(await p.payoutsOf(db,company,closure.id))[0],item=await p.reportItem(db,company,'old-tax')
     check('upgrade preserves cash facts and leaves the previously assumed report period unverified',legacy.paid_on===today && legacy.report_period===null && legacy.reference==='TEST legacy cash fact' && item.status==='unverified' && item.sourceChanged && item.pkg.status==='accepted')
     check('upgrade preserves the original report and accepted receipt byte for byte',(await (await files.get(key)).text())===xml && (await p.reportEvents(db,company,'old-package')).length===1)

@@ -1,3 +1,15 @@
+Current health-reporting follow-up (17 October 2026): [docs/security/health-reporting.md](docs/security/health-reporting.md).
+Additive schema **21** prepares insurer-scoped UTF-8 514 batches for supported ordinary employment.
+New closed payslips retain their exact health regime; legacy slips without it require external preparation.
+Verified insured identifiers are masked in preparation, versioned, reused and corrected only by an admin with
+a reason. An identity correction invalidates affected generated coverage, deadlines and handover completion
+without erasing original reports/receipts or altering unrelated recipients. Header, source and identity revisions
+bind the review; live SQL assignment/CAS guards apply. Owners have read-only origin/files and no new form.
+Complete exports preserve required import names, identity history and provenance. Holds, synthetic restoration
+and controlled purge cover new records. Schemas 19–20 remain unchanged. Live insurer acceptance, SP generation,
+special employment, production recovery and legal/insurance/enterprise approval remain open. No merge/deploy;
+continue PR #8, preserve history, and never claim that a prepared batch has been submitted or accepted.
+
 Current payroll-generation follow-up (16 October 2026): [docs/security/payroll-generation.md](docs/security/payroll-generation.md).
 Schema **20** separates the verified actual payout date from the accountant-reviewed FS reporting period.
 The old universal cash-month assignment was too broad: existing schema-19 payouts migrate with an unreviewed
@@ -5,8 +17,8 @@ period, preserving their facts and historical receipts. An administrator can doc
 incorrect target; newly assigned income reactivates it. No fake zero report or automatic cancellation is created.
 Regular Slovak s.r.o. wages without bonuses/special tax adjustments can generate an exact PREHLADv26 file,
 with a source-bound review, immutable provenance and ordinary independent receipt workflow. Official XSD
-validation is covered by tests; real portal acceptance remains unverified. SP/health reports still need external
-files. Payout corrections, owner-only evidence, exports and retention remain shared with schema 19 below.
+validation is covered by tests; real portal acceptance remains unverified. SP reports still need external
+files; schema 21 above extends supported health output. Payout corrections, owner-only evidence, exports and retention remain shared with schema 19 below.
 Partial/irregular/noncash income, annual reports, live delivery and production verification remain outside scope.
 Receipt matching is a professional's recorded check, not API proof. Prior paid-month assumptions are superseded.
 Existing legal/insurance/enterprise gates remain NO-GO. No automatic merge/deploy; continue PR #8 and preserve history.

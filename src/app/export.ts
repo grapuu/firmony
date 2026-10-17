@@ -169,8 +169,8 @@ export async function exportYear(
       UNION ALL SELECT 'payroll-' || e.id, e.at, e.file_key, e.file_bytes, e.file_sha256 FROM payroll_events e JOIN payroll_packages p ON p.id = e.package_id JOIN payroll_targets t ON t.id = p.target_id WHERE e.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND e.file_key IS NOT NULL
       UNION ALL SELECT 'review-' || r.id, r.at, r.file_key, r.file_bytes, r.file_sha256 FROM payroll_target_reviews r JOIN payroll_targets t ON t.id = r.target_id WHERE r.company_id = ?1 AND substr(t.period, 1, 4) = ?2 AND r.file_key IS NOT NULL ORDER BY 1`)
       .bind(company.id, year).all<{ id: string; at: number; file_key: string; file_bytes: number; file_sha256: string }>(),
-    db.prepare(`SELECT p.id, p.file_key, p.file_bytes, p.sha256, p.created_at, t.kind, t.period FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ? AND substr(t.period, 1, 4) = ? ORDER BY p.id`)
-      .bind(company.id, year).all<{ id: string; file_key: string; file_bytes: number; sha256: string; created_at: number; kind: string; period: string }>(),
+    db.prepare(`SELECT p.id, p.name, p.file_key, p.file_bytes, p.sha256, p.created_at, t.kind, t.period FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ? AND substr(t.period, 1, 4) = ? ORDER BY p.id`)
+      .bind(company.id, year).all<{ id: string; name:string; file_key: string; file_bytes: number; sha256: string; created_at: number; kind: string; period: string }>(),
   ])
   const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows] = await Promise.all([
     db
@@ -396,7 +396,7 @@ export async function exportYear(
     }
     yield* snapshots
     for (const report of payrollFiles.results) yield {
-      name: zipName(`mzdy/podania/${report.kind}-${report.period}-${report.id}.${report.file_key.split('.').pop()}`), when: report.created_at,
+      name: zipName(/^[NO]514\d{4}\.\d{3}$/.test(report.name) ? `mzdy/podania/${report.kind}-${report.period}-${report.id}/${report.name}` : `mzdy/podania/${report.kind}-${report.period}-${report.id}.${report.file_key.split('.').pop()}`), when: report.created_at,
       data: async () => {
         const object = await files?.get(report.file_key)
         if (!object) throw new Error('Payroll report missing from archive')

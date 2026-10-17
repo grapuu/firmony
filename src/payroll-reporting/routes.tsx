@@ -12,6 +12,9 @@ import { Shell } from '../views/inside'
 import { TeamShell } from '../views/team'
 import { PayrollReportsPage, PayrollReportPage } from '../views/payroll-reports'
 import { PrehladPreparationPage } from '../views/prehlad-preparation'
+import { HealthPreparationPage } from '../views/health-preparation'
+import { generateHealth, healthPlan, recordHealthIdentity } from './health-store'
+import { healthKind, type HealthInput } from './health'
 import { generatePrehlad, generationOf, generationPlan, retireTarget, reviewScope, targetReviews } from './generation-store'
 import { addressParts } from '../app/vat-xml'
 import type { PrehladInput } from './prehlad'
@@ -58,7 +61,8 @@ async function download(c: Ctx, receipt: boolean) {
   if (!file) return c.text('Pôvodný súbor nie je dostupný. Obráťte sa na účtovný tím.', 409)
   const bytes = new Uint8Array(await file.arrayBuffer())
   if (bytes.length !== size || await fileHash(bytes) !== hash) return c.text('Pôvodný súbor sa nezhoduje s kontrolným odtlačkom. Obráťte sa na účtovný tím.', 409)
-  return new Response(bytes, { headers: { 'Content-Type': receipt ? event?.file_type ?? 'application/octet-stream' : pkg.file_type, 'Content-Disposition': `attachment; filename="${receipt ? 'potvrdenka' : 'vykaz'}-${receipt ? event?.id : pkg.id}.${key.split('.').pop()}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } })
+  const name = !receipt && /^[NO]514\d{4}\.\d{3}$/.test(pkg.name) ? pkg.name : `${receipt ? 'potvrdenka' : 'vykaz'}-${receipt ? event?.id : pkg.id}.${key.split('.').pop()}`
+  return new Response(bytes, { headers: { 'Content-Type': receipt ? event?.file_type ?? 'application/octet-stream' : pkg.file_type, 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } })
 }
 payrollReportRoutes.use('*', async (c, next) => {
   const company = await teamCompany(c.env.DB, c.get('who').user, c.req.param('companyId') ?? '')
@@ -107,6 +111,8 @@ payrollReportRoutes.post('/vyplata', smallLimit, async (c) => {
   return result.ok ? c.redirect(`${base(c)}?obdobie=${period}#vyplata-${period}`, 303) : list(c, result.error, values, 409)
 })
 async function preparation(c: Ctx, values?: Record<string, string>, error?: string, status: ContentfulStatusCode = 200) {
+  const target = await targetOf(c.env.DB,c.get('payrollCompany').id,c.req.param('target')??'')
+  if (target && healthKind(target.kind)) return healthPreparation(c,values,error,status)
   const plan = await generationPlan(c.env.DB, c.get('payrollCompany').id, c.req.param('target') ?? '', today())
   if (!plan) return c.notFound()
   const address = addressParts(plan.company.address), user = c.get('who').user
@@ -115,6 +121,8 @@ async function preparation(c: Ctx, values?: Record<string, string>, error?: stri
 }
 payrollReportRoutes.get('/:target/pripravit', (c) => preparation(c))
 payrollReportRoutes.post('/:target/generovat', smallLimit, async (c) => {
+  const target = await targetOf(c.env.DB,c.get('payrollCompany').id,c.req.param('target'))
+  if (target && healthKind(target.kind)) return healthGeneration(c)
   const body = await c.req.parseBody(), plan = await generationPlan(c.env.DB, c.get('payrollCompany').id, c.req.param('target'), today())
   if (!plan) return c.notFound()
   if (!await withinLimit(c.env.DB, 'payroll-generation', c.get('who').user.id, 60, 3600)) return preparation(c, undefined, 'Príliš veľa požiadaviek. Skúste to neskôr.', 429)
@@ -123,6 +131,27 @@ payrollReportRoutes.post('/:target/generovat', smallLimit, async (c) => {
   values.checked = body.checked === '1' ? '1' : ''
   const result = await generatePrehlad(c.env.DB, c.env.FILES, plan, c.get('who').user, text(body.token, 64), { ...values, checked: values.checked === '1' } as unknown as PrehladInput, today())
   return result.ok && 'id' in result ? c.redirect(`${base(c)}/${plan.target.id}/verzie/${result.id}`, 303) : preparation(c, { ...values, checked: '' }, result.error, 409)
+})
+async function healthPreparation(c:Ctx, values?:Record<string,string>, error?:string, status:ContentfulStatusCode=200) {
+  const plan=await healthPlan(c.env.DB,c.get('payrollCompany').id,c.req.param('target')??'',today())
+  if (!plan) return c.notFound()
+  return frame(c,<HealthPreparationPage plan={plan} base={base(c)} user={c.get('who').user} values={{...plan.defaults,...values}} error={error}/>,status)
+}
+async function healthGeneration(c:Ctx) {
+  const body=await c.req.parseBody(),plan=await healthPlan(c.env.DB,c.get('payrollCompany').id,c.req.param('target')??'',today())
+  if (!plan) return c.notFound()
+  if (!await withinLimit(c.env.DB,'payroll-generation',c.get('who').user.id,60,3600)) return healthPreparation(c,undefined,'Príliš veľa požiadaviek. Skúste to neskôr.',429)
+  const values:Record<string,string>={}
+  for (const key of ['name','dic','payer','branch','iban','phone','email','sendOn','batch','kind','reason','reference']) values[key]=text(body[key],1201)
+  values.checked=body.checked==='1'?'1':''
+  const r=await generateHealth(c.env.DB,c.env.FILES,plan,c.get('who').user,text(body.token,64),{...values,checked:values.checked==='1'} as unknown as HealthInput,today())
+  return r.ok && 'id' in r ? c.redirect(`${base(c)}/${plan.target.id}/verzie/${r.id}`,303) : healthPreparation(c,{...values,checked:''},r.error,409)
+}
+payrollReportRoutes.post('/:target/poistenec',smallLimit,async(c)=>{
+  const b=await c.req.parseBody(),employee=text(b.employee,100),values={employee,identifier:text(b.identifier,11),identityReference:text(b.reference,241),identityReason:text(b.reason,1201)}
+  if (!await withinLimit(c.env.DB,'payroll-health-identity',c.get('who').user.id,300,3600)) return healthPreparation(c,values,'Príliš veľa požiadaviek. Skúste to neskôr.',429)
+  const r=await recordHealthIdentity(c.env.DB,c.get('payrollCompany').id,c.req.param('target'),employee,c.get('who').user,{revision:number(b.revision),identifier:values.identifier,reference:values.identityReference,reason:values.identityReason,checked:b.checked==='1'})
+  return r.ok ? c.redirect(`${base(c)}/${c.req.param('target')}/pripravit#poistenci`,303) : healthPreparation(c,values,r.error,409)
 })
 payrollReportRoutes.post('/:target/preverit-rozsah', uploadLimit, async (c) => {
   const body = await c.req.parseBody(), file = body.evidence instanceof File && body.evidence.size ? body.evidence : null

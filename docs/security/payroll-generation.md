@@ -4,6 +4,9 @@ Stav: 16. 10. 2026, schéma **20**, pokračovanie existujúceho PR #8. Tento kro
 zjednodušený predpoklad schémy 19, že vykazované obdobie FS možno vždy automaticky prevziať z mesiaca
 bankovej výplaty. Nepoužívať tento starší predpoklad ako účtovné pravidlo.
 
+Nadväzujúca schéma 21 pridáva [textové zdravotné výkazy 514](health-reporting.md). Tento dokument
+naďalej opisuje samostatný formát FS PREHLADv26; nejde o spoločnú alebo zameniteľnú dávku poisťovní.
+
 ## Obdobie nie je dátum bankového prevodu
 
 FS v konkrétnych príkladoch uvádza februárový prehľad s marcovým dátumom výplaty. Formulár má osobitne
