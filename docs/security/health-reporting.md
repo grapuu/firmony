@@ -54,6 +54,10 @@ Zmeny poisťovne alebo režimu počas mesiaca, PN, materská, dohody, viac praco
 nepeňažné alebo ďalšie príjmy a podpora v čase skrátenej práce potrebujú osobitné odborné spracovanie.
 Kontrola úplnosti pokrýva aj podklady mimo aplikácie. Súbor sa pred podaním musí odborne skontrolovať.
 
+Súhrny zdravotného výkazu aj prehľadu FS ponechávajú sumy a dátumy na jednom riadku aj na úzkom
+telefóne. Dlhý názov sa zalomí v dostupnom priestore. Chrome kontroluje aj samotnú čitateľnosť hodnôt,
+nie iba chýbajúci vodorovný posuvník.
+
 ## Prístup a uchovanie
 
 Klient nemá nový formulár ani povinnosť dopĺňať identifikátory. Vlastník vidí rovnaký stav, pôvod
