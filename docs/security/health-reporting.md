@@ -3,7 +3,8 @@
 Stav: 17. 10. 2026, schéma **21**, pokračovanie existujúceho PR #8. Dávku 514 v textovom formáte
 možno pripraviť pre Dôveru (24), VšZP (25) a Union (27) v podporovanom rozsahu bežného pracovného
 pomeru. Vytvorenie súboru je stav **pripravené**. Odoslanie ani prijatie poisťovňou nepredstierame.
-Výkazy Sociálnej poisťovne naďalej potrebujú odbornú externú prípravu.
+Následná [schéma 22](social-reporting.md) pridáva samostatnú prípravu podporovaných bežných výkazov
+Sociálnej poisťovne; ostatné prípady zostávajú na odbornom externom postupe.
 
 ## Údaje a bezpečná automatizácia
 

@@ -7,6 +7,7 @@ import { resolve, extname, sep } from 'node:path'
 import { randomBytes, createHash } from 'node:crypto'
 import { check, done } from './check.mjs'
 import { readHealthText } from './health-text.mjs'
+import { readSocialXml } from './social-xml.mjs'
 import { payslip } from '../.wrangler/dist/stores.js'
 
 const assets = resolve('public'),
@@ -327,6 +328,41 @@ try {
   check('the browser downloads independent valid 514 text under its required import filename',imported.suggestedFilename()===`N514${wagePeriod.slice(2,4)}${wagePeriod.slice(5)}.001`&&batch.rows.length===1&&batch.rows[0][1]==='0010101234'&&batch.id[4]==='2500')
   await page.screenshot({path:'.wrangler/screens/390-health-browser.png',fullPage:true})
 
+  const acceptedPayrollId=(await db.prepare('SELECT package_id FROM payroll_targets WHERE id=?').bind(payrollTarget.id).first()).package_id
+  await page.goto(`${payrollBase}/${payrollTarget.id}/pripravit`)
+  check('the browser SP workflow reuses a masked health identity and asks for the missing relationship and hours',await page.getByText('Overené, končí 1234',{exact:false}).count()===1&&await page.locator('.social-fact-form[data-section=relation]').count()===1&&await page.locator('.social-fact-form[data-section=hours]').count()===1&&await page.locator('.social-fact-form[data-section=identity] input[name=value]').inputValue()==='')
+  const relationship=page.locator('.social-fact-form[data-section=relation]')
+  await relationship.locator('input[name=value]').fill('000000000001')
+  await relationship.locator('input[name=reference]').fill('TEST browser original SP registration')
+  await relationship.locator('input[name=checked]').check()
+  await relationship.locator('button[type=submit]').click()
+  const analytic=page.locator('.social-fact-form[data-section=hours]')
+  await analytic.locator('select[name=mode]').selectOption('known')
+  await analytic.locator('input[name=value]').fill('176,25')
+  await analytic.locator('input[name=reference]').fill('TEST browser verified analytical hours')
+  await analytic.locator('input[name=checked]').check()
+  await analytic.locator('button[type=submit]').click()
+  const socialForm=page.locator('.social-report-form')
+  await socialForm.waitFor({state:'visible'})
+  await socialForm.locator('input[name=payer]').fill('0000000012')
+  await socialForm.locator('input[name=iban]').fill('SK3112000000198742637541')
+  await socialForm.locator('input[name=firstName]').fill('TEST')
+  await socialForm.locator('input[name=lastName]').fill('Reviewer')
+  await socialForm.locator('input[name=preparedBy]').fill('TEST Browser reviewer')
+  await socialForm.locator('select[name=kind]').selectOption('O')
+  await socialForm.locator('textarea[name=reason]').fill('TEST complete replacement of the earlier external browser report')
+  await socialForm.locator('input[name=reference]').fill('TEST browser complete ordinary social scope')
+  await socialForm.locator('input[name=checked]').check()
+  const socialResponse=page.waitForResponse((r)=>new URL(r.url()).pathname.endsWith('/generovat')&&r.request().method()==='POST')
+  await socialForm.locator('button[type=submit]').click()
+  await page.getByRole('heading',{name:'Vytvorené vo Firmony',exact:true}).waitFor({state:'visible'})
+  check('the actual browser saves a complete SP replacement as prepared while retaining the old accepted file',(await socialResponse).status()===303&&(await db.prepare('SELECT status FROM payroll_packages WHERE id=?').bind(acceptedPayrollId).first()).status==='accepted'&&(await db.prepare('SELECT p.status FROM payroll_packages p JOIN payroll_social_generations g ON g.package_id=p.id WHERE p.target_id=?').bind(payrollTarget.id).first()).status==='prepared')
+  const socialDownload=page.waitForEvent('download')
+  await page.getByRole('link',{name:'Stiahnuť pôvodný výkaz',exact:true}).click()
+  const socialXml=await readFile(await (await socialDownload).path(),'utf8'),socialRead=readSocialXml(socialXml)
+  check('the real browser downloads independently checked complete MVPP XML',socialRead.rows.length===1&&socialRead.root.typVykazu==='O'&&socialRead.rows[0]['@_rc']==='0010101234'&&socialRead.rows[0]['@_icpv']==='000000000001'&&socialRead.rows[0]['@_pocetHodin']==='176.25')
+  await page.screenshot({path:'.wrangler/screens/390-social-browser.png',fullPage:true})
+
   await db.batch([
     db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('browser-client', ?, 'browser-client@example.test', 'Klient prehliadača')").bind(now),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('browser-co', 'browser-client', 'owner', ?)").bind(now),
@@ -339,12 +375,14 @@ try {
   await Promise.all([clientPage.waitForURL(`${origin}/app`), clientPage.locator('form[action="/app/vstup"] button[type=submit]').click()])
   await clientPage.goto(`${origin}/app/podania/${filingId}`)
   check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)
-  await clientPage.goto(`${origin}/app/mzdove-podania/${payrollTarget.id}`)
+  await clientPage.goto(`${origin}/app/mzdove-podania/${payrollTarget.id}/verzie/${acceptedPayrollId}`)
   check('the customer browser sees payroll evidence without payout or accounting forms',await clientPage.getByText('TEST-BROWSER-PAYROLL-RECEIPT',{exact:false}).count()>0 && await clientPage.locator('.filing-form,.payroll-report-upload,.payroll-payout form').count()===0)
   await clientPage.goto(`${origin}/app/mzdove-podania/${overviewTarget.id}`)
   check('the customer browser sees generated overview provenance with no preparation controls',await clientPage.getByRole('heading',{name:'Vytvorené vo Firmony',exact:true}).count()===1 && await clientPage.locator('.prehlad-form,.payroll-report-upload,.filing-form').count()===0)
   await clientPage.goto(`${origin}/app/mzdove-podania/${healthTarget.id}`)
   check('the customer browser sees health origin with no identity collection or accounting form',await clientPage.getByText('ZP514-TXT-2026',{exact:false}).count()===1&&await clientPage.locator('.health-id-form,.health-report-form,.payroll-report-upload,.filing-form').count()===0)
+  await clientPage.goto(`${origin}/app/mzdove-podania/${payrollTarget.id}`)
+  check('the customer browser sees the current SP origin without registration or analytical-hour work',await clientPage.getByText('MVPP-v2026',{exact:false}).count()>0&&await clientPage.locator('.social-fact-form,.social-report-form,.payroll-report-upload,.filing-form').count()===0)
   await clientContext.close()
   check('the authenticated work and filing forms have no uncaught browser errors', errors.length === 0)
   await mkdir('.wrangler/screens', { recursive: true })

@@ -1,10 +1,11 @@
 # Mzdové výkazy a dôkazy doručenia
 
-Stav: 17. 10. 2026, schémy **19–21**, existujúce PR #8. Podporovaný rozsah je pravidelná mesačná
+Stav: 17. 10. 2026, schémy **19–22**, existujúce PR #8. Podporovaný rozsah je pravidelná mesačná
 mzda v existujúcom mzdovom výpočte. Ide o evidenciu práce účtovníka a presných externých súborov.
 [Generovanie PREHLADv26](payroll-generation.md) pokrýva osobitne vymedzený rozsah bežných miezd.
 [Textová dávka zdravotných poisťovní 514](health-reporting.md) nadväzuje na nové uzavreté pásky
-a odborne overených poistencov. Výkazy Sociálnej poisťovne sa zatiaľ negenerujú.
+a odborne overených poistencov. [Samostatná príprava MVPP 2026](social-reporting.md) pridáva podporované
+bežné pracovné pomery s overeným IČPV a mesačnými analytickými hodinami.
 Žiadny výkaz sa automaticky neodosiela. Pôvodné automatické priradenie FS podľa mesiaca výplaty
 bolo príliš široké a schéma 20 ho nahrádza odborným potvrdením obdobia.
 

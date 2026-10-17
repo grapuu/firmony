@@ -6,6 +6,7 @@ bankovej výplaty. Nepoužívať tento starší predpoklad ako účtovné pravid
 
 Nadväzujúca schéma 21 pridáva [textové zdravotné výkazy 514](health-reporting.md). Tento dokument
 naďalej opisuje samostatný formát FS PREHLADv26; nejde o spoločnú alebo zameniteľnú dávku poisťovní.
+Schéma 22 osobitne pridáva [MVPP 2026 pre SP](social-reporting.md) s overenými právnymi vzťahmi a hodinami.
 
 ## Obdobie nie je dátum bankového prevodu
 

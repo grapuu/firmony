@@ -13,6 +13,9 @@ import { TeamShell } from '../views/team'
 import { PayrollReportsPage, PayrollReportPage } from '../views/payroll-reports'
 import { PrehladPreparationPage } from '../views/prehlad-preparation'
 import { HealthPreparationPage } from '../views/health-preparation'
+import { SocialPreparationPage } from '../views/social-preparation'
+import { generateSocial,recordSocialFact,socialPlan } from './social-store'
+import type { SocialInput } from './social'
 import { generateHealth, healthPlan, recordHealthIdentity } from './health-store'
 import { healthKind, type HealthInput } from './health'
 import { generatePrehlad, generationOf, generationPlan, retireTarget, reviewScope, targetReviews } from './generation-store'
@@ -113,6 +116,7 @@ payrollReportRoutes.post('/vyplata', smallLimit, async (c) => {
 async function preparation(c: Ctx, values?: Record<string, string>, error?: string, status: ContentfulStatusCode = 200) {
   const target = await targetOf(c.env.DB,c.get('payrollCompany').id,c.req.param('target')??'')
   if (target && healthKind(target.kind)) return healthPreparation(c,values,error,status)
+  if (target?.kind === 'sp') return socialPreparation(c,values,error,status)
   const plan = await generationPlan(c.env.DB, c.get('payrollCompany').id, c.req.param('target') ?? '', today())
   if (!plan) return c.notFound()
   const address = addressParts(plan.company.address), user = c.get('who').user
@@ -123,6 +127,7 @@ payrollReportRoutes.get('/:target/pripravit', (c) => preparation(c))
 payrollReportRoutes.post('/:target/generovat', smallLimit, async (c) => {
   const target = await targetOf(c.env.DB,c.get('payrollCompany').id,c.req.param('target'))
   if (target && healthKind(target.kind)) return healthGeneration(c)
+  if (target?.kind === 'sp') return socialGeneration(c)
   const body = await c.req.parseBody(), plan = await generationPlan(c.env.DB, c.get('payrollCompany').id, c.req.param('target'), today())
   if (!plan) return c.notFound()
   if (!await withinLimit(c.env.DB, 'payroll-generation', c.get('who').user.id, 60, 3600)) return preparation(c, undefined, 'Príliš veľa požiadaviek. Skúste to neskôr.', 429)
@@ -131,6 +136,30 @@ payrollReportRoutes.post('/:target/generovat', smallLimit, async (c) => {
   values.checked = body.checked === '1' ? '1' : ''
   const result = await generatePrehlad(c.env.DB, c.env.FILES, plan, c.get('who').user, text(body.token, 64), { ...values, checked: values.checked === '1' } as unknown as PrehladInput, today())
   return result.ok && 'id' in result ? c.redirect(`${base(c)}/${plan.target.id}/verzie/${result.id}`, 303) : preparation(c, { ...values, checked: '' }, result.error, 409)
+})
+async function socialPreparation(c:Ctx,values?:Record<string,string>,error?:string,status:ContentfulStatusCode=200) {
+  const plan=await socialPlan(c.env.DB,c.get('payrollCompany').id,c.req.param('target')??'',today())
+  if (!plan) return c.notFound()
+  const user=c.get('who').user,defaults={...plan.defaults,preparedBy:plan.defaults.preparedBy||(user.name.length<=30?user.name:''),email:plan.defaults.email||user.email}
+  return frame(c,<SocialPreparationPage plan={plan} base={base(c)} user={user} values={{...defaults,...values}} error={error}/>,status)
+}
+async function socialGeneration(c:Ctx) {
+  const body=await c.req.parseBody(),plan=await socialPlan(c.env.DB,c.get('payrollCompany').id,c.req.param('target')??'',today())
+  if (!plan) return c.notFound()
+  if (!await withinLimit(c.env.DB,'payroll-generation',c.get('who').user.id,60,3600)) return socialPreparation(c,undefined,'Príliš veľa požiadaviek. Skúste to neskôr.',429)
+  const values:Record<string,string>={}
+  for (const key of ['name','payer','iban','firstName','lastName','phone','email','preparedBy','declaredOn','kind','reason','reference']) values[key]=text(body[key],1201)
+  values.checked=body.checked==='1'?'1':''
+  const r=await generateSocial(c.env.DB,c.env.FILES,plan,c.get('who').user,text(body.token,64),{...values,checked:values.checked==='1'} as unknown as SocialInput,today())
+  return r.ok&&'id' in r?c.redirect(`${base(c)}/${plan.target.id}/verzie/${r.id}`,303):socialPreparation(c,{...values,checked:''},r.error,409)
+}
+payrollReportRoutes.post('/:target/udaje-sp',smallLimit,async(c)=>{
+  const b=await c.req.parseBody(),plan=await socialPlan(c.env.DB,c.get('payrollCompany').id,c.req.param('target'),today())
+  if (!plan) return c.notFound()
+  const values={factEmployee:text(b.employee,100),factSection:text(b.section,16),factValue:text(b.value,16),factMode:text(b.mode,16),factReference:text(b.reference,241),factReason:text(b.reason,1201)}
+  if (!await withinLimit(c.env.DB,'payroll-social-fact',c.get('who').user.id,300,3600)) return socialPreparation(c,values,'Príliš veľa požiadaviek. Skúste to neskôr.',429)
+  const r=await recordSocialFact(c.env.DB,plan,c.get('who').user,text(b.token,64),{employee:values.factEmployee,section:values.factSection,value:values.factValue,mode:values.factMode,reference:values.factReference,reason:values.factReason,checked:b.checked==='1',revision:number(b.revision)})
+  return r.ok?c.redirect(`${base(c)}/${plan.target.id}/pripravit#udaje-poistencov`,303):socialPreparation(c,values,r.error,409)
 })
 async function healthPreparation(c:Ctx, values?:Record<string,string>, error?:string, status:ContentfulStatusCode=200) {
   const plan=await healthPlan(c.env.DB,c.get('payrollCompany').id,c.req.param('target')??'',today())

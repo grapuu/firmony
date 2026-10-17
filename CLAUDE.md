@@ -1,3 +1,17 @@
+Current social-reporting follow-up (17 October 2026): [docs/security/social-reporting.md](docs/security/social-reporting.md).
+Additive schema **22** prepares full R/O MVPP 2026 XML for supported ordinary full-month employment in
+2026/2027, with independent historical fund/rate/cap checks and official XSD validation. Verified RČ is shared
+with health preparation; versioned IČPV is reused, while monthly analytical hours are explicitly checked afresh.
+Unknown hours use a separate, reasoned 999 choice, never an inferred zero. Admin corrections invalidate the
+affected generated coverage, queue/deadline and handover, retaining original files and receipts. SQL checks live
+authority/revisions; owners get read-only evidence and no new forms. Exports, synthetic restoration and controlled
+purge cover all three new tables. Schemas 19–21 remain byte-for-byte unchanged. Earlier notes saying all SP files
+need external preparation are superseded only within this documented ordinary scope. Special employment,
+RLFO, actual portal import/acceptance, production recovery and legal/insurance/enterprise readiness remain open.
+The January 2026 announcement concerned VPP and explicitly still restricted MVP; it is not proof of live MVPP
+acceptance. No automation percentage or perfect production behavior is claimed. Continue PR #8, preserve history;
+no automatic merge/deploy. Exact-head CI counts and visual evidence are recorded in the PR.
+
 Current health-reporting follow-up (17 October 2026): [docs/security/health-reporting.md](docs/security/health-reporting.md).
 Additive schema **21** prepares insurer-scoped UTF-8 514 batches for supported ordinary employment.
 New closed payslips retain their exact health regime; legacy slips without it require external preparation.

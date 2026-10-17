@@ -1,4 +1,4 @@
-import { now, sha256Hex } from '../db'
+import { sha256Hex } from '../db'
 import { dataRevision } from '../app/handover-store'
 import { companyOf, type Company, type User } from '../app/store'
 import { payrollSettingsOf } from '../app/payroll-store'
@@ -7,8 +7,10 @@ import type { Closure, ReportTarget } from './model'
 import { closureCurrentSql, currentTargetActiveSql, healthIdentityCoverageSql } from './sql'
 import { healthFilename, healthInputError, healthText, healthTotals, insuredId, HEALTH_FORMAT, HEALTH_SPEC_SHA256, type HealthInput, type HealthTotals } from './health'
 import { saveReport } from './store'
+import type { InsuredIdentity } from './insured-identities'
+export { recordInsuredIdentity as recordHealthIdentity } from './insured-identities'
 
-export interface HealthIdentity { id:string; company_id:string; employee_id:string; revision:number; identifier:string; reference:string; reason:string; at:number; by_user:string }
+export type HealthIdentity = InsuredIdentity
 export interface HealthPlan {
   company:Company; target:ReportTarget; closure:Closure; revision:number; token:string; totals:HealthTotals
   identities:HealthIdentity[]; identitiesJson:string; issues:string[]; frozen:boolean; defaults:Record<string,string>
@@ -38,20 +40,6 @@ export async function healthPlan(db:D1Database, companyId:string, targetId:strin
   const identitiesJson=String(target.identities)
   const token=await sha256Hex(JSON.stringify({version:1,format:HEALTH_FORMAT,spec:HEALTH_SPEC_SHA256,revision,target,closureHash:closure.sha256,company:{id:company.id,ico:company.ico,dic:company.dic,name:company.name},identitiesJson,issues,defaults,frozen}))
   return {company,target:target as unknown as ReportTarget,closure,revision,token,totals,identities,identitiesJson,issues,frozen,defaults}
-}
-export async function recordHealthIdentity(db:D1Database, company:string, targetId:string, employee:string, user:User, v:{revision:number;identifier:string;reference:string;reason:string;checked:boolean}):Promise<{ok:boolean;error?:string}> {
-  if (!v.checked || !insuredId(v.identifier) || v.reference.trim().length<12 || v.reference.length>240 || v.reason.length>1200 || !Number.isSafeInteger(v.revision) || v.revision<0 || v.revision>0 && (user.team!=='admin' || v.reason.trim().length<12)) return {ok:false,error:'Overte rodné číslo bez lomky a referenciu dokladu. Opravu robí správca s dôvodom aspoň 12 znakov.'}
-  const source=await db.prepare(`SELECT 1 AS present FROM payroll_targets t JOIN payroll_closures pc ON pc.id=t.closure_id AND pc.company_id=t.company_id, json_each(pc.lines) l WHERE t.id=? AND t.company_id=? AND 'health'||json_extract(l.value,'$.insurer')=t.kind AND json_extract(l.value,'$.employeeId')=? AND (${closureCurrentSql('pc')})`).bind(targetId,company,employee).first()
-  if (!source) return {ok:false,error:'Zamestnanec nepatrí do aktuálnych podkladov tejto poisťovne.'}
-  const old=await db.prepare('SELECT * FROM payroll_health_ids WHERE company_id=? AND employee_id=? ORDER BY revision DESC LIMIT 1').bind(company,employee).first<HealthIdentity>()
-  if ((old?.revision??0)!==v.revision || old?.identifier===v.identifier && old.reference===v.reference.trim()) return {ok:false,error:'Údaj sa zmenil alebo ho už evidujeme. Obnovte podklady.'}
-  try {
-    await db.prepare('INSERT INTO payroll_health_ids(id,company_id,employee_id,revision,identifier,reference,reason,at,by_user) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),company,employee,v.revision+1,v.identifier,v.reference.trim(),v.reason.trim(),now(),user.id).run()
-    return {ok:true}
-  } catch(e) {
-    if (/FIRMONY_PAYROLL_AUTHORITY|UNIQUE constraint|handover is being finalized/.test(String(e))) return {ok:false,error:'Údaje alebo oprávnenia sa zmenili. Obnovte podklady; nový identifikátor sme nezapísali.'}
-    throw e
-  }
 }
 export async function generateHealth(db:D1Database, files:R2Bucket|undefined, plan:HealthPlan, user:User, token:string, v:HealthInput, today:string) {
   if (token!==plan.token) return {ok:false,error:'Podklady sa od otvorenia stránky zmenili. Skontrolujte ich a potvrďte odbornú kontrolu znova.'}

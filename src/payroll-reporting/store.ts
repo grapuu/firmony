@@ -6,7 +6,7 @@ import type { Company, User } from '../app/store'
 import type { FilingEvent } from '../filings/model'
 import { discardUncommitted, recordDelivery, type DeliveryChange } from '../filings/store'
 import { payoutError, reportDue, requiredInsurers, type Closure, type Payout, type PayoutInput, type ReportItem, type ReportKind, type ReportPackage, type ReportTarget } from './model'
-import { closureCurrentSql, currentCoverageJsonSql as coverageJsonSql, latestPayoutSql, payrollRunProtectedSql, healthReportCurrentSql as reportCurrentSql, currentTargetActiveSql as targetActiveSql } from './sql'
+import { closureCurrentSql, currentCoverageJsonSql as coverageJsonSql, latestPayoutSql, payrollRunProtectedSql, socialReportCurrentSql as reportCurrentSql, currentTargetActiveSql as targetActiveSql } from './sql'
 
 type Row = Record<string, unknown>
 type ClosedRow = { company_id: string; period: string; payday: string; lines: string; closed_at: number; evidence_id: string | null }
@@ -118,6 +118,7 @@ export interface ReportUpload {
   expectedDataRevision?: number; expectedSourceHash?: string
   generation?: { format: 'PREHLADv26'; details: string; sha256: string }
   healthGeneration?: { format: 'ZP514-TXT-2026'; identities: string; details: string; sha256: string }
+  socialGeneration?: { format: 'MVPP-v2026'; facts: string; details: string; sha256: string }
 }
 export async function saveReport(db: D1Database, files: R2Bucket | undefined, target: ReportTarget, user: User, value: ReportUpload): Promise<{ ok: boolean; error?: string; id?: string }> {
   if (!files) return { ok: false, error: 'Úložisko nie je dostupné. Výkaz sme neuložili.' }
@@ -143,6 +144,7 @@ export async function saveReport(db: D1Database, files: R2Bucket | undefined, ta
         .bind(id, target.id, target.company_id, value.revision, value.reason.trim(), value.variant.trim(), value.file.name.slice(0, 160), key, format.type, value.file.bytes.length, hash, source.json, source.hash, at, user.id, revision),
       ...(value.generation ? [db.prepare('INSERT INTO payroll_generations (package_id, company_id, format, details, sha256, at, by_user) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, target.company_id, value.generation.format, value.generation.details, value.generation.sha256, at, user.id)] : []),
       ...(value.healthGeneration ? [db.prepare('INSERT INTO payroll_health_generations (package_id, company_id, format, identities_json, details, sha256, at, by_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(id, target.company_id, value.healthGeneration.format, value.healthGeneration.identities, value.healthGeneration.details, value.healthGeneration.sha256, at, user.id)] : []),
+      ...(value.socialGeneration ? [db.prepare('INSERT INTO payroll_social_generations (package_id, company_id, format, facts_json, details, sha256, at, by_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(id, target.company_id, value.socialGeneration.format, value.socialGeneration.facts, value.socialGeneration.details, value.socialGeneration.sha256, at, user.id)] : []),
       db.prepare(`UPDATE payroll_targets SET package_id = ?1, revision = revision + 1, updated_by = ?2 WHERE id = ?3 AND company_id = ?4 AND revision = ?5
         AND EXISTS (SELECT 1 FROM payroll_packages WHERE id = ?1 AND target_id = ?3 AND previous_id IS payroll_targets.package_id)`)
         .bind(id, user.id, target.id, target.company_id, value.revision),

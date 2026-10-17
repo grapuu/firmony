@@ -1,5 +1,30 @@
 # Firmony: progress of the continuation
 
+## Ordinary MVPP preparation with shared identity and verified analytical facts (Codex, 17 October 2026)
+
+Continues PR #8 on `codex/firmony-security-and-evidence`, remote parent
+`bdf50dc88a362485b3df33e011ee827ec6114764`. Additive schema **22**; no merge or deployment.
+
+- Prepares full ordinary R or corrective O MVPP 2026 XML from exact closed social-insurance figures.
+  Independently pins 2026/2027 rules, preserves each fund, caps and uncapped accident insurance, and includes
+  zero-paid employees. The official XSD and an independent output reader verify the actual XML.
+- Reuses verified RČ across SP and health. Adds versioned, masked IČPV and separately checked monthly hours.
+  Hours are not copied from the preceding month or inferred from salary; a reasoned explicit 999 choice handles
+  genuinely undeterminable hours. First intake belongs to staff, never the customer.
+- Source/fact/revision-bound previews and live SQL authority/CAS guards protect writes. Admin corrections
+  append history, reopen affected generated reports/deadlines/queue and prevent a falsely complete handover.
+  Original reports and receipts remain. IČPV/hour corrections leave unrelated recipients current; a shared
+  RČ correction affects both generated SP and relevant health reports.
+- Portable exports, incident holds, synthetic all-table restoration and positive controlled purge include
+  registrations, monthly facts and provenance. Independent schema-21 upgrade checks preserve accepted external
+  SP and internally generated health evidence without manufacturing missing data. Schemas 19–21 stay unchanged.
+- Chrome journeys cover intake, a full replacement, an exact XML download and owner-only evidence. Layout
+  checks cover staff/owner/error/correction states at desktop and mobile widths, including readable whole totals.
+  Exact published-head counts, checksums and manual visual review are recorded in PR #8.
+- [Scope and primary sources](docs/security/social-reporting.md) distinguish supported ordinary full-month
+  employment, official XSD validity and unverified live acceptance. Special employment, RLFO, real portal
+  import, production recovery, service capacity and legal/insurance/enterprise approval remain open.
+
 ## Insurer-scoped 514 preparation and verified identity history (Codex, 17 October 2026)
 
 Continues PR #8 on `codex/firmony-security-and-evidence`, remote parent

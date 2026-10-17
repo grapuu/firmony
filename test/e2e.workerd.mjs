@@ -17,6 +17,9 @@ import { checkPrehlad } from './prehlad.runtime.mjs'
 import { checkPayrollMigration } from './payroll-migration.runtime.mjs'
 import { checkHealthReports } from './health.runtime.mjs'
 import { checkHealthMigration } from './health-migration.runtime.mjs'
+import { checkSocialReports } from './social.runtime.mjs'
+import { checkSocialMigration } from './social-migration.runtime.mjs'
+import { socialReporting } from '../.wrangler/dist/stores.js'
 import { authenticator, jsonClient, TEST_BOOTSTRAP } from './passkeys.fixture.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
@@ -228,7 +231,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 21)
+check('health says the schema', (await res.json()).schema === 22)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -3764,6 +3767,9 @@ check(
     db.prepare("DELETE FROM payroll_runs WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_generations WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_health_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_social_generations WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_social_inputs WHERE company_id = 'co-w'"),
+    db.prepare("DELETE FROM payroll_social_relations WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_health_ids WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_target_reviews WHERE company_id = 'co-w'"),
     db.prepare("DELETE FROM payroll_events WHERE company_id = 'co-w'"),
@@ -4268,8 +4274,10 @@ await checkFilings({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip,
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
+await checkSocialReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
 await checkPayrollMigration({ db, nowS, day })
 await checkHealthMigration({ db, nowS, day })
+await checkSocialMigration({ db, nowS, day })
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
@@ -4309,7 +4317,18 @@ for (const pkg of pendingHandover) if (await currentPackage(db, pkg)) {
 for (const target of (await payrollReporting.reportItems(db, 'co-a')).filter((r) => r.active)) {
   const finalGenerationPlan = target.kind === 'tax' ? await payrollGeneration.generationPlan(db, 'co-a', target.id, day(0)) : null
   let saved
-  if (target.kind === 'health25') {
+  if (target.kind === 'sp') {
+    let review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    if (!review.identities.length) {
+      await socialReporting.recordSocialFact(db,review,handoverPayrollUser,review.token,{employee:'emp-a',section:'identity',revision:0,value:'9010101234',mode:'',reference:'TEST final verified original identity',reason:'',checked:true})
+      review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    }
+    await socialReporting.recordSocialFact(db,review,handoverPayrollUser,review.token,{employee:'emp-a',section:'relation',revision:0,value:'000000009999',mode:'',reference:'TEST final registered legal relationship',reason:'',checked:true})
+    review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    await socialReporting.recordSocialFact(db,review,handoverPayrollUser,review.token,{employee:'emp-a',section:'hours',revision:0,value:'160',mode:'known',reference:'TEST final verified analytical hours',reason:'',checked:true})
+    review=await socialReporting.socialPlan(db,'co-a',target.id,day(0))
+    saved=await socialReporting.generateSocial(db,files,review,handoverPayrollUser,review.token,{name:handoverPayrollCompany.name,payer:'6333333300',iban:'SK3112000000198742637541',firstName:'TEST',lastName:'Reviewer',phone:'',email:'',preparedBy:'TEST final social reviewer',declaredOn:day(0),kind:'R',reason:'',reference:'TEST final complete ordinary social scope',checked:true},day(0))
+  } else if (target.kind === 'health25') {
     await healthReporting.recordHealthIdentity(db,'co-a',target.id,'emp-a',handoverPayrollUser,{revision:0,identifier:'9010101234',reference:'TEST final verified employee identity',reason:'',checked:true})
     const review=await healthReporting.healthPlan(db,'co-a',target.id,day(0))
     saved=await healthReporting.generateHealth(db,files,review,handoverPayrollUser,review.token,{name:handoverPayrollCompany.name,dic:handoverPayrollCompany.dic,payer:'6333333300',branch:'2500',iban:'SK3112000000198742637541',phone:'',email:'',sendOn:day(0),batch:'1',kind:'N',reason:'',reference:'TEST final complete health source review',checked:true},day(0))
@@ -4380,6 +4399,7 @@ const leftover = await db
        + (SELECT COUNT(*) FROM filing_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM filing_events WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_target_reviews WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_health_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_health_ids WHERE company_id = 'co-a')
+       + (SELECT COUNT(*) FROM payroll_social_generations WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_social_inputs WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_social_relations WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_closures WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_payouts WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM payroll_targets WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_packages WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payroll_events WHERE company_id = 'co-a')
        + (SELECT COUNT(*) FROM export_receipts WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM company_data_revisions WHERE company_id = 'co-a') AS n`,

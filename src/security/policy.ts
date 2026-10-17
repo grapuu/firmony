@@ -58,7 +58,7 @@ function workPage(path: string): string {
   if (company) {
     const base = `/ucto/klienti/${company[1]}`, section = company[2] ?? ''
     const payroll = /^mzdove-podania(?:\/([^/]+))?(?:\/verzie\/([^/]+))?/.exec(section)
-    if (payroll?.[1] && /^mzdove-podania\/[^/]+\/(?:pripravit|generovat|poistenec)$/.test(section)) return `${base}/mzdove-podania/${payroll[1]}/pripravit`
+    if (payroll?.[1] && /^mzdove-podania\/[^/]+\/(?:pripravit|generovat|poistenec|udaje-sp)$/.test(section)) return `${base}/mzdove-podania/${payroll[1]}/pripravit`
     if (payroll) return `${base}/mzdove-podania${payroll[1] && !['vyplata', 'zalozit'].includes(payroll[1]) ? `/${payroll[1]}${payroll[2] ? `/verzie/${payroll[2]}` : ''}` : ''}`
     const filing = /^podania\/([^/]+)(?:\/|$)/.exec(section)
     if (filing) return `${base}/podania/${filing[1]}`

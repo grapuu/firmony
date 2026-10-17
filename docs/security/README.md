@@ -18,6 +18,7 @@ Stav implementácie: **15. 10. 2026**. Tento balík nadväzuje na [zodpovednosť
 - [Mzdové podania podľa príjemcu](payroll-evidence.md) — schémy 19–20; overená výplata, samostatne potvrdené obdobie, originály a opravy.
 - [Generovanie PREHLADv26](payroll-generation.md) — bežné mzdy, zdrojová kontrola a nemenný pôvod XML; bez automatického odoslania.
 - [Zdravotné výkazy 514](health-reporting.md) — schéma 21; overení poistenci, uzavretý režim, textový import a opravy s históriou.
+- [Mesačné výkazy SP](social-reporting.md) — schéma 22; MVPP 2026, spoločná identita, overené IČPV a mesačné hodiny, úplné opravné verzie.
 - [Aktivácia, každodenná práca a obnova prístupov](access.md)
 - [Incident, súbeh s mazaním a uvoľnenie uchovania](evidence.md)
 - [Obnova D1/R2 a dôkazy pripravenosti](recovery.md)

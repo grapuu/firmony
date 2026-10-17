@@ -17,7 +17,7 @@ import { confirmedRevision } from './handover-store'
 import { bratislava } from './remind'
 import { evidenceBlocked, PURGE_GRACE_SECONDS } from '../incidents/store'
 import { pendingFilingsSql } from '../filings/model'
-import { healthPendingPayrollSql as pendingPayrollSql } from '../payroll-reporting/sql'
+import { socialPendingPayrollSql as pendingPayrollSql } from '../payroll-reporting/sql'
 
 export interface PurgeEnv extends BankEnv {
   FILES?: R2Bucket
@@ -106,6 +106,9 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     db.prepare('DELETE FROM employees WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_runs WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_health_generations WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_social_generations WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_social_inputs WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM payroll_social_relations WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_health_ids WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_generations WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payroll_target_reviews WHERE company_id = ?').bind(companyId),
