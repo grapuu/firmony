@@ -1680,7 +1680,7 @@ export const team = typesetAll({
     paydayHint: 'Deň, keď sa mzdy za tento mesiac vyplatia. Do neho sa platí aj Sociálna a zdravotné poisťovne.',
     save: 'Prepočítať a uložiť',
     close: 'Uzavrieť mesiac',
-    closeLead: 'Uzavretý mesiac sa zaúčtuje (mzdy 521, odmena člena orgánu 523, náhrada príjmu pri PN 527, odvody 524, 331, 336, 342) a klient dostane do správ, koľko, komu a kam zaplatiť.',
+    closeLead: 'Uzavretý mesiac sa zaúčtuje (mzdy 521, odmena člena orgánu 523, náhrada príjmu pri PN, stravovanie a sociálny fond 527, odvody 524, 331, 336, 342, sociálny fond 472) a klient dostane do správ, koľko, komu a kam zaplatiť.',
     reopen: 'Otvoriť mesiac znova',
     closedLine: (day: string, who: string) => typeset(`Uzavreté ${day}, ${who}`),
     running: (end: string) => typeset(`Mesiac ešte beží, končí ${end}. Uzavrieť ho možno po jeho skončení; výpočet je predbežný.`),
@@ -1715,6 +1715,11 @@ export const team = typesetAll({
     } as Record<string, string>,
     averageHint: (value: string, quarter: boolean) => typeset(quarter ? `Prázdne: ${value} z minulého štvrťroka.` : `Prázdne: pravdepodobný zárobok ${value}.`),
     hoursHint: (value: string) => typeset(`Prázdne: ${value} podľa pracovných dní.`),
+    fund: {
+      rate: 'Sociálny fond: povinný prídel, %',
+      rateHint: 'Zo mzdy zamestnancov v pracovnom pomere (bez náhrad mzdy, PN, dohôd a odmien konateľov). Zákon č. 152/1994 Z. z.: 0,6 %, zamestnávateľ so ziskom podľa § 3 ods. 2 až 1 %. Prázdne: 0,6 %.',
+      month: (amount: string) => typeset(`Prídel do sociálneho fondu za mesiac: ${amount} (zaúčtuje sa 527 na 472).`),
+    },
     meals: {
       title: 'Stravovanie zamestnancov',
       way: 'Ako firma stravovanie zabezpečuje',
@@ -1987,6 +1992,7 @@ export const team = typesetAll({
       sickClosed: 'Zmena by zasiahla uzavretý mesiac. Najprv ho otvorte.',
       dvz: 'Denný vymeriavací základ napíšte v eurách, napríklad 45,1234.',
       meals: 'Počet jedál napíšte celým číslom, najviac 62.',
+      fundRate: 'Povinný prídel do sociálneho fondu je od 0,6 do 1 %.',
       mealAmount: 'Sumu napíšte v eurách, napríklad 6,98 (najviac 100 €).',
       mealVoucher: (min: string) => typeset(`Poukážka musí mať hodnotu aspoň ${min} (75 % stravného na pracovnej ceste 5 až 12 hodín).`),
       mealEmployerLow: (min: string) => typeset(`Zamestnávateľ prispieva aspoň ${min}, teda 55 % hodnoty poukážky.`),

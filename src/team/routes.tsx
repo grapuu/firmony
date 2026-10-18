@@ -126,6 +126,7 @@ import {
   type PayrollRun,
 } from '../app/payroll-store'
 import { employerMin, isMealWay, mealBounds, mealIssues, NO_MEALS, type MealSettings, type MealWay } from '../app/meals'
+import { FUND_RATE_MIN, isFundRate } from '../app/social-fund'
 import { addDays } from '../app/ending'
 import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
 import { addDay, leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay-month'
@@ -2380,6 +2381,7 @@ const settingsValues = (s: PayrollSettings): Record<string, string> => {
     poukazka: cents(meals.voucher),
     prispevok: cents(meals.employer),
     fond: cents(meals.fund),
+    sf_sadzba: hundredthsText(s.fundRate ?? FUND_RATE_MIN),
   }
   for (const code of Object.keys(INSURERS) as Insurer[]) {
     v[`zp_iban_${code}`] = s.health[code]?.iban ?? ''
@@ -2442,7 +2444,7 @@ async function payrollPage(
   const period = payrollPeriod(asked, months, today)
   const run = runs.find((r) => r.period === period) ?? null
   const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : !supportsPayrollPeriod(m) ? 'unsupported' : today <= monthRange(m).to ? 'running' : 'open')
-  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals })
+  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate })
   const payday = run?.payday ?? paydayOf(period, settings)
   const insurers = [...new Set<Insurer>([...employees.map((e) => e.insurer), ...(Object.keys(settings.health) as Insurer[])])]
   const failed = Boolean(forms.month || forms.settings || forms.sick?.errors && Object.keys(forms.sick.errors).length > 0)
@@ -2530,7 +2532,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   if (!supportsPayrollPeriod(period)) return c.redirect(`${back}&ok=mzdy-nepodporovane`, 303)
   const values: Record<string, string> = {}
   const errors: FieldErrors = {}
-  const proposed = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals })
+  const proposed = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate })
   const lines = proposed.map((l) => {
     const e = employees.find((x) => x.id === l.employeeId)!
     const read = readParts(body as Record<string, unknown>, l.employeeId, e.contract, e.wageKind, e.wage)
@@ -2543,7 +2545,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const payday = dayOfText(paydayText)
   if (!payday || payday < `${period}-01`) errors.vyplata = t.payroll.errors.paydayDate
   if (Object.keys(errors).length > 0 || !payday) return payrollPage(c, company, period, { month: { values, errors } })
-  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null }, { leaves, runs, settlements, meals: settings.meals })
+  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null }, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate })
   const typed = slips.map((l) => ({ employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: l.gross, parts: l.parts }))
   const close = body.akcia === 'uzavriet'
   if (!close) {
@@ -2717,6 +2719,11 @@ teamRoutes.post('/klienti/:id/mzdy/nastavenie', async (c) => {
       if (issue === 'fund') errors.fond = t.payroll.errors.mealFund
     }
   settings.meals = meals.way === null ? NO_MEALS : meals
+  // The social fund's mandatory allocation (social-fund.ts): 0,6 % to 1 %, empty 0,6 %.
+  values.sf_sadzba = text('sf_sadzba', 6)
+  const fundRate = values.sf_sadzba === '' ? FUND_RATE_MIN : hundredthsOf(values.sf_sadzba)
+  if (!isFundRate(fundRate)) errors.sf_sadzba = t.payroll.errors.fundRate
+  else settings.fundRate = fundRate
   if (Object.keys(errors).length > 0) return payrollPage(c, company, body.obdobie, { settings: { values, errors } })
   const db = c.env.DB
   await db.batch([settingsStatement(db, company.id, settings), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'payroll.settings' })])
@@ -2857,7 +2864,7 @@ teamRoutes.get('/klienti/:id/mzdy/paska', async (c) => {
   if (!months.includes(period)) return missingPage(c)
   const run = runs.find((r) => r.period === period) ?? null
   if (!run?.closedOn && !supportsPayrollPeriod(period)) return missingPage(c)
-  const line = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals }).find((l) => l.employeeId === c.req.query('zamestnanec'))
+  const line = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate }).find((l) => l.employeeId === c.req.query('zamestnanec'))
   if (!line) return missingPage(c)
   return shell(c, 'clients', `${t.payroll.payslip}: ${line.name}`, <PayslipPage company={company} period={period} line={line} today={today} />)
 })

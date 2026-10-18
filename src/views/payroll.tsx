@@ -373,6 +373,7 @@ const SettingsCard: FC<{
           />
         </>
       ))}
+      <Field id="w-sf-sadzba" name="sf_sadzba" label={w.fund.rate} value={values.sf_sadzba ?? ''} hint={w.fund.rateHint} error={errors.sf_sadzba} mode="decimal" max={6} />
       <fieldset class="cform__section fgrid__cell--wide">
         <legend class="cform__title">{w.meals.title}</legend>
         <div class="fgrid">
@@ -756,6 +757,11 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                 )}
               </form>
             )}
+            {(() => {
+              // The social fund's allocation of the month (social-fund.ts), open or closed.
+              const fund = p.slips.reduce((t, l) => t + (l.fund ?? 0), 0)
+              return fund > 0 ? <p class="info__source">{w.fund.month(formatEurExact(fund))}</p> : null
+            })()}
             {closed && !p.reopenBlocked ? (
               <form method="post" action={`${base(c)}/otvorit`}>
                 <input type="hidden" name="obdobie" value={p.period} />

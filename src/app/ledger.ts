@@ -280,6 +280,8 @@ export interface LedgerPayroll {
   pays: { social: number; health: number[]; tax: number }
   /** Meals (meals.ts): vouchers out of their stock (213), the financial contribution with the wage (331). */
   meals?: { voucher: { employer: number; fund: number; employee: number }; cash: { employer: number; fund: number } }
+  /** The social fund's mandatory allocation of the month (social-fund.ts): 527 against 472. */
+  socialFund?: number
 }
 
 /** The analytic accounts of 336: the Social Insurance Agency and the health insurers. */
@@ -948,6 +950,8 @@ export function buildBooks(input: LedgerInput): Books {
       { md: '331', d: '213', cents: r.meals?.voucher.employee ?? 0 },
       { md: '527', d: '331', cents: r.meals?.cash.employer ?? 0 },
       { md: '472', d: '331', cents: r.meals?.cash.fund ?? 0 },
+      // The social fund's mandatory allocation (Act No. 152/1994 Z. z.), created by the payday: a cost of the month.
+      { md: '527', d: '472', cents: r.socialFund ?? 0 },
     ].filter((l) => l.cents > 0)
     if (lines.length > 0)
       entries.push({ key: `w:${r.period}`, on: end, kind: 'payroll', number: `MZDY ${r.period.slice(5, 7)}/${r.period.slice(0, 4)}`, text: `Mzdy za ${periodName(r.period)}`, docId: null, paymentId: null, manualId: null, lines })

@@ -27,6 +27,7 @@ import {
   approvals,
   takings,
   meals,
+  socialFund,
   ledger,
   ledgerStore,
   dues,
@@ -1551,6 +1552,42 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     "the books: the employer's part 527, the fund's 472, the vouchers out of 213 with the employee's part from 331; the financial contribution owed on 331",
     has('527', '213', 22 * 385) && has('472', '213', 22 * 100) && has('331', '213', 22 * 215) && has('527', '331', 10 * 385) && has('472', '331', 10 * 100),
     JSON.stringify(entry?.lines),
+  )
+}
+
+// The social fund (18 October 2026, social-fund.ts): the mandatory allocation of 0,6 % to 1 % of an employment's wage.
+{
+  check(
+    "a line's allocation: of an employment's earned wage, rounded to the cent; nothing of an agreement or a director; a rate out of the law's range is 0,6 %",
+    socialFund.fundOf('employment', 150000, 60) === 900 &&
+      socialFund.fundOf('employment', 150050, 60) === 900 &&
+      socialFund.fundOf('employment', 150084, 60) === 901 &&
+      socialFund.fundOf('employment', 150000, 100) === 1500 &&
+      socialFund.fundOf('employment', 150000, 150) === 900 &&
+      socialFund.fundOf('dovp', 150000, 60) === 0 &&
+      socialFund.fundOf('director', 150000, 60) === 0 &&
+      socialFund.fundOf('employment', 0, 60) === 0,
+  )
+  check(
+    'the settings keep a rate of 0,6 % to 1 %, else 0,6 %',
+    payrollStore.payrollSettingsOf('{}').fundRate === 60 && payrollStore.payrollSettingsOf('{"fundRate":100}').fundRate === 100 && payrollStore.payrollSettingsOf('{"fundRate":150}').fundRate === 60,
+  )
+  const employee = { id: 'f1', name: 'Fero', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, contract: 'employment', regular: true, pension: 'none', exemption: false, wageKind: 'monthly', weeklyHours: 4000, leaveDays: null }
+  const run = { period: '2026-10', payday: null, lines: [{ employeeId: 'f1', name: 'Fero', insurer: '25', gross: 150000, parts: { ...payMonth.EMPTY_PARTS, wage: null, holidayDays: 200 } }], closedOn: null, closedByName: null }
+  const slips = payrollStore.monthSlips('2026-10', [employee, { ...employee, id: 'f2', contract: 'dovp', wage: 30000 }], run, { fundRate: 100 })
+  const [f1, f2] = ['f1', 'f2'].map((id) => slips.find((l) => l.employeeId === id))
+  check(
+    'of the month: the wage for the time worked, not the holiday pay; nothing of an agreement',
+    f1?.pay.holiday > 0 && f1.fund === Math.round(f1.pay.earned / 100) && f1.pay.earned < f1.gross && f2?.fund === 0,
+    JSON.stringify([f1?.fund, f1?.pay.earned, f1?.gross]),
+  )
+  const closed = { ...run, lines: slips.map(payrollStore.storedLine), closedOn: '2026-11-03', closedByName: 'Lucia' }
+  const lp = payrollStore.ledgerPayroll(closed)
+  const entry = ledger.buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'none' }, docs: [], payments: [], banks: [], filed: [], manual: [], payroll: [lp] }).entries.find((e) => e.key === 'w:2026-10')
+  check(
+    "kept with the closed month and booked 527 against 472; an older month's line without it books none",
+    closed.lines[0].fund === f1.fund && lp.socialFund === f1.fund && entry?.lines.some((l) => l.md === '527' && l.d === '472' && l.cents === f1.fund) &&
+      payrollStore.ledgerPayroll({ ...closed, lines: closed.lines.map(({ fund, ...l }) => l) }).socialFund === 0,
   )
 }
 

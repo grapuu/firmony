@@ -1,6 +1,7 @@
 // Meals of employees (18 October 2026), in workerd through the accountant's pages: the company's way refused below the
 // Labour Code's bounds and kept within them; an employee who chose the financial contribution; the month's meals
-// proposed from the working days, one typed; the slips; the month closed and booked (527, 472, 213, 331).
+// proposed from the working days, one typed; the slips; the month closed and booked (527, 472, 213, 331); the social
+// fund's mandatory allocation (social-fund.ts).
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
@@ -56,6 +57,8 @@ export async function checkMeals({ db, acc, lucia, nowS, day, capture }) {
   )
   res = await acc.post(`${base}/nastavenie`, { den: '10', stravovanie: 'voucher', poukazka: '7', prispevok: '6', fond: '' })
   check('more than 5,12 € a meal from the employer is refused', plain(await res.text()).includes('najviac 5,12 € na jedlo'))
+  res = await acc.post(`${base}/nastavenie`, { den: '10', stravovanie: 'voucher', poukazka: '7', prispevok: '3,85', fond: '1', sf_sadzba: '1,5' })
+  check("the social fund's mandatory allocation above 1 % is refused", plain(await res.text()).includes('Povinný prídel do sociálneho fondu je od 0,6 do 1 %'))
   res = await acc.post(`${base}/nastavenie`, { den: '10', stravovanie: 'voucher', poukazka: '7', prispevok: '3,85', fond: '1' })
   const settings = JSON.parse((await db.prepare('SELECT payroll FROM companies WHERE id = ?').bind(company).first())?.payroll ?? '{}')
   check(
@@ -99,6 +102,13 @@ export async function checkMeals({ db, acc, lucia, nowS, day, capture }) {
       e.net - j.net === proposed * 485 + 15 * 215,
     JSON.stringify([j?.meals, e?.meals]),
   )
+  page = plain(await (await acc.get(`${base}?obdobie=${M}`)).text())
+  check(
+    "the social fund's allocation of the month: 0,6 % of both wages, kept with the closed month",
+    page.includes('Prídel do sociálneho fondu za mesiac: 18,00 €') && settings.fundRate === 60 && lines.every((l) => l.fund === 900),
+  )
+  const fund = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/ucet/472?rok=${M.slice(0, 4)}`)).text())
+  check('booked to the fund (472) with what it paid for the meals', fund.includes('18,00') && fund.includes('15,00'))
   page = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/ucet/213?rok=${M.slice(0, 4)}`)).text())
   check("the books: the vouchers out of 213 (the employer's, the fund's and the employee's parts)", page.includes('57,75') && page.includes('15,00') && page.includes('32,25'))
 }

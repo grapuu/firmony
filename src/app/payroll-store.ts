@@ -6,6 +6,7 @@ import { dayOfText } from './booking'
 import { isIban, plainIban } from './invoices'
 import type { LedgerPayroll } from './ledger'
 import { isMealWay, mealMoney, mealsProposed, mealWayOf, NO_MEALS, type MealSettings, type MealWay } from './meals'
+import { FUND_RATE_MIN, fundOf, isFundRate } from './social-fund'
 import {
   EMPTY_PARTS,
   monthCalendar,
@@ -213,6 +214,8 @@ export interface RunLine {
   pay?: MonthPay
   sick?: SickMonth
   terms?: LineTerms
+  /** The social fund's mandatory allocation from this line's wage (social-fund.ts), in cents; older lines have none. */
+  fund?: number
 }
 
 /** What an open month offers beside its lines: the average earnings and each sick leave's daily base, as proposed. */
@@ -251,6 +254,7 @@ function linesOf(json: unknown): RunLine[] {
               ...(l.pay && typeof l.pay === 'object' ? { pay: l.pay as MonthPay } : {}),
               ...(l.sick && typeof l.sick === 'object' ? { sick: l.sick as SickMonth } : {}),
               ...(l.terms && typeof l.terms === 'object' ? { terms: l.terms as LineTerms } : {}),
+              ...(Number.isSafeInteger(l.fund) && (l.fund as number) > 0 ? { fund: l.fund as number } : {}),
             },
           ]
         : [],
@@ -275,8 +279,21 @@ export async function runsOf(db: D1Database, company: string): Promise<PayrollRu
 
 /** A line as it is stored: what was typed and, once closed, what was worked out (never the proposals beside it). */
 export function storedLine(l: RunLine): RunLine {
-  const { employeeId, name, insurer, gross, parts, days, slip, health, pay, sick, terms } = l
-  return { employeeId, name, insurer, gross, ...(parts ? { parts } : {}), ...(days !== undefined ? { days } : {}), ...(slip ? { slip } : {}), ...(health ? { health } : {}), ...(pay ? { pay } : {}), ...(sick ? { sick } : {}), ...(terms ? { terms } : {}) }
+  const { employeeId, name, insurer, gross, parts, days, slip, health, pay, sick, terms, fund } = l
+  return {
+    employeeId,
+    name,
+    insurer,
+    gross,
+    ...(parts ? { parts } : {}),
+    ...(days !== undefined ? { days } : {}),
+    ...(slip ? { slip } : {}),
+    ...(health ? { health } : {}),
+    ...(pay ? { pay } : {}),
+    ...(sick ? { sick } : {}),
+    ...(terms ? { terms } : {}),
+    ...(fund ? { fund } : {}),
+  }
 }
 
 /** The parts typed for a month and its payday, kept while it is open. */
@@ -343,6 +360,8 @@ export function monthSlips(
     settlements?: readonly { employeeId: string; inputs: { requested: boolean; settleIn: string | null }; result: { taxDifference: number; bonusDifference: number } | null }[]
     /** How the company provides meals (meals.ts); none when left out. */
     meals?: MealSettings | null
+    /** The social fund's mandatory allocation in hundredths of a per cent (social-fund.ts); 0,6 % when left out. */
+    fundRate?: number
   } = {},
 ): SlipLine[] {
   if (run?.closedOn) return run.lines.filter((l): l is RunLine & { slip: Payslip } => Boolean(l.slip)).map((l) => ({ ...l, days: l.days ?? monthDays(period) }))
@@ -385,6 +404,7 @@ export function monthSlips(
         sick,
         terms: { contract: e.contract, regular: terms.regular, pension: e.pension, exemption, wageKind: e.wageKind, dailyHours: terms.dailyHours },
         proposals: { average, dvz, meals: way ? mealsProposal : null },
+        fund: fundOf(e.contract, pay.earned, context.fundRate ?? FUND_RATE_MIN),
         slip: payslip({
           period,
           gross: pay.gross,
@@ -422,6 +442,8 @@ export interface PayrollSettings {
   health: Partial<Record<Insurer, { iban: string | null; vs: string | null }>>
   /** How the company provides meals (meals.ts); none when it does not here. */
   meals?: MealSettings
+  /** The social fund's mandatory allocation, hundredths of a per cent (social-fund.ts): 60 to 100. */
+  fundRate?: number
 }
 
 export function payrollSettingsOf(json: unknown): PayrollSettings {
@@ -439,7 +461,7 @@ export function payrollSettingsOf(json: unknown): PayrollSettings {
     const m = (v.meals ?? {}) as Record<string, unknown>
     const cents = (x: unknown) => (Number.isSafeInteger(x) && (x as number) >= 0 && (x as number) <= 10_000 ? (x as number) : 0)
     const meals: MealSettings = isMealWay(m.way) ? { way: m.way, voucher: cents(m.voucher), employer: cents(m.employer), fund: cents(m.fund) } : NO_MEALS
-    return { payday: Number.isInteger(day) && day >= 1 && day <= 31 ? day : null, social: pair(v.social), health, meals }
+    return { payday: Number.isInteger(day) && day >= 1 && day <= 31 ? day : null, social: pair(v.social), health, meals, fundRate: isFundRate(v.fundRate) ? v.fundRate : FUND_RATE_MIN }
   } catch {
     return empty
   }
@@ -478,11 +500,14 @@ export function ledgerPayroll(run: PayrollRun): LedgerPayroll | null {
     voucher: { employer: meal('voucher', (m) => m.employer), fund: meal('voucher', (m) => m.fund), employee: meal('voucher', (m) => m.employee) },
     cash: { employer: meal('cash', (m) => m.employer), fund: meal('cash', (m) => m.fund) },
   }
+  // The social fund's mandatory allocation of the month, as each line kept it when the month was closed.
+  const socialFund = run.lines.reduce((t, l) => t + (l.slip && Number.isSafeInteger(l.fund) && (l.fund as number) > 0 ? (l.fund as number) : 0), 0)
   return {
     period: run.period,
     gross: sum(taxableOf),
     costs,
     meals,
+    socialFund,
     socialEmployee: sum((s) => s.socialEmployee),
     socialEmployer: sum((s) => s.socialEmployer),
     healthEmployee: sum((s) => s.healthEmployee),

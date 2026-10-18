@@ -31,7 +31,7 @@ over. Bring this section up to date first whenever a session ends.
    "Payment orders"); a fifth independent review, of imports and takings, nine findings mended (schema step 56); a sixth,
    of approving and the Slovak e-invoice terms, eight findings mended (schema step 57; a credit note's e-invoice with
    another day of supply failed the UBL schema); meals of employees in payroll, vouchers and the financial contribution
-   (schema step 58, under "Payroll"). **Nothing is live**: there
+   (schema step 58, under "Payroll") and the social fund's mandatory allocation. **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -2155,6 +2155,17 @@ monthly wage; nothing is sent to the insurers or the tax office by us.
   internal document 527/472), meals of agreements, a day of a business trip with its allowance (the count is typed),
   vouchers bought (the supplier's invoice to 213 by the booking form's own account, its fee to 518).
   test/meals.runtime.mjs, units "Meals of employees".
+- The social fund's mandatory allocation (built 18 October 2026, `src/app/social-fund.ts`; no schema step: the rate in
+  `companies.payroll.fundRate`, each closed line's allocation in its `fund`). Read on static.slov-lex.sk by WebFetch,
+  Act No. 152/1994 Z. z. as of 1 January 2025 (the latest version the register shows): § 3(1)(a) 0,6 % to 1 % of the
+  base, § 3(2) up to 1 % for an employer with a profit as it says, else 0,6 %; § 4(1) the base is the gross wages
+  (footnote: § 118(2) of the Labour Code) accounted for payment; § 6(2) created by the payday; § 6(3) settled by
+  31 January. What a wage is (podnikajte.sk 25 September 2023, Mzdové centrum 16 September 2019): no wage compensation
+  (holiday, obstacles), no sick pay, no reward of an agreement, no remuneration of a director, so a line's base is its
+  `MonthPay.earned` of an employment (`fundOf`, rounded to the cent). The payroll settings take the rate ("Sociálny fond:
+  povinný prídel, %", empty 0,6 %, 0,6 to 1 % allowed); the month says the allocation; the month's entry books it 527
+  against 472. Not built: the further allocation of § 3(1)(b) (collective agreement, travel), a profit's allocation
+  (§ 4(3)), the transfer to the fund's own account, the yearly settlement beyond the months' sums.
 
 ## Firmony for investors (14 October 2026; `src/views/investors.tsx`, `INVESTORS` in `src/config.ts`, `copy.investors`)
 
@@ -2290,8 +2301,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1219 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1792 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1223 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1795 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
