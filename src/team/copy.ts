@@ -375,7 +375,7 @@ export const team = typesetAll({
   },
   book: {
     title: 'Zaúčtovať doklad',
-    from: { upload: 'Nahral(a)', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra', issued: 'Vystavená faktúra z Firmony', firmony: 'Faktúra od Firmony za naše služby', takeover: 'Prevzatá zo saldokonta predchodcu' },
+    from: { upload: 'Nahral(a)', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra', issued: 'Vystavená faktúra z Firmony', firmony: 'Faktúra od Firmony za naše služby', takeover: 'Prevzatá zo saldokonta predchodcu', trip: 'Vyúčtovanie pracovnej cesty z Firmony' },
     by: (who: string, when: string) => typeset(`${who}, ${when}`),
     duplicate: 'Možno ide o duplikát iného dokladu tejto firmy.',
     duplicateOpen: 'Pozrieť ten druhý',
@@ -2068,6 +2068,7 @@ export const team = typesetAll({
     saldoLead: 'Neuhradené faktúry odberateľov a dodávateľov, ako stoja dnes.',
     customers: 'Odberatelia, 311',
     suppliers: 'Dodávatelia, 321',
+    employees: 'Zamestnanci: cestovné náhrady, 333',
     scols: { number: 'Doklad', party: 'Partner', due: 'Splatnosť', total: 'Suma', settled: 'Uhradené', left: 'Zostáva' },
     overdue: (days: number) => typeset(`${days} ${plural(days, 'deň', 'dni', 'dní')} po splatnosti`),
     saldoEmpty: 'Všetko je uhradené.',

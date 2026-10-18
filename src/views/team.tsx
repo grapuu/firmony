@@ -24,6 +24,8 @@ import { BarMenu, Flash, Heading, InsideHead, planName } from './inside'
 import { dayOf, groupIban, whenName } from './inside-pages'
 import { Wordmark } from './layout'
 import { InvoiceSheet } from './invoices'
+import { TripSheet } from './trips'
+import type { Trip } from '../app/trips-store'
 import type { Line, StoredInvoice } from '../app/invoices'
 import { responseDueAt } from '../team/support'
 import { pressing } from '../team/deadlines'
@@ -1214,7 +1216,8 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
     vat: money(d.vatCents),
     category,
     deduct: vatPayer && (d.vatDeduct ?? (category ? (CATEGORIES[category as keyof typeof CATEGORIES]?.deduct ?? true) : true)),
-    remember: true,
+    // A trip's settlement is owed to a person, not bought of a supplier: nothing to remember for the next one.
+    remember: d.source !== 'trip',
     account: d.account ?? '',
     currency: d.currency ?? 'EUR',
     rate: d.fxRate ? d.fxRate.replace('.', ',') : '',
@@ -1232,6 +1235,8 @@ export interface BookPageProps {
   needs7a?: boolean
   /** An invoice the client issued in Firmony: its sheet is the original. */
   invoice?: { invoice: StoredInvoice; lines: Line[] } | null
+  /** A business trip the client settled in Firmony: its settlement is the original. */
+  trip?: Trip | null
   values: BookValues
   /** The document's entry as the books hold it; null shows the entry of the form's own figures (after a mistake). */
   ledgerLines?: LedgerLine[] | null
@@ -1267,7 +1272,7 @@ const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: 
   </div>
 )
 
-export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, values, ledgerLines, payment, candidates, paidBy, queueLeft, now, errors, flash, currencies = [], rateProposal = null, inEuros = null }) => {
+export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, trip = null, values, ledgerLines, payment, candidates, paidBy, queueLeft, now, errors, flash, currencies = [], rateProposal = null, inEuros = null }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const cents = (text: string) => {
     const m = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(text.replace(/\s/g, ''))
@@ -1318,6 +1323,10 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
           {invoice ? (
             <div class="book__sheet">
               <InvoiceSheet invoice={invoice.invoice} lines={invoice.lines} seller={company} pay={false} />
+            </div>
+          ) : trip ? (
+            <div class="book__sheet">
+              <TripSheet trip={trip} company={company} />
             </div>
           ) : d.fileKey ? (
             image ? (

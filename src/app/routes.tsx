@@ -77,6 +77,11 @@ import { ratesFor, refreshRates } from './fx-store'
 import { orderItems, orderStatements, painXml, payables, paymentOrders } from './payorders'
 import { issueAdvances } from './advance-auto'
 import { PayOrdersPage } from '../views/payorders'
+import { readTrip, tripOf, TRIPS_FROM, workingDaysAfter, type TripErrors, type TripValues } from './trips'
+import { getTrip, listTrips, removeTripStatements, tripOfDocument, tripStatements } from './trips-store'
+import { TripFormPage, TripPage, TripsPage } from '../views/trips'
+import { bratislavaClock, bratislavaDay } from '../time'
+import { isWorkingDay } from './vat'
 import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
 import { rateFor, rateMicro, rateText } from './fx'
 import { endingOf, intakeOpen, serviceOpen } from './ending'
@@ -1056,13 +1061,134 @@ appRoutes.get('/uhrady/:id/xml', async (c) => {
   })
 })
 
+// Business trips (trips.ts): the list, the form worked out on the server (a recount shows the days for the meals), the
+// settlement kept as the company's document owed to the traveller, and taken back while nothing was done with it.
+appRoutes.get('/cesty', async (c) => {
+  const who = c.get('who')
+  const flash = c.req.query('ok') === 'zrusena' ? t.trips.removed : null
+  return shell(c, 'documents', t.trips.title, <TripsPage trips={await listTrips(c.env.DB, who.company.id)} flash={flash} />)
+})
+
+async function tripEmployees(db: D1Database, company: string): Promise<{ id: string; name: string; iban: string | null }[]> {
+  const rows = await db
+    .prepare("SELECT id, name, iban FROM employees WHERE company_id = ? AND (ended_on IS NULL OR ended_on >= date('now', '-1 year')) ORDER BY name LIMIT 500")
+    .bind(company)
+    .all<{ id: string; name: string; iban: string | null }>()
+  return rows.results
+}
+
+const emptyTrip = (): TripValues => ({
+  traveller: '',
+  employee: '',
+  iban: '',
+  purpose: '',
+  from: '',
+  to: '',
+  start: '',
+  end: '',
+  transport: 'car',
+  plate: '',
+  km: '',
+  consumption: '',
+  price: '',
+  free: false,
+  meals: {},
+  shown: '',
+})
+
+async function tripForm(c: Ctx, values: TripValues, errors: TripErrors, status: 200 | 409 | 422 = 200, error: string | null = null) {
+  const employees = await tripEmployees(c.env.DB, c.get('who').company.id)
+  return shell(c, 'documents', t.trips.newTitle, <TripFormPage values={values} errors={errors} employees={employees} error={error ?? closedIntake(c.get('who').company)} />, status)
+}
+
+appRoutes.get('/cesty/nova', (c) => tripForm(c, emptyTrip(), {}))
+
+appRoutes.post('/cesty', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const at = Math.floor(Date.now() / 1000)
+  const nowLocal = `${bratislavaDay(at)}T${bratislavaClock(at).padStart(5, '0')}`
+  const read = readTrip((name) => body[name], t.trips.errors, nowLocal, isIban)
+  if (body.akcia !== 'ulozit') return tripForm(c, read.values, {})
+  if (!intakeOpen(who.company, today())) return tripForm(c, read.values, {}, 409)
+  if (!read.input) return tripForm(c, read.values, read.errors, 422)
+  const result = tripOf(read.input)
+  if (!result) return tripForm(c, read.values, { start: t.trips.errors.before(TRIPS_FROM) }, 422)
+  // A payroll employee travels under the name and with the IBAN payroll keeps, unless another IBAN is typed.
+  const employee = read.values.employee ? (await tripEmployees(db, who.company.id)).find((e) => e.id === read.values.employee) : undefined
+  if (read.values.employee && !employee) return tripForm(c, read.values, { traveller: t.trips.errors.traveller }, 422)
+  const typedIban = read.values.iban ? plainIban(read.values.iban) : null
+  const iban = typedIban ?? (employee?.iban ? plainIban(employee.iban) : null)
+  const id = crypto.randomUUID()
+  const documentId = crypto.randomUUID()
+  const settledOn = today()
+  try {
+    await db.batch(
+      tripStatements(db, {
+        id,
+        documentId,
+        company: who.company.id,
+        user: who.user.id,
+        traveller: employee?.name ?? read.values.traveller,
+        employeeId: employee?.id ?? null,
+        iban: iban && isIban(iban) ? iban : null,
+        purpose: read.values.purpose,
+        from: read.values.from,
+        to: read.values.to,
+        start: read.input.start,
+        end: read.input.end,
+        transport: read.values.transport,
+        plate: read.values.plate || null,
+        car: read.input.car,
+        meals: read.input.meals,
+        result,
+        settledOn,
+        due: workingDaysAfter(settledOn, 10, isWorkingDay),
+      }),
+    )
+  } catch (err) {
+    console.error('a trip failed', err instanceof Error ? err.name : 'error')
+    return tripForm(c, read.values, {}, 409, t.trips.errors.locked)
+  }
+  // A payment to the traveller that came already pairs with it (no supplier's rule touches a trip's settlement).
+  if (result.total > 0) later(c, matchCompany(db, who.company.id))
+  return c.redirect(`/app/cesty/${id}?ok=cesta`, 303)
+})
+
+appRoutes.get('/cesty/:id', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const trip = ID.test(id) ? await getTrip(c.env.DB, who.company.id, id) : null
+  if (!trip) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  const flash = c.req.query('ok') === 'cesta' ? t.trips.saved : null
+  return shell(c, 'documents', `${t.trips.sheetTitle} ${trip.number}`, <TripPage trip={trip} company={who.company} flash={flash} />)
+})
+
+appRoutes.post('/cesty/:id/zrusit', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const trip = ID.test(id) ? await getTrip(db, who.company.id, id) : null
+  if (!trip) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  const result = await db.batch(removeTripStatements(db, who.company.id, trip.id, who.user.id))
+  if ((result[0]?.meta?.changes ?? 0) === 0) return c.redirect(`/app/cesty/${trip.id}`, 303)
+  return c.redirect('/app/cesty?ok=zrusena', 303)
+})
+
 appRoutes.get('/doklady/:id', async (c) => {
   const who = c.get('who')
   const id = c.req.param('id')
   const d = ID.test(id) ? await getDocument(c.env.DB, who.company.id, id) : null
   if (!d) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
   const payment = d.paymentId ? await getPayment(c.env.DB, who.company.id, d.paymentId) : null
-  return shell(c, 'documents', d.party ?? t.documents.title, <DocumentPage d={d} payment={payment} today={today()} flash={flashOf(c)} approvals={who.company.approvals} owner={who.role === 'owner'} />)
+  const trip = d.source === 'trip' ? await tripOfDocument(c.env.DB, who.company.id, d.id) : null
+  return shell(
+    c,
+    'documents',
+    d.party ?? t.documents.title,
+    <DocumentPage d={d} payment={payment} today={today()} flash={flashOf(c)} approvals={who.company.approvals} owner={who.role === 'owner'} tripId={trip?.id ?? null} />,
+  )
 })
 
 /** Where to go back to: only a page of the app, never an address from outside. */
@@ -1117,6 +1243,9 @@ appRoutes.post('/doklady/:id/zmazat', async (c) => {
   const who = c.get('who')
   const id = c.req.param('id')
   const db = c.env.DB
+  // A trip's settlement goes with its trip (its page takes it back), never alone.
+  const trip = ID.test(id) ? await tripOfDocument(db, who.company.id, id) : null
+  if (trip) return c.redirect(`/app/cesty/${trip.id}`, 303)
   const results = await db.batch([...deleteDocumentStatements(db, who.company.id, id), eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.deleted', subject: id })])
   if ((results[1]?.meta?.changes ?? 0) === 0) {
     const d = await getDocument(db, who.company.id, id)

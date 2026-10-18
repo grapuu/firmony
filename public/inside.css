@@ -7236,3 +7236,78 @@ a.wtable__name {
   margin-bottom: 12px;
   object-fit: contain;
 }
+
+/* Business trips (src/views/trips.tsx): the list, the meals by day, the question whether any were free. */
+.trips__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 0;
+  overflow-wrap: anywhere;
+}
+
+.trips__item + .trips__item {
+  border-top: 1px solid var(--line);
+}
+
+.trips__amount {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.trips__state {
+  flex-basis: 100%;
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.trips__question {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+
+.trips__question legend {
+  margin-bottom: 8px;
+}
+
+.trips__meals {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.trips__meals caption {
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.trips__meals th,
+.trips__meals td {
+  padding: 8px 6px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.trips__meals th[scope='row'],
+.trips__meals thead th:first-child {
+  text-align: left;
+}
+
+/* The private car's fields only while the private car is picked (all shown without :has). */
+.invform:has(select[name='doprava'] option[value='car']:not(:checked)) .trips__car {
+  display: none;
+}
+
+/* Which meals of a day were given free, under the day on the settlement at every width. */
+.trips__given {
+  display: block;
+  margin-top: 2px;
+  color: var(--soft);
+  font-size: 0.8125rem;
+}

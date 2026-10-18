@@ -1211,6 +1211,51 @@ const MIGRATIONS: readonly string[][] = [
   // A supplier's prepayment invoice (386) read from its file (18 October 2026, after the review): it documents money
   // paid already, so the payment orders never offer it.
   ['ALTER TABLE documents ADD COLUMN prepaid INTEGER NOT NULL DEFAULT 0'],
+  // Business trips at home (18 October 2026, trips.ts): who travelled where and when, the meals given free, the private
+  // car, what it came to as worked out then, and the document it made (owed to the person on 333). A trip is removed by
+  // a mark, while its document is neither booked nor paired; its number is never given again.
+  [
+    `CREATE TABLE IF NOT EXISTS trips (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      number TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      traveller TEXT NOT NULL,
+      employee_id TEXT,
+      iban TEXT,
+      purpose TEXT NOT NULL,
+      place_from TEXT NOT NULL,
+      place_to TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      transport TEXT NOT NULL,
+      plate TEXT,
+      car TEXT,
+      meals TEXT NOT NULL DEFAULT '{}',
+      result TEXT NOT NULL,
+      total_cents INTEGER NOT NULL,
+      document_id TEXT,
+      removed_at INTEGER,
+      removed_by TEXT,
+      UNIQUE (company_id, year, seq)
+    )`,
+    'CREATE INDEX IF NOT EXISTS trips_company ON trips (company_id, created_at)',
+    'CREATE INDEX IF NOT EXISTS trips_document ON trips (document_id)',
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER trips_data_${action.toLowerCase()} AFTER ${action} ON trips BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map(
+      (action) => `CREATE TRIGGER trips_purging_${action.toLowerCase()} BEFORE ${action} ON trips
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+    ),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

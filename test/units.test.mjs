@@ -20,6 +20,7 @@ import {
   invoices,
   repeat,
   payorders,
+  trips,
   ledger,
   ledgerStore,
   dues,
@@ -1365,6 +1366,65 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     invoices.checkValues({ ...values, customerCountry: 'CZ' }, (t) => (t ? '2026-10-01' : null), messages).customerCountry === 'customerCountry' &&
       !invoices.checkValues({ ...values, customerCountry: 'DE' }, (t) => (t ? '2026-10-01' : null), messages).customerCountry,
   )
+}
+
+// Business trips at home (18 October 2026): the meal allowance by the hours of each calendar day (Act No. 283/2002 Z. z.,
+// measure No. 280/2025 Z. z.), the cut for a meal given free, the private car (measure No. 340/2025 Z. z.).
+{
+  const trip = (start, end, meals = {}, car = null) => trips.tripOf({ start, end, meals, car })
+  const owed = (start, end, meals) => trip(start, end, meals)?.total
+  check(
+    'the bands of a day: under 5 hours nothing, 5 to 12 hours 9,30 €, over 12 to 18 hours 13,80 €, over 18 hours 20,60 €',
+    owed('2026-10-14T06:00', '2026-10-14T10:59') === 0 &&
+      owed('2026-10-14T06:00', '2026-10-14T11:00') === 930 &&
+      owed('2026-10-14T06:00', '2026-10-14T18:00') === 930 &&
+      owed('2026-10-14T06:00', '2026-10-14T18:01') === 1380 &&
+      owed('2026-10-14T05:00', '2026-10-14T23:00') === 1380 &&
+      owed('2026-10-14T05:00', '2026-10-14T23:01') === 2060,
+  )
+  check(
+    'a meal given free lowers the day by a share of 20,60 €: breakfast 5,15 €, lunch 8,24 €, dinner 7,21 €; never below nothing',
+    owed('2026-10-14T07:00', '2026-10-14T19:30', { '2026-10-14': { lunch: true } }) === 1380 - 824 &&
+      owed('2026-10-14T05:00', '2026-10-14T23:30', { '2026-10-14': { breakfast: true, dinner: true } }) === 2060 - 515 - 721 &&
+      owed('2026-10-14T08:00', '2026-10-14T14:00', { '2026-10-14': { lunch: true, dinner: true } }) === 0,
+  )
+  const two = trip('2026-10-14T16:00', '2026-10-15T20:00', { '2026-10-15': { breakfast: true } })
+  check(
+    'each calendar day by itself: 8 hours the first (9,30 €), 20 hours the second (20,60 € less breakfast 5,15 €)',
+    two?.days.length === 2 && two.days[0].minutes === 480 && two.days[0].owed === 930 && two.days[1].minutes === 1200 && two.days[1].owed === 2060 - 515 && two.total === 930 + 1545,
+    JSON.stringify(two),
+  )
+  const car = trip('2026-10-14T07:00', '2026-10-14T19:30', {}, { km: 250, consumption: 650, priceMilli: 1539 })
+  check(
+    'a private car: 250 km × 0,313 € = 78,25 €, and fuel 250 km × 6,5 l/100 km × 1,539 € = 25,01 €',
+    car?.carBasic === 7825 && car.carFuel === 2501 && car.total === 1380 + 7825 + 2501,
+    JSON.stringify(car),
+  )
+  check('a trip before the measures has no rates', trip('2025-11-14T07:00', '2025-11-14T19:00') === null && trips.mealRatesOn('2025-12-01')?.[2] === 2060 && trips.carRateOn('2025-12-31') === null)
+  check(
+    'a time typed either way, a day that does not exist none',
+    trips.tripTime('14. 10. 2026 7:30') === '2026-10-14T07:30' && trips.tripTime('2026-10-14T19:05') === '2026-10-14T19:05' && trips.tripTime('31. 2. 2026 7:00') === null && trips.tripTime('14. 10. 2026 24:00') === null,
+  )
+  check('settled within 10 working days: from Friday 16 October 2026 to Friday 30 October', trips.workingDaysAfter('2026-10-16', 10, vat.isWorkingDay) === '2026-10-30')
+  const copy = { traveller: 'traveller', purpose: 'purpose', places: 'places', start: 'start', end: 'end', before: () => 'before', long: () => 'long', future: 'future', car: 'car', iban: 'iban', meals: 'meals' }
+  const form = (fields) => trips.readTrip((name) => fields[name], copy, '2026-10-18T12:00', invoices.isIban)
+  const full = { kto: 'TEST-ONLY Cestovateľ', ucel: 'Rokovanie', odkial: 'Bratislava', kam: 'Košice', odchod: '14. 10. 2026 6:00', navrat: '15. 10. 2026 20:00', doprava: 'car', km: '800', spotreba: '6,5', cena: '1,539', jedlo: 'nie' }
+  const fine = form(full)
+  check('a whole form is worked out, no meals asked when none were free', Object.keys(fine.errors).length === 0 && fine.input?.car?.km === 800 && fine.input.car.consumption === 650 && fine.input.car.priceMilli === 1539, JSON.stringify(fine.errors))
+  const wrong = form({ doprava: 'car', odchod: '14. 10. 2026 6:00', navrat: '14. 10. 2026 5:00', iban: 'SK00 1234' })
+  check('what is missing or wrong is said', ['traveller', 'purpose', 'places', 'end', 'car', 'iban'].every((k) => wrong.errors[k]) && wrong.input === null, JSON.stringify(wrong.errors))
+  check(
+    'a return in the future, a start before 2026, a trip longer than a month',
+    form({ ...full, navrat: '19. 10. 2026 8:00' }).errors.end === 'future' && form({ ...full, odchod: '30. 12. 2025 8:00' }).errors.start === 'before' && form({ ...full, odchod: '1. 9. 2026 6:00' }).errors.end === 'long',
+  )
+  const free = form({ ...full, jedlo: 'ano', dni: '' })
+  const ticked = form({ ...full, jedlo: 'ano', dni: '2026-10-14,2026-10-15', 'r-2026-10-15': '1', 'o-2026-10-16': '1' })
+  check(
+    'free meals are asked day by day: a form that did not show the days shows them first; a tick of another day counts nothing',
+    free.errors.meals === 'meals' && free.input === null && Object.keys(ticked.errors).length === 0 && JSON.stringify(ticked.input?.meals) === '{"2026-10-15":{"breakfast":true,"lunch":false,"dinner":false}}',
+    JSON.stringify([free.errors, ticked.errors, ticked.input?.meals]),
+  )
+  check('no car with a train', form({ ...full, doprava: 'public', km: '' }).input?.car === null)
 }
 
 // Payment orders (18 October 2026): the suppliers' invoices owed as one SEPA file the bank imports (pain.001.001.03).
@@ -3288,6 +3348,23 @@ async function zipped(entries, note) {
         ledger.balanceOf(z.entries, '311', '2026-09-30') === 0 &&
         invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-01-01', kind: 'invoice', totalCents: 0 }, '2026-10-18') === 'paid',
       JSON.stringify([proposed, z.issues.noEntry, z.entries.find((e) => e.key === 'd:zero')?.lines]),
+    )
+  }
+  // A business trip (18 October 2026): owed to the traveller on 333 until paid, the cost on 512, outside VAT.
+  {
+    const settled = doc('trip', { kind: 'invoice_in', number: 'CP2026-001', party: 'TEST-ONLY Cestovateľ', issuedOn: '2026-10-16', suppliedOn: '2026-10-15', dueOn: '2026-10-30', totalCents: 11706, vatCents: 0, category: 'allowance', paymentId: 'pt', vat: vatData('none', []) })
+    const before = ledger.buildBooks({ company: company(), docs: [{ ...settled, paymentId: null }], payments: [], banks, filed: [], manual: [] })
+    const after = ledger.buildBooks({ company: company(), docs: [settled], payments: [pay('pt', '2026-10-20', -11706, { party: 'TEST-ONLY Cestovateľ' })], banks, filed: [], manual: [] })
+    check(
+      "a trip's settlement is the cost (512) owed to the traveller (333, an open item), the payment settles it; no VAT",
+      ledger.balanceOf(before.entries, '512', '2026-10-31') === 11706 &&
+        ledger.balanceOf(before.entries, '333', '2026-10-31') === -11706 &&
+        before.items.some((i) => i.docId === 'trip' && i.account === '333' && ledger.leftOf(i) === 11706) &&
+        ledger.balanceOf(after.entries, '333', '2026-10-31') === 0 &&
+        ledger.balanceOf(after.entries, '321', '2026-10-31') === 0 &&
+        after.items.every((i) => ledger.leftOf(i) === 0) &&
+        !after.entries.some((e) => e.lines.some((l) => String(l.md).startsWith('343') || String(l.d).startsWith('343'))),
+      JSON.stringify(after.entries.filter((e) => e.docId === 'trip').map((e) => e.lines)),
     )
   }
 }

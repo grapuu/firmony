@@ -109,7 +109,7 @@ function contractText(company: Company, order: ContractFacts | null, contract: R
   return `${lines.join('\r\n')}\r\n`
 }
 
-function readme(company: Company, year: string, has: { invoices: boolean; messages: boolean; books: boolean; statements: boolean }, today: string): string {
+function readme(company: Company, year: string, has: { invoices: boolean; messages: boolean; books: boolean; statements: boolean; trips?: boolean }, today: string): string {
   const lines = [
     `Firmony: doklady a údaje firmy ${company.name} za rok ${year}`,
     '',
@@ -119,6 +119,7 @@ function readme(company: Company, year: string, has: { invoices: boolean; messag
   ]
   if (has.statements) lines.push('vypisy/         výpisy z banky, ako prišli (XML, camt.053)', 'vypisy.csv      zoznam výpisov: obdobie, účet, zostatky a čo sa s nimi stalo')
   if (has.invoices) lines.push('faktury/        faktúry, ktoré ste vystavili, ako e-faktúry (UBL 2.1, EN 16931)', 'faktury.csv     zoznam vystavených faktúr')
+  if (has.trips) lines.push('cesty.csv       pracovné cesty: kto, kam, kedy, stravné, náhrada za auto a čo patrilo spolu')
   if (has.messages) lines.push('spravy.txt      správy medzi Vami a nami')
   if (has.books) {
     lines.push(
@@ -173,7 +174,7 @@ export async function exportYear(
     db.prepare(`SELECT p.id, p.name, p.file_key, p.file_bytes, p.sha256, p.created_at, t.kind, t.period FROM payroll_packages p JOIN payroll_targets t ON t.id = p.target_id WHERE p.company_id = ? AND substr(t.period, 1, 4) = ? ORDER BY p.id`)
       .bind(company.id, year).all<{ id: string; name:string; file_key: string; file_bytes: number; sha256: string; created_at: number; kind: string; period: string }>(),
   ])
-  const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows] = await Promise.all([
+  const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows, tripRows] = await Promise.all([
     db
       .prepare(
         `SELECT ${DOC_COLUMNS}, p.booked_on AS paid_on, p.amount_cents AS paid_cents FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
@@ -223,6 +224,10 @@ export async function exportYear(
         status: string
         file_key: string | null
       }>(),
+    db
+      .prepare('SELECT number, traveller, purpose, place_from, place_to, start_at, end_at, transport, plate, car, result, total_cents, removed_at FROM trips WHERE company_id = ? AND year = ? ORDER BY seq')
+      .bind(company.id, Number(year))
+      .all<Row>(),
   ])
   // The books of the year, when they hold anything in it.
   const bookYear = Number(year)
@@ -235,6 +240,7 @@ export async function exportYear(
     'doklady.csv',
     'platby.csv',
     'faktury.csv',
+    'cesty.csv',
     'spravy.txt',
     'zmluva.txt',
     'vypisy.csv',
@@ -367,6 +373,39 @@ export async function exportYear(
     ]),
   ])
 
+  // The business trips of the year as they were worked out (trips.ts), a trip taken back said so.
+  const json = (v: unknown) => {
+    try {
+      return typeof v === 'string' ? (JSON.parse(v) as Record<string, unknown>) : null
+    } catch {
+      return null
+    }
+  }
+  const tripsCsv = csv([
+    ['Číslo', 'Kto', 'Účel', 'Odkiaľ', 'Kam', 'Odchod', 'Návrat', 'Doprava', 'EČV', 'Km', 'Stravné', 'Auto: základná náhrada', 'Auto: palivo', 'Spolu', 'Zrušená'],
+    ...tripRows.results.map((r) => {
+      const result = json(r.result)
+      const car = json(r.car)
+      return [
+        String(r.number),
+        String(r.traveller),
+        String(r.purpose),
+        String(r.place_from),
+        String(r.place_to),
+        String(r.start_at).replace('T', ' '),
+        String(r.end_at).replace('T', ' '),
+        String(r.transport),
+        typeof r.plate === 'string' ? r.plate : '',
+        car && typeof car.km === 'number' ? car.km : '',
+        csvMoney(typeof result?.meals === 'number' ? result.meals : null),
+        csvMoney(typeof result?.carBasic === 'number' ? result.carBasic : null),
+        csvMoney(typeof result?.carFuel === 'number' ? result.carFuel : null),
+        csvMoney(Number(r.total_cents)),
+        typeof r.removed_at === 'number' ? bratislava(r.removed_at * 1000).day : '',
+      ]
+    }),
+  ])
+
   const messagesText = messageRows.results
     .map((m) => `${moment(m.created_at)}, ${m.side === 'firmony' ? `${m.author_name ?? BRAND.name} (${BRAND.name})` : (m.author_name ?? 'Vy')}:\r\n${m.body.replace(/\r?\n/g, '\r\n')}\r\n`)
     .join('\r\n')
@@ -379,12 +418,13 @@ export async function exportYear(
     yield {
       name: 'citajte.txt',
       when: at,
-      data: text(readme(company, year, { invoices: invoices.length > 0, messages: messageRows.results.length > 0, books: hasBooks, statements: statementList.length > 0 }, today)),
+      data: text(readme(company, year, { invoices: invoices.length > 0, messages: messageRows.results.length > 0, books: hasBooks, statements: statementList.length > 0, trips: tripRows.results.length > 0 }, today)),
     }
     yield { name: 'doklady.csv', when: at, data: text(docsCsv) }
     yield { name: 'platby.csv', when: at, data: text(paymentsCsv) }
     if (statementList.length > 0) yield { name: 'vypisy.csv', when: at, data: text(statementsCsv) }
     if (invoices.length > 0) yield { name: 'faktury.csv', when: at, data: text(invoicesCsv) }
+    if (tripRows.results.length > 0) yield { name: 'cesty.csv', when: at, data: text(tripsCsv) }
     if (messageRows.results.length > 0) yield { name: 'spravy.txt', when: at, data: text(messagesText) }
     if (hasBooks) {
       yield { name: 'uctovnictvo/dennik.csv', when: at, data: text(journalCsv(books, bookYear)) }

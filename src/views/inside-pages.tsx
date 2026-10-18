@@ -873,6 +873,9 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
         <a class="btn btn--line" href="/app/uhrady">
           {app.payorders.link}
         </a>
+        <a class="btn btn--line" href="/app/cesty">
+          {app.trips.link}
+        </a>
       </span>
     </header>
     <Flash text={flash} />
@@ -948,7 +951,7 @@ const Paper: FC<{ d: Doc }> = ({ d }) => (
   </figure>
 )
 
-export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; flash?: string | null; error?: string | null; approvals?: boolean; owner?: boolean }> = ({
+export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; flash?: string | null; error?: string | null; approvals?: boolean; owner?: boolean; tripId?: string | null }> = ({
   d,
   payment,
   today,
@@ -956,6 +959,7 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
   error,
   approvals = false,
   owner = false,
+  tripId = null,
 }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const outgoing = d.kind === 'invoice_out'
@@ -1108,7 +1112,13 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
             <a class="btn btn--line orig__open" href={`/app/faktury/${d.invoiceId}`}>
               {app.invoices.actions.open}
             </a>
+          ) : tripId ? (
+            <a class="btn btn--line orig__open" href={`/app/cesty/${tripId}`}>
+              {app.trips.open}
+            </a>
           ) : null}
+          {/* A trip's settlement is taken back with its trip, never on its own. */}
+          {d.source === 'trip' ? null : (
           <details class="more more--quiet">
             <summary class="more__summary">{app.document.delete}</summary>
             <div class="more__body">
@@ -1120,6 +1130,7 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
               </form>
             </div>
           </details>
+          )}
         </aside>
       </div>
     </>

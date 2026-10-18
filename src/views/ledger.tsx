@@ -729,9 +729,12 @@ const ItemsTable: FC<{ items: OpenItem[]; today: string }> = ({ items, today }) 
 
 export const SaldoPage: FC<{ company: Company; books: Books; today: string }> = ({ company, books, today }) => {
   const open = books.items.filter((item) => leftOf(item) !== 0)
-  const sides: { account: '311' | '321'; title: string }[] = [
+  // Employees (333: travel compensation owed) only when anything stands there.
+  const staff = open.some((item) => item.account === '333') || balanceOf(books.entries, '333', '9999-12-31') !== 0
+  const sides: { account: '311' | '321' | '333'; title: string }[] = [
     { account: '311', title: L.customers },
     { account: '321', title: L.suppliers },
+    ...(staff ? [{ account: '333' as const, title: L.employees }] : []),
   ]
   return (
     <>

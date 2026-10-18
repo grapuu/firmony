@@ -299,7 +299,8 @@ export interface LedgerInput {
 /** An invoice's open item (saldokonto): what it comes to on its account and what of it was settled. */
 export interface OpenItem {
   docId: string
-  account: '311' | '321'
+  /** Customers 311, suppliers 321, or employees 333 for travel compensation owed (`payableOf`). */
+  account: '311' | '321' | '333'
   on: string
   dueOn: string | null
   number: string | null
@@ -344,6 +345,15 @@ export interface Books {
   banks: LedgerBank[]
   /** The months of payroll closed, which tell a payroll payment's account. */
   payroll: LedgerPayroll[]
+}
+
+/**
+ * The account an invoice's open item stands on: an issued one on customers (311); a received one on suppliers (321),
+ * or, for what the category says is owed to somebody else (an employee's travel compensation), on that account.
+ */
+export function payableOf(doc: Pick<Doc, 'kind' | 'category'>): OpenItem['account'] {
+  if (doc.kind === 'invoice_out') return '311'
+  return doc.category && CATEGORIES[doc.category]?.payable === '333' ? '333' : '321'
 }
 
 const RI: readonly DocKind[] = ['receipt', 'invoice_in', 'invoice_out']
@@ -484,8 +494,9 @@ export function bookingLines(doc: Doc, company: Company, payment: { bookedOn: st
   }
   const lines = documentLines(doc, company, { paidBy: payment ? 'bank' : doc.paidPrivately ? 'private' : doc.kind === 'receipt' ? 'cash' : 'unpaid', rates })
   // A received invoice the owner paid himself: the company owes it to him now.
+  const owed = payableOf(doc)
   if (doc.kind === 'invoice_in' && !payment && doc.paidPrivately && lines.length > 0)
-    lines.push(plan.credit ? { md: OWNER, d: '321', cents: plan.gross, what: 'payable' } : { md: '321', d: OWNER, cents: plan.gross, what: 'payable' })
+    lines.push(plan.credit ? { md: OWNER, d: owed, cents: plan.gross, what: 'payable' } : { md: owed, d: OWNER, cents: plan.gross, what: 'payable' })
   return lines
 }
 
@@ -720,7 +731,7 @@ export function buildBooks(input: LedgerInput): Books {
     booked.add(doc.id)
     entries.push({ key: `d:${doc.id}`, on, kind: 'document', number: doc.number ?? '', text: docText(doc), docId: doc.id, paymentId: pay?.id ?? null, manualId: null, lines })
     if (doc.kind === 'invoice_in' || doc.kind === 'invoice_out') {
-      const account = doc.kind === 'invoice_out' ? '311' : '321'
+      const account = payableOf(doc)
       const item: OpenItem = { docId: doc.id, account, on: plan.on, dueOn: doc.dueOn, number: doc.number, party: doc.party, total: (plan.credit ? -1 : 1) * plan.gross, settled: 0 }
       items.set(doc.id, item)
       if (plan.foreign && plan.rate !== null && doc.currency && doc.totalCents !== null) foreignOf.set(doc.id, { currency: doc.currency, cents: (plan.credit ? -1 : 1) * Math.abs(doc.totalCents) })
@@ -735,7 +746,7 @@ export function buildBooks(input: LedgerInput): Books {
           docId: doc.id,
           paymentId: null,
           manualId: null,
-          lines: [plan.credit ? { md: OWNER, d: '321', cents: plan.gross } : { md: '321', d: OWNER, cents: plan.gross }],
+          lines: [plan.credit ? { md: OWNER, d: account, cents: plan.gross } : { md: account, d: OWNER, cents: plan.gross }],
         })
         item.settled = item.total
       }
@@ -769,7 +780,13 @@ export function buildBooks(input: LedgerInput): Books {
       if (diff !== 0) {
         const grows = diff > 0
         const line: LedgerLine =
-          item.account === '311' ? (grows ? { md: '311', d: '663', cents: diff } : { md: '563', d: '311', cents: -diff }) : grows ? { md: '563', d: '321', cents: diff } : { md: '321', d: '663', cents: -diff }
+          item.account === '311'
+            ? grows
+              ? { md: '311', d: '663', cents: diff }
+              : { md: '563', d: '311', cents: -diff }
+            : grows
+              ? { md: '563', d: item.account, cents: diff }
+              : { md: item.account, d: '663', cents: -diff }
         revalued.set(y, [...(revalued.get(y) ?? []), line])
         item.settled -= diff
         carrying = value
@@ -801,14 +818,14 @@ export function buildBooks(input: LedgerInput): Books {
         if (!booked.has(d.id)) continue
         posted += share
         if (direct.has(d.id) || share === 0) continue
-        const account = d.kind === 'receipt' ? TRANSIT : d.kind === 'invoice_out' ? '311' : '321'
+        const account = d.kind === 'receipt' ? TRANSIT : payableOf(d)
         lines.push(lineOf(account, p.bank, share))
         const item = items.get(d.id)
-        if (item) item.settled += account === '321' ? -share : share
+        if (item) item.settled += account === '311' ? share : -share
         // An invoice in another currency is settled whole by its payment: what is left of it is the exchange difference.
         const left = item && foreignOf.has(d.id) ? item.total - item.settled : 0
         if (item && left !== 0) {
-          if (item.account === '321') lines.push(left > 0 ? { md: '321', d: '663', cents: left } : { md: '563', d: '321', cents: -left })
+          if (item.account !== '311') lines.push(left > 0 ? { md: item.account, d: '663', cents: left } : { md: '563', d: item.account, cents: -left })
           else lines.push(left > 0 ? { md: '563', d: '311', cents: left } : { md: '311', d: '663', cents: -left })
           item.settled = item.total
         }

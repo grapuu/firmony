@@ -6,7 +6,23 @@ import { sameReceipt, type EkasaCodes } from './ekasa'
 import { nameWords } from './match'
 import type { DocKind } from './match'
 
-export type Category = 'material' | 'fuel' | 'energy' | 'goods' | 'repairs' | 'travel' | 'representation' | 'services' | 'fees' | 'insurance' | 'bank' | 'asset' | 'sales' | 'sales_goods' | 'advance'
+export type Category =
+  | 'material'
+  | 'fuel'
+  | 'energy'
+  | 'goods'
+  | 'repairs'
+  | 'travel'
+  | 'allowance'
+  | 'representation'
+  | 'services'
+  | 'fees'
+  | 'insurance'
+  | 'bank'
+  | 'asset'
+  | 'sales'
+  | 'sales_goods'
+  | 'advance'
 
 export interface CategoryInfo {
   /** As the accountant reads it. */
@@ -19,6 +35,8 @@ export interface CategoryInfo {
   hint: string
   /** For an issued invoice (revenue), not for a cost. */
   revenue?: boolean
+  /** Whom a received document of it is owed to, when not a supplier (321): an employee's travel compensation, 333. */
+  payable?: string
 }
 
 export const CATEGORIES: Record<Category, CategoryInfo> = {
@@ -28,6 +46,9 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
   goods: { name: 'Tovar na predaj', account: '504', deduct: true, hint: 'tovar kúpený na ďalší predaj' },
   repairs: { name: 'Opravy a údržba', account: '511', deduct: true, hint: 'opravy auta, techniky, priestorov' },
   travel: { name: 'Cestovné a ubytovanie', account: '512', deduct: true, hint: 'lístky, letenky, ubytovanie na služobnej ceste' },
+  // What an employee (or a director) is owed for a business trip, by Act No. 283/2002 Z. z.: owed to that person on 333
+  // until it is paid out (src/app/trips.ts).
+  allowance: { name: 'Cestovné náhrady (stravné, auto)', account: '512', deduct: false, hint: 'vyúčtovanie pracovnej cesty: stravné a náhrada za súkromné auto zamestnanca', payable: '333' },
   representation: { name: 'Reprezentácia', account: '513', deduct: false, hint: 'jedlo a nápoje s klientmi, dary, pohostenie' },
   services: { name: 'Služby', account: '518', deduct: true, hint: 'nájom, telefón, internet, softvér, hosting, reklama, poradenstvo, kuriér' },
   fees: { name: 'Dane a poplatky', account: '538', deduct: false, hint: 'správne poplatky, kolky, diaľničná známka, miestne dane' },
@@ -102,7 +123,7 @@ export function entryFor(args: {
       : [{ md: '311', d: info.account, cents: totalCents, what: 'revenue' }]
   }
   if (info.revenue) return []
-  const contra = kind === 'invoice_in' ? '321' : (args.contra ?? (paidBy === 'private' ? '365' : paidBy === 'cash' ? '211' : '221'))
+  const contra = kind === 'invoice_in' ? (CATEGORIES[category].payable ?? '321') : (args.contra ?? (paidBy === 'private' ? '365' : paidBy === 'cash' ? '211' : '221'))
   const split = vatPayer && args.vatDeduct && vat > 0
   const lines: EntryLine[] = split
     ? [

@@ -117,8 +117,8 @@ export interface Payment {
 }
 
 export type DocStatus = 'reading' | 'read' | 'manual'
-/** How a document came: uploaded, by email, as an e-invoice, issued here, or as Firmony's own invoice to the client. */
-export type DocSource = 'upload' | 'email' | 'einvoice' | 'issued' | 'firmony' | 'takeover'
+/** How a document came: uploaded, by email, as an e-invoice, issued here, as Firmony's own invoice to the client, taken over, or a business trip settled here. */
+export type DocSource = 'upload' | 'email' | 'einvoice' | 'issued' | 'firmony' | 'takeover' | 'trip'
 
 export interface Doc {
   id: string
@@ -821,7 +821,8 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
 
 /**
  * What the accountant decided once for a supplier is proposed for its next documents: the category and whether
- * VAT is deducted. A rule wins over the reader's guess; a booked document is never changed by it.
+ * VAT is deducted. A rule wins over the reader's guess; a booked document is never changed by it, nor a business
+ * trip's settlement (owed to a person, whatever the person's name is on elsewhere).
  */
 export function ruleStatement(db: D1Database, company: string, doc: string, key: string | null): D1PreparedStatement {
   return db
@@ -830,7 +831,7 @@ export function ruleStatement(db: D1Database, company: string, doc: string, key:
          category = (SELECT category FROM supplier_rules WHERE company_id = ?1 AND key = ?2),
          vat_deduct = (SELECT vat_deduct FROM supplier_rules WHERE company_id = ?1 AND key = ?2),
          proposal = 'rule'
-       WHERE id = ?3 AND company_id = ?1 AND booked_at IS NULL AND EXISTS (SELECT 1 FROM supplier_rules WHERE company_id = ?1 AND key = ?2)`,
+       WHERE id = ?3 AND company_id = ?1 AND booked_at IS NULL AND source <> 'trip' AND EXISTS (SELECT 1 FROM supplier_rules WHERE company_id = ?1 AND key = ?2)`,
     )
     .bind(company, key ?? '', doc)
 }

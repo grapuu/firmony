@@ -20,7 +20,8 @@ over. Bring this section up to date first whenever a session ends.
    and two serious faults found and mended: one company's locked period stopped every company's automatic pairing, and
    a credit note issued in the app made no entry in the books. All of it under "Invoices the client issues" and item 8.
    An independent reviewer read the day's commits afterwards: nine findings, each verified and mended (schema step 48;
-   "Mended after the review of the invoices" under "Invoices the client issues"). **Nothing is live**: there
+   "Mended after the review of the invoices" under "Invoices the client issues"). Then business trips at home (cestovné
+   náhrady, schema step 49, "Business trips" under the client's app). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1252,6 +1253,46 @@ by itself.
   a rate that changes between the advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
   digital postman.
 
+### Business trips (18 October 2026; `src/app/trips.ts`, `trips-store.ts`, `src/views/trips.tsx`, schema step 49 `trips`)
+
+What an employee (or a director who is not employed) is owed for a trip in Slovakia, worked out by the app and kept as
+the company's document, so a company with many people travelling needs no spreadsheet and no accountant's arithmetic.
+
+- Read on 18 October 2026 (podnikajte.sk, "Cestovné náhrady v roku 2026", updated 27 July 2026, and "Konateľ s.r.o. a
+  cestovné náhrady"; Act No. 283/2002 Z. z.): the meal allowance for each calendar day by its hours, 5 to 12 hours
+  9,30 €, over 12 to 18 hours 13,80 €, over 18 hours 20,60 € (measure No. 280/2025 Z. z., from 1 December 2025), under
+  5 hours nothing; a meal given free cuts 25 % (breakfast), 40 % (lunch), 35 % (dinner) of the over-18-hours amount,
+  never below nothing; a private car 0,313 € a started kilometre (measure No. 340/2025 Z. z., from 1 January 2026) and
+  the fuel, km × consumption per 100 km (the vehicle's document) × the price of a litre (the receipt, else the
+  Statistical Office's average), each to the cent; a director not employed is owed the same (§ 1(1), (2)); the employer
+  settles within 10 working days (§ 36), the document's due day. The rates sit in `MEAL_RATES` and `CAR_RATES` with
+  the day each measure holds from: a new measure is one line (the meal allowance changes when prices rise 5 %).
+- "Pracovné cesty" (`/app/cesty`, from Doklady): any member enters a trip (`/app/cesty/nova`): a payroll employee (the
+  name and IBAN payroll keeps) or a name typed, an IBAN, the purpose, from and to, departure and return (typed
+  "14. 10. 2026 7:30"; not before 2026, not in the future, at most 31 days), the transport (a private car asks for km,
+  consumption, price and the plate; its fields hide by `:has()` otherwise), and whether any meal was free; only then
+  are the meals asked day by day, and a form that did not show the trip's days shows them first (`dni`, "Prepočítať").
+  Saved (`tripStatements`, one batch): the trip numbered in its year (`CP2026-001`), what it came to as worked out then
+  (`result` JSON), and a document (`source` 'trip', `invoice_in`, category 'allowance' 512 with `payable` 333 in
+  `CATEGORIES`, outside VAT altogether: `vat_mode` 'none', of the return's day in the books, due in 10 working days,
+  the traveller's IBAN, so "Na úhradu" offers it in a SEPA order); pairing runs at once (the payment to the employee
+  pairs by amount, name and IBAN). A trip owed nothing (under 5 hours, no private car) makes no document.
+- The books: `payableOf` puts the open item of such a document on 333 (Saldokonto shows "Zamestnanci: cestovné
+  náhrady, 333" when anything stands there) and its payment settles it from 333; the booking screen shows the
+  settlement as the original, with the entry 512 against 333; no supplier's rule is made of it or touches it
+  (`ruleStatement`, the form's "Zapamätať" off).
+- The settlement (`/app/cesty/:id`): the company, the traveller, purpose, places, transport and plate, departure,
+  return and the day settled, each day with its hours, allowance, cut (which meals) and what is owed, the car's two
+  parts, the total, the account, the rules it follows; printed or saved as PDF. Taken back (`/zrusit`) only while its
+  document is neither booked nor paired (the document is deleted with it, its number never given again); the
+  document's own "delete" leads to the trip. The yearly ZIP has `cesty.csv`; purge deletes the trips.
+- Not built: trips abroad (the ministry of finance's allowances by country, the currency), an advance before the trip,
+  costs proven by documents inside the settlement (tickets, accommodation, parking stay documents of their own: an
+  employee who paid them is the accountant's to book, 333), the company car's fuel (the company's own purchase), the
+  hour summer time adds or takes on its night, whether a director not employed is better booked on another account than
+  333 (practices differ; 333 is used), approving a trip before it is paid beyond the approvals of payment orders.
+  test/trips.runtime.mjs, units "Business trips at home" and the ledger's trip.
+
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
 
 Enable Banking asked 900 € a month (see 12:15 on 14 October). So the bank comes the ways that cost nothing, set once:
@@ -2023,8 +2064,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1159 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1650 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm test                 # 1172 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips
+npm run test:runtime     # 1665 workerd checks on Node 24 (as GitHub runs them), including test/trips.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
