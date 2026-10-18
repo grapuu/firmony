@@ -38,15 +38,15 @@ export interface Payable {
   /** The last order it is in, and that order's day of execution. */
   orderId: string | null
   orderedOn: string | null
-  /** Why it cannot go into an order: no IBAN, an IBAN that is none, another currency. */
-  blocked: 'iban' | 'currency' | null
+  /** Why it cannot go into an order: no IBAN, an IBAN that is none, another currency, not approved yet. */
+  blocked: 'iban' | 'currency' | 'approval' | null
 }
 
 /** The suppliers' invoices the company owes, the earliest due first. */
-export async function payables(db: D1Database, company: string): Promise<Payable[]> {
+export async function payables(db: D1Database, company: string, approvals = false): Promise<Payable[]> {
   const rows = await db
     .prepare(
-      `SELECT d.id, d.party, d.number, d.vs, d.party_iban, d.issued_on, d.due_on, d.total_cents, COALESCE(d.currency, 'EUR') AS currency,
+      `SELECT d.id, d.party, d.number, d.vs, d.party_iban, d.issued_on, d.due_on, d.total_cents, COALESCE(d.currency, 'EUR') AS currency, d.approved_at,
          (SELECT o.id FROM payment_order_items oi JOIN payment_orders o ON o.id = oi.order_id WHERE oi.document_id = d.id ORDER BY o.created_at DESC LIMIT 1) AS order_id,
          (SELECT o.execute_on FROM payment_order_items oi JOIN payment_orders o ON o.id = oi.order_id WHERE oi.document_id = d.id ORDER BY o.created_at DESC LIMIT 1) AS ordered_on
        FROM documents d
@@ -73,7 +73,7 @@ export async function payables(db: D1Database, company: string): Promise<Payable
       currency,
       orderId: str(r.order_id),
       orderedOn: str(r.ordered_on),
-      blocked: currency !== 'EUR' ? 'currency' : !iban || !isIban(iban) ? 'iban' : null,
+      blocked: currency !== 'EUR' ? 'currency' : !iban || !isIban(iban) ? 'iban' : approvals && typeof r.approved_at !== 'number' ? 'approval' : null,
     }
   })
 }

@@ -372,6 +372,26 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
             )}
           </section>
 
+          <section class="info" id="schvalovanie" aria-labelledby="schvalovanie-t">
+            <h2 id="schvalovanie-t" class="info__title">
+              {c.approvals}
+            </h2>
+            <p class="info__lead">{c.approvalsLead}</p>
+            {owner ? (
+              <form class="inline" method="post" action="/app/firma/schvalovanie">
+                <label class="tickbox">
+                  <input type="checkbox" name="zapnut" value="1" checked={company.approvals} />
+                  <span>{c.approvalsOn}</span>
+                </label>
+                <button class="btn btn--line btn--small" type="submit">
+                  {c.remindersSave}
+                </button>
+              </form>
+            ) : (
+              <p class="info__source">{c.approvalsState(company.approvals)}</p>
+            )}
+          </section>
+
           <section class="info" id="pripomienky" aria-labelledby="pripomienky-t">
             <h2 id="pripomienky-t" class="info__title">
               {c.reminders}

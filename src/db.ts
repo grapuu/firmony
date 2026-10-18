@@ -1189,6 +1189,13 @@ const MIGRATIONS: readonly string[][] = [
   // The customer's state on an invoice (18 October 2026): chosen on the form; without it, the state of the customer's
   // VAT number, else Slovakia (an export to a private person needs it).
   ['ALTER TABLE invoices ADD COLUMN customer_country TEXT'],
+  // Approving suppliers' invoices before they are paid (18 October 2026): a company's choice, and who approved a
+  // document when. Not the books' business: no period guard covers them.
+  [
+    'ALTER TABLE companies ADD COLUMN approvals INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE documents ADD COLUMN approved_at INTEGER',
+    'ALTER TABLE documents ADD COLUMN approved_by TEXT',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

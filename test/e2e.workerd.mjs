@@ -284,7 +284,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 44)
+check('health says the schema', (await res.json()).schema === 45)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -713,7 +713,9 @@ async function verifyBrowser(email, browserCookie) {
     await db.prepare("INSERT INTO auth_grants (id, user_id, kind, source, created_at, created_by, evidence, expires_at) VALUES (?, ?, 'enroll', 'admin', ?, ?, 'TEST-ONLY fixture identity', ?)")
       .bind(grant, user.id, Math.floor(Date.now() / 1000), adminId, Math.floor(Date.now() / 1000) + 3600).run()
   }
-  const api = jsonClient(mf, site, browserCookie, `203.0.113.${100 + authenticators.size}`)
+  // A connection of its own for each person (documentation ranges; past 155 people the next range, 198.51.100.x).
+  const n = authenticators.size
+  const api = jsonClient(mf, site, browserCookie, n < 155 ? `203.0.113.${100 + n}` : `198.51.100.${n - 154}`)
   const r = await api('/auth/options', { action: registering ? 'register' : 'authenticate', code, next: user.team ? '/ucto' : '/app' })
   if (r.status !== 200) throw new Error(`fixture options ${email}: ${r.status} ${await r.text()}`)
   const options = await r.json()
@@ -722,9 +724,13 @@ async function verifyBrowser(email, browserCookie) {
   if (confirmed.status !== 200) throw new Error(`fixture confirmation ${email}: ${confirmed.status} ${JSON.stringify(await confirmed.json())}; ${JSON.stringify(await db.prepare("SELECT detail FROM events WHERE action = 'auth.failed' ORDER BY rowid DESC LIMIT 1").first())}`)
   return { cookie: (confirmed.headers.get('set-cookie') ?? '').split(';')[0], location: (await confirmed.json()).to }
 }
+// Each person's sign-in from a connection of its own (TEST-NET-1), so the suite's many people stay under the limit
+// of sign-ins a connection may ask for in an hour (APP.signInsPerHour), which its own checks test.
+let signIns = 0
 async function emailOnly(email) {
   const n = (await sent()).length
-  await post('/app/prihlasenie', { email }, { ip: '203.0.113.30' })
+  signIns += 1
+  await post('/app/prihlasenie', { email }, { ip: `192.0.2.${(signIns % 250) + 1}` })
   await settle()
   const mail = (await sent())
     .slice(n)

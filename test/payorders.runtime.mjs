@@ -103,4 +103,36 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
     valid.errors?.map((e) => e.message).join(' | '),
   )
   check("another company's order is not found", (await client.get('/app/uhrady/00000000-0000-4000-8000-000000000000/xml')).status === 404)
+
+  // Approving before paying: an owner turns it on; an invoice goes into an order only once an owner approved it.
+  await db.batch([
+    db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-payorder-2', ?, 'payorder2@example.sk', 'TEST-ONLY Kolegyňa')").bind(nowS),
+    db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES (?, 'u-payorder-2', 'member', ?)").bind(company, nowS),
+  ])
+  const colleague = as((await signIn('payorder2@example.sk')).cookie)
+  check('only an owner turns approving on', (await colleague.post('/app/firma/schvalovanie', { zapnut: '1' })).status === 403)
+  res = await client.post('/app/firma/schvalovanie', { zapnut: '1' })
+  check('an owner turns it on', res.status === 303 && (await db.prepare('SELECT approvals FROM companies WHERE id = ?').bind(company).first())?.approvals === 1)
+  page = plain(await (await client.get('/app/uhrady')).text())
+  check('then nothing unapproved can be ticked: it waits for approval', !page.includes('value="po-1"') && !page.includes('value="po-2"') && page.includes('Čaká na schválenie'))
+  page = plain(await (await colleague.get('/app/doklady/po-1')).text())
+  check(
+    'a colleague sees that it waits and cannot approve it',
+    page.includes('Faktúra čaká na schválenie') && !page.includes('/app/doklady/po-1/schvalit') && (await colleague.post('/app/doklady/po-1/schvalit', {})).status === 403,
+  )
+  res = await client.post('/app/doklady/po-1/schvalit', {})
+  const approved = await db.prepare('SELECT approved_at, approved_by FROM documents WHERE id = ?').bind('po-1').first()
+  page = plain(await (await client.get('/app/doklady/po-1')).text())
+  check(
+    'an owner approves it, and the document says who did',
+    res.status === 303 && approved?.approved_by === 'u-payorder' && page.includes('Schválil(a) TEST-ONLY Platiteľka') && page.includes('/app/doklady/po-1/neschvalit'),
+  )
+  page = plain(await (await client.get('/app/uhrady')).text())
+  check('the approved one can go into an order, the other still waits', page.includes('value="po-1"') && !page.includes('value="po-2"'))
+  res = await order({ doklad: ['po-1', 'po-2'] })
+  const second = (res.headers.get('location') ?? '').match(/prikaz=([0-9a-f-]{36})/)?.[1] ?? ''
+  const secondItems = (await db.prepare('SELECT document_id FROM payment_order_items WHERE order_id = ?').bind(second).all()).results.map((r) => r.document_id)
+  check('and only it gets in, whatever was posted', res.status === 303 && JSON.stringify(secondItems) === '["po-1"]', JSON.stringify(secondItems))
+  await client.post('/app/doklady/po-1/neschvalit', {})
+  check('an approval taken back', (await db.prepare('SELECT approved_at FROM documents WHERE id = ?').bind('po-1').first())?.approved_at === null)
 }

@@ -65,6 +65,8 @@ export interface Company {
   taxAccount: string | null
   /** The excess deduction of the last period before ours that was not refunded, in cents: our first period deducts it. */
   vatCarry: number
+  /** Suppliers' invoices are paid only once an owner approved them (payment orders, payorders.ts). */
+  approvals: boolean
 }
 
 export type Team = 'accountant' | 'admin'
@@ -164,6 +166,9 @@ export interface Doc {
   reverseHint: ReverseGoods | null
   /** A final invoice: the base of the advances it deducts (cents), which the books move from 324 to the revenue. */
   advanceCents: number
+  /** A supplier's invoice approved for payment: when, and by whom. */
+  approvedAt: number | null
+  approvedByName: string | null
   /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
   ekasaUid: string | null
   ekasaOkp: string | null
@@ -187,7 +192,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' ? valu
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry,
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
 export function companyOf(row: Row): Company {
@@ -230,6 +235,7 @@ export function companyOf(row: Row): Company {
     taxOffice: isTaxOffice(row.tax_office) ? row.tax_office : null,
     taxAccount: str(row.tax_account),
     vatCarry: num(row.vat_carry) ?? 0,
+    approvals: row.approvals === 1,
   }
 }
 
@@ -293,8 +299,9 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents`
-export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name`
+export const DOC_FROM =
+  'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by'
 
 export function docOf(row: Row): Doc {
   return {
@@ -342,6 +349,8 @@ export function docOf(row: Row): Doc {
     modeHint: isVatMode(row.vat_hint) ? row.vat_hint : null,
     reverseHint: reverseOf(row.vat_reverse),
     advanceCents: typeof row.advance_cents === 'number' && row.advance_cents > 0 ? row.advance_cents : 0,
+    approvedAt: typeof row.approved_at === 'number' ? row.approved_at : null,
+    approvedByName: str(row.approved_by_name),
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),
   }

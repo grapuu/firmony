@@ -7,8 +7,17 @@ over. Bring this section up to date first whenever a session ends.
 1. **Where it stands.** The software is done: the client's app, the accountants' side, the books, VAT, payroll,
    the closing, billing, the contract online, the end of a contract and the investors' sign-up, closed as one
    circle in seven stages on 17 October 2026 ("Closing the loop" below). Everything is on GitHub, `grapuu/firmony`
-   (private), branch `main`, commit `76b81a0` or later; `claude/kruh` is the same commit. GitHub's checks (the
-   workflow "Checks": type check, units, runtime, visual, browser passkeys) passed on it. **Nothing is live**: there
+   (private), branch `main` (`claude/kruh` stays at `76b81a0`, the end of 17 October). GitHub's checks (the workflow
+   "Checks": type check, units, runtime, Peppol, visual, browser passkeys) pass on every commit pushed.
+   On 18 October 2026 (his word of the day before: every size of company, everything in our own software) came, each
+   with its checks and pushed: OSS and Intrastat in the filing bundle, eight fixes of an independent review, every
+   e-invoice validated against UBL 2.1 and the CEN and Peppol BIS 3.0 rules (`npm run test:peppol`), credit notes,
+   how an invoice is taxed (§ 43, § 47, § 15, outside), domestic reverse charge with the control statement's A.2 and
+   its corrections in C.1, advances (request, tax document issued by itself when the money comes, final invoice),
+   invoices in another currency, invoices repeated by themselves, payment orders for the bank (SEPA pain.001), the
+   customer's state, faster pages at volume; and two serious faults found and mended: one company's locked period
+   stopped every company's automatic pairing, and a credit note issued in the app made no entry in the books. All of it
+   under "Invoices the client issues" and item 8. **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1185,6 +1194,12 @@ by itself.
   (`/app/uhrady/:id/xml`); the bank's statement then pairs each payment as any payment. Purge deletes them.
   test/payorders.runtime.mjs (the file validated against the schema), units "Payment orders". Not built: an IBAN typed
   on the page for an invoice that has none, payment in another currency, a batch to the bank by its API.
+  Approving before paying (built 18 October 2026, schema step 45: `companies.approvals`, `documents.approved_at`,
+  `approved_by`): an owner turns "Schvaľovanie faktúr dodávateľov" on in Firma a nastavenia (#schvalovanie); then a
+  supplier's invoice goes into a payment order only once an owner approved it on its page ("Schváliť na úhradu",
+  `/app/doklady/:id/schvalit`, taken back by `/neschvalit`; it says who and when); a colleague sees that it waits.
+  Not the books' business: no period guard covers it. Not built: approvers other than the owners, limits by amount,
+  two approvals.
 - Found on the way (18 October 2026) and mended: automatic pairing asked the period lock of `p.id` and `d.id` inside
   subqueries that name their own `payments p` and `documents d`, so once any company had a locked period with a booked
   document or a payment in it, no company's payments paired by themselves any more (`linkStatement` now asks it of
@@ -1968,7 +1983,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1158 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1616 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm run test:runtime     # 1624 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

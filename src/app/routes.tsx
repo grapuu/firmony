@@ -326,6 +326,12 @@ function flashOf(c: Ctx): string | null {
       return t.company.removed
     case 'pripomienky':
       return t.company.remindersSaved
+    case 'schvalovanie':
+      return t.company.approvalsSaved
+    case 'schvalene':
+      return t.document.approvedFlash
+    case 'neschvalene':
+      return t.document.unapprovedFlash
     case 'vystavena':
       return t.invoices.issuedFlash
     case 'koncept':
@@ -953,7 +959,7 @@ async function payOrdersPage(c: Ctx, extra: { error?: string; day?: string; acco
   const who = c.get('who')
   const db = c.env.DB
   const [owed, orders, accounts] = await Promise.all([
-    payables(db, who.company.id),
+    payables(db, who.company.id, who.company.approvals),
     paymentOrders(db, who.company.id),
     db.prepare("SELECT id, iban FROM accounts WHERE company_id = ? AND COALESCE(currency, 'EUR') = 'EUR' ORDER BY rowid").bind(who.company.id).all<{ id: string; iban: string }>(),
   ])
@@ -995,7 +1001,7 @@ appRoutes.post('/uhrady', async (c) => {
   const executeOn = dayOfText(dayText)
   if (!executeOn || executeOn < today()) return again(t.payorders.errors.day)
   // Only what is owed and payable now, whatever was posted.
-  const items = (await payables(db, who.company.id)).filter((p) => !p.blocked && picked.has(p.id))
+  const items = (await payables(db, who.company.id, who.company.approvals)).filter((p) => !p.blocked && picked.has(p.id))
   if (items.length === 0) return again(t.payorders.errors.none)
   const id = crypto.randomUUID()
   await db.batch([
@@ -1026,12 +1032,33 @@ appRoutes.get('/doklady/:id', async (c) => {
   const d = ID.test(id) ? await getDocument(c.env.DB, who.company.id, id) : null
   if (!d) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
   const payment = d.paymentId ? await getPayment(c.env.DB, who.company.id, d.paymentId) : null
-  return shell(c, 'documents', d.party ?? t.documents.title, <DocumentPage d={d} payment={payment} today={today()} flash={flashOf(c)} />)
+  return shell(c, 'documents', d.party ?? t.documents.title, <DocumentPage d={d} payment={payment} today={today()} flash={flashOf(c)} approvals={who.company.approvals} owner={who.role === 'owner'} />)
 })
 
 /** Where to go back to: only a page of the app, never an address from outside. */
 function backTo(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^\/app\/[a-z]+\/[A-Za-z0-9-]{1,64}$/.test(value) ? value : fallback
+}
+
+/** An owner approves a supplier's invoice for payment, or takes the approval back. */
+for (const [path, approve] of [
+  ['/doklady/:id/schvalit', true],
+  ['/doklady/:id/neschvalit', false],
+] as const) {
+  appRoutes.post(path, async (c) => {
+    const who = c.get('who')
+    const id = c.req.param('id')
+    const d = ID.test(id) ? await getDocument(c.env.DB, who.company.id, id) : null
+    if (!d || d.kind !== 'invoice_in' || !who.company.approvals) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+    if (who.role !== 'owner') return shell(c, 'documents', t.errors.notFound, <Missing />, 403)
+    await c.env.DB.batch([
+      approve
+        ? c.env.DB.prepare('UPDATE documents SET approved_at = ?, approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL').bind(now(), who.user.id, id, who.company.id)
+        : c.env.DB.prepare('UPDATE documents SET approved_at = NULL, approved_by = NULL WHERE id = ? AND company_id = ?').bind(id, who.company.id),
+      eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: approve ? 'document.approved' : 'document.unapproved', subject: id }),
+    ])
+    return c.redirect(`/app/doklady/${id}?ok=${approve ? 'schvalene' : 'neschvalene'}`, 303)
+  })
 }
 
 appRoutes.post('/doklady/:id/odpojit', async (c) => {
@@ -1282,6 +1309,19 @@ appRoutes.post('/firma/pripomienky', async (c) => {
     eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: on ? 'reminders.on' : 'reminders.off' }),
   ])
   return c.redirect('/app/firma?ok=pripomienky#pripomienky', 303)
+})
+
+/** An owner turns approving suppliers' invoices on or off. */
+appRoutes.post('/firma/schvalovanie', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return shell(c, 'company', t.errors.notFound, <Missing />, 403)
+  const body = await c.req.parseBody()
+  const on = body.zapnut === '1'
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE companies SET approvals = ? WHERE id = ?').bind(on ? 1 : 0, who.company.id),
+    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: on ? 'approvals.on' : 'approvals.off' }),
+  ])
+  return c.redirect('/app/firma?ok=schvalovanie#schvalovanie', 303)
 })
 
 appRoutes.post('/firma/prepnut', async (c) => {

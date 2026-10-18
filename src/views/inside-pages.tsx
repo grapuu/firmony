@@ -948,7 +948,15 @@ const Paper: FC<{ d: Doc }> = ({ d }) => (
   </figure>
 )
 
-export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; flash?: string | null; error?: string | null }> = ({ d, payment, today, flash, error }) => {
+export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; flash?: string | null; error?: string | null; approvals?: boolean; owner?: boolean }> = ({
+  d,
+  payment,
+  today,
+  flash,
+  error,
+  approvals = false,
+  owner = false,
+}) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const outgoing = d.kind === 'invoice_out'
   return (
@@ -965,6 +973,25 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
       <Flash text={error} tone="error" />
       <div class="pgrid">
         <div class="pgrid__main" data-part="doc" data-live={d.status === 'reading' ? '1' : undefined}>
+          {approvals && d.kind === 'invoice_in' ? (
+            <section class="info" id="schvalenie" aria-labelledby="schvalenie-t">
+              <h2 id="schvalenie-t" class="info__title">
+                {app.document.approveTitle}
+              </h2>
+              {d.approvedAt ? (
+                <p class="info__lead">{app.document.approvedBy(d.approvedByName ?? '', dayName(dayOf(d.approvedAt), today))}</p>
+              ) : (
+                <p class="flag">{app.document.approveWaiting}</p>
+              )}
+              {owner ? (
+                <form method="post" action={`/app/doklady/${d.id}/${d.approvedAt ? 'neschvalit' : 'schvalit'}`}>
+                  <button class={`btn ${d.approvedAt ? 'btn--line' : 'btn--blue'}`} type="submit">
+                    {d.approvedAt ? app.document.unapprove : app.document.approve}
+                  </button>
+                </form>
+              ) : null}
+            </section>
+          ) : null}
           {d.status === 'reading' ? <p class="flag flag--ask">{app.document.reading}</p> : null}
           {d.status === 'manual' ? <p class="flag">{app.document.manual}</p> : null}
           {d.status === 'read' ? (
