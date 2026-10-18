@@ -162,7 +162,10 @@ export async function remindApprovals(env: AppBindings, ms: number, origin: stri
   const ring = bell.approve(`${origin}/app/schvalovanie`, `${origin}/app/firma#pripomienky`)
   for (const company of companies.results) {
     const docs = await db
-      .prepare(`SELECT d.total_cents, d.currency, d.first_approved_by, d.iban_by FROM documents d JOIN companies c ON c.id = d.company_id WHERE c.id = ? AND ${waiting} LIMIT 300`)
+      .prepare(
+        `SELECT d.total_cents, d.currency, d.first_approved_by, d.iban_by FROM documents d JOIN companies c ON c.id = d.company_id WHERE c.id = ? AND ${waiting}
+         ORDER BY COALESCE(d.due_on, d.issued_on, '9999'), d.created_at LIMIT 300`,
+      )
       .bind(company.id)
       .all<{ total_cents: number | null; currency: string | null; first_approved_by: string | null; iban_by: string | null }>()
     const people = await db

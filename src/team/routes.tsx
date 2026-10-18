@@ -4324,9 +4324,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
   const key = supplierKey(values.ico, values.party)
   const remembered = booking && values.remember && key !== null && isCategory(values.category) && values.kind !== 'invoice_out' && doc.source !== 'trip'
   if (remembered && key && isCategory(values.category)) {
-    // The centre the form leaves the document with is remembered too (none when the form had no centres).
-    const center = typeof body.stredisko === 'string' && ID.test(body.stredisko) ? body.stredisko : null
-    statements.push(ruleUpsertStatement(db, company.id, key, values.party || null, values.category, values.deduct, who.user.id, center))
+    // The centre the document is left with is remembered too (after the centre's own update above).
+    statements.push(ruleUpsertStatement(db, company.id, key, values.party || null, values.category, values.deduct, who.user.id, doc.id))
   }
   await db.batch(statements)
   const waiting = await bookingQueue(db, who.user, true, company.id)

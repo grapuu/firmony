@@ -1203,7 +1203,8 @@ appRoutes.post('/strediska/rozpocet', async (c) => {
     }
     return cents
   }
-  const budgets = centers.map((x) => ({ id: x.id, revenue: amount(`prijmy_${x.id}`), costs: amount(`naklady_${x.id}`) }))
+  // Only the centres the form showed: one restored meanwhile keeps the budget it had.
+  const budgets = centers.filter((x) => `prijmy_${x.id}` in body || `naklady_${x.id}` in body).map((x) => ({ id: x.id, revenue: amount(`prijmy_${x.id}`), costs: amount(`naklady_${x.id}`) }))
   if (Object.keys(errors).length > 0) return centersPage(c, { budget: { year, values, errors } }, 422)
   await db.batch([
     ...budgets.map((b) => budgetStatement(db, who.company.id, b.id, year, { revenue: b.revenue, costs: b.costs }, who.user.id)),

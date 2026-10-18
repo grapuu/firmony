@@ -1581,6 +1581,12 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     { meals: v },
   )
   check('a net below nought (vouchers of a month without wage) keeps the month back', unpaid[0].slip.net < 0 && payrollStore.monthIssues(unpaid).some((i) => i.issue === 'negative'), JSON.stringify(unpaid[0].slip.net))
+  const noMeals = payrollStore.monthSlips(
+    '2026-10',
+    [employee],
+    { period: '2026-10', payday: null, lines: [{ employeeId: 'm1', name: 'Mária', insurer: '25', gross: 0, parts: { ...payMonth.EMPTY_PARTS, wage: null, unpaidDays: 2200 } }], closedOn: null, closedByName: null },
+  )
+  check('a net below nought without meals (the minimum health advance topped up) closes as before', noMeals[0].slip.net < 0 && !payrollStore.monthIssues(noMeals).some((i) => i.issue === 'negative'), JSON.stringify(noMeals[0].slip.net))
   const prehlad = prehladUnit.prehladTotals('2026-10', [{ id: 'c', period: '2026-10', report_period: '2026-10', paid_on: '2026-11-10', lines: JSON.stringify(slips.map((l) => ({ employeeId: l.employeeId, gross: l.gross, slip: l.slip }))) }], '2026-11-20')
   check("the tax office's overview takes slips with meals", prehlad.issues.length === 0 && prehlad.employees === 3, JSON.stringify(prehlad.issues))
   const read = (text) => payrollForm.readParts({ jedla_m1: text }, 'm1', 'employment', 'monthly', 150000)

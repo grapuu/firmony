@@ -440,12 +440,13 @@ export function monthSlips(
 
 /**
  * What keeps an open month from being closed: a person's absences longer than the working time, a sick leave without a
- * daily base, a net below nought (the vouchers' part of a month without wage).
+ * daily base, a net below nought that the vouchers' part makes (a month of little wage): fewer meals mend it. A net below
+ * nought for anything else (the minimum health advance topped up on a small wage) closes as it did.
  */
 export const monthIssues = (slips: readonly SlipLine[]): { employeeId: string; name: string; issue: 'absence' | 'sickBase' | 'negative' }[] =>
   slips.flatMap((l) => [
     ...(l.pay?.issues ?? []).map((issue) => ({ employeeId: l.employeeId, name: l.name, issue })),
-    ...(l.slip.net < 0 ? [{ employeeId: l.employeeId, name: l.name, issue: 'negative' as const }] : []),
+    ...(l.slip.net < 0 && (l.slip.meals?.employee ?? 0) > 0 ? [{ employeeId: l.employeeId, name: l.name, issue: 'negative' as const }] : []),
   ])
 
 /** A month's sums, from its payslips. */

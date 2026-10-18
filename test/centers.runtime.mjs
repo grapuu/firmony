@@ -230,6 +230,31 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
   )
   page = plain(await (await acc.get(`/ucto/klienti/${company}`)).text())
   check("the client's page names the rule's centre", page.includes('stredisko SKLAD'))
+  res = await owner.post('/app/faktury', {
+    akcia: 'vystavit',
+    meno: 'TEST-ONLY Čistiareň s. r. o.',
+    ico: '50777861',
+    adresa: 'Dlhá 2, 040 01 Košice',
+    email: '',
+    vystavena: `${Number(day(-1).slice(8))}. ${Number(day(-1).slice(5, 7))}. ${day(-1).slice(0, 4)}`,
+    dodana: `${Number(day(-1).slice(8))}. ${Number(day(-1).slice(5, 7))}. ${day(-1).slice(0, 4)}`,
+    splatna: `${Number(day(13).slice(8))}. ${Number(day(13).slice(5, 7))}. ${day(13).slice(0, 4)}`,
+    iban: 'SK31 1200 0000 1987 4263 7541',
+    riadky: '1',
+    'r0-popis': 'Prenájom',
+    'r0-mnozstvo': '1',
+    'r0-jednotka': 'ks',
+    'r0-cena': '80,00',
+  })
+  const toSupplier = await db
+    .prepare('SELECT d.category, d.center_id, d.proposal FROM invoices i JOIN documents d ON d.id = i.document_id WHERE i.id = ?')
+    .bind(res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? '')
+    .first()
+  check(
+    'an invoice issued to a supplier with a rule keeps its revenue and no centre of the rule',
+    toSupplier?.category === 'sales' && toSupplier.center_id === null && toSupplier.proposal !== 'rule',
+    JSON.stringify(toSupplier),
+  )
 
   // Budgets of a year (owners): the report compares the months with their share of the year's.
   page = plain(await (await owner.get(`/app/strediska?rok=${year}`)).text())
@@ -249,4 +274,12 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
   check("a month's figures against a twelfth of the year's budget", page.includes('z rozpočtu 300,00 €:') && page.includes('z rozpočtu 100,00 €:'))
   page = plain(await (await colleague.get(`/app/strediska?rok=${year}`)).text())
   check('a colleague reads the budgets', page.includes('výnosy 3 600,00 €, náklady 1 200,00 €') && !page.includes(`name="prijmy_${shop}"`))
+  await owner.post('/app/strediska/rozpocet', { rok: year, [`prijmy_${shop}`]: '3 600', [`naklady_${shop}`]: '1 200', [`prijmy_${store}`]: '100', [`naklady_${store}`]: '50' })
+  res = await owner.post('/app/strediska/rozpocet', { rok: year, [`prijmy_${shop}`]: '3 600', [`naklady_${shop}`]: '1 300' })
+  const after = await budgets()
+  check(
+    'a centre the form did not show keeps its budget',
+    res.status === 303 && after.find((b) => b.center_id === store)?.revenue === 10000 && after.find((b) => b.center_id === shop)?.costs === 130000,
+    JSON.stringify(after),
+  )
 }

@@ -1414,6 +1414,15 @@ management of a medium or large company; the books stay as they are.
   books' payroll entry carries each centre's cost of work (`centerCosts`: the slip's cost of work and the social fund's
   allocation of its employees), and the report moves it from what is in common to the centre; the books' lines stay
   as they were.
+- Mended after an eighth independent review (18 October 2026, of commits 671144e, 58e3d07 and 0befdd6; each finding
+  verified first): a net below nought keeps a month back only when the vouchers' part makes it (the minimum health
+  advance topped up on a small wage closes as before); a supplier's rule never touches what the company issued (its own
+  invoice to a supplier who is also a customer, takings: `ruleStatement` leaves out source 'issued' and 'takings' and
+  kind invoice_out; before, such an invoice took the rule's cost category and made no entry); the rule remembers the
+  centre the document is left with, read after its own update; the budget form changes only the centres it showed; the
+  morning doorbell reads the queue's first 300 in its order; the handover's `pasky.csv` has the annual settlement's two
+  columns, so its columns make the net. Left as it is: meal settings are not kept per month (an open month is worked out
+  with today's, and a month is closed only while they meet its own bounds), the social fund rounds each line.
 - A centre on the invoice form (built 18 October 2026, `invoices.center_id` in schema step 60): a company with centres
   in use picks one on a new invoice ("Stredisko", not printed on the sheet); the invoice keeps it (drafts too) and its
   document takes it, else the centre of the invoice it comes from as before; a similar invoice, a repeat, a final
@@ -2333,8 +2342,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1232 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1813 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1233 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1815 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
