@@ -1,7 +1,7 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
-import { PERIOD_SCHEMA, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard } from './app/period-schema'
+import { PERIOD_SCHEMA, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
@@ -1399,6 +1399,36 @@ const MIGRATIONS: readonly string[][] = [
     }),
     ...['INSERT', 'UPDATE'].map(
       (action) => `CREATE TRIGGER wage_garnishments_purging_${action.toLowerCase()} BEFORE ${action} ON wage_garnishments
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+    ),
+  ],
+  // The proportional deduction of VAT (18 October 2026, vat-ratio.ts): a company's coefficient of a year and the year's
+  // settlement once confirmed; the coefficient a received document was deducted by, and an issued one left out of it.
+  [
+    `CREATE TABLE IF NOT EXISTS vat_ratios (
+      company_id TEXT NOT NULL,
+      year INTEGER NOT NULL CHECK (year BETWEEN 2000 AND 2100),
+      coef INTEGER NOT NULL CHECK (coef BETWEEN 0 AND 100),
+      how TEXT NOT NULL CHECK (how IN ('previous', 'estimate')),
+      settled TEXT CHECK (settled IS NULL OR json_valid(settled)),
+      settled_at INTEGER,
+      settled_by TEXT,
+      changed_at INTEGER NOT NULL,
+      changed_by TEXT NOT NULL,
+      PRIMARY KEY (company_id, year)
+    )`,
+    'ALTER TABLE documents ADD COLUMN vat_ratio INTEGER CHECK (vat_ratio IS NULL OR vat_ratio BETWEEN 0 AND 100)',
+    'ALTER TABLE documents ADD COLUMN ratio_skip INTEGER NOT NULL DEFAULT 0 CHECK (ratio_skip IN (0, 1))',
+    ...vatRatiosGuards,
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER vat_ratios_data_${action.toLowerCase()} AFTER ${action} ON vat_ratios BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map(
+      (action) => `CREATE TRIGGER vat_ratios_purging_${action.toLowerCase()} BEFORE ${action} ON vat_ratios
       WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
       BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
     ),

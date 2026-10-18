@@ -138,6 +138,12 @@ export const closingsGuardsWithoutDistribution: string[] = [
   guard('closings', 'UPDATE', `(${changed(['company_id', 'year', ...CLOSING_FIELDS])}) AND (${locked('OLD.company_id', "OLD.year || '-12-31'")} OR ${locked('NEW.company_id', "NEW.year || '-12-31'")})`),
 ]
 
+/**
+ * The proportional deduction's years (step 62, vat-ratio.ts): a year's coefficient and settlement change its last
+ * period's return and its books on 31 December, so nothing of a year changes once that day is locked.
+ */
+export const vatRatiosGuards: string[] = rowsGuard('vat_ratios', (r) => locked(`${r}.company_id`, `${r}.year || '-12-31'`))
+
 export const PERIOD_SCHEMA: string[] = [
   `CREATE TABLE period_locks (
     company_id TEXT PRIMARY KEY, through_on TEXT, version INTEGER NOT NULL CHECK (version > 0), change_id TEXT NOT NULL UNIQUE,

@@ -10,6 +10,7 @@ import type { LedgerLine } from '../app/ledger'
 import type { Exempt } from '../app/match'
 import type { Company, Doc, Message, Payment, User } from '../app/store'
 import type { VatStatus } from '../app/vat'
+import { coefText } from '../app/vat-ratio'
 import { TAX_OFFICES } from '../app/vat-xml'
 import { VatFields, type VatForm } from './vat'
 import { moneyText } from '../app/vat-form'
@@ -1203,6 +1204,10 @@ export interface BookValues {
   rate: string
   /** The cost centre picked on the form ('' none); the document's own when not given. */
   center?: string
+  /** A received document deducted in proportion by the year's coefficient (§ 50, vat-ratio.ts). */
+  ratio?: boolean
+  /** An issued document left out of the coefficient (§ 50(2)). */
+  ratioSkip?: boolean
 }
 
 /** What the form shows for a document: its own values, written the way they are typed. */
@@ -1226,6 +1231,8 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
     account: d.account ?? '',
     currency: d.currency ?? 'EUR',
     rate: d.fxRate ? d.fxRate.replace('.', ',') : '',
+    ratio: d.vatRatio !== null && d.vatRatio !== undefined,
+    ratioSkip: d.ratioSkip === true,
   }
 }
 
@@ -1469,11 +1476,24 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
                 <span>{t.book.deduct}</span>
               </label>
             ) : null}
+            {company.vatPayer && (company.vatRatios?.length ?? 0) > 0 && (values.kind === 'receipt' || values.kind === 'invoice_in') ? (
+              <label class="tickbox">
+                <input type="checkbox" name="pomerne" value="1" checked={values.ratio} />
+                <span>{d.vatRatio !== null && d.vatRatio !== undefined ? t.book.ratioWith(coefText(d.vatRatio)) : t.book.ratio}</span>
+              </label>
+            ) : null}
+            {company.vatPayer && (company.vatRatios?.length ?? 0) > 0 && values.kind === 'invoice_out' ? (
+              <label class="tickbox">
+                <input type="checkbox" name="mimo_koeficientu" value="1" checked={values.ratioSkip} />
+                <span>{t.book.ratioSkip}</span>
+              </label>
+            ) : null}
             <label class="tickbox">
               <input type="checkbox" name="remember" value="1" checked={values.remember} />
               <span>{t.book.remember}</span>
             </label>
           </div>
+          {errors.ratio ? <p class="field__error">{errors.ratio}</p> : null}
           <div class="entry" aria-live="polite">
             <p class="entry__title">
               <span>{t.book.entry}</span>

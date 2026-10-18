@@ -7458,3 +7458,13 @@ a.wtable__name {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* Pomerné odpočítanie dane (§ 50): where the year's coefficient comes from. */
+.ratio__how {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

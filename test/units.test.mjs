@@ -29,6 +29,8 @@ import {
   meals,
   socialFund,
   garnish,
+  vatRatio,
+  appStore,
   ledger,
   ledgerStore,
   dues,
@@ -1738,6 +1740,114 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
       heldSlips[0].slip.garnish[0].held === true &&
       ledger.reasonAccount({ amountCents: -12345, vs: null, note: null, exempt: 'payroll', exemptNote: null, partyIban: 'SK31 1200 0000 1987 4263 7541' }, [heldLp]) === '379' &&
       ledger.reasonAccount({ amountCents: -heldSlips[0].slip.garnish[0].arrears, vs: null, note: null, exempt: 'payroll', exemptNote: null, partyIban: null }, [heldLp]) === '331',
+  )
+}
+
+// The proportional deduction of VAT (18 October 2026, vat-ratio.ts): § 50 of Act No. 222/2004 Z. z.
+{
+  const r = vatRatio
+  check('a coefficient as the law writes it, or as a share; none above 1,00', r.coefOf('0,74') === 74 && r.coefOf('0.8') === 80 && r.coefOf('1,00') === 100 && r.coefOf('74 %') === 74 && r.coefOf('0') === 0 && r.coefOf('1,5') === null && r.coefOf('2') === null && r.coefOf('101 %') === null && r.coefOf('') === null)
+  check('written back as the law writes it', r.coefText(74) === '0,74' && r.coefText(100) === '1,00' && r.coefText(5) === '0,05')
+  check(
+    'the share rounded up to two decimal places (§ 50(1)): 0,7931 is 0,80, 0,121 and 0,129 are 0,13 (podnikajte.sk)',
+    r.coefOfShare(23000, 29000) === 80 && r.coefOfShare(121, 1000) === 13 && r.coefOfShare(129, 1000) === 13 && r.coefOfShare(80, 100) === 80 && r.coefOfShare(0, 100) === 0 && r.coefOfShare(5, 5) === 100 && r.coefOfShare(5, 0) === 0,
+  )
+  check('a part by the coefficient to the cent, a minus amount the same way', r.ratioCents(2300, 75) === 1725 && r.ratioCents(-2300, 75) === -1725 && r.ratioCents(150, 75) === 113 && r.ratioCents(-150, 75) === -113)
+  check(
+    "a document's lines in proportion: only those that deduct",
+    JSON.stringify(r.withRatio([{ rate: 23, base: 10000, vat: 2300, deduct: 2300 }, { rate: 0, base: 500, vat: 0, deduct: 0 }], 75)) === JSON.stringify([{ rate: 23, base: 10000, vat: 2300, deduct: 1725 }, { rate: 0, base: 500, vat: 0, deduct: 0 }]),
+  )
+  check('the year\'s last period', r.lastPeriodOfYear(2026, false) === '2026-12' && r.lastPeriodOfYear(2026, true) === '2026-Q4' && r.isLastOfYear('2026-Q4') && !r.isLastOfYear('2026-11'))
+
+  // A year: supplies with the right (domestic taxed, goods to the EU), exempt (rent), a sale of property left out, late
+  // interest (no supply), and supplier's invoices deducted in proportion (one credit note).
+  const company = { status: 'payer', quarterly: false, since: null }
+  let n = 0
+  const line = (rate, base, vat, deduct = 0) => ({ rate, base, vat, deduct })
+  const doc = (fields, mode, lines, extra = {}) => ({
+    id: `r${++n}`,
+    kind: 'invoice_out',
+    number: `R${n}`,
+    party: 'TEST-ONLY',
+    partyIco: '12345679',
+    issuedOn: '2026-05-10',
+    receivedOn: '2026-05-11',
+    totalCents: null,
+    vatCents: null,
+    currency: 'EUR',
+    category: 'sales',
+    vatDeduct: null,
+    booked: true,
+    vat: { mode, lines, suppliedOn: fields.issuedOn ?? '2026-05-10', vatId: 'SK2020000000', corrects: null, period: null, ...extra },
+    ...fields,
+  })
+  const docs = [
+    doc({}, 'domestic', [line(23, 60000, 13800)]),
+    doc({}, 'eu_goods', [line(0, 20000, 0)], { vatId: 'CZ12345678' }),
+    doc({}, 'domestic', [line(0, 25000, 0)]),
+    doc({ ratioSkip: true }, 'domestic', [line(23, 90000, 20700)]),
+    doc({ category: 'interest' }, 'outside', [line(0, 3000, 0)]),
+    doc({ issuedOn: '2025-12-20' }, 'domestic', [line(23, 99900, 22977)]),
+    doc({ kind: 'invoice_in', category: 'services', ratio: 75 }, 'domestic', [line(23, 10000, 2300, 1725), line(5, 2000, 100, 75)]),
+    doc({ kind: 'invoice_in', category: 'services', ratio: 75 }, 'domestic', [line(23, -2000, -460, -345)], { corrects: 'F1' }),
+    doc({ kind: 'invoice_in', category: 'services' }, 'domestic', [line(23, 5000, 1150, 1150)]),
+    doc({ kind: 'invoice_in', booked: false }, 'domestic', [line(23, 1000, 230, 230)]),
+  ]
+  const w = r.ratioWork(company, 2026, docs)
+  check(
+    "the year's coefficient: 800 € with the right of 1 050 €, the sale of property, late interest and another year left out, 0,77",
+    w.numerator === 80000 && w.denominator === 105000 && w.coef === 77 && w.skipped.length === 1 && w.deductible.length === 2 && w.exempt.length === 1,
+    JSON.stringify(w),
+  )
+  check(
+    'the settlement by rate: the VAT of the documents in proportion times the year\'s coefficient, less what they deducted; a document deducted whole is no part of it',
+    JSON.stringify(w.rates) ===
+      JSON.stringify([
+        { rate: 23, vat: 1840, deducted: 1380, due: 1417, settle: 37 },
+        { rate: 5, vat: 100, deducted: 75, due: 77, settle: 2 },
+      ]) && w.proportional.length === 2,
+    JSON.stringify(w.rates),
+  )
+  check('a document of the year not booked is said', w.unbooked.length === 1)
+  const settled = r.settledOf(w)
+  check('the settlement kept and read back the same', r.sameSettlement(r.settledFrom(JSON.parse(JSON.stringify(settled))), settled) && r.settleTotal(settled) === 39 && r.settledFrom({ coef: 101, numerator: 1, denominator: 1, rates: [] }) === null)
+  check(
+    'the years read back from the database, a broken one left out',
+    JSON.stringify(r.ratiosOf(JSON.stringify([{ year: 2026, coef: 75, how: 'previous', settled: settled, settledAt: 5, settledBy: 'Lucia' }, { year: 2027, coef: 120, how: 'previous' }]))) ===
+      JSON.stringify([{ year: 2026, coef: 75, how: 'previous', settled, settledAt: 5, settledByName: 'Lucia' }]),
+  )
+
+  // The return: the year's last period holds the settlement in rows 18 to 19, or is kept back until it is confirmed.
+  const ratios = (settle) => new Map([[2026, { coef: 75, settle }]])
+  const dec = vat.workOut({ ...company, ratios: ratios(null) }, '2026-12', [])
+  check('December waits for the settlement', dec.issues.some((i) => i.code === 'ratioSettle' && i.level === 'block'))
+  const nov = vat.workOut({ ...company, ratios: ratios(null) }, '2026-11', [])
+  check('another month does not', !nov.issues.some((i) => i.code === 'ratioSettle'))
+  const done = vat.workOut({ ...company, ratios: ratios(settled.rates) }, '2026-12', [])
+  check(
+    'confirmed: in the rows of its rates (19 for 23 %, 18a for 5 %), the result lowered, no line of the control statement',
+    done.rows.r19 === 37 && done.rows.r18a === 2 && done.rows.r33 === 39 && !done.issues.some((i) => i.code === 'ratioSettle') && done.ratio?.year === 2026 && done.kv.b2.length === 0,
+    JSON.stringify(done.rows),
+  )
+  const q4 = vat.workOut({ ...company, quarterly: true, ratios: ratios([{ rate: 23, settle: -500 }]) }, '2026-Q4', [])
+  check('a quarterly payer: the fourth quarter; less deducted raises the tax', q4.rows.r19 === -500 && q4.rows.r32 === 500)
+  check(
+    'the company as the return reads it carries its years',
+    appStore.vatCompanyOf({ vatStatus: 'payer', vatQuarterly: false, vatSince: null, vatRatios: [{ year: 2026, coef: 75, how: 'previous', settled, settledAt: 1, settledByName: null }] }).ratios.get(2026).settle[0].settle === 37 &&
+      appStore.vatCompanyOf({ vatStatus: 'payer', vatQuarterly: false, vatSince: null }).ratios === undefined,
+  )
+
+  // The books: the settlement on 31 December against 548.
+  const entryOf = (settle) =>
+    ledger
+      .buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'payer', vatRatios: [{ year: 2026, coef: 75, how: 'previous', settled: { ...settled, rates: settle }, settledAt: 1, settledByName: null }] }, docs: [], payments: [], banks: [], filed: [], manual: [] })
+      .entries.find((e) => e.key === 'koef:2026')
+  const more = entryOf(settled.rates)
+  const less = entryOf([{ rate: 23, vat: 0, deducted: 500, due: 0, settle: -500 }])
+  check(
+    'the books: more deducted is 343.100 against 548, less deducted 548 against 343.100, on 31 December',
+    more?.on === '2026-12-31' && more.lines[0].md === '343.100' && more.lines[0].d === '548' && more.lines[0].cents === 39 && less?.lines[0].md === '548' && less.lines[0].d === '343.100' && less.lines[0].cents === 500,
+    JSON.stringify([more, less]),
   )
 }
 

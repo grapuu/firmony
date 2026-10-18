@@ -11,6 +11,7 @@ import type { Company, Doc, User } from '../app/store'
 import { A2_UNITS, REVERSE_KINDS, ROWS, correctionKind, filingDeadline, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
 import { FORM_RATES, OSS_STATES, type FormRate, type VatErrorCode, type VatErrors, type VatValues } from '../app/vat-form'
 import { payable, periodName, type FilingPlan, type PeriodState, type PeriodView } from '../app/vat-store'
+import { coefText } from '../app/vat-ratio'
 import { totalOf, wholeEuros, type SvRow, type SvState, type SvView, type SvFiled, type SvSchedule } from '../app/vat-summary'
 import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
@@ -29,7 +30,7 @@ export function docLine(d: Doc): string {
   return parts.filter(Boolean).join(', ')
 }
 
-const DocLinks: FC<{ ids: string[]; docs: Map<string, Doc> }> = ({ ids, docs }) => {
+export const DocLinks: FC<{ ids: string[]; docs: Map<string, Doc> }> = ({ ids, docs }) => {
   const shown = ids.slice(0, 30)
   return (
     <ul class="vdocs">
@@ -89,6 +90,10 @@ const Issues: FC<{ company: Company; view: PeriodView; docs: Map<string, Doc> }>
         {i.doc ? (
           <a class="btn btn--line btn--small" href={`/ucto/doklady/${i.doc}`}>
             {v.open}
+          </a>
+        ) : i.code === 'ratioSettle' ? (
+          <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/dph/koeficient?rok=${view.period.slice(0, 4)}`}>
+            {t.ratio.open}
           </a>
         ) : null}
       </li>
@@ -179,6 +184,9 @@ const RowsCard: FC<{ view: PeriodView; docs: Map<string, Doc> }> = ({ view, docs
           </tbody>
         </table>
       )}
+      {view.result.ratio && view.result.ratio.rates.length > 0 ? (
+        <p class="info__source">{t.ratio.inRows(view.result.ratio.year, view.result.ratio.rates.map((r) => `${r.rate} %: ${formatEurExact(r.settle)}`).join(', '))}</p>
+      ) : null}
     </section>
   )
 }
@@ -615,6 +623,17 @@ export const VatPage: FC<VatPageProps> = (p) => {
                   <p class="info__lead">{t.book.ossHint}</p>
                   <a class="btn btn--line btn--small" href={`/ucto/klienti/${c.id}/dph/oss`}>
                     {t.oss.open}
+                  </a>
+                </section>
+              ) : null}
+              {c.vatStatus === 'payer' ? (
+                <section class="info" aria-labelledby="ratio-link-t">
+                  <h2 id="ratio-link-t" class="info__title">
+                    {t.ratio.title}
+                  </h2>
+                  <p class="info__lead">{(c.vatRatios?.length ?? 0) > 0 ? t.ratio.vatHintOn((c.vatRatios ?? []).map((r) => `${r.year}: ${coefText(r.coef)}`).join(', ')) : t.ratio.vatHint}</p>
+                  <a class="btn btn--line btn--small" href={`/ucto/klienti/${c.id}/dph/koeficient?rok=${p.view.period.slice(0, 4)}`}>
+                    {t.ratio.open}
                   </a>
                 </section>
               ) : null}

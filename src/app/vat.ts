@@ -28,8 +28,10 @@
 // - Takings of an eKasa till (18 October 2026; takings.ts): the day's takings by rate, in rows 01 to 04 (row 13 for
 //   what is exempt) and, as one total of the period, in D.1 of the control statement (the turnover of all tills, the
 //   base and VAT at the basic rate and at the reduced ones), not in A.1 or D.2.
-// - Not built: triangular trade (rows 11 to 12b), bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in
-//   another currency without their euro amounts.
+// - The proportional deduction (§ 50, 18 October 2026; vat-ratio.ts): a document deducted in proportion carries the
+//   coefficient's deduction in its lines; the year's settlement goes into rows 18 to 19 of its last period.
+// - Not built: triangular trade (rows 11 to 12b), bad debts (§ 25a, § 53b), documents in another currency without their
+//   euro amounts.
 import { CATEGORIES, type Category } from './booking'
 import type { DocKind } from './match'
 import { eurOf } from './fx'
@@ -132,6 +134,11 @@ export interface VatCompany {
   quarterly: boolean
   /** The day the registration took effect; documents before it are not the return's. */
   since: string | null
+  /**
+   * The proportional deduction (§ 50, vat-ratio.ts): each year the company deducts in proportion, its coefficient and,
+   * once the accountant confirmed it, the year's settlement by rate, which goes into the year's last period.
+   */
+  ratios?: ReadonlyMap<number, { coef: number; settle: readonly { rate: number; settle: number }[] | null }>
 }
 
 export interface VatDoc {
@@ -167,6 +174,10 @@ export interface VatDoc {
   vat: VatData | null
   /** The day's takings of an eKasa till (takings.ts): D.1 of the control statement, not A.1 or D.2. */
   takings?: boolean
+  /** A received document deducted in proportion (§ 50, vat-ratio.ts): the coefficient its deduction was worked out by. */
+  ratio?: number | null
+  /** An issued document § 50(2) leaves out of the coefficient (the sale of property used for business, and the like). */
+  ratioSkip?: boolean
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -672,6 +683,7 @@ export type IssueCode =
   | 'reverseGoods'
   | 'reverseThreshold'
   | 'reverseCorrection'
+  | 'ratioSettle'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
@@ -700,6 +712,8 @@ export interface PeriodResult {
   statement: boolean
   /** Why a payer files no control statement: a nil return, goods to the EU or exports alone, imports' VAT deducted alone, or both. */
   skip?: 'nothing' | 'goods' | 'import' | 'goodsImport' | null
+  /** The year's settlement of the proportional deduction in its last period (§ 50(4)), by rate, as it went into rows 18 to 19. */
+  ratio?: { year: number; rates: { rate: number; settle: number }[] } | null
 }
 
 export const emptyRows = (): Rows => Object.fromEntries(ROWS.map((row) => [row, 0])) as Rows
@@ -1064,6 +1078,19 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
   if (consumers) kv.d2 = d2
   if (tills) kv.d1 = d1
 
+  // The year's last period settles its proportional deduction (§ 50(4)) in rows 18 to 19, by rate, once the accountant
+  // confirmed it; until then it keeps the period back. The control statement has no line of it.
+  let ratio: PeriodResult['ratio'] = null
+  const year = Number(period.slice(0, 4))
+  const yearRatio = payer && (period.endsWith('-12') || period.endsWith('-Q4')) ? company.ratios?.get(year) : undefined
+  if (yearRatio) {
+    if (!yearRatio.settle) issue('block', 'ratioSettle', null)
+    else {
+      ratio = { year, rates: yearRatio.settle.filter((r) => r.settle !== 0 && DEDUCT_ROWS[r.rate]).map((r) => ({ rate: r.rate, settle: r.settle })) }
+      for (const r of ratio.rates) rows[DEDUCT_ROWS[r.rate] as Row] += r.settle
+    }
+  }
+
   // The result: row 17 is the tax, rows 32 to 35 what it comes to.
   rows.r17 = TAX_ROWS.reduce((sum, row) => sum + rows[row], 0)
   const result = rows.r17 - rows.r18 - rows.r18a - rows.r19 + rows.r25 + rows.r27 + rows.r28 + rows.r29 - rows.r30 - rows.r31
@@ -1100,6 +1127,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     nothing,
     statement: payer && skip === null,
     skip: payer ? skip : null,
+    ratio,
   }
 }
 

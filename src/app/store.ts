@@ -13,6 +13,7 @@ import { settingsOf, type IntrastatSettings } from './intrastat'
 import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
+import { ratiosOf, type RatioYear } from './vat-ratio'
 
 export interface Company {
   id: string
@@ -46,6 +47,8 @@ export interface Company {
   endsOn: string | null
   /** How the company keeps its stock (stock.ts): continuously (A), by its counts (B), or not at all. */
   stockMethod?: 'A' | 'B' | null
+  /** The years it deducts VAT in proportion (§ 50, vat-ratio.ts): each year's coefficient and, once confirmed, its settlement. */
+  vatRatios?: RatioYear[]
   /** How the company is registered for VAT: a payer (§ 4), a person registered under § 7a, or neither. */
   vatStatus: VatStatus
   /** A payer filing for a calendar quarter. */
@@ -193,6 +196,10 @@ export interface Doc {
   centerId?: string | null
   /** The day's takings of a till (takings.ts): the part paid in cash, the rest by card. */
   takingsCash?: number | null
+  /** A received document deducted in proportion (§ 50, vat-ratio.ts): the coefficient its deduction was worked out by. */
+  vatRatio?: number | null
+  /** An issued document § 50(2) leaves out of the coefficient. */
+  ratioSkip?: boolean
 }
 
 export interface Message {
@@ -223,7 +230,10 @@ export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdp
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
   c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.approval_two_from, c.dunning,
   c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type,
-  (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
+  (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method,
+  (SELECT json_group_array(json_object('year', r.year, 'coef', r.coef, 'how', r.how, 'settled', CASE WHEN json_valid(r.settled) THEN json(r.settled) END,
+     'settledAt', r.settled_at, 'settledBy', (SELECT u.name FROM users u WHERE u.id = r.settled_by)))
+     FROM vat_ratios r WHERE r.company_id = c.id) AS vat_ratios`
 
 export function companyOf(row: Row): Company {
   return {
@@ -257,6 +267,7 @@ export function companyOf(row: Row): Company {
     noticeSide: row.notice_side === 'firmony' ? 'firmony' : row.notice_at ? 'client' : null,
     endsOn: str(row.ends_on),
     stockMethod: row.stock_method === 'A' || row.stock_method === 'B' ? row.stock_method : null,
+    vatRatios: ratiosOf(row.vat_ratios),
     vatStatus: row.vat_payer === 1 ? 'payer' : row.vat_7a === 1 ? 'reg7a' : 'none',
     vatQuarterly: row.vat_payer === 1 && row.vat_quarterly === 1,
     vatSince: str(row.vat_since),
@@ -345,7 +356,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
   d.first_approved_at, d.first_approved_by, fa.name AS first_approved_by_name, d.iban_by,
-  d.center_id, d.takings_cash`
+  d.center_id, d.takings_cash, d.vat_ratio, d.ratio_skip`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
  * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
@@ -353,7 +364,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
 export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.status, d.kind, d.party, d.party_ico, d.number, d.issued_on, d.due_on,
   d.total_cents, d.vat_cents, d.currency, d.category, d.vat_deduct, d.account, d.booked_at, d.paid_privately, l.payment_id, d.supplied_on,
   d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse,
-  d.advance_cents, d.takings_cash`
+  d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_skip`
 export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
 export const DOC_FROM =
   'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by LEFT JOIN users fa ON fa.id = d.first_approved_by'
@@ -414,6 +425,8 @@ export function docOf(row: Row): Doc {
     ekasaOkp: str(row.ekasa_okp),
     centerId: str(row.center_id),
     takingsCash: num(row.takings_cash),
+    vatRatio: typeof row.vat_ratio === 'number' ? row.vat_ratio : null,
+    ratioSkip: row.ratio_skip === 1,
     cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }
@@ -473,11 +486,20 @@ export function vatDocOf(doc: Doc): VatDoc {
     booked: doc.bookedAt !== null,
     vat: doc.vat,
     takings: doc.source === 'takings',
+    ratio: doc.vatRatio ?? null,
+    ratioSkip: doc.ratioSkip === true,
   }
 }
 
 /** The VAT registration of a company, as the return reads it. */
-export const vatCompanyOf = (company: Company): VatCompany => ({ status: company.vatStatus, quarterly: company.vatQuarterly, since: company.vatSince })
+export const vatCompanyOf = (company: Company): VatCompany => ({
+  status: company.vatStatus,
+  quarterly: company.vatQuarterly,
+  since: company.vatSince,
+  ...(company.vatRatios && company.vatRatios.length > 0
+    ? { ratios: new Map(company.vatRatios.map((r) => [r.year, { coef: r.coef, settle: r.settled ? r.settled.rates.map((x) => ({ rate: x.rate, settle: x.settle })) : null }])) }
+    : {}),
+})
 
 /**
  * A moment's day in Bratislava, YYYY-MM-DD. One formatter for the whole Worker: making one is costly, and the VAT and

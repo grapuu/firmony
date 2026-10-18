@@ -33,7 +33,8 @@ over. Bring this section up to date first whenever a session ends.
    another day of supply failed the UBL schema); meals of employees in payroll, vouchers and the financial contribution
    (schema step 58, under "Payroll") and the social fund's mandatory allocation; a morning doorbell to approvers and
    budgets of cost centres (schema step 59); payroll by cost centre (schema step 60); deductions from wages for
-   executions (schema step 61, under "Payroll"). **Nothing is live**: there
+   executions (schema step 61, under "Payroll"); the proportional deduction of VAT by a coefficient (§ 50, schema step 62,
+   under "VAT: the return and the control statement"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1898,7 +1899,34 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   The payment to the customs office comes from the State Treasury (8180) and is taken as the state's: the accountant gives
   it the customs document's account. Not built: proposing an import by itself (the supplier's invoice from outside the
   EU is still proposed as a service from abroad: the accountant sets it "Bez DPH" and the customs declaration "Dovoz").
-- Not built: triangular trade, bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in another
+- The proportional deduction (built 18 October 2026, schema step 62 `vat_ratios`, `documents.vat_ratio`,
+  `documents.ratio_skip`; `src/app/vat-ratio.ts`, `src/views/vat-ratio.tsx`), for a payer with supplies exempt from VAT
+  (rent, financial or insurance services) that buys for both kinds. Read in the original on static.slov-lex.sk through
+  the browser pane, the version of 1 January 2026: § 49(4), § 50(1) to (5) (the coefficient rounded up to two decimal
+  places; the year's supplies with the right to deduct over all its supplies, without the sale of the business or of
+  property other than stock, occasional § 39 financial services, occasional real estate; during the year the year
+  before's, else an estimate with the tax office's consent; after the year the year's own and the difference settled in
+  its last period); the DPHv25 and KVDPH instructions (rows 18, 18a, 19 hold the deduction after the coefficient and the
+  settlement in the year's last period; B.1, B.2, B.3 the tax deducted after it, the settlement in no line); podnikajte.sk's
+  "Koeficient DPH" for its worked example (0,7931 is 0,80). `/ucto/klienti/:id/dph/koeficient?rok=` (from the VAT page's
+  side and from the blocking issue): the coefficient of a year (last, this or next, typed "0,74", from the year before
+  or estimated, the year before's settled one proposed), the year's supplies (`ratioWork`: issued documents of the
+  year's periods, booked; domestic taxed lines, reverse, § 43, § 15, § 47, abroad and OSS have the right, domestic 0 %
+  and exempt lines not; late interest is no supply; a document marked "Nezapočítať do koeficientu" on the booking screen
+  left out) and the settlement by rate (the VAT of the documents deducted in proportion times the year's coefficient,
+  less what they deducted). A received document is booked "Pomerne koeficientom (§ 50)" on the booking screen: each
+  line's deduction is its VAT times the coefficient of the year its deduction falls in, to the cent (`withRatio`),
+  refused without one; the books put the rest of its VAT into the cost. After the year, with every document of it booked,
+  the accountant confirms the settlement as the page showed it (`podpis`); kept with the year, it goes into rows 18 to
+  19 of December or the fourth quarter (`VatCompany.ratios`, `PeriodResult.ratio`; until then that period has the
+  blocking issue `ratioSettle`) and into the books on 31 December (`koef:<year>`: more deducted 343.100 against 548,
+  less 548 against 343.100; practices differ); a change of the year's documents afterwards is said ("Zmenené"); a year
+  whose 31 December is locked changes no more (`vatRatiosGuards`). Handover (`koeficienty-dph`) and purge carry it.
+  test/vat-ratio.runtime.mjs, units "The proportional deduction of VAT". Not built: the adjustment of investment property
+  over five or twenty years (§ 54 to § 54d), a fiscal year, a payer whose registration ends during the year.
+  Found on the way: since the full payroll of 17 October 2026 (ed07802) the VAT page and the closing page showed
+  payroll's sentence of what is not built (one text replaced in all three places); each says its own again.
+- Not built: triangular trade, bad debts (§ 25a, § 53b), documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
   Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
@@ -2381,8 +2409,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1259 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1837 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1276 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1857 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

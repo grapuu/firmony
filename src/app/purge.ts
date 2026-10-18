@@ -124,6 +124,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     db.prepare('DELETE FROM trips WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM cost_center_budgets WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM wage_garnishments WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM vat_ratios WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM cost_centers WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM invoices WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM messages WHERE company_id = ?').bind(companyId),

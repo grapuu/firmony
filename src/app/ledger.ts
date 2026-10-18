@@ -32,6 +32,7 @@ import { normalizeVs, type DocKind, type Exempt } from './match'
 import { bratislavaDay, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
 import { isIssued, periodRange, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
 import { groupedIban, periodName, rowsOf, type FiledReturn } from './vat-store'
+import { settleTotal } from './vat-ratio'
 
 // ---------------------------------------------------------------------------------------------------------------
 // The chart of accounts
@@ -939,6 +940,29 @@ export function buildBooks(input: LedgerInput): Books {
           })
         before = now.rows
       }
+    }
+  }
+
+  // The year's settlement of the proportional deduction (§ 50(4), vat-ratio.ts), once confirmed, on 31 December: more
+  // deducted lowers the costs (343.100 against 548), less deducted is a cost (548 against 343.100); the return of the
+  // year's last period then moves it to 343.300 with the rest of rows 18 to 19.
+  if (company.vatStatus === 'payer') {
+    for (const r of company.vatRatios ?? []) {
+      if (!r.settled) continue
+      const total = settleTotal(r.settled)
+      const end = `${r.year}-12-31`
+      if (total === 0 || !inBooks(end)) continue
+      entries.push({
+        key: `koef:${r.year}`,
+        on: end,
+        kind: 'vat',
+        number: `KOEF ${r.year}`,
+        text: `Vysporiadanie odpočítanej dane koeficientom za rok ${r.year} (§ 50 ods. 4)`,
+        docId: null,
+        paymentId: null,
+        manualId: null,
+        lines: [total > 0 ? { md: VAT_IN, d: '548', cents: total } : { md: '548', d: VAT_IN, cents: -total }],
+      })
     }
   }
 
