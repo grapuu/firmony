@@ -3113,6 +3113,22 @@ async function zipped(entries, note) {
     })
     const b = ledger.buildBooks({ company: company(), docs: [advance, final], payments: [pay('pa', '2026-09-10', 12300, { party: 'Zákazník s. r. o.' })], banks, filed: [], manual: [] })
     const on = (account) => ledger.balanceOf(b.entries, account, '2026-09-30')
+    // A credit note issued here keeps its minus in the total and its lines (credit notes of 18 October 2026).
+    const issuedCredit = doc('issued-credit', {
+      kind: 'invoice_out',
+      number: '20260004',
+      party: 'Zákazník s. r. o.',
+      issuedOn: '2026-09-26',
+      totalCents: -2460,
+      category: 'sales',
+      vat: vatData('domestic', [{ rate: 23, base: -2000, vat: -460, deduct: 0 }], { corrects: '20260003' }),
+    })
+    const c = ledger.buildBooks({ company: company(), docs: [final, issuedCredit], payments: [], banks, filed: [], manual: [] })
+    check(
+      'a credit note issued here books the invoice back: the revenue and the VAT lowered, the customer owes less',
+      ledger.balanceOf(c.entries, '602', '2026-09-30') === -18000 && ledger.balanceOf(c.entries, '343.200', '2026-09-30') === -1840 && ledger.balanceOf(c.entries, '311', '2026-09-30') === 9840,
+      JSON.stringify(c.entries.find((e) => e.key === 'd:issued-credit')?.lines),
+    )
     check(
       'an advance received is owed on 324 until the final invoice, which moves its base to the revenue: 324 nothing, the revenue the whole supply',
       on('324') === 0 && on('602') === -20000 && on('343.200') === -4600 && on('311') === 12300 && b.entries.find((e) => e.key === 'd:advance')?.lines.some((l) => l.d === '324' && l.cents === 10000),

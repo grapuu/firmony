@@ -387,16 +387,20 @@ interface Plan {
  * makes no entry.
  */
 function planOf(doc: Doc, company: Company, rates?: Rates, gross?: number): Plan | null {
-  if (!isAccountingDoc(doc.kind) || doc.totalCents === null || doc.totalCents <= 0) return null
+  if (!isAccountingDoc(doc.kind) || doc.totalCents === null || doc.totalCents === 0) return null
   const data = company.vatStatus === 'none' ? null : (vatOf(vatDocOf(doc), vatCompanyOf(company))?.data ?? null)
   const lines: { base: number; vat: number }[] = data ? data.lines : doc.linesHint
   const corrects = (data ? data.corrects : doc.correctsHint) ?? ''
   const credit = corrects !== '' && lines.reduce((sum, line) => sum + line.base + line.vat, 0) < 0
+  // A credit note read from a supplier's file is a plus with minus lines; one issued here keeps its minus in the total
+  // too. Either is the amount it takes back; a minus that corrects nothing makes no entry.
+  if (doc.totalCents < 0 && !credit) return null
+  const total = Math.abs(doc.totalCents)
   const on = data?.suppliedOn ?? doc.suppliedOn ?? doc.issuedOn ?? bratislavaDay(doc.createdAt)
   const currency = doc.currency ?? 'EUR'
   const foreign = currency !== 'EUR'
   const rate = foreign && gross === undefined ? (rateMicro(doc.fxRate) ?? (rates ? (rateFor(rates, currency, on)?.rate ?? null) : null)) : null
-  const amount = gross ?? (foreign ? (rate !== null ? eurOf(doc.totalCents, rate) : null) : doc.totalCents)
+  const amount = gross ?? (foreign ? (rate !== null ? eurOf(total, rate) : null) : total)
   if (amount === null) return { on, credit, gross: 0, expected: 0, data, foreign, rate: null, unrated: true }
   const expected = (doc.kind === 'invoice_out' ? 1 : -1) * (credit ? -1 : 1) * amount
   return { on, credit, gross: amount, expected, data, foreign, rate, unrated: false }
@@ -717,7 +721,7 @@ export function buildBooks(input: LedgerInput): Books {
       const account = doc.kind === 'invoice_out' ? '311' : '321'
       const item: OpenItem = { docId: doc.id, account, on: plan.on, dueOn: doc.dueOn, number: doc.number, party: doc.party, total: (plan.credit ? -1 : 1) * plan.gross, settled: 0 }
       items.set(doc.id, item)
-      if (plan.foreign && plan.rate !== null && doc.currency && doc.totalCents !== null) foreignOf.set(doc.id, { currency: doc.currency, cents: (plan.credit ? -1 : 1) * doc.totalCents })
+      if (plan.foreign && plan.rate !== null && doc.currency && doc.totalCents !== null) foreignOf.set(doc.id, { currency: doc.currency, cents: (plan.credit ? -1 : 1) * Math.abs(doc.totalCents) })
       // A received invoice the owner paid himself: the company owes it to him now.
       if (doc.kind === 'invoice_in' && !pay && doc.paidPrivately) {
         entries.push({
