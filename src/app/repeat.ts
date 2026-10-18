@@ -120,8 +120,8 @@ export async function repeatOfInvoice(db: D1Database, company: string, invoice: 
   return row ? repeatOf(row) : null
 }
 
-/** An issued invoice that may repeat: an invoice (not a credit note, a request, an advance or a final invoice). */
-export const mayRepeat = (invoice: StoredInvoice) => invoice.status === 'issued' && invoice.kind === 'invoice' && !invoice.relates && Boolean(invoice.number)
+/** An issued invoice that may repeat: an invoice (not a credit note, a request, an advance, a final invoice or late interest). */
+export const mayRepeat = (invoice: StoredInvoice) => invoice.status === 'issued' && invoice.kind === 'invoice' && !invoice.relates && !invoice.interestOf && Boolean(invoice.number)
 
 /** Starts a repeat of an invoice; one that runs per invoice (a unique index keeps it so). */
 export function startRepeatStatements(

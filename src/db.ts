@@ -1,7 +1,7 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
-import { PERIOD_SCHEMA, closingsGuardsWithoutDistribution, documentsUpdateGuardWith } from './app/period-schema'
+import { PERIOD_SCHEMA, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
@@ -1301,6 +1301,16 @@ const MIGRATIONS: readonly string[][] = [
       WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
       BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
     ),
+  ],
+  // After the review of reminders (18 October 2026): a locked period no longer stops sending or reminding an issued
+  // invoice (the guard holds the columns of the invoice as filed); late interest may be invoiced again for the days
+  // after the last invoice of it (each to its own last day, `interest_to`), and a credit note of an interest invoice
+  // carries the link too (the unique index counts invoices of interest only).
+  [
+    ...invoicesUpdateGuard,
+    'ALTER TABLE invoices ADD COLUMN interest_to TEXT',
+    'DROP INDEX IF EXISTS invoices_interest',
+    "CREATE UNIQUE INDEX IF NOT EXISTS invoices_interest ON invoices (interest_of, interest_to) WHERE interest_of IS NOT NULL AND status = 'issued' AND kind = 'invoice'",
   ],
 ]
 

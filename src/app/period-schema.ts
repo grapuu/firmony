@@ -84,6 +84,47 @@ export const documentsUpdateGuardWith = (columns: string[]): string[] => [
 ]
 
 /**
+ * The issued invoices' update guard made again (step 53) with the columns that make the invoice as filed and booked:
+ * its number, customer, days, amounts, taxation and currency. Sending it, reminding it, the customer's email typed to
+ * send it to and the count of reminders are no accounting case, and a locked period no longer stops them.
+ */
+const INVOICE_FIELDS = [
+  'id',
+  'company_id',
+  'status',
+  'year',
+  'seq',
+  'number',
+  'customer_name',
+  'customer_ico',
+  'customer_dic',
+  'customer_icdph',
+  'customer_address',
+  'customer_country',
+  'issued_on',
+  'delivered_on',
+  'due_on',
+  'base_cents',
+  'vat_cents',
+  'total_cents',
+  'document_id',
+  'kind',
+  'corrects',
+  'vat_mode',
+  'vat_reverse',
+  'relates',
+  'vs',
+  'payment_id',
+  'currency',
+  'fx_rate',
+  'interest_of',
+]
+export const invoicesUpdateGuard: string[] = [
+  'DROP TRIGGER IF EXISTS invoices_locked_update',
+  guard('invoices', 'UPDATE', `(${changed(INVOICE_FIELDS)}) AND ((OLD.status = 'issued' AND ${locked('OLD.company_id', 'OLD.issued_on')}) OR (NEW.status = 'issued' AND ${locked('NEW.company_id', 'NEW.issued_on')}))`),
+]
+
+/**
  * The closings' guards made again (step 36) so that a year's distribution, decided after the year by the general
  * meeting and booked on its own days, may be kept with a closing whose year is locked: the closing's own fields stay
  * guarded, the distribution's and the revision's do not, and an empty row may be made to hold it. The distribution's

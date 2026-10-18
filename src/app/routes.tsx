@@ -49,6 +49,7 @@ import {
   invoiceLines,
   linesOf,
   listInvoices,
+  ON_REQUEST_SQL,
   plainIban,
   isIban,
   saveInvoiceStatements,
@@ -86,7 +87,7 @@ import { TripFormPage, TripPage, TripsPage } from '../views/trips'
 import { CASH_KINDS, CASH_LIMIT, cashLines, isCashKind, lowestFrom, readCash, type CashErrors, type CashValues } from './cash'
 import { cashDocuments, cashPayments, cashStatements, pendingCashReceipts, removeCashStatements } from './cash-store'
 import { dataRevision } from './handover-store'
-import { FLAT_COMPENSATION, lateInterest, ratePercent, reminderDue } from './dunning'
+import { FLAT_COMPENSATION, lateInterest, ratePercent, REMIND_AFTER, reminderDue } from './dunning'
 import { centerCode, centerTotals } from './centers'
 import { addCenterStatements, archiveCenterStatement, documentCenters, documentCenterStatement, listCenters } from './centers-store'
 import { CentersPage } from '../views/centers'
@@ -2256,9 +2257,11 @@ appRoutes.get('/faktury/nova', async (c) => {
   }
   // "Vystaviť podobnú" starts from an earlier invoice of the company, its customer and its lines; a customer of an
   // earlier invoice starts from that customer alone. The days are today's, as on any new invoice.
-  const like = c.req.query('podla') ?? ''
+  let like = c.req.query('podla') ?? ''
   const from = like || (c.req.query('odberatel') ?? '')
   const earlier = ID.test(from) ? await getInvoice(c.env.DB, who.company.id, from) : null
+  // An invoice of late interest is made from its invoice paid late (/urok), never copied: only its customer is taken.
+  if (earlier?.interestOf) like = ''
   if (earlier) {
     values.customerName = earlier.customerName
     values.customerAddress = earlier.customerAddress ?? ''
@@ -2404,6 +2407,8 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
         iban: values.iban ? plainIban(values.iban) : null,
         documentId,
         credit: original ? { corrects: original.id, number: original.number, reason: values.reason ?? '' } : null,
+        // A credit note of an invoice of late interest takes the interest back (644) and says why it carries no VAT.
+        interestOf: original?.interestOf ?? null,
         kind: values.proforma && !original && !request ? 'proforma' : null,
         relates: request?.id ?? null,
         advanceCents,
@@ -2550,16 +2555,41 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
 
 /**
  * The late interest of an invoice paid late or still unpaid (dunning.ts): on what it asks for after its credit notes,
- * to the day it was paid or today; and the invoice of interest issued for it already. Null for anything else.
+ * to the day it was paid or today, from the day after the last day an invoice of interest counted (interest is invoiced
+ * once for each day); the invoices of interest issued for it already, and whether the flat compensation is still owed
+ * (once, with the first). An invoice of interest a credit note took back whole counts for neither. Null for anything else.
  */
 async function lateOf(db: D1Database, company: string, invoice: StoredInvoice, credits: { totalCents: number }[]): Promise<LateView | null> {
   if (invoice.kind !== 'invoice' || invoice.status !== 'issued' || invoice.interestOf || invoice.currency !== 'EUR' || !invoice.number) return null
   const principal = invoice.totalCents + credits.reduce((sum, c) => sum + c.totalCents, 0)
-  const interest = principal > 0 ? lateInterest(principal, invoice.dueOn, invoice.paidOn ?? today()) : null
-  const issued = await db.prepare("SELECT id, number FROM invoices WHERE company_id = ? AND interest_of = ? AND status = 'issued'").bind(company, invoice.id).first<{ id: string; number: string }>()
-  if (!interest && !issued) return null
-  return { interest, issued: issued ?? null, business: Boolean(invoice.customerIco || invoice.customerIcdph), principal }
+  const rows = (
+    await db
+      .prepare(
+        `SELECT i.id, i.number, i.issued_on, i.interest_to,
+           i.total_cents + COALESCE((SELECT SUM(c.total_cents) FROM invoices c WHERE c.company_id = i.company_id AND c.corrects = i.id AND c.kind = 'credit' AND c.status = 'issued'), 0) AS left_cents
+         FROM invoices i WHERE i.company_id = ? AND i.interest_of = ? AND i.status = 'issued' AND i.kind = 'invoice'
+         ORDER BY COALESCE(i.interest_to, i.issued_on), i.seq`,
+      )
+      .bind(company, invoice.id)
+      .all<{ id: string; number: string; issued_on: string; interest_to: string | null; left_cents: number }>()
+  ).results
+  const standing = rows.filter((r) => Number(r.left_cents) > 0)
+  const last = standing.at(-1)
+  // An invoice of interest made before its last day was kept counted to the day it was issued.
+  const since = last ? addDays(last.interest_to ?? last.issued_on, 1) : null
+  const interest = principal > 0 ? lateInterest(principal, invoice.dueOn, invoice.paidOn ?? today(), since) : null
+  if (!interest && rows.length === 0) return null
+  return {
+    interest,
+    issued: rows.map((r) => ({ id: r.id, number: r.number, to: r.interest_to, cancelled: Number(r.left_cents) <= 0 })),
+    flat: standing.length === 0,
+    business: Boolean(invoice.customerIco || invoice.customerIcdph),
+    principal,
+  }
 }
+
+/** What a late invoice's interest would bill now: interest of days not billed yet, or the flat compensation still owed. */
+const toBill = (late: LateView | null): late is LateView & { interest: NonNullable<LateView['interest']> } => Boolean(late?.interest && (late.interest.cents > 0 || late.flat))
 
 /** An invoice of the late interest and the flat compensation of an invoice paid late, to a business customer. */
 appRoutes.post('/faktury/:id/urok', async (c) => {
@@ -2573,8 +2603,10 @@ appRoutes.post('/faktury/:id/urok', async (c) => {
     await db.prepare("SELECT total_cents FROM invoices WHERE company_id = ? AND corrects = ? AND kind = 'credit' AND status = 'issued'").bind(who.company.id, invoice.id).all<{ total_cents: number }>()
   ).results.map((r) => ({ totalCents: Number(r.total_cents) }))
   const late = await lateOf(db, who.company.id, invoice, credits)
-  if (late?.issued) return c.redirect(`/app/faktury/${late.issued.id}`, 303)
-  if (!late?.interest || !late.business || !invoice.number) return invoicePage(c, invoice.id, { error: t.dunning.interestBusiness }, 422)
+  // Nothing more to bill and an invoice of interest there (a second click): that one.
+  const lastIssued = late?.issued.filter((i) => !i.cancelled).at(-1)
+  if (!toBill(late) && lastIssued) return c.redirect(`/app/faktury/${lastIssued.id}`, 303)
+  if (!toBill(late) || !late.business || !invoice.number) return invoicePage(c, invoice.id, { error: t.dunning.interestBusiness }, 422)
   const interest = late.interest
   const from = dayName(interest.from).replace(/\u00a0/g, ' ')
   const to = dayName(interest.to).replace(/\u00a0/g, ' ')
@@ -2582,7 +2614,10 @@ appRoutes.post('/faktury/:id/urok', async (c) => {
   const vatPayer = who.company.vatPayer
   const lines: Line[] = [
     ...(interest.cents > 0 ? [{ position: 1, description: t.dunning.interestLine(invoice.number, from, to), quantityMilli: 1000, unit: 'ks', unitCents: interest.cents, vatRate: 0, baseCents: interest.cents }] : []),
-    { position: interest.cents > 0 ? 2 : 1, description: t.dunning.flatLine(invoice.number), quantityMilli: 1000, unit: 'ks', unitCents: FLAT_COMPENSATION, vatRate: 0, baseCents: FLAT_COMPENSATION },
+    // The flat compensation once, with the first invoice of interest (§ 369c).
+    ...(late.flat
+      ? [{ position: interest.cents > 0 ? 2 : 1, description: t.dunning.flatLine(invoice.number), quantityMilli: 1000, unit: 'ks', unitCents: FLAT_COMPENSATION, vatRate: 0, baseCents: FLAT_COMPENSATION }]
+      : []),
   ]
   const issued = today()
   const due = addDays(issued, who.company.invoiceDueDays)
@@ -2598,7 +2633,7 @@ appRoutes.post('/faktury/:id/urok', async (c) => {
     delivered: issued,
     due,
     iban: invoice.iban ?? '',
-    note: t.dunning.interestNote(rates),
+    note: t.dunning.interestNote(rates, late.flat),
     lines: [],
     // Neither is a supply: outside VAT (O), said so on the sheet and in the e-invoice.
     mode: vatPayer ? 'outside' : 'domestic',
@@ -2622,14 +2657,22 @@ appRoutes.post('/faktury/:id/urok', async (c) => {
         iban: invoice.iban,
         documentId,
         interestOf: invoice.id,
+        interestTo: interest.to,
       }),
-      eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoice.interest', subject: newId, detail: { of: invoice.id, interest: interest.cents, flat: FLAT_COMPENSATION } }),
+      eventStatement(db, {
+        company: who.company.id,
+        user: who.user.id,
+        action: 'invoice.interest',
+        subject: newId,
+        detail: { of: invoice.id, from: interest.from, to: interest.to, interest: interest.cents, flat: late.flat ? FLAT_COMPENSATION : 0 },
+      }),
     ])
   } catch (err) {
-    // Issued already (a second click): the one there is.
+    // Issued already to the same day (a second click at once): the one there is.
     console.error('an interest invoice failed', err instanceof Error ? err.name : 'error')
     const there = await lateOf(db, who.company.id, invoice, credits)
-    if (there?.issued) return c.redirect(`/app/faktury/${there.issued.id}`, 303)
+    const made = there?.issued.filter((i) => !i.cancelled).at(-1)
+    if (made && !toBill(there)) return c.redirect(`/app/faktury/${made.id}`, 303)
     return invoicePage(c, invoice.id, { error: t.invoices.errors.form }, 409)
   }
   later(
@@ -2773,6 +2816,16 @@ appRoutes.post('/faktury/:id', async (c) => {
   return saveInvoice(c, id)
 })
 
+/** What an issued invoice still asks for: an invoice less its credit notes; anything else its total. */
+async function stillAsked(db: D1Database, company: string, invoice: StoredInvoice): Promise<number> {
+  if (invoice.kind !== 'invoice') return invoice.totalCents
+  const row = await db
+    .prepare("SELECT COALESCE(SUM(total_cents), 0) AS credited FROM invoices WHERE company_id = ? AND corrects = ? AND kind = 'credit' AND status = 'issued'")
+    .bind(company, invoice.id)
+    .first<{ credited: number }>()
+  return invoice.totalCents + Number(row?.credited ?? 0)
+}
+
 /** Sends the invoice to its customer, or reminds them of it; a reply goes to the person who sent it. */
 async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
   const who = c.get('who')
@@ -2787,11 +2840,15 @@ async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
     await db.prepare('UPDATE invoices SET customer_email = ? WHERE id = ? AND company_id = ? AND customer_email IS NULL').bind(typed, invoice.id, who.company.id).run()
     invoice.customerEmail = typed
   }
-  // A paid invoice is never reminded, nor a credit note, an advance's document or a final invoice its advances paid.
-  if (reminder && ['paid', 'credit'].includes(stateOf(invoice, today()))) return c.redirect(`/app/faktury/${invoice.id}`, 303)
+  // A paid invoice is never reminded, nor a credit note, an advance's document or a final invoice its advances paid; nor
+  // an invoice its credit notes took back whole, nor a request whose final invoice is issued (that one asks now). A
+  // reminder asks for what is left after the credit notes.
+  const asked = reminder ? await stillAsked(db, who.company.id, invoice) : invoice.totalCents
+  if (reminder && (['paid', 'credit'].includes(stateOf(invoice, today())) || asked <= 0 || (invoice.kind === 'proforma' && (await finalOf(db, who.company.id, invoice.id)))))
+    return c.redirect(`/app/faktury/${invoice.id}`, 303)
   if (!(await withinLimit(db, 'invoice-mail', who.company.id, 30, 3600))) return invoicePage(c, id, { error: t.messages.throttle }, 429)
   const link = `${siteOrigin(c)}/f/${invoice.token}`
-  const total = formatMoney(invoice.totalCents, invoice.currency).replace(/ /g, ' ')
+  const total = formatMoney(asked, invoice.currency).replace(/ /g, ' ')
   const due = dayName(invoice.dueOn).replace(/ /g, ' ')
   const iban = invoice.iban ? groupIban(invoice.iban) : null
   await db.batch([
@@ -2810,7 +2867,7 @@ async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
                 ? ti.mail.advanceSubject(invoice.number, who.company.name, who.company.vatPayer)
                 : ti.mail.subject(invoice.number, who.company.name),
       body: reminder
-        ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link, invoice.kind === 'proforma', invoice.vs ?? invoice.number)
+        ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link, invoice.kind === 'proforma', invoice.vs ?? invoice.number, asked !== invoice.totalCents)
         : invoice.kind === 'proforma'
           ? ti.mail.proformaBody(who.company.name, invoice.number, invoice.vs ?? '', total, due, iban, link)
           : invoice.kind === 'credit'
@@ -2892,15 +2949,38 @@ async function repeatScheduled(env: AppBindings, day: string): Promise<void> {
 /**
  * Reminders that go by themselves (dunning.ts): from nine in Bratislava, each overdue invoice of a company that turned
  * them on, sent to its customer by email before, gets its next reminder when its day has come (3, 14 and 30 days after
- * the due day, none within five days of another, one sent by hand too); each step once (the outbox key and the count).
+ * the due day, none within five days of the invoice mailed or another reminder, one sent by hand too); each step once
+ * (the outbox key and the count). Only an invoice nobody paid, that asks for something after its credit notes (and for
+ * what it asks), with no money on its symbol a person still has to pair, of a request without its final invoice, and
+ * only once the company's bank (a statement, a payment, a linked bank read) reaches the day before the step's day: a
+ * payment the bank has not told us of yet is no reason to remind. The query asks all of it, so a hundred invoices that
+ * are not due cannot keep the ones that are from their turn.
  */
 async function dunningScheduled(env: AppBindings, day: string): Promise<void> {
   const db = env.DB
+  const after = (n: number) => `CASE i.reminders WHEN 0 THEN ${REMIND_AFTER[0] - n} WHEN 1 THEN ${REMIND_AFTER[1] - n} ELSE ${REMIND_AFTER[2] - n} END`
   const rows = await db
     .prepare(
       `SELECT i.id, i.company_id FROM invoices i JOIN companies c ON c.id = i.company_id
-        WHERE c.dunning = 1 AND c.demo = 0 AND c.purged_at IS NULL AND i.status = 'issued' AND i.kind IN ('invoice', 'proforma') AND i.interest_of IS NULL
-          AND i.customer_email IS NOT NULL AND i.sent_at IS NOT NULL AND i.reminders < 3 AND i.due_on <= date(?, '-3 days')
+        WHERE c.dunning = 1 AND c.demo = 0 AND c.purged_at IS NULL AND c.closed_at IS NULL
+          AND i.status = 'issued' AND i.kind IN ('invoice', 'proforma') AND i.interest_of IS NULL
+          AND i.customer_email IS NOT NULL AND i.sent_at IS NOT NULL AND i.reminders < 3
+          AND i.due_on <= date(?1, '-' || (${after(0)}) || ' days')
+          AND date(max(i.sent_at, COALESCE(i.reminded_at, 0)), 'unixepoch') <= date(?1, '-5 days')
+          AND (CASE WHEN i.kind = 'proforma'
+                 THEN NOT EXISTS (SELECT 1 FROM payments p WHERE ${ON_REQUEST_SQL})
+                   AND NOT EXISTS (SELECT 1 FROM invoices f WHERE f.company_id = i.company_id AND f.relates = i.id AND f.kind = 'invoice' AND f.status = 'issued')
+                 ELSE i.total_cents <> 0
+                   AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = i.document_id)
+                   AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
+                   AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.company_id = i.company_id AND p.amount_cents > 0 AND p.booked_on >= i.issued_on
+                     AND ltrim(p.vs, '0') = ltrim(COALESCE(i.vs, i.number), '0') AND NOT EXISTS (SELECT 1 FROM links pl WHERE pl.payment_id = p.id))
+               END)
+          AND i.total_cents + COALESCE((SELECT SUM(cr.total_cents) FROM invoices cr WHERE cr.company_id = i.company_id AND cr.corrects = i.id AND cr.kind = 'credit' AND cr.status = 'issued'), 0) > 0
+          AND (SELECT max(COALESCE((SELECT MAX(p.booked_on) FROM payments p WHERE p.company_id = i.company_id), ''),
+                          COALESCE((SELECT MAX(s.to_on) FROM statements s WHERE s.company_id = i.company_id AND s.status IN ('taken', 'known')), ''),
+                          COALESCE((SELECT date(MAX(b.synced_at), 'unixepoch') FROM bank_links b WHERE b.company_id = i.company_id AND b.status = 'active'), '')))
+              >= date(i.due_on, '+' || (${after(1)}) || ' days')
         ORDER BY i.due_on LIMIT 100`,
     )
     .bind(day)
@@ -2912,8 +2992,11 @@ async function dunningScheduled(env: AppBindings, day: string): Promise<void> {
       const company = companies.get(row.company_id)
       const invoice = company ? await getInvoice(db, company.id, row.id) : null
       if (!company || !invoice?.number || !invoice.customerEmail || !serviceOpen(company, day) || stateOf(invoice, day) !== 'overdue') continue
-      const step = reminderDue(invoice.dueOn, invoice.reminders, day, invoice.remindedAt ? bratislava(invoice.remindedAt * 1000).day : null)
+      const contact = Math.max(invoice.sentAt ?? 0, invoice.remindedAt ?? 0)
+      const step = reminderDue(invoice.dueOn, invoice.reminders, day, contact > 0 ? bratislava(contact * 1000).day : null)
       if (step === null) continue
+      const asked = await stillAsked(db, company.id, invoice)
+      if (asked <= 0) continue
       const from = invoice.createdBy ? await db.prepare('SELECT email FROM users WHERE id = ?').bind(invoice.createdBy).first<{ email: string }>() : null
       const proforma = invoice.kind === 'proforma'
       await db.batch([
@@ -2926,12 +3009,13 @@ async function dunningScheduled(env: AppBindings, day: string): Promise<void> {
           body: ti.mail.reminderBody(
             company.name,
             invoice.number,
-            formatMoney(invoice.totalCents, invoice.currency).replace(/\u00a0/g, ' '),
+            formatMoney(asked, invoice.currency).replace(/\u00a0/g, ' '),
             dayName(invoice.dueOn).replace(/\u00a0/g, ' '),
             invoice.iban ? groupIban(invoice.iban) : null,
             `${BRAND.origin}/f/${invoice.token}`,
             proforma,
             invoice.vs ?? invoice.number,
+            asked !== invoice.totalCents,
           ),
         }),
         eventStatement(db, { company: company.id, user: null, action: 'invoice.dunned', subject: invoice.id, detail: { step } }),

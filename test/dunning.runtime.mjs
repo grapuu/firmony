@@ -1,20 +1,26 @@
 // Reminders and late interest (18 October 2026), in workerd: an invoice to a business forty days overdue shows its
-// late interest; issued in one click as an invoice of the interest and the flat 40 € outside VAT (once); an owner turns
-// the reminders on, and the schedule sends the reminder, the second and the third on their days, five days apart.
+// late interest; issued in one click as an invoice of the interest and the flat 40 € outside VAT (once); interest of
+// later days is invoiced again without the flat 40 €, and an invoice of interest a credit note took back counts for
+// nothing; an invoice of interest is never copied or repeated. An owner turns the reminders on, and the schedule sends
+// the reminder, the second and the third on their days, five days apart, only once the bank reaches the day and five
+// days after the invoice was mailed, past a hundred invoices that are not due, in a locked period too; an invoice
+// credited whole is not reminded, one credited in part for what is left, a request with its final invoice never.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
-export async function checkDunning({ db, nowS, signIn, as, day, tick, capture }) {
+export async function checkDunning({ db, nowS, lucia, signIn, as, day, tick, capture }) {
   const company = 'co-dunning'
   const plain = (text) => text.replace(/[  ]/g, ' ')
   const sk = (d) => `${Number(d.slice(8))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
+  const GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna', 'júla', 'augusta', 'septembra', 'októbra', 'novembra', 'decembra']
+  const long = (d) => `${Number(d.slice(8))}. ${GEN[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`
   const idOf = (res) => res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
   await db.batch([
     db
       .prepare(
-        "INSERT INTO companies (id, created_at, name, ico, dic, icdph, address, vat_payer, vat_since, plan, inbox, start_on) VALUES (?, ?, 'TEST-ONLY Upomienky s. r. o.', '50777850', '2120777850', 'SK2120777850', 'Hlavná 17, 811 01 Bratislava', 1, '2026-01-01', 'firma', 'upom0001', '2026-01-01')",
+        "INSERT INTO companies (id, created_at, name, ico, dic, icdph, address, vat_payer, vat_since, plan, inbox, start_on, accountant_id) VALUES (?, ?, 'TEST-ONLY Upomienky s. r. o.', '50777850', '2120777850', 'SK2120777850', 'Hlavná 17, 811 01 Bratislava', 1, '2026-01-01', 'firma', 'upom0001', '2026-01-01', ?)",
       )
-      .bind(company, nowS),
+      .bind(company, nowS, lucia.id),
     db
       .prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-dunning', ?, 'dunning@example.sk', 'TEST-ONLY Vymáhačka'), ('u-dunning-2', ?, 'dunning2@example.sk', 'TEST-ONLY Kolega')")
       .bind(nowS, nowS),
@@ -85,13 +91,86 @@ export async function checkDunning({ db, nowS, signIn, as, day, tick, capture })
   )
   res = await owner.post(`/app/faktury/${invoiceId}/urok`, {})
   check(
-    'asked again, the one there is',
+    'asked again the same day, the one there is',
     res.status === 303 &&
       (res.headers.get('location') ?? '').endsWith(`/app/faktury/${interestId}`) &&
       (await db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE interest_of = ?').bind(invoiceId).first())?.n === 1,
   )
   page = plain(await (await owner.get(`/app/faktury/${invoiceId}`)).text())
-  check('the invoice leads to it', page.includes(`Faktúra na úrok z omeškania: ${interest?.number}`))
+  check(
+    'the invoice leads to it, with the day its interest counts to, and asks for nothing more today',
+    page.includes(`Faktúra na úrok z omeškania: ${interest?.number}, úrok do ${long(day(0)).replace(` ${day(0).slice(0, 4)}`, '')}`) && !page.includes(`action="/app/faktury/${invoiceId}/urok"`),
+  )
+  check('kept with its last day', (await db.prepare('SELECT interest_to FROM invoices WHERE id = ?').bind(interestId).first())?.interest_to === day(0))
+  page = plain(await (await owner.get(`/app/faktury/${interestId}`)).text())
+  const copied = plain(await (await owner.get(`/app/faktury/nova?podla=${interestId}`)).text())
+  check(
+    'an invoice of interest is never copied or repeated: only its customer is taken',
+    !page.includes(`nova?podla=${interestId}`) &&
+      !page.includes('id="opakovanie"') &&
+      (await owner.post(`/app/faktury/${interestId}/opakovat`, { kazdy: 'month', od: sk(day(30)) })).status === 404 &&
+      copied.includes('TEST-ONLY Neplatič s. r. o.') &&
+      !copied.includes('Úrok z omeškania z faktúry'),
+  )
+  // Ten days later (its last day moved back ten days): the interest of those days, without the flat compensation.
+  await db.prepare('UPDATE invoices SET interest_to = ? WHERE id = ?').bind(day(-10), interestId).run()
+  page = plain(await (await owner.get(`/app/faktury/${invoiceId}`)).text())
+  check(
+    'later days are offered again, without the 40 €',
+    page.includes('Úrok z omeškania za 10 dní') && page.includes('Vystaviť faktúru na ďalší úrok') && !page.includes('paušálna náhrada nákladov 40 €'),
+  )
+  res = await owner.post(`/app/faktury/${invoiceId}/urok`, {})
+  const secondId = idOf(res)
+  const second = await db.prepare('SELECT interest_of, interest_to, total_cents, note FROM invoices WHERE id = ?').bind(secondId).first()
+  const secondLines = (await db.prepare('SELECT description, base_cents FROM invoice_lines WHERE invoice_id = ? ORDER BY position').bind(secondId).all()).results
+  check(
+    'the second invoice of interest: those ten days alone, no flat compensation, to today',
+    res.status === 303 &&
+      secondId !== interestId &&
+      second?.interest_of === invoiceId &&
+      second.interest_to === day(0) &&
+      secondLines.length === 1 &&
+      plain(secondLines[0].description).includes(`za ${long(day(-9))} až ${long(day(0))}`) &&
+      second.total_cents === secondLines[0].base_cents &&
+      second.total_cents > 0 &&
+      !plain(second.note).includes('paušálna'),
+    JSON.stringify([second, secondLines]),
+  )
+  // A credit note takes the second back whole: its days are offered again, still without the 40 €.
+  res = await owner.post('/app/faktury', {
+    akcia: 'vystavit',
+    dobropis: secondId,
+    meno: 'x',
+    vystavena: sk(day(0)),
+    dodana: sk(day(0)),
+    splatna: sk(day(14)),
+    riadky: '1',
+    'r0-popis': 'Úrok omylom',
+    'r0-mnozstvo': '1',
+    'r0-jednotka': 'ks',
+    'r0-cena': (second.total_cents / 100).toFixed(2).replace('.', ','),
+    'r0-dph': '0',
+    dovod: 'Úrok bol vyfakturovaný omylom',
+  })
+  const creditId = idOf(res)
+  const credit = await db.prepare('SELECT kind, interest_of, interest_to, total_cents, document_id FROM invoices WHERE id = ?').bind(creditId).first()
+  const creditDoc = await db
+    .prepare('SELECT category FROM documents WHERE id = ?')
+    .bind(credit?.document_id ?? '')
+    .first()
+  page = plain(await (await owner.get(`/app/faktury/${invoiceId}`)).text())
+  check(
+    'its credit note is interest too (644), and the days it took back are offered again',
+    credit?.kind === 'credit' &&
+      credit.interest_of === invoiceId &&
+      credit.interest_to === null &&
+      credit.total_cents === -second.total_cents &&
+      creditDoc?.category === 'interest' &&
+      page.includes('zrušená dobropisom') &&
+      page.includes('Úrok z omeškania za 10 dní') &&
+      !page.includes('paušálna náhrada nákladov 40 €'),
+    JSON.stringify([credit, creditDoc]),
+  )
 
   // Reminders by themselves.
   check('only an owner turns the reminders on', (await colleague.post('/app/faktury/upomienky', { zapnut: '1' })).status === 403)
@@ -100,16 +179,126 @@ export async function checkDunning({ db, nowS, signIn, as, day, tick, capture })
   res = await owner.post('/app/faktury/upomienky', { zapnut: '1' })
   check('an owner turns them on', res.status === 303 && (await db.prepare('SELECT dunning FROM companies WHERE id = ?').bind(company).first())?.dunning === 1)
   const nine = Date.parse(`${day(0)}T09:30:00Z`)
-  const mails = async () => (await db.prepare("SELECT id, subject FROM outbox WHERE recipient = 'neplatic@example.sk' AND id LIKE 'invoice:dun:%' ORDER BY created_at, id").all()).results
+  const mails = async (to = 'neplatic@example.sk') =>
+    (await db.prepare("SELECT id, subject, body FROM outbox WHERE recipient = ? AND id LIKE 'invoice:dun:%' ORDER BY created_at, id").bind(to).all()).results
+  const late = (email, extra = {}) =>
+    owner.post('/app/faktury', {
+      akcia: 'vystavit',
+      ico: '50123456',
+      meno: 'TEST-ONLY Neplatič s. r. o.',
+      adresa: 'Dlhá 1, 040 01 Košice',
+      icdph: 'SK2120000000',
+      email,
+      vystavena: sk(day(-60)),
+      dodana: sk(day(-60)),
+      splatna: sk(day(-40)),
+      iban: 'SK31 1200 0000 1987 4263 7541',
+      riadky: '1',
+      'r0-popis': 'Služba',
+      'r0-mnozstvo': '1',
+      'r0-jednotka': 'ks',
+      'r0-cena': '1000,00',
+      'r0-dph': '23',
+      ...extra,
+    })
+  const creditOf = (id, cena) =>
+    owner.post('/app/faktury', {
+      akcia: 'vystavit',
+      dobropis: id,
+      meno: 'x',
+      vystavena: sk(day(0)),
+      dodana: sk(day(0)),
+      splatna: sk(day(14)),
+      riadky: '1',
+      'r0-popis': 'Zľava',
+      'r0-mnozstvo': '1',
+      'r0-jednotka': 'ks',
+      'r0-cena': cena,
+      'r0-dph': '23',
+      dovod: 'Zľava za oneskorenie',
+    })
+  // One credited in part, one credited whole, a request whose final invoice is issued: each mailed to its customer.
+  const partId = idOf(await late('dobropis@example.sk'))
+  await creditOf(partId, '500,00')
+  const wholeId = idOf(await late('cely@example.sk'))
+  await creditOf(wholeId, '1000,00')
+  const requestId = idOf(await late('zaloha@example.sk', { druh: 'zalohova' }))
+  for (const id of [partId, wholeId, requestId]) await owner.post(`/app/faktury/${id}/poslat`, {})
+  const finalRes = await owner.post('/app/faktury', {
+    akcia: 'vystavit',
+    vyuctovanie: requestId,
+    meno: 'TEST-ONLY Neplatič s. r. o.',
+    ico: '50123456',
+    icdph: 'SK2120000000',
+    adresa: 'Dlhá 1, 040 01 Košice',
+    vystavena: sk(day(0)),
+    dodana: sk(day(0)),
+    splatna: sk(day(14)),
+    iban: 'SK31 1200 0000 1987 4263 7541',
+    riadky: '1',
+    'r0-popis': 'Služba',
+    'r0-mnozstvo': '1',
+    'r0-jednotka': 'ks',
+    'r0-cena': '1000,00',
+    'r0-dph': '23',
+  })
+  check(
+    'the request got its final invoice',
+    finalRes.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE relates = ? AND kind = 'invoice' AND status = 'issued'").bind(requestId).first())?.n === 1,
+  )
+  // The months of the invoices locked by the accountant: reminders are no change of the books.
+  const monthEnd = (d) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)), 0)).toISOString().slice(0, 10)
+  await db
+    .prepare("INSERT INTO period_locks (company_id, through_on, version, change_id, changed_at, changed_by, reason) VALUES (?, ?, 1, 'lock-co-dunning', ?, ?, 'TEST-ONLY uzávierka')")
+    .bind(company, monthEnd(day(-60)), nowS, lucia.id)
+    .run()
+  // Mailed six days ago, but the bank has told nothing of the days after the due day: no reminder yet.
+  await db.prepare('UPDATE invoices SET sent_at = sent_at - 6 * 86400 WHERE company_id = ? AND sent_at IS NOT NULL').bind(company).run()
   await tick(nine)
+  check(
+    'no reminder while the bank has not reached the days after the due day',
+    (await mails()).length === 0 && (await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first())?.reminders === 0,
+  )
+  await db
+    .prepare(
+      "INSERT INTO statements (id, company_id, account_id, iban, created_at, source, from_on, to_on, status) VALUES ('st-dunning', ?, 'acc-dunning', 'SK3112000000198742637541', ?, 'upload', ?, ?, 'taken')",
+    )
+    .bind(company, nowS, day(-70), day(-1))
+    .run()
+  await db.prepare('UPDATE invoices SET sent_at = ? WHERE id = ?').bind(nowS, invoiceId).run()
+  await tick(nine + 30_000)
+  check('nor within five days of the invoice mailed', (await mails()).length === 0)
+  await db.prepare('UPDATE invoices SET sent_at = sent_at - 6 * 86400 WHERE id = ?').bind(invoiceId).run()
+  // A hundred older invoices reminded by hand today: not due, so they keep nobody from a turn.
+  await db
+    .prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
+       INSERT INTO invoices (id, company_id, created_at, status, year, seq, number, customer_name, issued_on, delivered_on, due_on, base_cents, vat_cents, total_cents, token, kind, customer_email, sent_at, reminders, reminded_at)
+       SELECT 'starve-' || i, ?1, ?2, 'issued', 2026, 9000 + i, 'S' || i, 'TEST-ONLY Iný', ?4, ?4, ?3, 100, 0, 100, 'tok-starve-' || i, 'invoice', 'starve@example.sk', ?2 - 864000, 1, ?2 FROM n`,
+    )
+    .bind(company, nowS, day(-80), day(-20))
+    .run()
+  await tick(nine + 60_000)
   let sent = await mails()
   let row = await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first()
   check(
-    'the schedule sends the first reminder of an overdue invoice',
+    'the schedule sends the first reminder of an overdue invoice, past a hundred not due, in a locked month',
     sent.length === 1 && sent[0].subject === `Pripomienka: faktúra ${number} od TEST-ONLY Upomienky s. r. o.` && row?.reminders === 1,
     JSON.stringify([sent, row]),
   )
-  await tick(nine + 60_000)
+  const part = await mails('dobropis@example.sk')
+  check(
+    'one credited in part is reminded of what is left; one credited whole is not, nor a request with its final invoice',
+    part.length === 1 &&
+      plain(part[0].body).includes('po dobropise na sumu 615,00 €') &&
+      (await mails('cely@example.sk')).length === 0 &&
+      (await mails('zaloha@example.sk')).length === 0 &&
+      (await mails('starve@example.sk')).length === 0,
+    JSON.stringify(part),
+  )
+  res = await owner.post(`/app/faktury/${wholeId}/pripomenut`, {})
+  check('nor by hand', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE recipient = 'cely@example.sk' AND id LIKE 'invoice:remind:%'").first())?.n === 0)
+  await tick(nine + 90_000)
   sent = await mails()
   check('not the next one within five days', sent.length === 1 && (await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first())?.reminders === 1)
   await db.prepare('UPDATE invoices SET reminded_at = reminded_at - 6 * 86400 WHERE id = ?').bind(invoiceId).run()

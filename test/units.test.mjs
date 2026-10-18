@@ -1498,6 +1498,23 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
       dunning.reminderDue('2026-10-01', 2, '2026-10-31', '2026-10-15') === 2 &&
       dunning.reminderDue('2026-10-01', 3, '2026-12-31', null) === null,
   )
+  // Interest invoiced to 30 June: the next invoice counts from 1 July (no day twice), and nothing is left of a day
+  // already counted; a later day than the due day only, never an earlier one.
+  const rest = dunning.lateInterest(100_000, '2026-05-31', '2026-08-31', '2026-07-01')
+  check(
+    'interest counted from the day after the last invoice of interest, at that half-year rate, none twice',
+    rest?.from === '2026-07-01' &&
+      rest.days === 62 &&
+      rest.segments.length === 1 &&
+      rest.segments[0].rate === 10400 &&
+      dunning.lateInterest(100_000, '2026-05-31', '2026-08-31', '2026-09-01') === null &&
+      dunning.lateInterest(100_000, '2026-05-31', '2026-08-31', '2026-01-01')?.days === 92,
+    JSON.stringify(rest),
+  )
+  check(
+    'the first reminder waits five days after the invoice was mailed',
+    dunning.reminderDue('2026-10-01', 0, '2026-10-04', '2026-10-02') === null && dunning.reminderDue('2026-10-01', 0, '2026-10-07', '2026-10-02') === 0,
+  )
 }
 
 // The cash box (18 October 2026): cash documents PPD and VPD against 211, never below nought, never above 5 000 € paid

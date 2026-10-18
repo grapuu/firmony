@@ -607,7 +607,8 @@ type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
 // Money on a request's symbol: in euros (a request is in euros), the symbol as the bank wrote it, noughts in front too.
-const ON_REQUEST = "p.company_id = i.company_id AND i.vs IS NOT NULL AND ltrim(p.vs, '0') = ltrim(i.vs, '0') AND p.amount_cents > 0 AND COALESCE(p.currency, 'EUR') = 'EUR'"
+export const ON_REQUEST_SQL = "p.company_id = i.company_id AND i.vs IS NOT NULL AND ltrim(p.vs, '0') = ltrim(i.vs, '0') AND p.amount_cents > 0 AND COALESCE(p.currency, 'EUR') = 'EUR'"
+const ON_REQUEST = ON_REQUEST_SQL
 const INVOICE_COLUMNS = `i.*, u.name AS created_by_name,
   CASE WHEN i.kind = 'proforma'
     THEN (SELECT p.booked_on FROM payments p WHERE ${ON_REQUEST} ORDER BY p.booked_on LIMIT 1)
@@ -775,8 +776,10 @@ export function saveInvoiceStatements(
     fx?: { currency: string; rate: string | null; day: string | null } | null
     /** An invoice issued by a repeat (repeat.ts): its repeat (one a day, kept by a unique index). */
     repeat?: string | null
-    /** An invoice of late interest and the flat compensation (dunning.ts): the invoice paid late (one, kept by a unique index). */
+    /** An invoice of late interest (dunning.ts), or a credit note of one: the invoice paid late. */
     interestOf?: string | null
+    /** An invoice of late interest: the last day its interest counts (one an invoice and a day, kept by a unique index). */
+    interestTo?: string | null
   },
 ): D1PreparedStatement[] {
   const v = args.values
@@ -808,7 +811,7 @@ export function saveInvoiceStatements(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
            issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse, relates, vs, payment_id,
-           currency, fx_rate, fx_day, repeat_id, customer_country, interest_of)
+           currency, fx_rate, fx_day, repeat_id, customer_country, interest_of, interest_to)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
@@ -816,7 +819,7 @@ export function saveInvoiceStatements(
              ELSE fmt.prefix || CAST(?6 AS INTEGER) || fmt.sep || printf('%0' || fmt.digits || 'd', next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('9%d%05d', ?6, next.seq)
-             ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33, ?34
+             ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one,
          -- in the company's own numbers (a prefix, a mark, the order's digits) and from a year's first order when it
          -- came in the middle of one. The variable symbol is the year and the order, whatever the number looks like; a
@@ -851,6 +854,7 @@ export function saveInvoiceStatements(
         args.repeat ?? null,
         isCountry(v.customerCountry) ? v.customerCountry : null,
         args.interestOf ?? null,
+        args.interestOf && !args.credit ? (args.interestTo ?? null) : null,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol. A request for an advance is no document.

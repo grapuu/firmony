@@ -402,12 +402,17 @@ export const app = typesetAll({
     interestRates: (rates: string) => typeset(`Sadzba ECB k prvému dňu polroka plus 8 percentuálnych bodov: ${rates}.`),
     flat: 'K tomu paušálna náhrada nákladov 40 € (§ 369c Obchodného zákonníka).',
     interestIssue: 'Vystaviť faktúru na úrok a náhradu',
-    interestIssued: (number: string) => typeset(`Faktúra na úrok z omeškania: ${number}`),
+    interestIssued: (number: string, to: string | null) => typeset(`Faktúra na úrok z omeškania: ${number}${to ? `, úrok do ${to}` : ''}`),
+    interestCancelled: 'zrušená dobropisom',
+    interestMore: 'Vystaviť faktúru na ďalší úrok',
+    interestNone: 'Úrok je zatiaľ menší ako cent.',
     interestBusiness: 'Úrok z omeškania počítame pri faktúrach podnikateľom (s IČO alebo IČ DPH).',
     interestLine: (number: string, from: string, to: string) => typeset(`Úrok z omeškania z faktúry ${number} za ${from} až ${to}`),
     flatLine: (number: string) => typeset(`Paušálna náhrada nákladov spojených s uplatnením pohľadávky z faktúry ${number}`),
-    interestNote: (rates: string) =>
-      typeset(`Úrok podľa § 369 Obchodného zákonníka a nariadenia vlády č. 21/2013 Z. z.: sadzba ECB platná k prvému dňu polroka omeškania zvýšená o 8 percentuálnych bodov (${rates}); paušálna náhrada podľa § 369c.`),
+    interestNote: (rates: string, flat: boolean) =>
+      typeset(
+        `Úrok podľa § 369 Obchodného zákonníka a nariadenia vlády č. 21/2013 Z. z.: sadzba ECB platná k prvému dňu polroka omeškania zvýšená o 8 percentuálnych bodov (${rates})${flat ? '; paušálna náhrada podľa § 369c' : ''}.`,
+      ),
     interestDone: 'Faktúru na úrok z omeškania sme vystavili.',
   },
   cash: {
@@ -1038,11 +1043,11 @@ export const app = typesetAll({
           company,
         ].join('\n'),
       reminderSubject: (number: string, company: string, proforma = false) => `Pripomienka: ${proforma ? 'zálohová faktúra' : 'faktúra'} ${number} od ${company}`,
-      reminderBody: (company: string, number: string, total: string, due: string, iban: string | null, link: string, proforma = false, vs = number) =>
+      reminderBody: (company: string, number: string, total: string, due: string, iban: string | null, link: string, proforma = false, vs = number, credited = false) =>
         [
           'Dobrý deň,',
           '',
-          `pripomíname Vám ${proforma ? 'zálohovú faktúru' : 'faktúru'} č. ${number} na sumu ${total} so splatnosťou ${due}. Platbu sme zatiaľ nedostali.`,
+          `pripomíname Vám ${proforma ? 'zálohovú faktúru' : 'faktúru'} č. ${number}${credited ? `, po dobropise na sumu ${total},` : ` na sumu ${total}`} so splatnosťou ${due}. Platbu sme zatiaľ nedostali.`,
           ...(iban ? ['', `Úhrada prevodom na účet ${iban}, variabilný symbol ${vs}.`] : []),
           '',
           `Faktúra: ${link}`,

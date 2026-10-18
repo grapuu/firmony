@@ -21,8 +21,12 @@ const d = app.dunning
 
 /** An invoice's late interest as the page shows it (routes.tsx, lateOf). */
 export interface LateView {
+  /** The interest of the days no invoice of interest counted yet. */
   interest: LateInterest | null
-  issued: { id: string; number: string } | null
+  /** The invoices of interest issued for it, each with its last day (none kept before 18 October 2026) and whether a credit note took it back whole. */
+  issued: { id: string; number: string; to: string | null; cancelled: boolean }[]
+  /** The flat compensation is still owed: no invoice of interest stands yet. */
+  flat: boolean
   business: boolean
   principal: number
 }
@@ -863,9 +867,11 @@ export const InvoicePage: FC<{
                 <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?dobropis=${invoice.id}`}>
                   {a.credit}
                 </a>
-                <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?podla=${invoice.id}`}>
-                  {a.copy}
-                </a>
+                {invoice.interestOf ? null : (
+                  <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?podla=${invoice.id}`}>
+                    {a.copy}
+                  </a>
+                )}
               </>
             )}
           </section>
@@ -922,22 +928,32 @@ export const InvoicePage: FC<{
           {late ? (
             <section class="info" id="urok">
               <h2 class="info__title">{d.interestTitle}</h2>
-              {late.issued ? (
-                <p class="info__lead">
-                  <a class="link" href={`/app/faktury/${late.issued.id}`}>
-                    {d.interestIssued(late.issued.number)}
-                  </a>
-                </p>
-              ) : late.interest ? (
+              {late.issued.length > 0 ? (
+                <ul class="plain">
+                  {late.issued.map((i) => (
+                    <li>
+                      <a class="link" href={`/app/faktury/${i.id}`}>
+                        {d.interestIssued(i.number, i.to ? dayName(i.to, today) : null)}
+                      </a>
+                      {i.cancelled ? ` (${d.interestCancelled})` : ''}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {late.interest && (late.interest.cents > 0 || late.flat) ? (
                 <>
-                  <p class="info__lead">{d.interestLead(formatEurExact(late.interest.cents), late.interest.days, dayName(late.interest.from, today), dayName(late.interest.to, today))}</p>
+                  <p class="info__lead">
+                    {late.interest.cents > 0
+                      ? d.interestLead(formatEurExact(late.interest.cents), late.interest.days, dayName(late.interest.from, today), dayName(late.interest.to, today))
+                      : d.interestNone}
+                  </p>
                   <p class="info__source">{d.interestRates([...new Set(late.interest.segments.map((x) => ratePercent(x.rate)))].join(', '))}</p>
                   {late.business ? (
                     <>
-                      <p class="info__source">{d.flat}</p>
+                      {late.flat ? <p class="info__source">{d.flat}</p> : null}
                       <form method="post" action={`/app/faktury/${invoice.id}/urok`}>
                         <button class="btn btn--line invoice__wide" type="submit">
-                          {d.interestIssue}
+                          {late.flat ? d.interestIssue : d.interestMore}
                         </button>
                       </form>
                     </>

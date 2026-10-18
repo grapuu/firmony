@@ -23,7 +23,8 @@ over. Bring this section up to date first whenever a session ends.
    "Mended after the review of the invoices" under "Invoices the client issues"). Then business trips at home (cestovné
    náhrady, schema step 49, "Business trips" under the client's app), the cash box (pokladňa, schema step 50, "The
    cash box" there; a second independent review of both, six findings mended) and reminders with late interest (schema
-   step 51, under "Invoices the client issues"). **Nothing is live**: there
+   step 51, under "Invoices the client issues"), cost centres (schema step 52, "Cost centres" under the client's app)
+   and a third independent review of the reminders, eight findings mended (schema step 53). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1220,6 +1221,20 @@ by itself.
   of a debt paid in parts, the rate of § 1(2), the income tax's rule that late interest not received is added back
   until paid (§ 17(27) of the Income Tax Act: the closing does not adjust for it), the reminders' wording chosen by the
   company. test/dunning.runtime.mjs, units "Reminders and late interest".
+  Mended after a third independent review (18 October 2026, of commit 537c20e; each finding verified first; schema
+  step 53 `invoices.interest_to`, the invoices' lock guard made again): interest is invoiced once for each day
+  (`interest_to`, the last day an invoice of interest counts; the next counts from the day after, `lateInterest`'s
+  `since`; unique by invoice and day, so a second click the same day leads to the one made) and the 40 € only with
+  the first; an invoice of interest a credit note took back whole counts for neither, and that credit note is interest
+  too (644, `interestOf`); an invoice of interest is never copied ("Vystaviť podobnú" takes its customer alone) or
+  repeated. Reminders: a credit note lowers what is asked (`stillAsked`; credited whole, none; the mail says "po
+  dobropise na sumu"), by hand too; a request with its final invoice is never reminded; the first reminder waits five
+  days after the invoice was mailed (`sent_at` counts as contact); the schedule's query asks everything (unpaid, money
+  on its symbol not yet paired, credited, the step's day, five days since contact), so a hundred invoices not due
+  cannot keep the due ones from their turn; and a reminder goes only once the company's bank (a payment, a statement
+  taken, a linked bank read) reaches the day before the step's day, so a payment the bank has not told of yet is no
+  reason to remind (a company with no bank data gets none). The period lock guards only what an invoice says
+  (`INVOICE_FIELDS`): reminders, mailing and the customer's email change an invoice of a locked month.
 - The company's logo on its invoices (built 18 October 2026, schema step 47: `companies.logo_key`, `logo_type`): on
   the same page (#logo) an owner uploads a PNG, JPEG or WebP up to 512 kB (by its bytes, `logoTypeOf`; no SVG, which
   could carry a script), kept in R2 under `companies/<id>/brand/` with a new key each time (the one before deleted;
@@ -2153,8 +2168,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1182 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1711 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1184 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1721 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

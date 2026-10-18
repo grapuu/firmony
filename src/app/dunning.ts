@@ -71,11 +71,14 @@ export interface LateInterest {
 }
 
 /**
- * The late interest on `cents` due on `dueOn` and paid on `until` (or still unpaid then): each calendar half-year of
- * the delay at its own rate; null when there was no delay or a half-year has no rate.
+ * The late interest on `cents` due on `dueOn` and paid on `until` (or still unpaid then), from `since` when interest
+ * up to the day before was invoiced already: each calendar half-year of the delay at its own rate; null when there is
+ * no day of delay to count or a half-year has no rate.
  */
-export function lateInterest(cents: number, dueOn: string, until: string): LateInterest | null {
-  const from = iso(at(dueOn) + DAY)
+export function lateInterest(cents: number, dueOn: string, until: string, since: string | null = null): LateInterest | null {
+  // From the day after the due day, or from a later day (the day after the last invoice of interest).
+  const first = iso(at(dueOn) + DAY)
+  const from = since && since > first ? since : first
   if (until < from || cents <= 0) return null
   const segments: LateSegment[] = []
   let exact = 0
@@ -94,12 +97,12 @@ export function lateInterest(cents: number, dueOn: string, until: string): LateI
 }
 
 /** The reminder due on `today` for an invoice that is overdue: its step (0, 1, 2), or null when none is due yet. */
-export function reminderDue(dueOn: string, sent: number, today: string, lastRemindedOn: string | null): number | null {
+export function reminderDue(dueOn: string, sent: number, today: string, lastContactOn: string | null): number | null {
   if (sent >= REMIND_AFTER.length) return null
   const after = REMIND_AFTER[sent] ?? 0
   if (iso(at(dueOn) + after * DAY) > today) return null
-  // A reminder of the last five days (one sent by hand too) is enough for now.
-  if (lastRemindedOn && iso(at(lastRemindedOn) + 5 * DAY) > today) return null
+  // The invoice mailed or reminded in the last five days (by hand too) is enough for now.
+  if (lastContactOn && iso(at(lastContactOn) + 5 * DAY) > today) return null
   return sent
 }
 
