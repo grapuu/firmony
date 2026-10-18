@@ -20,7 +20,7 @@ export async function intrastatDocs(db: D1Database, company: Company, scope: { f
       `SELECT ${DOC_COLUMNS}, g.data AS intrastat_goods FROM ${DOC_FROM}
          LEFT JOIN intrastat_goods g ON g.company_id = d.company_id AND g.document_id = d.id
         WHERE d.company_id = ?1 AND d.deleted_at IS NULL AND d.kind IN ('receipt', 'invoice_in', 'invoice_out')
-          AND (d.vat_mode IN ('acquisition', 'eu_goods')
+          AND (d.vat_mode IN ('acquisition', 'eu_goods', 'triangle_in')
                OR (d.vat_mode IS NULL AND (d.foreign_party = 1 OR (d.party_vat_id IS NOT NULL AND d.party_vat_id NOT LIKE 'SK%'))))
           AND (?2 IS NULL OR COALESCE(d.supplied_on, d.issued_on, date(d.created_at, 'unixepoch')) >= ?2 OR g.data IS NOT NULL)
           AND (?3 IS NULL OR d.id = ?3)
@@ -34,7 +34,7 @@ export async function intrastatDocs(db: D1Database, company: Company, scope: { f
     const doc = docOf(row)
     const vdoc = vatDocOf(doc)
     const vat = vatOf(vdoc, vc)
-    if (!vat || (vat.data.mode !== 'acquisition' && vat.data.mode !== 'eu_goods')) continue
+    if (!vat || (vat.data.mode !== 'acquisition' && vat.data.mode !== 'eu_goods' && vat.data.mode !== 'triangle_in')) continue
     out.push({
       id: doc.id,
       number: doc.number,

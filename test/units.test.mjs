@@ -2818,6 +2818,16 @@ async function zipped(entries, note) {
       triForm({ dph_icdph: 'SK2020000000' }).errors.vatId === 'euId' && triForm({}).data?.mode === 'triangle' && triForm({}).data?.lines[0]?.rate === 0 && triForm({ dph_zaklad_23: '100' }).errors.base23 === 'zeroOnly',
       JSON.stringify(triForm({}).errors),
     )
+    check(
+      'a correction is reported when it is made: a credit note of goods to the EU carrying its invoice\'s day of supply falls on its own day',
+      vat.taxDay({ ...middle, issuedOn: '2027-04-10' }, { ...middle.vat, mode: 'eu_goods', corrects: 'FA-1', suppliedOn: '2027-01-10' }) === '2027-04-10' &&
+        vat.taxDay({ ...lastCustomer, issuedOn: '2027-04-10', receivedOn: '2027-04-12' }, { ...lastCustomer.vat, corrects: 'DE-1', suppliedOn: '2027-01-10' }) === '2027-04-10',
+    )
+    check('a company registered under § 7a as the middle person: nothing filed, said', vat.workOut({ status: 'reg7a', quarterly: false, since: null }, '2027-01', [middle]).issues.some((i) => i.code === 'domestic7a'))
+    check(
+      "the last customer's purchase needs a taxed line",
+      vatForm.readVat({ dph_rezim: 'triangle_in', dph_dodanie: '20. 1. 2027', dph_icdph: 'DE123456789', dph_zaklad_0: '4500' }, { kind: 'invoice_in', payer: true, deduct: true, booking: true, periods: ['2027-01'] }).errors.base23 === 'lines',
+    )
     const midFeb = vat.workOut(payer, '2027-01', [middle])
     check(
       'the middle person: no row of the return and no line of the control statement, only the recapitulative statement said',
@@ -6656,6 +6666,14 @@ await (await import('./social.units.mjs')).checkSocial()
   ]
   const a = intrastat.monthItems(docs, '2026-09', 'A', settings)
   const item = (key) => a.items.find((i) => i.key === key)
+  // Triangular trade's last customer: an arrival, from the first supplier's state, which the accountant types.
+  const tri = intrastat.monthItems([doc('tri', { mode: 'triangle_in' })], '2026-09', 'A', settings)
+  const triTyped = intrastat.monthItems([doc('tri', { mode: 'triangle_in', goods: g({ country: 'IT' }) })], '2026-09', 'A', settings)
+  check(
+    "triangular trade's last customer: an arrival, kept back until the state the goods came from is typed (not the seller's)",
+    intrastat.flowOf(doc('tri', { mode: 'triangle_in' })) === 'A' && tri.issues.some((i) => i.code === 'country') && triTyped.items[0]?.country === 'IT',
+    JSON.stringify([tri.issues, triTyped.items]),
+  )
   check(
     "arrivals: an invoice below 1 000 € simply, one with goods line by line, the line without a value takes the rest; the origin of an arrival without one is the state it came from",
     item('small:s')?.cn === '99500000' && item('small:s')?.euros === 500 && item('small:s')?.partner === null && item('lines:0')?.euros === 2000 && item('lines:1')?.euros === 1000 && item('lines:1')?.origin === 'DE' && item('lines:0')?.kg === 13 && item('lines:0')?.quantity === 10 && item('lines:1')?.kg === 1 && item('lines:0')?.nature === '11' && item('lines:0')?.terms === 'EXW',

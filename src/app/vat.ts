@@ -469,6 +469,9 @@ export function vatOf(doc: VatDoc, company: VatCompany): { data: VatData; propos
  * before then (§ 20(1), § 19(8)).
  */
 export function taxDay(doc: VatDoc, data: VatData): string {
+  // A correction of the base is reported when it is made (§ 25(2) and § 53(1); for the recapitulative statement § 80(7)):
+  // its own day of issue, not the day of supply of the invoice it corrects, which it may well carry.
+  if (data.corrects) return doc.issuedOn ?? doc.receivedOn
   const supplied = data.suppliedOn ?? doc.issuedOn ?? doc.receivedOn
   if (data.mode !== 'acquisition' && data.mode !== 'eu_goods' && data.mode !== 'triangle' && data.mode !== 'triangle_in') return supplied
   const fifteenth = `${periodOf(addDays(`${supplied.slice(0, 7)}-28`, 7), false)}-15`
@@ -1138,13 +1141,13 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       issue('warn', 'summary', doc.id)
       continue
     }
-    if (data.mode === 'triangle') {
-      // The middle person of triangular trade: its supply to C is in the recapitulative statement alone (code 1).
-      issue('warn', 'summary', doc.id)
-      continue
-    }
     if (company.status === 'reg7a' && !(isReceived(doc.kind) && (data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'triangle_in'))) {
       issue('warn', 'domestic7a', doc.id)
+      continue
+    }
+    if (data.mode === 'triangle') {
+      // The middle person of triangular trade (a payer, § 45): its supply to C is in the recapitulative statement alone (code 1).
+      issue('warn', 'summary', doc.id)
       continue
     }
     if (issued && data.mode === 'reverse') {

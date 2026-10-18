@@ -208,6 +208,8 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
   }
   if (lines.some((line) => line.base < 0 || line.vat < 0) && corrects === '') errors.corrects = 'negative'
   if (ctx.booking && mode !== null && NEEDS_LINES.includes(mode) && !lines.some((line) => line.base !== 0)) errors.base23 = errors.base23 ?? 'lines'
+  // The last customer of triangular trade pays the VAT itself: a base at 0 % alone would report nothing.
+  if (ctx.booking && mode === 'triangle_in' && lines.length > 0 && !lines.some((line) => line.rate > 0)) errors.base23 = errors.base23 ?? 'lines'
   // Triangular trade is between VAT numbers of three member states: the other side's is of another one than Slovakia.
   if (ctx.booking && mode !== null && isTriangle(mode) && (!vatId || vatId.startsWith('SK') || !isEuVatId(vatId))) errors.vatId = errors.vatId ?? 'euId'
   // A deduction from a Slovak supplier's invoice goes into the control statement by the supplier's VAT number (B.2).

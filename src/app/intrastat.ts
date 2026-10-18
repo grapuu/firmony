@@ -232,7 +232,8 @@ export interface IntrastatDoc {
   id: string
   number: string | null
   party: string | null
-  mode: 'acquisition' | 'eu_goods'
+  /** Goods acquired, supplied, or (triangular trade) bought by the last customer and sent here from a third state. */
+  mode: 'acquisition' | 'eu_goods' | 'triangle_in'
   /** The month its VAT fell due (taxDay). */
   month: string
   /** The VAT base in euro cents, the sum of its lines; minus for a credit note. */
@@ -245,7 +246,7 @@ export interface IntrastatDoc {
 /** The flow a document is reported in, or null when it is not (a credit note whose goods did not come back, or one skipped). */
 export function flowOf(doc: IntrastatDoc): Flow | null {
   if (doc.goods?.skip) return null
-  const own: Flow = doc.mode === 'acquisition' ? 'A' : 'D'
+  const own: Flow = doc.mode === 'eu_goods' ? 'D' : 'A'
   if (doc.cents < 0) return doc.goods?.returned ? (own === 'A' ? 'D' : 'A') : null
   return doc.cents === 0 ? null : own
 }
@@ -307,7 +308,8 @@ export function monthItems(docs: readonly IntrastatDoc[], month: string, flow: F
       continue
     }
     const g = doc.goods ?? EMPTY_GOODS
-    const country = g.country ?? stateOfVatId(doc.vatId)
+    // Triangular trade: the goods came from the first supplier's state, not the seller's, so the state is typed.
+    const country = g.country ?? (doc.mode === 'triangle_in' ? null : stateOfVatId(doc.vatId))
     if (!country) {
       bad.country.push(doc.id)
       continue
@@ -351,7 +353,7 @@ export function monthItems(docs: readonly IntrastatDoc[], month: string, flow: F
     const made: Item[] = []
     g.lines.forEach((l, n) => {
       // Where the goods came from: the supplier's state for what was acquired (also when it goes back), ours for what we dispatched.
-      const origin = l.origin ?? (doc.mode === 'acquisition' ? country : settings.origin)
+      const origin = l.origin ?? (doc.mode === 'eu_goods' ? settings.origin : country)
       if (!isCn(l.cn) || l.cn === SIMPLIFIED_CN) bad.cn.push(doc.id)
       else if (l.su && l.quantity === null) bad.quantity.push(doc.id)
       else if ((l.grams === null || l.grams <= 0) && !l.su) bad.mass.push(doc.id)
@@ -571,7 +573,7 @@ export function intrastatView(docs: readonly IntrastatDoc[], month: string, flow
     items,
     issues,
     docs: used,
-    credits: creditNotes(docs, month).filter((d) => (d.mode === 'acquisition' ? 'A' : 'D') === flow),
+    credits: creditNotes(docs, month).filter((d) => (d.mode === 'eu_goods' ? 'D' : 'A') === flow),
     filings: own,
     followUp,
   }

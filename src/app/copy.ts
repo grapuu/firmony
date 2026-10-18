@@ -906,6 +906,7 @@ export const app = typesetAll({
         domestic: 'S DPH na Slovensku',
         reverse: 'Prenesenie daňovej povinnosti (§ 69 ods. 12)',
         eu_goods: 'Dodanie tovaru do iného štátu EÚ',
+        triangle: 'Trojstranný obchod: firma je prostredná osoba (§ 45)',
         eu_service: 'Služba odberateľovi v inom štáte EÚ',
         export: 'Vývoz tovaru mimo EÚ',
         outside: 'Miesto dodania mimo Slovenska',

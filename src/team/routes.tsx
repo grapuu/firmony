@@ -2146,7 +2146,7 @@ async function goodsDoc(c: Ctx, company: Company): Promise<IntrastatDoc | null> 
 }
 
 const goodsPage = (c: Ctx, company: Company, doc: IntrastatDoc, values: Record<string, string>, errors: Record<string, string>, status: ContentfulStatusCode = 200) =>
-  shell(c, 'clients', `${t.intrastat.goods.title}: ${company.name}`, <GoodsPage company={company} doc={doc} month={reportMonth(doc)} flow={flowOf(doc) ?? (doc.mode === 'acquisition' ? 'A' : 'D')} values={values} errors={errors} />, status)
+  shell(c, 'clients', `${t.intrastat.goods.title}: ${company.name}`, <GoodsPage company={company} doc={doc} month={reportMonth(doc)} flow={flowOf(doc) ?? (doc.mode === 'eu_goods' ? 'D' : 'A')} values={values} errors={errors} />, status)
 
 teamRoutes.get('/klienti/:id/intrastat/doklad/:doc', async (c) => {
   const company = await companyParam(c)
@@ -2163,7 +2163,7 @@ teamRoutes.post('/klienti/:id/intrastat/doklad/:doc', async (c) => {
   const db = c.env.DB
   const who = c.get('who')
   const body = await c.req.parseBody()
-  const back = (d: IntrastatDoc, ok: string) => `/ucto/klienti/${company.id}/intrastat?mesiac=${reportMonth(d)}&tok=${flowOf(d) ?? (d.mode === 'acquisition' ? 'A' : 'D')}&ok=${ok}`
+  const back = (d: IntrastatDoc, ok: string) => `/ucto/klienti/${company.id}/intrastat?mesiac=${reportMonth(d)}&tok=${flowOf(d) ?? (d.mode === 'eu_goods' ? 'D' : 'A')}&ok=${ok}`
   if (body.akcia === 'odstranit') {
     await db.batch([removeGoodsStatement(db, company.id, doc.id), eventStatement(db, { company: company.id, user: who.user.id, action: 'intrastat.goods', subject: doc.id, detail: { removed: true } })])
     return c.redirect(back({ ...doc, goods: null }, 'goodsRemoved'), 303)

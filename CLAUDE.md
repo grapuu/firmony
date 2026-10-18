@@ -2043,8 +2043,15 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   12a, 12b (the answer names 11b and 12b at 23 %, the rest by the form's order), deducted in rows 18 to 19, B.1 by B's VAT
   number, due as an acquisition (§ 20(1)), booked as one (343.200 and 343.100). The booking form offers both and asks for
   a VAT number of another member state (`euId`). Rows 11 to 12e have their labels on the VAT page now. test/triangle.runtime.mjs,
-  units under VAT and the recapitulative statement. Not built: the client's own invoice form for it (the accountant books
-  it), Intrastat of the last customer's arrival.
+  units under VAT and the recapitulative statement.
+  Mended after a fourteenth independent review (18 October 2026, of commit 002c0ab; each finding verified first): a
+  correction of the base is reported when it is made (`taxDay` takes a corrective document's own day of issue, not the
+  day of supply of its invoice, which the app's credit notes carry: § 25, § 53 and § 80(7); this was wrong before for
+  every mode, goods to the EU and domestic included); the last customer's arrival is in Intrastat (arrivals, the state
+  of dispatch typed on its goods page, since the seller's VAT number names another state: the handbook's para. 66, the
+  holder of the goods reports); the client's invoice form offers "Trojstranný obchod" (AE, "Prenesenie daňovej
+  povinnosti. Trojstranný obchod podľa § 45 ...", a VAT number of another member state; a Peppol case); a company
+  registered under § 7a as the middle person files nothing (said); the last customer's purchase needs a taxed line.
 - Not built: documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
@@ -2528,9 +2535,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1327 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm test                 # 1331 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
 npm run test:runtime     # 1907 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
-npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

@@ -119,6 +119,7 @@ const cases = [
   ...[
     ['construction work with domestic reverse charge (AE)', 'reverse'],
     ['goods to a VAT payer of another member state (K)', 'eu_goods'],
+    ['triangular trade, the middle person (AE)', 'triangle'],
     ['a service whose customer in another member state pays the VAT (AE)', 'eu_service'],
     ['an export (G)', 'export'],
     ['a supply of a VAT payer outside Slovakia (O)', 'outside'],

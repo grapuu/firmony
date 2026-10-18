@@ -16,8 +16,8 @@ export const VAT_RATES = [23, 19, 5, 0] as const
  * to a VAT payer of another member state (§ 43 of the VAT Act), a service whose customer in another member state pays
  * the VAT (§ 15(1)), an export (§ 47), a supply whose place is outside Slovakia.
  */
-export type InvoiceMode = 'domestic' | 'reverse' | 'eu_goods' | 'eu_service' | 'export' | 'outside'
-export const INVOICE_MODES: readonly InvoiceMode[] = ['domestic', 'reverse', 'eu_goods', 'eu_service', 'export', 'outside']
+export type InvoiceMode = 'domestic' | 'reverse' | 'eu_goods' | 'triangle' | 'eu_service' | 'export' | 'outside'
+export const INVOICE_MODES: readonly InvoiceMode[] = ['domestic', 'reverse', 'eu_goods', 'triangle', 'eu_service', 'export', 'outside']
 export const isInvoiceMode = (value: unknown): value is InvoiceMode => typeof value === 'string' && (INVOICE_MODES as readonly string[]).includes(value)
 
 /**
@@ -27,6 +27,8 @@ export const isInvoiceMode = (value: unknown): value is InvoiceMode => typeof va
 export const MODE_TERMS: Record<Exclude<InvoiceMode, 'domestic'>, { text: string; category: 'K' | 'AE' | 'G' | 'O'; code: string }> = {
   reverse: { text: 'Prenesenie daňovej povinnosti', category: 'AE', code: 'VATEX-EU-AE' },
   eu_goods: { text: 'Dodanie je oslobodené od dane podľa § 43 zákona o DPH (dodanie tovaru do iného členského štátu).', category: 'K', code: 'VATEX-EU-IC' },
+  // The middle person of triangular trade (vat.ts `triangle`): the last customer pays the VAT (§ 45, § 69(9)).
+  triangle: { text: 'Prenesenie daňovej povinnosti. Trojstranný obchod podľa § 45 zákona o DPH, dodanie prostrednou osobou.', category: 'AE', code: 'VATEX-EU-AE' },
   eu_service: { text: 'Prenesenie daňovej povinnosti', category: 'AE', code: 'VATEX-EU-AE' },
   export: { text: 'Dodanie je oslobodené od dane podľa § 47 zákona o DPH (vývoz tovaru).', category: 'G', code: 'VATEX-EU-G' },
   outside: { text: 'Miesto dodania nie je v tuzemsku: dodanie nie je predmetom slovenskej dane.', category: 'O', code: 'VATEX-EU-O' },
@@ -392,7 +394,7 @@ export function checkValues(values: InvoiceValues, dayOf: (text: string) => stri
   const vatId = values.customerIcdph.replace(/[\s.-]/g, '').toUpperCase()
   // A state chosen and a VAT number of another state do not go together.
   if (values.customerCountry && /^[A-Z]{2}/.test(vatId) && countryOf(vatId) !== values.customerCountry) errors.customerCountry = messages.customerCountry
-  if ((values.mode === 'eu_goods' || values.mode === 'eu_service') && (!isEuVatId(vatId) || vatId.startsWith('SK'))) errors.customerIcdph = messages.customerIcdph
+  if ((values.mode === 'eu_goods' || values.mode === 'triangle' || values.mode === 'eu_service') && (!isEuVatId(vatId) || vatId.startsWith('SK'))) errors.customerIcdph = messages.customerIcdph
   // Domestic reverse charge goes to a Slovak payer only, and says what is supplied (the control statement's A.2).
   if (values.mode === 'reverse') {
     if (!/^SK\d{10}$/.test(vatId)) errors.customerIcdph = messages.reverseCustomer
@@ -910,7 +912,7 @@ export function saveInvoiceStatements(
             // accountant confirms it. A credit note's are minus, and it names the invoice it corrects (C.1 reads it).
             .bind(
               args.documentId,
-              args.interestOf ? 'interest' : args.kind === 'advance' ? 'advance' : mode === 'eu_goods' || mode === 'export' ? 'sales_goods' : 'sales',
+              args.interestOf ? 'interest' : args.kind === 'advance' ? 'advance' : mode === 'eu_goods' || mode === 'triangle' || mode === 'export' ? 'sales_goods' : 'sales',
               JSON.stringify(args.totals.rates.map((r) => ({ rate: r.rate, base: r.base, vat: r.vat, deduct: 0 }))),
               args.credit?.number ?? null,
               mode === 'domestic' ? null : mode,
