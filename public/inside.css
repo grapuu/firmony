@@ -7353,9 +7353,9 @@ a.wtable__name {
 }
 
 /* The form shows what the kind asks for (everything without :has): an invoice for one paid in cash, the bank's
-   payment for cash taken from or put into the bank, the amount and who otherwise. */
-.cashform:has(select[name='druh'] option[value='doc_in']:checked) .cash__plain,
-.cashform:has(select[name='druh'] option[value='doc_out']:checked) .cash__plain,
+   payment for cash taken from or put into the bank, who otherwise; the amount always. */
+.cashform:has(select[name='druh'] option[value='doc_in']:checked) .cash__party,
+.cashform:has(select[name='druh'] option[value='doc_out']:checked) .cash__party,
 .cashform:has(select[name='druh'] option[value='withdrawal']:checked) .cash__party,
 .cashform:has(select[name='druh'] option[value='deposit']:checked) .cash__party {
   display: none;

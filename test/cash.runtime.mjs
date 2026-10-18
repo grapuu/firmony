@@ -72,6 +72,46 @@ export async function checkCash({ db, acc, lucia, nowS, signIn, as, day, capture
   const owed = plain(await (await client.get('/app/uhrady')).text())
   check('then it is paid: its page says so, and it is not offered to pay again', page.includes(`pokladničný doklad VPD${year}-001`) && !owed.includes('TEST-ONLY Opravár'))
 
+  // Found by the review of 18 October 2026: an invoice paid in cash is paid by no bank payment as well, is not marked
+  // paid privately, deleted or discarded, and keeps its kind and account while its cash document stands.
+  await db
+    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pay-cash-dup', ?, 'acc-cash', ?, ?, -12300, 'TEST-ONLY OPRAVAR', 'dup-1')")
+    .bind(company, nowS, day(-1))
+    .run()
+  const bookingRaw = await (await acc.get('/ucto/doklady/doc-cash')).text()
+  await acc.post('/ucto/doklady/doc-cash/platba', { platba: 'pay-cash-dup' })
+  await client.post('/app/platby/pay-cash-dup/priradit', { doklad: 'doc-cash' })
+  await client.post('/app/doklady/doc-cash/sukromne', { ano: '1' })
+  const deleted = await client.post('/app/doklady/doc-cash/zmazat', {})
+  const discarded = await acc.post('/ucto/doklady/doc-cash', { akcia: 'zahodit' })
+  const rebooked = await acc.post('/ucto/doklady/doc-cash', {
+    akcia: 'zauctovat',
+    kind: 'receipt',
+    party: 'TEST-ONLY Opravár s. r. o.',
+    total: '123,00',
+    vat: '23,00',
+    category: 'repairs',
+    issued: sk(day(-4)),
+    due: '',
+  })
+  const still = await db.prepare("SELECT d.kind, d.deleted_at, d.paid_privately, (SELECT COUNT(*) FROM links WHERE document_id = d.id) AS links FROM documents d WHERE d.id = 'doc-cash'").first()
+  check(
+    'an invoice paid in cash takes no bank payment, is not paid privately, deleted, discarded or made a receipt',
+    plain(bookingRaw).includes(`pokladničným dokladom VPD${year}-001`) &&
+      !bookingRaw.includes('value="pay-cash-dup"') &&
+      still?.links === 0 &&
+      still.paid_privately === 0 &&
+      still.deleted_at === null &&
+      still.kind === 'invoice_in' &&
+      deleted.status === 409 &&
+      discarded.status === 409 &&
+      rebooked.status === 422 &&
+      plain(await rebooked.text()).includes('Doklad je zaplatený v hotovosti'),
+    JSON.stringify(still),
+  )
+  res = await client.post('/app/pokladna', { strana: 'prijem', druh: 'owner_in', den: '31. 12. 2025', suma: '10', kto: 'TEST-ONLY Spoločník' })
+  check('no cash document before the books start', res.status === 422 && plain(await res.text()).includes('Naše účtovníctvo začína'))
+
   const bookRaw = await (await client.get(`/app/pokladna?rok=${year}`)).text()
   if (capture) writeFileSync(`${capture}/cash.html`, bookRaw)
   page = plain(bookRaw)
@@ -94,6 +134,15 @@ export async function checkCash({ db, acc, lucia, nowS, signIn, as, day, capture
   check(
     "the next PPD of the year takes the next number, a removed one's stays taken",
     (await db.prepare("SELECT number FROM ledger_entries WHERE company_id = ? AND cash_kind = 'owner_in'").bind(company).first())?.number === `PPD${year}-002`,
+  )
+  res = await client.post('/app/pokladna', { strana: 'vydaj', druh: 'doc_out', den: sk(day(0)), doklad: 'doc-cash', suma: '200' })
+  check('an invoice is never paid in cash with more than it asks for', res.status === 422 && plain(await res.text()).includes('Faktúra žiada 123,00 €'))
+  res = await client.post('/app/pokladna', { strana: 'vydaj', druh: 'doc_out', den: sk(day(0)), doklad: 'doc-cash', suma: '40' })
+  const part = await db.prepare("SELECT lines FROM ledger_entries WHERE company_id = ? AND cash_kind = 'doc_out' AND deleted_at IS NULL").bind(company).first()
+  check(
+    'what was paid in cash is what is written (the rest stays on the invoice for the accountant)',
+    res.status === 303 && part?.lines === '[{"md":"321","d":"211","cents":4000}]',
+    JSON.stringify(part),
   )
   check("another company's cash document is not found", (await client.post('/app/pokladna/00000000-0000-4000-8000-000000000000/zrusit', {})).status === 404)
 }

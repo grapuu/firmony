@@ -1325,6 +1325,15 @@ The company's cash, as its books hold it: account 211 day by day. Receipts paid 
   by the bank, not in the payment orders, an issued invoice paid, a trip paid).
 - The books: a cash entry with `document_id` settles that invoice's open item (`buildBooks`), the journal names it
   "Pokladničný doklad"; the yearly ZIP carries them in `data/` with the other ledger entries.
+- Mended after a second independent review (18 October 2026, commits 5098197 and f7c5a78, each finding verified
+  first): a document paid in cash could still be paired with a bank payment by the accountant, the client or a file
+  sent again (settled twice): `linkStatement` and `privatelyStatement` now refuse it (`CASH_PAID`), the booking screen
+  says it was paid in cash and offers no payment (`CASH_PAID_COLUMN` in every document query); it is not deleted or
+  discarded while its cash document stands, and its kind, currency and account owed (`payableOf`) do not change; an
+  invoice is paid in cash by what was paid (empty: what it still asks for, an issued one less its credit notes; never
+  more); the balance is checked and the document written at one data revision (`company_data_revisions`, two at once
+  cannot pay out the same cash; taking back likewise); no cash document before the books start; `doklady.csv` names a
+  cash payment, and `data/pracovne-cesty.json` carries the trips.
 - Not built: cash in another currency, eKasa's daily takings as cash in (they need the return's D.1), a count of the
   cash at the year's end (inventory, § 30), a limit check across several documents of one legal relationship (§ 6(2):
   each is checked alone), the cash book printed as its own file (the journal and account 211 are).
@@ -2102,7 +2111,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1177 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box
-npm run test:runtime     # 1682 workerd checks on Node 24 (as GitHub runs them), including test/cash.runtime.mjs
+npm run test:runtime     # 1686 workerd checks on Node 24 (as GitHub runs them), including test/cash.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

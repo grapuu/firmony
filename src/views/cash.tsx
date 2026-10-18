@@ -214,14 +214,14 @@ export const CashFormPage: FC<{
               <input id="c-den" class="field__input" name="den" value={values.day} maxlength={20} aria-invalid={errors.day ? 'true' : undefined} />
               {errors.day ? <p class="field__error">{errors.day}</p> : null}
             </div>
-            <div class="fgrid__cell cash__plain">
+            <div class="fgrid__cell">
               <label class="field__label" for="c-suma">
                 {t.amount}
               </label>
               <input id="c-suma" class="field__input" name="suma" value={values.amount} inputmode="decimal" maxlength={20} aria-invalid={errors.amount ? 'true' : undefined} />
-              {errors.amount ? <p class="field__error">{errors.amount}</p> : null}
+              {errors.amount ? <p class="field__error">{errors.amount}</p> : <p class="field__hint">{t.amountDocHint}</p>}
             </div>
-            <div class="fgrid__cell fgrid__cell--wide cash__plain cash__party">
+            <div class="fgrid__cell fgrid__cell--wide cash__party">
               <label class="field__label" for="c-kto">
                 {t.party}
               </label>

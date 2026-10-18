@@ -85,6 +85,7 @@ import { getTrip, listTrips, removeTripStatements, tripOfDocument, tripStatement
 import { TripFormPage, TripPage, TripsPage } from '../views/trips'
 import { CASH_KINDS, CASH_LIMIT, cashLines, isCashKind, lowestFrom, readCash, type CashErrors, type CashValues } from './cash'
 import { cashDocuments, cashPayments, cashStatements, pendingCashReceipts, removeCashStatements } from './cash-store'
+import { dataRevision } from './handover-store'
 import { CashFormPage, CashPage, type CashRow } from '../views/cash'
 import { bratislavaClock, bratislavaDay } from '../time'
 import { isWorkingDay } from './vat'
@@ -1149,12 +1150,14 @@ appRoutes.post('/pokladna', async (c) => {
     const doc = (await cashDocuments(db, who.company.id, side)).find((d) => d.id === read.values.document)
     if (!doc) errors.document = t.cash.errors.document
     else {
-      cents = doc.cents
+      // What was paid; nothing typed is what the invoice still asks for (less its credit notes). Never more than that.
+      if (cents === null) cents = doc.cents
+      else if (cents > doc.cents) errors.amount = t.cash.errors.moreThanAsked(formatEurExact(doc.cents))
       party = doc.party
       documentId = doc.id
       account = side === 'in' ? '311' : payableOf({ kind: 'invoice_in', category: isCategory(doc.category) ? doc.category : null })
       text = t.cash.docText(doc.number, doc.party)
-      if (doc.cents > CASH_LIMIT) errors.limit = t.cash.errors.limit
+      if (cents > CASH_LIMIT) errors.limit = t.cash.errors.limit
     }
   } else {
     text = t.cash.entryText(t.cash.kinds[read.values.kind] ?? '', party) + (read.values.note ? ` (${read.values.note})` : '')
@@ -1167,15 +1170,23 @@ appRoutes.post('/pokladna', async (c) => {
   }
   if (Object.values(errors).some(Boolean) || !read.input || cents === null) return cashForm(c, side, read.values, errors, 422)
   const on = read.input.on
+  // The balance is checked at a revision of the company's data and the document written only at the same one, so two
+  // documents at once cannot both pay out the same cash.
+  const revision = await dataRevision(db, who.company.id)
+  const books = await booksOf(db, who.company)
+  // Before our books start the cash was the former accountant's: it stands in the opening balances.
+  if (books.start && on < books.start) return cashForm(c, side, read.values, { day: t.cash.errors.beforeBooks(dayName(books.start)) }, 422)
   // Cash that is not there is not paid out: the cash box stays at nought or above from that day on.
   if (side === 'out') {
-    const lowest = lowestFrom([...cashMoves(await booksOf(db, who.company)).map((m) => ({ on: m.on, cents: m.cents })), { on, cents: -cents }], on)
+    const lowest = lowestFrom([...cashMoves(books).map((m) => ({ on: m.on, cents: m.cents })), { on, cents: -cents }], on)
     if (lowest !== null && lowest < 0) return cashForm(c, side, read.values, {}, 422, t.cash.errors.short(formatEurExact(-lowest)))
   }
   const id = crypto.randomUUID()
   try {
-    const results = await db.batch(cashStatements(db, { id, company: who.company.id, user: who.user.id, kind: read.values.kind, on, text, party, lines: cashLines(read.values.kind, cents, account), documentId, paymentId }))
-    if ((results[0]?.meta?.changes ?? 0) === 0) return cashForm(c, side, read.values, { document: t.cash.errors.document }, 409)
+    const results = await db.batch(
+      cashStatements(db, { id, company: who.company.id, user: who.user.id, kind: read.values.kind, on, text, party, lines: cashLines(read.values.kind, cents, account), documentId, paymentId, revision }),
+    )
+    if ((results[0]?.meta?.changes ?? 0) === 0) return cashForm(c, side, read.values, documentId ? { document: t.cash.errors.document } : {}, 409, documentId ? null : t.cash.errors.changed)
   } catch (err) {
     const message = err instanceof Error ? err.message : ''
     console.error('a cash document failed', err instanceof Error ? err.name : 'error')
@@ -1188,6 +1199,7 @@ appRoutes.post('/pokladna/:id/zrusit', async (c) => {
   const who = c.get('who')
   const db = c.env.DB
   const id = c.req.param('id')
+  const revision = await dataRevision(db, who.company.id)
   const books = ID.test(id) ? await booksOf(db, who.company) : null
   const moves = books ? cashMoves(books) : []
   const move = moves.find((m) => m.e.kind === 'cash' && m.e.manualId === id)
@@ -1200,7 +1212,8 @@ appRoutes.post('/pokladna/:id/zrusit', async (c) => {
   )
   if (move.cents > 0 && lowest !== null && lowest < 0) return cashPage(c, { error: t.cash.errors.short(formatEurExact(-lowest)) }, 409)
   try {
-    await db.batch(removeCashStatements(db, who.company.id, id, who.user.id))
+    const results = await db.batch(removeCashStatements(db, who.company.id, id, who.user.id, revision))
+    if ((results[0]?.meta?.changes ?? 0) === 0) return cashPage(c, { error: t.cash.errors.changed }, 409)
   } catch (err) {
     console.error('a cash document was not removed', err instanceof Error ? err.name : 'error')
     return cashPage(c, { error: t.cash.errors.locked }, 409)

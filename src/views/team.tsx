@@ -1532,7 +1532,7 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
           </p>
         ) : (
           <>
-            <p class="info__empty">{d.paidPrivately ? t.book.paidPrivate : t.book.pairNone}</p>
+            <p class="info__empty">{d.cashPaid ? t.book.paidByCash(d.cashPaid.number, textDay(d.cashPaid.on)) : d.paidPrivately ? t.book.paidPrivate : t.book.pairNone}</p>
             {candidates.map((x) => (
               <form class="plain__row plain__row--form" method="post" action={`/ucto/doklady/${d.id}/platba`}>
                 <input type="hidden" name="platba" value={x.id} />

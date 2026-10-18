@@ -1136,8 +1136,8 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
               {app.trips.open}
             </a>
           ) : null}
-          {/* A trip's settlement is taken back with its trip, never on its own. */}
-          {d.source === 'trip' ? null : (
+          {/* A trip's settlement is taken back with its trip, and one paid in cash after its cash document, never on its own. */}
+          {d.source === 'trip' || d.cashPaid ? null : (
           <details class="more more--quiet">
             <summary class="more__summary">{app.document.delete}</summary>
             <div class="more__body">

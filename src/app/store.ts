@@ -320,12 +320,14 @@ function paymentOf(row: Row): Payment {
   }
 }
 
+/** A document's cash document of the cash box that paid it, "VPD2026-001 2026-10-16", over the alias d (Doc.cashPaid). */
+export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1) AS cash_paid"
+
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name,
-  (SELECT ce.number || ' ' || ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1) AS cash_paid`
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN}`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
  * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
@@ -669,8 +671,8 @@ export function checkStatement(db: D1Database, company: string, payment: string,
 }
 
 /**
- * Pairs a document with a payment of the same company. Nothing happens when the document is already paired,
- * deleted or of another company, or when the payment needs no document. A pair made without asking (`alone`)
+ * Pairs a document with a payment of the same company. Nothing happens when the document is already paired, paid
+ * in cash (a cash document of the cash box), deleted or of another company, or when the payment needs no document. A pair made without asking (`alone`)
  * also needs the payment to have no document yet; a client may give one payment several documents.
  */
 export function linkStatement(db: D1Database, company: string, payment: string, doc: string, how: 'auto' | 'client' | 'accountant', by: string | null, alone = false): D1PreparedStatement {
@@ -682,7 +684,7 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
        SELECT d.id, p.id, p.company_id, ?1, ?2, ?3
        FROM documents d JOIN payments p ON p.company_id = d.company_id
        WHERE d.id = ?4 AND p.id = ?5 AND p.company_id = ?6 AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
-         AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id)
+         AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id) AND NOT ${CASH_PAID}
          ${how === 'auto' ? `AND NOT ${linkLockedSql('?5', '?4')}` : ''}
          ${alone ? 'AND NOT EXISTS (SELECT 1 FROM links WHERE payment_id = p.id)' : ''}`,
     )
@@ -892,15 +894,21 @@ export function manualStatement(db: D1Database, company: string, doc: string, wh
 
 export function privatelyStatement(db: D1Database, company: string, doc: string, paid: boolean): D1PreparedStatement {
   return db
-    .prepare('UPDATE documents SET paid_privately = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = documents.id)')
+    .prepare(
+      `UPDATE documents SET paid_privately = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = documents.id)
+         AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = documents.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)`,
+    )
     .bind(paid ? 1 : 0, doc, company)
 }
 
-/** A client deletes a document sent by mistake; not one the accountant has booked. */
+/** A client deletes a document sent by mistake; not one the accountant has booked, nor one paid in cash (its cash document goes first). */
 export function deleteDocumentStatements(db: D1Database, company: string, doc: string): D1PreparedStatement[] {
+  const cash = "EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = ? AND ce.kind = 'cash' AND ce.deleted_at IS NULL)"
   return [
-    db.prepare('DELETE FROM links WHERE document_id = ? AND company_id = ? AND NOT EXISTS (SELECT 1 FROM documents WHERE id = ? AND booked_at IS NOT NULL)').bind(doc, company, doc),
-    db.prepare('UPDATE documents SET deleted_at = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND booked_at IS NULL').bind(now(), doc, company),
+    db
+      .prepare(`DELETE FROM links WHERE document_id = ? AND company_id = ? AND NOT EXISTS (SELECT 1 FROM documents WHERE id = ? AND booked_at IS NOT NULL) AND NOT ${cash}`)
+      .bind(doc, company, doc, doc),
+    db.prepare(`UPDATE documents SET deleted_at = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND booked_at IS NULL AND NOT ${cash}`).bind(now(), doc, company, doc),
   ]
 }
 

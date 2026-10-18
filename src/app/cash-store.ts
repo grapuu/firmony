@@ -87,13 +87,18 @@ export async function cashDocuments(
 ): Promise<{ id: string; party: string | null; number: string | null; cents: number; category: string | null; on: string | null }[]> {
   const rows = await db
     .prepare(
-      `SELECT d.id, d.party, d.number, d.total_cents, d.category, COALESCE(d.issued_on, d.supplied_on) AS day FROM documents d
-        WHERE d.company_id = ? AND d.kind = ? AND d.corrects IS NULL AND d.prepaid = 0 AND ${PAYABLE_IN_CASH}
-        ORDER BY COALESCE(d.due_on, d.issued_on, '9999-12-31'), d.created_at LIMIT 200`,
+      `SELECT * FROM (SELECT d.id, d.party, d.number, d.category, COALESCE(d.issued_on, d.supplied_on) AS day, d.due_on, d.created_at,
+           -- An invoice issued here asks for less by its credit notes (theirs are minus).
+           d.total_cents + COALESCE((SELECT SUM(c.total_cents) FROM invoices i JOIN invoices c ON c.corrects = i.id AND c.kind = 'credit' AND c.status = 'issued'
+             WHERE i.document_id = d.id AND i.company_id = d.company_id), 0) AS left_cents
+         FROM documents d
+        WHERE d.company_id = ? AND d.kind = ? AND d.corrects IS NULL AND d.prepaid = 0 AND ${PAYABLE_IN_CASH})
+        WHERE left_cents > 0
+        ORDER BY COALESCE(due_on, day, '9999-12-31'), created_at LIMIT 200`,
     )
     .bind(company, side === 'out' ? 'invoice_in' : 'invoice_out')
     .all<Row>()
-  return rows.results.map((r) => ({ id: String(r.id), party: str(r.party), number: str(r.number), cents: Number(r.total_cents), category: str(r.category), on: str(r.day) }))
+  return rows.results.map((r) => ({ id: String(r.id), party: str(r.party), number: str(r.number), cents: Number(r.left_cents), category: str(r.category), on: str(r.day) }))
 }
 
 /** Bank payments that may have taken cash out of the bank (out) or put it in (in): no document, no reason yet, the last 90 days. */
@@ -122,7 +127,20 @@ export async function cashPayments(
  */
 export function cashStatements(
   db: D1Database,
-  a: { id: string; company: string; user: string; kind: CashKind; on: string; text: string; party: string | null; lines: LedgerLine[]; documentId: string | null; paymentId: string | null },
+  a: {
+    id: string
+    company: string
+    user: string
+    kind: CashKind
+    on: string
+    text: string
+    party: string | null
+    lines: LedgerLine[]
+    documentId: string | null
+    paymentId: string | null
+    /** The company's data revision the balance was checked at: nothing is written when anything changed since. */
+    revision: number
+  },
 ): D1PreparedStatement[] {
   const year = Number(a.on.slice(0, 4))
   const prefix = prefixOf(a.kind)
@@ -132,9 +150,10 @@ export function cashStatements(
         `INSERT INTO ledger_entries (id, company_id, kind, year, seq, number, on_date, text, lines, created_at, created_by, cash_kind, party, document_id, payment_id)
          SELECT ?1, ?2, 'cash', ?3, s, ?4 || CAST(?3 AS INTEGER) || '-' || printf('%03d', s), ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
            FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS s FROM ledger_entries WHERE company_id = ?2 AND kind = 'cash' AND year = ?3 AND substr(number, 1, 3) = ?4)
-          WHERE ?12 IS NULL OR EXISTS (SELECT 1 FROM documents d WHERE d.id = ?12 AND d.company_id = ?2 AND ${PAYABLE_IN_CASH})`,
+          WHERE (?12 IS NULL OR EXISTS (SELECT 1 FROM documents d WHERE d.id = ?12 AND d.company_id = ?2 AND ${PAYABLE_IN_CASH}))
+            AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?2), 0) = ?14`,
       )
-      .bind(a.id, a.company, year, prefix, a.on, a.text.slice(0, 300), JSON.stringify(a.lines), now(), a.user, a.kind, a.party, a.documentId, a.paymentId),
+      .bind(a.id, a.company, year, prefix, a.on, a.text.slice(0, 300), JSON.stringify(a.lines), now(), a.user, a.kind, a.party, a.documentId, a.paymentId, a.revision),
   ]
   if (a.paymentId && CASH_KINDS[a.kind].own)
     out.push(
@@ -150,18 +169,30 @@ export function cashStatements(
   return out
 }
 
-/** A cash document taken back by a mark (its number stays taken); the bank payment it marked is free again. */
-export function removeCashStatements(db: D1Database, company: string, id: string, user: string): D1PreparedStatement[] {
+/**
+ * A cash document taken back by a mark (its number stays taken), only at the revision of the company's data its
+ * balance was checked at; then the bank payment it marked is free again.
+ */
+export function removeCashStatements(db: D1Database, company: string, id: string, user: string, revision: number): D1PreparedStatement[] {
   return [
+    db
+      .prepare(
+        `UPDATE ledger_entries SET deleted_at = ?1, deleted_by = ?2 WHERE id = ?3 AND company_id = ?4 AND kind = 'cash' AND deleted_at IS NULL
+           AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?4), 0) = ?5`,
+      )
+      .bind(now(), user, id, company, revision),
     db
       .prepare(
         `UPDATE payments SET exempt = NULL, exempt_note = NULL, exempt_by = NULL
           WHERE company_id = ?2 AND exempt = 'own'
-            AND id = (SELECT payment_id FROM ledger_entries WHERE id = ?1 AND company_id = ?2 AND kind = 'cash' AND deleted_at IS NULL)
+            AND id = (SELECT payment_id FROM ledger_entries WHERE id = ?1 AND company_id = ?2 AND kind = 'cash' AND deleted_at IS NOT NULL)
             AND exempt_note = (SELECT number FROM ledger_entries WHERE id = ?1 AND company_id = ?2)`,
       )
       .bind(id, company),
-    db.prepare("UPDATE ledger_entries SET deleted_at = ?, deleted_by = ? WHERE id = ? AND company_id = ? AND kind = 'cash' AND deleted_at IS NULL").bind(now(), user, id, company),
-    eventStatement(db, { company, user, action: 'cash.removed', subject: id }),
+    db
+      .prepare(
+        "INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?, ?, ?, 'cash.removed', ?, NULL WHERE EXISTS (SELECT 1 FROM ledger_entries WHERE id = ? AND deleted_at IS NOT NULL)",
+      )
+      .bind(now(), company, user, id, id),
   ]
 }

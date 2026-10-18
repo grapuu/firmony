@@ -406,6 +406,7 @@ export const team = typesetAll({
     categoryNone: 'Vyberte',
     deduct: 'Odpočítať DPH',
     remember: 'Zapamätať pre dodávateľa',
+    paidByCash: (number: string, day: string) => typeset(`Zaplatený v hotovosti ${day} pokladničným dokladom ${number}.`),
     payment: 'Úhrada',
     paidBank: 'Z účtu firmy',
     paidPrivate: 'Z vlastných peňazí majiteľa',
@@ -441,6 +442,8 @@ export const team = typesetAll({
       category: 'Vyberte, na čo doklad je.',
       kind: 'Vyberte druh dokladu.',
       party: 'Doplňte partnera.',
+      cashPaid: (number: string) =>
+        typeset(`Doklad je zaplatený v hotovosti pokladničným dokladom ${number}: jeho druh, menu a účet záväzku nemeňte. Ak je to omyl, klient najprv zruší pokladničný doklad.`),
     },
     pair: 'Platba k dokladu',
     pairNone: 'Doklad zatiaľ nemá platbu.',

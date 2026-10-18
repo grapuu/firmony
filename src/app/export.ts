@@ -177,7 +177,12 @@ export async function exportYear(
   const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows, tripRows] = await Promise.all([
     db
       .prepare(
-        `SELECT ${DOC_COLUMNS}, p.booked_on AS paid_on, p.amount_cents AS paid_cents FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
+        // Paid by the bank, or in cash by a cash document of the cash box (its day and its amount).
+        `SELECT ${DOC_COLUMNS},
+           COALESCE(p.booked_on, (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
+           COALESCE(p.amount_cents, (SELECT json_extract(ce.lines, '$[0].cents') * (CASE WHEN d.kind = 'invoice_out' THEN 1 ELSE -1 END)
+             FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_cents
+         FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
          WHERE d.company_id = ? AND d.deleted_at IS NULL AND substr(COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), 1, 4) = ?
          ORDER BY COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), d.created_at`,
       )

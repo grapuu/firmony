@@ -98,7 +98,7 @@ export interface CashCopy {
   limit: string
 }
 
-/** What the cash form posted, checked; the amount of an invoice paid in cash is the invoice's, checked by the caller. */
+/** What the cash form posted, checked; an invoice paid in cash with no amount typed is paid whole, filled by the caller. */
 export function readCash(
   field: (name: string) => unknown,
   copy: CashCopy,
@@ -127,14 +127,13 @@ export function readCash(
   else if (on > today) errors.day = copy.future
   const forDoc = CASH_KINDS[values.kind].contra === 'doc'
   let cents: number | null = null
-  if (forDoc) {
-    if (!values.document) errors.document = copy.document
-  } else {
-    const c = centsOf(values.amount)
-    if (c === null || !Number.isInteger(c) || c <= 0 || c > 100_000_000) errors.amount = copy.amount
-    else cents = c
-    if (!CASH_KINDS[values.kind].own && !values.party) errors.party = copy.party
-  }
+  const c = centsOf(values.amount)
+  // An invoice paid in cash: what was paid, else (nothing typed) what the invoice still asks for, filled by the caller.
+  if (forDoc && !values.document) errors.document = copy.document
+  if (forDoc && c === null) cents = null
+  else if (c === null || !Number.isInteger(c) || c <= 0 || c > 100_000_000) errors.amount = copy.amount
+  else cents = c
+  if (!forDoc && !CASH_KINDS[values.kind].own && !values.party) errors.party = copy.party
   if (cents !== null && !CASH_KINDS[values.kind].own && cents > CASH_LIMIT) errors.limit = copy.limit
   const input = Object.keys(errors).length === 0 && on ? { kind: values.kind, on, cents } : null
   return { values, errors, input }

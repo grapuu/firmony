@@ -86,7 +86,7 @@ import { assetsOf, disposeAssetStatement, insertAssetStatement, removeAssetState
 import { StockItemPage, StockPage, type StockDocument } from '../views/stock'
 import { parseItemsCsv, parseMovesCsv, readItem, readMove, shortOf, stockSummary, valueItem, STOCK_ACCOUNTS, STOCK_KINDS, type ItemErrors, type ItemValues, type MoveErrors, type MoveValues, type StockKind, type StockMove } from '../app/stock'
 import { insertItemStatement, insertMoveStatement, removeItemStatement, removeMoveStatement, settingsStatement as stockSettingsStatement, stockOf, updateItemStatement, type Stock } from '../app/stock-store'
-import { balanceOf as accountBalance } from '../app/ledger'
+import { balanceOf as accountBalance, payableOf } from '../app/ledger'
 import { isPeriodLocked } from '../app/periods'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
 import { ClosingPage, closingState, distributionValues, type ClosingState } from '../views/closing'
@@ -3961,7 +3961,8 @@ teamRoutes.get('/doklady', async (c) => {
 
 /** Payments of the company that this document may belong to, best first. */
 async function candidatesFor(db: D1Database, company: string, d: Doc): Promise<Payment[]> {
-  if (d.paymentId || d.totalCents === null) return []
+  // Paid in cash (a cash document of the cash box), it is paid: no bank payment is offered for it.
+  if (d.paymentId || d.cashPaid || d.totalCents === null) return []
   const missing = await listPayments(db, company, 'unpaired', 300)
   const { auto, suggest } = decide(
     missing.map((p) => ({ id: p.id, bookedOn: p.bookedOn, amountCents: p.amountCents, party: p.party, partyIban: p.partyIban, vs: p.vs })),
@@ -4094,6 +4095,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
   const action = typeof body.akcia === 'string' ? body.akcia : 'ulozit'
   if (action === 'zahodit') {
     if (doc.bookedAt) return c.redirect(`/ucto/doklady/${doc.id}`, 303)
+    // A document paid in cash goes only after its cash document (the client takes it back in the cash box).
+    if (doc.cashPaid) return bookPage(c, found, { errors: { kind: t.book.errors.cashPaid(doc.cashPaid.number) } }, 409)
     await db.batch([
       ...deleteDocumentStatements(db, company.id, doc.id),
       eventStatement(db, { company: company.id, user: who.user.id, action: 'document.discarded', subject: doc.id, detail: { duplicateOf: doc.duplicateOf } }),
@@ -4151,6 +4154,12 @@ teamRoutes.post('/doklady/:id', async (c) => {
     if (values.kind !== 'other' && values.category === '') errors.category = t.book.errors.category
     if (values.kind !== 'other' && values.party === '') errors.party = t.book.errors.party
   }
+  // A document paid in cash keeps what its cash document booked: its kind, the euro and the account it is owed on.
+  if (
+    doc.cashPaid &&
+    (values.kind !== doc.kind || values.currency !== 'EUR' || payableOf({ kind: (values.kind || null) as DocKind | null, category: isCategory(values.category) ? values.category : null }) !== payableOf(doc))
+  )
+    errors.kind = t.book.errors.cashPaid(doc.cashPaid.number)
   // The VAT part of the form, when it was on it: read only while the kind stays issued or received as it was shown;
   // a document that changes between them gets a new proposal for its new kind.
   const kind = (values.kind || null) as DocKind | null
