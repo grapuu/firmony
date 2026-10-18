@@ -1477,7 +1477,7 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   lists it for today). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
   call-off stock (part II), a customer's VAT number
   that comes later (§ 80(6), the period it is given).
-- Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, domestic reverse charge (A.2), eKasa takings
+- Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, a corrective invoice of a reverse-charged supply (A.2 issued is built), eKasa takings
   (D.1), bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
