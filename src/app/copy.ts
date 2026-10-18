@@ -328,6 +328,7 @@ export const app = typesetAll({
     blocked: {
       iban: 'Na doklade nie je IBAN dodávateľa.',
       currency: 'Faktúra je v inej mene ako euro: SEPA príkaz ju neprenesie.',
+      correction: 'Opravná faktúra: skontrolujte, koľko z nej treba doplatiť.',
       approval: 'Čaká na schválenie.',
     } as Record<string, string>,
     orders: 'Pripravené príkazy',

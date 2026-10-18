@@ -237,6 +237,8 @@ export interface Reading {
   /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
   ekasaUid?: string | null
   ekasaOkp?: string | null
+  /** A prepayment invoice (386): it documents money paid already, so it is never offered to be paid. */
+  prepaid?: boolean
 }
 
 function partyOf(node: unknown): { name: string | null; ids: string[]; vatId: string | null; country: string | null } {
@@ -309,5 +311,6 @@ export function readInvoice(xml: string, ourIco: string | null): Reading | null 
     totalCents: toCents(text(payable)),
     vatCents: vat,
     currency: (payable as Record<string, unknown> | undefined)?.['@currencyID'] as string | undefined ?? text(at(invoice, 'DocumentCurrencyCode')),
+    ...(prepayment ? { prepaid: true } : {}),
   }
 }

@@ -12,9 +12,11 @@
 //
 // The rule, said plainly:
 // - Owed is a received invoice read or booked, in euros, more than nought, with no payment paired to it, not paid by the
-//   owner himself, not deleted, not a suspected duplicate.
+//   owner himself, not deleted, not a suspected duplicate, not a prepayment invoice (386: money paid already) and not a
+//   supplier's credit note (it corrects an invoice and its lines take back).
 // - It goes into an order only with the supplier's IBAN (its check digits right); without one it is listed to pay by
-//   hand. One in another currency is never in a SEPA order.
+//   hand. One in another currency is never in a SEPA order, nor a corrective invoice that adds (listed to pay by hand:
+//   what it adds is seen on it, not in its total).
 // - An order is kept with what it holds (payment_orders, payment_order_items), so the page says which invoices are in
 //   an order already, and its file can be downloaded again. The bank's statement then pairs each payment with its
 //   invoice by the symbol and the amount, as any payment.
@@ -38,20 +40,22 @@ export interface Payable {
   /** The last order it is in, and that order's day of execution. */
   orderId: string | null
   orderedOn: string | null
-  /** Why it cannot go into an order: no IBAN, an IBAN that is none, another currency, not approved yet. */
-  blocked: 'iban' | 'currency' | 'approval' | null
+  /** Why it cannot go into an order: no IBAN, an IBAN that is none, another currency, a corrective invoice, not approved yet. */
+  blocked: 'iban' | 'currency' | 'correction' | 'approval' | null
 }
 
 /** The suppliers' invoices the company owes, the earliest due first. */
 export async function payables(db: D1Database, company: string, approvals = false): Promise<Payable[]> {
   const rows = await db
     .prepare(
-      `SELECT d.id, d.party, d.number, d.vs, d.party_iban, d.issued_on, d.due_on, d.total_cents, COALESCE(d.currency, 'EUR') AS currency, d.approved_at,
+      `SELECT d.id, d.party, d.number, d.vs, d.party_iban, d.issued_on, d.due_on, d.total_cents, COALESCE(d.currency, 'EUR') AS currency, d.approved_at, d.corrects,
          (SELECT o.id FROM payment_order_items oi JOIN payment_orders o ON o.id = oi.order_id WHERE oi.document_id = d.id ORDER BY o.created_at DESC LIMIT 1) AS order_id,
          (SELECT o.execute_on FROM payment_order_items oi JOIN payment_orders o ON o.id = oi.order_id WHERE oi.document_id = d.id ORDER BY o.created_at DESC LIMIT 1) AS ordered_on
        FROM documents d
        WHERE d.company_id = ? AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.paid_privately = 0 AND d.duplicate_of IS NULL
-         AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.total_cents > 0
+         AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.total_cents > 0 AND d.prepaid = 0
+         AND NOT (d.corrects IS NOT NULL AND COALESCE((SELECT SUM(COALESCE(json_extract(j.value, '$.base'), 0) + COALESCE(json_extract(j.value, '$.vat'), 0))
+           FROM json_each(CASE WHEN json_valid(d.vat_lines) THEN d.vat_lines ELSE '[]' END) j), 0) < 0)
          AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
        ORDER BY COALESCE(d.due_on, d.issued_on, '9999-12-31'), d.created_at
        LIMIT 1000`,
@@ -73,7 +77,7 @@ export async function payables(db: D1Database, company: string, approvals = fals
       currency,
       orderId: str(r.order_id),
       orderedOn: str(r.ordered_on),
-      blocked: currency !== 'EUR' ? 'currency' : !iban || !isIban(iban) ? 'iban' : approvals && typeof r.approved_at !== 'number' ? 'approval' : null,
+      blocked: currency !== 'EUR' ? 'currency' : str(r.corrects) ? 'correction' : !iban || !isIban(iban) ? 'iban' : approvals && typeof r.approved_at !== 'number' ? 'approval' : null,
     }
   })
 }

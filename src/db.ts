@@ -1208,6 +1208,9 @@ const MIGRATIONS: readonly string[][] = [
   ],
   // The company's logo on its invoices (18 October 2026): a picture in R2 (companies/<id>/brand/), its type.
   ['ALTER TABLE companies ADD COLUMN logo_key TEXT', 'ALTER TABLE companies ADD COLUMN logo_type TEXT'],
+  // A supplier's prepayment invoice (386) read from its file (18 October 2026, after the review): it documents money
+  // paid already, so the payment orders never offer it.
+  ['ALTER TABLE documents ADD COLUMN prepaid INTEGER NOT NULL DEFAULT 0'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

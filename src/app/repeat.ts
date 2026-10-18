@@ -224,6 +224,12 @@ async function issueOne(db: D1Database, repeat: Repeat, today: string): Promise<
   const due = plusDays(today, Math.max(0, daysBetween(template.issuedOn, template.dueOn)))
   try {
     await db.batch([
+      // The repeat moves on first, from the day this run read: a run of the day before still working (one across
+      // midnight) moved it already, and then this batch fails whole on the row below that cannot be written.
+      db
+        .prepare('UPDATE invoice_repeats SET next_on = ?, last_invoice_id = ?, last_on = ?, failed = NULL WHERE id = ? AND stopped_at IS NULL AND next_on = ?')
+        .bind(next, id, today, repeat.id, repeat.nextOn),
+      db.prepare('INSERT INTO invoice_repeats (id) SELECT NULL WHERE changes() = 0'),
       ...saveInvoiceStatements(db, {
         id,
         company: company.id,
@@ -241,7 +247,6 @@ async function issueOne(db: D1Database, repeat: Repeat, today: string): Promise<
         fx,
         repeat: repeat.id,
       }),
-      db.prepare('UPDATE invoice_repeats SET next_on = ?, last_invoice_id = ?, last_on = ?, failed = NULL WHERE id = ? AND stopped_at IS NULL').bind(next, id, today, repeat.id),
       eventStatement(db, { company: company.id, user: null, action: 'invoice.repeated', subject: id, detail: { repeat: repeat.id, template: template.id, total: totals.total } }),
     ])
   } catch (err) {

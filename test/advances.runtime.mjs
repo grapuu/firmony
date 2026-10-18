@@ -60,7 +60,7 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
   const request = await db.prepare('SELECT kind, number, vs, total_cents, document_id, token FROM invoices WHERE id = ?').bind(requestId).first()
   check(
     'a request is numbered in its own row with its own variable symbol, and is no document of the company',
-    res.status === 303 && request?.kind === 'proforma' && request.number === `ZF${year}0001` && request.vs === `${year}90001` && request.total_cents === 144000 && request.document_id === null,
+    res.status === 303 && request?.kind === 'proforma' && request.number === `ZF${year}0001` && request.vs === `9${year}00001` && request.total_cents === 144000 && request.document_id === null,
     JSON.stringify(request),
   )
   check('nothing waits to be booked of it', (await db.prepare('SELECT COUNT(*) AS n FROM documents WHERE company_id = ?').bind(company).first())?.n === 0)
@@ -69,7 +69,7 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
   page = plain(requestRaw)
   check(
     'its page: no tax document, the symbol to pay with, no advance yet',
-    page.includes(`Zálohová faktúra ZF${year}0001`) && page.includes('Zálohová faktúra nie je daňovým dokladom') && page.includes(`${year}90001`) && page.includes('Záloha zatiaľ neprišla'),
+    page.includes(`Zálohová faktúra ZF${year}0001`) && page.includes('Zálohová faktúra nie je daňovým dokladom') && page.includes(`9${year}00001`) && page.includes('Záloha zatiaľ neprišla'),
   )
   check('a request has no e-invoice, here or at its customer', (await client.get(`/app/faktury/${requestId}/xml`)).status === 404 && (await client.get(`/f/${request?.token}/xml`)).status === 404)
   res = await client.post(`/app/faktury/${requestId}/zaloha`, {})
@@ -84,7 +84,7 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
     .prepare(
       "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-adv-1', ?, 'acc-advance', ?, ?, 60000, 'TEST-ONLY Objednávateľ s. r. o.', ?, 'adv-1')",
     )
-    .bind(company, nowS, received, `${year}90001`)
+    .bind(company, nowS, received, `9${year}00001`)
     .run()
   page = plain(await (await client.get(`/app/faktury/${requestId}`)).text())
   check(
@@ -138,7 +138,7 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
     .prepare(
       "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-adv-2', ?, 'acc-advance', ?, ?, 30001, 'TEST-ONLY Objednávateľ s. r. o.', ?, 'adv-2')",
     )
-    .bind(company, nowS, day(-1), `${year}90001`)
+    .bind(company, nowS, day(-1), `9${year}00001`)
     .run()
   await Promise.all([client.post(`/app/faktury/${requestId}/zaloha`, {}), client.post(`/app/faktury/${requestId}/zaloha`, {})])
   const advances = (await db.prepare("SELECT id, number, payment_id, total_cents FROM invoices WHERE company_id = ? AND kind = 'advance' ORDER BY seq").bind(company).all()).results
@@ -252,7 +252,7 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
     .prepare(
       "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-adv-3', ?, 'acc-advance', ?, ?, 53999, 'TEST-ONLY Objednávateľ s. r. o.', ?, 'adv-3')",
     )
-    .bind(company, nowS, today, `${year}90001`)
+    .bind(company, nowS, today, `9${year}00001`)
     .run()
   page = plain(await (await client.get(`/app/faktury/${requestId}`)).text())
   await client.post(`/app/faktury/${requestId}/zaloha`, {})
@@ -341,5 +341,52 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
     'money on a sent request issues its tax document by itself at the next pairing, linked, and mailed to the customer',
     Boolean(autoRequest?.sent_at) && autoAdvance?.total_cents === 14400 && autoAdvance.how === 'auto' && Boolean(autoAdvance.sent_at) && Boolean(autoMail),
     JSON.stringify([autoRequest, autoAdvance, autoMail]),
+  )
+
+  // Found by the review of 18 October 2026. A request paid whole: money in another currency on its symbol is no advance;
+  // the final invoice issued before pairing ran gives the payment its document first and comes to nought, paid.
+  res = await client.post('/app/faktury', form({ druh: 'zalohova' }))
+  const wholeId = idOf(res)
+  const whole = await db.prepare('SELECT vs FROM invoices WHERE id = ?').bind(wholeId).first()
+  await db.batch([
+    db.prepare("INSERT INTO accounts (id, company_id, iban, currency) VALUES ('acc-advance-czk', ?, 'CZ6508000000192000145399', 'CZK')").bind(company),
+    db
+      .prepare(
+        "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, vs, ref) VALUES ('pay-adv-czk', ?, 'acc-advance-czk', ?, ?, 3600000, 'CZK', 'TEST-ONLY Objednávateľ s. r. o.', ?, 'adv-czk')",
+      )
+      .bind(company, nowS, day(-1), whole?.vs ?? ''),
+  ])
+  await client.post(`/app/faktury/${wholeId}/zaloha`, {})
+  page = plain(await (await client.get(`/app/faktury/${wholeId}`)).text())
+  check(
+    'money in another currency on the symbol is no advance on a request in euros',
+    page.includes('Záloha zatiaľ neprišla') &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE company_id = ? AND kind = 'advance' AND relates = ?").bind(company, wholeId).first())?.n === 0,
+  )
+  await db
+    .prepare(
+      "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-adv-whole', ?, 'acc-advance', ?, ?, 144000, 'TEST-ONLY Objednávateľ s. r. o.', ?, 'adv-whole')",
+    )
+    .bind(company, nowS, day(-1), whole?.vs ?? '')
+    .run()
+  res = await client.post('/app/faktury', form({ vyuctovanie: wholeId }))
+  const wholeFinalId = idOf(res)
+  const wholeFinal = await db.prepare('SELECT total_cents, document_id FROM invoices WHERE id = ?').bind(wholeFinalId).first()
+  const wholeAdvance = await db.prepare("SELECT total_cents FROM invoices WHERE company_id = ? AND kind = 'advance' AND payment_id = 'pay-adv-whole'").bind(company).first()
+  const wholeDoc = await db
+    .prepare('SELECT total_cents, advance_cents FROM documents WHERE id = ?')
+    .bind(wholeFinal?.document_id ?? '')
+    .first()
+  page = plain(await (await client.get(`/app/faktury/${wholeFinalId}`)).text())
+  check(
+    'the final invoice issued first gives the payment its document, deducts it and comes to nought, paid',
+    res.status === 303 &&
+      wholeAdvance?.total_cents === 144000 &&
+      wholeFinal?.total_cents === 0 &&
+      wholeDoc?.total_cents === 0 &&
+      wholeDoc.advance_cents === 120000 &&
+      page.includes('Zaplatená') &&
+      !page.includes('Po splatnosti'),
+    JSON.stringify([wholeAdvance, wholeFinal, wholeDoc]),
   )
 }

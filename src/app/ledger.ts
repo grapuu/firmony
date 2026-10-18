@@ -387,7 +387,8 @@ interface Plan {
  * makes no entry.
  */
 function planOf(doc: Doc, company: Company, rates?: Rates, gross?: number): Plan | null {
-  if (!isAccountingDoc(doc.kind) || doc.totalCents === null || doc.totalCents === 0) return null
+  // A final invoice its advances paid whole comes to nought and still moves their base from 324 to the revenue.
+  if (!isAccountingDoc(doc.kind) || doc.totalCents === null || (doc.totalCents === 0 && !(doc.kind === 'invoice_out' && doc.advanceCents > 0))) return null
   const data = company.vatStatus === 'none' ? null : (vatOf(vatDocOf(doc), vatCompanyOf(company))?.data ?? null)
   const lines: { base: number; vat: number }[] = data ? data.lines : doc.linesHint
   const corrects = (data ? data.corrects : doc.correctsHint) ?? ''

@@ -741,8 +741,8 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
     .prepare(
       `INSERT INTO documents (id, company_id, created_at, source, added_by, file_key, file_type, file_name, file_bytes, file_hash, status, read_by,
          kind, party, party_ico, party_iban, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, proposal, invoice_id,
-         party_vat_id, supplied_on, foreign_party, corrects, vat_lines)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         party_vat_id, supplied_on, foreign_party, corrects, vat_lines, prepaid)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       d.id,
@@ -772,6 +772,7 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
       r?.category ? 'ai' : null,
       d.invoiceId ?? null,
       ...vatHints(r),
+      r?.prepaid ? 1 : 0,
     )
 }
 

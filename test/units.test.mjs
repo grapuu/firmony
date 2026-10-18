@@ -3274,6 +3274,21 @@ async function zipped(entries, note) {
       on('324') === 0 && on('602') === -20000 && on('343.200') === -4600 && on('311') === 12300 && b.entries.find((e) => e.key === 'd:advance')?.lines.some((l) => l.d === '324' && l.cents === 10000),
       JSON.stringify([on('324'), on('602'), on('343.200'), on('311')]),
     )
+    // Paid whole in advance (found by the review of 18 October 2026): the final invoice comes to nought, proposes no VAT
+    // and still moves the advance's base from 324 to the revenue.
+    const zero = doc('zero', { kind: 'invoice_out', number: '20260005', party: 'Zákazník s. r. o.', issuedOn: '2026-09-25', dueOn: '2026-10-09', totalCents: 0, vatCents: 0, category: 'sales', advanceCents: 10000, vat: null, linesHint: [{ rate: 23, base: 0, vat: 0, deduct: 0 }] })
+    const z = ledger.buildBooks({ company: company(), docs: [advance, zero], payments: [pay('pa', '2026-09-10', 12300, { party: 'Zákazník s. r. o.' })], banks, filed: [], manual: [] })
+    const proposed = vat.proposeVat({ id: 'zero', kind: 'invoice_out', number: '20260005', party: 'A', partyIco: null, partyVatId: 'SK2120000000', lines: [{ rate: 23, base: 0, vat: 0 }], issuedOn: '2026-09-25', receivedOn: '2026-09-25', totalCents: 0, vatCents: 0, currency: 'EUR', category: 'sales', vatDeduct: null, booked: true, vat: null }, { status: 'payer', quarterly: false, since: '2020-01-01' })
+    check(
+      'a final invoice its advances paid whole: no VAT proposed, booked, 324 nothing and the revenue the whole supply',
+      proposed?.mode === 'none' &&
+        !z.issues.noEntry.includes('zero') &&
+        ledger.balanceOf(z.entries, '324', '2026-09-30') === 0 &&
+        ledger.balanceOf(z.entries, '602', '2026-09-30') === -10000 &&
+        ledger.balanceOf(z.entries, '311', '2026-09-30') === 0 &&
+        invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-01-01', kind: 'invoice', totalCents: 0 }, '2026-10-18') === 'paid',
+      JSON.stringify([proposed, z.issues.noEntry, z.entries.find((e) => e.key === 'd:zero')?.lines]),
+    )
   }
 }
 

@@ -364,6 +364,9 @@ export function proposeVat(given: VatDoc, company: VatCompany): VatData | null {
   if (company.status === 'none') return (abroad || Boolean(doc.foreign)) && isReceived(doc.kind) ? { ...base, mode: 'reverse' } : base
   if (isIssued(doc.kind)) {
     if (company.status !== 'payer') return base
+    // A final invoice its advances paid whole: each rate's supply less the advances' comes to nought, its VAT was
+    // declared on the advances' own tax documents, and it adds nothing to the return or the control statement.
+    if (total === 0 && vat === 0 && hinted.length === 0 && (doc.lines ?? []).some((line) => line.rate > 0)) return base
     const lines = hinted.length > 0 ? hinted.map((line) => ({ ...line, deduct: 0 })) : linesOf(total, vat).map((line) => ({ ...line, deduct: 0 }))
     if (lines.some((line) => line.rate > 0)) return { ...base, mode: 'domestic', lines: lines.filter((line) => line.rate > 0 || line.base !== 0) }
     // An invoice issued here says how it is taxed; anything else is guessed from the customer's VAT number.

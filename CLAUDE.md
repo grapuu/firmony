@@ -14,10 +14,13 @@ over. Bring this section up to date first whenever a session ends.
    e-invoice validated against UBL 2.1 and the CEN and Peppol BIS 3.0 rules (`npm run test:peppol`), credit notes,
    how an invoice is taxed (§ 43, § 47, § 15, outside), domestic reverse charge with the control statement's A.2 and
    its corrections in C.1, advances (request, tax document issued by itself when the money comes, final invoice),
-   invoices in another currency, invoices repeated by themselves, payment orders for the bank (SEPA pain.001), the
-   customer's state, faster pages at volume; and two serious faults found and mended: one company's locked period
-   stopped every company's automatic pairing, and a credit note issued in the app made no entry in the books. All of it
-   under "Invoices the client issues" and item 8. **Nothing is live**: there
+   invoices in another currency, invoices repeated by themselves, payment orders for the bank (SEPA pain.001) with a
+   supplier's IBAN typed when missing, approving suppliers' invoices before they are paid, the customer's state, the
+   company's own invoice numbers and logo, faster pages at volume (3 000 documents a month: books pages 1,0 to 1,3 s);
+   and two serious faults found and mended: one company's locked period stopped every company's automatic pairing, and
+   a credit note issued in the app made no entry in the books. All of it under "Invoices the client issues" and item 8.
+   An independent reviewer read the day's commits afterwards: nine findings, each verified and mended (schema step 48;
+   "Mended after the review of the invoices" under "Invoices the client issues"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1128,7 +1131,8 @@ by itself.
 - Advances (built 18 October 2026, schema step 40: `invoices.vs`, `relates`, `payment_id`, `invoice_lines.vat_cents`,
   `documents.advance_cents`, unique indexes `invoices_payment` and `invoices_final`): "Nová zálohová faktúra" on
   /app/faktury makes a request for an advance (kind 'proforma'): numbered `ZF<year><0001>` in a row of its own, paid
-  with its own variable symbol `<year>9<0001>`, no document of the company and no e-invoice (404, also at the
+  with its own variable symbol `9<year><00001>` (9202600001: an invoice's symbol begins with its year, so the two never
+  meet), no document of the company and no e-invoice (404, also at the
   customer's link), "nie je daňovým dokladom" on the sheet, a QR code, mailed and reminded with that symbol. A VAT
   payer makes one only for a supply with Slovak VAT (`proformaMode`): a payment before a supply abroad is no tax point,
   and its documents are not built. Money on the request's symbol gets its document by itself at the next pairing
@@ -1188,9 +1192,9 @@ by itself.
   invoice (`saveInvoiceStatements`: FA2026-0143), invoices, credit notes and advances' documents in one row, requests
   for advances in their own (ZF...). The variable symbol stays the year and the order (`invoices.vs`, 20260143; the
   number for invoices issued before), on the sheet, in PAY by square, the e-invoice's PaymentID, the mails, the
-  document (`documents.vs`) and so in pairing; europio's reminders name it too. With 5 digits an order from 90 000 on
-  would share a symbol with a request for an advance (the year, 9 and its order): no company issues that many.
-  test/numbering.runtime.mjs.
+  document (`documents.vs`) and so in pairing; europio's reminders name it too. A request's symbol begins with 9, so
+  no order of any size meets it (until the review it was the year, 9 and the order, which order 90 001 of an invoice
+  met). test/numbering.runtime.mjs.
 - The company's logo on its invoices (built 18 October 2026, schema step 47: `companies.logo_key`, `logo_type`): on
   the same page (#logo) an owner uploads a PNG, JPEG or WebP up to 512 kB (by its bytes, `logoTypeOf`; no SVG, which
   could carry a script), kept in R2 under `companies/<id>/brand/` with a new key each time (the one before deleted;
@@ -1224,6 +1228,20 @@ by itself.
   `/app/doklady/:id/schvalit`, taken back by `/neschvalit`; it says who and when); a colleague sees that it waits.
   Not the books' business: no period guard covers it. Not built: approvers other than the owners, limits by amount,
   two approvals.
+- Mended after the review of the invoices (18 October 2026, an independent reader of commits c97c5c5 to 885e572; each
+  finding verified in the code first; schema step 48 `documents.prepaid`): a final invoice its advances paid whole
+  (total nought, the usual case) made no entry, so 324 kept the advance and the revenue missed the supply, and its VAT
+  was guessed exempt with no lines and blocked the period (`planOf` takes a nought with `advance_cents`, `proposeVat`
+  proposes nothing for it, `stateOf` says paid, it is never reminded); money on a request's symbol is matched with
+  the bank's noughts in front and only in euros (a payment in crowns made a euro advance of its cents); issuing the
+  final invoice first gives every payment on the request its tax document (after it none is made); `autoAdvances`
+  leaves out requests with their final invoice (they held its twenty places) and goes by the oldest payment; a request's
+  symbol begins with 9 (above); a repeat moves on only from the day its run read (`next_on = ?` and a row that cannot be
+  written when nothing changed, so a run across midnight issues nothing twice); an IBAN is typed on "Na úhradu" only
+  where the document has none that is one, and typed by anybody but an owner it takes the approval back; the payment
+  orders leave out a supplier's credit note (it corrects an invoice and its lines take back) and a prepayment invoice
+  (386, `prepaid` from the e-invoice: paid already), and list a corrective invoice that adds to pay by hand. Units
+  1159, runtime 1650.
 - Found on the way (18 October 2026) and mended: automatic pairing asked the period lock of `p.id` and `d.id` inside
   subqueries that name their own `payments p` and `documents d`, so once any company had a locked period with a booked
   document or a payment in it, no company's payments paired by themselves any more (`linkStatement` now asks it of
@@ -2005,8 +2023,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1158 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1645 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm test                 # 1159 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
+npm run test:runtime     # 1650 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

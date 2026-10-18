@@ -100,7 +100,7 @@ export async function checkNumbering({ db, nowS, signIn, as, day, capture }) {
   check('a credit note takes the next number of the row', credit?.number === `FA${year}-0144` && credit.vs === `${year}0144`, JSON.stringify(credit))
   res = await owner.post('/app/faktury', form({ druh: 'zalohova' }))
   const request = await db.prepare('SELECT number, vs FROM invoices WHERE id = ?').bind(idOf(res)).first()
-  check('a request for an advance keeps its own row', request?.number === `ZF${year}0001` && request.vs === `${year}90001`, JSON.stringify(request))
+  check('a request for an advance keeps its own row', request?.number === `ZF${year}0001` && request.vs === `9${year}00001`, JSON.stringify(request))
   // The logo: a picture for the head of the invoices, nothing else; on the sheet in the app and at the customer.
   const png = {
     name: 'logo.png',

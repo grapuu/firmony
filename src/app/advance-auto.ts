@@ -45,7 +45,7 @@ export async function issueAdvances(db: D1Database, company: Company, request: S
       customerIco: request.customerIco ?? '',
       customerDic: request.customerDic ?? '',
       customerIcdph: request.customerIcdph ?? '',
-    customerCountry: request.customerCountry ?? '',
+      customerCountry: request.customerCountry ?? '',
       customerEmail: request.customerEmail ?? '',
       issued: today,
       delivered: payment.bookedOn,
@@ -122,12 +122,18 @@ async function mailAdvance(db: D1Database, company: Company, request: StoredInvo
 
 /** The requests of a company with money on their symbol that has no document yet: their documents, made. */
 export async function autoAdvances(db: D1Database, companyId: string): Promise<number> {
+  // A bank may write the symbol with noughts in front; a request is in euros, so money in another currency is no
+  // advance on it; a request with its final invoice takes no more (money on its symbol then pays the invoice), and so
+  // holds no place among the twenty.
   const rows = await db
     .prepare(
-      `SELECT DISTINCT i.id FROM invoices i JOIN payments p ON p.company_id = i.company_id AND p.vs = i.vs
+      `SELECT i.id FROM invoices i JOIN payments p ON p.company_id = i.company_id AND ltrim(p.vs, '0') = ltrim(i.vs, '0')
         WHERE i.company_id = ? AND i.kind = 'proforma' AND i.status = 'issued' AND i.vs IS NOT NULL AND p.amount_cents > 0
+          AND COALESCE(p.currency, 'EUR') = 'EUR'
           AND NOT EXISTS (SELECT 1 FROM invoices a WHERE a.payment_id = p.id)
           AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id)
+          AND NOT EXISTS (SELECT 1 FROM invoices f WHERE f.company_id = i.company_id AND f.relates = i.id AND f.kind = 'invoice' AND f.status = 'issued')
+        GROUP BY i.id ORDER BY MIN(p.booked_on), i.id
         LIMIT 20`,
     )
     .bind(companyId)

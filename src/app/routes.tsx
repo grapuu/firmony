@@ -51,6 +51,7 @@ import {
   plainIban,
   isIban,
   saveInvoiceStatements,
+  stateOf,
   totalsOf,
   ublOf,
   type Errors as InvoiceErrors,
@@ -1021,8 +1022,19 @@ appRoutes.post('/uhrady/iban', async (c) => {
   const id = typeof body.doklad === 'string' && ID.test(body.doklad) ? body.doklad : ''
   const iban = typeof body.iban === 'string' ? plainIban(body.iban).slice(0, 34) : ''
   if (!isIban(iban)) return payOrdersPage(c, { error: t.payorders.ibanBad }, 422)
+  // Only where the document has no IBAN that is one (the page offers no more): an IBAN read from the invoice is never
+  // replaced here. Typed by anybody but an owner, it takes an approval given before back, so the owner sees whom it pays.
+  const doc = ID.test(id) ? await db.prepare("SELECT party_iban FROM documents WHERE id = ? AND company_id = ? AND kind = 'invoice_in' AND deleted_at IS NULL").bind(id, who.company.id).first<{ party_iban: string | null }>() : null
+  const before = doc?.party_iban ?? null
+  if (!doc || (before && isIban(plainIban(before)))) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  const owner = who.role === 'owner'
   const result = await db.batch([
-    db.prepare("UPDATE documents SET party_iban = ? WHERE id = ? AND company_id = ? AND kind = 'invoice_in' AND deleted_at IS NULL").bind(iban, id, who.company.id),
+    db
+      .prepare(
+        `UPDATE documents SET party_iban = ?, approved_at = CASE WHEN ? THEN approved_at END, approved_by = CASE WHEN ? THEN approved_by END
+         WHERE id = ? AND company_id = ? AND kind = 'invoice_in' AND deleted_at IS NULL AND party_iban IS ?`,
+      )
+      .bind(iban, owner ? 1 : 0, owner ? 1 : 0, id, who.company.id, before),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.iban', subject: id }),
   ])
   if ((result[0]?.meta?.changes ?? 0) === 0) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
@@ -1956,6 +1968,9 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
   const request = values.relates ? await requestOf(db, who.company.id, values.relates) : null
   if (values.relates && !request) return invoiceForm(c, draftId, { ...values, relates: undefined }, { form: ti.errors.finalOf }, 422)
   if (request && issue && (await finalOf(db, who.company.id, request.id))) return invoiceForm(c, draftId, values, { form: ti.errors.finalDone }, 409)
+  // Money on the request that pairing has not given its tax document yet gets it now: after the final invoice none is
+  // made, and the final invoice deducts only what has one.
+  if (request && issue && !errors.lines) await issueAdvances(db, who.company, request, who.user.id, 'auto')
   const deductions = request && issue ? deductionLines(await advancesOf(db, who.company.id, request.id), lines.length + 1, ti.form.deduction) : []
   const advanceCents = -deductions.reduce((sum, line) => sum + line.baseCents, 0)
   if (deductions.length > 0) {
@@ -2281,8 +2296,8 @@ async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
     await db.prepare('UPDATE invoices SET customer_email = ? WHERE id = ? AND company_id = ? AND customer_email IS NULL').bind(typed, invoice.id, who.company.id).run()
     invoice.customerEmail = typed
   }
-  // A paid invoice is never reminded, nor a credit note, whatever is posted.
-  if (reminder && (invoice.paidOn || invoice.kind === 'credit' || invoice.kind === 'advance')) return c.redirect(`/app/faktury/${invoice.id}`, 303)
+  // A paid invoice is never reminded, nor a credit note, an advance's document or a final invoice its advances paid.
+  if (reminder && ['paid', 'credit'].includes(stateOf(invoice, today()))) return c.redirect(`/app/faktury/${invoice.id}`, 303)
   if (!(await withinLimit(db, 'invoice-mail', who.company.id, 30, 3600))) return invoicePage(c, id, { error: t.messages.throttle }, 429)
   const link = `${siteOrigin(c)}/f/${invoice.token}`
   const total = formatMoney(invoice.totalCents, invoice.currency).replace(/ /g, ' ')

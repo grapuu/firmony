@@ -147,14 +147,41 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
     res.status === 303 && approved?.approved_by === 'u-payorder' && page.includes('Schválil(a) TEST-ONLY Platiteľka') && page.includes('/app/doklady/po-1/neschvalit'),
   )
   page = plain(await (await client.get('/app/uhrady')).text())
-  check(
-    'the approved one can go into an order, the other still waits',
-    page.includes('type="checkbox" name="doklad" value="po-1"') && !page.includes('type="checkbox" name="doklad" value="po-2"'),
-  )
+  check('the approved one can go into an order, the other still waits', page.includes('type="checkbox" name="doklad" value="po-1"') && !page.includes('type="checkbox" name="doklad" value="po-2"'))
   res = await order({ doklad: ['po-1', 'po-2'] })
   const second = (res.headers.get('location') ?? '').match(/prikaz=([0-9a-f-]{36})/)?.[1] ?? ''
   const secondItems = (await db.prepare('SELECT document_id FROM payment_order_items WHERE order_id = ?').bind(second).all()).results.map((r) => r.document_id)
   check('and only it gets in, whatever was posted', res.status === 303 && JSON.stringify(secondItems) === '["po-1"]', JSON.stringify(secondItems))
   await client.post('/app/doklady/po-1/neschvalit', {})
   check('an approval taken back', (await db.prepare('SELECT approved_at FROM documents WHERE id = ?').bind('po-1').first())?.approved_at === null)
+
+  // Found by the review of 18 October 2026: an IBAN read from the invoice is never replaced on the page, and one typed
+  // by a colleague takes the owner's approval back; a supplier's credit note and a prepayment invoice are never offered.
+  await db.batch([
+    doc('po-7', company, { party: 'TEST-ONLY Schválený bez účtu s. r. o.', number: 'A-7', due: day(5), cents: 4000 }),
+    doc('po-8', company, { party: 'TEST-ONLY Dobropis s. r. o.', number: 'D-8', iban: 'SK8975000000000012345671', due: day(5), cents: 2460 }),
+    doc('po-9', company, { party: 'TEST-ONLY Ťarchopis s. r. o.', number: 'T-9', iban: 'SK8975000000000012345671', due: day(5), cents: 1230 }),
+    doc('po-10', company, { party: 'TEST-ONLY Záloha zaplatená s. r. o.', number: 'Z-10', iban: 'SK8975000000000012345671', due: day(-3), cents: 12300 }),
+    db.prepare("UPDATE documents SET approved_at = ?, approved_by = 'u-payorder' WHERE id IN ('po-1', 'po-7')").bind(nowS),
+    db.prepare(`UPDATE documents SET corrects = 'F-1', vat_lines = '[{"rate":23,"base":-2000,"vat":-460,"deduct":0}]' WHERE id = 'po-8'`),
+    db.prepare("UPDATE documents SET corrects = 'F-2' WHERE id = 'po-9'"),
+    db.prepare("UPDATE documents SET prepaid = 1 WHERE id = 'po-10'"),
+  ])
+  res = await colleague.post('/app/uhrady/iban', { doklad: 'po-1', iban: 'SK3112000000198742637541' })
+  check(
+    'a colleague cannot put another IBAN on an approved invoice that has one',
+    res.status === 404 && (await db.prepare('SELECT party_iban FROM documents WHERE id = ?').bind('po-1').first())?.party_iban.replace(/\s/g, '') === 'SK8975000000000012345671',
+  )
+  res = await colleague.post('/app/uhrady/iban', { doklad: 'po-7', iban: 'SK3112000000198742637541' })
+  const typed = await db.prepare('SELECT party_iban, approved_at FROM documents WHERE id = ?').bind('po-7').first()
+  check('an IBAN a colleague types takes the approval back', res.status === 303 && typed?.party_iban === 'SK3112000000198742637541' && typed.approved_at === null, JSON.stringify(typed))
+  page = plain(await (await client.get('/app/uhrady')).text())
+  check(
+    "a supplier's credit note and a prepayment invoice are not owed; a corrective invoice is paid by hand",
+    !page.includes('TEST-ONLY Dobropis') &&
+      !page.includes('TEST-ONLY Záloha zaplatená') &&
+      page.includes('TEST-ONLY Ťarchopis') &&
+      !page.includes('type="checkbox" name="doklad" value="po-9"') &&
+      page.includes('Opravná faktúra: skontrolujte'),
+  )
 }

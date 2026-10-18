@@ -265,7 +265,8 @@ export async function advancePayments(db: D1Database, company: string, vs: strin
     .prepare(
       `SELECT p.id, p.booked_on, p.amount_cents,
          EXISTS (SELECT 1 FROM invoices i WHERE i.payment_id = p.id AND i.kind = 'advance' AND i.company_id = p.company_id) AS documented
-       FROM payments p WHERE p.company_id = ? AND p.vs = ? AND p.amount_cents > 0 ORDER BY p.booked_on, p.id`,
+       FROM payments p WHERE p.company_id = ? AND ltrim(p.vs, '0') = ltrim(?, '0') AND p.amount_cents > 0 AND COALESCE(p.currency, 'EUR') = 'EUR'
+       ORDER BY p.booked_on, p.id`,
     )
     .bind(company, vs)
     .all<Row>()
@@ -436,7 +437,7 @@ export interface StoredInvoice {
   kind: InvoiceKind
   /**
    * Its variable symbol: the year and its order (20260143), whatever its number looks like (FA2026-0143); a request for
-   * an advance the year, 9 and its order (202690001). Null on invoices issued before 18 October 2026: their number.
+   * an advance 9, the year and its order in five digits (9202600001). Null on invoices issued before 18 October 2026: their number.
    */
   vs: string | null
   /** An advance's tax document or a final invoice: the request it belongs to (id and number). */
@@ -596,11 +597,13 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
 type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
+// Money on a request's symbol: in euros (a request is in euros), the symbol as the bank wrote it, noughts in front too.
+const ON_REQUEST = "p.company_id = i.company_id AND i.vs IS NOT NULL AND ltrim(p.vs, '0') = ltrim(i.vs, '0') AND p.amount_cents > 0 AND COALESCE(p.currency, 'EUR') = 'EUR'"
 const INVOICE_COLUMNS = `i.*, u.name AS created_by_name,
   CASE WHEN i.kind = 'proforma'
-    THEN (SELECT p.booked_on FROM payments p WHERE p.company_id = i.company_id AND p.vs = i.vs AND i.vs IS NOT NULL AND p.amount_cents > 0 ORDER BY p.booked_on LIMIT 1)
+    THEN (SELECT p.booked_on FROM payments p WHERE ${ON_REQUEST} ORDER BY p.booked_on LIMIT 1)
     ELSE (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1) END AS paid_on,
-  CASE WHEN i.kind = 'proforma' THEN (SELECT COALESCE(SUM(p.amount_cents), 0) FROM payments p WHERE p.company_id = i.company_id AND p.vs = i.vs AND i.vs IS NOT NULL AND p.amount_cents > 0) ELSE 0 END AS paid_cents,
+  CASE WHEN i.kind = 'proforma' THEN (SELECT COALESCE(SUM(p.amount_cents), 0) FROM payments p WHERE ${ON_REQUEST}) ELSE 0 END AS paid_cents,
   (SELECT o.number FROM invoices o WHERE o.id = i.relates AND o.company_id = i.company_id) AS relates_number,
   (SELECT o.number FROM invoices o WHERE o.id = i.corrects AND o.company_id = i.company_id) AS corrects_number,
   (SELECT o.issued_on FROM invoices o WHERE o.id = i.corrects AND o.company_id = i.company_id) AS corrects_issued_on`
@@ -654,12 +657,13 @@ function invoiceOf(row: Row): StoredInvoice {
 export type InvoiceKind = 'invoice' | 'credit' | 'proforma' | 'advance'
 export type InvoiceState = 'draft' | 'unpaid' | 'overdue' | 'paid' | 'credit'
 
-export function stateOf(invoice: Pick<StoredInvoice, 'status' | 'paidOn' | 'dueOn'> & { kind?: StoredInvoice['kind'] }, today: string): InvoiceState {
+export function stateOf(invoice: Pick<StoredInvoice, 'status' | 'paidOn' | 'dueOn'> & { kind?: StoredInvoice['kind']; totalCents?: number }, today: string): InvoiceState {
   if (invoice.status === 'draft') return 'draft'
   // A credit note lowers what the invoice asks; it is not collected, so it is neither paid nor overdue. The tax
-  // document of an advance documents money received.
+  // document of an advance documents money received, and a final invoice its advances paid whole asks for nothing.
   if (invoice.kind === 'credit') return 'credit'
   if (invoice.kind === 'advance') return 'paid'
+  if (invoice.kind === 'invoice' && invoice.totalCents === 0) return 'paid'
   if (invoice.paidOn) return 'paid'
   return invoice.dueOn < today ? 'overdue' : 'unpaid'
 }
@@ -797,11 +801,13 @@ export function saveInvoiceStatements(
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('ZF%d%04d', ?6, next.seq)
              ELSE fmt.prefix || CAST(?6 AS INTEGER) || fmt.sep || printf('%0' || fmt.digits || 'd', next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
-           CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq)
+           CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('9%d%05d', ?6, next.seq)
              ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one,
          -- in the company's own numbers (a prefix, a mark, the order's digits) and from a year's first order when it
-         -- came in the middle of one. The variable symbol is the year and the order, whatever the number looks like.
+         -- came in the middle of one. The variable symbol is the year and the order, whatever the number looks like; a
+         -- request's is 9, the year and its order in five digits (9202600001): an invoice's begins with its year, so the
+         -- two never meet, whatever the number of invoices.
          FROM (SELECT COALESCE(invoice_prefix, '') AS prefix, COALESCE(invoice_sep, '') AS sep, COALESCE(invoice_digits, 4) AS digits
                FROM companies WHERE id = ?2) AS fmt,
               (SELECT max(l.seq, f.start) AS seq
