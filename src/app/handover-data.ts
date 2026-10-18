@@ -50,6 +50,7 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['pracovne-cesty', 'SELECT * FROM trips WHERE company_id = ?1 AND year = ?2 ORDER BY seq'],
     ['strediska', 'SELECT * FROM cost_centers WHERE company_id = ?1 ORDER BY code'],
     ['rozpocty-stredisk', 'SELECT * FROM cost_center_budgets WHERE company_id = ?1 ORDER BY year, center_id'],
+    ['zrazky-zo-mzdy', 'SELECT * FROM wage_garnishments WHERE company_id = ?1 ORDER BY employee_id, started_on, id'],
     ['nastavenia-miezd', 'SELECT payroll FROM companies WHERE id = ?1'],
     ['ucty', 'SELECT id, company_id, iban, bank, ledger, balance_cents, balance_on FROM accounts WHERE company_id = ?1 ORDER BY id'],
     ['doklady', "SELECT * FROM documents WHERE company_id = ?1 AND substr(COALESCE(issued_on, date(created_at, 'unixepoch')), 1, 4) = ?2 ORDER BY id"],
@@ -98,9 +99,10 @@ export async function handoverData(db: D1Database, company: string, year: string
     const lines = parsed(run.lines)
     if (!Array.isArray(lines)) continue
     const rows = [
-      ['Zamestnanec', 'Vzťah', 'Poisťovňa', 'Hrubá mzda', 'Náhrada príjmu pri PN', 'Sociálne zamestnanca', 'Zdravotné zamestnanca', 'Daň po bonuse', 'Ročné zúčtovanie: daň', 'Ročné zúčtovanie: bonus', 'Stravovacie poukážky: časť zamestnanca', 'Finančný príspevok na stravovanie', 'Čistá mzda', 'Cena práce'],
+      ['Zamestnanec', 'Vzťah', 'Poisťovňa', 'Hrubá mzda', 'Náhrada príjmu pri PN', 'Sociálne zamestnanca', 'Zdravotné zamestnanca', 'Daň po bonuse', 'Ročné zúčtovanie: daň', 'Ročné zúčtovanie: bonus', 'Stravovacie poukážky: časť zamestnanca', 'Finančný príspevok na stravovanie', 'Zrážky pre exekútorov', 'Čistá mzda', 'Cena práce'],
       // The columns make the net: the gross and sick pay, less the insurance and the tax after the bonus, less the annual
-      // settlement's tax and plus its bonus, less the employee's part of the vouchers and plus the financial contribution.
+      // settlement's tax and plus its bonus, less the employee's part of the vouchers and plus the financial contribution,
+      // less the deductions for executions.
       ...lines.map((line) => [
         line.name,
         line.slip?.contract ?? 'employment',
@@ -110,6 +112,7 @@ export async function handoverData(db: D1Database, company: string, year: string
         csvMoney(line.slip?.settlementBonus ?? 0),
         csvMoney(line.slip?.meals?.employee ?? 0),
         csvMoney(line.slip?.meals?.cash ?? 0),
+        csvMoney((line.slip?.garnish ?? []).reduce((t: number, d: { current?: number; arrears?: number }) => t + (d.current ?? 0) + (d.arrears ?? 0), 0)),
         ...['net', 'employerCost'].map((k) => csvMoney(line.slip?.[k] ?? null)),
       ]),
     ]

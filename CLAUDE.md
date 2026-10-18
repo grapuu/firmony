@@ -32,7 +32,8 @@ over. Bring this section up to date first whenever a session ends.
    of approving and the Slovak e-invoice terms, eight findings mended (schema step 57; a credit note's e-invoice with
    another day of supply failed the UBL schema); meals of employees in payroll, vouchers and the financial contribution
    (schema step 58, under "Payroll") and the social fund's mandatory allocation; a morning doorbell to approvers and
-   budgets of cost centres (schema step 59); payroll by cost centre (schema step 60). **Nothing is live**: there
+   budgets of cost centres (schema step 59); payroll by cost centre (schema step 60); deductions from wages for
+   executions (schema step 61, under "Payroll"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -2163,7 +2164,7 @@ monthly wage; nothing is sent to the insurers or the tax office by us.
   `payroll.saved`, `payroll.closed`, `payroll.reopened`, `payroll.settings`, `employee.added`, `employee.changed`.
 - Since 17 October 2026 (item 8 of "Start here"): agreements, a director's remuneration, pensioners and students,
   sick pay, holiday, obstacles, overtime and surcharges worked out by the app, the annual settlement, and the reports
-  of every relationship. Not built: wage deductions (exekúcie), seasonal work, a collective
+  of every relationship. Not built: deductions by agreement, seasonal work, a collective
   agreement's rates, the annual report's eForm file (its figures are on the settlement page), the § 33a bonus on
   mortgage interest. The client is told in a message, not yet with QR codes on its Dane page.
 - Meals of employees (built 18 October 2026, schema step 58 `employees.meal_way`; `src/app/meals.ts`). Read in the
@@ -2196,6 +2197,32 @@ monthly wage; nothing is sent to the insurers or the tax office by us.
   takes meals; the month's table says what the meals did to each net and the handover's `pasky.csv` has their two
   columns; the client's message says how many vouchers of what value to hand out to whom. The social fund's creation
   (above) answers the finding that 472 was only ever debited.
+- Deductions from wages for an execution (built 18 October 2026, schema step 61 `wage_garnishments`,
+  `employees.dependents`; `src/app/garnish.ts`). Read in the original on static.slov-lex.sk through the browser pane:
+  the Exekučný poriadok (Act No. 233/1995 Z. z., version of 27 December 2025) § 66 to § 92, the government regulation
+  No. 268/2006 Z. z. (version of 1 January 2022, the latest), the Labour Code § 118(2), § 131, § 152 (version of
+  1 September 2026); the subsistence minimum 273,99 € (1 July 2024), 284,13 € (2025), 295,22 € (2026) in `SUBSISTENCE`:
+  **add a line every 1 July**. The net wage for deductions (`garnishNet`): gross and sick pay less the employee's
+  insurance, the tax advance and an annual underpayment (the tax bonus, meals and travel are no wage). Protected
+  amounts rounded down (`protectedAmounts`): ordinary 140 % of the subsistence minimum plus 25 % of it per person
+  maintained, priority 100 % plus 25 %, a minor child's maintenance 70 % of 60 % (persons the maintenance is for not
+  counted), the cap three times 140 %; the remainder rounded down to cents divisible by three (`thirdsOf`). A month
+  (`garnishMonth`): claims delivered by the payday and not ended; the second third (of the lowest priority remainder) to
+  maintenance (current first in proportion, then arrears in proportion to the current), then other priority claims by
+  order; the first third and what is above the cap to all by order (one day in proportion); each kind within its own
+  share (ordinary a third and what is above the cap, priority two thirds and above), since the law gives no rule for
+  claims of different protected amounts at once; never more than a claim has left (its total less the closed months'
+  deductions); before the execution order a deduction is kept by the employer (`held`). The accountant writes each
+  execution at `/ucto/klienti/:id/mzdy/zrazka` (kind, minor, persons, executor, file number, IBAN, VS, the order to
+  start and the execution order delivered, the claim, the current maintenance, ended), removed by a mark; the employee
+  form has "Vyživované osoby". The slip names each deduction (`Payslip.garnish`, off the net), the month's table says it,
+  "Čo zaplatiť" lists each executor's payment by the payday (or to keep), the client's message too, the books 331
+  against 379 and a payment of that amount 379 (`pays.garnish`), the overview's check and the handover's `pasky.csv`
+  know it; the list says what each deducted, kept and has left, and flags an employee who left (tell the executor within
+  a week, § 85(2)). Not built: deductions by agreement (§ 131(3)), wages of several payers (§ 88), a pensioner's rates,
+  fines (§ 2b), the notices of a sick leave over ten days or maternity (§ 67(4), (5)) as deadlines, paying out what was
+  kept once the execution order comes (the accountant pays it by hand), the confirmation for a new employer (§ 84(1)).
+  test/garnish.runtime.mjs, units "Deductions for executions".
 - The social fund's mandatory allocation (built 18 October 2026, `src/app/social-fund.ts`; no schema step: the rate in
   `companies.payroll.fundRate`, each closed line's allocation in its `fund`). Read on static.slov-lex.sk by WebFetch,
   Act No. 152/1994 Z. z. as of 1 January 2025 (the latest version the register shows): § 3(1)(a) 0,6 % to 1 % of the
@@ -2342,8 +2369,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1233 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1815 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1253 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1829 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

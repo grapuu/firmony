@@ -7,6 +7,7 @@ import { isIban, plainIban } from './invoices'
 import type { LedgerPayroll } from './ledger'
 import { isMealWay, mealMoney, mealsProposed, mealWayOf, NO_MEALS, type MealSettings, type MealWay } from './meals'
 import { FUND_RATE_MIN, fundOf, isFundRate } from './social-fund'
+import { deductionOf, garnishMonth, garnishNet, isGarnishKind, type Garnishment } from './garnish'
 import {
   EMPTY_PARTS,
   monthCalendar,
@@ -79,6 +80,8 @@ export interface Employee {
   mealWay?: MealWay | 'none' | null
   /** The cost centre his cost of work goes to (centers.ts); null the company's in common. */
   centerId?: string | null
+  /** The persons he maintains, a spouse with her own income too (garnish.ts: the protected amount). */
+  dependents?: number
 }
 
 /** The terms a month of an employee is worked out by. */
@@ -128,6 +131,7 @@ function employeeOf(r: Row): Employee {
     leaveDays: Number.isInteger(r.leave_days) ? (r.leave_days as number) : null,
     mealWay: isMealWay(r.meal_way) || r.meal_way === 'none' ? (r.meal_way as MealWay | 'none') : null,
     centerId: str(r.center_id),
+    dependents: Number.isInteger(r.dependents) && (r.dependents as number) > 0 ? (r.dependents as number) : 0,
   }
 }
 
@@ -141,14 +145,15 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
   return db
     .prepare(
       `INSERT INTO employees (id, company_id, name, born_on, insurer, started_on, ended_on, wage_cents, declaration, disabled, health_deduction, health_exempt, children, iban, created_at, created_by, updated_at,
-         contract, regular, pension, exemption, wage_kind, weekly_hours, leave_days, meal_way, center_id)
+         contract, regular, pension, exemption, wage_kind, weekly_hours, leave_days, meal_way, center_id, dependents)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?15, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
-         (SELECT id FROM cost_centers WHERE id = ?25 AND company_id = ?2))
+         (SELECT id FROM cost_centers WHERE id = ?25 AND company_id = ?2), ?26)
        ON CONFLICT (id) DO UPDATE SET name = excluded.name, born_on = excluded.born_on, insurer = excluded.insurer, started_on = excluded.started_on, ended_on = excluded.ended_on,
          wage_cents = excluded.wage_cents, declaration = excluded.declaration, disabled = excluded.disabled, health_deduction = excluded.health_deduction,
          health_exempt = excluded.health_exempt, children = excluded.children, iban = excluded.iban, updated_at = excluded.updated_at,
          contract = excluded.contract, regular = excluded.regular, pension = excluded.pension, exemption = excluded.exemption, wage_kind = excluded.wage_kind,
-         weekly_hours = excluded.weekly_hours, leave_days = excluded.leave_days, meal_way = excluded.meal_way, center_id = excluded.center_id WHERE employees.company_id = ?2`,
+         weekly_hours = excluded.weekly_hours, leave_days = excluded.leave_days, meal_way = excluded.meal_way, center_id = excluded.center_id,
+         dependents = excluded.dependents WHERE employees.company_id = ?2`,
     )
     .bind(
       e.id,
@@ -176,6 +181,7 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
       e.leaveDays,
       e.mealWay ?? null,
       e.centerId ?? null,
+      Math.max(0, Math.min(20, Math.floor(e.dependents ?? 0))),
     )
 }
 
@@ -371,10 +377,30 @@ export function monthSlips(
     meals?: MealSettings | null
     /** The social fund's mandatory allocation in hundredths of a per cent (social-fund.ts); 0,6 % when left out. */
     fundRate?: number
+    /** The executions of the company's employees (garnish.ts), and the day the month's wages are paid. */
+    garnishments?: readonly Garnishment[]
+    payday?: string
   } = {},
 ): SlipLine[] {
   if (run?.closedOn) return run.lines.filter((l): l is RunLine & { slip: Payslip } => Boolean(l.slip)).map((l) => ({ ...l, days: l.days ?? monthDays(period) }))
   const typed = new Map((run?.lines ?? []).map((l) => [l.employeeId, l]))
+  // Executions (garnish.ts): each claim's deductions of the months closed before, so the claim's rest is known.
+  const garnishments = context.garnishments ?? []
+  const deducted = new Map<string, number>()
+  for (const r of context.runs ?? [])
+    if (r.closedOn && r.period < period) for (const l of r.lines) for (const d of l.slip?.garnish ?? []) deducted.set(d.id, (deducted.get(d.id) ?? 0) + d.arrears)
+  const payday = context.payday ?? run?.payday ?? `${period}-${String(monthDays(period)).padStart(2, '0')}`
+  const withGarnish = (e: Employee, slip: Payslip): Payslip => {
+    const claims = garnishments.filter((g) => g.employeeId === e.id).map((g) => ({ g, left: g.total === null ? null : g.total - (deducted.get(g.id) ?? 0) }))
+    if (claims.length === 0) return slip
+    const list = garnishMonth(period, garnishNet(slip), e.dependents ?? 0, claims, payday)
+    if (list.length === 0) return slip
+    const named = list.map((d) => {
+      const g = garnishments.find((x) => x.id === d.id)
+      return { ...d, creditor: g?.creditor ?? '', reference: g?.reference ?? '' }
+    })
+    return { ...slip, garnish: named, net: slip.net - named.reduce((t, d) => t + deductionOf(d), 0) }
+  }
   return employees
     .map((e) => ({ e, days: daysEmployed(e, period) }))
     .filter(({ days }) => days > 0)
@@ -416,7 +442,7 @@ export function monthSlips(
         proposals: { average, dvz, meals: way ? mealsProposal : null },
         fund: fundOf(e.contract, pay.earned, context.fundRate ?? FUND_RATE_MIN),
         ...(e.centerId ? { center: e.centerId } : {}),
-        slip: payslip({
+        slip: withGarnish(e, payslip({
           period,
           gross: pay.gross,
           sickPay: pay.sick,
@@ -433,7 +459,7 @@ export function monthSlips(
           exemption,
           ...(settled?.result ? { settlement: { tax: settled.result.taxDifference, bonus: settled.result.bonusDifference } } : {}),
           meals,
-        }),
+        })),
       }
     })
 }
@@ -521,6 +547,9 @@ export function ledgerPayroll(run: PayrollRun): LedgerPayroll | null {
   // The social fund's mandatory allocation of the month, as each line kept it when the month was closed.
   const fundOfLine = (l: RunLine) => (l.slip && Number.isSafeInteger(l.fund) && (l.fund as number) > 0 ? (l.fund as number) : 0)
   const socialFund = run.lines.reduce((t, l) => t + fundOfLine(l), 0)
+  // Executions (garnish.ts): the deductions owed to executors (379), and each that is paid (not kept) for the bank.
+  const garnishes = slips.flatMap((l) => l.slip.garnish ?? [])
+  const garnish = garnishes.reduce((t, d) => t + deductionOf(d), 0)
   // Each centre's cost of work (centers.ts): what its employees' lines cost the company, the social fund's allocation too.
   const byCenter = new Map<string, number>()
   for (const l of slips) if (l.center) byCenter.set(l.center, (byCenter.get(l.center) ?? 0) + l.slip.employerCost + fundOfLine(l))
@@ -531,13 +560,14 @@ export function ledgerPayroll(run: PayrollRun): LedgerPayroll | null {
     costs,
     meals,
     socialFund,
+    garnish,
     ...(centerCosts.length > 0 ? { centerCosts } : {}),
     socialEmployee: sum((s) => s.socialEmployee),
     socialEmployer: sum((s) => s.socialEmployer),
     healthEmployee: sum((s) => s.healthEmployee),
     healthEmployer: sum((s) => s.healthEmployer),
     tax: totals.tax,
-    pays: { social: totals.social, health: Object.values(totals.health), tax: totals.tax > 0 ? totals.tax : -1 },
+    pays: { social: totals.social, health: Object.values(totals.health), tax: totals.tax > 0 ? totals.tax : -1, garnish: garnishes.filter((d) => !d.held).map(deductionOf) },
   }
 }
 
@@ -585,4 +615,44 @@ export function leaveTouchesClosed(before: SickLeave | null, after: SickLeave | 
     if ((a?.parts.length ?? 0) > 0 && before?.dvz !== after?.dvz) return true
   }
   return false
+}
+
+/** The executions of a company's employees that stand (garnish.ts), the earliest delivered first. */
+export async function garnishmentsOf(db: D1Database, company: string): Promise<Garnishment[]> {
+  const rows = await db.prepare('SELECT * FROM wage_garnishments WHERE company_id = ? AND deleted_at IS NULL ORDER BY started_on, created_at, id').bind(company).all<Row>()
+  return rows.results.map((r) => ({
+    id: String(r.id),
+    employeeId: String(r.employee_id),
+    kind: isGarnishKind(r.kind) ? r.kind : 'ordinary',
+    minor: r.minor === 1,
+    persons: Number.isInteger(r.persons) ? (r.persons as number) : 0,
+    creditor: String(r.creditor ?? ''),
+    reference: String(r.reference ?? ''),
+    iban: str(r.iban),
+    vs: str(r.vs),
+    startedOn: String(r.started_on),
+    orderOn: str(r.order_on),
+    total: Number.isSafeInteger(r.total_cents) ? (r.total_cents as number) : null,
+    monthly: Number.isSafeInteger(r.monthly_cents) ? (r.monthly_cents as number) : null,
+    endedOn: str(r.ended_on),
+  }))
+}
+
+/** An execution written, new or changed (only of the company's own employee). */
+export function garnishmentStatement(db: D1Database, company: string, g: Garnishment, by: string, at: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO wage_garnishments (id, company_id, employee_id, kind, minor, persons, creditor, reference, iban, vs, started_on, order_on, total_cents, monthly_cents, ended_on, created_at, created_by)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17 WHERE EXISTS (SELECT 1 FROM employees WHERE id = ?3 AND company_id = ?2)
+       ON CONFLICT (id) DO UPDATE SET employee_id = excluded.employee_id, kind = excluded.kind, minor = excluded.minor, persons = excluded.persons, creditor = excluded.creditor,
+         reference = excluded.reference, iban = excluded.iban, vs = excluded.vs, started_on = excluded.started_on, order_on = excluded.order_on, total_cents = excluded.total_cents,
+         monthly_cents = excluded.monthly_cents, ended_on = excluded.ended_on, updated_at = ?16
+       WHERE wage_garnishments.company_id = ?2 AND wage_garnishments.deleted_at IS NULL`,
+    )
+    .bind(g.id, company, g.employeeId, g.kind, g.minor ? 1 : 0, g.persons, g.creditor, g.reference || null, g.iban, g.vs, g.startedOn, g.orderOn, g.total, g.monthly, g.endedOn, at, by)
+}
+
+/** An execution entered by mistake, removed: marked, never deleted (closed months keep what they deducted). */
+export function removeGarnishmentStatement(db: D1Database, company: string, id: string, at: number): D1PreparedStatement {
+  return db.prepare('UPDATE wage_garnishments SET deleted_at = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL').bind(at, id, company)
 }

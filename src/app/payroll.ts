@@ -45,10 +45,11 @@
 //   decimals, at most the day's share of twice the general assessment base of two years before; the sum is rounded up to
 //   the cent. It is taxed with the wage and no assessment base of the insurances (pay-month.ts works it out).
 //
-// Said plainly, what is not built: wage deductions (exekúcie), seasonal work (its 762 € deduction), a
+// Said plainly, what is not built: deductions by agreement (executions: garnish.ts), seasonal work (its 762 € deduction), a
 // collective agreement's higher rates, contributions to the supplementary pension saving.
 
 import type { MealMoney } from './meals'
+import type { GarnishDeduction } from './garnish'
 
 /** The figures of a year, in cents; the rates are in hundredths of a per cent (basis points). */
 export interface PayrollYear {
@@ -247,6 +248,8 @@ export interface Payslip {
   settlementBonus?: number
   /** The month's meals (older slips have none). */
   meals?: MealMoney
+  /** The month's deductions for executions (garnish.ts), each with its executor; the net is after them. */
+  garnish?: (GarnishDeduction & { creditor: string; reference: string })[]
   net: number
   employerCost: number
 }

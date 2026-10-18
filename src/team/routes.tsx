@@ -97,7 +97,7 @@ import { bookDistributionStatements, bookTaxStatements, closingView, taxUnbooked
 import { notesDocument } from '../app/notes'
 import { pdfText } from '../app/pdf'
 import { dppoXml, statementsXml, type ClosingFiler } from '../app/closing-xml'
-import { CHILD_ROWS, EmployeePage, PayrollPage, PayslipPage, type FieldErrors, type LeaveRow, type LeaveUse, type MonthState, type PayOrders, type SickForm, type SlipLine } from '../views/payroll'
+import { CHILD_ROWS, EmployeePage, GarnishPage, PayrollPage, PayslipPage, type FieldErrors, type GarnishRow, type LeaveRow, type LeaveUse, type MonthState, type PayOrders, type SickForm, type SlipLine } from '../views/payroll'
 import {
   INSURERS,
   closeRunStatement,
@@ -112,6 +112,9 @@ import {
   monthSlips,
   paydayOf,
   payrollSettingsOf,
+  garnishmentsOf,
+  garnishmentStatement,
+  removeGarnishmentStatement,
   removeSickLeaveStatement,
   reopenRunStatement,
   runTotals,
@@ -126,6 +129,7 @@ import {
   type PayrollRun,
 } from '../app/payroll-store'
 import { employerLeast, isMealWay, mealBounds, mealIssues, NO_MEALS, type MealSettings, type MealWay } from '../app/meals'
+import { deductionOf, isGarnishKind, type Garnishment } from '../app/garnish'
 import { FUND_RATE_MIN, isFundRate } from '../app/social-fund'
 import { addDays } from '../app/ending'
 import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
@@ -507,6 +511,10 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.issues
     case 'mzdy-stravne':
       return t.payroll.flashes.meals
+    case 'mzdy-exekucia':
+      return t.payroll.garnish.saved
+    case 'mzdy-exekucia-odstranena':
+      return t.payroll.garnish.removed
     case 'mzdy-pn':
       return t.payroll.flashes.sick
     case 'mzdy-pn-odstranena':
@@ -2349,18 +2357,36 @@ function payrollPeriod(asked: unknown, months: readonly string[], today: string)
 }
 
 async function payrollData(db: D1Database, company: Company) {
-  const [employees, runs, row, leaves, settlements] = await Promise.all([
+  const [employees, runs, row, leaves, settlements, garnishments] = await Promise.all([
     employeesOf(db, company.id),
     runsOf(db, company.id),
     db.prepare('SELECT payroll FROM companies WHERE id = ?').bind(company.id).first<{ payroll: string | null }>(),
     sickLeavesOf(db, company.id),
     settlementsOf(db, company.id),
+    garnishmentsOf(db, company.id),
   ])
-  return { employees, runs, leaves, settlements, settings: payrollSettingsOf(row?.payroll ?? null) }
+  return { employees, runs, leaves, settlements, garnishments, settings: payrollSettingsOf(row?.payroll ?? null) }
+}
+
+/** The executions as the payroll page lists them: what each deducted in the closed months, kept, and has left. */
+function garnishRows(garnishments: readonly Garnishment[], employees: readonly Employee[], runs: readonly PayrollRun[], today: string): GarnishRow[] {
+  return garnishments.map((g) => {
+    const deductions = runs.filter((r) => r.closedOn).flatMap((r) => r.lines.flatMap((l) => (l.slip?.garnish ?? []).filter((d) => d.id === g.id)))
+    const e = employees.find((x) => x.id === g.employeeId)
+    const arrears = deductions.reduce((t, d) => t + d.arrears, 0)
+    return {
+      g,
+      name: e?.name ?? '',
+      deducted: deductions.reduce((t, d) => t + deductionOf(d), 0),
+      held: deductions.filter((d) => d.held).reduce((t, d) => t + deductionOf(d), 0),
+      left: g.total === null ? null : g.total - arrears,
+      employeeLeft: Boolean(e?.endedOn && e.endedOn <= today && !g.endedOn),
+    }
+  })
 }
 
 /** What the company pays for a month and where: each employee's net wage, the Social Insurance Agency, each health insurer, the tax office. */
-function payOrders(company: Company, period: string, slips: readonly SlipLine[], employees: readonly Employee[], settings: PayrollSettings, payday: string): PayOrders {
+function payOrders(company: Company, period: string, slips: readonly SlipLine[], employees: readonly Employee[], settings: PayrollSettings, payday: string, garnishments: readonly Garnishment[] = []): PayOrders {
   const totals = runTotals(slips)
   const iban = new Map(employees.map((e) => [e.id, e.iban]))
   return {
@@ -2369,6 +2395,13 @@ function payOrders(company: Company, period: string, slips: readonly SlipLine[],
     social: { amount: totals.social, iban: settings.social.iban, vs: settings.social.vs },
     health: (Object.entries(totals.health) as [Insurer, number][]).filter(([, amount]) => amount > 0).map(([code, amount]) => ({ code, amount, iban: settings.health[code]?.iban ?? null, vs: settings.health[code]?.vs ?? null })),
     tax: { amount: totals.tax, iban: company.taxAccount ? taxIban(company.taxAccount, WAGE_PREFIX) : null, vs: `1100${period.slice(5, 7)}${period.slice(0, 4)}`, due: workingDayFrom(addDays(payday, 5)) },
+    // Each deduction for an execution: to its executor with the wages (§ 81, § 82), or kept until his execution order.
+    garnish: slips.flatMap((l) =>
+      (l.slip.garnish ?? []).map((d) => {
+        const g = garnishments.find((x) => x.id === d.id)
+        return { name: l.name, creditor: d.creditor, reference: d.reference, amount: deductionOf(d), iban: g?.iban ?? null, vs: g?.vs ?? null, held: d.held }
+      }),
+    ),
   }
 }
 
@@ -2441,13 +2474,13 @@ async function payrollPage(
 ) {
   const db = c.env.DB
   const today = dayOf(now())
-  const { employees, runs, leaves, settlements, settings } = await payrollData(db, company)
+  const { employees, runs, leaves, settlements, garnishments, settings } = await payrollData(db, company)
   const months = payrollMonths(employees, today, runs)
   const period = payrollPeriod(asked, months, today)
   const run = runs.find((r) => r.period === period) ?? null
   const stateOf = (m: string): MonthState => (runs.some((r) => r.period === m && r.closedOn) ? 'closed' : !supportsPayrollPeriod(m) ? 'unsupported' : today <= monthRange(m).to ? 'running' : 'open')
-  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate })
   const payday = run?.payday ?? paydayOf(period, settings)
+  const slips = stateOf(period) === 'unsupported' ? [] : monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate, garnishments, payday })
   const insurers = [...new Set<Insurer>([...employees.map((e) => e.insurer), ...(Object.keys(settings.health) as Insurer[])])]
   const failed = Boolean(forms.month || forms.settings || forms.sick?.errors && Object.keys(forms.sick.errors).length > 0)
   const editing = typeof c.req.query('pn') === 'string' ? (leaves.find((l) => l.id === c.req.query('pn')) ?? null) : null
@@ -2467,13 +2500,14 @@ async function payrollPage(
       registrations={await companyRegistrations(db, company, today)}
       reopenBlocked={run?.closedOn ? await runReopenBlocked(db, company.id, period) : false}
       totals={runTotals(slips)}
-      orders={payOrders(company, period, slips, employees, settings, payday)}
+      orders={payOrders(company, period, slips, employees, settings, payday, garnishments)}
       values={forms.month?.values ?? monthValues(slips, employees, payday)}
       errors={forms.month?.errors ?? {}}
       issues={stateOf(period) === 'closed' ? [] : monthIssues(slips)}
       leaves={leaveRows(leaves, employees, runs)}
       sickForm={forms.sick ?? { id: editing?.id ?? null, values: sickValues(editing, employees), errors: {} }}
       leave={leaveUse(employees, runs, Number(period.slice(0, 4)))}
+      garnishments={garnishRows(garnishments, employees, runs, today)}
       settings={{ values: forms.settings?.values ?? settingsValues(settings), errors: forms.settings?.errors ?? {}, insurers }}
       today={today}
       flash={failed ? null : flashOf(c)}
@@ -2524,7 +2558,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const body = await c.req.parseBody()
   const today = dayOf(now())
   const sourceRevision = await dataRevision(db, company.id)
-  const { employees, runs, leaves, settlements, settings } = await payrollData(db, company)
+  const { employees, runs, leaves, settlements, garnishments, settings } = await payrollData(db, company)
   const months = payrollMonths(employees, today, runs)
   const period = typeof body.obdobie === 'string' && months.includes(body.obdobie) ? body.obdobie : null
   if (!period) return c.text('Bad request', 400)
@@ -2534,7 +2568,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   if (!supportsPayrollPeriod(period)) return c.redirect(`${back}&ok=mzdy-nepodporovane`, 303)
   const values: Record<string, string> = {}
   const errors: FieldErrors = {}
-  const proposed = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate })
+  const proposed = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate, garnishments })
   const lines = proposed.map((l) => {
     const e = employees.find((x) => x.id === l.employeeId)!
     const read = readParts(body as Record<string, unknown>, l.employeeId, e.contract, e.wageKind, e.wage)
@@ -2547,7 +2581,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   const payday = dayOfText(paydayText)
   if (!payday || payday < `${period}-01`) errors.vyplata = t.payroll.errors.paydayDate
   if (Object.keys(errors).length > 0 || !payday) return payrollPage(c, company, period, { month: { values, errors } })
-  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null }, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate })
+  const slips = monthSlips(period, employees, { period, payday, lines, closedOn: null, closedByName: null }, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate, garnishments, payday })
   const typed = slips.map((l) => ({ employeeId: l.employeeId, name: l.name, insurer: l.insurer, gross: l.gross, parts: l.parts }))
   const close = body.akcia === 'uzavriet'
   if (!close) {
@@ -2573,7 +2607,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
     ...await closureStatements(db, company, { company_id: company.id, period, payday, lines: JSON.stringify(stored), closed_at: closedAt, evidence_id: evidenceId }, evidenceId, who.user.id),
   ])
   if ((done?.meta?.changes ?? 0) === 0) return c.redirect(`${back}&ok=mzdy-zmenene`, 303)
-  const orders = payOrders(company, period, slips, employees, settings, payday)
+  const orders = payOrders(company, period, slips, employees, settings, payday, garnishments)
   const iban = (value: string | null) => (value ? groupedIban(value) : null)
   const text = t.payroll.clientMessage({
     month: monthName(`${period}-01`),
@@ -2582,6 +2616,7 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
     social: orders.social.amount > 0 ? { amount: formatEurExact(orders.social.amount), iban: iban(orders.social.iban), vs: orders.social.vs } : null,
     health: orders.health.map((h) => ({ name: INSURERS[h.code], amount: formatEurExact(h.amount), iban: iban(h.iban), vs: h.vs })),
     tax: orders.tax.amount > 0 ? { amount: formatEurExact(orders.tax.amount), iban: iban(orders.tax.iban), vs: orders.tax.vs, due: dayName(orders.tax.due) } : null,
+    garnish: (orders.garnish ?? []).map((g) => ({ creditor: g.creditor, reference: g.reference, amount: formatEurExact(g.amount), iban: iban(g.iban), vs: g.vs, held: g.held, name: g.name })),
     vouchers: (() => {
       // The month's vouchers to hand out (meals.ts): how many, of what value, to whom.
       const taking = slips.filter((l) => l.slip.meals?.way === 'voucher' && l.slip.meals.count > 0)
@@ -2744,6 +2779,120 @@ teamRoutes.post('/klienti/:id/mzdy/nastavenie', async (c) => {
   return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-nastavenie#nastavenie`, 303)
 })
 
+const garnishValues = (g: Garnishment | null): Record<string, string> => ({
+  zamestnanec: g?.employeeId ?? '',
+  druh: g?.kind ?? 'ordinary',
+  malolete: g?.minor ? '1' : '',
+  osoby: g && g.kind === 'maintenance' ? String(g.persons) : '',
+  mesacne: g?.monthly ? moneyText(g.monthly) : '',
+  exekutor: g?.creditor ?? '',
+  cislo: g?.reference ?? '',
+  iban: g?.iban ? groupedIban(g.iban) : '',
+  vs: g?.vs ?? '',
+  zaciatok: g ? textDay(g.startedOn) : '',
+  prikaz: g?.orderOn ? textDay(g.orderOn) : '',
+  suma: g?.total !== null && g?.total !== undefined ? moneyText(g.total) : '',
+  koniec: g?.endedOn ? textDay(g.endedOn) : '',
+})
+
+/** An execution of an employee (garnish.ts): what the executor's orders say. */
+teamRoutes.get('/klienti/:id/mzdy/zrazka', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const asked = c.req.query('id')
+  const found = asked ? ((await garnishmentsOf(db, company.id)).find((g) => g.id === asked) ?? null) : null
+  if (asked && !found) return missingPage(c)
+  return shell(c, 'clients', `${t.payroll.garnish.title}: ${company.name}`, <GarnishPage company={company} employees={await employeesOf(db, company.id)} form={{ id: found?.id ?? null, values: garnishValues(found), errors: {} }} />)
+})
+
+teamRoutes.post('/klienti/:id/mzdy/zrazka', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
+  const existing = typeof body.id === 'string' && ID.test(body.id) ? ((await garnishmentsOf(db, company.id)).find((g) => g.id === body.id) ?? null) : null
+  if (typeof body.id === 'string' && body.id !== '' && !existing) return missingPage(c)
+  const employees = await employeesOf(db, company.id)
+  const values: Record<string, string> = {}
+  const errors: FieldErrors = {}
+  const e = t.payroll.garnish.errors
+  const field = (name: string, max: number) => {
+    values[name] = text(name, max)
+    return values[name] as string
+  }
+  const employeeId = field('zamestnanec', 64)
+  if (!employees.some((x) => x.id === employeeId)) errors.zamestnanec = e.employee
+  const kind = field('druh', 16)
+  if (!isGarnishKind(kind)) errors.druh = e.kind
+  values.malolete = body.malolete === '1' ? '1' : ''
+  const personsText = field('osoby', 2)
+  const persons = personsText === '' ? (kind === 'maintenance' ? 1 : 0) : Number(personsText)
+  if (!Number.isInteger(persons) || persons < 0 || persons > 10) errors.osoby = e.persons
+  const money = (name: string): number | null => {
+    const v = field(name, 14)
+    if (v === '') return null
+    const cents = centsOf(v)
+    if (cents === null || Number.isNaN(cents) || cents <= 0) {
+      errors[name] = e.amount
+      return null
+    }
+    return cents
+  }
+  const monthly = money('mesacne')
+  const total = money('suma')
+  if (kind === 'maintenance' && monthly === null && total === null && !errors.mesacne && !errors.suma) errors.mesacne = e.monthly
+  const creditor = field('exekutor', 120)
+  if (creditor.length < 2) errors.exekutor = e.creditor
+  const reference = field('cislo', 60)
+  const iban = field('iban', 34)
+  if (iban !== '' && !isIban(iban)) errors.iban = e.iban
+  const vs = field('vs', 10).replace(/\s/g, '')
+  if (vs !== '' && !/^\d{1,10}$/.test(vs)) errors.vs = e.vs
+  const startedOn = dayOfText(field('zaciatok', 16))
+  if (!startedOn) errors.zaciatok = e.day
+  const orderOn = dayOfText(field('prikaz', 16))
+  if (orderOn === null) errors.prikaz = e.day
+  else if (orderOn && startedOn && orderOn < startedOn) errors.prikaz = e.order
+  const endedOn = dayOfText(field('koniec', 16))
+  if (endedOn === null) errors.koniec = e.day
+  else if (endedOn && startedOn && endedOn < startedOn) errors.koniec = e.ended
+  if (Object.keys(errors).length > 0 || !startedOn || !isGarnishKind(kind))
+    return shell(c, 'clients', `${t.payroll.garnish.title}: ${company.name}`, <GarnishPage company={company} employees={employees} form={{ id: existing?.id ?? null, values, errors }} />, 422)
+  const garnishment: Garnishment = {
+    id: existing?.id ?? crypto.randomUUID(),
+    employeeId,
+    kind,
+    minor: kind === 'maintenance' && values.malolete === '1',
+    persons: kind === 'maintenance' ? persons : 0,
+    creditor,
+    reference,
+    iban: iban !== '' ? plainIban(iban) : null,
+    vs: vs || null,
+    startedOn,
+    orderOn: orderOn || null,
+    total,
+    monthly: kind === 'maintenance' ? monthly : null,
+    endedOn: endedOn || null,
+  }
+  await db.batch([
+    garnishmentStatement(db, company.id, garnishment, c.get('who').user.id, now()),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: existing ? 'garnishment.changed' : 'garnishment.added', subject: garnishment.id }),
+  ])
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-exekucia#exekucie`, 303)
+})
+
+teamRoutes.post('/klienti/:id/mzdy/zrazka/:gid/odstranit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const id = c.req.param('gid')
+  const result = ID.test(id) ? await db.batch([removeGarnishmentStatement(db, company.id, id, now()), eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'garnishment.removed', subject: id })]) : null
+  if ((result?.[0]?.meta?.changes ?? 0) === 0) return missingPage(c)
+  return c.redirect(`/ucto/klienti/${company.id}/mzdy?ok=mzdy-exekucia-odstranena#exekucie`, 303)
+})
+
 const employeeValues = (e: Employee | null): Record<string, string> => {
   const v: Record<string, string> = {
     meno: e?.name ?? '',
@@ -2766,6 +2915,7 @@ const employeeValues = (e: Employee | null): Record<string, string> => {
     dovolenka: e?.leaveDays !== null && e?.leaveDays !== undefined ? hundredthsText(e.leaveDays) : '',
     stravne: e?.mealWay ?? '',
     stredisko: e?.centerId ?? '',
+    vyzivovani: e?.dependents ? String(e.dependents) : '',
   }
   for (let i = 0; i < CHILD_ROWS; i++) {
     v[`dieta_${i}`] = e?.children[i]?.name ?? ''
@@ -2831,6 +2981,10 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
   const mealChoice = field('stravne', 8)
   const mealWay: MealWay | 'none' | null = isMealWay(mealChoice) || mealChoice === 'none' ? mealChoice : null
   values.stravne = mealWay ?? ''
+  // The persons he maintains (garnish.ts: the protected amount of an execution).
+  const dependentsText = field('vyzivovani', 2)
+  const dependents = dependentsText === '' ? 0 : Number(dependentsText)
+  if (!Number.isInteger(dependents) || dependents < 0 || dependents > 20) errors.vyzivovani = t.payroll.garnish.errors.dependents
   // The cost centre of his cost of work: one of the company's in use, or the one he has (archived since).
   const centers = await listCenters(db, company.id)
   const centerAsked = field('stredisko', 64)
@@ -2871,6 +3025,7 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
     leaveDays: leaveDays !== null && !Number.isNaN(leaveDays) ? leaveDays : null,
     mealWay,
     centerId,
+    dependents: Number.isInteger(dependents) ? dependents : 0,
   }
   await db.batch([
     employeeStatement(db, company.id, employee, c.get('who').user.id, now()),
@@ -2884,13 +3039,15 @@ teamRoutes.get('/klienti/:id/mzdy/paska', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
   const today = dayOf(now())
-  const { employees, runs, leaves, settlements, settings } = await payrollData(c.env.DB, company)
+  const { employees, runs, leaves, settlements, garnishments, settings } = await payrollData(c.env.DB, company)
   const months = payrollMonths(employees, today, runs)
   const period = c.req.query('obdobie') ?? ''
   if (!months.includes(period)) return missingPage(c)
   const run = runs.find((r) => r.period === period) ?? null
   if (!run?.closedOn && !supportsPayrollPeriod(period)) return missingPage(c)
-  const line = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate }).find((l) => l.employeeId === c.req.query('zamestnanec'))
+  const line = monthSlips(period, employees, run, { leaves, runs, settlements, meals: settings.meals, fundRate: settings.fundRate, garnishments, payday: run?.payday ?? paydayOf(period, settings) }).find(
+    (l) => l.employeeId === c.req.query('zamestnanec'),
+  )
   if (!line) return missingPage(c)
   return shell(c, 'clients', `${t.payroll.payslip}: ${line.name}`, <PayslipPage company={company} period={period} line={line} today={today} />)
 })

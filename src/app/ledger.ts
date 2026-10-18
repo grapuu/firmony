@@ -279,13 +279,15 @@ export interface LedgerPayroll {
   /** The advances withheld less the bonuses (minus: the bonuses paid over them). */
   tax: number
   /** What each payment of it comes to: the Social Insurance Agency's, each health insurer's, the tax office's. */
-  pays: { social: number; health: number[]; tax: number }
+  pays: { social: number; health: number[]; tax: number; garnish?: number[] }
   /** Meals (meals.ts): vouchers out of their stock (213), the financial contribution with the wage (331). */
   meals?: { voucher: { employer: number; fund: number; employee: number }; cash: { employer: number; fund: number } }
   /** The social fund's mandatory allocation of the month (social-fund.ts): 527 against 472. */
   socialFund?: number
   /** The month's cost of work of the employees of each cost centre (centers.ts), out of the entry's costs. */
   centerCosts?: { center: string; cents: number }[]
+  /** The deductions for executions (garnish.ts): owed to the executors, 331 against 379. */
+  garnish?: number
 }
 
 /** The analytic accounts of 336: the Social Insurance Agency and the health insurers. */
@@ -563,6 +565,8 @@ export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'not
     if (payroll.some((r) => r.pays.social === out)) return SOCIAL_ACCOUNT
     if (payroll.some((r) => r.pays.health.includes(out))) return HEALTH_ACCOUNT
     if (payroll.some((r) => r.pays.tax === out)) return '342'
+    // A deduction paid to an executor (garnish.ts).
+    if (payroll.some((r) => r.pays.garnish?.includes(out))) return '379'
   }
   if (p.exempt === 'state' && (tax === 'vat' || tax === null) && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE
   if (p.exempt === 'state' && tax === null && /^170099\d{4}$/.test(normalizeVs(p.vs))) return '341'
@@ -956,6 +960,8 @@ export function buildBooks(input: LedgerInput): Books {
       { md: '472', d: '331', cents: r.meals?.cash.fund ?? 0 },
       // The social fund's mandatory allocation (Act No. 152/1994 Z. z.), created by the payday: a cost of the month.
       { md: '527', d: '472', cents: r.socialFund ?? 0 },
+      // The deductions for executions (garnish.ts): owed to the executors until paid (379).
+      { md: '331', d: '379', cents: r.garnish ?? 0 },
     ].filter((l) => l.cents > 0)
     if (lines.length > 0)
       entries.push({

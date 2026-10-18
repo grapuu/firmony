@@ -892,7 +892,7 @@ export const team = typesetAll({
       'Firma nie je registrovaná pre DPH, ale nakupuje služby od zahraničných dodávateľov (napríklad reklamu od Googlu či Mety alebo softvér). Pred takým nákupom sa musí registrovať podľa § 7a, a to bez ohľadu na sumu, a DPH z neho zaplatiť. Po registrácii to zmeňte v údajoch firmy.',
     needs7aNone: 'Za posledné mesiace sme nič také nenašli.',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
+      'Firmony zatiaľ nepripravuje: zrážky zo mzdy na základe dohody so zamestnancom, sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
     sv: {
       heading: 'Súhrnné výkazy',
       monthlyLead: 'Priznanie DPH zostáva štvrťročné. Súhrnné výkazy sa podávajú samostatne za jednotlivé mesiace.',
@@ -1622,7 +1622,7 @@ export const team = typesetAll({
     extendSave: 'Uložiť lehotu',
     open: 'Závierka a daň z príjmov',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
+      'Firmony zatiaľ nepripravuje: zrážky zo mzdy na základe dohody so zamestnancom, sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
     /** What the client reads when the closing is filed: the tax to pay, by when and where, or the overpayment; the advances it brings. */
     clientMessage: (m: { year: number; left: string | null; paid: string | null; over: string | null; due: string; vs: string; account: string | null; advances: { kind: 'none' | 'quarterly' | 'monthly'; each: string } }) =>
       typeset(
@@ -1716,6 +1716,75 @@ export const team = typesetAll({
     } as Record<string, string>,
     averageHint: (value: string, quarter: boolean) => typeset(quarter ? `Prázdne: ${value} z minulého štvrťroka.` : `Prázdne: pravdepodobný zárobok ${value}.`),
     hoursHint: (value: string) => typeset(`Prázdne: ${value} podľa pracovných dní.`),
+    garnish: {
+      title: 'Zrážky zo mzdy (exekúcie)',
+      lead: 'Podľa Exekučného poriadku: z čistej mzdy po nezraziteľnej sume tretina na každú pohľadávku, dve tretiny na prednostné (najprv výživné), poradie podľa dňa doručenia príkazu na začatie exekúcie. Zrazené sumy sa platia exekútorovi s výplatou; kým nepríde exekučný príkaz, zostávajú u firmy.',
+      empty: 'Žiadna exekúcia nie je zapísaná.',
+      add: 'Zapísať exekúciu',
+      edit: 'Upraviť',
+      kinds: {
+        ordinary: 'Bežná pohľadávka',
+        priority: 'Prednostná pohľadávka (dane, poistné, náhrada škody na zdraví a ďalšie podľa § 71 ods. 2)',
+        maintenance: 'Výživné',
+      } as Record<string, string>,
+      kindShort: { ordinary: 'bežná', priority: 'prednostná', maintenance: 'výživné' } as Record<string, string>,
+      line: (name: string, kind: string, creditor: string, reference: string) => typeset(`${name}: ${kind}, ${creditor}${reference ? `, ${reference}` : ''}`),
+      sums: (deducted: string, left: string | null, held: string | null) =>
+        typeset(`Zrazené spolu ${deducted}${left ? `, zostáva ${left}` : ''}${held ? `, z toho zadržané u firmy ${held}` : ''}.`),
+      since: (day: string) => typeset(`od ${day}`),
+      endedOn: (day: string) => typeset(`skončená ${day}`),
+      payTo: (creditor: string, reference: string) => typeset(`Exekútor ${creditor}${reference ? ` (${reference})` : ''}`),
+      held: 'zadržať u firmy, kým nepríde exekučný príkaz',
+      of: (name: string) => typeset(`zrážka zo mzdy: ${name}`),
+      slip: (creditor: string, reference: string) => typeset(`Zrážka pre exekútora ${creditor}${reference ? `, ${reference}` : ''}`),
+      slipHeld: 'zadržaná u firmy do exekučného príkazu',
+      inNet: (amount: string) => typeset(`exekúcie ${amount}`),
+      slipCurrent: (amount: string) => typeset(`z toho bežné výživné ${amount}`),
+      left: (name: string) => typeset(`${name} skončil(a) pracovný pomer: do týždňa to oznámte exekútorovi spolu s vyúčtovaním zrážok (§ 85 ods. 2 Exekučného poriadku).`),
+      dependents: 'Vyživované osoby (exekúcie)',
+      dependentsHint: 'Pre nezraziteľnú sumu: osoby, ktorým poskytuje výživné, aj manžel(ka) s vlastným príjmom.',
+      form: {
+        titleNew: 'Nová exekúcia',
+        titleEdit: 'Exekúcia',
+        lead: 'Údaje z príkazu na začatie exekúcie zrážkami zo mzdy a z exekučného príkazu.',
+        employee: 'Zamestnanec',
+        kind: 'Druh pohľadávky',
+        minor: 'Výživné pre maloleté dieťa (nezraziteľná suma podľa § 70 ods. 2)',
+        persons: 'Počet osôb, v prospech ktorých je výživné',
+        creditor: 'Exekútor',
+        reference: 'Číslo exekúcie (spisová značka)',
+        iban: 'Účet exekútora (IBAN)',
+        vs: 'Variabilný symbol',
+        started: 'Príkaz na začatie exekúcie doručený',
+        startedHint: 'Od tohto dňa sa zráža a podľa neho je poradie.',
+        order: 'Exekučný príkaz doručený',
+        orderHint: 'Od tohto dňa sa zrazené sumy platia exekútorovi. Prázdne: zostávajú u firmy.',
+        total: 'Výška pohľadávky s príslušenstvom',
+        totalHint: 'Pri výživnom nedoplatok. Prázdne: zráža sa, kým exekútor neoznámi, že je uspokojená.',
+        monthly: 'Bežné výživné mesačne',
+        ended: 'Skončená dňa',
+        endedHint: 'Deň, keď exekútor oznámil, že je pohľadávka uspokojená alebo exekúcia zastavená. Prázdne, kým trvá.',
+        save: 'Uložiť exekúciu',
+        remove: 'Odstrániť (zapísaná omylom)',
+        back: 'Späť na mzdy',
+      },
+      errors: {
+        employee: 'Vyberte zamestnanca.',
+        kind: 'Vyberte druh pohľadávky.',
+        creditor: 'Napíšte exekútora.',
+        day: 'Dátum napíšte v tvare 1. 10. 2026.',
+        order: 'Exekučný príkaz nemôže byť doručený pred príkazom na začatie exekúcie.',
+        ended: 'Skončenie nemôže byť pred začatím.',
+        amount: 'Sumu napíšte v eurách, napríklad 1 250,40.',
+        monthly: 'Pri výživnom napíšte bežné výživné alebo nedoplatok.',
+        persons: 'Počet osôb je od 0 do 10.',
+        iban: 'Toto číslo účtu nie je platný IBAN.',
+        vs: 'Variabilný symbol má najviac 10 číslic.',
+        dependents: 'Vyživovaných osôb je od 0 do 20.',
+      },
+      saved: 'Exekúciu sme uložili.',
+      removed: 'Exekúciu sme odstránili. Uzavreté mesiace si zrážky nechávajú.',
+    },
     fund: {
       rate: 'Sociálny fond: povinný prídel, %',
       rateHint: 'Zo mzdy zamestnancov v pracovnom pomere (bez náhrad mzdy, PN, dohôd a odmien konateľov). Zákon č. 152/1994 Z. z.: 0,6 %, zamestnávateľ so ziskom podľa § 3 ods. 2 až 1 %. Prázdne: 0,6 %.',
@@ -2007,7 +2076,16 @@ export const team = typesetAll({
       mealCashLow: (min: string) => typeset(`Finančný príspevok musí byť aspoň ${min}.`),
       mealFund: 'Príspevky zamestnávateľa a sociálneho fondu nesmú spolu prevýšiť hodnotu poukážky.',
     },
-    clientMessage: (m: { month: string; payday: string; employees: { name: string; amount: string; iban: string | null }[]; social: { amount: string; iban: string | null; vs: string | null } | null; health: { name: string; amount: string; iban: string | null; vs: string | null }[]; tax: { amount: string; iban: string | null; vs: string; due: string } | null; vouchers?: { count: number; value: string; people: string } | null }) =>
+    clientMessage: (m: {
+      month: string
+      payday: string
+      employees: { name: string; amount: string; iban: string | null }[]
+      social: { amount: string; iban: string | null; vs: string | null } | null
+      health: { name: string; amount: string; iban: string | null; vs: string | null }[]
+      tax: { amount: string; iban: string | null; vs: string; due: string } | null
+      vouchers?: { count: number; value: string; people: string } | null
+      garnish?: { creditor: string; reference: string; amount: string; iban: string | null; vs: string | null; held: boolean; name: string }[]
+    }) =>
       typeset(
         [
           `Mzdy za ${m.month} sú spracované. Výplatný termín je ${m.payday}; v ten deň treba zaplatiť aj poisťovne.`,
@@ -2017,6 +2095,17 @@ export const team = typesetAll({
           ...(m.social ? ['', `Sociálna poisťovňa: ${m.social.amount}${m.social.iban ? ` na ${m.social.iban}` : ''}${m.social.vs ? `, VS ${m.social.vs}` : ''}.`] : []),
           ...m.health.map((h) => `Zdravotná poisťovňa ${h.name}: ${h.amount}${h.iban ? ` na ${h.iban}` : ''}${h.vs ? `, VS ${h.vs}` : ''}.`),
           ...(m.tax ? [`Daňový úrad (preddavky na daň zo mzdy): ${m.tax.amount}${m.tax.iban ? ` na ${m.tax.iban}` : ''}, VS ${m.tax.vs}, do ${m.tax.due}.`] : []),
+          ...(m.garnish?.length
+            ? [
+                '',
+                'Exekútorom (zrážky zo mzdy, už odpočítané z čistej mzdy):',
+                ...m.garnish.map((g) =>
+                  g.held
+                    ? `• ${g.creditor}${g.reference ? ` (${g.reference})` : ''}, ${g.name}: ${g.amount} zatiaľ nechajte na účte firmy, kým nepríde exekučný príkaz.`
+                    : `• ${g.creditor}${g.reference ? ` (${g.reference})` : ''}, ${g.name}: ${g.amount}${g.iban ? ` na ${g.iban}` : ''}${g.vs ? `, VS ${g.vs}` : ''}.`,
+                ),
+              ]
+            : []),
           ...(m.vouchers ? ['', `Stravovacie poukážky za mesiac: ${m.vouchers.count} ks po ${m.vouchers.value} (${m.vouchers.people}). Vydajte ich zamestnancom alebo im ich nabite na kartu; ich časť je už odpočítaná z čistej mzdy.`] : []),
           '',
           'Platby označte v aplikácii ako Mzdy a odvody; zaúčtujeme ich sami.',
@@ -2040,7 +2129,7 @@ export const team = typesetAll({
     },
     open: 'Mzdy',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
+      'Firmony zatiaľ nepripravuje: zrážky zo mzdy na základe dohody so zamestnancom, sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
   },
   ledger: {
     title: 'Účtovná kniha',

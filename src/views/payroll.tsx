@@ -13,6 +13,7 @@ import type { DvzProposal, SickLeave } from '../app/pay-month'
 import { PART_FIELDS, hundredthsText, partsFor, tenThousandthsText } from '../app/payroll-form'
 import { mealBounds } from '../app/meals'
 import type { CostCenter } from '../app/centers'
+import type { Garnishment } from '../app/garnish'
 import { groupedIban } from '../app/vat-store'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
@@ -154,6 +155,17 @@ export const SlipDetail: FC<{ line: SlipLine }> = ({ line }) => {
           </div>
         </>
       ) : null}
+      {(slip.garnish ?? []).map((d) => (
+        <>
+          {item(w.garnish.slip(d.creditor, d.reference), -(d.current + d.arrears))}
+          {d.current > 0 || d.held ? (
+            <div class="kv__sub">
+              <dt>{[d.current > 0 ? w.garnish.slipCurrent(formatEurExact(d.current)) : '', d.held ? w.garnish.slipHeld : ''].filter(Boolean).join('; ')}</dt>
+              <dd />
+            </div>
+          ) : null}
+        </>
+      ))}
       {item(w.lines.net ?? '', slip.net, true)}
       {item(w.lines.socialEmployer ?? '', slip.socialEmployer)}
       {social('employer')}
@@ -176,6 +188,8 @@ export interface PayOrders {
     vs: string | null
   }[]
   tax: { amount: number; iban: string | null; vs: string; due: string }
+  /** Deductions for executions (garnish.ts): paid to each executor with the wages, or kept until his execution order. */
+  garnish?: { name: string; creditor: string; reference: string; amount: number; iban: string | null; vs: string | null; held: boolean }[]
 }
 
 const Account: FC<{ iban: string | null; vs?: string | null }> = ({ iban, vs }) => (
@@ -228,6 +242,21 @@ const PaysCard: FC<{ orders: PayOrders; today: string }> = ({ orders, today }) =
           <span class="info__source">{w.pays.bonusOver}</span>
         </li>
       ) : null}
+      {(orders.garnish ?? []).map((g) => (
+        <li class="wpay">
+          <span class="wpay__who">{w.garnish.payTo(g.creditor, g.reference)}</span>
+          <strong>{formatEurExact(g.amount)}</strong>
+          {g.held ? (
+            <span class="wpay__due">{w.garnish.held}</span>
+          ) : (
+            <>
+              <span class="wpay__due">{w.pays.due(dayName(orders.payday, today))}</span>
+              <Account iban={g.iban} vs={g.vs} />
+            </>
+          )}
+          <span class="wpay__acct">{w.garnish.of(g.name)}</span>
+        </li>
+      ))}
     </ul>
   </section>
 )
@@ -411,6 +440,111 @@ export interface SickForm {
 }
 
 /** The sick leaves: each with its daily base, a form to write one or change the one picked. */
+/** An execution as the payroll page lists it: the claim, its employee, what was deducted, kept and is left. */
+export interface GarnishRow {
+  g: Garnishment
+  name: string
+  deducted: number
+  held: number
+  left: number | null
+  /** The employee left while the execution stands: the executor is to be told within a week (§ 85(2)). */
+  employeeLeft: boolean
+}
+
+const GarnishCard: FC<{ company: Company; rows: GarnishRow[]; today: string }> = ({ company, rows, today }) => (
+  <section class="info" id="exekucie" aria-labelledby="exekucie-t">
+    <h2 id="exekucie-t" class="info__title">
+      {w.garnish.title}
+    </h2>
+    <p class="info__lead">{w.garnish.lead}</p>
+    {rows.length === 0 ? <p class="info__empty">{w.garnish.empty}</p> : null}
+    <ul class="plain">
+      {rows.map((r) => (
+        <li class="plain__row plain__row--two">
+          <span class="plain__name">{w.garnish.line(r.name, w.garnish.kindShort[r.g.kind] ?? r.g.kind, r.g.creditor, r.g.reference)}</span>
+          <span class="plain__sub">
+            <span>{r.g.endedOn ? w.garnish.endedOn(dayName(r.g.endedOn, today)) : w.garnish.since(dayName(r.g.startedOn, today))}</span>
+            <span>{w.garnish.sums(formatEurExact(r.deducted), r.left === null ? null : formatEurExact(Math.max(0, r.left)), r.held > 0 ? formatEurExact(r.held) : null)}</span>
+            <a class="link" href={`${base(company)}/zrazka?id=${r.g.id}`}>
+              {w.garnish.edit}
+            </a>
+          </span>
+          {r.employeeLeft ? <span class="flag">{w.garnish.left(r.name)}</span> : null}
+        </li>
+      ))}
+    </ul>
+    <a class="btn btn--line btn--small" href={`${base(company)}/zrazka`}>
+      {w.garnish.add}
+    </a>
+  </section>
+)
+
+export interface GarnishForm {
+  id: string | null
+  values: Record<string, string>
+  errors: FieldErrors
+}
+
+export const GarnishPage: FC<{ company: Company; employees: Employee[]; form: GarnishForm }> = ({ company, employees, form }) => {
+  const v = form.values
+  const e = form.errors
+  const f = w.garnish.form
+  return (
+    <>
+      <a class="back" href={`${base(company)}#exekucie`}>
+        {f.back}
+      </a>
+      <header class="phead">
+        <Heading first={form.id ? f.titleEdit : f.titleNew} second={company.name} />
+        <p class="phead__lead">{f.lead}</p>
+      </header>
+      {Object.keys(e).length > 0 ? <Flash text={w.flashes.fix} tone="error" /> : null}
+      <section class="info">
+        <form class="fgrid" method="post" action={`${base(company)}/zrazka`} novalidate>
+          {form.id ? <input type="hidden" name="id" value={form.id} /> : null}
+          <Select
+            id="x-zamestnanec"
+            name="zamestnanec"
+            label={f.employee}
+            value={v.zamestnanec ?? ''}
+            options={Object.fromEntries([['', ''], ...employees.map((x) => [x.id, x.name])])}
+            error={e.zamestnanec}
+          />
+          <Select id="x-druh" name="druh" label={f.kind} value={v.druh ?? 'ordinary'} options={w.garnish.kinds} error={e.druh} />
+          <div class="fgrid__cell fgrid__cell--wide">
+            <label class="tickbox">
+              <input type="checkbox" name="malolete" value="1" checked={v.malolete === '1'} />
+              <span>{f.minor}</span>
+            </label>
+          </div>
+          <Field id="x-osoby" name="osoby" label={f.persons} value={v.osoby ?? ''} error={e.osoby} mode="numeric" max={2} wide={false} />
+          <Field id="x-mesacne" name="mesacne" label={f.monthly} value={v.mesacne ?? ''} error={e.mesacne} mode="decimal" max={14} wide={false} />
+          <Field id="x-exekutor" name="exekutor" label={f.creditor} value={v.exekutor ?? ''} error={e.exekutor} max={120} />
+          <Field id="x-cislo" name="cislo" label={f.reference} value={v.cislo ?? ''} error={e.cislo} max={60} />
+          <Field id="x-iban" name="iban" label={f.iban} value={v.iban ?? ''} error={e.iban} max={34} />
+          <Field id="x-vs" name="vs" label={f.vs} value={v.vs ?? ''} error={e.vs} mode="numeric" max={10} />
+          <Field id="x-zaciatok" name="zaciatok" label={f.started} value={v.zaciatok ?? ''} hint={f.startedHint} error={e.zaciatok} max={16} />
+          <Field id="x-prikaz" name="prikaz" label={f.order} value={v.prikaz ?? ''} hint={f.orderHint} error={e.prikaz} max={16} />
+          <Field id="x-suma" name="suma" label={f.total} value={v.suma ?? ''} hint={f.totalHint} error={e.suma} mode="decimal" max={14} />
+          <Field id="x-koniec" name="koniec" label={f.ended} value={v.koniec ?? ''} hint={f.endedHint} error={e.koniec} max={16} />
+          <div class="fgrid__cell fgrid__cell--wide">
+            <button class="btn btn--blue stack__submit" type="submit">
+              {f.save}
+            </button>
+          </div>
+        </form>
+        {form.id ? (
+          <form method="post" action={`${base(company)}/zrazka/${form.id}/odstranit`}>
+            <button class="btn btn--text" type="submit">
+              {f.remove}
+            </button>
+          </form>
+        ) : null}
+      </section>
+    </>
+  )
+}
+
 const SickCard: FC<{
   company: Company
   period: string
@@ -560,6 +694,8 @@ export interface PayrollPageProps {
   values: Record<string, string>
   errors: FieldErrors
   /** What keeps the month from being closed. */
+  /** The executions of the company's employees (garnish.ts). */
+  garnishments?: GarnishRow[]
   issues?: {
     employeeId: string
     name: string
@@ -678,6 +814,9 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                           <td class="num">
                             <strong>{formatEurExact(l.slip.net)}</strong>
                             {l.slip.meals ? <span class="wnet__meals">{w.meals.inNet(l.slip.meals.way === 'voucher' ? formatEurExact(-l.slip.meals.employee) : `+${formatEurExact(l.slip.meals.cash)}`)}</span> : null}
+                            {l.slip.garnish?.length ? (
+                              <span class="wnet__meals">{w.garnish.inNet(formatEurExact(-l.slip.garnish.reduce((t, d) => t + d.current + d.arrears, 0)))}</span>
+                            ) : null}
                           </td>
                           <td class="num">{formatEurExact(l.slip.employerCost)}</td>
                         </tr>
@@ -799,6 +938,7 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
           ) : null}
           {p.slips.length > 0 ? <PaysCard orders={p.orders} today={p.today} /> : null}
           <SickCard company={c} period={p.period} rows={p.leaves ?? []} employees={p.employees} form={p.sickForm ?? { id: null, values: {}, errors: {} }} />
+          {p.employees.length > 0 ? <GarnishCard company={c} rows={p.garnishments ?? []} today={p.today} /> : null}
           <p class="info__source vnotbuilt">{w.notBuilt}</p>
         </div>
         <aside class="pgrid__side">
@@ -899,6 +1039,7 @@ export const EmployeePage: FC<{ company: Company; form: EmployeeForm; centers?: 
           <Field id="z-dovolenka" name="dovolenka" label={w.form.leaveDays} value={v.dovolenka ?? ''} hint={w.form.leaveHint} error={e.dovolenka} mode="decimal" max={6} />
           <Field id="z-iban" name="iban" label={w.form.iban} value={v.iban ?? ''} error={e.iban} max={34} />
           <Select id="z-stravne" name="stravne" label={w.meals.choice} value={v.stravne ?? ''} options={w.meals.choices} hint={w.meals.choiceHint} />
+          <Field id="z-vyzivovani" name="vyzivovani" label={w.garnish.dependents} value={v.vyzivovani ?? ''} hint={w.garnish.dependentsHint} error={e.vyzivovani} mode="numeric" max={2} />
           {centers.length > 0 ? (
             <Select
               id="z-stredisko"

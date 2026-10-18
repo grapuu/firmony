@@ -28,6 +28,7 @@ import {
   takings,
   meals,
   socialFund,
+  garnish,
   ledger,
   ledgerStore,
   dues,
@@ -1614,6 +1615,83 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
       centers.budgetUse(45000, 30000) === 150 &&
       centers.budgetUse(1, 0) === null,
   )
+}
+
+// Deductions for executions (18 October 2026, garnish.ts): Exekučný poriadok § 69 to § 72, nariadenie vlády 268/2006.
+{
+  const p0 = garnish.protectedAmounts('2026-10', 0)
+  const p2 = garnish.protectedAmounts('2026-10', 2)
+  check(
+    'the protected amounts of October 2026 (295,22 €), each rounded down: 140 %, 100 %, 70 % of 60 % for a minor child, the cap three times 140 %',
+    p0?.ordinary === 41330 && p0.priority === 29522 && p0.minor === 12399 && p0.cap === 123990 && p2?.ordinary === 41330 + 2 * 10332 && p2.priority === 29522 + 2 * 7380 && p2.minor === 12399 + 2 * 5166,
+    JSON.stringify([p0, p2]),
+  )
+  check('the subsistence minimum changes on 1 July', garnish.subsistenceOn('2026-06-30') === 28413 && garnish.subsistenceOn('2026-07-01') === 29522 && garnish.subsistenceOn('2024-01-01') === null)
+  check('the remainder rounded down to cents divisible by three; above the cap without limit', JSON.stringify(garnish.thirdsOf(147000, 61994, 123990)) === '{"third":28335,"above":0}' && JSON.stringify(garnish.thirdsOf(200000, 41330, 123990)) === '{"third":41330,"above":34680}')
+  check('the net for deductions: the gross and sick pay less the insurance, the tax advance and an annual underpayment', garnish.garnishNet({ gross: 150000, sickPay: 1000, socialEmployee: 20000, healthEmployee: 7500, advance: 15000, settlementTax: 500 }) === 108000)
+  const claim = (fields) => ({ id: 'x', employeeId: 'e', kind: 'ordinary', minor: false, persons: 0, creditor: 'JUDr. Exekútor', reference: 'EX 1/2026', iban: null, vs: null, startedOn: '2026-09-01', orderOn: '2026-09-15', total: null, monthly: null, endedOn: null, ...fields })
+  const month = (net, persons, claims) => garnish.garnishMonth('2026-10', net, persons, claims, '2026-11-10')
+  let out = month(147000, 2, [{ g: claim({ total: 35000 }), left: 35000 }])
+  check('an ordinary claim: one third of the remainder (dobry-uctovnik.sk, net 1 470 € and two persons)', out.length === 1 && out[0].arrears === 28335 && out[0].current === 0 && !out[0].held, JSON.stringify(out))
+  out = month(147000, 2, [{ g: claim({ total: 35000 }), left: 6000 }])
+  check('never more than the claim has left', out[0].arrears === 6000)
+  out = month(200000, 0, [{ g: claim({}), left: null }])
+  check('above the cap the rest without limit', out[0].arrears === 41330 + 34680)
+  out = month(100000, 0, [{ g: claim({ kind: 'priority' }), left: null }])
+  check('a priority claim: two thirds of its own remainder', out[0].arrears === 2 * 23492)
+  out = month(80000, 1, [{ g: claim({ kind: 'maintenance', minor: true, persons: 1, monthly: 15000, total: 100000 }), left: 100000 }])
+  check(
+    "a minor child's maintenance: the current maintenance first, then arrears, within two thirds over its protected amount (the child not counted among the maintained)",
+    out[0].current === 15000 && out[0].arrears === 2 * 22533 - 15000,
+    JSON.stringify(out),
+  )
+  out = month(120000, 0, [
+    { g: claim({ id: 'o', startedOn: '2026-08-01' }), left: null },
+    { g: claim({ id: 'p', kind: 'priority', startedOn: '2026-09-01' }), left: null },
+  ])
+  const by = Object.fromEntries(out.map((d) => [d.id, garnish.deductionOf(d)]))
+  check(
+    'an older ordinary and a newer priority claim: the second third to the priority one, the first third by order, each within its share',
+    by.o === 26223 && by.p === 30159 + (30159 - 26223) && by.o + by.p === 2 * 30159,
+    JSON.stringify(by),
+  )
+  out = month(120000, 0, [
+    { g: claim({ id: 'a', startedOn: '2026-09-01' }), left: 10000 },
+    { g: claim({ id: 'b', startedOn: '2026-09-01' }), left: 30000 },
+  ])
+  check('claims delivered the same day share in proportion', out.find((d) => d.id === 'a')?.arrears === 6556 && out.find((d) => d.id === 'b')?.arrears === 19667, JSON.stringify(out))
+  out = month(120000, 0, [{ g: claim({ orderOn: null }), left: null }])
+  check('before the execution order the deduction is kept by the employer', out[0].held === true)
+  check(
+    'a claim not yet delivered by the payday, or ended before it, deducts nothing',
+    month(120000, 0, [{ g: claim({ startedOn: '2026-11-11' }), left: null }]).length === 0 && month(120000, 0, [{ g: claim({ endedOn: '2026-11-01' }), left: null }]).length === 0,
+  )
+  check('a net under the protected amount: nothing', month(40000, 0, [{ g: claim({}), left: null }]).length === 0)
+  check('a share in proportion to weights, never above a need, every cent given', JSON.stringify(garnish.share(100, [30, 200], [1, 1])) === '[30,70]' && JSON.stringify(garnish.share(10, [10, 30])) === '[3,7]' && JSON.stringify(garnish.share(500, [10, 30])) === '[10,30]')
+  // The month's slip: the deductions off the net, the overview's check, the books.
+  const employee = { id: 'g1', name: 'Gustáv', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 200000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, contract: 'employment', regular: true, pension: 'none', exemption: false, wageKind: 'monthly', weeklyHours: 4000, leaveDays: null, dependents: 1 }
+  const g = claim({ id: 'gx', employeeId: 'g1', total: 50000 })
+  const slips = payrollStore.monthSlips('2026-10', [employee], null, { garnishments: [g], payday: '2026-11-10' })
+  const s = slips[0].slip
+  const net = garnish.garnishNet(s)
+  const taken = s.garnish?.[0]?.arrears ?? 0
+  check(
+    "the slip: the deduction named, off the net; the tax and insurance as without it",
+    taken > 0 && s.garnish[0].creditor === 'JUDr. Exekútor' && s.net === payroll.payslip({ period: '2026-10', gross: s.gross, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false, days: 31 }).net - taken,
+    JSON.stringify(s.garnish),
+  )
+  check('the deduction of 2 000 € with a person maintained', taken === Math.min(50000, garnish.thirdsOf(net, garnish.protectedAmounts('2026-10', 1).ordinary, 123990).third))
+  const closed = { period: '2026-10', payday: '2026-11-10', lines: slips.map(payrollStore.storedLine), closedOn: '2026-11-03', closedByName: 'Lucia' }
+  const next = payrollStore.monthSlips('2026-11', [employee], null, { garnishments: [g], payday: '2026-12-10', runs: [closed] })
+  check("the next month takes what the claim has left", (next[0].slip.garnish?.[0]?.arrears ?? 0) === Math.min(50000 - taken, taken), JSON.stringify(next[0].slip.garnish))
+  const lp = payrollStore.ledgerPayroll(closed)
+  const entry = ledger.buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'none' }, docs: [], payments: [], banks: [], filed: [], manual: [], payroll: [lp] }).entries.find((e) => e.key === 'w:2026-10')
+  check(
+    'the books: 331 against 379; a payment to the executor of that amount is 379',
+    lp.garnish === taken && entry?.lines.some((l) => l.md === '331' && l.d === '379' && l.cents === taken) && ledger.reasonAccount({ amountCents: -taken, vs: null, note: null, exempt: 'payroll', exemptNote: null, partyIban: null }, [lp]) === '379',
+  )
+  const prehlad = prehladUnit.prehladTotals('2026-10', [{ id: 'c', period: '2026-10', report_period: '2026-10', paid_on: '2026-11-10', lines: JSON.stringify(slips.map((l) => ({ employeeId: l.employeeId, gross: l.gross, slip: l.slip }))) }], '2026-11-20')
+  check("the tax office's overview takes a slip with a deduction", prehlad.issues.length === 0, JSON.stringify(prehlad.issues))
 }
 
 // Payroll by cost centre (18 October 2026, centers.ts): an employee's cost of work in his centre.

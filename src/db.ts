@@ -1365,6 +1365,44 @@ const MIGRATIONS: readonly string[][] = [
   // Payroll by cost centre (18 October 2026, centers.ts): the centre an employee's cost of work goes to; the centre an
   // invoice is issued for, which its document takes.
   ['ALTER TABLE employees ADD COLUMN center_id TEXT', 'ALTER TABLE invoices ADD COLUMN center_id TEXT'],
+  // Deductions from wages for an execution (18 October 2026, garnish.ts): each claim an executor ordered, and the persons
+  // an employee maintains (the protected amount).
+  [
+    `CREATE TABLE IF NOT EXISTS wage_garnishments (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      minor INTEGER NOT NULL DEFAULT 0,
+      persons INTEGER NOT NULL DEFAULT 0,
+      creditor TEXT NOT NULL,
+      reference TEXT,
+      iban TEXT,
+      vs TEXT,
+      started_on TEXT NOT NULL,
+      order_on TEXT,
+      total_cents INTEGER,
+      monthly_cents INTEGER,
+      ended_on TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER,
+      deleted_at INTEGER
+    )`,
+    'CREATE INDEX IF NOT EXISTS wage_garnishments_employee ON wage_garnishments (company_id, employee_id)',
+    'ALTER TABLE employees ADD COLUMN dependents INTEGER NOT NULL DEFAULT 0',
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER wage_garnishments_data_${action.toLowerCase()} AFTER ${action} ON wage_garnishments BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map(
+      (action) => `CREATE TRIGGER wage_garnishments_purging_${action.toLowerCase()} BEFORE ${action} ON wage_garnishments
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+    ),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
