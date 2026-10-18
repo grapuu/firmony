@@ -390,7 +390,8 @@ export function monthSlips(
       // Meals: the employee's way (the company's when he chose none), a meal a day worked over four hours unless typed.
       const mealSettings = context.meals ?? null
       const way = mealWayOf(e.mealWay, mealSettings)
-      const mealsProposal = mealsProposed(e.contract, terms.dailyHours, pay.worked)
+      // A meal a shift: the hours worked without the overtime (a day's overtime is no second shift).
+      const mealsProposal = mealsProposed(e.contract, terms.dailyHours, Math.max(0, pay.worked - (parts.overtimeHours ?? 0)))
       const meals = way && mealSettings ? mealMoney(way, parts.meals ?? mealsProposal, mealSettings) : null
       return {
         employeeId: e.id,
@@ -427,9 +428,15 @@ export function monthSlips(
     })
 }
 
-/** What keeps an open month from being closed: a person's absences longer than the working time, a sick leave without a daily base. */
-export const monthIssues = (slips: readonly SlipLine[]): { employeeId: string; name: string; issue: 'absence' | 'sickBase' }[] =>
-  slips.flatMap((l) => (l.pay?.issues ?? []).map((issue) => ({ employeeId: l.employeeId, name: l.name, issue })))
+/**
+ * What keeps an open month from being closed: a person's absences longer than the working time, a sick leave without a
+ * daily base, a net below nought (the vouchers' part of a month without wage).
+ */
+export const monthIssues = (slips: readonly SlipLine[]): { employeeId: string; name: string; issue: 'absence' | 'sickBase' | 'negative' }[] =>
+  slips.flatMap((l) => [
+    ...(l.pay?.issues ?? []).map((issue) => ({ employeeId: l.employeeId, name: l.name, issue })),
+    ...(l.slip.net < 0 ? [{ employeeId: l.employeeId, name: l.name, issue: 'negative' as const }] : []),
+  ])
 
 /** A month's sums, from its payslips. */
 export const runTotals = (slips: readonly (RunLine & { slip: Payslip })[]): PayrollTotals => payrollTotals(slips.map((l) => ({ ...l.slip, insurer: l.insurer })))

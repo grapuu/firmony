@@ -2155,6 +2155,15 @@ monthly wage; nothing is sent to the insurers or the tax office by us.
   internal document 527/472), meals of agreements, a day of a business trip with its allowance (the count is typed),
   vouchers bought (the supplier's invoice to 213 by the booking form's own account, its fee to 518).
   test/meals.runtime.mjs, units "Meals of employees".
+  Mended after a seventh independent review (18 October 2026, of commit 3b8f608; each finding verified first): the tax
+  office's overview (PREHLAD) refused every month with meals, since its check of a slip's net knew nothing of them (now
+  less the vouchers' part, plus the contribution); the employer's least is 55 % of the voucher "najviac však" his most
+  (`employerLeast`: a voucher of 10 € asks 5,12 €, before no figure passed); overtime is no second shift (the proposal
+  leaves the overtime hours out); a net below nought keeps the month back (`monthIssues` 'negative'); a month is closed
+  only while the meal settings meet the bounds of its last day (else "mzdy-stravne"); the meals field shows only for who
+  takes meals; the month's table says what the meals did to each net and the handover's `pasky.csv` has their two
+  columns; the client's message says how many vouchers of what value to hand out to whom. The social fund's creation
+  (above) answers the finding that 472 was only ever debited.
 - The social fund's mandatory allocation (built 18 October 2026, `src/app/social-fund.ts`; no schema step: the rate in
   `companies.payroll.fundRate`, each closed line's allocation in its `fund`). Read on static.slov-lex.sk by WebFetch,
   Act No. 152/1994 Z. z. as of 1 January 2025 (the latest version the register shows): § 3(1)(a) 0,6 % to 1 % of the
@@ -2301,8 +2310,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1223 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1795 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1227 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1798 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

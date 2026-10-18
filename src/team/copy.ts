@@ -1738,6 +1738,7 @@ export const team = typesetAll({
       slipCash: (count: number) => typeset(`Finančný príspevok na stravovanie (${count} ×)`),
       slipParts: (employer: string, fund: string) => typeset(`zamestnávateľ ${employer}, sociálny fond ${fund}; nezdaňuje sa ani sa z neho neplatia odvody`),
       employerCost: 'Príspevok zamestnávateľa na stravovanie',
+      inNet: (amount: string) => typeset(`stravovanie ${amount}`),
       choice: 'Stravovanie',
       choices: { '': 'Ako firma', voucher: 'Stravovacie poukážky', cash: 'Finančný príspevok', none: 'Nič (nestravuje sa cez firmu)' } as Record<string, string>,
       choiceHint: 'Zamestnanec si medzi poukážkami a finančným príspevkom vyberá na 12 mesiacov (§ 152 ods. 7 Zákonníka práce).',
@@ -1762,6 +1763,7 @@ export const team = typesetAll({
     issuesTitle: 'Pred uzavretím treba doplniť',
     issues: {
       absence: (name: string) => typeset(`${name}: dovolenka, PN, prekážky a voľno presahujú pracovný čas mesiaca.`),
+      negative: (name: string) => typeset(`${name}: čistá mzda by bola záporná (časť stravovacích poukážok prevyšuje mzdu). Upravte počet jedál.`),
       sickBase: (name: string) => typeset(`${name}: k PN chýba denný vymeriavací základ. Doplňte ho v časti Práceneschopnosť.`),
     },
     sick: {
@@ -1995,12 +1997,12 @@ export const team = typesetAll({
       fundRate: 'Povinný prídel do sociálneho fondu je od 0,6 do 1 %.',
       mealAmount: 'Sumu napíšte v eurách, napríklad 6,98 (najviac 100 €).',
       mealVoucher: (min: string) => typeset(`Poukážka musí mať hodnotu aspoň ${min} (75 % stravného na pracovnej ceste 5 až 12 hodín).`),
-      mealEmployerLow: (min: string) => typeset(`Zamestnávateľ prispieva aspoň ${min}, teda 55 % hodnoty poukážky.`),
+      mealEmployerLow: (min: string) => typeset(`Zamestnávateľ prispieva aspoň ${min}: 55 % hodnoty poukážky, najviac však 55 % stravného.`),
       mealEmployerHigh: (max: string) => typeset(`Zamestnávateľ prispieva najviac ${max} na jedlo (55 % stravného). Viac môže pridať sociálny fond.`),
       mealCashLow: (min: string) => typeset(`Finančný príspevok musí byť aspoň ${min}.`),
       mealFund: 'Príspevky zamestnávateľa a sociálneho fondu nesmú spolu prevýšiť hodnotu poukážky.',
     },
-    clientMessage: (m: { month: string; payday: string; employees: { name: string; amount: string; iban: string | null }[]; social: { amount: string; iban: string | null; vs: string | null } | null; health: { name: string; amount: string; iban: string | null; vs: string | null }[]; tax: { amount: string; iban: string | null; vs: string; due: string } | null }) =>
+    clientMessage: (m: { month: string; payday: string; employees: { name: string; amount: string; iban: string | null }[]; social: { amount: string; iban: string | null; vs: string | null } | null; health: { name: string; amount: string; iban: string | null; vs: string | null }[]; tax: { amount: string; iban: string | null; vs: string; due: string } | null; vouchers?: { count: number; value: string; people: string } | null }) =>
       typeset(
         [
           `Mzdy za ${m.month} sú spracované. Výplatný termín je ${m.payday}; v ten deň treba zaplatiť aj poisťovne.`,
@@ -2010,6 +2012,7 @@ export const team = typesetAll({
           ...(m.social ? ['', `Sociálna poisťovňa: ${m.social.amount}${m.social.iban ? ` na ${m.social.iban}` : ''}${m.social.vs ? `, VS ${m.social.vs}` : ''}.`] : []),
           ...m.health.map((h) => `Zdravotná poisťovňa ${h.name}: ${h.amount}${h.iban ? ` na ${h.iban}` : ''}${h.vs ? `, VS ${h.vs}` : ''}.`),
           ...(m.tax ? [`Daňový úrad (preddavky na daň zo mzdy): ${m.tax.amount}${m.tax.iban ? ` na ${m.tax.iban}` : ''}, VS ${m.tax.vs}, do ${m.tax.due}.`] : []),
+          ...(m.vouchers ? ['', `Stravovacie poukážky za mesiac: ${m.vouchers.count} ks po ${m.vouchers.value} (${m.vouchers.people}). Vydajte ich zamestnancom alebo im ich nabite na kartu; ich časť je už odpočítaná z čistej mzdy.`] : []),
           '',
           'Platby označte v aplikácii ako Mzdy a odvody; zaúčtujeme ich sami.',
         ].join('\n'),
@@ -2026,6 +2029,7 @@ export const team = typesetAll({
       settings: 'Nastavenie miezd sme uložili.',
       fix: 'Neuložili sme to: opravte, čo je označené.',
       issues: 'Mesiac sme neuzavreli: najprv doplňte, čo je uvedené pri ňom.',
+      meals: 'Mesiac sme neuzavreli: nastavenie stravovania nezodpovedá Zákonníku práce pre tento mesiac (zmenilo sa stravné). Upravte ho v nastavení miezd.',
       sick: 'PN sme zapísali.',
       sickRemoved: 'PN sme odstránili.',
     },

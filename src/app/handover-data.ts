@@ -97,8 +97,17 @@ export async function handoverData(db: D1Database, company: string, year: string
     const lines = parsed(run.lines)
     if (!Array.isArray(lines)) continue
     const rows = [
-      ['Zamestnanec', 'Vzťah', 'Poisťovňa', 'Hrubá mzda', 'Náhrada príjmu pri PN', 'Sociálne zamestnanca', 'Zdravotné zamestnanca', 'Daň po bonuse', 'Čistá mzda', 'Cena práce'],
-      ...lines.map((line) => [line.name, line.slip?.contract ?? 'employment', line.insurer, ...['gross', 'sickPay', 'socialEmployee', 'healthEmployee', 'withheld', 'net', 'employerCost'].map((k) => csvMoney(line.slip?.[k] ?? (k === 'sickPay' ? 0 : null)))]),
+      ['Zamestnanec', 'Vzťah', 'Poisťovňa', 'Hrubá mzda', 'Náhrada príjmu pri PN', 'Sociálne zamestnanca', 'Zdravotné zamestnanca', 'Daň po bonuse', 'Stravovacie poukážky: časť zamestnanca', 'Finančný príspevok na stravovanie', 'Čistá mzda', 'Cena práce'],
+      // The meals (meals.ts) make the net with the columns before it: less the employee's part of the vouchers, plus the financial contribution.
+      ...lines.map((line) => [
+        line.name,
+        line.slip?.contract ?? 'employment',
+        line.insurer,
+        ...['gross', 'sickPay', 'socialEmployee', 'healthEmployee', 'withheld'].map((k) => csvMoney(line.slip?.[k] ?? (k === 'sickPay' ? 0 : null))),
+        csvMoney(line.slip?.meals?.employee ?? 0),
+        csvMoney(line.slip?.meals?.cash ?? 0),
+        ...['net', 'employerCost'].map((k) => csvMoney(line.slip?.[k] ?? null)),
+      ]),
     ]
     entries.push(entry(`mzdy/${run.period}/pasky.csv`, `\uFEFF${rows.map((r) => r.map(csvCell).join(';')).join('\r\n')}\r\n`))
     entries.push(entry(`mzdy/${run.period}/uzavrete-pasky.json`, json(lines)))

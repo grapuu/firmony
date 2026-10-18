@@ -1542,6 +1542,30 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     JSON.stringify([m1?.proposals, m3?.slip.meals]),
   )
   check('no meals without the company giving them', payrollStore.monthSlips('2026-10', [employee], null).every((l) => l.slip.meals === undefined))
+  // The review of 18 October 2026.
+  check(
+    "a voucher above the allowance asks no more of the employer than his most (\"najviac však\"): 5,12 € for 10 €, refused below it",
+    issues({ way: 'voucher', voucher: 1000, employer: 512, fund: 0 }) === '' &&
+      issues({ way: 'voucher', voucher: 1000, employer: 500, fund: 0 }) === 'employerLow' &&
+      meals.employerLeast(1000, '2026-10-18') === 512 &&
+      meals.employerLeast(700, '2026-10-18') === 385,
+  )
+  const overtime = payrollStore.monthSlips(
+    '2026-10',
+    [employee],
+    { period: '2026-10', payday: null, lines: [{ employeeId: 'm1', name: 'Mária', insurer: '25', gross: 150000, parts: { ...payMonth.EMPTY_PARTS, wage: null, overtimeHours: 1600 } }], closedOn: null, closedByName: null },
+    { meals: v },
+  )[0]
+  check('overtime is no second shift: still a meal a working day', overtime.pay.worked === 19200 && overtime.proposals.meals === 22, JSON.stringify([overtime.pay.worked, overtime.proposals.meals]))
+  const unpaid = payrollStore.monthSlips(
+    '2026-10',
+    [employee],
+    { period: '2026-10', payday: null, lines: [{ employeeId: 'm1', name: 'Mária', insurer: '25', gross: 0, parts: { ...payMonth.EMPTY_PARTS, wage: null, unpaidDays: 2200, meals: 10 } }], closedOn: null, closedByName: null },
+    { meals: v },
+  )
+  check('a net below nought (vouchers of a month without wage) keeps the month back', unpaid[0].slip.net < 0 && payrollStore.monthIssues(unpaid).some((i) => i.issue === 'negative'), JSON.stringify(unpaid[0].slip.net))
+  const prehlad = prehladUnit.prehladTotals('2026-10', [{ id: 'c', period: '2026-10', report_period: '2026-10', paid_on: '2026-11-10', lines: JSON.stringify(slips.map((l) => ({ employeeId: l.employeeId, gross: l.gross, slip: l.slip }))) }], '2026-11-20')
+  check("the tax office's overview takes slips with meals", prehlad.issues.length === 0 && prehlad.employees === 3, JSON.stringify(prehlad.issues))
   const read = (text) => payrollForm.readParts({ jedla_m1: text }, 'm1', 'employment', 'monthly', 150000)
   check('a count typed: a whole number up to 62, empty proposed', read('10').parts.meals === 10 && read('').parts.meals === null && read('63').errors.jedla_m1 === 'meals' && read('1,5').errors.jedla_m1 === 'meals')
   const lp = payrollStore.ledgerPayroll({ period: '2026-10', payday: '2026-11-10', lines: slips.map((l) => ({ ...l })), closedOn: '2026-11-05', closedByName: 'Lucia' })

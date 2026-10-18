@@ -125,7 +125,7 @@ import {
   type PayrollSettings,
   type PayrollRun,
 } from '../app/payroll-store'
-import { employerMin, isMealWay, mealBounds, mealIssues, NO_MEALS, type MealSettings, type MealWay } from '../app/meals'
+import { employerLeast, isMealWay, mealBounds, mealIssues, NO_MEALS, type MealSettings, type MealWay } from '../app/meals'
 import { FUND_RATE_MIN, isFundRate } from '../app/social-fund'
 import { addDays } from '../app/ending'
 import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
@@ -505,6 +505,8 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.unsupported
     case 'mzdy-doplnit':
       return t.payroll.flashes.issues
+    case 'mzdy-stravne':
+      return t.payroll.flashes.meals
     case 'mzdy-pn':
       return t.payroll.flashes.sick
     case 'mzdy-pn-odstranena':
@@ -2558,6 +2560,12 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
     await db.batch([saveRunStatement(db, company.id, period, payday, typed, who.user.id, now())])
     return c.redirect(`${back}&ok=mzdy-doplnit`, 303)
   }
+  // The meal settings as the law of the month's last day asks (meals.ts): a bound changed since they were saved keeps
+  // the month back until they are set again.
+  if (settings.meals && settings.meals.way !== null && mealIssues(settings.meals, monthRange(period).to).length > 0) {
+    await db.batch([saveRunStatement(db, company.id, period, payday, typed, who.user.id, now())])
+    return c.redirect(`${back}&ok=mzdy-stravne`, 303)
+  }
   const evidenceId = crypto.randomUUID(), closedAt = now()
   const stored = slips.map(storedLine)
   const [done] = await db.batch([
@@ -2574,6 +2582,12 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
     social: orders.social.amount > 0 ? { amount: formatEurExact(orders.social.amount), iban: iban(orders.social.iban), vs: orders.social.vs } : null,
     health: orders.health.map((h) => ({ name: INSURERS[h.code], amount: formatEurExact(h.amount), iban: iban(h.iban), vs: h.vs })),
     tax: orders.tax.amount > 0 ? { amount: formatEurExact(orders.tax.amount), iban: iban(orders.tax.iban), vs: orders.tax.vs, due: dayName(orders.tax.due) } : null,
+    vouchers: (() => {
+      // The month's vouchers to hand out (meals.ts): how many, of what value, to whom.
+      const taking = slips.filter((l) => l.slip.meals?.way === 'voucher' && l.slip.meals.count > 0)
+      const count = taking.reduce((t, l) => t + (l.slip.meals?.count ?? 0), 0)
+      return count > 0 && settings.meals ? { count, value: formatEurExact(settings.meals.voucher), people: taking.map((l) => `${l.name} ${l.slip.meals?.count ?? 0}`).join(', ') } : null
+    })(),
   })
   const id = crypto.randomUUID()
   await db.batch([
@@ -2713,7 +2727,7 @@ teamRoutes.post('/klienti/:id/mzdy/nastavenie', async (c) => {
   if (bounds && !errors.poukazka && !errors.prispevok && !errors.fond)
     for (const issue of mealIssues(meals, dayOf(now()))) {
       if (issue === 'voucher') errors.poukazka = t.payroll.errors.mealVoucher(formatEurExact(bounds.voucherMin))
-      if (issue === 'employerLow') errors.prispevok = t.payroll.errors.mealEmployerLow(formatEurExact(employerMin(meals.voucher)))
+      if (issue === 'employerLow') errors.prispevok = t.payroll.errors.mealEmployerLow(formatEurExact(employerLeast(meals.voucher, dayOf(now()))))
       if (issue === 'employerHigh') errors.prispevok = t.payroll.errors.mealEmployerHigh(formatEurExact(bounds.employerMax))
       if (issue === 'cashLow') errors.prispevok = t.payroll.errors.mealCashLow(formatEurExact(bounds.cashMin))
       if (issue === 'fund') errors.fond = t.payroll.errors.mealFund

@@ -6900,6 +6900,15 @@ a.wtable__name {
   text-decoration: none;
 }
 
+/* The meals in a net wage of the month's table (meals.ts). */
+.wnet__meals {
+  display: block;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 .wparts {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

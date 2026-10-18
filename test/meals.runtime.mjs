@@ -48,6 +48,8 @@ export async function checkMeals({ db, acc, lucia, nowS, day, capture }) {
   const jan = people['Ján'].id
   const ema = people['Ema'].id
 
+  check('no meals field while the company gives none', !plain(await (await acc.get(`${base}?obdobie=${M}`)).text()).includes(`name="jedla_${jan}"`))
+
   // The company's way: below the law refused, within it kept.
   res = await acc.post(`${base}/nastavenie`, { den: '10', stravovanie: 'voucher', poukazka: '5', prispevok: '3', fond: '' })
   let page = plain(await res.text())
@@ -109,6 +111,13 @@ export async function checkMeals({ db, acc, lucia, nowS, day, capture }) {
   )
   const fund = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/ucet/472?rok=${M.slice(0, 4)}`)).text())
   check('booked to the fund (472) with what it paid for the meals', fund.includes('18,00') && fund.includes('15,00'))
+  const message = await db.prepare("SELECT body FROM messages WHERE company_id = ? AND side = 'firmony' ORDER BY created_at DESC LIMIT 1").bind(company).first()
+  check(
+    'the client is told how many vouchers to hand out, of what value, to whom',
+    plain(message?.body ?? '').includes('Stravovacie poukážky za mesiac: 15 ks po 7,00 € (TEST-ONLY Ján Poukážka 15)'),
+    message?.body,
+  )
+  check("the month's table says what the meals did to each net", page.includes('stravovanie −32,25 €') || page.includes('stravovanie -32,25 €'))
   page = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/ucet/213?rok=${M.slice(0, 4)}`)).text())
   check("the books: the vouchers out of 213 (the employer's, the fund's and the employee's parts)", page.includes('57,75') && page.includes('15,00') && page.includes('32,25'))
 }

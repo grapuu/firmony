@@ -36,7 +36,9 @@ export function prehladTotals(period: string, sources: PrehladSource[], today: s
       const s = line?.slip
       const sick = s?.sickPay === undefined ? 0 : s.sickPay
       const st = s?.settlementTax === undefined ? 0 : s.settlementTax, sb = s?.settlementBonus === undefined ? 0 : s.settlementBonus
-      if (!line || typeof line.employeeId !== 'string' || employees.has(line.employeeId) || !s || s.period !== source.period || s.rulesYear !== Number(source.period.slice(0, 4)) || ![line.gross, s.gross, sick, s.advance, s.socialEmployee, s.healthEmployee, s.net, s.bonus].every(money) || ![s.withheld, st, sb].every(Number.isSafeInteger) || s.gross !== line.gross || s.withheld !== s.advance - s.bonus || s.net !== s.gross + sick - s.socialEmployee - s.healthEmployee - s.withheld - st + sb) { issues.add('Uložená výplatná páska nemá úplné a konzistentné podklady.'); continue }
+      // Meals (meals.ts) are neither taxed nor insured: a voucher's part the employee pays comes off the net, a financial contribution is paid with it.
+      const me = s?.meals === undefined ? 0 : s.meals?.employee, mc = s?.meals === undefined ? 0 : s.meals?.cash
+      if (!line || typeof line.employeeId !== 'string' || employees.has(line.employeeId) || !s || s.period !== source.period || s.rulesYear !== Number(source.period.slice(0, 4)) || ![line.gross, s.gross, sick, s.advance, s.socialEmployee, s.healthEmployee, s.net, s.bonus, me, mc].every(money) || ![s.withheld, st, sb].every(Number.isSafeInteger) || s.gross !== line.gross || s.withheld !== s.advance - s.bonus || s.net !== s.gross + sick - s.socialEmployee - s.healthEmployee - s.withheld - st + sb - me + mc) { issues.add('Uložená výplatná páska nemá úplné a konzistentné podklady.'); continue }
       employees.add(line.employeeId)
       gross += s.gross + sick; advance += s.advance; bonus += s.bonus + sb; settled += st
     }

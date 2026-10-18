@@ -57,6 +57,15 @@ export function mealBounds(day: string): { voucherMin: number; cashMin: number; 
 /** The least the employer pays towards a voucher of a value: 55 % of it, rounded up to the cent (§ 152(3)). */
 export const employerMin = (voucher: number): number => Math.ceil((voucher * 55) / 100)
 
+/**
+ * The least the employer pays towards a voucher on a day: 55 % of its value, "najviac však" 55 % of the meal allowance
+ * (§ 152(3)): a voucher worth more than the allowance asks no more of the employer than his most.
+ */
+export function employerLeast(voucher: number, day: string): number {
+  const b = mealBounds(day)
+  return b ? Math.min(employerMin(voucher), b.employerMax) : employerMin(voucher)
+}
+
 export type MealIssue = 'voucher' | 'employerLow' | 'employerHigh' | 'fund' | 'cashLow'
 
 /**
@@ -71,7 +80,7 @@ export function mealIssues(s: MealSettings, day: string): MealIssue[] {
   const issues: MealIssue[] = []
   if (s.way === 'voucher' || s.voucher > 0) {
     if (s.voucher < b.voucherMin) issues.push('voucher')
-    if (s.employer < employerMin(s.voucher)) issues.push('employerLow')
+    if (s.employer < Math.min(employerMin(s.voucher), b.employerMax)) issues.push('employerLow')
     if (s.employer + s.fund > s.voucher) issues.push('fund')
   }
   if (s.way === 'cash' && s.employer < b.cashMin) issues.push('cashLow')

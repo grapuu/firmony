@@ -503,7 +503,9 @@ const PartsFields: FC<{
   const average = line.proposals?.average
   return (
     <div class="wparts">
-      {keys.map((key) => {
+      {keys
+        .filter((key) => key !== 'meals' || (line.proposals?.meals !== null && line.proposals?.meals !== undefined))
+        .map((key) => {
         const name = `${PART_FIELDS[key]}_${line.employeeId}`
         const hint =
           key === 'average' && average
@@ -560,7 +562,7 @@ export interface PayrollPageProps {
   issues?: {
     employeeId: string
     name: string
-    issue: 'absence' | 'sickBase'
+    issue: 'absence' | 'sickBase' | 'negative'
   }[]
   leaves?: LeaveRow[]
   sickForm?: SickForm
@@ -620,7 +622,7 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                 <strong>{w.issuesTitle}</strong>
                 <ul>
                   {issues.map((i) => (
-                    <li>{i.issue === 'absence' ? w.issues.absence(i.name) : w.issues.sickBase(i.name)}</li>
+                    <li>{i.issue === 'absence' ? w.issues.absence(i.name) : i.issue === 'negative' ? w.issues.negative(i.name) : w.issues.sickBase(i.name)}</li>
                   ))}
                 </ul>
               </div>
@@ -674,6 +676,7 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
                           <td class="num">{formatEurExact(l.slip.withheld)}</td>
                           <td class="num">
                             <strong>{formatEurExact(l.slip.net)}</strong>
+                            {l.slip.meals ? <span class="wnet__meals">{w.meals.inNet(l.slip.meals.way === 'voucher' ? formatEurExact(-l.slip.meals.employee) : `+${formatEurExact(l.slip.meals.cash)}`)}</span> : null}
                           </td>
                           <td class="num">{formatEurExact(l.slip.employerCost)}</td>
                         </tr>
