@@ -13,8 +13,9 @@
 //   without a code) and for services whose place of supply is there (§ 15(1), code 2); in the period the tax fell due
 //   (§ 80(6): `taxDay`, independently of a VAT period override), a correction of the base in the period it was made (§ 80(7)).
 //   Each row in whole euros, half a euro up (§ 80(6)); the total on the first page is the sum of the rows (the eForm's
-//   own check). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
-//   call-off stock (part II).
+//   own check). The middle person's supplies of triangular trade with the code 1 (vat.ts `triangle`; FR SR's answer
+//   478530), counted with the goods for the quarterly limit. Not built: goods moved to another member state of one's own
+//   (§ 43(4)), call-off stock (part II).
 // - Corrections (§ 80(8)): before the deadline a corrective statement (opravný) with every row again; after it a
 //   supplementary one (dodatočný) with only the rows that change: the right value, nought for a row that was wrong;
 //   a row cancelled because its code was wrong, or of triangular trade, carries the code 0 (poučenie, part IV and
@@ -28,7 +29,7 @@ export type SvCode = '' | '1' | '2' | '0'
 export interface SvLine {
   country: string
   number: string
-  code: '' | '2'
+  code: '' | '1' | '2'
   cents: number
   docs: string[]
 }
@@ -124,7 +125,7 @@ export function summarySchedule(company: VatCompany, period: string, docs: VatDo
   for (const doc of docs) {
     if (!isIssued(doc.kind)) continue
     const counted = vatOf(doc, company)
-    if (counted?.data.mode !== 'eu_goods') continue
+    if (counted?.data.mode !== 'eu_goods' && counted?.data.mode !== 'triangle') continue
     const month = summaryMonthOf(doc, counted.data)
     byMonth.set(month, (byMonth.get(month) ?? 0) + counted.data.lines.reduce((sum, line) => sum + line.base, 0))
   }
@@ -165,7 +166,7 @@ export function summaryLines(company: VatCompany, period: string, docs: VatDoc[]
     }
     if (!isIssued(doc.kind)) continue
     const counted = vatOf(doc, company)
-    if (!counted || (counted.data.mode !== 'eu_goods' && counted.data.mode !== 'eu_service')) continue
+    if (!counted || (counted.data.mode !== 'eu_goods' && counted.data.mode !== 'eu_service' && counted.data.mode !== 'triangle')) continue
     const { data, proposed } = counted
     const month = summaryMonthOf(doc, data)
     if ((isQuarter(period) ? quarterOf(month) : month) !== period) continue
@@ -186,7 +187,7 @@ export function summaryLines(company: VatCompany, period: string, docs: VatDoc[]
       continue
     }
     const cents = data.lines.reduce((sum, line) => sum + line.base, 0)
-    const code = data.mode === 'eu_service' ? '2' : ''
+    const code = data.mode === 'eu_service' ? '2' : data.mode === 'triangle' ? '1' : ''
     const line = { country, number: vatId.slice(2), code } as const
     const held = lines.get(key(line)) ?? { ...line, cents: 0, docs: [] }
     held.cents += cents

@@ -2798,6 +2798,32 @@ async function zipped(entries, note) {
         form({ ground: 'b1', day: '2027-11-01' }).errors.day === 'future',
     )
     check('the tax owed counts row 27', ledger.vatOwed({ ...vat.emptyRows(), r17: 5000, r27: -2300 }) === 2700)
+    // Triangular trade (18 October 2026): the last customer pays the VAT itself (rows 11 to 12b, B.1), the middle person
+    // reports nothing in the return.
+    const lastCustomer = doc({ number: 'DE-77', issuedOn: '2027-02-20', receivedOn: '2027-02-22', vat: v('triangle_in', [[23, 100000, 23000, 23000]], { vatId: 'DE123456789', suppliedOn: '2027-01-20' }) })
+    check(
+      'the last customer: due on the 15th of the month after the goods came (§ 20(1)), or the invoice\'s day before it, as an acquisition',
+      vat.taxDay(lastCustomer, lastCustomer.vat) === '2027-02-15' && vat.taxDay({ ...lastCustomer, issuedOn: '2027-01-25' }, lastCustomer.vat) === '2027-01-25',
+    )
+    const feb = vat.workOut(payer, '2027-02', [lastCustomer])
+    check(
+      'February: rows 11b and 12b, deducted in row 19, in B.1 by the supplier\'s VAT number; nothing to pay in the end',
+      feb.rows.r11b === 100000 && feb.rows.r12b === 23000 && feb.rows.r19 === 23000 && feb.rows.r32 === 0 && feb.kv.b1[0]?.dod === 'DE123456789' && feb.kv.b1[0]?.d === 23000,
+      JSON.stringify([feb.rows.r11b, feb.rows.r12b, feb.kv.b1]),
+    )
+    const middle = doc({ kind: 'invoice_out', number: 'FA-TRI', issuedOn: '2027-01-25', receivedOn: '2027-01-25', vat: v('triangle', [[0, 450000, 0]], { vatId: 'CZ12345678', suppliedOn: '2027-01-20' }) })
+    const triForm = (extra) => vatForm.readVat({ dph_rezim: 'triangle', dph_dodanie: '20. 1. 2027', dph_icdph: 'CZ12345678', dph_zaklad_0: '4500', ...extra }, { kind: 'invoice_out', payer: true, deduct: false, booking: true, periods: ['2027-01'] })
+    check(
+      'the form: triangular trade needs a VAT number of another member state; its base goes without VAT',
+      triForm({ dph_icdph: 'SK2020000000' }).errors.vatId === 'euId' && triForm({}).data?.mode === 'triangle' && triForm({}).data?.lines[0]?.rate === 0 && triForm({ dph_zaklad_23: '100' }).errors.base23 === 'zeroOnly',
+      JSON.stringify(triForm({}).errors),
+    )
+    const midFeb = vat.workOut(payer, '2027-01', [middle])
+    check(
+      'the middle person: no row of the return and no line of the control statement, only the recapitulative statement said',
+      vat.ROWS.every((r) => midFeb.rows[r] === 0) && midFeb.kv.a1.length === 0 && midFeb.issues.some((i) => i.code === 'summary') && midFeb.skip !== undefined,
+      JSON.stringify(midFeb.issues),
+    )
     // After the review: the claim on its own day, credit notes before and after it, a corrective document sent late.
     const big = (fields) =>
       doc({ kind: 'invoice_out', number: 'FA-25B', issuedOn: '2027-01-10', receivedOn: '2027-01-10', dueOn: '2027-01-31', vat: v('domestic', [[23, 100000, 23000]], { vatId: 'SK2121212121', suppliedOn: '2027-01-10' }), ...fields })
@@ -3767,6 +3793,22 @@ async function zipped(entries, note) {
         ]),
   )
   check('changed while something keeps it back: no file until it is resolved', vatSummary.summaryView(payer, '2027-01', docs, filed(before), 1, '2027-03-02').plan === null)
+
+  // Triangular trade (18 October 2026): the middle person's supply to the last customer, with the code 1.
+  const triangle = sale('CZ12345678', 450000, 'triangle', { issuedOn: '2027-01-20', receivedOn: '2027-01-20', vat: { ...sale('x', 0).vat, mode: 'triangle', vatId: 'CZ12345678', lines: [{ rate: 0, base: 450000, vat: 0, deduct: 0 }], suppliedOn: '2027-01-12' } })
+  const triRows = vatSummary.rowsOf(vatSummary.summaryLines(payer, '2027-01', [triangle, sale('CZ12345678', 100000, 'eu_goods')]).lines)
+  check(
+    "triangular trade as the middle person: the customer's row with the code 1, apart from its goods under § 43",
+    JSON.stringify(triRows) ===
+      JSON.stringify([
+        { country: 'CZ', number: '12345678', euros: 1000, code: '' },
+        { country: 'CZ', number: '12345678', euros: 4500, code: '1' },
+      ]),
+    JSON.stringify(triRows),
+  )
+  const triXml = vatXml.summaryXml({ name: 'Trojka s. r. o.', icdph: 'SK2120999992', address: 'Hlavná 10, 040 01 Košice' }, '2027-01', triRows, 'R', '2027-02-03')
+  const triValid = await valid(triXml)
+  check('the statement with the code 1 is valid against the eForm form.471 schema', triValid.ok && triXml.includes('<kod>1</kod>'), triValid.why)
 
   // The file
   const filer = { name: 'Termíny & spol. s. r. o.', icdph: 'SK2120999992', address: 'Hlavná 10, 040 01 Košice' }

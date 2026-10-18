@@ -5,7 +5,7 @@
 import { dayOfText, textDay } from './booking'
 import { centsOf } from './invoices'
 import type { DocKind } from './match'
-import { ISSUED_MODES, RECEIVED_MODES, isA2Unit, isIssued, isPeriod, isReceived, isReverseKind, isSkVatId, plainVatId, vatCountry, type ReverseGoods, type VatData, type VatLine, type VatMode } from './vat'
+import { ISSUED_MODES, RECEIVED_MODES, isA2Unit, isEuVatId, isIssued, isPeriod, isReceived, isReverseKind, isSkVatId, isTriangle, plainVatId, vatCountry, type ReverseGoods, type VatData, type VatLine, type VatMode } from './vat'
 
 /** The rates of the form's rows, the basic one first; 0 % is the base of what is supplied without VAT. */
 export const FORM_RATES = [23, 19, 5, 0] as const
@@ -31,15 +31,15 @@ export interface VatValues {
   reverseUnit?: string
 }
 
-export type VatErrorCode = 'amount' | 'base' | 'negative' | 'lines' | 'id' | 'supplierId' | 'noTax' | 'zeroOnly' | 'mode' | 'date' | 'period' | 'country' | 'rate' | 'reverseKind' | 'reverseCode' | 'reverseQuantity' | 'customerId'
+export type VatErrorCode = 'amount' | 'base' | 'negative' | 'lines' | 'id' | 'supplierId' | 'noTax' | 'zeroOnly' | 'mode' | 'date' | 'period' | 'country' | 'rate' | 'reverseKind' | 'reverseCode' | 'reverseQuantity' | 'customerId' | 'euId'
 export type VatField = 'mode' | 'supplied' | 'vatId' | 'corrects' | 'period' | `base${FormRate}` | `tax${FormRate}` | 'country' | 'ossRate' | 'ossBase' | 'ossTax' | 'reverseKind' | 'reverseCode' | 'reverseQuantity'
 export type VatErrors = Partial<Record<VatField, VatErrorCode>>
 
 /** What VAT is reported by the mode: taxed (with VAT), or the base alone (supplied without VAT), or nothing. */
-const TAXED: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'import', 'import84a']
-const BASE_ONLY: readonly VatMode[] = ['eu_goods', 'eu_service', 'export', 'exempt', 'outside']
-/** The modes whose lines go into the return, so that booking without them is a mistake. */
-const NEEDS_LINES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'import', 'import84a', 'eu_goods', 'export', 'exempt']
+const TAXED: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'triangle_in', 'import', 'import84a']
+const BASE_ONLY: readonly VatMode[] = ['eu_goods', 'eu_service', 'triangle', 'export', 'exempt', 'outside']
+/** The modes whose lines go into the return or the recapitulative statement, so that booking without them is a mistake. */
+const NEEDS_LINES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'triangle_in', 'import', 'import84a', 'eu_goods', 'triangle', 'export', 'exempt']
 
 /** Which modes a document of this kind can have: an issued invoice's or a received one's; none for anything else. */
 export function modesFor(kind: DocKind | null): readonly VatMode[] {
@@ -208,6 +208,8 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
   }
   if (lines.some((line) => line.base < 0 || line.vat < 0) && corrects === '') errors.corrects = 'negative'
   if (ctx.booking && mode !== null && NEEDS_LINES.includes(mode) && !lines.some((line) => line.base !== 0)) errors.base23 = errors.base23 ?? 'lines'
+  // Triangular trade is between VAT numbers of three member states: the other side's is of another one than Slovakia.
+  if (ctx.booking && mode !== null && isTriangle(mode) && (!vatId || vatId.startsWith('SK') || !isEuVatId(vatId))) errors.vatId = errors.vatId ?? 'euId'
   // A deduction from a Slovak supplier's invoice goes into the control statement by the supplier's VAT number (B.2).
   if (ctx.booking && mode === 'domestic' && ctx.kind === 'invoice_in' && lines.some((line) => line.deduct !== 0) && !isSkVatId(vatId)) errors.vatId = errors.vatId ?? 'supplierId'
   if (Object.keys(errors).length > 0 || !mode) return { values, data: null, errors }

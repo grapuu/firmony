@@ -155,7 +155,7 @@ function supplyParts(mode: string, lines: readonly VatLine[], mark: RatioMode | 
     } else if (mode === 'exempt') exempt += line.base
     // A supply abroad, to another member state, exported, taxed in the one-stop shop or by the customer: the right to
     // deduct stays (§ 49(2) and (6), § 43, § 47).
-    else if (mode === 'reverse' || mode === 'eu_goods' || mode === 'eu_service' || mode === 'export' || mode === 'outside' || mode === 'oss') right += line.base
+    else if (mode === 'reverse' || mode === 'eu_goods' || mode === 'eu_service' || mode === 'triangle' || mode === 'export' || mode === 'outside' || mode === 'oss') right += line.base
   }
   return { right, exempt }
 }

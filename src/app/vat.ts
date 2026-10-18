@@ -30,7 +30,7 @@
 //   base and VAT at the basic rate and at the reduced ones), not in A.1 or D.2.
 // - The proportional deduction (§ 50, 18 October 2026; vat-ratio.ts): a document deducted in proportion carries the
 //   coefficient's deduction in its lines; the year's settlement goes into rows 18 to 19 of its last period.
-// - Not built: triangular trade (rows 11 to 12b), documents in another currency without their
+// - Not built: documents in another currency without their
 //   euro amounts.
 import { CATEGORIES, type Category } from './booking'
 import type { DocKind } from './match'
@@ -46,14 +46,26 @@ import { NO_DOCUMENT_GROUNDS, grossOf, shareOf, type BadDebt, type BadDebtLine }
  * distance or services to consumers in another member state, its VAT declared in the one-stop shop, oss.ts). `none`:
  * no VAT to report at all (a supplier who is no payer, an exempt purchase, or a company not registered).
  */
-export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'import' | 'import84a' | 'eu_goods' | 'eu_service' | 'export' | 'exempt' | 'outside' | 'oss' | 'none'
+export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'import' | 'import84a' | 'triangle_in' | 'eu_goods' | 'eu_service' | 'triangle' | 'export' | 'exempt' | 'outside' | 'oss' | 'none'
 
 /**
  * Received, besides: `import` (goods imported, the VAT paid to the customs office and deducted by its confirmed
  * document), `import84a` (goods imported by an authorised economic operator, its VAT declared in the return, § 84a(3)).
  */
-export const RECEIVED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'import', 'import84a', 'none']
-export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'eu_goods', 'eu_service', 'export', 'exempt', 'outside', 'oss', 'none']
+export const RECEIVED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'triangle_in', 'import', 'import84a', 'none']
+export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'eu_goods', 'eu_service', 'triangle', 'export', 'exempt', 'outside', 'oss', 'none']
+
+/**
+ * Triangular trade (§ 45 with § 17(4) and § 69(9); FR SR's answer 478530, "Trojstranný obchod a príklady", read on
+ * 18 October 2026): goods sent from one member state to a third, sold by A to B and by B to C, each identified in its own
+ * state. Issued `triangle`: the company is B, the middle person: its acquisition in C's state counts as taxed, its invoice
+ * to C carries no VAT, both VAT numbers and "prenesenie daňovej povinnosti", and it is reported only in the
+ * recapitulative statement with the code 1 (not in the return or the control statement). Its purchase from A is no
+ * supply in Slovakia (booked `none`). Received `triangle_in`: the company is C, the last customer in Slovakia: it pays
+ * the VAT of B's supply itself (rows 11, 11a, 11b and 12, 12a, 12b), deducts it (rows 18 to 19) and reports it in B.1,
+ * falling due as an acquisition (§ 20(1)). The first supplier A ships under § 43 (`eu_goods`) as any other supply.
+ */
+export const isTriangle = (mode: VatMode): boolean => mode === 'triangle' || mode === 'triangle_in'
 
 /**
  * An issued supply with domestic reverse charge (§ 69(12): the customer, a Slovak payer, pays the VAT), as the control
@@ -458,7 +470,7 @@ export function vatOf(doc: VatDoc, company: VatCompany): { data: VatData; propos
  */
 export function taxDay(doc: VatDoc, data: VatData): string {
   const supplied = data.suppliedOn ?? doc.issuedOn ?? doc.receivedOn
-  if (data.mode !== 'acquisition' && data.mode !== 'eu_goods') return supplied
+  if (data.mode !== 'acquisition' && data.mode !== 'eu_goods' && data.mode !== 'triangle' && data.mode !== 'triangle_in') return supplied
   const fifteenth = `${periodOf(addDays(`${supplied.slice(0, 7)}-28`, 7), false)}-15`
   if (!doc.issuedOn || doc.issuedOn >= fifteenth) return fifteenth
   // An invoice issued before the goods were acquired or supplied does not bring the tax before that.
@@ -764,6 +776,8 @@ export type Rows = Record<Row, number>
 const SUPPLY_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r01', tax: 'r02' }, 5: { base: 'r01a', tax: 'r02a' }, 23: { base: 'r03', tax: 'r04' } }
 const ACQUISITION_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r05', tax: 'r06' }, 5: { base: 'r05a', tax: 'r06a' }, 23: { base: 'r07', tax: 'r08' } }
 const REVERSE_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r09', tax: 'r10' }, 5: { base: 'r09a', tax: 'r10a' }, 23: { base: 'r09b', tax: 'r10b' } }
+/** The last customer of triangular trade (§ 69(9)): FR SR's answer 478530 names rows 11b and 12b at 23 %, the rest by the form's order. */
+const TRIANGLE_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r11', tax: 'r12' }, 5: { base: 'r11a', tax: 'r12a' }, 23: { base: 'r11b', tax: 'r12b' } }
 const DEDUCT_ROWS: Record<number, Row> = { 19: 'r18', 5: 'r18a', 23: 'r19' }
 const DOMESTIC_DEDUCT_ROWS: Record<number, Row> = { 19: 'r20', 5: 'r20a', 23: 'r21' }
 /** Imports: the base and VAT an importer declares itself (§ 84a(3)), and what is deducted of VAT paid to customs and of VAT declared so. */
@@ -1124,7 +1138,12 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       issue('warn', 'summary', doc.id)
       continue
     }
-    if (company.status === 'reg7a' && !(isReceived(doc.kind) && (data.mode === 'reverse' || data.mode === 'acquisition'))) {
+    if (data.mode === 'triangle') {
+      // The middle person of triangular trade: its supply to C is in the recapitulative statement alone (code 1).
+      issue('warn', 'summary', doc.id)
+      continue
+    }
+    if (company.status === 'reg7a' && !(isReceived(doc.kind) && (data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'triangle_in'))) {
       issue('warn', 'domestic7a', doc.id)
       continue
     }
@@ -1196,7 +1215,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       note('A2', doc.id)
       continue
     }
-    const taxed = data.mode === 'domestic' || data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'import' || data.mode === 'import84a'
+    const taxed = data.mode === 'domestic' || data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'triangle_in' || data.mode === 'import' || data.mode === 'import84a'
     const imported = !issued && (data.mode === 'import' || data.mode === 'import84a')
     if (data.lines.length === 0) {
       issue('block', 'lines', doc.id)
@@ -1338,7 +1357,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
         }
         continue
       }
-      const target = (data.mode === 'acquisition' ? ACQUISITION_ROWS : REVERSE_ROWS)[line.rate]
+      const target = (data.mode === 'acquisition' ? ACQUISITION_ROWS : data.mode === 'triangle_in' ? TRIANGLE_ROWS : REVERSE_ROWS)[line.rate]
       if (target) {
         add(target.base, line.base, doc.id)
         add(target.tax, line.vat, doc.id)

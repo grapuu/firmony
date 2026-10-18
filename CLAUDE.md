@@ -36,7 +36,8 @@ over. Bring this section up to date first whenever a session ends.
    executions (schema step 61, under "Payroll"); the proportional deduction of VAT by a coefficient (§ 50, schema step 62,
    under "VAT: the return and the control statement"); depreciation and stock by cost centre (schema steps 63 and 64, under "Cost centres"); the correction of
    the deduction from a supplier's invoice not paid within 100 days (§ 53b, under "VAT"), mended after an independent review
-   (schema step 66); the supplier's bad debts (§ 25a, schema step 67, under "VAT"). **Nothing is live**: there
+   (schema step 66); the supplier's bad debts (§ 25a, schema step 67, under "VAT"); triangular trade (under "VAT").
+   **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1892,7 +1893,7 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   filing: a corrective statement with every row before the deadline, a supplementary one after it with only the rows
   that change (§ 80(8): the right value; nought for a row that is no more; the code 0 for a row whose code was 1, or 2
   while the customer stays under another, the poučenie's examples 10 to 14), which § 80(8) gives no deadline (the screen
-  lists it for today). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
+  lists it for today). Triangular trade's code 1 since 18 October 2026 (below). Not built: goods moved to another member state of one's own (§ 43(4)),
   call-off stock (part II), a customer's VAT number
   that comes later (§ 80(6), the period it is given).
 - Imports (since 18 October 2026; read in the poučenie to DPHv25, points 30a, 30b, 38, 38a, and FR SR's information
@@ -2031,7 +2032,20 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   after the deadline of its return (`badDebtLate`); a documented lowering whose return's deadline has passed is not made
   (§ 25a(11), (13); for § 25a(2)(a) a new step gives a new day); the page flags a passed deadline; corrections are listed
   apart from the candidates, so 400 old invoices cannot push them off.
-- Not built: triangular trade, documents in another
+- Triangular trade (built 18 October 2026, modes `triangle` and `triangle_in` in vat.ts, `isTriangle`). Read on
+  podpora.financnasprava.sk through WebFetch: the answer 478530 "Trojstranný obchod a príklady" (§ 45 with § 17(4)):
+  three parties identified in three member states, goods sent from the first's state to the last's, by the first or the
+  middle one. The first supplier A is an ordinary § 43 supply (`eu_goods`: rows 13 and 14, the recapitulative statement,
+  no control statement). The middle person B (issued `triangle`): its invoice without VAT with both VAT numbers and
+  "prenesenie daňovej povinnosti", no row of the return and no line of the control statement, the recapitulative
+  statement with the code 1 (counted with the goods for the quarterly limit of § 80(2): to verify), its purchase from A
+  booked `none`. The last customer C (received `triangle_in`): the VAT of B's supply its own, rows 11, 11a, 11b and 12,
+  12a, 12b (the answer names 11b and 12b at 23 %, the rest by the form's order), deducted in rows 18 to 19, B.1 by B's VAT
+  number, due as an acquisition (§ 20(1)), booked as one (343.200 and 343.100). The booking form offers both and asks for
+  a VAT number of another member state (`euId`). Rows 11 to 12e have their labels on the VAT page now. test/triangle.runtime.mjs,
+  units under VAT and the recapitulative statement. Not built: the client's own invoice form for it (the accountant books
+  it), Intrastat of the last customer's arrival.
+- Not built: documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
   Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
@@ -2514,8 +2528,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1321 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1903 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1327 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1907 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

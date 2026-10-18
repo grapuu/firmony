@@ -682,7 +682,7 @@ export const overpaid = (company: Pick<Company, 'vatStatus'>, ret: Pick<FiledRet
 
 /** The VAT a company pays itself on a document it bought from abroad (§ 69, § 11) or imported (§ 84a(3)), as confirmed or proposed, for its entry. */
 export function selfVatOf(data: VatData | null | undefined): { cents: number; deduct: boolean; deductCents: number } | null {
-  if (!data || (data.mode !== 'reverse' && data.mode !== 'acquisition' && data.mode !== 'import84a')) return null
+  if (!data || (data.mode !== 'reverse' && data.mode !== 'acquisition' && data.mode !== 'triangle_in' && data.mode !== 'import84a')) return null
   const cents = data.lines.reduce((sum, line) => sum + line.vat, 0)
   const deductCents = data.lines.reduce((sum, line) => sum + line.deduct, 0)
   return cents > 0 ? { cents, deduct: deductCents > 0, deductCents } : null

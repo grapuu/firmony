@@ -459,7 +459,7 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
       // VAT paid to the customs office is part of what its document asks for, as a Slovak supplier's VAT.
       vatCents = payer ? sum((line) => line.deduct) : 0
       deduct = vatCents > 0
-    } else if (data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'import84a') {
+    } else if (data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'triangle_in' || data.mode === 'import84a') {
       const cents = sum((line) => line.vat)
       const deducted = payer ? sum((line) => line.deduct) : 0
       selfVat = cents > 0 ? { cents, deduct: deducted > 0, deductCents: deducted } : null

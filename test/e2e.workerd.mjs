@@ -47,6 +47,7 @@ import { checkGarnish } from './garnish.runtime.mjs'
 import { checkVatRatio } from './vat-ratio.runtime.mjs'
 import { checkUnpaid53b } from './vat-53b.runtime.mjs'
 import { checkBadDebt } from './bad-debt.runtime.mjs'
+import { checkTriangle } from './triangle.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
 import { checkJointStock } from './joint-stock.runtime.mjs'
 import { checkLists } from './lists.runtime.mjs'
@@ -4810,6 +4811,7 @@ await checkGarnish({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAP
 await checkVatRatio({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkUnpaid53b({ db, acc, lucia, nowS, day })
 await checkBadDebt({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkTriangle({ db, acc, lucia, nowS, day })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
