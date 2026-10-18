@@ -177,6 +177,8 @@ export interface Doc {
   /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
   ekasaUid: string | null
   ekasaOkp: string | null
+  /** Paid in cash by a cash document of the cash box: its number and day (cash.ts). */
+  cashPaid?: { number: string; on: string } | null
 }
 
 export interface Message {
@@ -322,7 +324,8 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name`
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name,
+  (SELECT ce.number || ' ' || ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1) AS cash_paid`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
  * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
@@ -385,6 +388,7 @@ export function docOf(row: Row): Doc {
     approvedByName: str(row.approved_by_name),
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),
+    cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }
 
@@ -695,12 +699,15 @@ export function unlinkStatement(db: D1Database, company: string, doc: string): D
 
 export type DocFilter = 'all' | 'loose'
 
+/** A document paid in cash by a cash document of the cash box (cash.ts), as SQL over the alias d. */
+export const CASH_PAID = "EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)"
+
 export async function listDocuments(db: D1Database, company: string, filter: DocFilter = 'all', limit = 400, search = '', offset = 0): Promise<Doc[]> {
   const { sql, binds } = searchSql(search, ['d.party', 'd.number', 'd.file_name', 'd.vs'], 'd.total_cents')
   const rows = await db
     .prepare(
       `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM}
-       WHERE d.company_id = ? AND d.deleted_at IS NULL ${filter === 'loose' ? 'AND l.document_id IS NULL AND d.paid_privately = 0' : ''} ${sql}
+       WHERE d.company_id = ? AND d.deleted_at IS NULL ${filter === 'loose' ? `AND l.document_id IS NULL AND d.paid_privately = 0 AND NOT ${CASH_PAID}` : ''} ${sql}
        ORDER BY d.created_at DESC, d.id LIMIT ? OFFSET ?`,
     )
     .bind(company, ...binds, limit, offset)

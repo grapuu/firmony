@@ -21,6 +21,7 @@ import {
   repeat,
   payorders,
   trips,
+  cash,
   ledger,
   ledgerStore,
   dues,
@@ -1425,6 +1426,50 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     JSON.stringify([free.errors, ticked.errors, ticked.input?.meals]),
   )
   check('no car with a train', form({ ...full, doprava: 'public', km: '' }).input?.car === null)
+}
+
+// The cash box (18 October 2026): cash documents PPD and VPD against 211, never below nought, never above 5 000 € paid
+// in cash (Act No. 394/2012 Z. z., § 4(1)), cash between the bank and the box without a limit.
+{
+  check(
+    'a cash document books the cash box against what it is',
+    JSON.stringify(cash.cashLines('withdrawal', 30000)) === '[{"md":"211","d":"261","cents":30000}]' &&
+      JSON.stringify(cash.cashLines('wages', 50000)) === '[{"md":"331","d":"211","cents":50000}]' &&
+      JSON.stringify(cash.cashLines('doc_out', 12300, '321')) === '[{"md":"321","d":"211","cents":12300}]' &&
+      JSON.stringify(cash.cashLines('doc_in', 12300, '311')) === '[{"md":"211","d":"311","cents":12300}]' &&
+      cash.cashLines('doc_out', 12300).length === 0 &&
+      cash.prefixOf('owner_in') === 'PPD' &&
+      cash.prefixOf('deposit') === 'VPD',
+  )
+  const moves = [
+    { on: '2026-10-01', cents: 30000 },
+    { on: '2026-10-05', cents: -12300 },
+    { on: '2026-10-07', cents: -10000 },
+  ]
+  check(
+    'the lowest the box stands from a day on, a day taken whole',
+    cash.lowestFrom(moves, '2026-10-01') === 7700 &&
+      cash.lowestFrom([...moves, { on: '2026-10-06', cents: -10000 }], '2026-10-06') === -2300 &&
+      cash.lowestFrom([{ on: '2026-10-02', cents: -500 }, { on: '2026-10-02', cents: 500 }], '2026-10-02') === 0 &&
+      cash.lowestFrom(moves, '2026-11-01') === null,
+  )
+  const copy = { kind: 'kind', day: 'day', future: 'future', amount: 'amount', party: 'party', document: 'document', limit: 'limit' }
+  const read = (fields) => cash.readCash((n) => fields[n], copy, '2026-10-18', (t) => booking.dayOfText(t) || null, invoices.centsOf)
+  check(
+    'the form: a day not ahead, an amount, who for a payment between two parties, an invoice for one paid in cash',
+    Object.keys(read({ druh: 'withdrawal', den: '14. 10. 2026', suma: '300' }).errors).length === 0 &&
+      read({ druh: 'owner_in', den: '14. 10. 2026', suma: '300' }).errors.party === 'party' &&
+      read({ druh: 'wages', den: '20. 10. 2026', suma: '300', kto: 'A' }).errors.day === 'future' &&
+      read({ druh: 'wages', den: '14. 10. 2026', suma: 'sto', kto: 'A' }).errors.amount === 'amount' &&
+      read({ druh: 'doc_out', den: '14. 10. 2026' }).errors.document === 'document' &&
+      read({ druh: 'nonsense', den: '14. 10. 2026', suma: '1' }).errors.kind === 'kind',
+  )
+  check(
+    'more than 5 000 € is never paid in cash; cash taken from the bank has no limit',
+    read({ druh: 'owner_in', den: '14. 10. 2026', suma: '5 000,01', kto: 'A' }).errors.limit === 'limit' &&
+      !read({ druh: 'owner_in', den: '14. 10. 2026', suma: '5 000', kto: 'A' }).errors.limit &&
+      !read({ druh: 'withdrawal', den: '14. 10. 2026', suma: '8 000' }).errors.limit,
+  )
 }
 
 // Payment orders (18 October 2026): the suppliers' invoices owed as one SEPA file the bank imports (pain.001.001.03).
@@ -3365,6 +3410,19 @@ async function zipped(entries, note) {
         after.items.every((i) => ledger.leftOf(i) === 0) &&
         !after.entries.some((e) => e.lines.some((l) => String(l.md).startsWith('343') || String(l.d).startsWith('343'))),
       JSON.stringify(after.entries.filter((e) => e.docId === 'trip').map((e) => e.lines)),
+    )
+    // Paid in cash instead (the cash box, 18 October 2026): a VPD settles the trip's open item from 211.
+    const vpd = { id: 'vpd', kind: 'cash', documentId: 'trip', number: 'VPD2026-001', on: '2026-10-19', text: 'Úhrada v hotovosti', lines: [{ md: '333', d: '211', cents: 11706 }], createdAt: 0, createdByName: null }
+    const ppd = { id: 'ppd', kind: 'cash', documentId: null, number: 'PPD2026-001', on: '2026-10-18', text: 'Výber z banky do pokladne', lines: [{ md: '211', d: '261', cents: 20000 }], createdAt: 0, createdByName: null }
+    const cashBooks = ledger.buildBooks({ company: company(), docs: [{ ...settled, paymentId: null }], payments: [], banks, filed: [], manual: [ppd, vpd] })
+    check(
+      'a cash document of the cash box: in the journal as its own kind, an invoice paid by it settled',
+      ledger.balanceOf(cashBooks.entries, '211', '2026-10-31') === 20000 - 11706 &&
+        ledger.balanceOf(cashBooks.entries, '333', '2026-10-31') === 0 &&
+        cashBooks.items.every((i) => ledger.leftOf(i) === 0) &&
+        cashBooks.entries.find((e) => e.key === 'm:vpd')?.kind === 'cash' &&
+        cashBooks.entries.find((e) => e.key === 'm:vpd')?.docId === 'trip',
+      JSON.stringify(cashBooks.items),
     )
   }
 }

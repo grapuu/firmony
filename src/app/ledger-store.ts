@@ -33,18 +33,19 @@ export function storedLines(json: unknown): LedgerLine[] {
   }
 }
 
-/** The internal documents and the opening balances that stand, in the order of their days. */
+/** The internal documents, the opening balances and the cash documents that stand, in the order of their days. */
 export async function manualEntries(db: D1Database, company: string): Promise<ManualEntry[]> {
   const rows = await db
     .prepare(
-      `SELECT e.id, e.kind, e.number, e.on_date, e.text, e.lines, e.created_at, u.name AS by_name FROM ledger_entries e LEFT JOIN users u ON u.id = e.created_by
+      `SELECT e.id, e.kind, e.number, e.on_date, e.text, e.lines, e.created_at, e.document_id, u.name AS by_name FROM ledger_entries e LEFT JOIN users u ON u.id = e.created_by
         WHERE e.company_id = ? AND e.deleted_at IS NULL ORDER BY e.on_date, e.created_at, e.id`,
     )
     .bind(company)
     .all<Row>()
   return rows.results.map((r) => ({
     id: String(r.id),
-    kind: r.kind === 'opening' ? 'opening' : 'internal',
+    kind: r.kind === 'opening' ? 'opening' : r.kind === 'cash' ? 'cash' : 'internal',
+    documentId: str(r.document_id),
     number: str(r.number),
     on: String(r.on_date),
     text: String(r.text ?? ''),

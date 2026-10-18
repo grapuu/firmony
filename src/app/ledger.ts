@@ -201,7 +201,7 @@ export interface LedgerLine {
   what?: 'cost' | 'vat' | 'revenue' | 'payable' | 'receivable'
 }
 
-export type EntryKind = 'opening' | 'document' | 'payment' | 'vat' | 'payroll' | 'asset' | 'stock' | 'internal' | 'fx'
+export type EntryKind = 'opening' | 'document' | 'payment' | 'cash' | 'vat' | 'payroll' | 'asset' | 'stock' | 'internal' | 'fx'
 
 export interface LedgerEntry {
   /** Unique in the books: d:<document>, p:<payment>, v:<period>[:n], m:<stored entry>. */
@@ -249,7 +249,10 @@ export interface LedgerBank {
 
 export interface ManualEntry {
   id: string
-  kind: 'internal' | 'opening'
+  /** The accountant's internal document, the opening balances, or a cash document of the cash box (cash.ts). */
+  kind: 'internal' | 'opening' | 'cash'
+  /** A cash document that pays an invoice: the invoice's document, whose open item it settles. */
+  documentId?: string | null
   number: string | null
   on: string
   text: string
@@ -606,7 +609,7 @@ function settlementLines(owed: number, deducted: number): LedgerLine[] {
   return lines
 }
 
-const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, vat: 3, payroll: 4, asset: 5, stock: 6, internal: 7, fx: 8 }
+const ORDER: Record<EntryKind, number> = { opening: 0, document: 1, payment: 2, cash: 2, vat: 3, payroll: 4, asset: 5, stock: 6, internal: 7, fx: 8 }
 
 /** The day the books start: the opening balances' day, else the contract's first day; null when neither is known. */
 export function booksStart(company: Pick<Company, 'startOn'>, manual: readonly ManualEntry[]): string | null {
@@ -937,9 +940,11 @@ export function buildBooks(input: LedgerInput): Books {
     entries.push({ key: e.key, on: e.on, kind: 'stock', number: e.number, text: e.text, docId: null, paymentId: null, manualId: null, lines: e.lines.map((l) => ({ ...l })) })
   }
 
-  // What the accountant wrote herself.
+  // What the accountant wrote herself, and the cash documents; one that pays an invoice in cash settles its open item.
   for (const m of input.manual) {
-    entries.push({ key: `m:${m.id}`, on: m.on, kind: m.kind, number: m.number ?? (m.kind === 'opening' ? 'PS' : ''), text: m.text, docId: null, paymentId: null, manualId: m.id, lines: m.lines })
+    entries.push({ key: `m:${m.id}`, on: m.on, kind: m.kind, number: m.number ?? (m.kind === 'opening' ? 'PS' : ''), text: m.text, docId: m.documentId ?? null, paymentId: null, manualId: m.id, lines: m.lines })
+    const item = m.kind === 'cash' && m.documentId ? items.get(m.documentId) : undefined
+    if (item && inBooks(m.on)) item.settled += m.lines.reduce((sum, l) => sum + l.cents, 0)
   }
 
   // Each year's end: a foreign currency account's balance in its currency (from the last the bank said) at the ECB's rate
@@ -1314,7 +1319,7 @@ export function openingRows(lines: readonly LedgerLine[]): { account: string; md
 
 const csv = (rows: (string | number | null)[][]) => `﻿${rows.map((row) => row.map((cell) => csvCell(cell)).join(';')).join('\r\n')}\r\n`
 
-const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', vat: 'priznanie DPH', payroll: 'mzdy', asset: 'majetok', stock: 'sklad', internal: 'interný doklad', fx: 'kurzové rozdiely' }
+const SOURCE: Record<EntryKind, string> = { opening: 'počiatočný stav', document: 'doklad', payment: 'výpis z účtu', cash: 'pokladničný doklad', vat: 'priznanie DPH', payroll: 'mzdy', asset: 'majetok', stock: 'sklad', internal: 'interný doklad', fx: 'kurzové rozdiely' }
 
 /** The number a journal prints for an entry: the document's own, or what the entry is. */
 export function numberOf(e: LedgerEntry, books: Books): string {

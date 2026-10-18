@@ -21,7 +21,8 @@ over. Bring this section up to date first whenever a session ends.
    a credit note issued in the app made no entry in the books. All of it under "Invoices the client issues" and item 8.
    An independent reviewer read the day's commits afterwards: nine findings, each verified and mended (schema step 48;
    "Mended after the review of the invoices" under "Invoices the client issues"). Then business trips at home (cestovné
-   náhrady, schema step 49, "Business trips" under the client's app). **Nothing is live**: there
+   náhrady, schema step 49, "Business trips" under the client's app) and the cash box (pokladňa, schema step 50, "The
+   cash box" there). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1293,6 +1294,42 @@ the company's document, so a company with many people travelling needs no spread
   333 (practices differ; 333 is used), approving a trip before it is paid beyond the approvals of payment orders.
   test/trips.runtime.mjs, units "Business trips at home" and the ledger's trip.
 
+### The cash box (18 October 2026; `src/app/cash.ts`, `cash-store.ts`, `src/views/cash.tsx`, schema step 50)
+
+The company's cash, as its books hold it: account 211 day by day. Receipts paid from the cash box were booked against
+211 before (a receipt nobody paid by bank or himself); everything else that moves cash now has its cash document.
+
+- Read on 18 October 2026: Act No. 394/2012 Z. z. as in force from 1 January 2026 (zakonypreludi.sk): a cash payment
+  above 5 000 € is forbidden (§ 4(1)), split payments of one legal relationship count together (§ 6(2)), a legal
+  person's fine up to 150 000 € (§ 10(2)); cash taken from or put into the company's own bank pays nobody. Every cash
+  movement is an accounting case with its document (§ 10 of the Act on Accounting).
+- Cash documents (`CASH_KINDS`): money in (PPD): taken from the bank (211/261), the owner's loan (211/365), the
+  capital paid in cash (211/353), an advance given back (211/335), a customer's invoice paid in cash (211/311); money
+  out (VPD): put into the bank (261/211), the loan paid back (365/211), an advance to an employee (335/211), wages in
+  cash (331/211), a supplier's invoice or a trip's settlement paid in cash (321 or 333 against 211, `payableOf`). They
+  are ledger entries of the kind 'cash' (`cash_kind`, `party`, `document_id`, `payment_id`), numbered by year and side
+  in the statement that writes them (`PPD2026-001`, `VPD2026-001`), booked at once, guarded by the period lock as every
+  ledger entry, removed only by a mark (the number stays taken). One cash document an invoice and one a bank payment
+  (unique partial indexes).
+- The client (`/app/pokladna`, from Platby): the balance now, the year's money in and out, the book of the year (each
+  document of the books that moves 211 with the balance after it, a balance below nought in red and a warning), the
+  receipts paid in cash the accountant has not booked yet listed apart; "Príjem do pokladne" and "Výdaj z pokladne"
+  (`/app/pokladna/nova?strana=prijem|vydaj`): the kind, the day (not ahead), the amount and who (an invoice's are the
+  invoice's), the invoice (unpaid, in euros, not a credit note or a prepayment invoice), or for cash from or to the bank
+  the bank's payment of the last 90 days, which is then marked as money between the company's own accounts (261) with
+  the document's number and freed when it is taken back; no amount typed takes the payment's. Refused: more than there
+  is (`lowestFrom`: the box stays at nought or above from that day on, the books' 211), more than 5 000 € paid in cash
+  (not for cash from or to the bank), a period the accountant locked, after the contract's intake. Taken back
+  (`/zrusit`) unless the box would go below nought. An unpaid invoice's page offers "Zaplatené z pokladne v hotovosti"
+  (or "Odberateľ zaplatil v hotovosti"); one paid so says so and is paid everywhere (`CASH_PAID`: not loose, not paired
+  by the bank, not in the payment orders, an issued invoice paid, a trip paid).
+- The books: a cash entry with `document_id` settles that invoice's open item (`buildBooks`), the journal names it
+  "Pokladničný doklad"; the yearly ZIP carries them in `data/` with the other ledger entries.
+- Not built: cash in another currency, eKasa's daily takings as cash in (they need the return's D.1), a count of the
+  cash at the year's end (inventory, § 30), a limit check across several documents of one legal relationship (§ 6(2):
+  each is checked alone), the cash book printed as its own file (the journal and account 211 are).
+  test/cash.runtime.mjs, units "The cash box" and the ledger's VPD.
+
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
 
 Enable Banking asked 900 € a month (see 12:15 on 14 October). So the bank comes the ways that cost nothing, set once:
@@ -1736,7 +1773,7 @@ the books; worked out from what the app holds, never typed twice.
   agree with once the three payments without a document are counted.
 - Not built: depreciation and asset cards (an asset bought goes to 042; putting it to use and depreciating it is an
   internal document for now), the closing entries (the statements are
-  worked out without them: "The closing"), another currency than the euro, a cash book of its own, a log of each change of a
+  worked out without them: "The closing"), another currency than the euro, a cash book of its own (since 18 October 2026: "The cash box"), a log of each change of a
   booked document beyond the events.
 
 ### Every client's deadlines (14 October 2026, from 15:17; `src/team/deadlines.ts`, `deadlines-store.ts`, views in `src/views/deadlines.tsx`)
@@ -2064,8 +2101,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1172 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips
-npm run test:runtime     # 1665 workerd checks on Node 24 (as GitHub runs them), including test/trips.runtime.mjs
+npm test                 # 1177 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box
+npm run test:runtime     # 1682 workerd checks on Node 24 (as GitHub runs them), including test/cash.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

@@ -7311,3 +7311,65 @@ a.wtable__name {
   color: var(--soft);
   font-size: 0.8125rem;
 }
+
+/* The cash box (src/views/cash.tsx): its two buttons, the year, the book, a balance below nought. */
+.cash__add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.cash__years {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cash__years .field__label {
+  margin: 0;
+}
+
+.cash__years .field__input {
+  width: auto;
+}
+
+.cash__table {
+  min-width: 640px;
+}
+
+.cash__text {
+  overflow-wrap: anywhere;
+}
+
+.cash__minus {
+  color: var(--red-ink);
+  font-weight: 600;
+}
+
+.paid__cash {
+  margin-top: 8px;
+}
+
+/* The form shows what the kind asks for (everything without :has): an invoice for one paid in cash, the bank's
+   payment for cash taken from or put into the bank, the amount and who otherwise. */
+.cashform:has(select[name='druh'] option[value='doc_in']:checked) .cash__plain,
+.cashform:has(select[name='druh'] option[value='doc_out']:checked) .cash__plain,
+.cashform:has(select[name='druh'] option[value='withdrawal']:checked) .cash__party,
+.cashform:has(select[name='druh'] option[value='deposit']:checked) .cash__party {
+  display: none;
+}
+
+.cashform:has(select[name='druh'] option[value='doc_in']:not(:checked)) .cash__doc--doc_in,
+.cashform:has(select[name='druh'] option[value='doc_out']:not(:checked)) .cash__doc--doc_out,
+.cashform:has(select[name='druh'] option[value='withdrawal']:not(:checked)) .cash__bank--withdrawal,
+.cashform:has(select[name='druh'] option[value='deposit']:not(:checked)) .cash__bank--deposit {
+  display: none;
+}
+
+.cash__table th:last-child,
+.cash__table td:last-child {
+  width: 1%;
+  padding-left: 16px;
+}

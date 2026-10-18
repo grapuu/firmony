@@ -2050,7 +2050,7 @@ export const team = typesetAll({
     journalLead: 'Všetky zápisy mesiaca, ako idú dni.',
     jcols: { day: 'Dátum', doc: 'Doklad', text: 'Text', md: 'MD', d: 'D', amount: 'Suma' },
     journalEmpty: 'V tomto mesiaci nie je v knihe žiadny zápis.',
-    source: { opening: 'Počiatočné stavy', document: 'Doklad', payment: 'Výpis z účtu', vat: 'Priznanie DPH', payroll: 'Mzdy', asset: 'Majetok', stock: 'Sklad', internal: 'Interný doklad', fx: 'Kurzové rozdiely' },
+    source: { opening: 'Počiatočné stavy', document: 'Doklad', payment: 'Výpis z účtu', cash: 'Pokladničný doklad', vat: 'Priznanie DPH', payroll: 'Mzdy', asset: 'Majetok', stock: 'Sklad', internal: 'Interný doklad', fx: 'Kurzové rozdiely' },
     noNumber: 'bez čísla',
     accountTitle: (account: string) => typeset(`Účet ${account}`),
     accountLead: 'Hlavná kniha: počiatočný stav, každý pohyb so zostatkom po ňom a konečný stav.',

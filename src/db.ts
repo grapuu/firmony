@@ -1256,6 +1256,17 @@ const MIGRATIONS: readonly string[][] = [
       BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
     ),
   ],
+  // The cash box (18 October 2026, cash.ts): cash documents are ledger entries of their own kind ('cash', PPD and VPD
+  // numbered by year), with what they are, who paid or was paid, the invoice one pays in cash (once) and the bank
+  // payment that took cash out of the bank or put it in.
+  [
+    'ALTER TABLE ledger_entries ADD COLUMN cash_kind TEXT',
+    'ALTER TABLE ledger_entries ADD COLUMN party TEXT',
+    'ALTER TABLE ledger_entries ADD COLUMN document_id TEXT',
+    'ALTER TABLE ledger_entries ADD COLUMN payment_id TEXT',
+    "CREATE UNIQUE INDEX IF NOT EXISTS ledger_entries_cash_document ON ledger_entries (document_id) WHERE kind = 'cash' AND deleted_at IS NULL AND document_id IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ledger_entries_cash_payment ON ledger_entries (payment_id) WHERE kind = 'cash' AND deleted_at IS NULL AND payment_id IS NOT NULL",
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

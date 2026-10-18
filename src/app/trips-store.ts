@@ -43,7 +43,8 @@ const parse = <T>(text: unknown, fallback: T): T => {
 }
 
 const COLUMNS = `t.*, u.name AS created_by_name, d.booked_at,
-  (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = t.document_id ORDER BY p.booked_on LIMIT 1) AS paid_on`
+  COALESCE((SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = t.document_id ORDER BY p.booked_on LIMIT 1),
+    (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = t.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on`
 const FROM = 'trips t LEFT JOIN users u ON u.id = t.created_by LEFT JOIN documents d ON d.id = t.document_id'
 
 function tripOfRow(r: Row): Trip {
@@ -167,7 +168,8 @@ export function tripStatements(
 /** Removes a trip and its document, only while the document is neither booked nor paired with a payment. */
 export function removeTripStatements(db: D1Database, company: string, id: string, user: string): D1PreparedStatement[] {
   const free = `(t.document_id IS NULL OR EXISTS (SELECT 1 FROM documents d WHERE d.id = t.document_id AND d.booked_at IS NULL
-    AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)))`
+    AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
+    AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)))`
   return [
     db.prepare(`UPDATE trips AS t SET removed_at = ?, removed_by = ? WHERE t.id = ? AND t.company_id = ? AND t.removed_at IS NULL AND ${free}`).bind(now(), user, id, company),
     db

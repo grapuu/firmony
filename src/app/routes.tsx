@@ -34,6 +34,7 @@ import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readD
 import {
   advancePayments,
   advancesOf,
+  centsOf,
   finalOf,
   isInvoiceCurrency,
   isCountry,
@@ -61,7 +62,9 @@ import {
   type LineInput,
   type StoredInvoice,
 } from './invoices'
-import { dayOfText, textDay } from './booking'
+import { dayOfText, isCategory, textDay } from './booking'
+import { balanceOf, canonicalAccount, payableOf, type Books } from './ledger'
+import { booksOf } from './ledger-store'
 import { lookupCompany } from '../rpo'
 import { normalizeIco } from '../ico'
 import { formatEur, formatEurExact, formatMoney } from '../format'
@@ -80,6 +83,9 @@ import { PayOrdersPage } from '../views/payorders'
 import { readTrip, tripOf, TRIPS_FROM, workingDaysAfter, type TripErrors, type TripValues } from './trips'
 import { getTrip, listTrips, removeTripStatements, tripOfDocument, tripStatements } from './trips-store'
 import { TripFormPage, TripPage, TripsPage } from '../views/trips'
+import { CASH_KINDS, CASH_LIMIT, cashLines, isCashKind, lowestFrom, readCash, type CashErrors, type CashValues } from './cash'
+import { cashDocuments, cashPayments, cashStatements, pendingCashReceipts, removeCashStatements } from './cash-store'
+import { CashFormPage, CashPage, type CashRow } from '../views/cash'
 import { bratislavaClock, bratislavaDay } from '../time'
 import { isWorkingDay } from './vat'
 import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
@@ -1059,6 +1065,147 @@ appRoutes.get('/uhrady/:id/xml', async (c) => {
       'Cache-Control': 'private, no-store',
     },
   })
+})
+
+// The cash box (cash.ts): the cash book is account 211 of the books day by day; a cash document is written by any
+// member, numbered and booked at once, refused when it would pay out cash that is not there or more than the law allows.
+
+/** Each entry of the books that moves the cash box, with how much (plus in, minus out). */
+const cashMoves = (books: Books) =>
+  books.entries.flatMap((e) => {
+    const cents = e.lines.reduce((sum, l) => sum + (canonicalAccount(l.md)?.startsWith('211') ? l.cents : 0) - (canonicalAccount(l.d)?.startsWith('211') ? l.cents : 0), 0)
+    return cents === 0 ? [] : [{ e, on: e.on, cents }]
+  })
+
+async function cashPage(c: Ctx, extra: { error?: string | null } = {}, status: 200 | 409 | 422 = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const [books, pending] = await Promise.all([booksOf(db, who.company), pendingCashReceipts(db, who.company.id)])
+  const day = today()
+  const moves = cashMoves(books)
+  const years = [...new Set([Number(day.slice(0, 4)), ...moves.map((m) => Number(m.on.slice(0, 4)))])].sort((a, b) => b - a)
+  const asked = Number(c.req.query('rok'))
+  const year = years.includes(asked) ? asked : Number(day.slice(0, 4))
+  const opening = balanceOf(books.entries, '211', `${year - 1}-12-31`)
+  let running = opening
+  const rows: CashRow[] = moves
+    .filter((m) => m.on.startsWith(`${year}-`))
+    .map((m) => {
+      running += m.cents
+      return { key: m.e.key, on: m.on, number: m.e.number, text: m.e.text, cents: m.cents, balance: running, removable: m.e.kind === 'cash' ? m.e.manualId : null }
+    })
+  const saved = c.req.query('ok') === 'doklad' ? rows.find((r) => r.removable === c.req.query('id')) : undefined
+  const flash = saved ? t.cash.saved(saved.number) : c.req.query('ok') === 'zruseny' ? t.cash.removed : null
+  return shell(
+    c,
+    'payments',
+    t.cash.title,
+    <CashPage year={year} years={years} opening={opening} rows={rows} balance={balanceOf(books.entries, '211', day)} pending={pending} flash={flash} error={extra.error ?? null} closed={!intakeOpen(who.company, day)} />,
+    status,
+  )
+}
+
+appRoutes.get('/pokladna', (c) => cashPage(c))
+
+const sideOf = (v: unknown): 'in' | 'out' => (v === 'prijem' ? 'in' : 'out')
+
+async function cashForm(c: Ctx, side: 'in' | 'out', values: CashValues, errors: CashErrors, status: 200 | 409 | 422 = 200, error: string | null = null) {
+  const who = c.get('who')
+  const db = c.env.DB
+  // Cash taken out of the bank came by a payment out; cash put into it, by a payment in.
+  const [documents, payments] = await Promise.all([cashDocuments(db, who.company.id, side), cashPayments(db, who.company.id, side === 'in' ? 'out' : 'in', today())])
+  return shell(c, 'payments', side === 'in' ? t.cash.newIn : t.cash.newOut, <CashFormPage side={side} values={values} errors={errors} documents={documents} payments={payments} error={error ?? closedIntake(who.company)} />, status)
+}
+
+appRoutes.get('/pokladna/nova', (c) => {
+  const side = sideOf(c.req.query('strana'))
+  const asked = c.req.query('druh')
+  const kind = isCashKind(asked) && CASH_KINDS[asked].side === side ? asked : side === 'in' ? 'withdrawal' : 'deposit'
+  return cashForm(c, side, { kind, day: textDay(today()), amount: '', party: '', note: '', document: c.req.query('doklad') ?? '', payment: '' }, {})
+})
+
+appRoutes.post('/pokladna', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const side = sideOf(body.strana)
+  // Cash taken from the bank (or put in it) with its bank payment picked and no amount typed is the payment's amount.
+  const bankPayments = typeof body.platba === 'string' && body.platba ? await cashPayments(db, who.company.id, side === 'in' ? 'out' : 'in', today()) : []
+  const picked = bankPayments.find((p) => p.id === body.platba)
+  const typed = typeof body.suma === 'string' ? body.suma.trim() : ''
+  const field = (name: string) => (name === 'suma' && typed === '' && picked ? (Math.abs(picked.cents) / 100).toFixed(2).replace('.', ',') : body[name])
+  const read = readCash(field, t.cash.errors, today(), (text) => dayOfText(text) || null, centsOf)
+  const errors: CashErrors = { ...read.errors }
+  if (CASH_KINDS[read.values.kind].side !== side) errors.kind = t.cash.errors.kind
+  if (!intakeOpen(who.company, today())) return cashForm(c, side, read.values, {}, 409)
+  const info = CASH_KINDS[read.values.kind]
+  let cents = read.input?.cents ?? null
+  let party: string | null = read.values.party || null
+  let text = ''
+  let account: string | null = null
+  let documentId: string | null = null
+  let paymentId: string | null = null
+  if (info.contra === 'doc') {
+    const doc = (await cashDocuments(db, who.company.id, side)).find((d) => d.id === read.values.document)
+    if (!doc) errors.document = t.cash.errors.document
+    else {
+      cents = doc.cents
+      party = doc.party
+      documentId = doc.id
+      account = side === 'in' ? '311' : payableOf({ kind: 'invoice_in', category: isCategory(doc.category) ? doc.category : null })
+      text = t.cash.docText(doc.number, doc.party)
+      if (doc.cents > CASH_LIMIT) errors.limit = t.cash.errors.limit
+    }
+  } else {
+    text = t.cash.entryText(t.cash.kinds[read.values.kind] ?? '', party) + (read.values.note ? ` (${read.values.note})` : '')
+  }
+  if (info.own && read.values.payment) {
+    const payment = picked
+    if (!payment) errors.amount = t.cash.errors.payment
+    else if (cents !== null && cents !== Math.abs(payment.cents)) errors.amount = t.cash.errors.paymentAmount
+    else paymentId = payment.id
+  }
+  if (Object.values(errors).some(Boolean) || !read.input || cents === null) return cashForm(c, side, read.values, errors, 422)
+  const on = read.input.on
+  // Cash that is not there is not paid out: the cash box stays at nought or above from that day on.
+  if (side === 'out') {
+    const lowest = lowestFrom([...cashMoves(await booksOf(db, who.company)).map((m) => ({ on: m.on, cents: m.cents })), { on, cents: -cents }], on)
+    if (lowest !== null && lowest < 0) return cashForm(c, side, read.values, {}, 422, t.cash.errors.short(formatEurExact(-lowest)))
+  }
+  const id = crypto.randomUUID()
+  try {
+    const results = await db.batch(cashStatements(db, { id, company: who.company.id, user: who.user.id, kind: read.values.kind, on, text, party, lines: cashLines(read.values.kind, cents, account), documentId, paymentId }))
+    if ((results[0]?.meta?.changes ?? 0) === 0) return cashForm(c, side, read.values, { document: t.cash.errors.document }, 409)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    console.error('a cash document failed', err instanceof Error ? err.name : 'error')
+    return cashForm(c, side, read.values, /UNIQUE/i.test(message) ? { document: t.cash.errors.document } : {}, 409, /UNIQUE/i.test(message) ? null : t.cash.errors.locked)
+  }
+  return c.redirect(`/app/pokladna?rok=${on.slice(0, 4)}&ok=doklad&id=${id}`, 303)
+})
+
+appRoutes.post('/pokladna/:id/zrusit', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const books = ID.test(id) ? await booksOf(db, who.company) : null
+  const moves = books ? cashMoves(books) : []
+  const move = moves.find((m) => m.e.kind === 'cash' && m.e.manualId === id)
+  if (!move) return shell(c, 'payments', t.errors.notFound, <Missing />, 404)
+  if (!intakeOpen(who.company, today())) return cashPage(c, {}, 409)
+  // Money in that paid what followed is not taken back: the cash box would go below nought.
+  const lowest = lowestFrom(
+    moves.filter((m) => m !== move).map((m) => ({ on: m.on, cents: m.cents })),
+    move.on,
+  )
+  if (move.cents > 0 && lowest !== null && lowest < 0) return cashPage(c, { error: t.cash.errors.short(formatEurExact(-lowest)) }, 409)
+  try {
+    await db.batch(removeCashStatements(db, who.company.id, id, who.user.id))
+  } catch (err) {
+    console.error('a cash document was not removed', err instanceof Error ? err.name : 'error')
+    return cashPage(c, { error: t.cash.errors.locked }, 409)
+  }
+  return c.redirect(`/app/pokladna?rok=${move.on.slice(0, 4)}&ok=zruseny`, 303)
 })
 
 // Business trips (trips.ts): the list, the form worked out on the server (a recount shows the days for the meals), the

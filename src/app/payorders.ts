@@ -12,7 +12,7 @@
 //
 // The rule, said plainly:
 // - Owed is a received invoice read or booked, in euros, more than nought, with no payment paired to it, not paid by the
-//   owner himself, not deleted, not a suspected duplicate, not a prepayment invoice (386: money paid already) and not a
+//   owner himself or in cash (a cash document of the cash box), not deleted, not a suspected duplicate, not a prepayment invoice (386: money paid already) and not a
 //   supplier's credit note (it corrects an invoice and its lines take back).
 // - It goes into an order only with the supplier's IBAN (its check digits right); without one it is listed to pay by
 //   hand. One in another currency is never in a SEPA order, nor a corrective invoice that adds (listed to pay by hand:
@@ -57,6 +57,7 @@ export async function payables(db: D1Database, company: string, approvals = fals
          AND NOT (d.corrects IS NOT NULL AND COALESCE((SELECT SUM(COALESCE(json_extract(j.value, '$.base'), 0) + COALESCE(json_extract(j.value, '$.vat'), 0))
            FROM json_each(CASE WHEN json_valid(d.vat_lines) THEN d.vat_lines ELSE '[]' END) j), 0) < 0)
          AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
+         AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
        ORDER BY COALESCE(d.due_on, d.issued_on, '9999-12-31'), d.created_at
        LIMIT 1000`,
     )

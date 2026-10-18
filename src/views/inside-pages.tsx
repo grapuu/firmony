@@ -69,7 +69,7 @@ function docName(d: Doc): string {
 }
 
 function docState(d: Doc): { text: string; tone: string } {
-  if (d.paymentId) return { text: app.documents.state.linked, tone: 'ok' }
+  if (d.paymentId || d.cashPaid) return { text: app.documents.state.linked, tone: 'ok' }
   if (d.paidPrivately) return { text: app.documents.state.private, tone: 'grey' }
   if (d.status === 'reading') return { text: app.documents.state.reading, tone: 'blue' }
   if (d.status === 'manual') return { text: app.documents.state.manual, tone: 'grey' }
@@ -536,9 +536,16 @@ export const PaymentsPage: FC<{
   pager?: ListPage
 }> = ({ filter, payments, missingCount, suggested, flash, warn, search = '', bank, closed = false, pager }) => (
   <>
-    <header class="phead">
-      <Heading first={app.payments.title} />
-      <p class="phead__lead">{app.payments.lead}</p>
+    <header class="phead phead--row">
+      <div>
+        <Heading first={app.payments.title} />
+        <p class="phead__lead">{app.payments.lead}</p>
+      </div>
+      <span class="phead__actions">
+        <a class="btn btn--line" href="/app/pokladna">
+          {app.cash.link}
+        </a>
+      </span>
     </header>
     <Flash text={flash} />
     <Flash text={warn} tone="warn" />
@@ -1070,6 +1077,13 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
               <ul class="rows">
                 <PayRow p={payment} />
               </ul>
+            ) : d.cashPaid ? (
+              <p class="paid__text">
+                {app.cash.paidCash(d.cashPaid.number, dayName(d.cashPaid.on, today))}{' '}
+                <a class="link" href={`/app/pokladna?rok=${d.cashPaid.on.slice(0, 4)}`}>
+                  {app.cash.link}
+                </a>
+              </p>
             ) : d.paidPrivately ? (
               <>
                 <p class="paid__text">{app.document.privatelyDone}</p>
@@ -1090,6 +1104,11 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
                     {app.document.privately}
                   </button>
                 </form>
+                {(d.kind === 'invoice_in' || d.kind === 'invoice_out') && (d.currency ?? 'EUR') === 'EUR' && (d.totalCents ?? 0) > 0 ? (
+                  <a class="btn btn--line btn--small paid__cash" href={`/app/pokladna/nova?strana=${outgoing ? 'prijem' : 'vydaj'}&druh=${outgoing ? 'doc_in' : 'doc_out'}&doklad=${d.id}`}>
+                    {outgoing ? app.cash.paidInCash : app.cash.payInCash}
+                  </a>
+                ) : null}
               </>
             )}
           </section>
