@@ -2765,6 +2765,7 @@ const employeeValues = (e: Employee | null): Record<string, string> => {
     hodiny: hundredthsText(e?.weeklyHours ?? 4000),
     dovolenka: e?.leaveDays !== null && e?.leaveDays !== undefined ? hundredthsText(e.leaveDays) : '',
     stravne: e?.mealWay ?? '',
+    stredisko: e?.centerId ?? '',
   }
   for (let i = 0; i < CHILD_ROWS; i++) {
     v[`dieta_${i}`] = e?.children[i]?.name ?? ''
@@ -2779,7 +2780,12 @@ teamRoutes.get('/klienti/:id/mzdy/zamestnanec', async (c) => {
   const asked = c.req.query('id')
   const employee = asked ? ((await employeesOf(c.env.DB, company.id)).find((e) => e.id === asked) ?? null) : null
   if (asked && !employee) return missingPage(c)
-  return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: employee?.id ?? null, values: employeeValues(employee), errors: {} }} />)
+  return shell(
+    c,
+    'clients',
+    `${t.payroll.title}: ${company.name}`,
+    <EmployeePage company={company} form={{ id: employee?.id ?? null, values: employeeValues(employee), errors: {} }} centers={await listCenters(c.env.DB, company.id)} />,
+  )
 })
 
 teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
@@ -2825,6 +2831,11 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
   const mealChoice = field('stravne', 8)
   const mealWay: MealWay | 'none' | null = isMealWay(mealChoice) || mealChoice === 'none' ? mealChoice : null
   values.stravne = mealWay ?? ''
+  // The cost centre of his cost of work: one of the company's in use, or the one he has (archived since).
+  const centers = await listCenters(db, company.id)
+  const centerAsked = field('stredisko', 64)
+  const centerId = centers.some((x) => x.id === centerAsked && (!x.archived || x.id === existing?.centerId)) ? centerAsked : null
+  if (centerAsked !== '' && !centerId) errors.stredisko = t.payroll.errors.center
   for (const tick of ['vyhlasenie', 'ztp', 'op', 'vynimka', 'pravidelny', 'oop']) values[tick] = body[tick] === '1' ? '1' : ''
   if (values.oop === '1' && isContract(contract) && isPension(pension) && !exemptionAllowed(contract, pension, regularOf(contract, values.pravidelny === '1'))) errors.oop = t.payroll.errors.exemption
   const children: { name: string; born: string }[] = []
@@ -2836,7 +2847,7 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
     else children.push({ name: childName, born: childBorn })
   }
   if (Object.keys(errors).length > 0 || !started || wage === null || !isInsurer(insurer) || !isContract(contract) || weekly === null)
-    return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: existing?.id ?? null, values, errors }} />, 422)
+    return shell(c, 'clients', `${t.payroll.title}: ${company.name}`, <EmployeePage company={company} form={{ id: existing?.id ?? null, values, errors }} centers={centers} />, 422)
   const employee: Employee = {
     id: existing?.id ?? crypto.randomUUID(),
     name,
@@ -2859,6 +2870,7 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
     weeklyHours: weekly,
     leaveDays: leaveDays !== null && !Number.isNaN(leaveDays) ? leaveDays : null,
     mealWay,
+    centerId,
   }
   await db.batch([
     employeeStatement(db, company.id, employee, c.get('who').user.id, now()),

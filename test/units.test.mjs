@@ -1610,6 +1610,32 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
   )
 }
 
+// Payroll by cost centre (18 October 2026, centers.ts): an employee's cost of work in his centre.
+{
+  const employee = { id: 'p1', name: 'Pavol', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 200000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, contract: 'employment', regular: true, pension: 'none', exemption: false, wageKind: 'monthly', weeklyHours: 4000, leaveDays: null, centerId: 'shop' }
+  const slips = payrollStore.monthSlips('2026-10', [employee, { ...employee, id: 'p2', centerId: null, wage: 100000 }], null)
+  const closed = { period: '2026-10', payday: null, lines: slips.map(payrollStore.storedLine), closedOn: '2026-11-03', closedByName: 'Lucia' }
+  const lp = payrollStore.ledgerPayroll(closed)
+  const p1 = closed.lines.find((l) => l.employeeId === 'p1')
+  const p2 = closed.lines.find((l) => l.employeeId === 'p2')
+  check(
+    "a closed month keeps the employee's centre; the month's cost of work of each centre is its employees' cost and fund",
+    p1.center === 'shop' && p2.center === undefined && lp.centerCosts?.length === 1 && lp.centerCosts[0].center === 'shop' && lp.centerCosts[0].cents === p1.slip.employerCost + p1.fund,
+    JSON.stringify(lp.centerCosts),
+  )
+  const books = ledger.buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'none' }, docs: [], payments: [], banks: [], filed: [], manual: [], payroll: [lp] })
+  const shop = { id: 'shop', code: 'SHOP', name: 'Obchod', archived: false }
+  const totals = centers.centerTotals(books.entries, new Map(), [shop], '2026-10-01', '2026-10-31')
+  const allCosts = books.entries.find((e) => e.key === 'w:2026-10').lines.reduce((t, l) => t + (l.md.startsWith('5') ? l.cents : 0), 0)
+  check(
+    "the centres' report: the centre's employees' cost there, the rest in common, the books' costs whole",
+    totals[0].costs === p1.slip.employerCost + p1.fund && totals[1].costs === allCosts - totals[0].costs && totals[1].costs === p2.slip.employerCost + p2.fund,
+    JSON.stringify(totals),
+  )
+  const removed = centers.centerTotals(books.entries, new Map(), [], '2026-10-01', '2026-10-31')
+  check('a centre no longer in the list counts in common', removed.length === 1 && removed[0].costs === allCosts)
+}
+
 // The social fund (18 October 2026, social-fund.ts): the mandatory allocation of 0,6 % to 1 % of an employment's wage.
 {
   check(

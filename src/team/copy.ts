@@ -1958,6 +1958,9 @@ export const team = typesetAll({
       childBorn: 'Narodené',
       save: 'Uložiť zamestnanca',
       back: 'Späť na mzdy',
+      center: 'Stredisko',
+      centerNone: 'Spoločné (bez strediska)',
+      centerHint: 'Jeho mzdové náklady (mzda, odvody zamestnávateľa, stravovanie a sociálny fond) sa v prehľade stredísk započítajú tomuto stredisku.',
     },
     settings: {
       title: 'Nastavenie miezd',
@@ -1996,6 +1999,7 @@ export const team = typesetAll({
       dvz: 'Denný vymeriavací základ napíšte v eurách, napríklad 45,1234.',
       meals: 'Počet jedál napíšte celým číslom, najviac 62.',
       fundRate: 'Povinný prídel do sociálneho fondu je od 0,6 do 1 %.',
+      center: 'Vyberte stredisko firmy, ktoré sa používa.',
       mealAmount: 'Sumu napíšte v eurách, napríklad 6,98 (najviac 100 €).',
       mealVoucher: (min: string) => typeset(`Poukážka musí mať hodnotu aspoň ${min} (75 % stravného na pracovnej ceste 5 až 12 hodín).`),
       mealEmployerLow: (min: string) => typeset(`Zamestnávateľ prispieva aspoň ${min}: 55 % hodnoty poukážky, najviac však 55 % stravného.`),

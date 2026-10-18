@@ -8,14 +8,17 @@
 //   booking screen; it is the company's management information, not the books' (no period lock holds it).
 // - A centre's costs are the class 5 accounts and its revenues the class 6 accounts of the entries of its documents
 //   (the document's own entry and the exchange difference its payment settles it with); everything else is the
-//   company's in common: payroll, depreciation, the cost of goods sold out of stock (stock.ts books it by months, not
-//   by document), the year's revaluation of what is open in another currency, a bank's fee, the accountant's internal
+//   company's in common: payroll of employees without a centre, depreciation, the cost of goods sold out of stock
+//   (stock.ts books it by months, not by document), the year's revaluation of what is open in another currency, a bank's fee, the accountant's internal
 //   documents, the income tax, and documents without a centre.
 // - A credit note, an invoice of late interest and an invoice issued by a repeat take the centre of the invoice they
 //   come from (invoices.ts, `centerFrom`).
 // - A centre's budget (owners, `cost_center_budgets`) is its revenues and costs planned for a calendar year; a period of
 //   months is compared with its months' share of the year's (`budgetShare`), and the report says how much of it was
 //   spent or earned.
+// - An employee may belong to a centre (`employees.center_id`): his cost of work of each closed month (the wage, sick
+//   pay, the employer's insurance, the employer's part of meals, the social fund's allocation) is that centre's; the
+//   closed month keeps the centre he had (`RunLine.center`), and the books' entry carries each centre's part.
 // - A supplier's rule (store.ts, `ruleStatement`) remembers the centre the accountant booked its document with and gives
 //   it to the supplier's next documents that have none.
 import type { LedgerEntry } from './ledger'
@@ -61,6 +64,13 @@ export function centerTotals(entries: readonly LedgerEntry[], centerOfDoc: Reado
       if (classOf(l.d) === '6') sum.revenue += l.cents
       if (classOf(l.md) === '6') sum.revenue -= l.cents
       sums.set(center, sum)
+    }
+    // A payroll month: each centre's employees' cost of work moves from what is in common to the centre.
+    for (const part of e.centerCosts ?? []) {
+      const common = sums.get(null) ?? { revenue: 0, costs: 0 }
+      sums.set(null, { revenue: common.revenue, costs: common.costs - part.cents })
+      const own = sums.get(part.center) ?? { revenue: 0, costs: 0 }
+      sums.set(part.center, { revenue: own.revenue, costs: own.costs + part.cents })
     }
   }
   const known = new Set(centers.map((c) => c.id))

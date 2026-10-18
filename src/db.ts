@@ -1362,6 +1362,8 @@ const MIGRATIONS: readonly string[][] = [
       BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
     ),
   ],
+  // Payroll by cost centre (18 October 2026, centers.ts): the centre an employee's cost of work goes to.
+  ['ALTER TABLE employees ADD COLUMN center_id TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

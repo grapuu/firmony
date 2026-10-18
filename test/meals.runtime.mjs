@@ -5,7 +5,7 @@
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
-export async function checkMeals({ db, acc, lucia, nowS, day, capture }) {
+export async function checkMeals({ db, acc, lucia, nowS, day, capture, signIn, as }) {
   const plain = (text) => text.replace(/[  ]/g, ' ')
   const sk = (d) => `${Number(d.slice(8, 10))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
   const shift = (period, n) => {
@@ -85,6 +85,14 @@ export async function checkMeals({ db, acc, lucia, nowS, day, capture }) {
   check('the settings show the bounds of today', page.includes('poukážka aspoň 6,98 €') && page.includes('name="poukazka" value="7,00"'))
   res = await acc.post(base, { obdobie: M, [`mzda_${jan}`]: '1500', [`mzda_${ema}`]: '1500', [`jedla_${jan}`]: '70', vyplata: sk(`${shift(M, 1)}-10`), akcia: 'ulozit' })
   check('a count above 62 is refused', plain(await res.text()).includes('Počet jedál napíšte celým číslom'))
+  // Payroll by cost centre: Ján's cost of work goes to the production's centre.
+  await db.prepare("INSERT INTO cost_centers (id, company_id, code, name, created_at) VALUES ('cc-meals', ?, 'VYROBA', 'Výroba', ?)").bind(company, nowS).run()
+  res = await acc.post(`${base}/zamestnanec`, person({ id: jan, meno: 'TEST-ONLY Ján Poukážka', stredisko: 'cc-meals' }))
+  const refused = await acc.post(`${base}/zamestnanec`, person({ id: ema, meno: 'TEST-ONLY Ema Príspevok', stravne: 'cash', stredisko: 'center-of-x' }))
+  check(
+    "an employee given a centre of the company; another company's refused",
+    res.status === 303 && (await db.prepare('SELECT center_id FROM employees WHERE id = ?').bind(jan).first())?.center_id === 'cc-meals' && refused.status === 422,
+  )
   res = await acc.post(base, { obdobie: M, [`mzda_${jan}`]: '1500', [`mzda_${ema}`]: '1500', [`jedla_${jan}`]: '15', vyplata: sk(`${shift(M, 1)}-10`), akcia: 'uzavriet' })
   check('the month closed', res.status === 303 && (res.headers.get('location') ?? '').includes('mzdy-uzavrete'), res.headers.get('location'))
   const run = await db.prepare('SELECT lines FROM payroll_runs WHERE company_id = ? AND period = ?').bind(company, M).first()
@@ -120,4 +128,24 @@ export async function checkMeals({ db, acc, lucia, nowS, day, capture }) {
   check("the month's table says what the meals did to each net", page.includes('stravovanie −32,25 €') || page.includes('stravovanie -32,25 €'))
   page = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/ucet/213?rok=${M.slice(0, 4)}`)).text())
   check("the books: the vouchers out of 213 (the employer's, the fund's and the employee's parts)", page.includes('57,75') && page.includes('15,00') && page.includes('32,25'))
+
+  // The centres' report: Ján's cost of work in the production's centre, Ema's in common.
+  if (signIn && as) {
+    await db.batch([
+      db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-meals', ?, 'meals-owner@example.sk', 'TEST-ONLY Majiteľka')").bind(nowS),
+      db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES (?, 'u-meals', 'owner', ?)").bind(company, nowS),
+    ])
+    const owner = as((await signIn('meals-owner@example.sk')).cookie)
+    const eur = (c) => `${String(Math.floor(c / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${String(c % 100).padStart(2, '0')} €`
+    const cost = (l) => l.slip.employerCost + (l.fund ?? 0)
+    const janLine = lines.find((l) => l.employeeId === jan)
+    const emaLine = lines.find((l) => l.employeeId === ema)
+    const report = plain(await (await owner.get(`/app/strediska?rok=${M.slice(0, 4)}&od=${Number(M.slice(5))}&do=${Number(M.slice(5))}`)).text())
+    const row = (code) => report.slice(report.indexOf(code), report.indexOf(code) + 400)
+    check(
+      "the month kept Ján's centre; the report puts his cost of work there and Ema's in common",
+      janLine?.center === 'cc-meals' && !emaLine?.center && row('VYROBA').includes(eur(cost(janLine))) && row('Spoločné (bez strediska)').includes(eur(cost(emaLine))),
+      `${eur(cost(janLine))} ${eur(cost(emaLine))}`,
+    )
+  }
 }

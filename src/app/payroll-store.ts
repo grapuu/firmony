@@ -77,6 +77,8 @@ export interface Employee {
   leaveDays: number | null
   /** How the employee chose to take meals (§ 152(7), meals.ts): vouchers or the financial contribution; null the company's way; 'none' none. */
   mealWay?: MealWay | 'none' | null
+  /** The cost centre his cost of work goes to (centers.ts); null the company's in common. */
+  centerId?: string | null
 }
 
 /** The terms a month of an employee is worked out by. */
@@ -125,6 +127,7 @@ function employeeOf(r: Row): Employee {
     weeklyHours: Number.isInteger(r.weekly_hours) && (r.weekly_hours as number) > 0 ? (r.weekly_hours as number) : 4000,
     leaveDays: Number.isInteger(r.leave_days) ? (r.leave_days as number) : null,
     mealWay: isMealWay(r.meal_way) || r.meal_way === 'none' ? (r.meal_way as MealWay | 'none') : null,
+    centerId: str(r.center_id),
   }
 }
 
@@ -138,13 +141,14 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
   return db
     .prepare(
       `INSERT INTO employees (id, company_id, name, born_on, insurer, started_on, ended_on, wage_cents, declaration, disabled, health_deduction, health_exempt, children, iban, created_at, created_by, updated_at,
-         contract, regular, pension, exemption, wage_kind, weekly_hours, leave_days, meal_way)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?15, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)
+         contract, regular, pension, exemption, wage_kind, weekly_hours, leave_days, meal_way, center_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?15, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
+         (SELECT id FROM cost_centers WHERE id = ?25 AND company_id = ?2))
        ON CONFLICT (id) DO UPDATE SET name = excluded.name, born_on = excluded.born_on, insurer = excluded.insurer, started_on = excluded.started_on, ended_on = excluded.ended_on,
          wage_cents = excluded.wage_cents, declaration = excluded.declaration, disabled = excluded.disabled, health_deduction = excluded.health_deduction,
          health_exempt = excluded.health_exempt, children = excluded.children, iban = excluded.iban, updated_at = excluded.updated_at,
          contract = excluded.contract, regular = excluded.regular, pension = excluded.pension, exemption = excluded.exemption, wage_kind = excluded.wage_kind,
-         weekly_hours = excluded.weekly_hours, leave_days = excluded.leave_days, meal_way = excluded.meal_way WHERE employees.company_id = ?2`,
+         weekly_hours = excluded.weekly_hours, leave_days = excluded.leave_days, meal_way = excluded.meal_way, center_id = excluded.center_id WHERE employees.company_id = ?2`,
     )
     .bind(
       e.id,
@@ -171,6 +175,7 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
       e.weeklyHours,
       e.leaveDays,
       e.mealWay ?? null,
+      e.centerId ?? null,
     )
 }
 
@@ -216,6 +221,8 @@ export interface RunLine {
   terms?: LineTerms
   /** The social fund's mandatory allocation from this line's wage (social-fund.ts), in cents; older lines have none. */
   fund?: number
+  /** The cost centre the line's cost of work went to (centers.ts), as the employee had it. */
+  center?: string
 }
 
 /** What an open month offers beside its lines: the average earnings and each sick leave's daily base, as proposed. */
@@ -255,6 +262,7 @@ function linesOf(json: unknown): RunLine[] {
               ...(l.sick && typeof l.sick === 'object' ? { sick: l.sick as SickMonth } : {}),
               ...(l.terms && typeof l.terms === 'object' ? { terms: l.terms as LineTerms } : {}),
               ...(Number.isSafeInteger(l.fund) && (l.fund as number) > 0 ? { fund: l.fund as number } : {}),
+              ...(typeof l.center === 'string' && l.center !== '' ? { center: l.center } : {}),
             },
           ]
         : [],
@@ -279,7 +287,7 @@ export async function runsOf(db: D1Database, company: string): Promise<PayrollRu
 
 /** A line as it is stored: what was typed and, once closed, what was worked out (never the proposals beside it). */
 export function storedLine(l: RunLine): RunLine {
-  const { employeeId, name, insurer, gross, parts, days, slip, health, pay, sick, terms, fund } = l
+  const { employeeId, name, insurer, gross, parts, days, slip, health, pay, sick, terms, fund, center } = l
   return {
     employeeId,
     name,
@@ -293,6 +301,7 @@ export function storedLine(l: RunLine): RunLine {
     ...(sick ? { sick } : {}),
     ...(terms ? { terms } : {}),
     ...(fund ? { fund } : {}),
+    ...(center ? { center } : {}),
   }
 }
 
@@ -406,6 +415,7 @@ export function monthSlips(
         terms: { contract: e.contract, regular: terms.regular, pension: e.pension, exemption, wageKind: e.wageKind, dailyHours: terms.dailyHours },
         proposals: { average, dvz, meals: way ? mealsProposal : null },
         fund: fundOf(e.contract, pay.earned, context.fundRate ?? FUND_RATE_MIN),
+        ...(e.centerId ? { center: e.centerId } : {}),
         slip: payslip({
           period,
           gross: pay.gross,
@@ -508,13 +518,19 @@ export function ledgerPayroll(run: PayrollRun): LedgerPayroll | null {
     cash: { employer: meal('cash', (m) => m.employer), fund: meal('cash', (m) => m.fund) },
   }
   // The social fund's mandatory allocation of the month, as each line kept it when the month was closed.
-  const socialFund = run.lines.reduce((t, l) => t + (l.slip && Number.isSafeInteger(l.fund) && (l.fund as number) > 0 ? (l.fund as number) : 0), 0)
+  const fundOfLine = (l: RunLine) => (l.slip && Number.isSafeInteger(l.fund) && (l.fund as number) > 0 ? (l.fund as number) : 0)
+  const socialFund = run.lines.reduce((t, l) => t + fundOfLine(l), 0)
+  // Each centre's cost of work (centers.ts): what its employees' lines cost the company, the social fund's allocation too.
+  const byCenter = new Map<string, number>()
+  for (const l of slips) if (l.center) byCenter.set(l.center, (byCenter.get(l.center) ?? 0) + l.slip.employerCost + fundOfLine(l))
+  const centerCosts = [...byCenter].map(([center, cents]) => ({ center, cents })).filter((c) => c.cents > 0)
   return {
     period: run.period,
     gross: sum(taxableOf),
     costs,
     meals,
     socialFund,
+    ...(centerCosts.length > 0 ? { centerCosts } : {}),
     socialEmployee: sum((s) => s.socialEmployee),
     socialEmployer: sum((s) => s.socialEmployer),
     healthEmployee: sum((s) => s.healthEmployee),

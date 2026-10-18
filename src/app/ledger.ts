@@ -218,6 +218,8 @@ export interface LedgerEntry {
   paymentId: string | null
   manualId: string | null
   lines: LedgerLine[]
+  /** A payroll month's cost of work of each cost centre's employees (centers.ts), a part of the entry's costs. */
+  centerCosts?: { center: string; cents: number }[]
 }
 
 export interface LedgerPayment {
@@ -282,6 +284,8 @@ export interface LedgerPayroll {
   meals?: { voucher: { employer: number; fund: number; employee: number }; cash: { employer: number; fund: number } }
   /** The social fund's mandatory allocation of the month (social-fund.ts): 527 against 472. */
   socialFund?: number
+  /** The month's cost of work of the employees of each cost centre (centers.ts), out of the entry's costs. */
+  centerCosts?: { center: string; cents: number }[]
 }
 
 /** The analytic accounts of 336: the Social Insurance Agency and the health insurers. */
@@ -954,7 +958,18 @@ export function buildBooks(input: LedgerInput): Books {
       { md: '527', d: '472', cents: r.socialFund ?? 0 },
     ].filter((l) => l.cents > 0)
     if (lines.length > 0)
-      entries.push({ key: `w:${r.period}`, on: end, kind: 'payroll', number: `MZDY ${r.period.slice(5, 7)}/${r.period.slice(0, 4)}`, text: `Mzdy za ${periodName(r.period)}`, docId: null, paymentId: null, manualId: null, lines })
+      entries.push({
+        key: `w:${r.period}`,
+        on: end,
+        kind: 'payroll',
+        number: `MZDY ${r.period.slice(5, 7)}/${r.period.slice(0, 4)}`,
+        text: `Mzdy za ${periodName(r.period)}`,
+        docId: null,
+        paymentId: null,
+        manualId: null,
+        lines,
+        ...(r.centerCosts?.length ? { centerCosts: r.centerCosts } : {}),
+      })
   }
 
   // The register of fixed assets: putting in use, each month's depreciation, each disposal, all within the books.

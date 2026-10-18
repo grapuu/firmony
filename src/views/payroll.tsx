@@ -12,6 +12,7 @@ import type { PayrollTotals } from '../app/payroll'
 import type { DvzProposal, SickLeave } from '../app/pay-month'
 import { PART_FIELDS, hundredthsText, partsFor, tenThousandthsText } from '../app/payroll-form'
 import { mealBounds } from '../app/meals'
+import type { CostCenter } from '../app/centers'
 import { groupedIban } from '../app/vat-store'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
@@ -851,7 +852,7 @@ const Select: FC<{
   </div>
 )
 
-export const EmployeePage: FC<{ company: Company; form: EmployeeForm }> = ({ company, form }) => {
+export const EmployeePage: FC<{ company: Company; form: EmployeeForm; centers?: CostCenter[] }> = ({ company, form, centers = [] }) => {
   const v = form.values
   const e = form.errors
   const tick = (name: string, label: string, hint?: string, error?: string) => (
@@ -898,6 +899,17 @@ export const EmployeePage: FC<{ company: Company; form: EmployeeForm }> = ({ com
           <Field id="z-dovolenka" name="dovolenka" label={w.form.leaveDays} value={v.dovolenka ?? ''} hint={w.form.leaveHint} error={e.dovolenka} mode="decimal" max={6} />
           <Field id="z-iban" name="iban" label={w.form.iban} value={v.iban ?? ''} error={e.iban} max={34} />
           <Select id="z-stravne" name="stravne" label={w.meals.choice} value={v.stravne ?? ''} options={w.meals.choices} hint={w.meals.choiceHint} />
+          {centers.length > 0 ? (
+            <Select
+              id="z-stredisko"
+              name="stredisko"
+              label={w.form.center}
+              value={v.stredisko ?? ''}
+              options={Object.fromEntries([['', w.form.centerNone], ...centers.filter((x) => !x.archived || x.id === v.stredisko).map((x) => [x.id, `${x.code} ${x.name}`])])}
+              hint={w.form.centerHint}
+              error={e.stredisko}
+            />
+          ) : null}
           {tick('vyhlasenie', w.form.declaration)}
           {tick('ztp', w.form.disabled)}
           {tick('op', w.form.healthDeduction)}
