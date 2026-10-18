@@ -31,7 +31,14 @@ export async function stockOf(db: D1Database, company: string): Promise<Stock> {
 
 export function itemOf(r: Row): StockItem {
   const kind = String(r.kind)
-  return { id: String(r.id), code: String(r.code), name: String(r.name), unit: String(r.unit), kind: (STOCK_KINDS as readonly string[]).includes(kind) ? (kind as StockKind) : 'goods' }
+  return {
+    id: String(r.id),
+    code: String(r.code),
+    name: String(r.name),
+    unit: String(r.unit),
+    kind: (STOCK_KINDS as readonly string[]).includes(kind) ? (kind as StockKind) : 'goods',
+    centerId: str(r.center_id),
+  }
 }
 
 export function moveOf(r: Row): StockMove {
@@ -74,6 +81,19 @@ export function insertItemStatement(db: D1Database, company: string, id: string,
 
 export function updateItemStatement(db: D1Database, company: string, id: string, i: ItemInput): D1PreparedStatement {
   return db.prepare('UPDATE stock_items SET code = ?1, name = ?2, unit = ?3, kind = ?4, updated_at = ?5 WHERE id = ?6 AND company_id = ?7 AND deleted_at IS NULL').bind(i.code, i.name, i.unit, i.kind, now(), id, company)
+}
+
+/**
+ * The cost centre an item's stock belongs to (centers.ts), management information: a centre of the company in use, or
+ * the one it has; none when empty. No period lock holds it (the books' lines stay as they are).
+ */
+export function itemCenterStatement(db: D1Database, company: string, id: string, center: string | null): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE stock_items SET center_id = (SELECT c.id FROM cost_centers c WHERE c.id = ?1 AND c.company_id = ?2 AND (c.archived_at IS NULL OR c.id IS stock_items.center_id))
+       WHERE id = ?3 AND company_id = ?2 AND deleted_at IS NULL`,
+    )
+    .bind(center, company, id)
 }
 
 /** An item removed: only one with no move that stands (the route asks), marked so its code may be used again. */

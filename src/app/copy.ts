@@ -360,7 +360,7 @@ export const app = typesetAll({
     show: 'Zobraziť',
     cols: { center: 'Stredisko', revenue: 'Výnosy', costs: 'Náklady', result: 'Výsledok' },
     common: 'Spoločné (bez strediska)',
-    commonHint: 'Mzdy zamestnancov bez strediska, odpisy majetku bez strediska, predaný tovar zo skladu, kurzové rozdiely ku koncu roka, poplatky banke, interné doklady, daň z príjmov a doklady bez strediska.',
+    commonHint: 'Mzdy zamestnancov bez strediska, odpisy majetku bez strediska, predaný tovar zo skladu bez strediska, kurzové rozdiely ku koncu roka, poplatky banke, interné doklady, daň z príjmov a doklady bez strediska.',
     total: 'Spolu',
     empty: 'Firma zatiaľ nemá strediská. Pridajte prvé.',
     list: 'Zoznam stredísk',

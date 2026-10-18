@@ -1025,7 +1025,18 @@ export function buildBooks(input: LedgerInput): Books {
   // The stock's receipts, issues and counts.
   for (const e of input.stock ?? []) {
     if (!inBooks(e.on)) continue
-    entries.push({ key: e.key, on: e.on, kind: 'stock', number: e.number, text: e.text, docId: null, paymentId: null, manualId: null, lines: e.lines.map((l) => ({ ...l })) })
+    entries.push({
+      key: e.key,
+      on: e.on,
+      kind: 'stock',
+      number: e.number,
+      text: e.text,
+      docId: null,
+      paymentId: null,
+      manualId: null,
+      lines: e.lines.map((l) => ({ ...l })),
+      ...(e.centerCosts?.length ? { centerCosts: e.centerCosts.map((x) => ({ ...x })) } : {}),
+    })
   }
 
   // What the accountant wrote herself, and the cash documents; one that pays an invoice in cash settles its open item.

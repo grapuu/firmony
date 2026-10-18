@@ -5881,6 +5881,18 @@ await (await import('./social.units.mjs')).checkSocial()
       bEntries[1].on === '2027-01-01' && JSON.stringify(bEntries[1].lines) === JSON.stringify([{ md: '504', d: '132', cents: 52000 }, { md: '501', d: '112', cents: 2000 }]),
   )
   check('no way of keeping stock, no entries', stock.stockEntries(null, items, all).length === 0)
+  // Stock by cost centre (18 October 2026, centers.ts): an item's issues and shortages count in its centre.
+  const centred = stock.stockEntries(A, items.map((i) => (i.id === 'g' ? { ...i, centerId: 'shop' } : i)), all)
+  const cof = (key) => centred.find((e) => e.key === key)
+  check(
+    "an item of a centre: its month's issue (504) and its count's shortage (549) are the centre's part, the books' lines the same",
+    JSON.stringify(cof('s:out:2026-03')?.centerCosts) === JSON.stringify([{ center: 'shop', cents: 6400 }]) &&
+      JSON.stringify(cof('s:out:2026-03')?.lines) === JSON.stringify(of('s:out:2026-03')?.lines) &&
+      JSON.stringify(centred.find((e) => e.key.startsWith('s:i:'))?.centerCosts) === JSON.stringify([{ center: 'shop', cents: 1067 }]) &&
+      !cof('s:in:2026-03')?.centerCosts &&
+      !cof('s:out:2026-04')?.centerCosts,
+    JSON.stringify(centred.map((e) => [e.key, e.centerCosts])),
+  )
   const summary = stock.stockSummary(A, items, all, '2026-03-31')
   check('the stock of each item and kind at a day', summary.kinds.goods === 9600 && summary.kinds.material === 15000 && summary.kinds.products === 8000 && summary.items.find((r) => r.item.id === 'g')?.quantity === 9000)
   check('quantities as typed and written', stock.quantityOf('1 250,125') === 1250125 && stock.quantityOf('0,5') === 500 && stock.quantityOf('-1') === null && stock.quantityOf('1,2345') === null && stock.quantityText(1250125) === '1 250,125' && stock.quantityText(500) === '0,5' && stock.quantityText(-2000) === '−2')

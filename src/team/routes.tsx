@@ -86,7 +86,7 @@ import { DISPOSALS, assetErrors, assetKind, assetYear, isAssetAccount, type Asse
 import { assetCenterStatement, assetsOf, disposeAssetStatement, insertAssetStatement, removeAssetStatement, updateAssetStatement, type AssetInput } from '../app/assets-store'
 import { StockItemPage, StockPage, type StockDocument } from '../views/stock'
 import { parseItemsCsv, parseMovesCsv, readItem, readMove, shortOf, stockSummary, valueItem, STOCK_ACCOUNTS, STOCK_KINDS, type ItemErrors, type ItemValues, type MoveErrors, type MoveValues, type StockKind, type StockMove } from '../app/stock'
-import { insertItemStatement, insertMoveStatement, removeItemStatement, removeMoveStatement, settingsStatement as stockSettingsStatement, stockOf, updateItemStatement, type Stock } from '../app/stock-store'
+import { insertItemStatement, insertMoveStatement, itemCenterStatement, removeItemStatement, removeMoveStatement, settingsStatement as stockSettingsStatement, stockOf, updateItemStatement, type Stock } from '../app/stock-store'
 import { balanceOf as accountBalance, payableOf } from '../app/ledger'
 import { isPeriodLocked } from '../app/periods'
 import { VatCard, VatPage, type VatForm } from '../views/vat'
@@ -3621,8 +3621,8 @@ function assetFromForm(body: Record<string, unknown>): { values: AssetValues; in
   }
 }
 
-/** A centre given to an asset: one of the company's in use, or the one it has (archived since); else why not. */
-async function assetCentreError(db: D1Database, company: string, center: string, own: string | null): Promise<string | null> {
+/** A centre given to an asset or a stock item: one of the company's in use, or the one it has (archived since); else why not. */
+async function centreError(db: D1Database, company: string, center: string, own: string | null): Promise<string | null> {
   if (!center || center === own) return null
   const row = await db.prepare('SELECT archived_at FROM cost_centers WHERE id = ? AND company_id = ?').bind(center, company).first<{ archived_at: number | null }>()
   return row && row.archived_at === null ? null : 'Toto stredisko neexistuje alebo je archivované: vyberte iné alebo žiadne.'
@@ -3666,9 +3666,9 @@ teamRoutes.post('/klienti/:id/kniha/majetok', async (c) => {
   if (!company) return missingPage(c)
   const body = await c.req.parseBody()
   const { values, input, errors } = assetFromForm(body)
-  const centreError = await assetCentreError(c.env.DB, company.id, values.center ?? '', null)
-  if (centreError) errors.center = centreError
-  if (!input || centreError) return assetsPage(c, company, { values, errors }, 422)
+  const centre = await centreError(c.env.DB, company.id, values.center ?? '', null)
+  if (centre) errors.center = centre
+  if (!input || centre) return assetsPage(c, company, { values, errors }, 422)
   const id = crypto.randomUUID()
   const who = c.get('who')
   try {
@@ -3697,9 +3697,9 @@ teamRoutes.post('/klienti/:id/kniha/majetok/:asset', async (c) => {
   if (!asset) return missingPage(c)
   const body = await c.req.parseBody()
   const { values, input, errors } = assetFromForm(body)
-  const centreError = await assetCentreError(c.env.DB, company.id, values.center ?? '', asset.centerId ?? null)
-  if (centreError) errors.center = centreError
-  if (!input || centreError) return assetPage(c, company, { values, errors }, 422)
+  const centre = await centreError(c.env.DB, company.id, values.center ?? '', asset.centerId ?? null)
+  if (centre) errors.center = centre
+  if (!input || centre) return assetPage(c, company, { values, errors }, 422)
   const who = c.get('who')
   try {
     await c.env.DB.batch([
@@ -3790,7 +3790,7 @@ async function stockPage(
   const today = dayOf(now())
   const asked = c.req.query('ku') ?? ''
   const day = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today
-  const [stock, books, documents] = await Promise.all([stockOf(c.env.DB, company.id), booksOf(c.env.DB, company), stockDocuments(c.env.DB, company.id)])
+  const [stock, books, documents, centers] = await Promise.all([stockOf(c.env.DB, company.id), booksOf(c.env.DB, company), stockDocuments(c.env.DB, company.id), listCenters(c.env.DB, company.id)])
   const summary = stock.settings ? stockSummary(stock.settings, stock.items, stock.moves, day) : { items: stock.items.map((item) => ({ item, quantity: 0, value: 0 })), kinds: { goods: 0, material: 0, products: 0 } }
   const bookValues = Object.fromEntries(STOCK_KINDS.map((k) => [k, accountBalance(books.entries, STOCK_ACCOUNTS[k].stock, day)])) as Record<StockKind, number>
   const ok = c.req.query('ok')
@@ -3810,6 +3810,7 @@ async function stockPage(
       item={form.item ?? { values: emptyItem(), errors: {} }}
       move={form.move ?? { values: { ...emptyMove(today), item: stock.items[0]?.id ?? '', kind: stock.settings?.method === 'B' ? 'count' : 'in' }, errors: {} }}
       paste={form.paste ?? { moves: '', items: '', errors: [] }}
+      centers={centers}
       flash={status === 200 ? flash : null}
       error={form.error ?? null}
     />,
@@ -3845,10 +3846,16 @@ teamRoutes.post('/klienti/:id/kniha/sklad/polozky', async (c) => {
   const body = await c.req.parseBody()
   const stock = await stockOf(c.env.DB, company.id)
   const read = readItem((name) => body[name], new Set(stock.items.map((i) => i.code.toLowerCase())))
-  if (!read.item) return stockPage(c, company, { item: { values: read.values, errors: read.errors } }, 422)
+  const centre = await centreError(c.env.DB, company.id, read.values.center ?? '', null)
+  if (centre) read.errors.center = centre
+  if (!read.item || centre) return stockPage(c, company, { item: { values: read.values, errors: read.errors } }, 422)
   const id = crypto.randomUUID()
   const who = c.get('who')
-  await c.env.DB.batch([insertItemStatement(c.env.DB, company.id, id, read.item, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.item.added', subject: id })])
+  await c.env.DB.batch([
+    insertItemStatement(c.env.DB, company.id, id, read.item, who.user.id),
+    ...('stredisko' in body ? [itemCenterStatement(c.env.DB, company.id, id, read.values.center || null)] : []),
+    eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.item.added', subject: id }),
+  ])
   return c.redirect(`${bookPath(company)}/sklad?ok=polozka`, 303)
 })
 
@@ -3937,7 +3944,7 @@ teamRoutes.post('/klienti/:id/kniha/sklad/pohyby/:move/odstranit', async (c) => 
 })
 
 async function stockItemPage(c: Ctx, company: Company, form: { values?: ItemValues; errors?: ItemErrors } = {}, status: ContentfulStatusCode = 200) {
-  const [stock, documents] = await Promise.all([stockOf(c.env.DB, company.id), stockDocuments(c.env.DB, company.id)])
+  const [stock, documents, centers] = await Promise.all([stockOf(c.env.DB, company.id), stockDocuments(c.env.DB, company.id), listCenters(c.env.DB, company.id)])
   const item = stock.items.find((i) => i.id === c.req.param('item'))
   if (!item || !stock.settings) return missingPage(c)
   const err = c.req.query('chyba')
@@ -3952,8 +3959,9 @@ async function stockItemPage(c: Ctx, company: Company, form: { values?: ItemValu
       item={item}
       moves={valueItem(stock.moves.filter((m) => m.itemId === item.id), stock.settings)}
       documents={new Map(documents.map((d) => [d.id, d.label]))}
-      values={form.values ?? { code: item.code, name: item.name, unit: item.unit, kind: item.kind }}
+      values={form.values ?? { code: item.code, name: item.name, unit: item.unit, kind: item.kind, center: item.centerId ?? '' }}
       errors={form.errors ?? {}}
+      centers={centers}
       flash={status === 200 && c.req.query('ok') === 'ulozene' ? 'Údaje sú uložené.' : status === 200 && c.req.query('ok') === 'odstranene' ? 'Pohyb sme odstránili.' : null}
       error={error}
     />,
@@ -3974,10 +3982,16 @@ teamRoutes.post('/klienti/:id/kniha/sklad/:item', async (c) => {
   if (!item) return missingPage(c)
   const body = await c.req.parseBody()
   const read = readItem((name) => body[name], new Set(stock.items.filter((i) => i.id !== item.id).map((i) => i.code.toLowerCase())))
-  if (!read.item) return stockItemPage(c, company, { values: read.values, errors: read.errors }, 422)
+  const centre = await centreError(c.env.DB, company.id, read.values.center ?? '', item.centerId ?? null)
+  if (centre) read.errors.center = centre
+  if (!read.item || centre) return stockItemPage(c, company, { values: read.values, errors: read.errors }, 422)
   const who = c.get('who')
   try {
-    await c.env.DB.batch([updateItemStatement(c.env.DB, company.id, item.id, read.item), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.item.changed', subject: item.id })])
+    await c.env.DB.batch([
+      updateItemStatement(c.env.DB, company.id, item.id, read.item),
+      ...('stredisko' in body ? [itemCenterStatement(c.env.DB, company.id, item.id, read.values.center || null)] : []),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'stock.item.changed', subject: item.id }),
+    ])
   } catch (err) {
     if (isPeriodLocked(err)) return stockItemPage(c, company, { values: read.values, errors: { form: STOCK_LOCKED } }, 409)
     throw err

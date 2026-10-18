@@ -113,4 +113,13 @@ export async function checkStock({ db, acc, lucia, nowS, day, capture }) {
   await db.prepare("UPDATE stock_moves SET on_date = ? WHERE company_id = ?").bind(`${Y}-12-30`, b).run()
   const withoutCount = plain(await (await acc.get(`/ucto/klienti/${b}/zavierka?rok=${Y}`)).text())
   check('without the count of the year\'s last day the closing waits for it', withoutCount.includes(`zapíšte inventúru k 31. 12. ${Y} v sklade`))
+
+  // Stock by cost centre: an item given to a centre on its card, whatever is locked (management information).
+  await db.prepare("INSERT INTO cost_centers (id, company_id, code, name, created_at) VALUES ('00000000-0000-4000-8000-00000000c0de', ?, 'PREDAJNA', 'TEST-ONLY Predajňa', ?)").bind(company, nowS).run()
+  page = plain(await (await acc.get(`${base}/${goods}`)).text())
+  check("an item's card offers the company's centres", page.includes('name="stredisko"') && page.includes('PREDAJNA'))
+  res = await acc.post(`${base}/${goods}`, { kod: 'T-1', nazov: 'TEST-ONLY Tovar premenovaný', jednotka: 'ks', druh: 'goods', stredisko: '00000000-0000-4000-8000-00000000c0de' })
+  check('the item kept with its centre', res.status === 303 && (await db.prepare('SELECT center_id FROM stock_items WHERE id = ?').bind(goods).first())?.center_id === '00000000-0000-4000-8000-00000000c0de')
+  res = await acc.post(`${base}/${goods}`, { kod: 'T-1', nazov: 'TEST-ONLY Tovar premenovaný', jednotka: 'ks', druh: 'goods', stredisko: '00000000-0000-4000-8000-0000000000aa' })
+  check('a centre that is none is refused with why', res.status === 422 && plain(await res.text()).includes('Toto stredisko neexistuje alebo je archivované'))
 }

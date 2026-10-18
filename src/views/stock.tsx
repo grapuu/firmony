@@ -21,6 +21,20 @@ import {
 } from '../app/stock'
 import { formatEurExact } from '../format'
 import { LedgerHead, bookPath } from './ledger'
+import { CenterSelect } from './centers'
+import type { CostCenter } from '../app/centers'
+
+/** The cost centre of an item, when the company has centres in use (or the item has one). */
+const ItemCentre: FC<{ centers: CostCenter[]; value: string; error?: string; id: string }> = ({ centers, value, error, id }) =>
+  centers.some((c) => !c.archived) || value ? (
+    <div class="field">
+      <label class="field__label" for={id}>
+        Stredisko
+      </label>
+      <CenterSelect centers={centers} value={value || null} id={id} />
+      {error ? <p class="field__error">{error}</p> : <p class="field__hint">Výdaj a manko položky sa v prehľade stredísk započítajú tomuto stredisku.</p>}
+    </div>
+  ) : null
 
 const eur = (cents: number) => formatEurExact(cents)
 const Err: FC<{ text?: string }> = ({ text }) => (text ? <p class="field__error">{text}</p> : null)
@@ -49,6 +63,7 @@ export interface StockPageProps {
   item: { values: ItemValues; errors: ItemErrors }
   move: { values: MoveValues; errors: MoveErrors }
   paste: { moves: string; items: string; errors: string[] }
+  centers?: CostCenter[]
   flash?: string | null
   error?: string | null
 }
@@ -298,6 +313,7 @@ export const StockPage: FC<StockPageProps> = (p) => {
                   </select>
                   <Err text={ie.kind} />
                 </label>
+                <ItemCentre centers={p.centers ?? []} value={iv.center ?? ''} error={ie.center} id="s-stredisko" />
               </div>
               <button class="btn btn--line stack__submit" type="submit">
                 Pridať položku
@@ -360,6 +376,7 @@ export interface StockItemPageProps {
   documents: Map<string, string>
   values: ItemValues
   errors: ItemErrors
+  centers?: CostCenter[]
   flash?: string | null
   error?: string | null
 }
@@ -465,6 +482,7 @@ export const StockItemPage: FC<StockItemPageProps> = (p) => {
               </select>
               <Err text={p.errors.kind} />
             </label>
+            <ItemCentre centers={p.centers ?? []} value={p.values.center ?? ''} error={p.errors.center} id="i-stredisko" />
           </div>
           {p.errors.form ? <p class="field__error">{p.errors.form}</p> : null}
           <button class="btn btn--blue stack__submit" type="submit">

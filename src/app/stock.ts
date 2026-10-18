@@ -46,6 +46,8 @@ export interface StockItem {
   name: string
   unit: string
   kind: StockKind
+  /** The company's cost centre the item's stock belongs to (centers.ts): its issues and shortages count there. */
+  centerId?: string | null
 }
 
 export interface StockMove {
@@ -201,6 +203,8 @@ export interface StockEntry {
   number: string
   text: string
   lines: { md: string; d: string; cents: number }[]
+  /** Each cost centre's part of the entry's costs (class 5), for the centres' report (centers.ts); the books' lines stay as they are. */
+  centerCosts?: { center: string; cents: number }[]
 }
 
 const monthName = (month: string) => `${month.slice(5, 7)}/${month.slice(0, 4)}`
@@ -219,6 +223,7 @@ const nextDay = (day: string): string => {
 export function stockEntries(settings: StockSettings | null, items: readonly StockItem[], moves: readonly StockMove[]): StockEntry[] {
   if (!settings) return []
   const kindOf = new Map(items.map((i) => [i.id, i.kind]))
+  const centreOf = new Map(items.map((i) => [i.id, i.centerId ?? null]))
   const byItem = groupByItem(moves.filter((m) => kindOf.has(m.itemId)))
   const out: StockEntry[] = []
   if (settings.method === 'B') {
@@ -241,10 +246,10 @@ export function stockEntries(settings: StockSettings | null, items: readonly Sto
     }
     return out
   }
-  type Bucket = { on: string; lines: Map<string, number> }
+  type Bucket = { on: string; lines: Map<string, number>; centres: Map<string, number> }
   const months = new Map<string, Bucket>()
   const bucket = (key: string, on: string) => {
-    const b = months.get(key) ?? { on, lines: new Map<string, number>() }
+    const b = months.get(key) ?? { on, lines: new Map<string, number>(), centres: new Map<string, number>() }
     if (on > b.on) b.on = on
     months.set(key, b)
     return b
@@ -254,14 +259,26 @@ export function stockEntries(settings: StockSettings | null, items: readonly Sto
     const [from, to, c] = cents > 0 ? [md, d, cents] : [d, md, -cents]
     b.lines.set(`${from}|${to}`, (b.lines.get(`${from}|${to}`) ?? 0) + c)
   }
+  // A cost (class 5) of an item of a centre: the centre's part of the entry.
+  const toCentre = (b: Bucket, itemId: string, account: string, cents: number) => {
+    const centre = centreOf.get(itemId)
+    if (!centre || !account.startsWith('5') || cents === 0) return
+    b.centres.set(centre, (b.centres.get(centre) ?? 0) + cents)
+  }
   for (const [itemId, list] of byItem) {
     const a = STOCK_ACCOUNTS[kindOf.get(itemId) as StockKind]
     for (const m of valueItem(list, settings)) {
       const month = m.on.slice(0, 7)
       if (m.kind === 'in') add(bucket(`in:${month}`, m.on), a.stock, a.from, m.value ?? 0)
-      else if (m.kind === 'out') add(bucket(`out:${month}`, m.on), a.to, a.stock, m.cost)
-      else if (m.cost < 0) add(bucket(`count:${m.id}`, m.on), SHORTAGE_ACCOUNT, a.stock, -m.cost)
-      else if (m.cost > 0) add(bucket(`count:${m.id}`, m.on), a.stock, a.surplus, m.cost)
+      else if (m.kind === 'out') {
+        const b = bucket(`out:${month}`, m.on)
+        add(b, a.to, a.stock, m.cost)
+        toCentre(b, itemId, a.to, m.cost)
+      } else if (m.cost < 0) {
+        const b = bucket(`count:${m.id}`, m.on)
+        add(b, SHORTAGE_ACCOUNT, a.stock, -m.cost)
+        toCentre(b, itemId, SHORTAGE_ACCOUNT, -m.cost)
+      } else if (m.cost > 0) add(bucket(`count:${m.id}`, m.on), a.stock, a.surplus, m.cost)
     }
   }
   const countNumbers = new Map(moves.filter((m) => m.kind === 'count').map((m) => [m.id, m.number]))
@@ -272,8 +289,10 @@ export function stockEntries(settings: StockSettings | null, items: readonly Sto
     })
     if (lines.length === 0) continue
     const [what, rest] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
-    if (what === 'count') out.push({ key: `s:i:${rest}`, on: b.on, number: countNumbers.get(rest) ?? 'INV', text: 'Inventúra: rozdiely zásob (manko na 549, prebytok)', lines })
-    else out.push({ key: `s:${what}:${rest}`, on: b.on, number: `SKL ${monthName(rest)}`, text: what === 'in' ? `Príjem na sklad za ${monthName(rest)}` : `Výdaj zo skladu za ${monthName(rest)}`, lines })
+    const centres = [...b.centres].filter(([, cents]) => cents > 0).sort(([x], [y]) => x.localeCompare(y)).map(([center, cents]) => ({ center, cents }))
+    const parts = centres.length > 0 ? { centerCosts: centres } : {}
+    if (what === 'count') out.push({ key: `s:i:${rest}`, on: b.on, number: countNumbers.get(rest) ?? 'INV', text: 'Inventúra: rozdiely zásob (manko na 549, prebytok)', lines, ...parts })
+    else out.push({ key: `s:${what}:${rest}`, on: b.on, number: `SKL ${monthName(rest)}`, text: what === 'in' ? `Príjem na sklad za ${monthName(rest)}` : `Výdaj zo skladu za ${monthName(rest)}`, lines, ...parts })
   }
   return out
 }
@@ -329,13 +348,16 @@ export interface ItemValues {
   name: string
   unit: string
   kind: string
+  /** The cost centre it belongs to ('' none). */
+  center?: string
 }
 export type ItemErrors = Partial<Record<keyof ItemValues | 'form', string>>
 
 /** An item as typed: a code of its own among the company's, a name, a unit, a kind. */
 export function readItem(get: (name: string) => unknown, codes: ReadonlySet<string>): { values: ItemValues; item: Omit<StockItem, 'id'> | null; errors: ItemErrors } {
   const text = (name: string, max: number) => (typeof get(name) === 'string' ? (get(name) as string).trim().slice(0, max) : '')
-  const values: ItemValues = { code: text('kod', 40), name: text('nazov', 160), unit: text('jednotka', 8) || 'ks', kind: text('druh', 10) }
+  const centre = text('stredisko', 64)
+  const values: ItemValues = { code: text('kod', 40), name: text('nazov', 160), unit: text('jednotka', 8) || 'ks', kind: text('druh', 10), center: /^[0-9a-f-]{36}$/.test(centre) ? centre : '' }
   const errors: ItemErrors = {}
   if (!/^[\p{L}\p{N}._\-/]{1,40}$/u.test(values.code)) errors.code = 'Kód položky: písmená, číslice, bodka, pomlčka alebo lomka, najviac 40 znakov.'
   else if (codes.has(values.code.toLowerCase())) errors.code = 'Položka s týmto kódom už je.'

@@ -34,7 +34,7 @@ over. Bring this section up to date first whenever a session ends.
    (schema step 58, under "Payroll") and the social fund's mandatory allocation; a morning doorbell to approvers and
    budgets of cost centres (schema step 59); payroll by cost centre (schema step 60); deductions from wages for
    executions (schema step 61, under "Payroll"); the proportional deduction of VAT by a coefficient (§ 50, schema step 62,
-   under "VAT: the return and the control statement"); depreciation by cost centre (schema step 63, under "Cost centres"). **Nothing is live**: there
+   under "VAT: the return and the control statement"); depreciation and stock by cost centre (schema steps 63 and 64, under "Cost centres"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1434,8 +1434,12 @@ management of a medium or large company; the books stay as they are.
   that is none refused with why); each month's depreciation entry carries each centre's part (`AssetEntry.centerCosts`)
   and a disposal its residual value written off, so the report moves them from what is in common to the centre; the
   asset's page names its centre.
+- Stock by centre (built 18 October 2026, schema step 64 `stock_items.center_id`): an item's card and the new item's
+  form have "Stredisko" (`itemCenterStatement`, as for assets; the item's kind stays the only guarded field); under
+  method A each month's issue (504, 501) and a count's shortage (549) of a centre's items are that centre's part of the
+  entry (`StockEntry.centerCosts`); products (613), surpluses and method B's counts stay in common.
 - Not built: a
-  document split among centres, an employee split among centres, the cost of goods sold by centre, the accountant's own report
+  document split among centres, an employee split among centres, the accountant's own report
   screen, budgets by month or by account. test/centers.runtime.mjs, units "Cost centres" and "Budgets of cost centres".
 
 ### The cash box (18 October 2026; `src/app/cash.ts`, `cash-store.ts`, `src/views/cash.tsx`, schema step 50)
@@ -2414,8 +2418,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1278 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1861 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1279 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1864 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
