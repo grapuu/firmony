@@ -24,7 +24,8 @@ over. Bring this section up to date first whenever a session ends.
    náhrady, schema step 49, "Business trips" under the client's app), the cash box (pokladňa, schema step 50, "The
    cash box" there; a second independent review of both, six findings mended) and reminders with late interest (schema
    step 51, under "Invoices the client issues"), cost centres (schema step 52, "Cost centres" under the client's app)
-   and a third independent review of the reminders, eight findings mended (schema step 53). **Nothing is live**: there
+   and a third independent review of the reminders, eight findings mended (schema step 53), and a fourth of the cost
+   centres, six mended. **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1348,9 +1349,19 @@ management of a medium or large company; the books stay as they are.
   payroll, depreciation, a bank's fee, the accountant's internal documents and documents without a centre; the total
   is the books' result of the period. The yearly ZIP: `doklady.csv` names each document's centre, `data/strediska.json`
   the list; purge deletes them.
+- Mended after an independent review (18 October 2026, of commit f3b7b5a; each finding verified first): the booking
+  screen writes the centre only when it was changed there (`stredisko_bolo`, the centre the page showed), so one the
+  client gave meanwhile stays, and a form sent back with an error keeps the centre picked; a payment of several invoices
+  in another currency puts each exchange difference in its own invoice's centre (`LedgerLine.docId`); a credit note, an
+  invoice of late interest and an invoice issued by a repeat take the centre of the invoice they come from
+  (`centerFrom`); the page of a refused deletion shows the document's centre; a document saved again with its own
+  (archived) centre is no error; a code too long is refused, not cut, and only a code taken is said to be taken; an
+  archived centre stays in the report while it has documents of any period. "Spoločné" names everything it holds:
+  payroll, depreciation, goods sold out of stock (booked by months, not by document), the year's revaluation of what is
+  open in another currency, a bank's fee, internal documents, the income tax and documents without a centre.
 - Not built: a centre on an invoice's form (given on its document), a supplier's rule remembering the centre, a
-  document split among centres, payroll or depreciation by centre, the accountant's own report screen, budgets.
-  test/centers.runtime.mjs, units "Cost centres".
+  document split among centres, payroll, depreciation or the cost of goods sold by centre, the accountant's own report
+  screen, budgets. test/centers.runtime.mjs, units "Cost centres".
 
 ### The cash box (18 October 2026; `src/app/cash.ts`, `cash-store.ts`, `src/views/cash.tsx`, schema step 50)
 
@@ -2168,8 +2179,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1184 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1721 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1185 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1728 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

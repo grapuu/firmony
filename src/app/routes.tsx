@@ -1114,14 +1114,16 @@ appRoutes.post('/strediska', async (c) => {
   const who = c.get('who')
   if (who.role !== 'owner') return shell(c, 'documents', t.errors.notFound, <Missing />, 403)
   const body = await c.req.parseBody()
-  const typed = { code: typeof body.kod === 'string' ? body.kod.trim().slice(0, 12) : '', name: typeof body.nazov === 'string' ? body.nazov.trim().slice(0, 80) : '' }
+  const typed = { code: typeof body.kod === 'string' ? body.kod.trim().slice(0, 40) : '', name: typeof body.nazov === 'string' ? body.nazov.trim().slice(0, 80) : '' }
   const code = centerCode(typed.code)
   const errors = { ...(code ? {} : { code: t.centers.errors.code }), ...(typed.name ? {} : { name: t.centers.errors.name }) }
   if (!code || !typed.name) return centersPage(c, { values: typed, errors }, 422)
   try {
     await c.env.DB.batch(addCenterStatements(c.env.DB, { id: crypto.randomUUID(), company: who.company.id, code, name: typed.name, user: who.user.id }))
-  } catch {
-    return centersPage(c, { values: typed, errors: { code: t.centers.errors.taken } }, 409)
+  } catch (err) {
+    const taken = await c.env.DB.prepare('SELECT 1 FROM cost_centers WHERE company_id = ? AND code = ?').bind(who.company.id, code).first()
+    if (taken) return centersPage(c, { values: typed, errors: { code: t.centers.errors.taken } }, 409)
+    throw err
   }
   return c.redirect('/app/strediska?ok=pridane', 303)
 })
@@ -1145,7 +1147,11 @@ appRoutes.post('/doklady/:id/stredisko', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.parseBody()
   const center = typeof body.stredisko === 'string' && ID.test(body.stredisko) ? body.stredisko : null
-  const result = ID.test(id) ? await documentCenterStatement(c.env.DB, who.company.id, id, center).run() : null
+  const d = ID.test(id) ? await getDocument(c.env.DB, who.company.id, id) : null
+  if (!d) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  // The centre it has (an archived one too): nothing to change.
+  if ((d.centerId ?? null) === center) return c.redirect(`/app/doklady/${id}?ok=stredisko`, 303)
+  const result = await documentCenterStatement(c.env.DB, who.company.id, id, center).run()
   if ((result?.meta?.changes ?? 0) === 0) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
   return c.redirect(`/app/doklady/${id}?ok=stredisko`, 303)
 })
@@ -1494,7 +1500,14 @@ appRoutes.post('/doklady/:id/zmazat', async (c) => {
     const d = await getDocument(db, who.company.id, id)
     if (!d) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
     const payment = d.paymentId ? await getPayment(db, who.company.id, d.paymentId) : null
-    return shell(c, 'documents', t.documents.title, <DocumentPage d={d} payment={payment} today={today()} error={t.document.locked} />, 409)
+    const centers = await listCenters(db, who.company.id)
+    return shell(
+      c,
+      'documents',
+      t.documents.title,
+      <DocumentPage d={d} payment={payment} today={today()} error={t.document.locked} approvals={who.company.approvals} owner={who.role === 'owner'} centers={centers} />,
+      409,
+    )
   }
   return c.redirect('/app/doklady?ok=zmazane', 303)
 })

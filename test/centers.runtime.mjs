@@ -1,7 +1,8 @@
 // Cost centres (18 October 2026), in workerd: an owner makes the company's centres (a colleague cannot), a code is
 // checked and once; documents are given to centres by the client and on the accountant's booking screen; the report
 // says each centre's revenues, costs and result from the books, and what is in common; an archived centre takes no new
-// documents.
+// documents and stays while it has any. After the review: the booking screen keeps a centre the client gave while it
+// was open, a refused deletion shows the document's centre, a credit note takes its invoice's centre.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
@@ -39,6 +40,11 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
   check('only an owner makes one', (await colleague.post('/app/strediska', { kod: 'X', nazov: 'X' })).status === 403)
   let res = await owner.post('/app/strediska', { kod: 'Predajňa', nazov: 'Predajňa' })
   check('a code with an accent is refused', res.status === 422 && plain(await res.text()).includes('Kód môže mať len písmená bez diakritiky'))
+  res = await owner.post('/app/strediska', { kod: 'PROJEKT-2026-B', nazov: 'Projekt' })
+  check(
+    'a code too long is refused, not cut',
+    res.status === 422 && (await db.prepare("SELECT COUNT(*) AS n FROM cost_centers WHERE company_id = ? AND code LIKE 'PROJEKT%'").bind(company).first())?.n === 0,
+  )
   res = await owner.post('/app/strediska', { kod: 'predajna', nazov: 'Predajňa na Hlavnej' })
   await owner.post('/app/strediska', { kod: 'SKLAD', nazov: 'Sklad' })
   const again = await owner.post('/app/strediska', { kod: 'PREDAJNA', nazov: 'Iná' })
@@ -66,8 +72,15 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
     stredisko: store,
   })
   check('the accountant gives it on booking', res.status === 303 && (await db.prepare("SELECT center_id FROM documents WHERE id = 'st-r2'").first())?.center_id === store)
-  res = await owner.post('/app/doklady/st-r3/stredisko', { stredisko: 'other-company-center' })
-  check("another company's centre is not given", res.status === 404)
+  await db.batch([
+    db.prepare("INSERT INTO companies (id, created_at, name, plan, inbox) VALUES ('co-centers-x', ?, 'TEST-ONLY Iná s. r. o.', 'firma', 'strx0001')").bind(nowS),
+    db.prepare("INSERT INTO cost_centers (id, company_id, code, name, created_at) VALUES ('center-of-x', 'co-centers-x', 'CUDZIE', 'Cudzie', ?)").bind(nowS),
+  ])
+  res = await owner.post('/app/doklady/st-r3/stredisko', { stredisko: 'center-of-x' })
+  check("another company's centre is not given", res.status === 404 && (await db.prepare("SELECT center_id FROM documents WHERE id = 'st-r3'").first())?.center_id === null)
+  // A booked document cannot be deleted: the page that says so still shows its centre, picked.
+  res = await owner.post('/app/doklady/st-r2/zmazat', {})
+  check('a refused deletion shows the centre the document has', res.status === 409 && (await res.text()).includes(`<option value="${store}" selected`))
 
   const year = day(-3).slice(0, 4)
   const month = Number(day(-3).slice(5, 7))
@@ -89,6 +102,71 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
   res = await owner.post(`/app/strediska/${store}/archivovat`, {})
   res = await owner.post('/app/doklady/st-r3/stredisko', { stredisko: store })
   check('an archived centre takes no new document', res.status === 404 && (await db.prepare("SELECT center_id FROM documents WHERE id = 'st-r3'").first())?.center_id === null)
-  page = plain(await (await owner.get(`/app/strediska?rok=${year}&od=${month}&do=${month}`)).text())
-  check('it stays in the report with its documents', page.includes('SKLAD') && page.includes('archivované'))
+  res = await owner.post('/app/doklady/st-r2/stredisko', { stredisko: store })
+  check('its document saved again with it changes nothing and is no error', res.status === 303 && (await db.prepare("SELECT center_id FROM documents WHERE id = 'st-r2'").first())?.center_id === store)
+  const other = month === 1 ? 12 : month - 1
+  const otherYear = month === 1 ? Number(year) - 1 : Number(year)
+  const raw2 = await (await owner.get(`/app/strediska?rok=${otherYear}&od=${other}&do=${other}`)).text()
+  check('it stays in the report with its documents, also in a month without them', raw2.includes('<th scope="row"><strong>SKLAD</strong>'))
+
+  // The booking screen opened before the client gave a centre: booked, the client's centre stays; changed there, it goes.
+  await doc('st-r4', 'receipt', 'material', 1500, 'TEST-ONLY Drogéria').run()
+  const before = await (await acc.get('/ucto/doklady/st-r4')).text()
+  check('the booking screen carries the centre it showed', before.includes('name="stredisko_bolo" value=""'))
+  await colleague.post('/app/doklady/st-r4/stredisko', { stredisko: shop })
+  const booking = (extra) => ({
+    akcia: 'ulozit',
+    kind: 'receipt',
+    party: 'TEST-ONLY Drogéria',
+    total: '15,00',
+    vat: '',
+    category: 'material',
+    issued: `${Number(day(-3).slice(8))}. ${Number(day(-3).slice(5, 7))}. ${day(-3).slice(0, 4)}`,
+    due: '',
+    ...extra,
+  })
+  res = await acc.post('/ucto/doklady/st-r4', booking({ stredisko: '', stredisko_bolo: '' }))
+  check(
+    'a centre the client gave meanwhile stays when the accountant saves',
+    res.status === 303 && (await db.prepare("SELECT center_id FROM documents WHERE id = 'st-r4'").first())?.center_id === shop,
+  )
+  res = await acc.post('/ucto/doklady/st-r4', booking({ stredisko: '', stredisko_bolo: shop }))
+  check('taken off on the booking screen, it goes', res.status === 303 && (await db.prepare("SELECT center_id FROM documents WHERE id = 'st-r4'").first())?.center_id === null)
+
+  // An invoice of a centre: its credit note takes the centre.
+  res = await owner.post('/app/faktury', {
+    akcia: 'vystavit',
+    meno: 'TEST-ONLY Odberateľ',
+    adresa: 'Dlhá 2, 040 01 Košice',
+    email: '',
+    vystavena: `${Number(day(-1).slice(8))}. ${Number(day(-1).slice(5, 7))}. ${day(-1).slice(0, 4)}`,
+    dodana: `${Number(day(-1).slice(8))}. ${Number(day(-1).slice(5, 7))}. ${day(-1).slice(0, 4)}`,
+    splatna: `${Number(day(13).slice(8))}. ${Number(day(13).slice(5, 7))}. ${day(13).slice(0, 4)}`,
+    iban: 'SK31 1200 0000 1987 4263 7541',
+    riadky: '1',
+    'r0-popis': 'Tovar',
+    'r0-mnozstvo': '1',
+    'r0-jednotka': 'ks',
+    'r0-cena': '100,00',
+  })
+  const invoiceId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
+  const invoiceDoc = (await db.prepare('SELECT document_id FROM invoices WHERE id = ?').bind(invoiceId).first())?.document_id
+  await owner.post(`/app/doklady/${invoiceDoc}/stredisko`, { stredisko: shop })
+  res = await owner.post('/app/faktury', {
+    akcia: 'vystavit',
+    dobropis: invoiceId,
+    meno: 'x',
+    vystavena: `${Number(day(0).slice(8))}. ${Number(day(0).slice(5, 7))}. ${day(0).slice(0, 4)}`,
+    dodana: `${Number(day(0).slice(8))}. ${Number(day(0).slice(5, 7))}. ${day(0).slice(0, 4)}`,
+    splatna: `${Number(day(14).slice(8))}. ${Number(day(14).slice(5, 7))}. ${day(14).slice(0, 4)}`,
+    riadky: '1',
+    'r0-popis': 'Vrátený tovar',
+    'r0-mnozstvo': '1',
+    'r0-jednotka': 'ks',
+    'r0-cena': '40,00',
+    dovod: 'Vrátený tovar',
+  })
+  const creditId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
+  const creditDoc = await db.prepare('SELECT d.center_id FROM invoices i JOIN documents d ON d.id = i.document_id WHERE i.id = ?').bind(creditId).first()
+  check("a credit note takes its invoice's centre", res.status === 303 && creditDoc?.center_id === shop, JSON.stringify(creditDoc))
 }

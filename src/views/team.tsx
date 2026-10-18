@@ -1200,6 +1200,8 @@ export interface BookValues {
   /** The currency and the rate it is converted at (units for one euro), empty for the ECB's of the day before. */
   currency: string
   rate: string
+  /** The cost centre picked on the form ('' none); the document's own when not given. */
+  center?: string
 }
 
 /** What the form shows for a document: its own values, written the way they are typed. */
@@ -1451,7 +1453,9 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
                 <label class="field__label" for="b-stredisko">
                   {t.book.center}
                 </label>
-                <CenterSelect centers={centers} value={d.centerId ?? null} id="b-stredisko" />
+                <CenterSelect centers={centers} value={values.center !== undefined ? values.center || null : (d.centerId ?? null)} id="b-stredisko" />
+                {/* What the document had when the page was made: a centre the client gives meanwhile is not taken back. */}
+                <input type="hidden" name="stredisko_bolo" value={d.centerId ?? ''} />
               </div>
             ) : null}
           </div>

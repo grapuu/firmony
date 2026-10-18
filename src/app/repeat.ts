@@ -246,6 +246,8 @@ async function issueOne(db: D1Database, repeat: Repeat, today: string): Promise<
         documentId,
         fx,
         repeat: repeat.id,
+        // Its cost centre is the invoice's it repeats (centers.ts).
+        centerFrom: template.id,
       }),
       eventStatement(db, { company: company.id, user: null, action: 'invoice.repeated', subject: id, detail: { repeat: repeat.id, template: template.id, total: totals.total } }),
     ])

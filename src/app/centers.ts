@@ -7,8 +7,12 @@
 // - A document belongs to one centre or to none. The client gives it on the document's page, the accountant on the
 //   booking screen; it is the company's management information, not the books' (no period lock holds it).
 // - A centre's costs are the class 5 accounts and its revenues the class 6 accounts of the entries of its documents
-//   (the document's own entry and what follows it in the books, an exchange difference of its payment); everything
-//   else (payroll, depreciation, a bank's fee, the accountant's internal documents) is the company's in common.
+//   (the document's own entry and the exchange difference its payment settles it with); everything else is the
+//   company's in common: payroll, depreciation, the cost of goods sold out of stock (stock.ts books it by months, not
+//   by document), the year's revaluation of what is open in another currency, a bank's fee, the accountant's internal
+//   documents, the income tax, and documents without a centre.
+// - A credit note, an invoice of late interest and an invoice issued by a repeat take the centre of the invoice they
+//   come from (invoices.ts, `centerFrom`).
 import type { LedgerEntry } from './ledger'
 
 export interface CostCenter {
@@ -42,15 +46,17 @@ export function centerTotals(entries: readonly LedgerEntry[], centerOfDoc: Reado
   const sums = new Map<string | null, { revenue: number; costs: number }>()
   for (const e of entries) {
     if (e.on < from || e.on > to) continue
-    const center = e.docId ? (centerOfDoc.get(e.docId) ?? null) : null
-    const sum = sums.get(center) ?? { revenue: 0, costs: 0 }
     for (const l of e.lines) {
+      // A line of one document of an entry of several (a payment's exchange difference) is that document's.
+      const doc = l.docId ?? e.docId
+      const center = doc ? (centerOfDoc.get(doc) ?? null) : null
+      const sum = sums.get(center) ?? { revenue: 0, costs: 0 }
       if (classOf(l.md) === '5') sum.costs += l.cents
       if (classOf(l.d) === '5') sum.costs -= l.cents
       if (classOf(l.d) === '6') sum.revenue += l.cents
       if (classOf(l.md) === '6') sum.revenue -= l.cents
+      sums.set(center, sum)
     }
-    sums.set(center, sum)
   }
   const known = new Set(centers.map((c) => c.id))
   // A document of a centre since removed from the list counts in common.
@@ -65,5 +71,7 @@ export function centerTotals(entries: readonly LedgerEntry[], centerOfDoc: Reado
     const s = sums.get(id) ?? { revenue: 0, costs: 0 }
     return { id, revenue: s.revenue, costs: s.costs, result: s.revenue - s.costs }
   }
-  return [...centers.filter((c) => !c.archived || sums.has(c.id)).map((c) => row(c.id)), row(null)]
+  // An archived centre stays while it has documents (in any period) or entries in this one.
+  const withDocs = new Set(centerOfDoc.values())
+  return [...centers.filter((c) => !c.archived || sums.has(c.id) || withDocs.has(c.id)).map((c) => row(c.id)), row(null)]
 }

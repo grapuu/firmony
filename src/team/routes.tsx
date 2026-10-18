@@ -4130,6 +4130,7 @@ teamRoutes.post('/doklady/:id', async (c) => {
     account: /^\d{3,6}$/.test(text('account', 6)) ? text('account', 6) : '',
     currency: isCurrency(text('currency', 3)) ? text('currency', 3) : 'EUR',
     rate: text('rate', 16),
+    center: typeof body.stredisko === 'string' && ID.test(body.stredisko) ? body.stredisko : '',
   }
   const booking = action === 'dalsi' || action === 'zauctovat'
   const errors: Partial<Record<keyof BookValues, string>> = {}
@@ -4232,8 +4233,10 @@ teamRoutes.post('/doklady/:id', async (c) => {
   } else if (vatShown && !sameFamily) {
     statements.push(db.prepare('UPDATE documents SET vat_mode = NULL, vat_period = NULL WHERE id = ? AND company_id = ?').bind(doc.id, company.id))
   }
-  // The document's cost centre, when the form had the field (management information: no period lock holds it).
-  if (typeof body.stredisko === 'string') statements.push(documentCenterStatement(db, company.id, doc.id, ID.test(body.stredisko) ? body.stredisko : null))
+  // The document's cost centre, when the form had the field and it was changed there (management information: no period
+  // lock holds it); a centre the client gave while the page was open stays.
+  if (typeof body.stredisko === 'string' && body.stredisko !== (typeof body.stredisko_bolo === 'string' ? body.stredisko_bolo : null))
+    statements.push(documentCenterStatement(db, company.id, doc.id, ID.test(body.stredisko) ? body.stredisko : null))
   const key = supplierKey(values.ico, values.party)
   const remembered = booking && values.remember && key !== null && isCategory(values.category) && values.kind !== 'invoice_out' && doc.source !== 'trip'
   if (remembered && key && isCategory(values.category)) {

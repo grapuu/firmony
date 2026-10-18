@@ -1461,6 +1461,25 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     JSON.stringify(rows),
   )
   check('a centre code: letters, digits and a dash, in capitals, up to 12', centers.centerCode(' predajna-1 ') === 'PREDAJNA-1' && centers.centerCode('Á') === null && centers.centerCode('-X') === null && centers.centerCode('A'.repeat(13)) === null)
+  // One payment of two invoices in dollars of two centres: each exchange difference is its own invoice's centre's; an
+  // archived centre with documents of other months only stays in the list of the period.
+  const fx = [
+    {
+      ...entry('p:two', '2026-11-03', 'a', [
+        { md: '221', d: '311', cents: 20000 },
+        { md: '563', d: '311', cents: 300, docId: 'a' },
+        { md: '311', d: '663', cents: 120, docId: 'b' },
+      ]),
+      kind: 'payment',
+    },
+  ]
+  const two = centers.centerTotals(fx, new Map([['a', 'A'], ['b', 'B'], ['r2', 'C']]), list, '2026-11-01', '2026-11-30')
+  const at = (id) => two.find((r) => r.id === id)
+  check(
+    "a payment's exchange differences go to each invoice's centre; an archived centre with documents stays in a month without them",
+    at('A')?.costs === 300 && at('A')?.revenue === 0 && at('B')?.revenue === 120 && at('C')?.revenue === 0 && at('C')?.costs === 0 && at(null)?.costs === 0,
+    JSON.stringify(two),
+  )
 }
 
 // Reminders and late interest (18 October 2026): NV 21/2013, the ECB's rate on the first day of each half-year plus

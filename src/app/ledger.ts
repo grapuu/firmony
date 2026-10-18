@@ -199,6 +199,8 @@ export interface LedgerLine {
   cents: number
   /** What the line is, for the booking form's table. */
   what?: 'cost' | 'vat' | 'revenue' | 'payable' | 'receivable'
+  /** The document a line of an entry of several documents belongs to (a payment's exchange difference), when not the entry's own. */
+  docId?: string
 }
 
 export type EntryKind = 'opening' | 'document' | 'payment' | 'cash' | 'vat' | 'payroll' | 'asset' | 'stock' | 'internal' | 'fx'
@@ -828,8 +830,9 @@ export function buildBooks(input: LedgerInput): Books {
         // An invoice in another currency is settled whole by its payment: what is left of it is the exchange difference.
         const left = item && foreignOf.has(d.id) ? item.total - item.settled : 0
         if (item && left !== 0) {
-          if (item.account !== '311') lines.push(left > 0 ? { md: item.account, d: '663', cents: left } : { md: '563', d: item.account, cents: -left })
-          else lines.push(left > 0 ? { md: '563', d: '311', cents: left } : { md: '311', d: '663', cents: -left })
+          // Each document's difference names it: a payment of several documents of several cost centres (centers.ts).
+          if (item.account !== '311') lines.push(left > 0 ? { md: item.account, d: '663', cents: left, docId: d.id } : { md: '563', d: item.account, cents: -left, docId: d.id })
+          else lines.push(left > 0 ? { md: '563', d: '311', cents: left, docId: d.id } : { md: '311', d: '663', cents: -left, docId: d.id })
           item.settled = item.total
         }
       }

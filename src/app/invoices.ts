@@ -780,6 +780,8 @@ export function saveInvoiceStatements(
     interestOf?: string | null
     /** An invoice of late interest: the last day its interest counts (one an invoice and a day, kept by a unique index). */
     interestTo?: string | null
+    /** The invoice whose document's cost centre the document takes (a credit note, late interest, a repeat: centers.ts). */
+    centerFrom?: string | null
   },
 ): D1PreparedStatement[] {
   const v = args.values
@@ -863,9 +865,10 @@ export function saveInvoiceStatements(
           db
             .prepare(
               `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs,
-                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint, vat_reverse, advance_cents, fx_rate)
+                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint, vat_reverse, advance_cents, fx_rate, center_id)
                SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, COALESCE(vs, number),
-                 issued_on, due_on, total_cents, vat_cents, COALESCE(currency, 'EUR'), ?, id, customer_icdph, delivered_on, ?, ?, ?, vat_reverse, ?, fx_rate
+                 issued_on, due_on, total_cents, vat_cents, COALESCE(currency, 'EUR'), ?, id, customer_icdph, delivered_on, ?, ?, ?, vat_reverse, ?, fx_rate,
+                 (SELECT od.center_id FROM invoices oi JOIN documents od ON od.id = oi.document_id AND od.company_id = oi.company_id WHERE oi.id = ? AND oi.company_id = invoices.company_id)
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )
             // Its VAT by rate, exactly as the invoice sums it, and how it is taxed: what the return proposes until the
@@ -877,6 +880,7 @@ export function saveInvoiceStatements(
               args.credit?.number ?? null,
               mode === 'domestic' ? null : mode,
               args.advanceCents && args.advanceCents > 0 ? args.advanceCents : null,
+              args.centerFrom ?? args.credit?.corrects ?? args.interestOf ?? null,
               args.id,
               args.company,
             ),
