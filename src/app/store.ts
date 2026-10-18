@@ -6,7 +6,7 @@ import { NEXT_BANK_LEDGER, now } from '../db'
 import { linkLockedSql } from './period-schema'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
-import { isVatMode, reverseOf, type ReverseGoods, type VatCompany, type VatData, type VatDoc, type VatLine, type VatMode, type VatStatus } from './vat'
+import { isVatMode, reverseOf, type CreditOf, type ReverseGoods, type VatCompany, type VatData, type VatDoc, type VatLine, type VatMode, type VatStatus } from './vat'
 import { eurOf, rateMicro } from './fx'
 import { autoAdvances } from './advance-auto'
 import { settingsOf, type IntrastatSettings } from './intrastat'
@@ -202,6 +202,10 @@ export interface Doc {
   ratioMode?: RatioMode | null
   /** The day it was paid: its bank payment's, else its cash document's (§ 53b). */
   paidOn?: string | null
+  /** What that payment paid of it, when it paid it alone (PAID_ON_COLUMN); null while it paid it whole. */
+  paidCents?: number | null
+  /** A received invoice's corrections from the same supplier, booked (§ 53b). */
+  credits?: CreditOf[]
 }
 
 export interface Message {
@@ -353,8 +357,35 @@ function paymentOf(row: Row): Payment {
 export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1) AS cash_paid"
 
 /** The day a document was paid, over the aliases d and l (its link): the bank's payment, else its cash document's (§ 53b). */
+/**
+ * The day a document was paid (its bank payment's, else its cash document's); what that payment paid of an invoice
+ * (vat.ts unpaidEvents: a bank payment in euros of it alone by its amount, its cash document by its amount; null while a
+ * payment of several invoices paid each whole); and a received invoice's corrections from the same supplier, booked
+ * (§ 53b; schema step 66 indexes them by the number they correct).
+ */
 export const PAID_ON_COLUMN = `COALESCE((SELECT p.booked_on FROM payments p WHERE p.id = l.payment_id),
-  (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on`
+  (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
+  CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN COALESCE(
+    (SELECT CASE WHEN p.currency = 'EUR' AND (SELECT COUNT(*) FROM links o WHERE o.payment_id = p.id) = 1 THEN ABS(p.amount_cents) END FROM payments p WHERE p.id = l.payment_id),
+    (SELECT SUM(json_extract(j.value, '$.cents')) FROM ledger_entries ce, json_each(ce.lines) j WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)) END AS paid_cents,
+  CASE WHEN d.kind = 'invoice_in' AND d.number IS NOT NULL THEN (SELECT json_group_array(json_object('issued', c.issued_on, 'supplied', c.supplied_on, 'created', c.created_at, 'period', c.vat_period, 'lines', c.vat_lines))
+    FROM documents c WHERE c.company_id = d.company_id AND c.corrects = d.number AND c.id <> d.id AND c.kind IN ('invoice_in', 'receipt') AND c.deleted_at IS NULL
+      AND c.booked_at IS NOT NULL AND c.vat_mode = 'domestic' AND c.vat_lines IS NOT NULL
+      AND ((d.party_ico IS NOT NULL AND c.party_ico = d.party_ico) OR (d.party_vat_id IS NOT NULL AND c.party_vat_id = d.party_vat_id))) END AS credits`
+
+/** A received invoice's corrections as the column above lists them. */
+function creditsOf(value: unknown): CreditOf[] {
+  if (typeof value !== 'string') return []
+  try {
+    const list = JSON.parse(value) as unknown
+    if (!Array.isArray(list)) return []
+    return list
+      .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object' && typeof (c as Record<string, unknown>).created === 'number')
+      .map((c) => ({ issuedOn: str(c.issued), suppliedOn: str(c.supplied), receivedOn: bratislavaDay(Number(c.created)), period: str(c.period), lines: vatLinesOf(c.lines) }))
+  } catch {
+    return []
+  }
+}
 
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
@@ -434,6 +465,8 @@ export function docOf(row: Row): Doc {
     vatRatio: typeof row.vat_ratio === 'number' ? row.vat_ratio : null,
     ratioMode: isRatioMode(row.ratio_mode) ? row.ratio_mode : null,
     paidOn: str(row.paid_on),
+    paidCents: typeof row.paid_cents === 'number' && Number.isInteger(row.paid_cents) ? row.paid_cents : null,
+    credits: creditsOf(row.credits),
     cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }
@@ -497,6 +530,8 @@ export function vatDocOf(doc: Doc): VatDoc {
     ratioMode: doc.ratioMode ?? null,
     dueOn: doc.dueOn,
     paidOn: doc.paidOn ?? null,
+    paidCents: doc.paidCents ?? null,
+    credits: doc.credits ?? [],
     paidPrivately: doc.paidPrivately,
   }
 }

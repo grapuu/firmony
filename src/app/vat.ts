@@ -30,7 +30,7 @@
 //   base and VAT at the basic rate and at the reduced ones), not in A.1 or D.2.
 // - The proportional deduction (§ 50, 18 October 2026; vat-ratio.ts): a document deducted in proportion carries the
 //   coefficient's deduction in its lines; the year's settlement goes into rows 18 to 19 of its last period.
-// - Not built: triangular trade (rows 11 to 12b), bad debts (§ 25a, § 53b), documents in another currency without their
+// - Not built: triangular trade (rows 11 to 12b), the supplier's bad debts (§ 25a), documents in another currency without their
 //   euro amounts.
 import { CATEGORIES, type Category } from './booking'
 import type { DocKind } from './match'
@@ -181,8 +181,21 @@ export interface VatDoc {
   /** A received invoice: its due day and the day it was paid (the bank's payment, or the cash box's), for § 53b. */
   dueOn?: string | null
   paidOn?: string | null
+  /** What that payment paid of it, when it paid it alone (in euros); null while it paid it whole. */
+  paidCents?: number | null
+  /** A received invoice: the corrections of it from the same supplier, booked (credit notes and the like), for § 53b. */
+  credits?: CreditOf[]
   /** Paid by the owner from his own money (no day known): never corrected under § 53b. */
   paidPrivately?: boolean
+}
+
+/** A booked correction of a received invoice, as § 53b counts it: its days, the period named by hand, and its lines. */
+export interface CreditOf {
+  issuedOn: string | null
+  suppliedOn: string | null
+  receivedOn: string
+  period: string | null
+  lines: VatLine[]
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -475,34 +488,107 @@ export function periodOfDoc(doc: VatDoc, data: VatData, company: VatCompany, fil
  * § 53b (read in the original on static.slov-lex.sk through the browser pane on 18 October 2026, the version of 1 January
  * 2026; with the return's instructions, point 44, and the control statement's, C.2): a payer that has not paid a Slovak
  * supplier's invoice (§ 69(1)) corrects the VAT it deducted from it in the period in which the 101st day after its due day
- * falls (§ 53b(1)(a)), or at once with a deduction claimed after that period (§ 53b(2)), by what it deducted (the
- * proportional deduction counted, § 53b(3)): row 29 plus, a line of C.2 with "0" for the corrective document and ONP "x".
- * Paid later, it may correct it back in the period of the payment (§ 53b(4)(a)): row 29 minus, C.2 with plus amounts.
- * Paid within the period of the correction, nothing is reported. A whole invoice is paid or not (a part paid: by hand).
+ * falls (§ 53b(1)(a); KROS's guide of October 2025 counts the same day), or at once with a deduction claimed after that
+ * period (§ 53b(2)), by what it deducted (the proportional deduction counted, § 53b(3)), "v rozsahu, v akom nezaplatil":
+ * row 29 plus, a line of C.2 with "0" for the corrective document and ONP "x". What is unpaid is the invoice after its
+ * corrections from the supplier that came before that day (a credit note lowers what is owed) less what was paid before
+ * it, and the correction is that share of the deduction, rate by rate. Paid later, it is corrected back in the period of
+ * the payment (§ 53b(4)(a)) in the share the payment pays: row 29 minus, C.2 with plus amounts, both lines in the same
+ * return when the payment comes in the correction's period. A correction from the supplier that comes after the correction
+ * and before the payment takes back the deduction itself (row 28), so the part of the § 53b correction it covers comes
+ * back with it, in its period. The invoice's payment is one (a bank payment that pays it alone counts by its amount, one
+ * of several invoices pays each whole) or its cash document.
  */
 export interface Unpaid53b {
   kind: 'correct' | 'back'
   period: string
-  /** The day the books take it: the 101st day (or the deduction's day, when later), or the day it was paid. */
+  /** The day the books take it: the 101st day (or the deduction's day, when later), the day a correction came, or the day it was paid. */
   on: string
+  /** Rate by rate what is corrected, all plus: the base, the VAT and the deduction taken back or given back. */
+  lines: VatLine[]
+  /** A back that a correction from the supplier brings, not a payment. */
+  credit?: boolean
+}
+
+type RateSums = Map<number, VatLine>
+
+function rateSums(...lists: readonly (readonly VatLine[])[]): RateSums {
+  const out: RateSums = new Map()
+  for (const list of lists)
+    for (const l of list) {
+      const s = out.get(l.rate) ?? { rate: l.rate, base: 0, vat: 0, deduct: 0 }
+      out.set(l.rate, { rate: l.rate, base: s.base + l.base, vat: s.vat + l.vat, deduct: s.deduct + l.deduct })
+    }
+  return out
+}
+const linesOfSums = (sums: RateSums): VatLine[] => [...sums.values()].filter((l) => l.base !== 0 || l.vat !== 0 || l.deduct !== 0).sort((a, b) => b.rate - a.rate)
+const grossOfLines = (lines: readonly VatLine[]): number => lines.reduce((sum, l) => sum + l.base + l.vat, 0)
+const deductOfLines = (lines: readonly VatLine[]): number => lines.reduce((sum, l) => sum + l.deduct, 0)
+const shareOfLines = (lines: readonly VatLine[], part: number, whole: number): VatLine[] =>
+  part >= whole ? lines.map((l) => ({ ...l })) : lines.map((l) => ({ rate: l.rate, base: Math.round((l.base * part) / whole), vat: Math.round((l.vat * part) / whole), deduct: Math.round((l.deduct * part) / whole) }))
+const lessLines = (a: readonly VatLine[], b: readonly VatLine[]): VatLine[] => linesOfSums(rateSums(a, b.map((l) => ({ rate: l.rate, base: -l.base, vat: -l.vat, deduct: -l.deduct }))))
+
+/** The period a received correction of an invoice deducts in, as its own document would. */
+function creditPeriod(credit: CreditOf, company: VatCompany, filed: ReadonlyMap<string, string>): string {
+  const doc = { id: '', kind: 'invoice_in', number: null, party: null, partyIco: null, issuedOn: credit.issuedOn, receivedOn: credit.receivedOn } as unknown as VatDoc
+  const data: VatData = { mode: 'domestic', lines: credit.lines, suppliedOn: credit.suppliedOn, vatId: null, corrects: 'x', period: credit.period, country: null }
+  return periodOfDoc(doc, data, company, filed)
 }
 
 export function unpaidEvents(doc: VatDoc, data: VatData, company: VatCompany, filed: ReadonlyMap<string, string> = new Map()): Unpaid53b[] {
   if (company.status !== 'payer' || doc.kind !== 'invoice_in' || data.mode !== 'domestic' || !doc.booked || !doc.dueOn || data.corrects || doc.paidPrivately) return []
-  if (data.lines.reduce((sum, line) => sum + line.deduct, 0) <= 0) return []
+  if (deductOfLines(data.lines) <= 0) return []
   const day101 = addDays(doc.dueOn, 101)
+  const credits = [...(doc.credits ?? [])].sort((a, b) => a.receivedOn.localeCompare(b.receivedOn))
+  // What is owed on the 101st day: the invoice after the supplier's corrections that came before it, less what was paid.
+  const owedLines = linesOfSums(rateSums(data.lines, ...credits.filter((c) => c.receivedOn < day101).map((c) => c.lines)))
+  const gross = grossOfLines(owedLines)
+  if (gross <= 0 || deductOfLines(owedLines) <= 0) return []
   const paid = doc.paidOn ?? null
-  // Paid within the 100 days after the due day: nothing to correct.
-  if (paid !== null && paid < day101) return []
+  const paidCents = paid === null ? 0 : Math.max(0, doc.paidCents ?? gross)
+  const owed = gross - (paid !== null && paid < day101 ? Math.min(paidCents, gross) : 0)
+  if (owed <= 0) return []
+  const corrected = shareOfLines(owedLines, owed, gross)
+  if (deductOfLines(corrected) <= 0) return []
   const quarterly = company.quarterly
   const own = periodOfDoc(doc, data, company, filed)
   const at = periodOf(day101, quarterly)
   const later = at >= own
-  const correct: Unpaid53b = { kind: 'correct', period: later ? at : own, on: later ? day101 : periodRange(own).from > doc.receivedOn ? periodRange(own).from : doc.receivedOn }
-  if (paid === null) return [correct]
-  const paidPeriod = periodOf(paid, quarterly)
-  if (paidPeriod <= correct.period) return []
-  return [correct, { kind: 'back', period: paidPeriod, on: paid }]
+  const correct: Unpaid53b = {
+    kind: 'correct',
+    period: later ? at : own,
+    on: later ? day101 : periodRange(own).from > doc.receivedOn ? periodRange(own).from : doc.receivedOn,
+    lines: corrected,
+  }
+  const events: Unpaid53b[] = [correct]
+  const notBefore = (period: string) => (period < correct.period ? correct.period : period)
+  let left = corrected
+  let owedNow = owed
+  // A correction from the supplier after the 101st day and before the payment: what of the § 53b correction it covers comes back.
+  for (const c of credits) {
+    if (c.receivedOn < day101 || (paid !== null && paid < c.receivedOn) || deductOfLines(left) <= 0) continue
+    const lowers = rateSums(c.lines.map((l) => ({ rate: l.rate, base: -l.base, vat: -l.vat, deduct: -l.deduct })))
+    const back = linesOfSums(
+      new Map(
+        left.map((l) => {
+          const by = lowers.get(l.rate)
+          const deduct = Math.max(0, Math.min(l.deduct, by?.deduct ?? 0))
+          const part = l.deduct > 0 ? deduct / l.deduct : 0
+          return [l.rate, { rate: l.rate, base: Math.round(l.base * part), vat: Math.round(l.vat * part), deduct }]
+        }),
+      ),
+    )
+    if (deductOfLines(back) <= 0) continue
+    events.push({ kind: 'back', period: notBefore(creditPeriod(c, company, filed)), on: c.receivedOn > correct.on ? c.receivedOn : correct.on, lines: back, credit: true })
+    left = lessLines(left, back)
+    owedNow -= grossOfLines([...lowers.values()])
+  }
+  // The payment after the 101st day gives back the share of what is left that it pays.
+  if (paid !== null && paid >= day101 && deductOfLines(left) > 0) {
+    const back = owedNow <= 0 ? left : shareOfLines(left, paidCents, owedNow)
+    if (deductOfLines(back) > 0) events.push({ kind: 'back', period: notBefore(periodOf(paid, quarterly)), on: paid > correct.on ? paid : correct.on, lines: back })
+  }
+  return events
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -728,6 +814,8 @@ export type IssueCode =
   | 'ratioChanged'
   | 'unpaid53b'
   | 'paid53b'
+  | 'credited53b'
+  | 'noDue53b'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
@@ -851,13 +939,13 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       for (const e of unpaidEvents(doc, data, company, filed)) {
         if (e.period !== period) continue
         const sign = e.kind === 'correct' ? 1 : -1
-        for (const line of data.lines) {
+        for (const line of e.lines) {
           if (line.deduct === 0) continue
           add('r29', sign * line.deduct, doc.id)
           kv.c2.push({ dod: data.vatId, fo: '0', fp: kvNumber(doc.number), zr: -sign * line.base, dr: -sign * line.vat, s: line.rate, or: -sign * line.deduct, onp: true, doc: doc.id })
         }
         note('C2', doc.id)
-        issue('warn', e.kind === 'correct' ? 'unpaid53b' : 'paid53b', doc.id)
+        issue('warn', e.kind === 'correct' ? 'unpaid53b' : e.credit ? 'credited53b' : 'paid53b', doc.id)
       }
     }
     if (periodOfDoc(doc, data, company, filed) !== period) continue
@@ -882,6 +970,9 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     const vatId = plainVatId(data.vatId)
     const number = kvNumber(doc.number)
     const den = taxDay(doc, data)
+    // § 53b needs the due day: without it an invoice not paid is never seen past its 100 days.
+    if (payer && doc.kind === 'invoice_in' && data.mode === 'domestic' && !correction && !doc.dueOn && !doc.paidOn && !doc.paidPrivately && data.lines.some((l) => l.deduct > 0))
+      issue('warn', 'noDue53b', doc.id)
     if ((doc.currency ?? 'EUR') !== 'EUR' && data.mode !== 'none' && data.lines.length === 0) issue('block', 'currency', doc.id)
     // The one-stop shop's supplies are taxed in the member state of consumption: its own return (oss.ts), not this one.
     if (data.mode === 'none' || data.mode === 'outside' || data.mode === 'oss') continue

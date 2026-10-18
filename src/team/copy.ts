@@ -788,8 +788,12 @@ export const team = typesetAll({
       reverseCorrection: 'Opravná faktúra k dodaniu tovaru s prenesením daňovej povinnosti je v C.1 s rozdielom základu a množstvom ako rozdiel (mínus, keď základ klesá): skontrolujte množstvo.',
       ratioSettle: 'Firma odpočítava daň pomerne koeficientom: po skončení roka treba v tomto období vysporiadať odpočet koeficientom z údajov roka (§ 50 ods. 4).',
       ratioChanged: 'Doklady roka sa od vysporiadania koeficientom zmenili (doklad pribudol, dodatočne sa zaúčtoval alebo opravil): zaúčtujte ich a vysporiadajte rok znova, kým toto obdobie podáte.',
-      unpaid53b: 'Faktúra dodávateľa nie je zaplatená do 100 dní od splatnosti: odpočítaná daň sa v tomto období opravuje (§ 53b, riadok 29 a C.2). Ak je zaplatená, priraďte jej platbu.',
-      paid53b: 'Faktúra dodávateľa zaplatená po oprave podľa § 53b: odpočítaná daň sa v období platby opravuje späť (riadok 29 a C.2).',
+      unpaid53b:
+        'Faktúra dodávateľa nie je zaplatená do 100 dní od splatnosti: odpočítaná daň sa v tomto období opravuje v rozsahu nezaplatenej časti (§ 53b, riadok 29 a C.2). Ak je zaplatená, priraďte jej platbu.',
+      paid53b: 'Faktúra dodávateľa zaplatená po oprave podľa § 53b: odpočítaná daň sa v období platby opravuje späť v rozsahu platby (riadok 29 a C.2).',
+      credited53b:
+        'Faktúru opravenú podľa § 53b znížil dodávateľ opravným dokladom: ten opravuje odpočet sám (riadok 28), preto sa časť opravy podľa § 53b, ktorú pokrýva, vracia (riadok 29 mínus a C.2).',
+      noDue53b: 'Faktúra dodávateľa nemá deň splatnosti: doplňte ho, inak sa nedá posúdiť oprava odpočtu pri nezaplatení do 100 dní (§ 53b).',
       domestic7a: 'Osoba registrovaná podľa § 7a uvádza len služby a tovar zo zahraničia; tento doklad sme vynechali.',
       mismatch: 'Pri plnení bez DPH je uvedená DPH.',
       before: 'Doklad je spred registrácie pre DPH: do priznania nepatrí.',
@@ -911,7 +915,7 @@ export const team = typesetAll({
       'Firma nie je registrovaná pre DPH, ale nakupuje služby od zahraničných dodávateľov (napríklad reklamu od Googlu či Mety alebo softvér). Pred takým nákupom sa musí registrovať podľa § 7a, a to bez ohľadu na sumu, a DPH z neho zaplatiť. Po registrácii to zmeňte v údajoch firmy.',
     needs7aNone: 'Za posledné mesiace sme nič také nenašli.',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: trojstranný obchod (aj v súhrnnom výkaze), premiestnenie vlastného tovaru a call-off stock, nevymožiteľné pohľadávky (§ 25a, § 53b) a úpravu odpočítanej dane pri investičnom majetku (§ 54 až 54d). Ak sa niečo z toho firmy týka, doplňte to v eDane.',
+      'Firmony zatiaľ nepripravuje: trojstranný obchod (aj v súhrnnom výkaze), premiestnenie vlastného tovaru a call-off stock, nevymožiteľné pohľadávky z vystavených faktúr (§ 25a) a úpravu odpočítanej dane pri investičnom majetku (§ 54 až 54d). Ak sa niečo z toho firmy týka, doplňte to v eDane.',
     sv: {
       heading: 'Súhrnné výkazy',
       monthlyLead: 'Priznanie DPH zostáva štvrťročné. Súhrnné výkazy sa podávajú samostatne za jednotlivé mesiace.',

@@ -52,4 +52,50 @@ export async function checkUnpaid53b({ db, acc, lucia, nowS, day }) {
   )
   page = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/ucet/378?rok=${Y}`)).text())
   check('the books: 378 settled on 3 July', page.includes('Oprava opravenej odpočítanej dane po zaplatení'))
+
+  // Due on 31 May, so the 101st day is 9 September: one invoice half paid in June, one the supplier cancels in October.
+  const inv = (id, number, total, base, vat, deduct, extra = {}) =>
+    db
+      .prepare(
+        `INSERT INTO documents (id, company_id, created_at, source, status, kind, party, party_ico, number, issued_on, due_on, supplied_on, total_cents, vat_cents, currency, category,
+           vat_deduct, booked_at, booked_by, vat_mode, vat_lines, party_vat_id, corrects)
+         VALUES (?, ?, ?, 'upload', 'read', 'invoice_in', 'TEST-ONLY Dodávateľ s. r. o.', '36123456', ?, ?, ?, ?, ?, ?, 'EUR', 'services', 1, ?, ?, 'domestic', ?, 'SK2020123456', ?)`,
+      )
+      .bind(
+        id,
+        company,
+        at(extra.came ?? `${Y}-05-03`),
+        number,
+        extra.on ?? `${Y}-05-01`,
+        extra.due ?? `${Y}-05-31`,
+        extra.on ?? `${Y}-05-01`,
+        total,
+        vat,
+        nowS,
+        lucia.id,
+        JSON.stringify([{ rate: 23, base, vat, deduct }]),
+        extra.corrects ?? null,
+      )
+  await db.batch([
+    inv('u53-part', 'FA-54', 12300, 10000, 2300, 2300),
+    inv('u53-cr', 'FA-55', 12300, 10000, 2300, 2300),
+    inv('u53-cn', 'DB-55', -12300, -10000, -2300, -2300, { on: `${Y}-10-04`, came: `${Y}-10-05`, due: null, corrects: 'FA-55' }),
+    db
+      .prepare(
+        "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-53p', ?, 'acc-53b', ?, ?, -6150, 'TEST-ONLY Dodávateľ s. r. o.', 'FA54', 'u53p')",
+      )
+      .bind(company, nowS, `${Y}-06-01`),
+    db.prepare("INSERT INTO links (document_id, payment_id, company_id, how, created_at) VALUES ('u53-part', 'pay-53p', ?, 'accountant', ?)").bind(company, nowS),
+  ])
+  page = await vatPage(`${Y}-09`)
+  check(
+    'September: the half not paid of one (11,50 €) and the whole of the other (23,00 €), row 29 34,50 €',
+    page.includes('Oprava odpočítanej dane pri nezaplatení (§ 53b)') && page.includes('34,50'),
+    page.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').match(/Oprava odpočítanej dane pri nezaplatení.{0,400}/)?.[0],
+  )
+  page = await vatPage(`${Y}-10`)
+  check(
+    "October: the supplier's credit note corrects the deduction itself, so the § 53b correction it covers comes back",
+    page.includes('znížil dodávateľ opravným dokladom') && page.includes('Oprava odpočítanej dane (§ 53)'),
+  )
 }

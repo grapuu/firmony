@@ -1970,9 +1970,25 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   (`PAID_ON_COLUMN`; paid by the owner never corrects). `docsAround` loads an invoice whose 101st day or payment is in
   the periods asked; the books move it 378 against 343.100 on its day (not before the day has come) and back with the
   payment, and the return's settlement takes row 29 off what it deducts (`vatDeducted`). The VAT page says why (warnings
-  `unpaid53b`, `paid53b`). Not built: a part paid (a whole invoice is paid or not), the supplier's side (§ 25a: the base
-  of a claim that cannot be recovered lowered, its corrective document; then § 53b(1)(b) for the customer).
+  `unpaid53b`, `paid53b`). Not built: the supplier's side (§ 25a: the base of a claim that cannot be recovered lowered,
+  its corrective document; then § 53b(1)(b) for the customer).
   test/vat-53b.runtime.mjs, units "§ 53b".
+  Mended after a twelfth independent review (18 October 2026, of commit 0eb8011; each finding verified first, the engine
+  run against a real D1 in a scratch harness; schema step 66 indexes documents by the number they correct): only the part
+  not paid is corrected ("v rozsahu, v akom nezaplatil"; KROS's guide of October 2025 corrects half of an invoice half
+  paid): a bank payment that pays the invoice alone counts by its amount, its cash document by its own (`paid_cents`), one
+  payment of several invoices pays each whole; a payment after the correction gives back the share it pays. A correction
+  from the same supplier (`credits`: booked, by the number it corrects, IČO or VAT number) that came before the 101st day
+  lowers what is owed (a credit note of the whole: nothing to correct); one that comes after it and before the payment
+  takes back the deduction itself (row 28), so the part of the § 53b correction it covers comes back in its period
+  (`credited53b`). Paid after the 101st day but within the correction's period: both lines in that return (podnikajte.sk's
+  reading). An invoice without a due day is said in its period (`noDue53b`). The books post 378 only for what the return
+  holds (an invoice in the books, not before the registration) and by the event's own lines. `docsAround` reads the
+  periods' payments, cash documents and corrections once as sets instead of a lookup per old invoice. Left as they are,
+  said: an invoice paid by the owner is taken as paid in time (no day is kept for it); a period locked keeps a payment from
+  being paired with its invoice (the lock's design); the day stays the 101st (KROS and the instructions count it so; the
+  reviewer read the statute's "uplynulo 100 dní" as the 100th); the correction uses the deduction as booked, not the
+  year's settled coefficient (§ 53b(3) with § 50(4)).
 - Not built: triangular trade, the supplier's bad debts (§ 25a), documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
@@ -2456,8 +2472,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1292 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1882 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1299 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1884 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

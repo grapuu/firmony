@@ -30,7 +30,7 @@ import { eurOf, rateFor, rateMicro, type RateMicro, type Rates } from './fx'
 import { centsOf } from './invoices'
 import { normalizeVs, type DocKind, type Exempt } from './match'
 import { bratislavaDay, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
-import { isIssued, periodRange, unpaidEvents, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
+import { isIssued, periodRange, taxDay, unpaidEvents, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
 import { groupedIban, periodName, rowsOf, type FiledReturn } from './vat-store'
 import { settleTotal } from './vat-ratio'
 
@@ -953,19 +953,25 @@ export function buildBooks(input: LedgerInput): Books {
     const vc = vatCompanyOf(company)
     const filedOn = new Map(input.filed.map((f) => [f.period, f.filedOn]))
     for (const d of input.docs) {
-      if (d.kind !== 'invoice_in' || !d.bookedAt || !d.dueOn) continue
+      // Only what the return holds: an invoice in the books (its own entry made) and of our VAT (not before the registration).
+      if (d.kind !== 'invoice_in' || !d.bookedAt || !d.dueOn || !booked.has(d.id)) continue
       const vd = vatDocOf(d)
       const data = vatOf(vd, vc)?.data
-      if (!data) continue
-      const deducted = data.lines.reduce((sum, line) => sum + line.deduct, 0)
+      if (!data || (vc.since && taxDay(vd, data) < vc.since)) continue
       for (const e of unpaidEvents(vd, data, vc, filedOn)) {
         if (!inBooks(e.on) || (input.today && e.on > input.today)) continue
+        const deducted = e.lines.reduce((sum, line) => sum + line.deduct, 0)
         entries.push({
-          key: `53b:${d.id}:${e.kind}`,
+          key: `53b:${d.id}:${e.kind}:${e.on}`,
           on: e.on,
           kind: 'vat',
           number: d.number ?? '',
-          text: e.kind === 'correct' ? `Oprava odpočítanej dane, faktúra nezaplatená do 100 dní od splatnosti (§ 53b): ${d.party ?? ''}` : `Oprava opravenej odpočítanej dane po zaplatení (§ 53b): ${d.party ?? ''}`,
+          text:
+            e.kind === 'correct'
+              ? `Oprava odpočítanej dane, faktúra nezaplatená do 100 dní od splatnosti (§ 53b): ${d.party ?? ''}`
+              : e.credit
+                ? `Oprava opravenej odpočítanej dane po opravnom doklade dodávateľa (§ 53b): ${d.party ?? ''}`
+                : `Oprava opravenej odpočítanej dane po zaplatení (§ 53b): ${d.party ?? ''}`,
           docId: d.id,
           paymentId: null,
           manualId: null,

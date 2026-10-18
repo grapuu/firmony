@@ -1440,6 +1440,9 @@ const MIGRATIONS: readonly string[][] = [
   // After the review of the proportional deduction (18 October 2026): the coefficient a document was deducted by and its
   // mark for the coefficient change what a locked period holds, so the documents' guard covers them.
   [...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents', 'takings_cash', 'vat_ratio', 'ratio_mode'])],
+  // After the review of § 53b (18 October 2026): a received invoice's corrections are read with it (PAID_ON_COLUMN in
+  // store.ts), found by the company and the number they correct.
+  ['CREATE INDEX IF NOT EXISTS documents_corrects ON documents (company_id, corrects) WHERE corrects IS NOT NULL'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

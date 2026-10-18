@@ -2666,17 +2666,37 @@ async function zipped(entries, note) {
   {
     const unpaid = (fields) =>
       doc({ number: 'FA-53B', issuedOn: '2027-01-10', receivedOn: '2027-01-12', dueOn: '2027-01-31', vat: v('domestic', [[23, 10000, 2300, 2300]], { vatId: 'SK2121212121', suppliedOn: '2027-01-10' }), ...fields })
-    const ev = (d, c = payer) => vat.unpaidEvents(d, d.vat, c)
-    check('the 101st day after 31 January 2027 is 12 May: unpaid, the correction in May', JSON.stringify(ev(unpaid({}))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12' }]))
-    check('paid on the 100th day (11 May): nothing; paid on the 101st in the same period: nothing to report', ev(unpaid({ paidOn: '2027-05-11' })).length === 0 && ev(unpaid({ paidOn: '2027-05-20' })).length === 0)
+    const ev = (d, c = payer) => vat.unpaidEvents(d, d.vat, c).map((e) => ({ kind: e.kind, period: e.period, on: e.on, deduct: e.lines.reduce((sum, l) => sum + l.deduct, 0), ...(e.credit ? { credit: true } : {}) }))
+    check('the 101st day after 31 January 2027 is 12 May: unpaid, the correction in May', JSON.stringify(ev(unpaid({}))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: 2300 }]))
+    check(
+      'paid on the 100th day (11 May): nothing; paid on the 101st in the same period: the correction and its back both in May',
+      ev(unpaid({ paidOn: '2027-05-11' })).length === 0 &&
+        JSON.stringify(ev(unpaid({ paidOn: '2027-05-20' }))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: 2300 }, { kind: 'back', period: '2027-05', on: '2027-05-20', deduct: 2300 }]),
+    )
     check(
       'paid in July: corrected in May, back in July; a quarterly payer the second and third quarter',
-      JSON.stringify(ev(unpaid({ paidOn: '2027-07-03' }))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12' }, { kind: 'back', period: '2027-07', on: '2027-07-03' }]) &&
+      JSON.stringify(ev(unpaid({ paidOn: '2027-07-03' }))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: 2300 }, { kind: 'back', period: '2027-07', on: '2027-07-03', deduct: 2300 }]) &&
         JSON.stringify(ev(unpaid({ paidOn: '2027-07-03' }), { ...payer, quarterly: true }).map((e) => e.period)) === JSON.stringify(['2027-Q2', '2027-Q3']),
     )
     check(
       'deducted only after the period of the 101st day: corrected at once (§ 53b(2))',
-      JSON.stringify(ev(unpaid({ receivedOn: '2027-06-10' }))) === JSON.stringify([{ kind: 'correct', period: '2027-06', on: '2027-06-10' }]),
+      JSON.stringify(ev(unpaid({ receivedOn: '2027-06-10' }))) === JSON.stringify([{ kind: 'correct', period: '2027-06', on: '2027-06-10', deduct: 2300 }]),
+    )
+    check(
+      'half paid in time: only the unpaid half corrected; half paid in July: half back',
+      JSON.stringify(ev(unpaid({ paidOn: '2027-01-30', paidCents: 6150 }))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: 1150 }]) &&
+        JSON.stringify(ev(unpaid({ paidOn: '2027-07-03', paidCents: 6150 })).map((e) => e.deduct)) === JSON.stringify([2300, 1150]),
+    )
+    const credit = (receivedOn, base) => ({ issuedOn: receivedOn, suppliedOn: null, receivedOn, period: null, lines: [{ rate: 23, base, vat: Math.round(base * 0.23), deduct: Math.round(base * 0.23) }] })
+    check(
+      'a credit note before the 101st day lowers what is owed: cancelled whole, nothing; half, half corrected',
+      ev(unpaid({ credits: [credit('2027-03-01', -10000)] })).length === 0 && JSON.stringify(ev(unpaid({ credits: [credit('2027-03-01', -5000)] })).map((e) => e.deduct)) === JSON.stringify([1150]),
+    )
+    check(
+      'a credit note after the correction, before any payment: the part it covers comes back in its period (it corrects the deduction itself)',
+      JSON.stringify(ev(unpaid({ credits: [credit('2027-06-15', -10000)] }))) ===
+        JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: 2300 }, { kind: 'back', period: '2027-06', on: '2027-06-15', deduct: 2300, credit: true }]) &&
+        JSON.stringify(ev(unpaid({ credits: [credit('2027-06-15', -5000)], paidOn: '2027-08-01', paidCents: 6150 })).map((e) => [e.period, e.deduct])) === JSON.stringify([['2027-05', 2300], ['2027-06', 1150], ['2027-08', 1150]]),
     )
     check(
       'no correction for a receipt, a corrective invoice, one paid by the owner, one without a deduction or a due day',
@@ -2699,6 +2719,13 @@ async function zipped(entries, note) {
       JSON.stringify([may.rows.r29, may.kv.c2]),
     )
     check('July: back, row 29 minus, C.2 plus', july.rows.r29 === -1725 && july.rows.r33 === 1725 && july.kv.c2[0]?.or === 1725 && july.kv.c2[0]?.zr === 10000 && july.issues.some((i) => i.code === 'paid53b'))
+    const credited = unpaid({ credits: [credit('2027-06-15', -10000)] })
+    const cb = vat.vatDocsByPeriod(payer, [credited])
+    const june = vat.workOut(payer, '2027-06', cb.get('2027-06') ?? [])
+    check('June of the credit note: the § 53b correction comes back (row 29 minus, C.2 plus) and says why', june.rows.r29 === -2300 && june.kv.c2[0]?.or === 2300 && june.issues.some((i) => i.code === 'credited53b'))
+    const noDue = unpaid({ dueOn: null })
+    const jan53 = vat.workOut(payer, '2027-01', [noDue])
+    check('an invoice without a due day: said in its period', jan53.issues.some((i) => i.code === 'noDue53b' && i.doc === noDue.id))
     const mayXml = vatXml.statementXml(filer, '2027-05', may.kv)
     const mayValid = await valid(mayXml, KV_XSD, 'kv53b')
     check('the control statement of May with ONP="x", valid against kv_dph_2025.xsd', mayValid.ok && mayXml.includes('ONP="x"') && mayXml.includes('FO="0"'), mayValid.why)
@@ -6356,6 +6383,13 @@ await (await import('./social.units.mjs')).checkSocial()
         books({}, '2026-05-11').entries.filter((e) => e.key.startsWith('53b:')).length === 0,
       JSON.stringify(out),
     )
+    check(
+      'nothing in the books that the return does not hold: an invoice before the registration, or one that makes no entry',
+      ledger.buildBooks({ company: { ...payerCo, vatSince: '2026-03-01' }, docs: [unpaidDoc], payments: [], banks: [], filed: [], manual: [], today: '2026-10-18' }).entries.filter((e) => e.key.startsWith('53b:')).length === 0 &&
+        books({ category: null }, '2026-10-18').entries.filter((e) => e.key.startsWith('53b:')).length === 0,
+    )
+    const halfPaid = books({ paidOn: '2026-07-03', paidCents: 6150 }, '2026-10-18').entries.filter((e) => e.key.startsWith('53b:'))
+    check('half paid in July: half the deduction back to 343.100', halfPaid.length === 2 && halfPaid[1].lines[0].cents === 1150, JSON.stringify(halfPaid))
   }
 }
 
