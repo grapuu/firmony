@@ -49,6 +49,8 @@ export interface MonthParts {
   other: number
   /** The average hourly earnings when the accountant sets them; null: proposed. */
   average: number | null
+  /** The meals of the month (meals.ts) when the accountant sets them; null: proposed from the hours worked. */
+  meals?: number | null
 }
 
 export const EMPTY_PARTS: MonthParts = {
@@ -91,6 +93,7 @@ export function partsOf(raw: unknown): MonthParts {
     bonus: whole(o.bonus, 99_999_999_99),
     other: whole(o.other, 99_999_999_99),
     average: maybe(o.average, 10_000_0000),
+    meals: maybe(o.meals, 62),
   }
 }
 

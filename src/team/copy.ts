@@ -891,7 +891,7 @@ export const team = typesetAll({
       'Firma nie je registrovaná pre DPH, ale nakupuje služby od zahraničných dodávateľov (napríklad reklamu od Googlu či Mety alebo softvér). Pred takým nákupom sa musí registrovať podľa § 7a, a to bez ohľadu na sumu, a DPH z neho zaplatiť. Po registrácii to zmeňte v údajoch firmy.',
     needs7aNone: 'Za posledné mesiace sme nič také nenašli.',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), stravné, sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
+      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
     sv: {
       heading: 'Súhrnné výkazy',
       monthlyLead: 'Priznanie DPH zostáva štvrťročné. Súhrnné výkazy sa podávajú samostatne za jednotlivé mesiace.',
@@ -1621,7 +1621,7 @@ export const team = typesetAll({
     extendSave: 'Uložiť lehotu',
     open: 'Závierka a daň z príjmov',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), stravné, sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
+      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
     /** What the client reads when the closing is filed: the tax to pay, by when and where, or the overpayment; the advances it brings. */
     clientMessage: (m: { year: number; left: string | null; paid: string | null; over: string | null; due: string; vs: string; account: string | null; advances: { kind: 'none' | 'quarterly' | 'monthly'; each: string } }) =>
       typeset(
@@ -1711,9 +1711,32 @@ export const team = typesetAll({
       bonus: 'Odmena, prémia',
       other: 'Iný príjem (mzda)',
       average: 'Priemerný zárobok za hodinu',
+      meals: 'Jedlá (stravovanie), počet',
     } as Record<string, string>,
     averageHint: (value: string, quarter: boolean) => typeset(quarter ? `Prázdne: ${value} z minulého štvrťroka.` : `Prázdne: pravdepodobný zárobok ${value}.`),
     hoursHint: (value: string) => typeset(`Prázdne: ${value} podľa pracovných dní.`),
+    meals: {
+      title: 'Stravovanie zamestnancov',
+      way: 'Ako firma stravovanie zabezpečuje',
+      ways: { '': 'Neposkytuje cez mzdy (vlastná jedáleň alebo jedlá cez doklady)', voucher: 'Stravovacie poukážky', cash: 'Finančný príspevok na stravovanie' } as Record<string, string>,
+      wayHint: 'Platí pre zamestnancov, ktorí si nevybrali inak (výber je v karte zamestnanca).',
+      voucher: 'Hodnota poukážky',
+      employer: 'Príspevok zamestnávateľa na jedno jedlo',
+      fund: 'Príspevok zo sociálneho fondu na jedno jedlo',
+      bounds: (voucher: string, max: string, cash: string) =>
+        typeset(
+          `Podľa § 152 Zákonníka práce dnes: poukážka aspoň ${voucher}, zamestnávateľ platí aspoň 55 % jej hodnoty a najviac ${max} na jedlo; finančný príspevok aspoň ${cash}. Zvyšok poukážky platí zamestnanec zo mzdy. Pri finančnom príspevku je jeho výškou príspevok zamestnávateľa a fondu; hodnota poukážky ostáva pre tých, ktorí si vybrali poukážky.`,
+        ),
+      hint: (count: string) => typeset(`Prázdne: ${count} podľa dní odpracovaných nad 4 hodiny.`),
+      none: 'Zamestnanec stravovanie cez mzdy neberie.',
+      slipVoucher: (count: number) => typeset(`Stravovacie poukážky (${count} ×), časť zamestnanca`),
+      slipCash: (count: number) => typeset(`Finančný príspevok na stravovanie (${count} ×)`),
+      slipParts: (employer: string, fund: string) => typeset(`zamestnávateľ ${employer}, sociálny fond ${fund}; nezdaňuje sa ani sa z neho neplatia odvody`),
+      employerCost: 'Príspevok zamestnávateľa na stravovanie',
+      choice: 'Stravovanie',
+      choices: { '': 'Ako firma', voucher: 'Stravovacie poukážky', cash: 'Finančný príspevok', none: 'Nič (nestravuje sa cez firmu)' } as Record<string, string>,
+      choiceHint: 'Zamestnanec si medzi poukážkami a finančným príspevkom vyberá na 12 mesiacov (§ 152 ods. 7 Zákonníka práce).',
+    },
     pay: {
       wage: 'Mzda za odpracovaný čas',
       reward: 'Odmena',
@@ -1963,6 +1986,13 @@ export const team = typesetAll({
       sickOutside: 'PN musí začať počas pomeru.',
       sickClosed: 'Zmena by zasiahla uzavretý mesiac. Najprv ho otvorte.',
       dvz: 'Denný vymeriavací základ napíšte v eurách, napríklad 45,1234.',
+      meals: 'Počet jedál napíšte celým číslom, najviac 62.',
+      mealAmount: 'Sumu napíšte v eurách, napríklad 6,98 (najviac 100 €).',
+      mealVoucher: (min: string) => typeset(`Poukážka musí mať hodnotu aspoň ${min} (75 % stravného na pracovnej ceste 5 až 12 hodín).`),
+      mealEmployerLow: (min: string) => typeset(`Zamestnávateľ prispieva aspoň ${min}, teda 55 % hodnoty poukážky.`),
+      mealEmployerHigh: (max: string) => typeset(`Zamestnávateľ prispieva najviac ${max} na jedlo (55 % stravného). Viac môže pridať sociálny fond.`),
+      mealCashLow: (min: string) => typeset(`Finančný príspevok musí byť aspoň ${min}.`),
+      mealFund: 'Príspevky zamestnávateľa a sociálneho fondu nesmú spolu prevýšiť hodnotu poukážky.',
     },
     clientMessage: (m: { month: string; payday: string; employees: { name: string; amount: string; iban: string | null }[]; social: { amount: string; iban: string | null; vs: string | null } | null; health: { name: string; amount: string; iban: string | null; vs: string | null }[]; tax: { amount: string; iban: string | null; vs: string; due: string } | null }) =>
       typeset(
@@ -1995,7 +2025,7 @@ export const team = typesetAll({
     },
     open: 'Mzdy',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), stravné, sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
+      'Firmony zatiaľ nepripravuje: zrážky zo mzdy (exekúcie), sezónnu prácu, vyššie sadzby z kolektívnej zmluvy a doplnkové dôchodkové sporenie. Mesačné výkazy do poisťovní a prehľad pre daňový úrad pripravíte v Mzdových podaniach, kde uložíte aj ich potvrdenky. Prihlášky a odhlášky zamestnancov podáte v portáloch poisťovní a zaznamenáte ich na tejto stránke.',
   },
   ledger: {
     title: 'Účtovná kniha',

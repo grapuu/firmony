@@ -1332,6 +1332,8 @@ const MIGRATIONS: readonly string[][] = [
   // After the review of approving (18 October 2026): who typed a supplier's IBAN, so that a colleague who typed it never
   // approves that invoice himself (approvals.ts).
   ['ALTER TABLE documents ADD COLUMN iban_by TEXT'],
+  // Meals of employees (18 October 2026, meals.ts): each employee's choice of vouchers or the financial contribution.
+  ['ALTER TABLE employees ADD COLUMN meal_way TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

@@ -100,6 +100,7 @@ export const CHART: Readonly<Record<string, string>> = {
   '429': 'Neuhradená strata minulých rokov',
   '431': 'Výsledok hospodárenia v schvaľovacom konaní',
   '461': 'Bankové úvery',
+  '472': 'Záväzky zo sociálneho fondu',
   '479': 'Ostatné dlhodobé záväzky',
   '501': 'Spotreba materiálu',
   '502': 'Spotreba energie',
@@ -277,6 +278,8 @@ export interface LedgerPayroll {
   tax: number
   /** What each payment of it comes to: the Social Insurance Agency's, each health insurer's, the tax office's. */
   pays: { social: number; health: number[]; tax: number }
+  /** Meals (meals.ts): vouchers out of their stock (213), the financial contribution with the wage (331). */
+  meals?: { voucher: { employer: number; fund: number; employee: number }; cash: { employer: number; fund: number } }
 }
 
 /** The analytic accounts of 336: the Social Insurance Agency and the health insurers. */
@@ -938,6 +941,13 @@ export function buildBooks(input: LedgerInput): Books {
       r.tax >= 0 ? { md: '331', d: '342', cents: r.tax } : { md: '342', d: '331', cents: -r.tax },
       { md: '524', d: SOCIAL_ACCOUNT, cents: r.socialEmployer },
       { md: '524', d: HEALTH_ACCOUNT, cents: r.healthEmployer },
+      // Meals: the employer's part a cost (527), the social fund's out of it (472); vouchers leave their stock (213),
+      // the employee's part of them taken off the wage (331); a financial contribution is owed with the wage (331).
+      { md: '527', d: '213', cents: r.meals?.voucher.employer ?? 0 },
+      { md: '472', d: '213', cents: r.meals?.voucher.fund ?? 0 },
+      { md: '331', d: '213', cents: r.meals?.voucher.employee ?? 0 },
+      { md: '527', d: '331', cents: r.meals?.cash.employer ?? 0 },
+      { md: '472', d: '331', cents: r.meals?.cash.fund ?? 0 },
     ].filter((l) => l.cents > 0)
     if (lines.length > 0)
       entries.push({ key: `w:${r.period}`, on: end, kind: 'payroll', number: `MZDY ${r.period.slice(5, 7)}/${r.period.slice(0, 4)}`, text: `Mzdy za ${periodName(r.period)}`, docId: null, paymentId: null, manualId: null, lines })

@@ -42,6 +42,7 @@ import { checkCash } from './cash.runtime.mjs'
 import { checkDunning } from './dunning.runtime.mjs'
 import { checkTakings } from './takings.runtime.mjs'
 import { checkApprovals } from './approvals.runtime.mjs'
+import { checkMeals } from './meals.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
 import { checkJointStock } from './joint-stock.runtime.mjs'
 import { checkLists } from './lists.runtime.mjs'
@@ -291,7 +292,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 57)
+check('health says the schema', (await res.json()).schema === 58)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -4800,6 +4801,7 @@ await checkDunning({ db, nowS, lucia, signIn, as, day, tick, capture: process.en
 await checkCenters({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkTakings({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkApprovals({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkMeals({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

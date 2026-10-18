@@ -26,6 +26,7 @@ import {
   centers,
   approvals,
   takings,
+  meals,
   ledger,
   ledgerStore,
   dues,
@@ -1468,6 +1469,88 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
   check(
     'an approval is of the total, currency and IBAN the page showed',
     approvals.approvalSeen({ totalCents: 20000, currency: null, partyIban: 'SK31' }) === '20000|EUR|SK31' && approvals.approvalSeen({ totalCents: null, currency: 'USD', partyIban: null }) === '|USD|',
+  )
+}
+
+// Meals of employees (18 October 2026, meals.ts): § 152 of the Labour Code with the meal allowance of 9,30 € from
+// 1 December 2025, the employee's way, the payslip and the books.
+{
+  const b = meals.mealBounds('2026-10-18')
+  check('the bounds of 2026: a voucher at least 6,98 €, the financial contribution at least 3,84 €, the employer at most 5,12 € a meal', b?.voucherMin === 698 && b.cashMin === 384 && b.employerMax === 512, JSON.stringify(b))
+  check('the employer pays at least 55 % of a voucher, rounded up to the cent', meals.employerMin(698) === 384 && meals.employerMin(700) === 385 && meals.employerMin(1000) === 550)
+  const v = { way: 'voucher', voucher: 700, employer: 385, fund: 100 }
+  const issues = (s) => meals.mealIssues(s, '2026-10-18').join()
+  check(
+    "what the law refuses: a voucher too small, the employer's part too small or too large, more than the voucher, a financial contribution too small",
+    issues(v) === '' &&
+      issues({ ...v, voucher: 600, employer: 330 }) === 'voucher' &&
+      issues({ ...v, employer: 300 }) === 'employerLow' &&
+      issues({ ...v, voucher: 1000, employer: 600 }) === 'employerHigh' &&
+      issues({ ...v, fund: 400 }) === 'fund' &&
+      issues({ way: 'cash', voucher: 0, employer: 300, fund: 0 }) === 'cashLow' &&
+      issues({ way: 'cash', voucher: 0, employer: 384, fund: 0 }) === '' &&
+      issues({ way: 'cash', voucher: 600, employer: 384, fund: 0 }) === 'voucher' &&
+      issues({ way: null, voucher: 1, employer: 9999, fund: 0 }) === '',
+  )
+  const cashOnly = { way: 'cash', voucher: 0, employer: 400, fund: 0 }
+  check(
+    "the employee's way: his own, else the company's; vouchers only where the company has a voucher's value; none when he takes none or the company gives none",
+    meals.mealWayOf(null, v) === 'voucher' &&
+      meals.mealWayOf('cash', v) === 'cash' &&
+      meals.mealWayOf('none', v) === null &&
+      meals.mealWayOf('voucher', cashOnly) === 'cash' &&
+      meals.mealWayOf('voucher', meals.NO_MEALS) === null &&
+      meals.mealWayOf(null, null) === null,
+  )
+  check(
+    'a meal a day worked over four hours, of an employment',
+    meals.mealsProposed('employment', 800, 17600) === 22 && meals.mealsProposed('employment', 800, 17500) === 21 && meals.mealsProposed('employment', 400, 17600) === 0 && meals.mealsProposed('dovp', 800, 17600) === 0,
+  )
+  const mv = meals.mealMoney('voucher', 20, v)
+  const mc = meals.mealMoney('cash', 20, v)
+  check(
+    "a month's money: vouchers the employer's and the fund's parts, the rest the employee's; the financial contribution both paid with the wage",
+    mv.employer === 7700 && mv.fund === 2000 && mv.employee === 4300 && mv.cash === 0 && mc.employer === 7700 && mc.fund === 2000 && mc.employee === 0 && mc.cash === 9700,
+  )
+  const base = { period: '2026-10', gross: 150000, declaration: true, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false, days: 31 }
+  const plain = payroll.payslip(base)
+  const withV = payroll.payslip({ ...base, meals: mv })
+  const withC = payroll.payslip({ ...base, meals: mc })
+  check(
+    'the payslip: meals neither taxed nor insured; the employee pays his part of the vouchers off the net, the financial contribution is paid with it; the employer\'s part a cost of his',
+    withV.advance === plain.advance &&
+      withV.socialEmployee === plain.socialEmployee &&
+      withV.healthEmployee === plain.healthEmployee &&
+      withV.net === plain.net - 4300 &&
+      withC.net === plain.net + 9700 &&
+      withV.employerCost === plain.employerCost + 7700 &&
+      withC.employerCost === plain.employerCost + 7700 &&
+      payroll.payslip({ ...base, meals: meals.mealMoney('voucher', 0, v) }).meals === undefined,
+  )
+  const employee = { id: 'm1', name: 'Mária', bornOn: null, insurer: '25', startedOn: '2026-01-01', endedOn: null, wage: 150000, declaration: true, disabled: false, healthDeduction: false, healthExempt: false, children: [], iban: null, contract: 'employment', regular: true, pension: 'none', exemption: false, wageKind: 'monthly', weeklyHours: 4000, leaveDays: null }
+  const slips = payrollStore.monthSlips(
+    '2026-10',
+    [employee, { ...employee, id: 'm2', mealWay: 'none' }, { ...employee, id: 'm3', mealWay: 'cash' }],
+    { period: '2026-10', payday: null, lines: [{ employeeId: 'm3', name: 'Mária', insurer: '25', gross: 150000, parts: { ...payMonth.EMPTY_PARTS, wage: null, meals: 10 } }], closedOn: null, closedByName: null },
+    { meals: v },
+  )
+  const [m1, m2, m3] = ['m1', 'm2', 'm3'].map((id) => slips.find((l) => l.employeeId === id))
+  check(
+    "a month's slips: a meal proposed a working day of October (22), none for who takes none, the count typed and the employee's own way",
+    m1?.proposals.meals === 22 && m1.slip.meals?.count === 22 && m1.slip.meals.way === 'voucher' && m2?.slip.meals === undefined && m2.proposals.meals === null && m3?.slip.meals?.count === 10 && m3.slip.meals.way === 'cash',
+    JSON.stringify([m1?.proposals, m3?.slip.meals]),
+  )
+  check('no meals without the company giving them', payrollStore.monthSlips('2026-10', [employee], null).every((l) => l.slip.meals === undefined))
+  const read = (text) => payrollForm.readParts({ jedla_m1: text }, 'm1', 'employment', 'monthly', 150000)
+  check('a count typed: a whole number up to 62, empty proposed', read('10').parts.meals === 10 && read('').parts.meals === null && read('63').errors.jedla_m1 === 'meals' && read('1,5').errors.jedla_m1 === 'meals')
+  const lp = payrollStore.ledgerPayroll({ period: '2026-10', payday: '2026-11-10', lines: slips.map((l) => ({ ...l })), closedOn: '2026-11-05', closedByName: 'Lucia' })
+  const books = ledger.buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'none' }, docs: [], payments: [], banks: [], filed: [], manual: [], payroll: [lp] })
+  const entry = books.entries.find((e) => e.key === 'w:2026-10')
+  const has = (md, d, cents) => entry?.lines.some((l) => l.md === md && l.d === d && l.cents === cents)
+  check(
+    "the books: the employer's part 527, the fund's 472, the vouchers out of 213 with the employee's part from 331; the financial contribution owed on 331",
+    has('527', '213', 22 * 385) && has('472', '213', 22 * 100) && has('331', '213', 22 * 215) && has('527', '331', 10 * 385) && has('472', '331', 10 * 100),
+    JSON.stringify(entry?.lines),
   )
 }
 

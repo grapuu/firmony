@@ -45,8 +45,10 @@
 //   decimals, at most the day's share of twice the general assessment base of two years before; the sum is rounded up to
 //   the cent. It is taxed with the wage and no assessment base of the insurances (pay-month.ts works it out).
 //
-// Said plainly, what is not built: wage deductions (exekúcie), meal allowances, seasonal work (its 762 € deduction), a
+// Said plainly, what is not built: wage deductions (exekúcie), seasonal work (its 762 € deduction), a
 // collective agreement's higher rates, contributions to the supplementary pension saving.
+
+import type { MealMoney } from './meals'
 
 /** The figures of a year, in cents; the rates are in hundredths of a per cent (basis points). */
 export interface PayrollYear {
@@ -203,6 +205,8 @@ export interface PayInput {
   minimumDays?: number
   /** The annual settlement settled with this month's wage (tax-settlement.ts): the tax owed (minus: refunded), the bonus paid (minus: returned). */
   settlement?: { tax: number; bonus: number }
+  /** The month's meals (meals.ts): exempt from tax and insurance; a voucher's part the employee pays off the net, a financial contribution with it. */
+  meals?: MealMoney | null
 }
 
 export interface Payslip {
@@ -241,6 +245,8 @@ export interface Payslip {
   /** The annual settlement settled with the month (older slips have none): the tax withheld for it (minus: refunded), the bonus paid for it (minus: returned). */
   settlementTax?: number
   settlementBonus?: number
+  /** The month's meals (older slips have none). */
+  meals?: MealMoney
   net: number
   employerCost: number
 }
@@ -358,7 +364,10 @@ export function payslip(input: PayInput): Payslip {
   const withheld = advance - bonus
   const settlementTax = Math.round(input.settlement?.tax ?? 0)
   const settlementBonus = Math.round(input.settlement?.bonus ?? 0)
-  const net = gross + sickPay - socialEmployee - healthEmployee - withheld - settlementTax + settlementBonus
+  // Meals are no income that is taxed or insured (§ 5(7)(b)): a voucher's part the employee pays comes off the net, a
+  // financial contribution is paid with it.
+  const meals = input.meals && input.meals.count > 0 ? input.meals : null
+  const net = gross + sickPay - socialEmployee - healthEmployee - withheld - settlementTax + settlementBonus - (meals?.employee ?? 0) + (meals?.cash ?? 0)
   return {
     period: input.period,
     rulesYear: y.year,
@@ -386,8 +395,9 @@ export function payslip(input: PayInput): Payslip {
     bonusByChild,
     withheld,
     ...(input.settlement ? { settlementTax, settlementBonus } : {}),
+    ...(meals ? { meals } : {}),
     net,
-    employerCost: gross + sickPay + socialEmployer + healthEmployer,
+    employerCost: gross + sickPay + socialEmployer + healthEmployer + (meals?.employer ?? 0),
   }
 }
 

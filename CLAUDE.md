@@ -30,7 +30,8 @@ over. Bring this section up to date first whenever a session ends.
    takings of an eKasa till"), approvers with limits and two approvals for larger companies (schema step 55, under
    "Payment orders"); a fifth independent review, of imports and takings, nine findings mended (schema step 56); a sixth,
    of approving and the Slovak e-invoice terms, eight findings mended (schema step 57; a credit note's e-invoice with
-   another day of supply failed the UBL schema). **Nothing is live**: there
+   another day of supply failed the UBL schema); meals of employees in payroll, vouchers and the financial contribution
+   (schema step 58, under "Payroll"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -2130,9 +2131,30 @@ monthly wage; nothing is sent to the insurers or the tax office by us.
   `payroll.saved`, `payroll.closed`, `payroll.reopened`, `payroll.settings`, `employee.added`, `employee.changed`.
 - Since 17 October 2026 (item 8 of "Start here"): agreements, a director's remuneration, pensioners and students,
   sick pay, holiday, obstacles, overtime and surcharges worked out by the app, the annual settlement, and the reports
-  of every relationship. Not built: wage deductions (exekúcie), meal allowances, seasonal work, a collective
+  of every relationship. Not built: wage deductions (exekúcie), seasonal work, a collective
   agreement's rates, the annual report's eForm file (its figures are on the settlement page), the § 33a bonus on
   mortgage interest. The client is told in a message, not yet with QR codes on its Dane page.
+- Meals of employees (built 18 October 2026, schema step 58 `employees.meal_way`; `src/app/meals.ts`). Read in the
+  original on static.slov-lex.sk through the browser pane, the version of 1 January 2026: § 152 of the Labour Code (a
+  meal a shift over four hours; the employer pays at least 55 % of the meal's price and at most 55 % of the meal
+  allowance of a trip of 5 to 12 hours, rounded up to the cent; a voucher worth at least 75 % of that allowance; the
+  employee chooses vouchers or the financial contribution for 12 months; the financial contribution is the employer's
+  contribution, at least 55 % of the least voucher; the social fund adds) and § 5(7)(b), § 19(2)(c)(5) of the Income
+  Tax Act (exempt, the employer's expense). With the allowance of 9,30 € (trips.ts, from 1 December 2025): a voucher at
+  least 6,98 €, the employer at most 5,12 € a meal, the financial contribution at least 3,84 € (`mealBounds`). The
+  payroll settings (`companies.payroll.meals`) take the company's way (none, vouchers, the financial contribution), a
+  voucher's value, the employer's and the social fund's contribution a meal, refused outside the bounds of today
+  (`mealIssues`); the employee form takes his own choice ("Ako firma", vouchers, the contribution, none), vouchers only
+  where the company has a voucher's value (`mealWayOf`). The month's parts of an employment have "Jedlá (stravovanie),
+  počet", proposed as the hours worked divided by the working day when it is over four hours (`mealsProposed`), a whole
+  number up to 62 typed. The slip: neither taxed nor insured; with vouchers the employee's part (value less the
+  employer's and the fund's) comes off the net, with the contribution the employer's and the fund's parts are paid with
+  it; the employer's part is in the cost of work. The books (the month's entry): the employer's part 527, the fund's
+  472, against 213 for vouchers (with the employee's part from 331) or 331 for the contribution. Not built: a canteen of
+  the company's or meals bought from another (documents), the social fund's own creation (Act No. 152/1994 Z. z., an
+  internal document 527/472), meals of agreements, a day of a business trip with its allowance (the count is typed),
+  vouchers bought (the supplier's invoice to 213 by the booking form's own account, its fee to 518).
+  test/meals.runtime.mjs, units "Meals of employees".
 
 ## Firmony for investors (14 October 2026; `src/views/investors.tsx`, `INVESTORS` in `src/config.ts`, `copy.investors`)
 
@@ -2268,8 +2290,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1208 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1782 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1219 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1792 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

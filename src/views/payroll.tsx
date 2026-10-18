@@ -11,6 +11,7 @@ import { INSURERS, monthRange, type Employee, type Insurer, type PayrollRun, typ
 import type { PayrollTotals } from '../app/payroll'
 import type { DvzProposal, SickLeave } from '../app/pay-month'
 import { PART_FIELDS, hundredthsText, partsFor, tenThousandthsText } from '../app/payroll-form'
+import { mealBounds } from '../app/meals'
 import { groupedIban } from '../app/vat-store'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
@@ -134,10 +135,29 @@ export const SlipDetail: FC<{ line: SlipLine }> = ({ line }) => {
       {slip.bonus > 0 ? item(w.lines.bonus ?? '', slip.bonus) : null}
       {slip.settlementTax ? item(w.settlement.slipTax(slip.settlementTax > 0), -slip.settlementTax) : null}
       {slip.settlementBonus ? item(w.settlement.slipBonus(slip.settlementBonus > 0), slip.settlementBonus) : null}
+      {slip.meals?.way === 'voucher' ? (
+        <>
+          {item(w.meals.slipVoucher(slip.meals.count), -slip.meals.employee)}
+          <div class="kv__sub">
+            <dt>{w.meals.slipParts(formatEurExact(slip.meals.employer), formatEurExact(slip.meals.fund))}</dt>
+            <dd />
+          </div>
+        </>
+      ) : null}
+      {slip.meals?.way === 'cash' ? (
+        <>
+          {item(w.meals.slipCash(slip.meals.count), slip.meals.cash)}
+          <div class="kv__sub">
+            <dt>{w.meals.slipParts(formatEurExact(slip.meals.employer), formatEurExact(slip.meals.fund))}</dt>
+            <dd />
+          </div>
+        </>
+      ) : null}
       {item(w.lines.net ?? '', slip.net, true)}
       {item(w.lines.socialEmployer ?? '', slip.socialEmployer)}
       {social('employer')}
       {item(w.lines.healthEmployer ?? '', slip.healthEmployer)}
+      {(slip.meals?.employer ?? 0) > 0 ? item(w.meals.employerCost, slip.meals?.employer ?? 0) : null}
       {item(w.lines.cost ?? '', slip.employerCost, true)}
     </dl>
   )
@@ -328,7 +348,8 @@ const SettingsCard: FC<{
   insurers: Insurer[]
   values: SettingsValues
   errors: FieldErrors
-}> = ({ company, insurers, values, errors }) => (
+  today: string
+}> = ({ company, insurers, values, errors, today }) => (
   <section class="info" id="nastavenie" aria-labelledby="nastavenie-t">
     <h2 id="nastavenie-t" class="info__title">
       {w.settings.title}
@@ -352,6 +373,19 @@ const SettingsCard: FC<{
           />
         </>
       ))}
+      <fieldset class="cform__section fgrid__cell--wide">
+        <legend class="cform__title">{w.meals.title}</legend>
+        <div class="fgrid">
+          <Select id="w-stravovanie" name="stravovanie" label={w.meals.way} value={values.stravovanie ?? ''} options={w.meals.ways} hint={w.meals.wayHint} />
+          <Field id="w-poukazka" name="poukazka" label={w.meals.voucher} value={values.poukazka ?? ''} error={errors.poukazka} mode="decimal" max={12} wide={false} />
+          <Field id="w-prispevok" name="prispevok" label={w.meals.employer} value={values.prispevok ?? ''} error={errors.prispevok} mode="decimal" max={12} wide={false} />
+          <Field id="w-fond" name="fond" label={w.meals.fund} value={values.fond ?? ''} error={errors.fond} mode="decimal" max={12} wide={false} />
+          {(() => {
+            const b = mealBounds(today)
+            return b ? <p class="field__hint fgrid__cell--wide">{w.meals.bounds(formatEurExact(b.voucherMin), formatEurExact(b.employerMax), formatEurExact(b.cashMin))}</p> : null
+          })()}
+        </div>
+      </fieldset>
       <div class="fgrid__cell fgrid__cell--wide">
         <button class="btn btn--line stack__submit" type="submit">
           {w.settings.save}
@@ -475,7 +509,11 @@ const PartsFields: FC<{
             ? w.averageHint(eurPerHour(average.average), average.source === 'quarter')
             : key === 'hours' && line.pay && kind === 'employment'
               ? w.hoursHint(hundredthsText(line.pay.worked))
-              : undefined
+              : key === 'meals'
+                ? line.proposals?.meals === null || line.proposals?.meals === undefined
+                  ? w.meals.none
+                  : w.meals.hint(String(line.proposals.meals))
+                : undefined
         const label = key === 'wage' && kind !== 'employment' ? w.parts.reward : (w.parts[key] ?? key)
         return (
           <div class="wparts__cell">
@@ -765,7 +803,7 @@ export const PayrollPage: FC<PayrollPageProps> = (p) => {
             </a>
           </section>
           <RegistrationsCard company={c} registrations={p.registrations ?? []} today={p.today} />
-          <SettingsCard company={c} insurers={p.settings.insurers} values={p.settings.values} errors={p.settings.errors} />
+          <SettingsCard company={c} insurers={p.settings.insurers} values={p.settings.values} errors={p.settings.errors} today={p.today} />
         </aside>
       </div>
     </>
@@ -850,6 +888,7 @@ export const EmployeePage: FC<{ company: Company; form: EmployeeForm }> = ({ com
           <Field id="z-hodiny" name="hodiny" label={w.form.weeklyHours} value={v.hodiny ?? ''} error={e.hodiny} mode="decimal" max={6} />
           <Field id="z-dovolenka" name="dovolenka" label={w.form.leaveDays} value={v.dovolenka ?? ''} hint={w.form.leaveHint} error={e.dovolenka} mode="decimal" max={6} />
           <Field id="z-iban" name="iban" label={w.form.iban} value={v.iban ?? ''} error={e.iban} max={34} />
+          <Select id="z-stravne" name="stravne" label={w.meals.choice} value={v.stravne ?? ''} options={w.meals.choices} hint={w.meals.choiceHint} />
           {tick('vyhlasenie', w.form.declaration)}
           {tick('ztp', w.form.disabled)}
           {tick('op', w.form.healthDeduction)}

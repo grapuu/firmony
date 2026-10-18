@@ -47,6 +47,7 @@ export const PART_FIELDS: Record<keyof MonthParts, string> = {
   bonus: 'odmena',
   other: 'ine',
   average: 'pz',
+  meals: 'jedla',
 }
 
 const HOURS = new Set<keyof MonthParts>(['hours', 'obstacleHours', 'overtimeHours', 'nightHours', 'saturdayHours', 'sundayHours', 'holidayWorkHours'])
@@ -55,7 +56,7 @@ const DAYS = new Set<keyof MonthParts>(['holidayDays', 'unpaidDays'])
 /** The parts a relationship has: an employment all of them, an agreement no holiday, obstacles or overtime, a director a bonus and other income only. */
 export function partsFor(kind: ContractKind, wageKind: WageKind): (keyof MonthParts)[] {
   const head: (keyof MonthParts)[] = wageKind === 'hourly' && kind !== 'director' ? ['hours'] : ['wage']
-  if (kind === 'employment') return [...head, 'holidayDays', 'obstacleHours', 'unpaidDays', 'overtimeHours', 'nightHours', 'saturdayHours', 'sundayHours', 'holidayWorkHours', 'bonus', 'other', 'average']
+  if (kind === 'employment') return [...head, 'holidayDays', 'obstacleHours', 'unpaidDays', 'overtimeHours', 'nightHours', 'saturdayHours', 'sundayHours', 'holidayWorkHours', 'bonus', 'other', 'average', 'meals']
   if (isAgreement(kind)) return [...head, ...(wageKind === 'hourly' ? [] : (['hours'] as const)), 'nightHours', 'saturdayHours', 'sundayHours', 'holidayWorkHours', 'bonus', 'other', 'average']
   return ['wage', 'bonus', 'other']
 }
@@ -65,6 +66,10 @@ export function partsValues(parts: MonthParts, id: string, kind: ContractKind, w
   const v: Record<string, string> = {}
   for (const key of partsFor(kind, wageKind)) {
     const value = parts[key]
+    if (key === 'meals' || value === undefined) {
+      v[`${PART_FIELDS[key]}_${id}`] = value === null || value === undefined ? '' : String(value)
+      continue
+    }
     v[`${PART_FIELDS[key]}_${id}`] = value === null ? '' : key === 'average' ? tenThousandthsText(value) : HOURS.has(key) || DAYS.has(key) ? (value === 0 ? '' : hundredthsText(value)) : key === 'wage' ? moneyText(value) : value === 0 ? '' : moneyText(value)
   }
   return v
@@ -75,15 +80,20 @@ export function partsValues(parts: MonthParts, id: string, kind: ContractKind, w
  * wage, the hours and the average earnings), a wrong one as an error under its field. The wage of a monthly-paid person
  * typed equal to the agreed one is kept as "as agreed", so it follows a later change of the contract.
  */
-export function readParts(body: Record<string, unknown>, id: string, kind: ContractKind, wageKind: WageKind, agreed: number): { parts: MonthParts; values: Record<string, string>; errors: Record<string, 'amount' | 'hours' | 'days' | 'average'> } {
+export function readParts(body: Record<string, unknown>, id: string, kind: ContractKind, wageKind: WageKind, agreed: number): { parts: MonthParts; values: Record<string, string>; errors: Record<string, 'amount' | 'hours' | 'days' | 'average' | 'meals'> } {
   const parts: MonthParts = { ...EMPTY_PARTS }
   const values: Record<string, string> = {}
-  const errors: Record<string, 'amount' | 'hours' | 'days' | 'average'> = {}
+  const errors: Record<string, 'amount' | 'hours' | 'days' | 'average' | 'meals'> = {}
   for (const key of partsFor(kind, wageKind)) {
     const name = `${PART_FIELDS[key]}_${id}`
     const text = typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 16) : ''
     values[name] = text
-    if (key === 'average') {
+    if (key === 'meals') {
+      // The meals of the month, a whole number; empty: proposed from the hours worked.
+      const n = text === '' ? null : /^\d{1,2}$/.test(text) ? Number(text) : Number.NaN
+      if (n !== null && (Number.isNaN(n) || n > 62)) errors[name] = 'meals'
+      else parts.meals = n
+    } else if (key === 'average') {
       const n = tenThousandthsOf(text)
       if (n !== null && (Number.isNaN(n) || n <= 0)) errors[name] = 'average'
       else parts.average = n

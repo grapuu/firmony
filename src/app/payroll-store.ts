@@ -5,6 +5,7 @@
 import { dayOfText } from './booking'
 import { isIban, plainIban } from './invoices'
 import type { LedgerPayroll } from './ledger'
+import { isMealWay, mealMoney, mealsProposed, mealWayOf, NO_MEALS, type MealSettings, type MealWay } from './meals'
 import {
   EMPTY_PARTS,
   monthCalendar,
@@ -73,6 +74,8 @@ export interface Employee {
   wageKind: WageKind
   weeklyHours: number
   leaveDays: number | null
+  /** How the employee chose to take meals (§ 152(7), meals.ts): vouchers or the financial contribution; null the company's way; 'none' none. */
+  mealWay?: MealWay | 'none' | null
 }
 
 /** The terms a month of an employee is worked out by. */
@@ -120,6 +123,7 @@ function employeeOf(r: Row): Employee {
     wageKind: r.wage_kind === 'hourly' ? 'hourly' : 'monthly',
     weeklyHours: Number.isInteger(r.weekly_hours) && (r.weekly_hours as number) > 0 ? (r.weekly_hours as number) : 4000,
     leaveDays: Number.isInteger(r.leave_days) ? (r.leave_days as number) : null,
+    mealWay: isMealWay(r.meal_way) || r.meal_way === 'none' ? (r.meal_way as MealWay | 'none') : null,
   }
 }
 
@@ -133,13 +137,13 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
   return db
     .prepare(
       `INSERT INTO employees (id, company_id, name, born_on, insurer, started_on, ended_on, wage_cents, declaration, disabled, health_deduction, health_exempt, children, iban, created_at, created_by, updated_at,
-         contract, regular, pension, exemption, wage_kind, weekly_hours, leave_days)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?15, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
+         contract, regular, pension, exemption, wage_kind, weekly_hours, leave_days, meal_way)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?15, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)
        ON CONFLICT (id) DO UPDATE SET name = excluded.name, born_on = excluded.born_on, insurer = excluded.insurer, started_on = excluded.started_on, ended_on = excluded.ended_on,
          wage_cents = excluded.wage_cents, declaration = excluded.declaration, disabled = excluded.disabled, health_deduction = excluded.health_deduction,
          health_exempt = excluded.health_exempt, children = excluded.children, iban = excluded.iban, updated_at = excluded.updated_at,
          contract = excluded.contract, regular = excluded.regular, pension = excluded.pension, exemption = excluded.exemption, wage_kind = excluded.wage_kind,
-         weekly_hours = excluded.weekly_hours, leave_days = excluded.leave_days WHERE employees.company_id = ?2`,
+         weekly_hours = excluded.weekly_hours, leave_days = excluded.leave_days, meal_way = excluded.meal_way WHERE employees.company_id = ?2`,
     )
     .bind(
       e.id,
@@ -165,6 +169,7 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
       e.wageKind,
       e.weeklyHours,
       e.leaveDays,
+      e.mealWay ?? null,
     )
 }
 
@@ -214,6 +219,8 @@ export interface RunLine {
 export interface LineProposals {
   average: AverageProposal
   dvz: Record<string, DvzProposal>
+  /** The meals proposed from the hours worked; null when the employee takes none. */
+  meals?: number | null
 }
 
 export interface PayrollRun {
@@ -330,7 +337,13 @@ export function monthSlips(
   period: string,
   employees: readonly Employee[],
   run: PayrollRun | null,
-  context: { leaves?: readonly SickLeave[]; runs?: readonly PayrollRun[]; settlements?: readonly { employeeId: string; inputs: { requested: boolean; settleIn: string | null }; result: { taxDifference: number; bonusDifference: number } | null }[] } = {},
+  context: {
+    leaves?: readonly SickLeave[]
+    runs?: readonly PayrollRun[]
+    settlements?: readonly { employeeId: string; inputs: { requested: boolean; settleIn: string | null }; result: { taxDifference: number; bonusDifference: number } | null }[]
+    /** How the company provides meals (meals.ts); none when left out. */
+    meals?: MealSettings | null
+  } = {},
 ): SlipLine[] {
   if (run?.closedOn) return run.lines.filter((l): l is RunLine & { slip: Payslip } => Boolean(l.slip)).map((l) => ({ ...l, days: l.days ?? monthDays(period) }))
   const typed = new Map((run?.lines ?? []).map((l) => [l.employeeId, l]))
@@ -355,6 +368,11 @@ export function monthSlips(
       const exemption = e.exemption && exemptionAllowed(e.contract, e.pension, terms.regular)
       // An annual settlement settled with this month's wage (tax-settlement.ts).
       const settled = (context.settlements ?? []).find((x) => x.employeeId === e.id && x.inputs.requested && x.inputs.settleIn === period && x.result)
+      // Meals: the employee's way (the company's when he chose none), a meal a day worked over four hours unless typed.
+      const mealSettings = context.meals ?? null
+      const way = mealWayOf(e.mealWay, mealSettings)
+      const mealsProposal = mealsProposed(e.contract, terms.dailyHours, pay.worked)
+      const meals = way && mealSettings ? mealMoney(way, parts.meals ?? mealsProposal, mealSettings) : null
       return {
         employeeId: e.id,
         name: e.name,
@@ -366,7 +384,7 @@ export function monthSlips(
         pay,
         sick,
         terms: { contract: e.contract, regular: terms.regular, pension: e.pension, exemption, wageKind: e.wageKind, dailyHours: terms.dailyHours },
-        proposals: { average, dvz },
+        proposals: { average, dvz, meals: way ? mealsProposal : null },
         slip: payslip({
           period,
           gross: pay.gross,
@@ -383,6 +401,7 @@ export function monthSlips(
           pension: e.pension,
           exemption,
           ...(settled?.result ? { settlement: { tax: settled.result.taxDifference, bonus: settled.result.bonusDifference } } : {}),
+          meals,
         }),
       }
     })
@@ -401,6 +420,8 @@ export interface PayrollSettings {
   payday: number | null
   social: { iban: string | null; vs: string | null }
   health: Partial<Record<Insurer, { iban: string | null; vs: string | null }>>
+  /** How the company provides meals (meals.ts); none when it does not here. */
+  meals?: MealSettings
 }
 
 export function payrollSettingsOf(json: unknown): PayrollSettings {
@@ -415,7 +436,10 @@ export function payrollSettingsOf(json: unknown): PayrollSettings {
     const health: PayrollSettings['health'] = {}
     for (const code of Object.keys(INSURERS) as Insurer[]) if (v.health && typeof v.health === 'object' && code in (v.health as object)) health[code] = pair((v.health as Record<string, unknown>)[code])
     const day = Number(v.payday)
-    return { payday: Number.isInteger(day) && day >= 1 && day <= 31 ? day : null, social: pair(v.social), health }
+    const m = (v.meals ?? {}) as Record<string, unknown>
+    const cents = (x: unknown) => (Number.isSafeInteger(x) && (x as number) >= 0 && (x as number) <= 10_000 ? (x as number) : 0)
+    const meals: MealSettings = isMealWay(m.way) ? { way: m.way, voucher: cents(m.voucher), employer: cents(m.employer), fund: cents(m.fund) } : NO_MEALS
+    return { payday: Number.isInteger(day) && day >= 1 && day <= 31 ? day : null, social: pair(v.social), health, meals }
   } catch {
     return empty
   }
@@ -448,10 +472,17 @@ export function ledgerPayroll(run: PayrollRun): LedgerPayroll | null {
     { account: '523', cents: slips.filter((l) => contractOf(l) === 'director').reduce((t, l) => t + l.slip.gross, 0) },
     { account: '527', cents: sum((s) => s.sickPay ?? 0) },
   ].filter((c) => c.cents > 0)
+  // Meals (meals.ts): the employer's and the social fund's parts, as vouchers out of their stock or paid with the wage.
+  const meal = (way: 'voucher' | 'cash', pick: (m: NonNullable<Payslip['meals']>) => number) => sum((s) => (s.meals?.way === way ? pick(s.meals) : 0))
+  const meals = {
+    voucher: { employer: meal('voucher', (m) => m.employer), fund: meal('voucher', (m) => m.fund), employee: meal('voucher', (m) => m.employee) },
+    cash: { employer: meal('cash', (m) => m.employer), fund: meal('cash', (m) => m.fund) },
+  }
   return {
     period: run.period,
     gross: sum(taxableOf),
     costs,
+    meals,
     socialEmployee: sum((s) => s.socialEmployee),
     socialEmployer: sum((s) => s.socialEmployer),
     healthEmployee: sum((s) => s.healthEmployee),
