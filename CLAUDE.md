@@ -35,7 +35,8 @@ over. Bring this section up to date first whenever a session ends.
    budgets of cost centres (schema step 59); payroll by cost centre (schema step 60); deductions from wages for
    executions (schema step 61, under "Payroll"); the proportional deduction of VAT by a coefficient (§ 50, schema step 62,
    under "VAT: the return and the control statement"); depreciation and stock by cost centre (schema steps 63 and 64, under "Cost centres"); the correction of
-   the deduction from a supplier's invoice not paid within 100 days (§ 53b, under "VAT"). **Nothing is live**: there
+   the deduction from a supplier's invoice not paid within 100 days (§ 53b, under "VAT"), mended after an independent review
+   (schema step 66); the supplier's bad debts (§ 25a, schema step 67, under "VAT"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1989,7 +1990,36 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   being paired with its invoice (the lock's design); the day stays the 101st (KROS and the instructions count it so; the
   reviewer read the statute's "uplynulo 100 dní" as the 100th); the correction uses the deduction as booked, not the
   year's settled coefficient (§ 53b(3) with § 50(4)).
-- Not built: triangular trade, the supplier's bad debts (§ 25a), documents in another
+- The supplier's bad debts (built 18 October 2026, § 25a; schema step 67 `bad_debts`; `src/app/bad-debt.ts`,
+  `src/views/bad-debt.tsx`, `badDebtEvents` in vat.ts). Read through WebFetch on static.slov-lex.sk (the browser pane was
+  not connected): § 25a as Act No. 344/2020 Z. z. inserted it (from 1 January 2021) and Act No. 516/2022 Z. z. changed it
+  (from 1 January 2023; § 85km: the new ods. 2 písm. a) for claims whose 150 days ended after 2022); the consolidated text
+  of 2026 lists the same sixteen paragraphs, its body was not readable there. FR SR's answers 131288 (a supply in Slovakia
+  taxed under § 69(1) only; a right) and 029104 (C.1: the corrective document's number, the invoice's, base and VAT minus,
+  the rate and "x" in the column of § 25a; after a payment the same plus). `/ucto/klienti/:id/dph/nevymozitelne` (from the
+  VAT page's side and an issued invoice's booking screen): issued invoices with VAT 150 days past their due day not paid
+  whole (a bank payment of a smaller amount; credit notes lower what is owed; reminders sent from the app named), and the
+  corrections made. An invoice's page (`/nevymozitelne/:doc`): the case of § 25a(2) (a1 to a3 the 150 days, by the
+  amount: a step to recover it up to 1 000 € with VAT, an action or an execution above; b, c bankruptcy and discharge; d
+  ended; e died; f restructuring), the day (for a* the step's, the action's or the execution's, the claim uncollectible on
+  the later of it and the 151st day after the due day, counted as § 53b's 101st), the claim not paid (at most what is
+  owed), what proves it, the word that § 25a(4) keeps none of it out; three years past the supply's return deadline said
+  (§ 25a(5) suspensions are the accountant's to know). Saved (`bad_debts` 'reduce'): the lines by rate (`badDebtLines`),
+  the corrective document `OD-<year>-<order>` issued today unless none is issued (§ 25a(8) cases d and e, a customer that
+  is no taxable person); its page (`/doklad?druh=`) with what § 25a(9) asks; the day it was sent marked (`/odoslane`).
+  The return of the period of that day: rows 26 and 27 minus, C.1 with ONP "x" (FO the document, "0" without one, a
+  customer without IČO or IČ DPH in D.2); warnings `badDebt` and `badDebtUnsent` (by the return's deadline, § 25a(11),
+  (13)). A payment after the lowering's period raises it in the payment's period in the share it pays; until its own
+  corrective document (§ 25a(10), `/platba`, 'restore') is made the period is kept back (`badDebtRestore`); a payment by
+  the end of the lowering's period that pays what was lowered voids it (`badDebtPaid`). The books: 343.200 against 311 on
+  the day (the open item keeps the base), back with the payment; `vatOwed` counts row 27. Taken back (`/zrusit`, a mark,
+  the raising with it; a locked day refuses it). Handover (`nevymozitelne-pohladavky`) and purge carry it.
+  test/bad-debt.runtime.mjs, units "§ 25a". Not built: assigning the claim (counts as paid), the lowered base raised after
+  an action withdrawn or lost (§ 25a(15), (16)), a claim paid by several payments, the special schemes (§ 25a(14)), the
+  customer's side of a corrective document received (§ 53b for it), a claim in another currency, the corrective document
+  sent to the customer from the app (the accountant prints it and marks the day). To verify on the first real case: FO
+  "0" in C.1 when no corrective document is issued (taken from C.2's rule of § 53b), and the 151st day.
+- Not built: triangular trade, documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
   Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
@@ -2472,8 +2502,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1299 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1884 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1313 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1900 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

@@ -30,6 +30,7 @@ import {
   socialFund,
   garnish,
   vatRatio,
+  badDebt,
   appStore,
   ledger,
   ledgerStore,
@@ -2730,6 +2731,73 @@ async function zipped(entries, note) {
     const mayValid = await valid(mayXml, KV_XSD, 'kv53b')
     check('the control statement of May with ONP="x", valid against kv_dph_2025.xsd', mayValid.ok && mayXml.includes('ONP="x"') && mayXml.includes('FO="0"'), mayValid.why)
     check('the books take row 29 off what the return deducts', ledger.vatDeducted({ ...vat.emptyRows(), r19: 5000, r29: 1725 }) === 3275)
+  }
+
+  // § 25a (18 October 2026, bad-debt.ts): an issued invoice's claim lowered once uncollectible (rows 26 and 27 minus, C.1
+  // with the corrective document and ONP), raised again by a payment that comes later in the share it pays.
+  {
+    const lowered = { id: 'bd1', kind: 'reduce', ground: 'a1', eventOn: '2027-07-01', number: 'OD-2027-001', issuedOn: '2027-07-01', sentOn: null, lines: [{ rate: 23, base: 10000, vat: 2300 }], cents: 12300, evidence: 'upomienka', paymentId: null }
+    const sold = (fields) => doc({ kind: 'invoice_out', number: 'FA-25A', issuedOn: '2027-01-10', receivedOn: '2027-01-10', dueOn: '2027-01-31', vat: v('domestic', [[23, 10000, 2300]], { vatId: 'SK2121212121', suppliedOn: '2027-01-10' }), badDebts: [lowered], ...fields })
+    const run = (d, period) => vat.workOut(payer, period, vat.vatDocsByPeriod(payer, [d]).get(period) ?? [])
+    const d25 = sold({})
+    const july = run(d25, '2027-07')
+    check(
+      'July, the day it became uncollectible: rows 26 and 27 minus, C.1 with the corrective document, the invoice and ONP, the tax lowered',
+      july.rows.r26 === -10000 &&
+        july.rows.r27 === -2300 &&
+        july.rows.r33 === 2300 &&
+        JSON.stringify(july.kv.c1) === JSON.stringify([{ odb: 'SK2121212121', fo: 'OD-2027-001', fp: 'FA-25A', zr: -10000, dr: -2300, s: 23, onp: true, doc: d25.id }]) &&
+        july.issues.some((i) => i.code === 'badDebt') &&
+        july.issues.some((i) => i.code === 'badDebtUnsent'),
+      JSON.stringify([july.rows.r26, july.rows.r27, july.kv.c1, july.issues]),
+    )
+    check('January, its own period, keeps the supply as it was', run(d25, '2027-01').rows.r04 === 2300 && run(d25, '2027-01').rows.r26 === 0)
+    const julyXml = vatXml.statementXml(filer, '2027-07', july.kv)
+    const julyValid = await valid(julyXml, KV_XSD, 'kv25a')
+    check('the control statement of July with ONP="x" on C.1, valid against kv_dph_2025.xsd', julyValid.ok && /<C1 [^>]*ONP="x"/.test(julyXml), julyValid.why)
+    check('sent to the customer: no warning', !run(sold({ badDebts: [{ ...lowered, sentOn: '2027-07-20' }] }), '2027-07').issues.some((i) => i.code === 'badDebtUnsent'))
+    const paidLater = sold({ paidOn: '2027-09-03' })
+    check('paid in September without its corrective document: September is kept back', run(paidLater, '2027-09').issues.some((i) => i.code === 'badDebtRestore' && i.level === 'block'))
+    const restored = sold({ paidOn: '2027-09-03', paidCents: 6150, badDebts: [lowered, { ...lowered, id: 'bd2', kind: 'restore', ground: null, eventOn: '2027-09-03', number: 'OD-2027-002', sentOn: '2027-09-05' }] })
+    const sept = run(restored, '2027-09')
+    check(
+      'half paid in September with its document: half raised again (rows 26 and 27 plus, C.1 plus with the second document)',
+      sept.rows.r26 === 5000 && sept.rows.r27 === 1150 && sept.kv.c1[0]?.fo === 'OD-2027-002' && sept.kv.c1[0]?.zr === 5000 && !sept.issues.some((i) => i.level === 'block'),
+      JSON.stringify([sept.rows.r26, sept.kv.c1, sept.issues]),
+    )
+    check('paid before the end of the lowering\'s period: the lowering is void and keeps the period back', run(sold({ paidOn: '2027-07-20' }), '2027-07').issues.some((i) => i.code === 'badDebtPaid'))
+    const consumer = sold({ partyIco: null, vat: v('domestic', [[23, 10000, 2300]], { suppliedOn: '2027-01-10' }), badDebts: [{ ...lowered, number: null }] })
+    const cj = run(consumer, '2027-07')
+    check('a customer that is no taxable person: D.2 lowered, no corrective document asked for', cj.kv.d2?.z === -10000 && cj.kv.d2?.d === -2300 && cj.kv.c1.length === 0 && !cj.issues.some((i) => i.code === 'badDebtUnsent'))
+    const dissolved = run(sold({ badDebts: [{ ...lowered, ground: 'd', number: null }] }), '2027-07')
+    check('a customer ended without a successor: C.1 without a corrective document ("0")', dissolved.kv.c1[0]?.fo === '0' && !dissolved.issues.some((i) => i.code === 'badDebtUnsent'))
+    check(
+      'a part not paid split by rate: half of 123 € at 23 % is 50 € and 11,50 €; a mixed invoice by each line',
+      JSON.stringify(badDebt.badDebtLines([{ rate: 23, base: 10000, vat: 2300 }], 6150)) === JSON.stringify([{ rate: 23, base: 5000, vat: 1150 }]) &&
+        JSON.stringify(badDebt.badDebtLines([{ rate: 23, base: 10000, vat: 2300 }, { rate: 5, base: 10000, vat: 500 }], 22800)) === JSON.stringify([{ rate: 23, base: 10000, vat: 2300 }, { rate: 5, base: 10000, vat: 500 }]) &&
+        badDebt.badDebtLines([{ rate: 0, base: 10000, vat: 0 }], 10000).length === 0,
+    )
+    const copy = { ground: 'g', day: 'day', amount: 'amount', evidence: 'evidence', confirm: 'confirm', due: 'due', small: 'small', large: 'large', early: 'early', future: 'future', owed: 'owed' }
+    const dayOf = (t) => (/^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null)
+    const moneyOf = (t) => (/^\d+$/.test(t) ? Number(t) : Number.NaN)
+    const ctx = { dueOn: '2027-01-31', suppliedOn: '2027-01-10', owed: 12300, today: '2027-10-01' }
+    const form = (f) => badDebt.readBadDebt({ ground: 'a1', day: '2027-02-15', amount: '', evidence: 'upomienka 15. 2.', confirm: true, ...f }, ctx, dayOf, moneyOf, copy)
+    check(
+      'the form: a step before the 151st day makes the claim uncollectible on it (1 July), what is owed by default',
+      form({}).input?.eventOn === '2027-07-01' && form({}).input?.cents === 12300 && form({ day: '2027-08-02' }).input?.eventOn === '2027-08-02',
+      JSON.stringify(form({})),
+    )
+    check(
+      'the form refuses a claim above 1 000 € on a step alone, one up to it on an action, more than is owed, no proof, no word on § 25a(4), a day ahead',
+      form({ amount: '150000' }).errors.amount === 'owed' &&
+        badDebt.readBadDebt({ ground: 'a1', day: '2027-02-15', amount: '', evidence: 'upomienka', confirm: true }, { ...ctx, owed: 150000 }, dayOf, moneyOf, copy).errors.ground === 'small' &&
+        form({ ground: 'a2' }).errors.ground === 'large' &&
+        form({ evidence: '' }).errors.evidence === 'evidence' &&
+        form({ confirm: false }).errors.confirm === 'confirm' &&
+        badDebt.readBadDebt({ ground: 'a1', day: '2027-02-15', amount: '', evidence: 'upomienka', confirm: true }, { ...ctx, today: '2027-06-01' }, dayOf, moneyOf, copy).errors.day === 'early' &&
+        form({ ground: 'b1', day: '2027-11-01' }).errors.day === 'future',
+    )
+    check('the tax owed counts row 27', ledger.vatOwed({ ...vat.emptyRows(), r17: 5000, r27: -2300 }) === 2700)
   }
   check(
     'the control statement is in its namespace with ISO dates',
@@ -6387,6 +6455,16 @@ await (await import('./social.units.mjs')).checkSocial()
       'nothing in the books that the return does not hold: an invoice before the registration, or one that makes no entry',
       ledger.buildBooks({ company: { ...payerCo, vatSince: '2026-03-01' }, docs: [unpaidDoc], payments: [], banks: [], filed: [], manual: [], today: '2026-10-18' }).entries.filter((e) => e.key.startsWith('53b:')).length === 0 &&
         books({ category: null }, '2026-10-18').entries.filter((e) => e.key.startsWith('53b:')).length === 0,
+    )
+    // § 25a in the books: the VAT of a claim lowered leaves 343.200 against 311 and lowers the open item; a payment puts it back.
+    const lowered = { id: 'bd1', kind: 'reduce', ground: 'a1', eventOn: '2026-07-01', number: 'OD-2026-001', issuedOn: '2026-07-01', sentOn: null, lines: [{ rate: 23, base: 10000, vat: 2300 }], cents: 12300, evidence: 'x', paymentId: null }
+    const soldDoc = { ...unpaidDoc, id: 'S-1', kind: 'invoice_out', category: 'sales', vatDeduct: null, vat: { ...unpaidDoc.vat, lines: [{ rate: 23, base: 10000, vat: 2300, deduct: 0 }] }, badDebts: [lowered] }
+    const sb = ledger.buildBooks({ company: payerCo, docs: [soldDoc], payments: [], banks: [], filed: [], manual: [], today: '2026-10-18' })
+    const e25 = sb.entries.filter((e) => e.key.startsWith('25a:'))
+    check(
+      'the books: 343.200 against 311 on the day it became uncollectible, the open item left with the base',
+      e25.length === 1 && e25[0].on === '2026-07-01' && e25[0].lines[0].md === '343.200' && e25[0].lines[0].d === '311' && e25[0].lines[0].cents === 2300 && sb.items.find((i) => i.docId === 'S-1')?.settled === 2300,
+      JSON.stringify(e25),
     )
     const halfPaid = books({ paidOn: '2026-07-03', paidCents: 6150 }, '2026-10-18').entries.filter((e) => e.key.startsWith('53b:'))
     check('half paid in July: half the deduction back to 343.100', halfPaid.length === 2 && halfPaid[1].lines[0].cents === 1150, JSON.stringify(halfPaid))

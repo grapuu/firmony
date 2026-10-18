@@ -144,6 +144,24 @@ export const closingsGuardsWithoutDistribution: string[] = [
  */
 export const vatRatiosGuards: string[] = rowsGuard('vat_ratios', (r) => locked(`${r}.company_id`, `${r}.year || '-12-31'`))
 
+/**
+ * The supplier's bad debts (step 67, bad-debt.ts): a lowering or a raising changes the return of its day's period and the
+ * books on that day, so nothing of it changes once the day is locked but the day its document was sent and what proves it.
+ */
+export const badDebtsGuards: string[] = rowsGuard('bad_debts', (r) => locked(`${r}.company_id`, `${r}.event_on`), [
+  'company_id',
+  'document_id',
+  'kind',
+  'ground',
+  'event_on',
+  'number',
+  'issued_on',
+  'lines',
+  'cents',
+  'payment_id',
+  'deleted_at',
+])
+
 export const PERIOD_SCHEMA: string[] = [
   `CREATE TABLE period_locks (
     company_id TEXT PRIMARY KEY, through_on TEXT, version INTEGER NOT NULL CHECK (version > 0), change_id TEXT NOT NULL UNIQUE,

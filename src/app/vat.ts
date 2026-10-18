@@ -30,11 +30,12 @@
 //   base and VAT at the basic rate and at the reduced ones), not in A.1 or D.2.
 // - The proportional deduction (§ 50, 18 October 2026; vat-ratio.ts): a document deducted in proportion carries the
 //   coefficient's deduction in its lines; the year's settlement goes into rows 18 to 19 of its last period.
-// - Not built: triangular trade (rows 11 to 12b), the supplier's bad debts (§ 25a), documents in another currency without their
+// - Not built: triangular trade (rows 11 to 12b), documents in another currency without their
 //   euro amounts.
 import { CATEGORIES, type Category } from './booking'
 import type { DocKind } from './match'
 import { eurOf } from './fx'
+import { NO_DOCUMENT_GROUNDS, grossOf, shareOf, type BadDebt, type BadDebtLine } from './bad-debt'
 
 /**
  * How VAT falls on a document. Received: `domestic` (a Slovak payer charged VAT), `reverse` (a service, or goods
@@ -185,6 +186,8 @@ export interface VatDoc {
   paidCents?: number | null
   /** A received invoice: the corrections of it from the same supplier, booked (credit notes and the like), for § 53b. */
   credits?: CreditOf[]
+  /** An issued invoice: its corrections of § 25a (bad-debt.ts), the lowering and the raising after a payment. */
+  badDebts?: BadDebt[]
   /** Paid by the owner from his own money (no day known): never corrected under § 53b. */
   paidPrivately?: boolean
 }
@@ -591,6 +594,55 @@ export function unpaidEvents(doc: VatDoc, data: VatData, company: VatCompany, fi
   return events
 }
 
+/**
+ * § 25a (bad-debt.ts): an issued invoice's claim lowered once uncollectible, in the period of that day (rows 26 and 27
+ * minus, C.1 with the corrective document's number and ONP "x", or D.2 for a customer that is no taxable person), and
+ * raised again in the period of a payment that comes later, in the share it pays (the same with a plus). A payment by the
+ * end of the lowering's period that pays what was lowered voids it ('void': the accountant takes it back).
+ */
+export interface BadDebtEvent {
+  kind: 'reduce' | 'restore' | 'void'
+  period: string
+  on: string
+  lines: BadDebtLine[]
+  /** The corrective document's number (none issued, or not made yet). */
+  number: string | null
+  /** A corrective document is issued for it (§ 25a(7), (8)). */
+  documented: boolean
+  sent: boolean
+  /** A raising whose corrective document is not made yet. */
+  missing?: boolean
+}
+
+export function badDebtEvents(doc: VatDoc, data: VatData, company: VatCompany): BadDebtEvent[] {
+  const reduce = (doc.badDebts ?? []).find((b) => b.kind === 'reduce')
+  if (!reduce || company.status !== 'payer' || !isIssued(doc.kind) || !doc.booked) return []
+  const quarterly = company.quarterly
+  const period = periodOf(reduce.eventOn, quarterly)
+  const documented = Boolean(plainVatId(data.vatId) || doc.partyIco) && !(reduce.ground && NO_DOCUMENT_GROUNDS.includes(reduce.ground))
+  const own: BadDebtEvent = { kind: 'reduce', period, on: reduce.eventOn, lines: reduce.lines, number: reduce.number, documented, sent: reduce.sentOn !== null }
+  const paid = doc.paidOn ?? null
+  if (paid === null) return [own]
+  const gross = grossOf(data.lines)
+  const paidCents = doc.paidCents ?? gross
+  // A payment by the end of the lowering's period: it stands only for the part that was not lowered.
+  if (paid <= periodRange(period).to) return paidCents + reduce.cents > gross ? [{ ...own, kind: 'void' }] : [own]
+  const restore = (doc.badDebts ?? []).find((b) => b.kind === 'restore' && b.eventOn === paid)
+  return [
+    own,
+    {
+      kind: 'restore',
+      period: periodOf(paid, quarterly),
+      on: paid,
+      lines: shareOf(reduce.lines, paidCents, reduce.cents),
+      number: restore?.number ?? null,
+      documented,
+      sent: Boolean(restore?.sentOn),
+      missing: documented && !restore,
+    },
+  ]
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // The return
 // ---------------------------------------------------------------------------------------------------------------
@@ -734,6 +786,8 @@ export interface KvC1 {
   /** The VAT and the rate; none for a correction of a reverse-charged supply (the customer pays the VAT). */
   dr: number | null
   s: number | null
+  /** A correction of the base of a claim not paid under § 25a (the schema's ONP, "x"). */
+  onp?: boolean
   /** A correction of a reverse-charged supply of goods: what A.2 says of them (only then present). */
   tk?: string | null
   td?: 'MT' | 'IO' | null
@@ -816,6 +870,11 @@ export type IssueCode =
   | 'paid53b'
   | 'credited53b'
   | 'noDue53b'
+  | 'badDebt'
+  | 'badDebtBack'
+  | 'badDebtUnsent'
+  | 'badDebtRestore'
+  | 'badDebtPaid'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
@@ -888,6 +947,8 @@ export function vatDocsByPeriod(company: VatCompany, docs: VatDoc[], filed: Read
     put(own, doc)
     // A supplier's invoice not paid in time is in the period of its correction under § 53b and of its payment too.
     for (const e of unpaidEvents(doc, counted.data, company, filed)) if (e.period !== own) put(e.period, doc)
+    // An issued invoice lowered under § 25a is in the period of the lowering and of the payment that raises it again too.
+    for (const e of badDebtEvents(doc, counted.data, company)) if (e.period !== own && !out.get(e.period)?.includes(doc)) put(e.period, doc)
   }
   return out
 }
@@ -946,6 +1007,38 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
         }
         note('C2', doc.id)
         issue('warn', e.kind === 'correct' ? 'unpaid53b' : e.credit ? 'credited53b' : 'paid53b', doc.id)
+      }
+    }
+    // § 25a: an issued invoice's claim not paid lowered, and raised again by a payment that comes later.
+    if (payer && !(company.since && taxDay(doc, data) < company.since)) {
+      for (const e of badDebtEvents(doc, data, company)) {
+        if (e.period !== period) continue
+        if (e.kind === 'void') {
+          issue('block', 'badDebtPaid', doc.id)
+          continue
+        }
+        const sign = e.kind === 'reduce' ? -1 : 1
+        const vatId = plainVatId(data.vatId)
+        const business = Boolean(vatId || doc.partyIco)
+        for (const line of e.lines) {
+          add('r26', sign * line.base, doc.id)
+          add('r27', sign * line.vat, doc.id)
+          if (business) kv.c1.push({ odb: vatId, fo: e.number ? kvNumber(e.number) : '0', fp: kvNumber(doc.number), zr: sign * line.base, dr: sign * line.vat, s: line.rate, onp: true, doc: doc.id })
+          else {
+            consumers = true
+            if (line.rate === 23) {
+              d2.z += sign * line.base
+              d2.d += sign * line.vat
+            } else {
+              d2.zzn += sign * line.base
+              d2.dzn += sign * line.vat
+            }
+          }
+        }
+        note(business ? 'C1' : 'D2', doc.id)
+        issue('warn', e.kind === 'reduce' ? 'badDebt' : 'badDebtBack', doc.id)
+        if (e.missing) issue('block', 'badDebtRestore', doc.id)
+        else if (e.documented && !e.sent) issue('warn', 'badDebtUnsent', doc.id)
       }
     }
     if (periodOfDoc(doc, data, company, filed) !== period) continue

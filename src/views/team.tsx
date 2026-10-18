@@ -1495,6 +1495,11 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
               </label>
             ) : null}
             {d.ratioMode === 'final' && d.vatRatio !== null && d.vatRatio !== undefined ? <p class="field__hint">{t.book.ratioFinal(coefText(d.vatRatio))}</p> : null}
+            {company.vatPayer && d.kind === 'invoice_out' && d.bookedAt && d.vat?.mode === 'domestic' && !d.vat.corrects ? (
+              <p class="field__hint">
+                <a href={`/ucto/klienti/${company.id}/dph/nevymozitelne/${d.id}`}>{(d.badDebts?.length ?? 0) > 0 ? t.book.badDebtOn : t.book.badDebt}</a>
+              </p>
+            ) : null}
             <label class="tickbox">
               <input type="checkbox" name="remember" value="1" checked={values.remember} />
               <span>{t.book.remember}</span>

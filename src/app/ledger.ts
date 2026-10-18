@@ -30,7 +30,7 @@ import { eurOf, rateFor, rateMicro, type RateMicro, type Rates } from './fx'
 import { centsOf } from './invoices'
 import { normalizeVs, type DocKind, type Exempt } from './match'
 import { bratislavaDay, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
-import { isIssued, periodRange, taxDay, unpaidEvents, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
+import { badDebtEvents, isIssued, periodRange, taxDay, unpaidEvents, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
 import { groupedIban, periodName, rowsOf, type FiledReturn } from './vat-store'
 import { settleTotal } from './vat-ratio'
 
@@ -628,8 +628,8 @@ export function filingChain(f: FiledReturn): { kind: FilingKind; filedOn: string
   return chain
 }
 
-/** The tax a return owes (rows 17 and 25) and deducts (rows 18, 18a and 19, less row 28). */
-export const vatOwed = (rows: Rows): number => rows.r17 + rows.r25
+/** The tax a return owes (rows 17, 25 and 27) and deducts (rows 18, 18a and 19, less rows 28 and 29). */
+export const vatOwed = (rows: Rows): number => rows.r17 + rows.r25 + rows.r27
 /** What a return deducts: rows 18, 18a and 19, less the corrections of row 28 (§ 53) and row 29 (§ 53b). */
 export const vatDeducted = (rows: Rows): number => rows.r18 + rows.r18a + rows.r19 - rows.r28 - rows.r29
 
@@ -977,6 +977,38 @@ export function buildBooks(input: LedgerInput): Books {
           manualId: null,
           lines: [e.kind === 'correct' ? { md: '378', d: VAT_IN, cents: deducted } : { md: VAT_IN, d: '378', cents: deducted }],
         })
+      }
+    }
+  }
+
+  // § 25a (vat.ts badDebtEvents): an issued invoice's claim lowered once uncollectible takes its VAT off what is owed
+  // (343.200 against 311, the open item lowered by it), and a payment that comes later puts the share it pays back (311
+  // against 343.200); the return of each period then moves it with row 27.
+  if (company.vatStatus === 'payer') {
+    const vc = vatCompanyOf(company)
+    for (const d of input.docs) {
+      if (d.kind !== 'invoice_out' || !booked.has(d.id) || !d.badDebts?.length) continue
+      const vd = vatDocOf(d)
+      const data = vatOf(vd, vc)?.data
+      if (!data || (vc.since && taxDay(vd, data) < vc.since)) continue
+      for (const e of badDebtEvents(vd, data, vc)) {
+        if (e.kind === 'void' || !inBooks(e.on) || (input.today && e.on > input.today)) continue
+        const vat = e.lines.reduce((sum, line) => sum + line.vat, 0)
+        if (vat === 0) continue
+        const account = payableOf(d)
+        entries.push({
+          key: `25a:${d.id}:${e.kind}:${e.on}`,
+          on: e.on,
+          kind: 'vat',
+          number: e.number ?? d.number ?? '',
+          text: e.kind === 'reduce' ? `Oprava dane pri nevymožiteľnej pohľadávke (§ 25a): ${d.party ?? ''}` : `Oprava zníženej dane po prijatej platbe (§ 25a): ${d.party ?? ''}`,
+          docId: d.id,
+          paymentId: null,
+          manualId: null,
+          lines: [e.kind === 'reduce' ? { md: VAT_OUT, d: account, cents: vat } : { md: account, d: VAT_OUT, cents: vat }],
+        })
+        const item = items.get(d.id)
+        if (item) item.settled += e.kind === 'reduce' ? vat : -vat
       }
     }
   }

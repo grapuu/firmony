@@ -178,10 +178,12 @@ import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
-import { isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
+import { badDebtEvents, filingDeadline, isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
 import { ISSUED_RATIO_MODES, coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioMode, type RatioWork, type RatioYear } from '../app/vat-ratio'
 import { RatioPage, type RatioState } from '../views/vat-ratio'
 import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
+import { NO_DOCUMENT_GROUNDS, after150, badDebtLines, grossOf as grossOfLines, readBadDebt, threeYearsFrom, type BadDebtErrors, type BadDebtForm } from '../app/bad-debt'
+import { BadDebtPage, BadDebtSheet, BadDebtsPage, type BadDebtRow, type SheetParty } from '../views/bad-debt'
 import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
 import { quarterOf, summaryLookbackFrom, summaryPeriodOf, type SvView, type SvFiled } from '../app/vat-summary'
 import { dataRevision } from '../app/handover-store'
@@ -1626,6 +1628,286 @@ teamRoutes.post('/klienti/:id/dph/koeficient/zrusit', async (c) => {
     return c.redirect(`${back}&ok=locked`, 303)
   }
   return c.redirect(`${back}&ok=unsettled`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// The supplier's bad debts (§ 25a, bad-debt.ts): issued invoices lowered once uncollectible, raised again after a payment
+// ---------------------------------------------------------------------------------------------------------------
+
+const addDaysTo = (day: string, days: number): string => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
+
+/**
+ * The issued invoices the pages look at, as rows: those with a correction, and those 150 days past their due day not
+ * paid whole (a bank payment of a smaller amount, no cash document); `only` one invoice, whatever its days.
+ */
+async function badDebtRows(db: D1Database, company: Company, today: string, only?: string): Promise<BadDebtRow[]> {
+  const cutoff = addDaysTo(today, -151)
+  const [found, credits, reminded] = await Promise.all([
+    db
+      .prepare(
+        `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ?1 AND d.kind = 'invoice_out' AND d.deleted_at IS NULL AND d.booked_at IS NOT NULL AND (?3 IS NULL OR d.id = ?3)
+           AND (d.id IN (SELECT document_id FROM bad_debts WHERE company_id = ?1 AND deleted_at IS NULL)
+                OR (?3 IS NOT NULL AND d.vat_mode = 'domestic')
+                OR (d.vat_mode = 'domestic' AND d.corrects IS NULL AND d.source IS NOT 'takings' AND COALESCE(d.currency, 'EUR') = 'EUR' AND d.due_on <= ?2
+                    AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
+                    AND (l.payment_id IS NULL OR (SELECT ABS(p.amount_cents) FROM payments p WHERE p.id = l.payment_id) < d.total_cents)))
+         ORDER BY d.due_on, d.created_at LIMIT 400`,
+      )
+      .bind(company.id, cutoff, only ?? null)
+      .all<Record<string, unknown>>(),
+    db
+      .prepare("SELECT corrects, SUM(total_cents) AS cents FROM documents WHERE company_id = ? AND kind = 'invoice_out' AND corrects IS NOT NULL AND deleted_at IS NULL AND booked_at IS NOT NULL GROUP BY corrects")
+      .bind(company.id)
+      .all<{ corrects: string; cents: number }>(),
+    db.prepare('SELECT id, reminders, reminded_at FROM invoices WHERE company_id = ? AND reminders > 0').bind(company.id).all<{ id: string; reminders: number; reminded_at: number | null }>(),
+  ])
+  const credited = new Map(credits.results.map((r) => [r.corrects, Number(r.cents)]))
+  const reminders = new Map(reminded.results.map((r) => [r.id, r]))
+  const vc = vatCompanyOf(company)
+  const out: BadDebtRow[] = []
+  for (const doc of found.results.map(docOf)) {
+    const vd = vatDocOf(doc)
+    const data = vatOf(vd, vc)?.data
+    if (!data || data.mode !== 'domestic' || data.corrects || doc.source === 'takings' || !data.lines.some((l) => l.rate > 0 && l.vat > 0)) continue
+    const gross = grossOfLines(data.lines)
+    const credit = doc.number ? (credited.get(doc.number) ?? 0) : 0
+    const paid = doc.paidOn ? Math.min(doc.paidCents ?? gross, gross) : 0
+    const reduce = doc.badDebts?.find((b) => b.kind === 'reduce') ?? null
+    const events = badDebtEvents(vd, data, vc)
+    const first = events.find((e) => e.kind === 'reduce' || e.kind === 'void')
+    const raise = events.find((e) => e.kind === 'restore')
+    const restore = raise ? (doc.badDebts?.find((b) => b.kind === 'restore' && b.eventOn === raise.on) ?? null) : null
+    const documented = Boolean(plainVatId(data.vatId) || doc.partyIco) && !(reduce?.ground && NO_DOCUMENT_GROUNDS.includes(reduce.ground))
+    const reminder = doc.invoiceId ? reminders.get(doc.invoiceId) : undefined
+    const state = !reduce
+      ? 'candidate'
+      : first?.kind === 'void'
+        ? 'void'
+        : raise
+          ? restore || !documented
+            ? 'restored'
+            : 'restore'
+          : !documented
+            ? 'none'
+            : reduce.sentOn
+              ? 'sent'
+              : 'unsent'
+    out.push({
+      doc,
+      gross,
+      credited: credit,
+      paid,
+      owed: Math.max(0, gross + credit - paid),
+      reminders: reminder?.reminders ?? 0,
+      remindedOn: reminder?.reminded_at ? bratislavaDay(reminder.reminded_at) : null,
+      reduce,
+      restore,
+      reducePeriod: first?.period ?? null,
+      restorePeriod: raise?.period ?? null,
+      restoreDue: raise && !restore && reduce && documented ? { on: raise.on, cents: Math.min(doc.paidCents ?? reduce.cents, reduce.cents), lines: raise.lines } : null,
+      void: first?.kind === 'void',
+      documented,
+      state,
+      sendBy: first ? filingDeadline(first.period) : null,
+    })
+  }
+  return out
+}
+
+teamRoutes.get('/klienti/:id/dph/nevymozitelne', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const today = dayOf(now())
+  const rows = company.vatStatus === 'payer' ? await badDebtRows(c.env.DB, company, today) : []
+  const cutoff = addDaysTo(today, -151)
+  const ok = c.req.query('ok')
+  return shell(
+    c,
+    'clients',
+    `${t.badDebt.title}: ${company.name}`,
+    <BadDebtsPage
+      company={company}
+      candidates={rows.filter((r) => !r.reduce && r.owed > 0 && r.doc.dueOn !== null && r.doc.dueOn <= cutoff)}
+      records={rows.filter((r) => r.reduce)}
+      flash={ok ? (t.badDebt.flashes[ok] ?? null) : null}
+    />,
+  )
+})
+
+async function badDebtPage(c: Ctx, company: Company, row: BadDebtRow, extra: { values?: BadDebtForm; errors?: BadDebtErrors } = {}, status: ContentfulStatusCode = 200) {
+  const today = dayOf(now())
+  const doc = row.doc
+  const lock = await periodLock(c.env.DB, company.id)
+  const supplied = doc.suppliedOn ?? doc.issuedOn ?? bratislavaDay(doc.createdAt)
+  const limit = threeYearsFrom(filingDeadline(periodOf(supplied, company.vatQuarterly)))
+  const ok = c.req.query('ok')
+  return shell(
+    c,
+    'clients',
+    `${t.badDebt.title}: ${doc.number ?? ''}`,
+    <BadDebtPage
+      company={company}
+      row={row}
+      today={today}
+      after={doc.dueOn ? after150(doc.dueOn) : null}
+      threeYears={limit < today ? limit : null}
+      locked={Boolean(row.reduce && lock?.through && lock.through >= row.reduce.eventOn)}
+      values={extra.values}
+      errors={extra.errors}
+      flash={ok ? (t.badDebt.flashes[ok] ?? null) : null}
+    />,
+    status,
+  )
+}
+
+/** The invoice of the page and its company, or null for a page that is none. */
+async function badDebtOf(c: Ctx): Promise<{ company: Company; row: BadDebtRow } | null> {
+  const company = await companyParam(c)
+  const id = c.req.param('doc') ?? ''
+  if (!company || company.vatStatus !== 'payer' || !ID.test(id)) return null
+  const row = (await badDebtRows(c.env.DB, company, dayOf(now()), id))[0]
+  return row ? { company, row } : null
+}
+
+teamRoutes.get('/klienti/:id/dph/nevymozitelne/:doc', async (c) => {
+  const found = await badDebtOf(c)
+  return found ? badDebtPage(c, found.company, found.row) : missingPage(c)
+})
+
+/** The lowering of § 25a(3): the case, the day, what is not paid, what proves it; its corrective document numbered at once. */
+teamRoutes.post('/klienti/:id/dph/nevymozitelne/:doc', async (c) => {
+  const found = await badDebtOf(c)
+  if (!found) return missingPage(c)
+  const { company, row } = found
+  const back = `/ucto/klienti/${company.id}/dph/nevymozitelne/${row.doc.id}`
+  if (row.reduce) return c.redirect(`${back}?ok=exists`, 303)
+  const body = await c.req.parseBody()
+  const today = dayOf(now())
+  const form: BadDebtForm = {
+    ground: typeof body.dovod === 'string' ? body.dovod : '',
+    day: typeof body.den === 'string' ? body.den.slice(0, 20) : '',
+    amount: typeof body.suma === 'string' ? body.suma.slice(0, 20) : '',
+    evidence: typeof body.dokaz === 'string' ? body.dokaz.slice(0, 1000) : '',
+    confirm: body.potvrdenie === '1',
+  }
+  const supplied = row.doc.suppliedOn ?? row.doc.issuedOn ?? bratislavaDay(row.doc.createdAt)
+  const { input, errors } = readBadDebt(form, { dueOn: row.doc.dueOn, suppliedOn: supplied, owed: row.owed, today }, (text) => dayOfText(text), moneyOf, { ...t.badDebt.errors })
+  if (!input) return badDebtPage(c, company, row, { values: form, errors }, 422)
+  const data = row.doc.vat
+  const lines = badDebtLines(data?.lines ?? [], input.cents)
+  const documented = Boolean(plainVatId(data?.vatId) || row.doc.partyIco) && !NO_DOCUMENT_GROUNDS.includes(input.ground)
+  const db = c.env.DB
+  const who = c.get('who').user.id
+  try {
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO bad_debts (id, company_id, document_id, kind, ground, event_on, year, seq, number, issued_on, lines, cents, evidence, payment_id, created_at, created_by)
+           SELECT ?1, ?2, ?3, 'reduce', ?4, ?5, ?6, CASE WHEN ?7 = 1 THEN n.seq END, CASE WHEN ?7 = 1 THEN printf('OD-%d-%03d', ?6, n.seq) END, CASE WHEN ?7 = 1 THEN ?8 END, ?9, ?10, ?11, NULL, ?12, ?13
+           FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM bad_debts WHERE company_id = ?2 AND year = ?6) n`,
+        )
+        .bind(crypto.randomUUID(), company.id, row.doc.id, input.ground, input.eventOn, Number(today.slice(0, 4)), documented ? 1 : 0, today, JSON.stringify(lines), input.cents, input.evidence, now(), who),
+      eventStatement(db, { company: company.id, user: who, action: 'vat.baddebt.reduced', subject: row.doc.id, detail: { ground: input.ground, on: input.eventOn, cents: input.cents } }),
+    ])
+  } catch (error) {
+    if (isPeriodLocked(error)) return c.redirect(`${back}?ok=locked`, 303)
+    if (String(error).includes('UNIQUE')) return c.redirect(`${back}?ok=exists`, 303)
+    throw error
+  }
+  return c.redirect(`${back}?ok=${documented ? 'saved' : 'savedNone'}`, 303)
+})
+
+/** The raising of § 25a(6) after a payment: its corrective document (§ 25a(10)) with the share the payment pays. */
+teamRoutes.post('/klienti/:id/dph/nevymozitelne/:doc/platba', async (c) => {
+  const found = await badDebtOf(c)
+  if (!found) return missingPage(c)
+  const { company, row } = found
+  const back = `/ucto/klienti/${company.id}/dph/nevymozitelne/${row.doc.id}`
+  if (!row.reduce || !row.restoreDue) return c.redirect(`${back}?ok=notYet`, 303)
+  const db = c.env.DB
+  const who = c.get('who').user.id
+  const today = dayOf(now())
+  const due = row.restoreDue
+  try {
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO bad_debts (id, company_id, document_id, kind, ground, event_on, year, seq, number, issued_on, lines, cents, evidence, payment_id, created_at, created_by)
+           SELECT ?1, ?2, ?3, 'restore', NULL, ?4, ?5, n.seq, printf('OD-%d-%03d', ?5, n.seq), ?6, ?7, ?8, NULL, ?9, ?10, ?11
+           FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM bad_debts WHERE company_id = ?2 AND year = ?5) n`,
+        )
+        .bind(crypto.randomUUID(), company.id, row.doc.id, due.on, Number(today.slice(0, 4)), today, JSON.stringify(due.lines), due.cents, row.doc.paymentId, now(), who),
+      eventStatement(db, { company: company.id, user: who, action: 'vat.baddebt.restored', subject: row.doc.id, detail: { on: due.on, cents: due.cents } }),
+    ])
+  } catch (error) {
+    if (isPeriodLocked(error)) return c.redirect(`${back}?ok=locked`, 303)
+    if (String(error).includes('UNIQUE')) return c.redirect(`${back}?ok=exists`, 303)
+    throw error
+  }
+  return c.redirect(`${back}?ok=restored`, 303)
+})
+
+/** The day a corrective document was sent to the customer (by the deadline of its return, § 25a(11)). */
+teamRoutes.post('/klienti/:id/dph/nevymozitelne/:doc/odoslane', async (c) => {
+  const found = await badDebtOf(c)
+  if (!found) return missingPage(c)
+  const { company, row } = found
+  const back = `/ucto/klienti/${company.id}/dph/nevymozitelne/${row.doc.id}`
+  const body = await c.req.parseBody()
+  const which = [row.reduce, row.restore].find((b) => b && b.id === body.zaznam)
+  const day = typeof body.den === 'string' ? dayOfText(body.den) : null
+  const today = dayOf(now())
+  if (!which || !which.number) return missingPage(c)
+  if (!day || day > today || (which.issuedOn && day < which.issuedOn)) return badDebtPage(c, company, row, {}, 422)
+  const db = c.env.DB
+  await db.batch([
+    db.prepare('UPDATE bad_debts SET sent_on = ? WHERE id = ? AND company_id = ? AND document_id = ? AND deleted_at IS NULL').bind(day, which.id, company.id, row.doc.id),
+    eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'vat.baddebt.sent', subject: row.doc.id, detail: { number: which.number, on: day } }),
+  ])
+  return c.redirect(`${back}?ok=sent`, 303)
+})
+
+/** A correction taken back (a lowering takes its raising along); marked, so its number stays taken. */
+teamRoutes.post('/klienti/:id/dph/nevymozitelne/:doc/zrusit', async (c) => {
+  const found = await badDebtOf(c)
+  if (!found) return missingPage(c)
+  const { company, row } = found
+  const back = `/ucto/klienti/${company.id}/dph/nevymozitelne/${row.doc.id}`
+  const body = await c.req.parseBody()
+  const which = [row.reduce, row.restore].find((b) => b && b.id === body.zaznam)
+  if (!which) return missingPage(c)
+  const db = c.env.DB
+  const who = c.get('who').user.id
+  try {
+    await db.batch([
+      db
+        .prepare("UPDATE bad_debts SET deleted_at = ?1, deleted_by = ?2 WHERE company_id = ?3 AND document_id = ?4 AND deleted_at IS NULL AND (id = ?5 OR (?6 = 'reduce' AND kind = 'restore'))")
+        .bind(now(), who, company.id, row.doc.id, which.id, which.kind),
+      eventStatement(db, { company: company.id, user: who, action: 'vat.baddebt.removed', subject: row.doc.id, detail: { kind: which.kind, number: which.number } }),
+    ])
+  } catch (error) {
+    if (!isPeriodLocked(error)) throw error
+    return c.redirect(`${back}?ok=locked`, 303)
+  }
+  return c.redirect(`${back}?ok=removed`, 303)
+})
+
+/** The corrective document as the customer gets it. */
+teamRoutes.get('/klienti/:id/dph/nevymozitelne/:doc/doklad', async (c) => {
+  const found = await badDebtOf(c)
+  if (!found) return missingPage(c)
+  const { company, row } = found
+  const which = c.req.query('druh') === 'restore' ? row.restore : row.reduce
+  if (!which || !which.number || !row.reduce) return missingPage(c)
+  const invoice = row.doc.invoiceId
+    ? await c.env.DB.prepare('SELECT customer_name, customer_ico, customer_dic, customer_icdph, customer_address FROM invoices WHERE id = ? AND company_id = ?')
+        .bind(row.doc.invoiceId, company.id)
+        .first<{ customer_name: string; customer_ico: string | null; customer_dic: string | null; customer_icdph: string | null; customer_address: string | null }>()
+    : null
+  const customer: SheetParty = invoice
+    ? { name: invoice.customer_name, ico: invoice.customer_ico, dic: invoice.customer_dic, icdph: invoice.customer_icdph, address: invoice.customer_address }
+    : { name: row.doc.party ?? '', ico: row.doc.partyIco, dic: null, icdph: plainVatId(row.doc.vat?.vatId), address: null }
+  return shell(c, 'clients', `${t.badDebt.sheet.title} ${which.number}`, <BadDebtSheet company={company} row={row} which={which} reduce={row.reduce} customer={customer} today={dayOf(now())} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------

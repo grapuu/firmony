@@ -52,6 +52,7 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['rozpocty-stredisk', 'SELECT * FROM cost_center_budgets WHERE company_id = ?1 ORDER BY year, center_id'],
     ['zrazky-zo-mzdy', 'SELECT * FROM wage_garnishments WHERE company_id = ?1 ORDER BY employee_id, started_on, id'],
     ['koeficienty-dph', 'SELECT * FROM vat_ratios WHERE company_id = ?1 ORDER BY year'],
+    ['nevymozitelne-pohladavky', 'SELECT * FROM bad_debts WHERE company_id = ?1 ORDER BY event_on, created_at'],
     ['nastavenia-miezd', 'SELECT payroll FROM companies WHERE id = ?1'],
     ['ucty', 'SELECT id, company_id, iban, bank, ledger, balance_cents, balance_on FROM accounts WHERE company_id = ?1 ORDER BY id'],
     ['doklady', "SELECT * FROM documents WHERE company_id = ?1 AND substr(COALESCE(issued_on, date(created_at, 'unixepoch')), 1, 4) = ?2 ORDER BY id"],

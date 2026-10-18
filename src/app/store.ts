@@ -14,6 +14,7 @@ import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
 import { isRatioMode, ratiosOf, type RatioMode, type RatioYear } from './vat-ratio'
+import { badDebtsOf, type BadDebt } from './bad-debt'
 
 export interface Company {
   id: string
@@ -206,6 +207,8 @@ export interface Doc {
   paidCents?: number | null
   /** A received invoice's corrections from the same supplier, booked (§ 53b). */
   credits?: CreditOf[]
+  /** An issued invoice's corrections of § 25a (bad-debt.ts). */
+  badDebts?: BadDebt[]
 }
 
 export interface Message {
@@ -360,8 +363,8 @@ export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM led
 /**
  * The day a document was paid (its bank payment's, else its cash document's); what that payment paid of an invoice
  * (vat.ts unpaidEvents: a bank payment in euros of it alone by its amount, its cash document by its amount; null while a
- * payment of several invoices paid each whole); and a received invoice's corrections from the same supplier, booked
- * (§ 53b; schema step 66 indexes them by the number they correct).
+ * payment of several invoices paid each whole); a received invoice's corrections from the same supplier, booked
+ * (§ 53b; schema step 66 indexes them by the number they correct); and an issued invoice's corrections of § 25a.
  */
 export const PAID_ON_COLUMN = `COALESCE((SELECT p.booked_on FROM payments p WHERE p.id = l.payment_id),
   (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
@@ -371,7 +374,10 @@ export const PAID_ON_COLUMN = `COALESCE((SELECT p.booked_on FROM payments p WHER
   CASE WHEN d.kind = 'invoice_in' AND d.number IS NOT NULL THEN (SELECT json_group_array(json_object('issued', c.issued_on, 'supplied', c.supplied_on, 'created', c.created_at, 'period', c.vat_period, 'lines', c.vat_lines))
     FROM documents c WHERE c.company_id = d.company_id AND c.corrects = d.number AND c.id <> d.id AND c.kind IN ('invoice_in', 'receipt') AND c.deleted_at IS NULL
       AND c.booked_at IS NOT NULL AND c.vat_mode = 'domestic' AND c.vat_lines IS NOT NULL
-      AND ((d.party_ico IS NOT NULL AND c.party_ico = d.party_ico) OR (d.party_vat_id IS NOT NULL AND c.party_vat_id = d.party_vat_id))) END AS credits`
+      AND ((d.party_ico IS NOT NULL AND c.party_ico = d.party_ico) OR (d.party_vat_id IS NOT NULL AND c.party_vat_id = d.party_vat_id))) END AS credits,
+  CASE WHEN d.kind = 'invoice_out' THEN (SELECT json_group_array(json_object('id', b.id, 'kind', b.kind, 'ground', b.ground, 'event_on', b.event_on, 'number', b.number,
+      'issued_on', b.issued_on, 'sent_on', b.sent_on, 'lines', b.lines, 'cents', b.cents, 'evidence', b.evidence, 'payment_id', b.payment_id))
+    FROM bad_debts b WHERE b.document_id = d.id AND b.deleted_at IS NULL) END AS bad_debts`
 
 /** A received invoice's corrections as the column above lists them. */
 function creditsOf(value: unknown): CreditOf[] {
@@ -467,6 +473,7 @@ export function docOf(row: Row): Doc {
     paidOn: str(row.paid_on),
     paidCents: typeof row.paid_cents === 'number' && Number.isInteger(row.paid_cents) ? row.paid_cents : null,
     credits: creditsOf(row.credits),
+    badDebts: badDebtsOf(row.bad_debts),
     cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }
@@ -532,6 +539,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     paidOn: doc.paidOn ?? null,
     paidCents: doc.paidCents ?? null,
     credits: doc.credits ?? [],
+    badDebts: doc.badDebts ?? [],
     paidPrivately: doc.paidPrivately,
   }
 }

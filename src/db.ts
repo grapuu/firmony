@@ -1,7 +1,7 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
-import { PERIOD_SCHEMA, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
+import { PERIOD_SCHEMA, badDebtsGuards, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
@@ -1443,6 +1443,49 @@ const MIGRATIONS: readonly string[][] = [
   // After the review of § 53b (18 October 2026): a received invoice's corrections are read with it (PAID_ON_COLUMN in
   // store.ts), found by the company and the number they correct.
   ['CREATE INDEX IF NOT EXISTS documents_corrects ON documents (company_id, corrects) WHERE corrects IS NOT NULL'],
+  // The supplier's bad debts (18 October 2026, bad-debt.ts, § 25a): an issued invoice's claim lowered once uncollectible,
+  // and raised again after a payment that comes later, each with its corrective document (OD-<year>-<order>) when one is
+  // issued; removed only by a mark, so a number is never given twice.
+  [
+    `CREATE TABLE IF NOT EXISTS bad_debts (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('reduce', 'restore')),
+      ground TEXT CHECK (ground IS NULL OR ground IN ('a1', 'a2', 'a3', 'b1', 'b2', 'b3', 'c1', 'c2', 'c3', 'd', 'e1', 'e2', 'f')),
+      event_on TEXT NOT NULL,
+      year INTEGER,
+      seq INTEGER,
+      number TEXT,
+      issued_on TEXT,
+      sent_on TEXT,
+      lines TEXT NOT NULL CHECK (json_valid(lines)),
+      cents INTEGER NOT NULL CHECK (cents > 0),
+      evidence TEXT CHECK (evidence IS NULL OR length(evidence) <= 1000),
+      payment_id TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT NOT NULL,
+      deleted_at INTEGER,
+      deleted_by TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS bad_debts_document ON bad_debts (document_id)',
+    'CREATE INDEX IF NOT EXISTS bad_debts_company ON bad_debts (company_id, event_on)',
+    "CREATE UNIQUE INDEX IF NOT EXISTS bad_debts_reduce ON bad_debts (document_id) WHERE deleted_at IS NULL AND kind = 'reduce'",
+    "CREATE UNIQUE INDEX IF NOT EXISTS bad_debts_restore ON bad_debts (document_id, event_on) WHERE deleted_at IS NULL AND kind = 'restore'",
+    'CREATE UNIQUE INDEX IF NOT EXISTS bad_debts_number ON bad_debts (company_id, year, seq) WHERE seq IS NOT NULL',
+    ...badDebtsGuards,
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER bad_debts_data_${action.toLowerCase()} AFTER ${action} ON bad_debts BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map(
+      (action) => `CREATE TRIGGER bad_debts_purging_${action.toLowerCase()} BEFORE ${action} ON bad_debts
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+    ),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

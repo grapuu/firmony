@@ -87,7 +87,11 @@ const Issues: FC<{ company: Company; view: PeriodView; docs: Map<string, Doc> }>
           {d ? <span class="vissue__doc">{docLine(d)}</span> : null}
           <span>{v.issue[i.code as IssueCode]}</span>
         </span>
-        {i.doc ? (
+        {i.doc && i.code.startsWith('badDebt') ? (
+          <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/dph/nevymozitelne/${i.doc}`}>
+            {v.open}
+          </a>
+        ) : i.doc ? (
           <a class="btn btn--line btn--small" href={`/ucto/doklady/${i.doc}`}>
             {v.open}
           </a>
@@ -634,6 +638,17 @@ export const VatPage: FC<VatPageProps> = (p) => {
                   <p class="info__lead">{(c.vatRatios?.length ?? 0) > 0 ? t.ratio.vatHintOn((c.vatRatios ?? []).map((r) => `${r.year}: ${coefText(r.coef)}`).join(', ')) : t.ratio.vatHint}</p>
                   <a class="btn btn--line btn--small" href={`/ucto/klienti/${c.id}/dph/koeficient?rok=${p.view.period.slice(0, 4)}`}>
                     {t.ratio.open}
+                  </a>
+                </section>
+              ) : null}
+              {c.vatStatus === 'payer' ? (
+                <section class="info" aria-labelledby="baddebt-link-t">
+                  <h2 id="baddebt-link-t" class="info__title">
+                    {t.badDebt.title}
+                  </h2>
+                  <p class="info__lead">{t.badDebt.vatHint}</p>
+                  <a class="btn btn--line btn--small" href={`/ucto/klienti/${c.id}/dph/nevymozitelne`}>
+                    {t.badDebt.open}
                   </a>
                 </section>
               ) : null}
