@@ -169,4 +169,59 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
   const creditId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
   const creditDoc = await db.prepare('SELECT d.center_id FROM invoices i JOIN documents d ON d.id = i.document_id WHERE i.id = ?').bind(creditId).first()
   check("a credit note takes its invoice's centre", res.status === 303 && creditDoc?.center_id === shop, JSON.stringify(creditDoc))
+
+  // A supplier's rule remembers the centre: the supplier's next document waiting gets it.
+  await owner.post(`/app/strediska/${store}/obnovit`, {})
+  await db.batch(
+    ['st-c1', 'st-c2'].map((id) =>
+      db
+        .prepare(
+          `INSERT INTO documents (id, company_id, created_at, source, status, kind, party, party_ico, number, issued_on, total_cents, vat_cents, currency, category)
+           VALUES (?, ?, ?, 'upload', 'read', 'receipt', 'TEST-ONLY Čistiareň s. r. o.', '50777861', ?, ?, 3000, 0, 'EUR', 'services')`,
+        )
+        .bind(id, company, nowS, id.toUpperCase(), day(-2)),
+    ),
+  )
+  res = await acc.post('/ucto/doklady/st-c1', {
+    akcia: 'zauctovat',
+    kind: 'receipt',
+    party: 'TEST-ONLY Čistiareň s. r. o.',
+    ico: '50777861',
+    total: '30,00',
+    vat: '',
+    category: 'services',
+    issued: `${Number(day(-2).slice(8))}. ${Number(day(-2).slice(5, 7))}. ${day(-2).slice(0, 4)}`,
+    due: '',
+    remember: '1',
+    stredisko: store,
+    stredisko_bolo: '',
+  })
+  const rule = await db.prepare('SELECT center_id FROM supplier_rules WHERE company_id = ? AND key LIKE ?').bind(company, '%50777861%').first()
+  const next = await db.prepare("SELECT center_id, proposal FROM documents WHERE id = 'st-c2'").first()
+  check(
+    "the rule keeps the centre and gives it to the supplier's next document",
+    res.status === 303 && rule?.center_id === store && next?.center_id === store && next.proposal === 'rule',
+    JSON.stringify([rule, next]),
+  )
+  page = plain(await (await acc.get(`/ucto/klienti/${company}`)).text())
+  check("the client's page names the rule's centre", page.includes('stredisko SKLAD'))
+
+  // Budgets of a year (owners): the report compares the months with their share of the year's.
+  page = plain(await (await owner.get(`/app/strediska?rok=${year}`)).text())
+  check('the budgets of the year, a field for each centre in use', page.includes(`name="prijmy_${shop}"`) && page.includes(`name="naklady_${store}"`) && page.includes(`Rozpočet na rok ${year}`))
+  check('only an owner sets them', (await colleague.post('/app/strediska/rozpocet', { rok: year, [`naklady_${shop}`]: '1200' })).status === 403)
+  res = await owner.post('/app/strediska/rozpocet', { rok: year, [`prijmy_${shop}`]: 'veľa', [`naklady_${shop}`]: '1 200' })
+  const budgets = async () => (await db.prepare('SELECT center_id, year, revenue, costs FROM cost_center_budgets WHERE company_id = ? ORDER BY center_id').bind(company).all()).results
+  check('an amount that is none is refused and nothing kept', res.status === 422 && plain(await res.text()).includes('Sumu napíšte v eurách') && (await budgets()).length === 0)
+  res = await owner.post('/app/strediska/rozpocet', { rok: year, [`prijmy_${shop}`]: '3 600', [`naklady_${shop}`]: '1 200', [`prijmy_${store}`]: '', [`naklady_${store}`]: '' })
+  const kept = await budgets()
+  check(
+    'kept for the centre that has one, none for a centre left empty',
+    res.status === 303 && kept.length === 1 && kept[0].center_id === shop && kept[0].revenue === 360000 && kept[0].costs === 120000 && kept[0].year === Number(year),
+    JSON.stringify(kept),
+  )
+  page = plain(await (await owner.get(`/app/strediska?rok=${year}&od=${month}&do=${month}`)).text())
+  check("a month's figures against a twelfth of the year's budget", page.includes('z rozpočtu 300,00 €:') && page.includes('z rozpočtu 100,00 €:'))
+  page = plain(await (await colleague.get(`/app/strediska?rok=${year}`)).text())
+  check('a colleague reads the budgets', page.includes('výnosy 3 600,00 €, náklady 1 200,00 €') && !page.includes(`name="prijmy_${shop}"`))
 }

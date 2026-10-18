@@ -2,7 +2,7 @@
 import type { FC } from 'hono/jsx'
 import { formatEurExact } from '../format'
 import { app, MONTHS } from '../app/copy'
-import type { CenterTotals, CostCenter } from '../app/centers'
+import { budgetShare, budgetUse, type CenterBudget, type CenterTotals, type CostCenter } from '../app/centers'
 import { Flash, Heading } from './inside'
 
 const t = app.centers
@@ -18,8 +18,21 @@ export const CentersPage: FC<{
   values?: { code: string; name: string }
   errors?: { code?: string; name?: string }
   flash?: string | null
-}> = ({ centers, totals, year, years, from, to, owner, values = { code: '', name: '' }, errors = {}, flash = null }) => {
+  /** The centres' budgets of the year (centers.ts), by centre. */
+  budgets?: Record<string, CenterBudget>
+  /** The budget form as typed, after an error. */
+  budgetForm?: { year: number; values: Record<string, string>; errors: Record<string, string> } | null
+}> = ({ centers, totals, year, years, from, to, owner, values = { code: '', name: '' }, errors = {}, flash = null, budgets = {}, budgetForm = null }) => {
   const byId = new Map(centers.map((c) => [c.id, c]))
+  // What a period's figure is of its months' share of the year's budget.
+  const ofBudget = (amount: number, yearly: number | undefined) => {
+    if (!yearly) return null
+    const share = budgetShare(yearly, from, to)
+    const use = budgetUse(amount, share)
+    return <span class={`centers__hint${use !== null && use > 100 ? ' centers__over' : ''}`}>{t.budgetOf(formatEurExact(share), use)}</span>
+  }
+  const typed = (cents: number | undefined) => (cents ? (cents / 100).toFixed(2).replace('.', ',') : '')
+  const inUse = centers.filter((c) => !c.archived)
   const sum = totals.reduce((s, r) => ({ revenue: s.revenue + r.revenue, costs: s.costs + r.costs }), { revenue: 0, costs: 0 })
   return (
     <>
@@ -102,8 +115,14 @@ export const CentersPage: FC<{
                         </>
                       )}
                     </th>
-                    <td class="num">{formatEurExact(r.revenue)}</td>
-                    <td class="num">{formatEurExact(r.costs)}</td>
+                    <td class="num">
+                      {formatEurExact(r.revenue)}
+                      {r.id ? ofBudget(r.revenue, budgets[r.id]?.revenue) : null}
+                    </td>
+                    <td class="num">
+                      {formatEurExact(r.costs)}
+                      {r.id ? ofBudget(r.costs, budgets[r.id]?.costs) : null}
+                    </td>
                     <td class={`num${r.result < 0 ? ' cash__minus' : ''}`}>{formatEurExact(r.result)}</td>
                   </tr>
                 )
@@ -120,6 +139,74 @@ export const CentersPage: FC<{
           </table>
         </div>
       </section>
+      {inUse.length > 0 ? (
+        <section class="info" id="rozpocet" aria-labelledby="rozpocet-t">
+          <h2 id="rozpocet-t" class="info__title">
+            {t.budgetTitle(year)}
+          </h2>
+          <p class="info__lead">{t.budgetLead}</p>
+          {owner ? (
+            <form class="centers__budgets" method="post" action="/app/strediska/rozpocet" novalidate>
+              <input type="hidden" name="rok" value={String(year)} />
+              <div class="lscroll">
+                <table class="ltable centers__budget">
+                  <thead>
+                    <tr>
+                      <th scope="col">{t.cols.center}</th>
+                      <th scope="col">{t.budgetRevenue}</th>
+                      <th scope="col">{t.budgetCosts}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inUse.map((c) => {
+                      const cell = (name: string, cents: number | undefined, label: string) => (
+                        <td>
+                          <input
+                            class="field__input centers__amount"
+                            name={name}
+                            value={budgetForm ? (budgetForm.values[name] ?? '') : typed(cents)}
+                            inputmode="decimal"
+                            maxlength={20}
+                            aria-label={`${label}: ${c.code}`}
+                            aria-invalid={budgetForm?.errors[name] ? 'true' : undefined}
+                          />
+                          {budgetForm?.errors[name] ? <p class="field__error">{budgetForm.errors[name]}</p> : null}
+                        </td>
+                      )
+                      return (
+                        <tr>
+                          <th scope="row">
+                            <strong>{c.code}</strong> {c.name}
+                          </th>
+                          {cell(`prijmy_${c.id}`, budgets[c.id]?.revenue, t.budgetRevenue)}
+                          {cell(`naklady_${c.id}`, budgets[c.id]?.costs, t.budgetCosts)}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <button class="btn btn--blue" type="submit">
+                {t.budgetSave}
+              </button>
+            </form>
+          ) : (
+            <>
+              <ul class="plain">
+                {inUse
+                  .filter((c) => budgets[c.id])
+                  .map((c) => (
+                    <li class="trips__item">
+                      <strong>{c.code}</strong>
+                      <span>{t.budgetLine(formatEurExact(budgets[c.id]?.revenue ?? 0), formatEurExact(budgets[c.id]?.costs ?? 0))}</span>
+                    </li>
+                  ))}
+              </ul>
+              <p class="info__source">{t.budgetOwnerOnly}</p>
+            </>
+          )}
+        </section>
+      ) : null}
       <section class="info" aria-labelledby="zoznam-t">
         <h2 id="zoznam-t" class="info__title">
           {t.list}

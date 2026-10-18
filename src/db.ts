@@ -1334,6 +1334,34 @@ const MIGRATIONS: readonly string[][] = [
   ['ALTER TABLE documents ADD COLUMN iban_by TEXT'],
   // Meals of employees (18 October 2026, meals.ts): each employee's choice of vouchers or the financial contribution.
   ['ALTER TABLE employees ADD COLUMN meal_way TEXT'],
+  // Budgets of cost centres (18 October 2026, centers.ts): a centre's revenues and costs planned for a year; the centre
+  // a supplier's rule remembers.
+  [
+    `CREATE TABLE IF NOT EXISTS cost_center_budgets (
+      company_id TEXT NOT NULL,
+      center_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      revenue INTEGER NOT NULL DEFAULT 0,
+      costs INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT,
+      PRIMARY KEY (center_id, year)
+    )`,
+    'CREATE INDEX IF NOT EXISTS cost_center_budgets_company ON cost_center_budgets (company_id, year)',
+    // A supplier's rule remembers the cost centre too, given to the supplier's next documents that have none.
+    'ALTER TABLE supplier_rules ADD COLUMN center_id TEXT',
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER cost_center_budgets_data_${action.toLowerCase()} AFTER ${action} ON cost_center_budgets BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map(
+      (action) => `CREATE TRIGGER cost_center_budgets_purging_${action.toLowerCase()} BEFORE ${action} ON cost_center_budgets
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+    ),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

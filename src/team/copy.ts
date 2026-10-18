@@ -219,6 +219,7 @@ export const team = typesetAll({
     noMessages: 'Zatiaľ si nepísali.',
     ruleDeduct: 'DPH sa odpočíta',
     ruleNoDeduct: 'DPH sa neodpočíta',
+    ruleCenter: (code: string) => typeset(`stredisko ${code}`),
     owner: 'majiteľ',
     member: 'člen',
     contract: 'Zmluva a plná moc',

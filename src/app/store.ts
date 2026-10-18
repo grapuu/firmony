@@ -861,8 +861,9 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
 
 /**
  * What the accountant decided once for a supplier is proposed for its next documents: the category and whether
- * VAT is deducted. A rule wins over the reader's guess; a booked document is never changed by it, nor a business
- * trip's settlement (owed to a person, whatever the person's name is on elsewhere).
+ * VAT is deducted, and the cost centre for a document that has none (a centre in use). A rule wins over the reader's
+ * guess; a booked document is never changed by it, nor a business trip's settlement (owed to a person, whatever the
+ * person's name is on elsewhere).
  */
 export function ruleStatement(db: D1Database, company: string, doc: string, key: string | null): D1PreparedStatement {
   return db
@@ -870,20 +871,23 @@ export function ruleStatement(db: D1Database, company: string, doc: string, key:
       `UPDATE documents SET
          category = (SELECT category FROM supplier_rules WHERE company_id = ?1 AND key = ?2),
          vat_deduct = (SELECT vat_deduct FROM supplier_rules WHERE company_id = ?1 AND key = ?2),
+         center_id = COALESCE(center_id, (SELECT r.center_id FROM supplier_rules r JOIN cost_centers cc ON cc.id = r.center_id AND cc.company_id = ?1 AND cc.archived_at IS NULL
+           WHERE r.company_id = ?1 AND r.key = ?2)),
          proposal = 'rule'
        WHERE id = ?3 AND company_id = ?1 AND booked_at IS NULL AND source <> 'trip' AND EXISTS (SELECT 1 FROM supplier_rules WHERE company_id = ?1 AND key = ?2)`,
     )
     .bind(company, key ?? '', doc)
 }
 
-export function ruleUpsertStatement(db: D1Database, company: string, key: string, name: string | null, category: Category, vatDeduct: boolean, by: string): D1PreparedStatement {
+export function ruleUpsertStatement(db: D1Database, company: string, key: string, name: string | null, category: Category, vatDeduct: boolean, by: string, center: string | null = null): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO supplier_rules (company_id, key, name, category, vat_deduct, uses, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      `INSERT INTO supplier_rules (company_id, key, name, category, vat_deduct, uses, updated_at, updated_by, center_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, (SELECT id FROM cost_centers WHERE id = ?8 AND company_id = ?1))
        ON CONFLICT(company_id, key) DO UPDATE SET name = excluded.name, category = excluded.category, vat_deduct = excluded.vat_deduct,
-         uses = supplier_rules.uses + 1, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+         uses = supplier_rules.uses + 1, updated_at = excluded.updated_at, updated_by = excluded.updated_by, center_id = excluded.center_id`,
     )
-    .bind(company, key, name, category, vatDeduct ? 1 : 0, now(), by)
+    .bind(company, key, name, category, vatDeduct ? 1 : 0, now(), by, center)
 }
 
 /**

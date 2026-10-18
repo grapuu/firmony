@@ -17,6 +17,8 @@
 // - A first approval counts only while its approver may still approve the amount (still a member, an approver, within
 //   his limit); otherwise the next approval takes its place as the first. When the owners raise or clear the amount of
 //   two approvals, one approval is enough again, also of the person who gave the first.
+// - On a working morning at nine, whoever an invoice waits for gets one doorbell (`waitingFor`, remind.ts), unless he
+//   turned reminders off.
 
 export interface Approver {
   owner: boolean
@@ -71,3 +73,30 @@ export interface DocApproval {
 
 /** What the page showed of an invoice for approving: its total, currency and IBAN, so the approval is of that. */
 export const approvalSeen = (doc: { totalCents: number | null; currency: string | null; partyIban: string | null }): string => `${doc.totalCents ?? ''}|${doc.currency ?? 'EUR'}|${doc.partyIban ?? ''}`
+
+/** An invoice that waits for approving, as far as who it waits for. */
+export interface WaitingDoc {
+  totalCents: number | null
+  currency: string | null
+  firstApprovedBy: string | null
+  ibanBy: string | null
+}
+
+/**
+ * Who an approval waits for (the doorbell of a working morning, remind.ts): each person who may approve at least one
+ * of the invoices with an approval that counts (first, again or final), as the document's page offers it.
+ */
+export function waitingFor(docs: readonly WaitingDoc[], people: readonly (Approver & { id: string })[], twoFrom: number | null): string[] {
+  const byId = new Map(people.map((p) => [p.id, p]))
+  return people
+    .filter((p) =>
+      docs.some((d) => {
+        const cents = approvalCents(d)
+        if (!mayApprove(p, cents)) return false
+        const firstMay = !d.firstApprovedBy || mayApprove(byId.get(d.firstApprovedBy) ?? null, cents)
+        const step = approvalStep({ approvedAt: null, firstApprovedBy: d.firstApprovedBy, ibanBy: d.ibanBy }, twoFrom, cents, p.id, { owner: p.owner, firstMay })
+        return step === 'first' || step === 'again' || step === 'final'
+      }),
+    )
+    .map((p) => p.id)
+}

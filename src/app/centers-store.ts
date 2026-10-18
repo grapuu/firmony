@@ -1,6 +1,6 @@
 // Cost centres kept (18 October 2026, centers.ts): the company's list, and the centre of each document.
 import { now } from '../db'
-import type { CostCenter } from './centers'
+import type { CenterBudget, CostCenter } from './centers'
 import { eventStatement } from './store'
 
 type Row = Record<string, unknown>
@@ -38,4 +38,23 @@ export function documentCenterStatement(db: D1Database, company: string, doc: st
          AND (?1 IS NULL OR EXISTS (SELECT 1 FROM cost_centers c WHERE c.id = ?1 AND c.company_id = ?3 AND c.archived_at IS NULL))`,
     )
     .bind(center, doc, company)
+}
+
+/** The budgets of the company's centres for a year, by centre. */
+export async function centerBudgets(db: D1Database, company: string, year: number): Promise<Map<string, CenterBudget>> {
+  const rows = await db.prepare('SELECT center_id, revenue, costs FROM cost_center_budgets WHERE company_id = ? AND year = ?').bind(company, year).all<Row>()
+  return new Map(rows.results.map((r) => [String(r.center_id), { revenue: Number(r.revenue), costs: Number(r.costs) }]))
+}
+
+/** A centre's budget of a year written (only of a centre of the company); a budget of nothing removed. */
+export function budgetStatement(db: D1Database, company: string, center: string, year: number, budget: CenterBudget, user: string): D1PreparedStatement {
+  if (budget.revenue === 0 && budget.costs === 0) return db.prepare('DELETE FROM cost_center_budgets WHERE company_id = ? AND center_id = ? AND year = ?').bind(company, center, year)
+  return db
+    .prepare(
+      `INSERT INTO cost_center_budgets (company_id, center_id, year, revenue, costs, updated_at, updated_by)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE EXISTS (SELECT 1 FROM cost_centers c WHERE c.id = ?2 AND c.company_id = ?1)
+       ON CONFLICT (center_id, year) DO UPDATE SET revenue = excluded.revenue, costs = excluded.costs, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+       WHERE cost_center_budgets.company_id = ?1`,
+    )
+    .bind(company, center, year, budget.revenue, budget.costs, now(), user)
 }

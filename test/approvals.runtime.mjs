@@ -5,7 +5,7 @@
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
-export async function checkApprovals({ db, acc, lucia, nowS, signIn, as, day, capture }) {
+export async function checkApprovals({ db, acc, lucia, nowS, signIn, as, day, capture, tick, sent, settle, nineFive }) {
   const company = 'co-approvals'
   const plain = (text) => text.replace(/[  ]/g, ' ')
   const sk = (d) => `${Number(d.slice(8))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
@@ -252,4 +252,26 @@ export async function checkApprovals({ db, acc, lucia, nowS, signIn, as, day, ca
     'a variable symbol given on the booking screen takes the approval back',
     (await db.prepare('SELECT approved_at, vs FROM documents WHERE id = ?').bind('ap-stale').first())?.approved_at === null,
   )
+
+  // The doorbell of a working morning: whoever an invoice waits for, once a day; never a colleague who approves nothing.
+  if (tick) {
+    const holidays = ['01-01', '01-06', '05-01', '05-08', '07-05', '08-29', '09-15', '11-01', '11-17', '12-24', '12-25', '12-26']
+    let morning = day(1)
+    while ([0, 6].includes(new Date(`${morning}T12:00:00Z`).getUTCDay()) || holidays.includes(morning.slice(5)))
+      morning = new Date(Date.parse(`${morning}T12:00:00Z`) + 86400000).toISOString().slice(0, 10)
+    const before = (await sent()).length
+    await tick(nineFive(morning))
+    await settle(500)
+    const rung = (await sent()).slice(before).filter((m) => m.subject === 'Firmony: faktúry na schválenie')
+    check(
+      "at nine the owner and both approvers are rung (something within each one's limit waits), the colleague who approves nothing is not",
+      ['appr-owner@example.sk', 'appr-a@example.sk', 'appr-b@example.sk'].every((to) => rung.some((m) => m.to === to && m.text.includes('/app/schvalovanie'))) &&
+        !rung.some((m) => m.to === 'appr-c@example.sk') &&
+        !rung.some((m) => /TEST-ONLY|€/.test(m.text)),
+      rung.map((m) => m.to).join(' '),
+    )
+    await tick(nineFive(morning))
+    await settle(300)
+    check('once a day', (await sent()).slice(before).filter((m) => m.subject === 'Firmony: faktúry na schválenie').length === rung.length)
+  }
 }

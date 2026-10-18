@@ -238,11 +238,23 @@ export interface Rule {
   category: Category
   vatDeduct: boolean
   uses: number
+  /** The cost centre it gives the supplier's documents, by its code. */
+  center?: string | null
 }
 
 export async function rulesOf(db: D1Database, company: string): Promise<Rule[]> {
-  const rows = await db.prepare('SELECT key, name, category, vat_deduct, uses FROM supplier_rules WHERE company_id = ? ORDER BY uses DESC, name LIMIT 100').bind(company).all<Row>()
-  return rows.results.map((row) => ({ key: String(row.key), name: typeof row.name === 'string' ? row.name : null, category: String(row.category) as Category, vatDeduct: row.vat_deduct === 1, uses: Number(row.uses) }))
+  const rows = await db
+    .prepare('SELECT r.key, r.name, r.category, r.vat_deduct, r.uses, cc.code AS center FROM supplier_rules r LEFT JOIN cost_centers cc ON cc.id = r.center_id WHERE r.company_id = ? ORDER BY r.uses DESC, r.name LIMIT 100')
+    .bind(company)
+    .all<Row>()
+  return rows.results.map((row) => ({
+    key: String(row.key),
+    name: typeof row.name === 'string' ? row.name : null,
+    category: String(row.category) as Category,
+    vatDeduct: row.vat_deduct === 1,
+    uses: Number(row.uses),
+    center: typeof row.center === 'string' ? row.center : null,
+  }))
 }
 
 export interface TeamMember {

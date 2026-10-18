@@ -31,7 +31,8 @@ over. Bring this section up to date first whenever a session ends.
    "Payment orders"); a fifth independent review, of imports and takings, nine findings mended (schema step 56); a sixth,
    of approving and the Slovak e-invoice terms, eight findings mended (schema step 57; a credit note's e-invoice with
    another day of supply failed the UBL schema); meals of employees in payroll, vouchers and the financial contribution
-   (schema step 58, under "Payroll") and the social fund's mandatory allocation. **Nothing is live**: there
+   (schema step 58, under "Payroll") and the social fund's mandatory allocation; a morning doorbell to approvers and
+   budgets of cost centres (schema step 59). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1305,6 +1306,11 @@ by itself.
   another kind, supplier or variable symbol (the payment order carries it); the queue lists only what a payment order
   pays (`PAYABLE_DOC` in payorders.ts: no credit note taking back, no prepayment invoice, nothing to pay) and a colleague
   who approves nothing reads "čaká na schvaľovateľa".
+  The doorbell of a working morning (built 18 October 2026, `remindApprovals` in remind.ts, `waitingFor` in
+  approvals.ts): at nine on a working day each person an invoice waits for (an owner, an approver within his limit, for
+  an approval that counts: first, again or final, never who typed its IBAN or the first approver for the second) gets one
+  doorbell "faktúry na schválenie" with the link to the queue, once a day whatever number of invoices and companies,
+  never who turned reminders off.
 - Mended after the review of the invoices (18 October 2026, an independent reader of commits c97c5c5 to 885e572; each
   finding verified in the code first; schema step 48 `documents.prepaid`): a final invoice its advances paid whole
   (total nought, the usual case) made no entry, so 324 kept the advance and the revenue missed the supply, and its VAT
@@ -1395,9 +1401,17 @@ management of a medium or large company; the books stay as they are.
   archived centre stays in the report while it has documents of any period. "Spoločné" names everything it holds:
   payroll, depreciation, goods sold out of stock (booked by months, not by document), the year's revaluation of what is
   open in another currency, a bank's fee, internal documents, the income tax and documents without a centre.
-- Not built: a centre on an invoice's form (given on its document), a supplier's rule remembering the centre, a
+- Budgets (built 18 October 2026, schema step 59 `cost_center_budgets`): an owner plans each centre's revenues and
+  costs for a calendar year ("Rozpočet na rok", `/app/strediska/rozpocet`, a row a centre in use, empty nought and no
+  row); the report shows under each centre's revenues and costs its months' share of the year's (`budgetShare`, a twelfth
+  a month) and how much of it was earned or spent (`budgetUse`, red above 100 %); a colleague reads the budgets. Handover
+  and the yearly ZIP carry them (`rozpocty-stredisk`), purge deletes them.
+- A supplier's rule remembers the centre (built 18 October 2026, `supplier_rules.center_id` in schema step 59): booked
+  with "Zapamätať pre dodávateľa", the rule keeps the centre the form leaves the document with, and gives it to the
+  supplier's next documents that have none (a centre in use; `ruleStatement`); the client page names it.
+- Not built: a centre on an invoice's form (given on its document), a
   document split among centres, payroll, depreciation or the cost of goods sold by centre, the accountant's own report
-  screen, budgets. test/centers.runtime.mjs, units "Cost centres".
+  screen, budgets by month or by account. test/centers.runtime.mjs, units "Cost centres" and "Budgets of cost centres".
 
 ### The cash box (18 October 2026; `src/app/cash.ts`, `cash-store.ts`, `src/views/cash.tsx`, schema step 50)
 
@@ -2310,8 +2324,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1227 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1798 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1229 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1808 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

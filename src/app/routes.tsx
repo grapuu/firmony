@@ -76,7 +76,7 @@ import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
-import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
+import { remindAll, remindApprovals, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { ratesFor, refreshRates } from './fx-store'
 import { orderItems, orderStatements, painXml, payables, paymentOrders, PAYABLE_DOC } from './payorders'
 import { issueAdvances } from './advance-auto'
@@ -89,7 +89,7 @@ import { cashDocuments, cashPayments, cashStatements, pendingCashReceipts, remov
 import { dataRevision } from './handover-store'
 import { FLAT_COMPENSATION, lateInterest, ratePercent, REMIND_AFTER, reminderDue } from './dunning'
 import { centerCode, centerTotals } from './centers'
-import { addCenterStatements, archiveCenterStatement, documentCenters, documentCenterStatement, listCenters } from './centers-store'
+import { addCenterStatements, archiveCenterStatement, budgetStatement, centerBudgets, documentCenters, documentCenterStatement, listCenters } from './centers-store'
 import { CentersPage } from '../views/centers'
 import { CashFormPage, CashPage, type CashRow } from '../views/cash'
 import { emptyTakings, readTakings, type TakingsErrors, type TakingsValues } from './takings'
@@ -1115,13 +1115,17 @@ appRoutes.get('/uhrady/:id/xml', async (c) => {
 })
 
 // Cost centres (centers.ts): what each centre earned in a period, from the books; the list (owners); a document's centre.
-async function centersPage(c: Ctx, extra: { values?: { code: string; name: string }; errors?: { code?: string; name?: string } } = {}, status: 200 | 409 | 422 = 200) {
+async function centersPage(
+  c: Ctx,
+  extra: { values?: { code: string; name: string }; errors?: { code?: string; name?: string }; budget?: { year: number; values: Record<string, string>; errors: Record<string, string> } } = {},
+  status: 200 | 409 | 422 = 200,
+) {
   const who = c.get('who')
   const db = c.env.DB
   const [books, centers, centerOfDoc] = await Promise.all([booksOf(db, who.company), listCenters(db, who.company.id), documentCenters(db, who.company.id)])
   const day = today()
-  const years = [...new Set([Number(day.slice(0, 4)), ...books.entries.map((e) => Number(e.on.slice(0, 4)))])].sort((a, b) => b - a)
-  const asked = Number(c.req.query('rok'))
+  const years = [...new Set([Number(day.slice(0, 4)), Number(day.slice(0, 4)) + 1, ...books.entries.map((e) => Number(e.on.slice(0, 4)))])].sort((a, b) => b - a)
+  const asked = extra.budget?.year ?? Number(c.req.query('rok'))
   const year = years.includes(asked) ? asked : Number(day.slice(0, 4))
   const month = (v: string | undefined, fallback: number) => {
     const n = Number(v)
@@ -1131,12 +1135,27 @@ async function centersPage(c: Ctx, extra: { values?: { code: string; name: strin
   const to = Math.max(from, month(c.req.query('do'), year === Number(day.slice(0, 4)) ? Number(day.slice(5, 7)) : 12))
   const last = new Date(Date.UTC(year, to, 0)).toISOString().slice(0, 10)
   const totals = centerTotals(books.entries, centerOfDoc, centers, `${year}-${String(from).padStart(2, '0')}-01`, last)
-  const flash = c.req.query('ok') === 'pridane' ? t.centers.added : c.req.query('ok') === 'ulozene' ? t.centers.changed : null
+  const budgets = Object.fromEntries(await centerBudgets(db, who.company.id, year))
+  const ok = c.req.query('ok')
+  const flash = ok === 'pridane' ? t.centers.added : ok === 'ulozene' ? t.centers.changed : ok === 'rozpocet' ? t.centers.budgetSaved : null
   return shell(
     c,
     'documents',
     t.centers.title,
-    <CentersPage centers={centers} totals={totals} year={year} years={years} from={from} to={to} owner={who.role === 'owner'} values={extra.values} errors={extra.errors} flash={flash} />,
+    <CentersPage
+      centers={centers}
+      totals={totals}
+      year={year}
+      years={years}
+      from={from}
+      to={to}
+      owner={who.role === 'owner'}
+      values={extra.values}
+      errors={extra.errors}
+      flash={flash}
+      budgets={budgets}
+      budgetForm={extra.budget ?? null}
+    />,
     status,
   )
 }
@@ -1159,6 +1178,38 @@ appRoutes.post('/strediska', async (c) => {
     throw err
   }
   return c.redirect('/app/strediska?ok=pridane', 303)
+})
+
+/** The centres' budgets of a year (owners): each centre's revenues and costs planned; empty is nought (no budget). */
+appRoutes.post('/strediska/rozpocet', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return shell(c, 'documents', t.errors.notFound, <Missing />, 403)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const year = Number(body.rok)
+  const thisYear = Number(today().slice(0, 4))
+  if (!Number.isInteger(year) || year < 2000 || year > thisYear + 1) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  const centers = (await listCenters(db, who.company.id)).filter((x) => !x.archived)
+  const values: Record<string, string> = {}
+  const errors: Record<string, string> = {}
+  const amount = (name: string) => {
+    const text = typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, 20) : ''
+    values[name] = text
+    if (text === '') return 0
+    const cents = centsOf(text)
+    if (cents === null || Number.isNaN(cents) || cents < 0 || cents > 100_000_000_000) {
+      errors[name] = t.centers.errors.budget
+      return 0
+    }
+    return cents
+  }
+  const budgets = centers.map((x) => ({ id: x.id, revenue: amount(`prijmy_${x.id}`), costs: amount(`naklady_${x.id}`) }))
+  if (Object.keys(errors).length > 0) return centersPage(c, { budget: { year, values, errors } }, 422)
+  await db.batch([
+    ...budgets.map((b) => budgetStatement(db, who.company.id, b.id, year, { revenue: b.revenue, costs: b.costs }, who.user.id)),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'center.budget', subject: String(year) }),
+  ])
+  return c.redirect(`/app/strediska?rok=${year}&ok=rozpocet#rozpocet`, 303)
 })
 
 for (const [path, archived] of [
@@ -3341,6 +3392,7 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     ['documents', remindAll],
     ['bank renewals', remindBankRenewals],
     ['statements', remindStatements],
+    ['approvals', remindApprovals],
   ] as const) {
     try {
       await remind(env, at)

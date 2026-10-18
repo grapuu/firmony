@@ -7422,3 +7422,39 @@ a.wtable__name {
 .centers__add {
   margin-top: 16px;
 }
+
+/* A figure above its share of the budget. */
+.centers__over {
+  color: var(--red-ink);
+}
+
+/* The budgets of a year, one row a centre; the form, a grid item of its card, scrolls its table within the card. */
+.centers__budgets {
+  min-width: 0;
+}
+
+.centers__budget {
+  min-width: 480px;
+  margin-bottom: 14px;
+}
+
+.centers__budget th[scope='row'] {
+  padding: 8px 12px 8px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 400;
+  white-space: normal;
+}
+
+.centers__budget td {
+  padding: 6px 0 6px 8px;
+  border-top: 1px solid var(--line);
+}
+
+.centers__amount {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 120px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

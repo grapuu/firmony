@@ -8,7 +8,10 @@ import { bell, ringStatement } from '../bell'
 import { monthName } from './copy'
 import type { AppBindings } from './routes'
 import { statementDue } from './statements'
-import { MISSING, membersOf } from './store'
+import { CASH_PAID, MISSING, membersOf } from './store'
+import { waitingFor } from './approvals'
+import { PAYABLE_DOC } from './payorders'
+import { isWorkingDay } from './vat'
 
 /** The parts of a moment in Bratislava. */
 const BRATISLAVA_PARTS = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23' })
@@ -135,3 +138,48 @@ export async function remindStatements(env: AppBindings, ms: number, origin: str
 
 /** The day of the month the statement of the last month is asked for by a doorbell (the overview asks from the 1st). */
 export const STATEMENT_DAY = 3
+
+/**
+ * On a working day at nine, each person a supplier's invoice waits for to approve (approvals.ts: an owner, an approver
+ * within his limit, never for an approval that would not count) gets one doorbell, whatever number of invoices and
+ * companies; never who turned reminders off. The queue (/app/schvalovanie) says which.
+ */
+export async function remindApprovals(env: AppBindings, ms: number, origin: string = BRAND.origin): Promise<number> {
+  const b = bratislava(ms)
+  if (b.hour !== 9 || b.minute >= 15 || !isWorkingDay(b.day)) return 0
+  const db = env.DB
+  const waiting = `d.company_id = c.id AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.approved_at IS NULL
+    AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.paid_privately = 0 AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
+    AND NOT ${CASH_PAID} AND ${PAYABLE_DOC}`
+  const companies = await db
+    .prepare(
+      `SELECT c.id, c.approval_two_from FROM companies c WHERE c.approvals = 1 AND c.closed_at IS NULL AND c.demo = 0 AND (c.ends_on IS NULL OR c.ends_on >= ?)
+         AND EXISTS (SELECT 1 FROM documents d WHERE ${waiting})`,
+    )
+    .bind(b.day)
+    .all<{ id: string; approval_two_from: number | null }>()
+  const statements: D1PreparedStatement[] = []
+  const ring = bell.approve(`${origin}/app/schvalovanie`, `${origin}/app/firma#pripomienky`)
+  for (const company of companies.results) {
+    const docs = await db
+      .prepare(`SELECT d.total_cents, d.currency, d.first_approved_by, d.iban_by FROM documents d JOIN companies c ON c.id = d.company_id WHERE c.id = ? AND ${waiting} LIMIT 300`)
+      .bind(company.id)
+      .all<{ total_cents: number | null; currency: string | null; first_approved_by: string | null; iban_by: string | null }>()
+    const people = await db
+      .prepare('SELECT m.user_id, m.role, m.approver, m.approve_limit, u.email, u.reminders FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ?')
+      .bind(company.id)
+      .all<{ user_id: string; role: string; approver: number; approve_limit: number | null; email: string; reminders: number }>()
+    const approvers = people.results.map((p) => ({ id: p.user_id, owner: p.role === 'owner', approver: p.role === 'owner' || p.approver === 1, limit: p.role === 'owner' ? null : p.approve_limit }))
+    const waitsFor = new Set(
+      waitingFor(
+        docs.results.map((d) => ({ totalCents: d.total_cents, currency: d.currency, firstApprovedBy: d.first_approved_by, ibanBy: d.iban_by })),
+        approvers,
+        company.approval_two_from,
+      ),
+    )
+    for (const p of people.results) if (waitsFor.has(p.user_id) && p.reminders === 1) statements.push(ringStatement(db, 'remind-approve', b.day, p.email, ring))
+  }
+  for (let i = 0; i < statements.length; i += 50) await db.batch(statements.slice(i, i + 50))
+  if (statements.length > 0) await flushOutbox(db, env.EMAIL, 50)
+  return statements.length
+}

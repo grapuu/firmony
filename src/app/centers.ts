@@ -13,6 +13,11 @@
 //   documents, the income tax, and documents without a centre.
 // - A credit note, an invoice of late interest and an invoice issued by a repeat take the centre of the invoice they
 //   come from (invoices.ts, `centerFrom`).
+// - A centre's budget (owners, `cost_center_budgets`) is its revenues and costs planned for a calendar year; a period of
+//   months is compared with its months' share of the year's (`budgetShare`), and the report says how much of it was
+//   spent or earned.
+// - A supplier's rule (store.ts, `ruleStatement`) remembers the centre the accountant booked its document with and gives
+//   it to the supplier's next documents that have none.
 import type { LedgerEntry } from './ledger'
 
 export interface CostCenter {
@@ -75,3 +80,15 @@ export function centerTotals(entries: readonly LedgerEntry[], centerOfDoc: Reado
   const withDocs = new Set(centerOfDoc.values())
   return [...centers.filter((c) => !c.archived || sums.has(c.id) || withDocs.has(c.id)).map((c) => row(c.id)), row(null)]
 }
+
+/** A centre's budget of a year, in cents. */
+export interface CenterBudget {
+  revenue: number
+  costs: number
+}
+
+/** The share of a year's budget for the months from and to (both included, 1 to 12), rounded to the cent. */
+export const budgetShare = (yearly: number, from: number, to: number): number => Math.round((yearly * Math.max(0, to - from + 1)) / 12)
+
+/** How much of a budget an amount is, in whole per cent; null without a budget. */
+export const budgetUse = (amount: number, budget: number): number | null => (budget > 0 ? Math.round((amount * 100) / budget) : null)

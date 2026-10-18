@@ -1467,6 +1467,23 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
       approvals.approvalStep({ approvedAt: null, firstApprovedBy: 'a' }, 500000, 600000, 'b', { firstMay: true }) === 'final' &&
       approvals.approvalStep({ approvedAt: null, firstApprovedBy: 'a' }, 1000000, 600000, 'a') === 'final',
   )
+  const people = [
+    { id: 'o', owner: true, approver: true, limit: null },
+    { id: 'a', owner: false, approver: true, limit: 100000 },
+    { id: 'n', owner: false, approver: false, limit: null },
+  ]
+  const wait = (docs, twoFrom = null) => approvals.waitingFor(docs, people, twoFrom).join()
+  const doc = (fields) => ({ totalCents: 50000, currency: 'EUR', firstApprovedBy: null, ibanBy: null, ...fields })
+  check(
+    'who an approval waits for: an owner and an approver within his limit, not a colleague who approves nothing, not who typed its IBAN, not the first approver for the second',
+    wait([doc()]) === 'o,a' &&
+      wait([doc({ totalCents: 200000 })]) === 'o' &&
+      wait([doc({ ibanBy: 'a' })]) === 'o' &&
+      wait([doc({ totalCents: 600000, firstApprovedBy: 'o' })], 500000) === '' &&
+      wait([doc({ totalCents: 60000, firstApprovedBy: 'o' })], 50000) === 'a' &&
+      wait([doc({ totalCents: 60000, firstApprovedBy: 'n' })], 50000) === 'o,a' &&
+      wait([]) === '',
+  )
   check(
     'an approval is of the total, currency and IBAN the page showed',
     approvals.approvalSeen({ totalCents: 20000, currency: null, partyIban: 'SK31' }) === '20000|EUR|SK31' && approvals.approvalSeen({ totalCents: null, currency: 'USD', partyIban: null }) === '|USD|',
@@ -1576,6 +1593,20 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     "the books: the employer's part 527, the fund's 472, the vouchers out of 213 with the employee's part from 331; the financial contribution owed on 331",
     has('527', '213', 22 * 385) && has('472', '213', 22 * 100) && has('331', '213', 22 * 215) && has('527', '331', 10 * 385) && has('472', '331', 10 * 100),
     JSON.stringify(entry?.lines),
+  )
+}
+
+// Budgets of cost centres (18 October 2026, centers.ts): a period's share of the year's, and how much of it is used.
+{
+  check(
+    "a period's share of a year's budget, rounded to the cent; how much of it is used, in whole per cent",
+    centers.budgetShare(360000, 1, 12) === 360000 &&
+      centers.budgetShare(360000, 10, 10) === 30000 &&
+      centers.budgetShare(100000, 1, 1) === 8333 &&
+      centers.budgetShare(100000, 5, 4) === 0 &&
+      centers.budgetUse(15000, 30000) === 50 &&
+      centers.budgetUse(45000, 30000) === 150 &&
+      centers.budgetUse(1, 0) === null,
   )
 }
 

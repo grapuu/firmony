@@ -40,6 +40,8 @@ export const bell = {
   bank: (link: string) => ring('obnovte prístup k banke', 'prístup Firmony k Vašej banke čoskoro vyprší. Obnovíte ho po prihlásení, trvá to minútu:', link),
   statement: (month: string, link: string, settings: string) =>
     ring(`výpis z banky za ${month}`, `do Firmony ešte neprišiel výpis z banky za ${month}. Pridáte ho po prihlásení, trvá to minútu:`, link, [`Pripomienky vypnete tu: ${settings}`]),
+  approve: (link: string, settings: string) =>
+    ring('faktúry na schválenie', 'vo Firmony na Vaše schválenie čakajú faktúry dodávateľov. Uvidíte ich po prihlásení:', link, [`Pripomienky vypnete tu: ${settings}`]),
   statementConfirm: (link: string) => ring('potvrďte účet z výpisu', 'do Firmony prišiel výpis z účtu, ktorý u Vás ešte nemáme. Po prihlásení potvrďte, či je to účet Vašej firmy:', link),
   contract: (link: string) =>
     ring('zmluva je uzavretá', `zmluva je uzavretá, ďakujeme za dôveru. Zmluvu, obchodné podmienky a prvé kroky nájdete v aplikácii. Prihláste sa týmto odkazom (${days}):`, link),

@@ -1035,6 +1035,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
                         {CATEGORIES[r.category]?.account} {CATEGORIES[r.category]?.name}
                       </span>
                       <span>{r.vatDeduct ? t.client.ruleDeduct : t.client.ruleNoDeduct}</span>
+                      {r.center ? <span>{t.client.ruleCenter(r.center)}</span> : null}
                       <span>{t.client.uses(r.uses)}</span>
                     </span>
                   </li>
