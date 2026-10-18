@@ -35,7 +35,7 @@
 //   deducted in proportion times it, less what they deducted; confirmed by the accountant, kept with the year, added to
 //   rows 18 to 19 of the year's last period (vat.ts) and booked on 31 December against 548 (ledger.ts; practices differ,
 //   some book a gain to 648).
-// Not built: the adjustment of investment property over five or twenty years (§ 54 to § 54d), a fiscal year (§ 50(5)),
+// The adjustment of investment property over five or twenty years (§ 54 to § 54d) is vat-assets.ts. Not built: a fiscal year (§ 50(5)),
 // the settlement of a payer whose registration ends during the year.
 import { isIssued, isReceived, periodOf, periodOfDoc, taxDay, vatOf, type VatCompany, type VatDoc, type VatLine } from './vat'
 

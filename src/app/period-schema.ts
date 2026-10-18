@@ -162,6 +162,28 @@ export const badDebtsGuards: string[] = rowsGuard('bad_debts', (r) => locked(`${
   'deleted_at',
 ])
 
+/**
+ * The adjustment of the deduction on investment property (step 68, vat-assets.ts). An asset's VAT (DV, the year of first
+ * use, the share deducted and used for business then, how its use is read) changes every adjustment of its period, the
+ * first of which is in 31 December of the year after first use (or of the year the books begin, when later): nothing
+ * of it changes once that day is locked. How a sale or a gift in the period was taxed changes the disposal year's
+ * adjustment, so it does not change once that year's end is locked. A change of the use from a year changes that
+ * year's adjustment and the later ones: nothing of it changes once that year's 31 December is locked.
+ */
+const firstAdjustable = (r: string) => `printf('%04d-12-31', MAX(${r}.first_year + 1, COALESCE(CAST(substr((SELECT start_on FROM companies WHERE id = ${r}.company_id), 1, 4) AS INTEGER), 0)))`
+const ASSET_VAT_FIELDS = ['company_id', 'asset_id', 'lines', 'first_year', 'deducted', 'business', 'regime']
+const saleLocked = (r: string) => `EXISTS (SELECT 1 FROM assets a WHERE a.id = ${r}.asset_id AND a.disposed_on IS NOT NULL AND ${locked('a.company_id', "substr(a.disposed_on, 1, 4) || '-12-31'")})`
+export const assetVatGuards: string[] = [
+  guard('asset_vat', 'INSERT', `${locked('NEW.company_id', firstAdjustable('NEW'))} OR (NEW.sale IS NOT NULL AND ${saleLocked('NEW')})`),
+  guard(
+    'asset_vat',
+    'UPDATE',
+    `((${changed(ASSET_VAT_FIELDS)}) AND (${locked('OLD.company_id', firstAdjustable('OLD'))} OR ${locked('NEW.company_id', firstAdjustable('NEW'))})) OR (OLD.sale IS NOT NEW.sale AND (${saleLocked('OLD')} OR ${saleLocked('NEW')}))`,
+  ),
+  guard('asset_vat', 'DELETE', `${locked('OLD.company_id', firstAdjustable('OLD'))} OR (OLD.sale IS NOT NULL AND ${saleLocked('OLD')})`),
+  ...rowsGuard('asset_vat_uses', (r) => locked(`${r}.company_id`, `${r}.from_year || '-12-31'`), ['company_id', 'asset_id', 'from_year', 'use', 'share', 'business', 'deleted_at']),
+]
+
 export const PERIOD_SCHEMA: string[] = [
   `CREATE TABLE period_locks (
     company_id TEXT PRIMARY KEY, through_on TEXT, version INTEGER NOT NULL CHECK (version > 0), change_id TEXT NOT NULL UNIQUE,

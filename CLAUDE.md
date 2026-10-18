@@ -36,7 +36,8 @@ over. Bring this section up to date first whenever a session ends.
    executions (schema step 61, under "Payroll"); the proportional deduction of VAT by a coefficient (§ 50, schema step 62,
    under "VAT: the return and the control statement"); depreciation and stock by cost centre (schema steps 63 and 64, under "Cost centres"); the correction of
    the deduction from a supplier's invoice not paid within 100 days (§ 53b, under "VAT"), mended after an independent review
-   (schema step 66); the supplier's bad debts (§ 25a, schema step 67, under "VAT"); triangular trade (under "VAT").
+   (schema step 66); the supplier's bad debts (§ 25a, schema step 67, under "VAT"); triangular trade (under "VAT"); the
+   adjustment of the deduction on investment property (§ 54 to § 54d, schema step 68, under "VAT").
    **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
@@ -2052,6 +2053,32 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   holder of the goods reports); the client's invoice form offers "Trojstranný obchod" (AE, "Prenesenie daňovej
   povinnosti. Trojstranný obchod podľa § 45 ...", a VAT number of another member state; a Peppol case); a company
   registered under § 7a as the middle person files nothing (said); the last customer's purchase needs a taxed line.
+- The adjustment on investment property (built 18 October 2026, § 54 to § 54d; schema step 68 `asset_vat`, `asset_vat_uses`;
+  `src/app/vat-assets.ts`, `vat-assets-store.ts`, `src/views/asset-vat.tsx`). Read through WebFetch (the browser pane was
+  not connected; the consolidated Act is cut off by the tool, so the amendments were read): Act No. 354/2024 Z. z. (from
+  1 January 2025: § 52a first use and the period of 5 or 20 years from it, § 54(1) and (2) the new definition, 1 700 €
+  movables and 2 400 € intangibles, § 54a and § 54d in the year's last period by annex 1, annex 1 DD = DV × (A − B) × R / N
+  with A and B rounded up to two decimals and R the years left only for a supply in the period, else 1, § 85kp(2) the
+  former rules for a period begun by 2024); FR SR's methodical guideline to § 54 of 6 June 2019 for the former rules
+  (all years left at once, A the share last deducted, § 54(6) no adjustment at 0,10 or less, § 54(7) a supply in the
+  period); podnikajte.sk of 19 May 2025 and its examples; the DPH poučenie point 36 (rows 18 and 19 of the year's last
+  period, with the sign of the change; no line of the control statement). On an asset's page (`#dph`, a VAT payer, or an
+  asset with VAT data): DV at one rate (23, 19, 5), the year of first use (or the year a former period began), A, the
+  business share then, whether later years read as at first use or by each year's settled coefficient, and how a sale or a
+  gift in the period was taxed; each change of use from a year (taxable, exempt, by the coefficient, a share typed) with
+  the business share (§ 54a, § 54d); the plan year by year (A, B, R/N, the state, what is deducted more or less).
+  `assetPlan`: years after first use (a change within it is § 53's), the threshold of § 54(6) only while the business share
+  is as at first use (§ 54a and § 54d as read name none), a supply's year with the years left and nothing after a disposal.
+  The year's last period (`VatCompany.assets`, `vatCompanyOf` with `settledCoef`) adds it to rows 18 to 19 by rate
+  (`PeriodResult.assets`, said under the rows and as the warning `assetAdjust`); a year's coefficient not settled or a sale
+  without its kind keeps that period back (`assetRatio`, `assetSale`). The books on 31 December once the year ended
+  (`p54:<year>`, 343.100 against 548 or the other way, as the coefficient's). Guards (`assetVatGuards`): an asset's VAT
+  does not change once 31 December of the year after first use (or of the books' first year, when later) is locked, its
+  sale's kind once its disposal year's end is, a change of use once its year's end is. Handover (`dph-investicny-majetok`,
+  `-pouzitie`) and purge carry them. test/asset-vat.runtime.mjs, units "The adjustment on investment property". Not built:
+  § 85j's ten years for real estate of 2004 to 2010, § 54b (a successor types what it was told), § 54c (cash accounting),
+  a fiscal year, DV at 20 % or 10 % (the row was not read), building plots (not in the register), the correction at first
+  use itself (§ 53(1)(c), booked by the accountant), DV proposed from the purchase document (the register keeps none).
 - Not built: documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
@@ -2535,8 +2562,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1331 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1907 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1343 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1919 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

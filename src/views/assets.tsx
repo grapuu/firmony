@@ -1,6 +1,6 @@
 // The register of fixed assets (17 October 2026): every asset with its depreciation in the books and for tax, a form
 // to add one, and each asset's page with its plan year by year, its changes and its disposal. assets.ts has the rules.
-import type { FC } from 'hono/jsx'
+import type { Child, FC } from 'hono/jsx'
 import type { Company } from '../app/store'
 import { dayName } from '../app/copy'
 import { ASSET_ACCOUNTS, GROUP_YEARS, CAR_LIMIT_CENTS, DISPOSALS, assetKind, bookMonths, bookState, taxSchedule, type Asset, type AssetYear, type Disposal } from '../app/assets'
@@ -347,7 +347,17 @@ const centreName = (centers: CostCenter[] | undefined, id: string | null | undef
   return c ? ` Stredisko ${c.code} ${c.name}.` : ''
 }
 
-export const AssetPage: FC<{ company: Company; asset: Asset & { note: string | null }; values: AssetValues; errors: AssetFormErrors; flash?: string | null; today: string; centers?: CostCenter[] }> = (p) => {
+export const AssetPage: FC<{
+  company: Company
+  asset: Asset & { note: string | null }
+  values: AssetValues
+  errors: AssetFormErrors
+  flash?: string | null
+  today: string
+  centers?: CostCenter[]
+  /** The adjustment of the deduction on investment property (asset-vat.tsx). */
+  vat?: Child
+}> = (p) => {
   const base = `${bookPath(p.company)}/majetok`
   const a = p.asset
   const tax = taxSchedule(a)
@@ -420,6 +430,7 @@ export const AssetPage: FC<{ company: Company; asset: Asset & { note: string | n
         </div>
         {a.taxMethod === 'accelerated' && a.source === 'opening' ? <p class="small">Pri zrýchlenom odpisovaní majetku spred začiatku kníh porovnajte prvý rok s pôvodnou evidenciou.</p> : null}
       </section>
+      {p.vat ?? null}
       <section class="info" aria-labelledby="vyradenie-t">
         <h2 id="vyradenie-t" class="info__title">
           Vyradenie

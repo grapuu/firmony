@@ -182,6 +182,9 @@ import { badDebtEvents, claimAt, filingDeadline, isIssued, isPeriod, isQuarter, 
 import { ISSUED_RATIO_MODES, coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioMode, type RatioWork, type RatioYear } from '../app/vat-ratio'
 import { RatioPage, type RatioState } from '../views/vat-ratio'
 import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
+import { assetVatValues, lastYearOf, periodLength, readAssetUse, readAssetVat, type AssetUseErrors, type AssetUseValues, type AssetVatErrors, type AssetVatValues } from '../app/vat-assets'
+import { assetUseStatements, assetVatStatement, removeAssetUseStatement, removeAssetVatStatements } from '../app/vat-assets-store'
+import { AssetVatSection } from '../views/asset-vat'
 import { NO_DOCUMENT_GROUNDS, after150, badDebtLines, grossOf as grossOfLines, readBadDebt, threeYearsFrom, type BadDebtErrors, type BadDebtForm } from '../app/bad-debt'
 import { BadDebtPage, BadDebtSheet, BadDebtsPage, type BadDebtRow, type SheetParty } from '../views/bad-debt'
 import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
@@ -260,6 +263,7 @@ import {
   type Payment,
   type User,
   type Who,
+  settledCoef,
   vatCompanyOf,
   vatDocOf,
   bratislavaDay,
@@ -3985,19 +3989,126 @@ async function assetsPage(c: Ctx, company: Company, form: { values?: AssetValues
   )
 }
 
-async function assetPage(c: Ctx, company: Company, form: { values?: AssetValues; errors?: AssetFormErrors; flash?: string | null } = {}, status: ContentfulStatusCode = 200) {
+async function assetPage(
+  c: Ctx,
+  company: Company,
+  form: { values?: AssetValues; errors?: AssetFormErrors; flash?: string | null; vat?: { values: AssetVatValues; errors: AssetVatErrors }; use?: { values: AssetUseValues; errors: AssetUseErrors } } = {},
+  status: ContentfulStatusCode = 200,
+) {
   const [assets, centers] = await Promise.all([assetsOf(c.env.DB, company.id), listCenters(c.env.DB, company.id)])
   const asset = assets.find((a) => a.id === c.req.param('asset'))
   if (!asset) return missingPage(c)
-  const flash = form.flash ?? (c.req.query('ok') === 'ulozene' ? 'Zmeny sú uložené.' : c.req.query('ok') === 'vyradene' ? 'Vyradenie je zapísané.' : null)
+  const ok = c.req.query('ok')
+  const flash =
+    form.flash ??
+    (ok === 'ulozene' ? 'Zmeny sú uložené.' : ok === 'vyradene' ? 'Vyradenie je zapísané.' : ok === 'dph' ? 'Údaje DPH sú uložené.' : ok === 'pouzitie' ? 'Zmena použitia je zapísaná.' : ok === 'dph-odstranene' ? 'Údaje DPH sme odstránili.' : null)
+  const vat = (company.assetVat ?? []).find((v) => v.assetId === asset.id) ?? null
+  const section =
+    company.vatPayer || vat ? (
+      <AssetVatSection
+        base={`${bookPath(company)}/majetok/${asset.id}`}
+        vat={vat}
+        values={form.vat?.values ?? assetVatValues(vat, asset.inUseOn)}
+        errors={form.vat?.errors ?? {}}
+        useValues={form.use?.values ?? { from: vat ? String(Math.min(Math.max(vat.firstYear + 1, Number(dayOf(now()).slice(0, 4))), lastYearOf(vat))) : '', use: 'exempt', share: '', business: '1,00' }}
+        useErrors={form.use?.errors ?? {}}
+        coefOf={settledCoef(company.vatRatios ?? [])}
+        payer={company.vatPayer}
+        disposal={asset.disposal}
+      />
+    ) : null
   return shell(
     c,
     'clients',
     `${asset.name}: ${company.name}`,
-    <AssetPage company={company} asset={asset} values={form.values ?? assetValuesOf(asset)} errors={form.errors ?? {}} flash={flash} today={dayOf(now())} centers={centers} />,
+    <AssetPage company={company} asset={asset} values={form.values ?? assetValuesOf(asset)} errors={form.errors ?? {}} flash={flash} today={dayOf(now())} centers={centers} vat={section} />,
     status,
   )
 }
+
+const ASSET_VAT_LOCKED = 'Toto mení úpravu odpočítanej dane roka, ktorého koniec je uzamknutý. Najprv ho otvorte v časti Uzamknutie období.'
+
+teamRoutes.post('/klienti/:id/kniha/majetok/:asset/dph', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  if (!asset) return missingPage(c)
+  const { values, input, errors } = readAssetVat(await c.req.parseBody(), asset.inUseOn, Number(dayOf(now()).slice(0, 4)), moneyOf)
+  if (!input) return assetPage(c, company, { vat: { values, errors } }, 422)
+  const vat = (company.assetVat ?? []).find((v) => v.assetId === asset.id)
+  // A change of use already written must stay within the new period.
+  const last = input.firstYear + periodLength(asset.account) - 1
+  if (vat?.uses.some((u) => u.from <= input.firstYear || u.from > last)) return assetPage(c, company, { vat: { values, errors: { firstYear: 'Zapísaná zmena použitia by bola mimo obdobia na úpravu: najprv ju odstráňte.' } } }, 422)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([
+      assetVatStatement(c.env.DB, company.id, asset.id, input, who.user.id),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.vat', subject: asset.id }),
+    ])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetPage(c, company, { vat: { values, errors: { form: ASSET_VAT_LOCKED } } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok/${asset.id}?ok=dph#dph`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/majetok/:asset/dph/odstranit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  if (!asset) return missingPage(c)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([
+      ...removeAssetVatStatements(c.env.DB, company.id, asset.id, who.user.id),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.vat.removed', subject: asset.id }),
+    ])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetPage(c, company, { vat: { values: assetVatValues((company.assetVat ?? []).find((v) => v.assetId === asset.id) ?? null, asset.inUseOn), errors: { form: ASSET_VAT_LOCKED } } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok/${asset.id}?ok=dph-odstranene#dph`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/majetok/:asset/dph/pouzitie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  const vat = (company.assetVat ?? []).find((v) => v.assetId === asset?.id)
+  if (!asset || !vat) return missingPage(c)
+  const { values, input, errors } = readAssetUse(await c.req.parseBody(), vat)
+  if (!input) return assetPage(c, company, { use: { values, errors } }, 422)
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([
+      ...assetUseStatements(c.env.DB, company.id, asset.id, input, who.user.id),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.vat.use', subject: asset.id, detail: { from: input.from, use: input.use } }),
+    ])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetPage(c, company, { use: { values, errors: { from: ASSET_VAT_LOCKED } } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok/${asset.id}?ok=pouzitie#dph`, 303)
+})
+
+teamRoutes.post('/klienti/:id/kniha/majetok/:asset/dph/pouzitie/:use/zrusit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  if (!asset) return missingPage(c)
+  const id = c.req.param('use')
+  const who = c.get('who')
+  try {
+    await c.env.DB.batch([
+      removeAssetUseStatement(c.env.DB, company.id, asset.id, ID.test(id) ? id : '', who.user.id),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.vat.use.removed', subject: asset.id }),
+    ])
+  } catch (err) {
+    if (isPeriodLocked(err)) return assetPage(c, company, { use: { values: { from: '', use: 'exempt', share: '', business: '1,00' }, errors: { from: ASSET_VAT_LOCKED } } }, 409)
+    throw err
+  }
+  return c.redirect(`${bookPath(company)}/majetok/${asset.id}?ok=pouzitie#dph`, 303)
+})
 
 teamRoutes.get('/klienti/:id/kniha/majetok', async (c) => {
   const company = await companyParam(c)

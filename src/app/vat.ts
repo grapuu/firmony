@@ -152,6 +152,12 @@ export interface VatCompany {
    * once the accountant confirmed it, the year's settlement by rate, which goes into the year's last period.
    */
   ratios?: ReadonlyMap<number, { coef: number; settle: readonly { rate: number; settle: number }[] | null; stale?: boolean }>
+  /**
+   * The adjustment of the deduction on investment property (§ 54 to § 54d, vat-assets.ts): each year's adjustments by
+   * rate (positive deducted in addition), which go into the year's last period, the assets they come from, and the
+   * assets whose year cannot be worked out yet.
+   */
+  assets?: ReadonlyMap<number, { lines: readonly { rate: number; deduct: number }[]; items: readonly { assetId: string; number: string; deduct: number }[]; missing: readonly { assetId: string; number: string; code: 'ratio' | 'sale' }[] }>
 }
 
 export interface VatDoc {
@@ -929,6 +935,9 @@ export type IssueCode =
   | 'reverseCorrection'
   | 'ratioSettle'
   | 'ratioChanged'
+  | 'assetRatio'
+  | 'assetSale'
+  | 'assetAdjust'
   | 'unpaid53b'
   | 'paid53b'
   | 'credited53b'
@@ -971,6 +980,8 @@ export interface PeriodResult {
   skip?: 'nothing' | 'goods' | 'import' | 'goodsImport' | null
   /** The year's settlement of the proportional deduction in its last period (§ 50(4)), by rate, as it went into rows 18 to 19. */
   ratio?: { year: number; rates: { rate: number; settle: number }[] } | null
+  /** The year's adjustment of the deduction on investment property in its last period (§ 54 to § 54d), by rate and by asset, as it went into rows 18 to 19. */
+  assets?: { year: number; rates: { rate: number; deduct: number }[]; items: { assetId: string; number: string; deduct: number }[] } | null
 }
 
 export const emptyRows = (): Rows => Object.fromEntries(ROWS.map((row) => [row, 0])) as Rows
@@ -1411,6 +1422,19 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     }
   }
 
+  // The year's last period adjusts the deduction on investment property whose use changed (§ 54 to § 54d), in rows 18
+  // to 19 by rate (poučenie, point 36), once every asset's year can be worked out; no line of the control statement.
+  let assets: PeriodResult['assets'] = null
+  const yearAssets = payer && (period.endsWith('-12') || period.endsWith('-Q4')) ? company.assets?.get(year) : undefined
+  if (yearAssets) {
+    for (const m of yearAssets.missing) issue('block', m.code === 'ratio' ? 'assetRatio' : 'assetSale', null)
+    if (yearAssets.missing.length === 0 && yearAssets.items.length > 0) {
+      assets = { year, rates: yearAssets.lines.filter((l) => l.deduct !== 0 && DEDUCT_ROWS[l.rate]).map((l) => ({ rate: l.rate, deduct: l.deduct })), items: yearAssets.items.map((i) => ({ ...i })) }
+      for (const l of assets.rates) rows[DEDUCT_ROWS[l.rate] as Row] += l.deduct
+      issue('warn', 'assetAdjust', null)
+    }
+  }
+
   // The result: row 17 is the tax, rows 32 to 35 what it comes to.
   rows.r17 = TAX_ROWS.reduce((sum, row) => sum + rows[row], 0)
   const result = rows.r17 - rows.r18 - rows.r18a - rows.r19 + rows.r25 + rows.r27 + rows.r28 + rows.r29 - rows.r30 - rows.r31
@@ -1448,6 +1472,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     statement: payer && skip === null,
     skip: payer ? skip : null,
     ratio,
+    assets,
   }
 }
 

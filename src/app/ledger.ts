@@ -1036,6 +1036,30 @@ export function buildBooks(input: LedgerInput): Books {
     }
   }
 
+  // The adjustment of the deduction on investment property (§ 54 to § 54d, vat-assets.ts), on 31 December of its year once
+  // the year has ended and every asset's year can be worked out: tax deductible in addition lowers the costs (343.100
+  // against 548), tax no longer deductible is a cost (548 against 343.100), as the coefficient's settlement; the return
+  // of the year's last period moves it to 343.300 with the rest of rows 18 to 19.
+  if (company.vatStatus === 'payer') {
+    for (const [year, y] of vatCompanyOf(company).assets ?? []) {
+      const end = `${year}-12-31`
+      if (y.missing.length > 0 || y.items.length === 0 || !inBooks(end) || (input.today && end >= input.today)) continue
+      const lines = y.items.filter((i) => i.deduct !== 0).map((i) => (i.deduct > 0 ? { md: VAT_IN, d: '548', cents: i.deduct } : { md: '548', d: VAT_IN, cents: -i.deduct }))
+      if (lines.length === 0) continue
+      entries.push({
+        key: `p54:${year}`,
+        on: end,
+        kind: 'vat',
+        number: `UPR ${year}`,
+        text: `Úprava odpočítanej dane pri investičnom majetku za rok ${year} (§ 54): ${y.items.map((i) => i.number).join(', ')}`,
+        docId: null,
+        paymentId: null,
+        manualId: null,
+        lines,
+      })
+    }
+  }
+
   // Payroll of each month closed, on its last day: the wages, the employee's insurance and tax withheld from them,
   // the employer's insurance on top.
   for (const r of input.payroll ?? []) {

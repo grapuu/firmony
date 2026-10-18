@@ -793,6 +793,10 @@ export const team = typesetAll({
       reverseCorrection: 'Opravná faktúra k dodaniu tovaru s prenesením daňovej povinnosti je v C.1 s rozdielom základu a množstvom ako rozdiel (mínus, keď základ klesá): skontrolujte množstvo.',
       ratioSettle: 'Firma odpočítava daň pomerne koeficientom: po skončení roka treba v tomto období vysporiadať odpočet koeficientom z údajov roka (§ 50 ods. 4).',
       ratioChanged: 'Doklady roka sa od vysporiadania koeficientom zmenili (doklad pribudol, dodatočne sa zaúčtoval alebo opravil): zaúčtujte ich a vysporiadajte rok znova, kým toto obdobie podáte.',
+      assetRatio: 'Investičný majetok sa používa pomerne koeficientom: úpravu odpočítanej dane za tento rok (§ 54) možno vypočítať až po vysporiadaní koeficientu roka (§ 50 ods. 4).',
+      assetSale:
+        'Investičný majetok bol počas obdobia na úpravu predaný alebo darovaný: pri majetku zapíšte, či s daňou (alebo oslobodene s nárokom na odpočítanie dane), alebo oslobodene bez neho (§ 54 ods. 7).',
+      assetAdjust: 'V riadkoch odpočítania je úprava odpočítanej dane pri investičnom majetku, ktorého použitie sa zmenilo (§ 54 až 54d): skontrolujte ju pri majetku.',
       unpaid53b:
         'Faktúra dodávateľa nie je zaplatená do 100 dní od splatnosti: odpočítaná daň sa v tomto období opravuje v rozsahu nezaplatenej časti (§ 53b, riadok 29 a C.2). Ak je zaplatená, priraďte jej platbu.',
       paid53b: 'Faktúra dodávateľa zaplatená po oprave podľa § 53b: odpočítaná daň sa v období platby opravuje späť v rozsahu platby (riadok 29 a C.2).',
@@ -946,7 +950,7 @@ export const team = typesetAll({
       'Firma nie je registrovaná pre DPH, ale nakupuje služby od zahraničných dodávateľov (napríklad reklamu od Googlu či Mety alebo softvér). Pred takým nákupom sa musí registrovať podľa § 7a, a to bez ohľadu na sumu, a DPH z neho zaplatiť. Po registrácii to zmeňte v údajoch firmy.',
     needs7aNone: 'Za posledné mesiace sme nič také nenašli.',
     notBuilt:
-      'Firmony zatiaľ nepripravuje: premiestnenie vlastného tovaru do iného štátu EÚ, call-off stock a úpravu odpočítanej dane pri investičnom majetku (§ 54 až 54d). Ak sa niečo z toho firmy týka, doplňte to v eDane.',
+      'Firmony zatiaľ nepripravuje: premiestnenie vlastného tovaru do iného štátu EÚ a call-off stock. Úpravu odpočítanej dane pri investičnom majetku (§ 54 až 54d) zapíšte pri majetku v evidencii. Ak sa niečo z toho firmy týka, doplňte to v eDane.',
     sv: {
       heading: 'Súhrnné výkazy',
       monthlyLead: 'Priznanie DPH zostáva štvrťročné. Súhrnné výkazy sa podávajú samostatne za jednotlivé mesiace.',
@@ -2446,6 +2450,11 @@ export const team = typesetAll({
       payment: (amount: string, day: string, vat: string) => typeset(`Prijatá platba ${amount} dňa ${day}, z toho daň ${vat}.`),
       print: 'Vytlačte alebo uložte ako PDF a pošlite odberateľovi.',
     },
+  },
+  assetVat: {
+    open: 'Otvoriť majetok',
+    inRows: (year: number, rates: string, assets: string) =>
+      typeset(`V riadkoch odpočítania je aj úprava odpočítanej dane pri investičnom majetku za rok ${year} (§ 54 až 54d): ${rates}; kladná suma zvyšuje odpočet, záporná ho znižuje. Majetok: ${assets}.`),
   },
   ratio: {
     title: 'Pomerné odpočítanie dane (§ 50)',

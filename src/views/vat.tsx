@@ -95,6 +95,10 @@ const Issues: FC<{ company: Company; view: PeriodView; docs: Map<string, Doc> }>
           <a class="btn btn--line btn--small" href={`/ucto/doklady/${i.doc}`}>
             {v.open}
           </a>
+        ) : i.code.startsWith('asset') ? (
+          <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/kniha/majetok`}>
+            {t.assetVat.open}
+          </a>
         ) : i.code === 'ratioSettle' ? (
           <a class="btn btn--line btn--small" href={`/ucto/klienti/${company.id}/dph/koeficient?rok=${view.period.slice(0, 4)}`}>
             {t.ratio.open}
@@ -190,6 +194,15 @@ const RowsCard: FC<{ view: PeriodView; docs: Map<string, Doc> }> = ({ view, docs
       )}
       {view.result.ratio && view.result.ratio.rates.length > 0 ? (
         <p class="info__source">{t.ratio.inRows(view.result.ratio.year, view.result.ratio.rates.map((r) => `${r.rate} %: ${formatEurExact(r.settle)}`).join(', '))}</p>
+      ) : null}
+      {view.result.assets && view.result.assets.rates.length > 0 ? (
+        <p class="info__source">
+          {t.assetVat.inRows(
+            view.result.assets.year,
+            view.result.assets.rates.map((r) => `${r.rate} %: ${formatEurExact(r.deduct)}`).join(', '),
+            view.result.assets.items.map((i) => `${i.number} ${formatEurExact(i.deduct)}`).join(', '),
+          )}
+        </p>
       ) : null}
     </section>
   )

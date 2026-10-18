@@ -14,6 +14,7 @@ import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
 import { isRatioMode, ratiosOf, type RatioMode, type RatioYear } from './vat-ratio'
+import { assetVatsOf, assetYearsOf, type AssetVat } from './vat-assets'
 import { badDebtsOf, type BadDebt } from './bad-debt'
 
 export interface Company {
@@ -50,6 +51,8 @@ export interface Company {
   stockMethod?: 'A' | 'B' | null
   /** The years it deducts VAT in proportion (§ 50, vat-ratio.ts): each year's coefficient and, once confirmed, its settlement. */
   vatRatios?: RatioYear[]
+  /** Its investment property's VAT for the adjustment of the deduction (§ 54 to § 54d, vat-assets.ts). */
+  assetVat?: AssetVat[]
   /** How the company is registered for VAT: a payer (§ 4), a person registered under § 7a, or neither. */
   vatStatus: VatStatus
   /** A payer filing for a calendar quarter. */
@@ -242,7 +245,13 @@ export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdp
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method,
   (SELECT json_group_array(json_object('year', r.year, 'coef', r.coef, 'how', r.how, 'settled', CASE WHEN json_valid(r.settled) THEN json(r.settled) END,
      'settledAt', r.settled_at, 'settledBy', (SELECT u.name FROM users u WHERE u.id = r.settled_by)))
-     FROM vat_ratios r WHERE r.company_id = c.id) AS vat_ratios`
+     FROM vat_ratios r WHERE r.company_id = c.id) AS vat_ratios,
+  (SELECT json_group_array(json_object('assetId', v.asset_id, 'number', a.number, 'name', a.name, 'account', a.account, 'inUseOn', a.in_use_on,
+     'disposedOn', a.disposed_on, 'disposal', a.disposal, 'lines', json(v.lines), 'firstYear', v.first_year, 'deducted', v.deducted, 'business', v.business,
+     'regime', v.regime, 'sale', v.sale,
+     'uses', json((SELECT json_group_array(json_object('id', u.id, 'from', u.from_year, 'use', u.use, 'share', u.share, 'business', u.business))
+       FROM asset_vat_uses u WHERE u.asset_id = v.asset_id AND u.deleted_at IS NULL))))
+     FROM asset_vat v JOIN assets a ON a.id = v.asset_id AND a.deleted_at IS NULL WHERE v.company_id = c.id) AS asset_vat`
 
 export function companyOf(row: Row): Company {
   return {
@@ -277,6 +286,7 @@ export function companyOf(row: Row): Company {
     endsOn: str(row.ends_on),
     stockMethod: row.stock_method === 'A' || row.stock_method === 'B' ? row.stock_method : null,
     vatRatios: ratiosOf(row.vat_ratios),
+    assetVat: assetVatsOf(row.asset_vat),
     vatStatus: row.vat_payer === 1 ? 'payer' : row.vat_7a === 1 ? 'reg7a' : 'none',
     vatQuarterly: row.vat_payer === 1 && row.vat_quarterly === 1,
     vatSince: str(row.vat_since),
@@ -546,11 +556,20 @@ export function vatDocOf(doc: Doc): VatDoc {
   }
 }
 
+/** A year's coefficient settled by § 50(4) (vat-ratio.ts), for the adjustment on investment property; null while it is not, or no longer agrees. */
+export const settledCoef =
+  (ratios: readonly RatioYear[]) =>
+  (year: number): number | null => {
+    const r = ratios.find((x) => x.year === year)
+    return r?.settled && !r.stale ? r.settled.coef : null
+  }
+
 /** The VAT registration of a company, as the return reads it. */
 export const vatCompanyOf = (company: Company): VatCompany => ({
   status: company.vatStatus,
   quarterly: company.vatQuarterly,
   since: company.vatSince,
+  ...(company.assetVat && company.assetVat.length > 0 ? { assets: assetYearsOf(company.assetVat, settledCoef(company.vatRatios ?? [])) } : {}),
   ...(company.vatRatios && company.vatRatios.length > 0
     ? {
         ratios: new Map(

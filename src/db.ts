@@ -1,7 +1,7 @@
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
-import { PERIOD_SCHEMA, badDebtsGuards, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
+import { PERIOD_SCHEMA, assetVatGuards, badDebtsGuards, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
@@ -1485,6 +1485,52 @@ const MIGRATIONS: readonly string[][] = [
       WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
       BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
     ),
+  ],
+  // The adjustment of the deduction on investment property (18 October 2026, vat-assets.ts, § 54 to § 54d): an asset's
+  // VAT as the accountant gives it, one row an asset, and each change of its use from a year, removed only by a mark.
+  [
+    `CREATE TABLE IF NOT EXISTS asset_vat (
+      asset_id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      lines TEXT NOT NULL CHECK (json_valid(lines)),
+      first_year INTEGER NOT NULL CHECK (first_year BETWEEN 1990 AND 2100),
+      deducted INTEGER NOT NULL CHECK (deducted BETWEEN 0 AND 100),
+      business INTEGER NOT NULL DEFAULT 100 CHECK (business BETWEEN 0 AND 100),
+      regime TEXT NOT NULL CHECK (regime IN ('fixed', 'ratio')),
+      sale TEXT CHECK (sale IS NULL OR sale IN ('taxed', 'exempt')),
+      changed_at INTEGER NOT NULL,
+      changed_by TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS asset_vat_company ON asset_vat (company_id)',
+    `CREATE TABLE IF NOT EXISTS asset_vat_uses (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      from_year INTEGER NOT NULL CHECK (from_year BETWEEN 1990 AND 2100),
+      use TEXT NOT NULL CHECK (use IN ('taxable', 'exempt', 'ratio', 'share')),
+      share INTEGER CHECK (share IS NULL OR share BETWEEN 0 AND 100),
+      business INTEGER NOT NULL DEFAULT 100 CHECK (business BETWEEN 0 AND 100),
+      created_at INTEGER NOT NULL,
+      created_by TEXT NOT NULL,
+      deleted_at INTEGER,
+      deleted_by TEXT
+    )`,
+    'CREATE INDEX IF NOT EXISTS asset_vat_uses_asset ON asset_vat_uses (asset_id)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS asset_vat_uses_year ON asset_vat_uses (asset_id, from_year) WHERE deleted_at IS NULL',
+    ...assetVatGuards,
+    ...['asset_vat', 'asset_vat_uses'].flatMap((table) => [
+      ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+        const row = action === 'DELETE' ? 'OLD' : 'NEW'
+        return `CREATE TRIGGER ${table}_data_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+      }),
+      ...['INSERT', 'UPDATE'].map(
+        (action) => `CREATE TRIGGER ${table}_purging_${action.toLowerCase()} BEFORE ${action} ON ${table}
+        WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+        BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+      ),
+    ]),
   ],
 ]
 

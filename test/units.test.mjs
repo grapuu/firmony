@@ -31,6 +31,7 @@ import {
   garnish,
   vatRatio,
   badDebt,
+  vatAssets,
   appStore,
   ledger,
   ledgerStore,
@@ -2798,6 +2799,77 @@ async function zipped(entries, note) {
         form({ ground: 'b1', day: '2027-11-01' }).errors.day === 'future',
     )
     check('the tax owed counts row 27', ledger.vatOwed({ ...vat.emptyRows(), r17: 5000, r27: -2300 }) === 2700)
+    // The adjustment on investment property (18 October 2026, vat-assets.ts, § 54 to § 54d): each year of the period
+    // after first use, B against A, 1/5 or 1/20 a year (or every year left at once under the former rules and on a sale).
+    {
+      const asset = (fields) => ({ assetId: 'as1', number: 'M-2025-001', name: 'Auto', account: '022', inUseOn: '2025-03-01', disposedOn: null, disposal: null, lines: [{ rate: 23, vat: 1840000 }], firstYear: 2025, deducted: 0, business: 0, regime: 'fixed', sale: null, uses: [], ...fields })
+      const use = (from, kind, extra = {}) => ({ id: `u${from}`, from, use: kind, share: null, business: 100, ...extra })
+      const none = () => null
+      const car = vatAssets.assetPlan(asset({ uses: [use(2027, 'taxable')] }), none)
+      check(
+        'podnikajte.sk\'s car: 18 400 € not deducted, used for business alone from 2027: 3 680 € deducted in addition in 2027, 2028 and 2029, nothing in 2026',
+        JSON.stringify(car.adjustments.map((a) => [a.year, a.deduct, a.r])) === JSON.stringify([[2027, 368000, 1], [2028, 368000, 1], [2029, 368000, 1]]) && car.years.find((y) => y.year === 2026)?.state === 'same',
+        JSON.stringify(car.years),
+      )
+      const building = vatAssets.assetPlan(asset({ account: '021', lines: [{ rate: 23, vat: 11500000 }], firstYear: 2026, deducted: 0, business: 100, uses: [use(2029, 'taxable')] }), none)
+      check(
+        'a building first used for exempt supplies in 2026, taxable from 2029: a twentieth, 5 750 €, each year to 2045',
+        building.adjustments.length === 17 && building.adjustments[0]?.year === 2029 && building.adjustments.at(-1)?.year === 2045 && building.adjustments.every((a) => a.deduct === 575000),
+      )
+      const former = vatAssets.assetPlan(asset({ account: '021', lines: [{ rate: 23, vat: 10000000 }], firstYear: 2018, deducted: 0, business: 100, uses: [use(2019, 'taxable')] }), none)
+      check(
+        'the former rules (a period from 2018): 0 to 1 in 2019 deducts every year left at once, 19/20 of 100 000 € (the guideline\'s example 14), then nothing more',
+        former.adjustments.length === 1 && former.adjustments[0]?.deduct === 9500000 && former.adjustments[0]?.r === 19,
+        JSON.stringify(former.adjustments),
+      )
+      const coefs = { 2016: 91, 2017: 92, 2018: 89, 2019: 89 }
+      const ratio = vatAssets.assetPlan(asset({ account: '021', lines: [{ rate: 23, vat: 1000000 }], firstYear: 2015, deducted: 100, business: 100, regime: 'ratio' }), (y) => coefs[y] ?? 89)
+      check(
+        'by coefficient under the former rules: 0,91 and 0,92 within 0,10 of 1 (§ 54(6)), 0,89 adjusts 17/20 of 10 000 € × 0,11 = 935 € less (the guideline\'s example 8), then 0,89 again is no change',
+        JSON.stringify(ratio.adjustments.map((a) => [a.year, a.deduct])) === JSON.stringify([[2018, -93500]]) && ratio.years.find((y) => y.year === 2016)?.state === 'below' && ratio.years.find((y) => y.year === 2019)?.state === 'same',
+        JSON.stringify(ratio.years),
+      )
+      const sold = (sale) => vatAssets.assetPlan(asset({ lines: [{ rate: 23, vat: 100000 }], deducted: 100, business: 100, disposedOn: '2027-05-10', disposal: 'sale', sale }), none)
+      check(
+        'sold in 2027, exempt without the right to deduct: every year left, 3/5 of 1 000 € = 600 € less; taxed: nothing; nothing after the sale; no kind: missing',
+        JSON.stringify(sold('exempt').adjustments.map((a) => [a.year, a.deduct, a.r, a.reason])) === JSON.stringify([[2027, -60000, 3, 'sale']]) &&
+          sold('taxed').adjustments.length === 0 &&
+          sold('exempt').years.find((y) => y.year === 2028)?.state === 'after' &&
+          sold(null).missing[0]?.code === 'sale',
+      )
+      const share = vatAssets.assetPlan(asset({ lines: [{ rate: 23, vat: 1000000 }], deducted: 80, business: 80, uses: [use(2026, 'taxable', { business: 60 }), use(2027, 'taxable', { business: 75 })] }), none)
+      check(
+        'a car used 80 % for business, then 60 % and 75 % (§ 54d): 400 € and 100 € less, a change of the business share has no threshold',
+        JSON.stringify(share.adjustments.map((a) => [a.year, a.deduct])) === JSON.stringify([[2026, -40000], [2027, -10000], [2028, -10000], [2029, -10000]]),
+        JSON.stringify(share.adjustments),
+      )
+      const unsettled = vatAssets.assetPlan(asset({ deducted: 74, business: 100, regime: 'ratio' }), none)
+      check('by coefficient with the year\'s coefficient not settled: every year missing', unsettled.missing.length === 4 && unsettled.missing.every((m) => m.code === 'ratio'))
+      check(
+        'shares as typed: 1, 0, 0,74, 74 %, 80; nothing else',
+        vatAssets.shareOf('1') === 100 && vatAssets.shareOf('0') === 0 && vatAssets.shareOf('0,74') === 74 && vatAssets.shareOf('74 %') === 74 && vatAssets.shareOf('80') === 80 && vatAssets.shareOf('1,5') === null && vatAssets.shareOf('abc') === null,
+      )
+      const years = vatAssets.assetYearsOf([asset({ uses: [use(2027, 'taxable')] })], none)
+      const withAssets = { ...payer, assets: years }
+      const dec = vat.workOut(withAssets, '2027-12', [])
+      check(
+        'December 2027: 3 680 € more in row 19, an excess deduction, said; November untouched; no control statement line',
+        dec.rows.r19 === 368000 && dec.rows.r33 === 368000 && dec.issues.some((i) => i.code === 'assetAdjust') && dec.assets?.items[0]?.number === 'M-2025-001' && vat.workOut(withAssets, '2027-11', []).rows.r19 === 0 && vat.kvRows(dec.kv) === 0,
+        JSON.stringify([dec.rows.r19, dec.issues]),
+      )
+      const blocked = vat.workOut({ ...payer, assets: vatAssets.assetYearsOf([asset({ deducted: 74, business: 100, regime: 'ratio' })], none) }, '2027-12', [])
+      check('a year missing its coefficient keeps December back', blocked.issues.some((i) => i.code === 'assetRatio' && i.level === 'block') && blocked.rows.r19 === 0)
+      const form = (f) => vatAssets.readAssetVat({ dph_sadzba: '23', dph_dv: '18400', dph_rok: '2025', dph_odpocet: '0', dph_podnikanie: '0', ...f }, '2025-03-01', 2027, (t) => (/^\d+$/.test(t) ? Number(t) * 100 : Number.NaN))
+      check(
+        'the form: DV, the year, the shares; refused without DV, a rate that is none, a year out of range',
+        form({}).input?.lines[0]?.vat === 1840000 && form({}).input?.deducted === 0 && form({ dph_dv: '' }).errors.dv !== undefined && form({ dph_sadzba: '20' }).errors.rate !== undefined && form({ dph_rok: '2030' }).errors.firstYear !== undefined,
+      )
+      const useForm = (f) => vatAssets.readAssetUse({ od: '2027', pouzitie: 'share', podiel: '0,40', podnikanie: '1', ...f }, { firstYear: 2025, account: '022' })
+      check(
+        'a change of use: within the period after first use, a share for "iný podiel"',
+        useForm({}).input?.share === 40 && useForm({ od: '2025' }).errors.from !== undefined && useForm({ od: '2030' }).errors.from !== undefined && useForm({ podiel: '' }).errors.share !== undefined,
+      )
+    }
     // Triangular trade (18 October 2026): the last customer pays the VAT itself (rows 11 to 12b, B.1), the middle person
     // reports nothing in the return.
     const lastCustomer = doc({ number: 'DE-77', issuedOn: '2027-02-20', receivedOn: '2027-02-22', vat: v('triangle_in', [[23, 100000, 23000, 23000]], { vatId: 'DE123456789', suppliedOn: '2027-01-20' }) })
