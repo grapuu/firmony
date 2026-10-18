@@ -25,6 +25,8 @@ import { dayOf, groupIban, whenName } from './inside-pages'
 import { Wordmark } from './layout'
 import { InvoiceSheet } from './invoices'
 import { TripSheet } from './trips'
+import { CenterSelect } from './centers'
+import type { CostCenter } from '../app/centers'
 import type { Trip } from '../app/trips-store'
 import type { Line, StoredInvoice } from '../app/invoices'
 import { responseDueAt } from '../team/support'
@@ -1237,6 +1239,8 @@ export interface BookPageProps {
   invoice?: { invoice: StoredInvoice; lines: Line[] } | null
   /** A business trip the client settled in Firmony: its settlement is the original. */
   trip?: Trip | null
+  /** The company's cost centres: the document's own is given on the form. */
+  centers?: CostCenter[]
   values: BookValues
   /** The document's entry as the books hold it; null shows the entry of the form's own figures (after a mistake). */
   ledgerLines?: LedgerLine[] | null
@@ -1272,7 +1276,7 @@ const Field: FC<{ name: keyof BookValues; label: string; value: string; error?: 
   </div>
 )
 
-export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, trip = null, values, ledgerLines, payment, candidates, paidBy, queueLeft, now, errors, flash, currencies = [], rateProposal = null, inEuros = null }) => {
+export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, needs7a, invoice, trip = null, centers = [], values, ledgerLines, payment, candidates, paidBy, queueLeft, now, errors, flash, currencies = [], rateProposal = null, inEuros = null }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const cents = (text: string) => {
     const m = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(text.replace(/\s/g, ''))
@@ -1442,6 +1446,14 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
             ) : null}
             <Field name="vs" label={t.book.vs} value={values.vs} mode="numeric" max={20} />
             <Field name="account" label={t.book.account} value={values.account} mode="numeric" max={6} />
+            {centers.some((c) => !c.archived) || d.centerId ? (
+              <div class="fgrid__cell">
+                <label class="field__label" for="b-stredisko">
+                  {t.book.center}
+                </label>
+                <CenterSelect centers={centers} value={d.centerId ?? null} id="b-stredisko" />
+              </div>
+            ) : null}
           </div>
           {vat ? <VatFields form={vat} /> : vatKindFirst ? <p class="vatbox__note">{t.book.vatKindFirst}</p> : null}
           {needs7a ? <p class="flag">{t.vat.issue.needs7a}</p> : null}

@@ -23,6 +23,7 @@ import {
   trips,
   cash,
   dunning,
+  centers,
   ledger,
   ledgerStore,
   dues,
@@ -1427,6 +1428,39 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     JSON.stringify([free.errors, ticked.errors, ticked.input?.meals]),
   )
   check('no car with a train', form({ ...full, doprava: 'public', km: '' }).input?.car === null)
+}
+
+// Cost centres (18 October 2026): class 5 costs and class 6 revenues of each centre's documents, the rest in common.
+{
+  const entry = (key, on, docId, lines) => ({ key, on, kind: 'document', number: '', text: '', docId, paymentId: null, manualId: null, lines })
+  const entries = [
+    entry('d:inv', '2026-10-02', 'inv', [{ md: '311', d: '602', cents: 30000 }]),
+    entry('d:r1', '2026-10-03', 'r1', [{ md: '518', d: '211', cents: 10000 }]),
+    entry('d:r2', '2026-10-04', 'r2', [{ md: '501', d: '211', cents: 5000 }]),
+    entry('d:cn', '2026-10-05', 'cn', [{ md: '602', d: '311', cents: 2000 }]),
+    entry('p:pay', '2026-10-06', 'inv', [{ md: '221', d: '311', cents: 28000 }]),
+    { ...entry('y:oct', '2026-10-31', null, [{ md: '521', d: '331', cents: 80000 }]), kind: 'payroll' },
+    entry('d:old', '2026-09-30', 'r1', [{ md: '518', d: '211', cents: 99900 }]),
+  ]
+  const list = [
+    { id: 'A', code: 'PREDAJNA', name: 'Predajňa', archived: false },
+    { id: 'B', code: 'SKLAD', name: 'Sklad', archived: true },
+    { id: 'C', code: 'NIC', name: 'Nič', archived: true },
+  ]
+  const rows = centers.centerTotals(entries, new Map([['inv', 'A'], ['r1', 'A'], ['r2', 'B'], ['cn', 'A']]), list, '2026-10-01', '2026-10-31')
+  const of = (id) => rows.find((r) => r.id === id)
+  check(
+    "each centre's revenues less its credit note and costs; an archived centre with documents stays, one without goes; payroll in common; another month left out",
+    of('A')?.revenue === 28000 &&
+      of('A')?.costs === 10000 &&
+      of('A')?.result === 18000 &&
+      of('B')?.costs === 5000 &&
+      !of('C') &&
+      of(null)?.costs === 80000 &&
+      rows[rows.length - 1].id === null,
+    JSON.stringify(rows),
+  )
+  check('a centre code: letters, digits and a dash, in capitals, up to 12', centers.centerCode(' predajna-1 ') === 'PREDAJNA-1' && centers.centerCode('Á') === null && centers.centerCode('-X') === null && centers.centerCode('A'.repeat(13)) === null)
 }
 
 // Reminders and late interest (18 October 2026): NV 21/2013, the ECB's rate on the first day of each half-year plus

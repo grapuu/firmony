@@ -13,6 +13,8 @@ import type { Deadline } from '../app/deadlines'
 import type { Doc, Message, Payment } from '../app/store'
 import { Tile } from './home'
 import { Flash, Heading } from './inside'
+import { CenterSelect } from './centers'
+import type { CostCenter } from '../app/centers'
 
 const ACCEPT = 'image/*,application/pdf,.pdf,.xml,text/xml,application/xml'
 
@@ -883,6 +885,9 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
         <a class="btn btn--line" href="/app/cesty">
           {app.trips.link}
         </a>
+        <a class="btn btn--line" href="/app/strediska">
+          {app.centers.link}
+        </a>
       </span>
     </header>
     <Flash text={flash} />
@@ -958,16 +963,18 @@ const Paper: FC<{ d: Doc }> = ({ d }) => (
   </figure>
 )
 
-export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; flash?: string | null; error?: string | null; approvals?: boolean; owner?: boolean; tripId?: string | null }> = ({
-  d,
-  payment,
-  today,
-  flash,
-  error,
-  approvals = false,
-  owner = false,
-  tripId = null,
-}) => {
+export const DocumentPage: FC<{
+  d: Doc
+  payment: Payment | null
+  today: string
+  flash?: string | null
+  error?: string | null
+  approvals?: boolean
+  owner?: boolean
+  tripId?: string | null
+  /** The company's cost centres: the document's own is given here. */
+  centers?: CostCenter[]
+}> = ({ d, payment, today, flash, error, approvals = false, owner = false, tripId = null, centers = [] }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const outgoing = d.kind === 'invoice_out'
   return (
@@ -1067,6 +1074,22 @@ export const DocumentPage: FC<{ d: Doc; payment: Payment | null; today: string; 
                 ) : null}
               </dl>
               <p class="info__source">{app.document.source[d.source]}</p>
+            </section>
+          ) : null}
+          {centers.some((c) => !c.archived) || d.centerId ? (
+            <section class="info" aria-labelledby="stredisko">
+              <h2 id="stredisko" class="info__title">
+                {app.centers.docTitle}
+              </h2>
+              <form class="cash__years" method="post" action={`/app/doklady/${d.id}/stredisko`}>
+                <label class="sr" for="d-stredisko">
+                  {app.centers.docTitle}
+                </label>
+                <CenterSelect centers={centers} value={d.centerId ?? null} />
+                <button class="btn btn--line btn--small" type="submit">
+                  {app.centers.docSave}
+                </button>
+              </form>
             </section>
           ) : null}
           <section class="paid" aria-labelledby="platba">

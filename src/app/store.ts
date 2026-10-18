@@ -181,6 +181,8 @@ export interface Doc {
   ekasaOkp: string | null
   /** Paid in cash by a cash document of the cash box: its number and day (cash.ts). */
   cashPaid?: { number: string; on: string } | null
+  /** The company's cost centre it belongs to (centers.ts). */
+  centerId?: string | null
 }
 
 export interface Message {
@@ -330,7 +332,8 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN}`
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
+  d.center_id`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
  * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
@@ -393,6 +396,7 @@ export function docOf(row: Row): Doc {
     approvedByName: str(row.approved_by_name),
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),
+    centerId: str(row.center_id),
     cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }

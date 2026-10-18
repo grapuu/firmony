@@ -10,7 +10,7 @@ export function plural(n: number, one: string, few: string, many: string): strin
   return n === 1 ? one : n >= 2 && n <= 4 ? few : many
 }
 
-const MONTHS = ['január', 'február', 'marec', 'apríl', 'máj', 'jún', 'júl', 'august', 'september', 'október', 'november', 'december']
+export const MONTHS = ['január', 'február', 'marec', 'apríl', 'máj', 'jún', 'júl', 'august', 'september', 'október', 'november', 'december']
 const MONTHS_OF = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna', 'júla', 'augusta', 'septembra', 'októbra', 'novembra', 'decembra']
 
 /** "október 2026" for a YYYY-MM-DD or YYYY-MM. */
@@ -346,6 +346,43 @@ export const app = typesetAll({
     ibanAdd: 'Doplniť IBAN',
     ibanSaved: 'IBAN sme doplnili, faktúru už môžete dať do príkazu.',
     ibanBad: 'Tento IBAN nevyzerá správne: skontrolujte ho, napríklad SK31 1200 0000 1987 4263 7541.',
+  },
+  centers: {
+    title: 'Strediská',
+    serif: 'Čo koľko zarába.',
+    lead: 'Rozdeľte náklady a výnosy podľa prevádzok, pobočiek alebo projektov. Doklad priradíte k stredisku na jeho stránke, účtovníčka pri zaúčtovaní. Prehľad počítame z účtovníctva.',
+    link: 'Strediská',
+    period: 'Obdobie',
+    range: (from: string, to: string, year: number) => `${from} až ${to} ${year}`,
+    year: 'Rok',
+    from: 'Od mesiaca',
+    to: 'Do mesiaca',
+    show: 'Zobraziť',
+    cols: { center: 'Stredisko', revenue: 'Výnosy', costs: 'Náklady', result: 'Výsledok' },
+    common: 'Spoločné (bez strediska)',
+    commonHint: 'Mzdy, odpisy, poplatky banke a doklady bez strediska.',
+    total: 'Spolu',
+    empty: 'Firma zatiaľ nemá strediská. Pridajte prvé.',
+    list: 'Zoznam stredísk',
+    code: 'Kód',
+    codeHint: 'Krátky, napríklad PREDAJNA-1 alebo PROJEKT-A.',
+    name: 'Názov',
+    add: 'Pridať stredisko',
+    archive: 'Archivovať',
+    restore: 'Vrátiť do používania',
+    archived: 'archivované',
+    ownerOnly: 'Zoznam stredísk mení majiteľ firmy.',
+    added: 'Stredisko sme pridali.',
+    changed: 'Uložené.',
+    errors: {
+      code: 'Kód môže mať len písmená bez diakritiky, číslice a pomlčku, najviac 12 znakov.',
+      name: 'Napíšte názov strediska.',
+      taken: 'Stredisko s týmto kódom už je.',
+    },
+    docTitle: 'Stredisko',
+    docNone: 'Bez strediska',
+    docSave: 'Uložiť',
+    docSaved: 'Stredisko dokladu sme uložili.',
   },
   dunning: {
     title: 'Upomienky odberateľom',

@@ -1317,6 +1317,26 @@ the company's document, so a company with many people travelling needs no spread
   333 (practices differ; 333 is used), approving a trip before it is paid beyond the approvals of payment orders.
   test/trips.runtime.mjs, units "Business trips at home" and the ledger's trip.
 
+### Cost centres (18 October 2026; `src/app/centers.ts`, `centers-store.ts`, `src/views/centers.tsx`, schema step 52)
+
+A company's own division of its costs and revenues (strediská: a shop, a branch, a project, a contract), for the
+management of a medium or large company; the books stay as they are.
+
+- The list (`cost_centers`; `/app/strediska`, from Doklady; owners make and archive): a code (letters without accents,
+  digits, a dash, up to 12, kept in capitals, once a company) and a name; archived, a centre keeps its documents, takes
+  no new ones and stays in the report while it has any.
+- A document's centre (`documents.center_id`, management information: no period guard holds it): any member gives it
+  on the document's page (`/app/doklady/:id/stredisko`), the accountant on the booking screen (the form's "Stredisko");
+  only a centre of the company in use.
+- The report (`centerTotals`): for a year and months from and to, each centre's revenues (class 6) and costs (class 5)
+  of the entries of its documents (its own entry, an exchange difference of its payment), the result, and "Spoločné":
+  payroll, depreciation, a bank's fee, the accountant's internal documents and documents without a centre; the total
+  is the books' result of the period. The yearly ZIP: `doklady.csv` names each document's centre, `data/strediska.json`
+  the list; purge deletes them.
+- Not built: a centre on an invoice's form (given on its document), a supplier's rule remembering the centre, a
+  document split among centres, payroll or depreciation by centre, the accountant's own report screen, budgets.
+  test/centers.runtime.mjs, units "Cost centres".
+
 ### The cash box (18 October 2026; `src/app/cash.ts`, `cash-store.ts`, `src/views/cash.tsx`, schema step 50)
 
 The company's cash, as its books hold it: account 211 day by day. Receipts paid from the cash box were booked against
@@ -2133,8 +2153,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1180 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1698 workerd checks on Node 24 (as GitHub runs them), including test/dunning.runtime.mjs
+npm test                 # 1182 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1711 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

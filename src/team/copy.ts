@@ -406,6 +406,7 @@ export const team = typesetAll({
     categoryNone: 'Vyberte',
     deduct: 'Odpočítať DPH',
     remember: 'Zapamätať pre dodávateľa',
+    center: 'Stredisko',
     paidByCash: (number: string, day: string) => typeset(`Zaplatený v hotovosti ${day} pokladničným dokladom ${number}.`),
     payment: 'Úhrada',
     paidBank: 'Z účtu firmy',

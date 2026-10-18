@@ -8,6 +8,7 @@ import { csvCell, csvMoney } from '../team/store'
 import { zipName, zipStream, uniqueName, type ZipEntry } from '../zip'
 import { resolveContract, type ResolvedContract } from '../contracts'
 import { CATEGORIES } from './booking'
+import { listCenters } from './centers-store'
 import { readableName } from './copy'
 import { issuedInYear, invoiceLines, ublOf } from './invoices'
 import type { Exempt } from './match'
@@ -234,6 +235,8 @@ export async function exportYear(
       .bind(company.id, Number(year))
       .all<Row>(),
   ])
+  // The cost centres by id, for each document's code (centers.ts).
+  const centerCodes = new Map((await listCenters(db, company.id)).map((c) => [c.id, `${c.code} ${c.name}`]))
   // The books of the year, when they hold anything in it.
   const bookYear = Number(year)
   const hasBooks = books.entries.some((e) => e.on.startsWith(`${year}-`))
@@ -308,6 +311,7 @@ export async function exportYear(
       'Suma platby',
       'Súbor v archíve',
       'Pridané',
+      'Stredisko',
     ],
     ...docs.map(({ d, day, file, paidOn, paidCents }) => [
       d.issuedOn ?? '',
@@ -328,6 +332,7 @@ export async function exportYear(
       csvMoney(paidCents),
       file ?? '',
       file ? day : bratislava(d.createdAt * 1000).day,
+      d.centerId ? (centerCodes.get(d.centerId) ?? '') : '',
     ]),
   ])
 

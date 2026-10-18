@@ -1275,6 +1275,33 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE invoices ADD COLUMN interest_of TEXT',
     "CREATE UNIQUE INDEX IF NOT EXISTS invoices_interest ON invoices (interest_of) WHERE interest_of IS NOT NULL AND status = 'issued'",
   ],
+  // Cost centres (18 October 2026, centers.ts): the company's own division of its costs and revenues, and the centre of
+  // each document (management information: no period guard holds it).
+  [
+    `CREATE TABLE IF NOT EXISTS cost_centers (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      archived_at INTEGER,
+      UNIQUE (company_id, code)
+    )`,
+    'ALTER TABLE documents ADD COLUMN center_id TEXT',
+    'CREATE INDEX IF NOT EXISTS documents_center ON documents (company_id, center_id) WHERE center_id IS NOT NULL',
+    ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+      const row = action === 'DELETE' ? 'OLD' : 'NEW'
+      return `CREATE TRIGGER cost_centers_data_${action.toLowerCase()} AFTER ${action} ON cost_centers BEGIN
+        INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+        ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+    }),
+    ...['INSERT', 'UPDATE'].map(
+      (action) => `CREATE TRIGGER cost_centers_purging_${action.toLowerCase()} BEFORE ${action} ON cost_centers
+      WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`,
+    ),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

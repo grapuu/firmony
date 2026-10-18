@@ -7373,3 +7373,43 @@ a.wtable__name {
   width: 1%;
   padding-left: 16px;
 }
+
+/* Cost centres (src/views/centers.tsx): the period's form, the table, the list's form. */
+.centers__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.centers__range .field__label {
+  margin: 0;
+}
+
+.centers__range .field__input {
+  width: auto;
+}
+
+.centers__table {
+  min-width: 520px;
+}
+
+.centers__table th[scope='row'] {
+  padding: 8px 12px 8px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.centers__hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--soft);
+  font-size: 0.8125rem;
+}
+
+.centers__add {
+  margin-top: 16px;
+}

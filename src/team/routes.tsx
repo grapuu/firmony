@@ -19,6 +19,7 @@ import { LEGAL_FORM_CODES, isLegalForm, lookupCompany, oneMayConclude } from '..
 import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
 import { tripOfDocument } from '../app/trips-store'
+import { documentCenterStatement, listCenters } from '../app/centers-store'
 import { app, dayName, monthName, readableName, signed, whenName } from '../app/copy'
 import { endingOf } from '../app/ending'
 import { linksOf } from '../app/bank'
@@ -4021,7 +4022,7 @@ async function bookPage(
   const db = c.env.DB
   const { doc, company } = found
   const currency = extra.values?.currency ?? doc.currency ?? 'EUR'
-  const [payment, candidates, queue, invoice, vat, currencies, rates, trip] = await Promise.all([
+  const [payment, candidates, queue, invoice, vat, currencies, rates, trip, centers] = await Promise.all([
     doc.paymentId ? getPayment(db, company.id, doc.paymentId) : Promise.resolve(null),
     candidatesFor(db, company.id, doc),
     bookingQueue(db, who.user, true, company.id),
@@ -4030,6 +4031,7 @@ async function bookPage(
     knownCurrencies(db),
     ratesFor(db, [currency]),
     doc.source === 'trip' ? tripOfDocument(db, company.id, doc.id) : Promise.resolve(null),
+    listCenters(db, company.id),
   ])
   // The ECB's rate of the day before the document's day (§ 24 of the Act on Accounting, § 26 of the VAT Act).
   const proposal = currency !== 'EUR' ? rateFor(rates, currency, doc.suppliedOn ?? doc.issuedOn ?? bratislavaDay(doc.createdAt)) : null
@@ -4048,6 +4050,7 @@ async function bookPage(
       needs7a={needs7a}
       invoice={invoice ? { invoice, lines: await invoiceLines(db, invoice.id) } : null}
       trip={trip}
+      centers={centers}
       values={extra.values ?? valuesOf(doc, company.vatPayer)}
       ledgerLines={
         extra.values ? null : bookingLines(doc, company, payment ? { bookedOn: payment.bookedOn, amountCents: payment.amountCents, bankLedger: payment.bankLedger, docs: payment.docs, currency: payment.currency } : null, rates)
@@ -4229,6 +4232,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
   } else if (vatShown && !sameFamily) {
     statements.push(db.prepare('UPDATE documents SET vat_mode = NULL, vat_period = NULL WHERE id = ? AND company_id = ?').bind(doc.id, company.id))
   }
+  // The document's cost centre, when the form had the field (management information: no period lock holds it).
+  if (typeof body.stredisko === 'string') statements.push(documentCenterStatement(db, company.id, doc.id, ID.test(body.stredisko) ? body.stredisko : null))
   const key = supplierKey(values.ico, values.party)
   const remembered = booking && values.remember && key !== null && isCategory(values.category) && values.kind !== 'invoice_out' && doc.source !== 'trip'
   if (remembered && key && isCategory(values.category)) {

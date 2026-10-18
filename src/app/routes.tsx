@@ -87,6 +87,9 @@ import { CASH_KINDS, CASH_LIMIT, cashLines, isCashKind, lowestFrom, readCash, ty
 import { cashDocuments, cashPayments, cashStatements, pendingCashReceipts, removeCashStatements } from './cash-store'
 import { dataRevision } from './handover-store'
 import { FLAT_COMPENSATION, lateInterest, ratePercent, reminderDue } from './dunning'
+import { centerCode, centerTotals } from './centers'
+import { addCenterStatements, archiveCenterStatement, documentCenters, documentCenterStatement, listCenters } from './centers-store'
+import { CentersPage } from '../views/centers'
 import { CashFormPage, CashPage, type CashRow } from '../views/cash'
 import { bratislavaClock, bratislavaDay } from '../time'
 import { isWorkingDay } from './vat'
@@ -365,6 +368,8 @@ function flashOf(c: Ctx): string | null {
       return t.invoices.actions.repeatStoppedFlash
     case 'urok':
       return t.dunning.interestDone
+    case 'stredisko':
+      return t.centers.docSaved
     case 'upomienky-zapnute':
       return t.dunning.savedOn
     case 'upomienky-vypnute':
@@ -1075,6 +1080,75 @@ appRoutes.get('/uhrady/:id/xml', async (c) => {
   })
 })
 
+// Cost centres (centers.ts): what each centre earned in a period, from the books; the list (owners); a document's centre.
+async function centersPage(c: Ctx, extra: { values?: { code: string; name: string }; errors?: { code?: string; name?: string } } = {}, status: 200 | 409 | 422 = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const [books, centers, centerOfDoc] = await Promise.all([booksOf(db, who.company), listCenters(db, who.company.id), documentCenters(db, who.company.id)])
+  const day = today()
+  const years = [...new Set([Number(day.slice(0, 4)), ...books.entries.map((e) => Number(e.on.slice(0, 4)))])].sort((a, b) => b - a)
+  const asked = Number(c.req.query('rok'))
+  const year = years.includes(asked) ? asked : Number(day.slice(0, 4))
+  const month = (v: string | undefined, fallback: number) => {
+    const n = Number(v)
+    return Number.isInteger(n) && n >= 1 && n <= 12 ? n : fallback
+  }
+  const from = month(c.req.query('od'), 1)
+  const to = Math.max(from, month(c.req.query('do'), year === Number(day.slice(0, 4)) ? Number(day.slice(5, 7)) : 12))
+  const last = new Date(Date.UTC(year, to, 0)).toISOString().slice(0, 10)
+  const totals = centerTotals(books.entries, centerOfDoc, centers, `${year}-${String(from).padStart(2, '0')}-01`, last)
+  const flash = c.req.query('ok') === 'pridane' ? t.centers.added : c.req.query('ok') === 'ulozene' ? t.centers.changed : null
+  return shell(
+    c,
+    'documents',
+    t.centers.title,
+    <CentersPage centers={centers} totals={totals} year={year} years={years} from={from} to={to} owner={who.role === 'owner'} values={extra.values} errors={extra.errors} flash={flash} />,
+    status,
+  )
+}
+
+appRoutes.get('/strediska', (c) => centersPage(c))
+
+appRoutes.post('/strediska', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return shell(c, 'documents', t.errors.notFound, <Missing />, 403)
+  const body = await c.req.parseBody()
+  const typed = { code: typeof body.kod === 'string' ? body.kod.trim().slice(0, 12) : '', name: typeof body.nazov === 'string' ? body.nazov.trim().slice(0, 80) : '' }
+  const code = centerCode(typed.code)
+  const errors = { ...(code ? {} : { code: t.centers.errors.code }), ...(typed.name ? {} : { name: t.centers.errors.name }) }
+  if (!code || !typed.name) return centersPage(c, { values: typed, errors }, 422)
+  try {
+    await c.env.DB.batch(addCenterStatements(c.env.DB, { id: crypto.randomUUID(), company: who.company.id, code, name: typed.name, user: who.user.id }))
+  } catch {
+    return centersPage(c, { values: typed, errors: { code: t.centers.errors.taken } }, 409)
+  }
+  return c.redirect('/app/strediska?ok=pridane', 303)
+})
+
+for (const [path, archived] of [
+  ['/strediska/:id/archivovat', true],
+  ['/strediska/:id/obnovit', false],
+] as const) {
+  appRoutes.post(path, async (c) => {
+    const who = c.get('who')
+    if (who.role !== 'owner') return shell(c, 'documents', t.errors.notFound, <Missing />, 403)
+    const id = c.req.param('id')
+    const result = ID.test(id) ? await archiveCenterStatement(c.env.DB, who.company.id, id, archived).run() : null
+    if ((result?.meta?.changes ?? 0) === 0) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+    return c.redirect('/app/strediska?ok=ulozene', 303)
+  })
+}
+
+appRoutes.post('/doklady/:id/stredisko', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const body = await c.req.parseBody()
+  const center = typeof body.stredisko === 'string' && ID.test(body.stredisko) ? body.stredisko : null
+  const result = ID.test(id) ? await documentCenterStatement(c.env.DB, who.company.id, id, center).run() : null
+  if ((result?.meta?.changes ?? 0) === 0) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  return c.redirect(`/app/doklady/${id}?ok=stredisko`, 303)
+})
+
 // The cash box (cash.ts): the cash book is account 211 of the books day by day; a cash document is written by any
 // member, numbered and booked at once, refused when it would pay out cash that is not there or more than the law allows.
 
@@ -1350,11 +1424,12 @@ appRoutes.get('/doklady/:id', async (c) => {
   if (!d) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
   const payment = d.paymentId ? await getPayment(c.env.DB, who.company.id, d.paymentId) : null
   const trip = d.source === 'trip' ? await tripOfDocument(c.env.DB, who.company.id, d.id) : null
+  const centers = await listCenters(c.env.DB, who.company.id)
   return shell(
     c,
     'documents',
     d.party ?? t.documents.title,
-    <DocumentPage d={d} payment={payment} today={today()} flash={flashOf(c)} approvals={who.company.approvals} owner={who.role === 'owner'} tripId={trip?.id ?? null} />,
+    <DocumentPage d={d} payment={payment} today={today()} flash={flashOf(c)} approvals={who.company.approvals} owner={who.role === 'owner'} tripId={trip?.id ?? null} centers={centers} />,
   )
 })
 
