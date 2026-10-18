@@ -25,7 +25,9 @@ over. Bring this section up to date first whenever a session ends.
    cash box" there; a second independent review of both, six findings mended) and reminders with late interest (schema
    step 51, under "Invoices the client issues"), cost centres (schema step 52, "Cost centres" under the client's app)
    and a third independent review of the reminders, eight findings mended (schema step 53), and a fourth of the cost
-   centres, six mended. **Nothing is live**: there
+   centres, six mended; then VAT on imports (customs paid, and self-assessed by an AEO under § 84a) and the takings of an
+   eKasa till with the control statement's D.1 (schema step 54; "VAT: the return and the control statement" and "The
+   takings of an eKasa till"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1403,10 +1405,40 @@ The company's cash, as its books hold it: account 211 day by day. Receipts paid 
   more); the balance is checked and the document written at one data revision (`company_data_revisions`, two at once
   cannot pay out the same cash; taking back likewise); no cash document before the books start; `doklady.csv` names a
   cash payment, and `data/pracovne-cesty.json` carries the trips.
-- Not built: cash in another currency, eKasa's daily takings as cash in (they need the return's D.1), a count of the
-  cash at the year's end (inventory, § 30), a limit check across several documents of one legal relationship (§ 6(2):
+- Not built: cash in another currency, a count of the cash at the year's end (inventory, § 30), a limit check across several documents of one legal relationship (§ 6(2):
   each is checked alone), the cash book printed as its own file (the journal and account 211 are).
   test/cash.runtime.mjs, units "The cash box" and the ledger's VPD.
+
+### The takings of an eKasa till (18 October 2026; `src/app/takings.ts`, `takings-store.ts`, `src/views/takings.tsx`, schema step 54)
+
+A shop, a café or a hairdresser records its sales in an eKasa till; the till's daily closing (denná uzávierka) says
+what was taken by rate. Until this, Firmony had no way to take a company's own takings, so a retail company could not
+file its VAT with us.
+
+- "Tržby z eKasy" (`/app/trzby`, from the cash box; any member): the day (not ahead), the closing's number
+  (optional), the takings with VAT at 23, 19 and 5 % and exempt (a company that is no VAT payer: one amount), each
+  rate's VAT as the closing says it (empty: worked out from the takings, rate / (100 + rate), `vatInGross`), the part
+  paid by card (the rest is cash), goods (604) or services (602), and a cost centre. Refused: nothing written, a negative
+  amount, VAT above its takings, more by card than the takings, a day before the books start, a period the accountant
+  locked (the documents' lock guard, `takings_cash` in it).
+- Kept as the company's document of its own (`documents.source` 'takings', `invoice_out`, "Tržba z eKasy", its VAT
+  confirmed: `domestic` by rate for a payer, `none` for anybody else; booked at once by who wrote it;
+  `documents.takings_cash` the cash part). The books (`documentLines`): the cash part into the cash box (211), the card
+  part to money on its way (261) until the bank brings it, against the revenue and 343.200; no open item (`buildBooks`),
+  never paired with a bank payment, offered to the cash box or listed as waiting for a payment (`CASH_PAID` covers it),
+  and the booking screen keeps it an issued document in euros. The cash book shows it with the balance.
+- The VAT return: rows 01 to 04 by rate, 13 for what is exempt; the control statement: one D.1 line of the period
+  (SumaObratov the takings with VAT of all tills, exempt included; Z and D the basic rate; ZZn and DZn the reduced ones),
+  never A.1 or D.2 (`VatDoc.takings`); a supplementary statement repeats a changed D.1 as two lines, as D.2.
+- Taken back (`/app/trzby/:id/zrusit`, a mark, at the data revision the cash box was checked at) unless its cash was
+  paid out since (the box would go below nought); the documents' "delete" leads there.
+- Read on 18 October 2026: KVDPH's instructions of 2021 (part D.1: the turnover of all tills including corrections,
+  exempt supplies may be left out, an invoice also recorded in the till may be counted twice; D.2 only what D.1 does not
+  hold) and the schema's D1 element (kv_dph_2025.xsd).
+- Not built: the till's data read from the Financial Administration (only a verifier may, "eKasa receipts"), the card
+  settlement from the acquirer paired by itself (the accountant gives the bank's payment 261 and the fee 568), takings in
+  another currency, refunds (a negative day: corrections by the accountant). test/takings.runtime.mjs, units "imports"
+  and "takings" under VAT and the ledger's takings.
 
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
 
@@ -1551,7 +1583,7 @@ fixed address of its own. So Firmony asks the service nothing until he decides a
   fields (`readerAnswer` in `test/pretend.mjs`).
 - Not built: the QR code decoded from the picture (the printed codes are read; Chrome on Android's BarcodeDetector,
   not Safari's, or a decoder on the server, CPU on every photo), the lookup once allowed, a receipt as data without a
-  photo, a client's own eKasa takings in the VAT return (D.1).
+  photo (a client's own eKasa takings: since 18 October 2026, "The takings of an eKasa till").
 
 ## The order and the contract online (`src/order.ts`, `src/order-mail.ts`, `src/views/order.tsx`, `src/content/terms.ts`; 13 October 2026)
 
@@ -1774,8 +1806,19 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   lists it for today). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
   call-off stock (part II), a customer's VAT number
   that comes later (§ 80(6), the period it is given).
-- Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, eKasa takings
-  (D.1), bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in another
+- Imports (since 18 October 2026; read in the poučenie to DPHv25, points 30a, 30b, 38, 38a, and FR SR's information
+  8/DPH/2025/IM on § 84a): the booking form's received modes "Dovoz tovaru, DPH zaplatená colnému úradu" (`import`: the
+  customs declaration confirmed by the customs office, the base the customs value with duty, its VAT deducted in rows 18
+  to 19 and, of them, 22, 22a and 23; deducted when the document came by the deadline, as an invoice; booked as a Slovak
+  supplier's, the VAT inside the document's total, the duty the cost) and "Dovoz tovaru, DPH v priznaní (§ 84a, status
+  AEO)" (`import84a`: in the period the customs declaration was accepted, rows 11c to 11e and 12c to 12e, row 13 for an
+  exempt import, corrections in 24 and 25 with the deduction's in 28, deducted in 18 to 19 and 23a to 23c; booked as a
+  purchase from abroad, its VAT both owed and deducted). Neither goes into the control statement (§ 78a asks for none),
+  and a return whose only content is VAT deducted on imports needs no control statement (KVDPH's instructions of 2021).
+  The payment to the customs office comes from the State Treasury (8180) and is taken as the state's: the accountant gives
+  it the customs document's account. Not built: proposing an import by itself (the supplier's invoice from outside the
+  EU is still proposed as a service from abroad: the accountant sets it "Bez DPH" and the customs declaration "Dovoz").
+- Not built: triangular trade, bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
   Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
@@ -2179,8 +2222,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1185 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1728 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1197 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1745 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

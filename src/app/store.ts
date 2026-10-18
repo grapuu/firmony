@@ -120,7 +120,7 @@ export interface Payment {
 
 export type DocStatus = 'reading' | 'read' | 'manual'
 /** How a document came: uploaded, by email, as an e-invoice, issued here, as Firmony's own invoice to the client, taken over, or a business trip settled here. */
-export type DocSource = 'upload' | 'email' | 'einvoice' | 'issued' | 'firmony' | 'takeover' | 'trip'
+export type DocSource = 'upload' | 'email' | 'einvoice' | 'issued' | 'firmony' | 'takeover' | 'trip' | 'takings'
 
 export interface Doc {
   id: string
@@ -183,6 +183,8 @@ export interface Doc {
   cashPaid?: { number: string; on: string } | null
   /** The company's cost centre it belongs to (centers.ts). */
   centerId?: string | null
+  /** The day's takings of a till (takings.ts): the part paid in cash, the rest by card. */
+  takingsCash?: number | null
 }
 
 export interface Message {
@@ -333,7 +335,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
-  d.center_id`
+  d.center_id, d.takings_cash`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
  * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
@@ -341,7 +343,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
 export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.status, d.kind, d.party, d.party_ico, d.number, d.issued_on, d.due_on,
   d.total_cents, d.vat_cents, d.currency, d.category, d.vat_deduct, d.account, d.booked_at, d.paid_privately, l.payment_id, d.supplied_on,
   d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse,
-  d.advance_cents`
+  d.advance_cents, d.takings_cash`
 export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
 export const DOC_FROM =
   'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by'
@@ -397,6 +399,7 @@ export function docOf(row: Row): Doc {
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),
     centerId: str(row.center_id),
+    takingsCash: num(row.takings_cash),
     cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }
@@ -455,6 +458,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     foreign: doc.foreign,
     booked: doc.bookedAt !== null,
     vat: doc.vat,
+    takings: doc.source === 'takings',
   }
 }
 
@@ -708,8 +712,11 @@ export function unlinkStatement(db: D1Database, company: string, doc: string): D
 
 export type DocFilter = 'all' | 'loose'
 
-/** A document paid in cash by a cash document of the cash box (cash.ts), as SQL over the alias d. */
-export const CASH_PAID = "EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)"
+/**
+ * A document paid at once, as SQL over the alias d: in cash by a cash document of the cash box (cash.ts), or the day's
+ * takings of a till (takings.ts), paid in cash and by card at the till. No bank payment is paired with it.
+ */
+export const CASH_PAID = "(d.source = 'takings' OR EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL))"
 
 export async function listDocuments(db: D1Database, company: string, filter: DocFilter = 'all', limit = 400, search = '', offset = 0): Promise<Doc[]> {
   const { sql, binds } = searchSql(search, ['d.party', 'd.number', 'd.file_name', 'd.vs'], 'd.total_cents')

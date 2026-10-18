@@ -1312,6 +1312,9 @@ const MIGRATIONS: readonly string[][] = [
     'DROP INDEX IF EXISTS invoices_interest',
     "CREATE UNIQUE INDEX IF NOT EXISTS invoices_interest ON invoices (interest_of, interest_to) WHERE interest_of IS NOT NULL AND status = 'issued' AND kind = 'invoice'",
   ],
+  // The day's takings of an eKasa till (18 October 2026, takings.ts): a document of its own (source 'takings'), its
+  // cash part (the rest by card); the documents' lock guard made again with it, since it is what the books take.
+  ['ALTER TABLE documents ADD COLUMN takings_cash INTEGER', ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents', 'takings_cash'])],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

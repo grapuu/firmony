@@ -92,6 +92,9 @@ import { centerCode, centerTotals } from './centers'
 import { addCenterStatements, archiveCenterStatement, documentCenters, documentCenterStatement, listCenters } from './centers-store'
 import { CentersPage } from '../views/centers'
 import { CashFormPage, CashPage, type CashRow } from '../views/cash'
+import { emptyTakings, readTakings, type TakingsErrors, type TakingsValues } from './takings'
+import { listTakings, removeTakingsStatements, takingsStatements, takingsYears } from './takings-store'
+import { TakingsPage } from '../views/takings'
 import { bratislavaClock, bratislavaDay } from '../time'
 import { isWorkingDay } from './vat'
 import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
@@ -1309,6 +1312,94 @@ appRoutes.post('/pokladna/:id/zrusit', async (c) => {
   return c.redirect(`/app/pokladna?rok=${move.on.slice(0, 4)}&ok=zruseny`, 303)
 })
 
+// The day's takings of an eKasa till (takings.ts): written by any member, a document booked at once; taken back unless
+// its cash paid what followed out of the cash box.
+async function takingsPage(c: Ctx, extra: { values?: TakingsValues; errors?: TakingsErrors; error?: string | null } = {}, status: 200 | 409 | 422 = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const day = today()
+  const years = [...new Set([Number(day.slice(0, 4)), ...(await takingsYears(db, who.company.id))])].sort((a, b) => b - a)
+  const asked = Number(c.req.query('rok'))
+  const year = years.includes(asked) ? asked : Number(day.slice(0, 4))
+  const [rows, centers] = await Promise.all([listTakings(db, who.company.id, year), listCenters(db, who.company.id)])
+  const savedOn = c.req.query('ok') === 'zapisana' ? (c.req.query('den') ?? '') : ''
+  const flash = /^\d{4}-\d{2}-\d{2}$/.test(savedOn) ? t.takings.saved(dayName(savedOn)) : c.req.query('ok') === 'zrusena' ? t.takings.removed : null
+  return shell(
+    c,
+    'payments',
+    t.takings.title,
+    <TakingsPage
+      year={year}
+      years={years}
+      rows={rows}
+      payer={who.company.vatPayer}
+      values={extra.values ?? emptyTakings(textDay(day))}
+      errors={extra.errors}
+      centers={centers}
+      flash={flash}
+      error={extra.error ?? closedIntake(who.company)}
+      closed={!intakeOpen(who.company, day)}
+    />,
+    status,
+  )
+}
+
+appRoutes.get('/trzby', (c) => takingsPage(c))
+
+appRoutes.post('/trzby', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  if (!intakeOpen(who.company, today())) return takingsPage(c, {}, 409)
+  const read = readTakings((name) => body[name], who.company.vatPayer, today(), (text) => dayOfText(text) || null, centsOf, t.takings.errors)
+  const errors: TakingsErrors = { ...read.errors }
+  const centers = read.values.center ? await listCenters(db, who.company.id) : []
+  if (read.values.center && !centers.some((x) => x.id === read.values.center && !x.archived)) errors.center = t.takings.errors.center
+  if (Object.values(errors).some(Boolean) || !read.input) return takingsPage(c, { values: read.values, errors }, 422)
+  const takings = read.input
+  // Before our books start the takings were the former accountant's.
+  const books = await booksOf(db, who.company)
+  if (books.start && takings.on < books.start) return takingsPage(c, { values: read.values, errors: { day: t.takings.errors.beforeBooks(dayName(books.start)) } }, 422)
+  const id = crypto.randomUUID()
+  try {
+    const results = await db.batch(takingsStatements(db, { id, company: who.company.id, user: who.user.id, takings, payer: who.company.vatPayer }))
+    if ((results[0]?.meta?.changes ?? 0) === 0) return takingsPage(c, { values: read.values, errors: { center: t.takings.errors.center } }, 409)
+  } catch (err) {
+    console.error('takings failed', err instanceof Error ? err.name : 'error')
+    return takingsPage(c, { values: read.values, error: /FIRMONY_PERIOD_LOCKED/.test(err instanceof Error ? err.message : '') ? t.takings.errors.locked : t.takings.errors.changed }, 409)
+  }
+  return c.redirect(`/app/trzby?rok=${takings.on.slice(0, 4)}&ok=zapisana&den=${takings.on}`, 303)
+})
+
+appRoutes.post('/trzby/:id/zrusit', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const d = ID.test(id) ? await getDocument(db, who.company.id, id) : null
+  if (!d || d.source !== 'takings') return shell(c, 'payments', t.errors.notFound, <Missing />, 404)
+  if (!intakeOpen(who.company, today())) return takingsPage(c, {}, 409)
+  const revision = await dataRevision(db, who.company.id)
+  const books = await booksOf(db, who.company)
+  const moves = cashMoves(books)
+  const own = moves.find((m) => m.e.key === `d:${id}`)
+  // Cash of the day that paid what followed out of the cash box is not taken back: the box would go below nought.
+  if (own && own.cents > 0) {
+    const lowest = lowestFrom(
+      moves.filter((m) => m !== own).map((m) => ({ on: m.on, cents: m.cents })),
+      own.on,
+    )
+    if (lowest !== null && lowest < 0) return takingsPage(c, { error: t.takings.errors.short(formatEurExact(-lowest)) }, 409)
+  }
+  try {
+    const results = await db.batch(removeTakingsStatements(db, who.company.id, id, who.user.id, revision))
+    if ((results[0]?.meta?.changes ?? 0) === 0) return takingsPage(c, { error: t.takings.errors.changed }, 409)
+  } catch (err) {
+    console.error('takings were not removed', err instanceof Error ? err.name : 'error')
+    return takingsPage(c, { error: t.takings.errors.locked }, 409)
+  }
+  return c.redirect(`/app/trzby?rok=${(d.issuedOn ?? today()).slice(0, 4)}&ok=zrusena`, 303)
+})
+
 // Business trips (trips.ts): the list, the form worked out on the server (a recount shows the days for the meals), the
 // settlement kept as the company's document owed to the traveller, and taken back while nothing was done with it.
 appRoutes.get('/cesty', async (c) => {
@@ -1492,9 +1583,11 @@ appRoutes.post('/doklady/:id/zmazat', async (c) => {
   const who = c.get('who')
   const id = c.req.param('id')
   const db = c.env.DB
-  // A trip's settlement goes with its trip (its page takes it back), never alone.
+  // A trip's settlement goes with its trip (its page takes it back), never alone; a day's takings on its own page.
   const trip = ID.test(id) ? await tripOfDocument(db, who.company.id, id) : null
   if (trip) return c.redirect(`/app/cesty/${trip.id}`, 303)
+  const takings = ID.test(id) ? await getDocument(db, who.company.id, id) : null
+  if (takings?.source === 'takings') return c.redirect(`/app/trzby?rok=${(takings.issuedOn ?? today()).slice(0, 4)}`, 303)
   const results = await db.batch([...deleteDocumentStatements(db, who.company.id, id), eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.deleted', subject: id })])
   if ((results[1]?.meta?.changes ?? 0) === 0) {
     const d = await getDocument(db, who.company.id, id)

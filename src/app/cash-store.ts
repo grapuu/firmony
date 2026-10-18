@@ -24,8 +24,11 @@ export interface CashEntry {
   createdByName: string | null
 }
 
-/** A received document a company may pay in cash, or an issued one paid to it in cash: not paired, not paid otherwise. */
-const PAYABLE_IN_CASH = `d.deleted_at IS NULL AND d.paid_privately = 0 AND d.duplicate_of IS NULL AND COALESCE(d.currency, 'EUR') = 'EUR' AND d.total_cents > 0
+/**
+ * A received document a company may pay in cash, or an issued one paid to it in cash: not paired, not paid otherwise
+ * (a day's takings of a till was paid at the till, takings.ts).
+ */
+const PAYABLE_IN_CASH = `d.deleted_at IS NULL AND d.paid_privately = 0 AND d.duplicate_of IS NULL AND COALESCE(d.currency, 'EUR') = 'EUR' AND d.total_cents > 0 AND d.source <> 'takings'
   AND (d.status = 'read' OR d.booked_at IS NOT NULL)
   AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
   AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)`

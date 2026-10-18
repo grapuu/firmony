@@ -441,10 +441,11 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
   const oss = data?.mode === 'oss'
   if (data) {
     if (isIssued(doc.kind)) vatCents = (payer && data.mode === 'domestic') || oss ? sum((line) => line.vat) : 0
-    else if (data.mode === 'domestic') {
+    else if (data.mode === 'domestic' || data.mode === 'import') {
+      // VAT paid to the customs office is part of what its document asks for, as a Slovak supplier's VAT.
       vatCents = payer ? sum((line) => line.deduct) : 0
       deduct = vatCents > 0
-    } else if (data.mode === 'reverse' || data.mode === 'acquisition') {
+    } else if (data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'import84a') {
       const cents = sum((line) => line.vat)
       const deducted = payer ? sum((line) => line.deduct) : 0
       selfVat = cents > 0 ? { cents, deduct: deducted > 0, deductCents: deducted } : null
@@ -468,13 +469,23 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
   // advances' own tax documents).
   const revenueAccount = doc.account && /^\d{3,6}$/.test(doc.account) ? doc.account : CATEGORIES[doc.category].account
   const advance: typeof raw = isIssued(doc.kind) && doc.advanceCents > 0 && CATEGORIES[doc.category].revenue && doc.category !== 'advance' ? [{ md: '324', d: revenueAccount, cents: doc.advanceCents, what: 'revenue' }] : []
-  return [...raw, ...advance]
+  const lines = [...raw, ...advance]
     .filter((line) => line.cents > 0)
     .map((line) => {
       const md = registered && line.md === '343' ? VAT_IN : (canonicalAccount(line.md) ?? line.md)
       const d = line.d === '343' && oss ? VAT_OSS : registered && line.d === '343' ? VAT_OUT : (canonicalAccount(line.d) ?? line.d)
       return credit ? { md: d, d: md, cents: line.cents, what: line.what } : { md, d, cents: line.cents, what: line.what }
     })
+  if (doc.source !== 'takings' || credit) return lines
+  // The day's takings of a till (takings.ts) are paid at the till: the cash part into the cash box (211), the rest by
+  // card, money on its way (261) until the bank brings it; no customer owes them (311).
+  let cash = Math.max(0, Math.min(doc.takingsCash ?? 0, plan.gross))
+  return lines.flatMap((line) => {
+    if (line.md !== '311') return [line]
+    const inCash = Math.min(cash, line.cents)
+    cash -= inCash
+    return [...(inCash > 0 ? [{ ...line, md: '211', cents: inCash }] : []), ...(line.cents > inCash ? [{ ...line, md: TRANSIT, cents: line.cents - inCash }] : [])]
+  })
 }
 
 /**
@@ -735,7 +746,8 @@ export function buildBooks(input: LedgerInput): Books {
     }
     booked.add(doc.id)
     entries.push({ key: `d:${doc.id}`, on, kind: 'document', number: doc.number ?? '', text: docText(doc), docId: doc.id, paymentId: pay?.id ?? null, manualId: null, lines })
-    if (doc.kind === 'invoice_in' || doc.kind === 'invoice_out') {
+    // The day's takings of a till are paid at the till: no open item (takings.ts).
+    if ((doc.kind === 'invoice_in' || doc.kind === 'invoice_out') && doc.source !== 'takings') {
       const account = payableOf(doc)
       const item: OpenItem = { docId: doc.id, account, on: plan.on, dueOn: doc.dueOn, number: doc.number, party: doc.party, total: (plan.credit ? -1 : 1) * plan.gross, settled: 0 }
       items.set(doc.id, item)

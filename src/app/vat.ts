@@ -17,10 +17,19 @@
 //   33, 35), supplies with domestic reverse charge issued (§ 69(12), A.2 alone, no row: KVDPH's instructions of
 //   2021 on part A.2 and podnikajte.sk, 18 October 2026). A company registered only under § 7a files the return
 //   alone, with no deduction (rows 05 to 10b, 17, 32, 35) and no control statement.
-// - Not built: corrective invoices of supplies with domestic reverse charge, takings of an eKasa till
-//   (D.1), imports (rows 11c to 12e, 22 to 23c), triangular trade (rows 11 to 12b), bad debts (§ 25a, § 53b), the
-//   coefficient (§ 50), supplementary returns and statements (dodatočné, with correction codes), the recapitulative
-//   statement (súhrnný výkaz) and documents in another currency without their euro amounts.
+// - Imports of goods (18 October 2026, read in the poučenie to DPHv25, MF/007833/2025-731, points 30a, 30b, 38, 38a,
+//   and FR SR's information 8/DPH/2025/IM on § 84a): VAT paid to the customs office is deducted in rows 18 to 19 and,
+//   of them, rows 22, 22a and 23 (19, 5 and 23 %), by the document the customs office confirmed (`import`); an
+//   importer with the status of an authorised economic operator declares the VAT itself in the return (§ 84a(3), from
+//   1 July 2025, in the period the customs declaration was accepted): rows 11c to 11e and 12c to 12e, row 13 for an
+//   exempt import, corrections in rows 24 and 25, the deduction in rows 18 to 19 and, of them, 23a to 23c
+//   (`import84a`). Neither is reported in the control statement (§ 78a asks for none), and a return whose only content
+//   is VAT deducted on imports needs no control statement (KVDPH's instructions of 2021).
+// - Takings of an eKasa till (18 October 2026; takings.ts): the day's takings by rate, in rows 01 to 04 (row 13 for
+//   what is exempt) and, as one total of the period, in D.1 of the control statement (the turnover of all tills, the
+//   base and VAT at the basic rate and at the reduced ones), not in A.1 or D.2.
+// - Not built: triangular trade (rows 11 to 12b), bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in
+//   another currency without their euro amounts.
 import { CATEGORIES, type Category } from './booking'
 import type { DocKind } from './match'
 import { eurOf } from './fx'
@@ -34,9 +43,13 @@ import { eurOf } from './fx'
  * distance or services to consumers in another member state, its VAT declared in the one-stop shop, oss.ts). `none`:
  * no VAT to report at all (a supplier who is no payer, an exempt purchase, or a company not registered).
  */
-export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'eu_goods' | 'eu_service' | 'export' | 'exempt' | 'outside' | 'oss' | 'none'
+export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'import' | 'import84a' | 'eu_goods' | 'eu_service' | 'export' | 'exempt' | 'outside' | 'oss' | 'none'
 
-export const RECEIVED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'none']
+/**
+ * Received, besides: `import` (goods imported, the VAT paid to the customs office and deducted by its confirmed
+ * document), `import84a` (goods imported by an authorised economic operator, its VAT declared in the return, § 84a(3)).
+ */
+export const RECEIVED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'import', 'import84a', 'none']
 export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'eu_goods', 'eu_service', 'export', 'exempt', 'outside', 'oss', 'none']
 
 /**
@@ -152,6 +165,8 @@ export interface VatDoc {
   booked: boolean
   /** What is stored; null until the accountant confirms a proposal. */
   vat: VatData | null
+  /** The day's takings of an eKasa till (takings.ts): D.1 of the control statement, not A.1 or D.2. */
+  takings?: boolean
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -428,7 +443,8 @@ export function periodOfDoc(doc: VatDoc, data: VatData, company: VatCompany, fil
   if (data.period) return data.period
   const quarterly = company.status === 'payer' && company.quarterly
   const natural = periodOf(taxDay(doc, data), quarterly)
-  if (!isReceived(doc.kind) || data.mode !== 'domestic') return natural
+  // VAT paid to the customs office is deducted by the document the customs office confirmed, as an invoice (§ 51(1)(c)).
+  if (!isReceived(doc.kind) || (data.mode !== 'domestic' && data.mode !== 'import')) return natural
   let period = doc.receivedOn > filingDeadline(natural) ? periodOf(doc.receivedOn, quarterly) : natural
   // A period filed before the document came is closed to it: the deduction goes into the next open one.
   for (let guard = 0; guard < 24; guard++) {
@@ -516,6 +532,10 @@ const ACQUISITION_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 
 const REVERSE_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r09', tax: 'r10' }, 5: { base: 'r09a', tax: 'r10a' }, 23: { base: 'r09b', tax: 'r10b' } }
 const DEDUCT_ROWS: Record<number, Row> = { 19: 'r18', 5: 'r18a', 23: 'r19' }
 const DOMESTIC_DEDUCT_ROWS: Record<number, Row> = { 19: 'r20', 5: 'r20a', 23: 'r21' }
+/** Imports: the base and VAT an importer declares itself (§ 84a(3)), and what is deducted of VAT paid to customs and of VAT declared so. */
+const IMPORT84A_ROWS: Record<number, { base: Row; tax: Row }> = { 19: { base: 'r11c', tax: 'r12c' }, 5: { base: 'r11d', tax: 'r12d' }, 23: { base: 'r11e', tax: 'r12e' } }
+const IMPORT_DEDUCT_ROWS: Record<number, Row> = { 19: 'r22', 5: 'r22a', 23: 'r23' }
+const IMPORT84A_DEDUCT_ROWS: Record<number, Row> = { 19: 'r23a', 5: 'r23b', 23: 'r23c' }
 const TAX_ROWS: readonly Row[] = ['r02', 'r02a', 'r04', 'r06', 'r06a', 'r08', 'r10', 'r10a', 'r10b', 'r12', 'r12a', 'r12b', 'r12c', 'r12d', 'r12e', 'r16']
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -601,6 +621,10 @@ export interface KvD2 {
   zzn: number
   dzn: number
 }
+/** D.1: the takings of all the company's eKasa tills in the period, the turnover (with VAT) and the bases and VAT by rate. */
+export interface KvD1 extends KvD2 {
+  obrat: number
+}
 
 export interface Kv {
   a1: KvA1[]
@@ -611,6 +635,7 @@ export interface Kv {
   b32: KvB32[]
   c1: KvC1[]
   c2: KvC2[]
+  d1?: KvD1 | null
   d2: KvD2 | null
 }
 
@@ -716,7 +741,7 @@ export function vatDocsByPeriod(company: VatCompany, docs: VatDoc[], filed: Read
 
 export function workOut(company: VatCompany, period: string, docs: VatDoc[], filed: ReadonlyMap<string, string> = new Map(), carriedIn = 0): PeriodResult {
   const rows = emptyRows()
-  const kv: Kv = { a1: [], a2: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }
+  const kv: Kv = { a1: [], a2: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d1: null, d2: null }
   const sources = new Map<string, Set<string>>()
   const issues: Issue[] = []
   const held: PeriodResult['docs'] = []
@@ -743,7 +768,9 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
   }
   const simplified: { doc: VatDoc; line: VatLine; vatId: string | null }[] = []
   const d2: KvD2 = { z: 0, d: 0, zzn: 0, dzn: 0 }
+  const d1: KvD1 = { obrat: 0, z: 0, d: 0, zzn: 0, dzn: 0 }
   let consumers = false
+  let tills = false
 
   for (const doc of docs) {
     // A document nobody has read yet may well be the period's: it keeps the period from being filed until it is.
@@ -855,7 +882,8 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       note('A2', doc.id)
       continue
     }
-    const taxed = data.mode === 'domestic' || data.mode === 'reverse' || data.mode === 'acquisition'
+    const taxed = data.mode === 'domestic' || data.mode === 'reverse' || data.mode === 'acquisition' || data.mode === 'import' || data.mode === 'import84a'
+    const imported = !issued && (data.mode === 'import' || data.mode === 'import84a')
     if (data.lines.length === 0) {
       issue('block', 'lines', doc.id)
       continue
@@ -878,8 +906,14 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       const deduct = payer ? line.deduct : 0
       if (!payer && line.deduct !== 0) issue('warn', 'deduct7a', doc.id)
       if (taxed && line.rate === 0) {
-        // The exempt part of a supply goes to row 13; an exempt purchase, or one from abroad, is not reported.
-        if (issued && data.mode === 'domestic') add('r13', line.base, doc.id)
+        // The exempt part of a supply goes to row 13, and an exempt import an importer declares itself (§ 84a(3)); an
+        // exempt purchase, or one from abroad, is not reported.
+        if ((issued && data.mode === 'domestic') || data.mode === 'import84a') add('r13', line.base, doc.id)
+        if (issued && doc.takings) {
+          d1.obrat += line.base
+          tills = true
+          note('D1', doc.id)
+        }
         continue
       }
       if (issued) {
@@ -894,7 +928,19 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
               add(target.tax, line.vat, doc.id)
             }
           }
-          if (!business) {
+          if (doc.takings) {
+            // The day's takings of a till: one total of the period in D.1, whoever bought.
+            tills = true
+            d1.obrat += line.base + line.vat
+            if (line.rate === 23) {
+              d1.z += line.base
+              d1.d += line.vat
+            } else {
+              d1.zzn += line.base
+              d1.dzn += line.vat
+            }
+            note('D1', doc.id)
+          } else if (!business) {
             consumers = true
             if (line.rate === 23) {
               d2.z += line.base
@@ -920,6 +966,31 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
         continue
       }
       // Received.
+      if (imported) {
+        // Imports: no line of the control statement (§ 78a asks for none).
+        const self = data.mode === 'import84a'
+        if (self) {
+          if (correction) {
+            add('r24', line.base, doc.id)
+            add('r25', line.vat, doc.id)
+          } else {
+            const target = IMPORT84A_ROWS[line.rate]
+            if (target) {
+              add(target.base, line.base, doc.id)
+              add(target.tax, line.vat, doc.id)
+            }
+          }
+        }
+        if (!payer) continue
+        if (correction) {
+          add('r28', -deduct, doc.id)
+          continue
+        }
+        if (deduct === 0) continue
+        add(DEDUCT_ROWS[line.rate] as Row, deduct, doc.id)
+        add((self ? IMPORT84A_DEDUCT_ROWS : IMPORT_DEDUCT_ROWS)[line.rate] as Row, deduct, doc.id)
+        continue
+      }
       if (data.mode === 'domestic') {
         if (!payer) continue
         if (correction) {
@@ -988,6 +1059,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     }
   }
   if (consumers) kv.d2 = d2
+  if (tills) kv.d1 = d1
 
   // The result: row 17 is the tax, rows 32 to 35 what it comes to.
   rows.r17 = TAX_ROWS.reduce((sum, row) => sum + rows[row], 0)
@@ -1005,6 +1077,15 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
   const nothing = ROWS.every((row) => rows[row] === 0)
   // Goods to the EU and exports alone, with nothing deducted, need no control statement (the return's rows 14 and 15 are all of row 13).
   const goodsOnly = ROWS.every((row) => rows[row] === 0 || row === 'r13' || row === 'r14' || row === 'r15') && rows.r13 === rows.r14 + rows.r15
+  // Nor does VAT deducted on imports alone (paid to the customs office): rows 18 to 19 are all of rows 22 to 23, and
+  // the rest is the result it comes to (KVDPH's instructions of 2021, § 49(2)(d)).
+  const RESULT_ROWS: readonly Row[] = ['r17', 'r32', 'r33', 'r34', 'r35', 'r36', 'r37']
+  const importOnly =
+    rows.r18 + rows.r18a + rows.r19 > 0 &&
+    rows.r18 === rows.r22 &&
+    rows.r18a === rows.r22a &&
+    rows.r19 === rows.r23 &&
+    ROWS.every((row) => rows[row] === 0 || RESULT_ROWS.includes(row) || ['r18', 'r18a', 'r19', 'r22', 'r22a', 'r23'].includes(row))
   return {
     period,
     rows,
@@ -1013,7 +1094,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     docs: held,
     issues: issues.sort((a, b) => (a.level === b.level ? 0 : a.level === 'block' ? -1 : 1)),
     nothing,
-    statement: payer && !nothing && !goodsOnly,
+    statement: payer && !nothing && !goodsOnly && !importOnly,
   }
 }
 
@@ -1024,7 +1105,7 @@ export function outcome(rows: Rows): { pay: number; refund: number } {
 
 /** Whether the control statement has anything in it beyond the company's own details. */
 export function kvRows(kv: Kv): number {
-  return kv.a1.length + kv.a2.length + kv.b1.length + kv.b2.length + (kv.b31 ? 1 : 0) + kv.b32.length + kv.c1.length + kv.c2.length + (kv.d2 ? 1 : 0)
+  return kv.a1.length + kv.a2.length + kv.b1.length + kv.b2.length + (kv.b31 ? 1 : 0) + kv.b32.length + kv.c1.length + kv.c2.length + (kv.d1 ? 1 : 0) + (kv.d2 ? 1 : 0)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1105,10 +1186,11 @@ export interface KvFile {
   b32: Coded<KvB32>[]
   c1: Coded<KvC1>[]
   c2: Coded<KvC2>[]
+  d1: Coded<KvD1>[]
   d2: Coded<KvD2>[]
 }
 
-const KV_PARTS = ['a1', 'a2', 'b1', 'b2', 'b31', 'b32', 'c1', 'c2', 'd2'] as const
+const KV_PARTS = ['a1', 'a2', 'b1', 'b2', 'b31', 'b32', 'c1', 'c2', 'd1', 'd2'] as const
 
 /** A period's control statement as a file: the lines without the documents they come from. */
 export function kvFileOf(kv: Kv): KvFile {
@@ -1123,6 +1205,8 @@ export function kvFileOf(kv: Kv): KvFile {
     b32: kv.b32.map((line) => ({ ...line })),
     c1: plain(kv.c1),
     c2: plain(kv.c2),
+    // A statement worked out before D.1 was built has none.
+    d1: kv.d1 ? [{ ...kv.d1 }] : [],
     d2: kv.d2 ? [{ ...kv.d2 }] : [],
   }
 }
@@ -1135,7 +1219,7 @@ export const kvFileLines = (file: KvFile): number => KV_PARTS.reduce((sum, part)
  * (the schema's KodOpravyType). A total of B.3.1 or D.2 that changed is two lines, the old one and the new one.
  */
 export function kvDiff(before: KvFile, now: KvFile): KvFile {
-  const out = { a1: [], a2: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d2: [] } as unknown as Record<(typeof KV_PARTS)[number], { k?: KvCode }[]>
+  const out = { a1: [], a2: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d1: [], d2: [] } as unknown as Record<(typeof KV_PARTS)[number], { k?: KvCode }[]>
   for (const part of KV_PARTS) {
     const key = (line: object) =>
       JSON.stringify(
@@ -1144,14 +1228,17 @@ export function kvDiff(before: KvFile, now: KvFile): KvFile {
           .sort(([a], [b]) => a.localeCompare(b)),
       )
     const left = new Map<string, number>()
-    for (const line of now[part] as object[]) left.set(key(line), (left.get(key(line)) ?? 0) + 1)
+    // A file kept before a part was built (A.2, D.1) has none of it.
+    const was = (before[part] ?? []) as object[]
+    const is = (now[part] ?? []) as object[]
+    for (const line of is) left.set(key(line), (left.get(key(line)) ?? 0) + 1)
     const kept = new Map<string, number>()
-    for (const line of before[part] as object[]) {
+    for (const line of was) {
       const k = key(line)
       if ((left.get(k) ?? 0) > (kept.get(k) ?? 0)) kept.set(k, (kept.get(k) ?? 0) + 1)
       else out[part].push({ ...line, k: 1 })
     }
-    for (const line of now[part] as object[]) {
+    for (const line of is) {
       const k = key(line)
       if ((kept.get(k) ?? 0) > 0) kept.set(k, (kept.get(k) ?? 0) - 1)
       else out[part].push({ ...line, k: 2 })

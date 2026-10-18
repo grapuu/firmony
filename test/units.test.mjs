@@ -2199,6 +2199,107 @@ async function zipped(entries, note) {
     )
   }
 
+  // Imports (18 October 2026; the poučenie to DPHv25, points 30a, 30b, 38, 38a; FR SR 8/DPH/2025/IM): VAT paid to the
+  // customs office deducted in 18 to 19 and 22 to 23; an authorised economic operator's own VAT in 11c to 12e, its
+  // deduction in 18 to 19 and 23a to 23c; neither in the control statement.
+  {
+    const customs = doc({ number: 'JCD 26SK000123', partyIco: null, totalCents: 25500, vat: v('import', [[23, 100000, 23000, 23000]], { suppliedOn: '2027-01-12' }) })
+    const self = doc({
+      number: 'JCD 26SK000456',
+      partyIco: null,
+      totalCents: 2500,
+      vat: v(
+        'import84a',
+        [
+          [23, 200000, 46000, 46000],
+          [5, 40000, 2000, 2000],
+          [0, 10000, 0, 0],
+        ],
+        { suppliedOn: '2027-01-14' },
+      ),
+    })
+    const imp = vat.workOut(payer, '2027-01', [customs, self])
+    const r = imp.rows
+    check(
+      "imports: customs-paid VAT deducted in 19 and, of it, 23; an importer's own VAT in 11e, 12e, 11d, 12d, exempt in 13, deducted in 19, 18a and 23c, 23b",
+      r.r19 === 23000 + 46000 &&
+        r.r23 === 23000 &&
+        r.r11e === 200000 &&
+        r.r12e === 46000 &&
+        r.r11d === 40000 &&
+        r.r12d === 2000 &&
+        r.r13 === 10000 &&
+        r.r18a === 2000 &&
+        r.r23c === 46000 &&
+        r.r23b === 2000 &&
+        r.r17 === 48000 &&
+        r.r21 === 0 &&
+        r.r33 === 23000,
+      JSON.stringify(r),
+    )
+    check('no import in the control statement, and nothing keeps the month back', vat.kvRows(imp.kv) === 0 && !imp.issues.some((i) => i.level === 'block') && imp.statement, JSON.stringify(imp.issues))
+    const only = vat.workOut(payer, '2027-01', [customs])
+    check('VAT deducted on imports alone needs no control statement', !only.statement && !only.nothing && only.rows.r33 === 23000)
+    // A customs document that came after the deadline is deducted in the month it came, as an invoice.
+    check(
+      "a customs document is deducted when it came, as an invoice; an importer's own VAT stays in the month of the declaration",
+      vat.periodOfDoc(doc({ issuedOn: '2027-01-12', receivedOn: '2027-03-01' }), customs.vat, payer) === '2027-03' &&
+        vat.periodOfDoc(doc({ issuedOn: '2027-01-14', receivedOn: '2027-03-01' }), self.vat, payer) === '2027-01',
+    )
+    const fixed = vat.workOut(payer, '2027-01', [doc({ number: 'JCD-O1', vat: v('import84a', [[23, -10000, -2300, -2300]], { corrects: 'JCD 26SK000456' }) })])
+    check("a correction of an importer's own VAT in 24 and 25, its deduction in 28", fixed.rows.r24 === -10000 && fixed.rows.r25 === -2300 && fixed.rows.r28 === 2300 && fixed.rows.r11e === 0)
+    const impXml = vatXml.returnXml(filer, '2027-01', r, { declaredOn: '2027-02-10', nothing: imp.nothing })
+    const impValid = await valid(impXml, DPH_XSD, 'dph-import')
+    check('the return of imports is valid against dph2025.xsd', impValid.ok && impXml.includes('<r11e>2000.00</r11e>') && impXml.includes('<r23c>460.00</r23c>'), impValid.why)
+    check('a person registered under § 7a reports no import', vat.workOut(reg7a, '2027-01', [customs]).rows.r19 === 0)
+  }
+
+  // The day's takings of an eKasa till (18 October 2026): rows 01 to 04 and 13, and D.1 of the control statement as one
+  // total of the period (the turnover with VAT, the base and VAT at the basic rate and at the reduced ones), not A.1 or D.2.
+  {
+    const till = (day, lines) => doc({ kind: 'invoice_out', number: `TR ${day}`, partyIco: null, issuedOn: day, takings: true, vat: v('domestic', lines, { suppliedOn: day }) })
+    const shop = vat.workOut(payer, '2027-01', [
+      till('2027-01-04', [
+        [23, 10000, 2300],
+        [19, 5000, 950],
+        [5, 2000, 100],
+        [0, 500, 0],
+      ]),
+      till('2027-01-05', [[23, 20000, 4600]]),
+      doc({ kind: 'invoice_out', number: '20270009', partyIco: null, vat: v('domestic', [[23, 1000, 230]]) }),
+    ])
+    const d1 = shop.kv.d1
+    check(
+      'takings: the rows by rate, exempt in 13; one D.1 line of the period with the turnover; D.2 keeps only the invoice to a consumer',
+      shop.rows.r03 === 31000 &&
+        shop.rows.r04 === 6900 + 230 &&
+        shop.rows.r01 === 5000 &&
+        shop.rows.r01a === 2000 &&
+        shop.rows.r13 === 500 &&
+        d1?.z === 30000 &&
+        d1.d === 6900 &&
+        d1.zzn === 7000 &&
+        d1.dzn === 1050 &&
+        d1.obrat === 12300 + 5950 + 2100 + 500 + 24600 &&
+        shop.kv.d2?.z === 1000 &&
+        shop.kv.a1.length === 0 &&
+        shop.sources.get('D1')?.size === 2,
+      JSON.stringify([shop.rows, shop.kv.d1, shop.kv.d2]),
+    )
+    const d1Xml = vatXml.statementXml(filer, '2027-01', shop.kv)
+    const d1Valid = await valid(d1Xml, KV_XSD, 'kv-d1')
+    check(
+      'D.1 in the control statement file, before D.2, valid against kv_dph_2025.xsd',
+      d1Valid.ok && d1Xml.includes('<D1 SumaObratov="454.50" Z="300.00" D="69.00" ZZn="70.00" DZn="10.50"/>') && d1Xml.indexOf('<D1') < d1Xml.indexOf('<D2'),
+      `${d1Valid.why} ${d1Xml.match(/<D[12][^>]*>/g)?.join(' ')}`,
+    )
+    const before = vat.kvFileOf(shop.kv)
+    const after = vat.kvFileOf(vat.workOut(payer, '2027-01', [till('2027-01-04', [[23, 10000, 2300]])]).kv)
+    const diff = vat.kvDiff(before, after)
+    check('a changed D.1 is two lines of a supplementary statement, the old and the new', diff.d1.length === 2 && diff.d1[0].k === 1 && diff.d1[1].k === 2 && diff.d1[1].z === 10000)
+    check('a statement kept before D.1 compares as without it', vat.kvDiff({ ...before, d1: undefined }, before).d1.length === 1)
+  }
+
   {
     const ctx = { kind: 'invoice_out', payer: true, deduct: false, booking: true, periods: ['2027-01'] }
     const body = (extra) => ({ dph_rezim: 'reverse', dph_dodanie: '15. 1. 2027', dph_icdph: 'SK2020000000', dph_zaklad_0: '6000', ...extra })
@@ -3531,6 +3632,44 @@ async function zipped(entries, note) {
         cashBooks.entries.find((e) => e.key === 'm:vpd')?.kind === 'cash' &&
         cashBooks.entries.find((e) => e.key === 'm:vpd')?.docId === 'trip',
       JSON.stringify(cashBooks.items),
+    )
+  }
+  // The day's takings of a till (18 October 2026): cash into the cash box, card money on its way, the revenue and the
+  // VAT owed; no open item. An import: VAT paid to customs deducted out of its document; an importer's own VAT both ways.
+  {
+    const till = doc('till', {
+      kind: 'invoice_out',
+      source: 'takings',
+      number: null,
+      party: 'Tržba z eKasy',
+      issuedOn: '2026-10-15',
+      suppliedOn: '2026-10-15',
+      totalCents: 12300 + 1190,
+      vatCents: 2300 + 190,
+      category: 'sales_goods',
+      takingsCash: 9000,
+      vat: vatData('domestic', [
+        { rate: 23, base: 10000, vat: 2300, deduct: 0 },
+        { rate: 19, base: 1000, vat: 190, deduct: 0 },
+      ]),
+    })
+    const customs = doc('jcd', { kind: 'invoice_in', number: 'JCD 1', party: 'Colný úrad', issuedOn: '2026-10-12', totalCents: 25500, vatCents: 23000, category: 'goods', vat: vatData('import', [{ rate: 23, base: 100000, vat: 23000, deduct: 23000 }]) })
+    const aeo = doc('aeo', { kind: 'invoice_in', number: 'JCD 2', party: 'Colný úrad', issuedOn: '2026-10-13', totalCents: 2500, vatCents: 0, category: 'goods', vat: vatData('import84a', [{ rate: 23, base: 200000, vat: 46000, deduct: 46000 }]) })
+    const b = ledger.buildBooks({ company: company(), docs: [till, customs, aeo], payments: [], banks, filed: [], manual: [] })
+    const GOODS = booking.CATEGORIES.goods.account
+    const on = (account) => ledger.balanceOf(b.entries, account, '2026-10-31')
+    check(
+      'takings: cash 211, card 261, revenue 604 and VAT 343.200; no open item; an import: customs VAT deducted out of the document (duty the cost), an importer\'s own VAT owed and deducted',
+      on('211') === 9000 &&
+        on('261') === 13490 - 9000 &&
+        on('604') === -11000 &&
+        on('311') === 0 &&
+        !b.items.some((i) => i.docId === 'till') &&
+        on('343.100') === 23000 + 46000 &&
+        on('343.200') === -2490 - 46000 &&
+        on(GOODS) === 2500 + 2500 &&
+        on('321') === -25500 - 2500,
+      JSON.stringify(b.entries.filter((e) => ['d:till', 'd:jcd', 'd:aeo'].includes(e.key)).map((e) => e.lines)),
     )
   }
 }

@@ -147,6 +147,8 @@ export function statementXml(filer: Filer, period: string, statement: Kv | KvFil
         `<C1${attrs([['Odb', r.odb], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', r.dr === null ? null : money(r.dr)], ['S', r.s], ['TK', r.tk], ['TD', r.td], ['Mn', r.mn === null || r.mn === undefined ? null : (r.mn / 100).toFixed(2)], ['MJ', r.mj], code(r.k)])}/>`,
     ),
     ...kv.c2.map((r) => `<C2${attrs([['Dod', r.dod], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', money(r.dr)], ['S', r.s], ['OR', money(r.or)], code(r.k)])}/>`),
+    // A statement kept before D.1 was built has none.
+    ...(kv.d1 ?? []).map((r) => `<D1${attrs([['SumaObratov', money(r.obrat)], ['Z', money(r.z)], ['D', money(r.d)], ['ZZn', money(r.zzn)], ['DZn', money(r.dzn)], code(r.k)])}/>`),
     ...kv.d2.map((r) => `<D2${attrs([['Z', money(r.z)], ['D', money(r.d)], ['ZZn', money(r.zzn)], ['DZn', money(r.dzn)], code(r.k)])}/>`),
   ]
   const el = (name: string, value: string) => `<${name}>${esc(value)}</${name}>`

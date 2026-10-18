@@ -36,10 +36,10 @@ export type VatField = 'mode' | 'supplied' | 'vatId' | 'corrects' | 'period' | `
 export type VatErrors = Partial<Record<VatField, VatErrorCode>>
 
 /** What VAT is reported by the mode: taxed (with VAT), or the base alone (supplied without VAT), or nothing. */
-const TAXED: readonly VatMode[] = ['domestic', 'reverse', 'acquisition']
+const TAXED: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'import', 'import84a']
 const BASE_ONLY: readonly VatMode[] = ['eu_goods', 'eu_service', 'export', 'exempt', 'outside']
 /** The modes whose lines go into the return, so that booking without them is a mistake. */
-const NEEDS_LINES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'eu_goods', 'export', 'exempt']
+const NEEDS_LINES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'import', 'import84a', 'eu_goods', 'export', 'exempt']
 
 /** Which modes a document of this kind can have: an issued invoice's or a received one's; none for anything else. */
 export function modesFor(kind: DocKind | null): readonly VatMode[] {

@@ -3963,7 +3963,7 @@ teamRoutes.get('/doklady', async (c) => {
 /** Payments of the company that this document may belong to, best first. */
 async function candidatesFor(db: D1Database, company: string, d: Doc): Promise<Payment[]> {
   // Paid in cash (a cash document of the cash box), it is paid: no bank payment is offered for it.
-  if (d.paymentId || d.cashPaid || d.totalCents === null) return []
+  if (d.paymentId || d.cashPaid || d.source === 'takings' || d.totalCents === null) return []
   const missing = await listPayments(db, company, 'unpaired', 300)
   const { auto, suggest } = decide(
     missing.map((p) => ({ id: p.id, bookedOn: p.bookedOn, amountCents: p.amountCents, party: p.party, partyIban: p.partyIban, vs: p.vs })),
@@ -3990,7 +3990,7 @@ async function vatFormOf(db: D1Database, company: Company, doc: Doc, typed?: { v
   const sum = data.lines.reduce((total, line) => total + line.base + (data.mode === 'domestic' ? line.vat : 0), 0)
   const euro = (doc.currency ?? 'EUR') === 'EUR'
   const sumOff =
-    euro && doc.totalCents !== null && data.lines.length > 0 && data.mode !== 'none' && Math.abs(sum - doc.totalCents) > 1
+    euro && doc.totalCents !== null && data.lines.length > 0 && data.mode !== 'none' && data.mode !== 'import' && data.mode !== 'import84a' && Math.abs(sum - doc.totalCents) > 1
       ? t.book.vatSumOff(formatEurExact(sum), formatEurExact(doc.totalCents))
       : null
   const goes =
@@ -4164,6 +4164,8 @@ teamRoutes.post('/doklady/:id', async (c) => {
     (values.kind !== doc.kind || values.currency !== 'EUR' || payableOf({ kind: (values.kind || null) as DocKind | null, category: isCategory(values.category) ? values.category : null }) !== payableOf(doc))
   )
     errors.kind = t.book.errors.cashPaid(doc.cashPaid.number)
+  // A day's takings of a till stays an issued document in euros: the client takes it back on its page if it is wrong.
+  if (doc.source === 'takings' && (values.kind !== 'invoice_out' || values.currency !== 'EUR')) errors.kind = t.book.errors.takings
   // The VAT part of the form, when it was on it: read only while the kind stays issued or received as it was shown;
   // a document that changes between them gets a new proposal for its new kind.
   const kind = (values.kind || null) as DocKind | null

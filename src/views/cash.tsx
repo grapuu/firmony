@@ -66,6 +66,9 @@ export const CashPage: FC<{
           <a class="btn btn--line" href="/app/pokladna/nova?strana=vydaj">
             {t.addOut}
           </a>
+          <a class="btn btn--line" href="/app/trzby">
+            {app.takings.link}
+          </a>
         </p>
       )}
       <section class="info" aria-labelledby="pokladna-t">

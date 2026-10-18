@@ -191,6 +191,7 @@ const KV_PARTS: { key: string; count: (view: PeriodView) => number }[] = [
   { key: 'B3', count: (w) => (w.result.kv.b31 ? 1 : 0) + w.result.kv.b32.length },
   { key: 'C1', count: (w) => w.result.kv.c1.length },
   { key: 'C2', count: (w) => w.result.kv.c2.length },
+  { key: 'D1', count: (w) => (w.result.kv.d1 ? 1 : 0) },
   { key: 'D2', count: (w) => (w.result.kv.d2 ? 1 : 0) },
 ]
 
@@ -700,6 +701,7 @@ export const VatFields: FC<{ form: VatForm }> = ({ form }) => {
       <legend class="vatbox__title">{t.book.vatTitle}</legend>
       <input type="hidden" name="dph" value="1" />
       {form.proposed ? <p class="vatbox__note">{t.book.vatProposed}</p> : null}
+      {form.values.mode === 'import' || form.values.mode === 'import84a' ? <p class="vatbox__note">{t.book.vatImport}</p> : null}
       <div class="fgrid">
         <div class="fgrid__cell fgrid__cell--wide">
           <label class="field__label" for="b-dph-rezim">

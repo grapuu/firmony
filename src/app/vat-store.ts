@@ -142,7 +142,7 @@ export interface FiledReturn {
   raw: string
 }
 
-const EMPTY_KV: KvFile = { a1: [], a2: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d2: [] }
+const EMPTY_KV: KvFile = { a1: [], a2: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d1: [], d2: [] }
 
 function kvOf(json: unknown): FiledKv | null {
   if (typeof json !== 'string') return null
@@ -668,9 +668,9 @@ export const leftToPay = (company: Pick<Company, 'vatStatus'>, ret: Pick<FiledRe
 /** Paid more than the period comes to (a correction lowered it): an overpayment, which the tax office offsets or refunds. */
 export const overpaid = (company: Pick<Company, 'vatStatus'>, ret: Pick<FiledReturn, 'payCents'>, paid: TaxPaid | undefined): number => Math.max(0, (paid?.cents ?? 0) - payable(company, ret))
 
-/** The VAT a company pays itself on a document it bought from abroad (§ 69, § 11), as confirmed or proposed, for its entry. */
+/** The VAT a company pays itself on a document it bought from abroad (§ 69, § 11) or imported (§ 84a(3)), as confirmed or proposed, for its entry. */
 export function selfVatOf(data: VatData | null | undefined): { cents: number; deduct: boolean; deductCents: number } | null {
-  if (!data || (data.mode !== 'reverse' && data.mode !== 'acquisition')) return null
+  if (!data || (data.mode !== 'reverse' && data.mode !== 'acquisition' && data.mode !== 'import84a')) return null
   const cents = data.lines.reduce((sum, line) => sum + line.vat, 0)
   const deductCents = data.lines.reduce((sum, line) => sum + line.deduct, 0)
   return cents > 0 ? { cents, deduct: deductCents > 0, deductCents } : null

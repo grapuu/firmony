@@ -375,7 +375,7 @@ export const team = typesetAll({
   },
   book: {
     title: 'Zaúčtovať doklad',
-    from: { upload: 'Nahral(a)', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra', issued: 'Vystavená faktúra z Firmony', firmony: 'Faktúra od Firmony za naše služby', takeover: 'Prevzatá zo saldokonta predchodcu', trip: 'Vyúčtovanie pracovnej cesty z Firmony' },
+    from: { upload: 'Nahral(a)', email: 'Prišiel e-mailom', einvoice: 'Prišiel ako e-faktúra', issued: 'Vystavená faktúra z Firmony', firmony: 'Faktúra od Firmony za naše služby', takeover: 'Prevzatá zo saldokonta predchodcu', trip: 'Vyúčtovanie pracovnej cesty z Firmony', takings: 'Denná tržba z eKasy zapísaná klientom' },
     by: (who: string, when: string) => typeset(`${who}, ${when}`),
     duplicate: 'Možno ide o duplikát iného dokladu tejto firmy.',
     duplicateOpen: 'Pozrieť ten druhý',
@@ -443,6 +443,7 @@ export const team = typesetAll({
       category: 'Vyberte, na čo doklad je.',
       kind: 'Vyberte druh dokladu.',
       party: 'Doplňte partnera.',
+      takings: 'Je to denná tržba z eKasy: ostáva vydaným dokladom v eurách. Ak je zapísaná zle, klient ju zruší v Tržbách z eKasy a zapíše znova.',
       cashPaid: (number: string) =>
         typeset(`Doklad je zaplatený v hotovosti pokladničným dokladom ${number}: jeho druh, menu a účet záväzku nemeňte. Ak je to omyl, klient najprv zruší pokladničný doklad.`),
     },
@@ -456,6 +457,8 @@ export const team = typesetAll({
       domestic: 'Tuzemsko, s DPH',
       reverse: 'Služba zo zahraničia, DPH platí firma (§ 69)',
       acquisition: 'Tovar z EÚ, DPH platí firma (§ 11)',
+      import: 'Dovoz tovaru, DPH zaplatená colnému úradu',
+      import84a: 'Dovoz tovaru, DPH v priznaní (§ 84a, status AEO)',
       eu_goods: 'Dodanie tovaru do EÚ (§ 43)',
       eu_service: 'Služba do EÚ, DPH platí odberateľ',
       export: 'Vývoz (§ 47)',
@@ -482,6 +485,8 @@ export const team = typesetAll({
     vatGoesNowhere: 'Do priznania ani kontrolného výkazu nepôjde.',
     vatSumOff: (lines: string, total: string) => typeset(`Riadky DPH spolu ${lines}, doklad ${total}. Skontrolujte rozpis.`),
     vatForeign: (currency: string) => typeset(`Doklad je v ${currency}: sumy DPH napíšte v eurách, kurzom ECB z predchádzajúceho dňa pred dátumom dodania.`),
+    vatImport:
+      'Pri dovoze: základ je colná hodnota s clom a nákladmi do miesta určenia (§ 22), DPH ako na colnom vyhlásení, dátum dodania je deň prijatia colného vyhlásenia. Suma dokladu je to, čo sa platí colnému úradu. Do kontrolného výkazu dovoz nejde.',
     vatKindFirst: 'DPH navrhneme, keď vyberiete druh dokladu (bloček, prijatá alebo vydaná faktúra) a doklad uložíte.',
     vatErrors: {
       amount: 'Sumu napíšte ako číslo, napríklad 12,40 alebo -12,40.',
@@ -831,6 +836,7 @@ export const team = typesetAll({
       B3: 'B.3 Bloky s odpočtom DPH (súhrnne)',
       C1: 'C.1 Vystavené opravné faktúry',
       C2: 'C.2 Prijaté opravné faktúry',
+      D1: 'D.1 Tržby z eKasy (súhrnne)',
       D2: 'D.2 Predaj nepodnikateľom (súhrnne)',
     } as Record<string, string>,
     lines: (n: number) => typeset(`${n} ${plural(n, 'riadok', 'riadky', 'riadkov')}`),
