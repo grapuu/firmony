@@ -11,6 +11,7 @@ import { EXEMPT_NAMES, app, dayName, dayShort, monthName, readableName, signed }
 import { EXEMPTS } from '../app/match'
 import type { Deadline } from '../app/deadlines'
 import type { Doc, Message, Payment } from '../app/store'
+import type { DocApproval } from '../app/approvals'
 import { Tile } from './home'
 import { Flash, Heading } from './inside'
 import { CenterSelect } from './centers'
@@ -980,7 +981,7 @@ export const DocumentPage: FC<{
   approvals?: boolean
   owner?: boolean
   /** Approving it (approvals.ts): whether this person may approve its amount, from what amount it needs two, who he is. */
-  approval?: { may: boolean; twoFrom: number | null; userId: string } | null
+  approval?: DocApproval | null
   tripId?: string | null
   /** The company's cost centres: the document's own is given here. */
   centers?: CostCenter[]
@@ -1015,11 +1016,14 @@ export const DocumentPage: FC<{
                   {approval?.twoFrom ? ` ${app.document.approveTwo(formatEur(approval.twoFrom))}` : ''}
                 </p>
               )}
-              {!d.approvedAt && d.firstApprovedBy && d.firstApprovedBy === approval?.userId ? <p class="info__source">{app.document.sameApprover}</p> : null}
-              {approval?.may && !d.approvedAt && d.firstApprovedBy !== approval.userId ? (
+              {approval?.firstVoid && !d.approvedAt ? <p class="info__source">{app.document.firstVoid}</p> : null}
+              {approval?.step === 'same' ? <p class="info__source">{app.document.sameApprover}</p> : null}
+              {approval?.may && approval.step === 'iban' ? <p class="info__source">{app.document.ibanMine}</p> : null}
+              {approval?.may && (approval.step === 'first' || approval.step === 'again' || approval.step === 'final') ? (
                 <form method="post" action={`/app/doklady/${d.id}/schvalit`}>
+                  <input type="hidden" name="stav" value={approval.seen} />
                   <button class="btn btn--blue" type="submit">
-                    {d.firstApprovedAt ? app.document.approveSecond : app.document.approve}
+                    {approval.step === 'final' && approval.twoFrom && d.firstApprovedAt ? app.document.approveSecond : app.document.approve}
                   </button>
                 </form>
               ) : null}

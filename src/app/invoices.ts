@@ -559,6 +559,7 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
       '</cac:Party>',
     ].join('')
   }
+  const taxPoint = invoice.deliveredOn && invoice.deliveredOn !== invoice.issuedOn ? `<cbc:TaxPointDate>${invoice.deliveredOn}</cbc:TaxPointDate>` : ''
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<${root} xmlns="urn:oasis:names:specification:ubl:schema:xsd:${root}-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">`,
@@ -566,11 +567,14 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
     '<cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>',
     `<cbc:ID>${esc(invoice.number ?? '')}</cbc:ID>`,
     `<cbc:IssueDate>${invoice.issuedOn}</cbc:IssueDate>`,
+    // The day of supply when it is not the day of issue (BT-7): the schemas put it in another place in each root, in a
+    // credit note right after the day of issue, in an invoice after its type and note.
+    credit ? taxPoint : '',
     credit ? '' : `<cbc:DueDate>${invoice.dueOn}</cbc:DueDate>`,
     // A credit note 381; the tax document of an advance received a prepayment invoice, 386; an invoice 380.
     credit ? '<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>' : `<cbc:InvoiceTypeCode>${invoice.kind === 'advance' ? 386 : 380}</cbc:InvoiceTypeCode>`,
     note ? `<cbc:Note>${esc(note)}</cbc:Note>` : '',
-    invoice.deliveredOn && invoice.deliveredOn !== invoice.issuedOn ? `<cbc:TaxPointDate>${invoice.deliveredOn}</cbc:TaxPointDate>` : '',
+    credit ? '' : taxPoint,
     `<cbc:DocumentCurrencyCode>${cur}</cbc:DocumentCurrencyCode>`,
     fx ? '<cbc:TaxCurrencyCode>EUR</cbc:TaxCurrencyCode>' : '',
     `<cbc:BuyerReference>${esc(invoice.number ?? '')}</cbc:BuyerReference>`,
@@ -584,7 +588,8 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
       icdph: vatId(seller.icdph),
       address: seller.address,
       vatNumber: seller.icdph,
-      legalForm: seller.registerLine ? `${LEGAL_FORM_NAMES[seller.legalForm ?? 'sro']}, ${seller.registerLine}` : null,
+      // The legal form only when it is known (a form left empty or another is no s. r. o. to be guessed), then the register.
+      legalForm: seller.registerLine ? (seller.legalForm ? `${LEGAL_FORM_NAMES[seller.legalForm]}, ${seller.registerLine}` : seller.registerLine) : null,
     })}</cac:AccountingSupplierParty>`,
     `<cac:AccountingCustomerParty>${party({ name: invoice.customerName, ico: invoice.customerIco, dic: invoice.customerDic, icdph: vatId(invoice.customerIcdph), address: invoice.customerAddress, vatNumber: invoice.customerIcdph, country: customerCountryOf(invoice) })}</cac:AccountingCustomerParty>`,
     // Goods to another member state name the state they went to (BR-IC-12).

@@ -1455,6 +1455,20 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     'an invoice in another currency is above every limit',
     approvals.approvalCents({ totalCents: 1000, currency: 'USD' }) === Number.MAX_SAFE_INTEGER && approvals.approvalCents({ totalCents: -1000, currency: 'EUR' }) === 1000,
   )
+  // The review of 18 October 2026.
+  check(
+    'who typed the IBAN approves nothing of it, unless an owner; a first approval of who may no more is taken over; a first left above a raised amount is enough',
+    approvals.approvalStep({ approvedAt: null, firstApprovedBy: null, ibanBy: 'a' }, null, 100, 'a') === 'iban' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: null, ibanBy: 'a' }, null, 100, 'a', { owner: true }) === 'final' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: null, ibanBy: 'a' }, null, 100, 'b') === 'final' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: 'a' }, 500000, 600000, 'b', { firstMay: false }) === 'again' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: 'a' }, 500000, 600000, 'b', { firstMay: true }) === 'final' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: 'a' }, 1000000, 600000, 'a') === 'final',
+  )
+  check(
+    'an approval is of the total, currency and IBAN the page showed',
+    approvals.approvalSeen({ totalCents: 20000, currency: null, partyIban: 'SK31' }) === '20000|EUR|SK31' && approvals.approvalSeen({ totalCents: null, currency: 'USD', partyIban: null }) === '|USD|',
+  )
 }
 
 // The day's takings of a till (18 October 2026): each rate's VAT out of the takings with VAT, or as the closing says it.

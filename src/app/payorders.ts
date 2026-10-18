@@ -45,6 +45,14 @@ export interface Payable {
 }
 
 /** The suppliers' invoices the company owes, the earliest due first. */
+/**
+ * A supplier's invoice that a payment order can pay, as SQL over `d`: something to pay, not paid by its prepayment
+ * invoice (386), not a credit note taking back (its lines minus). Approving asks the same (`/app/schvalovanie`).
+ */
+export const PAYABLE_DOC = `d.total_cents > 0 AND d.prepaid = 0
+         AND NOT (d.corrects IS NOT NULL AND COALESCE((SELECT SUM(COALESCE(json_extract(j.value, '$.base'), 0) + COALESCE(json_extract(j.value, '$.vat'), 0))
+           FROM json_each(CASE WHEN json_valid(d.vat_lines) THEN d.vat_lines ELSE '[]' END) j), 0) < 0)`
+
 export async function payables(db: D1Database, company: string, approvals = false): Promise<Payable[]> {
   const rows = await db
     .prepare(
@@ -53,9 +61,7 @@ export async function payables(db: D1Database, company: string, approvals = fals
          (SELECT o.execute_on FROM payment_order_items oi JOIN payment_orders o ON o.id = oi.order_id WHERE oi.document_id = d.id ORDER BY o.created_at DESC LIMIT 1) AS ordered_on
        FROM documents d
        WHERE d.company_id = ? AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.paid_privately = 0 AND d.duplicate_of IS NULL
-         AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.total_cents > 0 AND d.prepaid = 0
-         AND NOT (d.corrects IS NOT NULL AND COALESCE((SELECT SUM(COALESCE(json_extract(j.value, '$.base'), 0) + COALESCE(json_extract(j.value, '$.vat'), 0))
-           FROM json_each(CASE WHEN json_valid(d.vat_lines) THEN d.vat_lines ELSE '[]' END) j), 0) < 0)
+         AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND ${PAYABLE_DOC}
          AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
          AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
        ORDER BY COALESCE(d.due_on, d.issued_on, '9999-12-31'), d.created_at

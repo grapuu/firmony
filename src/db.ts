@@ -1329,6 +1329,9 @@ const MIGRATIONS: readonly string[][] = [
     `CREATE UNIQUE INDEX IF NOT EXISTS documents_takings ON documents (company_id, issued_on, COALESCE(number, ''), (CASE WHEN number IS NULL THEN total_cents ELSE 0 END))
        WHERE source = 'takings' AND deleted_at IS NULL`,
   ],
+  // After the review of approving (18 October 2026): who typed a supplier's IBAN, so that a colleague who typed it never
+  // approves that invoice himself (approvals.ts).
+  ['ALTER TABLE documents ADD COLUMN iban_by TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

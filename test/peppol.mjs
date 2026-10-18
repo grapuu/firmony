@@ -183,6 +183,16 @@ const cases = [
       seller,
     ),
   ],
+  // The review of 18 October 2026: a credit note takes its invoice's day of supply, which its schema wants right after
+  // the day of issue (in an invoice it comes after the note); a seller of a legal form not known writes its register alone.
+  [
+    'a credit note with the day of supply of its invoice, of a seller whose legal form is not known',
+    invoices.ublOf(
+      { ...invoice, number: '20260013', iban: null, kind: 'credit', corrects: 'i', correctsNumber: '20260006', correctsIssuedOn: '2026-10-01', reason: 'Zľava', deliveredOn: '2026-09-30' },
+      invoices.creditLines([line(1, 'Zľava z práce', 1000, 'hod', 2000, 23)]),
+      { ...seller, legalForm: null, registerLine: 'Obchodný register Mestského súdu Bratislava III, oddiel Sr, vložka č. 999/B' },
+    ),
+  ],
 ]
 check(
   'the schema sees what it is meant to: an element out of its place fails',
@@ -205,6 +215,13 @@ check(
     slovak.includes('<cbc:CompanyID schemeID="0158">50123456</cbc:CompanyID></cac:PartyLegalEntity>') &&
     slovak.includes('<cbc:TaxPointDate>2026-09-30</cbc:TaxPointDate>') &&
     !(cases[0]?.[1] ?? '').includes('TaxPointDate'),
+)
+const creditDay = cases.find(([name]) => name.startsWith('a credit note with the day of supply'))?.[1] ?? ''
+check(
+  "a credit note's day of supply right after its day of issue, a register entry with no guessed legal form",
+  creditDay.includes('<cbc:IssueDate>2026-10-01</cbc:IssueDate>\n<cbc:TaxPointDate>2026-09-30</cbc:TaxPointDate>\n<cbc:CreditNoteTypeCode>') &&
+    creditDay.includes('<cbc:CompanyLegalForm>Obchodný register Mestského súdu Bratislava III, oddiel Sr, vložka č. 999/B</cbc:CompanyLegalForm>'),
+  creditDay.slice(0, 900),
 )
 for (const [name, xml] of cases) {
   const found = await validate(xml)

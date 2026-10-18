@@ -139,7 +139,9 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
     'a colleague sees that it waits and cannot approve it',
     page.includes('Faktúra čaká na schválenie') && !page.includes('/app/doklady/po-1/schvalit') && (await colleague.post('/app/doklady/po-1/schvalit', {})).status === 403,
   )
-  res = await client.post('/app/doklady/po-1/schvalit', {})
+  // The approval carries what the page showed of the invoice (its total, currency and IBAN).
+  const stav = (await (await client.get('/app/doklady/po-1')).text()).match(/name="stav" value="([^"]*)"/)?.[1] ?? ''
+  res = await client.post('/app/doklady/po-1/schvalit', { stav })
   const approved = await db.prepare('SELECT approved_at, approved_by FROM documents WHERE id = ?').bind('po-1').first()
   page = plain(await (await client.get('/app/doklady/po-1')).text())
   check(

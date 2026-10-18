@@ -182,6 +182,8 @@ export interface Doc {
   firstApprovedAt?: number | null
   firstApprovedBy?: string | null
   firstApprovedByName?: string | null
+  /** Who typed the supplier's IBAN on "Na úhradu" (approvals.ts); null when it was read from the invoice. */
+  ibanBy?: string | null
   /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
   ekasaUid: string | null
   ekasaOkp: string | null
@@ -342,7 +344,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
-  d.first_approved_at, d.first_approved_by, fa.name AS first_approved_by_name,
+  d.first_approved_at, d.first_approved_by, fa.name AS first_approved_by_name, d.iban_by,
   d.center_id, d.takings_cash`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
@@ -406,6 +408,7 @@ export function docOf(row: Row): Doc {
     firstApprovedAt: num(row.first_approved_at),
     firstApprovedBy: str(row.first_approved_by),
     firstApprovedByName: str(row.first_approved_by_name),
+    ibanBy: str(row.iban_by),
     approvedByName: str(row.approved_by_name),
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),

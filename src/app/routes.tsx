@@ -78,7 +78,7 @@ import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { ratesFor, refreshRates } from './fx-store'
-import { orderItems, orderStatements, painXml, payables, paymentOrders } from './payorders'
+import { orderItems, orderStatements, painXml, payables, paymentOrders, PAYABLE_DOC } from './payorders'
 import { issueAdvances } from './advance-auto'
 import { PayOrdersPage } from '../views/payorders'
 import { readTrip, tripOf, TRIPS_FROM, workingDaysAfter, type TripErrors, type TripValues } from './trips'
@@ -95,7 +95,7 @@ import { CashFormPage, CashPage, type CashRow } from '../views/cash'
 import { emptyTakings, readTakings, type TakingsErrors, type TakingsValues } from './takings'
 import { listTakings, removeTakingsStatements, takingsStatements, takingsYears } from './takings-store'
 import { TakingsPage } from '../views/takings'
-import { approvalCents, approvalStep, mayApprove, needsTwo, type Approver } from './approvals'
+import { approvalCents, approvalSeen, approvalStep, mayApprove, needsTwo, type Approver, type DocApproval } from './approvals'
 import { ApprovalsPage } from '../views/approvals'
 import { bratislavaClock, bratislavaDay } from '../time'
 import { isWorkingDay } from './vat'
@@ -363,6 +363,12 @@ function flashOf(c: Ctx): string | null {
       return t.document.firstFlash
     case 'schvalene-druhy':
       return t.document.sameApprover
+    case 'schvalene-znova':
+      return t.document.againFlash
+    case 'schvalenie-iban':
+      return t.document.ibanMine
+    case 'schvalenie-zmena':
+      return t.document.changedFlash
     case 'schvalovanie-zle':
       return t.company.approvalsBad
     case 'neschvalene':
@@ -1082,11 +1088,11 @@ appRoutes.post('/uhrady/iban', async (c) => {
   const result = await db.batch([
     db
       .prepare(
-        `UPDATE documents SET party_iban = ?1, approved_at = CASE WHEN ?2 THEN approved_at END, approved_by = CASE WHEN ?2 THEN approved_by END,
+        `UPDATE documents SET party_iban = ?1, iban_by = ?6, approved_at = CASE WHEN ?2 THEN approved_at END, approved_by = CASE WHEN ?2 THEN approved_by END,
            first_approved_at = CASE WHEN ?2 THEN first_approved_at END, first_approved_by = CASE WHEN ?2 THEN first_approved_by END
          WHERE id = ?3 AND company_id = ?4 AND kind = 'invoice_in' AND deleted_at IS NULL AND party_iban IS ?5`,
       )
-      .bind(iban, owner ? 1 : 0, id, who.company.id, before),
+      .bind(iban, owner ? 1 : 0, id, who.company.id, before, who.user.id),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.iban', subject: id }),
   ])
   if ((result[0]?.meta?.changes ?? 0) === 0) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
@@ -1587,18 +1593,42 @@ function backTo(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^\/app\/[a-z]+\/[A-Za-z0-9-]{1,64}$/.test(value) ? value : fallback
 }
 
-/** Who the signed-in person is for approving (approvals.ts): an owner, or a colleague made an approver with his limit. */
-async function approverOf(db: D1Database, who: { role: string; user: { id: string }; company: { id: string } }): Promise<Approver | null> {
-  if (who.role === 'owner') return { owner: true, approver: true, limit: null }
-  const row = await db.prepare('SELECT approver, approve_limit FROM members WHERE company_id = ? AND user_id = ?').bind(who.company.id, who.user.id).first<{ approver: number; approve_limit: number | null }>()
-  return row ? { owner: false, approver: row.approver === 1, limit: typeof row.approve_limit === 'number' ? row.approve_limit : null } : null
+/** A member of a company for approving (approvals.ts): an owner, or a colleague made an approver with his limit; null for nobody of it. */
+async function memberApprover(db: D1Database, company: string, user: string): Promise<Approver | null> {
+  const row = await db.prepare('SELECT role, approver, approve_limit FROM members WHERE company_id = ? AND user_id = ?').bind(company, user).first<{ role: string; approver: number; approve_limit: number | null }>()
+  if (!row) return null
+  if (row.role === 'owner') return { owner: true, approver: true, limit: null }
+  return { owner: false, approver: row.approver === 1, limit: typeof row.approve_limit === 'number' ? row.approve_limit : null }
 }
 
-/** What the document's page says of approving it: whether the person may approve its amount, and whether it needs two. */
-async function approvalOf(db: D1Database, who: { role: string; user: { id: string }; company: Company }, d: Doc): Promise<{ may: boolean; twoFrom: number | null; userId: string } | null> {
+/** Who the signed-in person is for approving. */
+async function approverOf(db: D1Database, who: { role: string; user: { id: string }; company: { id: string } }): Promise<Approver | null> {
+  if (who.role === 'owner') return { owner: true, approver: true, limit: null }
+  return memberApprover(db, who.company.id, who.user.id)
+}
+
+/** Whether a first approval still counts: its approver may still approve the amount. */
+async function firstStillMay(db: D1Database, company: string, d: Doc, cents: number): Promise<boolean> {
+  return !d.firstApprovedBy || mayApprove(await memberApprover(db, company, d.firstApprovedBy), cents)
+}
+
+/**
+ * What the document's page says of approving it: whether the person may approve its amount, from what amount it needs
+ * two, what his approval would do (approvals.ts) and what the page shows of the invoice, which the approval is of.
+ */
+async function approvalOf(db: D1Database, who: { role: string; user: { id: string }; company: Company }, d: Doc): Promise<DocApproval | null> {
   if (!who.company.approvals || d.kind !== 'invoice_in') return null
   const cents = approvalCents(d)
-  return { may: mayApprove(await approverOf(db, who), cents), twoFrom: needsTwo(who.company.approvalTwoFrom, cents) ? who.company.approvalTwoFrom : null, userId: who.user.id }
+  const firstMay = await firstStillMay(db, who.company.id, d, cents)
+  const two = needsTwo(who.company.approvalTwoFrom, cents)
+  return {
+    may: mayApprove(await approverOf(db, who), cents),
+    twoFrom: two ? who.company.approvalTwoFrom : null,
+    userId: who.user.id,
+    step: approvalStep({ approvedAt: d.approvedAt, firstApprovedBy: d.firstApprovedBy ?? null, ibanBy: d.ibanBy ?? null }, who.company.approvalTwoFrom, cents, who.user.id, { owner: who.role === 'owner', firstMay }),
+    firstVoid: two && !firstMay,
+    seen: approvalSeen(d),
+  }
 }
 
 /**
@@ -1624,24 +1654,35 @@ for (const [path, approve] of [
       ])
       return c.redirect(`/app/doklady/${id}?ok=neschvalene`, 303)
     }
-    const step = approvalStep({ approvedAt: d.approvedAt, firstApprovedBy: d.firstApprovedBy ?? null }, who.company.approvalTwoFrom, cents, who.user.id)
+    const two = needsTwo(who.company.approvalTwoFrom, cents)
+    const firstMay = await firstStillMay(db, who.company.id, d, cents)
+    const step = approvalStep({ approvedAt: d.approvedAt, firstApprovedBy: d.firstApprovedBy ?? null, ibanBy: d.ibanBy ?? null }, who.company.approvalTwoFrom, cents, who.user.id, { owner: who.role === 'owner', firstMay })
     if (step === 'done') return c.redirect(`/app/doklady/${id}`, 303)
     if (step === 'same') return c.redirect(`/app/doklady/${id}?ok=schvalene-druhy`, 303)
-    // Each written only from the state it was read in: two people at once make one approval of each step.
+    if (step === 'iban') return c.redirect(`/app/doklady/${id}?ok=schvalenie-iban#schvalenie`, 303)
+    // The approval is of the invoice as the page showed it: changed since (its total, currency or IBAN), it is looked at again.
+    const body = await c.req.parseBody()
+    if (body.stav !== approvalSeen(d)) return c.redirect(`/app/doklady/${id}?ok=schvalenie-zmena#schvalenie`, 303)
+    // Each written only from the state it was read in (the approvals, the total, currency and IBAN shown, and who typed
+    // the IBAN): two people at once make one approval of each step, and nobody approves what he did not see.
+    const seen = 'total_cents IS ? AND currency IS ? AND party_iban IS ? AND iban_by IS ?'
+    const seenValues = [d.totalCents, d.currency, d.partyIban, d.ibanBy ?? null]
     const results = await db.batch([
-      step === 'first'
+      step === 'first' || step === 'again'
         ? db
-            .prepare('UPDATE documents SET first_approved_at = ?, first_approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL AND first_approved_at IS NULL')
-            .bind(now(), who.user.id, id, who.company.id)
+            .prepare(`UPDATE documents SET first_approved_at = ?, first_approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL AND first_approved_by IS ? AND ${seen}`)
+            .bind(now(), who.user.id, id, who.company.id, d.firstApprovedBy ?? null, ...seenValues)
         : db
-            .prepare('UPDATE documents SET approved_at = ?, approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL AND first_approved_by IS ? AND (first_approved_by IS NULL OR first_approved_by <> ?)')
-            .bind(now(), who.user.id, id, who.company.id, d.firstApprovedBy ?? null, who.user.id),
+            .prepare(
+              `UPDATE documents SET approved_at = ?, approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL AND first_approved_by IS ? AND (? = 0 OR first_approved_by IS NULL OR first_approved_by <> ?) AND ${seen}`,
+            )
+            .bind(now(), who.user.id, id, who.company.id, d.firstApprovedBy ?? null, two ? 1 : 0, who.user.id, ...seenValues),
       db
         .prepare("INSERT INTO events (at, company_id, user_id, action, subject) SELECT ?, ?, ?, ?, ? WHERE changes() > 0")
-        .bind(now(), who.company.id, who.user.id, step === 'first' ? 'document.approved.first' : 'document.approved', id),
+        .bind(now(), who.company.id, who.user.id, step === 'final' ? 'document.approved' : 'document.approved.first', id),
     ])
-    if ((results[0]?.meta?.changes ?? 0) === 0) return c.redirect(`/app/doklady/${id}`, 303)
-    return c.redirect(`/app/doklady/${id}?ok=${step === 'first' ? 'schvalene-prve' : 'schvalene'}`, 303)
+    if ((results[0]?.meta?.changes ?? 0) === 0) return c.redirect(`/app/doklady/${id}?ok=schvalenie-zmena#schvalenie`, 303)
+    return c.redirect(`/app/doklady/${id}?ok=${step === 'first' ? 'schvalene-prve' : step === 'again' ? 'schvalene-znova' : 'schvalene'}`, 303)
   })
 }
 
@@ -1965,16 +2006,29 @@ appRoutes.get('/schvalovanie', async (c) => {
           .prepare(
             `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM}
               WHERE d.company_id = ? AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.approved_at IS NULL
-                AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.paid_privately = 0 AND l.payment_id IS NULL AND NOT ${CASH_PAID}
+                AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.paid_privately = 0 AND l.payment_id IS NULL AND NOT ${CASH_PAID} AND ${PAYABLE_DOC}
               ORDER BY COALESCE(d.due_on, d.issued_on, '9999'), d.created_at LIMIT 300`,
           )
           .bind(who.company.id)
           .all<Record<string, unknown>>()
       ).results.map(docOf)
     : []
-  const mine = rows.filter((d) => mayApprove(approver, approvalCents(d)) && d.firstApprovedBy !== who.user.id)
+  // Each first approver once: whether he may still approve (a first approval of somebody who may not counts for nothing).
+  const firsts = new Map<string, Approver | null>()
+  for (const user of new Set(rows.map((d) => d.firstApprovedBy).filter((u): u is string => Boolean(u)))) firsts.set(user, await memberApprover(db, who.company.id, user))
+  const stepOf = (d: Doc) => {
+    const cents = approvalCents(d)
+    const firstMay = !d.firstApprovedBy || mayApprove(firsts.get(d.firstApprovedBy) ?? null, cents)
+    return approvalStep({ approvedAt: d.approvedAt, firstApprovedBy: d.firstApprovedBy ?? null, ibanBy: d.ibanBy ?? null }, who.company.approvalTwoFrom, cents, who.user.id, { owner: who.role === 'owner', firstMay })
+  }
+  const mine = rows.filter((d) => mayApprove(approver, approvalCents(d)) && ['first', 'again', 'final'].includes(stepOf(d)))
   const others = rows.filter((d) => !mine.includes(d))
-  return shell(c, 'documents', t.approvalsQueue.title, <ApprovalsPage on={who.company.approvals} mine={mine} others={others} me={who.user.id} today={today()} />)
+  return shell(
+    c,
+    'documents',
+    t.approvalsQueue.title,
+    <ApprovalsPage on={who.company.approvals} mine={mine} others={others} me={who.user.id} today={today()} approver={Boolean(approver?.owner || approver?.approver)} ibanMine={others.filter((d) => stepOf(d) === 'iban').map((d) => d.id)} />,
+  )
 })
 
 appRoutes.post('/firma/prepnut', async (c) => {

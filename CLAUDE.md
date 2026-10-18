@@ -28,7 +28,9 @@ over. Bring this section up to date first whenever a session ends.
    centres, six mended; then VAT on imports (customs paid, and self-assessed by an AEO under § 84a) and the takings of an
    eKasa till with the control statement's D.1 (schema step 54; "VAT: the return and the control statement" and "The
    takings of an eKasa till"), approvers with limits and two approvals for larger companies (schema step 55, under
-   "Payment orders"); a fifth independent review, of imports and takings, nine findings mended (schema step 56). **Nothing is live**: there
+   "Payment orders"); a fifth independent review, of imports and takings, nine findings mended (schema step 56); a sixth,
+   of approving and the Slovak e-invoice terms, eight findings mended (schema step 57; a credit note's e-invoice with
+   another day of supply failed the UBL schema). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1115,7 +1117,10 @@ by itself.
   supply when it differs from the day of issue (BT-7 `TaxPointDate`, § 74(1)(d); BT-8 never). Its other "required"
   terms are Peppol's own or required only within their group (the account within a credit transfer). The digital
   postman reports each invoice to the tax authority as a Tax Data Document (docs.peppol.eu/tdd/sk, version 1.0.0,
-  14 April 2026), made by the postman from the invoice. The Peppol test has a case for these terms (22 checks).
+  14 April 2026), made by the postman from the invoice. The Peppol test has a case for these terms (24 checks). Mended
+  after the review: a credit note's day of supply comes right after its day of issue (the CreditNote schema's order; a
+  credit note takes its invoice's day of supply, so every such file failed UBL), and a seller whose legal form is not
+  known (a client added by hand as "Iná") writes its register entry alone, no s. r. o. guessed.
 - How an invoice is taxed (built 18 October 2026, schema step 38: `invoices.vat_mode`, `documents.vat_hint`): a
   VAT payer chooses "Zdanenie": Slovak VAT (the rates), goods to a VAT payer of another member state (§ 43), a service
   whose customer in another member state pays the VAT (§ 15(1)), an export (§ 47), a supply outside Slovakia. Without
@@ -1289,6 +1294,16 @@ by itself.
   (`/app/schvalovanie`, from Doklady and the settings): what the person may approve, then what waits for others (a second
   approval, above his limit). test/approvals.runtime.mjs, units "Approving for larger companies". Not built: approvals
   by cost centre or by supplier, a doorbell to the approvers when an invoice waits, approving issued invoices.
+  Mended after a sixth independent review (18 October 2026, of commits bff5c1a and 2494f4f; each finding verified first;
+  schema step 57 `documents.iban_by`): a colleague who typed a supplier's IBAN never approves that invoice himself
+  (`approvalStep` 'iban'; an owner may), so somebody else sees whom it pays; an approval carries what its page showed
+  (`approvalSeen`: total, currency, IBAN, the hidden field `stav`) and is written only while the invoice is so, else
+  "Faktúra sa medzitým zmenila"; a first approval counts only while its approver may still approve the amount (removed,
+  no approver, a lower limit: the next approval takes its place, 'again'); a first approval left when the owners raise or
+  clear the amount of two is enough, also for the person who gave it; the booking screen takes an approval back also for
+  another kind, supplier or variable symbol (the payment order carries it); the queue lists only what a payment order
+  pays (`PAYABLE_DOC` in payorders.ts: no credit note taking back, no prepayment invoice, nothing to pay) and a colleague
+  who approves nothing reads "čaká na schvaľovateľa".
 - Mended after the review of the invoices (18 October 2026, an independent reader of commits c97c5c5 to 885e572; each
   finding verified in the code first; schema step 48 `documents.prepaid`): a final invoice its advances paid whole
   (total nought, the usual case) made no entry, so 324 kept the advance and the revenue missed the supply, and its VAT
@@ -2253,9 +2268,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1206 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1768 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
-npm run test:peppol      # 22 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+npm test                 # 1208 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1782 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows
