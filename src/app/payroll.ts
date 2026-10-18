@@ -249,7 +249,7 @@ export interface Payslip {
   /** The month's meals (older slips have none). */
   meals?: MealMoney
   /** The month's deductions for executions (garnish.ts), each with its executor; the net is after them. */
-  garnish?: (GarnishDeduction & { creditor: string; reference: string })[]
+  garnish?: (GarnishDeduction & { creditor: string; reference: string; iban?: string | null; vs?: string | null })[]
   net: number
   employerCost: number
 }

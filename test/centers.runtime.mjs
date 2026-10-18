@@ -6,7 +6,7 @@
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
-export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capture }) {
+export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, tick, capture }) {
   const company = 'co-centers'
   const plain = (text) => text.replace(/[  ]/g, ' ')
   const doc = (id, kind, category, cents, party) =>
@@ -195,8 +195,47 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
   page = plain(await (await owner.get(`/app/faktury/nova?podla=${centred}`)).text())
   check('a similar invoice starts from its centre', page.includes(`<option value="${shop}" selected`))
 
-  // A supplier's rule remembers the centre: the supplier's next document waiting gets it.
+  // An issued invoice's centre is its document's: given another there, a similar invoice starts from that one; an
+  // archived centre is no start for a new invoice and is refused on the form, said, not dropped.
   await owner.post(`/app/strediska/${store}/obnovit`, {})
+  const centredDocId = (await db.prepare('SELECT document_id FROM invoices WHERE id = ?').bind(centred).first())?.document_id
+  await owner.post(`/app/doklady/${centredDocId}/stredisko`, { stredisko: store })
+  page = plain(await (await owner.get(`/app/faktury/nova?podla=${centred}`)).text())
+  check('a similar invoice starts from the centre its document has now', page.includes(`<option value="${store}" selected`))
+  await owner.post(`/app/strediska/${store}/archivovat`, {})
+  page = plain(await (await owner.get(`/app/faktury/nova?podla=${centred}`)).text())
+  check('a similar invoice of an archived centre starts with none', !page.includes(`<option value="${store}" selected`) && page.includes('name="stredisko"'))
+  res = await owner.post('/app/faktury', {
+    akcia: 'koncept',
+    meno: 'TEST-ONLY Odberateľ strediska',
+    adresa: 'Dlhá 2, 040 01 Košice',
+    riadky: '1',
+    'r0-popis': 'Služba',
+    'r0-mnozstvo': '1',
+    'r0-jednotka': 'ks',
+    'r0-cena': '50,00',
+    stredisko: store,
+  })
+  check('an archived centre on the form is refused with why, nothing kept', res.status === 422 && plain(await res.text()).includes('Toto stredisko je archivované a nové faktúry neberie'))
+  await owner.post(`/app/strediska/${store}/obnovit`, {})
+
+  // A repeat follows its invoice's document: given another centre there, the next invoice is issued for that one.
+  await owner.post(`/app/doklady/${centredDocId}/stredisko`, { stredisko: store })
+  const skDay = (d) => `${Number(d.slice(8))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
+  res = await owner.post(`/app/faktury/${centred}/opakovat`, { kazdych: '1', od: skDay(day(0)), do: '', poslat: '' })
+  await tick(Date.now())
+  let repeated = null
+  for (let i = 0; i < 30 && !repeated; i++) {
+    repeated = await db
+      .prepare('SELECT i.center_id AS invoice_center, d.center_id FROM invoices i JOIN documents d ON d.id = i.document_id WHERE i.company_id = ? AND i.repeat_id IS NOT NULL')
+      .bind(company)
+      .first()
+    if (!repeated) await new Promise((r) => setTimeout(r, 100))
+  }
+  check("a repeat's next invoice is issued for the centre its invoice's document has now", res.status === 303 && repeated?.center_id === store && repeated.invoice_center === store, JSON.stringify(repeated))
+  await owner.post(`/app/doklady/${centredDocId}/stredisko`, { stredisko: shop })
+
+  // A supplier's rule remembers the centre: the supplier's next document waiting gets it.
   await db.batch(
     ['st-c1', 'st-c2'].map((id) =>
       db

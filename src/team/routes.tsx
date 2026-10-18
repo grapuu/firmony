@@ -129,7 +129,7 @@ import {
   type PayrollRun,
 } from '../app/payroll-store'
 import { employerLeast, isMealWay, mealBounds, mealIssues, NO_MEALS, type MealSettings, type MealWay } from '../app/meals'
-import { deductionOf, isGarnishKind, type Garnishment } from '../app/garnish'
+import { deductionOf, isGarnishKind, subsistenceMissing, type Garnishment } from '../app/garnish'
 import { FUND_RATE_MIN, isFundRate } from '../app/social-fund'
 import { addDays } from '../app/ending'
 import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
@@ -511,6 +511,8 @@ function flashOf(c: Ctx): string | null {
       return t.payroll.flashes.issues
     case 'mzdy-stravne':
       return t.payroll.flashes.meals
+    case 'mzdy-zivotne-minimum':
+      return t.payroll.garnish.subsistenceClose
     case 'mzdy-exekucia':
       return t.payroll.garnish.saved
     case 'mzdy-exekucia-odstranena':
@@ -2399,7 +2401,8 @@ function payOrders(company: Company, period: string, slips: readonly SlipLine[],
     garnish: slips.flatMap((l) =>
       (l.slip.garnish ?? []).map((d) => {
         const g = garnishments.find((x) => x.id === d.id)
-        return { name: l.name, creditor: d.creditor, reference: d.reference, amount: deductionOf(d), iban: g?.iban ?? null, vs: g?.vs ?? null, held: d.held }
+        // The account and symbol the slip kept (a closed month keeps them), else the execution's own.
+        return { name: l.name, creditor: d.creditor, reference: d.reference, amount: deductionOf(d), iban: d.iban !== undefined ? d.iban : (g?.iban ?? null), vs: d.vs !== undefined ? d.vs : (g?.vs ?? null), held: d.held }
       }),
     ),
   }
@@ -2599,6 +2602,12 @@ teamRoutes.post('/klienti/:id/mzdy', async (c) => {
   if (settings.meals && settings.meals.way !== null && mealIssues(settings.meals, monthRange(period).to).length > 0) {
     await db.batch([saveRunStatement(db, company.id, period, payday, typed, who.user.id, now())])
     return c.redirect(`${back}&ok=mzdy-stravne`, 303)
+  }
+  // Deductions for executions of a month whose subsistence minimum Firmony does not have yet (garnish.ts): its protected
+  // amounts would be the year before's, too low, and a closed month keeps them.
+  if (slips.some((l) => (l.slip.garnish?.length ?? 0) > 0) && subsistenceMissing(`${period}-01`) !== null) {
+    await db.batch([saveRunStatement(db, company.id, period, payday, typed, who.user.id, now())])
+    return c.redirect(`${back}&ok=mzdy-zivotne-minimum`, 303)
   }
   const evidenceId = crypto.randomUUID(), closedAt = now()
   const stored = slips.map(storedLine)
@@ -2843,6 +2852,9 @@ teamRoutes.post('/klienti/:id/mzdy/zrazka', async (c) => {
   const monthly = money('mesacne')
   const total = money('suma')
   if (kind === 'maintenance' && monthly === null && total === null && !errors.mesacne && !errors.suma) errors.mesacne = e.monthly
+  // Another claim has its amount in the orders (the claim, its accessories and the executor's costs): claims delivered the
+  // same day share in proportion to it (§ 72), so it is never left unknown.
+  if (isGarnishKind(kind) && kind !== 'maintenance' && total === null && !errors.suma) errors.suma = e.total
   const creditor = field('exekutor', 120)
   if (creditor.length < 2) errors.exekutor = e.creditor
   const reference = field('cislo', 60)

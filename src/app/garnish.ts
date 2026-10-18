@@ -94,6 +94,17 @@ export function subsistenceOn(day: string): number | null {
   return found
 }
 
+/**
+ * The 1 July whose subsistence minimum is not in `SUBSISTENCE` yet although the day has come (it changes every 1 July):
+ * until it is added, the protected amounts are those of the year before, too low. Null while the table is up to date.
+ */
+export function subsistenceMissing(today: string): string | null {
+  const last = SUBSISTENCE[SUBSISTENCE.length - 1]
+  if (!last) return null
+  const next = `${Number(last.from.slice(0, 4)) + 1}-07-01`
+  return today >= next ? next : null
+}
+
 const down = (v: number) => Math.floor(v + 1e-9)
 
 /** The protected amounts of a month for a number of persons maintained, and the cap (all rounded down to cents). */
@@ -189,7 +200,9 @@ export function garnishMonth(month: string, net: number, persons: number, claims
     g,
     kind: kindOf(g),
     current: g.kind === 'maintenance' ? Math.max(0, g.monthly ?? 0) : 0,
-    rest: left === null ? Number.MAX_SAFE_INTEGER : Math.max(0, left),
+    // Maintenance without arrears written has none (only the current maintenance is deducted); any other claim
+    // without its amount (none since the form asks for it) is deducted until it is ended.
+    rest: left === null ? (g.kind === 'maintenance' ? 0 : Number.MAX_SAFE_INTEGER) : Math.max(0, left),
     paidCurrent: 0,
     paidRest: 0,
   }))
@@ -243,7 +256,7 @@ export function garnishMonth(month: string, net: number, persons: number, claims
     // Current maintenance of all creditors first (in proportion), then arrears (in proportion to the current), then the
     // other priority claims by their order.
     second = give(second, [maintenance], 'current')
-    second = give(second, [maintenance], 'rest', true)
+    second = give(second, [maintenance], 'rest', maintenance.some((r) => r.current > 0))
     give(second, byOrder(otherPriority), 'rest')
   }
   // The first third and what is above the cap: every claim by its order, each within its kind's share.

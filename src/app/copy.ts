@@ -984,6 +984,7 @@ export const app = typesetAll({
       proformaMode: 'Zálohovú faktúru zatiaľ vystavíte len na dodanie so slovenskou DPH. Pri inom zdanení vystavte faktúru až po dodaní.',
       rate: 'Kurz napíšte ako číslo, napríklad 1,0845 (koľko jednotiek meny je 1 €).',
       rateUnknown: 'Kurz ECB zo dňa pred dodaním zatiaľ nepoznáme: napíšte ho do poľa Kurz za 1 €.',
+      center: 'Toto stredisko je archivované a nové faktúry neberie: vyberte iné alebo žiadne.',
       currencyAdvance: 'Zálohovú a vyúčtovaciu faktúru zatiaľ vystavíte len v eurách.',
     },
     saved: 'Koncept sme uložili.',

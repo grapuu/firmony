@@ -68,6 +68,7 @@ export async function issueAdvances(db: D1Database, company: Company, request: S
           company: company.id,
           user: by,
           issue: true,
+          keepCentre: true,
           values,
           lines,
           totals: totalsOf(lines, company.vatPayer),

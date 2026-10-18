@@ -2600,7 +2600,7 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.reverseKind = request.reverse?.kind ?? ''
     values.reverseCode = request.reverse?.code ?? ''
     values.relates = request.id
-    values.center = request.centerId ?? ''
+    values.center = await centreInUse(c.env.DB, who.company.id, request.centerId)
     values.lines = inputLines(await invoiceLines(c.env.DB, request.id), who.company.vatPayer)
     return invoiceForm(c, null, values)
   }
@@ -2647,12 +2647,19 @@ appRoutes.get('/faktury/nova', async (c) => {
       values.reverseKind = earlier.reverse?.kind ?? ''
       values.reverseCode = earlier.reverse?.code ?? ''
       values.currency = earlier.currency
-      values.center = earlier.centerId ?? ''
+      values.center = await centreInUse(c.env.DB, who.company.id, earlier.centerId)
       values.lines = inputLines(await invoiceLines(c.env.DB, earlier.id), who.company.vatPayer)
     }
   }
   return invoiceForm(c, null, values, {}, 200, null, earlier ? [] : await recentCustomers(c.env.DB, who.company.id))
 })
+
+/** A centre a new invoice may start from: the one given while it is in use, else none (an archived one takes no new invoice). */
+async function centreInUse(db: D1Database, company: string, center: string | null | undefined): Promise<string> {
+  if (!center) return ''
+  const row = await db.prepare('SELECT 1 FROM cost_centers WHERE id = ? AND company_id = ? AND archived_at IS NULL').bind(center, company).first()
+  return row ? center : ''
+}
 
 /** A new invoice, or a draft saved again: looked up in the register, a line added, kept as a draft, or issued. */
 async function saveInvoice(c: Ctx, draftId: string | null) {
@@ -2754,8 +2761,13 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
       else fx = { currency, rate: null, day: null }
     }
   }
+  // A cost centre archived since (a draft's, or one shown again after an error) takes no new invoice: said, not dropped.
+  if (values.center) {
+    const centre = await db.prepare('SELECT archived_at FROM cost_centers WHERE id = ? AND company_id = ?').bind(values.center, who.company.id).first<{ archived_at: number | null }>()
+    if (!centre || centre.archived_at !== null) errors.center = ti.errors.center
+  }
   // A draft needs only somebody to be issued to; an invoice needs everything.
-  const blocking = issue ? errors : { customerName: errors.customerName, lines: errors.lines, rate: errors.rate }
+  const blocking = issue ? errors : { customerName: errors.customerName, lines: errors.lines, rate: errors.rate, center: errors.center }
   if (Object.values(blocking).some(Boolean)) return invoiceForm(c, draftId, values, issue ? errors : blocking, 422)
   const issued = dayOfText(values.issued) || today()
   const delivered = dayOfText(values.delivered) || issued

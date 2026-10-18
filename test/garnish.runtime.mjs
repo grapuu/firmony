@@ -113,7 +113,9 @@ export async function checkGarnish({ db, acc, lucia, nowS, day, capture }) {
   check('the list says what was deducted and what is left', page.includes(`Zrazené spolu ${eur(first)} €, zostáva ${eur(100000 - first)} €`))
 
   // The next month takes what is left; an execution without its execution order is kept.
-  await acc.post(`${base}/zrazka`, form({ druh: 'priority', exekutor: 'TEST-ONLY Mgr. Druhý', cislo: 'EX 5/2026', zaciatok: sk(`${N}-02`), prikaz: '', suma: '' }))
+  res = await acc.post(`${base}/zrazka`, form({ druh: 'priority', exekutor: 'TEST-ONLY Mgr. Druhý', cislo: 'EX 5/2026', zaciatok: sk(`${N}-02`), prikaz: '', suma: '' }))
+  check('a claim other than maintenance asks for its amount (claims of one day share in proportion to it)', res.status === 422 && plain(await res.text()).includes('Napíšte výšku pohľadávky s príslušenstvom'))
+  await acc.post(`${base}/zrazka`, form({ druh: 'priority', exekutor: 'TEST-ONLY Mgr. Druhý', cislo: 'EX 5/2026', zaciatok: sk(`${N}-02`), prikaz: '', suma: '500' }))
   page = plain(await (await acc.get(`${base}?obdobie=${N}`)).text())
   check(
     'the next month: the first claim by its order, the second kept until its execution order',
@@ -122,5 +124,34 @@ export async function checkGarnish({ db, acc, lucia, nowS, day, capture }) {
   const second = await db.prepare("SELECT id FROM wage_garnishments WHERE company_id = ? AND creditor LIKE '%Druhý'").bind(company).first()
   res = await acc.post(`${base}/zrazka/${second.id}/odstranit`, {})
   check('an execution written by mistake removed', res.status === 303 && (await db.prepare('SELECT deleted_at FROM wage_garnishments WHERE id = ?').bind(second.id).first())?.deleted_at !== null)
-  check("another company's execution cannot be removed here", (await acc.post(`${base}/zrazka/${stored.id}x/odstranit`, {})).status === 404)
+  // Another company's execution: not removed through this company's page.
+  const other = 'co-garnish-2'
+  await db
+    .prepare(
+      "INSERT INTO companies (id, created_at, name, ico, dic, vat_payer, plan, inbox, accountant_id, start_on) VALUES (?, ?, 'TEST-ONLY Iná s. r. o.', '63337800', '2126333800', 0, 'firma', 'exek0002', ?, ?)",
+    )
+    .bind(other, nowS, lucia.id, `${M}-01`)
+    .run()
+  await acc.post(`/ucto/klienti/${other}/mzdy/zamestnanec`, { meno: 'TEST-ONLY Iný', narodeny: '1. 1. 1980', poistovna: '25', nastup: sk(`${M}-01`), skoncenie: '', mzda: '1500', vztah: 'employment', dochodok: 'none', odmenovanie: 'monthly', hodiny: '40', dovolenka: '', iban: '', vyhlasenie: '1' })
+  const otherEmployee = await db.prepare('SELECT id FROM employees WHERE company_id = ?').bind(other).first()
+  await acc.post(`/ucto/klienti/${other}/mzdy/zrazka`, { ...form({}), zamestnanec: otherEmployee.id })
+  const foreign = await db.prepare('SELECT id FROM wage_garnishments WHERE company_id = ?').bind(other).first()
+  res = await acc.post(`${base}/zrazka/${foreign.id}/odstranit`, {})
+  check(
+    "another company's execution cannot be removed here",
+    res.status === 404 && (await db.prepare('SELECT deleted_at FROM wage_garnishments WHERE id = ?').bind(foreign.id).first())?.deleted_at === null,
+  )
+
+  // Maintenance of the current maintenance alone (no arrears written): only that is deducted.
+  res = await acc.post(`${base}/zrazka`, form({ druh: 'maintenance', malolete: '1', osoby: '1', mesacne: '150', suma: '', exekutor: 'TEST-ONLY JUDr. Výživná', cislo: 'EX 9/2026', zaciatok: sk(`${N}-01`), prikaz: sk(`${N}-01`) }))
+  check('maintenance with the current maintenance alone is kept without a claim', res.status === 303 && (await db.prepare("SELECT total_cents FROM wage_garnishments WHERE company_id = ? AND kind = 'maintenance'").bind(company).first())?.total_cents === null)
+  res = await acc.post(base, { obdobie: N, [`mzda_${employee.id}`]: '2000', vyplata: sk(`${shift(N, 1)}-10`), akcia: 'uzavriet' })
+  const closedN = JSON.parse((await db.prepare('SELECT lines FROM payroll_runs WHERE company_id = ? AND period = ?').bind(company, N).first())?.lines ?? '[]')[0]?.slip
+  const maintenance = closedN?.garnish?.find((d) => d.creditor === 'TEST-ONLY JUDr. Výživná')
+  check('the month deducts 150 € of current maintenance and no arrears', maintenance?.current === 15000 && maintenance.arrears === 0, JSON.stringify(closedN?.garnish))
+
+  // A closed month keeps the executor's account it was paid to, whatever is changed later.
+  await acc.post(`${base}/zrazka`, form({ id: stored.id, iban: 'SK67 0200 0000 0012 3456 7890' }))
+  page = plain(await (await acc.get(`${base}?obdobie=${M}`)).text())
+  check("a closed month's payments keep the account they were paid to", page.includes('SK31 1200 0000 1987 4263 7541') && !page.includes('SK67 0200 0000 0012 3456 7890'))
 }

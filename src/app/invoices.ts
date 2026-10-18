@@ -341,6 +341,7 @@ export interface Errors {
   lines?: string
   reason?: string
   rate?: string
+  center?: string
   form?: string
 }
 
@@ -641,6 +642,7 @@ const INVOICE_COLUMNS = `i.*, u.name AS created_by_name,
       (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) END AS paid_on,
   CASE WHEN i.kind = 'proforma' THEN (SELECT COALESCE(SUM(p.amount_cents), 0) FROM payments p WHERE ${ON_REQUEST}) ELSE 0 END AS paid_cents,
   (SELECT o.number FROM invoices o WHERE o.id = i.relates AND o.company_id = i.company_id) AS relates_number,
+  (SELECT dc.center_id FROM documents dc WHERE dc.id = i.document_id AND dc.company_id = i.company_id) AS doc_center_id,
   (SELECT o.number FROM invoices o WHERE o.id = i.corrects AND o.company_id = i.company_id) AS corrects_number,
   (SELECT o.issued_on FROM invoices o WHERE o.id = i.corrects AND o.company_id = i.company_id) AS corrects_issued_on`
 
@@ -682,7 +684,9 @@ function invoiceOf(row: Row): StoredInvoice {
     reminders: Number(row.reminders ?? 0),
     interestOf: str(row.interest_of),
     customerCountry: isCountry(row.customer_country) ? row.customer_country : null,
-    centerId: typeof row.center_id === 'string' ? row.center_id : null,
+    // An issued invoice's centre is its document's (the client or the accountant may give it another there); a draft's
+    // and a request's its own.
+    centerId: typeof row.document_id === 'string' ? (typeof row.doc_center_id === 'string' ? row.doc_center_id : null) : typeof row.center_id === 'string' ? row.center_id : null,
     currency: isCurrency(row.currency) ? row.currency : 'EUR',
     fxRate: str(row.fx_rate),
     fxDay: str(row.fx_day),
@@ -806,8 +810,10 @@ export function saveInvoiceStatements(
     interestOf?: string | null
     /** An invoice of late interest: the last day its interest counts (one an invoice and a day, kept by a unique index). */
     interestTo?: string | null
-    /** The invoice whose document's cost centre the document takes (a credit note, late interest, a repeat: centers.ts). */
+    /** The invoice whose document's cost centre the document takes (a credit note, late interest: centers.ts). */
     centerFrom?: string | null
+    /** The centre is kept even when archived since: an advance's tax document belongs to its request's deal (centers.ts). */
+    keepCentre?: boolean
   },
 ): D1PreparedStatement[] {
   const v = args.values
@@ -848,7 +854,7 @@ export function saveInvoiceStatements(
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('9%d%05d', ?6, next.seq)
              ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35,
-           (SELECT id FROM cost_centers WHERE id = ?36 AND company_id = ?2 AND archived_at IS NULL)
+           (SELECT id FROM cost_centers WHERE id = ?36 AND company_id = ?2 AND (archived_at IS NULL OR ?37 = 1))
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one,
          -- in the company's own numbers (a prefix, a mark, the order's digits) and from a year's first order when it
          -- came in the middle of one. The variable symbol is the year and the order, whatever the number looks like; a
@@ -885,6 +891,7 @@ export function saveInvoiceStatements(
         args.interestOf ?? null,
         args.interestOf && !args.credit ? (args.interestTo ?? null) : null,
         v.center || null,
+        args.keepCentre ? 1 : 0,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol. A request for an advance is no document.

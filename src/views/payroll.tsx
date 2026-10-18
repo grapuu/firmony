@@ -13,7 +13,7 @@ import type { DvzProposal, SickLeave } from '../app/pay-month'
 import { PART_FIELDS, hundredthsText, partsFor, tenThousandthsText } from '../app/payroll-form'
 import { mealBounds } from '../app/meals'
 import type { CostCenter } from '../app/centers'
-import type { Garnishment } from '../app/garnish'
+import { subsistenceMissing, type Garnishment } from '../app/garnish'
 import { groupedIban } from '../app/vat-store'
 import type { Company } from '../app/store'
 import { team as t } from '../team/copy'
@@ -458,6 +458,7 @@ const GarnishCard: FC<{ company: Company; rows: GarnishRow[]; today: string }> =
     </h2>
     <p class="info__lead">{w.garnish.lead}</p>
     {rows.length === 0 ? <p class="info__empty">{w.garnish.empty}</p> : null}
+    {rows.some((r) => !r.g.endedOn) && subsistenceMissing(today) ? <p class="flag">{w.garnish.subsistence(dayName(subsistenceMissing(today) as string, today))}</p> : null}
     <ul class="plain">
       {rows.map((r) => (
         <li class="plain__row plain__row--two">

@@ -4799,7 +4799,7 @@ await checkNumbering({ db, nowS, signIn, as, day, capture: process.env.FIRMONY_C
 await checkTrips({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkCash({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkDunning({ db, nowS, lucia, signIn, as, day, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
-await checkCenters({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkCenters({ db, acc, lucia, nowS, signIn, as, day, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkTakings({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkApprovals({ db, acc, lucia, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR, tick, sent, settle, nineFive })
 await checkMeals({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR, signIn, as })

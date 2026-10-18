@@ -1692,6 +1692,53 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
   )
   const prehlad = prehladUnit.prehladTotals('2026-10', [{ id: 'c', period: '2026-10', report_period: '2026-10', paid_on: '2026-11-10', lines: JSON.stringify(slips.map((l) => ({ employeeId: l.employeeId, gross: l.gross, slip: l.slip }))) }], '2026-11-20')
   check("the tax office's overview takes a slip with a deduction", prehlad.issues.length === 0, JSON.stringify(prehlad.issues))
+
+  // Mended after the review of 18 October 2026.
+  out = month(200000, 0, [{ g: claim({ kind: 'maintenance', minor: true, persons: 1, monthly: 15000, total: null }), left: null }])
+  check('maintenance with no arrears written deducts the current maintenance alone', out.length === 1 && out[0].current === 15000 && out[0].arrears === 0, JSON.stringify(out))
+  out = month(200000, 0, [
+    { g: claim({ id: 'm1', kind: 'maintenance', persons: 1, monthly: null, total: 30000 }), left: 30000 },
+    { g: claim({ id: 'm2', kind: 'maintenance', persons: 1, monthly: null, total: 10000 }), left: 10000 },
+  ])
+  check(
+    'arrears of maintenance with no current maintenance at all share in proportion to the arrears',
+    out.find((d) => d.id === 'm1')?.arrears === 30000 && out.find((d) => d.id === 'm2')?.arrears === 10000,
+    JSON.stringify(out),
+  )
+  out = month(110000, 0, [
+    { g: claim({ id: 'm1', kind: 'maintenance', persons: 1, monthly: null, total: 90000 }), left: 90000 },
+    { g: claim({ id: 'm2', kind: 'maintenance', persons: 1, monthly: null, total: 30000 }), left: 30000 },
+  ])
+  const m1 = out.find((d) => d.id === 'm1')?.arrears ?? 0
+  const m2 = out.find((d) => d.id === 'm2')?.arrears ?? 0
+  check('three times the arrears, three times the share (to the cents of rounding in two pools)', m1 > 0 && Math.abs(m1 - 3 * m2) <= 6, JSON.stringify(out))
+  check(
+    'the subsistence minimum is missing from the 1 July after the newest one',
+    garnish.subsistenceMissing('2027-06-30') === null && garnish.subsistenceMissing('2027-07-01') === '2027-07-01' && garnish.subsistenceMissing('2028-02-01') === '2027-07-01',
+  )
+  // A later month closed first: an earlier one then takes only what is left (§ 68).
+  const small = claim({ id: 'gs', employeeId: 'g1', total: taken + 5000 })
+  const novFirst = payrollStore.monthSlips('2026-11', [employee], null, { garnishments: [small], payday: '2026-12-10' })
+  const novClosed = { period: '2026-11', payday: '2026-12-10', lines: novFirst.map(payrollStore.storedLine), closedOn: '2026-12-03', closedByName: 'Lucia' }
+  const octAfter = payrollStore.monthSlips('2026-10', [employee], null, { garnishments: [small], payday: '2026-11-10', runs: [novClosed] })
+  check(
+    'a month closed after a later one: the claim never deducted twice',
+    (novFirst[0].slip.garnish?.[0]?.arrears ?? 0) === taken && (octAfter[0].slip.garnish?.[0]?.arrears ?? 0) === 5000,
+    JSON.stringify([novFirst[0].slip.garnish, octAfter[0].slip.garnish]),
+  )
+  // The slip keeps the executor's account; a payment to it is 379, also what was kept and paid later.
+  const withIban = claim({ id: 'gi', employeeId: 'g1', total: 50000, iban: 'SK3112000000198742637541', vs: '7720', orderOn: null })
+  const heldSlips = payrollStore.monthSlips('2026-10', [employee], null, { garnishments: [withIban], payday: '2026-11-10' })
+  const heldRun = { period: '2026-10', payday: '2026-11-10', lines: heldSlips.map(payrollStore.storedLine), closedOn: '2026-11-03', closedByName: 'Lucia' }
+  const heldLp = payrollStore.ledgerPayroll(heldRun)
+  check(
+    "the slip keeps the executor's account and symbol; money kept and paid later to his account is 379, by the amount alone it is not",
+    heldSlips[0].slip.garnish?.[0]?.iban === 'SK3112000000198742637541' &&
+      heldSlips[0].slip.garnish[0].vs === '7720' &&
+      heldSlips[0].slip.garnish[0].held === true &&
+      ledger.reasonAccount({ amountCents: -12345, vs: null, note: null, exempt: 'payroll', exemptNote: null, partyIban: 'SK31 1200 0000 1987 4263 7541' }, [heldLp]) === '379' &&
+      ledger.reasonAccount({ amountCents: -heldSlips[0].slip.garnish[0].arrears, vs: null, note: null, exempt: 'payroll', exemptNote: null, partyIban: null }, [heldLp]) === '331',
+  )
 }
 
 // Payroll by cost centre (18 October 2026, centers.ts): an employee's cost of work in his centre.

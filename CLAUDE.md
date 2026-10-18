@@ -2223,6 +2223,18 @@ monthly wage; nothing is sent to the insurers or the tax office by us.
   fines (§ 2b), the notices of a sick leave over ten days or maternity (§ 67(4), (5)) as deadlines, paying out what was
   kept once the execution order comes (the accountant pays it by hand), the confirmation for a new employer (§ 84(1)).
   test/garnish.runtime.mjs, units "Deductions for executions".
+  Mended after a ninth independent review (18 October 2026, of commits dd53229, 937d693 and 1362a4d; each finding verified
+  first): maintenance written with the current maintenance alone deducted everything above it as unknown arrears (an
+  empty arrears field is none now); a claim's rest counts the deductions of every other month closed, so a later month
+  closed first, or an earlier one opened again, never deducts a claim twice (§ 68); a claim other than maintenance asks
+  for its amount (claims of one day share in proportion to it, and one without took all); arrears of maintenance with no
+  current maintenance share in proportion to the arrears; a slip keeps the executor's account and symbol, so a closed
+  month's payments say where it was paid whatever is changed later, and a payment to that account is 379 also when it
+  pays what was kept and is paid later (`pays.garnishIban`); a month with deductions whose subsistence minimum is not in
+  `SUBSISTENCE` yet is not closed (`subsistenceMissing`, the payroll page says so from that 1 July). Centres: an issued
+  invoice's centre is its document's as it stands (`doc_center_id` in `INVOICE_COLUMNS`), so a similar invoice and a
+  repeat follow a centre given there later; an archived centre is refused on the invoice form with why (not dropped),
+  is no start for a similar or final invoice, and an advance's tax document keeps its request's (`keepCentre`).
 - The social fund's mandatory allocation (built 18 October 2026, `src/app/social-fund.ts`; no schema step: the rate in
   `companies.payroll.fundRate`, each closed line's allocation in its `fund`). Read on static.slov-lex.sk by WebFetch,
   Act No. 152/1994 Z. z. as of 1 January 2025 (the latest version the register shows): § 3(1)(a) 0,6 % to 1 % of the
@@ -2369,8 +2381,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1253 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1829 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1259 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1837 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

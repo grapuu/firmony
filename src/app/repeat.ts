@@ -208,6 +208,7 @@ async function issueOne(db: D1Database, repeat: Repeat, today: string): Promise<
     customerDic: template.customerDic ?? '',
     customerIcdph: template.customerIcdph ?? '',
     customerCountry: template.customerCountry ?? '',
+    // The centre of the invoice it repeats as its document has it now (centers.ts); an archived one takes no new invoice.
     center: template.centerId ?? '',
     customerEmail: template.customerEmail ?? '',
     issued: today,
@@ -247,8 +248,6 @@ async function issueOne(db: D1Database, repeat: Repeat, today: string): Promise<
         documentId,
         fx,
         repeat: repeat.id,
-        // Its cost centre is the invoice's it repeats (centers.ts).
-        centerFrom: template.id,
       }),
       eventStatement(db, { company: company.id, user: null, action: 'invoice.repeated', subject: id, detail: { repeat: repeat.id, template: template.id, total: totals.total } }),
     ])

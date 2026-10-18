@@ -384,11 +384,12 @@ export function monthSlips(
 ): SlipLine[] {
   if (run?.closedOn) return run.lines.filter((l): l is RunLine & { slip: Payslip } => Boolean(l.slip)).map((l) => ({ ...l, days: l.days ?? monthDays(period) }))
   const typed = new Map((run?.lines ?? []).map((l) => [l.employeeId, l]))
-  // Executions (garnish.ts): each claim's deductions of the months closed before, so the claim's rest is known.
+  // Executions (garnish.ts): each claim's deductions of every other month closed (a later month may be closed first, or
+  // an earlier one opened again), so the claim's rest is known and never deducted twice (§ 68).
   const garnishments = context.garnishments ?? []
   const deducted = new Map<string, number>()
   for (const r of context.runs ?? [])
-    if (r.closedOn && r.period < period) for (const l of r.lines) for (const d of l.slip?.garnish ?? []) deducted.set(d.id, (deducted.get(d.id) ?? 0) + d.arrears)
+    if (r.closedOn && r.period !== period) for (const l of r.lines) for (const d of l.slip?.garnish ?? []) deducted.set(d.id, (deducted.get(d.id) ?? 0) + d.arrears)
   const payday = context.payday ?? run?.payday ?? `${period}-${String(monthDays(period)).padStart(2, '0')}`
   const withGarnish = (e: Employee, slip: Payslip): Payslip => {
     const claims = garnishments.filter((g) => g.employeeId === e.id).map((g) => ({ g, left: g.total === null ? null : g.total - (deducted.get(g.id) ?? 0) }))
@@ -397,7 +398,8 @@ export function monthSlips(
     if (list.length === 0) return slip
     const named = list.map((d) => {
       const g = garnishments.find((x) => x.id === d.id)
-      return { ...d, creditor: g?.creditor ?? '', reference: g?.reference ?? '' }
+      // The executor's account and symbol as they stood when the month was worked out: a closed month keeps them.
+      return { ...d, creditor: g?.creditor ?? '', reference: g?.reference ?? '', iban: g?.iban ?? null, vs: g?.vs ?? null }
     })
     return { ...slip, garnish: named, net: slip.net - named.reduce((t, d) => t + deductionOf(d), 0) }
   }
@@ -567,7 +569,7 @@ export function ledgerPayroll(run: PayrollRun): LedgerPayroll | null {
     healthEmployee: sum((s) => s.healthEmployee),
     healthEmployer: sum((s) => s.healthEmployer),
     tax: totals.tax,
-    pays: { social: totals.social, health: Object.values(totals.health), tax: totals.tax > 0 ? totals.tax : -1, garnish: garnishes.filter((d) => !d.held).map(deductionOf) },
+    pays: { social: totals.social, health: Object.values(totals.health), tax: totals.tax > 0 ? totals.tax : -1, garnish: garnishes.filter((d) => !d.held).map(deductionOf), garnishIban: garnishes.flatMap((d) => (d.iban ? [d.iban] : [])) },
   }
 }
 

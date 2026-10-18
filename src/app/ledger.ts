@@ -279,7 +279,7 @@ export interface LedgerPayroll {
   /** The advances withheld less the bonuses (minus: the bonuses paid over them). */
   tax: number
   /** What each payment of it comes to: the Social Insurance Agency's, each health insurer's, the tax office's. */
-  pays: { social: number; health: number[]; tax: number; garnish?: number[] }
+  pays: { social: number; health: number[]; tax: number; garnish?: number[]; garnishIban?: string[] }
   /** Meals (meals.ts): vouchers out of their stock (213), the financial contribution with the wage (331). */
   meals?: { voucher: { employer: number; fund: number; employee: number }; cash: { employer: number; fund: number } }
   /** The social fund's mandatory allocation of the month (social-fund.ts): 527 against 472. */
@@ -565,7 +565,10 @@ export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'not
     if (payroll.some((r) => r.pays.social === out)) return SOCIAL_ACCOUNT
     if (payroll.some((r) => r.pays.health.includes(out))) return HEALTH_ACCOUNT
     if (payroll.some((r) => r.pays.tax === out)) return '342'
-    // A deduction paid to an executor (garnish.ts).
+    // A deduction paid to an executor (garnish.ts): to his account, also what was kept until his execution order and
+    // paid later, or by the amount of a deduction paid with the wages.
+    const to = (p.partyIban ?? '').replace(/\s/g, '').toUpperCase()
+    if (to !== '' && payroll.some((r) => r.pays.garnishIban?.includes(to))) return '379'
     if (payroll.some((r) => r.pays.garnish?.includes(out))) return '379'
   }
   if (p.exempt === 'state' && (tax === 'vat' || tax === null) && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE

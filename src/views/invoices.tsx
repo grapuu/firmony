@@ -527,7 +527,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
                   {f.center}
                 </label>
                 <CenterSelect centers={centers} value={values.center || null} id="f-stredisko" />
-                <p class="field__hint">{f.centerHint}</p>
+                {errors.center ? <p class="field__error">{errors.center}</p> : <p class="field__hint">{f.centerHint}</p>}
               </div>
             ) : null}
             <div class="fgrid__cell fgrid__cell--wide">

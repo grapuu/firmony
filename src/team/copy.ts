@@ -1741,6 +1741,9 @@ export const team = typesetAll({
       inNet: (amount: string) => typeset(`exekúcie ${amount}`),
       slipCurrent: (amount: string) => typeset(`z toho bežné výživné ${amount}`),
       left: (name: string) => typeset(`${name} skončil(a) pracovný pomer: do týždňa to oznámte exekútorovi spolu s vyúčtovaním zrážok (§ 85 ods. 2 Exekučného poriadku).`),
+      subsistence: (day: string) =>
+        typeset(`Od ${day} platí nová suma životného minima, ktorú Firmony ešte nemá: mesiace od toho dňa so zrážkami sa neuzavrú, kým ju nedoplníme.`),
+      subsistenceClose: 'Mesiac sme neuzavreli: na jeho zrážky treba novú sumu životného minima od 1. júla, ktorú Firmony ešte nemá. Mzdy sú uložené.',
       dependents: 'Vyživované osoby (exekúcie)',
       dependentsHint: 'Pre nezraziteľnú sumu: osoby, ktorým poskytuje výživné, aj manžel(ka) s vlastným príjmom.',
       form: {
@@ -1760,7 +1763,7 @@ export const team = typesetAll({
         order: 'Exekučný príkaz doručený',
         orderHint: 'Od tohto dňa sa zrazené sumy platia exekútorovi. Prázdne: zostávajú u firmy.',
         total: 'Výška pohľadávky s príslušenstvom',
-        totalHint: 'Pri výživnom nedoplatok. Prázdne: zráža sa, kým exekútor neoznámi, že je uspokojená.',
+        totalHint: 'Suma z príkazu: istina, príslušenstvo a trovy exekúcie. Pri výživnom nedoplatok (prázdne: žiadny, zráža sa len bežné výživné).',
         monthly: 'Bežné výživné mesačne',
         ended: 'Skončená dňa',
         endedHint: 'Deň, keď exekútor oznámil, že je pohľadávka uspokojená alebo exekúcia zastavená. Prázdne, kým trvá.',
@@ -1777,6 +1780,7 @@ export const team = typesetAll({
         ended: 'Skončenie nemôže byť pred začatím.',
         amount: 'Sumu napíšte v eurách, napríklad 1 250,40.',
         monthly: 'Pri výživnom napíšte bežné výživné alebo nedoplatok.',
+        total: 'Napíšte výšku pohľadávky s príslušenstvom z príkazu na začatie exekúcie.',
         persons: 'Počet osôb je od 0 do 10.',
         iban: 'Toto číslo účtu nie je platný IBAN.',
         vs: 'Variabilný symbol má najviac 10 číslic.',
