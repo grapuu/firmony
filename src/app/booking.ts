@@ -6,7 +6,7 @@ import { sameReceipt, type EkasaCodes } from './ekasa'
 import { nameWords } from './match'
 import type { DocKind } from './match'
 
-export type Category = 'material' | 'fuel' | 'energy' | 'goods' | 'repairs' | 'travel' | 'representation' | 'services' | 'fees' | 'insurance' | 'bank' | 'asset' | 'sales' | 'sales_goods'
+export type Category = 'material' | 'fuel' | 'energy' | 'goods' | 'repairs' | 'travel' | 'representation' | 'services' | 'fees' | 'insurance' | 'bank' | 'asset' | 'sales' | 'sales_goods' | 'advance'
 
 export interface CategoryInfo {
   /** As the accountant reads it. */
@@ -36,6 +36,8 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
   asset: { name: 'Dlhodobý majetok', account: '042', deduct: true, hint: 'počítač, auto, stroj nad 1 700 €' },
   sales: { name: 'Tržby za služby', account: '602', deduct: false, hint: 'faktúra, ktorú firma vystavila za svoju službu', revenue: true },
   sales_goods: { name: 'Tržby za tovar', account: '604', deduct: false, hint: 'faktúra, ktorú firma vystavila za predaný tovar', revenue: true },
+  // An advance received before the supply is owed back until the final invoice: 324, not a revenue yet.
+  advance: { name: 'Prijatý preddavok', account: '324', deduct: false, hint: 'doklad k prijatej zálohe pred dodaním', revenue: true },
 }
 
 export const CATEGORY_IDS = Object.keys(CATEGORIES) as Category[]

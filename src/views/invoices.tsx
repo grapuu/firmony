@@ -15,20 +15,26 @@ import { Wordmark } from './layout'
 
 const t = app.invoices
 
+const addDaysTo = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86400000).toISOString().slice(0, 10)
+
 const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill--blue', overdue: 'pill--amber', paid: 'pill--ok', credit: 'pill--grey' }
 
 /** What a document is called: a credit note is a "Dobropis", an invoice a "Faktúra". */
-const kindName = (i: Pick<StoredInvoice, 'kind'>) => (i.kind === 'credit' ? t.sheet.creditTitle : t.sheet.title)
+const kindName = (i: Pick<StoredInvoice, 'kind'>, vatPayer = true) => (i.kind === 'advance' && !vatPayer ? t.sheet.advanceNoVat : (t.sheet.kinds[i.kind] ?? t.sheet.title))
+/** The variable symbol the customer pays by: a request for an advance has its own, an invoice its number. */
+// A request is paid with its own symbol; an advance's tax document is paid already (no symbol to pay with).
+const vsOf = (i: Pick<StoredInvoice, 'kind' | 'vs' | 'number'>) => (i.kind === 'proforma' ? i.vs : i.kind === 'advance' ? null : i.number)
 
 export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null }> = ({ invoices, today, flash, closed = null }) => {
   const month = today.slice(0, 7)
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + i.totalCents, 0)
   // A credit note lowers what its invoice still asks, while that invoice is not paid.
-  const open = new Map(invoices.filter((i) => stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue').map((i) => [i.id, stateOf(i, today)]))
+  // Requests for advances are not receivables of the books; what they ask comes back as advances and final invoices.
+  const open = new Map(invoices.filter((i) => i.kind === 'invoice' && (stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue')).map((i) => [i.id, stateOf(i, today)]))
   const credited = (pick: (state: InvoiceState | undefined) => boolean) => sum((i) => i.kind === 'credit' && i.status === 'issued' && i.corrects !== null && open.has(i.corrects) && pick(open.get(i.corrects)))
   const unpaid = sum((i) => open.has(i.id)) + credited(() => true)
   const overdue = sum((i) => open.get(i.id) === 'overdue') + credited((state) => state === 'overdue')
-  const paid = sum((i) => stateOf(i, today) === 'paid' && (i.paidOn ?? '').startsWith(month))
+  const paid = sum((i) => (i.kind === 'invoice' || i.kind === 'advance') && stateOf(i, today) === 'paid' && (i.paidOn ?? '').startsWith(month))
   return (
     <>
       <header class="phead phead--row">
@@ -37,9 +43,14 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
           <p class="phead__lead">{t.lead}</p>
         </div>
         {closed ? null : (
-          <a class="btn btn--blue" href="/app/faktury/nova">
-            {t.add}
-          </a>
+          <span class="phead__actions">
+            <a class="btn btn--line" href="/app/faktury/nova?zalohova=1">
+              {t.actions.proforma}
+            </a>
+            <a class="btn btn--blue" href="/app/faktury/nova">
+              {t.add}
+            </a>
+          </span>
         )}
       </header>
       <Flash text={flash} />
@@ -85,6 +96,8 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
                         <span>
                           {i.kind === 'credit'
                             ? t.actions.creditOf(i.correctsNumber ?? '')
+                            : i.kind === 'proforma' || i.kind === 'advance'
+                            ? `${kindName(i)}${i.kind === 'proforma' && i.paidOn ? `, ${t.paidOn(dayName(i.paidOn, today))}` : ''}`
                             : state === 'paid' && i.paidOn
                               ? t.paidOn(dayName(i.paidOn, today))
                               : t.dueOn(dayName(i.dueOn, today))}
@@ -122,6 +135,10 @@ export interface InvoiceFormProps {
   recent?: { id: string; name: string }[]
   /** A credit note: the invoice it corrects. */
   credit?: { number: string; issuedOn: string } | null
+  /** A final invoice: its request for an advance and the advances it will deduct. */
+  final?: { number: string; advances: { number: string | null; totalCents: number }[] } | null
+  /** The page's heading. */
+  title?: string
 }
 
 const Text: FC<{ name: string; label: string; value: string; error?: string; hint?: string; wide?: boolean; type?: string; mode?: 'numeric' | 'decimal' | 'email'; max?: number }> = ({ name, label, value, error, hint, wide, type = 'text', mode, max = 200 }) => (
@@ -134,7 +151,7 @@ const Text: FC<{ name: string; label: string; value: string; error?: string; hin
   </div>
 )
 
-export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [], credit = null }) => {
+export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [], credit = null, final = null, title }) => {
   const f = t.form
   // A credit note's lines are typed as what the invoice is lowered by; its sums show with the minus they will have.
   const totals = totalsOf(credit ? creditLines(preview) : preview, vatPayer)
@@ -144,12 +161,16 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
         {t.actions.back}
       </a>
       <header class="phead">
-        <Heading first={credit ? f.creditTitle(credit.number) : id ? f.editTitle : f.title} small />
+        <Heading first={title ?? (credit ? f.creditTitle(credit.number) : id ? f.editTitle : f.title)} small />
         {credit ? <p class="phead__lead">{f.creditLead(credit.number, dayName(credit.issuedOn))}</p> : null}
+        {values.proforma ? <p class="phead__lead">{f.proformaLead}</p> : null}
+        {final ? <p class="phead__lead">{f.finalLead}</p> : null}
       </header>
       <Flash text={errors.form} tone="error" />
       <form class="invform" method="post" action={id ? `/app/faktury/${id}` : '/app/faktury'} novalidate>
         <input type="hidden" name="riadky" value={String(values.lines.length)} />
+        {values.proforma ? <input type="hidden" name="druh" value="zalohova" /> : null}
+        {final ? <input type="hidden" name="vyuctovanie" value={values.relates ?? ''} /> : null}
         {credit ? (
           <>
             <input type="hidden" name="dobropis" value={values.corrects ?? ''} />
@@ -332,6 +353,22 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
               </div>
             ))}
           </div>
+          {final ? (
+            <div class="items__deduct">
+              <p class="field__label">{f.finalDeducts}</p>
+              {final.advances.length === 0 ? (
+                <p class="field__hint">{f.finalNone}</p>
+              ) : (
+                <ul class="plain">
+                  {final.advances.map((a) => (
+                    <li>
+                      {f.deduction(a.number ?? '')}: {formatEurExact(-a.totalCents)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
           <div class="items__foot">
             <button class="btn btn--text btn--small" type="submit" name="akcia" value="riadok" formnovalidate>
               {f.addLine}
@@ -375,7 +412,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
         <div class="invform__actions">
           <p class="invform__lead">{credit ? f.creditIssueLead : f.issueLead}</p>
           <button class="btn btn--blue btn--large" type="submit" name="akcia" value="vystavit">
-            {credit ? f.creditIssue : f.issue}
+            {credit ? f.creditIssue : values.proforma ? f.proformaIssue : f.issue}
           </button>
           <button class="btn btn--line" type="submit" name="akcia" value="koncept">
             {f.draft}
@@ -399,8 +436,9 @@ const qty = (milli: number) => (milli % 1000 === 0 ? String(milli / 1000) : (mil
 
 /** The QR code a bank's app pays from, for an issued invoice with an account and something to pay. */
 function payQr(invoice: StoredInvoice, total: number, seller: Company) {
-  if (!invoice.number || !invoice.iban) return null
-  const text = payBySquare({ iban: invoice.iban, amountCents: total, vs: invoice.number, due: invoice.dueOn, name: seller.name, note: `${t.sheet.title} ${invoice.number}` })
+  const vs = vsOf(invoice)
+  if (!invoice.number || !invoice.iban || !vs) return null
+  const text = payBySquare({ iban: invoice.iban, amountCents: total, vs, due: invoice.dueOn, name: seller.name, note: `${kindName(invoice)} ${invoice.number}` })
   return text ? qrPicture(text) : null
 }
 
@@ -409,9 +447,10 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
   const credit = invoice.kind === 'credit'
   const totals = totalsOf(lines, seller.vatPayer)
   // A credit note is not paid by the customer: no QR code, no account to pay to.
-  const qr = pay && !credit ? payQr(invoice, totals.total, seller) : null
+  // Nor is the tax document of money already received.
+  const qr = pay && !credit && invoice.kind !== 'advance' ? payQr(invoice, totals.total, seller) : null
   return (
-    <article class="sheet" aria-label={`${kindName(invoice)} ${invoice.number ?? ''}`}>
+    <article class="sheet" aria-label={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''}`}>
       <header class="sheet__head">
         <div class="sheet__from">
           <p class="sheet__company">{seller.name}</p>
@@ -435,8 +474,9 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
           </p>
         </div>
         <div class="sheet__title">
-          <p class="sheet__kind">{kindName(invoice)}</p>
+          <p class={invoice.kind === 'advance' ? 'sheet__kind sheet__kind--long' : 'sheet__kind'}>{kindName(invoice, seller.vatPayer)}</p>
           <p class="sheet__number">{invoice.number ? s.number(invoice.number) : t.draftName}</p>
+          {invoice.relatesNumber ? <p class="sheet__ref">{s.relates(invoice.relatesNumber)}</p> : null}
           {credit && invoice.correctsNumber && invoice.correctsIssuedOn ? <p class="sheet__ref">{s.corrects(invoice.correctsNumber, dayName(invoice.correctsIssuedOn))}</p> : null}
         </div>
       </header>
@@ -469,17 +509,19 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
             <dd>{dayName(invoice.issuedOn)}</dd>
           </div>
           <div>
-            <dt>{s.delivered}</dt>
+            <dt>{invoice.kind === 'advance' ? s.received : s.delivered}</dt>
             <dd>{dayName(invoice.deliveredOn)}</dd>
           </div>
-          <div>
-            <dt>{s.due}</dt>
-            <dd>{dayName(invoice.dueOn)}</dd>
-          </div>
-          {invoice.number ? (
+          {invoice.kind === 'advance' ? null : (
+            <div>
+              <dt>{s.due}</dt>
+              <dd>{dayName(invoice.dueOn)}</dd>
+            </div>
+          )}
+          {vsOf(invoice) ? (
             <div>
               <dt>{s.vs}</dt>
-              <dd>{invoice.number}</dd>
+              <dd>{vsOf(invoice)}</dd>
             </div>
           ) : null}
         </dl>
@@ -522,6 +564,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
         </p>
       ) : null}
       {seller.vatPayer && invoice.mode !== 'domestic' ? <p class="sheet__note sheet__mode">{MODE_TERMS[invoice.mode].text}</p> : null}
+      {invoice.kind === 'proforma' ? <p class="sheet__note">{s.proformaNote}</p> : null}
       <div class="sheet__bottom">
         <div class="sheet__payment">
         {qr ? (
@@ -536,7 +579,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
             </figcaption>
           </figure>
         ) : null}
-        {credit ? null : (
+        {credit || invoice.kind === 'advance' ? null : (
         <dl class="sheet__pay">
           <div>
             <dt>{s.method}</dt>
@@ -548,10 +591,10 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
               <dd>{groupIban(invoice.iban)}</dd>
             </div>
           ) : null}
-          {invoice.number ? (
+          {vsOf(invoice) ? (
             <div>
               <dt>{s.vs}</dt>
-              <dd>{invoice.number}</dd>
+              <dd>{vsOf(invoice)}</dd>
             </div>
           ) : null}
         </dl>
@@ -571,7 +614,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
               ])
             : null}
           <div class="sheet__total">
-            <dt>{credit ? s.creditTotal : s.total}</dt>
+            <dt>{credit ? s.creditTotal : invoice.kind === 'advance' ? s.advanceTotal : s.total}</dt>
             <dd>{formatEurExact(totals.total)}</dd>
           </div>
         </dl>
@@ -596,7 +639,13 @@ export const InvoicePage: FC<{
   error?: string | null
   /** The credit notes issued to this invoice. */
   credits?: { id: string; number: string | null; totalCents: number }[]
-}> = ({ invoice, lines, seller, today, link, flash, error, credits = [] }) => {
+  /** A request for an advance: the payments on its variable symbol and the advances' documents issued. */
+  advance?: {
+    payments: { id: string; bookedOn: string; amountCents: number; documented: boolean }[]
+    advances: { id: string; number: string | null; totalCents: number }[]
+    final: { id: string; number: string | null; totalCents: number } | null
+  } | null
+}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null }) => {
   const a = t.actions
   const state = stateOf(invoice, today)
   const credit = invoice.kind === 'credit'
@@ -607,7 +656,7 @@ export const InvoicePage: FC<{
       </a>
       <header class="phead phead--row">
         <div>
-          <Heading first={`${kindName(invoice)} ${invoice.number ?? ''}`.trim()} small />
+          <Heading first={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''}`.trim()} small />
           <p class="phead__lead">
             {invoice.customerName}, {formatEurExact(invoice.totalCents)}
           </p>
@@ -654,7 +703,12 @@ export const InvoicePage: FC<{
             <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.id}/xml`}>
               {a.xml}
             </a>
-            {credit ? (
+            {invoice.relates ? (
+              <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.relates}`}>
+                {t.sheet.kinds.proforma} {invoice.relatesNumber ?? ''}
+              </a>
+            ) : null}
+            {invoice.kind === 'proforma' || invoice.kind === 'advance' ? null : credit ? (
               invoice.corrects ? (
                 <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.corrects}`}>
                   {t.sheet.title} {invoice.correctsNumber ?? ''}
@@ -671,6 +725,56 @@ export const InvoicePage: FC<{
               </>
             )}
           </section>
+          {advance ? (
+            <section class="info">
+              <h2 class="info__title">{a.advancePayments}</h2>
+              {advance.payments.length === 0 ? (
+                <p class="info__lead">{a.advanceNone}</p>
+              ) : (
+                <ul class="plain">
+                  {advance.payments.map((p) => (
+                    <li>
+                      {dayName(p.bookedOn, today)}: {formatEurExact(p.amountCents)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!advance.final && advance.payments.some((p) => !p.documented) ? (
+                <>
+                  {seller.vatPayer ? <p class="flag">{a.advanceDue(dayName(addDaysTo(advance.payments.find((p) => !p.documented)?.bookedOn ?? today, 15), today))}</p> : null}
+                  <form method="post" action={`/app/faktury/${invoice.id}/zaloha`}>
+                    <button class="btn btn--blue invoice__wide" type="submit">
+                      {seller.vatPayer ? a.advanceVat : a.advance}
+                    </button>
+                  </form>
+                </>
+              ) : null}
+              {advance.advances.length > 0 ? (
+                <>
+                  <p class="info__lead">{a.advanceDone}</p>
+                  <ul class="plain">
+                    {advance.advances.map((d) => (
+                      <li>
+                        <a class="link" href={`/app/faktury/${d.id}`}>
+                          {kindName({ kind: 'advance' }, seller.vatPayer)} {d.number ?? ''}
+                        </a>{' '}
+                        {formatEurExact(d.totalCents)}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {advance.final ? (
+                <a class="btn btn--line invoice__wide" href={`/app/faktury/${advance.final.id}`}>
+                  {t.sheet.kinds.invoice} {advance.final.number ?? ''}
+                </a>
+              ) : (
+                <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?vyuctovanie=${invoice.id}`}>
+                  {a.final}
+                </a>
+              )}
+            </section>
+          ) : null}
           {credits.length > 0 ? (
             <section class="info">
               <h2 class="info__title">{a.credits}</h2>
@@ -688,7 +792,7 @@ export const InvoicePage: FC<{
           ) : null}
           <section class="info">
             <h2 class="info__title">{a.payment}</h2>
-            <p class="info__lead">{credit ? a.creditPayment : state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : a.paymentNone}</p>
+            <p class="info__lead">{credit ? a.creditPayment : state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : invoice.kind === 'advance' ? t.sheet.advanceTotal : a.paymentNone}</p>
           </section>
           <section class="info">
             <h2 class="info__title">{a.link}</h2>
@@ -712,14 +816,16 @@ export const InvoicePage: FC<{
 /** The page a customer opens from the email: the sheet, how to save it, the e-invoice. No sign-in. */
 export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; token: string }> = ({ invoice, lines, seller, token }) => (
   <html lang="sk">
-    <InsideHead title={`${kindName(invoice)} ${invoice.number ?? ''} | ${seller.name}`} />
+    <InsideHead title={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''} | ${seller.name}`} />
     <body class="inside inside--public">
       <main class="public">
         <div class="public__bar">
           <p class="public__lead">{t.public.lead}</p>
-          <a class="btn btn--line btn--small" href={`/f/${token}/xml`}>
-            {t.actions.xml}
-          </a>
+          {invoice.kind === 'proforma' ? null : (
+            <a class="btn btn--line btn--small" href={`/f/${token}/xml`}>
+              {t.actions.xml}
+            </a>
+          )}
           <button class="btn btn--line btn--small" type="button" data-print hidden>
             {t.actions.print}
           </button>

@@ -892,7 +892,7 @@ check(
 )
 check(
   'an issued invoice is offered revenue only',
-  JSON.stringify(booking.categoriesFor('invoice_out')) === JSON.stringify(['sales', 'sales_goods']) && !booking.categoriesFor('receipt').includes('sales'),
+  JSON.stringify(booking.categoriesFor('invoice_out')) === JSON.stringify(['sales', 'sales_goods', 'advance']) && !booking.categoriesFor('receipt').includes('sales'),
 )
 check('a supplier is known by its IČO', booking.supplierKey('36 123 456', 'Hostingový dom s. r. o.') === 'ico:36123456')
 check(
@@ -1236,6 +1236,59 @@ check(
     invoices.ublOf({ ...stored, customerIcdph: 'EL123456789', customerDic: null }, ublLines, seller).includes('<cbc:IdentificationCode>GR</cbc:IdentificationCode>') &&
     invoices.ublOf({ ...stored, iban: null }, ublLines, seller).includes('<cbc:PaymentMeansCode>1</cbc:PaymentMeansCode>'),
 )
+
+// Advances (18 October 2026): the payment split by the request's rates, each part exactly what came; deducted on the final invoice.
+{
+  const request = [
+    { position: 1, description: 'Stoličky', quantityMilli: 1000, unit: 'ks', unitCents: 100000, vatRate: 23, baseCents: 100000 },
+    { position: 2, description: 'Knihy', quantityMilli: 1000, unit: 'ks', unitCents: 20000, vatRate: 5, baseCents: 20000 },
+  ]
+  const parts = invoices.advanceLines(request, 60000, true, (rate) => `Záloha ${rate} %`)
+  const sums = invoices.totalsOf(parts, true)
+  check(
+    "an advance's tax document: the payment split by the request's rates as each asks with its VAT, to the cent",
+    parts.length === 2 && parts[0].vatRate === 23 && parts[1].vatRate === 5 && sums.total === 60000 && sums.rates.every((r) => r.base > 0) && Math.abs(sums.rates[0].base + sums.rates[0].vat - Math.round((60000 * 123000) / 144000)) <= 1,
+    JSON.stringify(sums),
+  )
+  check(
+    'odd amounts still make exactly what came, and no part of nothing',
+    [1, 2, 3, 99, 12345, 77777, 100001].every((paid) => {
+      const lines = invoices.advanceLines(request, paid, true, () => 'z')
+      return invoices.totalsOf(lines, true).total === paid && lines.every((l) => l.baseCents + (l.vatCents ?? 0) > 0)
+    }),
+  )
+  const one = invoices.advanceLines([{ baseCents: 100000, vatRate: 23 }], 60000, true, () => 'z')
+  check(
+    'the VAT in a payment is what is left of it after its base, the payment divided by one and the rate',
+    one.length === 1 && one[0].baseCents === 48780 && one[0].vatCents === 11220 && invoices.totalsOf(one, true).vat === 11220,
+    JSON.stringify(one),
+  )
+  check(
+    'so a payment no base would make with its VAT counted from the base is still the tax document of it',
+    [3, 10003, 20001].every((paid) => invoices.totalsOf(invoices.advanceLines([{ baseCents: 100000, vatRate: 23 }], paid, true, () => 'z'), true).total === paid),
+  )
+  const noVat = invoices.advanceLines(request.map((l) => ({ ...l, vatRate: 0 })), 50000, false, () => 'Záloha')
+  check('a company that is no VAT payer: one part, all of it', noVat.length === 1 && noVat[0].baseCents === 50000)
+  const off = invoices.deductionLines([{ number: '20260003', lines: parts }], 3, (n) => `Odpočet zálohy, doklad č. ${n}`)
+  const final = invoices.totalsOf([...request, ...off], true)
+  check(
+    "a final invoice deducts each advance's document rate by rate; what remains to pay is the whole less what came",
+    off.length === 2 && off.every((l) => l.baseCents < 0 && l.description.includes('20260003')) && final.total === invoices.totalsOf(request, true).total - 60000,
+    JSON.stringify(final),
+  )
+  const advanceUbl = invoices.ublOf({ ...stored, number: '20260008', kind: 'advance', iban: null }, parts, seller)
+  const advanceRead = xml.readInvoice(advanceUbl, stored.customerIco)
+  check(
+    "an advance's e-invoice is a prepayment invoice with nothing due, and its customer reads what was paid",
+    advanceUbl.includes('<cbc:InvoiceTypeCode>386</cbc:InvoiceTypeCode>') && advanceUbl.includes('<cbc:PayableAmount currencyID="EUR">0.00</cbc:PayableAmount>') && advanceRead?.totalCents === 60000,
+    JSON.stringify(advanceRead?.totalCents),
+  )
+  check(
+    "and its VAT is the whole supply's less what the advance declared, rate by rate",
+    final.rates.every((r) => r.vat === invoices.totalsOf(request, true).rates.find((x) => x.rate === r.rate).vat - sums.rates.find((x) => x.rate === r.rate).vat),
+    JSON.stringify(final.rates),
+  )
+}
 
 // PAY by square: what a bank's app reads from the QR code on an invoice
 const square = paybysquare.payBySquare({ iban: 'SK31 1200 0000 1987 4263 7541', amountCents: 118080, vs: '20260006', due: '2026-10-15', name: 'Ukážková firma s. r. o.', note: 'Faktúra 20260006' })
@@ -3031,6 +3084,39 @@ async function zipped(entries, note) {
         ledger.balanceOf(a.entries, '131', '2026-09-30') === 0 && ledger.balanceOf(a.entries, '132', '2026-09-30') === 10000 && a.entries.find((e) => e.key === 's:in:2026-09')?.kind === 'stock' &&
         b.entries.find((e) => e.key === 'd:tovar')?.lines.some((l) => l.md === '504' && l.cents === 10000),
       JSON.stringify(a.entries.map((e) => [e.key, e.lines])),
+    )
+  }
+  // Advances (18 October 2026): the tax document of an advance received owes it on 324; the final invoice deducting it
+  // takes its base from 324 to the revenue, so the revenue is the whole supply and 324 is left with nothing.
+  {
+    const advance = doc('advance', {
+      kind: 'invoice_out',
+      number: '20260002',
+      party: 'Zákazník s. r. o.',
+      issuedOn: '2026-09-11',
+      dueOn: '2026-09-10',
+      totalCents: 12300,
+      category: 'advance',
+      paymentId: 'pa',
+      vat: vatData('domestic', [{ rate: 23, base: 10000, vat: 2300, deduct: 0 }]),
+    })
+    const final = doc('final', {
+      kind: 'invoice_out',
+      number: '20260003',
+      party: 'Zákazník s. r. o.',
+      issuedOn: '2026-09-25',
+      dueOn: '2026-10-09',
+      totalCents: 12300,
+      category: 'sales',
+      advanceCents: 10000,
+      vat: vatData('domestic', [{ rate: 23, base: 10000, vat: 2300, deduct: 0 }]),
+    })
+    const b = ledger.buildBooks({ company: company(), docs: [advance, final], payments: [pay('pa', '2026-09-10', 12300, { party: 'Zákazník s. r. o.' })], banks, filed: [], manual: [] })
+    const on = (account) => ledger.balanceOf(b.entries, account, '2026-09-30')
+    check(
+      'an advance received is owed on 324 until the final invoice, which moves its base to the revenue: 324 nothing, the revenue the whole supply',
+      on('324') === 0 && on('602') === -20000 && on('343.200') === -4600 && on('311') === 12300 && b.entries.find((e) => e.key === 'd:advance')?.lines.some((l) => l.d === '324' && l.cents === 10000),
+      JSON.stringify([on('324'), on('602'), on('343.200'), on('311')]),
     )
   }
 }

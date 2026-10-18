@@ -32,7 +32,12 @@ import { checkDeclaration, declarationStateOf, declarationStatements, latestDecl
 import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
 import {
+  advanceLines,
+  advancePayments,
+  advancesOf,
+  finalOf,
   checkValues,
+  deductionLines,
   isInvoiceMode,
   creditLeft,
   creditLines,
@@ -325,6 +330,8 @@ function flashOf(c: Ctx): string | null {
       return t.invoices.actions.sentFlash
     case 'pripomenuta':
       return t.invoices.actions.remindedFlash
+    case 'zaloha':
+      return t.invoices.actions.advanceFlash
     case 'banka-pripojena':
       return t.bank.flash.pripojena(n)
     case 'banka-bez-uctu':
@@ -1542,6 +1549,8 @@ function invoiceValuesFrom(body: Record<string, unknown>, vatPayer: boolean): In
     mode: vatPayer && isInvoiceMode(text('rezim', 20)) ? (text('rezim', 20) as InvoiceMode) : 'domestic',
     reverseKind: text('ptp_druh', 8),
     reverseCode: text('ptp_kod', 8),
+    ...(text('druh', 12) === 'zalohova' ? { proforma: true } : {}),
+    ...(ID.test(text('vyuctovanie', 64)) ? { relates: text('vyuctovanie', 64) } : {}),
     lines: Array.from({ length: rows }, (_, i) => ({
       description: text(`r${i}-popis`, 300),
       quantity: text(`r${i}-mnozstvo`, 10),
@@ -1568,19 +1577,31 @@ async function invoiceForm(
   recent: { id: string; name: string }[] = [],
 ) {
   const who = c.get('who')
-  // A credit note shows the invoice it corrects.
+  // A credit note shows the invoice it corrects; a final invoice the request and the advances it deducts.
   const original = values.corrects ? await getInvoice(c.env.DB, who.company.id, values.corrects) : null
   const credit = original?.number ? { number: original.number, issuedOn: original.issuedOn } : null
+  const request = values.relates ? await requestOf(c.env.DB, who.company.id, values.relates) : null
+  const final = request?.number ? { number: request.number, advances: (await advancesOf(c.env.DB, who.company.id, request.id)).map((a) => ({ number: a.number, totalCents: a.totalCents })) } : null
+  const title = credit ? ti.form.creditTitle(credit.number) : final ? ti.form.finalTitle(final.number) : values.proforma ? ti.form.proformaTitle : id ? ti.form.editTitle : ti.form.title
   return shell(
     c,
     'invoices',
-    credit ? ti.form.creditTitle(credit.number) : id ? ti.form.editTitle : ti.form.title,
-    <InvoiceFormPage id={id} values={values} vatPayer={who.company.vatPayer} errors={errors} found={found} preview={previewLines(values, who.company.vatPayer)} recent={recent} credit={credit} />,
+    title,
+    <InvoiceFormPage id={id} values={values} vatPayer={who.company.vatPayer} errors={errors} found={found} preview={previewLines(values, who.company.vatPayer)} recent={recent} credit={credit} final={final} title={title} />,
     status,
   )
 }
 
-/** The issued invoice a credit note may be made to: an invoice, not a credit note, of this company. */
+/** An issued request for an advance of the company, which a final invoice or an advance's tax document belongs to. */
+async function requestOf(db: D1Database, company: string, id: string | undefined): Promise<StoredInvoice | null> {
+  const request = id && ID.test(id) ? await getInvoice(db, company, id) : null
+  return request && request.status === 'issued' && request.kind === 'proforma' && request.number && request.vs ? request : null
+}
+
+/**
+ * The issued invoice a credit note may be made to: an invoice of this company (a final invoice too), not a credit
+ * note, a request or an advance's tax document.
+ */
 async function creditable(db: D1Database, company: string, id: string | undefined): Promise<StoredInvoice | null> {
   const original = id && ID.test(id) ? await getInvoice(db, company, id) : null
   return original && original.status === 'issued' && original.kind === 'invoice' && original.number ? original : null
@@ -1588,8 +1609,9 @@ async function creditable(db: D1Database, company: string, id: string | undefine
 
 /** The lines of a stored invoice as the form shows them, with an empty one to go on. */
 function inputLines(lines: Line[], vatPayer: boolean): LineInput[] {
+  // An advance's lines and their deductions are made by the app, never typed again.
   return [
-    ...lines.map((l) => ({
+    ...lines.filter((l) => typeof l.vatCents !== 'number').map((l) => ({
       description: l.description,
       quantity: String(l.quantityMilli / 1000).replace('.', ','),
       unit: l.unit ?? 'ks',
@@ -1646,6 +1668,26 @@ appRoutes.get('/faktury/nova', async (c) => {
     iban: await invoiceIban(c.env.DB, who.company),
     note: '',
     lines: [emptyLine(who.company.vatPayer), emptyLine(who.company.vatPayer), emptyLine(who.company.vatPayer)],
+  }
+  if (c.req.query('zalohova') === '1') values.proforma = true
+  // A final invoice starts from its request for an advance: its customer and lines; the advances go off it when issued.
+  const request = await requestOf(c.env.DB, who.company.id, c.req.query('vyuctovanie'))
+  const done = request ? await finalOf(c.env.DB, who.company.id, request.id) : null
+  if (done) return c.redirect(`/app/faktury/${done.id}`, 303)
+  if (request) {
+    values.customerName = request.customerName
+    values.customerAddress = request.customerAddress ?? ''
+    values.customerIco = request.customerIco ?? ''
+    values.customerDic = request.customerDic ?? ''
+    values.customerIcdph = request.customerIcdph ?? ''
+    values.customerEmail = request.customerEmail ?? ''
+    values.note = request.note ?? ''
+    values.mode = request.mode
+    values.reverseKind = request.reverse?.kind ?? ''
+    values.reverseCode = request.reverse?.code ?? ''
+    values.relates = request.id
+    values.lines = inputLines(await invoiceLines(c.env.DB, request.id), who.company.vatPayer)
+    return invoiceForm(c, null, values)
   }
   // A credit note starts from the invoice it corrects: its customer and its lines, as what it may be lowered by.
   const original = await creditable(c.env.DB, who.company.id, c.req.query('dobropis'))
@@ -1745,12 +1787,26 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
   // What a credit note's form says is what the invoice is lowered by: kept with the minus.
   const lines = original ? creditLines(read.lines) : read.lines
   if (error && (issue || error !== ti.errors.lines)) errors.lines = error
-  const totals = totalsOf(lines, vatPayer)
+  let totals = totalsOf(lines, vatPayer)
   if (issue && !errors.lines && (original ? totals.total >= 0 : totals.total <= 0)) errors.lines = ti.errors.lines
   if (original && issue && !values.reason) errors.reason = ti.errors.reason
+  // A payment before a supply without Slovak VAT is no tax point, and its documents are not built yet: a request for an
+  // advance is made for a supply with Slovak VAT (or by a company that is no VAT payer).
+  if (values.proforma && !original && vatPayer && (values.mode ?? 'domestic') !== 'domestic') errors.form = ti.errors.proformaMode
   if (original && !errors.lines) {
     const over = creditTooMuch(creditLeft(await invoiceLines(db, original.id), await creditedLines(db, who.company.id, original.id, draftId), vatPayer), lines, vatPayer)
     if (over) errors.lines = ti.errors.creditTooMuch(over.rate, formatEurExact(over.left))
+  }
+  // A final invoice belongs to an issued request for an advance; issued, it deducts every advance received on it.
+  const request = values.relates ? await requestOf(db, who.company.id, values.relates) : null
+  if (values.relates && !request) return invoiceForm(c, draftId, { ...values, relates: undefined }, { form: ti.errors.finalOf }, 422)
+  if (request && issue && (await finalOf(db, who.company.id, request.id))) return invoiceForm(c, draftId, values, { form: ti.errors.finalDone }, 409)
+  const deductions = request && issue ? deductionLines(await advancesOf(db, who.company.id, request.id), lines.length + 1, ti.form.deduction) : []
+  const advanceCents = -deductions.reduce((sum, line) => sum + line.baseCents, 0)
+  if (deductions.length > 0) {
+    lines.push(...deductions)
+    totals = totalsOf(lines, vatPayer)
+    if (!errors.lines && totals.total < 0) errors.lines = ti.errors.finalTooMuch
   }
   // A draft needs only somebody to be issued to; an invoice needs everything.
   const blocking = issue ? errors : { customerName: errors.customerName, lines: errors.lines }
@@ -1777,6 +1833,9 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
         iban: values.iban ? plainIban(values.iban) : null,
         documentId,
         credit: original ? { corrects: original.id, number: original.number, reason: values.reason ?? '' } : null,
+        kind: values.proforma && !original && !request ? 'proforma' : null,
+        relates: request?.id ?? null,
+        advanceCents,
       }),
       eventStatement(db, { company: who.company.id, user: who.user.id, action: issue ? (original ? 'invoice.credited' : 'invoice.issued') : 'invoice.draft', subject: id, detail: { total: totals.total, ...(original ? { corrects: original.id } : {}) } }),
     ])
@@ -1794,6 +1853,77 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     )
   return c.redirect(`/app/faktury/${id}?ok=${issue ? 'vystavena' : 'koncept'}`, 303)
 }
+
+/**
+ * The tax documents of advances received on a request (§ 73: within 15 days of the payment; for a company that is
+ * no VAT payer, the document of the money received): one for each payment on its variable symbol that has none, its
+ * amount split by the request's rates, dated today, the payment's day as the day it was received, linked to it.
+ */
+appRoutes.post('/faktury/:id/zaloha', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const request = await requestOf(db, who.company.id, c.req.param('id'))
+  if (!request || !request.vs) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  if (!serviceOpen(who.company, today())) return invoicesPage(c, 409)
+  const vatPayer = who.company.vatPayer
+  // After the final invoice, money on the request's symbol pays that invoice: no advance any more.
+  if ((vatPayer && request.mode !== 'domestic') || (await finalOf(db, who.company.id, request.id))) return c.redirect(`/app/faktury/${request.id}`, 303)
+  const pending = (await advancePayments(db, who.company.id, request.vs)).filter((p) => !p.documented)
+  const requestLines = await invoiceLines(db, request.id)
+  for (const payment of pending) {
+    const lines = advanceLines(requestLines, payment.amountCents, vatPayer, (rate) => (vatPayer ? ti.form.advanceLine(request.number ?? '', rate) : ti.form.advanceLineNoVat(request.number ?? '')))
+    if (lines.length === 0) continue
+    const values: InvoiceValues = {
+      customerName: request.customerName,
+      customerAddress: request.customerAddress ?? '',
+      customerIco: request.customerIco ?? '',
+      customerDic: request.customerDic ?? '',
+      customerIcdph: request.customerIcdph ?? '',
+      customerEmail: request.customerEmail ?? '',
+      issued: textDay(today()),
+      delivered: textDay(payment.bookedOn),
+      due: textDay(payment.bookedOn),
+      iban: '',
+      note: '',
+      lines: [],
+      mode: request.mode,
+      reverseKind: request.reverse?.kind ?? '',
+      reverseCode: request.reverse?.code ?? '',
+    }
+    const id = crypto.randomUUID()
+    const documentId = crypto.randomUUID()
+    try {
+      await db.batch([
+        ...saveInvoiceStatements(db, {
+          id,
+          company: who.company.id,
+          user: who.user.id,
+          issue: true,
+          values,
+          lines,
+          totals: totalsOf(lines, vatPayer),
+          issued: today(),
+          delivered: payment.bookedOn,
+          due: payment.bookedOn,
+          token: newToken(),
+          iban: null,
+          documentId,
+          kind: 'advance',
+          relates: request.id,
+          payment: payment.id,
+        }),
+        linkStatement(db, who.company.id, payment.id, documentId, 'client', who.user.id),
+        eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoice.advance', subject: id, detail: { request: request.id, payment: payment.id, total: payment.amountCents } }),
+      ])
+    } catch (err) {
+      // The payment got its document meanwhile (a second click): nothing more is made for it.
+      console.error('an advance failed', err instanceof Error ? err.name : 'error')
+      continue
+    }
+    later(c, afterReading(db, who.company.id, documentId))
+  }
+  return c.redirect(`/app/faktury/${request.id}?ok=zaloha`, 303)
+})
 
 appRoutes.post('/faktury', (c) => saveInvoice(c, null))
 
@@ -1822,9 +1952,19 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
       mode: invoice.mode,
       reverseKind: invoice.reverse?.kind ?? '',
       reverseCode: invoice.reverse?.code ?? '',
+      ...(invoice.kind === 'proforma' ? { proforma: true } : {}),
+      ...(invoice.kind === 'invoice' && invoice.relates ? { relates: invoice.relates } : {}),
     }
     return invoiceForm(c, invoice.id, values, {}, status)
   }
+  const advance =
+    invoice.kind === 'proforma' && invoice.vs
+      ? {
+          payments: await advancePayments(db, who.company.id, invoice.vs),
+          advances: (await advancesOf(db, who.company.id, invoice.id)).map((a) => ({ id: a.id, number: a.number, totalCents: a.totalCents })),
+          final: await finalOf(db, who.company.id, invoice.id),
+        }
+      : null
   const credits =
     invoice.kind === 'invoice'
       ? (
@@ -1837,8 +1977,8 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
   return shell(
     c,
     'invoices',
-    `${invoice.kind === 'credit' ? ti.sheet.creditTitle : ti.sheet.title} ${invoice.number}`,
-    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} {...extra} />,
+    `${ti.sheet.kinds[invoice.kind] ?? ti.sheet.title} ${invoice.number}`,
+    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={advance} {...extra} />,
     status,
   )
 }
@@ -1869,7 +2009,7 @@ async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
     invoice.customerEmail = typed
   }
   // A paid invoice is never reminded, nor a credit note, whatever is posted.
-  if (reminder && (invoice.paidOn || invoice.kind === 'credit')) return c.redirect(`/app/faktury/${invoice.id}`, 303)
+  if (reminder && (invoice.paidOn || invoice.kind === 'credit' || invoice.kind === 'advance')) return c.redirect(`/app/faktury/${invoice.id}`, 303)
   if (!(await withinLimit(db, 'invoice-mail', who.company.id, 30, 3600))) return invoicePage(c, id, { error: t.messages.throttle }, 429)
   const link = `${siteOrigin(c)}/f/${invoice.token}`
   const total = formatEurExact(invoice.totalCents).replace(/ /g, ' ')
@@ -1881,17 +2021,24 @@ async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
       to: invoice.customerEmail,
       replyTo: who.user.email,
       subject:
-        invoice.kind === 'credit'
-          ? ti.mail.creditSubject(invoice.number, who.company.name)
-          : reminder
-            ? ti.mail.reminderSubject(invoice.number, who.company.name)
-            : ti.mail.subject(invoice.number, who.company.name),
-      body:
-        invoice.kind === 'credit'
-          ? ti.mail.creditBody(who.company.name, invoice.number, invoice.correctsNumber ?? '', total, link, invoice.reason)
-          : reminder
-            ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link)
-            : ti.mail.body(who.company.name, invoice.number, total, due, iban, link, invoice.note),
+        reminder
+          ? ti.mail.reminderSubject(invoice.number, who.company.name, invoice.kind === 'proforma')
+          : invoice.kind === 'proforma'
+            ? ti.mail.proformaSubject(invoice.number, who.company.name)
+            : invoice.kind === 'credit'
+              ? ti.mail.creditSubject(invoice.number, who.company.name)
+              : invoice.kind === 'advance'
+                ? ti.mail.advanceSubject(invoice.number, who.company.name, who.company.vatPayer)
+                : ti.mail.subject(invoice.number, who.company.name),
+      body: reminder
+        ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link, invoice.kind === 'proforma', invoice.kind === 'proforma' ? (invoice.vs ?? invoice.number) : invoice.number)
+        : invoice.kind === 'proforma'
+          ? ti.mail.proformaBody(who.company.name, invoice.number, invoice.vs ?? '', total, due, iban, link)
+          : invoice.kind === 'credit'
+            ? ti.mail.creditBody(who.company.name, invoice.number, invoice.correctsNumber ?? '', total, link, invoice.reason)
+            : invoice.kind === 'advance'
+              ? ti.mail.advanceBody(who.company.name, invoice.number, invoice.relatesNumber ?? '', total, dayName(invoice.deliveredOn).replace(/\u00a0/g, ' '), link, who.company.vatPayer)
+              : ti.mail.body(who.company.name, invoice.number, total, due, iban, link, invoice.note),
     }),
     db.prepare(`UPDATE invoices SET ${reminder ? 'reminded_at' : 'sent_at'} = ? WHERE id = ? AND company_id = ?`).bind(now(), invoice.id, who.company.id),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: reminder ? 'invoice.reminded' : 'invoice.sent', subject: invoice.id }),
@@ -1907,7 +2054,8 @@ appRoutes.get('/faktury/:id/xml', async (c) => {
   const who = c.get('who')
   const id = c.req.param('id')
   const invoice = ID.test(id) ? await getInvoice(c.env.DB, who.company.id, id) : null
-  if (!invoice || invoice.status !== 'issued') return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  // A request for an advance is no invoice: it has no e-invoice.
+  if (!invoice || invoice.status !== 'issued' || invoice.kind === 'proforma') return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
   return xmlResponse(invoice, await invoiceLines(c.env.DB, invoice.id), who.company)
 })
 
@@ -1915,7 +2063,7 @@ export function xmlResponse(invoice: StoredInvoice, lines: Line[], seller: Compa
   return new Response(ublOf(invoice, lines, seller), {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${invoice.kind === 'credit' ? 'dobropis' : 'faktura'}-${invoice.number ?? 'koncept'}.xml"`,
+      'Content-Disposition': `attachment; filename="${invoice.kind === 'credit' ? 'dobropis' : invoice.kind === 'advance' ? 'zaloha' : 'faktura'}-${invoice.number ?? 'koncept'}.xml"`,
       'Cache-Control': 'private, no-store',
     },
   })

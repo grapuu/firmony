@@ -1110,6 +1110,25 @@ const MIGRATIONS: readonly string[][] = [
   // A.2 asks of the supply (the letter of § 69(12), the tariff's code, the quantity and its unit), on the invoice and
   // on its document (a hint until the accountant confirms the document's VAT, then part of it; guarded like the rest).
   ['ALTER TABLE invoices ADD COLUMN vat_reverse TEXT', 'ALTER TABLE documents ADD COLUMN vat_reverse TEXT', ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse'])],
+  // Advances (18 October 2026, invoices.ts): a request for an advance (zálohová faktúra, kind 'proforma') numbered in
+  // its own row with its own variable symbol, the tax document of an advance received (kind 'advance', § 73) and the
+  // final invoice that deducts it, each naming the request it belongs to (relates).
+  // A final invoice's document keeps the base of the advances it deducts (documents.advance_cents): the books take it
+  // from 324 to the revenue. An advance's line carries the VAT in the payment, and its deduction that VAT again
+  // (invoice_lines.vat_cents), since neither is counted from its base.
+  [
+    'ALTER TABLE invoices ADD COLUMN vs TEXT',
+    'ALTER TABLE invoice_lines ADD COLUMN vat_cents INTEGER',
+    // One tax document a payment received: a second click, or two at once, makes none.
+    'ALTER TABLE invoices ADD COLUMN payment_id TEXT',
+    'CREATE UNIQUE INDEX IF NOT EXISTS invoices_payment ON invoices (payment_id) WHERE payment_id IS NOT NULL',
+    'ALTER TABLE invoices ADD COLUMN relates TEXT',
+    'CREATE INDEX IF NOT EXISTS invoices_vs ON invoices (company_id, vs)',
+    // One final invoice a request: a second would deduct the same advances again.
+    "CREATE UNIQUE INDEX IF NOT EXISTS invoices_final ON invoices (relates) WHERE kind = 'invoice' AND status = 'issued' AND relates IS NOT NULL",
+    'ALTER TABLE documents ADD COLUMN advance_cents INTEGER',
+    ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents']),
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

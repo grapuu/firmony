@@ -278,7 +278,9 @@ export function readInvoice(xml: string, ourIco: string | null): Reading | null 
   const ours = ourIco !== null && icoAmong(supplier.ids) === ourIco
   const other = ours ? customer : supplier
   const means = list((invoice as Record<string, unknown>).PaymentMeans)[0]
-  const payable = at(invoice, 'LegalMonetaryTotal', 'PayableAmount')
+  // A prepayment invoice (386) is made for money already paid: what it is worth is its total with VAT, not what is due.
+  const prepayment = text(at(invoice, 'InvoiceTypeCode')) === '386'
+  const payable = at(invoice, 'LegalMonetaryTotal', prepayment ? 'TaxInclusiveAmount' : 'PayableAmount')
   const vat = list((invoice as Record<string, unknown>).TaxTotal).map((total) => toCents(text(at(total, 'TaxAmount')))).find((cents) => cents !== null) ?? null
   const iban = text(at(means, 'PayeeFinancialAccount', 'ID'))
   // The base and VAT of each rate, as the invoice itself sums them (BG-23); a credit note's are the amounts it takes back.

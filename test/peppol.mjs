@@ -132,6 +132,22 @@ const cases = [
     ),
   ]),
   [
+    "an advance's tax document (386)",
+    invoices.ublOf(
+      { ...invoice, number: '20260008', kind: 'advance', iban: null, relates: 'p', relatesNumber: 'ZF20260001' },
+      invoices.advanceLines(lines, 50000, true, (rate) => `Prijatá záloha, DPH ${rate} %`),
+      seller,
+    ),
+  ],
+  [
+    'a final invoice deducting an advance',
+    invoices.ublOf(
+      { ...invoice, number: '20260009', relates: 'p', relatesNumber: 'ZF20260001' },
+      [...lines, ...invoices.deductionLines([{ number: '20260008', lines: invoices.advanceLines(lines, 50000, true, () => 'z') }], lines.length + 1, (n) => `Odpočet zálohy, doklad č. ${n}`)],
+      seller,
+    ),
+  ],
+  [
     'a credit note of an invoice, kept with the minus',
     invoices.ublOf(
       { ...invoice, number: '20260007', iban: null, kind: 'credit', corrects: 'i', correctsNumber: '20260006', correctsIssuedOn: '2026-10-01', reason: 'Vrátený tovar' },

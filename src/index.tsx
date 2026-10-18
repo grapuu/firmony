@@ -611,7 +611,8 @@ app.get('/f/:token/xml', async (c) => {
   await ensureSchema(c.env.DB)
   const found = await invoiceByToken(c.env.DB, c.req.param('token'))
   const seller = found ? await getCompany(c.env.DB, found.company) : null
-  if (!found || !seller) return c.notFound()
+  // A request for an advance is no invoice: it has no e-invoice.
+  if (!found || !seller || found.invoice.kind === 'proforma') return c.notFound()
   return xmlResponse(found.invoice, await invoiceLines(c.env.DB, found.invoice.id), seller)
 })
 

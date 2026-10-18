@@ -443,7 +443,11 @@ export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy;
     contra: how.contra ?? null,
   })
   const registered = company.vatStatus !== 'none'
-  return raw
+  // A final invoice deducting advances received: their base leaves 324 for the revenue (their VAT was settled on the
+  // advances' own tax documents).
+  const revenueAccount = doc.account && /^\d{3,6}$/.test(doc.account) ? doc.account : CATEGORIES[doc.category].account
+  const advance: typeof raw = isIssued(doc.kind) && doc.advanceCents > 0 && CATEGORIES[doc.category].revenue && doc.category !== 'advance' ? [{ md: '324', d: revenueAccount, cents: doc.advanceCents, what: 'revenue' }] : []
+  return [...raw, ...advance]
     .filter((line) => line.cents > 0)
     .map((line) => {
       const md = registered && line.md === '343' ? VAT_IN : (canonicalAccount(line.md) ?? line.md)

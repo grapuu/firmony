@@ -2476,6 +2476,18 @@
   gap: 10px;
 }
 
+.phead__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.items__deduct {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .phead__aside {
   align-self: center;
 }
@@ -3785,6 +3797,11 @@ select.field__input {
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.03em;
+}
+/* The tax document of a payment received: a long name in a smaller size, so the seller keeps its line. */
+.sheet__kind.sheet__kind--long {
+  font-size: 1.5rem;
+  line-height: 1.1;
 }
 
 .sheet__number {

@@ -161,6 +161,8 @@ export interface Doc {
   modeHint: VatMode | null
   /** What the issuer said of a reverse-charged supply (documents.vat_reverse), for the proposal. */
   reverseHint: ReverseGoods | null
+  /** A final invoice: the base of the advances it deducts (cents), which the books move from 324 to the revenue. */
+  advanceCents: number
   /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
   ekasaUid: string | null
   ekasaOkp: string | null
@@ -290,7 +292,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse`
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents`
 export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
 
 export function docOf(row: Row): Doc {
@@ -338,6 +340,7 @@ export function docOf(row: Row): Doc {
     linesHint: isVatMode(row.vat_mode) ? [] : vatLinesOf(row.vat_lines),
     modeHint: isVatMode(row.vat_hint) ? row.vat_hint : null,
     reverseHint: reverseOf(row.vat_reverse),
+    advanceCents: typeof row.advance_cents === 'number' && row.advance_cents > 0 ? row.advance_cents : 0,
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),
   }
