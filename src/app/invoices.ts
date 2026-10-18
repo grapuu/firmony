@@ -71,7 +71,24 @@ export interface InvoiceValues {
   /** The currency it is issued in (euros when not said), and the rate typed for it ("1,0845"; else the ECB's). */
   currency?: string
   rate?: string
+  /** The customer's state (ISO 3166); empty: the state of its VAT number, else Slovakia. */
+  customerCountry?: string
 }
+
+/**
+ * The states a customer may be in, by their Slovak names: the Union, the rest of Europe and the usual partners beyond
+ * it (an export to a private person needs the state, which no VAT number gives).
+ */
+export const COUNTRIES: Record<string, string> = {
+  SK: 'Slovensko', CZ: 'Česko', AT: 'Rakúsko', HU: 'Maďarsko', PL: 'Poľsko', DE: 'Nemecko', BE: 'Belgicko', BG: 'Bulharsko', CY: 'Cyprus',
+  DK: 'Dánsko', EE: 'Estónsko', FI: 'Fínsko', FR: 'Francúzsko', GR: 'Grécko', HR: 'Chorvátsko', IE: 'Írsko', IT: 'Taliansko', LT: 'Litva',
+  LU: 'Luxembursko', LV: 'Lotyšsko', MT: 'Malta', NL: 'Holandsko', PT: 'Portugalsko', RO: 'Rumunsko', SE: 'Švédsko', SI: 'Slovinsko',
+  ES: 'Španielsko', GB: 'Spojené kráľovstvo', CH: 'Švajčiarsko', NO: 'Nórsko', IS: 'Island', LI: 'Lichtenštajnsko', UA: 'Ukrajina',
+  RS: 'Srbsko', ME: 'Čierna Hora', MK: 'Severné Macedónsko', AL: 'Albánsko', BA: 'Bosna a Hercegovina', MD: 'Moldavsko', TR: 'Turecko',
+  US: 'Spojené štáty', CA: 'Kanada', MX: 'Mexiko', BR: 'Brazília', CN: 'Čína', JP: 'Japonsko', KR: 'Južná Kórea', IN: 'India',
+  IL: 'Izrael', AE: 'Spojené arabské emiráty', SG: 'Singapur', AU: 'Austrália', NZ: 'Nový Zéland', ZA: 'Južná Afrika',
+}
+export const isCountry = (v: unknown): v is string => typeof v === 'string' && v in COUNTRIES
 
 /**
  * The currencies an invoice may be issued in: the euro and every currency the ECB declares a reference rate of (its
@@ -302,6 +319,7 @@ export function isIban(text: string): boolean {
 
 export interface Errors {
   customerName?: string
+  customerCountry?: string
   customerIcdph?: string
   reverse?: string
   reverseCustomer?: string
@@ -364,6 +382,8 @@ export function checkValues(values: InvoiceValues, dayOf: (text: string) => stri
   if (values.iban !== '' && !isIban(values.iban)) errors.iban = messages.iban
   // Goods or a service to another member state go to a VAT payer there: its VAT number is on the invoice (§ 74(1)(b)).
   const vatId = values.customerIcdph.replace(/[\s.-]/g, '').toUpperCase()
+  // A state chosen and a VAT number of another state do not go together.
+  if (values.customerCountry && /^[A-Z]{2}/.test(vatId) && countryOf(vatId) !== values.customerCountry) errors.customerCountry = messages.customerCountry
   if ((values.mode === 'eu_goods' || values.mode === 'eu_service') && (!isEuVatId(vatId) || vatId.startsWith('SK'))) errors.customerIcdph = messages.customerIcdph
   // Domestic reverse charge goes to a Slovak payer only, and says what is supplied (the control statement's A.2).
   if (values.mode === 'reverse') {
@@ -432,6 +452,8 @@ export interface StoredInvoice {
   reason: string | null
   /** Issued by a repeat (repeat.ts), which one. */
   repeatId: string | null
+  /** The customer's state as chosen; null: the state of its VAT number, else Slovakia (`customerCountryOf`). */
+  customerCountry: string | null
   /** The currency it is issued in ('EUR' for most), the rate it is converted to euros at and the ECB's day of it. */
   currency: string
   fxRate: string | null
@@ -461,10 +483,13 @@ const VAT_SCHEMES: Record<string, string> = {
 }
 
 /** The state of a VAT number (ISO 3166: Greece's EL is GR), Slovakia when there is none. */
-const countryOf = (icdph: string | null): string => {
+export const countryOf = (icdph: string | null): string => {
   const prefix = /^([A-Z]{2})/.exec((icdph ?? '').replace(/\s/g, '').toUpperCase())?.[1]
   return !prefix ? 'SK' : prefix === 'EL' ? 'GR' : prefix
 }
+
+/** An invoice's customer's state: as chosen, else of its VAT number, else Slovakia. */
+export const customerCountryOf = (invoice: Pick<StoredInvoice, 'customerCountry' | 'customerIcdph'>): string => invoice.customerCountry ?? countryOf(invoice.customerIcdph)
 
 /**
  * The invoice as UBL 2.1 in the profile Peppol BIS Billing 3.0 (EN 16931), which the digital postmen carry from
@@ -496,8 +521,8 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
   const taxCategory = (rate: number) =>
     `<cac:TaxCategory><cbc:ID>${category(rate)}</cbc:ID>${percent(rate)}${terms ? `<cbc:TaxExemptionReasonCode>${terms.code}</cbc:TaxExemptionReasonCode>` : ''}${reason(rate) ? `<cbc:TaxExemptionReason>${esc(reason(rate) ?? '')}</cbc:TaxExemptionReason>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`
   const vatId = (icdph: string | null) => (seller.vatPayer && terms?.category !== 'O' ? icdph : null)
-  const party = (p: { name: string; ico: string | null; dic: string | null; icdph: string | null; address: string | null; vatNumber: string | null }) => {
-    const country = countryOf(p.vatNumber)
+  const party = (p: { name: string; ico: string | null; dic: string | null; icdph: string | null; address: string | null; vatNumber: string | null; country?: string }) => {
+    const country = p.country ?? countryOf(p.vatNumber)
     const vatNumber = (p.vatNumber ?? '').replace(/\s/g, '').toUpperCase()
     const scheme = country === 'SK' ? null : VAT_SCHEMES[vatNumber.slice(0, 2)]
     // A Slovak company's DIČ, or the digits of its IČ DPH, which are its DIČ.
@@ -532,9 +557,9 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
       ? `<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>${esc(invoice.correctsNumber)}</cbc:ID>${invoice.correctsIssuedOn ? `<cbc:IssueDate>${invoice.correctsIssuedOn}</cbc:IssueDate>` : ''}</cac:InvoiceDocumentReference></cac:BillingReference>`
       : '',
     `<cac:AccountingSupplierParty>${party({ name: seller.name, ico: seller.ico, dic: seller.dic, icdph: vatId(seller.icdph), address: seller.address, vatNumber: seller.icdph })}</cac:AccountingSupplierParty>`,
-    `<cac:AccountingCustomerParty>${party({ name: invoice.customerName, ico: invoice.customerIco, dic: invoice.customerDic, icdph: vatId(invoice.customerIcdph), address: invoice.customerAddress, vatNumber: invoice.customerIcdph })}</cac:AccountingCustomerParty>`,
+    `<cac:AccountingCustomerParty>${party({ name: invoice.customerName, ico: invoice.customerIco, dic: invoice.customerDic, icdph: vatId(invoice.customerIcdph), address: invoice.customerAddress, vatNumber: invoice.customerIcdph, country: customerCountryOf(invoice) })}</cac:AccountingCustomerParty>`,
     // Goods to another member state name the state they went to (BR-IC-12).
-    `<cac:Delivery><cbc:ActualDeliveryDate>${invoice.deliveredOn}</cbc:ActualDeliveryDate>${terms?.category === 'K' ? `<cac:DeliveryLocation><cac:Address><cac:Country><cbc:IdentificationCode>${countryOf(invoice.customerIcdph)}</cbc:IdentificationCode></cac:Country></cac:Address></cac:DeliveryLocation>` : ''}</cac:Delivery>`,
+    `<cac:Delivery><cbc:ActualDeliveryDate>${invoice.deliveredOn}</cbc:ActualDeliveryDate>${terms?.category === 'K' ? `<cac:DeliveryLocation><cac:Address><cac:Country><cbc:IdentificationCode>${customerCountryOf(invoice)}</cbc:IdentificationCode></cac:Country></cac:Address></cac:DeliveryLocation>` : ''}</cac:Delivery>`,
     // A credit transfer to the account (30) names the account (BR-61); without one, the means is not defined (1). A
     // credit note is paid back to the customer's account, which the company has and the file need not name.
     credit
@@ -612,6 +637,7 @@ function invoiceOf(row: Row): StoredInvoice {
     mode: isInvoiceMode(row.vat_mode) ? row.vat_mode : 'domestic',
     reverse: reverseOf(row.vat_reverse),
     repeatId: str(row.repeat_id),
+    customerCountry: isCountry(row.customer_country) ? row.customer_country : null,
     currency: isCurrency(row.currency) ? row.currency : 'EUR',
     fxRate: str(row.fx_rate),
     fxDay: str(row.fx_day),
@@ -761,13 +787,13 @@ export function saveInvoiceStatements(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
            issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse, relates, vs, payment_id,
-           currency, fx_rate, fx_day, repeat_id)
+           currency, fx_rate, fx_day, repeat_id, customer_country)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('ZF%d%04d', ?6, next.seq) ELSE printf('%d%04d', ?6, next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
-           CASE WHEN ?5 = 'issued' AND ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq) END, ?28, ?29, ?30, ?31, ?32
+           CASE WHEN ?5 = 'issued' AND ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq) END, ?28, ?29, ?30, ?31, ?32, ?33
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one.
          FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6 AND (kind = 'proforma') = (?22 = 'proforma')) AS next`,
       )
@@ -791,6 +817,7 @@ export function saveInvoiceStatements(
         args.fx && args.fx.currency !== 'EUR' ? args.fx.rate : null,
         args.fx && args.fx.currency !== 'EUR' ? args.fx.day : null,
         args.repeat ?? null,
+        isCountry(v.customerCountry) ? v.customerCountry : null,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol. A request for an advance is no document.

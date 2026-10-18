@@ -36,6 +36,7 @@ import {
   advancesOf,
   finalOf,
   isInvoiceCurrency,
+  isCountry,
   checkValues,
   deductionLines,
   isInvoiceMode,
@@ -1636,6 +1637,7 @@ function invoiceValuesFrom(body: Record<string, unknown>, vatPayer: boolean): In
     ...(text('druh', 12) === 'zalohova' ? { proforma: true } : {}),
     ...(ID.test(text('vyuctovanie', 64)) ? { relates: text('vyuctovanie', 64) } : {}),
     currency: isInvoiceCurrency(text('mena', 3)) ? text('mena', 3) : 'EUR',
+    customerCountry: isCountry(text('stat', 2)) ? text('stat', 2) : '',
     rate: text('kurz', 16),
     lines: Array.from({ length: rows }, (_, i) => ({
       description: text(`r${i}-popis`, 300),
@@ -1766,6 +1768,7 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.customerIco = request.customerIco ?? ''
     values.customerDic = request.customerDic ?? ''
     values.customerIcdph = request.customerIcdph ?? ''
+    values.customerCountry = request.customerCountry ?? ''
     values.customerEmail = request.customerEmail ?? ''
     values.note = request.note ?? ''
     values.mode = request.mode
@@ -1783,6 +1786,7 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.customerIco = original.customerIco ?? ''
     values.customerDic = original.customerDic ?? ''
     values.customerIcdph = original.customerIcdph ?? ''
+    values.customerCountry = original.customerCountry ?? ''
     values.customerEmail = original.customerEmail ?? ''
     values.delivered = textDay(original.deliveredOn)
     values.iban = ''
@@ -1807,6 +1811,7 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.customerIco = earlier.customerIco ?? ''
     values.customerDic = earlier.customerDic ?? ''
     values.customerIcdph = earlier.customerIcdph ?? ''
+    values.customerCountry = earlier.customerCountry ?? ''
     values.customerEmail = earlier.customerEmail ?? ''
     if (like) {
       values.note = earlier.note ?? ''
@@ -1864,6 +1869,7 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     values.customerIco = original.customerIco ?? ''
     values.customerDic = original.customerDic ?? ''
     values.customerIcdph = original.customerIcdph ?? ''
+    values.customerCountry = original.customerCountry ?? ''
     values.iban = ''
     // A credit note is taxed as the invoice it corrects, in its currency and at its rate (§ 25: the rate of the supply).
     values.currency = original.currency
@@ -2030,6 +2036,7 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
       customerIco: invoice.customerIco ?? '',
       customerDic: invoice.customerDic ?? '',
       customerIcdph: invoice.customerIcdph ?? '',
+      customerCountry: invoice.customerCountry ?? '',
       customerEmail: invoice.customerEmail ?? '',
       issued: textDay(invoice.issuedOn),
       delivered: textDay(invoice.deliveredOn),

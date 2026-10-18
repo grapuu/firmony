@@ -1347,6 +1347,26 @@ check(
 )
 check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') && repeat.isRepeatEvery(3) && repeat.isRepeatEvery('12') && !repeat.isRepeatEvery('2') && !repeat.isRepeatEvery('x'))
 
+// The customer's state (18 October 2026): chosen, else its VAT number's, else Slovakia; never against its VAT number.
+{
+  const abroad = invoices.ublOf({ ...stored, customerIcdph: null, customerDic: null, customerIco: null, customerCountry: 'US', mode: 'export' }, [{ position: 1, description: 'Tovar', quantityMilli: 1000, unit: 'ks', unitCents: 10000, vatRate: 0, baseCents: 10000 }], seller)
+  const customer = abroad.match(/<cac:AccountingCustomerParty>[\s\S]*?<\/cac:AccountingCustomerParty>/)?.[0] ?? ''
+  check("an export to a private person names the customer's state, which no VAT number gives", customer.includes('<cbc:IdentificationCode>US</cbc:IdentificationCode>'))
+  check(
+    'the state of a VAT number, Slovakia without one, and the chosen state first',
+    invoices.customerCountryOf({ customerCountry: null, customerIcdph: 'EL123456789' }) === 'GR' &&
+      invoices.customerCountryOf({ customerCountry: null, customerIcdph: null }) === 'SK' &&
+      invoices.customerCountryOf({ customerCountry: 'AT', customerIcdph: null }) === 'AT',
+  )
+  const values = { customerName: 'Kunde', customerAddress: '', customerIco: '', customerDic: '', customerIcdph: 'DE123456789', customerEmail: '', issued: '1. 10. 2026', delivered: '1. 10. 2026', due: '1. 10. 2026', iban: '', note: '', lines: [] }
+  const messages = new Proxy({}, { get: (_, key) => String(key) })
+  check(
+    'a state chosen against the VAT number is said',
+    invoices.checkValues({ ...values, customerCountry: 'CZ' }, (t) => (t ? '2026-10-01' : null), messages).customerCountry === 'customerCountry' &&
+      !invoices.checkValues({ ...values, customerCountry: 'DE' }, (t) => (t ? '2026-10-01' : null), messages).customerCountry,
+  )
+}
+
 // Payment orders (18 October 2026): the suppliers' invoices owed as one SEPA file the bank imports (pain.001.001.03).
 {
   const xml = payorders.painXml({

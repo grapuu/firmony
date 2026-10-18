@@ -1186,6 +1186,9 @@ const MIGRATIONS: readonly string[][] = [
     )`,
     'CREATE INDEX IF NOT EXISTS payment_order_items_document ON payment_order_items (document_id)',
   ],
+  // The customer's state on an invoice (18 October 2026): chosen on the form; without it, the state of the customer's
+  // VAT number, else Slovakia (an export to a private person needs it).
+  ['ALTER TABLE invoices ADD COLUMN customer_country TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

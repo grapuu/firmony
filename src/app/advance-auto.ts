@@ -45,6 +45,7 @@ export async function issueAdvances(db: D1Database, company: Company, request: S
       customerIco: request.customerIco ?? '',
       customerDic: request.customerDic ?? '',
       customerIcdph: request.customerIcdph ?? '',
+    customerCountry: request.customerCountry ?? '',
       customerEmail: request.customerEmail ?? '',
       issued: today,
       delivered: payment.bookedOn,

@@ -160,6 +160,16 @@ const cases = [
     ),
   ],
   [
+    // A private person has no electronic address on Peppol, so its invoice is a file for import, never sent on the
+    // network: Peppol's own rule R010 (a buyer's address) is the one it may break.
+    'an export to a private person in the United States, the state chosen (G), a file outside the network (R010 only)',
+    invoices.ublOf(
+      { ...invoice, number: '20260012', mode: 'export', customerIcdph: null, customerDic: null, customerIco: null, customerCountry: 'US', customerAddress: '5th Avenue 1, 10001 New York' },
+      [line(1, 'Tovar', 1000, 'ks', 5000, 0)],
+      seller,
+    ),
+  ],
+  [
     'a credit note of an invoice, kept with the minus',
     invoices.ublOf(
       { ...invoice, number: '20260007', iban: null, kind: 'credit', corrects: 'i', correctsNumber: '20260006', correctsIssuedOn: '2026-10-01', reason: 'Vrátený tovar' },
@@ -184,7 +194,8 @@ check(
 )
 for (const [name, xml] of cases) {
   const found = await validate(xml)
-  const fatal = found.filter((f) => f.flag === 'fatal')
+  const outside = name.includes('(R010 only)')
+  const fatal = found.filter((f) => f.flag === 'fatal' && !(outside && f.id === 'PEPPOL-EN16931-R010'))
   for (const f of found.filter((f) => f.flag !== 'fatal')) console.log(`     warning ${f.set} ${f.id}: ${f.text.slice(0, 140)}`)
   check(`${name}: valid UBL 2.1, no rule of EN 16931 or Peppol BIS 3.0 broken`, fatal.length === 0, fatal.map((f) => `${f.set} ${f.id}: ${f.text.slice(0, 160)}`).join(' | '))
 }

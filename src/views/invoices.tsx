@@ -4,7 +4,7 @@ import type { FC } from 'hono/jsx'
 import { ART, BRAND } from '../config'
 import { formatEur, formatEurExact, formatMoney } from '../format'
 import { app, dayName } from '../app/copy'
-import { INVOICE_CURRENCIES, INVOICE_MODES, MODE_TERMS, UNITS, VAT_RATES, creditLines, eurVat, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
+import { COUNTRIES, INVOICE_CURRENCIES, INVOICE_MODES, customerCountryOf, MODE_TERMS, UNITS, VAT_RATES, creditLines, eurVat, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import { REVERSE_KINDS } from '../app/vat'
 import { REPEAT_EVERY, type Repeat } from '../app/repeat'
@@ -210,6 +210,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
                 ['ico', values.customerIco],
                 ['dic', values.customerDic],
                 ['icdph', values.customerIcdph],
+                ['stat', values.customerCountry ?? ''],
               ] as const
             ).map(([name, value]) => (
               <input type="hidden" name={name} value={value} />
@@ -269,6 +270,20 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
             <Text name="adresa" label={f.address} value={values.customerAddress} wide max={300} />
             <Text name="dic" label={f.dic} value={values.customerDic} mode="numeric" max={12} />
             <Text name="icdph" label={f.icdph} value={values.customerIcdph} error={errors.customerIcdph} max={14} />
+            <div class="fgrid__cell">
+              <label class="field__label" for="f-stat">
+                {f.country}
+              </label>
+              <select id="f-stat" class="field__input" name="stat" aria-invalid={errors.customerCountry ? 'true' : undefined}>
+                <option value="">{f.countryAuto}</option>
+                {Object.entries(COUNTRIES).map(([code, name]) => (
+                  <option value={code} selected={values.customerCountry === code}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              {errors.customerCountry ? <p class="field__error">{errors.customerCountry}</p> : null}
+            </div>
             <Text name="email" label={f.email} value={values.customerEmail} error={errors.customerEmail} hint={f.emailHint} type="email" wide />
           </div>
         </section>
@@ -546,6 +561,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
           <p class="sheet__label">{s.customer}</p>
           <p class="sheet__company">{invoice.customerName}</p>
           {invoice.customerAddress ? <p>{invoice.customerAddress}</p> : null}
+          {customerCountryOf(invoice) !== 'SK' ? <p>{COUNTRIES[customerCountryOf(invoice)] ?? customerCountryOf(invoice)}</p> : null}
           <p class="sheet__ids">
             {invoice.customerIco ? (
               <span>

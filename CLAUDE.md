@@ -1161,6 +1161,12 @@ by itself.
   twice. It ends past its last day or the contract's; a locked period or a failure is said on the repeat. The list
   shows the repeats ("Opakované faktúry"), the invoice it issued says "Vystavená sama z opakovania", "Zastaviť
   opakovanie" stops it; purge deletes them. test/repeat.runtime.mjs, units "Invoices issued again".
+- The customer's state (built 18 October 2026, schema step 44: `invoices.customer_country`): the form's "Štát"
+  (`COUNTRIES`, the Union, the rest of Europe and the usual partners, by their Slovak names; empty: the state of the
+  VAT number, else Slovakia, `customerCountryOf`); a state against the VAT number is refused (`customerCountry`); the
+  sheet prints a state other than Slovakia, the e-invoice names it for the customer and for K's delivery; credit notes,
+  similar invoices, advances and repeats carry it. A private person has no Peppol address, so such a file breaks
+  Peppol's R010 alone (the Peppol test allows exactly that for its case) and is for import, never sent on the network.
 - Payment orders (built 18 October 2026, schema step 43: `payment_orders`, `payment_order_items`,
   `src/app/payorders.ts`, `src/views/payorders.tsx`): "Na úhradu" (/app/uhrady, linked from Doklady) lists the
   suppliers' invoices the company owes (a received invoice read or booked, in euros, no payment paired, not paid by
@@ -1181,7 +1187,7 @@ by itself.
   the ids bound as ?5 and ?4); and a credit note issued in the app made no entry in the books (its total keeps the
   minus; `planOf` takes a minus total that corrects an invoice).
 - Not built yet: a corrective invoice of a reverse-charged supply in the control statement, a customer's
-  state when it has no VAT number (an export to a private person reads as SK in the e-invoice), an advance in another
+  an advance in another
   currency, advances for a supply without Slovak VAT (goods to the EU, export, reverse charge: the request is refused),
   a rate that changes between the
   advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
@@ -1959,9 +1965,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1153 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1614 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
-npm run test:peppol      # 19 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+npm test                 # 1156 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
+npm run test:runtime     # 1616 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

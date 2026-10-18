@@ -149,6 +149,21 @@ export async function checkInvoiceCurrency({ db, nowS, signIn, as, day, capture 
     (await db.prepare("SELECT COUNT(*) AS n FROM fx_rates WHERE currency = 'ISK'").first())?.n > 0 ||
       (res.status === 422 && plain(await res.text()).includes('Kurz ECB zo dňa pred dodaním zatiaľ nepoznáme')),
   )
+  // An export to a private person abroad: the state chosen, on the sheet and in the e-invoice.
+  res = await client.post('/app/faktury', form({ rezim: 'export', icdph: '', stat: 'US', meno: 'TEST-ONLY John Smith' }))
+  const exportId = (res.headers.get('location') ?? '').match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
+  const exported = await db.prepare('SELECT customer_country, vat_mode FROM invoices WHERE id = ?').bind(exportId).first()
+  const exportXml = await (await client.get(`/app/faktury/${exportId}/xml`)).text()
+  check(
+    "an export to a private person keeps the customer's state, prints it and names it in the e-invoice",
+    res.status === 303 &&
+      exported?.customer_country === 'US' &&
+      plain(await (await client.get(`/app/faktury/${exportId}`)).text()).includes('Spojené štáty') &&
+      (exportXml.match(/<cac:AccountingCustomerParty>[\s\S]*?<\/cac:AccountingCustomerParty>/)?.[0] ?? '').includes('<cbc:IdentificationCode>US</cbc:IdentificationCode>'),
+    JSON.stringify(exported),
+  )
+  res = await client.post('/app/faktury', form({ stat: 'CZ', icdph: 'DE123456789', rezim: 'eu_service' }))
+  check('a state against the VAT number is said', res.status === 422 && plain(await res.text()).includes('Štát odberateľa nesedí s jeho IČ DPH'))
   res = await client.post('/app/faktury', form({ druh: 'zalohova' }))
   check('a request for an advance is in euros only', res.status === 422 && plain(await res.text()).includes('len v eurách'))
 
