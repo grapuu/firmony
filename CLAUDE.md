@@ -28,7 +28,7 @@ over. Bring this section up to date first whenever a session ends.
    centres, six mended; then VAT on imports (customs paid, and self-assessed by an AEO under § 84a) and the takings of an
    eKasa till with the control statement's D.1 (schema step 54; "VAT: the return and the control statement" and "The
    takings of an eKasa till"), approvers with limits and two approvals for larger companies (schema step 55, under
-   "Payment orders"). **Nothing is live**: there
+   "Payment orders"); a fifth independent review, of imports and takings, nine findings mended (schema step 56). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1447,6 +1447,16 @@ file its VAT with us.
 - Read on 18 October 2026: KVDPH's instructions of 2021 (part D.1: the turnover of all tills including corrections,
   exempt supplies may be left out, an invoice also recorded in the till may be counted twice; D.2 only what D.1 does not
   hold) and the schema's D1 element (kv_dph_2025.xsd).
+- Mended after an independent review (18 October 2026, of commit b3eb001; each finding verified first; schema step 56,
+  `documents_takings`): the control statement is filed whenever a part has a line, so a supply with domestic reverse
+  charge (A.2, in no row) is never left out by a nil return, goods alone or imports alone (`PeriodResult.skip` says why
+  none is filed, and the VAT page says it for imports); the booking screen changes, unbooks and discards no takings
+  (the client takes them back and writes again); the client's list and page say "Zaplatená pri pokladnici" with the
+  cash and card parts, and takings are never "paid privately"; a day before the registration for VAT is written
+  without VAT (the revenue whole); the VAT typed for a rate is refused when it is off the VAT in the takings by more
+  than 10 cents or one per cent; a closing's number is at most 32 characters and never blocks the period; the same
+  closing twice (the day and number, or without one the total) is refused, also by a unique index; the event is
+  written only with the document; `doklady.csv` gives takings their day and amount paid and the cash part.
 - Not built: the till's data read from the Financial Administration (only a verifier may, "eKasa receipts"), the card
   settlement from the acquirer paired by itself (the accountant gives the bank's payment 261 and the fee 568), takings in
   another currency, refunds (a negative day: corrections by the accountant). test/takings.runtime.mjs, units "imports"
@@ -2234,8 +2244,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1202 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1763 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1205 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1768 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

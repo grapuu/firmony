@@ -458,6 +458,8 @@ export const app = typesetAll({
     cols: { day: 'Deň', number: 'Uzávierka', total: 'Tržba', vat: 'DPH', cash: 'Hotovosť', card: 'Kartou' },
     total: 'Spolu',
     remove: 'Zrušiť',
+    paidAtTill: (cash: string, card: string) => typeset(`Zaplatená pri pokladnici: ${cash} v hotovosti, ${card} kartou.`),
+    beforeVat: 'Tržba je z obdobia pred registráciou pre DPH: zapísali sme ju bez DPH.',
     saved: (day: string) => typeset(`Tržbu za ${day} sme zapísali a zaúčtovali.`),
     removed: 'Tržbu sme zrušili.',
     errors: {
@@ -471,6 +473,8 @@ export const app = typesetAll({
       locked: 'Toto obdobie má účtovníčka uzavreté: tržbu doň zapísať ani ju zrušiť nemožno. Napíšte jej správu.',
       short: (cents: string) => typeset(`Hotovosť z tejto tržby už bola z pokladne vydaná: pokladňa by klesla pod nulu o ${cents}. Najprv zrušte výdaj.`),
       changed: 'Medzitým sa v údajoch firmy niečo zmenilo. Skúste to ešte raz.',
+      vatOff: 'DPH pri niektorej sadzbe nesedí s tržbou: skontrolujte ju podľa uzávierky alebo ju nechajte prázdnu.',
+      twice: 'Túto tržbu už máte zapísanú (rovnaký deň a uzávierka alebo suma). Ak ide o ďalšiu pokladnicu, doplňte číslo jej uzávierky.',
     },
   },
   cash: {
@@ -642,7 +646,7 @@ export const app = typesetAll({
     filters: { all: 'Všetky', loose: 'Bez platby' },
     empty: 'Zatiaľ tu nie sú žiadne doklady.',
     emptyLoose: 'Každý doklad má svoju platbu.',
-    state: { reading: 'Čítame…', manual: 'Prečíta ho účtovníčka', linked: 'Priradený k platbe', waiting: 'Čaká na platbu', private: 'Zaplatený súkromne' },
+    state: { reading: 'Čítame…', manual: 'Prečíta ho účtovníčka', linked: 'Priradený k platbe', waiting: 'Čaká na platbu', private: 'Zaplatený súkromne', till: 'Zaplatená pri pokladnici' },
     unknown: 'Doklad',
     added: (n: number) =>
       typeset(n === 1 ? 'Doklad sme dostali. Prečítame ho a priradíme k platbe.' : `Dostali sme ${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}. Prečítame ich a priradíme k platbám.`),

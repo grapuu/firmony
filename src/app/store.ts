@@ -923,7 +923,7 @@ export function manualStatement(db: D1Database, company: string, doc: string, wh
 export function privatelyStatement(db: D1Database, company: string, doc: string, paid: boolean): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE documents SET paid_privately = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = documents.id)
+      `UPDATE documents SET paid_privately = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL AND source <> 'takings' AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = documents.id)
          AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = documents.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)`,
     )
     .bind(paid ? 1 : 0, doc, company)

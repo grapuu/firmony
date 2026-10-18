@@ -178,11 +178,14 @@ export async function exportYear(
   const [docRows, payRows, linkRows, invoices, messageRows, books, statementRows, tripRows] = await Promise.all([
     db
       .prepare(
-        // Paid by the bank, or in cash by a cash document of the cash box (its day and its amount).
+        // Paid by the bank, or in cash by a cash document of the cash box (its day and its amount), or a day's takings of
+        // a till, paid at the till on its day.
         `SELECT ${DOC_COLUMNS},
-           COALESCE(p.booked_on, (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
+           COALESCE(p.booked_on, (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1),
+             CASE WHEN d.source = 'takings' THEN d.issued_on END) AS paid_on,
            COALESCE(p.amount_cents, (SELECT json_extract(ce.lines, '$[0].cents') * (CASE WHEN d.kind = 'invoice_out' THEN 1 ELSE -1 END)
-             FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_cents
+             FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1),
+             CASE WHEN d.source = 'takings' THEN d.total_cents END) AS paid_cents
          FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
          WHERE d.company_id = ? AND d.deleted_at IS NULL AND substr(COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), 1, 4) = ?
          ORDER BY COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), d.created_at`,
@@ -312,6 +315,7 @@ export async function exportYear(
       'Súbor v archíve',
       'Pridané',
       'Stredisko',
+      'Tržba eKasa: v hotovosti',
     ],
     ...docs.map(({ d, day, file, paidOn, paidCents }) => [
       d.issuedOn ?? '',
@@ -333,6 +337,7 @@ export async function exportYear(
       file ?? '',
       file ? day : bratislava(d.createdAt * 1000).day,
       d.centerId ? (centerCodes.get(d.centerId) ?? '') : '',
+      d.source === 'takings' ? csvMoney(d.takingsCash ?? 0) : '',
     ]),
   ])
 

@@ -1459,7 +1459,7 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
 
 // The day's takings of a till (18 October 2026): each rate's VAT out of the takings with VAT, or as the closing says it.
 {
-  const text = { day: 'd', amount: 'a', none: 'n', vat: 'v', card: 'c' }
+  const text = { day: 'd', amount: 'a', none: 'n', vat: 'v', card: 'c', vatOff: 'o' }
   const cents = (s) => {
     const m = /^(\d+)(?:,(\d{1,2}))?$/.exec(s.replace(/\s/g, ''))
     return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : Number.NaN
@@ -1486,6 +1486,14 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
       read({ den: '2026-10-15', trzba_0: '100', trzba_23: '50' }, false).input?.lines.length === 1 &&
       takings.vatInGross(12300, 23) === 2300 &&
       takings.vatInGross(105, 5) === 5,
+  )
+  check(
+    'VAT typed that does not fit its rate is refused, a few cents of a till rounding each receipt are not',
+    read({ den: '2026-10-15', trzba_23: '123,00', dph_23: '2,30' }).errors.vat === 'o' &&
+      read({ den: '2026-10-15', trzba_5: '105,00', dph_5: '50,00' }).errors.vat === 'o' &&
+      read({ den: '2026-10-15', trzba_23: '123,00', dph_23: '123,00' }).errors.vat === 'o' &&
+      read({ den: '2026-10-15', trzba_23: '123,00', dph_23: '23,07' }).input !== null &&
+      read({ den: '2026-10-15', trzba_23: '12300,00', dph_23: '2318,00' }).input !== null,
   )
 }
 
@@ -2298,7 +2306,13 @@ async function zipped(entries, note) {
     )
     check('no import in the control statement, and nothing keeps the month back', vat.kvRows(imp.kv) === 0 && !imp.issues.some((i) => i.level === 'block') && imp.statement, JSON.stringify(imp.issues))
     const only = vat.workOut(payer, '2027-01', [customs])
-    check('VAT deducted on imports alone needs no control statement', !only.statement && !only.nothing && only.rows.r33 === 23000)
+    check('VAT deducted on imports alone needs no control statement', !only.statement && only.skip === 'import' && !only.nothing && only.rows.r33 === 23000)
+    // Found by the review of 18 October 2026: a supply with domestic reverse charge is in A.2 and in no row, so the
+    // control statement is filed whatever the rows say.
+    const ptpOut = doc({ kind: 'invoice_out', number: 'R-A2', vat: v('reverse', [[0, 600000, 0]], { vatId: 'SK2020000000', reverse: { kind: 'j', code: null, quantity: null, unit: null } }) })
+    const withA2 = vat.workOut(payer, '2027-01', [customs, ptpOut])
+    const a2Alone = vat.workOut(payer, '2027-01', [ptpOut])
+    check('a line of A.2 asks for the control statement, with imports or alone', withA2.statement && withA2.kv.a2.length === 1 && a2Alone.statement && a2Alone.skip === null)
     // A customs document that came after the deadline is deducted in the month it came, as an invoice.
     check(
       "a customs document is deducted when it came, as an invoice; an importer's own VAT stays in the month of the declaration",
@@ -2357,6 +2371,8 @@ async function zipped(entries, note) {
     const diff = vat.kvDiff(before, after)
     check('a changed D.1 is two lines of a supplementary statement, the old and the new', diff.d1.length === 2 && diff.d1[0].k === 1 && diff.d1[1].k === 2 && diff.d1[1].z === 10000)
     check('a statement kept before D.1 compares as without it', vat.kvDiff({ ...before, d1: undefined }, before).d1.length === 1)
+    const longNumber = vat.workOut(payer, '2027-01', [{ ...till('2027-01-06', [[23, 1000, 230]]), number: 'Z'.repeat(40) }])
+    check("a till's closing number is in no part of the statement: a long one keeps nothing back", !longNumber.issues.some((i) => i.code === 'number'))
   }
 
   {

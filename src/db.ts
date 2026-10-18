@@ -1324,6 +1324,11 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE documents ADD COLUMN first_approved_at INTEGER',
     'ALTER TABLE documents ADD COLUMN first_approved_by TEXT',
   ],
+  // After the review of the takings (18 October 2026): one day's closing once, by its number, or without one by its total.
+  [
+    `CREATE UNIQUE INDEX IF NOT EXISTS documents_takings ON documents (company_id, issued_on, COALESCE(number, ''), (CASE WHEN number IS NULL THEN total_cents ELSE 0 END))
+       WHERE source = 'takings' AND deleted_at IS NULL`,
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

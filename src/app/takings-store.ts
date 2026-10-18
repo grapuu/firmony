@@ -2,7 +2,7 @@
 // back by a mark only at the data revision its cash was checked at.
 import { now } from '../db'
 import type { Takings, TakingsCategory } from './takings'
-import { eventStatement, vatLinesOf } from './store'
+import { vatLinesOf } from './store'
 import type { VatLine } from './vat'
 
 type Row = Record<string, unknown>
@@ -65,7 +65,10 @@ export function takingsStatements(db: D1Database, a: { id: string; company: stri
           WHERE ?14 IS NULL OR EXISTS (SELECT 1 FROM cost_centers c WHERE c.id = ?14 AND c.company_id = ?2 AND c.archived_at IS NULL)`,
       )
       .bind(a.id, a.company, now(), a.user, TAKINGS_PARTY, t.number, t.on, t.total, t.vat, t.category, a.payer ? 'domestic' : 'none', JSON.stringify(t.lines), t.cash, t.center),
-    eventStatement(db, { company: a.company, user: a.user, action: 'takings.added', subject: a.id, detail: { on: t.on, total: t.total, cash: t.cash } }),
+    // Recorded only when the document was written (a centre archived meanwhile writes none).
+    db
+      .prepare("INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?, ?, ?, 'takings.added', ?, ? WHERE changes() > 0")
+      .bind(now(), a.company, a.user, a.id, JSON.stringify({ on: t.on, total: t.total, cash: t.cash })),
   ]
 }
 

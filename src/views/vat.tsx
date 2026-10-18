@@ -197,7 +197,19 @@ const KV_PARTS: { key: string; count: (view: PeriodView) => number }[] = [
 
 const StatementCard: FC<{ company: Company; view: PeriodView; docs: Map<string, Doc> }> = ({ company, view, docs }) => {
   const parts = KV_PARTS.map((p) => ({ ...p, lines: p.count(view), ids: [...(view.result.sources.get(p.key) ?? [])] })).filter((p) => p.lines > 0)
-  const text = company.vatStatus !== 'payer' ? v.statement7a : !view.result.statement ? (view.result.nothing ? v.statementNil : v.statementGoods) : parts.length === 0 ? v.statementNone : null
+  const why = view.result.skip ?? (view.result.nothing ? 'nothing' : 'goods')
+  const text =
+    company.vatStatus !== 'payer'
+      ? v.statement7a
+      : !view.result.statement
+        ? why === 'nothing'
+          ? v.statementNil
+          : why === 'import'
+            ? v.statementImport
+            : v.statementGoods
+        : parts.length === 0
+          ? v.statementNone
+          : null
   return (
     <section class="info" id="vykaz" aria-labelledby="vykaz-t">
       <h2 id="vykaz-t" class="info__title">

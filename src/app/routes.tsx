@@ -1347,7 +1347,11 @@ async function takingsPage(c: Ctx, extra: { values?: TakingsValues; errors?: Tak
   const year = years.includes(asked) ? asked : Number(day.slice(0, 4))
   const [rows, centers] = await Promise.all([listTakings(db, who.company.id, year), listCenters(db, who.company.id)])
   const savedOn = c.req.query('ok') === 'zapisana' ? (c.req.query('den') ?? '') : ''
-  const flash = /^\d{4}-\d{2}-\d{2}$/.test(savedOn) ? t.takings.saved(dayName(savedOn)) : c.req.query('ok') === 'zrusena' ? t.takings.removed : null
+  const flash = /^\d{4}-\d{2}-\d{2}$/.test(savedOn)
+    ? `${t.takings.saved(dayName(savedOn))}${c.req.query('bezdph') === '1' ? ` ${t.takings.beforeVat}` : ''}`
+    : c.req.query('ok') === 'zrusena'
+      ? t.takings.removed
+      : null
   return shell(
     c,
     'payments',
@@ -1380,19 +1384,32 @@ appRoutes.post('/trzby', async (c) => {
   const centers = read.values.center ? await listCenters(db, who.company.id) : []
   if (read.values.center && !centers.some((x) => x.id === read.values.center && !x.archived)) errors.center = t.takings.errors.center
   if (Object.values(errors).some(Boolean) || !read.input) return takingsPage(c, { values: read.values, errors }, 422)
-  const takings = read.input
+  let takings = read.input
   // Before our books start the takings were the former accountant's.
   const books = await booksOf(db, who.company)
   if (books.start && takings.on < books.start) return takingsPage(c, { values: read.values, errors: { day: t.takings.errors.beforeBooks(dayName(books.start)) } }, 422)
+  // A day before the registration for VAT took effect carries no VAT: its takings are the revenue whole.
+  const payer = who.company.vatPayer && (!who.company.vatSince || takings.on >= who.company.vatSince)
+  if (who.company.vatPayer && !payer) takings = { ...takings, lines: [{ rate: 0, base: takings.total, vat: 0, deduct: 0 }], vat: 0 }
+  // The same closing twice (a second click, or written again): the same day and number, or without one the same total.
+  const twice = await db
+    .prepare(
+      `SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'takings' AND deleted_at IS NULL AND issued_on = ?2
+         AND (CASE WHEN ?3 IS NOT NULL THEN number = ?3 ELSE number IS NULL AND total_cents = ?4 END)`,
+    )
+    .bind(who.company.id, takings.on, takings.number, takings.total)
+    .first()
+  if (twice) return takingsPage(c, { values: read.values, error: t.takings.errors.twice }, 409)
   const id = crypto.randomUUID()
   try {
-    const results = await db.batch(takingsStatements(db, { id, company: who.company.id, user: who.user.id, takings, payer: who.company.vatPayer }))
+    const results = await db.batch(takingsStatements(db, { id, company: who.company.id, user: who.user.id, takings, payer }))
     if ((results[0]?.meta?.changes ?? 0) === 0) return takingsPage(c, { values: read.values, errors: { center: t.takings.errors.center } }, 409)
   } catch (err) {
+    const message = err instanceof Error ? err.message : ''
     console.error('takings failed', err instanceof Error ? err.name : 'error')
-    return takingsPage(c, { values: read.values, error: /FIRMONY_PERIOD_LOCKED/.test(err instanceof Error ? err.message : '') ? t.takings.errors.locked : t.takings.errors.changed }, 409)
+    return takingsPage(c, { values: read.values, error: /FIRMONY_PERIOD_LOCKED/.test(message) ? t.takings.errors.locked : /UNIQUE/i.test(message) ? t.takings.errors.twice : t.takings.errors.changed }, 409)
   }
-  return c.redirect(`/app/trzby?rok=${takings.on.slice(0, 4)}&ok=zapisana&den=${takings.on}`, 303)
+  return c.redirect(`/app/trzby?rok=${takings.on.slice(0, 4)}&ok=zapisana&den=${takings.on}${who.company.vatPayer && !payer ? '&bezdph=1' : ''}`, 303)
 })
 
 appRoutes.post('/trzby/:id/zrusit', async (c) => {

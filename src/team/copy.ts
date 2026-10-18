@@ -443,7 +443,7 @@ export const team = typesetAll({
       category: 'Vyberte, na čo doklad je.',
       kind: 'Vyberte druh dokladu.',
       party: 'Doplňte partnera.',
-      takings: 'Je to denná tržba z eKasy: ostáva vydaným dokladom v eurách. Ak je zapísaná zle, klient ju zruší v Tržbách z eKasy a zapíše znova.',
+      takings: 'Je to denná tržba z eKasy, ktorú zapísal klient: tu sa nemení, neodúčtuje ani nezahadzuje. Ak je zapísaná zle, klient ju zruší v Tržbách z eKasy a zapíše znova.',
       cashPaid: (number: string) =>
         typeset(`Doklad je zaplatený v hotovosti pokladničným dokladom ${number}: jeho druh, menu a účet záväzku nemeňte. Ak je to omyl, klient najprv zruší pokladničný doklad.`),
     },
@@ -827,6 +827,7 @@ export const team = typesetAll({
     statementNone: 'Kontrolný výkaz obsahuje len údaje o firme: v jeho častiach nie je čo uviesť, podáva sa však aj tak.',
     statementNil: 'Kontrolný výkaz sa nepodáva: priznanie je nulové.',
     statementGoods: 'Kontrolný výkaz sa nepodáva: priznanie obsahuje len dodanie tovaru do EÚ alebo vývoz, bez odpočítania dane.',
+    statementImport: 'Kontrolný výkaz sa nepodáva: priznanie obsahuje len odpočítanie dane zaplatenej colnému úradu pri dovoze.',
     statement7a: 'Osoba registrovaná podľa § 7a kontrolný výkaz nepodáva.',
     parts: {
       A1: 'A.1 Vystavené faktúry s DPH podnikateľom',

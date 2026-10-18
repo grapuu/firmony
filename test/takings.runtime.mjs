@@ -73,13 +73,36 @@ export async function checkTakings({ db, acc, lucia, nowS, signIn, as, day, capt
   check('the cash part is in the cash box', page.includes('89,90 €') && page.includes('Tržba z eKasy'))
   page = plain(await (await client.get('/app/doklady?filter=bez-platby')).text())
   const all = plain(await (await client.get('/app/doklady')).text())
-  check('among the documents, but never one waiting for a bank payment', all.includes('Tržba z eKasy') && !page.includes('Tržba z eKasy'))
+  check('among the documents, paid at the till, never one waiting for a bank payment', all.includes('Tržba z eKasy') && all.includes('Zaplatená pri pokladnici') && !page.includes('Tržba z eKasy'))
+  page = plain(await (await client.get(`/app/doklady/${one.id}`)).text())
+  await client.post(`/app/doklady/${one.id}/sukromne`, { ano: '1' })
+  check(
+    'its page says how it was paid and offers no other way',
+    page.includes('Zaplatená pri pokladnici: 89,90 € v hotovosti, 50,00 € kartou') &&
+      !page.includes(`/app/doklady/${one.id}/sukromne`) &&
+      (await db.prepare('SELECT paid_privately FROM documents WHERE id = ?').bind(one.id).first())?.paid_privately === 0,
+  )
+  res = await client.post('/app/trzby', { den: sk(first), cislo: 'Z 245', trzba_23: '123,00' })
+  check('the same closing twice is refused', res.status === 409 && plain(await res.text()).includes('Túto tržbu už máte zapísanú'))
+  res = await client.post('/app/trzby', { den: sk(second), trzba_23: '123,00', dph_23: '2,30' })
+  check('VAT that does not fit its rate is refused', res.status === 422 && plain(await res.text()).includes('DPH pri niektorej sadzbe nesedí'))
+  // A day before the registration for VAT: its takings carry no VAT.
+  res = await client.post('/app/trzby', { den: sk(lockedEnd), trzba_23: '123,00', karta: '123,00' })
+  const early = await db.prepare("SELECT id, vat_mode, vat_cents, vat_lines FROM documents WHERE company_id = ? AND source = 'takings' AND issued_on = ?").bind(company, lockedEnd).first()
+  check(
+    'a day before the registration for VAT is written without VAT',
+    res.status === 303 && (res.headers.get('location') ?? '').includes('bezdph=1') && early?.vat_mode === 'none' && early.vat_cents === 0 && JSON.parse(early.vat_lines)[0]?.base === 12300,
+    JSON.stringify(early),
+  )
+  await client.post(`/app/trzby/${early?.id}/zrusit`, {})
 
   // The accountant: the VAT page has the rows and D.1, the books 211, 261, 604, 602 and 343.200.
   page = plain(await (await acc.get(`/ucto/klienti/${company}/dph?obdobie=${period}`)).text())
   check('the VAT page has D.1 of the control statement and the takings in the return', page.includes('D.1 Tržby z eKasy') && page.includes('300,01'), page.match(/D\.[12][^<]{0,60}/g)?.join(' '))
   res = await acc.post(`/ucto/doklady/${one.id}`, { akcia: 'ulozit', kind: 'invoice_in', party: 'Tržba z eKasy', total: '139,90', vat: '24,90', category: 'sales_goods', issued: sk(first), due: '' })
-  check('the booking screen keeps it an issued document', res.status === 422 && plain(await res.text()).includes('Je to denná tržba z eKasy'))
+  check('the booking screen changes nothing of it', res.status === 409 && plain(await res.text()).includes('Je to denná tržba z eKasy'))
+  res = await acc.post(`/ucto/doklady/${one.id}`, { akcia: 'zrusit' })
+  check('nor unbooks it', res.status === 409 && typeof (await db.prepare('SELECT booked_at FROM documents WHERE id = ?').bind(one.id).first())?.booked_at === 'number')
 
   // Taken back: not while its cash was paid out since; then it goes.
   res = await client.post('/app/pokladna', { strana: 'vydaj', druh: 'deposit', den: sk(second), suma: '89,90' })

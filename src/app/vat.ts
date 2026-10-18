@@ -693,10 +693,13 @@ export interface PeriodResult {
   nothing: boolean
   /**
    * Whether the control statement is filed (§ 78a(1)): by a payer for every return, also when none of its parts has
-   * a line, except a nil return and one that holds only goods supplied to the EU (§ 43) or exported (§ 47) with no
-   * deduction. A person registered under § 7a never files one.
+   * a line, except a nil return, one that holds only goods supplied to the EU (§ 43) or exported (§ 47) with no
+   * deduction, and one of VAT deducted on imports alone; never when one of its parts has a line (a supply with domestic
+   * reverse charge is in A.2 and in no row). A person registered under § 7a never files one.
    */
   statement: boolean
+  /** Why a payer files no control statement: a nil return, goods to the EU or exports alone, imports' VAT deducted alone. */
+  skip?: 'nothing' | 'goods' | 'import' | null
 }
 
 export const emptyRows = (): Rows => Object.fromEntries(ROWS.map((row) => [row, 0])) as Rows
@@ -898,7 +901,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       continue
     }
     if (correction && number === '0') issue('block', 'number', doc.id)
-    if (number.length > 32) issue('block', 'number', doc.id)
+    if (number.length > 32 && !doc.takings) issue('block', 'number', doc.id)
     if (data.mode === 'eu_goods' && issued) issue('warn', 'summary', doc.id)
     const business = Boolean(vatId || doc.partyIco)
 
@@ -1086,6 +1089,8 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     rows.r18a === rows.r22a &&
     rows.r19 === rows.r23 &&
     ROWS.every((row) => rows[row] === 0 || RESULT_ROWS.includes(row) || ['r18', 'r18a', 'r19', 'r22', 'r22a', 'r23'].includes(row))
+  // A part of the control statement with a line is filed, whatever the rows (A.2 is in none).
+  const skip: PeriodResult['skip'] = kvRows(kv) > 0 ? null : nothing ? 'nothing' : goodsOnly ? 'goods' : importOnly ? 'import' : null
   return {
     period,
     rows,
@@ -1094,7 +1099,8 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     docs: held,
     issues: issues.sort((a, b) => (a.level === b.level ? 0 : a.level === 'block' ? -1 : 1)),
     nothing,
-    statement: payer && !nothing && !goodsOnly && !importOnly,
+    statement: payer && skip === null,
+    skip: payer ? skip : null,
   }
 }
 

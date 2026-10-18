@@ -4096,6 +4096,9 @@ teamRoutes.post('/doklady/:id', async (c) => {
   const body = await c.req.parseBody()
   const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
   const action = typeof body.akcia === 'string' ? body.akcia : 'ulozit'
+  // A day's takings of a till is the client's to take back and write again (takings.ts): the booking screen neither
+  // unbooks, discards nor changes it, so its cash stays in the cash box as the client wrote it.
+  if (doc.source === 'takings') return bookPage(c, found, { errors: { kind: t.book.errors.takings } }, 409)
   if (action === 'zahodit') {
     if (doc.bookedAt) return c.redirect(`/ucto/doklady/${doc.id}`, 303)
     // A document paid in cash goes only after its cash document (the client takes it back in the cash box).
@@ -4164,8 +4167,6 @@ teamRoutes.post('/doklady/:id', async (c) => {
     (values.kind !== doc.kind || values.currency !== 'EUR' || payableOf({ kind: (values.kind || null) as DocKind | null, category: isCategory(values.category) ? values.category : null }) !== payableOf(doc))
   )
     errors.kind = t.book.errors.cashPaid(doc.cashPaid.number)
-  // A day's takings of a till stays an issued document in euros: the client takes it back on its page if it is wrong.
-  if (doc.source === 'takings' && (values.kind !== 'invoice_out' || values.currency !== 'EUR')) errors.kind = t.book.errors.takings
   // The VAT part of the form, when it was on it: read only while the kind stays issued or received as it was shown;
   // a document that changes between them gets a new proposal for its new kind.
   const kind = (values.kind || null) as DocKind | null

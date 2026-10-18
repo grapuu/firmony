@@ -47,6 +47,12 @@ export interface Takings {
 /** The VAT inside a price with VAT at a rate, to the cent. */
 export const vatInGross = (gross: number, rate: number): number => (rate === 0 ? 0 : Math.round((gross * rate) / (100 + rate)))
 
+/**
+ * How far the VAT a closing says may be from the VAT inside the takings: a till rounds every receipt, so a day's VAT
+ * may differ by cents; 10 cents or one per cent of it, whichever is more. Anything further is a typing error.
+ */
+export const vatSlack = (gross: number, rate: number): number => Math.max(10, Math.round(vatInGross(gross, rate) / 100))
+
 export const emptyTakings = (day: string): TakingsValues => ({
   day,
   number: '',
@@ -67,14 +73,15 @@ export function readTakings(
   today: string,
   dayOf: (text: string) => string | null,
   centsOf: (text: string) => number | null,
-  errorText: { day: string; amount: string; none: string; vat: string; card: string },
+  errorText: { day: string; amount: string; none: string; vat: string; card: string; vatOff: string },
 ): { values: TakingsValues; input: Takings | null; errors: TakingsErrors } {
   const text = (name: string, max = 20) => {
     const v = field(name)
     return typeof v === 'string' ? v.trim().slice(0, max) : ''
   }
   const values = emptyTakings(text('den'))
-  values.number = text('cislo', 40)
+  // The number of a till's closing, as the forms take a document's number: at most 32 characters.
+  values.number = text('cislo', 32)
   values.card = text('karta')
   values.category = text('druh') === 'sales' ? 'sales' : 'sales_goods'
   values.center = text('stredisko', 64)
@@ -101,6 +108,10 @@ export function readTakings(
     const vat = typedVat ?? vatInGross(gross, rate)
     if (vat > gross) {
       errors.vat = errorText.vat
+      continue
+    }
+    if (Math.abs(vat - vatInGross(gross, rate)) > vatSlack(gross, rate)) {
+      errors.vat = errorText.vatOff
       continue
     }
     lines.push({ rate, base: gross - vat, vat, deduct: 0 })

@@ -53,7 +53,7 @@ export const TakingsPage: FC<{
                 <label class="field__label" for="t-cislo">
                   {t.number}
                 </label>
-                <input id="t-cislo" class="field__input" name="cislo" value={values.number} maxlength={40} />
+                <input id="t-cislo" class="field__input" name="cislo" value={values.number} maxlength={32} />
                 <p class="field__hint">{t.numberHint}</p>
               </div>
               {rates.map((rate) => (

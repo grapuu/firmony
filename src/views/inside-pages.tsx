@@ -72,6 +72,7 @@ function docName(d: Doc): string {
 
 function docState(d: Doc): { text: string; tone: string } {
   if (d.paymentId || d.cashPaid) return { text: app.documents.state.linked, tone: 'ok' }
+  if (d.source === 'takings') return { text: app.documents.state.till, tone: 'ok' }
   if (d.paidPrivately) return { text: app.documents.state.private, tone: 'grey' }
   if (d.status === 'reading') return { text: app.documents.state.reading, tone: 'blue' }
   if (d.status === 'manual') return { text: app.documents.state.manual, tone: 'grey' }
@@ -1127,6 +1128,13 @@ export const DocumentPage: FC<{
                 {app.cash.paidCash(d.cashPaid.number, dayName(d.cashPaid.on, today))}{' '}
                 <a class="link" href={`/app/pokladna?rok=${d.cashPaid.on.slice(0, 4)}`}>
                   {app.cash.link}
+                </a>
+              </p>
+            ) : d.source === 'takings' ? (
+              <p class="paid__text">
+                {app.takings.paidAtTill(formatEur(d.takingsCash ?? 0, true), formatEur((d.totalCents ?? 0) - (d.takingsCash ?? 0), true))}{' '}
+                <a class="link" href={`/app/trzby?rok=${(d.issuedOn ?? today).slice(0, 4)}`}>
+                  {app.takings.link}
                 </a>
               </p>
             ) : d.paidPrivately ? (
