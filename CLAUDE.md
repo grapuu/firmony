@@ -271,6 +271,12 @@ over. Bring this section up to date first whenever a session ends.
    670 to 472, the lists 213 to 145. What is left on the books' pages (about 0,55 s): reading every document of the
    company from D1 and the garbage of it; next for volume, the books kept per data revision (a cache within an
    isolate needs a bound on memory: 36 000 documents a year would not fit).
+   Later on 18 October: the books and the VAT periods read only the columns they need (`BOOK_DOC_COLUMNS`, no reader's
+   proposal, file, names or codes) and each document's VAT is worked out once for its entry (`documentLines` takes the
+   plan). Measured by `npm run test:load` here, each page three times: at 1 000 documents a month the trial balance
+   451 to 349 ms, the journal 431 to 314, an account 470 to 326, the closing 460 to 366, VAT 396 to 329, the client's
+   page 804 to 704, the team's home 330 to 261; at 3 000 a month (36 000 documents and payments a year) every books page
+   answers in 1,0 to 1,3 s (1,3 to 3,8 s on 17 October), the client's page in 2,1 s (3,8), the team's home in 0,7 s (1,7).
    The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
@@ -1192,8 +1198,9 @@ by itself.
   them in the End-to-End Identification ("/VS2026118/SS/KS", NOTPROVIDED without one), names and texts in SEPA's basic
   Latin (no accents). Each order is kept with its items, so its file is made again the same
   (`/app/uhrady/:id/xml`); the bank's statement then pairs each payment as any payment. Purge deletes them.
-  test/payorders.runtime.mjs (the file validated against the schema), units "Payment orders". Not built: an IBAN typed
-  on the page for an invoice that has none, payment in another currency, a batch to the bank by its API.
+  test/payorders.runtime.mjs (the file validated against the schema), units "Payment orders". An invoice the reader
+  found no IBAN on takes one typed on the page (`/app/uhrady/iban`, its check digits checked; `party_iban` is no field
+  the period lock guards). Not built: payment in another currency, a batch to the bank by its API.
   Approving before paying (built 18 October 2026, schema step 45: `companies.approvals`, `documents.approved_at`,
   `approved_by`): an owner turns "Schvaľovanie faktúr dodávateľov" on in Firma a nastavenia (#schvalovanie); then a
   supplier's invoice goes into a payment order only once an owner approved it on its page ("Schváliť na úhradu",
@@ -1983,7 +1990,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1158 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1624 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm run test:runtime     # 1628 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

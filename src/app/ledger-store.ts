@@ -4,7 +4,7 @@
 import { now } from '../db'
 import { buildBooks, canonicalAccount, type Books, type LedgerLine, type ManualEntry } from './ledger'
 import type { Exempt } from './match'
-import { DOC_COLUMNS, DOC_FROM, bratislavaDay, docOf, type Company } from './store'
+import { BOOK_DOC_COLUMNS, BOOK_DOC_FROM, bratislavaDay, docOf, type Company } from './store'
 import { filedReturns } from './vat-store'
 import { ledgerPayroll, runsOf } from './payroll-store'
 import { assetEntries } from './assets'
@@ -57,7 +57,7 @@ export async function manualEntries(db: D1Database, company: string): Promise<Ma
 /** Everything the books of a company are worked out from, read at once, and the books. */
 export async function booksOf(db: D1Database, company: Company): Promise<Books> {
   const [docs, payments, banks, filed, manual, runs, assets, stock] = await Promise.all([
-    db.prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.deleted_at IS NULL ORDER BY d.created_at, d.id`).bind(company.id).all<Row>(),
+    db.prepare(`SELECT ${BOOK_DOC_COLUMNS} FROM ${BOOK_DOC_FROM} WHERE d.company_id = ? AND d.deleted_at IS NULL ORDER BY d.created_at, d.id`).bind(company.id).all<Row>(),
     db
       .prepare(
         `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.note, p.exempt, p.exempt_note, p.contra, p.account_id, COALESCE(a.ledger, '221') AS ledger

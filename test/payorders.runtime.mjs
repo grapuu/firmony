@@ -45,10 +45,10 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
   page = plain(raw)
   check(
     "owed: the suppliers' invoices not paid, those with an IBAN in euros ticked, the others to pay by hand with why",
-    page.includes('value="po-1"') &&
-      page.includes('value="po-2"') &&
-      !page.includes('value="po-3"') &&
-      !page.includes('value="po-4"') &&
+    page.includes('type="checkbox" name="doklad" value="po-1"') &&
+      page.includes('type="checkbox" name="doklad" value="po-2"') &&
+      !page.includes('type="checkbox" name="doklad" value="po-3"') &&
+      !page.includes('type="checkbox" name="doklad" value="po-4"') &&
       !page.includes('TEST-ONLY Súkromne') &&
       !page.includes('TEST-ONLY Zaplatené') &&
       page.includes('Na doklade nie je IBAN dodávateľa') &&
@@ -85,7 +85,7 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
     page.includes('Príkaz je pripravený') &&
       page.includes(`/app/uhrady/${orderId}/xml`) &&
       page.includes('v príkaze na') &&
-      !/value="po-1"[^>]*checked/.test(page) &&
+      !/type="checkbox" name="doklad" value="po-1"[^>]*checked/.test(page) &&
       page.includes('Pripravené príkazy'),
   )
   res = await client.get(`/app/uhrady/${orderId}/xml`)
@@ -104,6 +104,22 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
   )
   check("another company's order is not found", (await client.get('/app/uhrady/00000000-0000-4000-8000-000000000000/xml')).status === 404)
 
+  // An IBAN the reader did not find, typed on the page: the invoice can then go into an order.
+  page = plain(await (await client.get('/app/uhrady')).text())
+  check('an invoice without an IBAN offers a field for it', page.includes('action="/app/uhrady/iban"') && page.includes('name="iban"'))
+  res = await client.post('/app/uhrady/iban', { doklad: 'po-3', iban: 'SK31 1200 0000 1987 4263 7542' })
+  check('an IBAN with wrong check digits is said', res.status === 422 && plain(await res.text()).includes('Tento IBAN nevyzerá správne'))
+  res = await client.post('/app/uhrady/iban', { doklad: 'po-3', iban: 'sk89 7500 0000 0000 1234 5671' })
+  page = plain(await (await client.get('/app/uhrady?ok=iban')).text())
+  check(
+    'a right one is kept and the invoice can be ticked',
+    res.status === 303 &&
+      (await db.prepare('SELECT party_iban FROM documents WHERE id = ?').bind('po-3').first())?.party_iban === 'SK8975000000000012345671' &&
+      page.includes('type="checkbox" name="doklad" value="po-3"') &&
+      page.includes('IBAN sme doplnili'),
+  )
+  check("another company's document gets no IBAN", (await client.post('/app/uhrady/iban', { doklad: 'po-other', iban: 'SK8975000000000012345671' })).status === 404)
+
   // Approving before paying: an owner turns it on; an invoice goes into an order only once an owner approved it.
   await db.batch([
     db.prepare("INSERT INTO users (id, created_at, email, name) VALUES ('u-payorder-2', ?, 'payorder2@example.sk', 'TEST-ONLY Kolegyňa')").bind(nowS),
@@ -114,7 +130,10 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
   res = await client.post('/app/firma/schvalovanie', { zapnut: '1' })
   check('an owner turns it on', res.status === 303 && (await db.prepare('SELECT approvals FROM companies WHERE id = ?').bind(company).first())?.approvals === 1)
   page = plain(await (await client.get('/app/uhrady')).text())
-  check('then nothing unapproved can be ticked: it waits for approval', !page.includes('value="po-1"') && !page.includes('value="po-2"') && page.includes('Čaká na schválenie'))
+  check(
+    'then nothing unapproved can be ticked: it waits for approval',
+    !page.includes('type="checkbox" name="doklad" value="po-1"') && !page.includes('type="checkbox" name="doklad" value="po-2"') && page.includes('Čaká na schválenie'),
+  )
   page = plain(await (await colleague.get('/app/doklady/po-1')).text())
   check(
     'a colleague sees that it waits and cannot approve it',
@@ -128,7 +147,10 @@ export async function checkPayOrders({ db, nowS, signIn, as, day, capture }) {
     res.status === 303 && approved?.approved_by === 'u-payorder' && page.includes('Schválil(a) TEST-ONLY Platiteľka') && page.includes('/app/doklady/po-1/neschvalit'),
   )
   page = plain(await (await client.get('/app/uhrady')).text())
-  check('the approved one can go into an order, the other still waits', page.includes('value="po-1"') && !page.includes('value="po-2"'))
+  check(
+    'the approved one can go into an order, the other still waits',
+    page.includes('type="checkbox" name="doklad" value="po-1"') && !page.includes('type="checkbox" name="doklad" value="po-2"'),
+  )
   res = await order({ doklad: ['po-1', 'po-2'] })
   const second = (res.headers.get('location') ?? '').match(/prikaz=([0-9a-f-]{36})/)?.[1] ?? ''
   const secondItems = (await db.prepare('SELECT document_id FROM payment_order_items WHERE order_id = ?').bind(second).all()).results.map((r) => r.document_id)

@@ -3,7 +3,7 @@
 import { typeset } from '../format'
 import { now } from '../db'
 import { deliveryIds, deliveryStatusSql, revisableSql, safeJson, type DeliveryStatus, type FilingType } from '../filings/model'
-import { DOC_COLUMNS, DOC_FROM, docOf, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
+import { BOOK_DOC_COLUMNS, BOOK_DOC_FROM, docOf, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
 import { quarterMonths, summarySchedule, summaryView, type SvCode, type SvFiled, type SvRow, type SvView, type SvSchedule } from './vat-summary'
 import {
   correctionKind,
@@ -239,7 +239,7 @@ export function docsAroundStatement(db: D1Database, company: string, first: stri
   const to = periodRange(last).to
   return db
     .prepare(
-      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM}
+      `SELECT ${BOOK_DOC_COLUMNS} FROM ${BOOK_DOC_FROM}
         WHERE d.company_id = ?1 AND d.deleted_at IS NULL AND (d.kind IS NULL OR d.kind IN ('receipt', 'invoice_in', 'invoice_out'))
           AND (d.vat_period IS NOT NULL
                OR d.supplied_on BETWEEN ?2 AND ?3

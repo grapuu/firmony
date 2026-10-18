@@ -411,8 +411,9 @@ function planOf(doc: Doc, company: Company, rates?: Rates, gross?: number): Plan
  * owed, what the company pays itself on what it bought from abroad), on the analytic accounts 343.100 and 343.200,
  * with the account that paid a receipt, and the other way for a credit note. Empty when the document makes none.
  */
-export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy; contra?: string | null; rates?: Rates; gross?: number }): LedgerLine[] {
-  const plan = planOf(doc, company, how.rates, how.gross)
+export function documentLines(doc: Doc, company: Company, how: { paidBy: PaidBy; contra?: string | null; rates?: Rates; gross?: number; plan?: Plan | null }): LedgerLine[] {
+  // The books pass the plan they worked out already (its VAT is the costly part), made with the same rates and euros.
+  const plan = how.plan !== undefined ? how.plan : planOf(doc, company, how.rates, how.gross)
   if (!plan || plan.unrated || !doc.category) return []
   const payer = company.vatStatus === 'payer'
   const { data, credit } = plan
@@ -706,9 +707,9 @@ export function buildBooks(input: LedgerInput): Books {
         const paid = usable ? receiptContra(plan, { ...pay, amountCents: euros }, accounting) : { contra: TRANSIT, on: plan.on }
         if (paid.contra !== TRANSIT) direct.add(doc.id)
         on = paid.on
-        lines = documentLines(doc, company, { paidBy: 'bank', contra: paid.contra, rates, gross: grossOf(plan) })
+        lines = documentLines(doc, company, { paidBy: 'bank', contra: paid.contra, rates, gross: grossOf(plan), plan })
       } else {
-        lines = documentLines(doc, company, { paidBy: pay ? 'bank' : doc.paidPrivately ? 'private' : doc.kind === 'receipt' ? 'cash' : 'unpaid', rates, gross: grossOf(plan) })
+        lines = documentLines(doc, company, { paidBy: pay ? 'bank' : doc.paidPrivately ? 'private' : doc.kind === 'receipt' ? 'cash' : 'unpaid', rates, gross: grossOf(plan), plan })
       }
     }
     if (!plan || lines.length === 0) {

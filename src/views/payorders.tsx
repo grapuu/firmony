@@ -18,7 +18,8 @@ export const PayOrdersPage: FC<{
   picked: Set<string> | null
   error?: string | null
   ready?: PaymentOrder | null
-}> = ({ payables, orders, accounts, today, day, account, picked, error = null, ready = null }) => {
+  flash?: string | null
+}> = ({ payables, orders, accounts, today, day, account, picked, error = null, ready = null, flash = null }) => {
   const payable = payables.filter((p) => !p.blocked)
   const blocked = payables.filter((p) => p.blocked)
   const owed = payables.filter((p) => p.currency === 'EUR').reduce((sum, p) => sum + p.totalCents, 0)
@@ -39,6 +40,7 @@ export const PayOrdersPage: FC<{
           </a>
         </div>
       ) : null}
+      <Flash text={flash} />
       <Flash text={error} tone="error" />
       {payables.length === 0 ? (
         <p class="over__empty">{t.empty}</p>
@@ -122,6 +124,15 @@ export const PayOrdersPage: FC<{
                       {p.party ?? app.documents.unknown}
                     </a>{' '}
                     {p.number ?? ''}, {formatMoney(p.totalCents, p.currency)}: {t.blocked[p.blocked ?? 'iban']}
+                    {p.blocked === 'iban' ? (
+                      <form class="payorder__iban" method="post" action="/app/uhrady/iban">
+                        <input type="hidden" name="doklad" value={p.id} />
+                        <input class="field__input" name="iban" aria-label={t.iban} placeholder={t.iban} maxlength={42} autocomplete="off" />
+                        <button class="btn btn--line btn--small" type="submit">
+                          {t.ibanAdd}
+                        </button>
+                      </form>
+                    ) : null}
                   </li>
                 ))}
               </ul>

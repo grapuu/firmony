@@ -7214,3 +7214,16 @@ a.wtable__name {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+/* An IBAN typed for an invoice that has none. */
+.payorder__iban {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+
+.payorder__iban .field__input {
+  flex: 1 1 220px;
+  min-width: 0;
+}

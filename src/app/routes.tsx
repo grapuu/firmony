@@ -49,6 +49,7 @@ import {
   linesOf,
   listInvoices,
   plainIban,
+  isIban,
   saveInvoiceStatements,
   totalsOf,
   ublOf,
@@ -979,6 +980,7 @@ async function payOrdersPage(c: Ctx, extra: { error?: string; day?: string; acco
       picked={extra.picked ?? null}
       error={extra.error ?? null}
       ready={ready}
+      flash={c.req.query('ok') === 'iban' ? t.payorders.ibanSaved : null}
     />,
     status,
   )
@@ -1009,6 +1011,22 @@ appRoutes.post('/uhrady', async (c) => {
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'payorder.created', subject: id, detail: { count: items.length, total: items.reduce((sum, p) => sum + p.totalCents, 0) } }),
   ])
   return c.redirect(`/app/uhrady?ok=prikaz&prikaz=${id}`, 303)
+})
+
+/** The supplier's IBAN typed for an invoice whose document has none (the reader found none). */
+appRoutes.post('/uhrady/iban', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const id = typeof body.doklad === 'string' && ID.test(body.doklad) ? body.doklad : ''
+  const iban = typeof body.iban === 'string' ? plainIban(body.iban).slice(0, 34) : ''
+  if (!isIban(iban)) return payOrdersPage(c, { error: t.payorders.ibanBad }, 422)
+  const result = await db.batch([
+    db.prepare("UPDATE documents SET party_iban = ? WHERE id = ? AND company_id = ? AND kind = 'invoice_in' AND deleted_at IS NULL").bind(iban, id, who.company.id),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.iban', subject: id }),
+  ])
+  if ((result[0]?.meta?.changes ?? 0) === 0) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  return c.redirect('/app/uhrady?ok=iban', 303)
 })
 
 appRoutes.get('/uhrady/:id/xml', async (c) => {

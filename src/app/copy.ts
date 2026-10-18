@@ -341,6 +341,10 @@ export const app = typesetAll({
     },
     noAccount: 'Najprv pridajte firemný účet v časti Banka.',
     link: 'Na úhradu',
+    iban: 'IBAN dodávateľa',
+    ibanAdd: 'Doplniť IBAN',
+    ibanSaved: 'IBAN sme doplnili, faktúru už môžete dať do príkazu.',
+    ibanBad: 'Tento IBAN nevyzerá správne: skontrolujte ho, napríklad SK31 1200 0000 1987 4263 7541.',
   },
   documents: {
     title: 'Doklady',

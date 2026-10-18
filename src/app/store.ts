@@ -300,6 +300,15 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name`
+/**
+ * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
+ * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
+ */
+export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.status, d.kind, d.party, d.party_ico, d.number, d.issued_on, d.due_on,
+  d.total_cents, d.vat_cents, d.currency, d.category, d.vat_deduct, d.account, d.booked_at, d.paid_privately, l.payment_id, d.supplied_on,
+  d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse,
+  d.advance_cents`
+export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
 export const DOC_FROM =
   'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by'
 
