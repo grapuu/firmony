@@ -3794,6 +3794,10 @@ select.field__input {
   font-variant-numeric: tabular-nums;
 }
 
+.sheet__mode {
+  font-weight: 600;
+}
+
 .sheet__ref {
   margin-top: 4px;
   max-width: 260px;

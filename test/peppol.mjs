@@ -110,6 +110,19 @@ const cases = [
     'an invoice to a customer in another member state',
     invoices.ublOf({ ...invoice, customerIcdph: 'CZ12345678', customerDic: null, customerAddress: 'Náměstí 1, 110 00 Praha' }, [line(1, 'Práca', 1000, 'hod', 10000, 23)], seller),
   ],
+  ...[
+    ['goods to a VAT payer of another member state (K)', 'eu_goods'],
+    ['a service whose customer in another member state pays the VAT (AE)', 'eu_service'],
+    ['an export (G)', 'export'],
+    ['a supply of a VAT payer outside Slovakia (O)', 'outside'],
+  ].map(([name, mode]) => [
+    name,
+    invoices.ublOf(
+      { ...invoice, mode, customerIcdph: mode === 'export' ? 'CHE123456789' : 'DE123456789', customerDic: null, customerIco: null, customerAddress: 'Hauptstraße 1, 10115 Berlin' },
+      [line(1, 'Tovar', 2000, 'ks', 5000, 0)],
+      seller,
+    ),
+  ]),
   [
     'a credit note of an invoice, kept with the minus',
     invoices.ublOf(

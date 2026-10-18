@@ -1102,6 +1102,10 @@ const MIGRATIONS: readonly string[][] = [
   // Credit notes (18 October 2026, invoices.ts): an invoice or a credit note (dobropis) of an invoice issued before,
   // the invoice it corrects and why. Its document names the invoice's number (documents.corrects).
   ["ALTER TABLE invoices ADD COLUMN kind TEXT NOT NULL DEFAULT 'invoice'", 'ALTER TABLE invoices ADD COLUMN corrects TEXT', 'ALTER TABLE invoices ADD COLUMN reason TEXT'],
+  // How an issued invoice is taxed (18 October 2026, invoices.ts): Slovak VAT, or a supply to another member state,
+  // a service whose customer pays the VAT, an export, a supply outside Slovakia. Its document carries it as a hint
+  // the VAT proposal follows until the accountant confirms it (documents.vat_hint, guarded like the rest).
+  ['ALTER TABLE invoices ADD COLUMN vat_mode TEXT', 'ALTER TABLE documents ADD COLUMN vat_hint TEXT', ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint'])],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

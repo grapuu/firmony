@@ -1,4 +1,4 @@
-// Credit notes (18 October 2026), in workerd: a VAT payer issues an invoice, then a credit note to it from its page
+// Credit notes and how an invoice is taxed (18 October 2026), in workerd: a VAT payer issues an invoice, then a credit note to it from its page
 // (its customer and lines to start from, a reason asked, no more than the invoice has left at each rate), kept with
 // the minus as a document that names the invoice; its e-invoice is UBL's CreditNote naming the invoice; the invoice
 // lists it and what is left to collect is lowered.
@@ -140,4 +140,66 @@ export async function checkCreditNotes({ db, nowS, signIn, as, day, capture }) {
   check('a second credit note takes only what the first left', res.status === 422 && plain(await res.text()).includes('najviac 150,00 €'))
   res = await client.get(`/app/faktury/nova?dobropis=${creditId}`)
   check('a credit note has no credit note of its own', res.status === 200 && !plain(await res.text()).includes('Dobropis k faktúre'))
+
+  // Goods to a VAT payer of another member state: no Slovak VAT, the words of § 43, its VAT number asked.
+  const eu = (extra) => ({
+    akcia: 'vystavit',
+    rezim: 'eu_goods',
+    meno: 'TEST-ONLY Kunde GmbH',
+    adresa: 'Hauptstraße 1, 10115 Berlin',
+    icdph: 'SK2120000000',
+    email: 'kunde@example.de',
+    vystavena: sk(today),
+    dodana: sk(today),
+    splatna: sk(day(14)),
+    iban: 'SK31 1200 0000 1987 4263 7541',
+    riadky: '1',
+    'r0-popis': 'Stoličky',
+    'r0-mnozstvo': '10',
+    'r0-jednotka': 'ks',
+    'r0-cena': '50,00',
+    'r0-dph': '23',
+    ...extra,
+  })
+  const newRaw = await (await client.get('/app/faktury/nova')).text()
+  if (capture) writeFileSync(`${capture}/invoice-vat-form.html`, newRaw)
+  page = plain(newRaw)
+  check("a VAT payer's new invoice asks how it is taxed", page.includes('name="rezim"') && page.includes('Dodanie tovaru do iného štátu EÚ'))
+  res = await client.post('/app/faktury', eu({}))
+  check("goods to another member state ask for the customer's VAT number there", res.status === 422 && plain(await res.text()).includes('doplňte IČ DPH odberateľa v tom štáte'))
+  res = await client.post('/app/faktury', eu({ icdph: 'DE 123456789' }))
+  const euId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
+  const euInvoice = await db.prepare('SELECT vat_mode, vat_cents, total_cents, document_id FROM invoices WHERE id = ?').bind(euId).first()
+  const euDoc = await db
+    .prepare('SELECT vat_hint, vat_mode, category, total_cents, party_vat_id FROM documents WHERE id = ?')
+    .bind(euInvoice?.document_id ?? '')
+    .first()
+  check(
+    'issued without Slovak VAT whatever the lines said; its document tells the VAT return how it is taxed, for the accountant to confirm',
+    res.status === 303 &&
+      euInvoice?.vat_mode === 'eu_goods' &&
+      euInvoice.vat_cents === 0 &&
+      euInvoice.total_cents === 50000 &&
+      euDoc?.vat_hint === 'eu_goods' &&
+      euDoc.vat_mode === null &&
+      euDoc.category === 'sales_goods' &&
+      euDoc.party_vat_id === 'DE123456789',
+    JSON.stringify([euInvoice, euDoc]),
+  )
+  page = plain(await (await client.get(`/app/faktury/${euId}`)).text())
+  check('the invoice says the supply is exempt under § 43', page.includes('Dodanie je oslobodené od dane podľa § 43 zákona o DPH'))
+  const euXml = await (await client.get(`/app/faktury/${euId}/xml`)).text()
+  check(
+    'its e-invoice is K with the exemption code and the state the goods went to',
+    euXml.includes('<cbc:ID>K</cbc:ID>') && euXml.includes('VATEX-EU-IC') && euXml.includes('<cbc:IdentificationCode>DE</cbc:IdentificationCode>'),
+  )
+  page = plain(await (await client.get(`/app/faktury/nova?dobropis=${euId}`)).text())
+  res = await client.post('/app/faktury', form({ dobropis: euId, rezim: 'domestic', 'r0-dph': '23', 'r0-cena': '50,00', 'r0-mnozstvo': '2' }))
+  const euCreditId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
+  const euCredit = await db.prepare('SELECT vat_mode, total_cents, vat_cents FROM invoices WHERE id = ?').bind(euCreditId).first()
+  check(
+    'a credit note of it is taxed as the invoice, whatever is posted',
+    page.includes('name="rezim" value="eu_goods"') && res.status === 303 && euCredit?.vat_mode === 'eu_goods' && euCredit.total_cents === -10000 && euCredit.vat_cents === 0,
+    JSON.stringify(euCredit),
+  )
 }

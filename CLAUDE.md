@@ -1084,9 +1084,21 @@ by itself.
   in its parts (street, town, postal code; `src/app/address.ts`). The Financial Administration's Slovak transposition
   (an XLSX on financnasprava.sk, v1.12 of 14 October 2026) could not be read from the workspace: to be checked through
   the browser pane.
-- Not built yet: an invoice in another currency, an advance invoice, recurring invoices sent by themselves, VAT
-  modes on an issued invoice (domestic reverse charge, supplies to other member states, export), the e-invoice sent
-  through a digital postman, invoice numbering of the company's own pattern, the company's logo on the invoice.
+- How an invoice is taxed (built 18 October 2026, schema step 38: `invoices.vat_mode`, `documents.vat_hint`): a
+  VAT payer chooses "Zdanenie": Slovak VAT (the rates), goods to a VAT payer of another member state (§ 43), a service
+  whose customer in another member state pays the VAT (§ 15(1)), an export (§ 47), a supply outside Slovakia. Without
+  Slovak VAT the lines have no rate whatever their select says; goods or a service to another member state ask for the
+  customer's VAT number there; the sheet prints what § 74(1) asks ("Dodanie je oslobodené od dane podľa § 43 ...",
+  "Prenesenie daňovej povinnosti", § 47, not subject in Slovakia; podnikajte.sk's list of § 74, updated 26 January
+  2026); the e-invoice is K, AE, G or O with its VATEX code (K names the state the goods went to, O carries no rate
+  or VAT number); the document carries the mode as `vat_hint`, which `proposeVat` follows until the accountant
+  confirms (so r14, r15 and the recapitulative statement read it); goods go to `sales_goods` (Intrastat reads them);
+  a credit note is taxed as its invoice. A domestic exempt supply now says "Dodanie je oslobodené od dane". A customer
+  abroad is addressed on Peppol by its VAT number, also beyond the Union where Peppol has its scheme (CH, GB, RS...).
+- Not built yet: domestic reverse charge on an issued invoice (§ 69(12), the control statement's A.2), a customer's
+  state when it has no VAT number (an export to a private person reads as SK in the e-invoice), an invoice in another
+  currency, an advance invoice, recurring invoices sent by themselves, the e-invoice sent through a digital postman,
+  invoice numbering of the company's own pattern, the company's logo on the invoice.
 
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
 
@@ -1859,9 +1871,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1123 unit checks (18 October 2026), including credit notes and the fast dates
-npm run test:runtime     # 1539 workerd checks on Node 24 (as GitHub runs them), including test/credit-notes.runtime.mjs
-npm run test:peppol      # 9 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+npm test                 # 1126 unit checks (18 October 2026), including credit notes and how invoices are taxed
+npm run test:runtime     # 1545 workerd checks on Node 24 (as GitHub runs them), including test/credit-notes.runtime.mjs
+npm run test:peppol      # 13 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

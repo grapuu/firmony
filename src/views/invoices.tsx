@@ -4,7 +4,7 @@ import type { FC } from 'hono/jsx'
 import { ART, BRAND } from '../config'
 import { formatEur, formatEurExact } from '../format'
 import { app, dayName } from '../app/copy'
-import { UNITS, VAT_RATES, creditLines, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
+import { INVOICE_MODES, MODE_TERMS, UNITS, VAT_RATES, creditLines, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import type { Company } from '../app/store'
 import { Tile } from './home'
@@ -217,7 +217,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
             <Text name="meno" label={f.name} value={values.customerName} error={errors.customerName} wide />
             <Text name="adresa" label={f.address} value={values.customerAddress} wide max={300} />
             <Text name="dic" label={f.dic} value={values.customerDic} mode="numeric" max={12} />
-            <Text name="icdph" label={f.icdph} value={values.customerIcdph} max={14} />
+            <Text name="icdph" label={f.icdph} value={values.customerIcdph} error={errors.customerIcdph} max={14} />
             <Text name="email" label={f.email} value={values.customerEmail} error={errors.customerEmail} hint={f.emailHint} type="email" wide />
           </div>
         </section>
@@ -236,6 +236,24 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
           <h2 id="polozky-t" class="info__title">
             {f.items}
           </h2>
+          {vatPayer && !credit ? (
+            <div class="fgrid">
+              <div class="fgrid__cell fgrid__cell--wide">
+                <label class="field__label" for="f-rezim">
+                  {f.mode}
+                </label>
+                <select id="f-rezim" class="field__input" name="rezim">
+                  {INVOICE_MODES.map((mode) => (
+                    <option value={mode} selected={(values.mode ?? 'domestic') === mode}>
+                      {f.modes[mode]}
+                    </option>
+                  ))}
+                </select>
+                <p class="field__hint">{f.modeHint}</p>
+              </div>
+            </div>
+          ) : null}
+          {vatPayer && credit ? <input type="hidden" name="rezim" value={values.mode ?? 'domestic'} /> : null}
           {errors.lines ? <p class="field__error">{errors.lines}</p> : null}
           <div class={`items${vatPayer ? ' items--vat' : ''}`}>
             <div class="items__head" aria-hidden="true">
@@ -475,6 +493,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
           <strong>{s.reason}:</strong> {invoice.reason}
         </p>
       ) : null}
+      {seller.vatPayer && invoice.mode !== 'domestic' ? <p class="sheet__note sheet__mode">{MODE_TERMS[invoice.mode].text}</p> : null}
       <div class="sheet__bottom">
         <div class="sheet__payment">
         {qr ? (

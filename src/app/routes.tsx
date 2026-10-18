@@ -33,6 +33,7 @@ import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
 import {
   checkValues,
+  isInvoiceMode,
   creditLeft,
   creditLines,
   creditTooMuch,
@@ -46,6 +47,7 @@ import {
   totalsOf,
   ublOf,
   type Errors as InvoiceErrors,
+  type InvoiceMode,
   type InvoiceValues,
   type Line,
   type LineInput,
@@ -1536,6 +1538,8 @@ function invoiceValuesFrom(body: Record<string, unknown>, vatPayer: boolean): In
     iban: text('iban', 42),
     note: typeof body.poznamka === 'string' ? body.poznamka.replace(/\r\n?/g, '\n').trim().slice(0, 1000) : '',
     ...(ID.test(text('dobropis', 64)) ? { corrects: text('dobropis', 64), reason: typeof body.dovod === 'string' ? body.dovod.replace(/\s+/g, ' ').trim().slice(0, 500) : '' } : {}),
+    // How it is taxed: a VAT payer's choice, Slovak VAT otherwise.
+    mode: vatPayer && isInvoiceMode(text('rezim', 20)) ? (text('rezim', 20) as InvoiceMode) : 'domestic',
     lines: Array.from({ length: rows }, (_, i) => ({
       description: text(`r${i}-popis`, 300),
       quantity: text(`r${i}-mnozstvo`, 10),
@@ -1654,6 +1658,7 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.iban = ''
     values.corrects = original.id
     values.reason = ''
+    values.mode = original.mode
     values.lines = inputLines(await invoiceLines(c.env.DB, original.id), who.company.vatPayer)
     return invoiceForm(c, null, values)
   }
@@ -1671,6 +1676,7 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.customerEmail = earlier.customerEmail ?? ''
     if (like) {
       values.note = earlier.note ?? ''
+      values.mode = earlier.mode
       values.lines = inputLines(await invoiceLines(c.env.DB, earlier.id), who.company.vatPayer)
     }
   }
@@ -1722,6 +1728,8 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     values.customerDic = original.customerDic ?? ''
     values.customerIcdph = original.customerIcdph ?? ''
     values.iban = ''
+    // A credit note is taxed as the invoice it corrects.
+    values.mode = original.mode
   }
   const errors = checkValues(values, dayOfText, { ...ti.errors, lines: ti.errors.lines, form: ti.errors.form })
   const read = linesOf(values, vatPayer, { line: ti.errors.line, none: ti.errors.lines })
@@ -1803,6 +1811,7 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
       // A credit note's draft shows what the invoice is lowered by, without the minus it is kept with.
       lines: inputLines(invoice.kind === 'credit' ? creditLines(lines) : lines, who.company.vatPayer),
       ...(invoice.kind === 'credit' && invoice.corrects ? { corrects: invoice.corrects, reason: invoice.reason ?? '' } : {}),
+      mode: invoice.mode,
     }
     return invoiceForm(c, invoice.id, values, {}, status)
   }

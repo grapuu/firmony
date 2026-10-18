@@ -1055,7 +1055,7 @@ check(
   JSON.stringify(invoices.linesOf(form([{ ...blank, description: 'A', price: '10', vat: '7', unit: 'sud' }]), false, lineMessages).lines.map((l) => [l.vatRate, l.unit])) ===
     JSON.stringify([[0, null]]),
 )
-const valueMessages = { customerName: 'name', customerEmail: 'email', customerIco: 'ico', issued: 'issued', delivered: 'delivered', due: 'due', iban: 'iban', lines: 'lines', form: 'form' }
+const valueMessages = { customerName: 'name', customerIcdph: 'customerIcdph', customerEmail: 'email', customerIco: 'ico', issued: 'issued', delivered: 'delivered', due: 'due', iban: 'iban', lines: 'lines', form: 'form' }
 const errorsOf = (changes) => Object.keys(invoices.checkValues({ ...form([]), ...changes }, booking.dayOfText, valueMessages)).join(',')
 check('a correct invoice has no error', errorsOf({}) === '')
 check('a due day before the day of issue is refused', errorsOf({ due: '30. 9. 2026' }) === 'due')
@@ -1167,7 +1167,34 @@ check(
     xml.readInvoice(noVat, seller.ico)?.totalCents === 2000,
 )
 const exempt = invoices.ublOf(stored, [{ position: 1, description: 'Školenie', quantityMilli: 1000, unit: null, unitCents: 5000, vatRate: 0, baseCents: 5000 }], seller)
-check("a VAT payer's supply at nought is exempt, with its reason", exempt.includes('<cbc:ID>E</cbc:ID><cbc:Percent>0</cbc:Percent><cbc:TaxExemptionReason>Oslobodené od DPH</cbc:TaxExemptionReason>'))
+check("a VAT payer's supply at nought is exempt, with its reason", exempt.includes('<cbc:ID>E</cbc:ID><cbc:Percent>0</cbc:Percent><cbc:TaxExemptionReason>Dodanie je oslobodené od dane</cbc:TaxExemptionReason>'))
+// How an invoice is taxed (18 October 2026): goods to another member state, a service whose customer pays the VAT, an
+// export, a supply outside Slovakia, each with the words § 74(1) asks for and its category and code in EN 16931.
+const abroad = { ...stored, customerIcdph: 'DE123456789', customerDic: null }
+const zero = [{ position: 1, description: 'Tovar', quantityMilli: 1000, unit: 'ks', unitCents: 10000, vatRate: 0, baseCents: 10000 }]
+const euGoods = invoices.ublOf({ ...abroad, mode: 'eu_goods' }, zero, seller)
+const euService = invoices.ublOf({ ...abroad, mode: 'eu_service' }, zero, seller)
+const outside = invoices.ublOf({ ...abroad, mode: 'outside' }, zero, seller)
+check(
+  'goods to another member state are K at 0 % with VATEX-EU-IC, § 43 and the state they went to; a service AE, "prenesenie daňovej povinnosti"; outside Slovakia O, without a rate or a VAT number',
+  euGoods.includes('<cbc:ID>K</cbc:ID><cbc:Percent>0</cbc:Percent><cbc:TaxExemptionReasonCode>VATEX-EU-IC</cbc:TaxExemptionReasonCode><cbc:TaxExemptionReason>Dodanie je oslobodené od dane podľa § 43') &&
+    euGoods.includes('<cac:DeliveryLocation><cac:Address><cac:Country><cbc:IdentificationCode>DE</cbc:IdentificationCode>') &&
+    euService.includes('<cbc:ID>AE</cbc:ID><cbc:Percent>0</cbc:Percent><cbc:TaxExemptionReasonCode>VATEX-EU-AE</cbc:TaxExemptionReasonCode><cbc:TaxExemptionReason>Prenesenie daňovej povinnosti</cbc:TaxExemptionReason>') &&
+    euService.includes('<cbc:CompanyID>DE123456789</cbc:CompanyID>') &&
+    outside.includes('<cbc:ID>O</cbc:ID><cbc:TaxExemptionReasonCode>VATEX-EU-O</cbc:TaxExemptionReasonCode>') &&
+    !outside.includes('<cbc:Percent>') &&
+    !outside.includes('SK2122222222'),
+)
+check(
+  "a line's rate does not count for a supply without Slovak VAT, and its customer's VAT number of another member state is asked",
+  invoices.linesOf({ ...form([{ ...blank, description: 'A', price: '10', vat: '23' }]), mode: 'eu_goods' }, true, lineMessages).lines[0].vatRate === 0 &&
+    invoices.checkValues({ ...form([]), mode: 'eu_goods', customerIcdph: 'SK2120000000' }, booking.dayOfText, valueMessages).customerIcdph === 'customerIcdph' &&
+    invoices.checkValues({ ...form([]), mode: 'eu_service', customerIcdph: 'CZ12345678' }, booking.dayOfText, valueMessages).customerIcdph === undefined,
+)
+check(
+  "the VAT proposal of an invoice issued here follows the mode its issuer declared",
+  vat.proposeVat({ id: 'x', kind: 'invoice_out', number: '1', party: 'A', partyIco: null, partyVatId: 'DE123456789', modeHint: 'eu_goods', lines: [{ rate: 0, base: 10000, vat: 0 }], issuedOn: '2026-10-01', receivedOn: '2026-10-01', totalCents: 10000, vatCents: 0, currency: 'EUR', category: 'sales_goods', vatDeduct: null, booked: true, vat: null }, { status: 'payer', quarterly: false, since: '2020-01-01' })?.mode === 'eu_goods',
+)
 
 // Credit notes (18 October 2026)
 const sold = [

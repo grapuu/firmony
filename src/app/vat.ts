@@ -89,6 +89,8 @@ export interface VatDoc {
   suppliedOn?: string | null
   corrects?: string | null
   lines?: { rate: number; base: number; vat: number }[]
+  /** An invoice of ours: the mode its issuer declared (a supply to another member state, an export...). */
+  modeHint?: VatMode | null
   issuedOn: string | null
   /** The day the document reached us (Bratislava): a deduction cannot be claimed before it. */
   receivedOn: string
@@ -318,7 +320,9 @@ export function proposeVat(given: VatDoc, company: VatCompany): VatData | null {
     if (company.status !== 'payer') return base
     const lines = hinted.length > 0 ? hinted.map((line) => ({ ...line, deduct: 0 })) : linesOf(total, vat).map((line) => ({ ...line, deduct: 0 }))
     if (lines.some((line) => line.rate > 0)) return { ...base, mode: 'domestic', lines: lines.filter((line) => line.rate > 0 || line.base !== 0) }
-    const mode: VatMode = abroad && isEuVatId(vatId) ? 'eu_service' : abroad ? 'outside' : 'exempt'
+    // An invoice issued here says how it is taxed; anything else is guessed from the customer's VAT number.
+    const declared = given.modeHint && given.modeHint !== 'domestic' && ISSUED_MODES.includes(given.modeHint) ? given.modeHint : null
+    const mode: VatMode = declared ?? (abroad && isEuVatId(vatId) ? 'eu_service' : abroad ? 'outside' : 'exempt')
     const untaxed = lines.reduce((sum, line) => sum + line.base, 0) || total
     return { ...base, mode, lines: untaxed !== 0 ? [{ rate: 0, base: untaxed, vat: 0, deduct: 0 }] : [] }
   }

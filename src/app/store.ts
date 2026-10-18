@@ -6,7 +6,7 @@ import { NEXT_BANK_LEDGER, now } from '../db'
 import { linkLockedSql } from './period-schema'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
-import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatStatus } from './vat'
+import { isVatMode, type VatCompany, type VatData, type VatDoc, type VatLine, type VatMode, type VatStatus } from './vat'
 import { rateMicro } from './fx'
 import { settingsOf, type IntrastatSettings } from './intrastat'
 import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
@@ -157,6 +157,8 @@ export interface Doc {
   foreign: boolean | null
   correctsHint: string | null
   linesHint: VatLine[]
+  /** The VAT mode the issuer of an invoice of ours declared (invoices.vat_mode), for the proposal. */
+  modeHint: VatMode | null
   /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
   ekasaUid: string | null
   ekasaOkp: string | null
@@ -286,7 +288,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
-  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country`
+  d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint`
 export const DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by'
 
 export function docOf(row: Row): Doc {
@@ -332,6 +334,7 @@ export function docOf(row: Row): Doc {
     foreign: row.foreign_party === null || row.foreign_party === undefined ? null : row.foreign_party === 1,
     correctsHint: str(row.corrects),
     linesHint: isVatMode(row.vat_mode) ? [] : vatLinesOf(row.vat_lines),
+    modeHint: isVatMode(row.vat_hint) ? row.vat_hint : null,
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),
   }
@@ -377,6 +380,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     suppliedOn: doc.suppliedOn,
     corrects: doc.correctsHint,
     lines: doc.linesHint,
+    modeHint: doc.modeHint,
     issuedOn: doc.issuedOn,
     receivedOn: bratislavaDay(doc.createdAt),
     totalCents: doc.totalCents,

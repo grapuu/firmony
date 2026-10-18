@@ -5,8 +5,29 @@
 import { now } from '../db'
 import type { Company } from './store'
 import { splitAddress } from './address'
+import { isEuVatId } from './vat'
 
 export const VAT_RATES = [23, 19, 5, 0] as const
+
+/**
+ * How an invoice of a VAT payer is taxed (invoices.vat_mode): Slovak VAT at its rates, or a supply without it: goods
+ * to a VAT payer of another member state (§ 43 of the VAT Act), a service whose customer in another member state pays
+ * the VAT (§ 15(1)), an export (§ 47), a supply whose place is outside Slovakia.
+ */
+export type InvoiceMode = 'domestic' | 'eu_goods' | 'eu_service' | 'export' | 'outside'
+export const INVOICE_MODES: readonly InvoiceMode[] = ['domestic', 'eu_goods', 'eu_service', 'export', 'outside']
+export const isInvoiceMode = (value: unknown): value is InvoiceMode => typeof value === 'string' && (INVOICE_MODES as readonly string[]).includes(value)
+
+/**
+ * What an invoice without Slovak VAT says, as § 74(1) of the VAT Act asks (that the supply is exempt, or "prenesenie
+ * daňovej povinnosti" when the customer pays the tax), and its category and exemption code in EN 16931 (VATEX).
+ */
+export const MODE_TERMS: Record<Exclude<InvoiceMode, 'domestic'>, { text: string; category: 'K' | 'AE' | 'G' | 'O'; code: string }> = {
+  eu_goods: { text: 'Dodanie je oslobodené od dane podľa § 43 zákona o DPH (dodanie tovaru do iného členského štátu).', category: 'K', code: 'VATEX-EU-IC' },
+  eu_service: { text: 'Prenesenie daňovej povinnosti', category: 'AE', code: 'VATEX-EU-AE' },
+  export: { text: 'Dodanie je oslobodené od dane podľa § 47 zákona o DPH (vývoz tovaru).', category: 'G', code: 'VATEX-EU-G' },
+  outside: { text: 'Miesto dodania nie je v tuzemsku: dodanie nie je predmetom slovenskej dane.', category: 'O', code: 'VATEX-EU-O' },
+}
 export const UNITS = ['ks', 'hod', 'deň', 'mes', 'kg', 'km', 'm²', 'bal'] as const
 
 /** UN/ECE Recommendation 20 codes for the units an invoice line may have. */
@@ -36,6 +57,8 @@ export interface InvoiceValues {
   /** A credit note: the issued invoice it corrects (its id), and why. */
   corrects?: string
   reason?: string
+  /** How a VAT payer's invoice is taxed; Slovak VAT when not said. */
+  mode?: InvoiceMode
 }
 
 export interface Line {
@@ -137,6 +160,7 @@ export function isIban(text: string): boolean {
 
 export interface Errors {
   customerName?: string
+  customerIcdph?: string
   customerEmail?: string
   customerIco?: string
   issued?: string
@@ -159,7 +183,8 @@ export function linesOf(values: InvoiceValues, vatPayer: boolean, messages: { li
     if (empty) return
     const quantity = milliOf(input.quantity === '' ? '1' : input.quantity)
     const price = centsOf(input.price)
-    const rate = vatPayer ? Number(input.vat) : 0
+    // A supply without Slovak VAT has no rate, whatever a line's select says.
+    const rate = vatPayer && (values.mode ?? 'domestic') === 'domestic' ? Number(input.vat) : 0
     if (input.description.trim() === '' || quantity === null || Number.isNaN(quantity) || quantity <= 0 || price === null || Number.isNaN(price) || !VAT_RATES.includes(rate as (typeof VAT_RATES)[number])) {
       error ??= messages.line(i + 1)
       return
@@ -190,6 +215,9 @@ export function checkValues(values: InvoiceValues, dayOf: (text: string) => stri
   if (!delivered) errors.delivered = messages.delivered
   if (!due || (issued && due < issued)) errors.due = messages.due
   if (values.iban !== '' && !isIban(values.iban)) errors.iban = messages.iban
+  // Goods or a service to another member state go to a VAT payer there: its VAT number is on the invoice (§ 74(1)(b)).
+  const vatId = values.customerIcdph.replace(/[\s.-]/g, '').toUpperCase()
+  if ((values.mode === 'eu_goods' || values.mode === 'eu_service') && (!isEuVatId(vatId) || vatId.startsWith('SK'))) errors.customerIcdph = messages.customerIcdph
   return errors
 }
 
@@ -227,6 +255,8 @@ export interface StoredInvoice {
   paidOn: string | null
   /** An invoice, or a credit note (dobropis) of an invoice issued before. */
   kind: 'invoice' | 'credit'
+  /** How it is taxed (a company that is no VAT payer: always as `domestic`, without VAT). */
+  mode: InvoiceMode
   /** A credit note: the invoice it corrects (its id, number and day of issue), and why. */
   corrects: string | null
   correctsNumber: string | null
@@ -242,6 +272,8 @@ export interface StoredInvoice {
 const VAT_SCHEMES: Record<string, string> = {
   AT: '9914', BE: '9925', BG: '9926', CY: '9928', CZ: '9929', DE: '9930', EE: '9931', EL: '9933', ES: '9920', FR: '9957', HR: '9934',
   HU: '9910', IE: '9935', LT: '9937', LU: '9938', LV: '9939', MT: '9943', NL: '9944', PL: '9945', PT: '9946', RO: '9947', SI: '9949',
+  // Beyond the Union, where Peppol names a VAT number's scheme: a customer of an export.
+  AD: '9922', AL: '9923', BA: '9924', CH: '9927', GB: '9932', LI: '9936', MC: '9940', ME: '9941', MK: '9942', RS: '9948', SM: '9951', TR: '9952', VA: '9953',
 }
 
 /** The state of a VAT number (ISO 3166: Greece's EL is GR), Slovakia when there is none. */
@@ -266,12 +298,17 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
   const note = [credit && invoice.reason ? `Dôvod opravy: ${invoice.reason}` : '', invoice.note ?? ''].filter(Boolean).join(' | ')
   const totals = totalsOf(lines, seller.vatPayer)
   // EN 16931: S is a rate above nought, E a supply exempt from VAT (Slovakia has no zero rate at home), O a seller
-  // who is no VAT payer; E and O carry the reason, O carries no rate and no VAT identifier of either side (BR-O-02).
-  const category = (rate: number) => (seller.vatPayer ? (rate > 0 ? 'S' : 'E') : 'O')
-  const reason = (rate: number) => (category(rate) === 'O' ? 'Dodávateľ nie je platiteľom DPH' : category(rate) === 'E' ? 'Oslobodené od DPH' : null)
+  // who is no VAT payer or a supply outside Slovakia; K goods to another member state, AE a service whose customer
+  // pays the VAT, G an export, each at 0 % with its exemption code. E and O carry the reason, O carries no rate and no
+  // VAT identifier of either side (BR-O-02 to BR-O-04).
+  const mode = seller.vatPayer ? invoice.mode : 'domestic'
+  const terms = mode === 'domestic' ? null : MODE_TERMS[mode]
+  const category = (rate: number) => terms?.category ?? (seller.vatPayer ? (rate > 0 ? 'S' : 'E') : 'O')
+  const reason = (rate: number) => terms?.text ?? (category(rate) === 'O' ? 'Dodávateľ nie je platiteľom DPH' : category(rate) === 'E' ? 'Dodanie je oslobodené od dane' : null)
+  const percent = (rate: number) => (category(rate) === 'O' ? '' : `<cbc:Percent>${rate}</cbc:Percent>`)
   const taxCategory = (rate: number) =>
-    `<cac:TaxCategory><cbc:ID>${category(rate)}</cbc:ID>${seller.vatPayer ? `<cbc:Percent>${rate}</cbc:Percent>` : ''}${reason(rate) ? `<cbc:TaxExemptionReason>${reason(rate)}</cbc:TaxExemptionReason>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`
-  const vatId = (icdph: string | null) => (seller.vatPayer ? icdph : null)
+    `<cac:TaxCategory><cbc:ID>${category(rate)}</cbc:ID>${percent(rate)}${terms ? `<cbc:TaxExemptionReasonCode>${terms.code}</cbc:TaxExemptionReasonCode>` : ''}${reason(rate) ? `<cbc:TaxExemptionReason>${esc(reason(rate) ?? '')}</cbc:TaxExemptionReason>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`
+  const vatId = (icdph: string | null) => (seller.vatPayer && terms?.category !== 'O' ? icdph : null)
   const party = (p: { name: string; ico: string | null; dic: string | null; icdph: string | null; address: string | null; vatNumber: string | null }) => {
     const country = countryOf(p.vatNumber)
     const vatNumber = (p.vatNumber ?? '').replace(/\s/g, '').toUpperCase()
@@ -305,7 +342,8 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
       : '',
     `<cac:AccountingSupplierParty>${party({ name: seller.name, ico: seller.ico, dic: seller.dic, icdph: vatId(seller.icdph), address: seller.address, vatNumber: seller.icdph })}</cac:AccountingSupplierParty>`,
     `<cac:AccountingCustomerParty>${party({ name: invoice.customerName, ico: invoice.customerIco, dic: invoice.customerDic, icdph: vatId(invoice.customerIcdph), address: invoice.customerAddress, vatNumber: invoice.customerIcdph })}</cac:AccountingCustomerParty>`,
-    `<cac:Delivery><cbc:ActualDeliveryDate>${invoice.deliveredOn}</cbc:ActualDeliveryDate></cac:Delivery>`,
+    // Goods to another member state name the state they went to (BR-IC-12).
+    `<cac:Delivery><cbc:ActualDeliveryDate>${invoice.deliveredOn}</cbc:ActualDeliveryDate>${terms?.category === 'K' ? `<cac:DeliveryLocation><cac:Address><cac:Country><cbc:IdentificationCode>${countryOf(invoice.customerIcdph)}</cbc:IdentificationCode></cac:Country></cac:Address></cac:DeliveryLocation>` : ''}</cac:Delivery>`,
     // A credit transfer to the account (30) names the account (BR-61); without one, the means is not defined (1). A
     // credit note is paid back to the customer's account, which the company has and the file need not name.
     credit
@@ -317,7 +355,7 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
     `<cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="EUR">${amount(totals.base)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="EUR">${amount(totals.base)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="EUR">${amount(totals.total)}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="EUR">${amount(totals.total)}</cbc:PayableAmount></cac:LegalMonetaryTotal>`,
     ...lines.map(
       (line) =>
-        `<cac:${root}Line><cbc:ID>${line.position}</cbc:ID><cbc:${credit ? 'Credited' : 'Invoiced'}Quantity unitCode="${UNIT_CODES[line.unit ?? 'ks'] ?? 'C62'}">${(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000}</cbc:${credit ? 'Credited' : 'Invoiced'}Quantity><cbc:LineExtensionAmount currencyID="EUR">${amount(line.baseCents)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${esc(line.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${category(line.vatRate)}</cbc:ID>${seller.vatPayer ? `<cbc:Percent>${line.vatRate}</cbc:Percent>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="EUR">${amount(Math.abs(line.unitCents))}</cbc:PriceAmount></cac:Price></cac:${root}Line>`,
+        `<cac:${root}Line><cbc:ID>${line.position}</cbc:ID><cbc:${credit ? 'Credited' : 'Invoiced'}Quantity unitCode="${UNIT_CODES[line.unit ?? 'ks'] ?? 'C62'}">${(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000}</cbc:${credit ? 'Credited' : 'Invoiced'}Quantity><cbc:LineExtensionAmount currencyID="EUR">${amount(line.baseCents)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${esc(line.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${category(line.vatRate)}</cbc:ID>${percent(line.vatRate)}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="EUR">${amount(Math.abs(line.unitCents))}</cbc:PriceAmount></cac:Price></cac:${root}Line>`,
     ),
     `</${root}>`,
     '',
@@ -365,6 +403,7 @@ function invoiceOf(row: Row): StoredInvoice {
     createdByName: str(row.created_by_name),
     paidOn: str(row.paid_on),
     kind: row.kind === 'credit' ? 'credit' : 'invoice',
+    mode: isInvoiceMode(row.vat_mode) ? row.vat_mode : 'domestic',
     corrects: str(row.corrects),
     correctsNumber: str(row.corrects_number),
     correctsIssuedOn: str(row.corrects_issued_on),
@@ -467,6 +506,7 @@ export function saveInvoiceStatements(
 ): D1PreparedStatement[] {
   const v = args.values
   const year = Number(args.issued.slice(0, 4))
+  const mode = v.mode ?? 'domestic'
   const fields = [
     v.customerName.trim().slice(0, 200),
     v.customerIco.replace(/\s/g, '') || null,
@@ -491,15 +531,28 @@ export function saveInvoiceStatements(
       .prepare(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
-           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason)
+           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
            CASE WHEN ?5 = 'issued' THEN printf('%d%04d', ?6, next.seq) END,
-           ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
+           ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
          FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6) AS next`,
       )
-      .bind(args.id, args.company, now(), args.user, args.issue ? 'issued' : 'draft', year, ...fields, args.token, args.credit ? 'credit' : 'invoice', args.credit?.corrects ?? null, args.credit?.reason.slice(0, 500) || null),
+      .bind(
+        args.id,
+        args.company,
+        now(),
+        args.user,
+        args.issue ? 'issued' : 'draft',
+        year,
+        ...fields,
+        args.token,
+        args.credit ? 'credit' : 'invoice',
+        args.credit?.corrects ?? null,
+        args.credit?.reason.slice(0, 500) || null,
+        mode === 'domestic' ? null : mode,
+      ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol.
     ...(args.issue
@@ -507,14 +560,22 @@ export function saveInvoiceStatements(
           db
             .prepare(
               `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs,
-                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects)
+                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint)
                SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, number,
-                 issued_on, due_on, total_cents, vat_cents, 'EUR', 'sales', id, customer_icdph, delivered_on, ?, ?
+                 issued_on, due_on, total_cents, vat_cents, 'EUR', ?, id, customer_icdph, delivered_on, ?, ?, ?
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )
-            // Its VAT by rate, exactly as the invoice sums it: what the return proposes until the accountant confirms it.
-            // A credit note's are minus, and it names the invoice it corrects (the control statement's C.1 reads it).
-            .bind(args.documentId, JSON.stringify(args.totals.rates.map((r) => ({ rate: r.rate, base: r.base, vat: r.vat, deduct: 0 }))), args.credit?.number ?? null, args.id, args.company),
+            // Its VAT by rate, exactly as the invoice sums it, and how it is taxed: what the return proposes until the
+            // accountant confirms it. A credit note's are minus, and it names the invoice it corrects (C.1 reads it).
+            .bind(
+              args.documentId,
+              mode === 'eu_goods' || mode === 'export' ? 'sales_goods' : 'sales',
+              JSON.stringify(args.totals.rates.map((r) => ({ rate: r.rate, base: r.base, vat: r.vat, deduct: 0 }))),
+              args.credit?.number ?? null,
+              mode === 'domestic' ? null : mode,
+              args.id,
+              args.company,
+            ),
           db.prepare("UPDATE invoices SET document_id = ? WHERE id = ? AND company_id = ? AND status = 'issued'").bind(args.documentId, args.id, args.company),
         ]
       : []),
