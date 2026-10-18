@@ -7159,3 +7159,8 @@ a.wtable__name {
 .takeover__item > span { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .takeover__meta { color: var(--soft); font-size: 0.8125rem; }
 .takeover__day { max-width: 12rem; }
+
+/* The invoices' repeats, between the figures and the list. */
+.invoices__repeats {
+  margin: 16px 0;
+}

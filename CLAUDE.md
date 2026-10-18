@@ -1144,6 +1144,20 @@ by itself.
   the rate. Pairing compares amounts in one currency (crowns are never taken for euros); a payment in euros pairs with
   an invoice in another currency by its number and euros within 5 % of the invoice's at its rate (`FX_SLACK` in
   match.ts). test/invoice-currency.runtime.mjs, units "Invoices in another currency".
+- Invoices issued again by themselves (built 18 October 2026, schema step 42: `invoice_repeats`, `invoices.repeat_id`,
+  `src/app/repeat.ts`): an issued invoice (not a credit note, a request, an advance or a final invoice) has
+  "Opakovanie" on its page: every month, quarter or year (`REPEAT_EVERY`), the next day (today or later; offered a
+  month after the invoice's day), the last day (optional), mailed to the customer or not. The schedule
+  (`repeatScheduled` in routes.tsx, every quarter of an hour) issues a repeat whose day has come in Bratislava, dated
+  today: the same customer, lines, taxation, account and note, in its currency at the ECB's rate of the day before
+  (none yet: it waits and says so), due as many days after it as the invoice was, numbered in the invoices' row, paired
+  with a payment that came already, mailed as "Poslať odberateľovi" mails it (the reply to who started the repeat),
+  then moves on to its next day after today, kept to its day of the month (`anchoredDay`: from the 31st the last day of
+  a shorter month; a schedule that did not run issues one invoice, not every missed one). One repeat that runs an
+  invoice (`invoice_repeats_template`), one invoice a repeat a day (`invoices_repeat`): a second run issues nothing
+  twice. It ends past its last day or the contract's; a locked period or a failure is said on the repeat. The list
+  shows the repeats ("Opakované faktúry"), the invoice it issued says "Vystavená sama z opakovania", "Zastaviť
+  opakovanie" stops it; purge deletes them. test/repeat.runtime.mjs, units "Invoices issued again".
 - Found on the way (18 October 2026) and mended: automatic pairing asked the period lock of `p.id` and `d.id` inside
   subqueries that name their own `payments p` and `documents d`, so once any company had a locked period with a booked
   document or a payment in it, no company's payments paired by themselves any more (`linkStatement` now asks it of
@@ -1153,7 +1167,8 @@ by itself.
   state when it has no VAT number (an export to a private person reads as SK in the e-invoice), an advance in another
   currency, advances for a supply without Slovak VAT (goods to the EU, export, reverse charge: the request is refused),
   the advance's document made by itself when the money comes (the client clicks it), a rate that changes between the
-  advance and the supply, recurring invoices sent by themselves, the e-invoice sent through a digital postman,
+  advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
+  digital postman,
   invoice numbering of the company's own pattern, the company's logo on the invoice.
 
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
@@ -1927,8 +1942,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1145 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies
-npm run test:runtime     # 1590 workerd checks on Node 24 (as GitHub runs them), including test/invoice-currency.runtime.mjs
+npm test                 # 1148 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats
+npm run test:runtime     # 1604 workerd checks on Node 24 (as GitHub runs them), including test/repeat.runtime.mjs
 npm run test:peppol      # 19 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

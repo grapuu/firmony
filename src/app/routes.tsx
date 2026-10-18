@@ -72,6 +72,7 @@ import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { ratesFor, refreshRates } from './fx-store'
+import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
 import { rateFor, rateMicro, rateText } from './fx'
 import { endingOf, intakeOpen, serviceOpen } from './ending'
 import { exportYear, exportYears } from './export'
@@ -334,6 +335,10 @@ function flashOf(c: Ctx): string | null {
       return t.invoices.actions.remindedFlash
     case 'zaloha':
       return t.invoices.actions.advanceFlash
+    case 'opakovanie':
+      return t.invoices.actions.repeatFlash
+    case 'opakovanie-zastavene':
+      return t.invoices.actions.repeatStoppedFlash
     case 'banka-pripojena':
       return t.bank.flash.pripojena(n)
     case 'banka-bez-uctu':
@@ -1648,7 +1653,7 @@ async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const invoices = await listInvoices(c.env.DB, who.company.id)
   const closed = serviceOpen(who.company, today()) ? null : t.ending.noInvoices(dayName(who.company.endsOn ?? today()))
-  return shell(c, 'invoices', ti.title, <InvoicesPage invoices={invoices} today={today()} flash={flashOf(c)} closed={closed} />, status)
+  return shell(c, 'invoices', ti.title, <InvoicesPage invoices={invoices} today={today()} flash={flashOf(c)} closed={closed} repeats={await repeatsOf(c.env.DB, who.company.id)} />, status)
 }
 
 appRoutes.get('/faktury', (c) => invoicesPage(c))
@@ -1952,6 +1957,41 @@ appRoutes.post('/faktury/:id/zaloha', async (c) => {
   return c.redirect(`/app/faktury/${request.id}?ok=zaloha`, 303)
 })
 
+/** Makes an issued invoice repeat: how often, its next day (today or later), its last day, and whether it is mailed. */
+appRoutes.post('/faktury/:id/opakovat', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const invoice = ID.test(id) ? await getInvoice(db, who.company.id, id) : null
+  if (!invoice || !mayRepeat(invoice)) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  if (!serviceOpen(who.company, today())) return invoicesPage(c, 409)
+  const body = await c.req.parseBody()
+  const every = isRepeatEvery(body.kazdych) ? (Number(body.kazdych) as RepeatEvery) : null
+  const next = dayOfText(typeof body.od === 'string' ? body.od : '')
+  const untilText = typeof body.do === 'string' ? body.do.trim() : ''
+  const until = untilText ? dayOfText(untilText) : null
+  const fail = (error: string) => invoicePage(c, id, { error }, 422)
+  if (!every || !next || next < today()) return fail(ti.actions.repeatBadDay)
+  if (untilText && (!until || until < next)) return fail(ti.actions.repeatBadUntil)
+  try {
+    await db.batch(startRepeatStatements(db, { id: crypto.randomUUID(), company: who.company.id, template: invoice.id, every, nextOn: next, untilOn: until, send: body.poslat === '1', user: who.user.id }))
+  } catch (err) {
+    // It repeats already (a second click): nothing more is started.
+    console.error('a repeat failed', err instanceof Error ? err.name : 'error')
+  }
+  return c.redirect(`/app/faktury/${invoice.id}?ok=opakovanie`, 303)
+})
+
+appRoutes.post('/faktury/opakovanie/:id/zastavit', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const row = ID.test(id) ? await db.prepare('SELECT template_id FROM invoice_repeats WHERE id = ? AND company_id = ?').bind(id, who.company.id).first<{ template_id: string }>() : null
+  if (!row) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  await db.batch(stopRepeatStatements(db, who.company.id, id, who.user.id, 'stopped'))
+  return c.redirect(`/app/faktury/${row.template_id}?ok=opakovanie-zastavene`, 303)
+})
+
 appRoutes.post('/faktury', (c) => saveInvoice(c, null))
 
 async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, status: ContentfulStatusCode = 200) {
@@ -2003,11 +2043,19 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
             .all<{ id: string; number: string | null; total_cents: number }>()
         ).results.map((r) => ({ id: r.id, number: r.number, totalCents: Number(r.total_cents) }))
       : []
+  // A repeat: the one that runs, or the form with the next day a month on (kept to the invoice's day of the month).
+  const repeat = mayRepeat(invoice)
+    ? {
+        running: await repeatOfInvoice(db, who.company.id, invoice.id),
+        next: textDay(nextAfter(invoice.issuedOn, 1, Number(invoice.issuedOn.slice(8, 10)), today())),
+        open: serviceOpen(who.company, today()),
+      }
+    : null
   return shell(
     c,
     'invoices',
     `${ti.sheet.kinds[invoice.kind] ?? ti.sheet.title} ${invoice.number}`,
-    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={advance} {...extra} />,
+    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={advance} repeat={repeat} {...extra} />,
     status,
   )
 }
@@ -2106,6 +2154,39 @@ appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Mis
 // The schedule
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * Invoices whose repeat has come: issued (repeat.ts), paired with a payment that came already, and mailed to the
+ * customer when the repeat says so, as "Poslať odberateľovi" mails them (the reply goes to who started the repeat).
+ */
+async function repeatScheduled(env: AppBindings, day: string): Promise<void> {
+  const db = env.DB
+  for (const done of await issueRepeats(db, day)) {
+    try {
+      await afterReading(db, done.company.id, done.documentId)
+      await matchCompany(db, done.company.id)
+      const invoice = await getInvoice(db, done.company.id, done.invoiceId)
+      if (!done.repeat.send || !invoice?.customerEmail || !invoice.number) continue
+      const by = done.repeat.createdBy ? await db.prepare('SELECT email FROM users WHERE id = ?').bind(done.repeat.createdBy).first<{ email: string }>() : null
+      const total = formatMoney(invoice.totalCents, invoice.currency).replace(/\u00a0/g, ' ')
+      const due = dayName(invoice.dueOn).replace(/\u00a0/g, ' ')
+      await db.batch([
+        queueStatement(db, {
+          key: `invoice:send:${invoice.id}:repeat`,
+          to: invoice.customerEmail,
+          replyTo: by?.email ?? null,
+          subject: ti.mail.subject(invoice.number, done.company.name),
+          body: ti.mail.body(done.company.name, invoice.number, total, due, invoice.iban ? groupIban(invoice.iban) : null, `${BRAND.origin}/f/${invoice.token}`, invoice.note),
+        }),
+        db.prepare('UPDATE invoices SET sent_at = ? WHERE id = ? AND company_id = ?').bind(now(), invoice.id, done.company.id),
+        eventStatement(db, { company: done.company.id, user: null, action: 'invoice.sent', subject: invoice.id, detail: { repeat: done.repeat.id } }),
+      ])
+    } catch (err) {
+      console.error('after a repeated invoice', err instanceof Error ? err.name : 'error')
+    }
+  }
+  await flushOutbox(db, env.EMAIL)
+}
+
 /** Every fifteen minutes: documents whose reading was cut off are read again (three times at most), old sessions go. */
 export async function appScheduled(env: AppBindings, at: number = Date.now()): Promise<void> {
   const db = env.DB
@@ -2136,6 +2217,11 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await billingScheduled(env, at, BRAND.origin)
   } catch (err) {
     console.error('billing failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    await repeatScheduled(env, bratislava(at).day)
+  } catch (err) {
+    console.error('repeated invoices failed', err instanceof Error ? err.name : 'error')
   }
   try {
     const b = bratislava(at)

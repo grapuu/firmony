@@ -18,6 +18,7 @@ import {
   format,
   ico,
   invoices,
+  repeat,
   ledger,
   ledgerStore,
   dues,
@@ -1329,6 +1330,21 @@ check(
     match.score(pay(124000, null), { ...doc, kind: 'invoice_out', totalCents: 124000, currency: 'CZK', eurCents: null, vs: null }) === 0,
   )
 }
+
+// Invoices issued again by themselves (18 October 2026): the day of the month kept, the next day after today.
+check(
+  'a repeat keeps its day of the month: the 31st is the last day of a shorter month and the 31st again after it',
+  repeat.anchoredDay('2026-01-31', 1, 31) === '2026-02-28' &&
+    repeat.anchoredDay('2026-02-28', 1, 31) === '2026-03-31' &&
+    repeat.anchoredDay('2028-01-31', 1, 31) === '2028-02-29' &&
+    repeat.anchoredDay('2026-11-15', 3, 15) === '2027-02-15' &&
+    repeat.anchoredDay('2026-10-18', 12, 18) === '2027-10-18',
+)
+check(
+  'after a schedule that did not run, the next day is the first one after today, not every one missed',
+  repeat.nextAfter('2026-07-05', 1, 5, '2026-10-18') === '2026-11-05' && repeat.nextAfter('2026-10-18', 1, 18, '2026-10-18') === '2026-11-18' && repeat.nextAfter('2026-12-01', 1, 1, '2026-10-18') === '2026-12-01',
+)
+check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') && repeat.isRepeatEvery(3) && repeat.isRepeatEvery('12') && !repeat.isRepeatEvery('2') && !repeat.isRepeatEvery('x'))
 
 // PAY by square: what a bank's app reads from the QR code on an invoice
 const square = paybysquare.payBySquare({ iban: 'SK31 1200 0000 1987 4263 7541', amountCents: 118080, vs: '20260006', due: '2026-10-15', name: 'Ukážková firma s. r. o.', note: 'Faktúra 20260006' })

@@ -1132,6 +1132,33 @@ const MIGRATIONS: readonly string[][] = [
   // Invoices in another currency (18 October 2026, invoices.ts): the currency, the rate it is converted to euros at
   // (as documents.fx_rate writes it, "1,0845") and the ECB's day of that rate; the document takes both.
   ['ALTER TABLE invoices ADD COLUMN currency TEXT', 'ALTER TABLE invoices ADD COLUMN fx_rate TEXT', 'ALTER TABLE invoices ADD COLUMN fx_day TEXT'],
+  // Invoices issued again by themselves (18 October 2026, repeat.ts): an issued invoice repeats every 1, 3 or 12
+  // months on the day of the month it keeps (anchor); one repeat that runs per invoice, and one invoice a repeat a day
+  // (invoices.repeat_id with its day of issue), so a second run of the schedule issues nothing twice.
+  [
+    `CREATE TABLE IF NOT EXISTS invoice_repeats (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      every INTEGER NOT NULL,
+      anchor INTEGER NOT NULL,
+      next_on TEXT NOT NULL,
+      until_on TEXT,
+      send INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      stopped_at INTEGER,
+      stopped_by TEXT,
+      last_invoice_id TEXT,
+      last_on TEXT,
+      failed TEXT
+    )`,
+    'CREATE UNIQUE INDEX IF NOT EXISTS invoice_repeats_template ON invoice_repeats (template_id) WHERE stopped_at IS NULL',
+    'CREATE INDEX IF NOT EXISTS invoice_repeats_due ON invoice_repeats (next_on) WHERE stopped_at IS NULL',
+    'CREATE INDEX IF NOT EXISTS invoice_repeats_company ON invoice_repeats (company_id)',
+    'ALTER TABLE invoices ADD COLUMN repeat_id TEXT',
+    'CREATE UNIQUE INDEX IF NOT EXISTS invoices_repeat ON invoices (repeat_id, issued_on) WHERE repeat_id IS NOT NULL',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

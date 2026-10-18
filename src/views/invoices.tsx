@@ -7,6 +7,7 @@ import { app, dayName } from '../app/copy'
 import { INVOICE_CURRENCIES, INVOICE_MODES, MODE_TERMS, UNITS, VAT_RATES, creditLines, eurVat, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import { REVERSE_KINDS } from '../app/vat'
+import { REPEAT_EVERY, type Repeat } from '../app/repeat'
 import { eurOf, rateMicro } from '../app/fx'
 import type { Company } from '../app/store'
 import { Tile } from './home'
@@ -33,7 +34,7 @@ const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) =
 // A request is paid with its own symbol; an advance's tax document is paid already (no symbol to pay with).
 const vsOf = (i: Pick<StoredInvoice, 'kind' | 'vs' | 'number'>) => (i.kind === 'proforma' ? i.vs : i.kind === 'advance' ? null : i.number)
 
-export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null }> = ({ invoices, today, flash, closed = null }) => {
+export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[] }> = ({ invoices, today, flash, closed = null, repeats = [] }) => {
   const month = today.slice(0, 7)
   // In euros: an invoice in another currency at its rate.
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + eurosOf(i), 0)
@@ -91,6 +92,24 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
               <dd class="fig__value fig__value--in">{formatEur(paid)}</dd>
             </div>
           </dl>
+          {repeats.length > 0 ? (
+            <section class="info invoices__repeats" aria-labelledby="opakovane-t">
+              <h2 id="opakovane-t" class="info__title">
+                {t.actions.repeats}
+              </h2>
+              <ul class="plain">
+                {repeats.map((r) => (
+                  <li>
+                    <a class="link" href={`/app/faktury/${r.templateId}#opakovanie`}>
+                      {r.customerName}
+                    </a>{' '}
+                    {formatMoney(r.totalCents, r.currency)}, {t.actions.repeatRow(t.actions.repeatEveryLower[r.every] ?? '', dayName(r.nextOn, today))}
+                    {r.failed && t.actions.repeatFailed[r.failed] ? <span class="flag">{t.actions.repeatFailed[r.failed]}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <ul class="rows rows--card invoices">
             {invoices.map((i) => {
               const state = stateOf(i, today)
@@ -702,7 +721,9 @@ export const InvoicePage: FC<{
     advances: { id: string; number: string | null; totalCents: number }[]
     final: { id: string; number: string | null; totalCents: number } | null
   } | null
-}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null }) => {
+  /** An invoice that may repeat: the repeat that runs, or the form's next day. */
+  repeat?: { running: Repeat | null; next: string; open: boolean } | null
+}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null }) => {
   const a = t.actions
   const state = stateOf(invoice, today)
   const credit = invoice.kind === 'credit'
@@ -722,6 +743,7 @@ export const InvoicePage: FC<{
       </header>
       <Flash text={flash} />
       <Flash text={error} tone="error" />
+      {invoice.repeatId ? <p class="phead__lead">{a.repeated}</p> : null}
       <div class="invoice">
         <div class="invoice__paper">
           <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={state !== 'paid'} />
@@ -829,6 +851,53 @@ export const InvoicePage: FC<{
                 <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?vyuctovanie=${invoice.id}`}>
                   {a.final}
                 </a>
+              )}
+            </section>
+          ) : null}
+          {repeat && (repeat.running || repeat.open) ? (
+            <section class="info" id="opakovanie">
+              <h2 class="info__title">{a.repeatTitle}</h2>
+              {repeat.running ? (
+                <>
+                  <p class="info__lead">{a.repeatOn(a.repeatEveryLower[repeat.running.every] ?? '', dayName(repeat.running.nextOn, today))}</p>
+                  {repeat.running.untilOn ? <p class="info__source">{a.repeatUntilOn(dayName(repeat.running.untilOn, today))}</p> : null}
+                  {repeat.running.send ? <p class="info__source">{a.repeatSends}</p> : null}
+                  {repeat.running.failed && a.repeatFailed[repeat.running.failed] ? <p class="flag">{a.repeatFailed[repeat.running.failed]}</p> : null}
+                  <form method="post" action={`/app/faktury/opakovanie/${repeat.running.id}/zastavit`}>
+                    <button class="btn btn--line invoice__wide" type="submit">
+                      {a.repeatStop}
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <form class="stack" method="post" action={`/app/faktury/${invoice.id}/opakovat`} novalidate>
+                  <p class="info__lead">{a.repeatLead}</p>
+                  <label class="field__label" for="op-kazdych">
+                    {a.repeatHow}
+                  </label>
+                  <select id="op-kazdych" class="field__input" name="kazdych">
+                    {REPEAT_EVERY.map((every) => (
+                      <option value={String(every)}>{a.repeatEvery[every]}</option>
+                    ))}
+                  </select>
+                  <label class="field__label" for="op-od">
+                    {a.repeatNext}
+                  </label>
+                  <input id="op-od" class="field__input" name="od" value={repeat.next} maxlength={16} />
+                  <label class="field__label" for="op-do">
+                    {a.repeatUntil}
+                  </label>
+                  <input id="op-do" class="field__input" name="do" value="" maxlength={16} />
+                  {invoice.customerEmail ? (
+                    <label class="tickbox">
+                      <input type="checkbox" name="poslat" value="1" checked />
+                      <span>{a.repeatSend}</span>
+                    </label>
+                  ) : null}
+                  <button class="btn btn--blue invoice__wide" type="submit">
+                    {a.repeatStart}
+                  </button>
+                </form>
               )}
             </section>
           ) : null}

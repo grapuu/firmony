@@ -428,6 +428,8 @@ export interface StoredInvoice {
   correctsNumber: string | null
   correctsIssuedOn: string | null
   reason: string | null
+  /** Issued by a repeat (repeat.ts), which one. */
+  repeatId: string | null
   /** The currency it is issued in ('EUR' for most), the rate it is converted to euros at and the ECB's day of it. */
   currency: string
   fxRate: string | null
@@ -606,6 +608,7 @@ function invoiceOf(row: Row): StoredInvoice {
     paidCents: Number(row.paid_cents ?? 0),
     mode: isInvoiceMode(row.vat_mode) ? row.vat_mode : 'domestic',
     reverse: reverseOf(row.vat_reverse),
+    repeatId: str(row.repeat_id),
     currency: isCurrency(row.currency) ? row.currency : 'EUR',
     fxRate: str(row.fx_rate),
     fxDay: str(row.fx_day),
@@ -722,6 +725,8 @@ export function saveInvoiceStatements(
     payment?: string | null
     /** An invoice in another currency: the currency, the rate it is converted at ("1,0845") and the ECB's day of it. */
     fx?: { currency: string; rate: string | null; day: string | null } | null
+    /** An invoice issued by a repeat (repeat.ts): its repeat (one a day, kept by a unique index). */
+    repeat?: string | null
   },
 ): D1PreparedStatement[] {
   const v = args.values
@@ -753,13 +758,13 @@ export function saveInvoiceStatements(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
            issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse, relates, vs, payment_id,
-           currency, fx_rate, fx_day)
+           currency, fx_rate, fx_day, repeat_id)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('ZF%d%04d', ?6, next.seq) ELSE printf('%d%04d', ?6, next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
-           CASE WHEN ?5 = 'issued' AND ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq) END, ?28, ?29, ?30, ?31
+           CASE WHEN ?5 = 'issued' AND ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq) END, ?28, ?29, ?30, ?31, ?32
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one.
          FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6 AND (kind = 'proforma') = (?22 = 'proforma')) AS next`,
       )
@@ -782,6 +787,7 @@ export function saveInvoiceStatements(
         args.fx && args.fx.currency !== 'EUR' ? args.fx.currency : null,
         args.fx && args.fx.currency !== 'EUR' ? args.fx.rate : null,
         args.fx && args.fx.currency !== 'EUR' ? args.fx.day : null,
+        args.repeat ?? null,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol. A request for an advance is no document.
