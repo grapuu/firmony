@@ -1112,8 +1112,11 @@ by itself.
   with its own variable symbol `<year>9<0001>`, no document of the company and no e-invoice (404, also at the
   customer's link), "nie je daňovým dokladom" on the sheet, a QR code, mailed and reminded with that symbol. A VAT
   payer makes one only for a supply with Slovak VAT (`proformaMode`): a payment before a supply abroad is no tax point,
-  and its documents are not built. Money on the request's symbol shows on its page with "treba vystaviť do" (15 days,
-  § 73) and "Vystaviť daňový doklad k prijatej platbe" (`POST /app/faktury/:id/zaloha`): one document a payment
+  and its documents are not built. Money on the request's symbol gets its document by itself at the next pairing
+  (`autoAdvances` in `src/app/advance-auto.ts`, called first by `matchCompany`: linked 'auto', and mailed to the
+  customer when the request was mailed); one that waits (a payment the client gave another document is skipped)
+  shows on the request's page with "treba vystaviť do" (15 days, § 73) and "Vystaviť daňový doklad k prijatej platbe"
+  (`POST /app/faktury/:id/zaloha`, the same `issueAdvances`): one document a payment
   (kind 'advance', numbered in the invoices' row, the payment's day as the day received, linked to the payment; a
   second click or two at once make none, `invoices_payment`), the payment split by the request's rates as each asks
   with its VAT, each part's base the part divided by one and the rate and its VAT what is left (`advanceLines`, kept
@@ -1180,7 +1183,7 @@ by itself.
 - Not built yet: a corrective invoice of a reverse-charged supply in the control statement, a customer's
   state when it has no VAT number (an export to a private person reads as SK in the e-invoice), an advance in another
   currency, advances for a supply without Slovak VAT (goods to the EU, export, reverse charge: the request is refused),
-  the advance's document made by itself when the money comes (the client clicks it), a rate that changes between the
+  a rate that changes between the
   advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
   digital postman,
   invoice numbering of the company's own pattern, the company's logo on the invoice.
@@ -1957,7 +1960,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1153 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1613 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm run test:runtime     # 1614 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 19 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

@@ -32,7 +32,6 @@ import { checkDeclaration, declarationStateOf, declarationStatements, latestDecl
 import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
 import {
-  advanceLines,
   advancePayments,
   advancesOf,
   finalOf,
@@ -73,6 +72,7 @@ import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { ratesFor, refreshRates } from './fx-store'
 import { orderItems, orderStatements, painXml, payables, paymentOrders } from './payorders'
+import { issueAdvances } from './advance-auto'
 import { PayOrdersPage } from '../views/payorders'
 import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
 import { rateFor, rateMicro, rateText } from './fx'
@@ -1974,64 +1974,10 @@ appRoutes.post('/faktury/:id/zaloha', async (c) => {
   const request = await requestOf(db, who.company.id, c.req.param('id'))
   if (!request || !request.vs) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
   if (!serviceOpen(who.company, today())) return invoicesPage(c, 409)
-  const vatPayer = who.company.vatPayer
-  // After the final invoice, money on the request's symbol pays that invoice: no advance any more.
-  if ((vatPayer && request.mode !== 'domestic') || (await finalOf(db, who.company.id, request.id))) return c.redirect(`/app/faktury/${request.id}`, 303)
-  const pending = (await advancePayments(db, who.company.id, request.vs)).filter((p) => !p.documented)
-  const requestLines = await invoiceLines(db, request.id)
-  for (const payment of pending) {
-    const lines = advanceLines(requestLines, payment.amountCents, vatPayer, (rate) => (vatPayer ? ti.form.advanceLine(request.number ?? '', rate) : ti.form.advanceLineNoVat(request.number ?? '')))
-    if (lines.length === 0) continue
-    const values: InvoiceValues = {
-      customerName: request.customerName,
-      customerAddress: request.customerAddress ?? '',
-      customerIco: request.customerIco ?? '',
-      customerDic: request.customerDic ?? '',
-      customerIcdph: request.customerIcdph ?? '',
-      customerEmail: request.customerEmail ?? '',
-      issued: textDay(today()),
-      delivered: textDay(payment.bookedOn),
-      due: textDay(payment.bookedOn),
-      iban: '',
-      note: '',
-      lines: [],
-      mode: request.mode,
-      reverseKind: request.reverse?.kind ?? '',
-      reverseCode: request.reverse?.code ?? '',
-    }
-    const id = crypto.randomUUID()
-    const documentId = crypto.randomUUID()
-    try {
-      await db.batch([
-        ...saveInvoiceStatements(db, {
-          id,
-          company: who.company.id,
-          user: who.user.id,
-          issue: true,
-          values,
-          lines,
-          totals: totalsOf(lines, vatPayer),
-          issued: today(),
-          delivered: payment.bookedOn,
-          due: payment.bookedOn,
-          token: newToken(),
-          iban: null,
-          documentId,
-          kind: 'advance',
-          relates: request.id,
-          payment: payment.id,
-        }),
-        linkStatement(db, who.company.id, payment.id, documentId, 'client', who.user.id),
-        eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoice.advance', subject: id, detail: { request: request.id, payment: payment.id, total: payment.amountCents } }),
-      ])
-    } catch (err) {
-      // The payment got its document meanwhile (a second click): nothing more is made for it.
-      console.error('an advance failed', err instanceof Error ? err.name : 'error')
-      continue
-    }
-    later(c, afterReading(db, who.company.id, documentId))
-  }
-  return c.redirect(`/app/faktury/${request.id}?ok=zaloha`, 303)
+  const made = await issueAdvances(db, who.company, request, who.user.id, 'client')
+  for (const done of made) later(c, afterReading(db, who.company.id, done.documentId))
+  later(c, flushOutbox(db, c.env.EMAIL))
+  return c.redirect(`/app/faktury/${request.id}${made.length > 0 ? '?ok=zaloha' : ''}`, 303)
 })
 
 /** Makes an issued invoice repeat: how often, its next day (today or later), its last day, and whether it is mailed. */

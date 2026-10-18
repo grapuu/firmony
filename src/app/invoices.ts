@@ -406,6 +406,8 @@ export interface StoredInvoice {
   remindedAt: number | null
   createdAt: number
   createdByName: string | null
+  /** Who issued it (a user's id). */
+  createdBy: string | null
   paidOn: string | null
   /**
    * An invoice; a credit note (dobropis) of an invoice issued before; a request for an advance (zálohová faktúra,
@@ -600,6 +602,7 @@ function invoiceOf(row: Row): StoredInvoice {
     remindedAt: typeof row.reminded_at === 'number' ? row.reminded_at : null,
     createdAt: Number(row.created_at),
     createdByName: str(row.created_by_name),
+    createdBy: str(row.created_by),
     paidOn: str(row.paid_on),
     kind: row.kind === 'credit' || row.kind === 'proforma' || row.kind === 'advance' ? row.kind : 'invoice',
     vs: str(row.vs),

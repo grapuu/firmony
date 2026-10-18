@@ -8,6 +8,7 @@ import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
 import { isVatMode, reverseOf, type ReverseGoods, type VatCompany, type VatData, type VatDoc, type VatLine, type VatMode, type VatStatus } from './vat'
 import { eurOf, rateMicro } from './fx'
+import { autoAdvances } from './advance-auto'
 import { settingsOf, type IntrastatSettings } from './intrastat'
 import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
@@ -900,6 +901,12 @@ async function looseRead(db: D1Database, company: string): Promise<Doc[]> {
 
 /** Pairs what is sure to belong together; says how many pairs were made. */
 export async function matchCompany(db: D1Database, company: string): Promise<number> {
+  // Money on a request's symbol: its advance's tax document first (advance-auto.ts), linked to the payment.
+  try {
+    await autoAdvances(db, company)
+  } catch (err) {
+    console.error('advances failed', err instanceof Error ? err.name : 'error')
+  }
   const [payments, docs] = await Promise.all([listPayments(db, company, 'unpaired', 500), looseRead(db, company)])
   if (payments.length === 0 || docs.length === 0) return 0
   const { auto } = decide(payments.map(asMatchPayment), docs.map(asMatchDocument))

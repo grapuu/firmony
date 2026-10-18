@@ -311,4 +311,35 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
       plainLines[0].vat_cents === null,
     JSON.stringify([plainAdvance, plainLines]),
   )
+
+  // Pairing issues it by itself: a request sent to its customer, money on its symbol, the next pairing (here the one
+  // an issued invoice starts) makes the document, links it and mails it to the customer.
+  await client.post('/app/firma/prepnut', { firma: company })
+  res = await client.post('/app/faktury', form({ druh: 'zalohova' }))
+  const autoRequestId = idOf(res)
+  await client.post(`/app/faktury/${autoRequestId}/poslat`, {})
+  const autoRequest = await db.prepare('SELECT number, vs, sent_at FROM invoices WHERE id = ?').bind(autoRequestId).first()
+  await db
+    .prepare(
+      "INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-adv-auto', ?, 'acc-advance', ?, ?, 14400, 'TEST-ONLY Objednávateľ s. r. o.', ?, 'adv-auto')",
+    )
+    .bind(company, nowS, today, autoRequest?.vs ?? '')
+    .run()
+  await client.post('/app/faktury', form({ splatna: sk(day(30)), 'r1-mnozstvo': '2' }))
+  let autoAdvance = null
+  for (let i = 0; i < 30 && !autoAdvance; i++) {
+    autoAdvance = await db
+      .prepare("SELECT i.id, i.number, i.total_cents, i.sent_at, l.how FROM invoices i LEFT JOIN links l ON l.document_id = i.document_id WHERE i.payment_id = 'pay-adv-auto' AND i.kind = 'advance'")
+      .first()
+    if (!autoAdvance) await new Promise((r) => setTimeout(r, 100))
+  }
+  const autoMail = await db
+    .prepare("SELECT subject FROM outbox WHERE recipient = 'objednavatel@example.sk' AND subject LIKE ?")
+    .bind(`Daňový doklad k prijatej platbe ${autoAdvance?.number ?? '-'}%`)
+    .first()
+  check(
+    'money on a sent request issues its tax document by itself at the next pairing, linked, and mailed to the customer',
+    Boolean(autoRequest?.sent_at) && autoAdvance?.total_cents === 14400 && autoAdvance.how === 'auto' && Boolean(autoAdvance.sent_at) && Boolean(autoMail),
+    JSON.stringify([autoRequest, autoAdvance, autoMail]),
+  )
 }
