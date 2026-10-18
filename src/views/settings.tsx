@@ -3,6 +3,7 @@
 import type { FC } from 'hono/jsx'
 import { signerRole } from '../rpo'
 import { OFFLINE_TERMS } from '../config'
+import { formatEurExact } from '../format'
 import { app, dayName, whenName } from '../app/copy'
 import type { Ending } from '../app/ending'
 import type { Paper, PoaState } from '../app/papers'
@@ -183,6 +184,9 @@ const Download: FC<{ years: string[]; handover: Paper[]; today: string; owner: b
     </section>
   )
 }
+
+/** Cents as typed in a field: 5000 or 1250,50. */
+const moneyField = (cents: number): string => (cents % 100 === 0 ? String(cents / 100) : `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`)
 
 export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, receipts = [], downloadError, bills = [] }) => {
   const owner = me.role === 'owner'
@@ -378,18 +382,70 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
             </h2>
             <p class="info__lead">{c.approvalsLead}</p>
             {owner ? (
-              <form class="inline" method="post" action="/app/firma/schvalovanie">
+              <form class="stack approvals__form" method="post" action="/app/firma/schvalovanie" novalidate>
                 <label class="tickbox">
                   <input type="checkbox" name="zapnut" value="1" checked={company.approvals} />
                   <span>{c.approvalsOn}</span>
                 </label>
+                <div class="fgrid">
+                  <div class="fgrid__cell">
+                    <label class="field__label" for="dve-od">
+                      {c.approvalsTwo}
+                    </label>
+                    <input id="dve-od" class="field__input" name="dve_od" value={company.approvalTwoFrom ? moneyField(company.approvalTwoFrom) : ''} inputmode="decimal" maxlength={20} />
+                    <p class="field__hint">{c.approvalsTwoHint}</p>
+                  </div>
+                </div>
+                <input type="hidden" name="schvalovatelia" value="1" />
+                <p class="invite__title">{c.approvers}</p>
+                <p class="info__source">{c.approversLead}</p>
+                {people.filter((p) => p.role !== 'owner').length === 0 ? <p class="info__source">{c.approversNone}</p> : null}
+                {people
+                  .filter((p) => p.role !== 'owner')
+                  .map((person) => (
+                    <div class="fgrid approvals__person">
+                      <div class="fgrid__cell">
+                        <label class="tickbox">
+                          <input type="checkbox" name={`schvalovatel_${person.id}`} value="1" checked={Boolean(person.approver)} />
+                          <span>
+                            {person.name}: {c.approver}
+                          </span>
+                        </label>
+                      </div>
+                      <div class="fgrid__cell">
+                        <label class="field__label" for={`limit-${person.id}`}>
+                          {c.approverLimit}
+                        </label>
+                        <input
+                          id={`limit-${person.id}`}
+                          class="field__input"
+                          name={`limit_${person.id}`}
+                          value={person.approveLimit ? moneyField(person.approveLimit) : ''}
+                          inputmode="decimal"
+                          maxlength={20}
+                        />
+                        <p class="field__hint">{c.approverLimitHint}</p>
+                      </div>
+                    </div>
+                  ))}
                 <button class="btn btn--line btn--small" type="submit">
                   {c.remindersSave}
                 </button>
               </form>
             ) : (
-              <p class="info__source">{c.approvalsState(company.approvals)}</p>
+              <>
+                <p class="info__source">{c.approvalsState(company.approvals)}</p>
+                {company.approvals ? <p class="info__source">{c.approvalsShow(company.approvalTwoFrom ? formatEurExact(company.approvalTwoFrom) : null)}</p> : null}
+                {me.approver ? <p class="info__source">{c.approverOf(me.approveLimit ? formatEurExact(me.approveLimit) : null)}</p> : null}
+              </>
             )}
+            {company.approvals ? (
+              <p class="info__source">
+                <a class="link" href="/app/schvalovanie">
+                  {app.approvalsQueue.link}
+                </a>
+              </p>
+            ) : null}
           </section>
 
           <section class="info" id="pripomienky" aria-labelledby="pripomienky-t">

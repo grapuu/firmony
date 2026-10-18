@@ -4187,7 +4187,12 @@ teamRoutes.post('/doklady/:id', async (c) => {
            kind = ?2, party = ?3, party_ico = ?4, number = ?5, vs = ?6, issued_on = ?7, due_on = ?8, total_cents = ?9, vat_cents = ?10,
            category = ?11, vat_deduct = ?12, account = ?13,
            booked_at = CASE WHEN ?14 = 1 THEN ?15 ELSE booked_at END, booked_by = CASE WHEN ?14 = 1 THEN ?16 ELSE booked_by END,
-           currency = ?19, fx_rate = ?20
+           currency = ?19, fx_rate = ?20,
+           -- An approval for payment is of the amount approved (approvals.ts): another total or currency takes it back.
+           approved_at = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 THEN approved_at END,
+           approved_by = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 THEN approved_by END,
+           first_approved_at = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 THEN first_approved_at END,
+           first_approved_by = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 THEN first_approved_by END
          WHERE id = ?17 AND company_id = ?18 AND deleted_at IS NULL`,
       )
       .bind(

@@ -67,6 +67,8 @@ export interface Company {
   vatCarry: number
   /** Suppliers' invoices are paid only once an owner approved them (payment orders, payorders.ts). */
   approvals: boolean
+  /** From this amount (cents) two people approve a supplier's invoice (approvals.ts); null: one always. */
+  approvalTwoFrom: number | null
   /** The company reminds its customers of invoices not paid by itself (dunning.ts). */
   dunning: boolean
   /** The company's invoice numbers: prefix, the mark between year and order, the order's digits, a year's first order. */
@@ -176,6 +178,10 @@ export interface Doc {
   /** A supplier's invoice approved for payment: when, and by whom. */
   approvedAt: number | null
   approvedByName: string | null
+  /** The first of two approvals an amount needs (approvals.ts): when, by whom. */
+  firstApprovedAt?: number | null
+  firstApprovedBy?: string | null
+  firstApprovedByName?: string | null
   /** An eKasa receipt's identifier and the seller's verification code (src/app/ekasa.ts), as the reader wrote them. */
   ekasaUid: string | null
   ekasaOkp: string | null
@@ -213,7 +219,7 @@ export interface InvoiceNumbering {
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.dunning,
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.approval_two_from, c.dunning,
   c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
@@ -258,6 +264,7 @@ export function companyOf(row: Row): Company {
     taxAccount: str(row.tax_account),
     vatCarry: num(row.vat_carry) ?? 0,
     approvals: row.approvals === 1,
+    approvalTwoFrom: typeof row.approval_two_from === 'number' && row.approval_two_from > 0 ? row.approval_two_from : null,
     dunning: row.dunning === 1,
     invoiceNumbering: {
       prefix: str(row.invoice_prefix) ?? '',
@@ -335,6 +342,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
+  d.first_approved_at, d.first_approved_by, fa.name AS first_approved_by_name,
   d.center_id, d.takings_cash`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
@@ -346,7 +354,7 @@ export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.s
   d.advance_cents, d.takings_cash`
 export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
 export const DOC_FROM =
-  'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by'
+  'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by LEFT JOIN users fa ON fa.id = d.first_approved_by'
 
 export function docOf(row: Row): Doc {
   return {
@@ -395,6 +403,9 @@ export function docOf(row: Row): Doc {
     reverseHint: reverseOf(row.vat_reverse),
     advanceCents: typeof row.advance_cents === 'number' && row.advance_cents > 0 ? row.advance_cents : 0,
     approvedAt: typeof row.approved_at === 'number' ? row.approved_at : null,
+    firstApprovedAt: num(row.first_approved_at),
+    firstApprovedBy: str(row.first_approved_by),
+    firstApprovedByName: str(row.first_approved_by_name),
     approvedByName: str(row.approved_by_name),
     ekasaUid: str(row.ekasa_uid),
     ekasaOkp: str(row.ekasa_okp),
@@ -569,18 +580,21 @@ export async function membersOf(db: D1Database, company: string, onlyReminders =
 
 export interface Person extends User {
   role: string
+  /** A colleague an owner made an approver of suppliers' invoices, and the most he approves (cents; null any). */
+  approver?: boolean
+  approveLimit?: number | null
 }
 
 /** The people of a company with their role, the owners first. */
 export async function peopleOf(db: D1Database, company: string): Promise<Person[]> {
   const rows = await db
     .prepare(
-      `SELECT u.id, u.name, u.email, u.team, u.reminders, m.role FROM members m JOIN users u ON u.id = m.user_id
+      `SELECT u.id, u.name, u.email, u.team, u.reminders, m.role, m.approver, m.approve_limit FROM members m JOIN users u ON u.id = m.user_id
        WHERE m.company_id = ? ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at`,
     )
     .bind(company)
     .all<Row>()
-  return rows.results.map((row) => ({ ...userOf(row), role: String(row.role) }))
+  return rows.results.map((row) => ({ ...userOf(row), role: String(row.role), approver: row.approver === 1, approveLimit: num(row.approve_limit) }))
 }
 
 // ---------------------------------------------------------------------------------------------------------------

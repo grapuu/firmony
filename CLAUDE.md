@@ -27,7 +27,8 @@ over. Bring this section up to date first whenever a session ends.
    and a third independent review of the reminders, eight findings mended (schema step 53), and a fourth of the cost
    centres, six mended; then VAT on imports (customs paid, and self-assessed by an AEO under § 84a) and the takings of an
    eKasa till with the control statement's D.1 (schema step 54; "VAT: the return and the control statement" and "The
-   takings of an eKasa till"). **Nothing is live**: there
+   takings of an eKasa till"), approvers with limits and two approvals for larger companies (schema step 55, under
+   "Payment orders"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1269,8 +1270,19 @@ by itself.
   `approved_by`): an owner turns "Schvaľovanie faktúr dodávateľov" on in Firma a nastavenia (#schvalovanie); then a
   supplier's invoice goes into a payment order only once an owner approved it on its page ("Schváliť na úhradu",
   `/app/doklady/:id/schvalit`, taken back by `/neschvalit`; it says who and when); a colleague sees that it waits.
-  Not the books' business: no period guard covers it. Not built: approvers other than the owners, limits by amount,
-  two approvals.
+  Not the books' business: no period guard covers it.
+  For larger companies (since 18 October 2026, schema step 55: `members.approver`, `members.approve_limit`,
+  `companies.approval_two_from`, `documents.first_approved_at`, `first_approved_by`; `src/app/approvals.ts`): in the
+  same section of Firma a nastavenia an owner makes colleagues approvers, each up to a limit or without one, and sets
+  from what amount two people approve. An owner approves any amount; an approver only within his limit (else 403); an
+  invoice in another currency counts above every limit. From the two-approval amount the first approval is kept on the
+  document ("Prvé schválenie: ..."), its own approver cannot give the second ("Schváliť ako druhý" is offered to
+  somebody else allowed the amount), and only the second approves it whole for payment orders; each step is written
+  only from the state it was read in. "Zrušiť schválenie" (anybody allowed the amount) takes both back; so does another
+  total or currency saved on the booking screen, or an IBAN typed by anybody but an owner. "Na schválenie"
+  (`/app/schvalovanie`, from Doklady and the settings): what the person may approve, then what waits for others (a second
+  approval, above his limit). test/approvals.runtime.mjs, units "Approving for larger companies". Not built: approvals
+  by cost centre or by supplier, a doorbell to the approvers when an invoice waits, approving issued invoices.
 - Mended after the review of the invoices (18 October 2026, an independent reader of commits c97c5c5 to 885e572; each
   finding verified in the code first; schema step 48 `documents.prepaid`): a final invoice its advances paid whole
   (total nought, the usual case) made no entry, so 324 kept the advance and the revenue missed the supply, and its VAT
@@ -2222,8 +2234,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1197 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1745 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1202 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1763 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

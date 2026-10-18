@@ -24,6 +24,8 @@ import {
   cash,
   dunning,
   centers,
+  approvals,
+  takings,
   ledger,
   ledgerStore,
   dues,
@@ -1428,6 +1430,63 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     JSON.stringify([free.errors, ticked.errors, ticked.input?.meals]),
   )
   check('no car with a train', form({ ...full, doprava: 'public', km: '' }).input?.car === null)
+}
+
+// Approving for larger companies (18 October 2026): owners any amount, approvers up to their limit, two people from an
+// amount, the first approval kept and never counted as the second; another currency above every limit.
+{
+  const owner = { owner: true, approver: true, limit: null }
+  const clerk = { owner: false, approver: true, limit: 100000 }
+  const nobody = { owner: false, approver: false, limit: null }
+  check(
+    'who may approve: an owner any amount, an approver up to his limit, a colleague not made one never',
+    approvals.mayApprove(owner, 99999999) && approvals.mayApprove(clerk, 100000) && !approvals.mayApprove(clerk, 100001) && !approvals.mayApprove(nobody, 1) && !approvals.mayApprove(null, 1),
+  )
+  check(
+    'two approvals from the amount set: the first kept, the same person refused, somebody else approves it whole; below it one',
+    approvals.approvalStep({ approvedAt: null, firstApprovedBy: null }, 500000, 499999, 'a') === 'final' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: null }, 500000, 500000, 'a') === 'first' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: 'a' }, 500000, 600000, 'a') === 'same' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: 'a' }, 500000, 600000, 'b') === 'final' &&
+      approvals.approvalStep({ approvedAt: 1, firstApprovedBy: null }, null, 1, 'a') === 'done' &&
+      approvals.approvalStep({ approvedAt: null, firstApprovedBy: null }, null, 99999999, 'a') === 'final',
+  )
+  check(
+    'an invoice in another currency is above every limit',
+    approvals.approvalCents({ totalCents: 1000, currency: 'USD' }) === Number.MAX_SAFE_INTEGER && approvals.approvalCents({ totalCents: -1000, currency: 'EUR' }) === 1000,
+  )
+}
+
+// The day's takings of a till (18 October 2026): each rate's VAT out of the takings with VAT, or as the closing says it.
+{
+  const text = { day: 'd', amount: 'a', none: 'n', vat: 'v', card: 'c' }
+  const cents = (s) => {
+    const m = /^(\d+)(?:,(\d{1,2}))?$/.exec(s.replace(/\s/g, ''))
+    return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : Number.NaN
+  }
+  const day = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null)
+  const read = (fields, payer = true) => takings.readTakings((n) => fields[n], payer, '2026-10-18', day, cents, text)
+  const ok = read({ den: '2026-10-15', trzba_23: '123,00', trzba_5: '10,50', dph_5: '0,49', trzba_0: '5', karta: '38,50' })
+  check(
+    'the VAT in a price at 23 %, the VAT as typed at 5 %, exempt whole; the cash part the rest after the card',
+    ok.input?.lines.some((l) => l.rate === 23 && l.base === 10000 && l.vat === 2300) &&
+      ok.input.lines.some((l) => l.rate === 5 && l.vat === 49 && l.base === 1001) &&
+      ok.input.lines.some((l) => l.rate === 0 && l.base === 500) &&
+      ok.input.total === 13850 &&
+      ok.input.cash === 10000,
+    JSON.stringify(ok),
+  )
+  check(
+    'refused: nothing, a negative amount, VAT above the takings, more by card, a day ahead; one amount without VAT for a company that is no payer',
+    read({ den: '2026-10-15' }).errors.amount === 'n' &&
+      read({ den: '2026-10-15', trzba_23: '-1' }).errors.amount === 'a' &&
+      read({ den: '2026-10-15', trzba_23: '1', dph_23: '2' }).errors.vat === 'v' &&
+      read({ den: '2026-10-15', trzba_23: '1', karta: '2' }).errors.card === 'c' &&
+      read({ den: '2026-10-19', trzba_23: '1' }).errors.day === 'd' &&
+      read({ den: '2026-10-15', trzba_0: '100', trzba_23: '50' }, false).input?.lines.length === 1 &&
+      takings.vatInGross(12300, 23) === 2300 &&
+      takings.vatInGross(105, 5) === 5,
+  )
 }
 
 // Cost centres (18 October 2026): class 5 costs and class 6 revenues of each centre's documents, the rest in common.

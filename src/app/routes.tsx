@@ -95,6 +95,8 @@ import { CashFormPage, CashPage, type CashRow } from '../views/cash'
 import { emptyTakings, readTakings, type TakingsErrors, type TakingsValues } from './takings'
 import { listTakings, removeTakingsStatements, takingsStatements, takingsYears } from './takings-store'
 import { TakingsPage } from '../views/takings'
+import { approvalCents, approvalStep, mayApprove, needsTwo, type Approver } from './approvals'
+import { ApprovalsPage } from '../views/approvals'
 import { bratislavaClock, bratislavaDay } from '../time'
 import { isWorkingDay } from './vat'
 import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
@@ -106,11 +108,15 @@ import { purgeEnded } from './purge'
 import { currentWho, endSession, linkUsable, newLink, newToken, startSession, switchStatement, useLink } from './session'
 import {
   afterReading,
+  CASH_PAID,
   clearExemptStatement,
   companiesOf,
   countMissing,
   getCompany,
   deleteDocumentStatements,
+  DOC_COLUMNS,
+  DOC_FROM,
+  docOf,
   documentByHash,
   documentsOfPayment,
   eventStatement,
@@ -140,6 +146,7 @@ import {
   userByEmail,
   userById,
   type Company,
+  type Doc,
   type Who,
 } from './store'
 import { readInvoice, readStatement, type Reading } from './xml'
@@ -352,6 +359,12 @@ function flashOf(c: Ctx): string | null {
       return t.company.approvalsSaved
     case 'schvalene':
       return t.document.approvedFlash
+    case 'schvalene-prve':
+      return t.document.firstFlash
+    case 'schvalene-druhy':
+      return t.document.sameApprover
+    case 'schvalovanie-zle':
+      return t.company.approvalsBad
     case 'neschvalene':
       return t.document.unapprovedFlash
     case 'vystavena':
@@ -661,7 +674,17 @@ appRoutes.get('/doklady', async (c) => {
     c,
     'documents',
     t.documents.title,
-    <DocumentsPage filter={filter} docs={docs} inbox={inboxAddress(who.company)} flash={flashOf(c)} problems={[]} search={search} closed={closedIntake(who.company)} pager={{ page, more: found.length > LIST_PAGE, href: pageHref }} />,
+    <DocumentsPage
+      filter={filter}
+      docs={docs}
+      inbox={inboxAddress(who.company)}
+      flash={flashOf(c)}
+      problems={[]}
+      search={search}
+      closed={closedIntake(who.company)}
+      pager={{ page, more: found.length > LIST_PAGE, href: pageHref }}
+      approvals={who.company.approvals}
+    />,
   )
 })
 
@@ -672,7 +695,7 @@ async function documentsWithProblems(c: Ctx, problems: string[], status: Content
     c,
     'documents',
     t.documents.title,
-    <DocumentsPage filter="all" docs={docs} inbox={inboxAddress(who.company)} flash={flash} problems={problems} closed={closedIntake(who.company)} />,
+    <DocumentsPage filter="all" docs={docs} inbox={inboxAddress(who.company)} flash={flash} problems={problems} closed={closedIntake(who.company)} approvals={who.company.approvals} />,
     status,
   )
 }
@@ -1059,10 +1082,11 @@ appRoutes.post('/uhrady/iban', async (c) => {
   const result = await db.batch([
     db
       .prepare(
-        `UPDATE documents SET party_iban = ?, approved_at = CASE WHEN ? THEN approved_at END, approved_by = CASE WHEN ? THEN approved_by END
-         WHERE id = ? AND company_id = ? AND kind = 'invoice_in' AND deleted_at IS NULL AND party_iban IS ?`,
+        `UPDATE documents SET party_iban = ?1, approved_at = CASE WHEN ?2 THEN approved_at END, approved_by = CASE WHEN ?2 THEN approved_by END,
+           first_approved_at = CASE WHEN ?2 THEN first_approved_at END, first_approved_by = CASE WHEN ?2 THEN first_approved_by END
+         WHERE id = ?3 AND company_id = ?4 AND kind = 'invoice_in' AND deleted_at IS NULL AND party_iban IS ?5`,
       )
-      .bind(iban, owner ? 1 : 0, owner ? 1 : 0, id, who.company.id, before),
+      .bind(iban, owner ? 1 : 0, id, who.company.id, before),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.iban', subject: id }),
   ])
   if ((result[0]?.meta?.changes ?? 0) === 0) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
@@ -1527,7 +1551,17 @@ appRoutes.get('/doklady/:id', async (c) => {
     c,
     'documents',
     d.party ?? t.documents.title,
-    <DocumentPage d={d} payment={payment} today={today()} flash={flashOf(c)} approvals={who.company.approvals} owner={who.role === 'owner'} tripId={trip?.id ?? null} centers={centers} />,
+    <DocumentPage
+      d={d}
+      payment={payment}
+      today={today()}
+      flash={flashOf(c)}
+      approvals={who.company.approvals}
+      owner={who.role === 'owner'}
+      approval={await approvalOf(c.env.DB, who, d)}
+      tripId={trip?.id ?? null}
+      centers={centers}
+    />,
   )
 })
 
@@ -1536,24 +1570,61 @@ function backTo(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^\/app\/[a-z]+\/[A-Za-z0-9-]{1,64}$/.test(value) ? value : fallback
 }
 
-/** An owner approves a supplier's invoice for payment, or takes the approval back. */
+/** Who the signed-in person is for approving (approvals.ts): an owner, or a colleague made an approver with his limit. */
+async function approverOf(db: D1Database, who: { role: string; user: { id: string }; company: { id: string } }): Promise<Approver | null> {
+  if (who.role === 'owner') return { owner: true, approver: true, limit: null }
+  const row = await db.prepare('SELECT approver, approve_limit FROM members WHERE company_id = ? AND user_id = ?').bind(who.company.id, who.user.id).first<{ approver: number; approve_limit: number | null }>()
+  return row ? { owner: false, approver: row.approver === 1, limit: typeof row.approve_limit === 'number' ? row.approve_limit : null } : null
+}
+
+/** What the document's page says of approving it: whether the person may approve its amount, and whether it needs two. */
+async function approvalOf(db: D1Database, who: { role: string; user: { id: string }; company: Company }, d: Doc): Promise<{ may: boolean; twoFrom: number | null; userId: string } | null> {
+  if (!who.company.approvals || d.kind !== 'invoice_in') return null
+  const cents = approvalCents(d)
+  return { may: mayApprove(await approverOf(db, who), cents), twoFrom: needsTwo(who.company.approvalTwoFrom, cents) ? who.company.approvalTwoFrom : null, userId: who.user.id }
+}
+
+/**
+ * A supplier's invoice approved for payment by who may approve its amount: whole, or the first of two from the amount
+ * the owners set (then the second by somebody else); or the approval taken back.
+ */
 for (const [path, approve] of [
   ['/doklady/:id/schvalit', true],
   ['/doklady/:id/neschvalit', false],
 ] as const) {
   appRoutes.post(path, async (c) => {
     const who = c.get('who')
+    const db = c.env.DB
     const id = c.req.param('id')
-    const d = ID.test(id) ? await getDocument(c.env.DB, who.company.id, id) : null
+    const d = ID.test(id) ? await getDocument(db, who.company.id, id) : null
     if (!d || d.kind !== 'invoice_in' || !who.company.approvals) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
-    if (who.role !== 'owner') return shell(c, 'documents', t.errors.notFound, <Missing />, 403)
-    await c.env.DB.batch([
-      approve
-        ? c.env.DB.prepare('UPDATE documents SET approved_at = ?, approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL').bind(now(), who.user.id, id, who.company.id)
-        : c.env.DB.prepare('UPDATE documents SET approved_at = NULL, approved_by = NULL WHERE id = ? AND company_id = ?').bind(id, who.company.id),
-      eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: approve ? 'document.approved' : 'document.unapproved', subject: id }),
+    const cents = approvalCents(d)
+    if (!mayApprove(await approverOf(db, who), cents)) return shell(c, 'documents', t.errors.notFound, <Missing />, 403)
+    if (!approve) {
+      await db.batch([
+        db.prepare('UPDATE documents SET approved_at = NULL, approved_by = NULL, first_approved_at = NULL, first_approved_by = NULL WHERE id = ? AND company_id = ?').bind(id, who.company.id),
+        eventStatement(db, { company: who.company.id, user: who.user.id, action: 'document.unapproved', subject: id }),
+      ])
+      return c.redirect(`/app/doklady/${id}?ok=neschvalene`, 303)
+    }
+    const step = approvalStep({ approvedAt: d.approvedAt, firstApprovedBy: d.firstApprovedBy ?? null }, who.company.approvalTwoFrom, cents, who.user.id)
+    if (step === 'done') return c.redirect(`/app/doklady/${id}`, 303)
+    if (step === 'same') return c.redirect(`/app/doklady/${id}?ok=schvalene-druhy`, 303)
+    // Each written only from the state it was read in: two people at once make one approval of each step.
+    const results = await db.batch([
+      step === 'first'
+        ? db
+            .prepare('UPDATE documents SET first_approved_at = ?, first_approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL AND first_approved_at IS NULL')
+            .bind(now(), who.user.id, id, who.company.id)
+        : db
+            .prepare('UPDATE documents SET approved_at = ?, approved_by = ? WHERE id = ? AND company_id = ? AND approved_at IS NULL AND first_approved_by IS ? AND (first_approved_by IS NULL OR first_approved_by <> ?)')
+            .bind(now(), who.user.id, id, who.company.id, d.firstApprovedBy ?? null, who.user.id),
+      db
+        .prepare("INSERT INTO events (at, company_id, user_id, action, subject) SELECT ?, ?, ?, ?, ? WHERE changes() > 0")
+        .bind(now(), who.company.id, who.user.id, step === 'first' ? 'document.approved.first' : 'document.approved', id),
     ])
-    return c.redirect(`/app/doklady/${id}?ok=${approve ? 'schvalene' : 'neschvalene'}`, 303)
+    if ((results[0]?.meta?.changes ?? 0) === 0) return c.redirect(`/app/doklady/${id}`, 303)
+    return c.redirect(`/app/doklady/${id}?ok=${step === 'first' ? 'schvalene-prve' : 'schvalene'}`, 303)
   })
 }
 
@@ -1598,7 +1669,16 @@ appRoutes.post('/doklady/:id/zmazat', async (c) => {
       c,
       'documents',
       t.documents.title,
-      <DocumentPage d={d} payment={payment} today={today()} error={t.document.locked} approvals={who.company.approvals} owner={who.role === 'owner'} centers={centers} />,
+      <DocumentPage
+        d={d}
+        payment={payment}
+        today={today()}
+        error={t.document.locked}
+        approvals={who.company.approvals}
+        owner={who.role === 'owner'}
+        approval={await approvalOf(db, who, d)}
+        centers={centers}
+      />,
       409,
     )
   }
@@ -1819,17 +1899,65 @@ appRoutes.post('/firma/pripomienky', async (c) => {
   return c.redirect('/app/firma?ok=pripomienky#pripomienky', 303)
 })
 
-/** An owner turns approving suppliers' invoices on or off. */
+/**
+ * An owner turns approving suppliers' invoices on or off, sets from what amount two people approve, and which colleagues
+ * approve up to what amount (approvals.ts). A form without the colleagues' part (approving only turned on) keeps them.
+ */
 appRoutes.post('/firma/schvalovanie', async (c) => {
   const who = c.get('who')
+  const db = c.env.DB
   if (who.role !== 'owner') return shell(c, 'company', t.errors.notFound, <Missing />, 403)
   const body = await c.req.parseBody()
   const on = body.zapnut === '1'
-  await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE companies SET approvals = ? WHERE id = ?').bind(on ? 1 : 0, who.company.id),
-    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: on ? 'approvals.on' : 'approvals.off' }),
-  ])
+  const amount = (name: string): number | null | 'bad' => {
+    const text = typeof body[name] === 'string' ? (body[name] as string).trim() : ''
+    if (text === '') return null
+    const cents = centsOf(text)
+    return cents === null || Number.isNaN(cents) || cents <= 0 ? 'bad' : cents
+  }
+  const statements: D1PreparedStatement[] = [db.prepare('UPDATE companies SET approvals = ? WHERE id = ?').bind(on ? 1 : 0, who.company.id)]
+  if (typeof body.dve_od === 'string') {
+    const two = amount('dve_od')
+    if (two === 'bad') return c.redirect('/app/firma?ok=schvalovanie-zle#schvalovanie', 303)
+    statements.push(db.prepare('UPDATE companies SET approval_two_from = ? WHERE id = ?').bind(two, who.company.id))
+  }
+  if (body.schvalovatelia === '1') {
+    for (const person of (await peopleOf(db, who.company.id)).filter((p) => p.role !== 'owner')) {
+      const limit = amount(`limit_${person.id}`)
+      if (limit === 'bad') return c.redirect('/app/firma?ok=schvalovanie-zle#schvalovanie', 303)
+      statements.push(
+        db
+          .prepare("UPDATE members SET approver = ?, approve_limit = ? WHERE company_id = ? AND user_id = ? AND role <> 'owner'")
+          .bind(body[`schvalovatel_${person.id}`] === '1' ? 1 : 0, limit, who.company.id, person.id),
+      )
+    }
+  }
+  statements.push(eventStatement(db, { company: who.company.id, user: who.user.id, action: on ? 'approvals.on' : 'approvals.off' }))
+  await db.batch(statements)
   return c.redirect('/app/firma?ok=schvalovanie#schvalovanie', 303)
+})
+
+/** The suppliers' invoices that wait for approving: those the person may approve first, then those that wait for others. */
+appRoutes.get('/schvalovanie', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const approver = await approverOf(db, who)
+  const rows = who.company.approvals
+    ? (
+        await db
+          .prepare(
+            `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM}
+              WHERE d.company_id = ? AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.approved_at IS NULL
+                AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.paid_privately = 0 AND l.payment_id IS NULL AND NOT ${CASH_PAID}
+              ORDER BY COALESCE(d.due_on, d.issued_on, '9999'), d.created_at LIMIT 300`,
+          )
+          .bind(who.company.id)
+          .all<Record<string, unknown>>()
+      ).results.map(docOf)
+    : []
+  const mine = rows.filter((d) => mayApprove(approver, approvalCents(d)) && d.firstApprovedBy !== who.user.id)
+  const others = rows.filter((d) => !mine.includes(d))
+  return shell(c, 'documents', t.approvalsQueue.title, <ApprovalsPage on={who.company.approvals} mine={mine} others={others} me={who.user.id} today={today()} />)
 })
 
 appRoutes.post('/firma/prepnut', async (c) => {

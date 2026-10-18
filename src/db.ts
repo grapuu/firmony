@@ -1315,6 +1315,15 @@ const MIGRATIONS: readonly string[][] = [
   // The day's takings of an eKasa till (18 October 2026, takings.ts): a document of its own (source 'takings'), its
   // cash part (the rest by card); the documents' lock guard made again with it, since it is what the books take.
   ['ALTER TABLE documents ADD COLUMN takings_cash INTEGER', ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents', 'takings_cash'])],
+  // Approving for larger companies (18 October 2026, approvals.ts): colleagues an owner makes approvers, each with a
+  // limit; two approvals from an amount, the first kept on the document. Management, not the books: no period guard.
+  [
+    'ALTER TABLE members ADD COLUMN approver INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE members ADD COLUMN approve_limit INTEGER',
+    'ALTER TABLE companies ADD COLUMN approval_two_from INTEGER',
+    'ALTER TABLE documents ADD COLUMN first_approved_at INTEGER',
+    'ALTER TABLE documents ADD COLUMN first_approved_by TEXT',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

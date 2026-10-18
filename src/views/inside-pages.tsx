@@ -862,16 +862,18 @@ export function groupIban(iban: string): string {
 // Doklady
 // ---------------------------------------------------------------------------------------------------------------
 
-export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: string; flash?: string | null; problems: string[]; search?: string; closed?: string | null; pager?: ListPage }> = ({
-  filter,
-  docs,
-  inbox,
-  flash,
-  problems,
-  search = '',
-  closed = null,
-  pager,
-}) => (
+export const DocumentsPage: FC<{
+  filter: 'all' | 'loose'
+  docs: Doc[]
+  inbox: string
+  flash?: string | null
+  problems: string[]
+  search?: string
+  closed?: string | null
+  pager?: ListPage
+  /** The company approves suppliers' invoices: the way to what waits (approvals.ts). */
+  approvals?: boolean
+}> = ({ filter, docs, inbox, flash, problems, search = '', closed = null, pager, approvals = false }) => (
   <>
     <header class="phead phead--row">
       <div>
@@ -882,6 +884,11 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
         <a class="btn btn--line" href="/app/uhrady">
           {app.payorders.link}
         </a>
+        {approvals ? (
+          <a class="btn btn--line" href="/app/schvalovanie">
+            {app.approvalsQueue.link}
+          </a>
+        ) : null}
         <a class="btn btn--line" href="/app/cesty">
           {app.trips.link}
         </a>
@@ -971,10 +978,12 @@ export const DocumentPage: FC<{
   error?: string | null
   approvals?: boolean
   owner?: boolean
+  /** Approving it (approvals.ts): whether this person may approve its amount, from what amount it needs two, who he is. */
+  approval?: { may: boolean; twoFrom: number | null; userId: string } | null
   tripId?: string | null
   /** The company's cost centres: the document's own is given here. */
   centers?: CostCenter[]
-}> = ({ d, payment, today, flash, error, approvals = false, owner = false, tripId = null, centers = [] }) => {
+}> = ({ d, payment, today, flash, error, approvals = false, owner = false, approval = null, tripId = null, centers = [] }) => {
   const image = d.fileKey && d.fileType?.startsWith('image/') && d.fileType !== 'image/heic'
   const outgoing = d.kind === 'invoice_out'
   return (
@@ -996,18 +1005,31 @@ export const DocumentPage: FC<{
               <h2 id="schvalenie-t" class="info__title">
                 {app.document.approveTitle}
               </h2>
+              {d.firstApprovedAt ? <p class="info__lead">{app.document.firstBy(d.firstApprovedByName ?? '', dayName(dayOf(d.firstApprovedAt), today))}</p> : null}
               {d.approvedAt ? (
                 <p class="info__lead">{app.document.approvedBy(d.approvedByName ?? '', dayName(dayOf(d.approvedAt), today))}</p>
               ) : (
-                <p class="flag">{app.document.approveWaiting}</p>
+                <p class="flag">
+                  {app.document.approveWaiting}
+                  {approval?.twoFrom ? ` ${app.document.approveTwo(formatEur(approval.twoFrom))}` : ''}
+                </p>
               )}
-              {owner ? (
-                <form method="post" action={`/app/doklady/${d.id}/${d.approvedAt ? 'neschvalit' : 'schvalit'}`}>
-                  <button class={`btn ${d.approvedAt ? 'btn--line' : 'btn--blue'}`} type="submit">
-                    {d.approvedAt ? app.document.unapprove : app.document.approve}
+              {!d.approvedAt && d.firstApprovedBy && d.firstApprovedBy === approval?.userId ? <p class="info__source">{app.document.sameApprover}</p> : null}
+              {approval?.may && !d.approvedAt && d.firstApprovedBy !== approval.userId ? (
+                <form method="post" action={`/app/doklady/${d.id}/schvalit`}>
+                  <button class="btn btn--blue" type="submit">
+                    {d.firstApprovedAt ? app.document.approveSecond : app.document.approve}
                   </button>
                 </form>
               ) : null}
+              {approval?.may && (d.approvedAt || d.firstApprovedAt) ? (
+                <form method="post" action={`/app/doklady/${d.id}/neschvalit`}>
+                  <button class="btn btn--line" type="submit">
+                    {app.document.unapprove}
+                  </button>
+                </form>
+              ) : null}
+              {!approval?.may && !d.approvedAt ? <p class="info__source">{app.document.approveWho}</p> : null}
             </section>
           ) : null}
           {d.status === 'reading' ? <p class="flag flag--ask">{app.document.reading}</p> : null}
