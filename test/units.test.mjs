@@ -42,6 +42,7 @@ import {
   oss,
   intrastat,
   distribution,
+  time,
   lastDeclared,
   takeover,
   takeoverStore,
@@ -5272,6 +5273,28 @@ await (await import('./social.units.mjs')).checkSocial()
     kept?.fromReserve === 3 && kept.peopleOther === 2 && distribution.sameEquity(kept.basis, loss) && !distribution.sameEquity(kept.basis, eq),
   )
   check('a distribution read back, and nothing from a broken one', distribution.distributionOf(JSON.stringify(d({ dividends: 5, payoutOn: '2027-06-01' })))?.payoutOn === '2027-06-01' && distribution.distributionOf('{') === null && distribution.distributionOf(JSON.stringify({ reserve: 1 })) === null)
+}
+
+// Bratislava's day and clock without Intl (18 October 2026): the same as Intl at every moment, summer time included.
+{
+  const intlDay = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' })
+  const intlClock = new Intl.DateTimeFormat('sk-SK', { timeZone: 'Europe/Bratislava', hour: 'numeric', minute: '2-digit' })
+  const moments = []
+  for (let year = 2019; year <= 2036; year++) {
+    for (const month of [2, 9]) {
+      const last = new Date(Date.UTC(year, month + 1, 0))
+      const change = Date.UTC(year, month, last.getUTCDate() - last.getUTCDay(), 1) / 1000
+      for (const shift of [-3601, -1, 0, 1, 3599, 3600, 7199, 7200, 82800, 86399]) moments.push(change + shift)
+    }
+  }
+  let seed = 7
+  for (let n = 0; n < 4000; n++) {
+    seed = (seed * 48271) % 2147483647
+    moments.push(1546300800 + (seed % 568024668))
+  }
+  const wrong = moments.filter((m) => time.bratislavaDay(m) !== intlDay.format(new Date(m * 1000)) || time.bratislavaClock(m) !== intlClock.format(new Date(m * 1000)))
+  check("Bratislava's day and clock are Intl's at every moment tried, at the changes of summer time too", wrong.length === 0 && moments.length > 4000, wrong.slice(0, 3).map((m) => `${m}: ${time.bratislavaDay(m)} ${time.bratislavaClock(m)} / ${intlDay.format(new Date(m * 1000))} ${intlClock.format(new Date(m * 1000))}`).join(' | '))
+  check('a working day remembered is the same as worked out', vat.workingDayFrom('2026-04-03') === '2026-04-07' && vat.workingDayFrom('2026-04-03') === '2026-04-07' && vat.workingDayFrom('2026-12-24') === '2026-12-28')
 }
 
 done('units')

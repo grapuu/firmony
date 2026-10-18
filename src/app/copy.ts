@@ -1,5 +1,6 @@
 // Every text of the client's app, in the words a founder uses and not an accountant's: a payment, a document,
 // "we need", never "párovanie", "MD/D" or "saldokonto". Typeset once, like the site's.
+import { bratislavaClock, bratislavaDay } from '../time'
 import { APP, BRAND, OFFLINE_TERMS, OPERATOR } from '../config'
 import { formatEur, typeset, typesetAll } from '../format'
 import type { Exempt } from './match'
@@ -28,10 +29,9 @@ export function dayName(day: string, today?: string): string {
 
 /** A moment as a person says it, in Bratislava: "dnes o 14:05", "včera o 9:40", "12. októbra o 14:05". */
 export function whenName(seconds: number, today: string): string {
-  const at = new Date(seconds * 1000)
-  const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(at)
-  const time = new Intl.DateTimeFormat('sk-SK', { timeZone: 'Europe/Bratislava', hour: 'numeric', minute: '2-digit' }).format(at)
-  const yesterday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.parse(`${today}T12:00:00Z`) - 86400000))
+  const day = bratislavaDay(seconds)
+  const time = bratislavaClock(seconds)
+  const yesterday = new Date(Date.parse(`${today}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
   const name = day === today ? 'dnes' : day === yesterday ? 'včera' : dayName(day, today)
   return typeset(`${name} o ${time}`)
 }

@@ -253,8 +253,15 @@ over. Bring this section up to date first whenever a session ends.
    Volume (18 October 2026, after midnight): the client's lists of payments and documents show 400 a page with
    "Staršie" and "Novšie" (`?strana=`, `LIST_PAGE` in `src/app/routes.tsx`; they ended at 400 before); the VAT page shows
    at most 25 issues of a kind and how many more (`capped` in `src/views/vat.tsx`: 166 kB became 51 kB at 300 documents
-   a month, a month of 3 000 was 1,5 MB). test/lists.runtime.mjs. Next for volume: the books worked out from every
-   document on each page (`booksOf`), to be kept per month and data revision.
+   a month, a month of 3 000 was 1,5 MB). test/lists.runtime.mjs. Profiled (18 October 2026, `FIRMONY_LOAD_PROFILE=1 npm run test:load`:
+   the runtime's own CPU profile per page through the DevTools protocol, the functions that take the most): dates
+   formatted by Intl on every row (`bratislavaDay` and the lists' day and clock now arithmetic by the EU summer-time
+   rule, `src/time.ts`, checked against Intl across 18 years), a working day worked out again for each document
+   (remembered now, `workingDayFrom`), the VAT issues deduplicated by scanning their list (a key set now). At 1 000
+   documents a month: deadlines 554 to 346 ms, the client's page 1 119 to 923, the client's overview 546 to 378, VAT
+   670 to 472, the lists 213 to 145. What is left on the books' pages (about 0,55 s): reading every document of the
+   company from D1 and the garbage of it; next for volume, the books kept per data revision (a cache within an
+   isolate needs a bound on memory: 36 000 documents a year would not fit).
    The site promises a
    large company only an offer of its own until the software does each part; every text widens when a part lands.
 9. **How he is worked with.** Slovak, short, the verdict first; say how long a piece of work takes before it
@@ -1852,7 +1859,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1121 unit checks (18 October 2026), including credit notes
+npm test                 # 1123 unit checks (18 October 2026), including credit notes and the fast dates
 npm run test:runtime     # 1539 workerd checks on Node 24 (as GitHub runs them), including test/credit-notes.runtime.mjs
 npm run test:peppol      # 9 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME

@@ -1,5 +1,6 @@
 // The pages of the client's app. One thing is asked of the client, and every page leads to it: a document where
 // a payment has none. Everything else is shown so that nobody has to wonder whether it is in order.
+import { bratislavaClock, bratislavaDay } from '../time'
 import type { FC } from 'hono/jsx'
 import type { BankLinkView, BankNotice } from '../app/bank'
 import { BankCard, BankNoticeBar, ConfirmAccount } from './bank'
@@ -112,13 +113,9 @@ const DocMini: FC<{ d: Doc }> = ({ d }) => (
   </a>
 )
 
-export function dayOf(seconds: number): string {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(seconds * 1000))
-}
+export const dayOf = (seconds: number): string => bratislavaDay(seconds)
 
-function timeOf(seconds: number): string {
-  return new Intl.DateTimeFormat('sk-SK', { timeZone: 'Europe/Bratislava', hour: 'numeric', minute: '2-digit' }).format(new Date(seconds * 1000))
-}
+const timeOf = (seconds: number): string => bratislavaClock(seconds)
 
 /** "dnes 14:32", "včera 9:10", "11. 10. 16:05". */
 export function whenName(seconds: number, nowSeconds: number): string {

@@ -6,6 +6,8 @@
 //
 //   npm run test:load                    3 000 documents a month
 //   FIRMONY_LOAD_DOCS=6000 npm run test:load
+//   FIRMONY_LOAD_PROFILE=1 npm run test:load   and where each page spends its time: the runtime's own CPU profile
+//                                              (DevTools protocol), the functions that take the most, per page
 //
 // The times are of this machine and of SQLite on its disk, not of Cloudflare's network: they show how the work grows
 // with the volume and where it breaks, not the seconds a client will wait.
@@ -19,6 +21,8 @@ const DOCS = Number(process.env.FIRMONY_LOAD_DOCS ?? 3000)
 const PEOPLE = Number(process.env.FIRMONY_LOAD_PEOPLE ?? 100)
 const MONTHS = 12
 const out = process.env.FIRMONY_LOAD_OUT ?? '.wrangler/load'
+const PROFILE = process.env.FIRMONY_LOAD_PROFILE === '1'
+const INSPECTOR = 9339
 mkdirSync(out, { recursive: true })
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -26,6 +30,7 @@ const mf = new Miniflare(
   convertV4MiniflareOptions({
     cf: false,
     unsafeTriggerHandlers: true,
+    ...(PROFILE ? { inspectorPort: INSPECTOR } : {}),
     workers: [
       {
         name: 'firmony',
@@ -182,22 +187,60 @@ const pages = [
   ['client', 'Doklady klienta', '/app/doklady'],
   ['client', 'Dane klienta', '/app/dane'],
 ]
+/** A CPU profile of the worker while `work` runs: the functions that took the most of it, by their own time. */
+async function profiled(work) {
+  if (!PROFILE) return { value: await work(), top: [] }
+  const targets = await (await fetch(`http://127.0.0.1:${INSPECTOR}/json`)).json()
+  const target = targets.find((t) => String(t.title ?? t.id).includes('firmony') && !String(t.title).includes('pretend')) ?? targets[0]
+  const ws = new WebSocket(target.webSocketDebuggerUrl)
+  await new Promise((resolve, reject) => ((ws.onopen = resolve), (ws.onerror = reject)))
+  let id = 0
+  const waiting = new Map()
+  ws.onmessage = (event) => {
+    const message = JSON.parse(String(event.data))
+    if (message.id && waiting.has(message.id)) waiting.get(message.id)(message.result)
+  }
+  const send = (method, params = {}) => new Promise((resolve) => (waiting.set(++id, resolve), ws.send(JSON.stringify({ id, method, params }))))
+  await send('Profiler.enable')
+  await send('Profiler.setSamplingInterval', { interval: 200 })
+  await send('Profiler.start')
+  const value = await work()
+  const { profile } = await send('Profiler.stop')
+  ws.close()
+  const byNode = new Map(profile.nodes.map((n) => [n.id, n]))
+  const self = new Map()
+  profile.samples.forEach((sample, i) => {
+    const frame = byNode.get(sample)?.callFrame
+    const key = frame ? `${frame.functionName || '(anonymous)'} ${String(frame.url).split('/').pop()}:${frame.lineNumber + 1}` : '?'
+    self.set(key, (self.get(key) ?? 0) + (profile.timeDeltas[i] ?? 0) / 1000)
+  })
+  const top = [...self].filter(([key]) => !key.startsWith('(idle)') && !key.startsWith('(program)')).sort((a, b) => b[1] - a[1]).slice(0, 12)
+  return { value, top: top.map(([fn, ms]) => ({ fn, ms: Math.round(ms) })) }
+}
+
 const results = []
 for (const [side, name, path] of pages) {
   const cookie = side === 'team' ? adminCookie : clientCookie
   const runs = []
   let status = 0, bytes = 0, body = ''
+  let top = []
   for (let n = 0; n < 3; n++) {
     const start = performance.now()
-    const res = await retried(() => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.30', cookie } }))
-    body = await res.text()
+    const measured = await profiled(async () => {
+      const res = await retried(() => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.30', cookie } }))
+      return { res, text: await res.text() }
+    })
+    const res = measured.value.res
+    body = measured.value.text
+    if (n === 2) top = measured.top
     runs.push(performance.now() - start)
     status = res.status
     bytes = Buffer.byteLength(body)
   }
   if (status === 200) writeFileSync(`${out}/${path.replace(/^\//, '').replace(/[^a-z0-9]+/gi, '-') || 'root'}.html`, body)
-  results.push({ side, name, path, status, ms: Math.round(Math.min(...runs)), worst: Math.round(Math.max(...runs)), kb: Math.round(bytes / 1024) })
+  results.push({ side, name, path, status, ms: Math.round(Math.min(...runs)), worst: Math.round(Math.max(...runs)), kb: Math.round(bytes / 1024), ...(PROFILE ? { top } : {}) })
   console.log(`${status === 200 ? 'ok  ' : 'FAIL'} ${String(Math.round(Math.min(...runs))).padStart(6)} ms  ${String(Math.round(bytes / 1024)).padStart(6)} kB  ${name}  ${path}`)
+  if (PROFILE) for (const t of top) console.log(`         ${String(t.ms).padStart(6)} ms  ${t.fn}`)
 }
 // The runtime may have been restarted under the load; its database is asked through a fresh handle.
 const size = await (await mf.getD1Database('DB')).prepare("SELECT (SELECT COUNT(*) FROM documents) AS docs, (SELECT COUNT(*) FROM payments) AS payments, (SELECT COUNT(*) FROM employees) AS people").first()

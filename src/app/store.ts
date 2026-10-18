@@ -1,6 +1,7 @@
 // The client's app in the database. Every read and every change names the company it belongs to, so nobody
 // reaches another company's payments or documents by guessing an id. Whether a payment still needs a document
 // is read from links and exempt every time and never stored on its own.
+import { bratislavaDay } from '../time'
 import { NEXT_BANK_LEDGER, now } from '../db'
 import { linkLockedSql } from './period-schema'
 import { sameDocument, supplierKey, type Category } from './booking'
@@ -398,8 +399,7 @@ export const vatCompanyOf = (company: Company): VatCompany => ({ status: company
  * the deadlines ask this of every document of every period (the load test of 17 October 2026 found three seconds of
  * a page spent only on making formatters, at 3 600 documents).
  */
-const BRATISLAVA_DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' })
-export const bratislavaDay = (seconds: number): string => BRATISLAVA_DAY.format(new Date(seconds * 1000))
+export { bratislavaDay }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is signed in

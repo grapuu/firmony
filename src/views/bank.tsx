@@ -3,6 +3,7 @@
 // are added once a month), the statements that came and what became of each, and a statement from an account the
 // company does not have yet, which waits for the owner's yes. A consent of Enable Banking, when its application is set
 // up, stays the first way, and each link (Enable Banking's or Fio's) shows its accounts and when it was read.
+import { bratislavaDay } from '../time'
 import type { FC } from 'hono/jsx'
 import { ART, BANK, BANK_WAYS, STATEMENTS, type BankWay } from '../config'
 import { formatEur } from '../format'
@@ -18,7 +19,7 @@ const f = app.bank.free
 const s = app.bank.statements
 
 /** Today in Bratislava, YYYY-MM-DD, for the moment a page is drawn. */
-const dayOfSeconds = (seconds: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(seconds * 1000))
+const dayOfSeconds = (seconds: number) => bratislavaDay(seconds)
 
 export interface BankSetup {
   bank: string

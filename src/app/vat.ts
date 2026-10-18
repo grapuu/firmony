@@ -192,18 +192,33 @@ function isDayOff(day: string): boolean {
   return false
 }
 
+// Good Friday and Easter Monday of a year, and each day's answer, kept once worked out: a large company's pages ask
+// for the same few days thousands of times.
+const easterDays = new Map<number, readonly [string, string]>()
+const workingDays = new Map<string, string>()
+
 export function isWorkingDay(day: string): boolean {
   const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
   if (weekday === 0 || weekday === 6) return false
   if (isDayOff(day)) return false
-  const sunday = easter(Number(day.slice(0, 4)))
-  return day !== addDays(sunday, -2) && day !== addDays(sunday, 1)
+  const year = Number(day.slice(0, 4))
+  let holidays = easterDays.get(year)
+  if (!holidays) {
+    const sunday = easter(year)
+    holidays = [addDays(sunday, -2), addDays(sunday, 1)] as const
+    easterDays.set(year, holidays)
+  }
+  return day !== holidays[0] && day !== holidays[1]
 }
 
 /** The day itself when it is a working day, else the next working day (§ 27(2) of the Tax Procedure Code). */
 export function workingDayFrom(day: string): string {
+  const kept = workingDays.get(day)
+  if (kept !== undefined) return kept
   let d = day
   while (!isWorkingDay(d)) d = addDays(d, 1)
+  if (workingDays.size > 20000) workingDays.clear()
+  workingDays.set(day, d)
   return d
 }
 
@@ -642,8 +657,13 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     set.add(doc)
     sources.set(part, set)
   }
+  // Each issue once a document, found by its key (a list scanned for each would grow with the square of the documents).
+  const issued = new Set<string>()
   const issue = (level: Issue['level'], code: IssueCode, doc: string | null) => {
-    if (!issues.some((i) => i.code === code && i.doc === doc)) issues.push({ level, code, doc })
+    const key = `${code}\u0000${doc ?? ''}`
+    if (issued.has(key)) return
+    issued.add(key)
+    issues.push({ level, code, doc })
   }
   const simplified: { doc: VatDoc; line: VatLine; vatId: string | null }[] = []
   const d2: KvD2 = { z: 0, d: 0, zzn: 0, dzn: 0 }
