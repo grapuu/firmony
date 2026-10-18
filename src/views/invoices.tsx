@@ -10,6 +10,8 @@ import { REVERSE_KINDS } from '../app/vat'
 import { REPEAT_EVERY, type Repeat } from '../app/repeat'
 import { ratePercent, type LateInterest } from '../app/dunning'
 import { eurOf, rateMicro } from '../app/fx'
+import type { CostCenter } from '../app/centers'
+import { CenterSelect } from './centers'
 import type { Company } from '../app/store'
 import { Tile } from './home'
 import { Flash, Heading, InsideHead } from './inside'
@@ -213,6 +215,8 @@ export interface InvoiceFormProps {
   final?: { number: string; advances: { number: string | null; totalCents: number }[] } | null
   /** The page's heading. */
   title?: string
+  /** The company's cost centres (centers.ts): the invoice's document takes the one picked. */
+  centers?: CostCenter[]
 }
 
 const Text: FC<{ name: string; label: string; value: string; error?: string; hint?: string; wide?: boolean; type?: string; mode?: 'numeric' | 'decimal' | 'email'; max?: number }> = ({ name, label, value, error, hint, wide, type = 'text', mode, max = 200 }) => (
@@ -225,7 +229,7 @@ const Text: FC<{ name: string; label: string; value: string; error?: string; hin
   </div>
 )
 
-export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [], credit = null, final = null, title }) => {
+export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [], credit = null, final = null, title, centers = [] }) => {
   const f = t.form
   // A credit note's lines are typed as what the invoice is lowered by; its sums show with the minus they will have.
   const totals = totalsOf(credit ? creditLines(preview) : preview, vatPayer)
@@ -517,6 +521,15 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
                 </div>
               </>
             )}
+            {centers.some((x) => !x.archived) && !credit ? (
+              <div class="fgrid__cell">
+                <label class="field__label" for="f-stredisko">
+                  {f.center}
+                </label>
+                <CenterSelect centers={centers} value={values.center || null} id="f-stredisko" />
+                <p class="field__hint">{f.centerHint}</p>
+              </div>
+            ) : null}
             <div class="fgrid__cell fgrid__cell--wide">
               <label class="field__label" for="f-poznamka">
                 {f.note}

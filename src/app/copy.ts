@@ -932,6 +932,8 @@ export const app = typesetAll({
       rateHint: 'Nechajte prázdne: vezmeme kurz ECB zo dňa pred dodaním. DPH bude na faktúre aj v eurách.',
       note: 'Poznámka na faktúre',
       notePlaceholder: 'Napríklad: Ďakujeme za spoluprácu.',
+      center: 'Stredisko',
+      centerHint: 'Výnos faktúry sa v prehľade stredísk započíta tomuto stredisku. Na faktúre sa neukáže.',
       issue: 'Vystaviť faktúru',
       draft: 'Uložiť koncept',
       deleteDraft: 'Zahodiť koncept',

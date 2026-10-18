@@ -1414,7 +1414,11 @@ management of a medium or large company; the books stay as they are.
   books' payroll entry carries each centre's cost of work (`centerCosts`: the slip's cost of work and the social fund's
   allocation of its employees), and the report moves it from what is in common to the centre; the books' lines stay
   as they were.
-- Not built: a centre on an invoice's form (given on its document), a
+- A centre on the invoice form (built 18 October 2026, `invoices.center_id` in schema step 60): a company with centres
+  in use picks one on a new invoice ("Stredisko", not printed on the sheet); the invoice keeps it (drafts too) and its
+  document takes it, else the centre of the invoice it comes from as before; a similar invoice, a repeat, a final
+  invoice and an advance's tax document start from their invoice's centre.
+- Not built: a
   document split among centres, an employee split among centres, depreciation or the cost of goods sold by centre, the accountant's own report
   screen, budgets by month or by account. test/centers.runtime.mjs, units "Cost centres" and "Budgets of cost centres".
 
@@ -2330,7 +2334,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1232 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1810 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm run test:runtime     # 1813 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

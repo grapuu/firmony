@@ -170,6 +170,31 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, capt
   const creditDoc = await db.prepare('SELECT d.center_id FROM invoices i JOIN documents d ON d.id = i.document_id WHERE i.id = ?').bind(creditId).first()
   check("a credit note takes its invoice's centre", res.status === 303 && creditDoc?.center_id === shop, JSON.stringify(creditDoc))
 
+  // An invoice issued for a centre picked on its form: its document takes it; the form offers the centres.
+  page = plain(await (await owner.get('/app/faktury/nova')).text())
+  check('the invoice form offers the centres', page.includes('name="stredisko"') && page.includes('Výnos faktúry sa v prehľade stredísk započíta'))
+  res = await owner.post('/app/faktury', {
+    akcia: 'vystavit',
+    meno: 'TEST-ONLY Odberateľ strediska',
+    adresa: 'Dlhá 2, 040 01 Košice',
+    email: '',
+    vystavena: `${Number(day(-1).slice(8))}. ${Number(day(-1).slice(5, 7))}. ${day(-1).slice(0, 4)}`,
+    dodana: `${Number(day(-1).slice(8))}. ${Number(day(-1).slice(5, 7))}. ${day(-1).slice(0, 4)}`,
+    splatna: `${Number(day(13).slice(8))}. ${Number(day(13).slice(5, 7))}. ${day(13).slice(0, 4)}`,
+    iban: 'SK31 1200 0000 1987 4263 7541',
+    riadky: '1',
+    'r0-popis': 'Služba',
+    'r0-mnozstvo': '1',
+    'r0-jednotka': 'ks',
+    'r0-cena': '50,00',
+    stredisko: shop,
+  })
+  const centred = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
+  const centredDoc = await db.prepare('SELECT i.center_id AS invoice_center, d.center_id FROM invoices i JOIN documents d ON d.id = i.document_id WHERE i.id = ?').bind(centred).first()
+  check('an invoice issued for a centre: kept with it, and its document takes it', centredDoc?.invoice_center === shop && centredDoc.center_id === shop, JSON.stringify(centredDoc))
+  page = plain(await (await owner.get(`/app/faktury/nova?podla=${centred}`)).text())
+  check('a similar invoice starts from its centre', page.includes(`<option value="${shop}" selected`))
+
   // A supplier's rule remembers the centre: the supplier's next document waiting gets it.
   await owner.post(`/app/strediska/${store}/obnovit`, {})
   await db.batch(

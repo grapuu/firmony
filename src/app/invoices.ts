@@ -77,6 +77,8 @@ export interface InvoiceValues {
   rate?: string
   /** The customer's state (ISO 3166); empty: the state of its VAT number, else Slovakia. */
   customerCountry?: string
+  /** The cost centre it is issued for (centers.ts), which its document takes; empty: none, or its source invoice's. */
+  center?: string
 }
 
 /**
@@ -466,6 +468,8 @@ export interface StoredInvoice {
   interestOf: string | null
   /** The customer's state as chosen; null: the state of its VAT number, else Slovakia (`customerCountryOf`). */
   customerCountry: string | null
+  /** The cost centre it was issued for (centers.ts). */
+  centerId?: string | null
   /** The currency it is issued in ('EUR' for most), the rate it is converted to euros at and the ECB's day of it. */
   currency: string
   fxRate: string | null
@@ -678,6 +682,7 @@ function invoiceOf(row: Row): StoredInvoice {
     reminders: Number(row.reminders ?? 0),
     interestOf: str(row.interest_of),
     customerCountry: isCountry(row.customer_country) ? row.customer_country : null,
+    centerId: typeof row.center_id === 'string' ? row.center_id : null,
     currency: isCurrency(row.currency) ? row.currency : 'EUR',
     fxRate: str(row.fx_rate),
     fxDay: str(row.fx_day),
@@ -834,7 +839,7 @@ export function saveInvoiceStatements(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
            issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse, relates, vs, payment_id,
-           currency, fx_rate, fx_day, repeat_id, customer_country, interest_of, interest_to)
+           currency, fx_rate, fx_day, repeat_id, customer_country, interest_of, interest_to, center_id)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
@@ -842,7 +847,8 @@ export function saveInvoiceStatements(
              ELSE fmt.prefix || CAST(?6 AS INTEGER) || fmt.sep || printf('%0' || fmt.digits || 'd', next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('9%d%05d', ?6, next.seq)
-             ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35
+             ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35,
+           (SELECT id FROM cost_centers WHERE id = ?36 AND company_id = ?2 AND archived_at IS NULL)
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one,
          -- in the company's own numbers (a prefix, a mark, the order's digits) and from a year's first order when it
          -- came in the middle of one. The variable symbol is the year and the order, whatever the number looks like; a
@@ -878,6 +884,7 @@ export function saveInvoiceStatements(
         isCountry(v.customerCountry) ? v.customerCountry : null,
         args.interestOf ?? null,
         args.interestOf && !args.credit ? (args.interestTo ?? null) : null,
+        v.center || null,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol. A request for an advance is no document.
@@ -889,7 +896,7 @@ export function saveInvoiceStatements(
                  issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint, vat_reverse, advance_cents, fx_rate, center_id)
                SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, COALESCE(vs, number),
                  issued_on, due_on, total_cents, vat_cents, COALESCE(currency, 'EUR'), ?, id, customer_icdph, delivered_on, ?, ?, ?, vat_reverse, ?, fx_rate,
-                 (SELECT od.center_id FROM invoices oi JOIN documents od ON od.id = oi.document_id AND od.company_id = oi.company_id WHERE oi.id = ? AND oi.company_id = invoices.company_id)
+                 COALESCE(center_id, (SELECT od.center_id FROM invoices oi JOIN documents od ON od.id = oi.document_id AND od.company_id = oi.company_id WHERE oi.id = ? AND oi.company_id = invoices.company_id))
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )
             // Its VAT by rate, exactly as the invoice sums it, and how it is taxed: what the return proposes until the

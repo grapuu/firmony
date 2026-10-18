@@ -2436,6 +2436,7 @@ function invoiceValuesFrom(body: Record<string, unknown>, vatPayer: boolean): In
     ...(ID.test(text('vyuctovanie', 64)) ? { relates: text('vyuctovanie', 64) } : {}),
     currency: isInvoiceCurrency(text('mena', 3)) ? text('mena', 3) : 'EUR',
     customerCountry: isCountry(text('stat', 2)) ? text('stat', 2) : '',
+    center: ID.test(text('stredisko', 64)) ? text('stredisko', 64) : '',
     rate: text('kurz', 16),
     lines: Array.from({ length: rows }, (_, i) => ({
       description: text(`r${i}-popis`, 300),
@@ -2473,7 +2474,19 @@ async function invoiceForm(
     c,
     'invoices',
     title,
-    <InvoiceFormPage id={id} values={values} vatPayer={who.company.vatPayer} errors={errors} found={found} preview={previewLines(values, who.company.vatPayer)} recent={recent} credit={credit} final={final} title={title} />,
+    <InvoiceFormPage
+      id={id}
+      values={values}
+      vatPayer={who.company.vatPayer}
+      errors={errors}
+      found={found}
+      preview={previewLines(values, who.company.vatPayer)}
+      recent={recent}
+      credit={credit}
+      final={final}
+      title={title}
+      centers={await listCenters(c.env.DB, who.company.id)}
+    />,
     status,
   )
 }
@@ -2586,6 +2599,7 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.reverseKind = request.reverse?.kind ?? ''
     values.reverseCode = request.reverse?.code ?? ''
     values.relates = request.id
+    values.center = request.centerId ?? ''
     values.lines = inputLines(await invoiceLines(c.env.DB, request.id), who.company.vatPayer)
     return invoiceForm(c, null, values)
   }
@@ -2632,6 +2646,7 @@ appRoutes.get('/faktury/nova', async (c) => {
       values.reverseKind = earlier.reverse?.kind ?? ''
       values.reverseCode = earlier.reverse?.code ?? ''
       values.currency = earlier.currency
+      values.center = earlier.centerId ?? ''
       values.lines = inputLines(await invoiceLines(c.env.DB, earlier.id), who.company.vatPayer)
     }
   }
@@ -2855,6 +2870,7 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
       customerDic: invoice.customerDic ?? '',
       customerIcdph: invoice.customerIcdph ?? '',
       customerCountry: invoice.customerCountry ?? '',
+      center: invoice.centerId ?? '',
       customerEmail: invoice.customerEmail ?? '',
       issued: textDay(invoice.issuedOn),
       delivered: textDay(invoice.deliveredOn),

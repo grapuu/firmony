@@ -56,6 +56,7 @@ export async function issueAdvances(db: D1Database, company: Company, request: S
       mode: request.mode,
       reverseKind: request.reverse?.kind ?? '',
       reverseCode: request.reverse?.code ?? '',
+      center: request.centerId ?? '',
     }
     const invoiceId = crypto.randomUUID()
     const documentId = crypto.randomUUID()

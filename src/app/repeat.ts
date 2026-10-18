@@ -208,6 +208,7 @@ async function issueOne(db: D1Database, repeat: Repeat, today: string): Promise<
     customerDic: template.customerDic ?? '',
     customerIcdph: template.customerIcdph ?? '',
     customerCountry: template.customerCountry ?? '',
+    center: template.centerId ?? '',
     customerEmail: template.customerEmail ?? '',
     issued: today,
     delivered: today,
