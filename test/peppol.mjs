@@ -111,6 +111,7 @@ const cases = [
     invoices.ublOf({ ...invoice, customerIcdph: 'CZ12345678', customerDic: null, customerAddress: 'Náměstí 1, 110 00 Praha' }, [line(1, 'Práca', 1000, 'hod', 10000, 23)], seller),
   ],
   ...[
+    ['construction work with domestic reverse charge (AE)', 'reverse'],
     ['goods to a VAT payer of another member state (K)', 'eu_goods'],
     ['a service whose customer in another member state pays the VAT (AE)', 'eu_service'],
     ['an export (G)', 'export'],
@@ -118,7 +119,14 @@ const cases = [
   ].map(([name, mode]) => [
     name,
     invoices.ublOf(
-      { ...invoice, mode, customerIcdph: mode === 'export' ? 'CHE123456789' : 'DE123456789', customerDic: null, customerIco: null, customerAddress: 'Hauptstraße 1, 10115 Berlin' },
+      {
+        ...invoice,
+        mode,
+        customerIcdph: mode === 'export' ? 'CHE123456789' : mode === 'reverse' ? 'SK2120000000' : 'DE123456789',
+        customerDic: null,
+        customerIco: null,
+        customerAddress: 'Hauptstraße 1, 10115 Berlin',
+      },
       [line(1, 'Tovar', 2000, 'ks', 5000, 0)],
       seller,
     ),

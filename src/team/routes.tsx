@@ -4200,8 +4200,19 @@ teamRoutes.post('/doklady/:id', async (c) => {
     const v = vatRead.data
     statements.push(
       db
-        .prepare('UPDATE documents SET vat_mode = ?, vat_lines = ?, supplied_on = ?, party_vat_id = ?, corrects = ?, vat_period = ?, vat_country = ? WHERE id = ? AND company_id = ?')
-        .bind(v.mode, JSON.stringify(v.lines), v.suppliedOn, v.vatId, v.corrects, v.period, v.mode === 'oss' ? (v.country ?? null) : null, doc.id, company.id),
+        .prepare('UPDATE documents SET vat_mode = ?, vat_lines = ?, supplied_on = ?, party_vat_id = ?, corrects = ?, vat_period = ?, vat_country = ?, vat_reverse = ? WHERE id = ? AND company_id = ?')
+        .bind(
+          v.mode,
+          JSON.stringify(v.lines),
+          v.suppliedOn,
+          v.vatId,
+          v.corrects,
+          v.period,
+          v.mode === 'oss' ? (v.country ?? null) : null,
+          v.mode === 'reverse' && v.reverse ? JSON.stringify(v.reverse) : null,
+          doc.id,
+          company.id,
+        ),
     )
   } else if (vatShown && !sameFamily) {
     statements.push(db.prepare('UPDATE documents SET vat_mode = NULL, vat_period = NULL WHERE id = ? AND company_id = ?').bind(doc.id, company.id))

@@ -5,7 +5,7 @@
 import { dayOfText, textDay } from './booking'
 import { centsOf } from './invoices'
 import type { DocKind } from './match'
-import { ISSUED_MODES, RECEIVED_MODES, isIssued, isPeriod, isReceived, isSkVatId, plainVatId, vatCountry, type VatData, type VatLine, type VatMode } from './vat'
+import { ISSUED_MODES, RECEIVED_MODES, isA2Unit, isIssued, isPeriod, isReceived, isReverseKind, isSkVatId, plainVatId, vatCountry, type ReverseGoods, type VatData, type VatLine, type VatMode } from './vat'
 
 /** The rates of the form's rows, the basic one first; 0 % is the base of what is supplied without VAT. */
 export const FORM_RATES = [23, 19, 5, 0] as const
@@ -24,10 +24,15 @@ export interface VatValues {
   ossRate?: string
   ossBase?: string
   ossTax?: string
+  /** An issued supply with domestic reverse charge: the letter of § 69(12), the tariff's code, the quantity, its unit. */
+  reverseKind?: string
+  reverseCode?: string
+  reverseQuantity?: string
+  reverseUnit?: string
 }
 
-export type VatErrorCode = 'amount' | 'base' | 'negative' | 'lines' | 'id' | 'supplierId' | 'noTax' | 'zeroOnly' | 'mode' | 'date' | 'period' | 'country' | 'rate'
-export type VatField = 'mode' | 'supplied' | 'vatId' | 'corrects' | 'period' | `base${FormRate}` | `tax${FormRate}` | 'country' | 'ossRate' | 'ossBase' | 'ossTax'
+export type VatErrorCode = 'amount' | 'base' | 'negative' | 'lines' | 'id' | 'supplierId' | 'noTax' | 'zeroOnly' | 'mode' | 'date' | 'period' | 'country' | 'rate' | 'reverseKind' | 'reverseCode' | 'reverseQuantity' | 'customerId'
+export type VatField = 'mode' | 'supplied' | 'vatId' | 'corrects' | 'period' | `base${FormRate}` | `tax${FormRate}` | 'country' | 'ossRate' | 'ossBase' | 'ossTax' | 'reverseKind' | 'reverseCode' | 'reverseQuantity'
 export type VatErrors = Partial<Record<VatField, VatErrorCode>>
 
 /** What VAT is reported by the mode: taxed (with VAT), or the base alone (supplied without VAT), or nothing. */
@@ -76,7 +81,22 @@ export function vatValues(data: VatData): VatValues {
     ossRate: oss ? String(oss.rate).replace('.', ',') : '',
     ossBase: oss ? moneyText(oss.base) : '',
     ossTax: oss ? moneyText(oss.vat) : '',
+    reverseKind: data.reverse?.kind ?? '',
+    reverseCode: data.reverse?.code ?? '',
+    reverseQuantity: data.reverse?.quantity ? hundredthsText(data.reverse.quantity) : '',
+    reverseUnit: data.reverse?.unit ?? '',
   }
+}
+
+/** Hundredths as typed: "12,5" for 1250. */
+const hundredthsText = (n: number): string => `${Math.floor(n / 100)}${n % 100 ? `,${String(n % 100).padStart(2, '0').replace(/0$/, '')}` : ''}`
+
+/** "12,5" or "1 250" in hundredths; null when empty, NaN when it is no quantity. */
+function hundredthsOf(text: string): number | null {
+  const plain = text.replace(/\s/g, '')
+  if (plain === '') return null
+  const m = /^(\d{1,9})(?:[,.](\d{1,2}))?$/.exec(plain)
+  return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : Number.NaN
 }
 
 /** The member states of the one-stop shop (oss.ts): the EU's but Slovakia, Greece as EL, Northern Ireland as XI for goods. */
@@ -111,6 +131,10 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
     ossRate: text('dph_oss_sadzba', 6),
     ossBase: text('dph_oss_zaklad', 20),
     ossTax: text('dph_oss_dan', 20),
+    reverseKind: text('dph_ptp_druh', 8),
+    reverseCode: text('dph_ptp_kod', 8),
+    reverseQuantity: text('dph_ptp_mnozstvo', 16),
+    reverseUnit: text('dph_ptp_jednotka', 4),
   }
   for (const rate of FORM_RATES) {
     values.base[rate] = text(`dph_zaklad_${rate}`, 20)
@@ -144,8 +168,23 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
     if (Object.keys(errors).length > 0) return { values, data: null, errors }
     return { values, data: { mode, lines: ossLines, suppliedOn: supplied || null, vatId, corrects: corrects || null, period: values.period || null, country }, errors }
   }
+  // An issued supply with domestic reverse charge: no VAT of the supplier's; what A.2 asks of it.
+  const reverseOut = mode === 'reverse' && isIssued(ctx.kind)
+  let reverse: ReverseGoods | null = null
+  if (reverseOut) {
+    const kind = isReverseKind(values.reverseKind) ? values.reverseKind : null
+    if (!kind) errors.reverseKind = 'reverseKind'
+    const code = (values.reverseCode ?? '').replace(/\s/g, '')
+    const quantity = hundredthsOf(values.reverseQuantity ?? '')
+    const unit = isA2Unit(values.reverseUnit) ? values.reverseUnit : null
+    const goods = kind !== null && kind !== 'j' && kind !== 'other'
+    if ((kind === 'f' || kind === 'g') && !/^\d{4}$/.test(code)) errors.reverseCode = 'reverseCode'
+    if (goods && (quantity === null || Number.isNaN(quantity) || quantity <= 0 || unit === null)) errors.reverseQuantity = 'reverseQuantity'
+    if (ctx.booking && !isSkVatId(vatId)) errors.vatId = errors.vatId ?? 'customerId'
+    if (kind) reverse = { kind, code: kind === 'f' || kind === 'g' ? code || null : null, quantity: goods && quantity !== null && !Number.isNaN(quantity) ? quantity : null, unit: goods ? unit : null }
+  }
   const lines: VatLine[] = []
-  const taxed = mode !== null && TAXED.includes(mode)
+  const taxed = mode !== null && TAXED.includes(mode) && !reverseOut
   const deducting = ctx.payer && ctx.deduct && isReceived(ctx.kind)
   for (const rate of FORM_RATES) {
     const base = centsOf(values.base[rate])
@@ -158,7 +197,7 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
       errors[`base${rate}`] = 'base'
       continue
     }
-    if (rate !== 0 && mode !== null && BASE_ONLY.includes(mode)) {
+    if (rate !== 0 && mode !== null && (BASE_ONLY.includes(mode) || reverseOut)) {
       errors[`base${rate}`] = 'zeroOnly'
       continue
     }
@@ -172,7 +211,7 @@ export function readVat(body: Record<string, unknown>, ctx: VatContext): { value
   // A deduction from a Slovak supplier's invoice goes into the control statement by the supplier's VAT number (B.2).
   if (ctx.booking && mode === 'domestic' && ctx.kind === 'invoice_in' && lines.some((line) => line.deduct !== 0) && !isSkVatId(vatId)) errors.vatId = errors.vatId ?? 'supplierId'
   if (Object.keys(errors).length > 0 || !mode) return { values, data: null, errors }
-  return { values, data: { mode, lines, suppliedOn: supplied || null, vatId, corrects: corrects || null, period: values.period || null }, errors }
+  return { values, data: { mode, lines, suppliedOn: supplied || null, vatId, corrects: corrects || null, period: values.period || null, ...(reverseOut ? { reverse } : {}) }, errors }
 }
 
 /** The periods offered for a document: three before and three after the one its dates give, and the one it has. */

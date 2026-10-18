@@ -1095,7 +1095,18 @@ by itself.
   confirms (so r14, r15 and the recapitulative statement read it); goods go to `sales_goods` (Intrastat reads them);
   a credit note is taxed as its invoice. A domestic exempt supply now says "Dodanie je oslobodené od dane". A customer
   abroad is addressed on Peppol by its VAT number, also beyond the Union where Peppol has its scheme (CH, GB, RS...).
-- Not built yet: domestic reverse charge on an issued invoice (§ 69(12), the control statement's A.2), a customer's
+- Domestic reverse charge issued (built 18 October 2026, schema step 39: `invoices.vat_reverse`,
+  `documents.vat_reverse`, `ReverseGoods` in vat.ts): an invoice's "Zdanenie" offers "Prenesenie daňovej povinnosti
+  (§ 69 ods. 12)" with the kind (j construction, g metals, f crops, h phones and i circuits from 5 000 €, other: a
+  to e) and for f and g the four digits of the customs tariff; only to a Slovak payer; no VAT; "Prenesenie daňovej
+  povinnosti" on the sheet; AE in the e-invoice; the quantity of goods from the lines when they share kg, t, m or ks
+  (units t and m added). The VAT engine reports an issued `reverse` in the control statement's A.2 alone (Odb, F,
+  Den, Z, TK for f and g, TD MT or IO, Mn and MJ for f to i; none for a to e, which the customer alone reports; no row
+  of the return, read in KVDPH's instructions of 2021 and a podnikajte.sk article), and blocks what A.2 cannot take
+  (no Slovak VAT number, no kind, goods without code or quantity, phones or circuits under 5 000 €, a corrective
+  invoice of one: not built). The accountant's booking form has the same fields for any issued document (dph_ptp_*).
+  A Slovak customer without a DIČ is addressed on Peppol by the digits of its IČ DPH.
+- Not built yet: a corrective invoice of a reverse-charged supply in the control statement, a customer's
   state when it has no VAT number (an export to a private person reads as SK in the e-invoice), an invoice in another
   currency, an advance invoice, recurring invoices sent by themselves, the e-invoice sent through a digital postman,
   invoice numbering of the company's own pattern, the company's logo on the invoice.
@@ -1871,9 +1882,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1126 unit checks (18 October 2026), including credit notes and how invoices are taxed
-npm run test:runtime     # 1545 workerd checks on Node 24 (as GitHub runs them), including test/credit-notes.runtime.mjs
-npm run test:peppol      # 13 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+npm test                 # 1130 unit checks (18 October 2026), including credit notes, invoice modes and A.2
+npm run test:runtime     # 1549 workerd checks on Node 24 (as GitHub runs them), including test/credit-notes.runtime.mjs
+npm run test:peppol      # 14 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

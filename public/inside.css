@@ -3794,6 +3794,11 @@ select.field__input {
   font-variant-numeric: tabular-nums;
 }
 
+/* The kind of a reverse-charged supply is asked only when the invoice is one (the fields stay where :has is unknown). */
+.invform:not(:has(#f-rezim option[value='reverse']:checked)) .invform__ptp {
+  display: none;
+}
+
 .sheet__mode {
   font-weight: 600;
 }

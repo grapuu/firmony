@@ -1106,6 +1106,10 @@ const MIGRATIONS: readonly string[][] = [
   // a service whose customer pays the VAT, an export, a supply outside Slovakia. Its document carries it as a hint
   // the VAT proposal follows until the accountant confirms it (documents.vat_hint, guarded like the rest).
   ['ALTER TABLE invoices ADD COLUMN vat_mode TEXT', 'ALTER TABLE documents ADD COLUMN vat_hint TEXT', ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint'])],
+  // Domestic reverse charge on an issued invoice (18 October 2026, vat.ts ReverseGoods): what the control statement's
+  // A.2 asks of the supply (the letter of § 69(12), the tariff's code, the quantity and its unit), on the invoice and
+  // on its document (a hint until the accountant confirms the document's VAT, then part of it; guarded like the rest).
+  ['ALTER TABLE invoices ADD COLUMN vat_reverse TEXT', 'ALTER TABLE documents ADD COLUMN vat_reverse TEXT', ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse'])],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

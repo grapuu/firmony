@@ -5,7 +5,7 @@
 import { now } from '../db'
 import type { Company } from './store'
 import { splitAddress } from './address'
-import { isEuVatId } from './vat'
+import { isA2Unit, isEuVatId, isReverseKind, reverseOf, type ReverseGoods } from './vat'
 
 export const VAT_RATES = [23, 19, 5, 0] as const
 
@@ -14,8 +14,8 @@ export const VAT_RATES = [23, 19, 5, 0] as const
  * to a VAT payer of another member state (§ 43 of the VAT Act), a service whose customer in another member state pays
  * the VAT (§ 15(1)), an export (§ 47), a supply whose place is outside Slovakia.
  */
-export type InvoiceMode = 'domestic' | 'eu_goods' | 'eu_service' | 'export' | 'outside'
-export const INVOICE_MODES: readonly InvoiceMode[] = ['domestic', 'eu_goods', 'eu_service', 'export', 'outside']
+export type InvoiceMode = 'domestic' | 'reverse' | 'eu_goods' | 'eu_service' | 'export' | 'outside'
+export const INVOICE_MODES: readonly InvoiceMode[] = ['domestic', 'reverse', 'eu_goods', 'eu_service', 'export', 'outside']
 export const isInvoiceMode = (value: unknown): value is InvoiceMode => typeof value === 'string' && (INVOICE_MODES as readonly string[]).includes(value)
 
 /**
@@ -23,15 +23,16 @@ export const isInvoiceMode = (value: unknown): value is InvoiceMode => typeof va
  * daňovej povinnosti" when the customer pays the tax), and its category and exemption code in EN 16931 (VATEX).
  */
 export const MODE_TERMS: Record<Exclude<InvoiceMode, 'domestic'>, { text: string; category: 'K' | 'AE' | 'G' | 'O'; code: string }> = {
+  reverse: { text: 'Prenesenie daňovej povinnosti', category: 'AE', code: 'VATEX-EU-AE' },
   eu_goods: { text: 'Dodanie je oslobodené od dane podľa § 43 zákona o DPH (dodanie tovaru do iného členského štátu).', category: 'K', code: 'VATEX-EU-IC' },
   eu_service: { text: 'Prenesenie daňovej povinnosti', category: 'AE', code: 'VATEX-EU-AE' },
   export: { text: 'Dodanie je oslobodené od dane podľa § 47 zákona o DPH (vývoz tovaru).', category: 'G', code: 'VATEX-EU-G' },
   outside: { text: 'Miesto dodania nie je v tuzemsku: dodanie nie je predmetom slovenskej dane.', category: 'O', code: 'VATEX-EU-O' },
 }
-export const UNITS = ['ks', 'hod', 'deň', 'mes', 'kg', 'km', 'm²', 'bal'] as const
+export const UNITS = ['ks', 'hod', 'deň', 'mes', 'kg', 't', 'm', 'km', 'm²', 'bal'] as const
 
 /** UN/ECE Recommendation 20 codes for the units an invoice line may have. */
-const UNIT_CODES: Record<string, string> = { ks: 'C62', hod: 'HUR', deň: 'DAY', mes: 'MON', kg: 'KGM', km: 'KMT', 'm²': 'MTK', bal: 'XPK' }
+const UNIT_CODES: Record<string, string> = { ks: 'C62', hod: 'HUR', deň: 'DAY', mes: 'MON', kg: 'KGM', t: 'TNE', m: 'MTR', km: 'KMT', 'm²': 'MTK', bal: 'XPK' }
 
 export interface LineInput {
   description: string
@@ -59,6 +60,9 @@ export interface InvoiceValues {
   reason?: string
   /** How a VAT payer's invoice is taxed; Slovak VAT when not said. */
   mode?: InvoiceMode
+  /** Domestic reverse charge: the letter of § 69(12) and, for crops and metals, the tariff's code. */
+  reverseKind?: string
+  reverseCode?: string
 }
 
 export interface Line {
@@ -116,6 +120,24 @@ export function totalsOf(lines: Pick<Line, 'baseCents' | 'vatRate'>[], vatPayer:
   return { base, vat, total: base + vat, rates }
 }
 
+/**
+ * What A.2 asks of a reverse-charged invoice, from its form and lines: the letter, the code (crops, metals) and, for
+ * goods, the quantity of its lines when they share a unit A.2 takes (kg, t, m, ks); without one the accountant adds it.
+ */
+export function reverseGoodsOf(values: InvoiceValues, lines: Pick<Line, 'quantityMilli' | 'unit'>[]): ReverseGoods | null {
+  if (values.mode !== 'reverse' || !isReverseKind(values.reverseKind)) return null
+  const kind = values.reverseKind
+  const goods = kind !== 'j' && kind !== 'other'
+  const units = new Set(lines.map((l) => l.unit))
+  const unit = goods && units.size === 1 ? [...units][0] : null
+  return {
+    kind,
+    code: kind === 'f' || kind === 'g' ? (values.reverseCode ?? '').replace(/\s/g, '') || null : null,
+    quantity: goods && isA2Unit(unit) ? Math.round(lines.reduce((sum, l) => sum + l.quantityMilli, 0) / 10) : null,
+    unit: goods && isA2Unit(unit) ? unit : null,
+  }
+}
+
 /** A credit note's lines as kept: what the form says the invoice is lowered by, with the minus sign. */
 export const creditLines = (lines: Line[]): Line[] => lines.map((l) => ({ ...l, unitCents: -l.unitCents, baseCents: -l.baseCents }))
 
@@ -161,6 +183,10 @@ export function isIban(text: string): boolean {
 export interface Errors {
   customerName?: string
   customerIcdph?: string
+  reverse?: string
+  reverseCustomer?: string
+  reverseKind?: string
+  reverseCode?: string
   customerEmail?: string
   customerIco?: string
   issued?: string
@@ -218,6 +244,13 @@ export function checkValues(values: InvoiceValues, dayOf: (text: string) => stri
   // Goods or a service to another member state go to a VAT payer there: its VAT number is on the invoice (§ 74(1)(b)).
   const vatId = values.customerIcdph.replace(/[\s.-]/g, '').toUpperCase()
   if ((values.mode === 'eu_goods' || values.mode === 'eu_service') && (!isEuVatId(vatId) || vatId.startsWith('SK'))) errors.customerIcdph = messages.customerIcdph
+  // Domestic reverse charge goes to a Slovak payer only, and says what is supplied (the control statement's A.2).
+  if (values.mode === 'reverse') {
+    if (!/^SK\d{10}$/.test(vatId)) errors.customerIcdph = messages.reverseCustomer
+    const kind = values.reverseKind ?? ''
+    if (!isReverseKind(kind)) errors.reverse = messages.reverseKind
+    else if ((kind === 'f' || kind === 'g') && !/^\d{4}$/.test((values.reverseCode ?? '').replace(/\s/g, ''))) errors.reverse = messages.reverseCode
+  }
   return errors
 }
 
@@ -257,6 +290,8 @@ export interface StoredInvoice {
   kind: 'invoice' | 'credit'
   /** How it is taxed (a company that is no VAT payer: always as `domestic`, without VAT). */
   mode: InvoiceMode
+  /** Domestic reverse charge: what the control statement's A.2 asks of the supply. */
+  reverse: ReverseGoods | null
   /** A credit note: the invoice it corrects (its id, number and day of issue), and why. */
   corrects: string | null
   correctsNumber: string | null
@@ -313,7 +348,9 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
     const country = countryOf(p.vatNumber)
     const vatNumber = (p.vatNumber ?? '').replace(/\s/g, '').toUpperCase()
     const scheme = country === 'SK' ? null : VAT_SCHEMES[vatNumber.slice(0, 2)]
-    const endpoint = country === 'SK' && p.dic ? `<cbc:EndpointID schemeID="0245">${esc(p.dic)}</cbc:EndpointID>` : scheme ? `<cbc:EndpointID schemeID="${scheme}">${esc(vatNumber)}</cbc:EndpointID>` : ''
+    // A Slovak company's DIČ, or the digits of its IČ DPH, which are its DIČ.
+    const dic = p.dic ?? (/^SK\d{10}$/.test(vatNumber) ? vatNumber.slice(2) : null)
+    const endpoint = country === 'SK' && dic ? `<cbc:EndpointID schemeID="0245">${esc(dic)}</cbc:EndpointID>` : scheme ? `<cbc:EndpointID schemeID="${scheme}">${esc(vatNumber)}</cbc:EndpointID>` : ''
     const a = p.address ? splitAddress(p.address) : null
     return [
       '<cac:Party>',
@@ -404,6 +441,7 @@ function invoiceOf(row: Row): StoredInvoice {
     paidOn: str(row.paid_on),
     kind: row.kind === 'credit' ? 'credit' : 'invoice',
     mode: isInvoiceMode(row.vat_mode) ? row.vat_mode : 'domestic',
+    reverse: reverseOf(row.vat_reverse),
     corrects: str(row.corrects),
     correctsNumber: str(row.corrects_number),
     correctsIssuedOn: str(row.corrects_issued_on),
@@ -507,6 +545,7 @@ export function saveInvoiceStatements(
   const v = args.values
   const year = Number(args.issued.slice(0, 4))
   const mode = v.mode ?? 'domestic'
+  const reverse = reverseGoodsOf(v, args.lines)
   const fields = [
     v.customerName.trim().slice(0, 200),
     v.customerIco.replace(/\s/g, '') || null,
@@ -531,12 +570,12 @@ export function saveInvoiceStatements(
       .prepare(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
-           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode)
+           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
            CASE WHEN ?5 = 'issued' THEN printf('%d%04d', ?6, next.seq) END,
-           ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
+           ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26
          FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6) AS next`,
       )
       .bind(
@@ -552,6 +591,7 @@ export function saveInvoiceStatements(
         args.credit?.corrects ?? null,
         args.credit?.reason.slice(0, 500) || null,
         mode === 'domestic' ? null : mode,
+        reverse ? JSON.stringify(reverse) : null,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol.
@@ -560,9 +600,9 @@ export function saveInvoiceStatements(
           db
             .prepare(
               `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs,
-                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint)
+                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint, vat_reverse)
                SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, number,
-                 issued_on, due_on, total_cents, vat_cents, 'EUR', ?, id, customer_icdph, delivered_on, ?, ?, ?
+                 issued_on, due_on, total_cents, vat_cents, 'EUR', ?, id, customer_icdph, delivered_on, ?, ?, ?, vat_reverse
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )
             // Its VAT by rate, exactly as the invoice sums it, and how it is taxed: what the return proposes until the

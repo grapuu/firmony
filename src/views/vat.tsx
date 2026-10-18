@@ -8,7 +8,7 @@ import { formatEur, formatEurExact } from '../format'
 import { dayName, dayShort, readableName } from '../app/copy'
 import { textDay } from '../app/booking'
 import type { Company, Doc, User } from '../app/store'
-import { ROWS, correctionKind, filingDeadline, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
+import { A2_UNITS, REVERSE_KINDS, ROWS, correctionKind, filingDeadline, outcome, periodRange, type Issue, type IssueCode, type VatMode } from '../app/vat'
 import { FORM_RATES, OSS_STATES, type FormRate, type VatErrorCode, type VatErrors, type VatValues } from '../app/vat-form'
 import { payable, periodName, type FilingPlan, type PeriodState, type PeriodView } from '../app/vat-store'
 import { totalOf, wholeEuros, type SvRow, type SvState, type SvView, type SvFiled, type SvSchedule } from '../app/vat-summary'
@@ -185,6 +185,7 @@ const RowsCard: FC<{ view: PeriodView; docs: Map<string, Doc> }> = ({ view, docs
 
 const KV_PARTS: { key: string; count: (view: PeriodView) => number }[] = [
   { key: 'A1', count: (w) => w.result.kv.a1.length },
+  { key: 'A2', count: (w) => w.result.kv.a2.length },
   { key: 'B1', count: (w) => w.result.kv.b1.length },
   { key: 'B2', count: (w) => w.result.kv.b2.length },
   { key: 'B3', count: (w) => (w.result.kv.b31 ? 1 : 0) + w.result.kv.b32.length },
@@ -692,6 +693,8 @@ const RATE_LABEL: Record<FormRate, string> = { 23: '23 %', 19: '19 %', 5: '5 %',
 export const VatFields: FC<{ form: VatForm }> = ({ form }) => {
   const e = form.errors
   const err = (field: keyof VatErrors) => (e[field] ? t.book.vatErrors[e[field] as VatErrorCode] : null)
+  // An issued document's modes: its reverse charge is the customer's (§ 69(12)), not the company's.
+  const issuedForm = form.modes.includes('eu_goods')
   return (
     <fieldset class="vatbox" id="dph">
       <legend class="vatbox__title">{t.book.vatTitle}</legend>
@@ -705,7 +708,7 @@ export const VatFields: FC<{ form: VatForm }> = ({ form }) => {
           <select id="b-dph-rezim" class="field__input" name="dph_rezim" aria-invalid={e.mode ? 'true' : undefined}>
             {form.modes.map((mode) => (
               <option value={mode} selected={form.values.mode === mode}>
-                {t.book.vatModes[mode]}
+                {issuedForm && mode === 'reverse' ? t.book.vatReverseOut : t.book.vatModes[mode]}
               </option>
             ))}
           </select>
@@ -747,6 +750,56 @@ export const VatFields: FC<{ form: VatForm }> = ({ form }) => {
           {err('corrects') ? <p class="field__error">{err('corrects')}</p> : <p class="field__hint">{t.book.vatCorrectsHint}</p>}
         </div>
       </div>
+      {issuedForm ? (
+        <div class="vatbox__oss">
+          <p class="vatbox__note">
+            <strong>{t.book.ptpTitle}.</strong> {t.book.ptpHint}
+          </p>
+          <div class="fgrid">
+            <div class="fgrid__cell fgrid__cell--wide">
+              <label class="field__label" for="b-dph-ptp-druh">
+                {t.book.ptpKind}
+              </label>
+              <select id="b-dph-ptp-druh" class="field__input" name="dph_ptp_druh" aria-invalid={e.reverseKind ? 'true' : undefined}>
+                <option value=""></option>
+                {REVERSE_KINDS.map((k) => (
+                  <option value={k} selected={form.values.reverseKind === k}>
+                    {t.book.ptpKinds[k]}
+                  </option>
+                ))}
+              </select>
+              {err('reverseKind') ? <p class="field__error">{err('reverseKind')}</p> : null}
+            </div>
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-dph-ptp-kod">
+                {t.book.ptpCode}
+              </label>
+              <input id="b-dph-ptp-kod" class="field__input" name="dph_ptp_kod" value={form.values.reverseCode ?? ''} inputmode="numeric" maxlength={4} aria-invalid={e.reverseCode ? 'true' : undefined} />
+              {err('reverseCode') ? <p class="field__error">{err('reverseCode')}</p> : null}
+            </div>
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-dph-ptp-mnozstvo">
+                {t.book.ptpQuantity}
+              </label>
+              <input id="b-dph-ptp-mnozstvo" class="field__input" name="dph_ptp_mnozstvo" value={form.values.reverseQuantity ?? ''} inputmode="decimal" maxlength={14} aria-invalid={e.reverseQuantity ? 'true' : undefined} />
+              {err('reverseQuantity') ? <p class="field__error">{err('reverseQuantity')}</p> : null}
+            </div>
+            <div class="fgrid__cell">
+              <label class="field__label" for="b-dph-ptp-jednotka">
+                {t.book.ptpUnit}
+              </label>
+              <select id="b-dph-ptp-jednotka" class="field__input" name="dph_ptp_jednotka">
+                <option value=""></option>
+                {A2_UNITS.map((u) => (
+                  <option value={u} selected={form.values.reverseUnit === u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {form.modes.includes('oss') ? (
         <div class="vatbox__oss">
           <p class="vatbox__note">

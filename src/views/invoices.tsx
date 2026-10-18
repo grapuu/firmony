@@ -6,6 +6,7 @@ import { formatEur, formatEurExact } from '../format'
 import { app, dayName } from '../app/copy'
 import { INVOICE_MODES, MODE_TERMS, UNITS, VAT_RATES, creditLines, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { payBySquare, qrPicture } from '../app/paybysquare'
+import { REVERSE_KINDS } from '../app/vat'
 import type { Company } from '../app/store'
 import { Tile } from './home'
 import { Flash, Heading, InsideHead } from './inside'
@@ -251,9 +252,36 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
                 </select>
                 <p class="field__hint">{f.modeHint}</p>
               </div>
+              <div class="fgrid__cell invform__ptp">
+                <label class="field__label" for="f-ptp-druh">
+                  {f.reverseKind}
+                </label>
+                <select id="f-ptp-druh" class="field__input" name="ptp_druh" aria-invalid={errors.reverse ? 'true' : undefined}>
+                  <option value=""></option>
+                  {REVERSE_KINDS.map((k) => (
+                    <option value={k} selected={values.reverseKind === k}>
+                      {f.reverseKinds[k]}
+                    </option>
+                  ))}
+                </select>
+                {errors.reverse ? <p class="field__error">{errors.reverse}</p> : null}
+              </div>
+              <div class="fgrid__cell invform__ptp">
+                <label class="field__label" for="f-ptp-kod">
+                  {f.reverseCode}
+                </label>
+                <input id="f-ptp-kod" class="field__input" name="ptp_kod" value={values.reverseCode ?? ''} inputmode="numeric" maxlength={4} />
+                <p class="field__hint">{f.reverseHint}</p>
+              </div>
             </div>
           ) : null}
-          {vatPayer && credit ? <input type="hidden" name="rezim" value={values.mode ?? 'domestic'} /> : null}
+          {vatPayer && credit ? (
+            <>
+              <input type="hidden" name="rezim" value={values.mode ?? 'domestic'} />
+              <input type="hidden" name="ptp_druh" value={values.reverseKind ?? ''} />
+              <input type="hidden" name="ptp_kod" value={values.reverseCode ?? ''} />
+            </>
+          ) : null}
           {errors.lines ? <p class="field__error">{errors.lines}</p> : null}
           <div class={`items${vatPayer ? ' items--vat' : ''}`}>
             <div class="items__head" aria-hidden="true">

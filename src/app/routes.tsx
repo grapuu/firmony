@@ -1540,6 +1540,8 @@ function invoiceValuesFrom(body: Record<string, unknown>, vatPayer: boolean): In
     ...(ID.test(text('dobropis', 64)) ? { corrects: text('dobropis', 64), reason: typeof body.dovod === 'string' ? body.dovod.replace(/\s+/g, ' ').trim().slice(0, 500) : '' } : {}),
     // How it is taxed: a VAT payer's choice, Slovak VAT otherwise.
     mode: vatPayer && isInvoiceMode(text('rezim', 20)) ? (text('rezim', 20) as InvoiceMode) : 'domestic',
+    reverseKind: text('ptp_druh', 8),
+    reverseCode: text('ptp_kod', 8),
     lines: Array.from({ length: rows }, (_, i) => ({
       description: text(`r${i}-popis`, 300),
       quantity: text(`r${i}-mnozstvo`, 10),
@@ -1659,6 +1661,8 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.corrects = original.id
     values.reason = ''
     values.mode = original.mode
+    values.reverseKind = original.reverse?.kind ?? ''
+    values.reverseCode = original.reverse?.code ?? ''
     values.lines = inputLines(await invoiceLines(c.env.DB, original.id), who.company.vatPayer)
     return invoiceForm(c, null, values)
   }
@@ -1677,6 +1681,8 @@ appRoutes.get('/faktury/nova', async (c) => {
     if (like) {
       values.note = earlier.note ?? ''
       values.mode = earlier.mode
+      values.reverseKind = earlier.reverse?.kind ?? ''
+      values.reverseCode = earlier.reverse?.code ?? ''
       values.lines = inputLines(await invoiceLines(c.env.DB, earlier.id), who.company.vatPayer)
     }
   }
@@ -1730,6 +1736,8 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     values.iban = ''
     // A credit note is taxed as the invoice it corrects.
     values.mode = original.mode
+    values.reverseKind = original.reverse?.kind ?? ''
+    values.reverseCode = original.reverse?.code ?? ''
   }
   const errors = checkValues(values, dayOfText, { ...ti.errors, lines: ti.errors.lines, form: ti.errors.form })
   const read = linesOf(values, vatPayer, { line: ti.errors.line, none: ti.errors.lines })
@@ -1812,6 +1820,8 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
       lines: inputLines(invoice.kind === 'credit' ? creditLines(lines) : lines, who.company.vatPayer),
       ...(invoice.kind === 'credit' && invoice.corrects ? { corrects: invoice.corrects, reason: invoice.reason ?? '' } : {}),
       mode: invoice.mode,
+      reverseKind: invoice.reverse?.kind ?? '',
+      reverseCode: invoice.reverse?.code ?? '',
     }
     return invoiceForm(c, invoice.id, values, {}, status)
   }

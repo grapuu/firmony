@@ -14,9 +14,10 @@
 //   receipts with VAT deducted (rows 18 to 21; B.2, B.3.1 or B.3.2), services and goods from abroad on which the
 //   company pays the VAT itself (rows 05 to 10b with the deduction; B.1), supplies of goods to the EU, exports and
 //   exempt supplies (rows 13 to 15), corrective invoices (rows 24, 25 and 28; C.1, C.2), the result (rows 17, 32,
-//   33, 35). A company registered only under § 7a files the return alone, with no deduction (rows 05 to 10b, 17,
-//   32, 35) and no control statement.
-// - Not built: supplies with domestic reverse charge (A.2: construction, metals, phones), takings of an eKasa till
+//   33, 35), supplies with domestic reverse charge issued (§ 69(12), A.2 alone, no row: KVDPH's instructions of
+//   2021 on part A.2 and podnikajte.sk, 18 October 2026). A company registered only under § 7a files the return
+//   alone, with no deduction (rows 05 to 10b, 17, 32, 35) and no control statement.
+// - Not built: corrective invoices of supplies with domestic reverse charge, takings of an eKasa till
 //   (D.1), imports (rows 11c to 12e, 22 to 23c), triangular trade (rows 11 to 12b), bad debts (§ 25a, § 53b), the
 //   coefficient (§ 50), supplementary returns and statements (dodatočné, with correction codes), the recapitulative
 //   statement (súhrnný výkaz) and documents in another currency without their euro amounts.
@@ -36,7 +37,48 @@ import { eurOf } from './fx'
 export type VatMode = 'domestic' | 'reverse' | 'acquisition' | 'eu_goods' | 'eu_service' | 'export' | 'exempt' | 'outside' | 'oss' | 'none'
 
 export const RECEIVED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'acquisition', 'none']
-export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'eu_goods', 'eu_service', 'export', 'exempt', 'outside', 'oss', 'none']
+export const ISSUED_MODES: readonly VatMode[] = ['domestic', 'reverse', 'eu_goods', 'eu_service', 'export', 'exempt', 'outside', 'oss', 'none']
+
+/**
+ * An issued supply with domestic reverse charge (§ 69(12): the customer, a Slovak payer, pays the VAT), as the control
+ * statement's A.2 asks of it (KVDPH's instructions, part A.2): the letter of § 69(12) it falls under, f crops and g
+ * metals with the four digits of their code in the customs tariff, h mobile phones (MT) and i integrated circuits (IO)
+ * from a base of 5 000 €, each of them with its quantity and unit, j construction work alone; the letters a to e
+ * (scrap, emission allowances, buildings, collateral) are reported by the customer alone.
+ */
+export type ReverseKind = 'f' | 'g' | 'h' | 'i' | 'j' | 'other'
+export const REVERSE_KINDS: readonly ReverseKind[] = ['j', 'g', 'f', 'h', 'i', 'other']
+export const A2_UNITS = ['kg', 't', 'm', 'ks'] as const
+export type A2Unit = (typeof A2_UNITS)[number]
+export interface ReverseGoods {
+  kind: ReverseKind
+  /** The four digits of the customs tariff (f, g). */
+  code: string | null
+  /** The quantity in hundredths of its unit (f to i). */
+  quantity: number | null
+  unit: A2Unit | null
+}
+/** From 5 000 € of an invoice's base the supplies of h and i are reverse charged (§ 69(12)(h), (i)). */
+export const REVERSE_THRESHOLD = 500_000
+export const isReverseKind = (value: unknown): value is ReverseKind => typeof value === 'string' && (REVERSE_KINDS as readonly string[]).includes(value)
+export const isA2Unit = (value: unknown): value is A2Unit => typeof value === 'string' && (A2_UNITS as readonly string[]).includes(value)
+
+/** A reverse-charged supply's details as stored (documents.vat_reverse, invoices.vat_reverse); null when none. */
+export function reverseOf(raw: unknown): ReverseGoods | null {
+  if (typeof raw !== 'string') return null
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>
+    if (!isReverseKind(o.kind)) return null
+    return {
+      kind: o.kind,
+      code: typeof o.code === 'string' && /^\d{4}$/.test(o.code) ? o.code : null,
+      quantity: typeof o.quantity === 'number' && Number.isInteger(o.quantity) && o.quantity > 0 ? o.quantity : null,
+      unit: isA2Unit(o.unit) ? o.unit : null,
+    }
+  } catch {
+    return null
+  }
+}
 export const RATES = [23, 19, 5] as const
 
 export function isVatMode(value: unknown): value is VatMode {
@@ -63,6 +105,8 @@ export interface VatData {
   corrects: string | null
   /** The period the accountant put it in, when it is not the one the dates give. */
   period: string | null
+  /** An issued supply with domestic reverse charge (`reverse`): what A.2 asks of it. */
+  reverse?: ReverseGoods | null
   /** The member state of consumption of a supply in the one-stop shop (`oss`): AT, DE, EL, XI. */
   country?: string | null
 }
@@ -91,6 +135,8 @@ export interface VatDoc {
   lines?: { rate: number; base: number; vat: number }[]
   /** An invoice of ours: the mode its issuer declared (a supply to another member state, an export...). */
   modeHint?: VatMode | null
+  /** An invoice of ours with domestic reverse charge: what its issuer said of the goods. */
+  reverseHint?: ReverseGoods | null
   issuedOn: string | null
   /** The day the document reached us (Bratislava): a deduction cannot be claimed before it. */
   receivedOn: string
@@ -324,7 +370,7 @@ export function proposeVat(given: VatDoc, company: VatCompany): VatData | null {
     const declared = given.modeHint && given.modeHint !== 'domestic' && ISSUED_MODES.includes(given.modeHint) ? given.modeHint : null
     const mode: VatMode = declared ?? (abroad && isEuVatId(vatId) ? 'eu_service' : abroad ? 'outside' : 'exempt')
     const untaxed = lines.reduce((sum, line) => sum + line.base, 0) || total
-    return { ...base, mode, lines: untaxed !== 0 ? [{ rate: 0, base: untaxed, vat: 0, deduct: 0 }] : [] }
+    return { ...base, mode, lines: untaxed !== 0 ? [{ rate: 0, base: untaxed, vat: 0, deduct: 0 }] : [], ...(mode === 'reverse' ? { reverse: given.reverseHint ?? null } : {}) }
   }
   const deduct = company.status === 'payer' && deducts(doc)
   if (Boolean(doc.foreign) || abroad || !euro) {
@@ -482,6 +528,17 @@ export interface KvA1 {
   s: number
   doc: string
 }
+export interface KvA2 {
+  odb: string
+  f: string
+  den: string
+  z: number
+  tk: string | null
+  td: 'MT' | 'IO' | null
+  mn: number | null
+  mj: A2Unit | null
+  doc: string
+}
 export interface KvB1 {
   dod: string | null
   f: string
@@ -538,6 +595,7 @@ export interface KvD2 {
 
 export interface Kv {
   a1: KvA1[]
+  a2: KvA2[]
   b1: KvB1[]
   b2: KvB2[]
   b31: KvB3 | null
@@ -575,6 +633,11 @@ export type IssueCode =
   | 'svMonthly'
   | 'svQuarterly'
   | 'svPeriodChange'
+  | 'reverseCustomer'
+  | 'reverseKind'
+  | 'reverseGoods'
+  | 'reverseThreshold'
+  | 'reverseCorrection'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
@@ -644,7 +707,7 @@ export function vatDocsByPeriod(company: VatCompany, docs: VatDoc[], filed: Read
 
 export function workOut(company: VatCompany, period: string, docs: VatDoc[], filed: ReadonlyMap<string, string> = new Map(), carriedIn = 0): PeriodResult {
   const rows = emptyRows()
-  const kv: Kv = { a1: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }
+  const kv: Kv = { a1: [], a2: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }
   const sources = new Map<string, Set<string>>()
   const issues: Issue[] = []
   const held: PeriodResult['docs'] = []
@@ -713,6 +776,54 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     }
     if (company.status === 'reg7a' && !(isReceived(doc.kind) && (data.mode === 'reverse' || data.mode === 'acquisition'))) {
       issue('warn', 'domestic7a', doc.id)
+      continue
+    }
+    if (issued && data.mode === 'reverse') {
+      // § 69(12): the customer pays the VAT; the supplier reports the supply in A.2 alone, in no row of the return.
+      if (data.lines.length === 0) {
+        issue('block', 'lines', doc.id)
+        continue
+      }
+      if (data.lines.some((line) => line.vat !== 0)) {
+        issue('block', 'mismatch', doc.id)
+        continue
+      }
+      if (correction) {
+        issue('block', 'reverseCorrection', doc.id)
+        continue
+      }
+      if (!vatId || !isSkVatId(vatId)) {
+        issue('block', 'reverseCustomer', doc.id)
+        continue
+      }
+      const r = data.reverse ?? null
+      if (!r) {
+        issue('block', 'reverseKind', doc.id)
+        continue
+      }
+      if (r.kind === 'other') continue
+      const z = data.lines.reduce((sum, line) => sum + line.base, 0)
+      const goods = r.kind !== 'j'
+      if (goods && (r.quantity === null || r.unit === null || ((r.kind === 'f' || r.kind === 'g') && r.code === null))) {
+        issue('block', 'reverseGoods', doc.id)
+        continue
+      }
+      if ((r.kind === 'h' || r.kind === 'i') && z < REVERSE_THRESHOLD) {
+        issue('block', 'reverseThreshold', doc.id)
+        continue
+      }
+      kv.a2.push({
+        odb: vatId,
+        f: number,
+        den,
+        z,
+        tk: r.kind === 'f' || r.kind === 'g' ? r.code : null,
+        td: r.kind === 'h' ? 'MT' : r.kind === 'i' ? 'IO' : null,
+        mn: goods ? r.quantity : null,
+        mj: goods ? r.unit : null,
+        doc: doc.id,
+      })
+      note('A2', doc.id)
       continue
     }
     const taxed = data.mode === 'domestic' || data.mode === 'reverse' || data.mode === 'acquisition'
@@ -884,7 +995,7 @@ export function outcome(rows: Rows): { pay: number; refund: number } {
 
 /** Whether the control statement has anything in it beyond the company's own details. */
 export function kvRows(kv: Kv): number {
-  return kv.a1.length + kv.b1.length + kv.b2.length + (kv.b31 ? 1 : 0) + kv.b32.length + kv.c1.length + kv.c2.length + (kv.d2 ? 1 : 0)
+  return kv.a1.length + kv.a2.length + kv.b1.length + kv.b2.length + (kv.b31 ? 1 : 0) + kv.b32.length + kv.c1.length + kv.c2.length + (kv.d2 ? 1 : 0)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -958,6 +1069,7 @@ type Coded<T> = Omit<T, 'doc'> & { k?: KvCode }
 /** The control statement as it is filed: every part a list, each line with its correction code in a supplementary one. */
 export interface KvFile {
   a1: Coded<KvA1>[]
+  a2: Coded<KvA2>[]
   b1: Coded<KvB1>[]
   b2: Coded<KvB2>[]
   b31: Coded<KvB3>[]
@@ -967,13 +1079,15 @@ export interface KvFile {
   d2: Coded<KvD2>[]
 }
 
-const KV_PARTS = ['a1', 'b1', 'b2', 'b31', 'b32', 'c1', 'c2', 'd2'] as const
+const KV_PARTS = ['a1', 'a2', 'b1', 'b2', 'b31', 'b32', 'c1', 'c2', 'd2'] as const
 
 /** A period's control statement as a file: the lines without the documents they come from. */
 export function kvFileOf(kv: Kv): KvFile {
   const plain = <T extends { doc: string }>(lines: T[]) => lines.map(({ doc: _doc, ...line }) => line)
   return {
     a1: plain(kv.a1),
+    // A statement worked out before A.2 was built has none.
+    a2: plain(kv.a2 ?? []),
     b1: plain(kv.b1),
     b2: plain(kv.b2),
     b31: kv.b31 ? [{ ...kv.b31 }] : [],
@@ -992,7 +1106,7 @@ export const kvFileLines = (file: KvFile): number => KV_PARTS.reduce((sum, part)
  * (the schema's KodOpravyType). A total of B.3.1 or D.2 that changed is two lines, the old one and the new one.
  */
 export function kvDiff(before: KvFile, now: KvFile): KvFile {
-  const out = { a1: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d2: [] } as unknown as Record<(typeof KV_PARTS)[number], { k?: KvCode }[]>
+  const out = { a1: [], a2: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d2: [] } as unknown as Record<(typeof KV_PARTS)[number], { k?: KvCode }[]>
   for (const part of KV_PARTS) {
     const key = (line: object) =>
       JSON.stringify(

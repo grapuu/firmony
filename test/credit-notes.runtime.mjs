@@ -193,6 +193,74 @@ export async function checkCreditNotes({ db, nowS, signIn, as, day, capture }) {
     'its e-invoice is K with the exemption code and the state the goods went to',
     euXml.includes('<cbc:ID>K</cbc:ID>') && euXml.includes('VATEX-EU-IC') && euXml.includes('<cbc:IdentificationCode>DE</cbc:IdentificationCode>'),
   )
+  // Construction work with domestic reverse charge: to a Slovak payer, its kind said for the control statement.
+  res = await client.post(
+    '/app/faktury',
+    eu({
+      rezim: 'reverse',
+      meno: 'TEST-ONLY Stavebník s. r. o.',
+      adresa: 'Hlavná 9, 811 01 Bratislava',
+      icdph: 'DE123456789',
+      ptp_druh: 'j',
+      'r0-popis': 'Murárske práce',
+      'r0-jednotka': 'hod',
+      'r0-mnozstvo': '100',
+      'r0-cena': '30,00',
+    }),
+  )
+  check('reverse charge goes to a Slovak payer only', res.status === 422 && plain(await res.text()).includes('Prenesenie daňovej povinnosti je len voči platiteľovi dane na Slovensku'))
+  res = await client.post(
+    '/app/faktury',
+    eu({
+      rezim: 'reverse',
+      meno: 'TEST-ONLY Stavebník s. r. o.',
+      adresa: 'Hlavná 9, 811 01 Bratislava',
+      icdph: 'SK2120000000',
+      ptp_druh: '',
+      'r0-popis': 'Murárske práce',
+      'r0-jednotka': 'hod',
+      'r0-mnozstvo': '100',
+      'r0-cena': '30,00',
+    }),
+  )
+  check('and says what is supplied', res.status === 422 && plain(await res.text()).includes('Vyberte, o aké dodanie s prenesením daňovej povinnosti ide'))
+  res = await client.post(
+    '/app/faktury',
+    eu({
+      rezim: 'reverse',
+      meno: 'TEST-ONLY Stavebník s. r. o.',
+      adresa: 'Hlavná 9, 811 01 Bratislava',
+      icdph: 'SK2120000000',
+      ptp_druh: 'j',
+      'r0-popis': 'Murárske práce',
+      'r0-jednotka': 'hod',
+      'r0-mnozstvo': '100',
+      'r0-cena': '30,00',
+    }),
+  )
+  const rcId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''
+  const rc = await db.prepare('SELECT vat_mode, vat_reverse, vat_cents, total_cents, document_id FROM invoices WHERE id = ?').bind(rcId).first()
+  const rcDoc = await db
+    .prepare('SELECT vat_hint, vat_reverse FROM documents WHERE id = ?')
+    .bind(rc?.document_id ?? '')
+    .first()
+  check(
+    'issued without VAT, its kind kept on the invoice and its document for A.2',
+    res.status === 303 &&
+      rc?.vat_mode === 'reverse' &&
+      rc.vat_cents === 0 &&
+      rc.total_cents === 300000 &&
+      JSON.parse(rc.vat_reverse).kind === 'j' &&
+      rcDoc?.vat_hint === 'reverse' &&
+      JSON.parse(rcDoc.vat_reverse ?? '{}').kind === 'j',
+    JSON.stringify([rc, rcDoc]),
+  )
+  page = plain(await (await client.get(`/app/faktury/${rcId}`)).text())
+  const rcXml = await (await client.get(`/app/faktury/${rcId}/xml`)).text()
+  check(
+    'the invoice says "Prenesenie daňovej povinnosti"; its e-invoice is AE',
+    page.includes('Prenesenie daňovej povinnosti') && rcXml.includes('<cbc:ID>AE</cbc:ID>') && rcXml.includes('<cbc:EndpointID schemeID="0245">2120000000</cbc:EndpointID>'),
+  )
   page = plain(await (await client.get(`/app/faktury/nova?dobropis=${euId}`)).text())
   res = await client.post('/app/faktury', form({ dobropis: euId, rezim: 'domestic', 'r0-dph': '23', 'r0-cena': '50,00', 'r0-mnozstvo': '2' }))
   const euCreditId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''

@@ -1752,6 +1752,69 @@ async function zipped(entries, note) {
     ['<A1', '<B1', '<B2', '<B31', '<C1', '<C2', '<D2'].map((tag) => kvXml.indexOf(tag)).every((at, i, all) => at > 0 && (i === 0 || at > all[i - 1])),
   )
 
+  // Domestic reverse charge issued (§ 69(12), 18 October 2026): A.2 alone, no row of the return.
+  {
+    const rv = (reverse, lines = [[0, 600000, 0]], extra = {}) => doc({ kind: 'invoice_out', number: `R${n + 1}`, vat: v('reverse', lines, { vatId: 'SK2020000000', reverse, ...extra }) })
+    const ptp = vat.workOut(payer, '2027-01', [
+      rv({ kind: 'j', code: null, quantity: null, unit: null }),
+      rv({ kind: 'g', code: '7204', quantity: 125050, unit: 't' }, [[0, 250000, 0]]),
+      rv({ kind: 'h', code: null, quantity: 1000, unit: 'ks' }, [[0, 499999, 0]]),
+      rv({ kind: 'f', code: null, quantity: 1000, unit: 'kg' }),
+      rv({ kind: 'j', code: null, quantity: null, unit: null }, undefined, { vatId: null }),
+      rv({ kind: 'other', code: null, quantity: null, unit: null }),
+      rv(null),
+    ])
+    check(
+      'reverse charge issued: construction and metals in A.2 (the code, the quantity, its unit), none in the rows of the return',
+      ptp.kv.a2.length === 2 &&
+        ptp.kv.a2[0].odb === 'SK2020000000' &&
+        ptp.kv.a2[0].z === 600000 &&
+        ptp.kv.a2[0].tk === null &&
+        ptp.kv.a2[0].mn === null &&
+        ptp.kv.a2[1].tk === '7204' &&
+        ptp.kv.a2[1].mn === 125050 &&
+        ptp.kv.a2[1].mj === 't' &&
+        ptp.rows.r13 === 0 &&
+        ptp.rows.r01 === 0 &&
+        ptp.rows.r17 === 0,
+      JSON.stringify(ptp.kv.a2),
+    )
+    check(
+      'what keeps one back: phones under 5 000 €, crops without their code, a customer without a Slovak VAT number, no kind; the letters a to e are the customer\'s alone',
+      ['reverseThreshold', 'reverseGoods', 'reverseCustomer', 'reverseKind'].every((code) => ptp.issues.some((i) => i.code === code && i.level === 'block')) && ptp.issues.filter((i) => i.level === 'block').length === 4,
+      JSON.stringify(ptp.issues),
+    )
+    const a2Xml = vatXml.statementXml(filer, '2027-01', ptp.kv)
+    const a2Valid = await valid(a2Xml, KV_XSD, 'kv-a2')
+    check(
+      'A.2 in the control statement file, valid against kv_dph_2025.xsd',
+      a2Valid.ok && /<A2 Odb="SK2020000000" F="R\d+" Den="2027-01-15" Z="6000.00"\/>/.test(a2Xml) && a2Xml.includes('TK="7204"') && a2Xml.includes('Mn="1250.50" MJ="t"'),
+      `${a2Valid.why} ${a2Xml.match(/<A2[^>]*>/g)?.join(' ')}`,
+    )
+  }
+
+  {
+    const ctx = { kind: 'invoice_out', payer: true, deduct: false, booking: true, periods: ['2027-01'] }
+    const body = (extra) => ({ dph_rezim: 'reverse', dph_dodanie: '15. 1. 2027', dph_icdph: 'SK2020000000', dph_zaklad_0: '6000', ...extra })
+    const ok = vatForm.readVat(body({ dph_ptp_druh: 'g', dph_ptp_kod: '7204', dph_ptp_mnozstvo: '1 250,5', dph_ptp_jednotka: 't' }), ctx)
+    const missing = vatForm.readVat(body({ dph_ptp_druh: 'g', dph_ptp_kod: '72', dph_ptp_mnozstvo: '', dph_ptp_jednotka: '' }), ctx)
+    const taxed = vatForm.readVat(body({ dph_ptp_druh: 'j', dph_zaklad_23: '100', dph_zaklad_0: '' }), ctx)
+    check(
+      "the booking form takes an issued reverse charge with what A.2 asks, and no VAT of the supplier's",
+      ok.data?.mode === 'reverse' &&
+        ok.data.reverse?.kind === 'g' &&
+        ok.data.reverse.code === '7204' &&
+        ok.data.reverse.quantity === 125050 &&
+        ok.data.reverse.unit === 't' &&
+        ok.data.lines[0].vat === 0 &&
+        missing.errors.reverseCode === 'reverseCode' &&
+        missing.errors.reverseQuantity === 'reverseQuantity' &&
+        taxed.errors.base23 === 'zeroOnly' &&
+        vatForm.vatValues(ok.data).reverseQuantity === '1250,5',
+      JSON.stringify([ok, missing.errors, taxed.errors]),
+    )
+  }
+
   // The excess deduction of the period before, and the box of § 79(2)
   const carriedRows = vat.workOut(payer, '2027-01', [doc({ kind: 'invoice_out', number: 'C1', vat: v('domestic', [[23, 10000, 2300]], { vatId: 'SK2020000000' }) })], new Map(), 5000).rows
   check(
@@ -2073,7 +2136,7 @@ async function zipped(entries, note) {
     linesHint: [],
     ...fields,
   })
-  const sepKv = { ...vat.kvFileOf({ a1: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }), a1: [{ odb: null, f: '20260001', den: '2026-09-18', z: 10000, d: 2300, s: 23 }] }
+  const sepKv = { ...vat.kvFileOf({ a1: [], a2: [], b1: [], b2: [], b31: null, b32: [], c1: [], c2: [], d2: null }), a1: [{ odb: null, f: '20260001', den: '2026-09-18', z: 10000, d: 2300, s: 23 }] }
   const filedSep = {
     period: '2026-09',
     filedAt: 0,

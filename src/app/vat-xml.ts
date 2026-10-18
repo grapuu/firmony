@@ -134,6 +134,10 @@ export function statementXml(filer: Filer, period: string, statement: Kv | KvFil
   const code = (k: number | undefined): [string, number | null] => ['KOpr', kind === 'D' && k ? k : null]
   const lines = [
     ...kv.a1.map((r) => `<A1${attrs([['Odb', r.odb], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], code(r.k)])}/>`),
+    ...kv.a2.map(
+      (r) =>
+        `<A2${attrs([['Odb', r.odb], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['TK', r.tk], ['TD', r.td], ['Mn', r.mn === null ? null : (r.mn / 100).toFixed(2)], ['MJ', r.mj], code(r.k)])}/>`,
+    ),
     ...kv.b1.map((r) => `<B1${attrs([['Dod', r.dod], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], ['O', money(r.o)], code(r.k)])}/>`),
     ...kv.b2.map((r) => `<B2${attrs([['Dod', r.dod], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], ['O', money(r.o)], code(r.k)])}/>`),
     ...kv.b31.map((r) => `<B31${attrs([['Z', money(r.z)], ['D', money(r.d)], ['O', money(r.o)], code(r.k)])}/>`),

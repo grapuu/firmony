@@ -142,7 +142,7 @@ export interface FiledReturn {
   raw: string
 }
 
-const EMPTY_KV: KvFile = { a1: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d2: [] }
+const EMPTY_KV: KvFile = { a1: [], a2: [], b1: [], b2: [], b31: [], b32: [], c1: [], c2: [], d2: [] }
 
 function kvOf(json: unknown): FiledKv | null {
   if (typeof json !== 'string') return null
