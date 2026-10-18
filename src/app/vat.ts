@@ -572,8 +572,14 @@ export interface KvC1 {
   fo: string
   fp: string
   zr: number
-  dr: number
-  s: number
+  /** The VAT and the rate; none for a correction of a reverse-charged supply (the customer pays the VAT). */
+  dr: number | null
+  s: number | null
+  /** A correction of a reverse-charged supply of goods: what A.2 says of them (only then present). */
+  tk?: string | null
+  td?: 'MT' | 'IO' | null
+  mn?: number | null
+  mj?: A2Unit | null
   doc: string
 }
 export interface KvC2 {
@@ -788,10 +794,6 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
         issue('block', 'mismatch', doc.id)
         continue
       }
-      if (correction) {
-        issue('block', 'reverseCorrection', doc.id)
-        continue
-      }
       if (!vatId || !isSkVatId(vatId)) {
         issue('block', 'reverseCustomer', doc.id)
         continue
@@ -806,6 +808,30 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       const goods = r.kind !== 'j'
       if (goods && (r.quantity === null || r.unit === null || ((r.kind === 'f' || r.kind === 'g') && r.code === null))) {
         issue('block', 'reverseGoods', doc.id)
+        continue
+      }
+      if (correction) {
+        // A corrective invoice of it: C.1 with the difference of the base, no VAT and no rate ("rozdiel sumy dane" and
+        // "sadzba" are not filled for corrections of A.2), and for goods what A.2 says of them, the quantity as a
+        // difference ("so znamienkom mínus", the control statement's instructions). The 5 000 € of phones and circuits
+        // is the supply's, not the correction's. The accountant is asked to look at the quantity (a credit note for a
+        // price alone changes none, while its lines carry one).
+        const sign = z < 0 ? -1 : 1
+        kv.c1.push({
+          odb: vatId,
+          fo: number,
+          fp: kvNumber(data.corrects),
+          zr: z,
+          dr: null,
+          s: null,
+          tk: r.kind === 'f' || r.kind === 'g' ? r.code : null,
+          td: r.kind === 'h' ? 'MT' : r.kind === 'i' ? 'IO' : null,
+          mn: goods && r.quantity !== null ? sign * Math.abs(r.quantity) : null,
+          mj: goods ? r.unit : null,
+          doc: doc.id,
+        })
+        note('C1', doc.id)
+        if (goods) issue('warn', 'reverseCorrection', doc.id)
         continue
       }
       if ((r.kind === 'h' || r.kind === 'i') && z < REVERSE_THRESHOLD) {

@@ -142,7 +142,10 @@ export function statementXml(filer: Filer, period: string, statement: Kv | KvFil
     ...kv.b2.map((r) => `<B2${attrs([['Dod', r.dod], ['F', r.f], ['Den', r.den], ['Z', money(r.z)], ['D', money(r.d)], ['S', r.s], ['O', money(r.o)], code(r.k)])}/>`),
     ...kv.b31.map((r) => `<B31${attrs([['Z', money(r.z)], ['D', money(r.d)], ['O', money(r.o)], code(r.k)])}/>`),
     ...kv.b32.map((r) => `<B32${attrs([['Dod', r.dod], ['Z', money(r.z)], ['D', money(r.d)], ['O', money(r.o)], code(r.k)])}/>`),
-    ...kv.c1.map((r) => `<C1${attrs([['Odb', r.odb], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', money(r.dr)], ['S', r.s], code(r.k)])}/>`),
+    ...kv.c1.map(
+      (r) =>
+        `<C1${attrs([['Odb', r.odb], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', r.dr === null ? null : money(r.dr)], ['S', r.s], ['TK', r.tk], ['TD', r.td], ['Mn', r.mn === null || r.mn === undefined ? null : (r.mn / 100).toFixed(2)], ['MJ', r.mj], code(r.k)])}/>`,
+    ),
     ...kv.c2.map((r) => `<C2${attrs([['Dod', r.dod], ['FO', r.fo], ['FP', r.fp], ['ZR', money(r.zr)], ['DR', money(r.dr)], ['S', r.s], ['OR', money(r.or)], code(r.k)])}/>`),
     ...kv.d2.map((r) => `<D2${attrs([['Z', money(r.z)], ['D', money(r.d)], ['ZZn', money(r.zzn)], ['DZn', money(r.dzn)], code(r.k)])}/>`),
   ]

@@ -1955,6 +1955,35 @@ async function zipped(entries, note) {
       a2Valid.ok && /<A2 Odb="SK2020000000" F="R\d+" Den="2027-01-15" Z="6000.00"\/>/.test(a2Xml) && a2Xml.includes('TK="7204"') && a2Xml.includes('Mn="1250.50" MJ="t"'),
       `${a2Valid.why} ${a2Xml.match(/<A2[^>]*>/g)?.join(' ')}`,
     )
+    // A corrective invoice of a reverse-charged supply (18 October 2026): C.1 with the base's difference, no VAT or rate,
+    // and for goods what A.2 says of them, the quantity a difference too.
+    const fixes = vat.workOut(payer, '2027-01', [
+      rv({ kind: 'g', code: '7204', quantity: 10000, unit: 't' }, [[0, -20000, 0]], { corrects: 'R7' }),
+      rv({ kind: 'j', code: null, quantity: null, unit: null }, [[0, -50000, 0]], { corrects: 'R8' }),
+    ])
+    check(
+      'a correction of a reverse-charged supply goes into C.1 without VAT, goods with their code and the quantity as a minus',
+      fixes.kv.c1.length === 2 &&
+        fixes.kv.c1[0].zr === -20000 &&
+        fixes.kv.c1[0].dr === null &&
+        fixes.kv.c1[0].s === null &&
+        fixes.kv.c1[0].tk === '7204' &&
+        fixes.kv.c1[0].mn === -10000 &&
+        fixes.kv.c1[0].mj === 't' &&
+        fixes.kv.c1[1].fp === 'R8' &&
+        fixes.kv.c1[1].mn === null &&
+        fixes.kv.a2.length === 0 &&
+        !fixes.issues.some((i) => i.level === 'block') &&
+        fixes.issues.some((i) => i.code === 'reverseCorrection' && i.level === 'warn'),
+      JSON.stringify([fixes.kv.c1, fixes.issues]),
+    )
+    const c1Xml = vatXml.statementXml(filer, '2027-01', fixes.kv)
+    const c1Valid = await valid(c1Xml, KV_XSD, 'kv-c1')
+    check(
+      'and the file takes it, valid against kv_dph_2025.xsd',
+      c1Valid.ok && c1Xml.includes('ZR="-200.00" TK="7204" Mn="-100.00" MJ="t"') && !/<C1[^>]*DR=/.test(c1Xml),
+      `${c1Valid.why} ${c1Xml.match(/<C1[^>]*>/g)?.join(' ')}`,
+    )
   }
 
   {

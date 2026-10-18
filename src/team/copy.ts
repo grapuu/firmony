@@ -761,7 +761,7 @@ export const team = typesetAll({
       reverseKind: 'Pri prenesení daňovej povinnosti vyberte, o aké dodanie ide (stavebné práce, kovy, plodiny, mobilné telefóny, integrované obvody, iné).',
       reverseGoods: 'Pri plodinách a kovoch doplňte štvormiestny kód colného sadzobníka; pri plodinách, kovoch, telefónoch a obvodoch aj množstvo a jednotku (kg, t, m, ks).',
       reverseThreshold: 'Mobilné telefóny a integrované obvody sa s prenesením daňovej povinnosti dodávajú až od základu 5 000 € na faktúre; pod ním sa fakturujú s DPH.',
-      reverseCorrection: 'Opravnú faktúru k dodaniu s prenesením daňovej povinnosti zatiaľ nezostavujeme: uveďte ju do kontrolného výkazu sami.',
+      reverseCorrection: 'Opravná faktúra k dodaniu tovaru s prenesením daňovej povinnosti je v C.1 s rozdielom základu a množstvom ako rozdiel (mínus, keď základ klesá): skontrolujte množstvo.',
       domestic7a: 'Osoba registrovaná podľa § 7a uvádza len služby a tovar zo zahraničia; tento doklad sme vynechali.',
       mismatch: 'Pri plnení bez DPH je uvedená DPH.',
       before: 'Doklad je spred registrácie pre DPH: do priznania nepatrí.',

@@ -1103,8 +1103,12 @@ by itself.
   (units t and m added). The VAT engine reports an issued `reverse` in the control statement's A.2 alone (Odb, F,
   Den, Z, TK for f and g, TD MT or IO, Mn and MJ for f to i; none for a to e, which the customer alone reports; no row
   of the return, read in KVDPH's instructions of 2021 and a podnikajte.sk article), and blocks what A.2 cannot take
-  (no Slovak VAT number, no kind, goods without code or quantity, phones or circuits under 5 000 €, a corrective
-  invoice of one: not built). The accountant's booking form has the same fields for any issued document (dph_ptp_*).
+  (no Slovak VAT number, no kind, goods without code or quantity, phones or circuits under 5 000 €). A corrective invoice
+  of one (since 18 October 2026) goes into C.1 with the base's difference and no VAT or rate (DR and S left out), for
+  goods with TK, TD, Mn and MJ as A.2 has them, the quantity a difference too (a minus when the base goes down), as the
+  control statement's instructions say (read in Stormware's copy of the poučenie: "rozdiel sumy dane" and "sadzba" not
+  filled for corrections of A.2, "rozdiel množstva tovaru so znamienkom mínus"); a warning asks the accountant to look
+  at the quantity, which the lines give whole (a credit note for a price alone changes no quantity). The accountant's booking form has the same fields for any issued document (dph_ptp_*).
   A Slovak customer without a DIČ is addressed on Peppol by the digits of its IČ DPH.
 - Advances (built 18 October 2026, schema step 40: `invoices.vs`, `relates`, `payment_id`, `invoice_lines.vat_cents`,
   `documents.advance_cents`, unique indexes `invoices_payment` and `invoices_final`): "Nová zálohová faktúra" on
@@ -1186,11 +1190,9 @@ by itself.
   document or a payment in it, no company's payments paired by themselves any more (`linkStatement` now asks it of
   the ids bound as ?5 and ?4); and a credit note issued in the app made no entry in the books (its total keeps the
   minus; `planOf` takes a minus total that corrects an invoice).
-- Not built yet: a corrective invoice of a reverse-charged supply in the control statement, a customer's
-  an advance in another
+- Not built yet: an advance in another
   currency, advances for a supply without Slovak VAT (goods to the EU, export, reverse charge: the request is refused),
-  a rate that changes between the
-  advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
+  a rate that changes between the advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
   digital postman,
   invoice numbering of the company's own pattern, the company's logo on the invoice.
 
@@ -1560,7 +1562,7 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   lists it for today). Not built: triangular trade (code 1), goods moved to another member state of one's own (§ 43(4)),
   call-off stock (part II), a customer's VAT number
   that comes later (§ 80(6), the period it is given).
-- Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, a corrective invoice of a reverse-charged supply (A.2 issued is built), eKasa takings
+- Not built: imports (rows 11c to 12e, 22 to 23c), triangular trade, eKasa takings
   (D.1), bad debts (§ 25a, § 53b), the coefficient (§ 50), documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
@@ -1965,7 +1967,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1156 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
+npm test                 # 1158 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
 npm run test:runtime     # 1616 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
