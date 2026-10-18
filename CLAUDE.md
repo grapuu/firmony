@@ -1158,6 +1158,20 @@ by itself.
   twice. It ends past its last day or the contract's; a locked period or a failure is said on the repeat. The list
   shows the repeats ("Opakované faktúry"), the invoice it issued says "Vystavená sama z opakovania", "Zastaviť
   opakovanie" stops it; purge deletes them. test/repeat.runtime.mjs, units "Invoices issued again".
+- Payment orders (built 18 October 2026, schema step 43: `payment_orders`, `payment_order_items`,
+  `src/app/payorders.ts`, `src/views/payorders.tsx`): "Na úhradu" (/app/uhrady, linked from Doklady) lists the
+  suppliers' invoices the company owes (a received invoice read or booked, in euros, no payment paired, not paid by
+  the owner, not deleted or a suspected duplicate), the earliest due first, overdue in red; those with the supplier's
+  IBAN are ticked (unless in an order already, "v príkaze na ..."), the others are listed to pay by hand with why (no
+  IBAN, another currency). The client picks the account (euro accounts) and the day (today or later) and gets the order
+  as pain.001.001.03 (`painXml`; the schema `test/xsd/pain.001.001.03.xsd` from the Python package sepaxml 2.7.0,
+  SHA-256 ed4be425..., which adds one comment naming iso20022.org): one payment block from the account, without BIC
+  (NOTPROVIDED), SLEV, each credit transfer with the symbols as the Slovak Banking Association's convention writes
+  them in the End-to-End Identification ("/VS2026118/SS/KS", NOTPROVIDED without one), names and texts in SEPA's basic
+  Latin (no accents). Each order is kept with its items, so its file is made again the same
+  (`/app/uhrady/:id/xml`); the bank's statement then pairs each payment as any payment. Purge deletes them.
+  test/payorders.runtime.mjs (the file validated against the schema), units "Payment orders". Not built: an IBAN typed
+  on the page for an invoice that has none, payment in another currency, a batch to the bank by its API.
 - Found on the way (18 October 2026) and mended: automatic pairing asked the period lock of `p.id` and `d.id` inside
   subqueries that name their own `payments p` and `documents d`, so once any company had a locked period with a booked
   document or a payment in it, no company's payments paired by themselves any more (`linkStatement` now asks it of
@@ -1942,8 +1956,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1148 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats
-npm run test:runtime     # 1604 workerd checks on Node 24 (as GitHub runs them), including test/repeat.runtime.mjs
+npm test                 # 1153 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
+npm run test:runtime     # 1613 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 19 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

@@ -19,6 +19,7 @@ import {
   ico,
   invoices,
   repeat,
+  payorders,
   ledger,
   ledgerStore,
   dues,
@@ -1345,6 +1346,40 @@ check(
   repeat.nextAfter('2026-07-05', 1, 5, '2026-10-18') === '2026-11-05' && repeat.nextAfter('2026-10-18', 1, 18, '2026-10-18') === '2026-11-18' && repeat.nextAfter('2026-12-01', 1, 1, '2026-10-18') === '2026-12-01',
 )
 check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') && repeat.isRepeatEvery(3) && repeat.isRepeatEvery('12') && !repeat.isRepeatEvery('2') && !repeat.isRepeatEvery('x'))
+
+// Payment orders (18 October 2026): the suppliers' invoices owed as one SEPA file the bank imports (pain.001.001.03).
+{
+  const xml = payorders.painXml({
+    id: '0b6f3c2e-1d4a-4f7b-9a1e-5c2d8e7f6a90',
+    company: 'TEST-ONLY Ukážková firma s. r. o.',
+    accountIban: 'SK31 1200 0000 1987 4263 7541',
+    executeOn: '2026-10-20',
+    createdAt: Date.parse('2026-10-18T08:30:00Z') / 1000,
+    items: [
+      { documentId: 'a', cents: 12300, iban: 'SK8975000000000012345671', vs: '2026118', party: 'Hostingový dom s. r. o.', number: 'F2026118' },
+      { documentId: 'b', cents: 5990, iban: 'CZ6508000000192000145399', vs: null, party: 'Účtovný & <softvér> a.s.', number: '77' },
+    ],
+  })
+  const schema = readFileSync(new URL('./xsd/pain.001.001.03.xsd', import.meta.url), 'utf8')
+  const result = await validateXML({ xml: [{ fileName: 'prikaz.xml', contents: xml }], schema: [{ fileName: 'pain.001.001.03.xsd', contents: schema }] })
+  check('a payment order is valid pain.001.001.03', result.valid, result.errors.map((e) => e.message).join(' | '))
+  const broken = await validateXML({ xml: [{ fileName: 'prikaz.xml', contents: xml.replace('<ReqdExctnDt>2026-10-20</ReqdExctnDt>', '') }], schema: [{ fileName: 'pain.001.001.03.xsd', contents: schema }] })
+  check('and the schema sees a payment order without its day as none', !broken.valid)
+  check(
+    'its sums, the account, the day, and each payment with its symbols as Slovak banks read them',
+    xml.includes('<NbOfTxs>2</NbOfTxs><CtrlSum>182.90</CtrlSum>') &&
+      xml.includes('<ReqdExctnDt>2026-10-20</ReqdExctnDt>') &&
+      xml.includes('<DbtrAcct><Id><IBAN>SK3112000000198742637541</IBAN></Id></DbtrAcct>') &&
+      xml.includes('<EndToEndId>/VS2026118/SS/KS</EndToEndId>') &&
+      xml.includes('<EndToEndId>NOTPROVIDED</EndToEndId>') &&
+      xml.includes('<InstdAmt Ccy="EUR">123.00</InstdAmt>'),
+  )
+  check(
+    'names in basic Latin, without accents or characters a bank refuses',
+    xml.includes('<Nm>Hostingovy dom s. r. o.</Nm>') && xml.includes('<Nm>Uctovny softver a.s.</Nm>') && xml.includes('<Nm>TEST-ONLY Ukazkova firma s. r. o.</Nm>'),
+  )
+  check('a variable symbol of more than ten digits is no symbol', payorders.endToEnd('12345678901') === 'NOTPROVIDED' && payorders.endToEnd('VS 0042') === '/VS42/SS/KS')
+}
 
 // PAY by square: what a bank's app reads from the QR code on an invoice
 const square = paybysquare.payBySquare({ iban: 'SK31 1200 0000 1987 4263 7541', amountCents: 118080, vs: '20260006', due: '2026-10-15', name: 'Ukážková firma s. r. o.', note: 'Faktúra 20260006' })

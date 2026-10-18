@@ -864,9 +864,16 @@ export const DocumentsPage: FC<{ filter: 'all' | 'loose'; docs: Doc[]; inbox: st
   pager,
 }) => (
   <>
-    <header class="phead">
-      <Heading first={app.documents.title} />
-      <p class="phead__lead">{app.documents.lead}</p>
+    <header class="phead phead--row">
+      <div>
+        <Heading first={app.documents.title} />
+        <p class="phead__lead">{app.documents.lead}</p>
+      </div>
+      <span class="phead__actions">
+        <a class="btn btn--line" href="/app/uhrady">
+          {app.payorders.link}
+        </a>
+      </span>
     </header>
     <Flash text={flash} />
     {problems.map((text) => (

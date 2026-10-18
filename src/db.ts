@@ -1159,6 +1159,33 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE invoices ADD COLUMN repeat_id TEXT',
     'CREATE UNIQUE INDEX IF NOT EXISTS invoices_repeat ON invoices (repeat_id, issued_on) WHERE repeat_id IS NOT NULL',
   ],
+  // Payment orders (18 October 2026, payorders.ts): the suppliers' invoices put in one SEPA file for the bank, kept
+  // with what each held, so the page knows what is in an order already and the file is made again the same.
+  [
+    `CREATE TABLE IF NOT EXISTS payment_orders (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      account_iban TEXT NOT NULL,
+      execute_on TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      count INTEGER NOT NULL,
+      total_cents INTEGER NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS payment_orders_company ON payment_orders (company_id, created_at)',
+    `CREATE TABLE IF NOT EXISTS payment_order_items (
+      order_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      cents INTEGER NOT NULL,
+      iban TEXT NOT NULL,
+      vs TEXT,
+      party TEXT,
+      number TEXT,
+      PRIMARY KEY (order_id, document_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS payment_order_items_document ON payment_order_items (document_id)',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

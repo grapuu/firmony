@@ -72,6 +72,8 @@ import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { ratesFor, refreshRates } from './fx-store'
+import { orderItems, orderStatements, painXml, payables, paymentOrders } from './payorders'
+import { PayOrdersPage } from '../views/payorders'
 import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
 import { rateFor, rateMicro, rateText } from './fx'
 import { endingOf, intakeOpen, serviceOpen } from './ending'
@@ -941,6 +943,81 @@ appRoutes.get('/vypisy/:id/subor', async (c) => {
 // ---------------------------------------------------------------------------------------------------------------
 // One document
 // ---------------------------------------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------------------------------------------
+// Na úhradu: the suppliers' invoices owed, and the payment order for the bank (payorders.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+async function payOrdersPage(c: Ctx, extra: { error?: string; day?: string; account?: string | null; picked?: Set<string> | null } = {}, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const [owed, orders, accounts] = await Promise.all([
+    payables(db, who.company.id),
+    paymentOrders(db, who.company.id),
+    db.prepare("SELECT id, iban FROM accounts WHERE company_id = ? AND COALESCE(currency, 'EUR') = 'EUR' ORDER BY rowid").bind(who.company.id).all<{ id: string; iban: string }>(),
+  ])
+  const readyId = c.req.query('prikaz') ?? ''
+  const ready = c.req.query('ok') === 'prikaz' ? (orders.find((o) => o.id === readyId) ?? null) : null
+  return shell(
+    c,
+    'documents',
+    t.payorders.title,
+    <PayOrdersPage
+      payables={owed}
+      orders={orders}
+      accounts={accounts.results}
+      today={today()}
+      day={extra.day ?? textDay(today())}
+      account={extra.account ?? null}
+      picked={extra.picked ?? null}
+      error={extra.error ?? null}
+      ready={ready}
+    />,
+    status,
+  )
+}
+
+appRoutes.get('/uhrady', (c) => payOrdersPage(c))
+
+appRoutes.post('/uhrady', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const body = await c.req.parseBody({ all: true })
+  const picked = new Set((Array.isArray(body.doklad) ? body.doklad : [body.doklad]).filter((v): v is string => typeof v === 'string' && ID.test(v)))
+  const accountId = typeof body.ucet === 'string' ? body.ucet : ''
+  const dayText = typeof body.den === 'string' ? body.den : ''
+  const again = (error: string) => payOrdersPage(c, { error, day: dayText, account: accountId, picked }, 422)
+  const account = ID.test(accountId)
+    ? await db.prepare("SELECT iban FROM accounts WHERE id = ? AND company_id = ? AND COALESCE(currency, 'EUR') = 'EUR'").bind(accountId, who.company.id).first<{ iban: string }>()
+    : null
+  if (!account) return again(t.payorders.errors.account)
+  const executeOn = dayOfText(dayText)
+  if (!executeOn || executeOn < today()) return again(t.payorders.errors.day)
+  // Only what is owed and payable now, whatever was posted.
+  const items = (await payables(db, who.company.id)).filter((p) => !p.blocked && picked.has(p.id))
+  if (items.length === 0) return again(t.payorders.errors.none)
+  const id = crypto.randomUUID()
+  await db.batch([
+    ...orderStatements(db, { id, company: who.company.id, user: who.user.id, accountIban: account.iban, executeOn, items }),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'payorder.created', subject: id, detail: { count: items.length, total: items.reduce((sum, p) => sum + p.totalCents, 0) } }),
+  ])
+  return c.redirect(`/app/uhrady?ok=prikaz&prikaz=${id}`, 303)
+})
+
+appRoutes.get('/uhrady/:id/xml', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const found = ID.test(id) ? await orderItems(c.env.DB, who.company.id, id) : null
+  if (!found) return shell(c, 'documents', t.errors.notFound, <Missing />, 404)
+  const xml = painXml({ id: found.order.id, company: who.company.name, accountIban: found.order.accountIban, executeOn: found.order.executeOn, createdAt: found.order.createdAt, items: found.items })
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="prikaz-${found.order.executeOn}.xml"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
 
 appRoutes.get('/doklady/:id', async (c) => {
   const who = c.get('who')

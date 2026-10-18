@@ -7164,3 +7164,53 @@ a.wtable__name {
 .invoices__repeats {
   margin: 16px 0;
 }
+
+/* Na úhradu: the invoices owed, each a tick with its amount at the end. */
+.payorder {
+  margin: 16px 0;
+}
+
+.payorder__ready {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.payorder__list {
+  margin: 16px 0;
+  padding: 0;
+  border: 0;
+}
+
+.payorder__item + .payorder__item {
+  border-top: 1px solid var(--line);
+}
+
+.payorder__item .tickbox {
+  align-items: center;
+  padding: 10px 0;
+}
+
+.payorder__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.payorder__due {
+  display: block;
+  color: var(--soft);
+  font-size: 0.875rem;
+}
+
+.payorder__due--late {
+  color: var(--red-ink);
+}
+
+.payorder__amount {
+  margin-left: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
