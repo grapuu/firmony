@@ -13,7 +13,7 @@ import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
 import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
-import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, type NumberingValues } from '../views/invoices'
+import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, logoSrc, type NumberingValues } from '../views/invoices'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
 import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
@@ -2148,8 +2148,25 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
   )
 }
 
+/** The largest logo taken (512 kB): a picture for the head of an invoice. */
+const LOGO_BYTES = 512 * 1024
+
+/** A company's logo as a picture that runs nothing, or 404 without one. */
+export async function logoResponse(files: R2Bucket | undefined, company: Company): Promise<Response> {
+  const object = company.logoKey && files ? await files.get(company.logoKey) : null
+  if (!object) return new Response('Not found', { status: 404 })
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': company.logoType ?? 'application/octet-stream',
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+}
+
 /** The company's invoice numbers: the next number as it will be, and the form (owners). */
-async function numberingPage(c: Ctx, extra: { values?: NumberingValues; errors?: { prefix?: string; from?: string } } = {}, status: ContentfulStatusCode = 200) {
+async function numberingPage(c: Ctx, extra: { values?: NumberingValues; errors?: { prefix?: string; from?: string }; logoError?: string } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const year = today().slice(0, 4)
   const n = who.company.invoiceNumbering
@@ -2167,13 +2184,55 @@ async function numberingPage(c: Ctx, extra: { values?: NumberingValues; errors?:
       example={{ number: `${n.prefix}${year}${n.sep}${order}`, vs: `${year}${order}` }}
       owner={who.role === 'owner'}
       errors={extra.errors ?? {}}
-      flash={c.req.query('ok') === 'cislovanie' ? ti.numbering.saved : null}
+      flash={c.req.query('ok') === 'cislovanie' ? ti.numbering.saved : c.req.query('ok') === 'logo' ? ti.numbering.logoSaved : c.req.query('ok') === 'logo-odstranene' ? ti.numbering.logoRemoved : null}
+      logo={logoSrc(who.company, '/app/logo')}
+      logoError={extra.logoError ?? null}
     />,
     status,
   )
 }
 
 appRoutes.get('/faktury/cislovanie', (c) => numberingPage(c))
+
+/** A logo's picture as its bytes say: PNG, JPEG or WebP (no SVG: it could carry a script); null for anything else. */
+export function logoTypeOf(bytes: Uint8Array): { type: string; ext: string } | null {
+  if (bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return { type: 'image/png', ext: 'png' }
+  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return { type: 'image/jpeg', ext: 'jpg' }
+  if (bytes.length > 12 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP') return { type: 'image/webp', ext: 'webp' }
+  return null
+}
+
+/** The company's logo for its invoices (owners): a new picture replaces the one before, which is deleted. */
+appRoutes.post('/faktury/logo', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return shell(c, 'invoices', t.errors.notFound, <Missing />, 403)
+  const body = await c.req.parseBody()
+  const file = body.logo
+  const bytes = file instanceof File ? new Uint8Array(await file.arrayBuffer()) : new Uint8Array()
+  const kind = bytes.length > 0 && bytes.length <= LOGO_BYTES ? logoTypeOf(bytes) : null
+  if (!kind || !c.env.FILES) return numberingPage(c, { logoError: ti.numbering.logoBad }, 422)
+  const key = `companies/${who.company.id}/brand/logo-${crypto.randomUUID()}.${kind.ext}`
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: kind.type } })
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE companies SET logo_key = ?, logo_type = ? WHERE id = ?').bind(key, kind.type, who.company.id),
+    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: 'invoices.logo' }),
+  ])
+  if (who.company.logoKey) await c.env.FILES.delete(who.company.logoKey).catch(() => null)
+  return c.redirect('/app/faktury/cislovanie?ok=logo#logo', 303)
+})
+
+appRoutes.post('/faktury/logo/odstranit', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return shell(c, 'invoices', t.errors.notFound, <Missing />, 403)
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE companies SET logo_key = NULL, logo_type = NULL WHERE id = ?').bind(who.company.id),
+    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: 'invoices.logo.removed' }),
+  ])
+  if (who.company.logoKey && c.env.FILES) await c.env.FILES.delete(who.company.logoKey).catch(() => null)
+  return c.redirect('/app/faktury/cislovanie?ok=logo-odstranene#logo', 303)
+})
+
+appRoutes.get('/logo', async (c) => logoResponse(c.env.FILES, c.get('who').company))
 
 appRoutes.post('/faktury/cislovanie', async (c) => {
   const who = c.get('who')

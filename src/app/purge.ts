@@ -106,6 +106,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     files += await deletePrefix(env.FILES, `companies/${companyId}/statements/`, new Set(), canDelete)
     files += await deletePrefix(env.FILES, `companies/${companyId}/filings/`, new Set(), canDelete)
     files += await deletePrefix(env.FILES, `companies/${companyId}/papers/`, new Set(kept.results.map((r) => r.r2_key)), canDelete)
+    files += await deletePrefix(env.FILES, `companies/${companyId}/brand/`, new Set(), canDelete)
   }
   const lonely = await db.prepare(LONELY).bind(companyId).all<{ user_id: string }>()
   const people = lonely.results.map((r) => r.user_id)

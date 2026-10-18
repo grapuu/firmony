@@ -10,7 +10,7 @@ import { connection, isLocal, later, siteOrigin } from './http'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, lookupEntity, oneMayConclude, type Company } from './rpo'
-import { appRoutes, appScheduled, xmlResponse, type AppBindings } from './app/routes'
+import { appRoutes, appScheduled, logoResponse, xmlResponse, type AppBindings } from './app/routes'
 import { invoiceByToken, invoiceLines } from './app/invoices'
 import { getCompany, userByEmail } from './app/store'
 import { isPeriodLocked } from './app/periods'
@@ -605,6 +605,14 @@ app.get('/f/:token', async (c) => {
   if (!found || !seller) return c.notFound()
   const lines = await invoiceLines(c.env.DB, found.invoice.id)
   return c.html(html`<!doctype html>${(<PublicInvoicePage invoice={found.invoice} lines={lines} seller={seller} token={c.req.param('token')} />)}`)
+})
+
+app.get('/f/:token/logo', async (c) => {
+  await ensureSchema(c.env.DB)
+  const found = await invoiceByToken(c.env.DB, c.req.param('token'))
+  const seller = found ? await getCompany(c.env.DB, found.company) : null
+  if (!found || !seller) return c.notFound()
+  return logoResponse(c.env.FILES, seller)
 })
 
 app.get('/f/:token/xml', async (c) => {

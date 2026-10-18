@@ -24,6 +24,9 @@ const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill-
 /** What a document is called: a credit note is a "Dobropis", an invoice a "Faktúra". */
 const kindName = (i: Pick<StoredInvoice, 'kind'>, vatPayer = true) => (i.kind === 'advance' && !vatPayer ? t.sheet.advanceNoVat : (t.sheet.kinds[i.kind] ?? t.sheet.title))
 /** The variable symbol the customer pays by: a request for an advance has its own, an invoice its number. */
+/** Where the company's logo is served, with its key's end so a new picture is not taken from a cache. */
+export const logoSrc = (seller: Pick<Company, 'logoKey'>, path: string): string | null => (seller.logoKey ? `${path}?v=${seller.logoKey.slice(-12)}` : null)
+
 /** An invoice's total in euros: another currency at the rate it was issued at (nothing while a draft has none). */
 const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) => {
   if (i.currency === 'EUR') return i.totalCents
@@ -517,7 +520,7 @@ function payQr(invoice: StoredInvoice, total: number, seller: Company) {
   return text ? qrPicture(text) : null
 }
 
-export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; pay?: boolean }> = ({ invoice, lines, seller, pay = true }) => {
+export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; pay?: boolean; logo?: string | null }> = ({ invoice, lines, seller, pay = true, logo = null }) => {
   const s = t.sheet
   const credit = invoice.kind === 'credit'
   const money = (cents: number) => formatMoney(cents, invoice.currency)
@@ -532,6 +535,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
     <article class="sheet" aria-label={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''}`}>
       <header class="sheet__head">
         <div class="sheet__from">
+          {logo ? <img class="sheet__logo" src={logo} alt={seller.name} /> : null}
           <p class="sheet__company">{seller.name}</p>
           {seller.address ? <p>{seller.address}</p> : null}
           <p class="sheet__ids">
@@ -765,7 +769,7 @@ export const InvoicePage: FC<{
       {invoice.repeatId ? <p class="phead__lead">{a.repeated}</p> : null}
       <div class="invoice">
         <div class="invoice__paper">
-          <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={state !== 'paid'} />
+          <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={state !== 'paid'} logo={logoSrc(seller, '/app/logo')} />
         </div>
         <aside class="invoice__side">
           <section class="info">
@@ -976,7 +980,7 @@ export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; sell
           </button>
         </div>
         {invoice.paidOn && invoice.kind !== 'credit' ? <p class="public__paid">{t.public.paid}</p> : null}
-        <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={!invoice.paidOn} />
+        <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={!invoice.paidOn} logo={logoSrc(seller, `/f/${token}/logo`)} />
         <p class="public__foot">
           {t.public.print} <Wordmark href={BRAND.origin} />
         </p>
@@ -1004,7 +1008,9 @@ export const NumberingPage: FC<{
   owner: boolean
   errors: { prefix?: string; from?: string }
   flash?: string | null
-}> = ({ values, year, next, example, owner, errors, flash = null }) => {
+  logo?: string | null
+  logoError?: string | null
+}> = ({ values, year, next, example, owner, errors, flash = null, logo = null, logoError = null }) => {
   const n = t.numbering
   return (
     <>
@@ -1055,6 +1061,34 @@ export const NumberingPage: FC<{
         ) : (
           <p class="info__source">{n.onlyOwner}</p>
         )}
+      </section>
+      <section class="info" id="logo" aria-labelledby="logo-t">
+        <h2 id="logo-t" class="info__title">
+          {n.logoTitle}
+        </h2>
+        <Flash text={logoError} tone="error" />
+        {logo ? <img class="sheet__logo" src={logo} alt={n.logoTitle} /> : <p class="info__lead">{n.logoNone}</p>}
+        {owner ? (
+          <>
+            <form class="stack" method="post" action="/app/faktury/logo" enctype="multipart/form-data">
+              <p class="info__lead">{n.logoLead}</p>
+              <label class="field__label" for="c-logo">
+                {n.logoFile}
+              </label>
+              <input id="c-logo" class="field__input" type="file" name="logo" accept="image/png,image/jpeg,image/webp" />
+              <button class="btn btn--line" type="submit">
+                {n.logoUpload}
+              </button>
+            </form>
+            {logo ? (
+              <form method="post" action="/app/faktury/logo/odstranit">
+                <button class="btn btn--text" type="submit">
+                  {n.logoRemove}
+                </button>
+              </form>
+            ) : null}
+          </>
+        ) : null}
       </section>
     </>
   )

@@ -7227,3 +7227,12 @@ a.wtable__name {
   flex: 1 1 220px;
   min-width: 0;
 }
+
+/* The company's logo at the head of its invoice. */
+.sheet__logo {
+  display: block;
+  max-width: 200px;
+  max-height: 56px;
+  margin-bottom: 12px;
+  object-fit: contain;
+}

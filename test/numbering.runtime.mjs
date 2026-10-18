@@ -101,6 +101,46 @@ export async function checkNumbering({ db, nowS, signIn, as, day, capture }) {
   res = await owner.post('/app/faktury', form({ druh: 'zalohova' }))
   const request = await db.prepare('SELECT number, vs FROM invoices WHERE id = ?').bind(idOf(res)).first()
   check('a request for an advance keeps its own row', request?.number === `ZF${year}0001` && request.vs === `${year}90001`, JSON.stringify(request))
+  // The logo: a picture for the head of the invoices, nothing else; on the sheet in the app and at the customer.
+  const png = {
+    name: 'logo.png',
+    type: 'image/png',
+    bytes: Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (ch) => ch.charCodeAt(0)),
+  }
+  res = await owner.upload(
+    '/app/faktury/logo',
+    { name: 'logo.svg', type: 'image/svg+xml', bytes: new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>') },
+    {},
+    'logo',
+  )
+  check('a logo that is no PNG, JPEG or WebP is refused (an SVG could carry a script)', res.status === 422 && plain(await res.text()).includes('Logo musí byť obrázok'))
+  check('only an owner sets the logo', (await colleague.upload('/app/faktury/logo', png, {}, 'logo')).status === 403)
+  res = await owner.upload('/app/faktury/logo', png, {}, 'logo')
+  const kept = await db.prepare('SELECT logo_key, logo_type FROM companies WHERE id = ?').bind(company).first()
+  const served = await owner.get('/app/logo')
+  check(
+    'a PNG is kept as the logo and served as a picture that runs nothing',
+    res.status === 303 &&
+      kept?.logo_type === 'image/png' &&
+      String(kept.logo_key).startsWith(`companies/${company}/brand/logo-`) &&
+      served.status === 200 &&
+      served.headers.get('content-type') === 'image/png' &&
+      (served.headers.get('content-security-policy') ?? '').includes('sandbox'),
+    JSON.stringify(kept),
+  )
+  const token = (await db.prepare('SELECT token FROM invoices WHERE id = ?').bind(invoiceId).first())?.token
+  const sheet = await (await owner.get(`/app/faktury/${invoiceId}`)).text()
+  const outside = await (await owner.get(`/f/${token}`)).text()
+  check(
+    "the invoice carries it, in the app and on the customer's page",
+    sheet.includes('<img class="sheet__logo" src="/app/logo?v=') && outside.includes(`src="/f/${token}/logo?v=`) && (await owner.get(`/f/${token}/logo`)).status === 200,
+  )
+  if (capture) writeFileSync(`${capture}/invoice-logo.html`, sheet)
+  res = await owner.post('/app/faktury/logo/odstranit', {})
+  check(
+    'removed, the invoices have none',
+    res.status === 303 && (await db.prepare('SELECT logo_key FROM companies WHERE id = ?').bind(company).first())?.logo_key === null && (await owner.get('/app/logo')).status === 404,
+  )
   res = await owner.post('/app/faktury/cislovanie', { predpona: '', oddelovac: '/', cislice: '6', od: '1' })
   res = await owner.post('/app/faktury', form({}))
   const later = await db.prepare('SELECT number, vs FROM invoices WHERE id = ?').bind(idOf(res)).first()

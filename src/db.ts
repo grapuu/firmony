@@ -1206,6 +1206,8 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE companies ADD COLUMN invoice_from_year INTEGER',
     'ALTER TABLE companies ADD COLUMN invoice_from INTEGER',
   ],
+  // The company's logo on its invoices (18 October 2026): a picture in R2 (companies/<id>/brand/), its type.
+  ['ALTER TABLE companies ADD COLUMN logo_key TEXT', 'ALTER TABLE companies ADD COLUMN logo_type TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

@@ -1191,6 +1191,12 @@ by itself.
   document (`documents.vs`) and so in pairing; europio's reminders name it too. With 5 digits an order from 90 000 on
   would share a symbol with a request for an advance (the year, 9 and its order): no company issues that many.
   test/numbering.runtime.mjs.
+- The company's logo on its invoices (built 18 October 2026, schema step 47: `companies.logo_key`, `logo_type`): on
+  the same page (#logo) an owner uploads a PNG, JPEG or WebP up to 512 kB (by its bytes, `logoTypeOf`; no SVG, which
+  could carry a script), kept in R2 under `companies/<id>/brand/` with a new key each time (the one before deleted;
+  purge deletes the folder); the sheet shows it above the company's name in the app (`/app/logo`) and on the
+  customer's page (`/f/<token>/logo`), served as a picture that runs nothing (sandbox, nosniff); removed by
+  `/app/faktury/logo/odstranit`. The accountant's booking screen shows the sheet without it.
 - The customer's state (built 18 October 2026, schema step 44: `invoices.customer_country`): the form's "Štát"
   (`COUNTRIES`, the Union, the rest of Europe and the usual partners, by their Slovak names; empty: the state of the
   VAT number, else Slovakia, `customerCountryOf`); a state against the VAT number is refused (`customerCountry`); the
@@ -1226,7 +1232,7 @@ by itself.
 - Not built yet: an advance in another
   currency, advances for a supply without Slovak VAT (goods to the EU, export, reverse charge: the request is refused),
   a rate that changes between the advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
-  digital postman, the company's logo on the invoice.
+  digital postman.
 
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
 
@@ -2000,7 +2006,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1158 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1640 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm run test:runtime     # 1645 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

@@ -69,6 +69,9 @@ export interface Company {
   approvals: boolean
   /** The company's invoice numbers: prefix, the mark between year and order, the order's digits, a year's first order. */
   invoiceNumbering: InvoiceNumbering
+  /** The company's logo on its invoices: its key in R2 (which changes with each new picture) and its type. */
+  logoKey: string | null
+  logoType: string | null
 }
 
 export type Team = 'accountant' | 'admin'
@@ -203,7 +206,7 @@ export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdp
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
   c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals,
-  c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from,
+  c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
 export function companyOf(row: Row): Company {
@@ -254,6 +257,8 @@ export function companyOf(row: Row): Company {
       fromYear: num(row.invoice_from_year),
       from: num(row.invoice_from),
     },
+    logoKey: str(row.logo_key),
+    logoType: str(row.logo_type),
   }
 }
 
