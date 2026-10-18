@@ -67,6 +67,8 @@ export interface Company {
   vatCarry: number
   /** Suppliers' invoices are paid only once an owner approved them (payment orders, payorders.ts). */
   approvals: boolean
+  /** The company's invoice numbers: prefix, the mark between year and order, the order's digits, a year's first order. */
+  invoiceNumbering: InvoiceNumbering
 }
 
 export type Team = 'accountant' | 'admin'
@@ -189,10 +191,19 @@ const str = (value: unknown): string | null => (typeof value === 'string' ? valu
 const num = (value: unknown): number | null => (typeof value === 'number' ? value : null)
 
 /** The columns of a company with its accountant's name, over the aliases c and acc. */
+export interface InvoiceNumbering {
+  prefix: string
+  sep: '' | '-' | '/'
+  digits: number
+  fromYear: number | null
+  from: number | null
+}
+
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
   c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals,
+  c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
 export function companyOf(row: Row): Company {
@@ -236,6 +247,13 @@ export function companyOf(row: Row): Company {
     taxAccount: str(row.tax_account),
     vatCarry: num(row.vat_carry) ?? 0,
     approvals: row.approvals === 1,
+    invoiceNumbering: {
+      prefix: str(row.invoice_prefix) ?? '',
+      sep: row.invoice_sep === '-' || row.invoice_sep === '/' ? row.invoice_sep : '',
+      digits: typeof row.invoice_digits === 'number' && row.invoice_digits >= 3 && row.invoice_digits <= 6 ? row.invoice_digits : 4,
+      fromYear: num(row.invoice_from_year),
+      from: num(row.invoice_from),
+    },
   }
 }
 

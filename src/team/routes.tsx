@@ -4398,7 +4398,7 @@ teamRoutes.post('/fakturacia/:invoice/pripomenut', async (c) => {
   if ((claimed.meta?.changes ?? 0) === 0) return billingPage(c, { error: t.billing.result.remindedRecently }, 409)
   try {
     await db.batch([
-      messageStatement(db, { id: message, company: row.clientId, author: who.user.id, side: 'firmony', body: remindMessage(row.number, row.totalCents, row.dueOn, operator.invoiceIban), payment: null }),
+      messageStatement(db, { id: message, company: row.clientId, author: who.user.id, side: 'firmony', body: remindMessage(row.number, row.totalCents, row.dueOn, operator.invoiceIban, row.vs), payment: null }),
       eventStatement(db, { company: row.clientId, user: who.user.id, action: 'billing.reminded', subject: id }),
       ...members.map((m) => ringStatement(db, 'invoice-overdue', `${id}:${ts}`, m.email, bell.invoiceOverdue(`${siteOrigin(c)}/app/firma#faktury-firmony`))),
     ])

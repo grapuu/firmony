@@ -304,6 +304,8 @@ export function billMessage(number: string, totalCents: number, dueOn: string): 
 export interface BillRow {
   invoiceId: string
   number: string
+  /** Its variable symbol (the year and its order), the number for invoices issued before 18 October 2026. */
+  vs: string
   clientId: string
   clientName: string
   issuedOn: string
@@ -319,7 +321,7 @@ export interface BillRow {
 export async function billRows(db: D1Database, today: string, client: string | null = null, limit = 200): Promise<BillRow[]> {
   const rows = await db
     .prepare(
-      `SELECT b.invoice_id, b.client_id, b.delivered_at, i.number, i.customer_name, i.issued_on, i.due_on, i.total_cents, i.token, i.reminded_at, i.status,
+      `SELECT b.invoice_id, b.client_id, b.delivered_at, i.number, i.vs, i.customer_name, i.issued_on, i.due_on, i.total_cents, i.token, i.reminded_at, i.status,
          (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1) AS paid_on
          FROM billing_invoices b JOIN invoices i ON i.id = b.invoice_id
         WHERE (?1 IS NULL OR b.client_id = ?1) ORDER BY i.issued_on DESC, i.seq DESC LIMIT ?2`,
@@ -329,6 +331,7 @@ export async function billRows(db: D1Database, today: string, client: string | n
   return rows.results.map((r) => ({
     invoiceId: String(r.invoice_id),
     number: String(r.number ?? ''),
+    vs: String(r.vs ?? r.number ?? ''),
     clientId: String(r.client_id),
     clientName: String(r.customer_name),
     issuedOn: String(r.issued_on),
@@ -378,7 +381,7 @@ export async function billingScheduled(env: { DB: D1Database; FILES?: R2Bucket }
 /** A reminder of an unpaid invoice past its due day: a message in the client's app and a doorbell, once a week. */
 export const REMIND_EVERY = 7 * 86400
 
-export function remindMessage(number: string, totalCents: number, dueOn: string, iban: string | null): string {
-  return `Faktúra č. ${number} na ${formatEurExact(totalCents)} bola splatná ${textDay(dueOn)} a platbu od Vás zatiaľ nevidíme. Prosíme o úhradu${iban ? ` na účet ${iban.replace(/(.{4})/g, '$1 ').trim()}` : ''} s variabilným symbolom ${number}. QR kód na platbu nájdete v časti Firma a nastavenia. Ak ste už zaplatili, ďakujeme a správu prosím nevšímajte.`
+export function remindMessage(number: string, totalCents: number, dueOn: string, iban: string | null, vs: string = number): string {
+  return `Faktúra č. ${number} na ${formatEurExact(totalCents)} bola splatná ${textDay(dueOn)} a platbu od Vás zatiaľ nevidíme. Prosíme o úhradu${iban ? ` na účet ${iban.replace(/(.{4})/g, '$1 ').trim()}` : ''} s variabilným symbolom ${vs}. QR kód na platbu nájdete v časti Firma a nastavenia. Ak ste už zaplatili, ďakujeme a správu prosím nevšímajte.`
 }
 

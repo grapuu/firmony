@@ -1196,6 +1196,16 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE documents ADD COLUMN approved_at INTEGER',
     'ALTER TABLE documents ADD COLUMN approved_by TEXT',
   ],
+  // A company's own invoice numbers (18 October 2026, invoices.ts): a prefix, a mark between the year and the order,
+  // the order's digits, and the first order of a year (a company that comes in the middle of a year goes on with its
+  // row). The variable symbol stays the year and the order (invoices.vs).
+  [
+    'ALTER TABLE companies ADD COLUMN invoice_prefix TEXT',
+    'ALTER TABLE companies ADD COLUMN invoice_sep TEXT',
+    'ALTER TABLE companies ADD COLUMN invoice_digits INTEGER',
+    'ALTER TABLE companies ADD COLUMN invoice_from_year INTEGER',
+    'ALTER TABLE companies ADD COLUMN invoice_from INTEGER',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

@@ -13,7 +13,7 @@ import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
 import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
-import { InvoiceFormPage, InvoicePage, InvoicesPage } from '../views/invoices'
+import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, type NumberingValues } from '../views/invoices'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
 import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
@@ -2148,6 +2148,55 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
   )
 }
 
+/** The company's invoice numbers: the next number as it will be, and the form (owners). */
+async function numberingPage(c: Ctx, extra: { values?: NumberingValues; errors?: { prefix?: string; from?: string } } = {}, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const year = today().slice(0, 4)
+  const n = who.company.invoiceNumbering
+  const last = await c.env.DB.prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM invoices WHERE company_id = ? AND year = ? AND kind <> 'proforma'").bind(who.company.id, Number(year)).first<{ next: number }>()
+  const next = Math.max(Number(last?.next ?? 1), n.fromYear === Number(year) && n.from ? n.from : 1)
+  const order = String(next).padStart(n.digits, '0')
+  return shell(
+    c,
+    'invoices',
+    ti.numbering.title,
+    <NumberingPage
+      values={extra.values ?? { prefix: n.prefix, sep: n.sep, digits: String(n.digits), from: String(next) }}
+      year={year}
+      next={next}
+      example={{ number: `${n.prefix}${year}${n.sep}${order}`, vs: `${year}${order}` }}
+      owner={who.role === 'owner'}
+      errors={extra.errors ?? {}}
+      flash={c.req.query('ok') === 'cislovanie' ? ti.numbering.saved : null}
+    />,
+    status,
+  )
+}
+
+appRoutes.get('/faktury/cislovanie', (c) => numberingPage(c))
+
+appRoutes.post('/faktury/cislovanie', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return shell(c, 'invoices', t.errors.notFound, <Missing />, 403)
+  const body = await c.req.parseBody()
+  const text = (name: string) => (typeof body[name] === 'string' ? (body[name] as string).trim() : '')
+  const values: NumberingValues = { prefix: text('predpona').toUpperCase(), sep: text('oddelovac'), digits: text('cislice'), from: text('od').replace(/\s/g, '') }
+  const digits = ['3', '4', '5', '6'].includes(values.digits) ? Number(values.digits) : 4
+  const sep = values.sep === '-' || values.sep === '/' ? values.sep : ''
+  const from = /^\d{1,6}$/.test(values.from) ? Number(values.from) : NaN
+  const errors: { prefix?: string; from?: string } = {}
+  if (!/^[A-Z0-9-]{0,8}$/.test(values.prefix)) errors.prefix = ti.numbering.errors.prefix
+  if (!Number.isInteger(from) || from < 1 || from >= 10 ** digits) errors.from = ti.numbering.errors.from
+  if (errors.prefix || errors.from) return numberingPage(c, { values, errors }, 422)
+  await c.env.DB.batch([
+    c.env.DB
+      .prepare('UPDATE companies SET invoice_prefix = ?, invoice_sep = ?, invoice_digits = ?, invoice_from_year = ?, invoice_from = ? WHERE id = ?')
+      .bind(values.prefix || null, sep || null, digits, Number(today().slice(0, 4)), from, who.company.id),
+    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: 'invoices.numbering', detail: { prefix: values.prefix, sep, digits, from } }),
+  ])
+  return c.redirect('/app/faktury/cislovanie?ok=cislovanie', 303)
+})
+
 appRoutes.get('/faktury/:id', (c) => invoicePage(c, c.req.param('id')))
 
 appRoutes.post('/faktury/:id', async (c) => {
@@ -2196,14 +2245,14 @@ async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
                 ? ti.mail.advanceSubject(invoice.number, who.company.name, who.company.vatPayer)
                 : ti.mail.subject(invoice.number, who.company.name),
       body: reminder
-        ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link, invoice.kind === 'proforma', invoice.kind === 'proforma' ? (invoice.vs ?? invoice.number) : invoice.number)
+        ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link, invoice.kind === 'proforma', invoice.vs ?? invoice.number)
         : invoice.kind === 'proforma'
           ? ti.mail.proformaBody(who.company.name, invoice.number, invoice.vs ?? '', total, due, iban, link)
           : invoice.kind === 'credit'
             ? ti.mail.creditBody(who.company.name, invoice.number, invoice.correctsNumber ?? '', total, link, invoice.reason)
             : invoice.kind === 'advance'
               ? ti.mail.advanceBody(who.company.name, invoice.number, invoice.relatesNumber ?? '', total, dayName(invoice.deliveredOn).replace(/\u00a0/g, ' '), link, who.company.vatPayer)
-              : ti.mail.body(who.company.name, invoice.number, total, due, iban, link, invoice.note),
+              : ti.mail.body(who.company.name, invoice.number, total, due, iban, link, invoice.note, invoice.vs ?? invoice.number),
     }),
     db.prepare(`UPDATE invoices SET ${reminder ? 'reminded_at' : 'sent_at'} = ? WHERE id = ? AND company_id = ?`).bind(now(), invoice.id, who.company.id),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: reminder ? 'invoice.reminded' : 'invoice.sent', subject: invoice.id }),
@@ -2263,7 +2312,7 @@ async function repeatScheduled(env: AppBindings, day: string): Promise<void> {
           to: invoice.customerEmail,
           replyTo: by?.email ?? null,
           subject: ti.mail.subject(invoice.number, done.company.name),
-          body: ti.mail.body(done.company.name, invoice.number, total, due, invoice.iban ? groupIban(invoice.iban) : null, `${BRAND.origin}/f/${invoice.token}`, invoice.note),
+          body: ti.mail.body(done.company.name, invoice.number, total, due, invoice.iban ? groupIban(invoice.iban) : null, `${BRAND.origin}/f/${invoice.token}`, invoice.note, invoice.vs ?? invoice.number),
         }),
         db.prepare('UPDATE invoices SET sent_at = ? WHERE id = ? AND company_id = ?').bind(now(), invoice.id, done.company.id),
         eventStatement(db, { company: done.company.id, user: null, action: 'invoice.sent', subject: invoice.id, detail: { repeat: done.repeat.id } }),

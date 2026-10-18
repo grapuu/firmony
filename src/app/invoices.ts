@@ -434,7 +434,10 @@ export interface StoredInvoice {
    * no tax document, numbered ZF… with its own variable symbol); the tax document of an advance received (§ 73).
    */
   kind: InvoiceKind
-  /** A request for an advance: its variable symbol (the year, 9 and its order: 202690001). */
+  /**
+   * Its variable symbol: the year and its order (20260143), whatever its number looks like (FA2026-0143); a request for
+   * an advance the year, 9 and its order (202690001). Null on invoices issued before 18 October 2026: their number.
+   */
   vs: string | null
   /** An advance's tax document or a final invoice: the request it belongs to (id and number). */
   relates: string | null
@@ -564,7 +567,7 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
     // credit note is paid back to the customer's account, which the company has and the file need not name.
     credit
       ? ''
-      : `<cac:PaymentMeans><cbc:PaymentMeansCode>${invoice.iban ? 30 : 1}</cbc:PaymentMeansCode><cbc:PaymentID>${esc(invoice.number ?? '')}</cbc:PaymentID>${invoice.iban ? `<cac:PayeeFinancialAccount><cbc:ID>${esc(plainIban(invoice.iban))}</cbc:ID></cac:PayeeFinancialAccount>` : ''}</cac:PaymentMeans>`,
+      : `<cac:PaymentMeans><cbc:PaymentMeansCode>${invoice.iban ? 30 : 1}</cbc:PaymentMeansCode><cbc:PaymentID>${esc(invoice.vs ?? invoice.number ?? '')}</cbc:PaymentID>${invoice.iban ? `<cac:PayeeFinancialAccount><cbc:ID>${esc(plainIban(invoice.iban))}</cbc:ID></cac:PayeeFinancialAccount>` : ''}</cac:PaymentMeans>`,
     `<cac:TaxTotal><cbc:TaxAmount currencyID="${cur}">${amount(totals.vat)}</cbc:TaxAmount>${totals.rates
       .map((r) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="${cur}">${amount(r.base)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${cur}">${amount(r.vat)}</cbc:TaxAmount>${taxCategory(r.rate)}</cac:TaxSubtotal>`)
       .join('')}</cac:TaxTotal>`,
@@ -791,11 +794,20 @@ export function saveInvoiceStatements(
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
-           CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('ZF%d%04d', ?6, next.seq) ELSE printf('%d%04d', ?6, next.seq) END) END,
+           CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('ZF%d%04d', ?6, next.seq)
+             ELSE fmt.prefix || CAST(?6 AS INTEGER) || fmt.sep || printf('%0' || fmt.digits || 'd', next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
-           CASE WHEN ?5 = 'issued' AND ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq) END, ?28, ?29, ?30, ?31, ?32, ?33
-         -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one.
-         FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6 AND (kind = 'proforma') = (?22 = 'proforma')) AS next`,
+           CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq)
+             ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33
+         -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one,
+         -- in the company's own numbers (a prefix, a mark, the order's digits) and from a year's first order when it
+         -- came in the middle of one. The variable symbol is the year and the order, whatever the number looks like.
+         FROM (SELECT COALESCE(invoice_prefix, '') AS prefix, COALESCE(invoice_sep, '') AS sep, COALESCE(invoice_digits, 4) AS digits
+               FROM companies WHERE id = ?2) AS fmt,
+              (SELECT max(l.seq, f.start) AS seq
+                 FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6 AND (kind = 'proforma') = (?22 = 'proforma')) AS l,
+                      (SELECT CASE WHEN ?22 <> 'proforma' AND invoice_from_year = CAST(?6 AS INTEGER) THEN COALESCE(invoice_from, 1) ELSE 1 END AS start
+                         FROM companies WHERE id = ?2) AS f) AS next`,
       )
       .bind(
         args.id,
@@ -827,7 +839,7 @@ export function saveInvoiceStatements(
             .prepare(
               `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs,
                  issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint, vat_reverse, advance_cents, fx_rate)
-               SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, number,
+               SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, COALESCE(vs, number),
                  issued_on, due_on, total_cents, vat_cents, COALESCE(currency, 'EUR'), ?, id, customer_icdph, delivered_on, ?, ?, ?, vat_reverse, ?, fx_rate
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )

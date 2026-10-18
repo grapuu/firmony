@@ -1180,6 +1180,17 @@ by itself.
   twice. It ends past its last day or the contract's; a locked period or a failure is said on the repeat. The list
   shows the repeats ("Opakované faktúry"), the invoice it issued says "Vystavená sama z opakovania", "Zastaviť
   opakovanie" stops it; purge deletes them. test/repeat.runtime.mjs, units "Invoices issued again".
+- The company's own invoice numbers (built 18 October 2026, schema step 46: `companies.invoice_prefix`, `invoice_sep`,
+  `invoice_digits`, `invoice_from_year`, `invoice_from`): "Číslovanie" on /app/faktury (`/app/faktury/cislovanie`,
+  owners change it) sets a prefix (letters, digits, hyphen, up to 8), a mark between the year and the order (none, -,
+  /), the order's digits (3 to 6) and the next order of this year, so a company that comes in the middle of a year goes
+  on with its row (an order lower than one issued is not used). The number is made in the statement that writes the
+  invoice (`saveInvoiceStatements`: FA2026-0143), invoices, credit notes and advances' documents in one row, requests
+  for advances in their own (ZF...). The variable symbol stays the year and the order (`invoices.vs`, 20260143; the
+  number for invoices issued before), on the sheet, in PAY by square, the e-invoice's PaymentID, the mails, the
+  document (`documents.vs`) and so in pairing; europio's reminders name it too. With 5 digits an order from 90 000 on
+  would share a symbol with a request for an advance (the year, 9 and its order): no company issues that many.
+  test/numbering.runtime.mjs.
 - The customer's state (built 18 October 2026, schema step 44: `invoices.customer_country`): the form's "Štát"
   (`COUNTRIES`, the Union, the rest of Europe and the usual partners, by their Slovak names; empty: the state of the
   VAT number, else Slovakia, `customerCountryOf`); a state against the VAT number is refused (`customerCountry`); the
@@ -1215,8 +1226,7 @@ by itself.
 - Not built yet: an advance in another
   currency, advances for a supply without Slovak VAT (goods to the EU, export, reverse charge: the request is refused),
   a rate that changes between the advance and the supply, a repeat whose lines change (indexed rent, hours of the month), the e-invoice sent through a
-  digital postman,
-  invoice numbering of the company's own pattern, the company's logo on the invoice.
+  digital postman, the company's logo on the invoice.
 
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
 
@@ -1990,7 +2000,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1158 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders
-npm run test:runtime     # 1628 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
+npm run test:runtime     # 1640 workerd checks on Node 24 (as GitHub runs them), including test/payorders.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

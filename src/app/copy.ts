@@ -503,6 +503,26 @@ export const app = typesetAll({
     signOut: 'Odhlásiť sa',
   },
   invoices: {
+    numbering: {
+      link: 'Číslovanie',
+      title: 'Číslovanie faktúr',
+      lead: 'Faktúry, dobropisy a daňové doklady k zálohám majú jeden rad. Ak ste doteraz fakturovali inde, pokračujte vo svojom rade: zadajte poradie ďalšej faktúry. Variabilný symbol zostáva rok a poradie, napríklad 20260143.',
+      prefix: 'Predpona (nepovinné)',
+      prefixHint: 'Napríklad FA. Len písmená, číslice a pomlčka, najviac 8 znakov.',
+      sep: 'Medzi rokom a poradím',
+      seps: { '': 'nič (20260143)', '-': 'pomlčka (2026-0143)', '/': 'lomka (2026/0143)' } as Record<string, string>,
+      digits: 'Číslic v poradí',
+      from: (year: string) => typeset(`Poradie ďalšej faktúry v roku ${year}`),
+      fromHint: (next: number) => typeset(`Teraz by to bolo ${next}. Menšie číslo, než už je vystavené, sa nepoužije.`),
+      example: (number: string, vs: string) => typeset(`Ďalšia faktúra: ${number}, variabilný symbol ${vs}.`),
+      save: 'Uložiť číslovanie',
+      saved: 'Číslovanie sme uložili.',
+      onlyOwner: 'Číslovanie mení majiteľ firmy.',
+      errors: {
+        prefix: 'Predpona môže mať len písmená, číslice a pomlčku, najviac 8 znakov.',
+        from: 'Poradie napíšte ako celé číslo od 1, ktoré sa zmestí do zvoleného počtu číslic.',
+      },
+    },
     nav: 'Faktúry',
     title: 'Faktúry',
     serif: 'Vystavené za minútu.',
@@ -758,12 +778,12 @@ export const app = typesetAll({
           company,
         ].join('\n'),
       subject: (number: string, company: string) => `Faktúra ${number} od ${company}`,
-      body: (company: string, number: string, total: string, due: string, iban: string | null, link: string, note: string | null) =>
+      body: (company: string, number: string, total: string, due: string, iban: string | null, link: string, note: string | null, vs: string = number) =>
         [
           'Dobrý deň,',
           '',
           `posielame Vám faktúru č. ${number} na sumu ${total} so splatnosťou ${due}.`,
-          ...(iban ? ['', `Úhrada prevodom na účet ${iban}, variabilný symbol ${number}. Na faktúre je aj QR kód, ktorý načíta aplikácia Vašej banky.`] : []),
+          ...(iban ? ['', `Úhrada prevodom na účet ${iban}, variabilný symbol ${vs}. Na faktúre je aj QR kód, ktorý načíta aplikácia Vašej banky.`] : []),
           '',
           `Faktúru si pozriete, vytlačíte alebo stiahnete aj ako e-faktúru tu: ${link}`,
           ...(note ? ['', note] : []),

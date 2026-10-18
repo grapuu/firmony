@@ -32,7 +32,7 @@ const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) =
 }
 
 // A request is paid with its own symbol; an advance's tax document is paid already (no symbol to pay with).
-const vsOf = (i: Pick<StoredInvoice, 'kind' | 'vs' | 'number'>) => (i.kind === 'proforma' ? i.vs : i.kind === 'advance' ? null : i.number)
+const vsOf = (i: Pick<StoredInvoice, 'kind' | 'vs' | 'number'>) => (i.kind === 'proforma' ? i.vs : i.kind === 'advance' ? null : (i.vs ?? i.number))
 
 export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[] }> = ({ invoices, today, flash, closed = null, repeats = [] }) => {
   const month = today.slice(0, 7)
@@ -54,6 +54,9 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
         </div>
         {closed ? null : (
           <span class="phead__actions">
+            <a class="btn btn--text" href="/app/faktury/cislovanie">
+              {t.numbering.link}
+            </a>
             <a class="btn btn--line" href="/app/faktury/nova?zalohova=1">
               {t.actions.proforma}
             </a>
@@ -981,3 +984,78 @@ export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; sell
     </body>
   </html>
 )
+
+// ---------------------------------------------------------------------------------------------------------------
+// The company's invoice numbers
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface NumberingValues {
+  prefix: string
+  sep: string
+  digits: string
+  from: string
+}
+
+export const NumberingPage: FC<{
+  values: NumberingValues
+  year: string
+  next: number
+  example: { number: string; vs: string }
+  owner: boolean
+  errors: { prefix?: string; from?: string }
+  flash?: string | null
+}> = ({ values, year, next, example, owner, errors, flash = null }) => {
+  const n = t.numbering
+  return (
+    <>
+      <a class="back" href="/app/faktury">
+        {t.actions.back}
+      </a>
+      <header class="phead">
+        <Heading first={n.title} small />
+        <p class="phead__lead">{n.lead}</p>
+      </header>
+      <Flash text={flash} />
+      <section class="info">
+        <p class="info__lead">{n.example(example.number, example.vs)}</p>
+        {owner ? (
+          <form class="stack" method="post" action="/app/faktury/cislovanie" novalidate>
+            <div class="fgrid">
+              <Text name="predpona" label={n.prefix} value={values.prefix} error={errors.prefix} hint={n.prefixHint} max={8} />
+              <div class="fgrid__cell">
+                <label class="field__label" for="c-sep">
+                  {n.sep}
+                </label>
+                <select id="c-sep" class="field__input" name="oddelovac">
+                  {['', '-', '/'].map((sep) => (
+                    <option value={sep} selected={values.sep === sep}>
+                      {n.seps[sep]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div class="fgrid__cell">
+                <label class="field__label" for="c-cislice">
+                  {n.digits}
+                </label>
+                <select id="c-cislice" class="field__input" name="cislice">
+                  {['3', '4', '5', '6'].map((d) => (
+                    <option value={d} selected={values.digits === d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Text name="od" label={n.from(year)} value={values.from} error={errors.from} hint={n.fromHint(next)} mode="numeric" max={6} />
+            </div>
+            <button class="btn btn--blue" type="submit">
+              {n.save}
+            </button>
+          </form>
+        ) : (
+          <p class="info__source">{n.onlyOwner}</p>
+        )}
+      </section>
+    </>
+  )
+}
