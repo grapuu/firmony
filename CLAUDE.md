@@ -2019,6 +2019,18 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   customer's side of a corrective document received (§ 53b for it), a claim in another currency, the corrective document
   sent to the customer from the app (the accountant prints it and marks the day). To verify on the first real case: FO
   "0" in C.1 when no corrective document is issued (taken from C.2's rule of § 53b), and the 151st day.
+  Mended after a thirteenth independent review (18 October 2026, of commit 1ee4d4e; each finding verified first, the
+  reviewer's own harness on a real D1): the claim is measured on the day it became uncollectible (`owedAt`: the invoice
+  after its credit notes up to that day, less a payment made by it), so a payment after that day is raised again in its
+  own period rather than left out of the lowering too, and the 1 000 € between a step and an action is of that claim, not
+  of the amount typed; the lowering is split by rate as the invoice stood that day (`claimAt`, an issued invoice's credit
+  notes now read with it as `credits`); a payment after that day within the lowering's period, or one before it the
+  lowering did not leave out, voids it, credit notes counted; a credit note after the lowering raises back the part it
+  covers in its period (`badDebtCredit`, C.1 with "0": to verify on the first such case), a lowering larger than what the
+  invoice left owed on its day keeps its period back (`badDebtChanged`), and so does a corrective document marked sent
+  after the deadline of its return (`badDebtLate`); a documented lowering whose return's deadline has passed is not made
+  (§ 25a(11), (13); for § 25a(2)(a) a new step gives a new day); the page flags a passed deadline; corrections are listed
+  apart from the candidates, so 400 old invoices cannot push them off.
 - Not built: triangular trade, documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
@@ -2502,8 +2514,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1313 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1900 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1321 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1903 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

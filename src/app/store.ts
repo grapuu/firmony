@@ -205,7 +205,7 @@ export interface Doc {
   paidOn?: string | null
   /** What that payment paid of it, when it paid it alone (PAID_ON_COLUMN); null while it paid it whole. */
   paidCents?: number | null
-  /** A received invoice's corrections from the same supplier, booked (§ 53b). */
+  /** An invoice's corrections, booked: a received one's from the same supplier (§ 53b), an issued one's (§ 25a). */
   credits?: CreditOf[]
   /** An issued invoice's corrections of § 25a (bad-debt.ts). */
   badDebts?: BadDebt[]
@@ -363,18 +363,20 @@ export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM led
 /**
  * The day a document was paid (its bank payment's, else its cash document's); what that payment paid of an invoice
  * (vat.ts unpaidEvents: a bank payment in euros of it alone by its amount, its cash document by its amount; null while a
- * payment of several invoices paid each whole); a received invoice's corrections from the same supplier, booked
- * (§ 53b; schema step 66 indexes them by the number they correct); and an issued invoice's corrections of § 25a.
+ * payment of several invoices paid each whole); an invoice's corrections, booked: a received one's from the same
+ * supplier (§ 53b), an issued one's of the company's own (§ 25a; schema step 66 indexes them by the number they correct);
+ * and an issued invoice's corrections of § 25a.
  */
 export const PAID_ON_COLUMN = `COALESCE((SELECT p.booked_on FROM payments p WHERE p.id = l.payment_id),
   (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
   CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN COALESCE(
     (SELECT CASE WHEN p.currency = 'EUR' AND (SELECT COUNT(*) FROM links o WHERE o.payment_id = p.id) = 1 THEN ABS(p.amount_cents) END FROM payments p WHERE p.id = l.payment_id),
     (SELECT SUM(json_extract(j.value, '$.cents')) FROM ledger_entries ce, json_each(ce.lines) j WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)) END AS paid_cents,
-  CASE WHEN d.kind = 'invoice_in' AND d.number IS NOT NULL THEN (SELECT json_group_array(json_object('issued', c.issued_on, 'supplied', c.supplied_on, 'created', c.created_at, 'period', c.vat_period, 'lines', c.vat_lines))
-    FROM documents c WHERE c.company_id = d.company_id AND c.corrects = d.number AND c.id <> d.id AND c.kind IN ('invoice_in', 'receipt') AND c.deleted_at IS NULL
+  CASE WHEN d.kind IN ('invoice_in', 'invoice_out') AND d.number IS NOT NULL THEN (SELECT json_group_array(json_object('issued', c.issued_on, 'supplied', c.supplied_on, 'created', c.created_at, 'period', c.vat_period, 'lines', c.vat_lines))
+    FROM documents c WHERE c.company_id = d.company_id AND c.corrects = d.number AND c.id <> d.id AND c.deleted_at IS NULL
       AND c.booked_at IS NOT NULL AND c.vat_mode = 'domestic' AND c.vat_lines IS NOT NULL
-      AND ((d.party_ico IS NOT NULL AND c.party_ico = d.party_ico) OR (d.party_vat_id IS NOT NULL AND c.party_vat_id = d.party_vat_id))) END AS credits,
+      AND ((d.kind = 'invoice_out' AND c.kind = 'invoice_out')
+           OR (d.kind = 'invoice_in' AND c.kind IN ('invoice_in', 'receipt') AND ((d.party_ico IS NOT NULL AND c.party_ico = d.party_ico) OR (d.party_vat_id IS NOT NULL AND c.party_vat_id = d.party_vat_id))))) END AS credits,
   CASE WHEN d.kind = 'invoice_out' THEN (SELECT json_group_array(json_object('id', b.id, 'kind', b.kind, 'ground', b.ground, 'event_on', b.event_on, 'number', b.number,
       'issued_on', b.issued_on, 'sent_on', b.sent_on, 'lines', b.lines, 'cents', b.cents, 'evidence', b.evidence, 'payment_id', b.payment_id))
     FROM bad_debts b WHERE b.document_id = d.id AND b.deleted_at IS NULL) END AS bad_debts`

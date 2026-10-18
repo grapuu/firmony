@@ -2780,7 +2780,7 @@ async function zipped(entries, note) {
     const copy = { ground: 'g', day: 'day', amount: 'amount', evidence: 'evidence', confirm: 'confirm', due: 'due', small: 'small', large: 'large', early: 'early', future: 'future', owed: 'owed' }
     const dayOf = (t) => (/^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null)
     const moneyOf = (t) => (/^\d+$/.test(t) ? Number(t) : Number.NaN)
-    const ctx = { dueOn: '2027-01-31', suppliedOn: '2027-01-10', owed: 12300, today: '2027-10-01' }
+    const ctx = { dueOn: '2027-01-31', suppliedOn: '2027-01-10', owedAt: () => 12300, today: '2027-10-01' }
     const form = (f) => badDebt.readBadDebt({ ground: 'a1', day: '2027-02-15', amount: '', evidence: 'upomienka 15. 2.', confirm: true, ...f }, ctx, dayOf, moneyOf, copy)
     check(
       'the form: a step before the 151st day makes the claim uncollectible on it (1 July), what is owed by default',
@@ -2790,7 +2790,7 @@ async function zipped(entries, note) {
     check(
       'the form refuses a claim above 1 000 € on a step alone, one up to it on an action, more than is owed, no proof, no word on § 25a(4), a day ahead',
       form({ amount: '150000' }).errors.amount === 'owed' &&
-        badDebt.readBadDebt({ ground: 'a1', day: '2027-02-15', amount: '', evidence: 'upomienka', confirm: true }, { ...ctx, owed: 150000 }, dayOf, moneyOf, copy).errors.ground === 'small' &&
+        badDebt.readBadDebt({ ground: 'a1', day: '2027-02-15', amount: '', evidence: 'upomienka', confirm: true }, { ...ctx, owedAt: () => 150000 }, dayOf, moneyOf, copy).errors.ground === 'small' &&
         form({ ground: 'a2' }).errors.ground === 'large' &&
         form({ evidence: '' }).errors.evidence === 'evidence' &&
         form({ confirm: false }).errors.confirm === 'confirm' &&
@@ -2798,6 +2798,54 @@ async function zipped(entries, note) {
         form({ ground: 'b1', day: '2027-11-01' }).errors.day === 'future',
     )
     check('the tax owed counts row 27', ledger.vatOwed({ ...vat.emptyRows(), r17: 5000, r27: -2300 }) === 2700)
+    // After the review: the claim on its own day, credit notes before and after it, a corrective document sent late.
+    const big = (fields) =>
+      doc({ kind: 'invoice_out', number: 'FA-25B', issuedOn: '2027-01-10', receivedOn: '2027-01-10', dueOn: '2027-01-31', vat: v('domestic', [[23, 100000, 23000]], { vatId: 'SK2121212121', suppliedOn: '2027-01-10' }), ...fields })
+    const lowBig = { ...lowered, eventOn: '2027-09-28', lines: [{ rate: 23, base: 100000, vat: 23000 }], cents: 123000 }
+    const paidInOctober = big({ badDebts: [lowBig], paidOn: '2027-10-05', paidCents: 50000 })
+    const evs = vat.badDebtEvents(paidInOctober, paidInOctober.vat, payer)
+    check(
+      'paid 500 € after the claim of 1 230 € became uncollectible in September: September lowers the whole, October raises what was paid',
+      evs.length === 2 && evs[0].kind === 'reduce' && evs[1].kind === 'restore' && evs[1].period === '2027-10' && evs[1].lines[0].base + evs[1].lines[0].vat === 50000,
+      JSON.stringify(evs),
+    )
+    const claimForm = badDebt.readBadDebt(
+      { ground: 'a2', day: '2027-09-28', amount: '', evidence: 'žaloba podaná 28. 9.', confirm: true },
+      { ...ctx, owedAt: (on) => (on >= '2027-10-05' ? 73000 : 123000) },
+      dayOf,
+      moneyOf,
+      copy,
+    )
+    check('the form measures the claim on that day: 1 230 €, so an action is the case and the whole is offered', claimForm.input?.cents === 123000 && !claimForm.errors.ground, JSON.stringify(claimForm))
+    const credit = (on, base, rate = 23) => ({ issuedOn: on, suppliedOn: null, receivedOn: on, period: null, lines: [{ rate, base, vat: Math.round((base * rate) / 100), deduct: 0 }] })
+    const halfCredited = big({ credits: [credit('2027-08-01', -50000)], badDebts: [{ ...lowBig, eventOn: '2027-10-10', lines: [{ rate: 23, base: 50000, vat: 11500 }], cents: 61500 }], paidOn: '2027-10-25', paidCents: 30000 })
+    check('a credit note before, a payment in the lowering\'s period after it: the lowering is void', vat.badDebtEvents(halfCredited, halfCredited.vat, payer)[0]?.kind === 'void')
+    const mixed = [
+      { rate: 23, base: 100000, vat: 23000, deduct: 0 },
+      { rate: 5, base: 100000, vat: 5000, deduct: 0 },
+    ]
+    const after23 = vat.claimAt(mixed, [credit('2027-03-01', -100000)], '2027-09-01')
+    check(
+      'a credit note of the whole 23 % line: what is owed is all at 5 %, and so is the lowering',
+      after23.gross === 105000 && JSON.stringify(badDebt.badDebtLines(after23.lines, 105000)) === JSON.stringify([{ rate: 5, base: 100000, vat: 5000 }]),
+      JSON.stringify(badDebt.badDebtLines(after23.lines, 105000)),
+    )
+    const creditedLater = big({ credits: [credit('2027-11-02', -50000)], badDebts: [lowBig] })
+    const cl = vat.badDebtEvents(creditedLater, creditedLater.vat, payer)
+    check(
+      'a credit note after the lowering: the part it covers raised back in its period (it lowers the base itself)',
+      cl.length === 2 && cl[1].kind === 'credit' && cl[1].period === '2027-11' && cl[1].lines[0].base === 50000 && cl[1].lines[0].vat === 11500,
+      JSON.stringify(cl),
+    )
+    const nov = run(creditedLater, '2027-11')
+    check('November: rows 26 and 27 plus by the credit note, said why', nov.rows.r26 === 50000 && nov.rows.r27 === 11500 && nov.issues.some((i) => i.code === 'badDebtCredit'))
+    const rebooked = big({ vat: v('domestic', [[23, 50000, 11500]], { vatId: 'SK2121212121', suppliedOn: '2027-01-10' }), badDebts: [lowBig] })
+    check('booked again smaller after the lowering: its period kept back', run(rebooked, '2027-09').issues.some((i) => i.code === 'badDebtChanged' && i.level === 'block'))
+    check(
+      'its corrective document sent after the deadline of its return: not recognised, kept back',
+      run(big({ badDebts: [{ ...lowBig, sentOn: '2027-10-26' }] }), '2027-09').issues.some((i) => i.code === 'badDebtLate') &&
+        !run(big({ badDebts: [{ ...lowBig, sentOn: '2027-10-20' }] }), '2027-09').issues.some((i) => i.code === 'badDebtLate'),
+    )
   }
   check(
     'the control statement is in its namespace with ISO dates',

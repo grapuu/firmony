@@ -802,6 +802,12 @@ export const team = typesetAll({
         'Opravný doklad podľa § 25a ešte nie je označený ako odoslaný odberateľovi: musí byť vyhotovený a odoslaný najneskôr do lehoty na podanie priznania za toto obdobie, inak sa oprava neuzná (§ 25a ods. 11 a 13).',
       badDebtRestore: 'Odberateľ zaplatil po oprave podľa § 25a: treba vyhotoviť opravný doklad k prijatej platbe (§ 25a ods. 6 a 10), bez neho sa obdobie nepodá.',
       badDebtPaid: 'Pohľadávka opravená podľa § 25a je do konca obdobia opravy zaplatená: oprava neplatí, zrušte ju (a podľa potreby zapíšte znova so sumou, ktorá zostala nezaplatená).',
+      badDebtLate:
+        'Opravný doklad podľa § 25a bol odoslaný odberateľovi až po lehote na podanie priznania za obdobie opravy: oprava sa neuzná (§ 25a ods. 11 a 13), zrušte ju.',
+      badDebtChanged:
+        'Oprava podľa § 25a znižuje viac, ako faktúra po dobropisoch a platbách v deň opravy dlhovala (faktúra sa medzitým zmenila): zrušte opravu a zapíšte ju znova so sumou, ktorá zostala nezaplatená.',
+      badDebtCredit:
+        'Faktúru opravenú podľa § 25a znížil dobropis: ten znižuje základ dane sám (riadky 24 a 25), preto sa časť opravy podľa § 25a, ktorú pokrýva, vracia (riadky 26 a 27 plus, C.1). Pri prvom takom prípade si to overte.',
       domestic7a: 'Osoba registrovaná podľa § 7a uvádza len služby a tovar zo zahraničia; tento doklad sme vynechali.',
       mismatch: 'Pri plnení bez DPH je uvedená DPH.',
       before: 'Doklad je spred registrácie pre DPH: do priznania nepatrí.',
@@ -2361,6 +2367,11 @@ export const team = typesetAll({
     threeYears: (day: string) =>
       typeset(`Pozor: tri roky od lehoty na podanie priznania za obdobie dodania uplynuli ${day}. Opraviť sa dá, len ak sa do nich nezapočítava čas konaní podľa § 25a ods. 5 (súdne, exekučné, konkurzné, dedičské).`),
     reduced: (period: string) => typeset(`Základ dane a daň sa znižujú v priznaní za ${period}.`),
+    late: (deadline: string) =>
+      typeset(
+        `Lehota na podanie priznania za obdobie tohto dňa uplynula ${deadline}: opravný doklad by nebol vyhotovený a odoslaný včas, oprava by sa neuznala (§ 25a ods. 11 a 13). Pri 150 dňoch urobte nový úkon na vymáhanie a zapíšte jeho deň.`,
+      ),
+    lateFlag: (deadline: string) => typeset(`Lehota na odoslanie opravného dokladu uplynula ${deadline}: oprava sa neuzná (§ 25a ods. 13). Zrušte ju.`),
     groundOf: (label: string) => typeset(`Dôvod: ${label}`),
     evidenceOf: (text: string) => typeset(`Preukáže: ${text}`),
     document: (number: string, day: string) => typeset(`Opravný doklad ${number} zo dňa ${day}`),

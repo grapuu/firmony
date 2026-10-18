@@ -166,18 +166,20 @@ export interface BadDebtInput {
 
 export type BadDebtErrors = Partial<Record<'ground' | 'day' | 'amount' | 'evidence' | 'confirm', string>>
 
-/** What the form asks to check against: the invoice's due day and supply day, what is still owed, and today. */
+/** What the form asks to check against: the invoice's due day and supply day, what it left owed on a day, and today. */
 export interface BadDebtContext {
   dueOn: string | null
   suppliedOn: string
-  owed: number
+  /** The claim on a day: the invoice after its credit notes up to it, less what was paid by it. */
+  owedAt: (day: string) => number
   today: string
 }
 
 /**
  * The form read: the case, the day (the event's; for § 25a(2)(a) the day of the step, the action or the execution, the
- * claim then uncollectible on the later of it and the 151st day after the due day), the claim not paid (at most what is
- * owed), what proves it, and the word that § 25a(4) keeps none of it out. `dayOf` reads a Slovak date, `moneyOf` an amount.
+ * claim then uncollectible on the later of it and the 151st day after the due day), the claim not paid on that day (at
+ * most what was owed then, which also decides between a step and an action at 1 000 €), what proves it, and the word that
+ * § 25a(4) keeps none of it out. `dayOf` reads a Slovak date, `moneyOf` an amount.
  */
 export function readBadDebt(
   form: BadDebtForm,
@@ -191,29 +193,38 @@ export function readBadDebt(
   if (!ground) errors.ground = copy.ground
   const day = form.day.trim() === '' ? null : dayOf(form.day)
   if (form.day.trim() !== '' && !day) errors.day = copy.day
-  const typed = form.amount.trim() === '' ? ctx.owed : moneyOf(form.amount)
-  const cents = typed === null || Number.isNaN(typed) || typed <= 0 ? null : typed
-  if (cents === null) errors.amount = copy.amount
-  else if (cents > ctx.owed) errors.amount = copy.owed
   const evidence = form.evidence.trim().slice(0, 1000)
   if (evidence.length < 5) errors.evidence = copy.evidence
   if (!form.confirm) errors.confirm = copy.confirm
   let eventOn: string | null = null
-  if (ground && AFTER_150_GROUNDS.includes(ground)) {
+  const after = ground !== null && AFTER_150_GROUNDS.includes(ground)
+  if (after) {
     if (!ctx.dueOn) errors.day = copy.due
-    else {
-      const earliest = after150(ctx.dueOn)
-      if (!day) errors.day = errors.day ?? copy.day
-      else eventOn = day > earliest ? day : earliest
-      if (cents !== null && ground === 'a1' && cents > BAD_DEBT_SMALL) errors.ground = copy.small
-      if (cents !== null && ground !== 'a1' && cents <= BAD_DEBT_SMALL) errors.ground = copy.large
-    }
+    else if (!day) errors.day = errors.day ?? copy.day
+    else eventOn = day > after150(ctx.dueOn) ? day : after150(ctx.dueOn)
   } else if (ground) {
     if (!day) errors.day = errors.day ?? copy.day
     else eventOn = day
   }
-  if (eventOn && eventOn > ctx.today) errors.day = AFTER_150_GROUNDS.includes(ground as BadDebtGround) && day && day <= ctx.today ? copy.early : copy.future
-  if (eventOn && eventOn < ctx.suppliedOn) errors.day = copy.day
+  if (eventOn && eventOn > ctx.today) {
+    errors.day = after && day && day <= ctx.today ? copy.early : copy.future
+    eventOn = null
+  }
+  if (eventOn && eventOn < ctx.suppliedOn) {
+    errors.day = copy.day
+    eventOn = null
+  }
+  // The claim on the day it became uncollectible: what may be lowered at most, and what the 1 000 € are of.
+  const claim = eventOn ? ctx.owedAt(eventOn) : null
+  const typed = form.amount.trim() === '' ? claim : moneyOf(form.amount)
+  const cents = typed === null || Number.isNaN(typed) || typed <= 0 ? null : typed
+  if (form.amount.trim() !== '' && cents === null) errors.amount = copy.amount
+  else if (claim !== null && claim <= 0) errors.amount = copy.owed
+  else if (cents !== null && claim !== null && cents > claim) errors.amount = copy.owed
+  if (claim !== null && claim > 0 && after) {
+    if (ground === 'a1' && claim > BAD_DEBT_SMALL) errors.ground = copy.small
+    if (ground !== 'a1' && claim <= BAD_DEBT_SMALL) errors.ground = copy.large
+  }
   if (Object.keys(errors).length > 0 || !ground || !eventOn || cents === null) return { input: null, errors }
   return { input: { ground, eventOn, cents, evidence }, errors }
 }

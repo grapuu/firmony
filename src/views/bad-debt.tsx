@@ -187,7 +187,7 @@ const Correction: FC<{ c: Company; row: BadDebtRow; which: BadDebt; today: strin
             <p class="info__source">{k.sentOn(textDay(which.sentOn))}</p>
           ) : (
             <>
-              {row.sendBy && druh === 'reduce' ? <p class="flag">{k.sendBy(textDay(row.sendBy))}</p> : null}
+              {row.sendBy && druh === 'reduce' ? <p class="flag">{today > row.sendBy ? k.lateFlag(textDay(row.sendBy)) : k.sendBy(textDay(row.sendBy))}</p> : null}
               <form class="stack" method="post" action={`${base(c)}/${row.doc.id}/odoslane`}>
                 <input type="hidden" name="zaznam" value={which.id} />
                 <label class="field__label" for={`bd-sent-${druh}`}>

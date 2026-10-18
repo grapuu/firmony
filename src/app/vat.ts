@@ -597,11 +597,16 @@ export function unpaidEvents(doc: VatDoc, data: VatData, company: VatCompany, fi
 /**
  * § 25a (bad-debt.ts): an issued invoice's claim lowered once uncollectible, in the period of that day (rows 26 and 27
  * minus, C.1 with the corrective document's number and ONP "x", or D.2 for a customer that is no taxable person), and
- * raised again in the period of a payment that comes later, in the share it pays (the same with a plus). A payment by the
- * end of the lowering's period that pays what was lowered voids it ('void': the accountant takes it back).
+ * raised again in the period of a payment that comes later, in the share it pays (the same with a plus). A payment after
+ * the claim became uncollectible and by the end of the lowering's period, or one before it that the lowering did not
+ * leave out, voids it ('void': the accountant takes it back). A credit note after the lowering lowers the base itself
+ * (rows 24 and 25), so the part of the lowering it covers is raised back in its period ('credit'), as § 53b does on the
+ * other side. A lowering larger than the invoice now leaves owed (booked again smaller, a credit note dated before it)
+ * keeps its period back ('changed'), and so does a corrective document sent after the deadline of its return (§ 25a(11),
+ * (13): the lowering is not recognised, 'late').
  */
 export interface BadDebtEvent {
-  kind: 'reduce' | 'restore' | 'void'
+  kind: 'reduce' | 'restore' | 'credit' | 'void'
   period: string
   on: string
   lines: BadDebtLine[]
@@ -612,6 +617,20 @@ export interface BadDebtEvent {
   sent: boolean
   /** A raising whose corrective document is not made yet. */
   missing?: boolean
+  /** The lowering's corrective document was sent after the deadline of its return. */
+  late?: boolean
+  /** The lowering is larger than what the invoice left owed on its day. */
+  changed?: boolean
+}
+
+/** The day a correction of an invoice counts from: its day of supply, else its day of issue, else the day it came. */
+export const creditDay = (c: CreditOf): string => c.suppliedOn ?? c.issuedOn ?? c.receivedOn
+
+/** What an invoice and its corrections up to a day come to, rate by rate, and in all with VAT. */
+export function claimAt(lines: readonly VatLine[], credits: readonly CreditOf[], day: string): { lines: VatLine[]; gross: number } {
+  const sums = rateSums(lines, ...credits.filter((c) => creditDay(c) <= day).map((c) => c.lines))
+  const out = linesOfSums(sums)
+  return { lines: out, gross: grossOfLines(out) }
 }
 
 export function badDebtEvents(doc: VatDoc, data: VatData, company: VatCompany): BadDebtEvent[] {
@@ -619,28 +638,55 @@ export function badDebtEvents(doc: VatDoc, data: VatData, company: VatCompany): 
   if (!reduce || company.status !== 'payer' || !isIssued(doc.kind) || !doc.booked) return []
   const quarterly = company.quarterly
   const period = periodOf(reduce.eventOn, quarterly)
+  const end = periodRange(period).to
+  const credits = doc.credits ?? []
   const documented = Boolean(plainVatId(data.vatId) || doc.partyIco) && !(reduce.ground && NO_DOCUMENT_GROUNDS.includes(reduce.ground))
-  const own: BadDebtEvent = { kind: 'reduce', period, on: reduce.eventOn, lines: reduce.lines, number: reduce.number, documented, sent: reduce.sentOn !== null }
   const paid = doc.paidOn ?? null
-  if (paid === null) return [own]
-  const gross = grossOf(data.lines)
-  const paidCents = doc.paidCents ?? gross
-  // A payment by the end of the lowering's period: it stands only for the part that was not lowered.
-  if (paid <= periodRange(period).to) return paidCents + reduce.cents > gross ? [{ ...own, kind: 'void' }] : [own]
-  const restore = (doc.badDebts ?? []).find((b) => b.kind === 'restore' && b.eventOn === paid)
-  return [
-    own,
-    {
+  const atEvent = claimAt(data.lines, credits, reduce.eventOn).gross
+  const paidCents = paid === null ? 0 : (doc.paidCents ?? claimAt(data.lines, credits, paid).gross)
+  const paidBefore = paid !== null && paid <= reduce.eventOn ? paidCents : 0
+  const own: BadDebtEvent = {
+    kind: 'reduce',
+    period,
+    on: reduce.eventOn,
+    lines: reduce.lines,
+    number: reduce.number,
+    documented,
+    sent: reduce.sentOn !== null,
+    late: documented && reduce.sentOn !== null && reduce.sentOn > filingDeadline(period),
+    changed: reduce.cents > atEvent - paidBefore,
+  }
+  // Paid after it became uncollectible within the lowering's period, or before it by more than the lowering left out.
+  if (paid !== null && ((paid > reduce.eventOn && paid <= end) || (paid <= reduce.eventOn && paidCents + reduce.cents > atEvent))) return [{ ...own, kind: 'void' }]
+  const events: BadDebtEvent[] = [own]
+  const notBefore = (p: string) => (p < period ? period : p)
+  let left: BadDebtLine[] = reduce.lines.map((l) => ({ ...l }))
+  let leftCents = reduce.cents
+  // A credit note after the lowering, before any payment: the part of the lowering it covers comes back in its period.
+  for (const c of [...credits].sort((x, y) => creditDay(x).localeCompare(creditDay(y)))) {
+    const on = creditDay(c)
+    if (on <= reduce.eventOn || (paid !== null && paid <= on) || leftCents <= 0) continue
+    const by = Math.min(-grossOfLines(c.lines), leftCents)
+    if (by <= 0) continue
+    const back = shareOf(left, by, leftCents)
+    events.push({ kind: 'credit', period: notBefore(periodOf(on, quarterly)), on, lines: back, number: null, documented: false, sent: true })
+    left = left.map((l, i) => ({ rate: l.rate, base: l.base - (back[i]?.base ?? 0), vat: l.vat - (back[i]?.vat ?? 0) }))
+    leftCents -= by
+  }
+  if (paid !== null && paid > end && leftCents > 0) {
+    const restore = (doc.badDebts ?? []).find((b) => b.kind === 'restore' && b.eventOn === paid)
+    events.push({
       kind: 'restore',
       period: periodOf(paid, quarterly),
       on: paid,
-      lines: shareOf(reduce.lines, paidCents, reduce.cents),
+      lines: shareOf(left, Math.min(paidCents, leftCents), leftCents),
       number: restore?.number ?? null,
       documented,
       sent: Boolean(restore?.sentOn),
       missing: documented && !restore,
-    },
-  ]
+    })
+  }
+  return events
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -875,6 +921,9 @@ export type IssueCode =
   | 'badDebtUnsent'
   | 'badDebtRestore'
   | 'badDebtPaid'
+  | 'badDebtLate'
+  | 'badDebtChanged'
+  | 'badDebtCredit'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
@@ -1017,6 +1066,8 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
           issue('block', 'badDebtPaid', doc.id)
           continue
         }
+        if (e.late) issue('block', 'badDebtLate', doc.id)
+        if (e.changed) issue('block', 'badDebtChanged', doc.id)
         const sign = e.kind === 'reduce' ? -1 : 1
         const vatId = plainVatId(data.vatId)
         const business = Boolean(vatId || doc.partyIco)
@@ -1036,7 +1087,7 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
           }
         }
         note(business ? 'C1' : 'D2', doc.id)
-        issue('warn', e.kind === 'reduce' ? 'badDebt' : 'badDebtBack', doc.id)
+        issue('warn', e.kind === 'reduce' ? 'badDebt' : e.kind === 'credit' ? 'badDebtCredit' : 'badDebtBack', doc.id)
         if (e.missing) issue('block', 'badDebtRestore', doc.id)
         else if (e.documented && !e.sent) issue('warn', 'badDebtUnsent', doc.id)
       }

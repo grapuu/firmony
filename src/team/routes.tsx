@@ -178,7 +178,7 @@ import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
-import { badDebtEvents, filingDeadline, isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
+import { badDebtEvents, claimAt, filingDeadline, isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
 import { ISSUED_RATIO_MODES, coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioMode, type RatioWork, type RatioYear } from '../app/vat-ratio'
 import { RatioPage, type RatioState } from '../views/vat-ratio'
 import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
@@ -1642,26 +1642,29 @@ const addDaysTo = (day: string, days: number): string => new Date(Date.parse(`${
  */
 async function badDebtRows(db: D1Database, company: Company, today: string, only?: string): Promise<BadDebtRow[]> {
   const cutoff = addDaysTo(today, -151)
-  const [found, credits, reminded] = await Promise.all([
+  const issuedDoc = `d.company_id = ?1 AND d.kind = 'invoice_out' AND d.deleted_at IS NULL AND d.booked_at IS NOT NULL`
+  const recorded = 'd.id IN (SELECT document_id FROM bad_debts WHERE company_id = ?1 AND deleted_at IS NULL)'
+  const [withRecords, candidates, reminded] = await Promise.all([
+    // Every invoice with a correction, whatever their number; and the one asked for.
     db
-      .prepare(
-        `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ?1 AND d.kind = 'invoice_out' AND d.deleted_at IS NULL AND d.booked_at IS NOT NULL AND (?3 IS NULL OR d.id = ?3)
-           AND (d.id IN (SELECT document_id FROM bad_debts WHERE company_id = ?1 AND deleted_at IS NULL)
-                OR (?3 IS NOT NULL AND d.vat_mode = 'domestic')
-                OR (d.vat_mode = 'domestic' AND d.corrects IS NULL AND d.source IS NOT 'takings' AND COALESCE(d.currency, 'EUR') = 'EUR' AND d.due_on <= ?2
-                    AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
-                    AND (l.payment_id IS NULL OR (SELECT ABS(p.amount_cents) FROM payments p WHERE p.id = l.payment_id) < d.total_cents)))
-         ORDER BY d.due_on, d.created_at LIMIT 400`,
-      )
-      .bind(company.id, cutoff, only ?? null)
+      .prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE ${issuedDoc} AND (?2 IS NULL OR d.id = ?2) AND (${recorded} OR (?2 IS NOT NULL AND d.vat_mode = 'domestic')) ORDER BY d.due_on, d.created_at`)
+      .bind(company.id, only ?? null)
       .all<Record<string, unknown>>(),
-    db
-      .prepare("SELECT corrects, SUM(total_cents) AS cents FROM documents WHERE company_id = ? AND kind = 'invoice_out' AND corrects IS NOT NULL AND deleted_at IS NULL AND booked_at IS NOT NULL GROUP BY corrects")
-      .bind(company.id)
-      .all<{ corrects: string; cents: number }>(),
+    only
+      ? Promise.resolve({ results: [] as Record<string, unknown>[] })
+      : db
+          .prepare(
+            `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE ${issuedDoc} AND NOT ${recorded}
+               AND d.vat_mode = 'domestic' AND d.corrects IS NULL AND d.source IS NOT 'takings' AND COALESCE(d.currency, 'EUR') = 'EUR' AND d.due_on <= ?2
+               AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
+               AND (l.payment_id IS NULL OR (SELECT ABS(p.amount_cents) FROM payments p WHERE p.id = l.payment_id) < d.total_cents)
+             ORDER BY d.due_on, d.created_at LIMIT 400`,
+          )
+          .bind(company.id, cutoff)
+          .all<Record<string, unknown>>(),
     db.prepare('SELECT id, reminders, reminded_at FROM invoices WHERE company_id = ? AND reminders > 0').bind(company.id).all<{ id: string; reminders: number; reminded_at: number | null }>(),
   ])
-  const credited = new Map(credits.results.map((r) => [r.corrects, Number(r.cents)]))
+  const found = { results: [...withRecords.results, ...candidates.results] }
   const reminders = new Map(reminded.results.map((r) => [r.id, r]))
   const vc = vatCompanyOf(company)
   const out: BadDebtRow[] = []
@@ -1670,8 +1673,8 @@ async function badDebtRows(db: D1Database, company: Company, today: string, only
     const data = vatOf(vd, vc)?.data
     if (!data || data.mode !== 'domestic' || data.corrects || doc.source === 'takings' || !data.lines.some((l) => l.rate > 0 && l.vat > 0)) continue
     const gross = grossOfLines(data.lines)
-    const credit = doc.number ? (credited.get(doc.number) ?? 0) : 0
-    const paid = doc.paidOn ? Math.min(doc.paidCents ?? gross, gross) : 0
+    const credit = claimAt(data.lines, doc.credits ?? [], '9999-12-31').gross - gross
+    const paid = doc.paidOn ? Math.min(doc.paidCents ?? gross + credit, gross + credit) : 0
     const reduce = doc.badDebts?.find((b) => b.kind === 'reduce') ?? null
     const events = badDebtEvents(vd, data, vc)
     const first = events.find((e) => e.kind === 'reduce' || e.kind === 'void')
@@ -1704,7 +1707,7 @@ async function badDebtRows(db: D1Database, company: Company, today: string, only
       restore,
       reducePeriod: first?.period ?? null,
       restorePeriod: raise?.period ?? null,
-      restoreDue: raise && !restore && reduce && documented ? { on: raise.on, cents: Math.min(doc.paidCents ?? reduce.cents, reduce.cents), lines: raise.lines } : null,
+      restoreDue: raise && !restore && reduce && documented ? { on: raise.on, cents: grossOfLines(raise.lines), lines: raise.lines } : null,
       void: first?.kind === 'void',
       documented,
       state,
@@ -1791,11 +1794,25 @@ teamRoutes.post('/klienti/:id/dph/nevymozitelne/:doc', async (c) => {
     confirm: body.potvrdenie === '1',
   }
   const supplied = row.doc.suppliedOn ?? row.doc.issuedOn ?? bratislavaDay(row.doc.createdAt)
-  const { input, errors } = readBadDebt(form, { dueOn: row.doc.dueOn, suppliedOn: supplied, owed: row.owed, today }, (text) => dayOfText(text), moneyOf, { ...t.badDebt.errors })
-  if (!input) return badDebtPage(c, company, row, { values: form, errors }, 422)
   const data = row.doc.vat
-  const lines = badDebtLines(data?.lines ?? [], input.cents)
-  const documented = Boolean(plainVatId(data?.vatId) || row.doc.partyIco) && !NO_DOCUMENT_GROUNDS.includes(input.ground)
+  const credits = row.doc.credits ?? []
+  // The claim on a day: the invoice after its credit notes up to it, less a payment made by it.
+  const owedAt = (on: string) => {
+    const claim = claimAt(data?.lines ?? [], credits, on).gross
+    const paid = row.doc.paidOn && row.doc.paidOn <= on ? Math.min(row.doc.paidCents ?? claim, claim) : 0
+    return claim - paid
+  }
+  const read = readBadDebt(form, { dueOn: row.doc.dueOn, suppliedOn: supplied, owedAt, today }, (text) => dayOfText(text), moneyOf, { ...t.badDebt.errors })
+  const input = read.input
+  const errors: BadDebtErrors = read.errors
+  const documented = input ? Boolean(plainVatId(data?.vatId) || row.doc.partyIco) && !NO_DOCUMENT_GROUNDS.includes(input.ground) : false
+  // A corrective document is sent by the deadline of the return of the period it goes into, or the lowering is not
+  // recognised (§ 25a(11), (13)): one whose deadline has passed is not made.
+  const deadline = input ? filingDeadline(periodOf(input.eventOn, company.vatQuarterly)) : null
+  if (input && documented && deadline && today > deadline) errors.day = t.badDebt.late(textDay(deadline))
+  if (!input || errors.day) return badDebtPage(c, company, row, { values: form, errors }, 422)
+  // Split by rate as the invoice stood on that day, its credit notes counted.
+  const lines = badDebtLines(claimAt(data?.lines ?? [], credits, input.eventOn).lines, input.cents)
   const db = c.env.DB
   const who = c.get('who').user.id
   try {
