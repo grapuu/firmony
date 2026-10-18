@@ -4097,10 +4097,12 @@ teamRoutes.post('/klienti/:id/kniha/majetok/:asset/dph/pouzitie/:use/zrusit', as
   const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
   if (!asset) return missingPage(c)
   const id = c.req.param('use')
+  const vat = (company.assetVat ?? []).find((v) => v.assetId === asset.id)
+  if (!vat?.uses.some((u) => u.id === id)) return missingPage(c)
   const who = c.get('who')
   try {
     await c.env.DB.batch([
-      removeAssetUseStatement(c.env.DB, company.id, asset.id, ID.test(id) ? id : '', who.user.id),
+      removeAssetUseStatement(c.env.DB, company.id, asset.id, id, who.user.id),
       eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.vat.use.removed', subject: asset.id }),
     ])
   } catch (err) {

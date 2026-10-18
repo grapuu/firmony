@@ -217,9 +217,9 @@ export const AssetVatSection: FC<AssetVatProps> = (p) => {
                         <td class="num">{y.r > 0 ? `${y.r}/${n}` : ''}</td>
                         <td>
                           {y.state === 'missing'
-                            ? p.disposal === 'sale' || p.disposal === 'gift'
+                            ? y.missing === 'sale'
                               ? 'chýba, ako bol majetok dodaný'
-                              : 'koeficient roka ešte nie je vysporiadaný'
+                              : 'koeficient roka nie je vysporiadaný: vysporiadajte ho, alebo zapíšte zmenu použitia od toho roka'
                             : STATE_NAMES[y.state]}
                         </td>
                         <td class="num">{y.deduct !== 0 ? formatEurExact(y.deduct) : ''}</td>

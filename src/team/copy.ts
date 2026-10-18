@@ -793,7 +793,8 @@ export const team = typesetAll({
       reverseCorrection: 'Opravná faktúra k dodaniu tovaru s prenesením daňovej povinnosti je v C.1 s rozdielom základu a množstvom ako rozdiel (mínus, keď základ klesá): skontrolujte množstvo.',
       ratioSettle: 'Firma odpočítava daň pomerne koeficientom: po skončení roka treba v tomto období vysporiadať odpočet koeficientom z údajov roka (§ 50 ods. 4).',
       ratioChanged: 'Doklady roka sa od vysporiadania koeficientom zmenili (doklad pribudol, dodatočne sa zaúčtoval alebo opravil): zaúčtujte ich a vysporiadajte rok znova, kým toto obdobie podáte.',
-      assetRatio: 'Investičný majetok sa používa pomerne koeficientom: úpravu odpočítanej dane za tento rok (§ 54) možno vypočítať až po vysporiadaní koeficientu roka (§ 50 ods. 4).',
+      assetRatio:
+        'Investičný majetok sa používa pomerne koeficientom: úpravu odpočítanej dane za tento rok (§ 54) možno vypočítať až po vysporiadaní koeficientu roka (§ 50 ods. 4). Ak firma v tomto roku pomerne neodpočítava, zapíšte pri majetku zmenu použitia od tohto roka.',
       assetSale:
         'Investičný majetok bol počas obdobia na úpravu predaný alebo darovaný: pri majetku zapíšte, či s daňou (alebo oslobodene s nárokom na odpočítanie dane), alebo oslobodene bez neho (§ 54 ods. 7).',
       assetAdjust: 'V riadkoch odpočítania je úprava odpočítanej dane pri investičnom majetku, ktorého použitie sa zmenilo (§ 54 až 54d): skontrolujte ju pri majetku.',

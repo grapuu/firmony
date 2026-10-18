@@ -2079,6 +2079,17 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   § 85j's ten years for real estate of 2004 to 2010, § 54b (a successor types what it was told), § 54c (cash accounting),
   a fiscal year, DV at 20 % or 10 % (the row was not read), building plots (not in the register), the correction at first
   use itself (§ 53(1)(c), booked by the accountant), DV proposed from the purchase document (the register keeps none).
+  Mended after a fifteenth independent review (18 October 2026, of commit 695642f; each finding verified first): the books
+  asked `vatCompanyOf` of every document and so worked out every asset's plan each time (2,6 s at 36 000 documents and 40
+  assets): the years are kept for the same assets and coefficient years (`assetYearsCached` in store.ts); under the
+  former rules a business share back to the one at first use is adjusted back (A's business share moves with A); the
+  books leave out a year before the registration (no return holds it); a sale or a gift in the year of first use
+  adjusts the whole period at once; under the former rules a year that cannot be worked out leaves the later years
+  missing too; shares round up ("74,5 %" and "0,745" are 0,75); A above the business share at first use is refused; a
+  year before 1990 is refused by the form, not by the schema's 500; a change of use not of the asset is 404; the plan
+  says what a missing year lacks, and the coefficient's message how to get out when the company no longer deducts in
+  proportion. Left as it is: a December that holds only an adjustment files an empty control statement (§ 78a(1) as
+  read exempts a nil return and goods or imports alone; an empty one filed is the safe side).
 - Not built: documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
@@ -2562,8 +2573,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1343 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1919 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1349 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1920 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

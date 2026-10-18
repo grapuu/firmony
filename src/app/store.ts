@@ -564,12 +564,25 @@ export const settledCoef =
     return r?.settled && !r.stale ? r.settled.coef : null
   }
 
+/**
+ * The assets' adjustments by year, worked out once for the same assets and coefficient years: the books ask
+ * `vatCompanyOf` of every document (the review of 18 October 2026 measured 2,6 s at 36 000 documents and 40 assets).
+ */
+const assetYearsMemo = new WeakMap<readonly AssetVat[], { ratios: readonly RatioYear[] | undefined; years: ReturnType<typeof assetYearsOf> }>()
+function assetYearsCached(list: readonly AssetVat[], ratios: readonly RatioYear[] | undefined): ReturnType<typeof assetYearsOf> {
+  const hit = assetYearsMemo.get(list)
+  if (hit && hit.ratios === ratios) return hit.years
+  const years = assetYearsOf(list, settledCoef(ratios ?? []))
+  assetYearsMemo.set(list, { ratios, years })
+  return years
+}
+
 /** The VAT registration of a company, as the return reads it. */
 export const vatCompanyOf = (company: Company): VatCompany => ({
   status: company.vatStatus,
   quarterly: company.vatQuarterly,
   since: company.vatSince,
-  ...(company.assetVat && company.assetVat.length > 0 ? { assets: assetYearsOf(company.assetVat, settledCoef(company.vatRatios ?? [])) } : {}),
+  ...(company.assetVat && company.assetVat.length > 0 ? { assets: assetYearsCached(company.assetVat, company.vatRatios) } : {}),
   ...(company.vatRatios && company.vatRatios.length > 0
     ? {
         ratios: new Map(

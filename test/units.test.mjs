@@ -2864,6 +2864,30 @@ async function zipped(entries, note) {
         'the form: DV, the year, the shares; refused without DV, a rate that is none, a year out of range',
         form({}).input?.lines[0]?.vat === 1840000 && form({}).input?.deducted === 0 && form({ dph_dv: '' }).errors.dv !== undefined && form({ dph_sadzba: '20' }).errors.rate !== undefined && form({ dph_rok: '2030' }).errors.firstYear !== undefined,
       )
+      // Mended after the review (18 October 2026).
+      const back = vatAssets.assetPlan(asset({ account: '021', lines: [{ rate: 23, vat: 1000000 }], firstYear: 2020, deducted: 100, business: 100, uses: [use(2021, 'taxable', { business: 95 }), use(2022, 'taxable')] }), none)
+      check(
+        'the former rules: a business share back to the one at first use is adjusted back too (A moved to 0,95, no threshold for § 54a)',
+        JSON.stringify(back.adjustments.map((a) => [a.year, a.deduct])) === JSON.stringify([[2021, -47500], [2022, 45000]]),
+        JSON.stringify(back.adjustments),
+      )
+      const firstSold = vatAssets.assetPlan(asset({ lines: [{ rate: 23, vat: 100000 }], deducted: 100, business: 100, disposedOn: '2025-09-01', disposal: 'sale', sale: 'exempt' }), none)
+      check('sold free of VAT in the year of first use: the whole period at once (R 5/5)', firstSold.adjustments[0]?.year === 2025 && firstSold.adjustments[0]?.r === 5 && firstSold.adjustments[0]?.deduct === -100000)
+      const lost = vatAssets.assetPlan(asset({ account: '021', firstYear: 2018, deducted: 100, business: 100, regime: 'ratio' }), (y) => (y === 2019 ? null : 100))
+      check('the former rules: a year without its coefficient leaves every later year missing too', lost.missing.length === 19 && lost.years.at(-1)?.missing === 'ratio')
+      check('shares round up: 74,5 % and 0,745 are 0,75; 5 % is 0,05', vatAssets.shareOf('74,5 %') === 75 && vatAssets.shareOf('0,745') === 75 && vatAssets.shareOf('5 %') === 5 && vatAssets.shareOf('0,740') === 74)
+      check('A above the business share at first use is refused', form({ dph_odpocet: '1', dph_podnikanie: '0,80' }).errors.deducted !== undefined && form({ dph_odpocet: '0,80', dph_podnikanie: '0,80' }).input?.deducted === 80)
+      const books = (vatSince) =>
+        ledger
+          .buildBooks({ company: { id: 'c', startOn: '2027-01-01', vatStatus: 'payer', vatSince, assetVat: [asset({ firstYear: 2026, inUseOn: '2026-03-01', uses: [use(2027, 'taxable')] })] }, docs: [], payments: [], banks: [], filed: [], manual: [], today: '2029-01-15' })
+          .entries.filter((e) => e.key.startsWith('p54:'))
+          .map((e) => [e.key, e.on, e.lines[0]?.md, e.lines[0]?.d, e.lines[0]?.cents])
+      check(
+        'the books: each year on 31 December, 343.100 against 548; none for a year before the registration',
+        JSON.stringify(books(null)) === JSON.stringify([['p54:2027', '2027-12-31', '343.100', '548', 368000], ['p54:2028', '2028-12-31', '343.100', '548', 368000]]) &&
+          JSON.stringify(books('2028-03-01').map((e) => e[0])) === JSON.stringify(['p54:2028']),
+        JSON.stringify(books(null)),
+      )
       const useForm = (f) => vatAssets.readAssetUse({ od: '2027', pouzitie: 'share', podiel: '0,40', podnikanie: '1', ...f }, { firstYear: 2025, account: '022' })
       check(
         'a change of use: within the period after first use, a share for "iný podiel"',

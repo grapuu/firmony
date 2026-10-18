@@ -76,4 +76,6 @@ export async function checkAssetVat({ db, acc, lucia, nowS, day, capture }) {
   const use = await db.prepare("SELECT id FROM asset_vat_uses WHERE asset_id = 'as-54' AND from_year = ? AND deleted_at IS NULL").bind(Y).first()
   res = await acc.post(`${base}/dph/pouzitie/${use?.id}/zrusit`, {})
   check("locked: last year's change cannot be removed", res.status === 409)
+  res = await acc.post(`${base}/dph/pouzitie/${crypto.randomUUID()}/zrusit`, {})
+  check("a change of use that is not this asset's: not found", res.status === 404)
 }

@@ -137,6 +137,8 @@ export interface AssetPlanYear {
   /** 'same' as A, 'below' the threshold of § 54(6), 'missing', 'adjust', 'sale', 'after' a disposal, 'first' the year of first use. */
   state: 'first' | 'same' | 'below' | 'missing' | 'adjust' | 'sale' | 'after'
   deduct: number
+  /** What a 'missing' year lacks. */
+  missing?: AssetMissing['code']
 }
 
 const up = (hundredths: number): number => Math.ceil(hundredths - 1e-9)
@@ -165,25 +167,39 @@ export function assetPlan(v: AssetVat, coefOf: (year: number) => number | null):
   const last = lastYearOf(v)
   const former = isFormer(v)
   const out = disposalOf(v)
-  const years: AssetPlanYear[] = [{ year: v.firstYear, a: v.deducted, b: null, r: 0, state: 'first', deduct: 0 }]
+  // A sale or a gift in the year of first use still changes the purpose after it: every year of the period at once.
+  const soldFirst = out?.supply === true && out.year === v.firstYear
+  const years: AssetPlanYear[] = soldFirst ? [] : [{ year: v.firstYear, a: v.deducted, b: null, r: 0, state: 'first', deduct: 0 }]
   const adjustments: AssetAdjustment[] = []
   const missing: AssetMissing[] = []
   let a = v.deducted
-  for (let year = v.firstYear + 1; year <= last; year++) {
+  // The business share A stands for: at first use, and under the former rules the one last adjusted to (§ 54a, § 54d).
+  let aBusiness = v.business
+  // Under the former rules a year that cannot be worked out leaves A unknown for every later year.
+  let unknown: AssetMissing['code'] | null = null
+  for (let year = soldFirst ? v.firstYear : v.firstYear + 1; year <= last; year++) {
     const left = last - year + 1
     if (out && year > out.year) {
       years.push({ year, a, b: null, r: 0, state: 'after', deduct: 0 })
       continue
     }
     const supply = out?.supply && year === out.year
+    const lack = (code: AssetMissing['code'], r: number) => {
+      missing.push({ assetId: v.assetId, number: v.number, year, code })
+      years.push({ year, a, b: null, r, state: 'missing', deduct: 0, missing: code })
+      if (former) unknown = code
+    }
+    if (unknown) {
+      lack(unknown, left)
+      continue
+    }
     let b: number | null
     let business: number
     if (supply) {
       business = 100
       b = v.sale === 'taxed' ? 100 : v.sale === 'exempt' ? 0 : null
       if (b === null) {
-        missing.push({ assetId: v.assetId, number: v.number, year, code: 'sale' })
-        years.push({ year, a, b: null, r: left, state: 'missing', deduct: 0 })
+        lack('sale', left)
         continue
       }
     } else {
@@ -195,14 +211,13 @@ export function assetPlan(v: AssetVat, coefOf: (year: number) => number | null):
         continue
       }
       if (purpose === null) {
-        missing.push({ assetId: v.assetId, number: v.number, year, code: 'ratio' })
-        years.push({ year, a, b: null, r: former ? left : 1, state: 'missing', deduct: 0 })
+        lack('ratio', former ? left : 1)
         continue
       }
       b = up((purpose * business) / 100)
     }
     const r = supply || former ? left : 1
-    if (b === a || (business === v.business && Math.abs(a - b) <= 10)) {
+    if (b === a || (business === aBusiness && Math.abs(a - b) <= 10)) {
       years.push({ year, a, b, r, state: b === a ? 'same' : 'below', deduct: 0 })
       if (supply) a = b
       continue
@@ -213,7 +228,10 @@ export function assetPlan(v: AssetVat, coefOf: (year: number) => number | null):
     years.push({ year, a, b, r, state: supply ? 'sale' : 'adjust', deduct })
     if (lines.length > 0) adjustments.push({ assetId: v.assetId, number: v.number, name: v.name, year, a, b, r, n, reason: supply ? 'sale' : 'use', lines, deduct })
     // The former rules adjust every year left at once: the next year compares with what was adjusted to.
-    if (former || supply) a = b
+    if (former || supply) {
+      a = b
+      aBusiness = business
+    }
   }
   return { years, adjustments, missing }
 }
@@ -253,20 +271,28 @@ export function assetYearsOf(list: readonly AssetVat[], coefOf: (year: number) =
 /** "0,74" of 74 hundredths; "1,00" of 100. */
 export const shareText = (hundredths: number): string => `${Math.floor(hundredths / 100)},${String(hundredths % 100).padStart(2, '0')}`
 
-/** A share typed as the law writes it ("0,80", "1") or in per cent ("80 %", "80"); hundredths, or null when it is none. */
+/**
+ * A share typed as the law writes it ("0,80", "1", "0,745") or in per cent ("80 %", "74,5 %", "80"); hundredths rounded
+ * up to two decimal places as annex 1 asks, or null when it is none.
+ */
 export function shareOf(text: string): number | null {
   const plain = text.replace(/\s/g, '').replace('.', ',')
-  const decimal = /^([01])(?:,(\d{1,2}))?$/.exec(plain)
+  // Hundredths from a whole part and the digits after the comma, rounded up: any digit beyond the second adds one.
+  const of = (whole: string, digits: string, scale: 1 | 100): number => {
+    const hundredths = scale === 100 ? Number(whole) * 100 + Number(digits.slice(0, 2).padEnd(2, '0')) : Number(whole)
+    const rest = scale === 100 ? digits.slice(2) : digits
+    return hundredths + (/[1-9]/.test(rest) ? 1 : 0)
+  }
+  const decimal = /^([01])(?:,(\d+))?$/.exec(plain)
   if (decimal) {
-    const value = Number(decimal[1]) * 100 + Number((decimal[2] ?? '').padEnd(2, '0'))
+    const value = of(decimal[1] ?? '0', decimal[2] ?? '', 100)
     return value <= 100 ? value : null
   }
-  const percent = /^(\d{1,3})(?:,\d+)?%?$/.exec(plain)
-  if (percent && plain.includes('%')) {
-    const value = Number(percent[1])
+  const percent = /^(\d{1,3})(?:,(\d+))?(%?)$/.exec(plain)
+  if (percent && (percent[3] === '%' || (percent[1] ?? '').length >= 2)) {
+    const value = of(percent[1] ?? '0', percent[2] ?? '', 1)
     return value <= 100 ? value : null
   }
-  if (/^\d{2,3}$/.test(plain) && Number(plain) <= 100) return Number(plain)
   return null
 }
 
@@ -383,11 +409,13 @@ export function readAssetVat(
   if (dv === null || Number.isNaN(dv) || dv <= 0) errors.dv = 'Zadajte daň z obstarávacej ceny alebo vlastných nákladov majetku (DV).'
   const inUse = Number(inUseOn.slice(0, 4))
   const firstYear = /^\d{4}$/.test(values.firstYear) ? Number(values.firstYear) : Number.NaN
-  if (!Number.isInteger(firstYear) || firstYear < inUse - 1 || firstYear > thisYear + 1) errors.firstYear = `Zadajte rok prvotného použitia, od ${inUse - 1} do ${thisYear + 1}.`
+  const earliest = Math.max(1990, inUse - 1)
+  if (!Number.isInteger(firstYear) || firstYear < earliest || firstYear > thisYear + 1) errors.firstYear = `Zadajte rok prvotného použitia, od ${earliest} do ${thisYear + 1}.`
   const deducted = shareOf(values.deducted)
   if (deducted === null) errors.deducted = 'Zadajte podiel odpočítanej dane ako 1, 0 alebo napríklad 0,74.'
   const business = shareOf(values.business)
   if (business === null) errors.business = 'Zadajte podiel použitia na podnikanie ako 1 alebo napríklad 0,80.'
+  else if (deducted !== null && deducted > business) errors.deducted = 'Odpočítaný podiel nemôže byť vyšší ako podiel použitia na podnikanie.'
   if (Object.keys(errors).length > 0 || dv === null || deducted === null || business === null) return { values, input: null, errors }
   return { values, input: { lines: [{ rate, vat: dv }], firstYear, deducted, business, regime: values.regime, sale: values.sale === '' ? null : values.sale }, errors }
 }

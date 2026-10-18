@@ -1043,7 +1043,8 @@ export function buildBooks(input: LedgerInput): Books {
   if (company.vatStatus === 'payer') {
     for (const [year, y] of vatCompanyOf(company).assets ?? []) {
       const end = `${year}-12-31`
-      if (y.missing.length > 0 || y.items.length === 0 || !inBooks(end) || (input.today && end >= input.today)) continue
+      // A year before the registration has no return to hold it (the VAT periods begin with it).
+      if (y.missing.length > 0 || y.items.length === 0 || !inBooks(end) || (input.today && end >= input.today) || (company.vatSince && end < company.vatSince)) continue
       const lines = y.items.filter((i) => i.deduct !== 0).map((i) => (i.deduct > 0 ? { md: VAT_IN, d: '548', cents: i.deduct } : { md: '548', d: VAT_IN, cents: -i.deduct }))
       if (lines.length === 0) continue
       entries.push({
