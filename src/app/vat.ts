@@ -178,6 +178,11 @@ export interface VatDoc {
   ratio?: number | null
   /** The document's own mark for the coefficient (vat-ratio.ts RatioMode): issued 'right', 'none', 'skip'; received 'final'. */
   ratioMode?: 'right' | 'none' | 'skip' | 'final' | null
+  /** A received invoice: its due day and the day it was paid (the bank's payment, or the cash box's), for § 53b. */
+  dueOn?: string | null
+  paidOn?: string | null
+  /** Paid by the owner from his own money (no day known): never corrected under § 53b. */
+  paidPrivately?: boolean
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -466,6 +471,40 @@ export function periodOfDoc(doc: VatDoc, data: VatData, company: VatCompany, fil
   return period
 }
 
+/**
+ * § 53b (read in the original on static.slov-lex.sk through the browser pane on 18 October 2026, the version of 1 January
+ * 2026; with the return's instructions, point 44, and the control statement's, C.2): a payer that has not paid a Slovak
+ * supplier's invoice (§ 69(1)) corrects the VAT it deducted from it in the period in which the 101st day after its due day
+ * falls (§ 53b(1)(a)), or at once with a deduction claimed after that period (§ 53b(2)), by what it deducted (the
+ * proportional deduction counted, § 53b(3)): row 29 plus, a line of C.2 with "0" for the corrective document and ONP "x".
+ * Paid later, it may correct it back in the period of the payment (§ 53b(4)(a)): row 29 minus, C.2 with plus amounts.
+ * Paid within the period of the correction, nothing is reported. A whole invoice is paid or not (a part paid: by hand).
+ */
+export interface Unpaid53b {
+  kind: 'correct' | 'back'
+  period: string
+  /** The day the books take it: the 101st day (or the deduction's day, when later), or the day it was paid. */
+  on: string
+}
+
+export function unpaidEvents(doc: VatDoc, data: VatData, company: VatCompany, filed: ReadonlyMap<string, string> = new Map()): Unpaid53b[] {
+  if (company.status !== 'payer' || doc.kind !== 'invoice_in' || data.mode !== 'domestic' || !doc.booked || !doc.dueOn || data.corrects || doc.paidPrivately) return []
+  if (data.lines.reduce((sum, line) => sum + line.deduct, 0) <= 0) return []
+  const day101 = addDays(doc.dueOn, 101)
+  const paid = doc.paidOn ?? null
+  // Paid within the 100 days after the due day: nothing to correct.
+  if (paid !== null && paid < day101) return []
+  const quarterly = company.quarterly
+  const own = periodOfDoc(doc, data, company, filed)
+  const at = periodOf(day101, quarterly)
+  const later = at >= own
+  const correct: Unpaid53b = { kind: 'correct', period: later ? at : own, on: later ? day101 : periodRange(own).from > doc.receivedOn ? periodRange(own).from : doc.receivedOn }
+  if (paid === null) return [correct]
+  const paidPeriod = periodOf(paid, quarterly)
+  if (paidPeriod <= correct.period) return []
+  return [correct, { kind: 'back', period: paidPeriod, on: paid }]
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // The return
 // ---------------------------------------------------------------------------------------------------------------
@@ -624,6 +663,8 @@ export interface KvC2 {
   dr: number
   s: number
   or: number
+  /** A correction of the deduction under § 53b (the schema's ONP, "x"): a supplier's invoice not paid, or paid after it. */
+  onp?: boolean
   doc: string
 }
 export interface KvD2 {
@@ -685,6 +726,8 @@ export type IssueCode =
   | 'reverseCorrection'
   | 'ratioSettle'
   | 'ratioChanged'
+  | 'unpaid53b'
+  | 'paid53b'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
@@ -752,7 +795,11 @@ export function vatDocsByPeriod(company: VatCompany, docs: VatDoc[], filed: Read
       continue
     }
     const counted = vatOf(doc, company)
-    if (counted) put(periodOfDoc(doc, counted.data, company, filed), doc)
+    if (!counted) continue
+    const own = periodOfDoc(doc, counted.data, company, filed)
+    put(own, doc)
+    // A supplier's invoice not paid in time is in the period of its correction under § 53b and of its payment too.
+    for (const e of unpaidEvents(doc, counted.data, company, filed)) if (e.period !== own) put(e.period, doc)
   }
   return out
 }
@@ -799,6 +846,20 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     const counted = vatOf(doc, company)
     if (!counted) continue
     const { data, proposed } = counted
+    // § 53b: the correction of the deduction from a supplier's invoice not paid in time, and the correction back once paid.
+    if (payer && !(company.since && taxDay(doc, data) < company.since)) {
+      for (const e of unpaidEvents(doc, data, company, filed)) {
+        if (e.period !== period) continue
+        const sign = e.kind === 'correct' ? 1 : -1
+        for (const line of data.lines) {
+          if (line.deduct === 0) continue
+          add('r29', sign * line.deduct, doc.id)
+          kv.c2.push({ dod: data.vatId, fo: '0', fp: kvNumber(doc.number), zr: -sign * line.base, dr: -sign * line.vat, s: line.rate, or: -sign * line.deduct, onp: true, doc: doc.id })
+        }
+        note('C2', doc.id)
+        issue('warn', e.kind === 'correct' ? 'unpaid53b' : 'paid53b', doc.id)
+      }
+    }
     if (periodOfDoc(doc, data, company, filed) !== period) continue
     if (company.since && taxDay(doc, data) < company.since) {
       issue('warn', 'before', doc.id)

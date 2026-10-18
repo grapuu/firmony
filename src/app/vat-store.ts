@@ -225,8 +225,9 @@ const secondsOf = (day: string): number => Math.floor(Date.parse(`${day}T00:00:0
 
 /**
  * The documents that may fall in the periods from `first` to `last`: every one dated in them or in the two months
- * before (goods from the EU fall due the month after), every one that came in during them (a late deduction), and
- * every one the accountant put in a period by hand. A superset: vat.ts decides which period each is.
+ * before (goods from the EU fall due the month after), every one that came in during them (a late deduction), every
+ * one the accountant put in a period by hand, and a supplier's invoice whose 101st day after its due day is in them or
+ * that was paid in them after it (§ 53b). A superset: vat.ts decides which period each is.
  */
 export async function docsAround(db: D1Database, company: string, first: string, last: string): Promise<Doc[]> {
   const rows = await docsAroundStatement(db, company, first, last).all<Record<string, unknown>>()
@@ -244,10 +245,14 @@ export function docsAroundStatement(db: D1Database, company: string, first: stri
           AND (d.vat_period IS NOT NULL
                OR d.supplied_on BETWEEN ?2 AND ?3
                OR d.issued_on BETWEEN ?2 AND ?3
-               OR d.created_at BETWEEN ?4 AND ?5)
+               OR d.created_at BETWEEN ?4 AND ?5
+               OR (d.kind = 'invoice_in' AND d.due_on BETWEEN ?6 AND ?7)
+               OR (d.kind = 'invoice_in' AND d.due_on < ?7 AND (
+                    EXISTS (SELECT 1 FROM links lk JOIN payments pp ON pp.id = lk.payment_id WHERE lk.document_id = d.id AND pp.booked_on BETWEEN ?8 AND ?3)
+                    OR EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL AND ce.on_date BETWEEN ?8 AND ?3))))
         ORDER BY COALESCE(d.supplied_on, d.issued_on), d.created_at`,
     )
-    .bind(company, addDays(from, -62), to, secondsOf(from) - 86_400, secondsOf(to) + 2 * 86_400)
+    .bind(company, addDays(from, -62), to, secondsOf(from) - 86_400, secondsOf(to) + 2 * 86_400, addDays(from, -101), addDays(to, -101), from)
 }
 
 /** The rows whose amounts differ from what was filed (rows 36 and 37 belong to a supplementary return alone). */

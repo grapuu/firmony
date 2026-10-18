@@ -3,7 +3,7 @@
 import { MAIL } from '../config'
 import { now } from '../db'
 import { type Category, type PaidBy } from '../app/booking'
-import { CASH_PAID_COLUMN, COMPANY_COLUMNS, DOC_FROM, MISSING, companyOf, docOf, type Company, type Doc, type Team, type User } from '../app/store'
+import { CASH_PAID_COLUMN, PAID_ON_COLUMN, COMPANY_COLUMNS, DOC_FROM, MISSING, companyOf, docOf, type Company, type Doc, type Team, type User } from '../app/store'
 import { POA_STATE_SQL, type PoaState } from '../app/papers'
 import { DECLARATION_STATE_SQL, OPEN_REPORTS_SQL, type DeclarationState } from '../app/aml'
 
@@ -151,7 +151,7 @@ export interface QueueDoc extends Doc {
   companyName: string
 }
 
-const DOC_COLUMNS_ALL = `d.*, ab.name AS added_by_name, bb.name AS booked_by_name, l.payment_id, l.how, ${CASH_PAID_COLUMN}`
+const DOC_COLUMNS_ALL = `d.*, ab.name AS added_by_name, bb.name AS booked_by_name, l.payment_id, l.how, ${CASH_PAID_COLUMN}, ${PAID_ON_COLUMN}`
 
 /** Documents that wait to be booked, the oldest first: of one company, or of every company the user sees. */
 export async function bookingQueue(db: D1Database, user: User, demo: boolean, company: string | null = null, limit = 300): Promise<QueueDoc[]> {

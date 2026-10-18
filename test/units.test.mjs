@@ -2660,6 +2660,50 @@ async function zipped(entries, note) {
   const kvXml = vatXml.statementXml(filer, '2027-01', jan.kv)
   const kvValid = await valid(kvXml, KV_XSD, 'kv')
   check('the control statement is valid against kv_dph_2025.xsd', kvValid.ok, kvValid.why)
+
+  // § 53b (18 October 2026): a supplier's invoice not paid within 100 days of its due day corrects its deduction in the
+  // period of the 101st day (row 29, C.2 with "0" and ONP), and back in the period it is paid.
+  {
+    const unpaid = (fields) =>
+      doc({ number: 'FA-53B', issuedOn: '2027-01-10', receivedOn: '2027-01-12', dueOn: '2027-01-31', vat: v('domestic', [[23, 10000, 2300, 2300]], { vatId: 'SK2121212121', suppliedOn: '2027-01-10' }), ...fields })
+    const ev = (d, c = payer) => vat.unpaidEvents(d, d.vat, c)
+    check('the 101st day after 31 January 2027 is 12 May: unpaid, the correction in May', JSON.stringify(ev(unpaid({}))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12' }]))
+    check('paid on the 100th day (11 May): nothing; paid on the 101st in the same period: nothing to report', ev(unpaid({ paidOn: '2027-05-11' })).length === 0 && ev(unpaid({ paidOn: '2027-05-20' })).length === 0)
+    check(
+      'paid in July: corrected in May, back in July; a quarterly payer the second and third quarter',
+      JSON.stringify(ev(unpaid({ paidOn: '2027-07-03' }))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12' }, { kind: 'back', period: '2027-07', on: '2027-07-03' }]) &&
+        JSON.stringify(ev(unpaid({ paidOn: '2027-07-03' }), { ...payer, quarterly: true }).map((e) => e.period)) === JSON.stringify(['2027-Q2', '2027-Q3']),
+    )
+    check(
+      'deducted only after the period of the 101st day: corrected at once (§ 53b(2))',
+      JSON.stringify(ev(unpaid({ receivedOn: '2027-06-10' }))) === JSON.stringify([{ kind: 'correct', period: '2027-06', on: '2027-06-10' }]),
+    )
+    check(
+      'no correction for a receipt, a corrective invoice, one paid by the owner, one without a deduction or a due day',
+      ev(unpaid({ kind: 'receipt' })).length === 0 &&
+        ev(unpaid({ vat: v('domestic', [[23, -10000, -2300, -2300]], { vatId: 'SK2121212121', corrects: 'FA-1' }) })).length === 0 &&
+        ev(unpaid({ paidPrivately: true })).length === 0 &&
+        ev(unpaid({ vat: v('domestic', [[23, 10000, 2300, 0]], { vatId: 'SK2121212121' }) })).length === 0 &&
+        ev(unpaid({ dueOn: null })).length === 0,
+    )
+    const d53 = unpaid({ paidOn: '2027-07-03', vat: v('domestic', [[23, 10000, 2300, 1725]], { vatId: 'SK2121212121', suppliedOn: '2027-01-10' }) })
+    const buckets = vat.vatDocsByPeriod(payer, [d53])
+    const may = vat.workOut(payer, '2027-05', buckets.get('2027-05') ?? [])
+    const july = vat.workOut(payer, '2027-07', buckets.get('2027-07') ?? [])
+    check(
+      "May: row 29 the 17,25 € deducted (in proportion), C.2 with '0', ONP and minus amounts; the tax raised",
+      may.rows.r29 === 1725 &&
+        may.rows.r32 === 1725 &&
+        JSON.stringify(may.kv.c2) === JSON.stringify([{ dod: 'SK2121212121', fo: '0', fp: 'FA-53B', zr: -10000, dr: -2300, s: 23, or: -1725, onp: true, doc: d53.id }]) &&
+        may.issues.some((i) => i.code === 'unpaid53b'),
+      JSON.stringify([may.rows.r29, may.kv.c2]),
+    )
+    check('July: back, row 29 minus, C.2 plus', july.rows.r29 === -1725 && july.rows.r33 === 1725 && july.kv.c2[0]?.or === 1725 && july.kv.c2[0]?.zr === 10000 && july.issues.some((i) => i.code === 'paid53b'))
+    const mayXml = vatXml.statementXml(filer, '2027-05', may.kv)
+    const mayValid = await valid(mayXml, KV_XSD, 'kv53b')
+    check('the control statement of May with ONP="x", valid against kv_dph_2025.xsd', mayValid.ok && mayXml.includes('ONP="x"') && mayXml.includes('FO="0"'), mayValid.why)
+    check('the books take row 29 off what the return deducts', ledger.vatDeducted({ ...vat.emptyRows(), r19: 5000, r29: 1725 }) === 3275)
+  }
   check(
     'the control statement is in its namespace with ISO dates',
     kvXml.includes('<KVDPH_2025 xmlns="https://ekr.financnasprava.sk/Formulare/XSD/kv_dph_2025.xsd">') &&
@@ -6298,6 +6342,21 @@ await (await import('./social.units.mjs')).checkSocial()
   )
   const noRates = ledger.buildBooks({ company: co, docs: [doc('usd-in', { totalCents: 100000, currency: 'USD', fxRate: '1.25' })], payments: [], banks: [], filed: [], manual: opening })
   check('the rate the accountant confirmed counts without any kept: 1 000 USD at 1,25 is 800 €', noRates.entries.find((e) => e.key === 'd:usd-in')?.lines[0]?.cents === 80000)
+  // § 53b in the books: the deduction leaves 343.100 for 378 on the 101st day, and comes back with the payment.
+  {
+    const payerCo = { id: 'c1', name: 'Firma', vatStatus: 'payer', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: 'SK2120000000', address: 'x' }
+    const unpaidDoc = doc('U-1', { dueOn: '2026-01-31', totalCents: 12300, vatCents: 2300, vatDeduct: true, issuedOn: '2026-01-10', createdAt: Date.parse('2026-01-12T10:00:00Z') / 1000, vat: { mode: 'domestic', lines: [{ rate: 23, base: 10000, vat: 2300, deduct: 2300 }], suppliedOn: '2026-01-10', vatId: 'SK2121212121', corrects: null, period: null } })
+    const books = (fields, today) => ledger.buildBooks({ company: payerCo, docs: [{ ...unpaidDoc, ...fields }], payments: [], banks: [], filed: [], manual: [], today })
+    const out = books({}, '2026-10-18').entries.filter((e) => e.key.startsWith('53b:'))
+    const paid = books({ paidOn: '2026-07-03' }, '2026-10-18').entries.filter((e) => e.key.startsWith('53b:'))
+    check(
+      'the books: 378 against 343.100 on 12 May; back on the day it is paid; nothing before the day has come',
+      out.length === 1 && out[0].on === '2026-05-12' && out[0].lines[0].md === '378' && out[0].lines[0].d === '343.100' && out[0].lines[0].cents === 2300 &&
+        paid.length === 2 && paid[1].on === '2026-07-03' && paid[1].lines[0].md === '343.100' && paid[1].lines[0].d === '378' &&
+        books({}, '2026-05-11').entries.filter((e) => e.key.startsWith('53b:')).length === 0,
+      JSON.stringify(out),
+    )
+  }
 }
 
 // The one-stop shop (17 October 2026): a quarter's return of supplies to consumers in other member states.

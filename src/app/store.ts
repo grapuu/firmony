@@ -200,6 +200,8 @@ export interface Doc {
   vatRatio?: number | null
   /** The document's own mark for the coefficient (vat-ratio.ts): issued 'right', 'none', 'skip'; received 'final'. */
   ratioMode?: RatioMode | null
+  /** The day it was paid: its bank payment's, else its cash document's (§ 53b). */
+  paidOn?: string | null
 }
 
 export interface Message {
@@ -350,13 +352,17 @@ function paymentOf(row: Row): Payment {
 /** A document's cash document of the cash box that paid it, "VPD2026-001 2026-10-16", over the alias d (Doc.cashPaid). */
 export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1) AS cash_paid"
 
+/** The day a document was paid, over the aliases d and l (its link): the bank's payment, else its cash document's (§ 53b). */
+export const PAID_ON_COLUMN = `COALESCE((SELECT p.booked_on FROM payments p WHERE p.id = l.payment_id),
+  (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on`
+
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
   d.first_approved_at, d.first_approved_by, fa.name AS first_approved_by_name, d.iban_by,
-  d.center_id, d.takings_cash, d.vat_ratio, d.ratio_mode`
+  d.center_id, d.takings_cash, d.vat_ratio, d.ratio_mode, ${PAID_ON_COLUMN}`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
  * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
@@ -364,7 +370,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
 export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.status, d.kind, d.party, d.party_ico, d.number, d.issued_on, d.due_on,
   d.total_cents, d.vat_cents, d.currency, d.category, d.vat_deduct, d.account, d.booked_at, d.paid_privately, l.payment_id, d.supplied_on,
   d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse,
-  d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_mode`
+  d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_mode, ${PAID_ON_COLUMN}`
 export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
 export const DOC_FROM =
   'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by LEFT JOIN users fa ON fa.id = d.first_approved_by'
@@ -427,6 +433,7 @@ export function docOf(row: Row): Doc {
     takingsCash: num(row.takings_cash),
     vatRatio: typeof row.vat_ratio === 'number' ? row.vat_ratio : null,
     ratioMode: isRatioMode(row.ratio_mode) ? row.ratio_mode : null,
+    paidOn: str(row.paid_on),
     cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }
@@ -488,6 +495,9 @@ export function vatDocOf(doc: Doc): VatDoc {
     takings: doc.source === 'takings',
     ratio: doc.vatRatio ?? null,
     ratioMode: doc.ratioMode ?? null,
+    dueOn: doc.dueOn,
+    paidOn: doc.paidOn ?? null,
+    paidPrivately: doc.paidPrivately,
   }
 }
 

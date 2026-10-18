@@ -34,7 +34,8 @@ over. Bring this section up to date first whenever a session ends.
    (schema step 58, under "Payroll") and the social fund's mandatory allocation; a morning doorbell to approvers and
    budgets of cost centres (schema step 59); payroll by cost centre (schema step 60); deductions from wages for
    executions (schema step 61, under "Payroll"); the proportional deduction of VAT by a coefficient (§ 50, schema step 62,
-   under "VAT: the return and the control statement"); depreciation and stock by cost centre (schema steps 63 and 64, under "Cost centres"). **Nothing is live**: there
+   under "VAT: the return and the control statement"); depreciation and stock by cost centre (schema steps 63 and 64, under "Cost centres"); the correction of
+   the deduction from a supplier's invoice not paid within 100 days (§ 53b, under "VAT"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1949,7 +1950,20 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   súčtom riadkov 20, 22 a 23a" (likewise 18a and 19), so rows 20 to 23c keep the documents' deduction alone.
   Found on the way: since the full payroll of 17 October 2026 (ed07802) the VAT page and the closing page showed
   payroll's sentence of what is not built (one text replaced in all three places); each says its own again.
-- Not built: triangular trade, bad debts (§ 25a, § 53b), documents in another
+- A supplier's invoice not paid in time (built 18 October 2026, § 53b; `unpaidEvents` in vat.ts). Read in the original
+  on static.slov-lex.sk and in the instructions to DPHv25 (point 44, row 29) and to KVDPHv23 (C.2: the corrective
+  document "0", ONP "x"; the settlement of § 50(4) in no line), through the browser pane: a received domestic invoice
+  (§ 69(1)) with a deduction, not paid within 100 days of its due day, corrects its deduction in the period of the 101st
+  day (or at once with a deduction claimed after it, § 53b(2)), by what it deducted (in proportion too, § 53b(3)): row 29
+  plus, a line of C.2 per rate with minus amounts; paid later, back in the period of the payment (row 29 minus, C.2 plus);
+  paid within the period of the correction, nothing. Paid means its bank payment or its cash document
+  (`PAID_ON_COLUMN`; paid by the owner never corrects). `docsAround` loads an invoice whose 101st day or payment is in
+  the periods asked; the books move it 378 against 343.100 on its day (not before the day has come) and back with the
+  payment, and the return's settlement takes row 29 off what it deducts (`vatDeducted`). The VAT page says why (warnings
+  `unpaid53b`, `paid53b`). Not built: a part paid (a whole invoice is paid or not), the supplier's side (§ 25a: the base
+  of a claim that cannot be recovered lowered, its corrective document; then § 53b(1)(b) for the customer).
+  test/vat-53b.runtime.mjs, units "§ 53b".
+- Not built: triangular trade, the supplier's bad debts (§ 25a), documents in another
   currency without their euro amounts, a request to refund an overpayment, interest or a penalty on a supplementary
   return, a switch between monthly and quarterly periods, filing through an interface of the Financial
   Administration. To see on the first real filing: that eDane opens the files as they are, and what the form wants
@@ -2432,8 +2446,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1282 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1870 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1292 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1875 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

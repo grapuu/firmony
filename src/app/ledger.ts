@@ -30,7 +30,7 @@ import { eurOf, rateFor, rateMicro, type RateMicro, type Rates } from './fx'
 import { centsOf } from './invoices'
 import { normalizeVs, type DocKind, type Exempt } from './match'
 import { bratislavaDay, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
-import { isIssued, periodRange, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
+import { isIssued, periodRange, unpaidEvents, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
 import { groupedIban, periodName, rowsOf, type FiledReturn } from './vat-store'
 import { settleTotal } from './vat-ratio'
 
@@ -311,6 +311,8 @@ export interface LedgerInput {
   stock?: StockEntry[]
   /** The ECB's reference rates of the currencies the documents and payments are in (fx-store.ts). */
   rates?: Rates
+  /** Today in Bratislava: a correction under § 53b whose day has not come yet is not in the books. */
+  today?: string
 }
 
 /** An invoice's open item (saldokonto): what it comes to on its account and what of it was settled. */
@@ -628,7 +630,8 @@ export function filingChain(f: FiledReturn): { kind: FilingKind; filedOn: string
 
 /** The tax a return owes (rows 17 and 25) and deducts (rows 18, 18a and 19, less row 28). */
 export const vatOwed = (rows: Rows): number => rows.r17 + rows.r25
-export const vatDeducted = (rows: Rows): number => rows.r18 + rows.r18a + rows.r19 - rows.r28
+/** What a return deducts: rows 18, 18a and 19, less the corrections of row 28 (§ 53) and row 29 (§ 53b). */
+export const vatDeducted = (rows: Rows): number => rows.r18 + rows.r18a + rows.r19 - rows.r28 - rows.r29
 
 function settlementLines(owed: number, deducted: number): LedgerLine[] {
   const lines: LedgerLine[] = []
@@ -939,6 +942,35 @@ export function buildBooks(input: LedgerInput): Books {
             lines,
           })
         before = now.rows
+      }
+    }
+  }
+
+  // § 53b (vat.ts unpaidEvents): the VAT deducted from a supplier's invoice not paid within 100 days of its due day leaves
+  // the deduction (it is owed back to the state until the invoice is paid: 378 against 343.100), and comes back with the
+  // payment (343.100 against 378); the return of each period then moves it with row 29.
+  if (company.vatStatus === 'payer') {
+    const vc = vatCompanyOf(company)
+    const filedOn = new Map(input.filed.map((f) => [f.period, f.filedOn]))
+    for (const d of input.docs) {
+      if (d.kind !== 'invoice_in' || !d.bookedAt || !d.dueOn) continue
+      const vd = vatDocOf(d)
+      const data = vatOf(vd, vc)?.data
+      if (!data) continue
+      const deducted = data.lines.reduce((sum, line) => sum + line.deduct, 0)
+      for (const e of unpaidEvents(vd, data, vc, filedOn)) {
+        if (!inBooks(e.on) || (input.today && e.on > input.today)) continue
+        entries.push({
+          key: `53b:${d.id}:${e.kind}`,
+          on: e.on,
+          kind: 'vat',
+          number: d.number ?? '',
+          text: e.kind === 'correct' ? `Oprava odpočítanej dane, faktúra nezaplatená do 100 dní od splatnosti (§ 53b): ${d.party ?? ''}` : `Oprava opravenej odpočítanej dane po zaplatení (§ 53b): ${d.party ?? ''}`,
+          docId: d.id,
+          paymentId: null,
+          manualId: null,
+          lines: [e.kind === 'correct' ? { md: '378', d: VAT_IN, cents: deducted } : { md: VAT_IN, d: '378', cents: deducted }],
+        })
       }
     }
   }

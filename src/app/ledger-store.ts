@@ -88,6 +88,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
   return buildBooks({
     company,
     rates,
+    today: bratislavaDay(Math.floor(Date.now() / 1000)),
     docs: docs.results.map(docOf),
     payments: payments.results.map((r) => ({
       id: String(r.id),

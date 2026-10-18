@@ -182,7 +182,7 @@ export async function exportYear(
         // a till, paid at the till on its day.
         `SELECT ${DOC_COLUMNS},
            COALESCE(p.booked_on, (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1),
-             CASE WHEN d.source = 'takings' THEN d.issued_on END) AS paid_on,
+             CASE WHEN d.source = 'takings' THEN d.issued_on END) AS export_paid_on,
            COALESCE(p.amount_cents, (SELECT json_extract(ce.lines, '$[0].cents') * (CASE WHEN d.kind = 'invoice_out' THEN 1 ELSE -1 END)
              FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1),
              CASE WHEN d.source = 'takings' THEN d.total_cents END) AS paid_cents
@@ -266,7 +266,7 @@ export async function exportYear(
     const day = d.issuedOn ?? bratislava(d.createdAt * 1000).day
     const ext = (d.fileType && TYPES[d.fileType]) ?? d.fileName?.match(/\.([A-Za-z0-9]{1,5})$/)?.[1]?.toLowerCase() ?? 'bin'
     const file = d.fileKey ? uniqueName(zipName(`doklady/${day} ${piece(d.party ? readableName(d.party) : 'doklad')}${d.number ? ` ${piece(d.number)}` : ''}.${ext}`), taken) : null
-    return { d, day, file, paidOn: typeof row.paid_on === 'string' ? row.paid_on : null, paidCents: typeof row.paid_cents === 'number' ? row.paid_cents : null }
+    return { d, day, file, paidOn: typeof row.export_paid_on === 'string' ? row.export_paid_on : null, paidCents: typeof row.paid_cents === 'number' ? row.paid_cents : null }
   })
   const invoiceFiles = invoices.map((invoice) => ({ invoice, file: uniqueName(zipName(`faktury/${piece(invoice.number ?? invoice.id)}.xml`), taken) }))
   // A file with statements of several accounts is one file in the archive.
