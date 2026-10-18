@@ -1058,9 +1058,28 @@ by itself.
   who is no VAT payer, without a rate or either side's VAT identifier (BR-O-02); a discount keeps its price
   positive and its quantity negative (BR-27). Read back by our own reader as issued by us, and by the customer's
   as received, with its sums (unit checks).
-- Not built yet: a credit note, an invoice in another currency, an advance invoice, recurring invoices sent by
-  themselves, the e-invoice sent through a digital postman, invoice numbering of the company's own pattern, the
-  company's logo on the invoice.
+- Credit notes (built 18 October 2026, schema step 37: `invoices.kind`, `invoices.corrects`, `invoices.reason`): an
+  issued invoice's page offers "Vystaviť dobropis" (`/app/faktury/nova?dobropis=<id>`): the invoice's customer (taken
+  from it whatever is posted) and lines to start from, typed as what the invoice is lowered by and kept with the minus
+  (`creditLines`), a reason asked, no more at any rate than the invoice has left after its credit notes
+  (`creditLeft`, `creditTooMuch`); numbered in the invoices' row; its document is `invoice_out` with minus amounts
+  and `documents.corrects` the invoice's number (the control statement's C.1); its sheet says "Dobropis", the invoice
+  it corrects and the reason, "Spolu na vrátenie", no QR code or way to pay; it is mailed as a credit note, never
+  reminded; the invoice lists its credit notes and the list's sum to collect is lowered by them. A credit note's VAT
+  is rounded on the amount and given its minus, so it mirrors the invoice's (`totalsOf`). test/credit-notes.runtime.mjs.
+- The e-invoice checked as the digital postmen check it (18 October 2026): `npm run test:peppol` (`test/peppol.mjs`,
+  also on GitHub) validates every kind Firmony writes (VAT payer at three rates with a discount, exempt, no VAT payer,
+  no account, a customer abroad, a credit note) against the UBL 2.1 schema (`test/xsd/ubl21`) and the CEN and
+  Peppol BIS 3.0.20 rules (`test/peppol/`, provenance in its README; SaxonJS compiles them once into .wrangler/tmp).
+  What it found and was mended: an invoice without an account named a credit transfer without one (BR-61: now
+  means 1), a customer abroad had no electronic address (PEPPOL-EN16931-R010: now its VAT number under Peppol's
+  scheme of its state) and every party was in Slovakia (now the state of its VAT number, EL as GR); the address goes
+  in its parts (street, town, postal code; `src/app/address.ts`). The Financial Administration's Slovak transposition
+  (an XLSX on financnasprava.sk, v1.12 of 14 October 2026) could not be read from the workspace: to be checked through
+  the browser pane.
+- Not built yet: an invoice in another currency, an advance invoice, recurring invoices sent by themselves, VAT
+  modes on an issued invoice (domestic reverse charge, supplies to other member states, export), the e-invoice sent
+  through a digital postman, invoice numbering of the company's own pattern, the company's logo on the invoice.
 
 ### The bank without an aggregator (14 October 2026; `src/app/statements.ts`, `src/app/fio.ts`, `src/views/bank.tsx`)
 
@@ -1833,8 +1852,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1117 unit checks (18 October 2026), including the review's fixes
-npm run test:runtime     # 1526 workerd checks on Node 24 (as GitHub runs them), including test/bundle-extras.runtime.mjs
+npm test                 # 1121 unit checks (18 October 2026), including credit notes
+npm run test:runtime     # 1539 workerd checks on Node 24 (as GitHub runs them), including test/credit-notes.runtime.mjs
+npm run test:peppol      # 9 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

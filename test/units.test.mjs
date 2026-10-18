@@ -1168,6 +1168,47 @@ check(
 const exempt = invoices.ublOf(stored, [{ position: 1, description: 'Školenie', quantityMilli: 1000, unit: null, unitCents: 5000, vatRate: 0, baseCents: 5000 }], seller)
 check("a VAT payer's supply at nought is exempt, with its reason", exempt.includes('<cbc:ID>E</cbc:ID><cbc:Percent>0</cbc:Percent><cbc:TaxExemptionReason>Oslobodené od DPH</cbc:TaxExemptionReason>'))
 
+// Credit notes (18 October 2026)
+const sold = [
+  { position: 1, description: 'Stolička', quantityMilli: 4000, unit: 'ks', unitCents: 5000, vatRate: 23, baseCents: 20000 },
+  { position: 2, description: 'Kniha', quantityMilli: 1000, unit: 'ks', unitCents: 2050, vatRate: 5, baseCents: 2050 },
+]
+const back = invoices.creditLines([{ ...sold[1], quantityMilli: 1000, baseCents: 2050 }])
+check(
+  "a credit note's VAT mirrors the invoice's: rounded on the amount, then the minus",
+  invoices.totalsOf(sold, true).rates.find((r) => r.rate === 5)?.vat === 103 && invoices.totalsOf(back, true).rates[0].vat === -103 && invoices.totalsOf(back, true).total === -2153,
+)
+const leftAfter = invoices.creditLeft(sold, invoices.creditLines([{ ...sold[0], quantityMilli: 1000, baseCents: 5000 }]), true)
+check(
+  'what an invoice may still be lowered by, rate by rate, and the first rate a credit note takes too much at',
+  leftAfter.get(23) === 15000 &&
+    leftAfter.get(5) === 2050 &&
+    invoices.creditTooMuch(leftAfter, invoices.creditLines([{ ...sold[0], quantityMilli: 4000, baseCents: 20000 }]), true)?.left === 15000 &&
+    invoices.creditTooMuch(leftAfter, invoices.creditLines([{ ...sold[0], quantityMilli: 3000, baseCents: 15000 }]), true) === null &&
+    invoices.creditTooMuch(leftAfter, invoices.creditLines([{ ...sold[0], vatRate: 19 }]), true)?.rate === 19,
+)
+const creditUbl = invoices.ublOf({ ...stored, number: '20260007', kind: 'credit', corrects: 'i', correctsNumber: '20260006', correctsIssuedOn: '2026-10-01', reason: 'Vrátený tovar', note: null }, back, seller)
+check(
+  "a credit note's e-invoice: UBL's CreditNote of type 381 naming the invoice, the reason as its one note, the amounts plus, no due day or account",
+  creditUbl.includes('<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"') &&
+    creditUbl.includes('<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>') &&
+    creditUbl.includes('<cbc:Note>Dôvod opravy: Vrátený tovar</cbc:Note>') &&
+    creditUbl.includes('<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>20260006</cbc:ID><cbc:IssueDate>2026-10-01</cbc:IssueDate>') &&
+    creditUbl.includes('<cbc:PayableAmount currencyID="EUR">21.53</cbc:PayableAmount>') &&
+    creditUbl.includes('<cac:CreditNoteLine>') &&
+    !creditUbl.includes('<cbc:DueDate>') &&
+    !creditUbl.includes('PaymentMeans') &&
+    creditUbl.trim().endsWith('</CreditNote>'),
+)
+check(
+  'the postal address in its parts, a customer abroad in its own state with its VAT number as the address on Peppol',
+  issuedUbl.includes('<cbc:StreetName>Námestie 2</cbc:StreetName>') === false &&
+    invoices.ublOf({ ...stored, customerAddress: 'Námestie 2, 040 01 Košice' }, ublLines, seller).includes('<cbc:StreetName>Námestie 2</cbc:StreetName><cbc:CityName>Košice</cbc:CityName><cbc:PostalZone>04001</cbc:PostalZone>') &&
+    invoices.ublOf({ ...stored, customerIcdph: 'CZ12345678', customerDic: null }, ublLines, seller).includes('<cbc:EndpointID schemeID="9929">CZ12345678</cbc:EndpointID>') &&
+    invoices.ublOf({ ...stored, customerIcdph: 'EL123456789', customerDic: null }, ublLines, seller).includes('<cbc:IdentificationCode>GR</cbc:IdentificationCode>') &&
+    invoices.ublOf({ ...stored, iban: null }, ublLines, seller).includes('<cbc:PaymentMeansCode>1</cbc:PaymentMeansCode>'),
+)
+
 // PAY by square: what a bank's app reads from the QR code on an invoice
 const square = paybysquare.payBySquare({ iban: 'SK31 1200 0000 1987 4263 7541', amountCents: 118080, vs: '20260006', due: '2026-10-15', name: 'Ukážková firma s. r. o.', note: 'Faktúra 20260006' })
 const paid = square ? decodePayBySquare(square).payments[0] : null

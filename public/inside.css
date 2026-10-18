@@ -3794,6 +3794,14 @@ select.field__input {
   font-variant-numeric: tabular-nums;
 }
 
+.sheet__ref {
+  margin-top: 4px;
+  max-width: 260px;
+  margin-left: auto;
+  color: var(--soft);
+  font-size: 0.85rem;
+}
+
 .sheet__parties {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);

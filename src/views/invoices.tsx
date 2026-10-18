@@ -4,7 +4,7 @@ import type { FC } from 'hono/jsx'
 import { ART, BRAND } from '../config'
 import { formatEur, formatEurExact } from '../format'
 import { app, dayName } from '../app/copy'
-import { UNITS, VAT_RATES, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
+import { UNITS, VAT_RATES, creditLines, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import type { Company } from '../app/store'
 import { Tile } from './home'
@@ -14,13 +14,19 @@ import { Wordmark } from './layout'
 
 const t = app.invoices
 
-const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill--blue', overdue: 'pill--amber', paid: 'pill--ok' }
+const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill--blue', overdue: 'pill--amber', paid: 'pill--ok', credit: 'pill--grey' }
+
+/** What a document is called: a credit note is a "Dobropis", an invoice a "Faktúra". */
+const kindName = (i: Pick<StoredInvoice, 'kind'>) => (i.kind === 'credit' ? t.sheet.creditTitle : t.sheet.title)
 
 export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null }> = ({ invoices, today, flash, closed = null }) => {
   const month = today.slice(0, 7)
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + i.totalCents, 0)
-  const unpaid = sum((i) => stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue')
-  const overdue = sum((i) => stateOf(i, today) === 'overdue')
+  // A credit note lowers what its invoice still asks, while that invoice is not paid.
+  const open = new Map(invoices.filter((i) => stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue').map((i) => [i.id, stateOf(i, today)]))
+  const credited = (pick: (state: InvoiceState | undefined) => boolean) => sum((i) => i.kind === 'credit' && i.status === 'issued' && i.corrects !== null && open.has(i.corrects) && pick(open.get(i.corrects)))
+  const unpaid = sum((i) => open.has(i.id)) + credited(() => true)
+  const overdue = sum((i) => open.get(i.id) === 'overdue') + credited((state) => state === 'overdue')
   const paid = sum((i) => stateOf(i, today) === 'paid' && (i.paidOn ?? '').startsWith(month))
   return (
     <>
@@ -75,7 +81,13 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
                       <span class="row__title">{i.customerName}</span>
                       <span class="row__sub">
                         <span>{i.number ?? t.draftName}</span>
-                        <span>{state === 'paid' && i.paidOn ? t.paidOn(dayName(i.paidOn, today)) : t.dueOn(dayName(i.dueOn, today))}</span>
+                        <span>
+                          {i.kind === 'credit'
+                            ? t.actions.creditOf(i.correctsNumber ?? '')
+                            : state === 'paid' && i.paidOn
+                              ? t.paidOn(dayName(i.paidOn, today))
+                              : t.dueOn(dayName(i.dueOn, today))}
+                        </span>
                       </span>
                     </span>
                     <span class="row__end">
@@ -107,6 +119,8 @@ export interface InvoiceFormProps {
   preview: Line[]
   /** Customers of earlier invoices, for a new invoice to start from. */
   recent?: { id: string; name: string }[]
+  /** A credit note: the invoice it corrects. */
+  credit?: { number: string; issuedOn: string } | null
 }
 
 const Text: FC<{ name: string; label: string; value: string; error?: string; hint?: string; wide?: boolean; type?: string; mode?: 'numeric' | 'decimal' | 'email'; max?: number }> = ({ name, label, value, error, hint, wide, type = 'text', mode, max = 200 }) => (
@@ -119,20 +133,62 @@ const Text: FC<{ name: string; label: string; value: string; error?: string; hin
   </div>
 )
 
-export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [] }) => {
+export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [], credit = null }) => {
   const f = t.form
-  const totals = totalsOf(preview, vatPayer)
+  // A credit note's lines are typed as what the invoice is lowered by; its sums show with the minus they will have.
+  const totals = totalsOf(credit ? creditLines(preview) : preview, vatPayer)
   return (
     <>
       <a class="back" href="/app/faktury">
         {t.actions.back}
       </a>
       <header class="phead">
-        <Heading first={id ? f.editTitle : f.title} small />
+        <Heading first={credit ? f.creditTitle(credit.number) : id ? f.editTitle : f.title} small />
+        {credit ? <p class="phead__lead">{f.creditLead(credit.number, dayName(credit.issuedOn))}</p> : null}
       </header>
       <Flash text={errors.form} tone="error" />
       <form class="invform" method="post" action={id ? `/app/faktury/${id}` : '/app/faktury'} novalidate>
         <input type="hidden" name="riadky" value={String(values.lines.length)} />
+        {credit ? (
+          <>
+            <input type="hidden" name="dobropis" value={values.corrects ?? ''} />
+            {(
+              [
+                ['meno', values.customerName],
+                ['adresa', values.customerAddress],
+                ['ico', values.customerIco],
+                ['dic', values.customerDic],
+                ['icdph', values.customerIcdph],
+              ] as const
+            ).map(([name, value]) => (
+              <input type="hidden" name={name} value={value} />
+            ))}
+          </>
+        ) : null}
+        {credit ? (
+          <section class="info" aria-labelledby="odberatel-t">
+            <h2 id="odberatel-t" class="info__title">
+              {f.customer}
+            </h2>
+            <p class="info__lead">
+              {values.customerName}
+              {values.customerAddress ? `, ${values.customerAddress}` : ''}
+            </p>
+            <div class="fgrid">
+              <Text name="email" label={f.email} value={values.customerEmail} error={errors.customerEmail} hint={f.emailHint} type="email" wide />
+              <div class="fgrid__cell fgrid__cell--wide">
+                <label class="field__label" for="f-dovod">
+                  {f.reason}
+                </label>
+                <textarea id="f-dovod" class="field__input field__area" name="dovod" rows={2} maxlength={500} aria-invalid={errors.reason ? 'true' : undefined}>
+                  {values.reason ?? ''}
+                </textarea>
+                {errors.reason ? <p class="field__error">{errors.reason}</p> : <p class="field__hint">{f.reasonHint}</p>}
+              </div>
+            </div>
+          </section>
+        ) : null}
+        {credit ? null : (
         <section class="info" aria-labelledby="odberatel-t">
           <h2 id="odberatel-t" class="info__title">
             {f.customer}
@@ -165,6 +221,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
             <Text name="email" label={f.email} value={values.customerEmail} error={errors.customerEmail} hint={f.emailHint} type="email" wide />
           </div>
         </section>
+        )}
         <section class="info" aria-labelledby="datumy-t">
           <h2 id="datumy-t" class="info__title">
             {f.dates}
@@ -258,7 +315,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
             {f.payment}
           </h2>
           <div class="fgrid">
-            <Text name="iban" label={f.iban} value={values.iban} error={errors.iban} wide max={42} />
+            {credit ? null : <Text name="iban" label={f.iban} value={values.iban} error={errors.iban} wide max={42} />}
             <div class="fgrid__cell fgrid__cell--wide">
               <label class="field__label" for="f-poznamka">
                 {f.note}
@@ -270,9 +327,9 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
           </div>
         </section>
         <div class="invform__actions">
-          <p class="invform__lead">{f.issueLead}</p>
+          <p class="invform__lead">{credit ? f.creditIssueLead : f.issueLead}</p>
           <button class="btn btn--blue btn--large" type="submit" name="akcia" value="vystavit">
-            {f.issue}
+            {credit ? f.creditIssue : f.issue}
           </button>
           <button class="btn btn--line" type="submit" name="akcia" value="koncept">
             {f.draft}
@@ -303,10 +360,12 @@ function payQr(invoice: StoredInvoice, total: number, seller: Company) {
 
 export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; pay?: boolean }> = ({ invoice, lines, seller, pay = true }) => {
   const s = t.sheet
+  const credit = invoice.kind === 'credit'
   const totals = totalsOf(lines, seller.vatPayer)
-  const qr = pay ? payQr(invoice, totals.total, seller) : null
+  // A credit note is not paid by the customer: no QR code, no account to pay to.
+  const qr = pay && !credit ? payQr(invoice, totals.total, seller) : null
   return (
-    <article class="sheet" aria-label={`${s.title} ${invoice.number ?? ''}`}>
+    <article class="sheet" aria-label={`${kindName(invoice)} ${invoice.number ?? ''}`}>
       <header class="sheet__head">
         <div class="sheet__from">
           <p class="sheet__company">{seller.name}</p>
@@ -330,8 +389,9 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
           </p>
         </div>
         <div class="sheet__title">
-          <p class="sheet__kind">{s.title}</p>
+          <p class="sheet__kind">{kindName(invoice)}</p>
           <p class="sheet__number">{invoice.number ? s.number(invoice.number) : t.draftName}</p>
+          {credit && invoice.correctsNumber && invoice.correctsIssuedOn ? <p class="sheet__ref">{s.corrects(invoice.correctsNumber, dayName(invoice.correctsIssuedOn))}</p> : null}
         </div>
       </header>
       <div class="sheet__parties">
@@ -410,6 +470,11 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
           </tbody>
         </table>
       </div>
+      {credit && invoice.reason ? (
+        <p class="sheet__note">
+          <strong>{s.reason}:</strong> {invoice.reason}
+        </p>
+      ) : null}
       <div class="sheet__bottom">
         <div class="sheet__payment">
         {qr ? (
@@ -424,6 +489,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
             </figcaption>
           </figure>
         ) : null}
+        {credit ? null : (
         <dl class="sheet__pay">
           <div>
             <dt>{s.method}</dt>
@@ -442,6 +508,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
             </div>
           ) : null}
         </dl>
+        )}
         </div>
         <dl class="sheet__totals">
           {seller.vatPayer
@@ -457,7 +524,7 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
               ])
             : null}
           <div class="sheet__total">
-            <dt>{s.total}</dt>
+            <dt>{credit ? s.creditTotal : s.total}</dt>
             <dd>{formatEurExact(totals.total)}</dd>
           </div>
         </dl>
@@ -472,9 +539,20 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
   )
 }
 
-export const InvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; today: string; link: string; flash?: string | null; error?: string | null }> = ({ invoice, lines, seller, today, link, flash, error }) => {
+export const InvoicePage: FC<{
+  invoice: StoredInvoice
+  lines: Line[]
+  seller: Company
+  today: string
+  link: string
+  flash?: string | null
+  error?: string | null
+  /** The credit notes issued to this invoice. */
+  credits?: { id: string; number: string | null; totalCents: number }[]
+}> = ({ invoice, lines, seller, today, link, flash, error, credits = [] }) => {
   const a = t.actions
   const state = stateOf(invoice, today)
+  const credit = invoice.kind === 'credit'
   return (
     <>
       <a class="back" href="/app/faktury">
@@ -482,7 +560,7 @@ export const InvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Co
       </a>
       <header class="phead phead--row">
         <div>
-          <Heading first={`${t.sheet.title} ${invoice.number ?? ''}`.trim()} small />
+          <Heading first={`${kindName(invoice)} ${invoice.number ?? ''}`.trim()} small />
           <p class="phead__lead">
             {invoice.customerName}, {formatEurExact(invoice.totalCents)}
           </p>
@@ -529,13 +607,41 @@ export const InvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Co
             <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.id}/xml`}>
               {a.xml}
             </a>
-            <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?podla=${invoice.id}`}>
-              {a.copy}
-            </a>
+            {credit ? (
+              invoice.corrects ? (
+                <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.corrects}`}>
+                  {t.sheet.title} {invoice.correctsNumber ?? ''}
+                </a>
+              ) : null
+            ) : (
+              <>
+                <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?dobropis=${invoice.id}`}>
+                  {a.credit}
+                </a>
+                <a class="btn btn--line invoice__wide" href={`/app/faktury/nova?podla=${invoice.id}`}>
+                  {a.copy}
+                </a>
+              </>
+            )}
           </section>
+          {credits.length > 0 ? (
+            <section class="info">
+              <h2 class="info__title">{a.credits}</h2>
+              <ul class="plain">
+                {credits.map((cn) => (
+                  <li>
+                    <a class="link" href={`/app/faktury/${cn.id}`}>
+                      {t.sheet.creditTitle} {cn.number ?? t.draftName}
+                    </a>{' '}
+                    {formatEurExact(cn.totalCents)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <section class="info">
             <h2 class="info__title">{a.payment}</h2>
-            <p class="info__lead">{state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : a.paymentNone}</p>
+            <p class="info__lead">{credit ? a.creditPayment : state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : a.paymentNone}</p>
           </section>
           <section class="info">
             <h2 class="info__title">{a.link}</h2>
@@ -559,7 +665,7 @@ export const InvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Co
 /** The page a customer opens from the email: the sheet, how to save it, the e-invoice. No sign-in. */
 export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; token: string }> = ({ invoice, lines, seller, token }) => (
   <html lang="sk">
-    <InsideHead title={`${t.public.title(invoice.number ?? '')} | ${seller.name}`} />
+    <InsideHead title={`${kindName(invoice)} ${invoice.number ?? ''} | ${seller.name}`} />
     <body class="inside inside--public">
       <main class="public">
         <div class="public__bar">
@@ -571,7 +677,7 @@ export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; sell
             {t.actions.print}
           </button>
         </div>
-        {invoice.paidOn ? <p class="public__paid">{t.public.paid}</p> : null}
+        {invoice.paidOn && invoice.kind !== 'credit' ? <p class="public__paid">{t.public.paid}</p> : null}
         <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={!invoice.paidOn} />
         <p class="public__foot">
           {t.public.print} <Wordmark href={BRAND.origin} />

@@ -1099,6 +1099,9 @@ const MIGRATIONS: readonly string[][] = [
   // A year's distribution kept with a closing whose year is locked (18 October 2026): the closings' period guards
   // leave out the distribution and the revision (period-schema.ts).
   closingsGuardsWithoutDistribution,
+  // Credit notes (18 October 2026, invoices.ts): an invoice or a credit note (dobropis) of an invoice issued before,
+  // the invoice it corrects and why. Its document names the invoice's number (documents.corrects).
+  ["ALTER TABLE invoices ADD COLUMN kind TEXT NOT NULL DEFAULT 'invoice'", 'ALTER TABLE invoices ADD COLUMN corrects TEXT', 'ALTER TABLE invoices ADD COLUMN reason TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

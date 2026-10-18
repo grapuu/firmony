@@ -4,6 +4,7 @@
 // paired with it by its variable symbol and the invoice says "zaplatená" by itself.
 import { now } from '../db'
 import type { Company } from './store'
+import { splitAddress } from './address'
 
 export const VAT_RATES = [23, 19, 5, 0] as const
 export const UNITS = ['ks', 'hod', 'deň', 'mes', 'kg', 'km', 'm²', 'bal'] as const
@@ -32,6 +33,9 @@ export interface InvoiceValues {
   iban: string
   note: string
   lines: LineInput[]
+  /** A credit note: the issued invoice it corrects (its id), and why. */
+  corrects?: string
+  reason?: string
 }
 
 export interface Line {
@@ -82,10 +86,34 @@ export function totalsOf(lines: Pick<Line, 'baseCents' | 'vatRate'>[], vatPayer:
     const rate = vatPayer ? line.vatRate : 0
     byRate.set(rate, (byRate.get(rate) ?? 0) + line.baseCents)
   }
-  const rates = [...byRate].map(([rate, base]) => ({ rate, base, vat: Math.round((base * rate) / 100) })).sort((a, b) => b.rate - a.rate)
+  // A credit note's VAT mirrors the invoice's: rounded on the amount, then given its sign.
+  const rates = [...byRate].map(([rate, base]) => ({ rate, base, vat: Math.sign(base) * Math.round((Math.abs(base) * rate) / 100) })).sort((a, b) => b.rate - a.rate)
   const base = rates.reduce((sum, r) => sum + r.base, 0)
   const vat = rates.reduce((sum, r) => sum + r.vat, 0)
   return { base, vat, total: base + vat, rates }
+}
+
+/** A credit note's lines as kept: what the form says the invoice is lowered by, with the minus sign. */
+export const creditLines = (lines: Line[]): Line[] => lines.map((l) => ({ ...l, unitCents: -l.unitCents, baseCents: -l.baseCents }))
+
+/**
+ * What an invoice may still be lowered by, rate by rate (cents of base, each a plus): its own base less what the
+ * credit notes issued to it took. A credit note that takes more at some rate says by how much at most.
+ */
+export function creditLeft(original: Pick<Line, 'baseCents' | 'vatRate'>[], credited: Pick<Line, 'baseCents' | 'vatRate'>[], vatPayer: boolean): Map<number, number> {
+  const left = new Map<number, number>()
+  for (const r of totalsOf(original, vatPayer).rates) left.set(r.rate, r.base)
+  for (const r of totalsOf(credited, vatPayer).rates) left.set(r.rate, (left.get(r.rate) ?? 0) + r.base)
+  return left
+}
+
+/** The first rate a credit note takes more at than the invoice has left, with what is left there; null when it fits. */
+export function creditTooMuch(left: Map<number, number>, credit: Pick<Line, 'baseCents' | 'vatRate'>[], vatPayer: boolean): { rate: number; left: number } | null {
+  for (const r of totalsOf(credit, vatPayer).rates) {
+    const room = left.get(r.rate) ?? 0
+    if (-r.base > room) return { rate: r.rate, left: Math.max(0, room) }
+  }
+  return null
 }
 
 /** The number of an invoice: the year and its order in it, which is also its variable symbol (20260001). */
@@ -116,6 +144,7 @@ export interface Errors {
   due?: string
   iban?: string
   lines?: string
+  reason?: string
   form?: string
 }
 
@@ -196,14 +225,45 @@ export interface StoredInvoice {
   createdAt: number
   createdByName: string | null
   paidOn: string | null
+  /** An invoice, or a credit note (dobropis) of an invoice issued before. */
+  kind: 'invoice' | 'credit'
+  /** A credit note: the invoice it corrects (its id, number and day of issue), and why. */
+  corrects: string | null
+  correctsNumber: string | null
+  correctsIssuedOn: string | null
+  reason: string | null
+}
+
+/**
+ * The electronic address scheme (EAS) of a VAT number of another state, as Peppol's code list names it, for a customer
+ * abroad who has no Slovak DIČ (cross-border e-invoices are not compulsory before 2030; where the customer receives on
+ * Peppol under another identifier, the postman's lookup says so).
+ */
+const VAT_SCHEMES: Record<string, string> = {
+  AT: '9914', BE: '9925', BG: '9926', CY: '9928', CZ: '9929', DE: '9930', EE: '9931', EL: '9933', ES: '9920', FR: '9957', HR: '9934',
+  HU: '9910', IE: '9935', LT: '9937', LU: '9938', LV: '9939', MT: '9943', NL: '9944', PL: '9945', PT: '9946', RO: '9947', SI: '9949',
+}
+
+/** The state of a VAT number (ISO 3166: Greece's EL is GR), Slovakia when there is none. */
+const countryOf = (icdph: string | null): string => {
+  const prefix = /^([A-Z]{2})/.exec((icdph ?? '').replace(/\s/g, '').toUpperCase())?.[1]
+  return !prefix ? 'SK' : prefix === 'EL' ? 'GR' : prefix
 }
 
 /**
  * The invoice as UBL 2.1 in the profile Peppol BIS Billing 3.0 (EN 16931), which the digital postmen carry from
- * 2027. A Slovak company is addressed by its DIČ (EAS 0245); without one the file has no endpoint and is still a
+ * 2027 (each kind checked against the rules of CEN and Peppol in `npm run test:peppol`). A Slovak company is addressed
+ * by its DIČ (EAS 0245), a customer abroad by its VAT number; without either the file has no endpoint and is still a
  * valid UBL invoice for import, not for the Peppol network.
  */
-export function ublOf(invoice: StoredInvoice, lines: Line[], seller: Company): string {
+export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): string {
+  // A credit note goes as UBL's CreditNote (type 381, which Peppol takes for one), its amounts as plus, naming the
+  // invoice it corrects (BG-3); the amounts it is kept with are minus.
+  const credit = invoice.kind === 'credit'
+  const lines = credit ? creditLines(kept) : kept
+  const root = credit ? 'CreditNote' : 'Invoice'
+  // One note a document (PEPPOL-EN16931-R002): a credit note's reason first.
+  const note = [credit && invoice.reason ? `Dôvod opravy: ${invoice.reason}` : '', invoice.note ?? ''].filter(Boolean).join(' | ')
   const totals = totalsOf(lines, seller.vatPayer)
   // EN 16931: S is a rate above nought, E a supply exempt from VAT (Slovakia has no zero rate at home), O a seller
   // who is no VAT payer; E and O carry the reason, O carries no rate and no VAT identifier of either side (BR-O-02).
@@ -212,41 +272,54 @@ export function ublOf(invoice: StoredInvoice, lines: Line[], seller: Company): s
   const taxCategory = (rate: number) =>
     `<cac:TaxCategory><cbc:ID>${category(rate)}</cbc:ID>${seller.vatPayer ? `<cbc:Percent>${rate}</cbc:Percent>` : ''}${reason(rate) ? `<cbc:TaxExemptionReason>${reason(rate)}</cbc:TaxExemptionReason>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`
   const vatId = (icdph: string | null) => (seller.vatPayer ? icdph : null)
-  const party = (p: { name: string; ico: string | null; dic: string | null; icdph: string | null; address: string | null }) =>
-    [
+  const party = (p: { name: string; ico: string | null; dic: string | null; icdph: string | null; address: string | null; vatNumber: string | null }) => {
+    const country = countryOf(p.vatNumber)
+    const vatNumber = (p.vatNumber ?? '').replace(/\s/g, '').toUpperCase()
+    const scheme = country === 'SK' ? null : VAT_SCHEMES[vatNumber.slice(0, 2)]
+    const endpoint = country === 'SK' && p.dic ? `<cbc:EndpointID schemeID="0245">${esc(p.dic)}</cbc:EndpointID>` : scheme ? `<cbc:EndpointID schemeID="${scheme}">${esc(vatNumber)}</cbc:EndpointID>` : ''
+    const a = p.address ? splitAddress(p.address) : null
+    return [
       '<cac:Party>',
-      p.dic ? `<cbc:EndpointID schemeID="0245">${esc(p.dic)}</cbc:EndpointID>` : '',
+      endpoint,
       `<cac:PartyName><cbc:Name>${esc(p.name)}</cbc:Name></cac:PartyName>`,
-      `<cac:PostalAddress>${p.address ? `<cbc:StreetName>${esc(p.address)}</cbc:StreetName>` : ''}<cac:Country><cbc:IdentificationCode>SK</cbc:IdentificationCode></cac:Country></cac:PostalAddress>`,
+      `<cac:PostalAddress>${a ? `<cbc:StreetName>${esc(a.street)}</cbc:StreetName>${a.city ? `<cbc:CityName>${esc(a.city)}</cbc:CityName>` : ''}${a.postal ? `<cbc:PostalZone>${esc(a.postal)}</cbc:PostalZone>` : ''}` : ''}<cac:Country><cbc:IdentificationCode>${country}</cbc:IdentificationCode></cac:Country></cac:PostalAddress>`,
       p.icdph ? `<cac:PartyTaxScheme><cbc:CompanyID>${esc(p.icdph)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>` : '',
       `<cac:PartyLegalEntity><cbc:RegistrationName>${esc(p.name)}</cbc:RegistrationName>${p.ico ? `<cbc:CompanyID>${esc(p.ico)}</cbc:CompanyID>` : ''}</cac:PartyLegalEntity>`,
       '</cac:Party>',
     ].join('')
+  }
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">',
+    `<${root} xmlns="urn:oasis:names:specification:ubl:schema:xsd:${root}-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">`,
     '<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>',
     '<cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>',
     `<cbc:ID>${esc(invoice.number ?? '')}</cbc:ID>`,
     `<cbc:IssueDate>${invoice.issuedOn}</cbc:IssueDate>`,
-    `<cbc:DueDate>${invoice.dueOn}</cbc:DueDate>`,
-    '<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>',
-    invoice.note ? `<cbc:Note>${esc(invoice.note)}</cbc:Note>` : '',
+    credit ? '' : `<cbc:DueDate>${invoice.dueOn}</cbc:DueDate>`,
+    credit ? '<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>' : '<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>',
+    note ? `<cbc:Note>${esc(note)}</cbc:Note>` : '',
     '<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>',
     `<cbc:BuyerReference>${esc(invoice.number ?? '')}</cbc:BuyerReference>`,
-    `<cac:AccountingSupplierParty>${party({ name: seller.name, ico: seller.ico, dic: seller.dic, icdph: vatId(seller.icdph), address: seller.address })}</cac:AccountingSupplierParty>`,
-    `<cac:AccountingCustomerParty>${party({ name: invoice.customerName, ico: invoice.customerIco, dic: invoice.customerDic, icdph: vatId(invoice.customerIcdph), address: invoice.customerAddress })}</cac:AccountingCustomerParty>`,
+    credit && invoice.correctsNumber
+      ? `<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>${esc(invoice.correctsNumber)}</cbc:ID>${invoice.correctsIssuedOn ? `<cbc:IssueDate>${invoice.correctsIssuedOn}</cbc:IssueDate>` : ''}</cac:InvoiceDocumentReference></cac:BillingReference>`
+      : '',
+    `<cac:AccountingSupplierParty>${party({ name: seller.name, ico: seller.ico, dic: seller.dic, icdph: vatId(seller.icdph), address: seller.address, vatNumber: seller.icdph })}</cac:AccountingSupplierParty>`,
+    `<cac:AccountingCustomerParty>${party({ name: invoice.customerName, ico: invoice.customerIco, dic: invoice.customerDic, icdph: vatId(invoice.customerIcdph), address: invoice.customerAddress, vatNumber: invoice.customerIcdph })}</cac:AccountingCustomerParty>`,
     `<cac:Delivery><cbc:ActualDeliveryDate>${invoice.deliveredOn}</cbc:ActualDeliveryDate></cac:Delivery>`,
-    `<cac:PaymentMeans><cbc:PaymentMeansCode>30</cbc:PaymentMeansCode><cbc:PaymentID>${esc(invoice.number ?? '')}</cbc:PaymentID>${invoice.iban ? `<cac:PayeeFinancialAccount><cbc:ID>${esc(plainIban(invoice.iban))}</cbc:ID></cac:PayeeFinancialAccount>` : ''}</cac:PaymentMeans>`,
+    // A credit transfer to the account (30) names the account (BR-61); without one, the means is not defined (1). A
+    // credit note is paid back to the customer's account, which the company has and the file need not name.
+    credit
+      ? ''
+      : `<cac:PaymentMeans><cbc:PaymentMeansCode>${invoice.iban ? 30 : 1}</cbc:PaymentMeansCode><cbc:PaymentID>${esc(invoice.number ?? '')}</cbc:PaymentID>${invoice.iban ? `<cac:PayeeFinancialAccount><cbc:ID>${esc(plainIban(invoice.iban))}</cbc:ID></cac:PayeeFinancialAccount>` : ''}</cac:PaymentMeans>`,
     `<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">${amount(totals.vat)}</cbc:TaxAmount>${totals.rates
       .map((r) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="EUR">${amount(r.base)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="EUR">${amount(r.vat)}</cbc:TaxAmount>${taxCategory(r.rate)}</cac:TaxSubtotal>`)
       .join('')}</cac:TaxTotal>`,
     `<cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="EUR">${amount(totals.base)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="EUR">${amount(totals.base)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="EUR">${amount(totals.total)}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="EUR">${amount(totals.total)}</cbc:PayableAmount></cac:LegalMonetaryTotal>`,
     ...lines.map(
       (line) =>
-        `<cac:InvoiceLine><cbc:ID>${line.position}</cbc:ID><cbc:InvoicedQuantity unitCode="${UNIT_CODES[line.unit ?? 'ks'] ?? 'C62'}">${(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000}</cbc:InvoicedQuantity><cbc:LineExtensionAmount currencyID="EUR">${amount(line.baseCents)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${esc(line.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${category(line.vatRate)}</cbc:ID>${seller.vatPayer ? `<cbc:Percent>${line.vatRate}</cbc:Percent>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="EUR">${amount(Math.abs(line.unitCents))}</cbc:PriceAmount></cac:Price></cac:InvoiceLine>`,
+        `<cac:${root}Line><cbc:ID>${line.position}</cbc:ID><cbc:${credit ? 'Credited' : 'Invoiced'}Quantity unitCode="${UNIT_CODES[line.unit ?? 'ks'] ?? 'C62'}">${(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000}</cbc:${credit ? 'Credited' : 'Invoiced'}Quantity><cbc:LineExtensionAmount currencyID="EUR">${amount(line.baseCents)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${esc(line.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${category(line.vatRate)}</cbc:ID>${seller.vatPayer ? `<cbc:Percent>${line.vatRate}</cbc:Percent>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="EUR">${amount(Math.abs(line.unitCents))}</cbc:PriceAmount></cac:Price></cac:${root}Line>`,
     ),
-    '</Invoice>',
+    `</${root}>`,
     '',
   ]
     .filter((part) => part !== '')
@@ -261,7 +334,9 @@ type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
 const INVOICE_COLUMNS = `i.*, u.name AS created_by_name,
-  (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1) AS paid_on`
+  (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1) AS paid_on,
+  (SELECT o.number FROM invoices o WHERE o.id = i.corrects AND o.company_id = i.company_id) AS corrects_number,
+  (SELECT o.issued_on FROM invoices o WHERE o.id = i.corrects AND o.company_id = i.company_id) AS corrects_issued_on`
 
 function invoiceOf(row: Row): StoredInvoice {
   return {
@@ -289,13 +364,20 @@ function invoiceOf(row: Row): StoredInvoice {
     createdAt: Number(row.created_at),
     createdByName: str(row.created_by_name),
     paidOn: str(row.paid_on),
+    kind: row.kind === 'credit' ? 'credit' : 'invoice',
+    corrects: str(row.corrects),
+    correctsNumber: str(row.corrects_number),
+    correctsIssuedOn: str(row.corrects_issued_on),
+    reason: str(row.reason),
   }
 }
 
-export type InvoiceState = 'draft' | 'unpaid' | 'overdue' | 'paid'
+export type InvoiceState = 'draft' | 'unpaid' | 'overdue' | 'paid' | 'credit'
 
-export function stateOf(invoice: Pick<StoredInvoice, 'status' | 'paidOn' | 'dueOn'>, today: string): InvoiceState {
+export function stateOf(invoice: Pick<StoredInvoice, 'status' | 'paidOn' | 'dueOn'> & { kind?: StoredInvoice['kind'] }, today: string): InvoiceState {
   if (invoice.status === 'draft') return 'draft'
+  // A credit note lowers what the invoice asks; it is not collected, so it is neither paid nor overdue.
+  if (invoice.kind === 'credit') return 'credit'
   if (invoice.paidOn) return 'paid'
   return invoice.dueOn < today ? 'overdue' : 'unpaid'
 }
@@ -342,10 +424,46 @@ export async function invoiceLines(db: D1Database, invoice: string): Promise<Lin
   }))
 }
 
+/** The lines of the credit notes issued to an invoice (each a minus), leaving out one (a draft being issued). */
+export async function creditedLines(db: D1Database, company: string, invoice: string, except: string | null): Promise<Line[]> {
+  const rows = await db
+    .prepare(
+      `SELECT l.* FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+        WHERE i.company_id = ? AND i.corrects = ? AND i.kind = 'credit' AND i.status = 'issued' AND i.id IS NOT ?`,
+    )
+    .bind(company, invoice, except)
+    .all<Row>()
+  return rows.results.map((row) => ({
+    position: Number(row.position),
+    description: String(row.description),
+    quantityMilli: Number(row.quantity_milli),
+    unit: str(row.unit),
+    unitCents: Number(row.unit_cents),
+    vatRate: Number(row.vat_rate),
+    baseCents: Number(row.base_cents),
+  }))
+}
+
 /** Writes an invoice and its lines: a draft has no number; an issued one takes the next of its year in the same step. */
 export function saveInvoiceStatements(
   db: D1Database,
-  args: { id: string; company: string; user: string; issue: boolean; values: InvoiceValues; lines: Line[]; totals: Totals; issued: string; delivered: string; due: string; token: string; iban: string | null; documentId: string },
+  args: {
+    id: string
+    company: string
+    user: string
+    issue: boolean
+    values: InvoiceValues
+    lines: Line[]
+    totals: Totals
+    issued: string
+    delivered: string
+    due: string
+    token: string
+    iban: string | null
+    documentId: string
+    /** A credit note: the invoice it corrects, by id and number. */
+    credit?: { corrects: string; number: string | null; reason: string } | null
+  },
 ): D1PreparedStatement[] {
   const v = args.values
   const year = Number(args.issued.slice(0, 4))
@@ -373,15 +491,15 @@ export function saveInvoiceStatements(
       .prepare(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
-           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token)
+           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
            CASE WHEN ?5 = 'issued' THEN printf('%d%04d', ?6, next.seq) END,
-           ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+           ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
          FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6) AS next`,
       )
-      .bind(args.id, args.company, now(), args.user, args.issue ? 'issued' : 'draft', year, ...fields, args.token),
+      .bind(args.id, args.company, now(), args.user, args.issue ? 'issued' : 'draft', year, ...fields, args.token, args.credit ? 'credit' : 'invoice', args.credit?.corrects ?? null, args.credit?.reason.slice(0, 500) || null),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol.
     ...(args.issue
@@ -389,13 +507,14 @@ export function saveInvoiceStatements(
           db
             .prepare(
               `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs,
-                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines)
+                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects)
                SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, number,
-                 issued_on, due_on, total_cents, vat_cents, 'EUR', 'sales', id, customer_icdph, delivered_on, ?
+                 issued_on, due_on, total_cents, vat_cents, 'EUR', 'sales', id, customer_icdph, delivered_on, ?, ?
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )
             // Its VAT by rate, exactly as the invoice sums it: what the return proposes until the accountant confirms it.
-            .bind(args.documentId, JSON.stringify(args.totals.rates.map((r) => ({ rate: r.rate, base: r.base, vat: r.vat, deduct: 0 }))), args.id, args.company),
+            // A credit note's are minus, and it names the invoice it corrects (the control statement's C.1 reads it).
+            .bind(args.documentId, JSON.stringify(args.totals.rates.map((r) => ({ rate: r.rate, base: r.base, vat: r.vat, deduct: 0 }))), args.credit?.number ?? null, args.id, args.company),
           db.prepare("UPDATE invoices SET document_id = ? WHERE id = ? AND company_id = ? AND status = 'issued'").bind(args.documentId, args.id, args.company),
         ]
       : []),

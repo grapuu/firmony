@@ -9,7 +9,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       CLOUDFLARE_CF_FETCH_ENABLED: 'false'
     steps:
@@ -23,6 +23,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - run: npm run test:peppol
       - run: npm run test:runtime
         env:
           FIRMONY_CAPTURE_DIR: .wrangler/ui
