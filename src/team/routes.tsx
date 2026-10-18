@@ -83,7 +83,7 @@ import {
 } from '../views/ledger'
 import { AssetPage, AssetsPage, assetRow, emptyAssetValues, valuesOf as assetValuesOf, type AssetFormErrors, type AssetValues } from '../views/assets'
 import { DISPOSALS, assetErrors, assetKind, assetYear, isAssetAccount, type AssetAccount, type Disposal } from '../app/assets'
-import { assetsOf, disposeAssetStatement, insertAssetStatement, removeAssetStatement, updateAssetStatement, type AssetInput } from '../app/assets-store'
+import { assetCenterStatement, assetsOf, disposeAssetStatement, insertAssetStatement, removeAssetStatement, updateAssetStatement, type AssetInput } from '../app/assets-store'
 import { StockItemPage, StockPage, type StockDocument } from '../views/stock'
 import { parseItemsCsv, parseMovesCsv, readItem, readMove, shortOf, stockSummary, valueItem, STOCK_ACCOUNTS, STOCK_KINDS, type ItemErrors, type ItemValues, type MoveErrors, type MoveValues, type StockKind, type StockMove } from '../app/stock'
 import { insertItemStatement, insertMoveStatement, removeItemStatement, removeMoveStatement, settingsStatement as stockSettingsStatement, stockOf, updateItemStatement, type Stock } from '../app/stock-store'
@@ -3572,6 +3572,7 @@ function assetFromForm(body: Record<string, unknown>): { values: AssetValues; in
     priorTax: text('danove', 20),
     priorYears: text('roky', 3),
     note: text('poznamka', 300),
+    center: typeof body.stredisko === 'string' && ID.test(body.stredisko) ? body.stredisko : '',
   }
   const account = isAssetAccount(values.account) ? values.account : null
   const intangible = account !== null && assetKind(account) === 'intangible'
@@ -3620,25 +3621,39 @@ function assetFromForm(body: Record<string, unknown>): { values: AssetValues; in
   }
 }
 
+/** A centre given to an asset: one of the company's in use, or the one it has (archived since); else why not. */
+async function assetCentreError(db: D1Database, company: string, center: string, own: string | null): Promise<string | null> {
+  if (!center || center === own) return null
+  const row = await db.prepare('SELECT archived_at FROM cost_centers WHERE id = ? AND company_id = ?').bind(center, company).first<{ archived_at: number | null }>()
+  return row && row.archived_at === null ? null : 'Toto stredisko neexistuje alebo je archivované: vyberte iné alebo žiadne.'
+}
+
 async function assetsPage(c: Ctx, company: Company, form: { values?: AssetValues; errors?: AssetFormErrors } = {}, status: ContentfulStatusCode = 200) {
   const today = dayOf(now())
   const year = Number(today.slice(0, 4))
-  const assets = await assetsOf(c.env.DB, company.id)
+  const [assets, centers] = await Promise.all([assetsOf(c.env.DB, company.id), listCenters(c.env.DB, company.id)])
   const flash = c.req.query('ok') === 'pridane' ? 'Majetok je v evidencii.' : c.req.query('ok') === 'odstranene' ? 'Majetok sme z evidencie odstránili.' : null
   return shell(
     c,
     'clients',
     `Majetok: ${company.name}`,
-    <AssetsPage company={company} rows={assets.map((a) => assetRow(a, today))} year={year} summary={assetYear(assets, year)} values={form.values ?? emptyAssetValues(today)} errors={form.errors ?? {}} flash={flash} today={today} />,
+    <AssetsPage company={company} rows={assets.map((a) => assetRow(a, today))} year={year} summary={assetYear(assets, year)} values={form.values ?? emptyAssetValues(today)} errors={form.errors ?? {}} flash={flash} today={today} centers={centers} />,
     status,
   )
 }
 
 async function assetPage(c: Ctx, company: Company, form: { values?: AssetValues; errors?: AssetFormErrors; flash?: string | null } = {}, status: ContentfulStatusCode = 200) {
-  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === c.req.param('asset'))
+  const [assets, centers] = await Promise.all([assetsOf(c.env.DB, company.id), listCenters(c.env.DB, company.id)])
+  const asset = assets.find((a) => a.id === c.req.param('asset'))
   if (!asset) return missingPage(c)
   const flash = form.flash ?? (c.req.query('ok') === 'ulozene' ? 'Zmeny sú uložené.' : c.req.query('ok') === 'vyradene' ? 'Vyradenie je zapísané.' : null)
-  return shell(c, 'clients', `${asset.name}: ${company.name}`, <AssetPage company={company} asset={asset} values={form.values ?? assetValuesOf(asset)} errors={form.errors ?? {}} flash={flash} today={dayOf(now())} />, status)
+  return shell(
+    c,
+    'clients',
+    `${asset.name}: ${company.name}`,
+    <AssetPage company={company} asset={asset} values={form.values ?? assetValuesOf(asset)} errors={form.errors ?? {}} flash={flash} today={dayOf(now())} centers={centers} />,
+    status,
+  )
 }
 
 teamRoutes.get('/klienti/:id/kniha/majetok', async (c) => {
@@ -3649,12 +3664,19 @@ teamRoutes.get('/klienti/:id/kniha/majetok', async (c) => {
 teamRoutes.post('/klienti/:id/kniha/majetok', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
-  const { values, input, errors } = assetFromForm(await c.req.parseBody())
-  if (!input) return assetsPage(c, company, { values, errors }, 422)
+  const body = await c.req.parseBody()
+  const { values, input, errors } = assetFromForm(body)
+  const centreError = await assetCentreError(c.env.DB, company.id, values.center ?? '', null)
+  if (centreError) errors.center = centreError
+  if (!input || centreError) return assetsPage(c, company, { values, errors }, 422)
   const id = crypto.randomUUID()
   const who = c.get('who')
   try {
-    await c.env.DB.batch([insertAssetStatement(c.env.DB, company.id, id, input, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.added', subject: id })])
+    await c.env.DB.batch([
+      insertAssetStatement(c.env.DB, company.id, id, input, who.user.id),
+      ...('stredisko' in body ? [assetCenterStatement(c.env.DB, company.id, id, values.center || null)] : []),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.added', subject: id }),
+    ])
   } catch (err) {
     if (isPeriodLocked(err)) return assetsPage(c, company, { values, errors: { form: ASSET_LOCKED } }, 409)
     throw err
@@ -3671,12 +3693,20 @@ teamRoutes.post('/klienti/:id/kniha/majetok/:asset', async (c) => {
   const company = await companyParam(c)
   if (!company) return missingPage(c)
   const id = c.req.param('asset')
-  if (!(await assetsOf(c.env.DB, company.id)).some((a) => a.id === id)) return missingPage(c)
-  const { values, input, errors } = assetFromForm(await c.req.parseBody())
-  if (!input) return assetPage(c, company, { values, errors }, 422)
+  const asset = (await assetsOf(c.env.DB, company.id)).find((a) => a.id === id)
+  if (!asset) return missingPage(c)
+  const body = await c.req.parseBody()
+  const { values, input, errors } = assetFromForm(body)
+  const centreError = await assetCentreError(c.env.DB, company.id, values.center ?? '', asset.centerId ?? null)
+  if (centreError) errors.center = centreError
+  if (!input || centreError) return assetPage(c, company, { values, errors }, 422)
   const who = c.get('who')
   try {
-    await c.env.DB.batch([updateAssetStatement(c.env.DB, company.id, id, input, who.user.id), eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.changed', subject: id })])
+    await c.env.DB.batch([
+      updateAssetStatement(c.env.DB, company.id, id, input, who.user.id),
+      ...('stredisko' in body ? [assetCenterStatement(c.env.DB, company.id, id, values.center || null)] : []),
+      eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: 'asset.changed', subject: id }),
+    ])
   } catch (err) {
     if (isPeriodLocked(err)) return assetPage(c, company, { values, errors: { form: ASSET_LOCKED } }, 409)
     throw err

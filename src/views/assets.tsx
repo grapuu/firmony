@@ -6,6 +6,8 @@ import { dayName } from '../app/copy'
 import { ASSET_ACCOUNTS, GROUP_YEARS, CAR_LIMIT_CENTS, DISPOSALS, assetKind, bookMonths, bookState, taxSchedule, type Asset, type AssetYear, type Disposal } from '../app/assets'
 import { formatEurExact } from '../format'
 import { LedgerHead, bookPath } from './ledger'
+import { CenterSelect } from './centers'
+import type { CostCenter } from '../app/centers'
 
 export const ACCOUNT_NAMES: Record<keyof typeof ASSET_ACCOUNTS, string> = {
   '022': '022 Samostatné hnuteľné veci (stroje, autá, technika)',
@@ -42,8 +44,10 @@ export interface AssetValues {
   priorTax: string
   priorYears: string
   note: string
+  /** The cost centre it serves ('' none). */
+  center?: string
 }
-export type AssetFormErrors = Partial<Record<'name' | 'account' | 'inUseOn' | 'cost' | 'group' | 'method' | 'months' | 'prior' | 'disposal' | 'form', string>>
+export type AssetFormErrors = Partial<Record<'name' | 'account' | 'inUseOn' | 'cost' | 'group' | 'method' | 'months' | 'prior' | 'disposal' | 'center' | 'form', string>>
 
 export const emptyAssetValues = (today: string): AssetValues => ({
   name: '', account: '022', inUseOn: today, cost: '', group: '1', method: 'straight', car: false, books: 'tax', months: '', source: 'purchase', priorBook: '', priorTax: '', priorYears: '', note: '',
@@ -53,12 +57,13 @@ export const valuesOf = (a: Asset & { note?: string | null }): AssetValues => ({
   name: a.name, account: a.account, inUseOn: a.inUseOn, cost: money(a.costCents), group: a.taxGroup === null ? '' : String(a.taxGroup), method: a.taxMethod, car: a.car,
   books: a.bookMonths === null ? 'tax' : 'months', months: a.bookMonths === null ? '' : String(a.bookMonths), source: a.source,
   priorBook: a.priorBookCents ? money(a.priorBookCents) : '', priorTax: a.priorTaxCents ? money(a.priorTaxCents) : '', priorYears: a.priorTaxYears ? String(a.priorTaxYears) : '', note: a.note ?? '',
+  center: a.centerId ?? '',
 })
 
 const Err: FC<{ text?: string }> = ({ text }) => (text ? <p class="field__error">{text}</p> : null)
 
 /** The form of an asset: what it is, when it was put in use and for how much, and how it is depreciated. */
-const AssetForm: FC<{ action: string; values: AssetValues; errors: AssetFormErrors; submit: string }> = ({ action, values: v, errors: e, submit }) => (
+const AssetForm: FC<{ action: string; values: AssetValues; errors: AssetFormErrors; submit: string; centers?: CostCenter[] }> = ({ action, values: v, errors: e, submit, centers = [] }) => (
   <form class="stack asset-form" method="post" action={action} novalidate>
     {e.form ? (
       <p class="notice notice--error" role="alert">
@@ -161,6 +166,15 @@ const AssetForm: FC<{ action: string; values: AssetValues; errors: AssetFormErro
         </div>
         <Err text={e.prior} />
       </fieldset>
+      {centers.some((c) => !c.archived) || v.center ? (
+        <div class="field asset-form__wide">
+          <label class="field__label" for="a-stredisko">
+            Stredisko
+          </label>
+          <CenterSelect centers={centers} value={v.center || null} id="a-stredisko" />
+          {e.center ? <p class="field__error">{e.center}</p> : <p class="field__hint">Odpisy a zostatková cena pri vyradení sa v prehľade stredísk započítajú tomuto stredisku.</p>}
+        </div>
+      ) : null}
       <label class="field asset-form__wide">
         <span class="field__label">Poznámka</span>
         <input class="field__input" name="poznamka" value={v.note} maxlength={300} />
@@ -194,7 +208,7 @@ export function assetRow(asset: Asset & { note: string | null }, today: string):
   return { asset, bookAccumulated: book.accumulated, bookResidual: book.residual, taxThisYear: thisYear?.cents ?? 0, taxResidual }
 }
 
-export const AssetsPage: FC<{ company: Company; rows: AssetRow[]; year: number; summary: AssetYear; values: AssetValues; errors: AssetFormErrors; flash?: string | null; today: string }> = (p) => {
+export const AssetsPage: FC<{ company: Company; rows: AssetRow[]; year: number; summary: AssetYear; values: AssetValues; errors: AssetFormErrors; flash?: string | null; today: string; centers?: CostCenter[] }> = (p) => {
   const base = `${bookPath(p.company)}/majetok`
   const total = (f: (r: AssetRow) => number) => p.rows.filter((r) => !r.asset.disposedOn).reduce((s, r) => s + f(r), 0)
   return (
@@ -321,13 +335,19 @@ export const AssetsPage: FC<{ company: Company; rows: AssetRow[]; year: number; 
         <h2 id="novy-t" class="info__title">
           Pridať majetok
         </h2>
-        <AssetForm action={base} values={p.values} errors={p.errors} submit="Pridať do evidencie" />
+        <AssetForm action={base} values={p.values} errors={p.errors} submit="Pridať do evidencie" centers={p.centers} />
       </section>
     </>
   )
 }
 
-export const AssetPage: FC<{ company: Company; asset: Asset & { note: string | null }; values: AssetValues; errors: AssetFormErrors; flash?: string | null; today: string }> = (p) => {
+/** " Stredisko SKLAD Sklad." of an asset's centre, else nothing. */
+const centreName = (centers: CostCenter[] | undefined, id: string | null | undefined): string => {
+  const c = id ? centers?.find((x) => x.id === id) : undefined
+  return c ? ` Stredisko ${c.code} ${c.name}.` : ''
+}
+
+export const AssetPage: FC<{ company: Company; asset: Asset & { note: string | null }; values: AssetValues; errors: AssetFormErrors; flash?: string | null; today: string; centers?: CostCenter[] }> = (p) => {
   const base = `${bookPath(p.company)}/majetok`
   const a = p.asset
   const tax = taxSchedule(a)
@@ -338,7 +358,14 @@ export const AssetPage: FC<{ company: Company; asset: Asset & { note: string | n
   const car = tax.some((y) => y.limited !== null)
   return (
     <>
-      <LedgerHead company={p.company} tab="assets" title={a.name} second={a.number} lead={`${ACCOUNT_NAMES[a.account]}, zaradené ${dayName(a.inUseOn)}, vstupná cena ${eur(a.costCents)}.`} flash={p.flash} />
+      <LedgerHead
+        company={p.company}
+        tab="assets"
+        title={a.name}
+        second={a.number}
+        lead={`${ACCOUNT_NAMES[a.account]}, zaradené ${dayName(a.inUseOn)}, vstupná cena ${eur(a.costCents)}.${centreName(p.centers, a.centerId)}`}
+        flash={p.flash}
+      />
       <p>
         <a class="link" href={base}>
           Späť na evidenciu majetku
@@ -434,7 +461,7 @@ export const AssetPage: FC<{ company: Company; asset: Asset & { note: string | n
         <h2 id="zmena-t" class="info__title">
           Zmeniť údaje
         </h2>
-        <AssetForm action={`${base}/${a.id}`} values={p.values} errors={p.errors} submit="Uložiť zmeny" />
+        <AssetForm action={`${base}/${a.id}`} values={p.values} errors={p.errors} submit="Uložiť zmeny" centers={p.centers} />
         <form method="post" action={`${base}/${a.id}/odstranit`}>
           <button class="btn btn--text" type="submit">
             Odstrániť z evidencie, bol zadaný omylom

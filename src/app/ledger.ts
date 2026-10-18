@@ -1008,7 +1008,18 @@ export function buildBooks(input: LedgerInput): Books {
   // The register of fixed assets: putting in use, each month's depreciation, each disposal, all within the books.
   for (const a of input.assets ?? []) {
     if (!inBooks(a.on)) continue
-    entries.push({ key: a.key, on: a.on, kind: 'asset', number: a.number, text: a.text, docId: null, paymentId: null, manualId: null, lines: a.lines.map((l) => ({ ...l })) })
+    entries.push({
+      key: a.key,
+      on: a.on,
+      kind: 'asset',
+      number: a.number,
+      text: a.text,
+      docId: null,
+      paymentId: null,
+      manualId: null,
+      lines: a.lines.map((l) => ({ ...l })),
+      ...(a.centerCosts?.length ? { centerCosts: a.centerCosts.map((x) => ({ ...x })) } : {}),
+    })
   }
 
   // The stock's receipts, issues and counts.

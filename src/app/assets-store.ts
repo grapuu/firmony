@@ -26,6 +26,7 @@ export function assetOf(r: Row): Asset {
     priorTaxYears: Number(r.prior_tax_years ?? 0),
     disposedOn: str(r.disposed_on),
     disposal: (str(r.disposal) as Disposal | null) ?? null,
+    centerId: str(r.center_id),
   }
 }
 
@@ -82,6 +83,19 @@ export function disposeAssetStatement(db: D1Database, company: string, id: strin
   return db
     .prepare('UPDATE assets SET disposed_on = ?1, disposal = ?2, updated_at = ?3, updated_by = ?4 WHERE id = ?5 AND company_id = ?6 AND deleted_at IS NULL')
     .bind(on, how, now(), by, id, company)
+}
+
+/**
+ * The cost centre an asset serves (centers.ts), management information: a centre of the company in use, or the one it
+ * has; none when empty. No period lock holds it (the books' lines stay as they are).
+ */
+export function assetCenterStatement(db: D1Database, company: string, id: string, center: string | null): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE assets SET center_id = (SELECT c.id FROM cost_centers c WHERE c.id = ?1 AND c.company_id = ?2 AND (c.archived_at IS NULL OR c.id IS assets.center_id))
+       WHERE id = ?3 AND company_id = ?2 AND deleted_at IS NULL`,
+    )
+    .bind(center, company, id)
 }
 
 /** An asset entered by mistake, removed: marked, never deleted; its number stays taken. */

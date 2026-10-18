@@ -73,6 +73,8 @@ export interface Asset {
   priorTaxYears: number
   disposedOn: string | null
   disposal: Disposal | null
+  /** The company's cost centre the asset serves (centers.ts): its depreciation and disposal count there. */
+  centerId?: string | null
 }
 
 /** § 47: to the cent, half up (amounts are cents, so a fraction of a cent rounds; halves go up). */
@@ -222,6 +224,8 @@ export interface AssetEntry {
   text: string
   lines: AssetLine[]
   asset: string | null
+  /** Each cost centre's part of the entry's costs (class 5), for the centres' report (centers.ts); the books' lines stay as they are. */
+  centerCosts?: { center: string; cents: number }[]
 }
 
 const monthEndDay = (month: string): string => {
@@ -238,6 +242,8 @@ const monthEndDay = (month: string): string => {
 export function assetEntries(assets: readonly Asset[], asOf: string): AssetEntry[] {
   const entries: AssetEntry[] = []
   const months = new Map<string, Map<string, number>>()
+  // Each month's depreciation of the assets of each cost centre.
+  const centres = new Map<string, Map<string, number>>()
   for (const a of assets) {
     const acc = ASSET_ACCOUNTS[a.account]
     if (a.source === 'purchase' && a.inUseOn <= asOf)
@@ -247,6 +253,11 @@ export function assetEntries(assets: readonly Asset[], asOf: string): AssetEntry
       const byAccount = months.get(m.month) ?? new Map<string, number>()
       byAccount.set(acc.contra, (byAccount.get(acc.contra) ?? 0) + m.cents)
       months.set(m.month, byAccount)
+      if (a.centerId && m.cents > 0) {
+        const byCentre = centres.get(m.month) ?? new Map<string, number>()
+        byCentre.set(a.centerId, (byCentre.get(a.centerId) ?? 0) + m.cents)
+        centres.set(m.month, byCentre)
+      }
     }
     if (a.disposedOn && a.disposal && a.disposedOn <= asOf) {
       const before = a.disposedOn.slice(0, 7)
@@ -255,12 +266,33 @@ export function assetEntries(assets: readonly Asset[], asOf: string): AssetEntry
         { md: acc.contra, d: a.account, cents: prior },
         { md: DISPOSAL_ACCOUNT[a.disposal], d: a.account, cents: a.costCents - prior },
       ].filter((l) => l.cents > 0)
-      if (lines.length) entries.push({ key: `a:${a.id}:out`, on: a.disposedOn, number: a.number, text: `Vyradenie: ${a.name}`, lines, asset: a.id })
+      // The residual value written off (a cost of class 5) is the asset's centre's.
+      const residual = lines.filter((l) => l.md.startsWith('5')).reduce((s, l) => s + l.cents, 0)
+      if (lines.length)
+        entries.push({
+          key: `a:${a.id}:out`,
+          on: a.disposedOn,
+          number: a.number,
+          text: `Vyradenie: ${a.name}`,
+          lines,
+          asset: a.id,
+          ...(a.centerId && residual > 0 ? { centerCosts: [{ center: a.centerId, cents: residual }] } : {}),
+        })
     }
   }
   for (const [month, byAccount] of [...months.entries()].sort(([x], [y]) => x.localeCompare(y))) {
     const lines = [...byAccount.entries()].sort(([x], [y]) => x.localeCompare(y)).map(([contra, cents]) => ({ md: '551', d: contra, cents })).filter((l) => l.cents > 0)
-    if (lines.length) entries.push({ key: `a:odpisy:${month}`, on: monthEndDay(month), number: `ODP ${month.slice(5, 7)}/${month.slice(0, 4)}`, text: `Odpisy majetku za ${Number(month.slice(5, 7))}/${month.slice(0, 4)}`, lines, asset: null })
+    const byCentre = [...(centres.get(month) ?? new Map<string, number>()).entries()].sort(([x], [y]) => x.localeCompare(y)).map(([center, cents]) => ({ center, cents }))
+    if (lines.length)
+      entries.push({
+        key: `a:odpisy:${month}`,
+        on: monthEndDay(month),
+        number: `ODP ${month.slice(5, 7)}/${month.slice(0, 4)}`,
+        text: `Odpisy majetku za ${Number(month.slice(5, 7))}/${month.slice(0, 4)}`,
+        lines,
+        asset: null,
+        ...(byCentre.length > 0 ? { centerCosts: byCentre } : {}),
+      })
   }
   return entries
 }

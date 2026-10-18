@@ -321,4 +321,46 @@ export async function checkCenters({ db, acc, lucia, nowS, signIn, as, day, tick
     res.status === 303 && after.find((b) => b.center_id === store)?.revenue === 10000 && after.find((b) => b.center_id === shop)?.costs === 130000,
     JSON.stringify(after),
   )
+
+  // Depreciation by cost centre: an asset of the shop, its month's depreciation in the shop's costs.
+  res = await acc.post(`/ucto/klienti/${company}/kniha/majetok`, {
+    nazov: 'TEST-ONLY Pokladničný pult',
+    ucet: '022',
+    zaradenie: '2026-01-01',
+    cena: '2 400,00',
+    skupina: '1',
+    metoda: 'straight',
+    uctovne: 'tax',
+    mesiace: '',
+    povod: 'purchase',
+    opravky: '',
+    danove: '',
+    roky: '',
+    poznamka: '',
+    stredisko: shop,
+  })
+  const asset = await db.prepare('SELECT id, center_id FROM assets WHERE company_id = ?').bind(company).first()
+  check('an asset given to a centre on the register', res.status === 303 && asset?.center_id === shop, JSON.stringify(asset))
+  page = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/majetok/${asset.id}`)).text())
+  check("the asset's page names its centre and offers it", page.includes('Stredisko PREDAJNA') && page.includes('name="stredisko"'))
+  res = await acc.post(`/ucto/klienti/${company}/kniha/majetok/${asset.id}`, {
+    nazov: 'TEST-ONLY Pokladničný pult',
+    ucet: '022',
+    zaradenie: '2026-01-01',
+    cena: '2 400,00',
+    skupina: '1',
+    metoda: 'straight',
+    uctovne: 'tax',
+    povod: 'purchase',
+    stredisko: 'f'.repeat(8) + '-0000-4000-8000-' + '0'.repeat(12),
+  })
+  check('a centre that is none is refused with why', res.status === 422 && plain(await res.text()).includes('Toto stredisko neexistuje alebo je archivované'))
+  const januaryCosts = async () => {
+    const raw = await (await owner.get('/app/strediska?rok=2026&od=1&do=1')).text()
+    // The cells hold the budget's share after the amount (a span): the costs are the second cell's text before it.
+    const m = raw.match(/<strong>PREDAJNA<\/strong>[^<]*<\/th><td class="num">.*?<\/td><td class="num">([^<]*)/)
+    return plain(m?.[1] ?? '')
+  }
+  const january = await januaryCosts()
+  check("the centres' report: January's depreciation (2 400 € in four years, 50 € a month) in the shop's costs", january === '50,00 €', january)
 }

@@ -5788,6 +5788,27 @@ async function zipped(entries, note) {
       Boolean(assets.assetErrors({ ...base, account: '013', taxGroup: null, costCents: 500_000, inUseOn: '2026-01-01' }).months) &&
       Boolean(assets.assetErrors({ ...base, costCents: 500_000, inUseOn: '2026-01-01', taxGroup: 1, taxMethod: 'accelerated' }).method),
   )
+  // Depreciation by cost centre (18 October 2026, centers.ts): each month's depreciation of a centre's assets, and the
+  // residual value written off at a disposal, count in that centre; the books' lines stay as they are.
+  const shopCar = { ...sold, id: 'a2', number: 'M-2026-002', centerId: 'shop' }
+  const byCentre = assets.assetEntries([shopCar, { ...software, id: 'a3', number: 'M-2026-003' }], '2028-06-30')
+  const april = byCentre.find((e) => e.key === 'a:odpisy:2026-04')
+  const carApril = assets.bookMonths(shopCar).find((m) => m.month === '2026-04').cents
+  const carOut = byCentre.find((e) => e.key === 'a:a2:out')
+  check(
+    "a month's depreciation: the centre's assets' part for the centres' report, the rest in common; the disposal's residual value the centre's",
+    april?.centerCosts?.length === 1 &&
+      april.centerCosts[0].center === 'shop' &&
+      april.centerCosts[0].cents === carApril &&
+      april.lines.reduce((s, l) => s + l.cents, 0) === carApril + 10000 &&
+      carOut?.centerCosts?.[0]?.cents === carOut.lines.filter((l) => l.md.startsWith('5')).reduce((s, l) => s + l.cents, 0) &&
+      !byCentre.find((e) => e.key === 'a:odpisy:2028-06')?.centerCosts,
+    JSON.stringify([april, carOut]),
+  )
+  const assetBooks = ledger.buildBooks({ company: { id: 'c', startOn: '2026-01-01', vatStatus: 'none' }, docs: [], payments: [], banks: [], filed: [], manual: [], assets: byCentre })
+  const report = centers.centerTotals(assetBooks.entries, new Map(), [{ id: 'shop', code: 'SHOP', name: 'Obchod', archived: false }], '2026-04-01', '2026-04-30')
+  check("the centres' report: the car's depreciation in its centre, the software's in common", report[0].costs === carApril && report[1].costs === 10000, JSON.stringify(report))
+
   // The closing: Table B takes the register's tangible assets, and 551 outside it as before.
   const proposal = closing.proposeTax({ profit: {}, accounts: { '551': 500_000 }, balance: {} }, { bookTangible: 300_000, bookIntangible: 100_000, taxTangible: 250_000, saleShares: 0, carExcess: 0, disposedTax: 0, disposedBook: 0, liquidated: 0 })
   check('the closing takes the register into Table B, intangible assets out', proposal.tableB.b01 === 400_000 && proposal.tableB.b02 === 350_000, JSON.stringify(proposal.tableB))
