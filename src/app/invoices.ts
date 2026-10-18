@@ -2,6 +2,7 @@
 // an unbroken row per year, a page the customer opens from an email, an e-invoice (UBL 2.1, Peppol BIS Billing
 // 3.0) to download, and the invoice is a document of the company at once, so that the payment that pays it is
 // paired with it by its variable symbol and the invoice says "zaplatená" by itself.
+import { LEGAL_FORM_NAMES } from '../rpo'
 import { now } from '../db'
 import type { Company } from './store'
 import { splitAddress } from './address'
@@ -534,7 +535,11 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
   const taxCategory = (rate: number) =>
     `<cac:TaxCategory><cbc:ID>${category(rate)}</cbc:ID>${percent(rate)}${terms ? `<cbc:TaxExemptionReasonCode>${terms.code}</cbc:TaxExemptionReasonCode>` : ''}${reason(rate) ? `<cbc:TaxExemptionReason>${esc(reason(rate) ?? '')}</cbc:TaxExemptionReason>` : ''}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`
   const vatId = (icdph: string | null) => (seller.vatPayer && terms?.category !== 'O' ? icdph : null)
-  const party = (p: { name: string; ico: string | null; dic: string | null; icdph: string | null; address: string | null; vatNumber: string | null; country?: string }) => {
+  // The Financial Administration's Slovak transposition of Peppol BIS 3.0 (v1.12 of 14 October 2026, read through the
+  // browser pane on 18 October 2026): the IČO of either side when it has one (BT-30, BT-47) with its scheme, ISO 6523
+  // ICD 0158 (Slovakia's IČO); the seller's legal form and its register entry (BT-33, § 3a of the Commercial Code); the
+  // day of the supply when it differs from the day of issue (BT-7, § 74(1)(d); BT-8 never used).
+  const party = (p: { name: string; ico: string | null; dic: string | null; icdph: string | null; address: string | null; vatNumber: string | null; country?: string; legalForm?: string | null }) => {
     const country = p.country ?? countryOf(p.vatNumber)
     const vatNumber = (p.vatNumber ?? '').replace(/\s/g, '').toUpperCase()
     const scheme = country === 'SK' ? null : VAT_SCHEMES[vatNumber.slice(0, 2)]
@@ -548,7 +553,9 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
       `<cac:PartyName><cbc:Name>${esc(p.name)}</cbc:Name></cac:PartyName>`,
       `<cac:PostalAddress>${a ? `<cbc:StreetName>${esc(a.street)}</cbc:StreetName>${a.city ? `<cbc:CityName>${esc(a.city)}</cbc:CityName>` : ''}${a.postal ? `<cbc:PostalZone>${esc(a.postal)}</cbc:PostalZone>` : ''}` : ''}<cac:Country><cbc:IdentificationCode>${country}</cbc:IdentificationCode></cac:Country></cac:PostalAddress>`,
       p.icdph ? `<cac:PartyTaxScheme><cbc:CompanyID>${esc(p.icdph)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>` : '',
-      `<cac:PartyLegalEntity><cbc:RegistrationName>${esc(p.name)}</cbc:RegistrationName>${p.ico ? `<cbc:CompanyID>${esc(p.ico)}</cbc:CompanyID>` : ''}</cac:PartyLegalEntity>`,
+      `<cac:PartyLegalEntity><cbc:RegistrationName>${esc(p.name)}</cbc:RegistrationName>${
+        p.ico ? `<cbc:CompanyID${country === 'SK' && /^\d{8}$/.test(p.ico) ? ' schemeID="0158"' : ''}>${esc(p.ico)}</cbc:CompanyID>` : ''
+      }${p.legalForm ? `<cbc:CompanyLegalForm>${esc(p.legalForm)}</cbc:CompanyLegalForm>` : ''}</cac:PartyLegalEntity>`,
       '</cac:Party>',
     ].join('')
   }
@@ -563,13 +570,22 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
     // A credit note 381; the tax document of an advance received a prepayment invoice, 386; an invoice 380.
     credit ? '<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>' : `<cbc:InvoiceTypeCode>${invoice.kind === 'advance' ? 386 : 380}</cbc:InvoiceTypeCode>`,
     note ? `<cbc:Note>${esc(note)}</cbc:Note>` : '',
+    invoice.deliveredOn && invoice.deliveredOn !== invoice.issuedOn ? `<cbc:TaxPointDate>${invoice.deliveredOn}</cbc:TaxPointDate>` : '',
     `<cbc:DocumentCurrencyCode>${cur}</cbc:DocumentCurrencyCode>`,
     fx ? '<cbc:TaxCurrencyCode>EUR</cbc:TaxCurrencyCode>' : '',
     `<cbc:BuyerReference>${esc(invoice.number ?? '')}</cbc:BuyerReference>`,
     credit && invoice.correctsNumber
       ? `<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>${esc(invoice.correctsNumber)}</cbc:ID>${invoice.correctsIssuedOn ? `<cbc:IssueDate>${invoice.correctsIssuedOn}</cbc:IssueDate>` : ''}</cac:InvoiceDocumentReference></cac:BillingReference>`
       : '',
-    `<cac:AccountingSupplierParty>${party({ name: seller.name, ico: seller.ico, dic: seller.dic, icdph: vatId(seller.icdph), address: seller.address, vatNumber: seller.icdph })}</cac:AccountingSupplierParty>`,
+    `<cac:AccountingSupplierParty>${party({
+      name: seller.name,
+      ico: seller.ico,
+      dic: seller.dic,
+      icdph: vatId(seller.icdph),
+      address: seller.address,
+      vatNumber: seller.icdph,
+      legalForm: seller.registerLine ? `${LEGAL_FORM_NAMES[seller.legalForm ?? 'sro']}, ${seller.registerLine}` : null,
+    })}</cac:AccountingSupplierParty>`,
     `<cac:AccountingCustomerParty>${party({ name: invoice.customerName, ico: invoice.customerIco, dic: invoice.customerDic, icdph: vatId(invoice.customerIcdph), address: invoice.customerAddress, vatNumber: invoice.customerIcdph, country: customerCountryOf(invoice) })}</cac:AccountingCustomerParty>`,
     // Goods to another member state name the state they went to (BR-IC-12).
     `<cac:Delivery><cbc:ActualDeliveryDate>${invoice.deliveredOn}</cbc:ActualDeliveryDate>${terms?.category === 'K' ? `<cac:DeliveryLocation><cac:Address><cac:Country><cbc:IdentificationCode>${customerCountryOf(invoice)}</cbc:IdentificationCode></cac:Country></cac:Address></cac:DeliveryLocation>` : ''}</cac:Delivery>`,

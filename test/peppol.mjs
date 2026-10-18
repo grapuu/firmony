@@ -106,6 +106,12 @@ const cases = [
     ),
   ],
   ['an invoice without an account to pay to', invoices.ublOf({ ...invoice, iban: null, note: null }, lines, seller)],
+  // The Financial Administration's Slovak transposition (v1.12, 14 October 2026): the IČO with its scheme 0158, the
+  // seller's register entry (BT-33) and the day of supply when it is not the day of issue (BT-7).
+  [
+    "an invoice with the seller's register entry and a day of supply before its issue",
+    invoices.ublOf({ ...invoice, deliveredOn: '2026-09-30' }, lines, { ...seller, legalForm: 'sro', registerLine: 'Obchodný register Mestského súdu Bratislava III, oddiel Sro, vložka č. 123456/B' }),
+  ],
   [
     'an invoice to a customer in another member state',
     invoices.ublOf({ ...invoice, customerIcdph: 'CZ12345678', customerDic: null, customerAddress: 'Náměstí 1, 110 00 Praha' }, [line(1, 'Práca', 1000, 'hod', 10000, 23)], seller),
@@ -191,6 +197,14 @@ const dollars = cases.find(([name]) => name.startsWith('an invoice in US dollars
 check(
   'and an invoice in another currency without its VAT in euros fails (BR-53)',
   (await validate(dollars.replace(/<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">[^<]*<\/cbc:TaxAmount><\/cac:TaxTotal>\n/, ''))).some((f) => f.id === 'BR-53'),
+)
+const slovak = cases.find(([name]) => name.startsWith("an invoice with the seller's register entry"))?.[1] ?? ''
+check(
+  "the Slovak transposition's terms: both IČO with scheme 0158, the register entry, the day of supply",
+  slovak.includes('<cbc:CompanyID schemeID="0158">57442452</cbc:CompanyID><cbc:CompanyLegalForm>Spoločnosť s ručením obmedzeným, Obchodný register Mestského súdu Bratislava III, oddiel Sro, vložka č. 123456/B</cbc:CompanyLegalForm>') &&
+    slovak.includes('<cbc:CompanyID schemeID="0158">50123456</cbc:CompanyID></cac:PartyLegalEntity>') &&
+    slovak.includes('<cbc:TaxPointDate>2026-09-30</cbc:TaxPointDate>') &&
+    !(cases[0]?.[1] ?? '').includes('TaxPointDate'),
 )
 for (const [name, xml] of cases) {
   const found = await validate(xml)

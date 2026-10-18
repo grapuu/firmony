@@ -828,6 +828,7 @@ export const team = typesetAll({
     statementNil: 'Kontrolný výkaz sa nepodáva: priznanie je nulové.',
     statementGoods: 'Kontrolný výkaz sa nepodáva: priznanie obsahuje len dodanie tovaru do EÚ alebo vývoz, bez odpočítania dane.',
     statementImport: 'Kontrolný výkaz sa nepodáva: priznanie obsahuje len odpočítanie dane zaplatenej colnému úradu pri dovoze.',
+    statementGoodsImport: 'Kontrolný výkaz sa nepodáva: priznanie obsahuje len dodanie tovaru do EÚ alebo vývoz a odpočítanie dane zaplatenej colnému úradu pri dovoze (§ 78a ods. 1 písm. b).',
     statement7a: 'Osoba registrovaná podľa § 7a kontrolný výkaz nepodáva.',
     parts: {
       A1: 'A.1 Vystavené faktúry s DPH podnikateľom',

@@ -2313,6 +2313,13 @@ async function zipped(entries, note) {
     const withA2 = vat.workOut(payer, '2027-01', [customs, ptpOut])
     const a2Alone = vat.workOut(payer, '2027-01', [ptpOut])
     check('a line of A.2 asks for the control statement, with imports or alone', withA2.statement && withA2.kv.a2.length === 1 && a2Alone.statement && a2Alone.skip === null)
+    const export_ = doc({ kind: 'invoice_out', number: 'V-1', vat: v('export', [[0, 50000, 0]]) })
+    const both = vat.workOut(payer, '2027-01', [customs, export_])
+    const withDomestic = vat.workOut(payer, '2027-01', [customs, export_, doc({ kind: 'invoice_in', number: 'F-D', vat: v('domestic', [[23, 1000, 230, 230]], { vatId: 'SK2121212121' }) })])
+    check(
+      'an export with VAT deducted on imports needs none either (§ 78a(1)(b)); a domestic deduction besides asks for it',
+      !both.statement && both.skip === 'goodsImport' && withDomestic.statement && withDomestic.skip === null,
+    )
     // A customs document that came after the deadline is deducted in the month it came, as an invoice.
     check(
       "a customs document is deducted when it came, as an invoice; an importer's own VAT stays in the month of the declaration",

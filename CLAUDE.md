@@ -1108,8 +1108,14 @@ by itself.
   means 1), a customer abroad had no electronic address (PEPPOL-EN16931-R010: now its VAT number under Peppol's
   scheme of its state) and every party was in Slovakia (now the state of its VAT number, EL as GR); the address goes
   in its parts (street, town, postal code; `src/app/address.ts`). The Financial Administration's Slovak transposition
-  (an XLSX on financnasprava.sk, v1.12 of 14 October 2026) could not be read from the workspace: to be checked through
-  the browser pane.
+  ("Transpozície štandardu Peppol BIS v podmienkach Slovenskej legislatívy", v1.12 of 14 October 2026, an XLSX on
+  financnasprava.sk's eFaktúra page) was read through the browser pane on 18 October 2026: what it asks beyond Peppol is
+  now written: the IČO of either side when it has one (BT-30, BT-47) with its scheme, ISO 6523 ICD 0158; the seller's
+  legal form and register entry (BT-33, § 3a of the Commercial Code, `CompanyLegalForm` from `registerLine`); the day of
+  supply when it differs from the day of issue (BT-7 `TaxPointDate`, § 74(1)(d); BT-8 never). Its other "required"
+  terms are Peppol's own or required only within their group (the account within a credit transfer). The digital
+  postman reports each invoice to the tax authority as a Tax Data Document (docs.peppol.eu/tdd/sk, version 1.0.0,
+  14 April 2026), made by the postman from the invoice. The Peppol test has a case for these terms (22 checks).
 - How an invoice is taxed (built 18 October 2026, schema step 38: `invoices.vat_mode`, `documents.vat_hint`): a
   VAT payer chooses "Zdanenie": Slovak VAT (the rates), goods to a VAT payer of another member state (§ 43), a service
   whose customer in another member state pays the VAT (§ 15(1)), an export (§ 47), a supply outside Slovakia. Without
@@ -1836,7 +1842,10 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   AEO)" (`import84a`: in the period the customs declaration was accepted, rows 11c to 11e and 12c to 12e, row 13 for an
   exempt import, corrections in 24 and 25 with the deduction's in 28, deducted in 18 to 19 and 23a to 23c; booked as a
   purchase from abroad, its VAT both owed and deducted). Neither goes into the control statement (§ 78a asks for none),
-  and a return whose only content is VAT deducted on imports needs no control statement (KVDPH's instructions of 2021).
+  and a return whose only content is VAT deducted on imports needs no control statement (KVDPH's instructions of 2021),
+  nor one of goods supplied under § 43 or § 47 with VAT deducted on imports alone (§ 78a(1)(b), and § 84a for the
+  importer's own VAT, both read in the original on static.slov-lex.sk through the browser pane on 18 October 2026, the
+  version of 1 January 2026: § 84a(2)(b) also takes an importer in centralised clearance registered under § 5).
   The payment to the customs office comes from the State Treasury (8180) and is taken as the state's: the accountant gives
   it the customs document's account. Not built: proposing an import by itself (the supplier's invoice from outside the
   EU is still proposed as a service from abroad: the accountant sets it "Bez DPH" and the customs declaration "Dovoz").
@@ -2244,9 +2253,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1205 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm test                 # 1206 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
 npm run test:runtime     # 1768 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
-npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+npm run test:peppol      # 22 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

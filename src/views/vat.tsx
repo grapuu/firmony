@@ -206,7 +206,9 @@ const StatementCard: FC<{ company: Company; view: PeriodView; docs: Map<string, 
           ? v.statementNil
           : why === 'import'
             ? v.statementImport
-            : v.statementGoods
+            : why === 'goodsImport'
+              ? v.statementGoodsImport
+              : v.statementGoods
         : parts.length === 0
           ? v.statementNone
           : null

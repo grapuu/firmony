@@ -698,8 +698,8 @@ export interface PeriodResult {
    * reverse charge is in A.2 and in no row). A person registered under § 7a never files one.
    */
   statement: boolean
-  /** Why a payer files no control statement: a nil return, goods to the EU or exports alone, imports' VAT deducted alone. */
-  skip?: 'nothing' | 'goods' | 'import' | null
+  /** Why a payer files no control statement: a nil return, goods to the EU or exports alone, imports' VAT deducted alone, or both. */
+  skip?: 'nothing' | 'goods' | 'import' | 'goodsImport' | null
 }
 
 export const emptyRows = (): Rows => Object.fromEntries(ROWS.map((row) => [row, 0])) as Rows
@@ -1078,19 +1078,18 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     rows.r35 = Math.max(0, rows.r32 - rows.r34)
   }
   const nothing = ROWS.every((row) => rows[row] === 0)
-  // Goods to the EU and exports alone, with nothing deducted, need no control statement (the return's rows 14 and 15 are all of row 13).
-  const goodsOnly = ROWS.every((row) => rows[row] === 0 || row === 'r13' || row === 'r14' || row === 'r15') && rows.r13 === rows.r14 + rows.r15
-  // Nor does VAT deducted on imports alone (paid to the customs office): rows 18 to 19 are all of rows 22 to 23, and
-  // the rest is the result it comes to (KVDPH's instructions of 2021, § 49(2)(d)).
+  // § 78a(1)(b), read in the original on slov-lex (the version of 1 January 2026) on 18 October 2026: no control
+  // statement for a return that holds only goods supplied free of tax under § 43 or § 47 (the return's rows 14 and 15
+  // are all of row 13) with no deduction, or with VAT deducted on imports alone (§ 49(2)(d): rows 18 to 19 are all of
+  // rows 22 to 23); the rest of the rows is the result it comes to. VAT deducted on imports alone is in the same case
+  // (KVDPH's instructions of 2021).
   const RESULT_ROWS: readonly Row[] = ['r17', 'r32', 'r33', 'r34', 'r35', 'r36', 'r37']
-  const importOnly =
-    rows.r18 + rows.r18a + rows.r19 > 0 &&
-    rows.r18 === rows.r22 &&
-    rows.r18a === rows.r22a &&
-    rows.r19 === rows.r23 &&
-    ROWS.every((row) => rows[row] === 0 || RESULT_ROWS.includes(row) || ['r18', 'r18a', 'r19', 'r22', 'r22a', 'r23'].includes(row))
+  const QUIET: readonly Row[] = ['r13', 'r14', 'r15', 'r18', 'r18a', 'r19', 'r22', 'r22a', 'r23', ...RESULT_ROWS]
+  const quiet =
+    rows.r13 === rows.r14 + rows.r15 && rows.r18 === rows.r22 && rows.r18a === rows.r22a && rows.r19 === rows.r23 && ROWS.every((row) => rows[row] === 0 || QUIET.includes(row))
+  const imported = rows.r18 + rows.r18a + rows.r19 > 0
   // A part of the control statement with a line is filed, whatever the rows (A.2 is in none).
-  const skip: PeriodResult['skip'] = kvRows(kv) > 0 ? null : nothing ? 'nothing' : goodsOnly ? 'goods' : importOnly ? 'import' : null
+  const skip: PeriodResult['skip'] = kvRows(kv) > 0 ? null : nothing ? 'nothing' : !quiet ? null : rows.r13 !== 0 && imported ? 'goodsImport' : imported ? 'import' : 'goods'
   return {
     period,
     rows,
