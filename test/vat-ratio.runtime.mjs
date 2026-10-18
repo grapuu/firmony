@@ -24,7 +24,7 @@ export async function checkVatRatio({ db, acc, lucia, nowS, day, capture }) {
     db
       .prepare(
         `INSERT INTO documents (id, company_id, created_at, source, status, kind, party, party_ico, number, issued_on, supplied_on, total_cents, vat_cents, currency, category,
-           booked_at, booked_by, vat_mode, vat_lines, party_vat_id, ratio_skip)
+           booked_at, booked_by, vat_mode, vat_lines, party_vat_id, ratio_mode)
          VALUES (?, ?, ?, 'upload', 'read', 'invoice_out', 'TEST-ONLY Odberateľ', '50777001', ?, ?, ?, ?, ?, 'EUR', 'sales', ?, ?, 'domestic', ?, 'SK2020777001', ?)`,
       )
       .bind(
@@ -39,7 +39,7 @@ export async function checkVatRatio({ db, acc, lucia, nowS, day, capture }) {
         extra.booked === false ? null : nowS,
         extra.booked === false ? null : lucia.id,
         JSON.stringify([{ rate, base, vat: Math.round((base * rate) / 100), deduct: 0 }]),
-        extra.skip ? 1 : 0,
+        extra.skip ? 'skip' : null,
       )
   await db.batch([
     // Supplies of the year: 800 € with VAT (the right to deduct), 200 € of rent exempt (§ 38), and a car sold (left out).
@@ -102,6 +102,8 @@ export async function checkVatRatio({ db, acc, lucia, nowS, day, capture }) {
     })
   page = plain(await (await acc.get('/ucto/doklady/ra-in')).text())
   check('the booking form offers the proportional deduction', page.includes('Pomerne koeficientom (§ 50)'))
+  res = await book('ra-now', day(-3), { deduct: '' })
+  check('in proportion without deducting at all is said, nothing booked', res.status === 422 && plain(await res.text()).includes('Pomerné odpočítanie je odpočítanie'))
   res = await book('ra-now', day(-3), {})
   check(
     'in proportion in a year without a coefficient: refused, nothing booked',
@@ -136,7 +138,7 @@ export async function checkVatRatio({ db, acc, lucia, nowS, day, capture }) {
     total: '615,00',
     vat: '115,00',
     account: '',
-    mimo_koeficientu: '1',
+    koeficient: 'skip',
     dph: '1',
     dph_rezim: 'domestic',
     dph_dodanie: '',
@@ -146,7 +148,10 @@ export async function checkVatRatio({ db, acc, lucia, nowS, day, capture }) {
     dph_zaklad_23: '500,00',
     dph_dan_23: '115,00',
   })
-  check('an issued sale of property booked as left out of the coefficient', res.status === 303 && (await db.prepare("SELECT ratio_skip FROM documents WHERE id = 'ra-car'").first())?.ratio_skip === 1)
+  check(
+    'an issued sale of property booked as left out of the coefficient',
+    res.status === 303 && (await db.prepare("SELECT ratio_mode FROM documents WHERE id = 'ra-car'").first())?.ratio_mode === 'skip',
+  )
 
   // The year's last period waits for the settlement.
   page = plain(await (await acc.get(`/ucto/klienti/${company}/dph?obdobie=${Y}-12`)).text())
@@ -185,10 +190,48 @@ export async function checkVatRatio({ db, acc, lucia, nowS, day, capture }) {
   page = plain(await (await acc.get(`/ucto/klienti/${company}/kniha/ucet/548?rok=${Y}`)).text())
   check('the books on 31 December: 343.100 against 548', page.includes('1,15') && page.includes(`KOEF ${Y}`))
 
-  // A document of the year changed after the settlement is seen.
+  // A received correction of the settled year's invoice, in this year: by that year's coefficient, in no later settlement.
+  await db
+    .prepare(
+      `INSERT INTO documents (id, company_id, created_at, source, status, kind, party, party_ico, number, issued_on, total_cents, vat_cents, currency, category)
+       VALUES ('ra-cn', ?, ?, 'upload', 'read', 'invoice_in', 'TEST-ONLY Správca budovy s. r. o.', '36123456', 'D-1', ?, 2460, 460, 'EUR', 'services')`,
+    )
+    .bind(company, nowS, day(-2))
+    .run()
+  res = await book('ra-cn', day(-2), { number: 'D-1', total: '24,60', vat: '4,60', dph_opravuje: 'FA-6', dph_zaklad_23: '-20,00', dph_dan_23: '-4,60' })
+  const cn = await db.prepare("SELECT vat_ratio, ratio_mode, vat_lines FROM documents WHERE id = 'ra-cn'").first()
+  check(
+    "a correction of the settled year's invoice: by its coefficient 0,80, marked final",
+    res.status === 303 && cn?.vat_ratio === 80 && cn.ratio_mode === 'final' && cn.vat_lines === JSON.stringify([{ rate: 23, base: -2000, vat: -460, deduct: -368 }]),
+    JSON.stringify(cn),
+  )
+
+  // A document of the year booked after the settlement: the year's last period is kept back until it is settled again.
   await issued('ra-rent2', 30000, 0, { on: `${Y}-11-02` }).run()
   page = plain(await (await acc.get(`${base}?rok=${Y}`)).text())
   check('a change of the year after the settlement is said', page.includes('Údaje roka sa od vysporiadania zmenili') && page.includes('Zmenené'))
+  page = plain(await (await acc.get(`/ucto/klienti/${company}/dph?obdobie=${Y}-12`)).text())
+  check('December is kept back by a settlement the year no longer agrees with', page.includes('Doklady roka sa od vysporiadania koeficientom zmenili'))
+  const again = await (await acc.get(`${base}?rok=${Y}`)).text()
+  res = await acc.post(`${base}/vysporiadat`, { rok: String(Y), podpis: again.match(/name="podpis" value="([^"]+)"/)?.[1] ?? '' })
+  const resettled = JSON.parse((await db.prepare('SELECT settled FROM vat_ratios WHERE company_id = ? AND year = ?').bind(company, Y).first())?.settled ?? 'null')
+  page = plain(await (await acc.get(`/ucto/klienti/${company}/dph?obdobie=${Y}-12`)).text())
+  check(
+    'settled again: 800 € of 1 300 €, 0,62, December free',
+    (res.headers.get('location') ?? '').includes('ok=settled') && resettled?.coef === 62 && !page.includes('Doklady roka sa od vysporiadania'),
+    JSON.stringify(resettled),
+  )
+
+  // A coefficient written by mistake for a year without documents by it is removed.
+  const next = Number(day(0).slice(0, 4)) + 1
+  await acc.post(base, { rok: String(next), koeficient: '0,50', sposob: 'estimate' })
+  res = await acc.post(`${base}/odstranit`, { rok: String(next) })
+  check(
+    'a coefficient written by mistake removed',
+    (res.headers.get('location') ?? '').includes('ok=removed') && (await db.prepare('SELECT COUNT(*) AS n FROM vat_ratios WHERE company_id = ? AND year = ?').bind(company, next).first())?.n === 0,
+  )
+  res = await acc.post(`${base}/odstranit`, { rok: String(Y) })
+  check('a settled one is not', (res.headers.get('location') ?? '').includes('ok=removeRefused'))
 
   // A locked year changes no more.
   await db

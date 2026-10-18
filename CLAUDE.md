@@ -1933,6 +1933,20 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   whose 31 December is locked changes no more (`vatRatiosGuards`). Handover (`koeficienty-dph`) and purge carry it.
   test/vat-ratio.runtime.mjs, units "The proportional deduction of VAT". Not built: the adjustment of investment property
   over five or twenty years (§ 54 to § 54d), a fiscal year, a payer whose registration ends during the year.
+  Mended after a tenth independent review (18 October 2026, of commit 53ca014; each finding verified first; schema step
+  65 puts `vat_ratio` and `ratio_mode` under the documents' lock guard): a settled year is read again wherever its last
+  period is worked out (`withFreshRatios` in `src/app/vat-ratio-store.ts`: the VAT page, filing, the client card and the
+  deadlines), and a settlement the year's documents no longer agree with (a December invoice booked in January) keeps that
+  period back (`ratioChanged`) instead of going into the return; an issued document's coefficient mark is a choice
+  (`documents.ratio_mode` in place of a tick: as its taxation says, 'right' an exempt insurance or financial service
+  outside the Union or tied to an export, § 49(3), 'none' a supply abroad that would be exempt at home, § 49(6), 'skip'
+  left out by § 50(2)); a received correction of a document of a year already settled is deducted by that year's
+  coefficient and marked 'final' (§ 53, no later settlement takes it); a document saved again in the same year keeps the
+  coefficient it was deducted by; "Pomerne" without "Odpočítať DPH" is said; a coefficient written by mistake is removed
+  while nothing is deducted by it; the page offers the form only for the years it takes, gives every year its own state,
+  and says when our books began during the year. Read in the original that day (DPHv25 poučenie, point 35, through the
+  browser pane): rows 18, 18a and 19 hold the difference of § 50(4) in the year's last period, and "údaj v riadku 18 nie je
+  súčtom riadkov 20, 22 a 23a" (likewise 18a and 19), so rows 20 to 23c keep the documents' deduction alone.
   Found on the way: since the full payroll of 17 October 2026 (ed07802) the VAT page and the closing page showed
   payroll's sentence of what is not built (one text replaced in all three places); each says its own again.
 - Not built: triangular trade, bad debts (§ 25a, § 53b), documents in another
@@ -2418,8 +2432,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1279 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1864 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1282 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1870 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

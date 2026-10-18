@@ -179,8 +179,9 @@ import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
 import { isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
-import { coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioWork, type RatioYear } from '../app/vat-ratio'
+import { ISSUED_RATIO_MODES, coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioMode, type RatioWork, type RatioYear } from '../app/vat-ratio'
 import { RatioPage, type RatioState } from '../views/vat-ratio'
+import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
 import { returnXml, statementXml, summaryXml } from '../app/vat-xml'
 import { quarterOf, summaryLookbackFrom, summaryPeriodOf, type SvView, type SvFiled } from '../app/vat-summary'
 import { dataRevision } from '../app/handover-store'
@@ -236,7 +237,10 @@ import {
   checkStatement,
   clearExemptStatement,
   companiesOf,
+  DOC_COLUMNS,
+  DOC_FROM,
   deleteDocumentStatements,
+  docOf,
   eventStatement,
   getPayment,
   linkStatement,
@@ -722,7 +726,7 @@ async function vatSummary(db: D1Database, company: Company, day: string): Promis
   if (company.vatStatus !== 'none') {
     const period = prevPeriod(current)
     const [docs, filed] = await Promise.all([docsAround(db, company.id, period, period), filedReturns(db, company.id)])
-    return { view: viewOf(company, period, docs, filed, day), needs7a: 0 }
+    return { view: viewOf(await withFreshRatios(db, company, lastYearsOf([period]), filed), period, docs, filed, day), needs7a: 0 }
   }
   const periods = [prevPeriod(prevPeriod(current)), prevPeriod(current), current]
   const docs = await docsAround(db, company.id, periods[0] as string, current)
@@ -1267,7 +1271,8 @@ function periodParam(company: Company, text: unknown, today: string): string {
 /** A period worked out, with the documents it may hold and the returns filed. */
 async function vatView(db: D1Database, company: Company, period: string, today: string): Promise<{ view: PeriodView; docs: Doc[]; filed: FiledReturn[] }> {
   const [docs, filed] = await Promise.all([docsAround(db, company.id, period, period), filedReturns(db, company.id)])
-  return { view: viewOf(company, period, docs, filed, today), docs, filed }
+  // The year's last period: its settlement of the proportional deduction checked against the year's documents again.
+  return { view: viewOf(await withFreshRatios(db, company, lastYearsOf([period]), filed), period, docs, filed, today), docs, filed }
 }
 
 /** What the accountant chose in the form of a filing; the same names in the files' address and in the mark. */
@@ -1317,17 +1322,19 @@ function vatPlan(company: Company, view: PeriodView, filed: FiledReturn[], today
 }
 
 teamRoutes.get('/klienti/:id/dph', async (c) => {
-  const company = await companyParam(c)
-  if (!company) return missingPage(c)
+  const found = await companyParam(c)
+  if (!found) return missingPage(c)
   const db = c.env.DB
   const today = dayOf(now())
-  const period = periodParam(company, c.req.query('obdobie'), today)
-  const periods = stripOf(company, period, today)
+  const period = periodParam(found, c.req.query('obdobie'), today)
+  const periods = stripOf(found, period, today)
   const [docs, filed, summary] = await Promise.all([
-    docsAround(db, company.id, periods[0] ?? period, periods[periods.length - 1] ?? period),
-    filedReturns(db, company.id),
-    company.vatStatus === 'none' ? null : svWithDocs(db, company, period, today),
+    docsAround(db, found.id, periods[0] ?? period, periods[periods.length - 1] ?? period),
+    filedReturns(db, found.id),
+    found.vatStatus === 'none' ? null : svWithDocs(db, found, period, today),
   ])
+  // A year's last period among them: its settlement of the proportional deduction checked against the year again.
+  const company = await withFreshRatios(db, found, lastYearsOf([...periods, period]), filed)
   const strip = periods.map((p) => viewOf(company, p, docs, filed, today))
   const view = strip.find((s) => s.period === period) ?? viewOf(company, period, docs, filed, today)
   // Not registered: what was bought from abroad in the periods shown asks for a registration under § 7a.
@@ -1475,6 +1482,12 @@ async function ratioPage(c: Ctx, company: Company, extra: { year?: number; value
   const { docs, work } = await ratioYearWork(db, company, year)
   const lock = await periodLock(db, company.id)
   const years = [...new Set([current - 1, current, ...ratios.map((r) => r.year), year])].sort((a, b) => a - b)
+  // Each other year's state from its own figures (a settled year changed since says so there too).
+  const states = new Map<number, RatioState>()
+  for (const y of years) {
+    const own = ratios.find((r) => r.year === y) ?? null
+    states.set(y, y === year ? ratioStateOf(stored, work, y, today) : ratioStateOf(own, own?.settled ? (await ratioYearWork(db, company, y)).work : null, y, today))
+  }
   const ok = c.req.query('ok')
   return shell(
     c,
@@ -1483,7 +1496,9 @@ async function ratioPage(c: Ctx, company: Company, extra: { year?: number; value
     <RatioPage
       company={company}
       year={year}
-      years={years.map((y) => ({ year: y, state: y === year ? ratioStateOf(stored, work, y, today) : ratioStateOf(ratios.find((r) => r.year === y) ?? null, null, y, today) }))}
+      years={years.map((y) => ({ year: y, state: states.get(y) ?? 'none' }))}
+      editable={year >= current - 1 && year <= current + 1}
+      since={company.startOn && company.startOn > `${year}-01-01` && company.startOn <= `${year}-12-31` ? company.startOn : null}
       stored={stored}
       proposal={proposal}
       work={work}
@@ -1562,6 +1577,30 @@ teamRoutes.post('/klienti/:id/dph/koeficient/vysporiadat', async (c) => {
     return c.redirect(`${back}&ok=locked`, 303)
   }
   return c.redirect(`${back}&ok=settled`, 303)
+})
+
+/** A coefficient written by mistake, removed: only while no document of the year is deducted by one and nothing is settled. */
+teamRoutes.post('/klienti/:id/dph/koeficient/odstranit', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB
+  const body = await c.req.parseBody()
+  const year = Number(body.rok)
+  const stored = (company.vatRatios ?? []).find((r) => r.year === year)
+  if (!Number.isInteger(year) || !stored) return missingPage(c)
+  const back = `/ucto/klienti/${company.id}/dph/koeficient?rok=${year}`
+  const { work } = await ratioYearWork(db, company, year)
+  if (stored.settled || work.proportional.length > 0) return c.redirect(`${back}&ok=removeRefused`, 303)
+  try {
+    await db.batch([
+      db.prepare('DELETE FROM vat_ratios WHERE company_id = ? AND year = ? AND settled IS NULL').bind(company.id, year),
+      eventStatement(db, { company: company.id, user: c.get('who').user.id, action: 'vat.ratio.removed', subject: String(year) }),
+    ])
+  } catch (error) {
+    if (!isPeriodLocked(error)) throw error
+    return c.redirect(`${back}&ok=locked`, 303)
+  }
+  return c.redirect(`${back}&ok=removed`, 303)
 })
 
 teamRoutes.post('/klienti/:id/dph/koeficient/zrusit', async (c) => {
@@ -4508,6 +4547,18 @@ teamRoutes.get('/doklady/:id', async (c) => {
   return found ? bookPage(c, found) : missingPage(c)
 })
 
+/** The received document deducted in proportion that a correction names by its number (§ 53), if the company has one. */
+async function correctedRatioDoc(db: D1Database, company: string, number: string, self: string): Promise<Doc | null> {
+  const row = await db
+    .prepare(
+      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.number = ? AND d.id <> ? AND d.kind IN ('receipt', 'invoice_in')
+         AND d.vat_ratio IS NOT NULL AND d.deleted_at IS NULL ORDER BY d.created_at LIMIT 1`,
+    )
+    .bind(company, number, self)
+    .first<Record<string, unknown>>()
+  return row ? docOf(row) : null
+}
+
 /** "12,40" or "1 200" in cents; null when empty, NaN when it is not an amount. */
 function moneyOf(text: string): number | null {
   const plain = text.replace(/[\s €]/g, '')
@@ -4567,7 +4618,7 @@ teamRoutes.post('/doklady/:id', async (c) => {
     rate: text('rate', 16),
     center: typeof body.stredisko === 'string' && ID.test(body.stredisko) ? body.stredisko : '',
     ratio: body.pomerne === '1',
-    ratioSkip: body.mimo_koeficientu === '1',
+    ratioMode: typeof body.koeficient === 'string' && (ISSUED_RATIO_MODES as readonly string[]).includes(body.koeficient) ? body.koeficient : '',
   }
   const booking = action === 'dalsi' || action === 'zauctovat'
   const errors: Partial<Record<keyof BookValues, string>> = {}
@@ -4607,21 +4658,37 @@ teamRoutes.post('/doklady/:id', async (c) => {
   const vatShown = body.dph === '1' && company.vatStatus !== 'none'
   const sameFamily = familyOf(kind) !== null && familyOf(kind) === familyOf(doc.kind)
   let vatRead: ReturnType<typeof readVat> | null = null
-  // A received document deducted in proportion (§ 50, vat-ratio.ts): the coefficient of the year its deduction falls in.
+  // A received document deducted in proportion (§ 50, vat-ratio.ts): the coefficient of the year its deduction falls in;
+  // saved again in that year, the coefficient it was deducted by; a correction of a document of a year already settled,
+  // that year's (§ 53), kept out of any later settlement ('final').
   let ratio: number | null = null
+  let ratioMode: RatioMode | null = null
   if (vatShown && sameFamily) {
     const counted = vatOf(vatDocOf(doc), vatCompanyOf(company))
     const filed = await filedReturns(db, company.id)
     const natural = counted ? docPreview(company, doc, { ...counted.data, period: null }, filed).natural : null
     const periods = natural ? periodsAround(natural, counted?.data.period ?? null, nextPeriod, prevPeriod) : []
     vatRead = readVat(body, { kind, payer: company.vatStatus === 'payer', deduct: values.deduct, booking, periods })
-    if (vatRead.data && values.ratio && values.deduct && company.vatStatus === 'payer' && isReceived(kind)) {
-      const year = Number(docPreview(company, doc, vatRead.data, filed).period.slice(0, 4))
-      const found = (company.vatRatios ?? []).find((r) => r.year === year)
-      if (!found) errors.ratio = t.book.errors.ratio(year)
+    if (vatRead.data && values.ratio && company.vatStatus === 'payer' && isReceived(kind)) {
+      if (!values.deduct) errors.ratio = t.book.errors.ratioDeduct
       else {
-        ratio = found.coef
-        vatRead.data.lines = withRatio(vatRead.data.lines, found.coef)
+        const yearOf = (d: Doc, data: VatData) => Number(docPreview(company, d, data, filed).period.slice(0, 4))
+        const year = yearOf(doc, vatRead.data)
+        const corrected = vatRead.data.corrects ? await correctedRatioDoc(db, company.id, vatRead.data.corrects, doc.id) : null
+        const correctedYear = corrected?.vat ? yearOf(corrected, corrected.vat) : null
+        const settledBefore = correctedYear !== null && correctedYear < year ? (company.vatRatios ?? []).find((r) => r.year === correctedYear && r.settled && !r.stale) : undefined
+        if (settledBefore?.settled) {
+          ratio = settledBefore.settled.coef
+          ratioMode = 'final'
+        } else {
+          const found = (company.vatRatios ?? []).find((r) => r.year === year)
+          if (!found) errors.ratio = t.book.errors.ratio(year)
+          else {
+            const before = doc.vatRatio !== null && doc.vatRatio !== undefined && doc.ratioMode !== 'final' && doc.vat ? yearOf(doc, doc.vat) : null
+            ratio = before === year ? (doc.vatRatio as number) : found.coef
+          }
+        }
+        if (ratio !== null) vatRead.data.lines = withRatio(vatRead.data.lines, ratio)
       }
     }
   }
@@ -4672,7 +4739,7 @@ teamRoutes.post('/doklady/:id', async (c) => {
     statements.push(
       db
         .prepare(
-          'UPDATE documents SET vat_mode = ?, vat_lines = ?, supplied_on = ?, party_vat_id = ?, corrects = ?, vat_period = ?, vat_country = ?, vat_reverse = ?, vat_ratio = ?, ratio_skip = ? WHERE id = ? AND company_id = ?',
+          'UPDATE documents SET vat_mode = ?, vat_lines = ?, supplied_on = ?, party_vat_id = ?, corrects = ?, vat_period = ?, vat_country = ?, vat_reverse = ?, vat_ratio = ?, ratio_mode = ? WHERE id = ? AND company_id = ?',
         )
         .bind(
           v.mode,
@@ -4684,13 +4751,13 @@ teamRoutes.post('/doklady/:id', async (c) => {
           v.mode === 'oss' ? (v.country ?? null) : null,
           v.mode === 'reverse' && v.reverse ? JSON.stringify(v.reverse) : null,
           ratio,
-          isIssued(kind) && values.ratioSkip ? 1 : 0,
+          isIssued(kind) ? values.ratioMode || null : ratioMode,
           doc.id,
           company.id,
         ),
     )
   } else if (vatShown && !sameFamily) {
-    statements.push(db.prepare('UPDATE documents SET vat_mode = NULL, vat_period = NULL, vat_ratio = NULL, ratio_skip = 0 WHERE id = ? AND company_id = ?').bind(doc.id, company.id))
+    statements.push(db.prepare('UPDATE documents SET vat_mode = NULL, vat_period = NULL, vat_ratio = NULL, ratio_mode = NULL WHERE id = ? AND company_id = ?').bind(doc.id, company.id))
   }
   // The document's cost centre, when the form had the field and it was changed there (management information: no period
   // lock holds it); a centre the client gave while the page was open stays.

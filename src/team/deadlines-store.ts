@@ -1,3 +1,4 @@
+import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
 import { closureCurrentSql, latestPayoutSql, socialPayrollStatusSql as payrollStatusSql, socialReportCurrentSql as reportCurrentSql, currentTargetActiveSql as targetActiveSql } from '../payroll-reporting/sql'
 import { distributionOf, withheldOf } from '../app/distribution'
 import { type PayrollReportFact } from '../payroll-reporting/model'
@@ -203,10 +204,13 @@ const dividendsFact = (year: number, raw: unknown): Pick<ClosingFact, 'dividends
   }
 
   const dues: DueRow[] = []
-  for (const company of companies) {
-    const returns = filed.get(company.id) ?? []
-    const held = docs.get(company.id) ?? []
-    const window = vatWindow(company, today)
+  for (const listed of companies) {
+    const returns = filed.get(listed.id) ?? []
+    const held = docs.get(listed.id) ?? []
+    const window = vatWindow(listed, today)
+    // A year's last period in the window: its settlement of the proportional deduction checked against the year again
+    // (vat-ratio-store.ts; no query for a company without one).
+    const company = await withFreshRatios(db, listed, lastYearsOf(window), returns)
     const svFiled = summariesFiled.get(company.id) ?? new Map<string, SvFiled>()
     const facts = {
       views: window.map((period) => viewOf(company, period, held, returns, today)),

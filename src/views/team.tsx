@@ -1206,8 +1206,8 @@ export interface BookValues {
   center?: string
   /** A received document deducted in proportion by the year's coefficient (§ 50, vat-ratio.ts). */
   ratio?: boolean
-  /** An issued document left out of the coefficient (§ 50(2)). */
-  ratioSkip?: boolean
+  /** An issued document's own mark for the coefficient ('' as its taxation says; 'right', 'none', 'skip'). */
+  ratioMode?: string
 }
 
 /** What the form shows for a document: its own values, written the way they are typed. */
@@ -1232,7 +1232,7 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
     currency: d.currency ?? 'EUR',
     rate: d.fxRate ? d.fxRate.replace('.', ',') : '',
     ratio: d.vatRatio !== null && d.vatRatio !== undefined,
-    ratioSkip: d.ratioSkip === true,
+    ratioMode: d.ratioMode && d.ratioMode !== 'final' ? d.ratioMode : '',
   }
 }
 
@@ -1483,11 +1483,18 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
               </label>
             ) : null}
             {company.vatPayer && (company.vatRatios?.length ?? 0) > 0 && values.kind === 'invoice_out' ? (
-              <label class="tickbox">
-                <input type="checkbox" name="mimo_koeficientu" value="1" checked={values.ratioSkip} />
-                <span>{t.book.ratioSkip}</span>
+              <label class="field">
+                <span class="field__label">{t.book.ratioMode}</span>
+                <select class="field__input" name="koeficient">
+                  {['', 'right', 'none', 'skip'].map((m) => (
+                    <option value={m} selected={(values.ratioMode ?? '') === m}>
+                      {t.book.ratioModes[m]}
+                    </option>
+                  ))}
+                </select>
               </label>
             ) : null}
+            {d.ratioMode === 'final' && d.vatRatio !== null && d.vatRatio !== undefined ? <p class="field__hint">{t.book.ratioWith(coefText(d.vatRatio))}</p> : null}
             <label class="tickbox">
               <input type="checkbox" name="remember" value="1" checked={values.remember} />
               <span>{t.book.remember}</span>

@@ -13,7 +13,7 @@ import { settingsOf, type IntrastatSettings } from './intrastat'
 import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
 import type { Entry, Reading, Statement } from './xml'
-import { ratiosOf, type RatioYear } from './vat-ratio'
+import { isRatioMode, ratiosOf, type RatioMode, type RatioYear } from './vat-ratio'
 
 export interface Company {
   id: string
@@ -198,8 +198,8 @@ export interface Doc {
   takingsCash?: number | null
   /** A received document deducted in proportion (§ 50, vat-ratio.ts): the coefficient its deduction was worked out by. */
   vatRatio?: number | null
-  /** An issued document § 50(2) leaves out of the coefficient. */
-  ratioSkip?: boolean
+  /** The document's own mark for the coefficient (vat-ratio.ts): issued 'right', 'none', 'skip'; received 'final'. */
+  ratioMode?: RatioMode | null
 }
 
 export interface Message {
@@ -356,7 +356,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
   d.first_approved_at, d.first_approved_by, fa.name AS first_approved_by_name, d.iban_by,
-  d.center_id, d.takings_cash, d.vat_ratio, d.ratio_skip`
+  d.center_id, d.takings_cash, d.vat_ratio, d.ratio_mode`
 /**
  * The columns the books need of a document (ledger.ts, vat.ts), without what only its page shows: no reader's
  * proposal, file, names or codes. At 12 000 documents a year the full columns' text was most of a books page's time.
@@ -364,7 +364,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
 export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.status, d.kind, d.party, d.party_ico, d.number, d.issued_on, d.due_on,
   d.total_cents, d.vat_cents, d.currency, d.category, d.vat_deduct, d.account, d.booked_at, d.paid_privately, l.payment_id, d.supplied_on,
   d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse,
-  d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_skip`
+  d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_mode`
 export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
 export const DOC_FROM =
   'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by LEFT JOIN users fa ON fa.id = d.first_approved_by'
@@ -426,7 +426,7 @@ export function docOf(row: Row): Doc {
     centerId: str(row.center_id),
     takingsCash: num(row.takings_cash),
     vatRatio: typeof row.vat_ratio === 'number' ? row.vat_ratio : null,
-    ratioSkip: row.ratio_skip === 1,
+    ratioMode: isRatioMode(row.ratio_mode) ? row.ratio_mode : null,
     cashPaid: typeof row.cash_paid === 'string' && row.cash_paid.includes(' ') ? { number: row.cash_paid.split(' ')[0] ?? '', on: row.cash_paid.split(' ')[1] ?? '' } : null,
   }
 }
@@ -487,7 +487,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     vat: doc.vat,
     takings: doc.source === 'takings',
     ratio: doc.vatRatio ?? null,
-    ratioSkip: doc.ratioSkip === true,
+    ratioMode: doc.ratioMode ?? null,
   }
 }
 
@@ -497,7 +497,11 @@ export const vatCompanyOf = (company: Company): VatCompany => ({
   quarterly: company.vatQuarterly,
   since: company.vatSince,
   ...(company.vatRatios && company.vatRatios.length > 0
-    ? { ratios: new Map(company.vatRatios.map((r) => [r.year, { coef: r.coef, settle: r.settled ? r.settled.rates.map((x) => ({ rate: x.rate, settle: x.settle })) : null }])) }
+    ? {
+        ratios: new Map(
+          company.vatRatios.map((r) => [r.year, { coef: r.coef, settle: r.settled && !r.stale ? r.settled.rates.map((x) => ({ rate: x.rate, settle: x.settle })) : null, ...(r.stale ? { stale: true } : {}) }]),
+        ),
+      }
     : {}),
 })
 

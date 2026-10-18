@@ -563,13 +563,13 @@ export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'not
   // accounts are at the State Treasury too); anything else marked "payroll" is wages.
   if ((p.exempt === 'payroll' || p.exempt === 'state') && p.amountCents < 0) {
     const out = -p.amountCents
+    // A deduction paid to an executor (garnish.ts): to his account first (also what was kept until his execution order and
+    // paid later), whatever its amount; then by the amount of a deduction paid with the wages.
+    const to = (p.partyIban ?? '').replace(/\s/g, '').toUpperCase()
+    if (to !== '' && payroll.some((r) => r.pays.garnishIban?.includes(to))) return '379'
     if (payroll.some((r) => r.pays.social === out)) return SOCIAL_ACCOUNT
     if (payroll.some((r) => r.pays.health.includes(out))) return HEALTH_ACCOUNT
     if (payroll.some((r) => r.pays.tax === out)) return '342'
-    // A deduction paid to an executor (garnish.ts): to his account, also what was kept until his execution order and
-    // paid later, or by the amount of a deduction paid with the wages.
-    const to = (p.partyIban ?? '').replace(/\s/g, '').toUpperCase()
-    if (to !== '' && payroll.some((r) => r.pays.garnishIban?.includes(to))) return '379'
     if (payroll.some((r) => r.pays.garnish?.includes(out))) return '379'
   }
   if (p.exempt === 'state' && (tax === 'vat' || tax === null) && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE

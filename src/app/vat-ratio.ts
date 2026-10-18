@@ -23,7 +23,14 @@
 // - A received document used for both kinds is booked "pomerne": each line's deduction is its VAT times the coefficient
 //   of the year its deduction falls in, rounded to the cent (`withRatio`); the document keeps the coefficient
 //   (`documents.vat_ratio`). The books put the rest of its VAT into the cost, as any VAT not deducted.
-// - An issued document that § 50(2) leaves out of the coefficient is marked so (`documents.ratio_skip`).
+// - An issued document whose taxation does not say its right to deduct is marked (`documents.ratio_mode`): 'skip' what
+//   § 50(2) leaves out (the sale of property used for business, and the like), 'none' a supply abroad that would be
+//   exempt at home and so gives no right (§ 49(6): insurance or financial services to a customer in the Union), 'right'
+//   an exempt insurance or financial service that gives it (§ 49(3): to a customer outside the Union, or tied to an
+//   export). A received correction of a document of a year already settled is deducted by that year's coefficient and
+//   marked 'final': no later year's settlement takes it again.
+// - The figures of a year settled are checked again wherever its last period is worked out (vat-ratio-store.ts): a
+//   document of the year booked or changed since keeps that period back until the accountant settles it again.
 // - After the year (`ratioWork`) the coefficient of the year's supplies and, rate by rate, the VAT of the documents
 //   deducted in proportion times it, less what they deducted; confirmed by the accountant, kept with the year, added to
 //   rows 18 to 19 of the year's last period (vat.ts) and booked on 31 December against 548 (ledger.ts; practices differ,
@@ -34,6 +41,11 @@ import { isIssued, isReceived, periodOf, periodOfDoc, taxDay, vatOf, type VatCom
 
 export type RatioHow = 'previous' | 'estimate'
 export const isRatioHow = (value: unknown): value is RatioHow => value === 'previous' || value === 'estimate'
+
+/** A document's own mark for the coefficient (see above): issued 'right', 'none', 'skip'; received 'final'. */
+export type RatioMode = 'right' | 'none' | 'skip' | 'final'
+export const ISSUED_RATIO_MODES: readonly RatioMode[] = ['right', 'none', 'skip']
+export const isRatioMode = (value: unknown): value is RatioMode => value === 'right' || value === 'none' || value === 'skip' || value === 'final'
 
 /** One rate of the year's settlement, in cents: the VAT of the documents deducted in proportion, what they deducted, what the year's coefficient gives, and the difference. */
 export interface RatioRate {
@@ -62,6 +74,8 @@ export interface RatioYear {
   settled: RatioSettled | null
   settledAt: number | null
   settledByName: string | null
+  /** The year's figures now differ from the settlement confirmed (vat-ratio-store.ts sets it where it checks). */
+  stale?: boolean
 }
 
 /** The rates a deduction has rows for (vat.ts DEDUCT_ROWS). */
@@ -123,10 +137,17 @@ export interface RatioWork {
   unbooked: string[]
 }
 
-/** Lines of an issued supply: which go into the numerator too (the right to deduct) and which into the denominator alone. */
-function supplyParts(mode: string, lines: readonly VatLine[]): { right: number; exempt: number } {
+/**
+ * Lines of an issued supply: which go into the numerator too (the right to deduct) and which into the denominator alone;
+ * the document's own mark decides over its taxation.
+ */
+function supplyParts(mode: string, lines: readonly VatLine[], mark: RatioMode | null | undefined): { right: number; exempt: number } {
   let right = 0
   let exempt = 0
+  if (mark === 'right' || mark === 'none') {
+    const all = lines.reduce((sum, line) => sum + line.base, 0)
+    return mark === 'right' ? { right: all, exempt: 0 } : { right: 0, exempt: all }
+  }
   for (const line of lines) {
     if (mode === 'domestic') {
       if (line.rate > 0) right += line.base
@@ -166,18 +187,19 @@ export function ratioWork(company: VatCompany, year: number, docs: readonly VatD
     }
     if (isIssued(doc.kind)) {
       if (doc.category === 'interest') continue
-      if (doc.ratioSkip) {
+      if (doc.ratioMode === 'skip') {
         out.skipped.push(doc.id)
         continue
       }
-      const parts = supplyParts(data.mode, data.lines)
+      const parts = supplyParts(data.mode, data.lines, doc.ratioMode)
       if (parts.right === 0 && parts.exempt === 0) continue
       out.numerator += parts.right
       out.denominator += parts.right + parts.exempt
       ;(parts.right !== 0 ? out.deductible : out.exempt).push(doc.id)
       continue
     }
-    if (!isReceived(doc.kind) || doc.ratio === null || doc.ratio === undefined) continue
+    // A correction deducted by an earlier year's settled coefficient is that year's, not this one's to settle.
+    if (!isReceived(doc.kind) || doc.ratio === null || doc.ratio === undefined || doc.ratioMode === 'final') continue
     out.proportional.push(doc.id)
     for (const line of data.lines) {
       if (line.vat === 0 && line.deduct === 0) continue

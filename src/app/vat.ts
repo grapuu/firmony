@@ -138,7 +138,7 @@ export interface VatCompany {
    * The proportional deduction (§ 50, vat-ratio.ts): each year the company deducts in proportion, its coefficient and,
    * once the accountant confirmed it, the year's settlement by rate, which goes into the year's last period.
    */
-  ratios?: ReadonlyMap<number, { coef: number; settle: readonly { rate: number; settle: number }[] | null }>
+  ratios?: ReadonlyMap<number, { coef: number; settle: readonly { rate: number; settle: number }[] | null; stale?: boolean }>
 }
 
 export interface VatDoc {
@@ -176,8 +176,8 @@ export interface VatDoc {
   takings?: boolean
   /** A received document deducted in proportion (§ 50, vat-ratio.ts): the coefficient its deduction was worked out by. */
   ratio?: number | null
-  /** An issued document § 50(2) leaves out of the coefficient (the sale of property used for business, and the like). */
-  ratioSkip?: boolean
+  /** The document's own mark for the coefficient (vat-ratio.ts RatioMode): issued 'right', 'none', 'skip'; received 'final'. */
+  ratioMode?: 'right' | 'none' | 'skip' | 'final' | null
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -684,6 +684,7 @@ export type IssueCode =
   | 'reverseThreshold'
   | 'reverseCorrection'
   | 'ratioSettle'
+  | 'ratioChanged'
 
 export interface Issue {
   /** A blocking issue keeps the files from being made; a warning is for the accountant to look at. */
@@ -1084,7 +1085,8 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
   const year = Number(period.slice(0, 4))
   const yearRatio = payer && (period.endsWith('-12') || period.endsWith('-Q4')) ? company.ratios?.get(year) : undefined
   if (yearRatio) {
-    if (!yearRatio.settle) issue('block', 'ratioSettle', null)
+    if (yearRatio.stale) issue('block', 'ratioChanged', null)
+    else if (!yearRatio.settle) issue('block', 'ratioSettle', null)
     else {
       ratio = { year, rates: yearRatio.settle.filter((r) => r.settle !== 0 && DEDUCT_ROWS[r.rate]).map((r) => ({ rate: r.rate, settle: r.settle })) }
       for (const r of ratio.rates) rows[DEDUCT_ROWS[r.rate] as Row] += r.settle

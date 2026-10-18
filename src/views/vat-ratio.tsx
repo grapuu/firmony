@@ -32,6 +32,10 @@ export interface RatioPageProps {
   locked: boolean
   docs: Map<string, Doc>
   today: string
+  /** The coefficient of this year may be written (last, this or next year). */
+  editable: boolean
+  /** Our books started during the year: the coefficient and the settlement see only the documents since. */
+  since: string | null
   values?: { koeficient: string; sposob: string }
   errors?: { koeficient?: string; sposob?: string }
   flash: string | null
@@ -80,8 +84,8 @@ export const RatioPage: FC<RatioPageProps> = (p) => {
                 <p class="info__lead">{k.coefLead}</p>
                 {p.stored ? <p class="info__lead">{k.current(coefText(p.stored.coef), k.how[p.stored.how] ?? '')}</p> : <p class="flag">{k.noCoef}</p>}
                 {p.proposal ? <p class="info__source">{k.proposal(p.proposal.year, coefText(p.proposal.coef))}</p> : null}
-                {p.locked ? (
-                  <p class="info__source">{k.locked}</p>
+                {p.locked || !p.editable ? (
+                  <p class="info__source">{p.locked ? k.locked : k.notEditable}</p>
                 ) : (
                   <form class="stack" method="post" action={base}>
                     <input type="hidden" name="rok" value={String(p.year)} />
@@ -105,12 +109,21 @@ export const RatioPage: FC<RatioPageProps> = (p) => {
                     </button>
                   </form>
                 )}
+                {p.stored && !p.stored.settled && !p.locked && w.proportional.length === 0 ? (
+                  <form method="post" action={`${base}/odstranit`}>
+                    <input type="hidden" name="rok" value={String(p.year)} />
+                    <button class="btn btn--text" type="submit">
+                      {k.remove}
+                    </button>
+                  </form>
+                ) : null}
               </section>
               <section class="info" aria-labelledby="dodania-t">
                 <h2 id="dodania-t" class="info__title">
                   {k.suppliesTitle}
                 </h2>
                 <p class="info__lead">{k.suppliesLead}</p>
+                {p.since ? <p class="flag">{k.since(dayName(p.since, p.today))}</p> : null}
                 <dl class="kv">
                   <div>
                     <dt>{k.all}</dt>

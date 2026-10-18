@@ -1419,7 +1419,7 @@ const MIGRATIONS: readonly string[][] = [
       PRIMARY KEY (company_id, year)
     )`,
     'ALTER TABLE documents ADD COLUMN vat_ratio INTEGER CHECK (vat_ratio IS NULL OR vat_ratio BETWEEN 0 AND 100)',
-    'ALTER TABLE documents ADD COLUMN ratio_skip INTEGER NOT NULL DEFAULT 0 CHECK (ratio_skip IN (0, 1))',
+    "ALTER TABLE documents ADD COLUMN ratio_mode TEXT CHECK (ratio_mode IS NULL OR ratio_mode IN ('right', 'none', 'skip', 'final'))",
     ...vatRatiosGuards,
     ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
       const row = action === 'DELETE' ? 'OLD' : 'NEW'
@@ -1437,6 +1437,9 @@ const MIGRATIONS: readonly string[][] = [
   ['ALTER TABLE assets ADD COLUMN center_id TEXT'],
   // Stock by cost centre (18 October 2026, centers.ts): the centre an item's stock belongs to.
   ['ALTER TABLE stock_items ADD COLUMN center_id TEXT'],
+  // After the review of the proportional deduction (18 October 2026): the coefficient a document was deducted by and its
+  // mark for the coefficient change what a locked period holds, so the documents' guard covers them.
+  [...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents', 'takings_cash', 'vat_ratio', 'ratio_mode'])],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

@@ -1785,7 +1785,7 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     doc({}, 'domestic', [line(23, 60000, 13800)]),
     doc({}, 'eu_goods', [line(0, 20000, 0)], { vatId: 'CZ12345678' }),
     doc({}, 'domestic', [line(0, 25000, 0)]),
-    doc({ ratioSkip: true }, 'domestic', [line(23, 90000, 20700)]),
+    doc({ ratioMode: 'skip' }, 'domestic', [line(23, 90000, 20700)]),
     doc({ category: 'interest' }, 'outside', [line(0, 3000, 0)]),
     doc({ issuedOn: '2025-12-20' }, 'domestic', [line(23, 99900, 22977)]),
     doc({ kind: 'invoice_in', category: 'services', ratio: 75 }, 'domestic', [line(23, 10000, 2300, 1725), line(5, 2000, 100, 75)]),
@@ -1809,6 +1809,20 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     JSON.stringify(w.rates),
   )
   check('a document of the year not booked is said', w.unbooked.length === 1)
+  // Mended after the review: a supply abroad that would be exempt at home gives no right (§ 49(6)); an exempt insurance
+  // or financial service outside the Union gives it (§ 49(3)); a correction by an earlier year's settled coefficient is
+  // not this year's to settle.
+  const marked = r.ratioWork(company, 2026, [
+    ...docs,
+    doc({ ratioMode: 'none' }, 'eu_service', [line(0, 50000, 0)], { vatId: 'DE123456789' }),
+    doc({ ratioMode: 'right' }, 'domestic', [line(0, 10000, 0)]),
+    doc({ kind: 'invoice_in', category: 'services', ratio: 80, ratioMode: 'final' }, 'domestic', [line(23, -1000, -230, -184)], { corrects: 'F2025' }),
+  ])
+  check(
+    "a supply abroad without the right in the denominator alone, an exempt service with the right in both, a final correction in no settlement",
+    marked.numerator === 90000 && marked.denominator === 165000 && marked.coef === 55 && marked.proportional.length === 2 && marked.rates[0].vat === 1840,
+    JSON.stringify(marked),
+  )
   const settled = r.settledOf(w)
   check('the settlement kept and read back the same', r.sameSettlement(r.settledFrom(JSON.parse(JSON.stringify(settled))), settled) && r.settleTotal(settled) === 39 && r.settledFrom({ coef: 101, numerator: 1, denominator: 1, rates: [] }) === null)
   check(
@@ -1828,6 +1842,12 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     'confirmed: in the rows of its rates (19 for 23 %, 18a for 5 %), the result lowered, no line of the control statement',
     done.rows.r19 === 37 && done.rows.r18a === 2 && done.rows.r33 === 39 && !done.issues.some((i) => i.code === 'ratioSettle') && done.ratio?.year === 2026 && done.kv.b2.length === 0,
     JSON.stringify(done.rows),
+  )
+  const stale = vat.workOut({ ...company, ratios: new Map([[2026, { coef: 75, settle: null, stale: true }]]) }, '2026-12', [])
+  check('a settlement the year no longer agrees with keeps December back, nothing of it in the rows', stale.issues.some((i) => i.code === 'ratioChanged' && i.level === 'block') && stale.rows.r19 === 0)
+  check(
+    'the company as the return reads it: a year marked stale has no settlement to go into the rows',
+    appStore.vatCompanyOf({ vatStatus: 'payer', vatQuarterly: false, vatSince: null, vatRatios: [{ year: 2026, coef: 75, how: 'previous', settled, settledAt: 1, settledByName: null, stale: true }] }).ratios.get(2026).settle === null,
   )
   const q4 = vat.workOut({ ...company, quarterly: true, ratios: ratios([{ rate: 23, settle: -500 }]) }, '2026-Q4', [])
   check('a quarterly payer: the fourth quarter; less deducted raises the tax', q4.rows.r19 === -500 && q4.rows.r32 === 500)
