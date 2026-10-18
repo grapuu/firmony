@@ -23,6 +23,7 @@ export type Category =
   | 'sales'
   | 'sales_goods'
   | 'advance'
+  | 'interest'
 
 export interface CategoryInfo {
   /** As the accountant reads it. */
@@ -59,6 +60,8 @@ export const CATEGORIES: Record<Category, CategoryInfo> = {
   sales_goods: { name: 'Tržby za tovar', account: '604', deduct: false, hint: 'faktúra, ktorú firma vystavila za predaný tovar', revenue: true },
   // An advance received before the supply is owed back until the final invoice: 324, not a revenue yet.
   advance: { name: 'Prijatý preddavok', account: '324', deduct: false, hint: 'doklad k prijatej zálohe pred dodaním', revenue: true },
+  // Late interest and the flat compensation invoiced to a customer (dunning.ts): no supply, no VAT.
+  interest: { name: 'Úroky z omeškania a paušálna náhrada', account: '644', deduct: false, hint: 'faktúra za úrok z omeškania a 40 € paušálnu náhradu odberateľovi', revenue: true },
 }
 
 export const CATEGORY_IDS = Object.keys(CATEGORIES) as Category[]

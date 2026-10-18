@@ -4,10 +4,11 @@ import type { FC } from 'hono/jsx'
 import { ART, BRAND } from '../config'
 import { formatEur, formatEurExact, formatMoney } from '../format'
 import { app, dayName } from '../app/copy'
-import { COUNTRIES, INVOICE_CURRENCIES, INVOICE_MODES, customerCountryOf, MODE_TERMS, UNITS, VAT_RATES, creditLines, eurVat, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
+import { COUNTRIES, INVOICE_CURRENCIES, INVOICE_MODES, INTEREST_NOTE, customerCountryOf, MODE_TERMS, UNITS, VAT_RATES, creditLines, eurVat, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import { REVERSE_KINDS } from '../app/vat'
 import { REPEAT_EVERY, type Repeat } from '../app/repeat'
+import { ratePercent, type LateInterest } from '../app/dunning'
 import { eurOf, rateMicro } from '../app/fx'
 import type { Company } from '../app/store'
 import { Tile } from './home'
@@ -16,6 +17,15 @@ import { groupIban } from './inside-pages'
 import { Wordmark } from './layout'
 
 const t = app.invoices
+const d = app.dunning
+
+/** An invoice's late interest as the page shows it (routes.tsx, lateOf). */
+export interface LateView {
+  interest: LateInterest | null
+  issued: { id: string; number: string } | null
+  business: boolean
+  principal: number
+}
 
 const addDaysTo = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86400000).toISOString().slice(0, 10)
 
@@ -37,7 +47,14 @@ const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) =
 // A request is paid with its own symbol; an advance's tax document is paid already (no symbol to pay with).
 const vsOf = (i: Pick<StoredInvoice, 'kind' | 'vs' | 'number'>) => (i.kind === 'proforma' ? i.vs : i.kind === 'advance' ? null : (i.vs ?? i.number))
 
-export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[] }> = ({ invoices, today, flash, closed = null, repeats = [] }) => {
+export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[]; dunning?: { on: boolean; owner: boolean } | null }> = ({
+  invoices,
+  today,
+  flash,
+  closed = null,
+  repeats = [],
+  dunning = null,
+}) => {
   const month = today.slice(0, 7)
   // In euros: an invoice in another currency at its rate.
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + eurosOf(i), 0)
@@ -98,6 +115,25 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
               <dd class="fig__value fig__value--in">{formatEur(paid)}</dd>
             </div>
           </dl>
+          {dunning ? (
+            <section class="info" aria-labelledby="upomienky-t">
+              <h2 id="upomienky-t" class="info__title">
+                {d.title}
+              </h2>
+              <p class="info__lead">{d.lead}</p>
+              <p class="info__source">{dunning.on ? d.on : d.off}</p>
+              {dunning.owner ? (
+                <form method="post" action="/app/faktury/upomienky">
+                  <input type="hidden" name="zapnut" value={dunning.on ? '0' : '1'} />
+                  <button class={`btn ${dunning.on ? 'btn--line' : 'btn--blue'} btn--small`} type="submit">
+                    {dunning.on ? d.turnOff : d.turnOn}
+                  </button>
+                </form>
+              ) : (
+                <p class="info__source">{d.ownerOnly}</p>
+              )}
+            </section>
+          ) : null}
           {repeats.length > 0 ? (
             <section class="info invoices__repeats" aria-labelledby="opakovane-t">
               <h2 id="opakovane-t" class="info__title">
@@ -647,7 +683,11 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
           <strong>{s.reason}:</strong> {invoice.reason}
         </p>
       ) : null}
-      {seller.vatPayer && invoice.mode !== 'domestic' ? <p class="sheet__note sheet__mode">{MODE_TERMS[invoice.mode].text}</p> : null}
+      {invoice.interestOf ? (
+        <p class="sheet__note sheet__mode">{INTEREST_NOTE}</p>
+      ) : seller.vatPayer && invoice.mode !== 'domestic' ? (
+        <p class="sheet__note sheet__mode">{MODE_TERMS[invoice.mode].text}</p>
+      ) : null}
       {invoice.kind === 'proforma' ? <p class="sheet__note">{s.proformaNote}</p> : null}
       <div class="sheet__bottom">
         <div class="sheet__payment">
@@ -746,7 +786,9 @@ export const InvoicePage: FC<{
   } | null
   /** An invoice that may repeat: the repeat that runs, or the form's next day. */
   repeat?: { running: Repeat | null; next: string; open: boolean } | null
-}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null }) => {
+  /** An invoice paid late or still unpaid: its late interest, and the invoice of it issued already. */
+  late?: LateView | null
+}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null }) => {
   const a = t.actions
   const state = stateOf(invoice, today)
   const credit = invoice.kind === 'credit'
@@ -877,6 +919,36 @@ export const InvoicePage: FC<{
               )}
             </section>
           ) : null}
+          {late ? (
+            <section class="info" id="urok">
+              <h2 class="info__title">{d.interestTitle}</h2>
+              {late.issued ? (
+                <p class="info__lead">
+                  <a class="link" href={`/app/faktury/${late.issued.id}`}>
+                    {d.interestIssued(late.issued.number)}
+                  </a>
+                </p>
+              ) : late.interest ? (
+                <>
+                  <p class="info__lead">{d.interestLead(formatEurExact(late.interest.cents), late.interest.days, dayName(late.interest.from, today), dayName(late.interest.to, today))}</p>
+                  <p class="info__source">{d.interestRates([...new Set(late.interest.segments.map((x) => ratePercent(x.rate)))].join(', '))}</p>
+                  {late.business ? (
+                    <>
+                      <p class="info__source">{d.flat}</p>
+                      <form method="post" action={`/app/faktury/${invoice.id}/urok`}>
+                        <button class="btn btn--line invoice__wide" type="submit">
+                          {d.interestIssue}
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <p class="info__source">{d.interestBusiness}</p>
+                  )}
+                </>
+              ) : null}
+            </section>
+          ) : null}
+          {invoice.reminders > 0 ? <p class="info__source">{d.sent(invoice.reminders)}</p> : null}
           {repeat && (repeat.running || repeat.open) ? (
             <section class="info" id="opakovanie">
               <h2 class="info__title">{a.repeatTitle}</h2>

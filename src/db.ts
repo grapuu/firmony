@@ -1267,6 +1267,14 @@ const MIGRATIONS: readonly string[][] = [
     "CREATE UNIQUE INDEX IF NOT EXISTS ledger_entries_cash_document ON ledger_entries (document_id) WHERE kind = 'cash' AND deleted_at IS NULL AND document_id IS NOT NULL",
     "CREATE UNIQUE INDEX IF NOT EXISTS ledger_entries_cash_payment ON ledger_entries (payment_id) WHERE kind = 'cash' AND deleted_at IS NULL AND payment_id IS NOT NULL",
   ],
+  // Reminders and late interest (18 October 2026, dunning.ts): a company's choice to remind its customers by itself,
+  // how many reminders went for an invoice, and an invoice of late interest's invoice paid late (one an invoice).
+  [
+    'ALTER TABLE companies ADD COLUMN dunning INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE invoices ADD COLUMN reminders INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE invoices ADD COLUMN interest_of TEXT',
+    "CREATE UNIQUE INDEX IF NOT EXISTS invoices_interest ON invoices (interest_of) WHERE interest_of IS NOT NULL AND status = 'issued'",
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

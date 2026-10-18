@@ -22,6 +22,7 @@ import {
   payorders,
   trips,
   cash,
+  dunning,
   ledger,
   ledgerStore,
   dues,
@@ -896,7 +897,7 @@ check(
 )
 check(
   'an issued invoice is offered revenue only',
-  JSON.stringify(booking.categoriesFor('invoice_out')) === JSON.stringify(['sales', 'sales_goods', 'advance']) && !booking.categoriesFor('receipt').includes('sales'),
+  JSON.stringify(booking.categoriesFor('invoice_out')) === JSON.stringify(['sales', 'sales_goods', 'advance', 'interest']) && !booking.categoriesFor('receipt').includes('sales'),
 )
 check('a supplier is known by its IČO', booking.supplierKey('36 123 456', 'Hostingový dom s. r. o.') === 'ico:36123456')
 check(
@@ -1426,6 +1427,43 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
     JSON.stringify([free.errors, ticked.errors, ticked.input?.meals]),
   )
   check('no car with a train', form({ ...full, doprava: 'public', km: '' }).input?.car === null)
+}
+
+// Reminders and late interest (18 October 2026): NV 21/2013, the ECB's rate on the first day of each half-year plus
+// eight points, a year of 365 days, the flat 40 €; reminders 3, 14 and 30 days after the due day, five days apart.
+{
+  const late = dunning.lateInterest(100_000, '2026-05-31', '2026-08-31')
+  check(
+    "1 000 € due on 31 May paid on 31 August 2026: June at 10,15 % (the ECB's 2,15 % on 1 January), July and August at 10,40 % (2,40 % on 1 July)",
+    late?.from === '2026-06-01' &&
+      late.days === 92 &&
+      late.segments.length === 2 &&
+      late.segments[0].rate === 10150 &&
+      late.segments[0].days === 30 &&
+      late.segments[1].rate === 10400 &&
+      late.segments[1].days === 62 &&
+      late.cents === 2601,
+    JSON.stringify(late),
+  )
+  check(
+    'no interest paid on the due day; one day late is one day; the ECB rate of a day; the flat compensation 40 €',
+    dunning.lateInterest(100_000, '2026-05-31', '2026-05-31') === null &&
+      dunning.lateInterest(100_000, '2026-10-01', '2026-10-02')?.days === 1 &&
+      dunning.mroOn('2026-09-15') === 2400 &&
+      dunning.mroOn('2026-09-16') === 2650 &&
+      dunning.FLAT_COMPENSATION === 4000 &&
+      dunning.ratePercent(10650) === '10,65 %',
+  )
+  check(
+    'reminders: 3, 14 and 30 days after the due day, none within five days of another, three at most',
+    dunning.reminderDue('2026-10-01', 0, '2026-10-03', null) === null &&
+      dunning.reminderDue('2026-10-01', 0, '2026-10-04', null) === 0 &&
+      dunning.reminderDue('2026-10-01', 1, '2026-10-14', '2026-10-04') === null &&
+      dunning.reminderDue('2026-10-01', 1, '2026-10-15', '2026-10-04') === 1 &&
+      dunning.reminderDue('2026-10-01', 1, '2026-10-15', '2026-10-13') === null &&
+      dunning.reminderDue('2026-10-01', 2, '2026-10-31', '2026-10-15') === 2 &&
+      dunning.reminderDue('2026-10-01', 3, '2026-12-31', null) === null,
+  )
 }
 
 // The cash box (18 October 2026): cash documents PPD and VPD against 211, never below nought, never above 5 000 € paid

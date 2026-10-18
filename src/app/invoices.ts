@@ -30,6 +30,9 @@ export const MODE_TERMS: Record<Exclude<InvoiceMode, 'domestic'>, { text: string
   export: { text: 'Dodanie je oslobodené od dane podľa § 47 zákona o DPH (vývoz tovaru).', category: 'G', code: 'VATEX-EU-G' },
   outside: { text: 'Miesto dodania nie je v tuzemsku: dodanie nie je predmetom slovenskej dane.', category: 'O', code: 'VATEX-EU-O' },
 }
+/** What an invoice of late interest and the flat compensation says of VAT (dunning.ts): neither is a supply. */
+export const INTEREST_NOTE = 'Úrok z omeškania a paušálna náhrada nákladov nie sú predmetom dane z pridanej hodnoty.'
+
 export const UNITS = ['ks', 'hod', 'deň', 'mes', 'kg', 't', 'm', 'km', 'm²', 'bal'] as const
 
 /** UN/ECE Recommendation 20 codes for the units an invoice line may have. */
@@ -456,6 +459,10 @@ export interface StoredInvoice {
   reason: string | null
   /** Issued by a repeat (repeat.ts), which one. */
   repeatId: string | null
+  /** How many reminders went to the customer by themselves (dunning.ts). */
+  reminders: number
+  /** An invoice of late interest: the invoice paid late it is for. */
+  interestOf: string | null
   /** The customer's state as chosen; null: the state of its VAT number, else Slovakia (`customerCountryOf`). */
   customerCountry: string | null
   /** The currency it is issued in ('EUR' for most), the rate it is converted to euros at and the ECB's day of it. */
@@ -518,7 +525,9 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
   // pays the VAT, G an export, each at 0 % with its exemption code. E and O carry the reason, O carries no rate and no
   // VAT identifier of either side (BR-O-02 to BR-O-04).
   const mode = seller.vatPayer ? invoice.mode : 'domestic'
-  const terms = mode === 'domestic' ? null : MODE_TERMS[mode]
+  const modeTerms = mode === 'domestic' ? null : MODE_TERMS[mode]
+  // Late interest is outside VAT for another reason than a supply abroad: said as it is.
+  const terms = modeTerms && invoice.interestOf ? { ...modeTerms, text: INTEREST_NOTE } : modeTerms
   const category = (rate: number) => terms?.category ?? (seller.vatPayer ? (rate > 0 ? 'S' : 'E') : 'O')
   const reason = (rate: number) => terms?.text ?? (category(rate) === 'O' ? 'Dodávateľ nie je platiteľom DPH' : category(rate) === 'E' ? 'Dodanie je oslobodené od dane' : null)
   const percent = (rate: number) => (category(rate) === 'O' ? '' : `<cbc:Percent>${rate}</cbc:Percent>`)
@@ -644,6 +653,8 @@ function invoiceOf(row: Row): StoredInvoice {
     mode: isInvoiceMode(row.vat_mode) ? row.vat_mode : 'domestic',
     reverse: reverseOf(row.vat_reverse),
     repeatId: str(row.repeat_id),
+    reminders: Number(row.reminders ?? 0),
+    interestOf: str(row.interest_of),
     customerCountry: isCountry(row.customer_country) ? row.customer_country : null,
     currency: isCurrency(row.currency) ? row.currency : 'EUR',
     fxRate: str(row.fx_rate),
@@ -764,6 +775,8 @@ export function saveInvoiceStatements(
     fx?: { currency: string; rate: string | null; day: string | null } | null
     /** An invoice issued by a repeat (repeat.ts): its repeat (one a day, kept by a unique index). */
     repeat?: string | null
+    /** An invoice of late interest and the flat compensation (dunning.ts): the invoice paid late (one, kept by a unique index). */
+    interestOf?: string | null
   },
 ): D1PreparedStatement[] {
   const v = args.values
@@ -795,7 +808,7 @@ export function saveInvoiceStatements(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
            issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse, relates, vs, payment_id,
-           currency, fx_rate, fx_day, repeat_id, customer_country)
+           currency, fx_rate, fx_day, repeat_id, customer_country, interest_of)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
@@ -803,7 +816,7 @@ export function saveInvoiceStatements(
              ELSE fmt.prefix || CAST(?6 AS INTEGER) || fmt.sep || printf('%0' || fmt.digits || 'd', next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('9%d%05d', ?6, next.seq)
-             ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33
+             ELSE CAST(?6 AS INTEGER) || printf('%0' || fmt.digits || 'd', next.seq) END) END, ?28, ?29, ?30, ?31, ?32, ?33, ?34
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one,
          -- in the company's own numbers (a prefix, a mark, the order's digits) and from a year's first order when it
          -- came in the middle of one. The variable symbol is the year and the order, whatever the number looks like; a
@@ -837,6 +850,7 @@ export function saveInvoiceStatements(
         args.fx && args.fx.currency !== 'EUR' ? args.fx.day : null,
         args.repeat ?? null,
         isCountry(v.customerCountry) ? v.customerCountry : null,
+        args.interestOf ?? null,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol. A request for an advance is no document.
@@ -854,7 +868,7 @@ export function saveInvoiceStatements(
             // accountant confirms it. A credit note's are minus, and it names the invoice it corrects (C.1 reads it).
             .bind(
               args.documentId,
-              args.kind === 'advance' ? 'advance' : mode === 'eu_goods' || mode === 'export' ? 'sales_goods' : 'sales',
+              args.interestOf ? 'interest' : args.kind === 'advance' ? 'advance' : mode === 'eu_goods' || mode === 'export' ? 'sales_goods' : 'sales',
               JSON.stringify(args.totals.rates.map((r) => ({ rate: r.rate, base: r.base, vat: r.vat, deduct: 0 }))),
               args.credit?.number ?? null,
               mode === 'domestic' ? null : mode,

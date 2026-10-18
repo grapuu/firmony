@@ -67,6 +67,8 @@ export interface Company {
   vatCarry: number
   /** Suppliers' invoices are paid only once an owner approved them (payment orders, payorders.ts). */
   approvals: boolean
+  /** The company reminds its customers of invoices not paid by itself (dunning.ts). */
+  dunning: boolean
   /** The company's invoice numbers: prefix, the mark between year and order, the order's digits, a year's first order. */
   invoiceNumbering: InvoiceNumbering
   /** The company's logo on its invoices: its key in R2 (which changes with each new picture) and its type. */
@@ -207,7 +209,7 @@ export interface InvoiceNumbering {
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals,
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.dunning,
   c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method`
 
@@ -252,6 +254,7 @@ export function companyOf(row: Row): Company {
     taxAccount: str(row.tax_account),
     vatCarry: num(row.vat_carry) ?? 0,
     approvals: row.approvals === 1,
+    dunning: row.dunning === 1,
     invoiceNumbering: {
       prefix: str(row.invoice_prefix) ?? '',
       sep: row.invoice_sep === '-' || row.invoice_sep === '/' ? row.invoice_sep : '',

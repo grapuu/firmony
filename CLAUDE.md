@@ -21,8 +21,9 @@ over. Bring this section up to date first whenever a session ends.
    a credit note issued in the app made no entry in the books. All of it under "Invoices the client issues" and item 8.
    An independent reviewer read the day's commits afterwards: nine findings, each verified and mended (schema step 48;
    "Mended after the review of the invoices" under "Invoices the client issues"). Then business trips at home (cestovné
-   náhrady, schema step 49, "Business trips" under the client's app) and the cash box (pokladňa, schema step 50, "The
-   cash box" there). **Nothing is live**: there
+   náhrady, schema step 49, "Business trips" under the client's app), the cash box (pokladňa, schema step 50, "The
+   cash box" there; a second independent review of both, six findings mended) and reminders with late interest (schema
+   step 51, under "Invoices the client issues"). **Nothing is live**: there
    is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
@@ -1197,6 +1198,28 @@ by itself.
   document (`documents.vs`) and so in pairing; europio's reminders name it too. A request's symbol begins with 9, so
   no order of any size meets it (until the review it was the year, 9 and the order, which order 90 001 of an invoice
   met). test/numbering.runtime.mjs.
+- Reminders and late interest (built 18 October 2026, schema step 51: `companies.dunning`, `invoices.reminders`,
+  `invoices.interest_of`; `src/app/dunning.ts`). Read that day: nariadenie vlády č. 21/2013 Z. z. in its version from
+  1 January 2015 (static.slov-lex.sk; § 1(1) the ECB's main refinancing rate valid on the first day of each calendar
+  half-year of the delay plus eight points for that half-year, § 1(2) the creditor's other choice, not worked out:
+  the first day's rate plus nine; § 2 the flat compensation 40 € once, § 369c of the Commercial Code), the ECB's
+  decisions (press release of 10 September 2026: 2,65 % from 16 September 2026; the changes since 2023 in `MRO_RATES`,
+  one line a new decision: **add it when the ECB changes its rates**). The delay begins the day after the due day,
+  interest to the day of payment or today, a year of 365 days, rounded once. An invoice (not a request, credit note,
+  advance or an invoice of interest) in euros paid late or still unpaid shows "Úrok z omeškania" on its page (the days,
+  the amount on what it asks after its credit notes, the half-years' rates) and, to a business customer (IČO or IČ DPH),
+  "Vystaviť faktúru na úrok a náhradu" (`POST /app/faktury/:id/urok`): an issued invoice of the interest and 40 €,
+  numbered in the invoices' row, due in the company's days, outside VAT ('outside', O in the e-invoice) with its own
+  sentence "nie sú predmetom dane z pridanej hodnoty" (`INTEREST_NOTE`) and the rule in its note, category 'interest'
+  (644), one for an invoice (`invoices_interest`; a second click leads to it). Reminders that go by themselves
+  (`/app/faktury/upomienky`, owners; a card on /app/faktury): from nine in Bratislava the schedule
+  (`dunningScheduled`) sends an overdue invoice or request mailed to its customer before its reminder 3 days after the
+  due day ("Pripomienka"), 14 ("Upomienka") and 30 ("Druhá upomienka"), never within five days of another (one sent by
+  hand too), each once (`invoices.reminders` moved from the step it read, the outbox key), the reply to who issued it;
+  the invoice says how many went. Not built: a consumer's late interest (nariadenie vlády č. 87/1995 Z. z.), interest
+  of a debt paid in parts, the rate of § 1(2), the income tax's rule that late interest not received is added back
+  until paid (§ 17(27) of the Income Tax Act: the closing does not adjust for it), the reminders' wording chosen by the
+  company. test/dunning.runtime.mjs, units "Reminders and late interest".
 - The company's logo on its invoices (built 18 October 2026, schema step 47: `companies.logo_key`, `logo_type`): on
   the same page (#logo) an owner uploads a PNG, JPEG or WebP up to 512 kB (by its bytes, `logoTypeOf`; no SVG, which
   could carry a script), kept in R2 under `companies/<id>/brand/` with a new key each time (the one before deleted;
@@ -2110,8 +2133,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1177 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box
-npm run test:runtime     # 1686 workerd checks on Node 24 (as GitHub runs them), including test/cash.runtime.mjs
+npm test                 # 1180 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1698 workerd checks on Node 24 (as GitHub runs them), including test/dunning.runtime.mjs
 npm run test:peppol      # 20 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader

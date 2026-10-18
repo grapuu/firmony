@@ -13,7 +13,7 @@ import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
 import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
-import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, logoSrc, type NumberingValues } from '../views/invoices'
+import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, logoSrc, type LateView, type NumberingValues } from '../views/invoices'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
 import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
@@ -86,12 +86,13 @@ import { TripFormPage, TripPage, TripsPage } from '../views/trips'
 import { CASH_KINDS, CASH_LIMIT, cashLines, isCashKind, lowestFrom, readCash, type CashErrors, type CashValues } from './cash'
 import { cashDocuments, cashPayments, cashStatements, pendingCashReceipts, removeCashStatements } from './cash-store'
 import { dataRevision } from './handover-store'
+import { FLAT_COMPENSATION, lateInterest, ratePercent, reminderDue } from './dunning'
 import { CashFormPage, CashPage, type CashRow } from '../views/cash'
 import { bratislavaClock, bratislavaDay } from '../time'
 import { isWorkingDay } from './vat'
 import { isRepeatEvery, issueRepeats, mayRepeat, nextAfter, repeatOfInvoice, repeatsOf, startRepeatStatements, stopRepeatStatements, type RepeatEvery } from './repeat'
 import { rateFor, rateMicro, rateText } from './fx'
-import { endingOf, intakeOpen, serviceOpen } from './ending'
+import { addDays, endingOf, intakeOpen, serviceOpen } from './ending'
 import { exportYear, exportYears } from './export'
 import { beginExport, completeExport, confirmExport, exportReceipts } from './handover-store'
 import { purgeEnded } from './purge'
@@ -362,6 +363,12 @@ function flashOf(c: Ctx): string | null {
       return t.invoices.actions.repeatFlash
     case 'opakovanie-zastavene':
       return t.invoices.actions.repeatStoppedFlash
+    case 'urok':
+      return t.dunning.interestDone
+    case 'upomienky-zapnute':
+      return t.dunning.savedOn
+    case 'upomienky-vypnute':
+      return t.dunning.savedOff
     case 'banka-pripojena':
       return t.bank.flash.pripojena(n)
     case 'banka-bez-uctu':
@@ -2091,7 +2098,20 @@ async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const invoices = await listInvoices(c.env.DB, who.company.id)
   const closed = serviceOpen(who.company, today()) ? null : t.ending.noInvoices(dayName(who.company.endsOn ?? today()))
-  return shell(c, 'invoices', ti.title, <InvoicesPage invoices={invoices} today={today()} flash={flashOf(c)} closed={closed} repeats={await repeatsOf(c.env.DB, who.company.id)} />, status)
+  return shell(
+    c,
+    'invoices',
+    ti.title,
+    <InvoicesPage
+      invoices={invoices}
+      today={today()}
+      flash={flashOf(c)}
+      closed={closed}
+      repeats={await repeatsOf(c.env.DB, who.company.id)}
+      dunning={closed ? null : { on: who.company.dunning, owner: who.role === 'owner' }}
+    />,
+    status,
+  )
 }
 
 appRoutes.get('/faktury', (c) => invoicesPage(c))
@@ -2443,14 +2463,121 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
         open: serviceOpen(who.company, today()),
       }
     : null
+  const late = await lateOf(db, who.company.id, invoice, credits)
   return shell(
     c,
     'invoices',
     `${ti.sheet.kinds[invoice.kind] ?? ti.sheet.title} ${invoice.number}`,
-    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={advance} repeat={repeat} {...extra} />,
+    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={advance} repeat={repeat} late={late} {...extra} />,
     status,
   )
 }
+
+/**
+ * The late interest of an invoice paid late or still unpaid (dunning.ts): on what it asks for after its credit notes,
+ * to the day it was paid or today; and the invoice of interest issued for it already. Null for anything else.
+ */
+async function lateOf(db: D1Database, company: string, invoice: StoredInvoice, credits: { totalCents: number }[]): Promise<LateView | null> {
+  if (invoice.kind !== 'invoice' || invoice.status !== 'issued' || invoice.interestOf || invoice.currency !== 'EUR' || !invoice.number) return null
+  const principal = invoice.totalCents + credits.reduce((sum, c) => sum + c.totalCents, 0)
+  const interest = principal > 0 ? lateInterest(principal, invoice.dueOn, invoice.paidOn ?? today()) : null
+  const issued = await db.prepare("SELECT id, number FROM invoices WHERE company_id = ? AND interest_of = ? AND status = 'issued'").bind(company, invoice.id).first<{ id: string; number: string }>()
+  if (!interest && !issued) return null
+  return { interest, issued: issued ?? null, business: Boolean(invoice.customerIco || invoice.customerIcdph), principal }
+}
+
+/** An invoice of the late interest and the flat compensation of an invoice paid late, to a business customer. */
+appRoutes.post('/faktury/:id/urok', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const invoice = ID.test(id) ? await getInvoice(db, who.company.id, id) : null
+  if (!invoice) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  if (!serviceOpen(who.company, today())) return invoicesPage(c, 409)
+  const credits = (
+    await db.prepare("SELECT total_cents FROM invoices WHERE company_id = ? AND corrects = ? AND kind = 'credit' AND status = 'issued'").bind(who.company.id, invoice.id).all<{ total_cents: number }>()
+  ).results.map((r) => ({ totalCents: Number(r.total_cents) }))
+  const late = await lateOf(db, who.company.id, invoice, credits)
+  if (late?.issued) return c.redirect(`/app/faktury/${late.issued.id}`, 303)
+  if (!late?.interest || !late.business || !invoice.number) return invoicePage(c, invoice.id, { error: t.dunning.interestBusiness }, 422)
+  const interest = late.interest
+  const from = dayName(interest.from).replace(/\u00a0/g, ' ')
+  const to = dayName(interest.to).replace(/\u00a0/g, ' ')
+  const rates = [...new Set(interest.segments.map((s) => ratePercent(s.rate)))].join(', ')
+  const vatPayer = who.company.vatPayer
+  const lines: Line[] = [
+    ...(interest.cents > 0 ? [{ position: 1, description: t.dunning.interestLine(invoice.number, from, to), quantityMilli: 1000, unit: 'ks', unitCents: interest.cents, vatRate: 0, baseCents: interest.cents }] : []),
+    { position: interest.cents > 0 ? 2 : 1, description: t.dunning.flatLine(invoice.number), quantityMilli: 1000, unit: 'ks', unitCents: FLAT_COMPENSATION, vatRate: 0, baseCents: FLAT_COMPENSATION },
+  ]
+  const issued = today()
+  const due = addDays(issued, who.company.invoiceDueDays)
+  const values: InvoiceValues = {
+    customerName: invoice.customerName,
+    customerAddress: invoice.customerAddress ?? '',
+    customerIco: invoice.customerIco ?? '',
+    customerDic: invoice.customerDic ?? '',
+    customerIcdph: invoice.customerIcdph ?? '',
+    customerCountry: invoice.customerCountry ?? '',
+    customerEmail: invoice.customerEmail ?? '',
+    issued,
+    delivered: issued,
+    due,
+    iban: invoice.iban ?? '',
+    note: t.dunning.interestNote(rates),
+    lines: [],
+    // Neither is a supply: outside VAT (O), said so on the sheet and in the e-invoice.
+    mode: vatPayer ? 'outside' : 'domestic',
+  }
+  const newId = crypto.randomUUID()
+  const documentId = crypto.randomUUID()
+  try {
+    await db.batch([
+      ...saveInvoiceStatements(db, {
+        id: newId,
+        company: who.company.id,
+        user: who.user.id,
+        issue: true,
+        values,
+        lines,
+        totals: totalsOf(lines, vatPayer),
+        issued,
+        delivered: issued,
+        due,
+        token: newToken(),
+        iban: invoice.iban,
+        documentId,
+        interestOf: invoice.id,
+      }),
+      eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoice.interest', subject: newId, detail: { of: invoice.id, interest: interest.cents, flat: FLAT_COMPENSATION } }),
+    ])
+  } catch (err) {
+    // Issued already (a second click): the one there is.
+    console.error('an interest invoice failed', err instanceof Error ? err.name : 'error')
+    const there = await lateOf(db, who.company.id, invoice, credits)
+    if (there?.issued) return c.redirect(`/app/faktury/${there.issued.id}`, 303)
+    return invoicePage(c, invoice.id, { error: t.invoices.errors.form }, 409)
+  }
+  later(
+    c,
+    (async () => {
+      await afterReading(db, who.company.id, documentId)
+      await matchCompany(db, who.company.id)
+    })(),
+  )
+  return c.redirect(`/app/faktury/${newId}?ok=urok`, 303)
+})
+
+/** An owner turns the reminders that go by themselves on or off. */
+appRoutes.post('/faktury/upomienky', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return shell(c, 'invoices', t.errors.notFound, <Missing />, 403)
+  const on = (await c.req.parseBody()).zapnut === '1'
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE companies SET dunning = ? WHERE id = ?').bind(on ? 1 : 0, who.company.id),
+    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: on ? 'dunning.on' : 'dunning.off', subject: who.company.id }),
+  ])
+  return c.redirect(`/app/faktury?ok=${on ? 'upomienky-zapnute' : 'upomienky-vypnute'}`, 303)
+})
 
 /** The largest logo taken (512 kB): a picture for the head of an invoice. */
 const LOGO_BYTES = 512 * 1024
@@ -2687,6 +2814,60 @@ async function repeatScheduled(env: AppBindings, day: string): Promise<void> {
   await flushOutbox(db, env.EMAIL)
 }
 
+/**
+ * Reminders that go by themselves (dunning.ts): from nine in Bratislava, each overdue invoice of a company that turned
+ * them on, sent to its customer by email before, gets its next reminder when its day has come (3, 14 and 30 days after
+ * the due day, none within five days of another, one sent by hand too); each step once (the outbox key and the count).
+ */
+async function dunningScheduled(env: AppBindings, day: string): Promise<void> {
+  const db = env.DB
+  const rows = await db
+    .prepare(
+      `SELECT i.id, i.company_id FROM invoices i JOIN companies c ON c.id = i.company_id
+        WHERE c.dunning = 1 AND c.demo = 0 AND c.purged_at IS NULL AND i.status = 'issued' AND i.kind IN ('invoice', 'proforma') AND i.interest_of IS NULL
+          AND i.customer_email IS NOT NULL AND i.sent_at IS NOT NULL AND i.reminders < 3 AND i.due_on <= date(?, '-3 days')
+        ORDER BY i.due_on LIMIT 100`,
+    )
+    .bind(day)
+    .all<{ id: string; company_id: string }>()
+  const companies = new Map<string, Company | null>()
+  for (const row of rows.results) {
+    try {
+      if (!companies.has(row.company_id)) companies.set(row.company_id, await getCompany(db, row.company_id))
+      const company = companies.get(row.company_id)
+      const invoice = company ? await getInvoice(db, company.id, row.id) : null
+      if (!company || !invoice?.number || !invoice.customerEmail || !serviceOpen(company, day) || stateOf(invoice, day) !== 'overdue') continue
+      const step = reminderDue(invoice.dueOn, invoice.reminders, day, invoice.remindedAt ? bratislava(invoice.remindedAt * 1000).day : null)
+      if (step === null) continue
+      const from = invoice.createdBy ? await db.prepare('SELECT email FROM users WHERE id = ?').bind(invoice.createdBy).first<{ email: string }>() : null
+      const proforma = invoice.kind === 'proforma'
+      await db.batch([
+        db.prepare('UPDATE invoices SET reminders = ?, reminded_at = ? WHERE id = ? AND company_id = ? AND reminders = ?').bind(step + 1, now(), invoice.id, company.id, step),
+        queueStatement(db, {
+          key: `invoice:dun:${invoice.id}:${step}`,
+          to: invoice.customerEmail,
+          replyTo: from?.email ?? null,
+          subject: t.dunning.subject(step, invoice.number, company.name, proforma),
+          body: ti.mail.reminderBody(
+            company.name,
+            invoice.number,
+            formatMoney(invoice.totalCents, invoice.currency).replace(/\u00a0/g, ' '),
+            dayName(invoice.dueOn).replace(/\u00a0/g, ' '),
+            invoice.iban ? groupIban(invoice.iban) : null,
+            `${BRAND.origin}/f/${invoice.token}`,
+            proforma,
+            invoice.vs ?? invoice.number,
+          ),
+        }),
+        eventStatement(db, { company: company.id, user: null, action: 'invoice.dunned', subject: invoice.id, detail: { step } }),
+      ])
+    } catch (err) {
+      console.error('a reminder failed', err instanceof Error ? err.name : 'error')
+    }
+  }
+  await flushOutbox(db, env.EMAIL)
+}
+
 /** Every fifteen minutes: documents whose reading was cut off are read again (three times at most), old sessions go. */
 export async function appScheduled(env: AppBindings, at: number = Date.now()): Promise<void> {
   const db = env.DB
@@ -2722,6 +2903,11 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await repeatScheduled(env, bratislava(at).day)
   } catch (err) {
     console.error('repeated invoices failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    if (bratislava(at).hour >= 9) await dunningScheduled(env, bratislava(at).day)
+  } catch (err) {
+    console.error('reminders of invoices failed', err instanceof Error ? err.name : 'error')
   }
   try {
     const b = bratislava(at)
