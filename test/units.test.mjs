@@ -1290,6 +1290,46 @@ check(
   )
 }
 
+// Invoices in another currency (18 October 2026): amounts in the currency, the VAT also in euros at the rate of the
+// day before the supply, the e-invoice in the currency with the VAT in euros, paid in euros by its number.
+{
+  const usd = [
+    { position: 1, description: 'Consulting', quantityMilli: 10000, unit: 'hod', unitCents: 12000, vatRate: 23, baseCents: 120000 },
+    { position: 2, description: 'Book', quantityMilli: 1000, unit: 'ks', unitCents: 5000, vatRate: 5, baseCents: 5000 },
+  ]
+  const totals = invoices.totalsOf(usd, true)
+  const inEur = invoices.eurVat(totals, 1082300)
+  check(
+    "an invoice in dollars: its VAT in euros rate by rate at the day's rate, each to the cent as the return takes it",
+    totals.vat === 27600 + 250 && inEur.rates[0].vat === fx.eurOf(27600, 1082300) && inEur.rates[1].vat === fx.eurOf(250, 1082300) && inEur.vat === inEur.rates[0].vat + inEur.rates[1].vat,
+    JSON.stringify(inEur),
+  )
+  check('an amount in its currency', format.formatMoney(123450, 'USD') === `1${NB}234,50${NB}USD` && format.formatMoney(123450) === format.formatEurExact(123450))
+  const usdUbl = invoices.ublOf({ ...stored, currency: 'USD', fxRate: '1,0823', fxDay: '2026-09-30' }, usd, seller)
+  check(
+    'its e-invoice is in dollars throughout, with the VAT also in euros (BT-6, BT-111)',
+    usdUbl.includes('<cbc:DocumentCurrencyCode>USD</cbc:DocumentCurrencyCode>\n<cbc:TaxCurrencyCode>EUR</cbc:TaxCurrencyCode>') &&
+      !usdUbl.includes('currencyID="EUR">1') &&
+      usdUbl.includes(`<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">${(inEur.vat / 100).toFixed(2)}</cbc:TaxAmount></cac:TaxTotal>`) &&
+      usdUbl.includes('<cbc:PayableAmount currencyID="USD">1528.50</cbc:PayableAmount>'),
+  )
+  const doc = { id: 'd', kind: 'invoice_out', issuedOn: '2026-10-01', dueOn: '2026-10-15', totalCents: 152850, party: 'Buyer Inc', partyIban: null, vs: '20260011', currency: 'USD', eurCents: fx.eurOf(152850, 1082300) }
+  const pay = (amountCents, vs, currency = 'EUR') => ({ id: 'p', bookedOn: '2026-10-10', amountCents, party: 'BUYER INC', partyIban: null, vs, currency })
+  check(
+    'paid in euros by its number, near its euros at its rate: the same; without its number, too far, or the dollars as euros: not',
+    match.score(pay(140000, '20260011'), doc) >= match.AUTO_SCORE &&
+      match.score(pay(140000, null), doc) === 0 &&
+      match.score(pay(120000, '20260011'), doc) === 0 &&
+      match.score(pay(152850, '20260011'), doc) === 0 &&
+      match.score(pay(152850, '20260011', 'USD'), doc) >= match.AUTO_SCORE,
+    JSON.stringify([match.score(pay(140000, '20260011'), doc), doc.eurCents]),
+  )
+  check(
+    'amounts are compared in one currency: crowns are never taken for euros',
+    match.score(pay(124000, null), { ...doc, kind: 'invoice_out', totalCents: 124000, currency: 'CZK', eurCents: null, vs: null }) === 0,
+  )
+}
+
 // PAY by square: what a bank's app reads from the QR code on an invoice
 const square = paybysquare.payBySquare({ iban: 'SK31 1200 0000 1987 4263 7541', amountCents: 118080, vs: '20260006', due: '2026-10-15', name: 'Ukážková firma s. r. o.', note: 'Faktúra 20260006' })
 const paid = square ? decodePayBySquare(square).payments[0] : null

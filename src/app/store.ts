@@ -7,7 +7,7 @@ import { linkLockedSql } from './period-schema'
 import { sameDocument, supplierKey, type Category } from './booking'
 import { AUTO_SCORE, autoExempt, decide, type DocKind, type Exempt, type MatchDocument, type MatchPayment } from './match'
 import { isVatMode, reverseOf, type ReverseGoods, type VatCompany, type VatData, type VatDoc, type VatLine, type VatMode, type VatStatus } from './vat'
-import { rateMicro } from './fx'
+import { eurOf, rateMicro } from './fx'
 import { settingsOf, type IntrastatSettings } from './intrastat'
 import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
@@ -628,14 +628,16 @@ export function checkStatement(db: D1Database, company: string, payment: string,
  * also needs the payment to have no document yet; a client may give one payment several documents.
  */
 export function linkStatement(db: D1Database, company: string, payment: string, doc: string, how: 'auto' | 'client' | 'accountant', by: string | null, alone = false): D1PreparedStatement {
+  // The lock is asked of this payment and this document by their ids (?5, ?4): its subqueries name their own
+  // `payments p` and `documents d`, so the outer aliases would mean every row there, any company's.
   return db
     .prepare(
       `INSERT INTO links (document_id, payment_id, company_id, how, by, created_at)
-       SELECT d.id, p.id, p.company_id, ?, ?, ?
+       SELECT d.id, p.id, p.company_id, ?1, ?2, ?3
        FROM documents d JOIN payments p ON p.company_id = d.company_id
-       WHERE d.id = ? AND p.id = ? AND p.company_id = ? AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
+       WHERE d.id = ?4 AND p.id = ?5 AND p.company_id = ?6 AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
          AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id)
-         ${how === 'auto' ? `AND NOT ${linkLockedSql('p.id', 'd.id')}` : ''}
+         ${how === 'auto' ? `AND NOT ${linkLockedSql('?5', '?4')}` : ''}
          ${alone ? 'AND NOT EXISTS (SELECT 1 FROM links WHERE payment_id = p.id)' : ''}`,
     )
     .bind(how, by, now(), doc, payment, company)
@@ -871,11 +873,24 @@ export async function filesToday(db: D1Database, company: string): Promise<numbe
 // ---------------------------------------------------------------------------------------------------------------
 
 function asMatchPayment(p: Payment): MatchPayment {
-  return { id: p.id, bookedOn: p.bookedOn, amountCents: p.amountCents, party: p.party, partyIban: p.partyIban, vs: p.vs }
+  return { id: p.id, bookedOn: p.bookedOn, amountCents: p.amountCents, party: p.party, partyIban: p.partyIban, vs: p.vs, currency: p.currency }
 }
 
 function asMatchDocument(d: Doc): MatchDocument {
-  return { id: d.id, kind: d.kind, issuedOn: d.issuedOn, dueOn: d.dueOn, totalCents: d.totalCents, party: d.party, partyIban: d.partyIban, vs: d.vs }
+  const currency = d.currency ?? 'EUR'
+  const rate = currency !== 'EUR' ? rateMicro(d.fxRate) : null
+  return {
+    id: d.id,
+    kind: d.kind,
+    issuedOn: d.issuedOn,
+    dueOn: d.dueOn,
+    totalCents: d.totalCents,
+    party: d.party,
+    partyIban: d.partyIban,
+    vs: d.vs,
+    currency,
+    eurCents: rate && d.totalCents !== null ? eurOf(d.totalCents, rate) : null,
+  }
 }
 
 /** Documents that were read, wait for their payment and are no suspected duplicate. */

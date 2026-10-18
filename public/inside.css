@@ -4054,6 +4054,16 @@ select.field__input {
   font-weight: 600;
 }
 
+/* An invoice in another currency: its VAT also in euros, under the total. */
+.sheet__total + .sheet__eur {
+  margin-top: 8px;
+}
+
+.sheet__eur dt,
+.sheet__eur dd {
+  font-size: 0.875rem;
+}
+
 .sheet__note {
   color: var(--text);
 }

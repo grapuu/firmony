@@ -33,6 +33,7 @@ import { checkIntrastat } from './intrastat.runtime.mjs'
 import { checkBundleExtras } from './bundle-extras.runtime.mjs'
 import { checkCreditNotes } from './credit-notes.runtime.mjs'
 import { checkAdvances } from './advances.runtime.mjs'
+import { checkInvoiceCurrency } from './invoice-currency.runtime.mjs'
 import { checkJointStock } from './joint-stock.runtime.mjs'
 import { checkLists } from './lists.runtime.mjs'
 import { socialReporting } from '../.wrangler/dist/stores.js'
@@ -281,7 +282,7 @@ check('robots keeps the form out and names the sitemap', (await res.text()).incl
 res = await get('/sitemap.xml')
 check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 40)
+check('health says the schema', (await res.json()).schema === 41)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
@@ -4774,6 +4775,7 @@ await checkJointStock({ db, admin, acc, lucia, nowS, day, post, capture: process
 await checkLists({ db, nowS, signIn, as })
 await checkCreditNotes({ db, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAdvances({ db, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkInvoiceCurrency({ db, nowS, signIn, as, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

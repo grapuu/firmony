@@ -16,6 +16,9 @@ export function formatEur(cents: number, exact = false): string {
 /** An amount as an invoice writes it: always with its cents, "120,00 €". */
 export const formatEurExact = (cents: number): string => formatEur(cents, true)
 
+/** An amount in its currency as an invoice writes it: "120,00 €", another currency by its code, "120,00 USD". */
+export const formatMoney = (cents: number, currency = 'EUR'): string => (currency === 'EUR' ? formatEurExact(cents) : formatEurExact(cents).replace(/€$/, currency))
+
 /** A whole number with a space between thousands: "1 300". */
 export function formatCount(n: number): string {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)

@@ -2,11 +2,12 @@
 // opens from the email. The sheet is one component for the app, the customer's page, the accountant and print.
 import type { FC } from 'hono/jsx'
 import { ART, BRAND } from '../config'
-import { formatEur, formatEurExact } from '../format'
+import { formatEur, formatEurExact, formatMoney } from '../format'
 import { app, dayName } from '../app/copy'
-import { INVOICE_MODES, MODE_TERMS, UNITS, VAT_RATES, creditLines, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
+import { INVOICE_CURRENCIES, INVOICE_MODES, MODE_TERMS, UNITS, VAT_RATES, creditLines, eurVat, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import { REVERSE_KINDS } from '../app/vat'
+import { eurOf, rateMicro } from '../app/fx'
 import type { Company } from '../app/store'
 import { Tile } from './home'
 import { Flash, Heading, InsideHead } from './inside'
@@ -22,12 +23,20 @@ const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill-
 /** What a document is called: a credit note is a "Dobropis", an invoice a "Faktúra". */
 const kindName = (i: Pick<StoredInvoice, 'kind'>, vatPayer = true) => (i.kind === 'advance' && !vatPayer ? t.sheet.advanceNoVat : (t.sheet.kinds[i.kind] ?? t.sheet.title))
 /** The variable symbol the customer pays by: a request for an advance has its own, an invoice its number. */
+/** An invoice's total in euros: another currency at the rate it was issued at (nothing while a draft has none). */
+const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) => {
+  if (i.currency === 'EUR') return i.totalCents
+  const rate = rateMicro(i.fxRate)
+  return rate ? eurOf(i.totalCents, rate) : 0
+}
+
 // A request is paid with its own symbol; an advance's tax document is paid already (no symbol to pay with).
 const vsOf = (i: Pick<StoredInvoice, 'kind' | 'vs' | 'number'>) => (i.kind === 'proforma' ? i.vs : i.kind === 'advance' ? null : i.number)
 
 export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null }> = ({ invoices, today, flash, closed = null }) => {
   const month = today.slice(0, 7)
-  const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + i.totalCents, 0)
+  // In euros: an invoice in another currency at its rate.
+  const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + eurosOf(i), 0)
   // A credit note lowers what its invoice still asks, while that invoice is not paid.
   // Requests for advances are not receivables of the books; what they ask comes back as advances and final invoices.
   const open = new Map(invoices.filter((i) => i.kind === 'invoice' && (stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue')).map((i) => [i.id, stateOf(i, today)]))
@@ -105,7 +114,7 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
                       </span>
                     </span>
                     <span class="row__end">
-                      <span class="row__amount">{formatEur(i.totalCents)}</span>
+                      <span class="row__amount">{i.currency === 'EUR' ? formatEur(i.totalCents) : formatMoney(i.totalCents, i.currency)}</span>
                       <span class={`pill ${PILL[state]}`}>{t.state[state]}</span>
                     </span>
                   </a>
@@ -155,6 +164,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
   const f = t.form
   // A credit note's lines are typed as what the invoice is lowered by; its sums show with the minus they will have.
   const totals = totalsOf(credit ? creditLines(preview) : preview, vatPayer)
+  const money = (cents: number) => formatMoney(cents, values.currency ?? 'EUR')
   return (
     <>
       <a class="back" href="/app/faktury">
@@ -378,17 +388,17 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
                 <>
                   <div>
                     <dt>{f.totalBase}</dt>
-                    <dd>{formatEurExact(totals.base)}</dd>
+                    <dd>{money(totals.base)}</dd>
                   </div>
                   <div>
                     <dt>{f.totalVat}</dt>
-                    <dd>{formatEurExact(totals.vat)}</dd>
+                    <dd>{money(totals.vat)}</dd>
                   </div>
                 </>
               ) : null}
               <div class="items__total">
                 <dt>{f.total}</dt>
-                <dd>{formatEurExact(totals.total)}</dd>
+                <dd>{money(totals.total)}</dd>
               </div>
             </dl>
           </div>
@@ -399,6 +409,34 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
           </h2>
           <div class="fgrid">
             {credit ? null : <Text name="iban" label={f.iban} value={values.iban} error={errors.iban} wide max={42} />}
+            {credit || values.proforma || final ? (
+              <>
+                <input type="hidden" name="mena" value={values.currency ?? 'EUR'} />
+                <input type="hidden" name="kurz" value={values.rate ?? ''} />
+              </>
+            ) : (
+              <>
+                <div class="fgrid__cell">
+                  <label class="field__label" for="f-mena">
+                    {f.currency}
+                  </label>
+                  <select id="f-mena" class="field__input" name="mena">
+                    {INVOICE_CURRENCIES.map((code) => (
+                      <option value={code} selected={(values.currency ?? 'EUR') === code}>
+                        {code}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div class="fgrid__cell">
+                  <label class="field__label" for="f-kurz">
+                    {f.rate}
+                  </label>
+                  <input id="f-kurz" class="field__input" name="kurz" value={values.rate ?? ''} inputmode="decimal" maxlength={16} aria-invalid={errors.rate ? 'true' : undefined} />
+                  {errors.rate ? <p class="field__error">{errors.rate}</p> : <p class="field__hint">{f.rateHint}</p>}
+                </div>
+              </>
+            )}
             <div class="fgrid__cell fgrid__cell--wide">
               <label class="field__label" for="f-poznamka">
                 {f.note}
@@ -445,10 +483,14 @@ function payQr(invoice: StoredInvoice, total: number, seller: Company) {
 export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; pay?: boolean }> = ({ invoice, lines, seller, pay = true }) => {
   const s = t.sheet
   const credit = invoice.kind === 'credit'
+  const money = (cents: number) => formatMoney(cents, invoice.currency)
+  // In another currency: the rate, and the VAT also in euros (art. 230 of the Directive).
+  const fx = invoice.currency !== 'EUR' ? rateMicro(invoice.fxRate) : null
   const totals = totalsOf(lines, seller.vatPayer)
   // A credit note is not paid by the customer: no QR code, no account to pay to.
   // Nor is the tax document of money already received.
-  const qr = pay && !credit && invoice.kind !== 'advance' ? payQr(invoice, totals.total, seller) : null
+  // Slovak banks pay a QR code in euros only.
+  const qr = pay && !credit && invoice.kind !== 'advance' && invoice.currency === 'EUR' ? payQr(invoice, totals.total, seller) : null
   return (
     <article class="sheet" aria-label={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''}`}>
       <header class="sheet__head">
@@ -543,16 +585,16 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
                 <td>
                   {line.description}
                   <span class="sheet__lineinfo">
-                    {qty(line.quantityMilli)} {line.unit ?? ''} × {formatEurExact(line.unitCents)}
+                    {qty(line.quantityMilli)} {line.unit ?? ''} × {money(line.unitCents)}
                     {seller.vatPayer ? `, ${s.vat} ${line.vatRate} %` : ''}
                   </span>
                 </td>
                 <td>
                   {qty(line.quantityMilli)} {line.unit ?? ''}
                 </td>
-                <td>{formatEurExact(line.unitCents)}</td>
+                <td>{money(line.unitCents)}</td>
                 {seller.vatPayer ? <td>{line.vatRate} %</td> : null}
-                <td>{formatEurExact(line.baseCents)}</td>
+                <td>{money(line.baseCents)}</td>
               </tr>
             ))}
           </tbody>
@@ -605,20 +647,35 @@ export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: C
             ? totals.rates.flatMap((r) => [
                 <div>
                   <dt>{s.base(r.rate)}</dt>
-                  <dd>{formatEurExact(r.base)}</dd>
+                  <dd>{money(r.base)}</dd>
                 </div>,
                 <div>
                   <dt>{s.vatOf(r.rate)}</dt>
-                  <dd>{formatEurExact(r.vat)}</dd>
+                  <dd>{money(r.vat)}</dd>
                 </div>,
               ])
             : null}
           <div class="sheet__total">
             <dt>{credit ? s.creditTotal : invoice.kind === 'advance' ? s.advanceTotal : s.total}</dt>
-            <dd>{formatEurExact(totals.total)}</dd>
+            <dd>{money(totals.total)}</dd>
           </div>
+          {fx && seller.vatPayer
+            ? [
+                ...eurVat(totals, fx).rates.filter((r) => r.rate > 0).map((r) => (
+                  <div class="sheet__eur">
+                    <dt>{s.vatEur(r.rate)}</dt>
+                    <dd>{formatEurExact(r.vat)}</dd>
+                  </div>
+                )),
+                <div class="sheet__eur">
+                  <dt>{s.vatEurTotal}</dt>
+                  <dd>{formatEurExact(eurVat(totals, fx).vat)}</dd>
+                </div>,
+              ]
+            : null}
         </dl>
       </div>
+      {fx && invoice.fxRate ? <p class="sheet__note">{invoice.fxDay ? s.fx(invoice.currency, invoice.fxRate, dayName(invoice.fxDay)) : s.fxTyped(invoice.currency, invoice.fxRate)}</p> : null}
       {invoice.note ? <p class="sheet__note">{invoice.note}</p> : null}
       <footer class="sheet__foot">
         {seller.vatPayer ? null : <p>{s.noVat}</p>}
@@ -658,7 +715,7 @@ export const InvoicePage: FC<{
         <div>
           <Heading first={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''}`.trim()} small />
           <p class="phead__lead">
-            {invoice.customerName}, {formatEurExact(invoice.totalCents)}
+            {invoice.customerName}, {formatMoney(invoice.totalCents, invoice.currency)}
           </p>
         </div>
         <span class={`pill ${PILL[state]} phead__aside`}>{state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : t.state[state]}</span>
@@ -784,7 +841,7 @@ export const InvoicePage: FC<{
                     <a class="link" href={`/app/faktury/${cn.id}`}>
                       {t.sheet.creditTitle} {cn.number ?? t.draftName}
                     </a>{' '}
-                    {formatEurExact(cn.totalCents)}
+                    {formatMoney(cn.totalCents, invoice.currency)}
                   </li>
                 ))}
               </ul>

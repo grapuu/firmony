@@ -36,6 +36,7 @@ import {
   advancePayments,
   advancesOf,
   finalOf,
+  isInvoiceCurrency,
   checkValues,
   deductionLines,
   isInvoiceMode,
@@ -61,7 +62,7 @@ import {
 import { dayOfText, textDay } from './booking'
 import { lookupCompany } from '../rpo'
 import { normalizeIco } from '../ico'
-import { formatEur, formatEurExact } from '../format'
+import { formatEur, formatEurExact, formatMoney } from '../format'
 import { app as t, dayName, monthName } from './copy'
 import { clientDeadlines, nextMonth } from './deadlines'
 import { companyDeadlines } from '../team/deadlines-store'
@@ -70,7 +71,8 @@ import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
 import { keepFilesFor, readOne, type NewFile } from './intake'
 import { remindAll, remindBankRenewals, remindStatements, bratislava } from './remind'
-import { refreshRates } from './fx-store'
+import { ratesFor, refreshRates } from './fx-store'
+import { rateFor, rateMicro, rateText } from './fx'
 import { endingOf, intakeOpen, serviceOpen } from './ending'
 import { exportYear, exportYears } from './export'
 import { beginExport, completeExport, confirmExport, exportReceipts } from './handover-store'
@@ -1551,6 +1553,8 @@ function invoiceValuesFrom(body: Record<string, unknown>, vatPayer: boolean): In
     reverseCode: text('ptp_kod', 8),
     ...(text('druh', 12) === 'zalohova' ? { proforma: true } : {}),
     ...(ID.test(text('vyuctovanie', 64)) ? { relates: text('vyuctovanie', 64) } : {}),
+    currency: isInvoiceCurrency(text('mena', 3)) ? text('mena', 3) : 'EUR',
+    rate: text('kurz', 16),
     lines: Array.from({ length: rows }, (_, i) => ({
       description: text(`r${i}-popis`, 300),
       quantity: text(`r${i}-mnozstvo`, 10),
@@ -1705,6 +1709,8 @@ appRoutes.get('/faktury/nova', async (c) => {
     values.mode = original.mode
     values.reverseKind = original.reverse?.kind ?? ''
     values.reverseCode = original.reverse?.code ?? ''
+    values.currency = original.currency
+    values.rate = original.fxRate ?? ''
     values.lines = inputLines(await invoiceLines(c.env.DB, original.id), who.company.vatPayer)
     return invoiceForm(c, null, values)
   }
@@ -1725,6 +1731,7 @@ appRoutes.get('/faktury/nova', async (c) => {
       values.mode = earlier.mode
       values.reverseKind = earlier.reverse?.kind ?? ''
       values.reverseCode = earlier.reverse?.code ?? ''
+      values.currency = earlier.currency
       values.lines = inputLines(await invoiceLines(c.env.DB, earlier.id), who.company.vatPayer)
     }
   }
@@ -1776,7 +1783,9 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     values.customerDic = original.customerDic ?? ''
     values.customerIcdph = original.customerIcdph ?? ''
     values.iban = ''
-    // A credit note is taxed as the invoice it corrects.
+    // A credit note is taxed as the invoice it corrects, in its currency and at its rate (§ 25: the rate of the supply).
+    values.currency = original.currency
+    values.rate = original.fxRate ?? ''
     values.mode = original.mode
     values.reverseKind = original.reverse?.kind ?? ''
     values.reverseCode = original.reverse?.code ?? ''
@@ -1808,8 +1817,25 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     totals = totalsOf(lines, vatPayer)
     if (!errors.lines && totals.total < 0) errors.lines = ti.errors.finalTooMuch
   }
+  // In another currency: the rate typed, a credit note's invoice's, or the ECB's of the day before the supply (§ 26).
+  const currency = values.currency ?? 'EUR'
+  const supplied = dayOfText(values.delivered) || dayOfText(values.issued) || today()
+  let fx: { currency: string; rate: string | null; day: string | null } | null = null
+  if (currency !== 'EUR') {
+    const typed = rateMicro(values.rate)
+    if ((values.proforma || request) && !original) errors.form = ti.errors.currencyAdvance
+    else if (original?.fxRate) fx = { currency, rate: original.fxRate, day: original.fxDay }
+    else if ((values.rate ?? '').trim() !== '' && !typed) errors.rate = ti.errors.rate
+    else if (typed) fx = { currency, rate: rateText(typed), day: null }
+    else {
+      const found = rateFor(await ratesFor(db, [currency]), currency, supplied, 'before')
+      if (found) fx = { currency, rate: rateText(found.rate), day: found.day }
+      else if (issue) errors.rate = ti.errors.rateUnknown
+      else fx = { currency, rate: null, day: null }
+    }
+  }
   // A draft needs only somebody to be issued to; an invoice needs everything.
-  const blocking = issue ? errors : { customerName: errors.customerName, lines: errors.lines }
+  const blocking = issue ? errors : { customerName: errors.customerName, lines: errors.lines, rate: errors.rate }
   if (Object.values(blocking).some(Boolean)) return invoiceForm(c, draftId, values, issue ? errors : blocking, 422)
   const issued = dayOfText(values.issued) || today()
   const delivered = dayOfText(values.delivered) || issued
@@ -1836,6 +1862,7 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
         kind: values.proforma && !original && !request ? 'proforma' : null,
         relates: request?.id ?? null,
         advanceCents,
+        fx,
       }),
       eventStatement(db, { company: who.company.id, user: who.user.id, action: issue ? (original ? 'invoice.credited' : 'invoice.issued') : 'invoice.draft', subject: id, detail: { total: totals.total, ...(original ? { corrects: original.id } : {}) } }),
     ])
@@ -1954,6 +1981,8 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
       reverseCode: invoice.reverse?.code ?? '',
       ...(invoice.kind === 'proforma' ? { proforma: true } : {}),
       ...(invoice.kind === 'invoice' && invoice.relates ? { relates: invoice.relates } : {}),
+      currency: invoice.currency,
+      rate: invoice.fxDay ? '' : (invoice.fxRate ?? ''),
     }
     return invoiceForm(c, invoice.id, values, {}, status)
   }
@@ -2012,7 +2041,7 @@ async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
   if (reminder && (invoice.paidOn || invoice.kind === 'credit' || invoice.kind === 'advance')) return c.redirect(`/app/faktury/${invoice.id}`, 303)
   if (!(await withinLimit(db, 'invoice-mail', who.company.id, 30, 3600))) return invoicePage(c, id, { error: t.messages.throttle }, 429)
   const link = `${siteOrigin(c)}/f/${invoice.token}`
-  const total = formatEurExact(invoice.totalCents).replace(/ /g, ' ')
+  const total = formatMoney(invoice.totalCents, invoice.currency).replace(/ /g, ' ')
   const due = dayName(invoice.dueOn).replace(/ /g, ' ')
   const iban = invoice.iban ? groupIban(invoice.iban) : null
   await db.batch([

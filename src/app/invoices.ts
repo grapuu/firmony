@@ -6,6 +6,7 @@ import { now } from '../db'
 import type { Company } from './store'
 import { splitAddress } from './address'
 import { isA2Unit, isEuVatId, isReverseKind, reverseOf, type ReverseGoods } from './vat'
+import { eurOf, isCurrency, rateMicro } from './fx'
 
 export const VAT_RATES = [23, 19, 5, 0] as const
 
@@ -67,7 +68,20 @@ export interface InvoiceValues {
   proforma?: boolean
   /** A final invoice: the request for an advance whose advances it deducts. */
   relates?: string
+  /** The currency it is issued in (euros when not said), and the rate typed for it ("1,0845"; else the ECB's). */
+  currency?: string
+  rate?: string
 }
+
+/**
+ * The currencies an invoice may be issued in: the euro and every currency the ECB declares a reference rate of (its
+ * list of 2026; the lev went with Bulgaria's euro on 1 January 2026).
+ */
+export const INVOICE_CURRENCIES = [
+  'EUR', 'CZK', 'USD', 'GBP', 'CHF', 'PLN', 'HUF', 'SEK', 'DKK', 'NOK', 'RON', 'JPY', 'CAD', 'AUD', 'CNY', 'TRY', 'ISK', 'BRL', 'HKD', 'IDR', 'ILS', 'INR',
+  'KRW', 'MXN', 'MYR', 'NZD', 'PHP', 'SGD', 'THB', 'ZAR',
+] as const
+export const isInvoiceCurrency = (v: unknown): v is string => typeof v === 'string' && (INVOICE_CURRENCIES as readonly string[]).includes(v)
 
 export interface Line {
   position: number
@@ -301,6 +315,7 @@ export interface Errors {
   iban?: string
   lines?: string
   reason?: string
+  rate?: string
   form?: string
 }
 
@@ -413,6 +428,20 @@ export interface StoredInvoice {
   correctsNumber: string | null
   correctsIssuedOn: string | null
   reason: string | null
+  /** The currency it is issued in ('EUR' for most), the rate it is converted to euros at and the ECB's day of it. */
+  currency: string
+  fxRate: string | null
+  fxDay: string | null
+}
+
+/**
+ * The VAT of an invoice in another currency in euros, rate by rate, at the rate of the day before the supply (§ 26 of
+ * the VAT Act), each amount rounded to the cent as the VAT return takes it (vat.ts converts a document's lines alike).
+ * The Directive's art. 230: the VAT to pay is stated in the national currency, whatever currency the invoice is in.
+ */
+export function eurVat(totals: Totals, rate: number): { rates: { rate: number; base: number; vat: number }[]; vat: number } {
+  const rates = totals.rates.map((r) => ({ rate: r.rate, base: eurOf(r.base, rate), vat: eurOf(r.vat, rate) }))
+  return { rates, vat: rates.reduce((sum, r) => sum + r.vat, 0) }
 }
 
 /**
@@ -448,6 +477,9 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
   // One note a document (PEPPOL-EN16931-R002): a credit note's reason first.
   const note = [credit && invoice.reason ? `Dôvod opravy: ${invoice.reason}` : '', invoice.note ?? ''].filter(Boolean).join(' | ')
   const totals = totalsOf(lines, seller.vatPayer)
+  // An invoice in another currency: every amount in it, and the VAT also in euros (BT-6, BT-111, BR-53).
+  const cur = invoice.currency ?? 'EUR'
+  const fx = cur !== 'EUR' ? rateMicro(invoice.fxRate) : null
   // EN 16931: S is a rate above nought, E a supply exempt from VAT (Slovakia has no zero rate at home), O a seller
   // who is no VAT payer or a supply outside Slovakia; K goods to another member state, AE a service whose customer
   // pays the VAT, G an export, each at 0 % with its exemption code. E and O carry the reason, O carries no rate and no
@@ -489,7 +521,8 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
     // A credit note 381; the tax document of an advance received a prepayment invoice, 386; an invoice 380.
     credit ? '<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>' : `<cbc:InvoiceTypeCode>${invoice.kind === 'advance' ? 386 : 380}</cbc:InvoiceTypeCode>`,
     note ? `<cbc:Note>${esc(note)}</cbc:Note>` : '',
-    '<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>',
+    `<cbc:DocumentCurrencyCode>${cur}</cbc:DocumentCurrencyCode>`,
+    fx ? '<cbc:TaxCurrencyCode>EUR</cbc:TaxCurrencyCode>' : '',
     `<cbc:BuyerReference>${esc(invoice.number ?? '')}</cbc:BuyerReference>`,
     credit && invoice.correctsNumber
       ? `<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>${esc(invoice.correctsNumber)}</cbc:ID>${invoice.correctsIssuedOn ? `<cbc:IssueDate>${invoice.correctsIssuedOn}</cbc:IssueDate>` : ''}</cac:InvoiceDocumentReference></cac:BillingReference>`
@@ -503,18 +536,19 @@ export function ublOf(invoice: StoredInvoice, kept: Line[], seller: Company): st
     credit
       ? ''
       : `<cac:PaymentMeans><cbc:PaymentMeansCode>${invoice.iban ? 30 : 1}</cbc:PaymentMeansCode><cbc:PaymentID>${esc(invoice.number ?? '')}</cbc:PaymentID>${invoice.iban ? `<cac:PayeeFinancialAccount><cbc:ID>${esc(plainIban(invoice.iban))}</cbc:ID></cac:PayeeFinancialAccount>` : ''}</cac:PaymentMeans>`,
-    `<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">${amount(totals.vat)}</cbc:TaxAmount>${totals.rates
-      .map((r) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="EUR">${amount(r.base)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="EUR">${amount(r.vat)}</cbc:TaxAmount>${taxCategory(r.rate)}</cac:TaxSubtotal>`)
+    `<cac:TaxTotal><cbc:TaxAmount currencyID="${cur}">${amount(totals.vat)}</cbc:TaxAmount>${totals.rates
+      .map((r) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="${cur}">${amount(r.base)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${cur}">${amount(r.vat)}</cbc:TaxAmount>${taxCategory(r.rate)}</cac:TaxSubtotal>`)
       .join('')}</cac:TaxTotal>`,
-    `<cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="EUR">${amount(totals.base)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="EUR">${amount(totals.base)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="EUR">${amount(totals.total)}</cbc:TaxInclusiveAmount>${
+    fx ? `<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">${amount(eurVat(totals, fx).vat)}</cbc:TaxAmount></cac:TaxTotal>` : '',
+    `<cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="${cur}">${amount(totals.base)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="${cur}">${amount(totals.base)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="${cur}">${amount(totals.total)}</cbc:TaxInclusiveAmount>${
       // An advance's tax document is made for money received: all of it paid, nothing due (BR-CO-16).
       invoice.kind === 'advance'
-        ? `<cbc:PrepaidAmount currencyID="EUR">${amount(totals.total)}</cbc:PrepaidAmount><cbc:PayableAmount currencyID="EUR">0.00</cbc:PayableAmount>`
-        : `<cbc:PayableAmount currencyID="EUR">${amount(totals.total)}</cbc:PayableAmount>`
+        ? `<cbc:PrepaidAmount currencyID="${cur}">${amount(totals.total)}</cbc:PrepaidAmount><cbc:PayableAmount currencyID="${cur}">0.00</cbc:PayableAmount>`
+        : `<cbc:PayableAmount currencyID="${cur}">${amount(totals.total)}</cbc:PayableAmount>`
     }</cac:LegalMonetaryTotal>`,
     ...lines.map(
       (line) =>
-        `<cac:${root}Line><cbc:ID>${line.position}</cbc:ID><cbc:${credit ? 'Credited' : 'Invoiced'}Quantity unitCode="${UNIT_CODES[line.unit ?? 'ks'] ?? 'C62'}">${(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000}</cbc:${credit ? 'Credited' : 'Invoiced'}Quantity><cbc:LineExtensionAmount currencyID="EUR">${amount(line.baseCents)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${esc(line.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${category(line.vatRate)}</cbc:ID>${percent(line.vatRate)}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="EUR">${amount(Math.abs(line.unitCents))}</cbc:PriceAmount></cac:Price></cac:${root}Line>`,
+        `<cac:${root}Line><cbc:ID>${line.position}</cbc:ID><cbc:${credit ? 'Credited' : 'Invoiced'}Quantity unitCode="${UNIT_CODES[line.unit ?? 'ks'] ?? 'C62'}">${(line.unitCents < 0 ? -line.quantityMilli : line.quantityMilli) / 1000}</cbc:${credit ? 'Credited' : 'Invoiced'}Quantity><cbc:LineExtensionAmount currencyID="${cur}">${amount(line.baseCents)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${esc(line.description)}</cbc:Name><cac:ClassifiedTaxCategory><cbc:ID>${category(line.vatRate)}</cbc:ID>${percent(line.vatRate)}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="${cur}">${amount(Math.abs(line.unitCents))}</cbc:PriceAmount></cac:Price></cac:${root}Line>`,
     ),
     `</${root}>`,
     '',
@@ -572,6 +606,9 @@ function invoiceOf(row: Row): StoredInvoice {
     paidCents: Number(row.paid_cents ?? 0),
     mode: isInvoiceMode(row.vat_mode) ? row.vat_mode : 'domestic',
     reverse: reverseOf(row.vat_reverse),
+    currency: isCurrency(row.currency) ? row.currency : 'EUR',
+    fxRate: str(row.fx_rate),
+    fxDay: str(row.fx_day),
     corrects: str(row.corrects),
     correctsNumber: str(row.corrects_number),
     correctsIssuedOn: str(row.corrects_issued_on),
@@ -683,6 +720,8 @@ export function saveInvoiceStatements(
     advanceCents?: number
     /** An advance's tax document: the payment it is made for (one document a payment, kept by a unique index). */
     payment?: string | null
+    /** An invoice in another currency: the currency, the rate it is converted at ("1,0845") and the ECB's day of it. */
+    fx?: { currency: string; rate: string | null; day: string | null } | null
   },
 ): D1PreparedStatement[] {
   const v = args.values
@@ -713,13 +752,14 @@ export function saveInvoiceStatements(
       .prepare(
         `INSERT INTO invoices (id, company_id, created_at, created_by, status, year, seq, number,
            customer_name, customer_ico, customer_dic, customer_icdph, customer_address, customer_email,
-           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse, relates, vs, payment_id)
+           issued_on, delivered_on, due_on, note, base_cents, vat_cents, total_cents, iban, token, kind, corrects, reason, vat_mode, vat_reverse, relates, vs, payment_id,
+           currency, fx_rate, fx_day)
          SELECT ?1, ?2, ?3, ?4, ?5,
            CASE WHEN ?5 = 'issued' THEN CAST(?6 AS INTEGER) END,
            CASE WHEN ?5 = 'issued' THEN next.seq END,
            CASE WHEN ?5 = 'issued' THEN (CASE WHEN ?22 = 'proforma' THEN printf('ZF%d%04d', ?6, next.seq) ELSE printf('%d%04d', ?6, next.seq) END) END,
            ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27,
-           CASE WHEN ?5 = 'issued' AND ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq) END, ?28
+           CASE WHEN ?5 = 'issued' AND ?22 = 'proforma' THEN printf('%d9%04d', ?6, next.seq) END, ?28, ?29, ?30, ?31
          -- Requests for advances have a row of their own; invoices, credit notes and advances' tax documents share one.
          FROM (SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM invoices WHERE company_id = ?2 AND year = ?6 AND (kind = 'proforma') = (?22 = 'proforma')) AS next`,
       )
@@ -739,6 +779,9 @@ export function saveInvoiceStatements(
         reverse ? JSON.stringify(reverse) : null,
         args.relates ?? null,
         args.kind === 'advance' ? (args.payment ?? null) : null,
+        args.fx && args.fx.currency !== 'EUR' ? args.fx.currency : null,
+        args.fx && args.fx.currency !== 'EUR' ? args.fx.rate : null,
+        args.fx && args.fx.currency !== 'EUR' ? args.fx.day : null,
       ),
     // An issued invoice is a document of the company at once: the accountant books it, and the payment that pays it
     // is paired with it by its number, which is its variable symbol. A request for an advance is no document.
@@ -747,9 +790,9 @@ export function saveInvoiceStatements(
           db
             .prepare(
               `INSERT INTO documents (id, company_id, created_at, source, added_by, status, read_by, kind, party, party_ico, number, vs,
-                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint, vat_reverse, advance_cents)
+                 issued_on, due_on, total_cents, vat_cents, currency, category, invoice_id, party_vat_id, supplied_on, vat_lines, corrects, vat_hint, vat_reverse, advance_cents, fx_rate)
                SELECT ?, company_id, created_at, 'issued', created_by, 'read', 'issued', 'invoice_out', customer_name, customer_ico, number, number,
-                 issued_on, due_on, total_cents, vat_cents, 'EUR', ?, id, customer_icdph, delivered_on, ?, ?, ?, vat_reverse, ?
+                 issued_on, due_on, total_cents, vat_cents, COALESCE(currency, 'EUR'), ?, id, customer_icdph, delivered_on, ?, ?, ?, vat_reverse, ?, fx_rate
                FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued'`,
             )
             // Its VAT by rate, exactly as the invoice sums it, and how it is taxed: what the return proposes until the

@@ -349,7 +349,7 @@ export async function exportYear(
   ])
 
   const invoicesCsv = csv([
-    ['Číslo', 'Odberateľ', 'IČO', 'Vystavená', 'Dodanie', 'Splatnosť', 'Základ', 'DPH', 'Spolu', 'Zaplatená', 'Súbor v archíve'],
+    ['Číslo', 'Odberateľ', 'IČO', 'Vystavená', 'Dodanie', 'Splatnosť', 'Základ', 'DPH', 'Spolu', 'Mena', 'Kurz za 1 €', 'Zaplatená', 'Súbor v archíve'],
     ...invoiceFiles.map(({ invoice, file }) => [
       invoice.number ?? '',
       invoice.customerName,
@@ -360,6 +360,8 @@ export async function exportYear(
       csvMoney(invoice.baseCents),
       csvMoney(invoice.vatCents),
       csvMoney(invoice.totalCents),
+      invoice.currency,
+      invoice.fxRate ?? '',
       invoice.paidOn ?? '',
       file,
     ]),

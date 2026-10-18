@@ -13,6 +13,9 @@
 //   client, who confirms it with one tap.
 // - One exception: a variable symbol that names exactly one of the candidates, which no other candidate payment
 //   carries, decides (an invoice issued every month for the same amount is paid by the payment with its number).
+// - Amounts are compared in one currency. A document in another currency paid into an account in euros belongs to
+//   the payment only by its variable symbol and euros within 5 % of the document's at its own rate (the bank converts
+//   at its rate of the day and may take a fee): then the euros count as the same amount.
 
 export type DocKind = 'receipt' | 'invoice_in' | 'invoice_out' | 'other'
 
@@ -23,6 +26,8 @@ export interface MatchPayment {
   party: string | null
   partyIban: string | null
   vs: string | null
+  /** The account's currency; euros when not said. */
+  currency?: string | null
 }
 
 export interface MatchDocument {
@@ -34,7 +39,13 @@ export interface MatchDocument {
   party: string | null
   partyIban: string | null
   vs: string | null
+  /** The document's currency (euros when not said) and, for another one, its total in euros at its rate. */
+  currency?: string | null
+  eurCents?: number | null
 }
+
+/** How far the euros a bank paid may be from a document's in another currency at its rate (5 %). */
+export const FX_SLACK = 0.05
 
 export const AUTO_SCORE = 70
 export const SUGGEST_SCORE = 50
@@ -91,11 +102,19 @@ export function datesFit(payment: MatchPayment, doc: MatchDocument): boolean {
 /** How surely a document belongs to a payment: 0 when it cannot. */
 export function score(payment: MatchPayment, doc: MatchDocument): number {
   if (doc.totalCents === null || doc.totalCents <= 0) return 0
-  if (payment.amountCents !== direction(doc.kind) * doc.totalCents) return 0
+  const vs = normalizeVs(doc.vs)
+  const sameVs = vs !== '' && vs === normalizeVs(payment.vs)
+  if ((doc.currency ?? 'EUR') === (payment.currency ?? 'EUR')) {
+    if (payment.amountCents !== direction(doc.kind) * doc.totalCents) return 0
+  } else {
+    // Another currency, paid in euros: its own number and the euros near the document's at its rate.
+    const euros = direction(doc.kind) * payment.amountCents
+    if ((payment.currency ?? 'EUR') !== 'EUR' || !doc.eurCents || doc.eurCents <= 0 || !sameVs || euros <= 0) return 0
+    if (Math.abs(euros - doc.eurCents) > doc.eurCents * FX_SLACK) return 0
+  }
   if (!datesFit(payment, doc)) return 0
   let points = 50
-  const vs = normalizeVs(doc.vs)
-  if (vs !== '' && vs === normalizeVs(payment.vs)) points += 40
+  if (sameVs) points += 40
   const iban = normalizeIban(doc.partyIban)
   if (iban !== '' && iban === normalizeIban(payment.partyIban)) points += 30
   if (namesSimilar(doc.party, payment.party)) points += 20

@@ -157,8 +157,8 @@ over. Bring this section up to date first whenever a session ends.
    difference goes to 563 or 663; an invoice still open at a year's end is revalued at that day's rate (entry
    `fx:<year>`, kind 'fx', "KR <year>"); a payment of a foreign currency account at the rate of the day before it, and
    the account revalued at each year's end from its balance in its currency (`fxb:<year>:<account>`); the bank card
-   shows such an account in its currency. VAT proposes a document's lines in euros at its rate. Not built: invoices the
-   client issues in another currency, a cash box in another currency, revaluation of other assets than receivables,
+   shows such an account in its currency. VAT proposes a document's lines in euros at its rate. Not built: a cash box in another currency (invoices the client issues in another currency: since 18 October
+   2026, under "Invoices the client issues"), revaluation of other assets than receivables,
    payables and bank accounts (advances, loans in a foreign currency booked by hand), the tax treatment of unrealised
    differences. test/currency.runtime.mjs, units "Foreign currencies".
    The one-stop shop (built 17 October 2026, schema step 33: `documents.vat_country`, `companies.oss_since`,
@@ -1128,8 +1128,29 @@ by itself.
   which the books move from 324 to the revenue (`documentLines`), so 324 is left with nothing and the revenue is the
   whole supply. A final invoice takes credit notes up to its whole supply (`creditLeft` leaves the deductions out).
   test/advances.runtime.mjs, units "Advances", Peppol cases 386 and the final invoice.
+- Invoices in another currency (built 18 October 2026, schema step 41: `invoices.currency`, `fx_rate`, `fx_day`): the
+  form's "Úhrada" has "Mena" (the euro and the ECB's currencies, `INVOICE_CURRENCIES`; no lev since Bulgaria's euro)
+  and "Kurz za 1 €" (empty: the ECB's rate of the day before the supply, § 26 of the VAT Act, `rateFor(..., 'before')`;
+  typed: kept as typed without a day; none known and none typed: the invoice asks for one, `rateUnknown`). Amounts are
+  in the currency; the sheet prints them with the code ("1 528,50 USD", `formatMoney`), the rate and its day, and the
+  VAT in euros rate by rate and in all (`eurVat`: each rate's VAT converted to the cent, as vat.ts converts a
+  document's lines; art. 230 of the Directive: the VAT to pay in the national currency); no QR code (Slovak banks pay
+  one in euros). The e-invoice is in the currency with `TaxCurrencyCode` EUR and a second TaxTotal in euros (BT-6,
+  BT-111, BR-53; Peppol cases in dollars and an export in dollars, and BR-53 seen failing without it). The document
+  takes the currency and the rate (`documents.fx_rate`), so the books and the VAT return convert it as any document in
+  another currency (the books' difference to 563 or 663 when it is paid). A credit note keeps its invoice's currency
+  and rate (§ 25), a similar invoice its currency; a request for an advance and a final invoice are in euros only
+  (`currencyAdvance`). The list sums in euros at each invoice's rate; the yearly `faktury.csv` has the currency and
+  the rate. Pairing compares amounts in one currency (crowns are never taken for euros); a payment in euros pairs with
+  an invoice in another currency by its number and euros within 5 % of the invoice's at its rate (`FX_SLACK` in
+  match.ts). test/invoice-currency.runtime.mjs, units "Invoices in another currency".
+- Found on the way (18 October 2026) and mended: automatic pairing asked the period lock of `p.id` and `d.id` inside
+  subqueries that name their own `payments p` and `documents d`, so once any company had a locked period with a booked
+  document or a payment in it, no company's payments paired by themselves any more (`linkStatement` now asks it of
+  the ids bound as ?5 and ?4); and a credit note issued in the app made no entry in the books (its total keeps the
+  minus; `planOf` takes a minus total that corrects an invoice).
 - Not built yet: a corrective invoice of a reverse-charged supply in the control statement, a customer's
-  state when it has no VAT number (an export to a private person reads as SK in the e-invoice), an invoice in another
+  state when it has no VAT number (an export to a private person reads as SK in the e-invoice), an advance in another
   currency, advances for a supply without Slovak VAT (goods to the EU, export, reverse charge: the request is refused),
   the advance's document made by itself when the money comes (the client clicks it), a rate that changes between the
   advance and the supply, recurring invoices sent by themselves, the e-invoice sent through a digital postman,
@@ -1906,9 +1927,9 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1139 unit checks (18 October 2026), including credit notes, invoice modes, A.2 and advances
-npm run test:runtime     # 1577 workerd checks on Node 24 (as GitHub runs them), including test/advances.runtime.mjs
-npm run test:peppol      # 16 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+npm test                 # 1145 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies
+npm run test:runtime     # 1590 workerd checks on Node 24 (as GitHub runs them), including test/invoice-currency.runtime.mjs
+npm run test:peppol      # 19 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

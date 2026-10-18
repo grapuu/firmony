@@ -148,6 +148,18 @@ const cases = [
     ),
   ],
   [
+    'an invoice in US dollars with its VAT also in euros',
+    invoices.ublOf({ ...invoice, number: '20260010', currency: 'USD', fxRate: '1,0823', fxDay: '2026-09-30', customerIcdph: 'SK2120000000' }, lines, seller),
+  ],
+  [
+    'an export in US dollars (G)',
+    invoices.ublOf(
+      { ...invoice, number: '20260011', mode: 'export', currency: 'USD', fxRate: '1,0823', fxDay: '2026-09-30', customerIcdph: 'CHE123456789', customerDic: null, customerIco: null, customerAddress: 'Bahnhofstrasse 1, 8001 Zürich' },
+      [line(1, 'Tovar', 2000, 'ks', 5000, 0)],
+      seller,
+    ),
+  ],
+  [
     'a credit note of an invoice, kept with the minus',
     invoices.ublOf(
       { ...invoice, number: '20260007', iban: null, kind: 'credit', corrects: 'i', correctsNumber: '20260006', correctsIssuedOn: '2026-10-01', reason: 'Vrátený tovar' },
@@ -164,6 +176,11 @@ check(
       cases[0][1].replace('<cbc:ID>20260006</cbc:ID>\n', '').replace('<cbc:DueDate>', '<cbc:ID>20260006</cbc:ID><cbc:DueDate>'),
     )
   ).length > 0,
+)
+const dollars = cases.find(([name]) => name.startsWith('an invoice in US dollars'))?.[1] ?? ''
+check(
+  'and an invoice in another currency without its VAT in euros fails (BR-53)',
+  (await validate(dollars.replace(/<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">[^<]*<\/cbc:TaxAmount><\/cac:TaxTotal>\n/, ''))).some((f) => f.id === 'BR-53'),
 )
 for (const [name, xml] of cases) {
   const found = await validate(xml)

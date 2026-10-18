@@ -1129,6 +1129,9 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE documents ADD COLUMN advance_cents INTEGER',
     ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents']),
   ],
+  // Invoices in another currency (18 October 2026, invoices.ts): the currency, the rate it is converted to euros at
+  // (as documents.fx_rate writes it, "1,0845") and the ECB's day of that rate; the document takes both.
+  ['ALTER TABLE invoices ADD COLUMN currency TEXT', 'ALTER TABLE invoices ADD COLUMN fx_rate TEXT', 'ALTER TABLE invoices ADD COLUMN fx_day TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
