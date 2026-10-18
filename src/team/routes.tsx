@@ -178,7 +178,7 @@ import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
-import { isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
+import { isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, type VatData } from '../app/vat'
 import { ISSUED_RATIO_MODES, coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioMode, type RatioWork, type RatioYear } from '../app/vat-ratio'
 import { RatioPage, type RatioState } from '../views/vat-ratio'
 import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
@@ -1454,10 +1454,13 @@ teamRoutes.post('/klienti/:id/dph/oss/zrusit', async (c) => {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** A year's figures for the coefficient page and its settlement: from every document that may fall in its periods. */
-async function ratioYearWork(db: D1Database, company: Company, year: number) {
-  const [docs, filed] = await Promise.all([docsAround(db, company.id, `${year}-01`, `${year}-12`), filedReturns(db, company.id)])
+async function ratioYearWork(db: D1Database, company: Company, year: number, filedBefore?: FiledReturn[]) {
+  const [docs, filed] = await Promise.all([docsAround(db, company.id, `${year}-01`, `${year}-12`), filedBefore ?? filedReturns(db, company.id)])
   const work = ratioWork(vatCompanyOf(company), year, docs.map(vatDocOf), new Map(filed.map((f) => [f.period, f.filedOn])))
-  return { docs, work }
+  // Documents that hold the year's coefficient: deducted by it, booked or only saved (a correction kept to an earlier
+  // year holds that year's).
+  const held = docs.filter((d) => d.vatRatio !== null && d.vatRatio !== undefined && d.ratioMode !== 'final' && (work.proportional.includes(d.id) || work.unbooked.includes(d.id))).length
+  return { docs, work, held }
 }
 
 /** What the settlement confirms: the page's figures, so that a change in between is not confirmed unseen. */
@@ -1465,7 +1468,7 @@ const ratioSig = (w: RatioWork): string => [w.coef, w.numerator, w.denominator, 
 
 function ratioStateOf(stored: RatioYear | null, work: RatioWork | null, year: number, today: string): RatioState {
   if (!stored) return 'none'
-  if (stored.settled) return work && !sameSettlement(stored.settled, settledOf(work)) ? 'changed' : 'settled'
+  if (stored.settled) return work && (work.unbooked.length > 0 || !sameSettlement(stored.settled, settledOf(work))) ? 'changed' : 'settled'
   return today > `${year}-12-31` ? 'settle' : 'running'
 }
 
@@ -1479,14 +1482,15 @@ async function ratioPage(c: Ctx, company: Company, extra: { year?: number; value
   const stored = ratios.find((r) => r.year === year) ?? null
   const before = ratios.find((r) => r.year === year - 1)
   const proposal = before?.settled ? { year: year - 1, coef: before.settled.coef } : null
-  const { docs, work } = await ratioYearWork(db, company, year)
+  const filed = await filedReturns(db, company.id)
+  const { docs, work, held } = await ratioYearWork(db, company, year, filed)
   const lock = await periodLock(db, company.id)
   const years = [...new Set([current - 1, current, ...ratios.map((r) => r.year), year])].sort((a, b) => a - b)
   // Each other year's state from its own figures (a settled year changed since says so there too).
   const states = new Map<number, RatioState>()
   for (const y of years) {
     const own = ratios.find((r) => r.year === y) ?? null
-    states.set(y, y === year ? ratioStateOf(stored, work, y, today) : ratioStateOf(own, own?.settled ? (await ratioYearWork(db, company, y)).work : null, y, today))
+    states.set(y, y === year ? ratioStateOf(stored, work, y, today) : ratioStateOf(own, own?.settled ? (await ratioYearWork(db, company, y, filed)).work : null, y, today))
   }
   const ok = c.req.query('ok')
   return shell(
@@ -1502,6 +1506,7 @@ async function ratioPage(c: Ctx, company: Company, extra: { year?: number; value
       stored={stored}
       proposal={proposal}
       work={work}
+      held={held}
       state={ratioStateOf(stored, work, year, today)}
       last={lastPeriodOfYear(year, company.vatQuarterly)}
       sig={ratioSig(work)}
@@ -1589,8 +1594,8 @@ teamRoutes.post('/klienti/:id/dph/koeficient/odstranit', async (c) => {
   const stored = (company.vatRatios ?? []).find((r) => r.year === year)
   if (!Number.isInteger(year) || !stored) return missingPage(c)
   const back = `/ucto/klienti/${company.id}/dph/koeficient?rok=${year}`
-  const { work } = await ratioYearWork(db, company, year)
-  if (stored.settled || work.proportional.length > 0) return c.redirect(`${back}&ok=removeRefused`, 303)
+  const { held } = await ratioYearWork(db, company, year)
+  if (stored.settled || held > 0) return c.redirect(`${back}&ok=removeRefused`, 303)
   try {
     await db.batch([
       db.prepare('DELETE FROM vat_ratios WHERE company_id = ? AND year = ? AND settled IS NULL').bind(company.id, year),
@@ -4547,16 +4552,23 @@ teamRoutes.get('/doklady/:id', async (c) => {
   return found ? bookPage(c, found) : missingPage(c)
 })
 
-/** The received document deducted in proportion that a correction names by its number (§ 53), if the company has one. */
-async function correctedRatioDoc(db: D1Database, company: string, number: string, self: string): Promise<Doc | null> {
-  const row = await db
+/**
+ * The received document deducted in proportion that a correction names (§ 53): booked, of the same supplier (its IČO or
+ * its VAT number) and with that number; null when there is none, or more than one, so no earlier year's coefficient is
+ * taken from a document the correction may not be of.
+ */
+async function correctedRatioDoc(db: D1Database, company: string, number: string, self: string, supplier: { ico: string | null; vatId: string | null }): Promise<Doc | null> {
+  if (!supplier.ico && !supplier.vatId) return null
+  const rows = await db
     .prepare(
-      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND d.number = ? AND d.id <> ? AND d.kind IN ('receipt', 'invoice_in')
-         AND d.vat_ratio IS NOT NULL AND d.deleted_at IS NULL ORDER BY d.created_at LIMIT 1`,
+      `SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ?1 AND d.number = ?2 AND d.id <> ?3 AND d.kind IN ('receipt', 'invoice_in')
+         AND d.vat_ratio IS NOT NULL AND d.deleted_at IS NULL AND d.booked_at IS NOT NULL
+         AND ((?4 IS NOT NULL AND d.party_ico = ?4) OR (?5 IS NOT NULL AND UPPER(REPLACE(REPLACE(REPLACE(d.party_vat_id, ' ', ''), '.', ''), '-', '')) = ?5))
+       ORDER BY d.created_at LIMIT 2`,
     )
-    .bind(company, number, self)
-    .first<Record<string, unknown>>()
-  return row ? docOf(row) : null
+    .bind(company, number, self, supplier.ico, supplier.vatId)
+    .all<Record<string, unknown>>()
+  return rows.results.length === 1 ? docOf(rows.results[0] as Record<string, unknown>) : null
 }
 
 /** "12,40" or "1 200" in cents; null when empty, NaN when it is not an amount. */
@@ -4674,18 +4686,27 @@ teamRoutes.post('/doklady/:id', async (c) => {
       else {
         const yearOf = (d: Doc, data: VatData) => Number(docPreview(company, d, data, filed).period.slice(0, 4))
         const year = yearOf(doc, vatRead.data)
-        const corrected = vatRead.data.corrects ? await correctedRatioDoc(db, company.id, vatRead.data.corrects, doc.id) : null
-        const correctedYear = corrected?.vat ? yearOf(corrected, corrected.vat) : null
-        const settledBefore = correctedYear !== null && correctedYear < year ? (company.vatRatios ?? []).find((r) => r.year === correctedYear && r.settled && !r.stale) : undefined
-        if (settledBefore?.settled) {
-          ratio = settledBefore.settled.coef
-          ratioMode = 'final'
-        } else {
-          const found = (company.vatRatios ?? []).find((r) => r.year === year)
-          if (!found) errors.ratio = t.book.errors.ratio(year)
-          else {
-            const before = doc.vatRatio !== null && doc.vatRatio !== undefined && doc.ratioMode !== 'final' && doc.vat ? yearOf(doc, doc.vat) : null
-            ratio = before === year ? (doc.vatRatio as number) : found.coef
+        // Saved again in the year it was deducted in: the coefficient it was deducted by, whatever was written or settled
+        // since (it never becomes a correction kept to an earlier year). A correction kept to an earlier year follows
+        // that year's settlement as it stands.
+        const storedYear = doc.vatRatio !== null && doc.vatRatio !== undefined && doc.ratioMode !== 'final' && doc.vat ? yearOf(doc, doc.vat) : null
+        if (storedYear === year) ratio = doc.vatRatio as number
+        else {
+          const corrected = vatRead.data.corrects
+            ? await correctedRatioDoc(db, company.id, vatRead.data.corrects, doc.id, { ico: /^\d{8}$/.test(values.ico) ? values.ico : null, vatId: plainVatId(vatRead.data.vatId) })
+            : null
+          const correctedYear = corrected?.vat ? yearOf(corrected, corrected.vat) : null
+          // That year's settlement read again: one its documents no longer agree with is settled anew first.
+          const fresh = correctedYear !== null && correctedYear < year ? await withFreshRatios(db, company, [correctedYear], filed) : null
+          const settledBefore = fresh?.vatRatios?.find((r) => r.year === correctedYear && r.settled)
+          if (settledBefore?.stale) errors.ratio = t.book.errors.ratioStale(correctedYear as number)
+          else if (settledBefore?.settled) {
+            ratio = settledBefore.settled.coef
+            ratioMode = 'final'
+          } else {
+            const found = (company.vatRatios ?? []).find((r) => r.year === year)
+            if (!found) errors.ratio = t.book.errors.ratio(year)
+            else ratio = found.coef
           }
         }
         if (ratio !== null) vatRead.data.lines = withRatio(vatRead.data.lines, ratio)

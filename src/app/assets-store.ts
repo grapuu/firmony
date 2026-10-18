@@ -87,12 +87,13 @@ export function disposeAssetStatement(db: D1Database, company: string, id: strin
 
 /**
  * The cost centre an asset serves (centers.ts), management information: a centre of the company in use, or the one it
- * has; none when empty. No period lock holds it (the books' lines stay as they are).
+ * has; none when empty; one archived after the page checked it leaves the asset's as it was. No period lock holds it
+ * (the books' lines stay as they are).
  */
 export function assetCenterStatement(db: D1Database, company: string, id: string, center: string | null): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE assets SET center_id = (SELECT c.id FROM cost_centers c WHERE c.id = ?1 AND c.company_id = ?2 AND (c.archived_at IS NULL OR c.id IS assets.center_id))
+      `UPDATE assets SET center_id = CASE WHEN ?1 IS NULL THEN NULL ELSE COALESCE((SELECT c.id FROM cost_centers c WHERE c.id = ?1 AND c.company_id = ?2 AND (c.archived_at IS NULL OR c.id IS assets.center_id)), assets.center_id) END
        WHERE id = ?3 AND company_id = ?2 AND deleted_at IS NULL`,
     )
     .bind(center, company, id)

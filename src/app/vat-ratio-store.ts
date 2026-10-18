@@ -10,8 +10,8 @@ import { isLastOfYear, ratioWork, sameSettlement, settledOf } from './vat-ratio'
 export const lastYearsOf = (periods: readonly string[]): number[] => [...new Set(periods.filter(isLastOfYear).map((p) => Number(p.slice(0, 4))))]
 
 /**
- * The company with each settled year of these whose figures changed since marked stale; the company itself when none
- * is (most companies, which have no settlement, cost no query).
+ * The company with each settled year of these whose figures changed since, or that has a document not booked, marked
+ * stale; the company itself when none is (most companies, which have no settlement, cost no query).
  */
 export async function withFreshRatios(db: D1Database, company: Company, years: readonly number[], filed?: FiledReturn[]): Promise<Company> {
   const settled = (company.vatRatios ?? []).filter((r) => r.settled && years.includes(r.year))
@@ -21,7 +21,8 @@ export async function withFreshRatios(db: D1Database, company: Company, years: r
   for (const r of settled) {
     const docs = await docsAround(db, company.id, `${r.year}-01`, `${r.year}-12`)
     const work = ratioWork(vatCompanyOf(company), r.year, docs.map(vatDocOf), filedMap(returns))
-    if (r.settled && !sameSettlement(r.settled, settledOf(work))) stale.add(r.year)
+    // A document of the year not booked yet may change it as much as one changed since.
+    if (r.settled && (work.unbooked.length > 0 || !sameSettlement(r.settled, settledOf(work)))) stale.add(r.year)
   }
   if (stale.size === 0) return company
   return { ...company, vatRatios: (company.vatRatios ?? []).map((r) => (stale.has(r.year) ? { ...r, stale: true } : r)) }

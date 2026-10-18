@@ -24,6 +24,8 @@ export interface RatioPageProps {
   stored: RatioYear | null
   proposal: { year: number; coef: number } | null
   work: RatioWork
+  /** Documents of the year deducted by its coefficient, booked or not: while any is, the coefficient stays. */
+  held: number
   state: RatioState
   /** The year's last period, where its settlement goes. */
   last: string
@@ -109,7 +111,7 @@ export const RatioPage: FC<RatioPageProps> = (p) => {
                     </button>
                   </form>
                 )}
-                {p.stored && !p.stored.settled && !p.locked && w.proportional.length === 0 ? (
+                {p.stored && !p.stored.settled && !p.locked && p.held === 0 ? (
                   <form method="post" action={`${base}/odstranit`}>
                     <input type="hidden" name="rok" value={String(p.year)} />
                     <button class="btn btn--text" type="submit">

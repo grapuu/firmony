@@ -1494,7 +1494,7 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
                 </select>
               </label>
             ) : null}
-            {d.ratioMode === 'final' && d.vatRatio !== null && d.vatRatio !== undefined ? <p class="field__hint">{t.book.ratioWith(coefText(d.vatRatio))}</p> : null}
+            {d.ratioMode === 'final' && d.vatRatio !== null && d.vatRatio !== undefined ? <p class="field__hint">{t.book.ratioFinal(coefText(d.vatRatio))}</p> : null}
             <label class="tickbox">
               <input type="checkbox" name="remember" value="1" checked={values.remember} />
               <span>{t.book.remember}</span>

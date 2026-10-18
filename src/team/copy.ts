@@ -415,7 +415,7 @@ export const team = typesetAll({
       none: 'bez nároku na odpočet: dodanie v inom štáte, ktoré by v tuzemsku bolo oslobodené (§ 49 ods. 6)',
       skip: 'nezapočítať: predaj podniku alebo majetku okrem zásob, príležitostné finančné služby či nehnuteľnosti (§ 50 ods. 2)',
     } as Record<string, string>,
-    ratioFinal: (year: number, coef: string) => typeset(`Opravuje doklad roka ${year}, ktorý je už vysporiadaný: odpočet sa opraví jeho koeficientom ${coef}.`),
+    ratioFinal: (coef: string) => typeset(`Opravuje doklad už vysporiadaného roka: odpočet sa opravuje koeficientom toho roka ${coef} a do ďalšieho vysporiadania nevstupuje (§ 53).`),
     remember: 'Zapamätať pre dodávateľa',
     center: 'Stredisko',
     paidByCash: (number: string, day: string) => typeset(`Zaplatený v hotovosti ${day} pokladničným dokladom ${number}.`),
@@ -457,6 +457,8 @@ export const team = typesetAll({
       takings: 'Je to denná tržba z eKasy, ktorú zapísal klient: tu sa nemení, neodúčtuje ani nezahadzuje. Ak je zapísaná zle, klient ju zruší v Tržbách z eKasy a zapíše znova.',
       ratio: (year: number) => typeset(`Pre rok ${year} nie je zapísaný koeficient: zapíšte ho v DPH, Pomerné odpočítanie (§ 50).`),
       ratioDeduct: 'Pomerné odpočítanie je odpočítanie: zaškrtnite aj Odpočítať DPH, alebo zrušte Pomerne.',
+      ratioStale: (year: number) =>
+        typeset(`Doklad opravuje doklad roka ${year}, ktorého vysporiadanie koeficientom už nezodpovedá dokladom: vysporiadajte rok ${year} znova v DPH, Pomerné odpočítanie (§ 50), potom tento doklad zaúčtujte.`),
       cashPaid: (number: string) =>
         typeset(`Doklad je zaplatený v hotovosti pokladničným dokladom ${number}: jeho druh, menu a účet záväzku nemeňte. Ak je to omyl, klient najprv zruší pokladničný doklad.`),
     },
@@ -785,7 +787,7 @@ export const team = typesetAll({
       reverseThreshold: 'Mobilné telefóny a integrované obvody sa s prenesením daňovej povinnosti dodávajú až od základu 5 000 € na faktúre; pod ním sa fakturujú s DPH.',
       reverseCorrection: 'Opravná faktúra k dodaniu tovaru s prenesením daňovej povinnosti je v C.1 s rozdielom základu a množstvom ako rozdiel (mínus, keď základ klesá): skontrolujte množstvo.',
       ratioSettle: 'Firma odpočítava daň pomerne koeficientom: po skončení roka treba v tomto období vysporiadať odpočet koeficientom z údajov roka (§ 50 ods. 4).',
-      ratioChanged: 'Doklady roka sa od vysporiadania koeficientom zmenili (doklad dodatočne zaúčtovaný alebo opravený): vysporiadajte rok znova, kým toto obdobie podáte.',
+      ratioChanged: 'Doklady roka sa od vysporiadania koeficientom zmenili (doklad pribudol, dodatočne sa zaúčtoval alebo opravil): zaúčtujte ich a vysporiadajte rok znova, kým toto obdobie podáte.',
       unpaid53b: 'Faktúra dodávateľa nie je zaplatená do 100 dní od splatnosti: odpočítaná daň sa v tomto období opravuje (§ 53b, riadok 29 a C.2). Ak je zaplatená, priraďte jej platbu.',
       paid53b: 'Faktúra dodávateľa zaplatená po oprave podľa § 53b: odpočítaná daň sa v období platby opravuje späť (riadok 29 a C.2).',
       domestic7a: 'Osoba registrovaná podľa § 7a uvádza len služby a tovar zo zahraničia; tento doklad sme vynechali.',

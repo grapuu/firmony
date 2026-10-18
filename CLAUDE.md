@@ -1950,6 +1950,16 @@ Financial Administration by us: the accountant loads the files in eDane or in th
   súčtom riadkov 20, 22 a 23a" (likewise 18a and 19), so rows 20 to 23c keep the documents' deduction alone.
   Found on the way: since the full payroll of 17 October 2026 (ed07802) the VAT page and the closing page showed
   payroll's sentence of what is not built (one text replaced in all three places); each says its own again.
+  Mended after an eleventh independent review (18 October 2026, of commits dffa9cd, e0594f0 and b03478b; each finding
+  verified first): a received correction is kept to an earlier settled year only when the document it names is booked,
+  of the same supplier (IČO or VAT number) and the only one of that number (`correctedRatioDoc`); that year's settlement
+  is read again first (`withFreshRatios`) and one that no longer agrees refuses the booking until it is settled anew
+  (`ratioStale`); a document saved again in the year it was deducted in keeps its coefficient and never turns into a
+  correction kept to an earlier year, while one kept so follows that year's settlement as it stands; a settled year with
+  a document of it not booked counts as changed (the last period kept back, the page says "Zmenené"); a coefficient
+  stays while a document only saved (not booked) is deducted by it; the booking form says what a correction kept to a
+  settled year is (`ratioFinal`); the coefficient page reads the filings once; a centre archived after the asset's or
+  item's page checked it leaves the centre it had.
 - A supplier's invoice not paid in time (built 18 October 2026, § 53b; `unpaidEvents` in vat.ts). Read in the original
   on static.slov-lex.sk and in the instructions to DPHv25 (point 44, row 29) and to KVDPHv23 (C.2: the corrective
   document "0", ONP "x"; the settlement of § 50(4) in no line), through the browser pane: a received domestic invoice
@@ -2447,7 +2457,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 ```
 npm run check            # TypeScript
 npm test                 # 1292 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1875 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm run test:runtime     # 1882 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 24 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
