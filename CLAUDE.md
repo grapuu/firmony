@@ -83,6 +83,15 @@ over. Bring this section up to date first whenever a session ends.
    strážime účtovníctvo."; the older "Postaráme sa o všetko. Vy rastiete." is his to bring back); the investors'
    tax return is not built, its prices are a proposal (29, 49 and 89 €); Enable Banking is built and switched on
    only at about 250 clients (900 € a month).
+   **His idea of 21 October 2026, 01:31, to weigh with him (from his phone, nothing decided):** Revolut, Trading 212
+   and Robinhood win on a beautiful, simple UI and UX, which Firmony has, and also on being the cheapest and most
+   advantageous, so that people feel they win against them ("dávajú ľudom pocit že človek vyhráva nad nimi"); that
+   has to get into Firmony somehow. It is to be squared with his word of 20 October, 18:45 (the prices stay high, an
+   elite service), so the feeling of winning has to come from somewhere other than a lower plan price. Ideas he was
+   given to choose from: a free plan for a company with no activity (a dormant s. r. o., which costs us almost nothing);
+   showing in the app what the client saved against a usual accountant and what tax the app found; things others
+   charge for, included (invoicing, the digital postman, payroll calculator); a guarantee that fines caused by our
+   error are ours; a reward for bringing another company.
 6. **The picture he follows** is the artifact "Kruh Firmony" (https://claude.ai/artifact/6RwoEgbSJZx3hpdBafRN3M):
    all seven stages full, and his steps before launch at the end. Its source was a scratch file of the session of
    17 October; a new session reads the page with the Artifact tool (`action: "read"`, then the saved file) and
