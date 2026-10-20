@@ -70,7 +70,13 @@ over. Bring this section up to date first whenever a session ends.
    europio; liability insurance; a lawyer for the terms, the contract and the power of attorney
    (`CONTRACT_RELEASE` stays closed until the lawyer's and the insurer's references exist:
    `/ucto/ziadosti/schvalenie`); the AML program signed and europio registered in goAML.
-4. **His first word in the new chat.** To "pokračuj" alone: three lines on where things stand, then what is
+4. **Saturday 24 October 2026** (his word of 20 October, 21:21: start again then and finish, so the product can be
+   shown finished). The order he was given: (1) the first administrator at `/app/prvy-spravca` (his clicks in
+   Cloudflare, about 10 minutes); (2) item 10.4, a month tried live with a test client and an accountant, every fault
+   mended; (3) "Účtuje samo" turned on for the test client; (4) Search Console: indexing of `/uctovnictvo-pre-sro`,
+   `/online-uctovnik`, `/e-faktura-2027`; Bing Webmaster Tools once Bing answers (it was down that evening); whether
+   Google offers a postcard or a phone for the Business Profile.
+   **His first word in the new chat.** To "pokračuj" alone: three lines on where things stand, then what is
    worth doing next with what it costs him in time, and his pick is waited for. When he writes that a step of the
    guide is done, do the code side of it in one commit (the domain, the database id) and say what he clicks next.
 5. **Open with him, nothing decided:** the opening line of the site (the code has Codex's "Vy budujete firmu. My
