@@ -317,6 +317,56 @@ over. Bring this section up to date first whenever a session ends.
    check passes and when he has asked for the work to be put there (his word of 15:32 on 17 October: "ak sú
    skontrolované a funkčné perfektne dávaj ich ostro na GitHub"). Nothing is bought, no account is made and no
    terms are accepted for him.
+10. **The work left open on 20 October 2026, 17:15** (his word: "teraz to musíme kompletne vyšperkovať", "naša AI
+   musí byť úplne dokonalá", and while Claude's weekly limit is out the work goes on with ChatGPT). In this order,
+   each piece with its checks (`npm run check`, `npm test`, the runtime suite on Node 24, `test:ui`, `test:peppol`)
+   and pushed to `main` only when all pass. Slovak texts with the polite "Vy" in capitals, no long dashes in `src`,
+   every rule read in the original source before the code says it. Whoever finishes a piece marks it done here.
+   1. **The accountants are paid for the work done** (his yes of 20 October 2026, 17:13: "za odpracovanú prácu sa mi
+      to páči, to dáva zmysel"), in place of a sum a client by plan (`ACCOUNTANT_PAY`). The rates, his to confirm with
+      the accountant: a document she deals with (booked or discarded) 0,50 €; a VAT payer's period whose regular return
+      she files 12 €; every other month of a client of hers 6 €; payroll 4 € a person a month; a closing with the tax
+      return 90 €; taking over a new client 30 € once; messages are in the month's fee; a correction of her own work
+      0 €. The margins this gives (after her pay, the technology `TECH` less the bank's 2 € and a reserve of 2 %): a
+      usual month 82 % Štart (12 documents), 78 % Rast (40), 78 % Firma (100); a full plan 78 %, 72 %, 70 %; payroll
+      71 %, the closing 62 % (60 % is his floor). To build: `ACCOUNTANT_RATES` in `src/config.ts` with the unit check of
+      60 % at a full plan; a monthly statement of each accountant's work at `/ucto/vykaz?mesiac=` (an accountant
+      sees her own, the administrator every one, a CSV for Excel), counted from what the app recorded: the first
+      `document.booked` or `document.discarded` of a document ever (a booking again is no new work), the first filing
+      of a period's regular return by her, each closed payroll month's people at its first closing, each closing at its
+      first filing, the opening balances or a takeover once a company; she invoices europio by it. Started by Claude on 20 October
+      2026 at 17:20 (the state is in the log of commits).
+   2. **The AI reads perfectly, and it is measured.** (a) Keep what the reader proposed for each document as it
+      proposed it (a column or a table, never overwritten by the booking), and show the team a page "Presnosť AI"
+      (`/ucto/ai`): for the documents booked in a month, each field the reader proposed (kind, supplier, IČO, number,
+      days, total, VAT and its rates, category, VAT mode) against what was booked, the share booked with no change, the
+      worst suppliers and kinds. (b) A set of at least 30 made-up Slovak documents as pictures and PDFs (eKasa receipts
+      with their codes, invoices of payers and non-payers, foreign invoices, credit notes, a photo at an angle, a
+      crumpled receipt) and `npm run test:reader`, which runs the real reader on them (needs `ANTHROPIC_API_KEY`, not
+      in CI) and reports each field's accuracy; improve the prompt and the tool (`READER`, `src/app/read.ts`) until
+      totals, VAT, days and IČO are right on at least 98 % of them. (c) The booking screen records how long a document
+      took (opened to booked), and the statement of item 1 shows each accountant's median minutes a document: it
+      calibrates her rates. (d) Only after (a) to (c) have numbers: documents the reader and a supplier's rule agree on
+      booked by themselves and listed for her month's check.
+   3. **The month's animation in older Safari** (his note of 20 October: the papers do not fly in his Safari).
+      Scroll timelines run in Chrome and in Safari 26 and later. For older Safari and iOS, a small script of our own
+      (`public/flow.js`, CSP `script-src 'self'` on the public pages that use it, nothing inline) that, only when
+      `CSS.supports('animation-timeline: view()')` is false, plays the same keyframes from the scroll position; without
+      the script the finished card stays as now. Check it in WebKit.
+   4. **Tried live** once he is the first administrator (`/app/prvy-spravca`): a test client made by hand (no IČO,
+      the paper contract ticked, `grrrrjuhas+klient@gmail.com`), an accountant (`grrrrjuhas+uctovnicka@gmail.com`),
+      a month walked through (documents by photo and email, the bank statement, booking, VAT, payroll), every fault
+      written down and mended.
+   5. **For him to send** (plain text, no dashes, signed "Christian Juhás"): Qvalia, the price of the digital postman a
+      client and of its API; an insurer, professional liability for accounting services; an advokát in Košice, one
+      package: the sole shareholder's decision adding "Vedenie účtovníctva" (since 17 August 2026 in a notarial record
+      or authorised by an advokát), its filing to the commercial register (50 €), reading the terms, the contract, the
+      power of attorney, the AML program and the accountant's contract, with a price.
+   6. **The accountant's contract** by item 1: her own trade, a monthly invoice by the statement, her own errors put
+      right free, liability, confidentiality, AML training, processing of personal data (art. 28 GDPR); for the advokát.
+   7. **End of week, with him** (his word): the trade licence of europio: the decision of item 5, the notice of the
+      free trade "Vedenie účtovníctva" on slovensko.sk (free online, the certificate in about three days), the filing
+      to the commercial register within 30 days, then goAML.
 
 Current social-reporting follow-up (17 October 2026): [docs/security/social-reporting.md](docs/security/social-reporting.md).
 Additive schema **22** prepares full R/O MVPP 2026 XML for supported ordinary full-month employment in
