@@ -134,10 +134,21 @@ check(
   'it names the prices of all three plans',
   [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)),
 )
-check('it runs no script at all', !/<script/i.test(page))
+check(
+  'it runs one script of its own, the month played where scroll timelines are missing, and nothing inline',
+  (page.match(/<script[^>]*>/gi) ?? []).length === 1 && /<script src="\/flow\.js" defer(="")?><\/script>/.test(page),
+  (page.match(/<script[^>]*>/gi) ?? []).join(' '),
+)
 check('it carries no inline style', !/ style=/i.test(page))
 const csp = res.headers.get('content-security-policy') ?? ''
-check('the policy allows nothing inline and nothing foreign', csp.includes("script-src 'none'") && csp.includes("style-src 'self'") && csp.includes("frame-ancestors 'none'"))
+check('the policy allows nothing inline and nothing foreign', csp.includes("script-src 'self'") && !csp.includes('unsafe') && csp.includes("style-src 'self'") && csp.includes("frame-ancestors 'none'"))
+{
+  const legal = await get('/pravne-informacie')
+  check('every other page of the site runs no script at all', (legal.headers.get('content-security-policy') ?? '').includes("script-src 'none'") && !/<script/i.test(await legal.text()))
+  // Static files are the Worker's assets, which this suite does not serve: the file itself is read.
+  const flow = readFileSync(new URL('../public/flow.js', import.meta.url), 'utf8')
+  check('the script is our own file, and does nothing where scroll timelines run', flow.includes("CSS.supports('animation-timeline: view()')) return") && !/fetch|XMLHttpRequest|innerHTML|eval\(/.test(flow))
+}
 check(
   'no framing, no sniffing, HSTS',
   res.headers.get('x-frame-options') === 'DENY' && res.headers.get('x-content-type-options') === 'nosniff' && /max-age=31536000/.test(res.headers.get('strict-transport-security') ?? ''),

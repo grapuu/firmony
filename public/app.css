@@ -3971,3 +3971,97 @@ textarea {
     }
   }
 }
+
+/* The same month where the browser has no scroll timelines (Safari before 26): a script of our own (public/flow.js)
+   marks the track and seeks each piece's paused keyframes by how far the page has scrolled, over the same ranges. */
+@media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+  .flow__track--js {
+    height: 235vh;
+  }
+
+  .flow__track--js .flow__stage {
+    position: sticky;
+    top: 0;
+    display: grid;
+    align-content: center;
+    height: 100vh;
+    height: 100svh;
+    padding-top: var(--top-h);
+  }
+
+  .flow__track--js .flow__panel {
+    padding-block: clamp(28px, 4.5svh, 64px);
+  }
+
+  .flow__track--js .flyer,
+  .flow__track--js .feed__row,
+  .flow__track--js .feed__row .tile__img,
+  .flow__track--js .feed__row .pill,
+  .flow__track--js .feed__foot {
+    animation-duration: 1s;
+    animation-fill-mode: both;
+    animation-play-state: paused;
+  }
+
+  .flow__track--js .flyer {
+    display: block;
+    animation-name: fly;
+    animation-timing-function: linear;
+  }
+
+  .flow__track--js .feed__row {
+    animation-name: booked;
+    animation-timing-function: linear;
+  }
+
+  .flow__track--js .feed__row .tile__img {
+    animation-name: show;
+    animation-timing-function: linear;
+  }
+
+  .flow__track--js .feed__row .pill {
+    animation-name: stamp;
+    animation-timing-function: var(--spring);
+  }
+
+  .flow__track--js .feed__foot {
+    animation-name: foot-in;
+    animation-timing-function: linear;
+  }
+
+  @container (max-width: 899px) {
+    .flow__track--js .feed {
+      margin-top: calc(var(--fly) + 28px);
+    }
+
+    .flow__track--js .flyer--1 {
+      --p: 0.17;
+      --sy: calc(var(--fly) * -0.6);
+      --sr: -10deg;
+    }
+
+    .flow__track--js .flyer--2 {
+      --p: 0.83;
+      --sy: calc(var(--fly) * -0.52);
+      --sr: 9deg;
+    }
+
+    .flow__track--js .flyer--3 {
+      --p: 0.5;
+      --sy: calc(var(--fly) * -0.7);
+      --sr: 5deg;
+    }
+
+    .flow__track--js .flyer--4 {
+      --p: -0.3;
+      --sy: 190px;
+      --sr: -8deg;
+    }
+
+    .flow__track--js .flyer--5 {
+      --p: 1.3;
+      --sy: 250px;
+      --sr: 7deg;
+    }
+  }
+}

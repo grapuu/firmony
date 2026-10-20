@@ -199,6 +199,8 @@ const Flow: FC = () => {
           </div>
         </div>
       </div>
+      {/* Plays the month where scroll timelines are missing (public/flow.js); the only script of the site. */}
+      <script src="/flow.js" defer></script>
     </section>
   )
 }

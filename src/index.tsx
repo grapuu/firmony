@@ -57,6 +57,10 @@ const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ')
 
+// The home page runs one script of its own (public/flow.js: the month played by scrolling where the browser has no
+// scroll timelines, Safari before 26); everything else of the site runs none.
+const HOME_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace("script-src 'none'", "script-src 'self'")
+
 // The client's app adds one script of its own (public/inside.js: a file is sent as soon as it is picked, a photo
 // is made smaller first, a document being read is looked at again), and pictures of the documents it shows.
 const APP_CONTENT_SECURITY_POLICY = [
@@ -115,7 +119,8 @@ app.use('*', async (c, next) => {
   }
   await next()
   const inside = /^\/(app|ucto|auth|f)(\/|$)/.test(url.pathname)
-  if (!c.res.headers.has('Content-Security-Policy')) c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
+  if (!c.res.headers.has('Content-Security-Policy'))
+    c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : url.pathname === '/' ? HOME_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
   // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
   if (!c.res.headers.has('X-Frame-Options')) c.header('X-Frame-Options', 'DENY')
