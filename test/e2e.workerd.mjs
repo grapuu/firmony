@@ -343,8 +343,8 @@ check('the IndexNow key is served as itself', res.status === 200 && (await res.t
 res = await get('/sitemap.xml')
 {
   const map = await res.text()
-  check('the sitemap lists the pages and the guides, each with its day', map.includes('https://firmony.io/pravne-informacie') && ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik'].every((p) => map.includes(`<loc>https://firmony.io${p}</loc><lastmod>`)))
-  for (const path of ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik']) {
+  check('the sitemap lists the pages and the guides, each with its day', map.includes('https://firmony.io/pravne-informacie') && ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik', '/ako-vybrat-uctovnika'].every((p) => map.includes(`<loc>https://firmony.io${p}</loc><lastmod>`)))
+  for (const path of ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik', '/ako-vybrat-uctovnika']) {
     const r = await get(path)
     const html = await r.text()
     if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/guide${path.replace(/\//g, '-')}.html`, html)

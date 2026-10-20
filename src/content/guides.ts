@@ -255,6 +255,93 @@ export const GUIDES: Guide[] = [
     modified: '2026-10-20',
     keywords: ['online účtovník', 'účtovník online', 'účtovníctvo online', 'účtovník Bratislava', 'účtovník Košice'],
   },
+  {
+    // The question people put to a search engine and to an assistant after founding a company ("which accountant for my
+    // new s. r. o."): the options told fairly, what to ask, what to watch, and when Firmony is not the right choice.
+    path: '/ako-vybrat-uctovnika',
+    nav: 'Ako vybrať účtovníka',
+    title: `Ako vybrať účtovníka pre s. r. o.: 4 možnosti a 10 otázok | ${BRAND.name}`,
+    description:
+      'Založili ste s. r. o. a hľadáte účtovníka? Porovnanie štyroch možností: účtovník na živnosť, účtovná kancelária, program a online účtovná služba. Desať otázok, ktoré položiť, a na čo si dať pozor.',
+    first: 'Ako vybrať účtovníka.',
+    second: 'Pre novú s. r. o.',
+    lead: 'Založili ste s. r. o. a hľadáte, kto Vám povedie účtovníctvo. Máte štyri možnosti: účtovníka na živnosť, účtovnú kanceláriu, program, v ktorom účtujete sami, alebo online účtovnú službu. Tu je, čím sa líšia, čo sa pýtať a na čo si dať pozor.',
+    sections: [
+      {
+        h: 'Kedy účtovníka potrebujete',
+        p: [
+          'Firma vedie účtovníctvo odo dňa svojho vzniku (§ 4 ods. 1 zákona o účtovníctve) a s. r. o. vzniká zápisom do obchodného registra. Už prvé doklady, napríklad poplatky za založenie, treba zaúčtovať. Účtovníka preto dohodnite hneď, ako firma vznikne, nie až pri prvom priznaní.',
+          'S. r. o. vedie podvojné účtovníctvo. Popri ňom podáva priznania k DPH, ak je platiteľom, odvádza mzdy za zamestnancov a raz ročne zostavuje závierku a podáva daňové priznanie.',
+        ],
+      },
+      {
+        h: 'Štyri možnosti',
+        p: ['Každá sa hodí inej firme. Porovnajte ich podľa toho, koľko práce chcete robiť sami a ako chcete s účtovníkom komunikovať.'],
+        list: [
+          'Účtovník na živnosť: osobný kontakt a často nižšia cena. Opýtajte sa, kto ho zastúpi počas dovolenky alebo choroby a či zvládne aj DPH a mzdy.',
+          'Účtovná kancelária: viac ľudí aj odborností, zastupovanie je jednoduchšie. Cena býva vyššia a doklady sa odovzdávajú podľa dohody, často raz mesačne.',
+          'Program, v ktorom účtujete sami: najnižšia cena, ale prácu robíte Vy. Podvojné účtovníctvo, DPH a závierka chcú znalosti a čas a za správnosť zodpovedá firma.',
+          'Online účtovná služba: doklady odfotíte alebo prepošlete, výpisy prídu z banky a účtovník všetko zaúčtuje a podá. Bez stretnutí a papierov, s prehľadom v aplikácii. Takto funguje Firmony.',
+        ],
+      },
+      {
+        h: 'Čo platí pri každej možnosti',
+        p: [
+          'Vedenie účtovníctva je voľná živnosť. Na jej ohlásenie netreba preukazovať vzdelanie ani prax, stačí vek 18 rokov, spôsobilosť na právne úkony a bezúhonnosť. Skúsenosti a referencie si preto overte sami.',
+          'Firma sa poverením iného zodpovednosti za účtovníctvo nezbavuje (§ 5 ods. 2 zákona o účtovníctve). Pokutu od úradu dostane firma. Náhradu škody od účtovníka môžete žiadať podľa zmluvy a zákona, preto chcite písomnú zmluvu, ktorá to upravuje.',
+        ],
+      },
+      {
+        h: 'Desať otázok, ktoré položte každému účtovníkovi',
+        p: ['Odpovede porovnajte vedľa seba. Dobrý účtovník na ne odpovie jasne a písomne.'],
+        list: [
+          'Čo presne je v cene: doklady, DPH, kontrolný a súhrnný výkaz, mzdy, závierka a daňové priznanie?',
+          'Platím paušál, za doklad alebo oboje? Koľko zaplatím v mesiaci, keď bude dokladov viac?',
+          'Ako odovzdám doklady a výpisy z banky? Musím niečo nosiť osobne?',
+          'Kto podáva priznania a výkazy a dostanem potvrdenie, že sú podané?',
+          'Ako rýchlo odpovedáte na otázky a kto Vás zastúpi počas dovolenky alebo choroby?',
+          'Kto mi pripomenie termíny a povie, koľko dane a dokedy zaplatiť?',
+          'Uzavrieme písomnú zmluvu? Kto zodpovedá za Vašu chybu a máte poistenie zodpovednosti?',
+          'Ako ste pripravení na povinné e-faktúry od 1. 1. 2027?',
+          'Uvidím priebežne, ako sa firme darí, alebo až pri závierke?',
+          'Aká je výpovedná lehota a v akej podobe mi pri odchode odovzdáte doklady a účtovníctvo?',
+        ],
+      },
+      {
+        h: 'Na čo si dať pozor',
+        p: ['Tieto signály neznamenajú zlého účtovníka, ale oplatí sa pri nich spýtať viac.'],
+        list: [
+          'cena bez rozpisu, z ktorej nie je jasné, čo je v nej a čo sa platí navyše',
+          'žiadna písomná zmluva ani plná moc na podávanie',
+          'účtovníctvo v programe, z ktorého Vám pri odchode nevydajú údaje',
+          'jediný človek bez zastupovania, keď má firma DPH alebo zamestnancov',
+          'sľub nižšej dane bez dokladov a bez vysvetlenia',
+        ],
+      },
+      {
+        h: 'Kedy je Firmony pre Vás a kedy nie',
+        p: [
+          `Firmony je pre s. r. o., ktoré chcú mať účtovníctvo online: doklady odfotiť alebo preposlať, mať prehľad v aplikácii a pevnú cenu podľa počtu dokladov, od ${eur(start.price)} mesačne bez DPH. Vašu firmu má na starosti účtovníčka, ktorá všetko skontroluje, podá priznania a odpovie ${REPLY_WITHIN}. Služba začína ${BRAND.launch}.`,
+          'Ak chcete účtovníka, s ktorým sa pravidelne stretávate osobne, budete spokojnejší s miestnym účtovníkom alebo kanceláriou. Ak vediete väčšiu firmu so stovkami dokladov mesačne, pripravíme Vám ponuku na mieru a otvorene povieme, či sme pre Vás tí správni.',
+        ],
+      },
+    ],
+    faq: [
+      { q: 'Kedy si má nová s. r. o. zabezpečiť účtovníka?', a: 'Hneď, ako vznikne, teda zápisom do obchodného registra. Účtovníctvo vedie odo dňa svojho vzniku a už prvé doklady treba zaúčtovať.' },
+      { q: 'Musí mať účtovník osvedčenie alebo certifikát?', a: 'Nie. Vedenie účtovníctva je voľná živnosť, na ktorú netreba preukazovať vzdelanie ani prax. Prax a referencie si preto overte sami.' },
+      { q: 'Kto zodpovedá za chybu v účtovníctve?', a: 'Voči úradom firma: poverením účtovníka sa zodpovednosti nezbavuje. Škodu, ktorú účtovník spôsobí porušením svojich povinností, môžete od neho žiadať podľa zmluvy a zákona.' },
+      { q: 'Koľko stojí účtovník pre s. r. o.?', a: `Závisí od počtu dokladov, DPH, zamestnancov a závierky. Vo Firmony od ${eur(start.price)} mesačne bez DPH, mzdy ${eur(PAYROLL_PRICE)} mesačne za človeka a závierka s daňovým priznaním ${eur(CLOSING_PRICE)} ročne.` },
+      { q: 'Môžem zmeniť účtovníka počas roka?', a: 'Áno. Doterajšiemu účtovníkovi dáte výpoveď podľa zmluvy a požiadate o odovzdanie dokladov a účtovníctva, nový pokračuje od stavov, ktoré prevezme. Vo Firmony je výpoveď pre doterajšieho účtovníka pripravená v aplikácii.' },
+      { q: 'Je online účtovník rovnako spoľahlivý ako účtovník v meste?', a: 'Spoľahlivosť nezávisí od toho, kde účtovník sedí, ale od toho, čo je v zmluve, kto Vašu firmu kontroluje a ako rýchlo odpovedá. Položte online službe rovnakých desať otázok ako komukoľvek inému.' },
+    ],
+    sources: [
+      { title: 'Zákon č. 431/2002 Z. z. o účtovníctve, § 4 a § 5 (Zákony pre ľudí)', url: 'https://www.zakonypreludi.sk/zz/2002-431' },
+      { title: 'Podnikajte.sk: Zoznam voľných živností v roku 2026', url: 'https://www.podnikajte.sk/zivnost/zoznam-volnych-zivnosti-2026' },
+    ],
+    published: '2026-10-20',
+    modified: '2026-10-20',
+    keywords: ['ako vybrať účtovníka', 'účtovník pre novú s.r.o.', 'kde nájsť účtovníka', 'založil som s.r.o. účtovník', 'účtovná kancelária alebo online účtovník'],
+  },
 ]
 
 export function guideByPath(path: string): Guide | undefined {
