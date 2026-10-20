@@ -355,7 +355,9 @@ over. Bring this section up to date first whenever a session ends.
       in CI) and reports each field's accuracy; improve the prompt and the tool (`READER`, `src/app/read.ts`) until
       totals, VAT, days and IČO are right on at least 98 % of them. (c) The booking screen records how long a document
       took (opened to booked), and the statement of item 1 shows each accountant's median minutes a document: it
-      calibrates her rates. (d) Only after (a) to (c) have numbers: documents the reader and a supplier's rule agree on
+      calibrates her rates. **(c) built on 20 October 2026**: the hidden `otvorene` of the booking form (carried through a
+      form sent back with an error), `document.booked` keeps `{ seconds }` up to an hour (`tookOf`), `bookingTime` gives
+      the median of her first bookings, shown under her statement. (d) Only after (a) to (c) have numbers: documents the reader and a supplier's rule agree on
       booked by themselves and listed for her month's check.
    3. **The month's animation in older Safari** (his note of 20 October: the papers do not fly in his Safari).
       Scroll timelines run in Chrome and in Safari 26 and later. For older Safari and iOS, a small script of our own

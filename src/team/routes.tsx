@@ -202,7 +202,7 @@ import { BillingPage } from '../views/billing'
 import { WorkPage } from '../views/work-pay'
 import { AiPage } from '../views/ai-accuracy'
 import { accuracyOf, comparedOf } from './ai-accuracy'
-import { lastMonths, payOf, workCsv, workStatement } from './work-pay'
+import { bookingTime, lastMonths, payOf, workCsv, workStatement } from './work-pay'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
@@ -4997,6 +4997,15 @@ function moneyOf(text: string): number | null {
 
 const KINDS: readonly DocKind[] = ['receipt', 'invoice_in', 'invoice_out', 'other']
 
+/** How long a document took on the booking screen, from the first look to this send, in seconds; nothing when the
+ *  form carried no time or the time is beyond an hour (a screen left open), so the median stays true. */
+function tookOf(opened: string | undefined): { seconds: number } | undefined {
+  const from = Number(opened)
+  if (!opened || !Number.isFinite(from)) return undefined
+  const seconds = now() - from
+  return seconds >= 0 && seconds <= 3600 ? { seconds } : undefined
+}
+
 teamRoutes.post('/doklady/:id', async (c) => {
   const who = c.get('who')
   const id = c.req.param('id')
@@ -5047,6 +5056,7 @@ teamRoutes.post('/doklady/:id', async (c) => {
     center: typeof body.stredisko === 'string' && ID.test(body.stredisko) ? body.stredisko : '',
     ratio: body.pomerne === '1',
     ratioMode: typeof body.koeficient === 'string' && (ISSUED_RATIO_MODES as readonly string[]).includes(body.koeficient) ? body.koeficient : '',
+    opened: /^\d{9,11}$/.test(text('otvorene', 12)) ? text('otvorene', 12) : '',
   }
   const booking = action === 'dalsi' || action === 'zauctovat'
   const errors: Partial<Record<keyof BookValues, string>> = {}
@@ -5169,7 +5179,7 @@ teamRoutes.post('/doklady/:id', async (c) => {
         values.currency,
         fxRate,
       ),
-    eventStatement(db, { company: company.id, user: who.user.id, action: booking ? 'document.booked' : 'document.saved', subject: doc.id }),
+    eventStatement(db, { company: company.id, user: who.user.id, action: booking ? 'document.booked' : 'document.saved', subject: doc.id, detail: tookOf(values.opened) }),
   ]
   if (vatRead?.data) {
     const v = vatRead.data
@@ -5320,7 +5330,8 @@ teamRoutes.get('/vykaz', async (c) => {
         })),
       )
     : null
-  return shell(c, 'work', t.work.title, <WorkPage month={month} months={months} who={person} rows={rows} team={team} />)
+  const time = await bookingTime(db, person.id, month)
+  return shell(c, 'work', t.work.title, <WorkPage month={month} months={months} who={person} rows={rows} team={team} time={time} />)
 })
 
 teamRoutes.get('/vykaz.csv', async (c) => {

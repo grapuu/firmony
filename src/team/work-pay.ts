@@ -172,6 +172,38 @@ export async function workStatement(db: D1Database, userId: string, month: strin
   return [...rows.values()].filter(hasWork).sort((a, b) => a.name.localeCompare(b.name, 'sk'))
 }
 
+/** The median of a list of seconds, or null when there is none. */
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? (sorted[mid] as number) : Math.round(((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2)
+}
+
+/** How long her documents of the month took on the booking screen (the first booking of each, timed from the first
+ *  look): the number timed and the median seconds. It calibrates the rate of a document. */
+export async function bookingTime(db: D1Database, userId: string, month: string): Promise<{ count: number; median: number | null }> {
+  const { from, to } = monthRange(month)
+  const rows = await db
+    .prepare(
+      `SELECT json_extract(e.detail, '$.seconds') AS seconds FROM events e
+       WHERE e.user_id = ?1 AND e.at >= ?2 AND e.at < ?3 AND e.action = 'document.booked' AND e.subject IS NOT NULL
+         AND json_extract(e.detail, '$.seconds') IS NOT NULL
+         AND ${earlier(`f.subject = e.subject AND f.action IN ${DOC_ACTIONS}`)}`,
+    )
+    .bind(userId, from, to)
+    .all<Row>()
+  const seconds = rows.results.map((r) => Number(r.seconds)).filter((n) => Number.isFinite(n) && n >= 0)
+  return { count: seconds.length, median: median(seconds) }
+}
+
+/** Seconds as Slovak writes a short time: "45 s", "1 min 12 s". */
+export function durationText(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return m === 0 ? `${s} s` : s === 0 ? `${m} min` : `${m} min ${s} s`
+}
+
 /** The statement as a file for Slovak Excel: a row a company and the sum. */
 export function workCsv(rows: WorkRow[]): string {
   const head = ['Klient', 'IČO', 'Doklady', 'Doklady €', 'Podané DPH', 'DPH €', 'Mesiac €', 'Mzdy (ľudia)', 'Mzdy €', 'Závierky', 'Závierky €', 'Prevzatie €', 'Spolu €']

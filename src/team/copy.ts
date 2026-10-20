@@ -612,6 +612,7 @@ export const team = typesetAll({
     },
     col: { client: 'Klient', documents: 'Doklady', vat: 'DPH', month: 'Mesiac', payroll: 'Mzdy', closing: 'Závierka', takeover: 'Prevzatie', total: 'Spolu' },
     none: 'V tomto mesiaci tu zatiaľ nie je žiadna práca.',
+    time: (median: string, count: number) => `Čas na jeden doklad od otvorenia po zaúčtovanie: medián ${median} (z ${count} dokladov).`,
     team: 'Celý tím',
     nobody: 'Nikto z tímu',
   },

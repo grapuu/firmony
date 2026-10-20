@@ -1210,6 +1210,9 @@ export interface BookValues {
   ratio?: boolean
   /** An issued document's own mark for the coefficient ('' as its taxation says; 'right', 'none', 'skip'). */
   ratioMode?: string
+  /** When the booking screen was first opened for this booking (seconds), carried through a form sent back with an
+   *  error, so the time a document took is measured from the first look (team/work-pay.ts). */
+  opened?: string
 }
 
 /** What the form shows for a document: its own values, written the way they are typed. */
@@ -1384,6 +1387,7 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
           ) : null}
         </div>
         <form class="book__form" method="post" action={`/ucto/doklady/${d.id}`} novalidate>
+          <input type="hidden" name="otvorene" value={values.opened || String(now)} />
           {d.proposal ? <p class="book__proposal">{d.proposal === 'rule' ? t.book.proposalRule : t.book.proposalAi}</p> : null}
           <div class="fgrid">
             <div class="fgrid__cell">

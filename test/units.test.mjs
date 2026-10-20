@@ -218,6 +218,7 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   check('the last twelve months, this one first, across a year', workPay.lastMonths('2026-02-10', 3).join() === '2026-02,2026-01,2025-12')
   const csv = workPay.workCsv([row({ documents: 40, vat: ['2026-09'] })])
   check('the statement for Excel: its sum in the last line', csv.startsWith('\uFEFFKlient;') && csv.trim().split('\r\n').at(-1) === 'Spolu;;40;20,00;1;12,00;0,00;0;0,00;0;0,00;0,00;32,00', csv)
+  check('the median time of a document, and as Slovak writes it', workPay.median([60, 84]) === 72 && workPay.median([5, 90, 30]) === 30 && workPay.median([]) === null && workPay.durationText(72) === '1 min 12 s' && workPay.durationText(45) === '45 s' && workPay.durationText(120) === '2 min')
   // How well the reader reads (team/ai-accuracy.ts).
   const read = { kind: 'receipt', party: 'Kaviareň Pod Hradom, s. r. o.', partyIco: '12345678', number: 'A 12', vs: null, issuedOn: '2026-10-14', dueOn: null, totalCents: 1240, vatCents: 232, currency: 'EUR', category: 'meals' }
   const same = aiAccuracy.compareFields(read, { ...read, party: 'KAVIAREŇ POD HRADOM s.r.o.', partyIco: '012345678', number: 'a12' })

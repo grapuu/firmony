@@ -5,7 +5,7 @@ import { ACCOUNTANT_RATES } from '../config'
 import { formatEurExact } from '../format'
 import { monthName } from '../app/copy'
 import { team as t } from '../team/copy'
-import { payOf, totalOf, type WorkRow } from '../team/work-pay'
+import { durationText, payOf, totalOf, type WorkRow } from '../team/work-pay'
 import { Heading } from './inside'
 
 const w = t.work
@@ -17,6 +17,8 @@ export interface WorkPageProps {
   rows: WorkRow[]
   /** The administrator's view: every member of the team and the sum of the month. */
   team: { id: string; name: string; total: number }[] | null
+  /** How long her documents took on the booking screen. */
+  time: { count: number; median: number | null }
 }
 
 /** An amount and, when there is any, how many things it is for. */
@@ -165,6 +167,7 @@ export const WorkPage: FC<WorkPageProps> = (p) => {
                 </tbody>
               </table>
             </div>
+            {p.time.median !== null ? <p class="small">{w.time(durationText(p.time.median), p.time.count)}</p> : null}
             <p>
               <a class="btn btn--line" href={`/ucto/vykaz.csv${query(p.month, p.who.id)}`}>
                 {w.csv}

@@ -24,10 +24,10 @@ export async function checkWorkPay({ db, acc, admin, lucia, nowS, day, capture }
     ev('co-wp', lucia.id, 'document.booked', 'wp-old', before),
     ev('co-wp', lucia.id, 'document.booked', 'wp-old', nowS - 50),
     // Booked, unbooked and booked again this month: one document.
-    ev('co-wp', lucia.id, 'document.booked', 'wp-a', nowS - 40),
+    ev('co-wp', lucia.id, 'document.booked', 'wp-a', nowS - 40, JSON.stringify({ seconds: 60 })),
     ev('co-wp', lucia.id, 'document.booked', 'wp-a', nowS - 30),
     ev('co-wp', lucia.id, 'document.discarded', 'wp-b', nowS - 30),
-    ev('co-wp', lucia.id, 'document.booked', 'wp-c', nowS - 20),
+    ev('co-wp', lucia.id, 'document.booked', 'wp-c', nowS - 20, JSON.stringify({ seconds: 84 })),
     // Booked by somebody else first: not hers to be paid for.
     ev('co-wp', boss?.id ?? null, 'document.booked', 'wp-d', nowS - 25),
     ev('co-wp', lucia.id, 'document.booked', 'wp-d', nowS - 10),
@@ -46,6 +46,7 @@ export async function checkWorkPay({ db, acc, admin, lucia, nowS, day, capture }
 
   const raw = await (await acc.get(`/ucto/vykaz?mesiac=${month}`)).text()
   if (capture) writeFileSync(`${capture}/work-pay.html`, raw)
+  check('her statement says how long a document took', /Čas na jeden doklad od otvorenia po zaúčtovanie: medián [^<]+ \(z \d+ dokladov\)/.test(raw.replace(/[\u00a0\u202f]/g, ' ')))
   check('her statement lists her companies and the rates', raw.includes('Výkaz práce') && raw.includes('TEST-ONLY Výkaz s. r. o.') && raw.includes('TEST-ONLY Ticho s. r. o.') && raw.includes('doklad zaúčtovaný alebo vyradený'))
   const csv = await (await acc.get(`/ucto/vykaz.csv?mesiac=${month}`)).text()
   const line = (name) => csv.split('\r\n').find((l) => l.startsWith(`${name};`)) ?? ''
