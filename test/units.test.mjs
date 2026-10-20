@@ -58,6 +58,7 @@ import {
   intrastat,
   distribution,
   time,
+  workPay,
   lastDeclared,
   takeover,
   takeoverStore,
@@ -188,14 +189,35 @@ check(
 )
 // His word of 13 October 2026: at least 60 % margin. What a client costs besides the accountant (the bank, the
 // digital postman, the reading, the servers: estimates until the quotes come) and a reserve of 2 % for our errors.
+// Since 20 October 2026 she is paid for the work done (ACCOUNTANT_RATES): a full plan's documents and its month
+// (a VAT payer's return, else the month's fee) still leave 60 %.
 const TECH = { start: 4.25, rast: 4.33, firma: 6.52 }
 const margin = (price, cost) => (price - cost - 0.02 * price) / price
+const rates = config.ACCOUNTANT_RATES
+const fullPlan = (p) => (p.docs * rates.document + (p.vatPayer ? rates.vatPeriod : rates.month)) / 100
 check(
-  'every plan leaves at least 60 % after the accountant and the rest',
-  config.PLANS.every((p) => margin(p.price, config.ACCOUNTANT_PAY[p.id] + TECH[p.id]) >= 0.6),
-  config.PLANS.map((p) => margin(p.price, config.ACCOUNTANT_PAY[p.id] + TECH[p.id]).toFixed(3)).join(' '),
+  'every plan leaves at least 60 % after the accountant and the rest, at its full plan',
+  config.PLANS.every((p) => margin(p.price, fullPlan(p) + TECH[p.id]) >= 0.6),
+  config.PLANS.map((p) => margin(p.price, fullPlan(p) + TECH[p.id]).toFixed(3)).join(' '),
 )
-check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_PRICE, config.ACCOUNTANT_PAY.payroll + 0.3) >= 0.6 && margin(config.CLOSING_PRICE, config.ACCOUNTANT_PAY.closing) >= 0.6)
+check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_PRICE, rates.payroll / 100 + 0.3) >= 0.6 && margin(config.CLOSING_PRICE, rates.closing / 100) >= 0.6)
+{
+  // Paid for the work done (team/work-pay.ts).
+  const row = (fields) => ({ companyId: 'c', name: 'TEST-ONLY s. r. o.', ico: null, documents: 0, vat: [], active: true, payroll: 0, closings: [], takeover: false, ...fields })
+  const payer = workPay.payOf(row({ documents: 40, vat: ['2026-09'], payroll: 2 }))
+  check('a VAT payer\'s month: 40 documents, its return, two people', payer.documents === 2000 && payer.vat === 1200 && payer.month === 0 && payer.payroll === 800 && payer.total === 4000, JSON.stringify(payer))
+  const quiet = workPay.payOf(row({ documents: 12 }))
+  check('a month without a return is the month\'s fee', quiet.month === 600 && quiet.total === 1200, JSON.stringify(quiet))
+  check('a company no longer hers is paid only for what she did', workPay.payOf(row({ active: false, documents: 3 })).total === 150 && !workPay.hasWork(row({ active: false })))
+  const big = workPay.payOf(row({ vat: ['2026-09', '2026-08'], closings: ['2025'], takeover: true }))
+  check('two periods filed, a closing and a takeover', big.total === 2 * 1200 + 9000 + 3000 && big.month === 0, JSON.stringify(big))
+  check('the totals add up', workPay.totalOf([row({ documents: 40, vat: ['2026-09'] }), row({ documents: 12 })]).total === 3200 + 1200)
+  const r = workPay.monthRange('2026-10')
+  check('a month runs from its midnight in Bratislava to the next', r.from === Date.UTC(2026, 9, 1) / 1000 - 7200 && r.to === Date.UTC(2026, 10, 1) / 1000 - 3600, JSON.stringify(r))
+  check('the last twelve months, this one first, across a year', workPay.lastMonths('2026-02-10', 3).join() === '2026-02,2026-01,2025-12')
+  const csv = workPay.workCsv([row({ documents: 40, vat: ['2026-09'] })])
+  check('the statement for Excel: its sum in the last line', csv.startsWith('\uFEFFKlient;') && csv.trim().split('\r\n').at(-1) === 'Spolu;;40;20,00;1;12,00;0,00;0;0,00;0;0,00;0,00;32,00', csv)
+}
 
 // The register
 const answer = JSON.parse(readFileSync(new URL('./fixtures/rpo-europio.json', import.meta.url), 'utf8'))

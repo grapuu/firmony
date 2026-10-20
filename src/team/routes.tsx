@@ -199,6 +199,8 @@ import { latestOrderOfRequest, renewOrderStatement, type Order } from '../order'
 import { orderLinkMail } from '../order-mail'
 import { ContractReleasePage, ContractReviewPage, type ReleaseForm } from '../views/contract-review'
 import { BillingPage } from '../views/billing'
+import { WorkPage } from '../views/work-pay'
+import { lastMonths, payOf, workCsv, workStatement } from './work-pay'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
@@ -5286,6 +5288,50 @@ async function billingPage(c: Ctx, notice: { flash?: string | null; error?: stri
     status,
   )
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// The statement of an accountant's work (paid for the work done, team/work-pay.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Whose statement and which month: an accountant only her own, the administrator anybody of the team. */
+async function workOf(c: Ctx) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const months = lastMonths(dayOf(now()))
+  const asked = c.req.query('mesiac') ?? ''
+  const month = months.includes(asked) ? asked : (months[0] as string)
+  const admin = isAdmin(who.user)
+  const members = admin ? (await teamMembers(db)).map((m) => ({ id: m.id, name: m.name })) : []
+  const wanted = admin ? members.find((m) => m.id === c.req.query('uctovnicka')) : undefined
+  const person = wanted ?? { id: who.user.id, name: who.user.name ?? who.user.email }
+  return { db, month, months, admin, members, person, demo: demoOn(c) }
+}
+
+teamRoutes.get('/vykaz', async (c) => {
+  const { db, month, months, admin, members, person, demo } = await workOf(c)
+  const rows = await workStatement(db, person.id, month, demo)
+  const team = admin
+    ? await Promise.all(
+        members.map(async (m) => ({
+          ...m,
+          total: (m.id === person.id ? rows : await workStatement(db, m.id, month, demo)).reduce((s, r) => s + payOf(r).total, 0),
+        })),
+      )
+    : null
+  return shell(c, 'work', t.work.title, <WorkPage month={month} months={months} who={person} rows={rows} team={team} />)
+})
+
+teamRoutes.get('/vykaz.csv', async (c) => {
+  const { db, month, person, demo } = await workOf(c)
+  const name = `vykaz-${person.name.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}-${month}.csv`
+  return new Response(workCsv(await workStatement(db, person.id, month, demo)), {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
 
 teamRoutes.get('/fakturacia', (c) => (isAdmin(c.get('who').user) ? billingPage(c) : missingPage(c)))
 

@@ -79,12 +79,26 @@ export const CLOSING_PRICE = 249
 export const PAYROLL_PRICE = 15
 
 /**
- * What a freelance accountant is paid (his yes of 13 October 2026, 22:04): a client a month by plan, a person's
- * payroll a month, a closing. Her planned work is the review, returns and answers. Shown on no
- * page. These are planning assumptions, not a verified margin: actual economics depend on measured onboarding,
- * review, support, corrections and production vendor charges.
+ * What a freelance accountant is paid for the work she did (his yes of 20 October 2026, 17:13: "za odpracovanú
+ * prácu sa mi to páči, to dáva zmysel"), in cents, in place of a sum a client by plan (28, 55 and 110 € until then).
+ * What the app does by itself costs nothing, so the margin grows as the reading gets better. Counted each month from
+ * what the app recorded (team/work-pay.ts) and shown to her at /ucto/vykaz; she invoices europio by it. Shown on no
+ * public page. The rates are his to confirm with the accountant.
  */
-export const ACCOUNTANT_PAY = { start: 28, rast: 55, firma: 110, payroll: 5, closing: 90 } as const
+export const ACCOUNTANT_RATES = {
+  /** A document she dealt with: booked or discarded, the first time (booking it again is no new work). */
+  document: 50,
+  /** A VAT period's regular return she filed (with its control and recapitulative statements). */
+  vatPeriod: 1200,
+  /** Every other month of a client of hers: the month's check, the deadlines, the messages. */
+  month: 600,
+  /** A person on a payroll month she closed, the first time. */
+  payroll: 400,
+  /** A closing with the corporate income tax return she filed, the first time. */
+  closing: 9000,
+  /** Taking a new client over: the opening balances or a takeover from another program, once a company. */
+  takeover: 3000,
+} as const
 
 /** How soon a request is answered, as the pages promise it. */
 export const REPLY_WITHIN = 'do jedného pracovného dňa'

@@ -65,8 +65,8 @@ over. Bring this section up to date first whenever a session ends.
    Anthropic key, the first administrator at `/app/prvy-spravca`, the accountant, europio in Fakturácia, and what
    comes before the first client). The domain, D1, R2, the Worker and email are done (item 1); the code says
    firmony.io (`DOMAIN` in `src/config.ts`, the routes in `wrangler.jsonc`).
-   Besides: the meeting with the accountant he picked, about two weeks after 17 October (her pay is
-   `ACCOUNTANT_PAY`: 28, 55, 110 € a client, 5 € a payroll, 90 € a closing); the trade "Vedenie účtovníctva" for
+   Besides: the meeting with the accountant he picked, about two weeks after 17 October (she is paid for
+   the work done since 20 October 2026, `ACCOUNTANT_RATES`, item 10); the trade "Vedenie účtovníctva" for
    europio; liability insurance; a lawyer for the terms, the contract and the power of attorney
    (`CONTRACT_RELEASE` stays closed until the lawyer's and the insurer's references exist:
    `/ucto/ziadosti/schvalenie`); the AML program signed and europio registered in goAML.
@@ -329,13 +329,16 @@ over. Bring this section up to date first whenever a session ends.
       return 90 €; taking over a new client 30 € once; messages are in the month's fee; a correction of her own work
       0 €. The margins this gives (after her pay, the technology `TECH` less the bank's 2 € and a reserve of 2 %): a
       usual month 82 % Štart (12 documents), 78 % Rast (40), 78 % Firma (100); a full plan 78 %, 72 %, 70 %; payroll
-      71 %, the closing 62 % (60 % is his floor). To build: `ACCOUNTANT_RATES` in `src/config.ts` with the unit check of
+      71 %, the closing 62 % (60 % is his floor). **Built on 20 October 2026**: `ACCOUNTANT_RATES` in `src/config.ts` (cents) with the unit check of
       60 % at a full plan; a monthly statement of each accountant's work at `/ucto/vykaz?mesiac=` (an accountant
       sees her own, the administrator every one, a CSV for Excel), counted from what the app recorded: the first
       `document.booked` or `document.discarded` of a document ever (a booking again is no new work), the first filing
       of a period's regular return by her, each closed payroll month's people at its first closing, each closing at its
-      first filing, the opening balances or a takeover once a company; she invoices europio by it. Started by Claude on 20 October
-      2026 at 17:20 (the state is in the log of commits).
+      first filing, the opening balances or a takeover once a company; she invoices europio by it. `src/team/work-pay.ts`
+      (`workStatement`, `payOf`, `workCsv`), `src/views/work-pay.tsx`, "Výkaz práce" in the team's column, schema step 69
+      (indexes `events_user`, `events_subject`), test/work-pay.runtime.mjs, units "Paid for the work done". The month's
+      fee goes to the accountant the company has now; a filing counts for who marked it first. Not built: the minutes a
+      document (item 2c), registrations of employees (not in the rates).
    2. **The AI reads perfectly, and it is measured.** (a) Keep what the reader proposed for each document as it
       proposed it (a column or a table, never overwritten by the booking), and show the team a page "Presnosť AI"
       (`/ucto/ai`): for the documents booked in a month, each field the reader proposed (kind, supplier, IČO, number,
@@ -824,8 +827,9 @@ inak to nejde" and "účtovníčka nebude robiť za 25 eur ... bežne berú 50 a
   VAT payer), Firma 329 € (up to 150). A month with more documents is billed as the next plan; above 150 a price is
   agreed (an e-shop). Payroll 15 € a person a month on every plan. Annual closing and the corporate tax return:
   249 € a year. Every figure in `PLANS`, `PAYROLL_PRICE` and `CLOSING_PRICE`.
-- The accountant (freelance, invoices us) is paid 28, 55 and 110 € a client a month, 5 € a person's payroll and
-  90 € a closing (`ACCOUNTANT_PAY`): about a third of the price, for the check, the returns and the answers, the app
+- Superseded on 20 October 2026: she is paid for the work done (`ACCOUNTANT_RATES`, "Start here" item 10).
+  Until then: the accountant (freelance, invoices us) was paid 28, 55 and 110 € a client a month, 5 € a person's payroll and
+  90 € a closing: about a third of the price, for the check, the returns and the answers, the app
   doing the rest. In Slovakia nobody stamps or certifies an s. r. o.'s books (he had asked whether she would only
   "dávať pečiatku"). Every plan, payroll and the closing leave at least 60 % after her pay, the bank, the digital
   postman, the reading and a reserve of 2 % (`npm test` holds it: "every plan leaves at least 60 %"). Employing an
