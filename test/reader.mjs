@@ -39,6 +39,8 @@ async function worker() {
     const got = { ...r, vatCents: r.vatCents ?? 0 }
     const want = { ...doc, vatCents: doc.vatCents ?? 0 }
     const fields = compareFields(got, want, 'ai')
+    // A field the set does not say (the category: which cost a receipt is, is the accountant's call) is not judged.
+    for (const field of READ_FIELDS) if (!(field in doc)) fields[field] = null
     const extra = {}
     if (doc.ekasaUid !== undefined) extra.ekasaUid = (r.ekasaUid ?? null) === doc.ekasaUid
     if (doc.ekasaOkp !== undefined) extra.ekasaOkp = (r.ekasaOkp ?? null) === doc.ekasaOkp

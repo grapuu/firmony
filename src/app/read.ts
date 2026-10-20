@@ -45,16 +45,30 @@ const TOOL = {
     type: 'object',
     properties: {
       je_doklad: { type: 'boolean', description: 'Či je na obrázku účtovný doklad (bloček, pokladničný doklad, faktúra, dobropis).' },
-      typ: { type: 'string', enum: ['blocek', 'faktura_prijata', 'faktura_vydana', 'iny'], description: 'faktura_vydana: našu firmu na nej uvádza ako dodávateľa.' },
-      druha_strana: { type: 'string', description: 'Názov druhej strany: obchodu alebo dodávateľa, pri faktúre vydanej odberateľa.' },
-      ico_druhej_strany: { type: 'string' },
+      typ: {
+        type: 'string',
+        enum: ['blocek', 'faktura_prijata', 'faktura_vydana', 'iny'],
+        description: 'faktura_prijata: naša firma je na nej odberateľ (kupujúci, Customer, Bill to); faktura_vydana: naša firma je na nej dodávateľ (predávajúci, Supplier).',
+      },
+      dodavatel: { type: 'string', description: 'Pri faktúre a dobropise: názov dodávateľa (predávajúceho, Supplier, Seller), presne ako je na doklade.' },
+      ico_dodavatela: { type: 'string', description: 'IČO dodávateľa, ak ho doklad uvádza.' },
+      ic_dph_dodavatela: { type: 'string', description: 'IČ DPH dodávateľa (VAT ID), ak ho doklad uvádza.' },
+      odberatel: { type: 'string', description: 'Pri faktúre a dobropise: názov odberateľa (kupujúceho, Customer, Bill to), presne ako je na doklade.' },
+      ico_odberatela: { type: 'string', description: 'IČO odberateľa, ak ho doklad uvádza.' },
+      ic_dph_odberatela: { type: 'string', description: 'IČ DPH odberateľa (VAT ID), ak ho doklad uvádza.' },
+      druha_strana: { type: 'string', description: 'Názov druhej strany, nikdy nie naša firma: obchodu alebo dodávateľa, pri faktúre vydanej odberateľa.' },
+      ico_druhej_strany: { type: 'string', description: 'IČO druhej strany, nikdy nie IČO našej firmy.' },
       iban_druhej_strany: { type: 'string', description: 'IBAN, na ktorý sa má platiť (pri faktúre prijatej).' },
       cislo_dokladu: { type: 'string' },
       variabilny_symbol: { type: 'string' },
       datum_vystavenia: { type: 'string', description: 'RRRR-MM-DD' },
       datum_splatnosti: { type: 'string', description: 'RRRR-MM-DD' },
       suma_celkom: { type: 'string', description: 'Celková suma na úhradu s DPH, s desatinnou bodkou, napríklad 12.40. Pri dobropise bez mínusu.' },
-      dph_celkom: { type: 'string', description: 'Celková DPH, s desatinnou bodkou. Pri dobropise bez mínusu.' },
+      dph_celkom: {
+        type: 'string',
+        description:
+          'Celková DPH zo súhrnu dokladu (rekapitulácia DPH, „DPH celkom“, „VAT“ pri súčte), s desatinnou bodkou. Pri dobropise bez mínusu. Pri prenesení daňovej povinnosti (reverse charge) a keď dodávateľ nie je platiteľ DPH je 0.',
+      },
       mena: { type: 'string', description: 'Kód meny, napríklad EUR.' },
       kategoria: {
         type: 'string',
@@ -75,7 +89,8 @@ const TOOL = {
       },
       dph_podla_sadzieb: {
         type: 'array',
-        description: 'Základ dane a DPH pre každú sadzbu, ako sú na doklade rozpísané. Pri dobropise so znamienkom mínus.',
+        description:
+          'Základ dane a DPH pre každú sadzbu, ako sú rozpísané v súhrne dokladu. Pri dobropise so znamienkom mínus. Pri prenesení daňovej povinnosti (reverse charge) sadzba 0 a DPH 0, aj keď riadok uvádza inú sadzbu.',
         items: {
           type: 'object',
           properties: {
@@ -99,8 +114,38 @@ const isoDay = (value: unknown): string | null => {
   return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? dayOfText(text) || null : null
 }
 
+const icoOf = (value: unknown): string | null => {
+  const ico = clean(value, 20)?.replace(/\s/g, '') ?? null
+  return ico && /^\d{6,8}$/.test(ico) ? ico.padStart(8, '0') : null
+}
+const vatIdOf = (value: unknown): string | null => {
+  const vatId = clean(value, 20)?.replace(/[\s.-]/g, '').toUpperCase() ?? null
+  return vatId && /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(vatId) ? vatId : null
+}
+/** A name without case, accents, spaces or punctuation: "TEST Odberateľ s. r. o." and "Test Odberatel, s.r.o." are one. */
+const nameKey = (name: string): string =>
+  name
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+
+interface Side {
+  name: string | null
+  ico: string | null
+  vatId: string | null
+}
+
+/** Whether a side of a document is the company it was read for: by its IČO, its VAT number's digits, else its name. */
+function isOurs(side: Side, company: { name: string; ico: string | null }): boolean {
+  const ico = company.ico ? company.ico.padStart(8, '0') : null
+  if (ico && side.ico) return side.ico === ico
+  if (side.name) return nameKey(side.name) !== '' && nameKey(side.name) === nameKey(company.name)
+  return false
+}
+
 /** What the reader wrote, checked field by field: anything that is not what it should be is left out. */
-export function readingFrom(input: Record<string, unknown>): Reading | null {
+export function readingFrom(input: Record<string, unknown>, company?: { name: string; ico: string | null }): Reading | null {
   if (input.je_doklad !== true) return null
   const total = toCents(clean(input.suma_celkom, 20))
   const vat = toCents(clean(input.dph_celkom, 20))
@@ -113,7 +158,7 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
   // negative is no amount.
   const credit = clean(input.opravuje_fakturu, 40) !== null
   const sized = (cents: number | null, zero: boolean) => (cents === null ? null : cents > 0 || (zero && cents === 0) ? cents : credit && cents < 0 ? -cents : null)
-  return {
+  const reading: Reading = {
     kind: typeof input.typ === 'string' && Object.hasOwn(KINDS, input.typ) ? KINDS[input.typ] ?? 'other' : 'other',
     party: clean(input.druha_strana),
     partyIco: ico && /^\d{6,8}$/.test(ico) ? ico.padStart(8, '0') : null,
@@ -134,6 +179,38 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
     ekasaUid: ekasaUid(input.ekasa_uid),
     ekasaOkp: ekasaOkp(input.ekasa_okp),
   }
+  return company ? withSides(reading, input, company) : reading
+}
+
+/**
+ * Which way an invoice goes is decided by its two sides, not by the reader's word for it (on 20 October 2026 the real
+ * reader took two received invoices for issued ones, once naming our own company as the supplier): the side that is
+ * our company says whether it was issued or received, and the other side is the party. A party that is our company is
+ * never kept.
+ */
+function withSides(reading: Reading, input: Record<string, unknown>, company: { name: string; ico: string | null }): Reading {
+  const side = (name: unknown, ico: unknown, vatId: unknown): Side => ({ name: clean(name), ico: icoOf(ico), vatId: vatIdOf(vatId) })
+  const supplier = side(input.dodavatel, input.ico_dodavatela, input.ic_dph_dodavatela)
+  const customer = side(input.odberatel, input.ico_odberatela, input.ic_dph_odberatela)
+  const invoice = reading.kind === 'invoice_in' || reading.kind === 'invoice_out'
+  let out = reading
+  if (invoice && (supplier.name || supplier.ico) && (customer.name || customer.ico)) {
+    const ourSupplier = isOurs(supplier, company)
+    const ourCustomer = isOurs(customer, company)
+    const take = (kind: DocKind, other: Side): Reading => ({
+      ...reading,
+      kind,
+      party: other.name ?? reading.party,
+      partyIco: other.ico ?? (other.name ? null : reading.partyIco),
+      partyVatId: other.vatId ?? (other.name ? null : reading.partyVatId),
+      // The account printed on an invoice we issued is our own.
+      partyIban: kind === 'invoice_out' ? null : reading.partyIban,
+    })
+    if (ourSupplier && !ourCustomer) out = take('invoice_out', customer)
+    else if (ourCustomer && !ourSupplier) out = take('invoice_in', supplier)
+  }
+  if (isOurs({ name: out.party, ico: out.partyIco, vatId: null }, company)) out = { ...out, party: null, partyIco: null, partyVatId: null }
+  return out
 }
 
 /** The reader's lines by rate, each checked: a rate of the Slovak ones and amounts that are amounts; null when none holds. */
@@ -166,7 +243,8 @@ export async function readDocument(key: string | undefined, file: { kind: FileKi
   const block = file.kind === 'pdf' ? { type: 'document', source } : { type: 'image', source }
   const prompt = [
     `Si účtovník na Slovensku. Prečítaj tento doklad firmy ${company.name}${company.ico ? ` (IČO ${company.ico})` : ''} a zapíš ho nástrojom ${TOOL.name}.`,
-    'Sumy píš presne tak, ako sú na doklade. Nič nedomýšľaj: čo na doklade nie je, nechaj prázdne.',
+    'Pri faktúre a dobropise zapíš obe strany, dodávateľa aj odberateľa. Ak je naša firma odberateľ, je to faktúra prijatá a druhá strana je dodávateľ; ak je naša firma dodávateľ, je to faktúra vydaná a druhá strana je odberateľ.',
+    'Sumy píš presne tak, ako sú na doklade; celkovú sumu a DPH ber zo súhrnu dokladu. Nič nedomýšľaj: čo na doklade nie je, nechaj prázdne.',
   ].join(' ')
   let answer: Response
   try {
@@ -189,6 +267,6 @@ export async function readDocument(key: string | undefined, file: { kind: FileKi
   const body = (await answer.json().catch(() => null)) as { content?: { type: string; name?: string; input?: Record<string, unknown> }[] } | null
   const used = Array.isArray(body?.content) ? body.content.find((part) => part?.type === 'tool_use' && part.name === TOOL.name) : null
   if (!used?.input || typeof used.input !== 'object' || Array.isArray(used.input)) return { manual: 'not an answer' }
-  const reading = readingFrom(used.input)
+  const reading = readingFrom(used.input, company)
   return reading ? { reading, by: READER.model } : { manual: 'not a document' }
 }

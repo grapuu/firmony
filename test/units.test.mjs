@@ -920,6 +920,34 @@ for (const value of ['2026-02-29', '2026-02-31', '2026-04-31', '2026-13-01']) {
   check(`an AI calendar date must exist: ${value}`, invalid.issuedOn === null && invalid.dueOn === null && invalid.suppliedOn === null)
 }
 check('valid leap days survive AI validation', reader.readingFrom({ je_doklad: true, datum_vystavenia: '2028-02-29' }).issuedOn === '2028-02-29')
+{
+  // The direction of an invoice is decided by its sides (the real reader took two received invoices for issued ones).
+  const us = { name: 'TEST Odberateľ s. r. o.', ico: '50000005' }
+  const sides = {
+    je_doklad: true,
+    dodavatel: 'Webhosting Sever s. r. o.',
+    ico_dodavatela: '50200015',
+    ic_dph_dodavatela: 'SK2120200015',
+    odberatel: 'TEST Odberateľ s. r. o.',
+    ico_odberatela: '50000005',
+    iban_druhej_strany: 'SK3111000000002612345678',
+  }
+  const wrong = reader.readingFrom({ ...sides, typ: 'faktura_vydana', druha_strana: 'TEST Odberateľ s. r. o.', ico_druhej_strany: '50000005' }, us)
+  check(
+    'a received invoice the reader called issued is received, its party the supplier',
+    wrong.kind === 'invoice_in' && wrong.party === 'Webhosting Sever s. r. o.' && wrong.partyIco === '50200015' && wrong.partyVatId === 'SK2120200015' && wrong.partyIban === 'SK3111000000002612345678',
+    JSON.stringify(wrong),
+  )
+  const issued = reader.readingFrom(
+    { je_doklad: true, typ: 'faktura_prijata', dodavatel: 'Test Odberatel, s.r.o.', odberatel: 'TEST Klient Alfa s. r. o.', ico_odberatela: '50300019', iban_druhej_strany: 'SK0000000000000000000000' },
+    us,
+  )
+  check('an invoice our company issued (by its name) is issued, its party the customer, no IBAN of ours kept', issued.kind === 'invoice_out' && issued.party === 'TEST Klient Alfa s. r. o.' && issued.partyIco === '50300019' && issued.partyIban === null, JSON.stringify(issued))
+  const self = reader.readingFrom({ je_doklad: true, typ: 'blocek', druha_strana: 'TEST Odberateľ s. r. o.', ico_druhej_strany: '50000005' }, us)
+  check('a party that is our own company is never kept', self.party === null && self.partyIco === null)
+  const unknown = reader.readingFrom({ ...sides, typ: 'faktura_prijata', odberatel: 'Iná firma s. r. o.', ico_odberatela: '50999999', druha_strana: 'Webhosting Sever s. r. o.' }, us)
+  check('when neither side is ours, the reader’s word stands', unknown.kind === 'invoice_in' && unknown.party === 'Webhosting Sever s. r. o.')
+}
 check('AI categories and kinds reject inherited object names', ['__proto__', 'constructor', 'toString'].every((value) => {
   const invalid = reader.readingFrom({ je_doklad: true, typ: value, kategoria: value })
   return !booking.isCategory(value) && invalid.kind === 'other' && invalid.category === null
