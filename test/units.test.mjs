@@ -64,6 +64,8 @@ import {
   autobook,
   vatRegistration,
   transactionTax,
+  wageCalc,
+  wageContent,
   guides,
   lastDeclared,
   takeover,
@@ -239,6 +241,19 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   const acc = aiAccuracy.accuracyOf(rows)
   const total = acc.fields.find((f) => f.field === 'totalCents')
   check('the month: 2 of 3 unchanged, the total right 2 of 3, the café the worst', acc.documents === 3 && acc.unchanged === 2 && total.compared === 3 && total.right === 2 && acc.worst[0].party === 'Kaviareň' && acc.worst[0].changed === 1 && acc.bySource.find((x) => x.source === 'ai').unchanged === 1, JSON.stringify(acc))
+}
+{
+  // The net wage calculator (app/wage-calc.ts): the payroll engine itself, against figures others published.
+  const q = (fields) => ({ year: 2026, gross: 150_000, declaration: true, young: 0, teen: 0, disabled: false, ...fields })
+  const daughter = wageCalc.wageCalc(q({ young: 1 }))
+  check("1 500 € in 2026 with a daughter: SuperFaktúra's 1 234,51 € net", daughter.slip.net === 123451, JSON.stringify(daughter.slip.net))
+  const minimum = wageCalc.wageCalc(q({ year: 2027, gross: 97200 }))
+  check("the minimum wage of 2027: Bezúčto's 772,11 € net and 1 323,85 € for the employer", minimum.slip.net === 77211 && minimum.cost === 132385, `${minimum.slip.net} ${minimum.cost}`)
+  check('a wage typed the Slovak way; nothing that is no wage', wageCalc.grossOf('1 500') === 150000 && wageCalc.grossOf('1500,5') === 150050 && wageCalc.grossOf('abc') === null && wageCalc.grossOf('0,50') === null)
+  const asked = wageCalc.wageQueryOf({ hruba: '2 000', rok: '2027', deti: '2', deti15: '9', vyhlasenie: '1' }, '2026-10-20')
+  check('the address read: the year asked, children capped at six, the declaration ticked', asked.query.year === 2027 && asked.query.gross === 200000 && asked.query.young === 2 && asked.query.teen === 6 && asked.query.declaration && !asked.error)
+  check('no wage asked is the empty form; a wrong one is said', wageCalc.wageQueryOf({}, '2026-10-20').query === null && wageCalc.wageQueryOf({ hruba: 'x' }, '2026-10-20').error && wageCalc.wageYearOf(undefined, '2026-10-20') === 2026)
+  check('the page says the examples the engine computes', wageContent.WAGE_PAGE.faq[0].a.includes(format.formatEurExact(wageCalc.wageCalc(q()).slip.net)) && wageContent.WAGE_PAGE.faq[1].a.includes(format.formatEurExact(132385)))
 }
 {
   // The transaction tax on accounts at providers outside Slovakia (app/transaction-tax.ts, Act No. 279/2024 Z. z.).

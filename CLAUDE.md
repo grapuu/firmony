@@ -417,9 +417,14 @@ over. Bring this section up to date first whenever a session ends.
       title and description with the words and the price, four guides (`src/content/guides.ts`, `src/views/guide.tsx`,
       each a page of its own, every fact with its source: `/e-faktura-2027`, `/cena-uctovnictva`,
       `/uctovnictvo-pre-sro`, `/online-uctovnik`), a column "Poradíme" in the footer, the e-invoice band linking its
-      guide, the sitemap with every guide and its day (`SITE_UPDATED`). Next guides, in this order, each read in the
-      original before it says anything: a net wage calculator for 2026 and 2027 from our payroll engine (a GET form, no
-      script: "mzdová kalkulačka", "čistá mzda 2027", "koľko stojí zamestnanec"), founding an s. r. o. after 17 August
+      guide, the sitemap with every guide and its day (`SITE_UPDATED`). The net wage calculator, built that evening:
+      `/mzdova-kalkulacka` (`src/app/wage-calc.ts`, `src/content/wage-calc.ts`, `src/views/wage-calc.tsx`): a GET form
+      computed by the payroll engine for an employment of a whole month in 2026 or 2027 (gross, the declaration,
+      children under 15 and 15 to 18, a disability), the employee's levies, the advance, the bonus, the net and the
+      employer's cost; every rate and example on the page from the engine (units check SuperFaktúra's 1 234,51 € and
+      Bezúčto's 772,11 € and 1 323,85 €); `WebApplication` and `FAQPage` data; a computed page is `noindex`, the empty form
+      is in the sitemap, llms.txt and the footer. Next guides, in this order, each read in the
+      original before it says anything: founding an s. r. o. after 17 August
       2026, registering for VAT (50 000 €), the corporate tax return (rates, the minimum tax, deadlines), changing
       accountants, the control and the recapitulative statement. No page per city (doorway pages are punished); cities
       are named once in `/online-uctovnik`. Done by the builder from the browser pane at 18:42 on his word ("ja ti dávam
@@ -2738,8 +2743,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1397 unit checks (20 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1966 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1403 unit checks (20 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1972 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 ANTHROPIC_API_KEY=... npm run test:reader   # the real reader on 30 made-up documents, field by field (not on GitHub)
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME

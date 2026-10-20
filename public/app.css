@@ -3247,6 +3247,21 @@ textarea {
   outline-offset: 2px;
 }
 
+/* The net wage calculator (/mzdova-kalkulacka): the form above its result in the narrow page, ticks across. */
+.calc.wage {
+  grid-template-columns: minmax(0, 1fr);
+  margin: 32px 0 8px;
+  padding: 0;
+}
+
+.wage .agree {
+  grid-column: 1 / -1;
+}
+
+.wage .calc__result {
+  padding: clamp(22px, 3vw, 32px);
+}
+
 /* The terms, numbered as the contract refers to them. */
 .terms__section h2 {
   margin-top: 48px;

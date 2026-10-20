@@ -361,6 +361,26 @@ res = await get('/sitemap.xml')
     )
   }
 }
+// The net wage calculator: the empty form for search engines, a computed one for the person who asked.
+res = await get('/mzdova-kalkulacka')
+{
+  const html = await res.text()
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/wage-calc.html`, html)
+  const ld = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)
+  const types = ld ? JSON.parse(ld[1])['@graph'].map((n) => n['@type']) : []
+  check(
+    'the wage calculator is a page of its own, for search engines, with its data and no script',
+    res.status === 200 && /<h1 /.test(html) && !html.includes('noindex') && types.includes('WebApplication') && types.includes('FAQPage') && !/<script(?![^>]*application\/ld\+json)/i.test(html) && !/ style=/i.test(html),
+    JSON.stringify(types),
+  )
+  const computed = await get('/mzdova-kalkulacka?hruba=1500&rok=2026&deti=1&deti15=0&vyhlasenie=1')
+  const out = (await computed.text()).replace(/[\u00a0\u202f]/g, ' ')
+  if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/wage-calc-result.html`, out)
+  check('1 500 € in 2026 with a child: 1 234,51 € net, and a computed page is no page for search engines', computed.status === 200 && out.includes('1 234,51 €') && out.includes('Cena práce pre firmu') && out.includes('<meta name="robots" content="noindex"'))
+  const wrong = (await (await get('/mzdova-kalkulacka?hruba=abc')).text()).replace(/[\u00a0\u202f]/g, ' ')
+  check('a wage that is none is said', wrong.includes('Hrubú mzdu napíšte v eurách'))
+  check('the sitemap and llms.txt name it', (await (await get('/sitemap.xml')).text()).includes('<loc>https://firmony.io/mzdova-kalkulacka</loc>') && (await (await get('/llms.txt')).text()).includes('https://firmony.io/mzdova-kalkulacka'))
+}
 res = await get('/healthz')
 check('health says the schema', (await res.json()).schema === 72)
 res = await get('/nic-take')

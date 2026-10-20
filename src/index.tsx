@@ -1,5 +1,8 @@
 import { GUIDES } from './content/guides'
-import { article, breadcrumbs, faqPage, jsonLd, organization, service, SITE_UPDATED, website } from './seo'
+import { article, breadcrumbs, faqPage, jsonLd, organization, plain, service, SITE_UPDATED, website } from './seo'
+import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
+import { wageCalc, wageQueryOf, wageYearOf } from './app/wage-calc'
+import { WageCalcPage } from './views/wage-calc'
 import { announceSite, llmsFullTxt, llmsTxt, robotsTxt, sitemapXml } from './robots'
 import { GuidePage } from './views/guide'
 import { Hono, type Context } from 'hono'
@@ -670,6 +673,42 @@ for (const guide of GUIDES) {
     ),
   )
 }
+
+// The net wage calculator: a GET form computed by the payroll engine (app/wage-calc.ts), for search engines too.
+app.get(WAGE_PATH, (c) => {
+  const asked = wageQueryOf(c.req.query(), bratislavaToday())
+  const year = wageYearOf(c.req.query('rok'), bratislavaToday())
+  const result = asked.query ? wageCalc(asked.query) : null
+  // A computed page is one of many addresses: only the empty form is the page search engines keep.
+  const computed = c.req.query('hruba') !== undefined
+  return page(
+    c,
+    {
+      title: typeset(WAGE_PAGE.title),
+      description: typeset(WAGE_PAGE.description),
+      path: WAGE_PATH,
+      noindex: computed,
+      jsonLd: jsonLd([
+        organization(),
+        {
+          '@type': 'WebApplication',
+          '@id': `${BRAND.origin}${WAGE_PATH}#kalkulacka`,
+          name: plain(`${WAGE_PAGE.first} ${WAGE_PAGE.second}`),
+          description: plain(WAGE_PAGE.description),
+          url: `${BRAND.origin}${WAGE_PATH}`,
+          applicationCategory: 'FinanceApplication',
+          operatingSystem: 'Any',
+          inLanguage: 'sk',
+          offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+          provider: { '@id': `${BRAND.origin}/#organizacia` },
+        },
+        breadcrumbs(WAGE_PAGE.nav, WAGE_PATH),
+        faqPage(WAGE_PAGE.faq, WAGE_PATH),
+      ]),
+    },
+    <WageCalcPage query={asked.query} result={result} error={asked.error} year={year} />,
+  )
+})
 
 app.get('/sitemap.xml', (c) => {
   c.header('Content-Type', 'application/xml; charset=utf-8')

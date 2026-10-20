@@ -3,6 +3,7 @@ import { ART, BRAND, OPERATOR } from '../config'
 import { copy } from '../copy'
 import { typeset } from '../format'
 import { GUIDES } from '../content/guides'
+import { WAGE_PAGE, WAGE_PATH } from '../content/wage-calc'
 
 export interface PageMeta {
   title: string
@@ -107,6 +108,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
               {GUIDES.map((g) => (
                 <a href={g.path}>{typeset(g.nav)}</a>
               ))}
+              <a href={WAGE_PATH}>{typeset(WAGE_PAGE.nav)}</a>
             </nav>
             <nav class="foot__col" aria-label={copy.footer.company}>
               <p class="foot__head">{copy.footer.company}</p>
