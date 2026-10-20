@@ -444,9 +444,21 @@ over. Bring this section up to date first whenever a session ends.
       17 August 2026 a notary registers changes). From that day europio is an obliged person under the AML Act, so by
       **19 November 2026**: the change of the business object in the commercial register through a notary, and the
       registration in goAML (§ 21(2) as amended by Act No. 73/2026 Z. z.: 30 days from becoming an obliged person;
-      pravnenoviny.sk). He was told to sign the AML program (his Claude doc "Program proti praniu špinavých peňazí")
-      that week as it stands, the advokát's changes to follow as a new version; the certificate comes to europio's
-      box on slovensko.sk within three working days. Liability insurance (no public price found; estimated 200 to
+      pravnenoviny.sk). The AML program was written anew on 21 October 2026 (his word: ChatGPT found errors in the
+      Claude doc of 13 October, retention among them; that doc is superseded): `docs/aml/program.html` and its PDF
+      `docs/aml/Program-vlastnej-cinnosti-europio-v1.pdf`, every rule read that night in Act 297/2008 as effective from
+      17 August 2026 on slov-lex, checked by an independent reader (24 corrections made), for him to print and sign.
+      **The app must be brought to it before the first client** (the reader found these, each verified in the code):
+      (1) the contract is concluded only after the declaration, its QES verification, the KUV, PEP and sanctions
+      checks and, for zvýšené riziko, the designated person's consent (§ 8 ods. 2; today `src/order.ts` concludes it
+      first and the declaration and the power of attorney are first steps after it; the program uses no § 8 ods. 3
+      exception); (2) everything of § 19 ods. 2 (documents, payments, statements, books, messages, events) is kept 5
+      years after the end with only the designated person's access, the client downloading for 90 days (today
+      `purgeCompany` deletes them after 90 or 365 days; terms 8.8, 10.4 and the privacy notice to change with it);
+      (3) the declaration asks the actual place of business when not the seat (§ 7 ods. 1 písm. b)) and whether the
+      client acts on its own behalf (§ 10 ods. 1 písm. f)); (4) a person established in a high-risk country makes
+      `suggestedLevel` 'high' (§ 12 ods. 1); (5) internal reports seen only by their author and the designated person
+      (today every administrator). The certificate comes to europio's box on slovensko.sk within three working days. Liability insurance (no public price found; estimated 200 to
       600 € a year, a fixed cost outside the per-client margins) and the advokát come before the first client.
    8. **SEO without ads** (his word of 20 October 2026, 18:04: "absolútne top elitné a špičkové SEO ... aby sme skákali
       1 ... keď niekto napíše firmony, aby sme boli prví, no aj podľa kľúčových slov, ako napr. firma, účtovník,
