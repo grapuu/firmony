@@ -17,6 +17,8 @@ import { handedOverSql, visible } from './store'
 import { REGISTRATION_EVENTS, registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
 import { healthInsured, isContract, isPension } from '../app/payroll'
 import type { Supply } from '../app/vat-registration'
+import { isCashWithdrawal, type Debit } from '../app/transaction-tax'
+import { addDays } from '../app/ending'
 
 type Row = Record<string, unknown>
 
@@ -59,7 +61,7 @@ export async function companyDeadlines(db: D1Database, company: string, today: s
 }
 
 async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], today: string): Promise<{ companies: Company[]; dues: DueRow[] }> {
-  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows, intrastatRows, supplyRows, vatRegRows] = await db.batch<Row>([
+  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows, intrastatRows, supplyRows, vatRegRows, debitRows, ttRows, annualRows] = await db.batch<Row>([
     db
       .prepare(
         `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, ${handedOverSql('c')} AS handover
@@ -139,7 +141,51 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
     db
       .prepare(`SELECT ev.company_id, ev.subject, ev.action FROM events ev JOIN companies c ON c.id = ev.company_id WHERE ${sql} AND ev.action IN ('vatRegistration.filed', 'vatRegistration.unfiled') ORDER BY ev.id`)
       .bind(...binds),
+    // The debits in euros of the accounts at providers outside Slovakia, the last five months (transaction-tax.ts), with
+    // whether each went to another account of the company at the same provider or to the State Treasury (exempt).
+    db
+      .prepare(
+        `SELECT p.company_id, p.booked_on, -p.amount_cents AS cents, p.card, COALESCE(p.note, '') || ' ' || COALESCE(p.party, '') AS text,
+                (upper(replace(COALESCE(p.party_iban, ''), ' ', '')) LIKE 'SK__8180%'
+                  OR EXISTS (SELECT 1 FROM accounts o WHERE o.company_id = p.company_id AND o.id <> a.id
+                    AND upper(replace(o.iban, ' ', '')) = upper(replace(COALESCE(p.party_iban, ''), ' ', ''))
+                    AND substr(upper(replace(o.iban, ' ', '')), 1, 2) || substr(upper(replace(o.iban, ' ', '')), 5, 4)
+                      = substr(upper(replace(a.iban, ' ', '')), 1, 2) || substr(upper(replace(a.iban, ' ', '')), 5, 4))) AS exempt
+           FROM payments p JOIN accounts a ON a.id = p.account_id JOIN companies c ON c.id = p.company_id
+          WHERE ${sql} AND p.amount_cents < 0 AND COALESCE(p.currency, 'EUR') = 'EUR'
+            AND upper(substr(replace(a.iban, ' ', ''), 1, 2)) <> 'SK' AND p.booked_on >= ?`,
+      )
+      .bind(...binds, addDays(`${today.slice(0, 7)}-01`, -155)),
+    db
+      .prepare(`SELECT ev.company_id, ev.subject, ev.action FROM events ev JOIN companies c ON c.id = ev.company_id WHERE ${sql} AND ev.action IN ('transactionTax.filed', 'transactionTax.unfiled') ORDER BY ev.id`)
+      .bind(...binds),
+    db
+      .prepare(`SELECT ev.company_id, ev.subject, ev.action FROM events ev JOIN companies c ON c.id = ev.company_id WHERE ${sql} AND ev.action IN ('payrollAnnual.filed', 'payrollAnnual.unfiled') ORDER BY ev.id`)
+      .bind(...binds),
   ])
+  const marksOf = (rows: Row[] | undefined, filed: string): Map<string, Set<string>> => {
+    const out = new Map<string, Set<string>>()
+    for (const r of rows ?? []) {
+      const id = String(r.company_id)
+      const set = out.get(id) ?? new Set<string>()
+      if (r.action === filed) set.add(String(r.subject))
+      else set.delete(String(r.subject))
+      out.set(id, set)
+    }
+    return out
+  }
+  const annualFiled = marksOf(annualRows?.results, 'payrollAnnual.filed')
+  const foreignDebits = new Map<string, Debit[]>()
+  for (const r of debitRows?.results ?? [])
+    push(foreignDebits, String(r.company_id), { day: String(r.booked_on), cents: Number(r.cents ?? 0), card: r.card === 1, cash: isCashWithdrawal(String(r.text ?? '')), exempt: r.exempt === 1 })
+  const transactionFiled = new Map<string, Set<string>>()
+  for (const r of ttRows?.results ?? []) {
+    const id = String(r.company_id)
+    const months = transactionFiled.get(id) ?? new Set<string>()
+    if (r.action === 'transactionTax.filed') months.add(String(r.subject))
+    else months.delete(String(r.subject))
+    transactionFiled.set(id, months)
+  }
   const supplies = new Map<string, Supply[]>()
   for (const r of supplyRows?.results ?? []) if (typeof r.day === 'string') push(supplies, String(r.company_id), { day: r.day, cents: Number(r.cents ?? 0) })
   const vatRegistered = new Map<string, Set<string>>()
@@ -260,6 +306,9 @@ const dividendsFact = (year: number, raw: unknown): Pick<ClosingFact, 'dividends
       intrastat: intrastatSent.get(company.id) ?? new Set<string>(),
       supplies: supplies.get(company.id) ?? [],
       vatRegistered: vatRegistered.get(company.id) ?? new Set<string>(),
+      foreignDebits: foreignDebits.get(company.id) ?? [],
+      transactionFiled: transactionFiled.get(company.id) ?? new Set<string>(),
+      annualFiled: annualFiled.get(company.id) ?? new Set<string>(),
     }
     for (const due of deadlinesOf(company, facts, today)) dues.push({ ...due, company, companyName: company.name })
   }

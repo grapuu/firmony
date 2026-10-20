@@ -28,6 +28,10 @@ export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind'
       return t.what.vatFix[d.fix ?? 'O'](periodName(period))
     case 'vatRegister':
       return t.what.vatRegister(period)
+    case 'transactionTax':
+      return t.what.transactionTax(monthName(`${period}-01`))
+    case 'payrollAnnual':
+      return t.what.payrollAnnual(period)
     case 'summary':
       return d.fix ? t.what.summaryFix[d.fix](periodName(period)) : t.what.summary(periodName(period))
     case 'oss':
@@ -72,6 +76,7 @@ export function registrationWhat(r: Pick<RegistrationDue, 'agency' | 'move' | 'n
 export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'period'> & Pick<Due, 'deliveryStatus' | 'payrollStage' | 'sourceChanged'>): string {
   if (d.payrollStage === 'payout') return 'Výplatu treba overiť'
   if (d.kind === 'vatRegister' && d.state === 'running') return t.state.turnover(formatEurExact(d.cents))
+  if (d.kind === 'transactionTax' && d.state !== 'done') return t.state.transactionTax(formatEurExact(d.cents), d.count)
   if (d.sourceChanged) return 'Podklady sa po uložení zmenili'
   if (d.deliveryStatus) return d.kind === 'payrollReport' ? REPORT_LABELS[d.deliveryStatus] : DELIVERY_LABELS[d.deliveryStatus]
   if (d.kind === 'docs' && d.state !== 'done') return t.state.missing(d.count)
@@ -102,6 +107,10 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
       return `${base}/dph?obdobie=${d.period}`
     case 'vatRegister':
       return `${base}#udaje`
+    case 'transactionTax':
+      return `${base}#vypisy`
+    case 'payrollAnnual':
+      return `${base}/mzdy/rocne?rok=${d.period}`
     case 'summary': {
       // A person registered under § 7a files it for a quarter; its VAT page goes by months: the quarter's first one.
       const period = d.period ?? ''
@@ -144,6 +153,8 @@ function noteOf(d: Due): string | null {
   if (d.deliveryStatus && d.deliveryStatus !== 'accepted') return 'Termín zostáva otvorený do doloženia prijatia. Odbornú správnosť kontroluje účtovník.'
   if (d.kind === 'vatRegister' && d.vatRegister?.near) return t.note.vatNear(formatEurExact(d.cents))
   if (d.kind === 'vatRegister' && d.vatRegister?.crossedOn) return t.note.vatRegister(dayName(d.vatRegister.crossedOn), d.vatRegister.payerFrom ? dayName(d.vatRegister.payerFrom) : '')
+  if (d.kind === 'transactionTax' && d.state !== 'done') return t.note.transactionTax
+  if (d.kind === 'payrollAnnual' && d.state !== 'done') return t.note.payrollAnnual
   if (d.kind === 'vatFix') return d.fix === 'D' ? t.note.fixD : t.note.fixO
   if (d.kind === 'vat' && d.state === 'open') return t.note.older
   if (d.kind === 'summary' && d.fix === 'D') return t.note.summaryD
@@ -188,6 +199,18 @@ const MarkForm: FC<{ d: DueRow; back: string }> = ({ d, back }) => {
     return (
       <form class="due__act" method="post" action={`/ucto/klienti/${d.company.id}/dph-registracia`}>
         <input type="hidden" name="rok" value={d.period} />
+        <input type="hidden" name="spat" value={back} />
+        {d.state === 'done' ? <input type="hidden" name="zrusit" value="1" /> : null}
+        <button class="btn btn--line btn--small" type="submit">
+          {d.state === 'done' ? t.unmark : t.mark}
+        </button>
+      </form>
+    )
+  // The notice of the transaction tax or the annual report of payroll taxes, filed in the portal: recorded here, and taken back.
+  if ((d.kind === 'transactionTax' || d.kind === 'payrollAnnual') && d.period)
+    return (
+      <form class="due__act" method="post" action={`/ucto/klienti/${d.company.id}/${d.kind === 'transactionTax' ? 'transakcna-dan' : 'mzdy/hlasenie'}`}>
+        <input type="hidden" name={d.kind === 'transactionTax' ? 'mesiac' : 'rok'} value={d.period} />
         <input type="hidden" name="spat" value={back} />
         {d.state === 'done' ? <input type="hidden" name="zrusit" value="1" /> : null}
         <button class="btn btn--line btn--small" type="submit">

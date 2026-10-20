@@ -53,6 +53,7 @@ import { checkWorkPay } from './work-pay.runtime.mjs'
 import { checkAiAccuracy } from './ai-accuracy.runtime.mjs'
 import { checkAutobook } from './autobook.runtime.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
+import { checkTransactionTax } from './transaction-tax.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
 import { checkJointStock } from './joint-stock.runtime.mjs'
 import { checkLists } from './lists.runtime.mjs'
@@ -4901,6 +4902,7 @@ await checkWorkPay({ db, acc, admin, lucia, nowS, day, capture: process.env.FIRM
 await checkAiAccuracy({ db, acc, admin, lucia, nowS, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAutobook({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkVatRegistration({ db, acc, lucia, nowS, day })
+await checkTransactionTax({ db, acc, lucia, nowS, day })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

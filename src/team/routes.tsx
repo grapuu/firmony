@@ -657,6 +657,35 @@ teamRoutes.post('/klienti/:id/dph-registracia', async (c) => {
   return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=${undo ? 'neoznacene' : 'oznacene'}`, 303)
 })
 
+// The employer's annual report of payroll taxes of a year (hlásenie, § 39(9)(b) of the Income Tax Act), filed in the
+// portal: recorded, or taken back.
+teamRoutes.post('/klienti/:id/mzdy/hlasenie', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const year = typeof body.rok === 'string' && /^20\d\d$/.test(body.rok) ? body.rok : null
+  if (!year || Number(year) >= Number(dayOf(now()).slice(0, 4))) return c.text('Bad request', 400)
+  const undo = body.zrusit === '1'
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: undo ? 'payrollAnnual.unfiled' : 'payrollAnnual.filed', subject: year })])
+  const back = typeof body.spat === 'string' && BACK.test(body.spat) ? body.spat : '/ucto/terminy'
+  return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=${undo ? 'neoznacene' : 'oznacene'}`, 303)
+})
+
+// The notice of the transaction tax of a month (app/transaction-tax.ts), filed in the portal: recorded, or taken back.
+teamRoutes.post('/klienti/:id/transakcna-dan', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const month = typeof body.mesiac === 'string' && /^20\d\d-(0[1-9]|1[0-2])$/.test(body.mesiac) ? body.mesiac : null
+  if (!month || month >= dayOf(now()).slice(0, 7)) return c.text('Bad request', 400)
+  const undo = body.zrusit === '1'
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: undo ? 'transactionTax.unfiled' : 'transactionTax.filed', subject: month })])
+  const back = typeof body.spat === 'string' && BACK.test(body.spat) ? body.spat : '/ucto/terminy'
+  return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=${undo ? 'neoznacene' : 'oznacene'}`, 303)
+})
+
 async function clientPage(
   c: Ctx,
   company: Company,

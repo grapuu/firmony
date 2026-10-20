@@ -450,9 +450,21 @@ over. Bring this section up to date first whenever a session ends.
       five working days after that day (`workingDaysAfter`), "platiteľom od" the next 1 January or the supply that crossed
       62 500 €; near it (40 000 €) a line that runs to the year's end. Recorded as filed on the screen of deadlines
       (`/ucto/klienti/:id/dph-registracia`, events `vatRegistration.filed` and `.unfiled`, the newest counts); the client's
-      app says it until then. Turnover before our contract is not known: said in the note. Next obligations to read and
-      build: the transaction tax for accounts at foreign providers (Act No. 279/2024, read in the original first), the
-      annual report of payroll taxes by 30 April (§ 39(9)).
+      app says it until then. Turnover before our contract is not known: said in the note.
+   10. **The transaction tax on accounts abroad** (built 20 October 2026, `src/app/transaction-tax.ts`; Act No. 279/2024
+      Z. z. as in force from 1 January 2026 read on zakonypreludi.sk and FS's page 725188): a company with an account whose
+      IBAN is not Slovak (Revolut, Wise) works the tax out and pays it itself (§ 3(3)(c), § 10(4)) and files the notice
+      of the tax by the end of the next month, moved to a working day: 0,4 % of each debit in euros, at most 40 €, cash
+      0,8 % uncapped, at least a cent (§ 6, § 8); card payments are no such transaction (§ 4(2)(u), a card is 2 € a year:
+      said in the note, not worked out), a transfer to the company's own account at the same provider and a payment to
+      the State Treasury are exempt. A deadline of ours a month with tax (the last four ended), recorded as filed on the
+      screen of deadlines (`/ucto/klienti/:id/transakcna-dan`, events `transactionTax.filed` and `.unfiled`); the client's
+      app asks it to pay. Not built: the notice's file, debits in another currency, the card's yearly 2 €.
+   11. **The employer's annual report of payroll taxes** (hlásenie o vyúčtovaní dane, § 39(9)(b) and § 49(2) of the Income
+      Tax Act read on static.slov-lex.sk on 20 October 2026, the version of 1 January 2026: by the end of April after the
+      year, moved to a working day): a deadline of ours for last year when a month of it was closed with us; its figures
+      are on `/mzdy/rocne`; recorded as filed (`/ucto/klienti/:id/mzdy/hlasenie`, events `payrollAnnual.filed`). Its XML
+      waits for the eForm of 2026 (published in 2027).
 
 Current social-reporting follow-up (17 October 2026): [docs/security/social-reporting.md](docs/security/social-reporting.md).
 Additive schema **22** prepares full R/O MVPP 2026 XML for supported ordinary full-month employment in
@@ -2726,8 +2738,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1389 unit checks (20 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1961 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1397 unit checks (20 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1966 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 ANTHROPIC_API_KEY=... npm run test:reader   # the real reader on 30 made-up documents, field by field (not on GitHub)
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME

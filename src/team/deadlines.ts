@@ -48,8 +48,9 @@ import { nextQuarter, ossDue, quarterOfDay, quarterRange } from '../app/oss'
 import { FLOWS, intrastatDue, monthEnd, sinceOf, settingsOf } from '../app/intrastat'
 import { dividendTaxDue } from '../app/distribution'
 import { VAT_REGISTRATION, registrationWatch, type Supply } from '../app/vat-registration'
+import { monthTax, type Debit } from '../app/transaction-tax'
 
-export type DueKind = 'vat' | 'vatFix' | 'vatRegister' | 'summary' | 'oss' | 'intrastat' | 'dividendTax' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'vatRegister' | 'transactionTax' | 'payrollAnnual' | 'summary' | 'oss' | 'intrastat' | 'dividendTax' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
@@ -58,6 +59,8 @@ export const DUE_SIDE: Record<DueKind, DueSide> = {
   vat: 'ours',
   vatFix: 'ours',
   vatRegister: 'ours',
+  transactionTax: 'ours',
+  payrollAnnual: 'ours',
   summary: 'ours',
   oss: 'ours',
   intrastat: 'ours',
@@ -216,6 +219,12 @@ export interface DueFacts {
   supplies?: Supply[]
   /** The years whose application for the registration for VAT was recorded as filed. */
   vatRegistered?: Set<string>
+  /** The debits of the company's accounts at providers outside Slovakia (transaction-tax.ts). */
+  foreignDebits?: Debit[]
+  /** The months whose notice of the transaction tax was recorded as filed. */
+  transactionFiled?: Set<string>
+  /** The years whose annual report of payroll taxes (hlásenie) was recorded as filed. */
+  annualFiled?: Set<string>
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -308,6 +317,21 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
         add({ kind: 'vatRegister', period: String(year), day: watch.crossed.due, state: filedReg ? 'done' : 'open', cents: watch.sum, vatRegister: { crossedOn: watch.crossed.on, payerFrom: watch.crossed.payerFrom, near: false } })
       else if (year === thisYear && watch.sum > VAT_REGISTRATION.near)
         add({ kind: 'vatRegister', period: String(year), day: `${year}-12-31`, state: 'running', cents: watch.sum, vatRegister: { crossedOn: null, payerFrom: null, near: true } })
+    }
+  }
+
+  // The transaction tax on the accounts at providers outside Slovakia, which the company works out and pays itself: each
+  // of the last four months that ended, with a tax, by the end of the month after it (transaction-tax.ts).
+  if (facts.foreignDebits && facts.foreignDebits.length > 0) {
+    const start = (company.startOn ?? bratislavaDay(company.createdAt)).slice(0, 7)
+    let month = today.slice(0, 7)
+    for (let i = 0; i < 4; i++) {
+      const [y, m] = month.split('-').map(Number) as [number, number]
+      month = m === 1 ? `${y - 1}-12` : `${y}-${pad(m - 1)}`
+      if (month < start) break
+      const tax = monthTax(facts.foreignDebits, month)
+      if (tax.cents === 0) continue
+      add({ kind: 'transactionTax', period: month, day: tax.due, state: facts.transactionFiled?.has(month) ? 'done' : 'open', cents: tax.cents, count: tax.taxed })
     }
   }
 
@@ -412,6 +436,15 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
     }
   }
 
+  // The employer's annual report (hlásenie o vyúčtovaní dane a o úhrne príjmov zo závislej činnosti, § 39(9)(b) of the
+  // Income Tax Act) of last year when a month of it was closed with us: by the end of April (§ 49(2), read on
+  // static.slov-lex.sk on 20 October 2026, the version of 1 January 2026), moved to a working day.
+  if (pr?.closed && pr.closed.size > 0) {
+    const year = String(Number(today.slice(0, 4)) - 1)
+    if ([...pr.closed.keys()].some((m) => m.startsWith(`${year}-`)))
+      add({ kind: 'payrollAnnual', period: year, day: workingDayFrom(`${Number(year) + 1}-04-30`), state: facts.annualFiled?.has(year) ? 'done' : 'open' })
+  }
+
   // The income tax advances a filed return brings (Act 595/2003 s. 42(1), (2), (7)): from the month after its filing
   // deadline to the next one, monthly by the end of each month or quarterly by the end of each calendar quarter. The
   // client pays them; the next one is shown before its day (whether it was paid is not read from the bank).
@@ -448,7 +481,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, vatRegister: 1, summary: 2, oss: 2, intrastat: 2, dividendTax: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, vatRegister: 1, transactionTax: 2, payrollAnnual: 6, summary: 2, oss: 2, intrastat: 2, dividendTax: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

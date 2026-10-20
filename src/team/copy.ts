@@ -68,16 +68,19 @@ export const team = typesetAll({
       },
       handover: 'Odovzdanie účtovníctva',
       vatRegister: (year: string) => typeset(`Registrácia pre DPH: obrat za rok ${year} prekročil 50 000 €`),
+      transactionTax: (month: string) => typeset(`Transakčná daň za ${month}: účet v zahraničnej banke`),
+      payrollAnnual: (year: string) => typeset(`Hlásenie o vyúčtovaní dane za rok ${year}`),
     },
     state: {
       turnover: (amount: string) => typeset(`Obrat ${amount}`),
+      transactionTax: (amount: string, n: number) => typeset(`${amount} z ${n} ${plural(n, 'platby', 'platieb', 'platieb')}`),
       ready: 'Pripravené na podanie',
       blocked: (n: number) => typeset(`Treba vyriešiť: ${n}`),
       running: { period: 'Obdobie beží', quarter: 'Štvrťrok beží', month: 'Mesiac beží', contract: 'Zmluva ešte beží' },
-      open: { payrollPay: 'Platí klient', vat: 'Nepodané', vatRegister: 'Podať žiadosť', oss: 'Pripraviť a podať', intrastat: 'Pripraviť a odoslať', dividendTax: 'Odviesť a oznámiť', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Evidovať jednotlivých príjemcov', registration: 'Podať v portáli', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
+      open: { payrollPay: 'Platí klient', vat: 'Nepodané', vatRegister: 'Podať žiadosť', payrollAnnual: 'Pripraviť a podať', oss: 'Pripraviť a podať', intrastat: 'Pripraviť a odoslať', dividendTax: 'Odviesť a oznámiť', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Evidovať jednotlivých príjemcov', registration: 'Podať v portáli', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
       missing: (n: number) => typeset(`${plural(n, 'Chýba', 'Chýbajú', 'Chýba')} ${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}`),
       toPay: (amount: string) => typeset(`Na úhradu ${amount}`),
-      done: { vat: 'Podané', vatRegister: 'Žiadosť podaná', summary: 'Podaný', intrastat: 'Odoslané', vatPay: 'Zaplatené', taxPay: 'Zaplatené', closing: 'Podané', payroll: 'Uzavreté', payrollReports: 'Podané', registration: 'Podané', handover: 'Odovzdané' } as Partial<Record<string, string>> & {
+      done: { vat: 'Podané', vatRegister: 'Žiadosť podaná', transactionTax: 'Oznámenie podané', payrollAnnual: 'Podané', summary: 'Podaný', intrastat: 'Odoslané', vatPay: 'Zaplatené', taxPay: 'Zaplatené', closing: 'Podané', payroll: 'Uzavreté', payrollReports: 'Podané', registration: 'Podané', handover: 'Odovzdané' } as Partial<Record<string, string>> & {
         vat: string
       },
     },
@@ -93,6 +96,8 @@ export const team = typesetAll({
       intrastat: 'Súbor je na stránke Intrastat: po odoslaní ho označte tam. Mesiac bez tovaru sa hlási ako nulový.',
       dividendTax: 'Zrazenú daň klient odvedie na účet daňového úradu, oznámenie o zrazení a odvedení dane podávame my. Označte ho na stránke závierky.',
       summaryD: 'Po termíne: dodatočný súhrnný výkaz len so zmenenými riadkami. Zákon mu lehotu neurčuje: podajte ho čím skôr.',
+      payrollAnnual: 'Hlásenie o úhrne príjmov zo závislej činnosti za uplynulý rok podávame do konca apríla. Čísla každého zamestnanca sú na stránke ročného zúčtovania. Po podaní ho označte tu.',
+      transactionTax: 'Firma s účtom v banke mimo Slovenska si daň počíta a odvádza sama: 0,4 % z každej platby z účtu, najviac 40 €, z výberu hotovosti 0,8 %. Platby kartou sa nedania, za kartu je 2 € ročne. Oznámenie o výške dane podáme do konca nasledujúceho mesiaca a klient daň do vtedy zaplatí. Potom ho označte tu.',
       vatRegister: (crossed: string, payer: string) =>
         typeset(`Obrat prekročil 50 000 € ${crossed}. Žiadosť o registráciu pre DPH podáva firma do piatich pracovných dní (§ 4 ods. 2 zákona o DPH), platiteľom je od ${payer}. Po podaní ju označte tu a registráciu zapíšte v údajoch klienta.`),
       vatNear: (amount: string) =>

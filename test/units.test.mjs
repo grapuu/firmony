@@ -63,6 +63,7 @@ import {
   robots,
   autobook,
   vatRegistration,
+  transactionTax,
   guides,
   lastDeclared,
   takeover,
@@ -238,6 +239,26 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   const acc = aiAccuracy.accuracyOf(rows)
   const total = acc.fields.find((f) => f.field === 'totalCents')
   check('the month: 2 of 3 unchanged, the total right 2 of 3, the café the worst', acc.documents === 3 && acc.unchanged === 2 && total.compared === 3 && total.right === 2 && acc.worst[0].party === 'Kaviareň' && acc.worst[0].changed === 1 && acc.bySource.find((x) => x.source === 'ai').unchanged === 1, JSON.stringify(acc))
+}
+{
+  // The transaction tax on accounts at providers outside Slovakia (app/transaction-tax.ts, Act No. 279/2024 Z. z.).
+  const debit = (cents, fields = {}) => ({ day: '2026-09-15', cents, card: false, cash: false, exempt: false, ...fields })
+  check('0,4 % of a transfer, rounded, at most 40 €, at least a cent', transactionTax.debitTax(debit(12345)) === 49 && transactionTax.debitTax(debit(2_000_000)) === 4000 && transactionTax.debitTax(debit(50)) === 1)
+  check('cash 0,8 % without a cap; a card payment and an exempt transfer nothing', transactionTax.debitTax(debit(1_000_000, { cash: true, card: true })) === 8000 && transactionTax.debitTax(debit(10000, { card: true })) === 0 && transactionTax.debitTax(debit(10000, { exempt: true })) === 0)
+  check('a foreign account by its IBAN; a cash withdrawal by its words', transactionTax.foreignAccount('LT12 3250 0123 4567 8901') && !transactionTax.foreignAccount('SK31 1200 0000 1987 4263 7541') && transactionTax.isCashWithdrawal('ATM withdrawal Vilnius') && !transactionTax.isCashWithdrawal('Hosting'))
+  const m = transactionTax.monthTax([debit(12345), debit(100000, { day: '2026-09-30' }), debit(5000, { day: '2026-10-01' })], '2026-09')
+  check('a month: its debits, the sum, by the end of the next month moved to a working day (31 October 2026 is a Saturday)', m.cents === 49 + 400 && m.taxed === 2 && m.due === '2026-11-02', JSON.stringify(m))
+  const company = { id: 'c1', name: 'Firma', vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: null, address: 'x' }
+  const base = { views: [], filed: [], paid: new Map(), filings: new Set(), closings: [], missing: new Map(), handover: 0 }
+  const list = dues.deadlinesOf(company, { ...base, foreignDebits: [debit(12345), debit(10000, { day: '2026-08-10', card: true })] }, '2026-11-05')
+  const tt = list.filter((d) => d.kind === 'transactionTax')
+  check('a deadline of ours for a month with tax, late after its day; none for a month of card payments only', tt.length === 1 && tt[0].period === '2026-09' && tt[0].cents === 49 && tt[0].late && dues.DUE_SIDE.transactionTax === 'ours', JSON.stringify(tt))
+  const filed = dues.deadlinesOf(company, { ...base, foreignDebits: [debit(12345)], transactionFiled: new Set(['2026-09']) }, '2026-11-05').find((d) => d.kind === 'transactionTax')
+  const payroll = { first: '2026-03-01', last: null, payday: 10, closed: new Map([['2026-11', '2026-12-10'], ['2026-12', '2027-01-11']]) }
+  const annual = dues.deadlinesOf(company, { ...base, payroll }, '2027-04-20').find((d) => d.kind === 'payrollAnnual')
+  check('the employer\'s annual report of last year by the end of April (30 April 2027 is a Friday), ours', annual?.period === '2026' && annual.day === '2027-04-30' && annual.state === 'open' && dues.DUE_SIDE.payrollAnnual === 'ours', JSON.stringify(annual))
+  check('recorded as filed, done; none for a year with no month closed', dues.deadlinesOf(company, { ...base, payroll, annualFiled: new Set(['2026']) }, '2027-04-20').find((d) => d.kind === 'payrollAnnual')?.state === 'done' && !dues.deadlinesOf(company, { ...base, payroll }, '2028-04-20').some((d) => d.kind === 'payrollAnnual'))
+  check('recorded as filed, done; the client is told to pay until then', filed?.state === 'done' && deadlines.clientDeadlines(company, tt, '2026-11-05', new Map()).some((d) => d.label.replace(/[  ]/g, ' ').startsWith('Zaplatiť transakčnú daň za september')))
 }
 {
   // The registration for VAT a crossed turnover asks for (app/vat-registration.ts, § 4 of the VAT Act).
