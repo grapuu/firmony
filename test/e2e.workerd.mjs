@@ -264,7 +264,7 @@ res = await get('/')
 page = (await res.text()).replace(/ /g, ' ')
 check(
   'the home page speaks to companies of every size and leads a larger one to an offer of its own',
-  page.includes('Účtovníctvo pre firmy každej veľkosti') && page.includes('Pre stredné a veľké firmy.') && page.includes('Vediete väčšiu firmu') && (page.match(/href="\/zacat\?balik=mieru"/g) ?? []).length === 2 && !page.includes('mladé'),
+  page.includes('Online účtovníctvo pre Vašu firmu.') && !page.includes('hero__tag') && page.includes('Pre stredné a veľké firmy.') && page.includes('Vediete väčšiu firmu') && (page.match(/href="\/zacat\?balik=mieru"/g) ?? []).length === 2 && !page.includes('mladé'),
 )
 res = await get('/zacat?balik=mieru')
 page = (await res.text()).replace(/ /g, ' ')

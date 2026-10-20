@@ -19,14 +19,13 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 
 export const copy = typesetAll({
   meta: {
-    title: `${BRAND.name}: účtovníctvo pre firmy každej veľkosti`,
+    title: `${BRAND.name}: online účtovníctvo pre Vašu firmu`,
     description: `Účtovníctvo pre nové, malé, stredné aj veľké firmy. Doklady, termíny a správy s účtovníčkou na jednom mieste. Balíky od ${eur(start.price)} mesačne podľa počtu dokladov, väčším firmám rozsah a cenu na mieru.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
   hero: {
-    tag: 'Účtovníctvo pre firmy každej veľkosti',
     first: 'Vy budujete firmu.',
     second: 'My strážime účtovníctvo.',
     lead: 'Doklady, termíny a správy s účtovníčkou na jednom mieste. Vy poznáte svoju firmu. My sa staráme o dohodnutú účtovnú agendu a ozveme sa, keď potrebujeme Vaše rozhodnutie.',
@@ -316,7 +315,7 @@ export const copy = typesetAll({
   },
 
   footer: {
-    tagline: 'Účtovníctvo pre firmy každej veľkosti.',
+    tagline: 'Online účtovníctvo pre Vašu firmu.',
     service: 'Služba',
     company: 'Spoločnosť',
     contact: 'Kontakt',
@@ -338,7 +337,6 @@ export const copy = typesetAll({
     },
     cta: 'Zapísať sa',
     hero: {
-      tag: 'Pre investorov',
       first: 'Daňové priznanie z investícií.',
       second: 'Hotové za pár minút.',
       lead: 'Nahráte ročný výpis od brokera. Spočítame, čo sa zdaňuje a čo nie, a pripravíme priznanie, ktoré len podpíšete. Alebo ho podáme za Vás.',

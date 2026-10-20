@@ -34,8 +34,10 @@ jobs:
         env:
           FIRMONY_CHROME: /usr/bin/google-chrome
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
+        # Only when something failed, to look at what broke: every run's screenshots (11 to 60 MB) used up the
+        # account's free storage of 0,5 GB (GitHub's notice of 20 October 2026).
+        if: failure()
         with:
           name: accounting-layout
           path: .wrangler/screens
-          retention-days: 7
+          retention-days: 3

@@ -62,7 +62,6 @@ const Hero: FC<{ carry: Carry; values: InvestorValues; error?: string }> = ({ ca
     <div class="wrap hero__grid">
       <div class="hero__panel">
         <div class="hero__copy">
-          <p class="hero__tag">{t.hero.tag}</p>
           <h1 id="hero-title" class="hero__title">
             <span class="hero__line">{t.hero.first}</span> <em class="hero__line hero__line--serif">{t.hero.second}</em>
           </h1>

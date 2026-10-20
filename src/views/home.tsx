@@ -90,7 +90,6 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
     <div class="wrap hero__grid">
       <div class="hero__panel">
         <div class="hero__copy">
-          <p class="hero__tag">{copy.hero.tag}</p>
           <h1 id="hero-title" class="hero__title">
             <span class="hero__line">{copy.hero.first}</span> <em class="hero__line hero__line--serif">{copy.hero.second}</em>
           </h1>
