@@ -91,7 +91,10 @@ over. Bring this section up to date first whenever a session ends.
    given to choose from: a free plan for a company with no activity (a dormant s. r. o., which costs us almost nothing);
    showing in the app what the client saved against a usual accountant and what tax the app found; things others
    charge for, included (invoicing, the digital postman, payroll calculator); a guarantee that fines caused by our
-   error are ours; a reward for bringing another company.
+   error are ours; a reward for bringing another company. His answer at 01:34: a fair start, but go deep, find
+   other advantages too, and read psychological studies (in the original, with their sources) and choose the marketing
+   tactics by them. To do with him: a research of what the studies show (pricing, loss and gain, fairness, trust,
+   referral) and what Revolut, Trading 212 and Robinhood actually do, then a short pick for Firmony.
 6. **The picture he follows** is the artifact "Kruh Firmony" (https://claude.ai/artifact/6RwoEgbSJZx3hpdBafRN3M):
    all seven stages full, and his steps before launch at the end. Its source was a scratch file of the session of
    17 October; a new session reads the page with the Artifact tool (`action: "read"`, then the saved file) and
