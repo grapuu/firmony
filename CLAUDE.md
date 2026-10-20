@@ -436,6 +436,18 @@ over. Bring this section up to date first whenever a session ends.
    7. **End of week, with him** (his word): the trade licence of europio: the decision of item 5, the notice of the
       free trade "Vedenie účtovníctva" on slovensko.sk (free online, the certificate in about three days), the filing
       to the commercial register within 30 days, then goAML.
+      **The trade was notified on 20 October 2026 at about 23:05** by him on slovensko.sk (service "Ohlasovanie voľnej,
+      remeselnej a viazanej živnosti, právnická osoba", Okresný úrad Košice, identifier of the filing
+      70eefb22-f24b-41a1-8104-ddc739858878): the free trade "Vedenie účtovníctva", fee 0 €, no day of start (so the
+      trade arises on the day of the notice, europio being in the register already), no prevádzkareň, and the change in
+      the commercial register NOT sent through the office (no decision with a qualified signature was ready; since
+      17 August 2026 a notary registers changes). From that day europio is an obliged person under the AML Act, so by
+      **19 November 2026**: the change of the business object in the commercial register through a notary, and the
+      registration in goAML (§ 21(2) as amended by Act No. 73/2026 Z. z.: 30 days from becoming an obliged person;
+      pravnenoviny.sk). He was told to sign the AML program (his Claude doc "Program proti praniu špinavých peňazí")
+      that week as it stands, the advokát's changes to follow as a new version; the certificate comes to europio's
+      box on slovensko.sk within three working days. Liability insurance (no public price found; estimated 200 to
+      600 € a year, a fixed cost outside the per-client margins) and the advokát come before the first client.
    8. **SEO without ads** (his word of 20 October 2026, 18:04: "absolútne top elitné a špičkové SEO ... aby sme skákali
       1 ... keď niekto napíše firmony, aby sme boli prví, no aj podľa kľúčových slov, ako napr. firma, účtovník,
       účtovníctvo"). Built that evening: schema.org data as JSON-LD (`src/seo.ts`: the organisation europio with IČO,
