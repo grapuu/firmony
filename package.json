@@ -14,6 +14,7 @@
     "build:assets": "node scripts/build-security.mjs",
     "test:browser": "node test/passkeys.browser.mjs",
     "test:load": "node test/build.mjs && node --no-warnings test/load.mjs",
+    "test:reader": "esbuild test/reader.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/reader-bundle.mjs && node --no-warnings test/reader.mjs",
     "test:peppol": "node --no-warnings test/peppol.mjs"
   },
   "dependencies": {

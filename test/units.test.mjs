@@ -794,6 +794,11 @@ check(
 check('a picture that is no document is none', reader.readingFrom({ je_doklad: false, suma_celkom: '10' }) === null)
 const odd = reader.readingFrom({ je_doklad: true, typ: 'neviem', datum_vystavenia: '12. 10. 2026', suma_celkom: '-5', iban_druhej_strany: 'xx', mena: 'eura' })
 check('what is not what it should be is left out', odd?.kind === 'other' && odd.issuedOn === null && odd.totalCents === null && odd.partyIban === null && odd.currency === null)
+{
+  const credit = reader.readingFrom({ je_doklad: true, typ: 'faktura_prijata', suma_celkom: '-15.87', dph_celkom: '-2.97', opravuje_fakturu: 'FA2026-0412' })
+  check('a credit note written with a minus is taken at its size', credit?.totalCents === 1587 && credit.vatCents === 297 && credit.corrects === 'FA2026-0412', JSON.stringify(credit))
+  check('a negative amount of anything else is still no amount', reader.readingFrom({ je_doklad: true, suma_celkom: '-15.87', dph_celkom: '-2.97' })?.vatCents === null)
+}
 for (const value of ['2026-02-29', '2026-02-31', '2026-04-31', '2026-13-01']) {
   const invalid = reader.readingFrom({ je_doklad: true, datum_vystavenia: value, datum_splatnosti: value, datum_dodania: value })
   check(`an AI calendar date must exist: ${value}`, invalid.issuedOn === null && invalid.dueOn === null && invalid.suppliedOn === null)

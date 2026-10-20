@@ -353,7 +353,18 @@ over. Bring this section up to date first whenever a session ends.
       with their codes, invoices of payers and non-payers, foreign invoices, credit notes, a photo at an angle, a
       crumpled receipt) and `npm run test:reader`, which runs the real reader on them (needs `ANTHROPIC_API_KEY`, not
       in CI) and reports each field's accuracy; improve the prompt and the tool (`READER`, `src/app/read.ts`) until
-      totals, VAT, days and IČO are right on at least 98 % of them. (c) The booking screen records how long a document
+      totals, VAT, days and IČO are right on at least 98 % of them. **(b) built on 20 October 2026, not yet run against the real model**
+      (no key in this workspace): 30 documents in `test/reader/docs` (10 eKasa receipts, some rotated, crumpled, blurred
+      or at an angle, one off-line; 12 Slovak invoices of payers and a non-payer as PDF, PNG and photos; 4 foreign ones,
+      Irish and German reverse charge, a US one in dollars, a Czech one in crowns; 2 credit notes; 2 invoices the
+      company issued), every company and code invented, made by `scripts/reader/make-documents.py` with what is on
+      each in `test/reader/expected.json`; `npm run test:reader` (`test/reader.mjs`, `ANTHROPIC_API_KEY` needed, four
+      at a time, `FIRMONY_READER_ONLY=blocek` for a part) prints each document's wrong fields and each field's share,
+      writes `.wrangler/reader/report.json`, and fails below 98 % on totals, VAT, the day of issue or the IČO; run with a
+      pretend reader that erred once, it said so. Found on the way: a credit note read with a minus lost its total and
+      VAT (`readingFrom` dropped every negative amount); a document that corrects an invoice is now taken at the
+      amounts' size, and the tool asks for them without a minus. Next: run it with the key, then mend the prompt and
+      the tool where it reads wrong. (c) The booking screen records how long a document
       took (opened to booked), and the statement of item 1 shows each accountant's median minutes a document: it
       calibrates her rates. **(c) built on 20 October 2026**: the hidden `otvorene` of the booking form (carried through a
       form sent back with an error), `document.booked` keeps `{ seconds }` up to an hour (`tookOf`), `bookingTime` gives
@@ -363,7 +374,14 @@ over. Bring this section up to date first whenever a session ends.
       Scroll timelines run in Chrome and in Safari 26 and later. For older Safari and iOS, a small script of our own
       (`public/flow.js`, CSP `script-src 'self'` on the public pages that use it, nothing inline) that, only when
       `CSS.supports('animation-timeline: view()')` is false, plays the same keyframes from the scroll position; without
-      the script the finished card stays as now. Check it in WebKit.
+      the script the finished card stays as now. Check it in WebKit. **Built on 20 October 2026**: `public/flow.js`
+      (does nothing where `CSS.supports('animation-timeline: view()')`; marks the track `flow__track--js` and seeks each
+      piece's paused keyframes with `getAnimations()` by the scroll's share of the same `contain` ranges, kept the same
+      as in app.css), the fallback rules after the month's block in `public/app.css`, the script at the end of the
+      month's section, CSP `script-src 'self'` on `/` alone (`HOME_CONTENT_SECURITY_POLICY` in `src/index.tsx`; every
+      other page of the site runs none). Seen in Chromium with the timelines taken out of CSS and `CSS.supports` (1440
+      and 390 px): the papers fly in and the rows light up as before. Not seen in a real old Safari; the hero's drift,
+      the words lit and the tiles' spring stay still there.
    4. **Tried live** once he is the first administrator (`/app/prvy-spravca`): a test client made by hand (no IČO,
       the paper contract ticked, `grrrrjuhas+klient@gmail.com`), an accountant (`grrrrjuhas+uctovnicka@gmail.com`),
       a month walked through (documents by photo and email, the bank statement, booking, VAT, payroll), every fault
@@ -948,8 +966,8 @@ above 2,5 % or accountant cost above 40 € a client.
 
 ## How it is built
 
-- One Cloudflare Worker: Hono with hono/jsx, pages rendered on the server, **no script at all** (CSP
-  `script-src 'none'`), no inline styles. D1 (`DB`) for requests, the outbox and the counters; Cloudflare's email
+- One Cloudflare Worker: Hono with hono/jsx, pages rendered on the server, **no script** on the site but the
+  month's `public/flow.js` on the home page (CSP `script-src 'none'` elsewhere, `'self'` on `/`), no inline styles. D1 (`DB`) for requests, the outbox and the counters; Cloudflare's email
   binding (`EMAIL`). Static files in `public/` (stylesheet, fonts).
 - `src/config.ts` holds every fact: brand, company, plans, limits, retention, pictures (`ART`, empty until he
   makes them). `src/copy.ts` holds every text, typeset once (`src/format.ts`: a one-letter word never ends a
@@ -2650,6 +2668,7 @@ npm run check            # TypeScript
 npm test                 # 1349 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
 npm run test:runtime     # 1920 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
+ANTHROPIC_API_KEY=... npm run test:reader   # the real reader on 30 made-up documents, field by field (not on GitHub)
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME
 node --no-warnings scripts/playground.mjs          # http://127.0.0.1:8787 with pretend register, email and reader
 node scripts/dev/look.mjs <folder> [paths]          # screenshots at three widths, says what overflows

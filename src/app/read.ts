@@ -53,8 +53,8 @@ const TOOL = {
       variabilny_symbol: { type: 'string' },
       datum_vystavenia: { type: 'string', description: 'RRRR-MM-DD' },
       datum_splatnosti: { type: 'string', description: 'RRRR-MM-DD' },
-      suma_celkom: { type: 'string', description: 'Celková suma na úhradu s DPH, s desatinnou bodkou, napríklad 12.40.' },
-      dph_celkom: { type: 'string', description: 'Celková DPH, s desatinnou bodkou.' },
+      suma_celkom: { type: 'string', description: 'Celková suma na úhradu s DPH, s desatinnou bodkou, napríklad 12.40. Pri dobropise bez mínusu.' },
+      dph_celkom: { type: 'string', description: 'Celková DPH, s desatinnou bodkou. Pri dobropise bez mínusu.' },
       mena: { type: 'string', description: 'Kód meny, napríklad EUR.' },
       kategoria: {
         type: 'string',
@@ -108,6 +108,11 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
   const iban = clean(input.iban_druhej_strany, 40)?.replace(/\s/g, '').toUpperCase() ?? null
   const currency = clean(input.mena, 10)?.toUpperCase() ?? null
   const vatId = clean(input.ic_dph_druhej_strany, 20)?.replace(/[\s.-]/g, '').toUpperCase() ?? null
+  // A credit note keeps its amounts without a minus (the booking form takes them so, and its lines carry the sign); a
+  // reader that wrote them with one for a document that corrects an invoice is taken at their size. Anything else
+  // negative is no amount.
+  const credit = clean(input.opravuje_fakturu, 40) !== null
+  const sized = (cents: number | null, zero: boolean) => (cents === null ? null : cents > 0 || (zero && cents === 0) ? cents : credit && cents < 0 ? -cents : null)
   return {
     kind: typeof input.typ === 'string' && Object.hasOwn(KINDS, input.typ) ? KINDS[input.typ] ?? 'other' : 'other',
     party: clean(input.druha_strana),
@@ -117,8 +122,8 @@ export function readingFrom(input: Record<string, unknown>): Reading | null {
     vs: clean(input.variabilny_symbol, 20)?.replace(/\D/g, '') || null,
     issuedOn: isoDay(input.datum_vystavenia),
     dueOn: isoDay(input.datum_splatnosti),
-    totalCents: total !== null && total > 0 ? total : null,
-    vatCents: vat !== null && vat >= 0 ? vat : null,
+    totalCents: sized(total, false),
+    vatCents: sized(vat, true),
     currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null,
     category: isCategory(input.kategoria) ? input.kategoria : null,
     partyVatId: vatId && /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(vatId) ? vatId : null,

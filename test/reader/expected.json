@@ -1,0 +1,650 @@
+{
+ "company": {
+  "name": "TEST Odberateľ s. r. o.",
+  "ico": "50000005"
+ },
+ "documents": [
+  {
+   "file": "blocek-01.jpg",
+   "kind": "receipt",
+   "party": "Kaviareň Pod Hradom s. r. o.",
+   "partyIco": "50100011",
+   "number": "0000412",
+   "vs": null,
+   "issuedOn": "2026-10-14",
+   "dueOn": null,
+   "totalCents": 1040,
+   "vatCents": 181,
+   "currency": "EUR",
+   "ekasaUid": "O-21B362C60CC45CC659FBEDEE7600624B",
+   "ekasaOkp": "A6F1F241-A627D276-411538ED-86E2A621-6E6EA594",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 472,
+     "vat": 108
+    },
+    {
+     "rate": 19,
+     "base": 387,
+     "vat": 73
+    }
+   ]
+  },
+  {
+   "file": "blocek-02.jpg",
+   "kind": "receipt",
+   "party": "Potraviny Tatra s. r. o.",
+   "partyIco": "50100029",
+   "number": "0018833",
+   "vs": null,
+   "issuedOn": "2026-10-03",
+   "dueOn": null,
+   "totalCents": 3335,
+   "vatCents": 548,
+   "currency": "EUR",
+   "ekasaUid": "O-9DF426166AB61BD359349E5AEB16FD62",
+   "ekasaOkp": "5EF590B8-8EE7CFA7-E28FF32C-CC07E40D-9FFC1DA1",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 2267,
+     "vat": 522
+    },
+    {
+     "rate": 5,
+     "base": 520,
+     "vat": 26
+    }
+   ]
+  },
+  {
+   "file": "blocek-03.jpg",
+   "kind": "receipt",
+   "party": "Čerpacia stanica Duna a. s.",
+   "partyIco": "50100037",
+   "number": "0102274",
+   "vs": null,
+   "issuedOn": "2026-09-28",
+   "dueOn": null,
+   "totalCents": 7704,
+   "vatCents": 1441,
+   "currency": "EUR",
+   "ekasaUid": "O-503B580B9CD73B9722B995542CC39A9C",
+   "ekasaOkp": "1DA5DC54-32200749-B3380A35-1C1A376A-3C82CC0D",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 6263,
+     "vat": 1441
+    }
+   ]
+  },
+  {
+   "file": "blocek-04.jpg",
+   "kind": "receipt",
+   "party": "Lekáreň Zdravie s. r. o.",
+   "partyIco": "50100045",
+   "number": "0003921",
+   "vs": null,
+   "issuedOn": "2026-10-09",
+   "dueOn": null,
+   "totalCents": 939,
+   "vatCents": 93,
+   "currency": "EUR",
+   "ekasaUid": "O-B295FFDB3558684C4E10B7CA5C6BB07D",
+   "ekasaOkp": "FF397A96-5E942BEE-89C143F8-DDE33B42-B2FAFE9E",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 285,
+     "vat": 65
+    },
+    {
+     "rate": 5,
+     "base": 561,
+     "vat": 28
+    }
+   ]
+  },
+  {
+   "file": "blocek-05.jpg",
+   "kind": "receipt",
+   "party": "Reštaurácia U Troch Lipiek s. r. o.",
+   "partyIco": "50100053",
+   "number": "0007710",
+   "vs": null,
+   "issuedOn": "2026-10-01",
+   "dueOn": null,
+   "totalCents": 4410,
+   "vatCents": 722,
+   "currency": "EUR",
+   "ekasaUid": "O-026E31A17792160409FCF1D9CBDD4E6E",
+   "ekasaOkp": "17939633-A636E05D-0821A2B9-1C2D16B0-77FD3B40",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 537,
+     "vat": 123
+    },
+    {
+     "rate": 19,
+     "base": 3151,
+     "vat": 599
+    }
+   ]
+  },
+  {
+   "file": "blocek-06.jpg",
+   "kind": "receipt",
+   "party": "Parkovisko Centrum s. r. o.",
+   "partyIco": "50100061",
+   "number": "0029911",
+   "vs": null,
+   "issuedOn": "2026-10-12",
+   "dueOn": null,
+   "totalCents": 600,
+   "vatCents": 112,
+   "currency": "EUR",
+   "ekasaUid": "O-CFE1BE009A168630D09113DC0693A304",
+   "ekasaOkp": "3A19A08A-B361123D-E0B1F532-04F76086-6CB7457C",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 488,
+     "vat": 112
+    }
+   ]
+  },
+  {
+   "file": "blocek-07.jpg",
+   "kind": "receipt",
+   "party": "Železiarstvo Klinec s. r. o.",
+   "partyIco": "50100070",
+   "number": "0000088",
+   "vs": null,
+   "issuedOn": "2026-09-30",
+   "dueOn": null,
+   "totalCents": 2360,
+   "vatCents": 441,
+   "currency": "EUR",
+   "ekasaUid": "O-8CEBCFC6324F32250542C5B9B6AAA6EC",
+   "ekasaOkp": "D33BD63B-9FAF02E9-2D005E18-1128509A-0F3C806B",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 1919,
+     "vat": 441
+    }
+   ]
+  },
+  {
+   "file": "blocek-08.jpg",
+   "kind": "receipt",
+   "party": "Papiernictvo Pero s. r. o.",
+   "partyIco": "50100088",
+   "number": "0004521",
+   "vs": null,
+   "issuedOn": "2026-10-06",
+   "dueOn": null,
+   "totalCents": 4215,
+   "vatCents": 788,
+   "currency": "EUR",
+   "ekasaUid": "O-0FFBAFB837D94F61D91FD67C0CA83DA0",
+   "ekasaOkp": "2D52BC75-74C71304-621F6A5A-1FAB50FA-33BB8974",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 3427,
+     "vat": 788
+    }
+   ]
+  },
+  {
+   "file": "blocek-09.jpg",
+   "kind": "receipt",
+   "party": "Taxi Rýchlo s. r. o.",
+   "partyIco": "50100096",
+   "number": "0011207",
+   "vs": null,
+   "issuedOn": "2026-10-15",
+   "dueOn": null,
+   "totalCents": 1480,
+   "vatCents": 236,
+   "currency": "EUR",
+   "ekasaUid": "O-90D0D9E2D8FB11282A931DCC0E9D02EF",
+   "ekasaOkp": "3BA573A7-10502E53-BED4FD11-498B2CB9-05DE1C7C",
+   "vatLines": [
+    {
+     "rate": 19,
+     "base": 1244,
+     "vat": 236
+    }
+   ]
+  },
+  {
+   "file": "blocek-10.jpg",
+   "kind": "receipt",
+   "party": "Elektro Iskra s. r. o.",
+   "partyIco": "50100100",
+   "number": "0006640",
+   "vs": null,
+   "issuedOn": "2026-10-11",
+   "dueOn": null,
+   "totalCents": 3097,
+   "vatCents": 579,
+   "currency": "EUR",
+   "ekasaUid": null,
+   "ekasaOkp": "63D98E66-30EDE6F3-50F41808-7E69BF52-D803732D",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 2518,
+     "vat": 579
+    }
+   ]
+  },
+  {
+   "file": "faktura-01.pdf",
+   "kind": "invoice_in",
+   "party": "Webhosting Sever s. r. o.",
+   "partyIco": "50200015",
+   "number": "FA2026-0412",
+   "vs": "20260412",
+   "issuedOn": "2026-10-01",
+   "dueOn": "2026-10-15",
+   "totalCents": 3419,
+   "vatCents": 639,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 2780,
+     "vat": 639
+    }
+   ]
+  },
+  {
+   "file": "faktura-02.pdf",
+   "kind": "invoice_in",
+   "party": "Účtovná kancelária Bilancia s. r. o.",
+   "partyIco": "50200023",
+   "number": "2026/0388",
+   "vs": "20260388",
+   "issuedOn": "2026-10-05",
+   "dueOn": "2026-10-19",
+   "totalCents": 14760,
+   "vatCents": 2760,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 12000,
+     "vat": 2760
+    }
+   ]
+  },
+  {
+   "file": "faktura-03.pdf",
+   "kind": "invoice_in",
+   "party": "Grafika Jana Malá",
+   "partyIco": "50200031",
+   "number": "20260031",
+   "vs": "20260031",
+   "issuedOn": "2026-09-29",
+   "dueOn": "2026-10-13",
+   "totalCents": 45000,
+   "vatCents": 0,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": null
+  },
+  {
+   "file": "faktura-04.jpg",
+   "kind": "invoice_in",
+   "party": "Nábytok Dub s. r. o.",
+   "partyIco": "50200040",
+   "number": "FV-26-0907",
+   "vs": "260907",
+   "issuedOn": "2026-09-22",
+   "dueOn": "2026-10-06",
+   "totalCents": 115128,
+   "vatCents": 21528,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 93600,
+     "vat": 21528
+    }
+   ]
+  },
+  {
+   "file": "faktura-05.png",
+   "kind": "invoice_in",
+   "party": "Telekom Signál a. s.",
+   "partyIco": "50200058",
+   "number": "7310042981",
+   "vs": "7310042981",
+   "issuedOn": "2026-10-02",
+   "dueOn": "2026-10-16",
+   "totalCents": 3446,
+   "vatCents": 644,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 2802,
+     "vat": 644
+    }
+   ]
+  },
+  {
+   "file": "faktura-06.jpg",
+   "kind": "invoice_in",
+   "party": "Kuriér Expres s. r. o.",
+   "partyIco": "50200066",
+   "number": "KE-2026-11872",
+   "vs": "202611872",
+   "issuedOn": "2026-10-08",
+   "dueOn": "2026-10-22",
+   "totalCents": 6802,
+   "vatCents": 1272,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 5530,
+     "vat": 1272
+    }
+   ]
+  },
+  {
+   "file": "faktura-07.pdf",
+   "kind": "invoice_in",
+   "party": "Účtovná kancelária Bilancia s. r. o.",
+   "partyIco": "50200023",
+   "number": "2026/0402",
+   "vs": "20260402",
+   "issuedOn": "2026-10-12",
+   "dueOn": "2026-10-26",
+   "totalCents": 9840,
+   "vatCents": 1840,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 8000,
+     "vat": 1840
+    }
+   ]
+  },
+  {
+   "file": "faktura-08.pdf",
+   "kind": "invoice_in",
+   "party": "Nábytok Dub s. r. o.",
+   "partyIco": "50200040",
+   "number": "FV-26-0951",
+   "vs": "260951",
+   "issuedOn": "2026-10-09",
+   "dueOn": "2026-10-23",
+   "totalCents": 51537,
+   "vatCents": 9637,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 41900,
+     "vat": 9637
+    }
+   ]
+  },
+  {
+   "file": "faktura-09.png",
+   "kind": "invoice_in",
+   "party": "Webhosting Sever s. r. o.",
+   "partyIco": "50200015",
+   "number": "FA2026-0431",
+   "vs": "20260431",
+   "issuedOn": "2026-10-14",
+   "dueOn": "2026-10-28",
+   "totalCents": 6027,
+   "vatCents": 1127,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 4900,
+     "vat": 1127
+    }
+   ]
+  },
+  {
+   "file": "faktura-10.jpg",
+   "kind": "invoice_in",
+   "party": "Telekom Signál a. s.",
+   "partyIco": "50200058",
+   "number": "7310043370",
+   "vs": "7310043370",
+   "issuedOn": "2026-10-02",
+   "dueOn": "2026-10-16",
+   "totalCents": 4047,
+   "vatCents": 757,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 3290,
+     "vat": 757
+    }
+   ]
+  },
+  {
+   "file": "faktura-11.png",
+   "kind": "invoice_in",
+   "party": "Grafika Jana Malá",
+   "partyIco": "50200031",
+   "number": "20260036",
+   "vs": "20260036",
+   "issuedOn": "2026-10-13",
+   "dueOn": "2026-10-27",
+   "totalCents": 28000,
+   "vatCents": 0,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": null
+  },
+  {
+   "file": "faktura-12.pdf",
+   "kind": "invoice_in",
+   "party": "Kuriér Expres s. r. o.",
+   "partyIco": "50200066",
+   "number": "KE-2026-12030",
+   "vs": "202612030",
+   "issuedOn": "2026-10-15",
+   "dueOn": "2026-10-29",
+   "totalCents": 2731,
+   "vatCents": 511,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 2220,
+     "vat": 511
+    }
+   ]
+  },
+  {
+   "file": "zahranicna-01.pdf",
+   "kind": "invoice_in",
+   "party": "TEST Cloud Services Ltd.",
+   "partyIco": null,
+   "number": "IE-2026-5512189",
+   "vs": null,
+   "issuedOn": "2026-10-01",
+   "dueOn": "2026-10-01",
+   "totalCents": 5064,
+   "vatCents": 0,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 0,
+     "base": 5064,
+     "vat": 0
+    }
+   ]
+  },
+  {
+   "file": "zahranicna-02.pdf",
+   "kind": "invoice_in",
+   "party": "TEST Server GmbH",
+   "partyIco": null,
+   "number": "R0026718291",
+   "vs": null,
+   "issuedOn": "2026-10-03",
+   "dueOn": "2026-10-17",
+   "totalCents": 4490,
+   "vatCents": 0,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 0,
+     "base": 4490,
+     "vat": 0
+    }
+   ]
+  },
+  {
+   "file": "zahranicna-03.png",
+   "kind": "invoice_in",
+   "party": "TEST Design Tools Inc.",
+   "partyIco": null,
+   "number": "INV-88412",
+   "vs": null,
+   "issuedOn": "2026-10-07",
+   "dueOn": "2026-10-07",
+   "totalCents": 2900,
+   "vatCents": 0,
+   "currency": "USD",
+   "corrects": null,
+   "vatLines": null
+  },
+  {
+   "file": "zahranicna-04.pdf",
+   "kind": "invoice_in",
+   "party": "TEST Software s.r.o.",
+   "partyIco": "99999911",
+   "number": "2026101845",
+   "vs": null,
+   "issuedOn": "2026-10-10",
+   "dueOn": "2026-10-24",
+   "totalCents": 21000,
+   "vatCents": 0,
+   "currency": "CZK",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 0,
+     "base": 21000,
+     "vat": 0
+    }
+   ]
+  },
+  {
+   "file": "dobropis-01.pdf",
+   "kind": "invoice_in",
+   "party": "Nábytok Dub s. r. o.",
+   "partyIco": "50200040",
+   "number": "DB-26-0012",
+   "vs": "26001200",
+   "issuedOn": "2026-10-11",
+   "dueOn": "2026-10-25",
+   "totalCents": 6150,
+   "vatCents": 1150,
+   "currency": "EUR",
+   "corrects": "FV-26-0907",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 5000,
+     "vat": 1150
+    }
+   ]
+  },
+  {
+   "file": "dobropis-02.jpg",
+   "kind": "invoice_in",
+   "party": "Webhosting Sever s. r. o.",
+   "partyIco": "50200015",
+   "number": "DB2026-0007",
+   "vs": "20260007",
+   "issuedOn": "2026-10-16",
+   "dueOn": "2026-10-30",
+   "totalCents": 1587,
+   "vatCents": 297,
+   "currency": "EUR",
+   "corrects": "FA2026-0412",
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 1290,
+     "vat": 297
+    }
+   ]
+  },
+  {
+   "file": "vydana-01.pdf",
+   "kind": "invoice_out",
+   "party": "TEST Klient Alfa s. r. o.",
+   "partyIco": "50300019",
+   "number": "20260041",
+   "vs": "20260041",
+   "issuedOn": "2026-10-02",
+   "dueOn": "2026-10-16",
+   "totalCents": 73800,
+   "vatCents": 13800,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 60000,
+     "vat": 13800
+    }
+   ]
+  },
+  {
+   "file": "vydana-02.png",
+   "kind": "invoice_out",
+   "party": "TEST Klient Beta s. r. o.",
+   "partyIco": "50300027",
+   "number": "20260042",
+   "vs": "20260042",
+   "issuedOn": "2026-10-09",
+   "dueOn": "2026-10-23",
+   "totalCents": 147600,
+   "vatCents": 27600,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 120000,
+     "vat": 27600
+    }
+   ]
+  }
+ ]
+}
