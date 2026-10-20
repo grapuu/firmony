@@ -19,6 +19,10 @@
   // CONTRACT_RELEASE) stay when a push to main deploys a new version; without this, every deploy would remove them.
   "keep_vars": true,
 
+  // The live Worker tells IndexNow (Bing and the engines that share it) of public pages new or changed since its last
+  // notice, from the schedule (src/robots.ts). The playground and the tests' own Workers have it not, or their own.
+  "vars": { "ANNOUNCE": "1" },
+
   // The site and the app at firmony.io (bought on 20 October 2026, its zone in the owner's Cloudflare account); www
   // is redirected to it by the Worker. The workers.dev address stays and tells search engines to stay away
   // (X-Robots-Tag in src/index.tsx).

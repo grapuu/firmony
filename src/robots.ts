@@ -5,10 +5,62 @@
 // Claude through Claude-SearchBot, Gemini through Google, Perplexity through PerplexityBot): each is named, so no
 // default of a host or a CDN reads them as unwelcome. llms.txt (llmstxt.org) is the site said in plain text, with
 // every figure from config.ts, so an assistant never quotes another price than the page.
-import { BRAND, CLOSING_PRICE, CUSTOM_PLAN, OPERATOR, PAYROLL_PRICE, PLANS, REPLY_WITHIN } from './config'
+import { BRAND, CLOSING_PRICE, CUSTOM_PLAN, DOMAIN, INDEXNOW_KEY, OPERATOR, PAYROLL_PRICE, PLANS, REPLY_WITHIN } from './config'
 import { GUIDES } from './content/guides'
 import { formatEur } from './format'
-import { plain } from './seo'
+import { plain, SITE_UPDATED } from './seo'
+
+/** The public pages with the day each last changed: the sitemap, and what IndexNow is told. */
+export function sitePages(): [string, string][] {
+  return [
+    ['/', SITE_UPDATED],
+    ...GUIDES.map((g): [string, string] => [g.path, g.modified]),
+    ['/investori', SITE_UPDATED],
+    ['/podmienky', SITE_UPDATED],
+    ['/pravne-informacie', SITE_UPDATED],
+  ]
+}
+
+export function sitemapXml(): string {
+  const urls = sitePages().map(([path, day]) => `  <url><loc>${BRAND.origin}${path}</loc><lastmod>${day}</lastmod></url>`)
+  return ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', ...urls, '</urlset>', ''].join('\n')
+}
+
+/**
+ * Tells IndexNow (Bing, which ChatGPT searches, and the engines that share it) of every public page new or changed
+ * since the last notice: a deploy that adds a guide is announced by the next run of the schedule, without anybody's
+ * click. Only where ANNOUNCE is set (the live Worker): the playground and a developer's machine tell nobody. What was
+ * told is kept in `site_state`, so a page is told again only when its day moves; a refused notice is tried again by
+ * the next run.
+ */
+export async function announceSite(db: D1Database, on: boolean, send: typeof fetch = fetch): Promise<'off' | 'same' | 'sent' | 'failed'> {
+  if (!on) return 'off'
+  const pages = Object.fromEntries(sitePages())
+  const row = await db.prepare("SELECT value FROM site_state WHERE key = 'indexnow'").first<{ value: string }>()
+  let told: Record<string, string> = {}
+  try {
+    told = row ? (JSON.parse(row.value) as Record<string, string>) : {}
+  } catch {
+    told = {}
+  }
+  const changed = Object.entries(pages).filter(([path, day]) => told[path] !== day).map(([path]) => `${BRAND.origin}${path}`)
+  if (changed.length === 0) return 'same'
+  try {
+    const res = await send('https://api.indexnow.org/indexnow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ host: DOMAIN, key: INDEXNOW_KEY, keyLocation: `${BRAND.origin}/${INDEXNOW_KEY}.txt`, urlList: changed }),
+    })
+    if (res.status !== 200 && res.status !== 202) return 'failed'
+  } catch {
+    return 'failed'
+  }
+  await db
+    .prepare("INSERT INTO site_state (key, value, at) VALUES ('indexnow', ?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value, at = excluded.at")
+    .bind(JSON.stringify(pages), Math.floor(Date.now() / 1000))
+    .run()
+  return 'sent'
+}
 
 /** Crawlers of search engines and of the assistants that search for their answers, named one by one. */
 export const CRAWLERS = [

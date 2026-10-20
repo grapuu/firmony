@@ -1,6 +1,6 @@
 import { GUIDES } from './content/guides'
 import { article, breadcrumbs, faqPage, jsonLd, organization, service, SITE_UPDATED, website } from './seo'
-import { llmsFullTxt, llmsTxt, robotsTxt } from './robots'
+import { announceSite, llmsFullTxt, llmsTxt, robotsTxt, sitemapXml } from './robots'
 import { GuidePage } from './views/guide'
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
@@ -42,6 +42,8 @@ export interface Bindings extends AppBindings {
   DB: D1Database
   /** Cloudflare's email service. Without it requests are still kept, and their emails wait in the outbox. */
   EMAIL?: Mailer
+  /** "1" on the live Worker (wrangler.jsonc): the schedule tells IndexNow of new or changed public pages. */
+  ANNOUNCE?: string
 }
 
 type Ctx = Context<{ Bindings: Bindings }>
@@ -670,16 +672,8 @@ for (const guide of GUIDES) {
 }
 
 app.get('/sitemap.xml', (c) => {
-  const pages: [string, string][] = [
-    ['/', SITE_UPDATED],
-    ...GUIDES.map((g): [string, string] => [g.path, g.modified]),
-    ['/investori', SITE_UPDATED],
-    ['/podmienky', SITE_UPDATED],
-    ['/pravne-informacie', SITE_UPDATED],
-  ]
-  const urls = pages.map(([path, day]) => `  <url><loc>${BRAND.origin}${path}</loc><lastmod>${day}</lastmod></url>`)
   c.header('Content-Type', 'application/xml; charset=utf-8')
-  return c.body(['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', ...urls, '</urlset>', ''].join('\n'))
+  return c.body(sitemapXml())
 })
 
 app.get('/healthz', async (c) => {
@@ -734,6 +728,11 @@ export default {
           await appScheduled(env, event.scheduledTime)
         } catch (err) {
           console.error('app schedule failed', err instanceof Error ? err.name : 'error')
+        }
+        try {
+          if ((await announceSite(env.DB, env.ANNOUNCE === '1')) === 'failed') console.error('IndexNow refused the notice')
+        } catch (err) {
+          console.error('announcing the site failed', err instanceof Error ? err.name : 'error')
         }
       })(),
     )

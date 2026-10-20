@@ -1538,6 +1538,9 @@ const MIGRATIONS: readonly string[][] = [
   // What the reader proposed for a document, as it proposed it (20 October 2026, team/ai-accuracy.ts): written once when
   // the document is read and never by the booking, so the page "Presnosť AI" compares it with what was booked.
   ['ALTER TABLE documents ADD COLUMN reading TEXT'],
+  // What the site last told IndexNow of its public pages (20 October 2026, robots.ts `announceSite`): one row a kind
+  // of notice, nobody's data.
+  ['CREATE TABLE IF NOT EXISTS site_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, at INTEGER NOT NULL)'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
