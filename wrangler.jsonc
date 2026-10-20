@@ -15,11 +15,17 @@
   // Email through Cloudflare's email service, from the domain once it is onboarded for sending.
   "send_email": [{ "name": "EMAIL" }],
 
-  // Until the domain is bought the site is reachable at its workers.dev address, which tells search engines to
-  // stay away (X-Robots-Tag in src/index.tsx). The custom domain comes as a route once it is in the account.
   // Settings added in the dashboard as plain text (ENABLE_BANKING_APP, the first administrator's e-mail and expiry,
   // CONTRACT_RELEASE) stay when a push to main deploys a new version; without this, every deploy would remove them.
   "keep_vars": true,
+
+  // The site and the app at firmony.io (bought on 20 October 2026, its zone in the owner's Cloudflare account); www
+  // is redirected to it by the Worker. The workers.dev address stays and tells search engines to stay away
+  // (X-Robots-Tag in src/index.tsx).
+  "routes": [
+    { "pattern": "firmony.io", "custom_domain": true },
+    { "pattern": "www.firmony.io", "custom_domain": true }
+  ],
 
   "workers_dev": true,
   "preview_urls": false,
