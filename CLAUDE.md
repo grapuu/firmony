@@ -48,8 +48,8 @@ over. Bring this section up to date first whenever a session ends.
    www.firmony.io (custom domains in `wrangler.jsonc`) and firmony.grrrrjuhas.workers.dev (noindex); `/healthz` said
    schema 72 on the evening of 20 October. Email Routing: `ahoj@firmony.io` forwarded to grrrrjuhas@gmail.com, the catch-all to the Worker (it
    takes `doklady-<code>@` and refuses the rest); Email Sending onboarded for firmony.io at the top level
-   (cf-bounce records, DMARC p=reject; 200 a day to start). The site is public and indexable. Left to him: the
-   Anthropic key (Secret `ANTHROPIC_API_KEY`), the first administrator (`/app/prvy-spravca`, the code made there
+   (cf-bounce records, DMARC p=reject; 200 a day to start). The site is public and indexable. The Anthropic key is the Worker's Secret
+   `ANTHROPIC_API_KEY` since 20 October, 21:00 (item 10.2b). Left to him: credit bought for it, the first administrator (`/app/prvy-spravca`, the code made there
    by him, never in chat), then a test client made by hand (no IČO needed, the paper contract ticked) and an
    accountant on /ucto/tim to try every side. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
@@ -369,7 +369,20 @@ over. Bring this section up to date first whenever a session ends.
       he pastes in GitHub himself; the log has each document and each field's share, the artifact `reader-report` the
       JSON. The shell's `gh` cannot reach the Actions API (the proxy refuses it): start and read it in the browser pane.
       The Anthropic account is europio's (platform.claude.com, organisation europio); on 20 October it had no credit
-      bought, 1,71 $ of a promotional credit until 25 October: buying credit is his. (c) The booking screen records how long a document
+      bought, 1,71 $ of a promotional credit until 25 October: buying credit is his (he was advised 10 $). He made the
+      key that evening (named firmony, a year or no expiry, scope Default workspace) and pasted it as the Worker's
+      Secret `ANTHROPIC_API_KEY` and the repository's secret of the same name; the live app reads documents since.
+      **Run against the real model on 20 October 2026, 21:00 to 21:15** (claude-haiku-5-5): the first run read totals,
+      days, numbers, symbols, currency and both eKasa codes right on all 30, but took two received invoices for issued
+      ones (once naming our company as the supplier) and read 23 % on a German reverse-charge invoice whose summary
+      says 0 %, a receipt's VAT twice. Mended in `src/app/read.ts`: the tool asks for both sides (`dodavatel`,
+      `odberatel` with their IČO and IČ DPH) and `withSides` decides issued or received by which side is our company
+      (its IČO, else its name without case, accents or punctuation), the other side is the party, a party that is our
+      company is never kept, a receipt's shop written only as the supplier is its party; VAT from the summary, 0 under
+      reverse charge; lines by rate that make the total to the cent outweigh a VAT read elsewhere. The third run: **30
+      of 30 documents with every field right**. The set does not state categories, so they are not judged (`category`
+      left out of the comparison when the set has none). Reading costs about 0,07 $ for 90 documents, under a tenth
+      of a cent a document. (c) The booking screen records how long a document
       took (opened to booked), and the statement of item 1 shows each accountant's median minutes a document: it
       calibrates her rates. **(c) built on 20 October 2026**: the hidden `otvorene` of the booking form (carried through a
       form sent back with an error), `document.booked` keeps `{ seconds }` up to an hour (`tookOf`), `bookingTime` gives
@@ -2752,7 +2765,7 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1403 unit checks (20 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm test                 # 1410 unit checks (20 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
 npm run test:runtime     # 1972 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 ANTHROPIC_API_KEY=... npm run test:reader   # the real reader on 30 made-up documents, field by field (not on GitHub)
