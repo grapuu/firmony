@@ -1,6 +1,8 @@
 import type { Child, FC } from 'hono/jsx'
 import { ART, BRAND, OPERATOR } from '../config'
 import { copy } from '../copy'
+import { typeset } from '../format'
+import { GUIDES } from '../content/guides'
 
 export interface PageMeta {
   title: string
@@ -13,6 +15,8 @@ export interface PageMeta {
   ctaHref?: string
   /** What the header's button says, where it is not the way to start with a company (the investors' page). */
   ctaText?: string
+  /** What search engines read beside the page: schema.org data as JSON-LD (src/seo.ts), already serialised. */
+  jsonLd?: string
 }
 
 /** His glass F beside the name, set in the blue sans, with a full stop in the red of the serif. */
@@ -40,6 +44,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
       <meta property="og:description" content={meta.description} />
       <meta property="og:url" content={`${BRAND.origin}${meta.path}`} />
       <meta property="og:locale" content="sk_SK" />
+      {meta.jsonLd ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: meta.jsonLd }} /> : null}
       <meta name="theme-color" content="#ffffff" />
       {ART.logo ? (
         <>
@@ -96,6 +101,12 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
               <a href="/#otazky">{copy.nav.faq}</a>
               <a href="/investori">{copy.nav.investors}</a>
               <a href="/app/prihlasenie">{copy.nav.login}</a>
+            </nav>
+            <nav class="foot__col" aria-label={copy.footer.guides}>
+              <p class="foot__head">{copy.footer.guides}</p>
+              {GUIDES.map((g) => (
+                <a href={g.path}>{typeset(g.nav)}</a>
+              ))}
             </nav>
             <nav class="foot__col" aria-label={copy.footer.company}>
               <p class="foot__head">{copy.footer.company}</p>

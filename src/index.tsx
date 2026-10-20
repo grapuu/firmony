@@ -1,3 +1,6 @@
+import { GUIDES } from './content/guides'
+import { article, breadcrumbs, faqPage, jsonLd, organization, service, SITE_UPDATED, website } from './seo'
+import { GuidePage } from './views/guide'
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
@@ -157,7 +160,13 @@ function carryFrom(read: (name: string) => unknown): Carry {
 // The home page, with the comparison when its form was sent
 // ---------------------------------------------------------------------------
 
-const homeMeta: PageMeta = { title: copy.meta.title, description: copy.meta.description, path: '/', ctaHref: '#zacat' }
+const homeMeta: PageMeta = {
+  title: copy.meta.title,
+  description: copy.meta.description,
+  path: '/',
+  ctaHref: '#zacat',
+  jsonLd: jsonLd([organization(), website(), service(), faqPage(copy.faq.items, '/')]),
+}
 
 function calcFrom(c: Ctx): CalcState {
   const q = (name: string) => (c.req.query(name) ?? '').slice(0, 20)
@@ -635,8 +644,36 @@ app.route('/ucto', teamRoutes)
 
 app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /objednavka', 'Disallow: /app', 'Disallow: /ucto', 'Disallow: /f/', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
 
+// The guides (content/guides.ts): one page a question people search, with its own data for search engines.
+for (const guide of GUIDES) {
+  app.get(guide.path, (c) =>
+    page(
+      c,
+      {
+        title: typeset(guide.title),
+        description: typeset(guide.description),
+        path: guide.path,
+        jsonLd: jsonLd([
+          organization(),
+          article({ title: guide.title, description: guide.description, path: guide.path, published: guide.published, modified: guide.modified }),
+          breadcrumbs(`${guide.first} ${guide.second}`, guide.path),
+          ...(guide.faq.length > 0 ? [faqPage(guide.faq, guide.path)] : []),
+        ]),
+      },
+      <GuidePage guide={guide} />,
+    ),
+  )
+}
+
 app.get('/sitemap.xml', (c) => {
-  const urls = ['/', '/investori', '/podmienky', '/pravne-informacie'].map((path) => `  <url><loc>${BRAND.origin}${path}</loc></url>`)
+  const pages: [string, string][] = [
+    ['/', SITE_UPDATED],
+    ...GUIDES.map((g): [string, string] => [g.path, g.modified]),
+    ['/investori', SITE_UPDATED],
+    ['/podmienky', SITE_UPDATED],
+    ['/pravne-informacie', SITE_UPDATED],
+  ]
+  const urls = pages.map(([path, day]) => `  <url><loc>${BRAND.origin}${path}</loc><lastmod>${day}</lastmod></url>`)
   c.header('Content-Type', 'application/xml; charset=utf-8')
   return c.body(['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', ...urls, '</urlset>', ''].join('\n'))
 })

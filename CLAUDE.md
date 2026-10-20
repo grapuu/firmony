@@ -387,7 +387,9 @@ over. Bring this section up to date first whenever a session ends.
       a month walked through (documents by photo and email, the bank statement, booking, VAT, payroll), every fault
       written down and mended.
    5. **For him to send** (plain text, no dashes, signed "Christian Juhás"): Qvalia, the price of the digital postman a
-      client and of its API; an insurer, professional liability for accounting services; an advokát in Košice, one
+      client and of its API (the Financial Administration estimates 5 to 12 € a month a company, podnikajte.sk's
+      questions and answers of 10 December 2025; at 12 € in place of the 2 € `TECH` holds, a usual Štart month leaves
+      about 71 % instead of 82 %, Rast 72 % instead of 78 %); an insurer, professional liability for accounting services; an advokát in Košice, one
       package: the sole shareholder's decision adding "Vedenie účtovníctva" (since 17 August 2026 in a notarial record
       or authorised by an advokát), its filing to the commercial register (50 €), reading the terms, the contract, the
       power of attorney, the AML program and the accountant's contract, with a price.
@@ -396,6 +398,25 @@ over. Bring this section up to date first whenever a session ends.
    7. **End of week, with him** (his word): the trade licence of europio: the decision of item 5, the notice of the
       free trade "Vedenie účtovníctva" on slovensko.sk (free online, the certificate in about three days), the filing
       to the commercial register within 30 days, then goAML.
+   8. **SEO without ads** (his word of 20 October 2026, 18:04: "absolútne top elitné a špičkové SEO ... aby sme skákali
+      1 ... keď niekto napíše firmony, aby sme boli prví, no aj podľa kľúčových slov, ako napr. firma, účtovník,
+      účtovníctvo"). Built that evening: schema.org data as JSON-LD (`src/seo.ts`: the organisation europio with IČO,
+      the site under the brand, the `AccountingService` with every plan, payroll and the closing as offers from
+      config, the home page's questions; a guide's `Article`, `BreadcrumbList` and questions), the layout's `jsonLd`, a
+      title and description with the words and the price, four guides (`src/content/guides.ts`, `src/views/guide.tsx`,
+      each a page of its own, every fact with its source: `/e-faktura-2027`, `/cena-uctovnictva`,
+      `/uctovnictvo-pre-sro`, `/online-uctovnik`), a column "Poradíme" in the footer, the e-invoice band linking its
+      guide, the sitemap with every guide and its day (`SITE_UPDATED`). Next guides, in this order, each read in the
+      original before it says anything: a net wage calculator for 2026 and 2027 from our payroll engine (a GET form, no
+      script: "mzdová kalkulačka", "čistá mzda 2027", "koľko stojí zamestnanec"), founding an s. r. o. after 17 August
+      2026, registering for VAT (50 000 €), the corporate tax return (rates, the minimum tax, deadlines), changing
+      accountants, the control and the recapitulative statement. No page per city (doorway pages are punished); cities
+      are named once in `/online-uctovnik`. His clicks: Google Search Console (a domain property for firmony.io, verified
+      through Cloudflare, the sitemap `https://firmony.io/sitemap.xml` sent), Bing Webmaster Tools (imported from
+      Search Console), Google Business Profile (Firmony, the category of an accountant, a service area of Slovakia with
+      the address hidden, the site), and the brand's profiles linking firmony.io. Said to him: the brand comes first in
+      days to weeks once indexed; words like "účtovníctvo" or "účtovník" take months of guides and links, and nobody can
+      promise the first place for them.
 
 Current social-reporting follow-up (17 October 2026): [docs/security/social-reporting.md](docs/security/social-reporting.md).
 Additive schema **22** prepares full R/O MVPP 2026 XML for supported ordinary full-month employment in

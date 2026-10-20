@@ -504,6 +504,9 @@ const Einvoice: FC = () => (
             {copy.einvoice.title}
           </h2>
           <p class="band__text">{copy.einvoice.text}</p>
+          <p class="band__more">
+            <a href="/e-faktura-2027">{copy.einvoice.more}</a>
+          </p>
           <p class="band__source">{copy.einvoice.source}</p>
         </div>
         <Picture art={ART.envelope} className="band__object" sizes="(max-width: 860px) 60vw, 420px" />

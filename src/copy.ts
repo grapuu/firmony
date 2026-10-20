@@ -19,8 +19,8 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 
 export const copy = typesetAll({
   meta: {
-    title: `${BRAND.name}: online účtovníctvo pre Vašu firmu`,
-    description: `Účtovníctvo pre nové, malé, stredné aj veľké firmy. Doklady, termíny a správy s účtovníčkou na jednom mieste. Balíky od ${eur(start.price)} mesačne podľa počtu dokladov, väčším firmám rozsah a cenu na mieru.`,
+    title: `${BRAND.name}: online účtovníctvo pre Vašu firmu od ${eur(start.price)} mesačne`,
+    description: `Vedenie účtovníctva, DPH, miezd a závierky pre s. r. o. online. Doklady prečíta umelá inteligencia, Vaša účtovníčka ich skontroluje a podá. Pevná cena podľa počtu dokladov, od ${eur(start.price)} mesačne.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
@@ -165,6 +165,7 @@ export const copy = typesetAll({
     title: `Od ${BRAND.launch} musí každá firma vedieť prijať e-faktúru.`,
     text: 'S Firmony je to v cene každého balíka. Faktúry nám prídu rovno do účtovníctva.',
     source: 'Zákon o DPH, § 85o, vložený zákonom č. 385/2025 Z. z.',
+    more: 'Čo musí urobiť Vaša firma',
   },
 
   pricing: {
@@ -317,6 +318,7 @@ export const copy = typesetAll({
   footer: {
     tagline: 'Online účtovníctvo pre Vašu firmu.',
     service: 'Služba',
+    guides: 'Poradíme',
     company: 'Spoločnosť',
     contact: 'Kontakt',
     calc: 'Kalkulačka',

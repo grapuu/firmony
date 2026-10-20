@@ -134,11 +134,26 @@ check(
   'it names the prices of all three plans',
   [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)),
 )
+const runs = (html) => (html.match(/<script(?![^>]*type="application\/ld\+json")[^>]*>/gi) ?? [])
 check(
   'it runs one script of its own, the month played where scroll timelines are missing, and nothing inline',
-  (page.match(/<script[^>]*>/gi) ?? []).length === 1 && /<script src="\/flow\.js" defer(="")?><\/script>/.test(page),
-  (page.match(/<script[^>]*>/gi) ?? []).join(' '),
+  runs(page).length === 1 && /<script src="\/flow\.js" defer(="")?><\/script>/.test(page),
+  runs(page).join(' '),
 )
+{
+  // What search engines read beside the page (src/seo.ts): one JSON-LD graph that parses, with the brand.
+  const data = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(page)
+  const graph = data ? JSON.parse(data[1])['@graph'] : []
+  const types = graph.map((n) => n['@type'])
+  check(
+    'the home page tells search engines who it is: the organisation, the site, the service with its prices, the questions',
+    ['Organization', 'WebSite', 'AccountingService', 'FAQPage'].every((t) => types.includes(t)) &&
+      graph.find((n) => n['@type'] === 'Organization').legalName === 'europio s. r. o.' &&
+      graph.find((n) => n['@type'] === 'AccountingService').hasOfferCatalog.itemListElement.some((o) => o.price === '89.00'),
+    JSON.stringify(types),
+  )
+  check('its title and description name the service and the price', /<title>Firmony: online účtovníctvo pre Vašu firmu od 89/.test(page.replace(/[\u00a0\u202f]/g, ' ')) && page.includes('href="/e-faktura-2027"'))
+}
 check('it carries no inline style', !/ style=/i.test(page))
 const csp = res.headers.get('content-security-policy') ?? ''
 check('the policy allows nothing inline and nothing foreign', csp.includes("script-src 'self'") && !csp.includes('unsafe') && csp.includes("style-src 'self'") && csp.includes("frame-ancestors 'none'"))
@@ -309,7 +324,22 @@ check(
 res = await get('/robots.txt')
 check('robots keeps the form out and names the sitemap', (await res.text()).includes('Disallow: /zacat'))
 res = await get('/sitemap.xml')
-check('the sitemap lists the pages', (await res.text()).includes('https://firmony.io/pravne-informacie'))
+{
+  const map = await res.text()
+  check('the sitemap lists the pages and the guides, each with its day', map.includes('https://firmony.io/pravne-informacie') && ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik'].every((p) => map.includes(`<loc>https://firmony.io${p}</loc><lastmod>`)))
+  for (const path of ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik']) {
+    const r = await get(path)
+    const html = await r.text()
+    if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/guide${path.replace(/\//g, '-')}.html`, html)
+    const ld = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)
+    const types = ld ? JSON.parse(ld[1])['@graph'].map((n) => n['@type']) : []
+    check(
+      `the guide ${path} answers with its heading, its canonical address and its data, runs no script`,
+      r.status === 200 && /<h1 /.test(html) && html.includes(`<link rel="canonical" href="https://firmony.io${path}"`) && types.includes('Article') && types.includes('BreadcrumbList') && !/<script(?![^>]*application\/ld\+json)/i.test(html) && (r.headers.get('content-security-policy') ?? '').includes("script-src 'none'") && !/ style=/i.test(html),
+      JSON.stringify(types),
+    )
+  }
+}
 res = await get('/healthz')
 check('health says the schema', (await res.json()).schema === 70)
 res = await get('/nic-take')
