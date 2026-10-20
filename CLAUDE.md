@@ -49,7 +49,7 @@ over. Bring this section up to date first whenever a session ends.
    schema 72 on the evening of 20 October. Email Routing: `ahoj@firmony.io` forwarded to grrrrjuhas@gmail.com, the catch-all to the Worker (it
    takes `doklady-<code>@` and refuses the rest); Email Sending onboarded for firmony.io at the top level
    (cf-bounce records, DMARC p=reject; 200 a day to start). The site is public and indexable. The Anthropic key is the Worker's Secret
-   `ANTHROPIC_API_KEY` since 20 October, 21:00 (item 10.2b). Left to him: credit bought for it, the first administrator (`/app/prvy-spravca`, the code made there
+   `ANTHROPIC_API_KEY` since 20 October, 21:00 (item 10.2b). Left to him: the first administrator (`/app/prvy-spravca`, the code made there
    by him, never in chat), then a test client made by hand (no IČO needed, the paper contract ticked) and an
    accountant on /ucto/tim to try every side. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
@@ -369,7 +369,10 @@ over. Bring this section up to date first whenever a session ends.
       he pastes in GitHub himself; the log has each document and each field's share, the artifact `reader-report` the
       JSON. The shell's `gh` cannot reach the Actions API (the proxy refuses it): start and read it in the browser pane.
       The Anthropic account is europio's (platform.claude.com, organisation europio); on 20 October it had no credit
-      bought, 1,71 $ of a promotional credit until 25 October: buying credit is his (he was advised 10 $). He made the
+      bought, 1,71 $ of a promotional credit until 25 October. That credit is his Max 5x plan's: 100 $ of API credit every
+      billing cycle, not carried over (support.claude.com, article 17154008, read that evening), so nothing is bought; on
+      20 October 98 $ of that cycle's 100 $ had been spent by other use in the same organisation, and when the balance is
+      out the reader stops until the next grant (documents then go to the accountant). He made the
       key that evening (named firmony, a year or no expiry, scope Default workspace) and pasted it as the Worker's
       Secret `ANTHROPIC_API_KEY` and the repository's secret of the same name; the live app reads documents since.
       **Run against the real model on 20 October 2026, 21:00 to 21:15** (claude-haiku-5-5): the first run read totals,
