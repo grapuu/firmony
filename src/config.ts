@@ -106,6 +106,13 @@ export const ACCOUNTANT_RATES = {
  */
 export const INDEXNOW_KEY = 'bacfe8b9cdfff70dd1e00785593ea3f8'
 
+/**
+ * Documents the app books by itself (app/autobook.ts), where the accountant turned it on for a client: at most this
+ * amount (1 700 €, the threshold of an asset by § 22(2) of the Income Tax Act: anything dearer is hers to judge), of a
+ * supplier whose rule she used at least this many times, and this many documents a run of the schedule.
+ */
+export const AUTOBOOK = { limitCents: 170_000, ruleUses: 2, perRun: 200 } as const
+
 /** How soon a request is answered, as the pages promise it. */
 export const REPLY_WITHIN = 'do jedného pracovného dňa'
 

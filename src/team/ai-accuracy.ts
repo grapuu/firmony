@@ -83,7 +83,8 @@ export function accuracyOf(rows: Compared[]): Accuracy {
 
 type Row = Record<string, unknown>
 
-/** The documents booked in a month that the reader or our code read, of the companies somebody of the team may see. */
+/** The documents booked in a month that the reader or our code read, of the companies somebody of the team may see.
+ *  What the app booked by itself is left out: nobody put it right, so it would only make the reading look better. */
 export async function comparedOf(db: D1Database, user: { id: string; team: string | null }, month: string, demo: boolean): Promise<Compared[]> {
   const { from, to } = monthRange(month)
   const own = user.team === 'admin' ? '' : 'AND c.accountant_id = ?3'
@@ -92,7 +93,7 @@ export async function comparedOf(db: D1Database, user: { id: string; team: strin
       `SELECT d.id, d.company_id, d.read_by, d.reading, d.kind, d.party, d.party_ico, d.number, d.vs, d.issued_on, d.due_on, d.total_cents,
          d.vat_cents, d.currency, d.category
        FROM documents d JOIN companies c ON c.id = d.company_id
-       WHERE d.reading IS NOT NULL AND d.booked_at >= ?1 AND d.booked_at < ?2 ${own} ${demo ? '' : 'AND c.demo = 0'}
+       WHERE d.reading IS NOT NULL AND d.booked_at >= ?1 AND d.booked_at < ?2 AND d.booked_by IS NOT 'auto' ${own} ${demo ? '' : 'AND c.demo = 0'}
        ORDER BY d.booked_at LIMIT 5000`,
     )
     .bind(from, to, ...(user.team === 'admin' ? [] : [user.id]))

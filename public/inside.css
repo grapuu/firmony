@@ -1462,6 +1462,12 @@
   font-weight: 600;
 }
 
+.info__sub {
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .info .kv dt {
   flex: none;
 }

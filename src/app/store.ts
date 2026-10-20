@@ -78,6 +78,8 @@ export interface Company {
   approvalTwoFrom: number | null
   /** The company reminds its customers of invoices not paid by itself (dunning.ts). */
   dunning: boolean
+  /** The app books by itself what its accountant's rules and the bank agree on (autobook.ts). */
+  autobook?: boolean
   /** The company's invoice numbers: prefix, the mark between year and order, the order's digits, a year's first order. */
   invoiceNumbering: InvoiceNumbering
   /** The company's logo on its invoices: its key in R2 (which changes with each new picture) and its type. */
@@ -240,7 +242,7 @@ export interface InvoiceNumbering {
 export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
-  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.approval_two_from, c.dunning,
+  c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.approval_two_from, c.dunning, c.autobook,
   c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method,
   (SELECT json_group_array(json_object('year', r.year, 'coef', r.coef, 'how', r.how, 'settled', CASE WHEN json_valid(r.settled) THEN json(r.settled) END,
@@ -298,6 +300,7 @@ export function companyOf(row: Row): Company {
     approvals: row.approvals === 1,
     approvalTwoFrom: typeof row.approval_two_from === 'number' && row.approval_two_from > 0 ? row.approval_two_from : null,
     dunning: row.dunning === 1,
+    autobook: row.autobook === 1,
     invoiceNumbering: {
       prefix: str(row.invoice_prefix) ?? '',
       sep: row.invoice_sep === '-' || row.invoice_sep === '/' ? row.invoice_sep : '',
@@ -407,7 +410,7 @@ function creditsOf(value: unknown): CreditOf[] {
 
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
   d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
-  d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, bb.name AS booked_by_name, d.duplicate_of, d.invoice_id,
+  d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, COALESCE(bb.name, CASE WHEN d.booked_by = 'auto' THEN 'Firmony (samo)' END) AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
   d.first_approved_at, d.first_approved_by, fa.name AS first_approved_by_name, d.iban_by,

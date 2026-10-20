@@ -17,6 +17,7 @@ import { bell, ringStatement } from '../bell'
 import { fingerprint, intrastatFileOf, intrastatNext, markIntrastatFiled, markOssFiled, ringClient as ringOf } from './marks'
 import { LEGAL_FORM_CODES, isLegalForm, lookupCompany, oneMayConclude } from '../rpo'
 import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
+import { autoBook, autoBooked, autobookStatements } from '../app/autobook'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
 import { tripOfDocument } from '../app/trips-store'
 import { documentCenterStatement, listCenters } from '../app/centers-store'
@@ -387,6 +388,10 @@ teamRoutes.use('*', async (c, next) => {
 
 function flashOf(c: Ctx): string | null {
   switch (c.req.query('ok')) {
+    case 'samo-zapnute':
+      return t.client.auto.onFlash
+    case 'samo-vypnute':
+      return t.client.auto.offFlash
     case 'vypis-zauctovany':
       return t.client.statements.taken
     case 'vypis-nezauctovany':
@@ -670,13 +675,14 @@ async function clientPage(
     .first<{ at: number; name: string | null }>()
   if (status === 200) await db.batch([seenStatement(db, company.id, 'client')])
   const day = dayOf(now())
-  const [banks, vat, books, statements, due] = await Promise.all([
+  const [banks, vat, books, statements, due, auto] = await Promise.all([
     linksOf(db, company.id),
     vatSummary(db, company, day),
     booksOf(db, company),
     statementsOf(db, company.id, 6),
     // The company was checked against the user above; the sample companies count here as well.
     teamDeadlines(db, who.user, true, day, { company: company.id }),
+    autoBooked(db, company.id),
   ])
   const active = banks.find((l) => l.status === 'active')
   const ended = banks.find((l) => l.status === 'expired')
@@ -721,6 +727,7 @@ async function clientPage(
       ledger={<LedgerCard company={company} tb={trialBalance(books, Number(day.slice(0, 4)), Number(day.slice(5, 7)))} waiting={blockingCount(books, day)} />}
       deadlines={<DeadlinesCard dues={due.dues} today={day} companyId={company.id} />}
       statements={statements}
+      auto={auto}
       {...extra}
     />,
     status,
@@ -900,6 +907,18 @@ teamRoutes.post('/klienti/:id/pripomenut', async (c) => {
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}?ok=pripomenute#chyba`, 303)
+})
+
+/** Booking by itself for a client, on or off (app/autobook.ts); turned on, what is ready is booked at once. */
+teamRoutes.post('/klienti/:id/samo', async (c) => {
+  const who = c.get('who')
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const body = await c.req.parseBody()
+  const on = body.zapnut === '1'
+  await c.env.DB.batch(autobookStatements(c.env.DB, company.id, on, who.user.id))
+  if (on) await autoBook(c.env.DB, company.id)
+  return c.redirect(`/ucto/klienti/${company.id}?ok=${on ? 'samo-zapnute' : 'samo-vypnute'}#samo`, 303)
 })
 
 /** A statement that did not follow the one before: taken as it is, or not (statements.ts). */

@@ -1541,6 +1541,9 @@ const MIGRATIONS: readonly string[][] = [
   // What the site last told IndexNow of its public pages (20 October 2026, robots.ts `announceSite`): one row a kind
   // of notice, nobody's data.
   ['CREATE TABLE IF NOT EXISTS site_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, at INTEGER NOT NULL)'],
+  // Documents the app books by itself where the accountant turned it on for a client (20 October 2026, app/autobook.ts);
+  // such a document is booked by 'auto'. The index finds them for her month's check.
+  ['ALTER TABLE companies ADD COLUMN autobook INTEGER NOT NULL DEFAULT 0', 'CREATE INDEX IF NOT EXISTS documents_auto ON documents (company_id, booked_at) WHERE booked_by = \'auto\''],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

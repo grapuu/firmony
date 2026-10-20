@@ -1,6 +1,6 @@
 // Every text of the accountants' side. It speaks an accountant's language (zaúčtovať, MD, D, DPH), which the
 // client's app never does.
-import { APP, BRAND, TEAM } from '../config'
+import { APP, AUTOBOOK, BRAND, TEAM } from '../config'
 import { typeset, typesetAll } from '../format'
 import { plural } from '../app/copy'
 
@@ -213,6 +213,19 @@ export const team = typesetAll({
     notePlaceholder: 'Len pre tím, klient ju nevidí.',
     save: 'Uložiť údaje',
     saved: 'Údaje sme uložili.',
+    auto: {
+      title: 'Účtuje samo',
+      lead: `Doklad, pri ktorom sa zhodne pravidlo dodávateľa, prečítaný doklad a platba z banky na cent, zaúčtuje aplikácia sama. Len bežný náklad v eurách do ${AUTOBOOK.limitCents / 100} € od dodávateľa, ktorého pravidlo ste použili aspoň ${AUTOBOOK.ruleUses}-krát; u platiteľa DPH tuzemský nákup, ktorého obdobie ešte nie je podané. Všetko ostatné zostáva vo fronte.`,
+      on: 'Zapnuté',
+      off: 'Vypnuté',
+      turnOn: 'Zapnúť',
+      turnOff: 'Vypnúť',
+      list: 'Zaúčtované samé za posledný mesiac',
+      empty: 'Zatiaľ nič.',
+      check: 'Prejdite ich pri mesačnej kontrole. Doklad zaúčtovaný znova sa vo výkaze práce počíta ako každý iný.',
+      onFlash: 'Účtovanie samé je zapnuté. Čo bolo pripravené, je zaúčtované.',
+      offFlash: 'Účtovanie samé je vypnuté.',
+    },
     rules: 'Pravidlá dodávateľov',
     rulesLead: 'Čo ste raz rozhodli pre dodávateľa, navrhneme pri jeho ďalších dokladoch.',
     rulesEmpty: 'Zatiaľ žiadne. Pravidlo vznikne, keď zaúčtujete doklad so zaškrtnutou voľbou „Zapamätať pre dodávateľa“.',

@@ -51,6 +51,7 @@ import { checkTriangle } from './triangle.runtime.mjs'
 import { checkAssetVat } from './asset-vat.runtime.mjs'
 import { checkWorkPay } from './work-pay.runtime.mjs'
 import { checkAiAccuracy } from './ai-accuracy.runtime.mjs'
+import { checkAutobook } from './autobook.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
 import { checkJointStock } from './joint-stock.runtime.mjs'
 import { checkLists } from './lists.runtime.mjs'
@@ -358,7 +359,7 @@ res = await get('/sitemap.xml')
   }
 }
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 71)
+check('health says the schema', (await res.json()).schema === 72)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.io/cennik?x=1', { redirect: 'manual' })
@@ -4897,6 +4898,7 @@ await checkTriangle({ db, acc, lucia, nowS, day })
 await checkAssetVat({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkWorkPay({ db, acc, admin, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAiAccuracy({ db, acc, admin, lucia, nowS, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkAutobook({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })

@@ -46,7 +46,7 @@ over. Bring this section up to date first whenever a session ends.
    `firmony` in the EU (24b965d5-d57f-4ffe-aec6-1de4e7889fee) and R2 `firmony-files` in the EU; the Worker `firmony`
    built by Workers Builds from `grapuu/firmony` `main` (every push to `main` deploys), at firmony.io and
    www.firmony.io (custom domains in `wrangler.jsonc`) and firmony.grrrrjuhas.workers.dev (noindex); `/healthz` said
-   schema 68. Email Routing: `ahoj@firmony.io` forwarded to grrrrjuhas@gmail.com, the catch-all to the Worker (it
+   schema 72 on the evening of 20 October. Email Routing: `ahoj@firmony.io` forwarded to grrrrjuhas@gmail.com, the catch-all to the Worker (it
    takes `doklady-<code>@` and refuses the rest); Email Sending onboarded for firmony.io at the top level
    (cf-bounce records, DMARC p=reject; 200 a day to start). The site is public and indexable. Left to him: the
    Anthropic key (Secret `ANTHROPIC_API_KEY`), the first administrator (`/app/prvy-spravca`, the code made there
@@ -368,8 +368,19 @@ over. Bring this section up to date first whenever a session ends.
       took (opened to booked), and the statement of item 1 shows each accountant's median minutes a document: it
       calibrates her rates. **(c) built on 20 October 2026**: the hidden `otvorene` of the booking form (carried through a
       form sent back with an error), `document.booked` keeps `{ seconds }` up to an hour (`tookOf`), `bookingTime` gives
-      the median of her first bookings, shown under her statement. (d) Only after (a) to (c) have numbers: documents the reader and a supplier's rule agree on
-      booked by themselves and listed for her month's check.
+      the median of her first bookings, shown under her statement. (d) Documents booked by themselves: **built on
+      20 October 2026** (`src/app/autobook.ts`, schema step 72 `companies.autobook`, `AUTOBOOK` in config): off until the
+      accountant turns it on for a client ("Účtuje samo" on the client page, `POST /ucto/klienti/:id/samo`, which books
+      what is ready at once; then every run of the schedule). Booked only when all agree: her supplier's rule used at least
+      twice gives the category (`proposal = 'rule'`, the same category and deduction), read by the reader or an e-invoice,
+      an invoice or receipt received, a routine cost (`AUTO_CATEGORIES`: no asset, goods, representation, trip), at most
+      1 700 €, in euros, no duplicate or correction, one bank payment of exactly its amount and no other document, a day
+      not ahead and not before the books; a payer's only as a domestic purchase whose proposed lines make the total and
+      deduct as the rule says, no coefficient year, no issue of the VAT page and the period of its own day not filed.
+      Booked by 'auto' with its VAT confirmed, event `document.autobooked` (no user, so no pay of item 1), "Firmony
+      (samo)" as who booked it, left out of "Presnosť AI"; the last month's are listed on the client page for her check.
+      test/autobook.runtime.mjs, units "Documents the app books by itself". Next: turn it on for each client once the
+      reader is measured (item 2b), and widen what is booked as the numbers allow.
    3. **The month's animation in older Safari** (his note of 20 October: the papers do not fly in his Safari).
       Scroll timelines run in Chrome and in Safari 26 and later. For older Safari and iOS, a small script of our own
       (`public/flow.js`, CSP `script-src 'self'` on the public pages that use it, nothing inline) that, only when
@@ -411,10 +422,21 @@ over. Bring this section up to date first whenever a session ends.
       script: "mzdová kalkulačka", "čistá mzda 2027", "koľko stojí zamestnanec"), founding an s. r. o. after 17 August
       2026, registering for VAT (50 000 €), the corporate tax return (rates, the minimum tax, deadlines), changing
       accountants, the control and the recapitulative statement. No page per city (doorway pages are punished); cities
-      are named once in `/online-uctovnik`. His clicks: Google Search Console (a domain property for firmony.io, verified
-      through Cloudflare, the sitemap `https://firmony.io/sitemap.xml` sent), Bing Webmaster Tools (imported from
-      Search Console), Google Business Profile (Firmony, the category of an accountant, a service area of Slovakia with
-      the address hidden, the site), and the brand's profiles linking firmony.io. Said to him: the brand comes first in
+      are named once in `/online-uctovnik`. Done by the builder from the browser pane at 18:42 on his word ("ja ti dávam
+      plnú moc, môžeš to kľudne naklikať"): Google Search Console, a domain property for firmony.io verified by a TXT
+      record in the Cloudflare zone (`google-site-verification=...`, keep it), the sitemap sent, the home page's indexing
+      requested. It found that "Disallow: /ucto" in robots.txt closed `/uctovnictvo-pre-sro` (a prefix): mended
+      (`src/robots.ts`, private paths by their slash and "$", a unit check that every sitemap page is open), Google reads
+      robots.txt again within a day, then request indexing of the guides in Search Console (URL inspection). For the
+      assistants (his word: when somebody asks ChatGPT, Claude or Gemini which accountant for a new s. r. o., Firmony must
+      come up): `/llms.txt` and `/llms-full.txt` (llmstxt.org, prices from config, every guide), every AI crawler named in
+      robots.txt (Cloudflare's AI bot policies checked: all allowed), IndexNow (`INDEXNOW_KEY`, the key at
+      `/<key>.txt`; the schedule of the live Worker, `ANNOUNCE` in wrangler.jsonc, tells it of every page whose day moved,
+      `site_state`, schema step 71), and the guide `/ako-vybrat-uctovnika` (four options fairly, ten questions, when
+      Firmony is not the choice). Left to him: Bing Webmaster Tools (he signs in with Google himself, the builder makes
+      no account; then import from Search Console), Google Business Profile (filled by the builder up to "Next", which
+      accepts Google's terms: he clicks it, then the service area of Slovakia with the address hidden, the site, the
+      phone; the verification by video or postcard is his), and the brand's profiles linking firmony.io. Said to him: the brand comes first in
       days to weeks once indexed; words like "účtovníctvo" or "účtovník" take months of guides and links, and nobody can
       promise the first place for them.
 
@@ -891,6 +913,10 @@ inak to nejde" and "účtovníčka nebude robiť za 25 eur ... bežne berú 50 a
   structure and arguments were taken: Dougs' clear prices and reassurance, inFakt's two ways in (founding or
   switching), Bench's "no judgment" about messy books, Pennylane's e-invoicing banner, CloudTalk's parallel of
   AI and human and its plain FAQ.
+
+His (20 October 2026, 18:45, to a proposal of lower prices 49/99/199 €): "nie, ceny nejak zasadne a urcite nie tak
+neznizuj. naklady a efektivitu na tom urobme maximum ceny si drzme vyssie. ponukame elitnu sluzbu predsa". The prices
+stay 89/169/329 €, payroll 15 €, the closing 249 €; the margin grows by automation and lower costs, not discounts.
 
 His (14 October 2026, 12:26): no aggregator for now ("pod tak, aby sme sa tomu vedeli vyhnut a boli aj tak elita
 top smooth jednoduchy smart"). The bank comes by statements the bank emails, Fio's token and a statement added once a

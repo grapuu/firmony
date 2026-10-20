@@ -61,6 +61,7 @@ import {
   workPay,
   aiAccuracy,
   robots,
+  autobook,
   guides,
   lastDeclared,
   takeover,
@@ -236,6 +237,37 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   const acc = aiAccuracy.accuracyOf(rows)
   const total = acc.fields.find((f) => f.field === 'totalCents')
   check('the month: 2 of 3 unchanged, the total right 2 of 3, the café the worst', acc.documents === 3 && acc.unchanged === 2 && total.compared === 3 && total.right === 2 && acc.worst[0].party === 'Kaviareň' && acc.worst[0].changed === 1 && acc.bySource.find((x) => x.source === 'ai').unchanged === 1, JSON.stringify(acc))
+}
+{
+  // Documents the app books by itself (app/autobook.ts).
+  const company = { id: 'c', vatStatus: 'payer', vatQuarterly: false, vatSince: '2026-01-01', startOn: '2026-01-01', autobook: true, vatRatios: [], assetVat: [] }
+  const doc = (over = {}) => ({
+    id: 'a1', companyId: 'c', createdAt: Date.UTC(2026, 9, 10, 8) / 1000, source: 'upload', status: 'read', readBy: 'claude-haiku-5-5', kind: 'invoice_in',
+    party: 'TEST-ONLY Hosting s. r. o.', partyIco: '12345678', partyIban: null, number: 'F1', vs: '1', issuedOn: '2026-10-10', dueOn: '2026-10-20',
+    totalCents: 12300, vatCents: 2300, currency: 'EUR', fxRate: null, category: 'services', proposal: 'rule', vatDeduct: true, account: null, bookedAt: null,
+    bookedByName: null, duplicateOf: null, invoiceId: null, paidPrivately: false, paymentId: 'p1', how: 'auto', vat: null, partyVatId: 'SK2020123456',
+    suppliedOn: null, foreign: false, correctsHint: null, linesHint: [], modeHint: null, reverseHint: null, advanceCents: 0, ekasaUid: null, ekasaOkp: null, cashPaid: null, ...over,
+  })
+  const rule = { category: 'services', vatDeduct: true, uses: 3 }
+  const pay = { amountCents: -12300, currency: 'EUR', docs: 1 }
+  const ok = autobook.autoBookable(doc(), company, rule, pay, [], '2026-10-20')
+  check('a hosting invoice its rule, its reading and its payment agree on is booked with its VAT as proposed', ok.ok && ok.vat.mode === 'domestic' && ok.vat.lines[0].rate === 23 && ok.vat.lines[0].deduct === 2300, JSON.stringify(ok))
+  const why = (over, args = {}) => {
+    const r = autobook.autoBookable(doc(over), args.company ?? company, args.rule === undefined ? rule : args.rule, args.pay === undefined ? pay : args.pay, args.filed ?? [], '2026-10-20')
+    return r.ok ? 'ok' : r.why
+  }
+  check('not where the accountant has it off', why({}, { company: { ...company, autobook: false } }) === 'off')
+  check('not without a rule used twice, nor when the reading has another category', why({}, { rule: { ...rule, uses: 1 } }) === 'rule' && why({}, { rule: null }) === 'rule' && why({ category: 'material' }) === 'rule' && why({ proposal: 'ai' }) === 'rule')
+  check('not an asset, goods, representation or a trip', why({ category: 'asset' }, { rule: { ...rule, category: 'asset' } }) === 'category' && why({ category: 'representation', vatDeduct: false }, { rule: { category: 'representation', vatDeduct: false, uses: 5 } }) === 'category')
+  check('not above 1 700 €, not in another currency', why({ totalCents: 170001, vatCents: 31789 }, { pay: { ...pay, amountCents: -170001 } }) === 'amount' && why({ currency: 'CZK' }) === 'currency')
+  check('not a suspected duplicate, a correction, or what the accountant read', why({ duplicateOf: 'x' }) === 'duplicate' && why({ correctsHint: 'F0' }) === 'corrects' && why({ readBy: 'person: Lucia' }) === 'reader')
+  check('not without one payment that pays it to the cent', why({}, { pay: { ...pay, amountCents: -12200 } }) === 'payment' && why({}, { pay: { ...pay, docs: 2 } }) === 'payment' && why({ paymentId: null }, { pay: null }) === 'payment' && why({ paidPrivately: true }) === 'payment')
+  check('not a day ahead, nor before the books start', why({ issuedOn: '2026-10-21' }) === 'date' && why({ issuedOn: '2025-12-30' }) === 'date')
+  check('a payer: not when the lines do not make the total, nor from abroad', why({ vatCents: 2000 }) === 'vat' && why({ partyVatId: 'CZ12345678', foreign: true }) === 'vat')
+  check('a payer: not into a period already filed', why({}, { filed: [{ period: '2026-10', rows: {}, filedAt: 0, filedOn: '2026-11-20', filedBy: null, filedByName: null, kvRows: 0, payCents: 0, refundCents: 0, dueOn: '2026-11-25', kind: 'regular' }] }) !== 'ok')
+  const plainCo = { ...company, vatStatus: 'none', vatSince: null }
+  const none = autobook.autoBookable(doc({ vatDeduct: false, vatCents: null, partyVatId: null }), plainCo, { ...rule, vatDeduct: false }, pay, [], '2026-10-20')
+  check('a company that is no payer: booked without VAT', none.ok && none.vat === null, JSON.stringify(none))
 }
 {
   // What crawlers may read (robots.ts). On 20 October 2026 "Disallow: /ucto" kept /uctovnictvo-pre-sro out of Google.

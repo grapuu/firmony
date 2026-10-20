@@ -64,6 +64,7 @@ import {
   type StoredInvoice,
 } from './invoices'
 import { dayOfText, isCategory, textDay } from './booking'
+import { autoBook } from './autobook'
 import { balanceOf, canonicalAccount, payableOf, type Books } from './ledger'
 import { booksOf } from './ledger-store'
 import { lookupCompany } from '../rpo'
@@ -3459,6 +3460,11 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await refreshRates(db, fetch, b.day, b.hour * 60 + b.minute >= 16 * 60 + 30)
   } catch (err) {
     console.error('the ECB rates failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    await autoBook(db)
+  } catch (err) {
+    console.error('booking by itself failed', err instanceof Error ? err.name : 'error')
   }
   const stuck = await db
     .prepare("SELECT id, company_id, read_tries FROM documents WHERE status = 'reading' AND deleted_at IS NULL AND created_at < ? ORDER BY created_at LIMIT 20")

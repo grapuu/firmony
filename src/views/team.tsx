@@ -382,6 +382,8 @@ export interface ClientPageProps {
   statements?: StatementView[]
   /** The company's details as they were sent, with what is wrong with them. */
   details?: { values: DetailsValues; errors: DetailsErrors }
+  /** What the app booked by itself in the last month (app/autobook.ts), newest first. */
+  auto?: { id: string; party: string | null; issuedOn: string | null; totalCents: number | null; bookedAt: number }[]
 }
 
 /** The company's details as the form shows them. */
@@ -1022,6 +1024,43 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
                 </li>
               ))}
             </ul>
+          </section>
+          <section class="info" id="samo" aria-labelledby="samo-t">
+            <h2 id="samo-t" class="info__title">
+              {t.client.auto.title}: {p.company.autobook ? t.client.auto.on : t.client.auto.off}
+            </h2>
+            <p class="info__lead">{t.client.auto.lead}</p>
+            <form method="post" action={`/ucto/klienti/${p.company.id}/samo`}>
+              <input type="hidden" name="zapnut" value={p.company.autobook ? '0' : '1'} />
+              <button class="btn btn--line btn--small" type="submit">
+                {p.company.autobook ? t.client.auto.turnOff : t.client.auto.turnOn}
+              </button>
+            </form>
+            {p.company.autobook || (p.auto ?? []).length > 0 ? (
+              <>
+                <h3 class="info__sub">{t.client.auto.list}</h3>
+                {(p.auto ?? []).length === 0 ? (
+                  <p class="info__lead">{t.client.auto.empty}</p>
+                ) : (
+                  <>
+                    <ul class="plain">
+                      {(p.auto ?? []).map((d) => (
+                        <li class="plain__row plain__row--two">
+                          <a class="plain__name link" href={`/ucto/doklady/${d.id}`}>
+                            {d.party ?? t.book.kinds.other}
+                          </a>
+                          <span class="plain__sub">
+                            <span>{d.issuedOn ? dayShort(d.issuedOn) : ''}</span>
+                            <span>{d.totalCents !== null ? formatEurExact(d.totalCents) : ''}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p class="info__lead">{t.client.auto.check}</p>
+                  </>
+                )}
+              </>
+            ) : null}
           </section>
           <section class="info" aria-labelledby="pravidla-t">
             <h2 id="pravidla-t" class="info__title">

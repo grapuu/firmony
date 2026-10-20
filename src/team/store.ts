@@ -151,7 +151,7 @@ export interface QueueDoc extends Doc {
   companyName: string
 }
 
-const DOC_COLUMNS_ALL = `d.*, ab.name AS added_by_name, bb.name AS booked_by_name, l.payment_id, l.how, ${CASH_PAID_COLUMN}, ${PAID_ON_COLUMN}`
+const DOC_COLUMNS_ALL = `d.*, ab.name AS added_by_name, COALESCE(bb.name, CASE WHEN d.booked_by = 'auto' THEN 'Firmony (samo)' END) AS booked_by_name, l.payment_id, l.how, ${CASH_PAID_COLUMN}, ${PAID_ON_COLUMN}`
 
 /** Documents that wait to be booked, the oldest first: of one company, or of every company the user sees. */
 export async function bookingQueue(db: D1Database, user: User, demo: boolean, company: string | null = null, limit = 300): Promise<QueueDoc[]> {
