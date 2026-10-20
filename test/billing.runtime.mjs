@@ -161,19 +161,19 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
   // A copy that did not reach the client is delivered again by the schedule, once.
   await files.delete(copy.file_key)
   await db.batch([db.prepare('DELETE FROM documents WHERE id = ?').bind(copy.id), db.prepare('UPDATE billing_invoices SET delivered_at = NULL WHERE invoice_id = ?').bind(invoice.id)])
-  await billingScheduled({ DB: db, FILES: files }, Date.now(), 'https://firmony.ai')
+  await billingScheduled({ DB: db, FILES: files }, Date.now(), 'https://firmony.io')
   check(
     'the schedule delivers a copy that did not arrive',
     Boolean(await db.prepare("SELECT 1 AS x FROM documents WHERE id = ? AND source = 'firmony'").bind(copy.id).first()) &&
       Boolean((await db.prepare('SELECT delivered_at FROM billing_invoices WHERE invoice_id = ?').bind(invoice.id).first())?.delivered_at),
   )
-  check('and delivering again changes nothing', (await deliverBill({ DB: db, FILES: files }, invoice.id, 'https://firmony.ai')) === 'done')
+  check('and delivering again changes nothing', (await deliverBill({ DB: db, FILES: files }, invoice.id, 'https://firmony.io')) === 'done')
 
   // In the first days of the next month the administrators are rung once that its invoices wait.
   const nextMonth = addMonths(month, 1)
   const ring = (monthStart(nextMonth) + 86400 + 9 * 3600 + 300) * 1000
-  await billingScheduled({ DB: db, FILES: files }, ring, 'https://firmony.ai')
-  await billingScheduled({ DB: db, FILES: files }, ring + 3_600_000, 'https://firmony.ai')
+  await billingScheduled({ DB: db, FILES: files }, ring, 'https://firmony.io')
+  await billingScheduled({ DB: db, FILES: files }, ring + 3_600_000, 'https://firmony.io')
   const rung = await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE id LIKE ?').bind(`bell:billing:${nextMonth}:%`).first()
   const admins = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE team = 'admin'").first()
   check('on the first days of a month the administrators are rung once', rung?.n === admins?.n && admins.n > 0, `${rung?.n} ${admins?.n}`)

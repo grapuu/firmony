@@ -86,7 +86,7 @@ const mf = new Miniflare(
         compatibilityDate: '2026-10-01',
         d1Databases: { DB: 'firmony-e2e' },
         r2Buckets: { FILES: 'firmony-e2e-files' },
-        bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.ai', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
+        bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.io', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
           const banked = await bank.answer(request)
@@ -108,7 +108,7 @@ const mf = new Miniflare(
   }),
 )
 
-const site = 'https://firmony.ai'
+const site = 'https://firmony.io'
 const get = (path, init = {}) => mf.dispatchFetch(`${site}${path}`, { redirect: 'manual', headers: { 'cf-connecting-ip': '203.0.113.7', ...(init.headers ?? {}) } })
 function post(path, fields, { ip = '203.0.113.7', origin = site } = {}) {
   const body = new URLSearchParams(fields).toString()
@@ -140,7 +140,7 @@ check(
   'no framing, no sniffing, HSTS',
   res.headers.get('x-frame-options') === 'DENY' && res.headers.get('x-content-type-options') === 'nosniff' && /max-age=31536000/.test(res.headers.get('strict-transport-security') ?? ''),
 )
-check('the canonical address is the domain', page.includes('<link rel="canonical" href="https://firmony.ai/"'))
+check('the canonical address is the domain', page.includes('<link rel="canonical" href="https://firmony.io/"'))
 check('the real domain is for search engines', res.headers.get('x-robots-tag') === null)
 check('the worked example is shown before anything is typed', page.includes(`2${NB}128${NB}€`) && page.includes(`1${NB}317${NB}€`) && page.includes(`811${NB}€`))
 
@@ -214,7 +214,7 @@ check(
 check('it keeps where the visitor came from', row?.source === '{"utm_source":"startitup"}')
 await settle()
 let mail = await sent()
-const owner = mail.find((m) => m.to === 'ahoj@firmony.ai')
+const owner = mail.find((m) => m.to === 'ahoj@firmony.io')
 const client = mail.find((m) => m.to === 'jana@example.sk')
 check(
   'we are rung, and the request waits behind the sign-in',
@@ -228,7 +228,7 @@ check(
 )
 check(
   'the client gets a confirmation that replies to us',
-  Boolean(client) && client.replyTo === 'ahoj@firmony.ai' && client.text.startsWith('Dobrý deň,') && client.text.includes('Firma: europio s. r. o.'),
+  Boolean(client) && client.replyTo === 'ahoj@firmony.io' && client.text.startsWith('Dobrý deň,') && client.text.includes('Firma: europio s. r. o.'),
 )
 check('the confirmation repeats nothing a stranger typed', Boolean(client) && !client.text.includes('Výpovedná') && !client.text.includes('spam') && !client.text.includes('Jana'))
 check('it says what comes next and carries no link to a contract before we have looked at the company', Boolean(client) && client.text.includes('pošleme tomu, kto za firmu koná') && !client.text.includes('/objednavka/'))
@@ -296,17 +296,17 @@ check(
 res = await get('/robots.txt')
 check('robots keeps the form out and names the sitemap', (await res.text()).includes('Disallow: /zacat'))
 res = await get('/sitemap.xml')
-check('the sitemap lists the pages', (await res.text()).includes('https://firmony.ai/pravne-informacie'))
+check('the sitemap lists the pages', (await res.text()).includes('https://firmony.io/pravne-informacie'))
 res = await get('/healthz')
 check('health says the schema', (await res.json()).schema === 68)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
-res = await mf.dispatchFetch('http://firmony.ai/cennik?x=1', { redirect: 'manual' })
-check('plain http goes to https', res.status === 301 && res.headers.get('location') === 'https://firmony.ai/cennik?x=1')
-res = await mf.dispatchFetch('https://www.firmony.ai/', { redirect: 'manual' })
-check('www goes to the domain', res.status === 301 && res.headers.get('location') === 'https://firmony.ai/')
+res = await mf.dispatchFetch('http://firmony.io/cennik?x=1', { redirect: 'manual' })
+check('plain http goes to https', res.status === 301 && res.headers.get('location') === 'https://firmony.io/cennik?x=1')
+res = await mf.dispatchFetch('https://www.firmony.io/', { redirect: 'manual' })
+check('www goes to the domain', res.status === 301 && res.headers.get('location') === 'https://firmony.io/')
 res = await get('/pravne-informacie/')
-check('a slash at the end goes to the page', res.status === 301 && res.headers.get('location') === 'https://firmony.ai/pravne-informacie')
+check('a slash at the end goes to the page', res.status === 301 && res.headers.get('location') === 'https://firmony.io/pravne-informacie')
 res = await mf.dispatchFetch('https://firmony.example.workers.dev/', { redirect: 'manual' })
 check('a preview address is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 
@@ -377,13 +377,13 @@ check(
   'a confirmation goes out, twice a day at most, and repeats nothing that was typed',
   investorMail.length === 2 &&
     investorMail[0].subject === 'Firmony: zapísali sme Vás' &&
-    investorMail[0].replyTo === 'ahoj@firmony.ai' &&
+    investorMail[0].replyTo === 'ahoj@firmony.io' &&
     investorMail[0].text.startsWith('Dobrý deň,') &&
     investorMail[0].text.includes('odpíšte na tento e-mail a adresu vymažeme') &&
     !/xtb|ibkr|Interactive/i.test(investorMail[0].text),
   String(investorMail.length),
 )
-check('nobody of the team is rung for it', !(await sent()).some((m) => m.to === 'ahoj@firmony.ai' && /investor/i.test(m.subject + m.text)))
+check('nobody of the team is rung for it', !(await sent()).some((m) => m.to === 'ahoj@firmony.io' && /investor/i.test(m.subject + m.text)))
 res = await post('/investori', { email: 'bot@example.sk', web: 'http://bot.example' }, { ip: '198.51.100.40' })
 check(
   'a bot that fills the hidden field is thanked and forgotten',
@@ -397,7 +397,7 @@ page = await res.text()
 check('thanks says when we write, and is not for search engines', res.status === 200 && page.includes('Zapísali sme Vás') && page.includes('<meta name="robots" content="noindex"'))
 check('its header leads to no form it does not have', !page.includes('href="#zapis"') && page.includes('href="/zacat"'))
 res = await get('/sitemap.xml')
-check('the sitemap lists the investors page', (await res.text()).includes('https://firmony.ai/investori</loc>'))
+check('the sitemap lists the investors page', (await res.text()).includes('https://firmony.io/investori</loc>'))
 res = await get('/pravne-informacie')
 check('the privacy notice names the sign-up and how long it is kept', plain(await res.text()).includes('Keď sa zapíšete na daňové priznanie z investícií'))
 
@@ -507,8 +507,8 @@ res = await appPost('/app/prihlasenie', { email: 'Anna@Firma-A.test' })
 check('a client asks for a link', res.status === 303)
 await settle()
 const linkMail = (await sent()).filter((m) => m.to === 'anna@firma-a.test').pop()
-const link = linkMail?.text.match(/https:\/\/firmony\.ai\/app\/vstup\?t=[A-Za-z0-9_-]{43}/)?.[0]
-check('the link goes to the address of the account, on the domain', Boolean(link) && linkMail.replyTo === 'ahoj@firmony.ai')
+const link = linkMail?.text.match(/https:\/\/firmony\.io\/app\/vstup\?t=[A-Za-z0-9_-]{43}/)?.[0]
+check('the link goes to the address of the account, on the domain', Boolean(link) && linkMail.replyTo === 'ahoj@firmony.io')
 const token = link ? new URL(link).searchParams.get('t') : ''
 check('the database keeps no token in plain', (await db.prepare('SELECT COUNT(*) AS n FROM login_links WHERE id = ?').bind(token).first())?.n === 0)
 res = await appGet(`/app/vstup?t=${token}`)
@@ -529,7 +529,7 @@ check('a link works once', res.status === 410)
 res = await appGet('/app')
 page = await res.text()
 check('the overview says what is missing', res.status === 200 && page.includes('3 platbám chýbajú doklady') && page.includes('Firma A s. r. o.'), page.match(/ptitle__sans">[^<]*/)?.[0])
-check('it names the address for forwarding', page.includes('doklady-aaaa11@firmony.ai'))
+check('it names the address for forwarding', page.includes('doklady-aaaa11@firmony.io'))
 check(
   'it runs its own script and nothing inline',
   /<script src="\/inside\.js" defer(="")?><\/script>/.test(page) && !/<script>/.test(page) && !/ style=/i.test(page),
@@ -676,7 +676,7 @@ check('an empty message is not sent', res.status === 422)
 res = await appPost('/app/spravy', { sprava: 'Dobrý deň,\nčo s touto platbou?', platba: 'pa-fuel' })
 check('a message is sent', res.status === 303 && res.headers.get('location') === '/app/spravy?ok=poslane#posledna')
 await settle()
-const toUs = (await sent()).filter((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: nová správa od klienta').pop()
+const toUs = (await sent()).filter((m) => m.to === 'ahoj@firmony.io' && m.subject === 'Firmony: nová správa od klienta').pop()
 check(
   'and we are rung, with nothing of the message in the email',
   Boolean(toUs) && toUs.text.includes('/ucto/klienti/co-a#spravy') && !toUs.text.includes('platbou') && !toUs.text.includes('64,18') && !toUs.text.includes('Firma A'),
@@ -719,7 +719,7 @@ async function verifyBrowser(email, browserCookie) {
   let key = authenticators.get(email)
   const registering = !key
   if (!key) { key = await authenticator(); authenticators.set(email, key) }
-  let code = email === 'ahoj@firmony.ai' ? TEST_BOOTSTRAP : ''
+  let code = email === 'ahoj@firmony.io' ? TEST_BOOTSTRAP : ''
   if (registering && user.team && !code) {
     code = 'G'.repeat(42) + String(authenticators.size % 10)
     const grant = createHash('sha256').update(code).digest('hex')
@@ -829,8 +829,8 @@ check(
   res.status === 200 && Boolean(firstCode) && page.includes('TEAM_BOOTSTRAP_EXPIRES_AT') && (res.headers.get('cache-control') ?? '').includes('no-store') && !(await db.prepare('SELECT 1 AS x FROM users WHERE team IS NOT NULL').first()),
 )
 check('each visit makes another code', (await (await get('/app/prvy-spravca')).text()).match(/<code>([A-Za-z0-9_-]{43})<\/code>/)?.[1] !== firstCode)
-const boss = await signIn('ahoj@firmony.ai')
-const bossRow = await db.prepare("SELECT id, team, name FROM users WHERE email = 'ahoj@firmony.ai'").first()
+const boss = await signIn('ahoj@firmony.io')
+const bossRow = await db.prepare("SELECT id, team, name FROM users WHERE email = 'ahoj@firmony.io'").first()
 check('the explicitly configured bootstrap account becomes the first verified administrator', bossRow?.team === 'admin' && bossRow.name === 'Christian Juhás' && boss.location === '/ucto')
 check('once somebody of the team exists, the page is gone', (await get('/app/prvy-spravca')).status === 404)
 const admin = as(boss.cookie)
@@ -1195,11 +1195,11 @@ await db
   .prepare("UPDATE users SET email = 'christian@europio.test' WHERE id = ?")
   .bind(bossRow?.id ?? '')
   .run()
-await post('/app/prihlasenie', { email: 'ahoj@firmony.ai' }, { ip: '203.0.113.32' })
+await post('/app/prihlasenie', { email: 'ahoj@firmony.io' }, { ip: '203.0.113.32' })
 await settle()
-check('once a team exists, the public mailbox makes nobody an administrator', (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'ahoj@firmony.ai'").first())?.n === 0)
+check('once a team exists, the public mailbox makes nobody an administrator', (await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'ahoj@firmony.io'").first())?.n === 0)
 await db
-  .prepare("UPDATE users SET email = 'ahoj@firmony.ai' WHERE id = ?")
+  .prepare("UPDATE users SET email = 'ahoj@firmony.io' WHERE id = ?")
   .bind(bossRow?.id ?? '')
   .run()
 check(
@@ -1240,9 +1240,9 @@ const logo = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...
 const mailBefore = (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n
 const readsBefore = readings.length
 res = await sendMail(
-  'doklady-aaaa11@firmony.ai',
+  'doklady-aaaa11@firmony.io',
   rawMail({
-    to: 'doklady-aaaa11@firmony.ai',
+    to: 'doklady-aaaa11@firmony.io',
     attachments: [
       { name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes },
       { name: 'logo.png', type: 'image/png', bytes: logo, inline: true },
@@ -1266,10 +1266,10 @@ check(
   'the email is on record without its text',
   (await db.prepare("SELECT sender, subject, files, status FROM inbound_mail WHERE company_id = 'co-a' ORDER BY received_at DESC LIMIT 1").first())?.subject === 'Faktúra 2026117',
 )
-res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
+res = await sendMail('doklady-aaaa11@firmony.io', rawMail({ to: 'doklady-aaaa11@firmony.io', attachments: [{ name: 'faktura-2026117.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
 await res.arrayBuffer()
 check('the same document by email again is not kept twice', (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-a'").first())?.n === mailBefore + 1)
-res = await sendMail('doklady-aaaa11@firmony.ai', rawMail({ to: 'doklady-aaaa11@firmony.ai', subject: 'Odkaz na faktúru' }))
+res = await sendMail('doklady-aaaa11@firmony.io', rawMail({ to: 'doklady-aaaa11@firmony.io', subject: 'Odkaz na faktúru' }))
 await res.arrayBuffer()
 const note = await db.prepare("SELECT body, side, author FROM messages WHERE company_id = 'co-a' ORDER BY created_at DESC, rowid DESC LIMIT 1").first()
 check('an email without a document leaves the client a note', note?.side === 'firmony' && note.author === null && note.body.includes('Odkaz na faktúru') && note.body.includes('faktury@kvety.test'))
@@ -1278,7 +1278,7 @@ check('an email without a document leaves the client a note', note?.side === 'fi
   const big = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new Array(20000).fill(5)])
   const raw = [
     'From: Novinky <novinky@kvety.test>',
-    'To: doklady-aaaa11@firmony.ai',
+    'To: doklady-aaaa11@firmony.io',
     'Subject: Jesenna ponuka',
     `Message-ID: <${crypto.randomUUID()}@kvety.test>`,
     'MIME-Version: 1.0',
@@ -1298,11 +1298,11 @@ check('an email without a document leaves the client a note', note?.side === 'fi
     '--rel--',
     '',
   ].join('\r\n')
-  res = await sendMail('doklady-aaaa11@firmony.ai', raw)
+  res = await sendMail('doklady-aaaa11@firmony.io', raw)
   await res.arrayBuffer()
   check('a picture inside the text of an email is no document', (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE file_name = 'banner.png'").first())?.n === 0)
 }
-res = await sendMail('doklady-zzzzzz@firmony.ai', rawMail({ to: 'doklady-zzzzzz@firmony.ai', attachments: [{ name: 'f.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
+res = await sendMail('doklady-zzzzzz@firmony.io', rawMail({ to: 'doklady-zzzzzz@firmony.io', attachments: [{ name: 'f.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
 check('an address nobody has is refused', res.status === 400 && (await res.text()).includes('neexistuje'))
 res = await sendMail('doklady-aaaa11@elsewhere.test', rawMail({ to: 'doklady-aaaa11@elsewhere.test', attachments: [{ name: 'f.pdf', type: 'application/pdf', bytes: pdfBytes }] }))
 check('so is the right code at another domain', res.status === 400)
@@ -1313,7 +1313,7 @@ res = await anna.get('/app/firma')
 page = await res.text()
 check(
   'the company page shows its details, its address for documents and its people',
-  res.status === 200 && page.includes('doklady-aaaa11@firmony.ai') && page.includes('Anna Malá') && page.includes('action="/app/firma/pozvat"'),
+  res.status === 200 && page.includes('doklady-aaaa11@firmony.io') && page.includes('Anna Malá') && page.includes('action="/app/firma/pozvat"'),
 )
 check('and the app can go on the home screen', page.includes('rel="manifest" href="/manifest.webmanifest"') && (res.headers.get('content-security-policy') ?? '').includes("manifest-src 'self'"))
 const before4 = (await sent()).length
@@ -1630,7 +1630,7 @@ check('a report is kept and waits for the designated person', res.status === 303
 const repMail = (await sent()).slice(beforeRep)
 check(
   'the administrator is rung, the client is not, and the email says nothing of it',
-  repMail.some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: interné oznámenie' && !m.text.includes('9 900') && !m.text.includes('Firma A')) &&
+  repMail.some((m) => m.to === 'ahoj@firmony.io' && m.subject === 'Firmony: interné oznámenie' && !m.text.includes('9 900') && !m.text.includes('Firma A')) &&
     !repMail.some((m) => m.to === 'anna@firma-a.test'),
 )
 res = await anna.get('/app/spravy')
@@ -1699,7 +1699,7 @@ check(
   noticeMsg?.side === 'client' &&
     noticeMsg.author === 'u-a' &&
     noticeMsg.body.startsWith('Vypovedám zmluvu') &&
-    (await sent()).slice(beforeNotice).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: výpoveď zmluvy') &&
+    (await sent()).slice(beforeNotice).some((m) => m.to === 'ahoj@firmony.io' && m.subject === 'Firmony: výpoveď zmluvy') &&
     (await sent()).slice(beforeNotice).some((m) => m.to === 'lucia@firmony.test' && m.subject === 'Firmony: výpoveď zmluvy'),
 )
 res = await anna.post('/app/firma/vypoved', { potvrdit: '1' })
@@ -2415,7 +2415,7 @@ check(
   const simonaCookie = (await signIn('simona@firma-s.test')).cookie
   const simona = as(simonaCookie)
   const stano = as((await signIn('stano@firma-s.test')).cookie)
-  const inboxS = 'doklady-ssss33@firmony.ai'
+  const inboxS = 'doklady-ssss33@firmony.io'
   const ibanS = 'SK4009000000005198123456'
   const bankMail = async (xml, from = 'vypisy@banka.test') => {
     const r = await mf.dispatchFetch(`http://localhost/cdn-cgi/local/email?from=${encodeURIComponent(from)}&to=${encodeURIComponent(inboxS)}`, {
@@ -4288,7 +4288,7 @@ check(
 res = await admin.post(reviewPath, reviewFields)
 await settle()
 check('an approved standard scope sends the director the link at once', res.status === 303 && res.headers.get('location') === `${reviewPath}?ok=odkaz` && (await linkMails()).length === 1)
-const latestLink = async () => (await linkMails()).pop()?.text.match(/https:\/\/firmony\.ai(\/objednavka\/[A-Za-z0-9_-]{43})/)?.[1] ?? ''
+const latestLink = async () => (await linkMails()).pop()?.text.match(/https:\/\/firmony\.io(\/objednavka\/[A-Za-z0-9_-]{43})/)?.[1] ?? ''
 let orderLink = await latestLink()
 const orderMail = (await linkMails()).pop()
 check(
@@ -4345,7 +4345,7 @@ check(
   res.status === 200 &&
     (await res.text()).includes('Dali sme vedieť') &&
     (await db.prepare('SELECT status FROM requests WHERE id = ?').bind(orderRow.request_id).first())?.status === 'new' &&
-    (await sent()).slice(beforeRenew).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: nový odkaz na zmluvu' && !m.text.includes('Zelený')),
+    (await sent()).slice(beforeRenew).some((m) => m.to === 'ahoj@firmony.io' && m.subject === 'Firmony: nový odkaz na zmluvu' && !m.text.includes('Zelený')),
 )
 res = await admin.post(reviewPath, reviewFields)
 await settle()
@@ -4435,7 +4435,7 @@ check(
 )
 check(
   'we are rung of the contract',
-  (await sent()).some((m) => m.to === 'ahoj@firmony.ai' && m.subject === 'Firmony: nová zmluva' && m.text.includes(`/ucto/klienti/${madeCompany?.id}`) && !m.text.includes('Zelený')),
+  (await sent()).some((m) => m.to === 'ahoj@firmony.io' && m.subject === 'Firmony: nová zmluva' && m.text.includes(`/ucto/klienti/${madeCompany?.id}`) && !m.text.includes('Zelený')),
 )
 res = await get('/app?ok=zmluva', { headers: { cookie: contractCookie } })
 page = await res.text()
@@ -4636,8 +4636,8 @@ res = await anna.get('/app/doklady')
 page = await res.text()
 check('the page for documents offers no upload, only the download', !page.includes('method="post" action="/app/doklady"') && !page.includes('data-pick') && page.includes('href="/app/firma#stiahnut"'))
 res = await sendMail(
-  'doklady-aaaa11@firmony.ai',
-  rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'neskoro.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% neskoro\n%%EOF\n') }] }),
+  'doklady-aaaa11@firmony.io',
+  rawMail({ to: 'doklady-aaaa11@firmony.io', attachments: [{ name: 'neskoro.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% neskoro\n%%EOF\n') }] }),
 )
 check('nor by email: the sender is told the contract ended', res.status === 400 && (await res.text()).includes('skončila'))
 res = await anna.get('/app/platby')
@@ -5000,8 +5000,8 @@ check(
 res = await anna.get('/app')
 check('the client is no longer in it', !(await res.text()).includes('Firma A s. r. o.'))
 res = await sendMail(
-  'doklady-aaaa11@firmony.ai',
-  rawMail({ to: 'doklady-aaaa11@firmony.ai', attachments: [{ name: 'po.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n%%EOF\n') }] }),
+  'doklady-aaaa11@firmony.io',
+  rawMail({ to: 'doklady-aaaa11@firmony.io', attachments: [{ name: 'po.pdf', type: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n%%EOF\n') }] }),
 )
 check('its address for documents no longer exists', res.status === 400)
 res = await admin.get('/ucto')

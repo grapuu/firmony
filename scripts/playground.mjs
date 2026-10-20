@@ -168,7 +168,7 @@ createServer(async (req, res) => {
                   { ref: ref(2), day: today, cents: 62115, party: 'Kníhkupectvo Na korze s. r. o.', iban: 'SK4111000000002987654321', vs: '20260007', note: 'Faktúra 20260007' },
                 ],
               })
-      const to = `doklady-${company.inbox}@firmony.ai`
+      const to = `doklady-${company.inbox}@firmony.io`
       const sent = await mf.dispatchFetch(`http://localhost/cdn-cgi/local/email?from=${encodeURIComponent('vypisy@banka.test')}&to=${encodeURIComponent(to)}`, {
         method: 'POST',
         body: statementMail({ to, xml }),

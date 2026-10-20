@@ -3,7 +3,7 @@
 
 /** The site's domain. Once the owner has bought his (firmony.io was his word), this one line changes, and so do the
  * route in wrangler.jsonc, the email routing in Cloudflare, and the tests that name the domain. */
-export const DOMAIN = 'firmony.ai'
+export const DOMAIN = 'firmony.io'
 
 export const BRAND = {
   name: 'Firmony',

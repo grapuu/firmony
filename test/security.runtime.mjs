@@ -18,10 +18,10 @@ export async function checkSecurity({ db, mf, site, admin, anna, acc, as, signIn
   const second = await signIn('backup-admin@security.test'),
     admin2 = as(second.cookie)
   const secondUser = await db.prepare("SELECT id FROM users WHERE email = 'backup-admin@security.test'").first()
-  const adminUser = await db.prepare("SELECT id FROM users WHERE email = 'ahoj@firmony.ai'").first()
+  const adminUser = await db.prepare("SELECT id FROM users WHERE email = 'ahoj@firmony.io'").first()
   res = await admin.post('/ucto/tim', {
     name: 'Christian Juhás',
-    email: 'ahoj@firmony.ai',
+    email: 'ahoj@firmony.io',
     rola: 'accountant',
   })
   check(
@@ -223,7 +223,7 @@ export async function checkSecurity({ db, mf, site, admin, anna, acc, as, signIn
   res = await jsonClient(mf, site, verifiedCookie, '203.0.113.214')('/auth/verify', { id: good.options.id, response: good.signed })
   check('the signed assertion is single-use even after session rotation', res.status === 409)
 
-  const unverifiedRoot = await emailOnly('ahoj@firmony.ai')
+  const unverifiedRoot = await emailOnly('ahoj@firmony.io')
   res = await jsonClient(mf, site, unverifiedRoot.cookie, '203.0.113.215')('/auth/options', { action: 'register', code: TEST_BOOTSTRAP })
   check('the initial bootstrap token never becomes an existing-key recovery bypass', res.status === 403)
   const recovery = await issue('recover')

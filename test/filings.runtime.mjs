@@ -177,7 +177,7 @@ export async function checkFilings({ db, files, acc, admin, lucia, nowS, day, si
   check('a rejected evidence transaction cleans only its new uncommitted original', (await files.list({ prefix: `companies/${company}/filings/` })).objects.length === beforeFiles && Boolean(await files.head(received.file_key)))
   await db.prepare('UPDATE companies SET accountant_id = ? WHERE id = ?').bind(lucia.id, company).run()
   // Every proof remains readable while an incident protects the company and stops final deletion.
-  const actor = await db.prepare("SELECT id FROM users WHERE email = 'ahoj@firmony.ai'").first()
+  const actor = await db.prepare("SELECT id FROM users WHERE email = 'ahoj@firmony.io'").first()
   res = await admin.post('/ucto/incidenty', { company, title: 'TEST-ONLY delivery evidence incident', evidence: 'TEST-ONLY independent evidence retention reference', owner: actor.id, backup: lucia.id, severity: 'normal', review: day(7) })
   check('delivery evidence can be put under the existing incident hold', res.status === 303 && Boolean(await db.prepare('SELECT id FROM evidence_holds WHERE company_id = ? AND released_at IS NULL').bind(company).first()))
   let pendingFreezeBlocked = false

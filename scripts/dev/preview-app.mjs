@@ -217,7 +217,7 @@ const BAR = `<div class="preview-bar" role="note"><span>Náhľad s ukážkovými
 function rewrite(page, extra) {
   return page
     .replaceAll(`href="${base}/`, 'href="/')
-    .replaceAll(base, 'https://firmony.ai')
+    .replaceAll(base, 'https://firmony.io')
     .replace(/<script src="\/inside\.js" defer><\/script>/, '')
     .replace(/<iframe class="book__pdf" src="([^"]+)"[^>]*><\/iframe>/g, '<div class="book__img book__img--preview"><img src="$1" alt=""></div>')
     .replace(/<form([^>]*?) action="([^"]*)"/g, (_, attrs, action) => `<form${attrs} data-action="${action}" action="#"`)

@@ -309,7 +309,7 @@ terms.TERMS[0].points[0] = originalPoint
 check('the months to start in begin with the launch', terms.startMonths('2026-10-13').join(' ') === '2027-01-01 2027-02-01 2027-03-01 2027-04-01 2027-05-01 2027-06-01')
 check('after the launch they begin with the next month, over a new year', terms.startMonths('2027-11-20').slice(0, 3).join(' ') === '2027-12-01 2028-01-01 2028-02-01')
 check('a date is written in words', terms.longDate('2027-01-01') === '1. januára 2027')
-const linkMail = orderLinkMail('Zelený dvor s. r. o.', 'rast', 'https://firmony.ai/objednavka/abc', 30)
+const linkMail = orderLinkMail('Zelený dvor s. r. o.', 'rast', 'https://firmony.io/objednavka/abc', 30)
 check(
   'the order email names the company, the plan and how long the link works',
   linkMail.body.includes('Firma: Zelený dvor s. r. o.') &&
@@ -331,7 +331,7 @@ check(
 check('a notice given in the app can be taken back, with our consent given in advance', termsPlain.includes('môžete do konca výpovednej lehoty vziať späť; s takým späťvzatím vopred súhlasíme'))
 
 // Every email to a client or the team is a doorbell: its link and its fixed words, and nothing that was typed.
-const sample = 'https://firmony.ai/app/x'
+const sample = 'https://firmony.io/app/x'
 const rung = Object.entries(bells.bell).map(([kind, make]) => [
   kind,
   make.length === 4 ? make('október 2026', '10. 11.', sample, sample) : make.length === 3 ? make('október 2026', sample, sample) : make(sample, sample),
@@ -6005,7 +6005,7 @@ async function zipped(entries, note) {
 
 // Authentication boundaries are independent of the route's tenant authorization.
 {
-  check('return addresses reject external, normalized external and non-application destinations', ['//evil.example/ucto', '/\\\\evil.example/ucto', 'https://firmony.ai/app', '/auth/grants', '/application', '/ucto-other'].every((s) => security.safeNext(s) === '/app'))
+  check('return addresses reject external, normalized external and non-application destinations', ['//evil.example/ucto', '/\\\\evil.example/ucto', 'https://firmony.io/app', '/auth/grants', '/application', '/ucto-other'].every((s) => security.safeNext(s) === '/app'))
   check('return addresses preserve valid internal paths and queries', security.safeNext('/ucto/klienti/x?rok=2026#doklady') === '/ucto/klienti/x?rok=2026#doklady')
   check('key management can resume on its own page without copying nested return addresses', security.safeNext('/auth?next=https://evil.example') === '/auth')
   for (const [action, page] of [
@@ -6029,12 +6029,12 @@ async function zipped(entries, note) {
     ['//evil.example/app/firma', '/app'],
     ['/ucto/unknown/action', '/ucto'],
   ]) check(`blocked action resumes on a work page: ${action}`, security.actionReturn(action) === page)
-  check('re-verification keeps the selected accounting period on the same work page', security.actionReturn('/ucto/klienti/x/dph/podane', 'https://firmony.ai/ucto/klienti/x/dph?mesiac=2026-08') === '/ucto/klienti/x/dph?mesiac=2026-08')
-  check('handover return keeps its section while copying safe work-page filters', security.actionReturn('/ucto/klienti/x/odovzdanie/y/odstranit', 'https://firmony.ai/ucto/klienti/x?rok=2025') === '/ucto/klienti/x?rok=2025#odovzdanie')
-  for (const referrer of ['https://evil.example/ucto/klienti/x/dph?mesiac=2020-01', 'https://firmony.ai/ucto/klienti/other/dph?mesiac=2020-01', 'https://firmony.ai/ucto/klienti/x/export?rok=2025', 'not a URL']) {
+  check('re-verification keeps the selected accounting period on the same work page', security.actionReturn('/ucto/klienti/x/dph/podane', 'https://firmony.io/ucto/klienti/x/dph?mesiac=2026-08') === '/ucto/klienti/x/dph?mesiac=2026-08')
+  check('handover return keeps its section while copying safe work-page filters', security.actionReturn('/ucto/klienti/x/odovzdanie/y/odstranit', 'https://firmony.io/ucto/klienti/x?rok=2025') === '/ucto/klienti/x?rok=2025#odovzdanie')
+  for (const referrer of ['https://evil.example/ucto/klienti/x/dph?mesiac=2020-01', 'https://firmony.io/ucto/klienti/other/dph?mesiac=2020-01', 'https://firmony.io/ucto/klienti/x/export?rok=2025', 'not a URL']) {
     check('a referrer cannot replace the safe work destination', security.actionReturn('/ucto/klienti/x/dph/podane', referrer) === '/ucto/klienti/x/dph')
   }
-  check('passkeys are bound to the canonical HTTPS production origin', security.relyingParty('https://firmony.ai/auth/options', {})?.rpID === 'firmony.ai' && security.relyingParty('http://firmony.ai/auth/options', {}) === null && security.relyingParty('https://preview.example/auth/options', { DEMO: '1' }) === null)
+  check('passkeys are bound to the canonical HTTPS production origin', security.relyingParty('https://firmony.io/auth/options', {})?.rpID === 'firmony.io' && security.relyingParty('http://firmony.io/auth/options', {}) === null && security.relyingParty('https://preview.example/auth/options', { DEMO: '1' }) === null)
   check('local passkeys require an explicit demo flag', security.relyingParty('http://localhost:8787/auth', {}) === null && security.relyingParty('http://localhost:8787/auth', { DEMO: '1' })?.rpID === 'localhost')
   const bootstrap = { TEAM_BOOTSTRAP_EMAIL: 'owner@example.test', TEAM_BOOTSTRAP_TOKEN: 'x'.repeat(43), TEAM_BOOTSTRAP_EXPIRES_AT: '1100' }
   check('bootstrap never defaults to a public mailbox or an unlimited deadline', security.bootstrapReady(bootstrap, 1000) && !security.bootstrapReady({}, 1000) && !security.bootstrapReady({ ...bootstrap, TEAM_BOOTSTRAP_EXPIRES_AT: '' }, 1000) && !security.bootstrapReady(bootstrap, 1100))
@@ -6071,7 +6071,7 @@ async function zipped(entries, note) {
   const list = dues.deadlinesOf(company,{...base,payrollReports},'2026-10-16').filter((d) => d.kind === 'payrollReport')
   check('acceptance closes only the matching current recipient deadline', list.find((d) => d.reportId === 'sp')?.state === 'done' && list.find((d) => d.reportId === 'zp')?.state === 'open' && list.find((d) => d.reportId === 'tax')?.state === 'blocked')
   check('recipient deadlines link directly to their own evidence', dueViews.dueHref({...list[1],company}) === '/ucto/klienti/co/mzdove-podania/zp')
-  check('payroll evidence mutations resume on GET work pages after verification', security.actionReturn('/ucto/klienti/co/mzdove-podania/vyplata','https://firmony.ai/ucto/klienti/co/mzdove-podania?obdobie=2026-09') === '/ucto/klienti/co/mzdove-podania?obdobie=2026-09' && security.actionReturn('/ucto/klienti/co/mzdove-podania/t/verzie/p/stav') === '/ucto/klienti/co/mzdove-podania/t/verzie/p')
+  check('payroll evidence mutations resume on GET work pages after verification', security.actionReturn('/ucto/klienti/co/mzdove-podania/vyplata','https://firmony.io/ucto/klienti/co/mzdove-podania?obdobie=2026-09') === '/ucto/klienti/co/mzdove-podania?obdobie=2026-09' && security.actionReturn('/ucto/klienti/co/mzdove-podania/t/verzie/p/stav') === '/ucto/klienti/co/mzdove-podania/t/verzie/p')
   check('payroll originals and all evidence mutations require fresh verification', [['/ucto/klienti/co/mzdove-podania/zalozit','POST'],['/ucto/klienti/co/mzdove-podania/vyplata','POST'],['/ucto/klienti/co/mzdove-podania/t/subor','POST'],['/ucto/klienti/co/mzdove-podania/t/verzie/p/stav','POST'],['/app/mzdove-podania/t/verzie/p/dokument','GET'],['/app/mzdove-podania/t/verzie/p/potvrdenka/e','GET']].every(([p,m]) => security.sensitivePath(p,m)))
   const cyclic = {}; cyclic.cause = cyclic
   check('payroll source guards recognize nested errors without looping', reports.payrollBlocked({cause:new Error('FIRMONY_PAYROLL_REPORTED')}) && !reports.payrollBlocked(cyclic))
@@ -6794,7 +6794,7 @@ await (await import('./social.units.mjs')).checkSocial()
   const bad = intrastat.monthItems([doc('v', { cents: 300000, goods: g({ lines: [{ cn: '8471', description: null, origin: null, grams: 1, su: null, quantity: null, cents: null }] }) }), doc('w', { cents: 300000, goods: g({ lines: [{ cn: '84713000', description: null, origin: null, grams: 1, su: null, quantity: null, cents: 100 }] }) }), doc('x', { cents: 300000, goods: g({ lines: [{ cn: '84713000', description: null, origin: null, grams: null, su: 'p/st', quantity: null, cents: null }] }) })], '2026-09', 'A', settings)
   check('a code of fewer than eight digits, values that do not make the base, a supplementary unit without its quantity', bad.issues.map((i) => i.code).join() === 'cn,quantity,values', JSON.stringify(bad.issues))
 
-  const psi = { vatId: 'SK2020123456', name: 'TEST-ONLY Žltá ťava s. r. o.', ...intrastat.splitAddress('Hlavná 1, 040 01 Košice'), address: 'Hlavná 1, 040 01 Košice', contact: 'Lucia Horváthová', phone: null, email: 'ahoj@firmony.ai' }
+  const psi = { vatId: 'SK2020123456', name: 'TEST-ONLY Žltá ťava s. r. o.', ...intrastat.splitAddress('Hlavná 1, 040 01 Košice'), address: 'Hlavná 1, 040 01 Košice', contact: 'Lucia Horváthová', phone: null, email: 'ahoj@firmony.io' }
   check('the address in its parts', psi.street === 'Hlavná 1' && psi.postal === '04001' && psi.city === 'Košice')
   const goodItems = a.items
   const first = intrastat.firstDeclarations(goodItems)

@@ -39,14 +39,14 @@ const mf = new Miniflare(
         compatibilityDate: '2026-10-01',
         d1Databases: { DB: 'firmony-load' },
         r2Buckets: { FILES: 'firmony-load-files' },
-        bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.ai', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600) },
+        bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.io', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600) },
         serviceBindings: { EMAIL: 'pretend-mail' },
       },
       { name: 'pretend-mail', modules: true, compatibilityDate: '2026-10-01', script: PRETEND_MAIL },
     ],
   }),
 )
-const site = 'https://firmony.ai'
+const site = 'https://firmony.io'
 let db = await mf.getD1Database('DB')
 const mailer = await mf.getWorker('pretend-mail')
 const sent = async () => (await mailer.fetch('http://mail/')).json()
@@ -81,7 +81,7 @@ async function emailOnly(email) {
   return (r.headers.get('set-cookie') ?? '').split(';')[0]
 }
 async function bootstrapAdmin() {
-  const cookie = await emailOnly('ahoj@firmony.ai')
+  const cookie = await emailOnly('ahoj@firmony.io')
   const key = await authenticator()
   const api = jsonClient(mf, site, cookie, '203.0.113.101')
   const options = await (await api('/auth/options', { action: 'register', code: TEST_BOOTSTRAP, next: '/ucto' })).json()
@@ -95,7 +95,7 @@ async function bootstrapAdmin() {
 // ---------------------------------------------------------------------------------------------------------------
 await mf.dispatchFetch(`${site}/healthz`)
 const adminCookie = await bootstrapAdmin()
-const admin = (await db.prepare("SELECT id FROM users WHERE email = 'ahoj@firmony.ai'").first()).id
+const admin = (await db.prepare("SELECT id FROM users WHERE email = 'ahoj@firmony.io'").first()).id
 const company = 'co-load'
 const firstMonth = (() => {
   const d = new Date()

@@ -43,7 +43,7 @@ export async function authenticator() {
     counter = 0
   return {
     id: b64(id),
-    async register(options, { origin = 'https://firmony.ai', uv = true, up = true, crossOrigin = false, challenge = options.challenge } = {}) {
+    async register(options, { origin = 'https://firmony.io', uv = true, up = true, crossOrigin = false, challenge = options.challenge } = {}) {
       userHandle = options.user.id
       const client = bytes(
         JSON.stringify({
@@ -81,7 +81,7 @@ export async function authenticator() {
     },
     async authenticate(
       options,
-      { origin = 'https://firmony.ai', uv = true, challenge = options.challenge, signCount, wrongSignature = false, crossOrigin = false } = {},
+      { origin = 'https://firmony.io', uv = true, challenge = options.challenge, signCount, wrongSignature = false, crossOrigin = false } = {},
     ) {
       const client = bytes(
         JSON.stringify({
