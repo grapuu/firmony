@@ -364,7 +364,12 @@ over. Bring this section up to date first whenever a session ends.
       pretend reader that erred once, it said so. Found on the way: a credit note read with a minus lost its total and
       VAT (`readingFrom` dropped every negative amount); a document that corrects an invoice is now taken at the
       amounts' size, and the tool asks for them without a minus. Next: run it with the key, then mend the prompt and
-      the tool where it reads wrong. (c) The booking screen records how long a document
+      the tool where it reads wrong. Run on GitHub by hand (since 20 October 2026): the workflow "Reader"
+      (`.github/workflows/reader.yml`, Actions, Run workflow) with the repository's secret `ANTHROPIC_API_KEY`, which
+      he pastes in GitHub himself; the log has each document and each field's share, the artifact `reader-report` the
+      JSON. The shell's `gh` cannot reach the Actions API (the proxy refuses it): start and read it in the browser pane.
+      The Anthropic account is europio's (platform.claude.com, organisation europio); on 20 October it had no credit
+      bought, 1,71 $ of a promotional credit until 25 October: buying credit is his. (c) The booking screen records how long a document
       took (opened to booked), and the statement of item 1 shows each accountant's median minutes a document: it
       calibrates her rates. **(c) built on 20 October 2026**: the hidden `otvorene` of the booking form (carried through a
       form sent back with an error), `document.booked` keeps `{ seconds }` up to an hour (`tookOf`), `bookingTime` gives

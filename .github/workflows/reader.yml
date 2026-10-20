@@ -1,0 +1,38 @@
+# The real reader on the 30 made-up documents of test/reader (item 10.2b of CLAUDE.md), run by hand from the Actions
+# tab ("Run workflow"). It needs the repository's secret ANTHROPIC_API_KEY (Settings, Secrets and variables, Actions),
+# so the key never passes through a chat or a terminal. Each document's wrong fields and each field's share are in the
+# log; the report is kept for a week as the artifact "reader-report".
+name: Reader
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Only the files whose name holds this word (empty for all 30)
+        required: false
+        default: ''
+permissions:
+  contents: read
+jobs:
+  reader:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:reader
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FIRMONY_READER_ONLY: ${{ inputs.only }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: reader-report
+          path: .wrangler/reader/report.json
+          retention-days: 7
+          if-no-files-found: ignore
