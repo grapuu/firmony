@@ -158,6 +158,16 @@ export function readingFrom(input: Record<string, unknown>, company?: { name: st
   // negative is no amount.
   const credit = clean(input.opravuje_fakturu, 40) !== null
   const sized = (cents: number | null, zero: boolean) => (cents === null ? null : cents > 0 || (zero && cents === 0) ? cents : credit && cents < 0 ? -cents : null)
+  const vatLines = ratesOf(input.dph_podla_sadzieb)
+  const totalCents = sized(total, false)
+  let vatCents = sized(vat, true)
+  // The lines by rate that make the total to the cent outweigh a VAT read elsewhere (on 20 October 2026 the real reader
+  // added a receipt's VAT twice, once from its line by rate and once from "DPH spolu").
+  if (vatLines && totalCents !== null) {
+    const base = vatLines.reduce((sum, line) => sum + line.base, 0)
+    const tax = vatLines.reduce((sum, line) => sum + line.vat, 0)
+    if (Math.abs(base + tax) === totalCents && vatCents !== Math.abs(tax)) vatCents = Math.abs(tax)
+  }
   const reading: Reading = {
     kind: typeof input.typ === 'string' && Object.hasOwn(KINDS, input.typ) ? KINDS[input.typ] ?? 'other' : 'other',
     party: clean(input.druha_strana),
@@ -167,15 +177,15 @@ export function readingFrom(input: Record<string, unknown>, company?: { name: st
     vs: clean(input.variabilny_symbol, 20)?.replace(/\D/g, '') || null,
     issuedOn: isoDay(input.datum_vystavenia),
     dueOn: isoDay(input.datum_splatnosti),
-    totalCents: sized(total, false),
-    vatCents: sized(vat, true),
+    totalCents,
+    vatCents,
     currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null,
     category: isCategory(input.kategoria) ? input.kategoria : null,
     partyVatId: vatId && /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(vatId) ? vatId : null,
     suppliedOn: isoDay(input.datum_dodania),
     foreign: typeof input.sidlo_v_zahranici === 'boolean' ? input.sidlo_v_zahranici : null,
     corrects: clean(input.opravuje_fakturu, 40),
-    vatLines: ratesOf(input.dph_podla_sadzieb),
+    vatLines,
     ekasaUid: ekasaUid(input.ekasa_uid),
     ekasaOkp: ekasaOkp(input.ekasa_okp),
   }
@@ -210,6 +220,10 @@ function withSides(reading: Reading, input: Record<string, unknown>, company: { 
     else if (ourCustomer && !ourSupplier) out = take('invoice_in', supplier)
   }
   if (isOurs({ name: out.party, ico: out.partyIco, vatId: null }, company)) out = { ...out, party: null, partyIco: null, partyVatId: null }
+  // A receipt's shop, or a supplier the reader wrote only as the supplier, is the party when no other was written.
+  if (out.party === null && out.kind !== 'invoice_out' && supplier.name && !isOurs(supplier, company)) {
+    out = { ...out, party: supplier.name, partyIco: supplier.ico ?? out.partyIco, partyVatId: supplier.vatId ?? out.partyVatId }
+  }
   return out
 }
 

@@ -947,6 +947,16 @@ check('valid leap days survive AI validation', reader.readingFrom({ je_doklad: t
   check('a party that is our own company is never kept', self.party === null && self.partyIco === null)
   const unknown = reader.readingFrom({ ...sides, typ: 'faktura_prijata', odberatel: 'Iná firma s. r. o.', ico_odberatela: '50999999', druha_strana: 'Webhosting Sever s. r. o.' }, us)
   check('when neither side is ours, the reader’s word stands', unknown.kind === 'invoice_in' && unknown.party === 'Webhosting Sever s. r. o.')
+  const shop = reader.readingFrom({ je_doklad: true, typ: 'blocek', dodavatel: 'Železiarstvo Klinec s. r. o.', ico_dodavatela: '50100070' }, us)
+  check('a receipt whose shop was written only as the supplier has it as its party', shop.party === 'Železiarstvo Klinec s. r. o.' && shop.partyIco === '50100070')
+  const twice = reader.readingFrom({ je_doklad: true, typ: 'blocek', suma_celkom: '23.60', dph_celkom: '8.82', dph_podla_sadzieb: [{ sadzba: 23, zaklad: '19.19', dph: '4.41' }] }, us)
+  check('lines by rate that make the total outweigh a VAT read twice', twice.vatCents === 441 && twice.totalCents === 2360)
+  const credited = reader.readingFrom(
+    { je_doklad: true, typ: 'faktura_prijata', suma_celkom: '15.87', dph_celkom: '3.00', opravuje_fakturu: 'FA1', dph_podla_sadzieb: [{ sadzba: 23, zaklad: '-12.90', dph: '-2.97' }] },
+    us,
+  )
+  const loose = reader.readingFrom({ je_doklad: true, typ: 'blocek', suma_celkom: '23.60', dph_celkom: '4.41', dph_podla_sadzieb: [{ sadzba: 23, zaklad: '19.00', dph: '4.41' }] }, us)
+  check('a credit note’s minus lines count by their size; lines that do not make the total change nothing', credited.vatCents === 297 && loose.vatCents === 441)
 }
 check('AI categories and kinds reject inherited object names', ['__proto__', 'constructor', 'toString'].every((value) => {
   const invalid = reader.readingFrom({ je_doklad: true, typ: value, kategoria: value })
