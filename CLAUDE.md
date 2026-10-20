@@ -433,12 +433,26 @@ over. Bring this section up to date first whenever a session ends.
       robots.txt (Cloudflare's AI bot policies checked: all allowed), IndexNow (`INDEXNOW_KEY`, the key at
       `/<key>.txt`; the schedule of the live Worker, `ANNOUNCE` in wrangler.jsonc, tells it of every page whose day moved,
       `site_state`, schema step 71), and the guide `/ako-vybrat-uctovnika` (four options fairly, ten questions, when
-      Firmony is not the choice). Left to him: Bing Webmaster Tools (he signs in with Google himself, the builder makes
-      no account; then import from Search Console), Google Business Profile (filled by the builder up to "Next", which
-      accepts Google's terms: he clicks it, then the service area of Slovakia with the address hidden, the site, the
-      phone; the verification by video or postcard is his), and the brand's profiles linking firmony.io. Said to him: the brand comes first in
+      Firmony is not the choice). Google Business Profile: made that evening (he
+      clicked through Google's terms and the first steps himself; the builder added the services, four of them in Slovak,
+      and the description, skipped hours, photos and Google Workspace). Google offered only a video to verify, which he
+      declined ("video nahrávať nebudeme"): "Verify later", so the profile is not public; look again in a few days whether
+      a postcard or a phone is offered. Left to him: Bing Webmaster Tools (he signs in with Google himself, the builder
+      makes no account; then import from Search Console) and the brand's profiles linking firmony.io. IndexNow refused the
+      Worker's first notice at 19:45 (a GET from the browser was accepted, 202); the notice now names its sender
+      (`User-Agent`) and the log says the status: check the Worker's Observability events and `site_state` in D1. Said to him: the brand comes first in
       days to weeks once indexed; words like "účtovníctvo" or "účtovník" take months of guides and links, and nobody can
       promise the first place for them.
+   9. **The registration for VAT** (built 20 October 2026, `src/app/vat-registration.ts`; § 4(1), (2), (15) of the VAT Act
+      read that day in the version of 2026): a company that is no payer whose turnover of a calendar year (its issued
+      invoices and takings without tax, credit notes taking back; not late interest, advances, exempt supplies or what has
+      its place abroad, nor services to a customer with a foreign VAT number) exceeds 50 000 € gets a deadline of ours,
+      five working days after that day (`workingDaysAfter`), "platiteľom od" the next 1 January or the supply that crossed
+      62 500 €; near it (40 000 €) a line that runs to the year's end. Recorded as filed on the screen of deadlines
+      (`/ucto/klienti/:id/dph-registracia`, events `vatRegistration.filed` and `.unfiled`, the newest counts); the client's
+      app says it until then. Turnover before our contract is not known: said in the note. Next obligations to read and
+      build: the transaction tax for accounts at foreign providers (Act No. 279/2024, read in the original first), the
+      annual report of payroll taxes by 30 April (§ 39(9)).
 
 Current social-reporting follow-up (17 October 2026): [docs/security/social-reporting.md](docs/security/social-reporting.md).
 Additive schema **22** prepares full R/O MVPP 2026 XML for supported ordinary full-month employment in
@@ -2712,8 +2726,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
 
 ```
 npm run check            # TypeScript
-npm test                 # 1349 unit checks (18 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
-npm run test:runtime     # 1920 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
+npm test                 # 1389 unit checks (20 October 2026), including credit notes, invoice modes, A.2, advances, currencies, repeats, payment orders, business trips, the cash box, late interest
+npm run test:runtime     # 1961 workerd checks on Node 24 (as GitHub runs them), including test/centers.runtime.mjs
 npm run test:peppol      # 25 checks: every kind of e-invoice against UBL 2.1 and the CEN and Peppol BIS 3.0 rules
 ANTHROPIC_API_KEY=... npm run test:reader   # the real reader on 30 made-up documents, field by field (not on GitHub)
 FIRMONY_CAPTURE_DIR=.wrangler/ui npm run test:runtime && npm run test:ui  # 1440/390/320 px; requires Chromium or FIRMONY_CHROME

@@ -183,6 +183,7 @@ export const app = typesetAll({
     vatFix: (kind: 'O' | 'D', period: string) => typeset(`${kind === 'O' ? 'Opravné' : 'Dodatočné'} priznanie k DPH za ${period}`),
     taxPay: (year: string) => typeset(`Zaplatiť daň z príjmov za rok ${year}`),
     dividendTax: (year: string) => typeset(`Odviesť daň zrazenú z dividend zo zisku za rok ${year}`),
+    vatRegister: 'Registrácia pre DPH: obrat prekročil 50 000 €',
     taxAdvance: 'Zaplatiť preddavok na daň z príjmov',
     payrollPay: (month: string) => typeset(`Zaplatiť výplaty a odvody za ${month}`),
     payrollPayState: 'Sumy a účty máte v správach',

@@ -730,7 +730,7 @@ export default {
           console.error('app schedule failed', err instanceof Error ? err.name : 'error')
         }
         try {
-          if ((await announceSite(env.DB, env.ANNOUNCE === '1')) === 'failed') console.error('IndexNow refused the notice')
+          await announceSite(env.DB, env.ANNOUNCE === '1')
         } catch (err) {
           console.error('announcing the site failed', err instanceof Error ? err.name : 'error')
         }

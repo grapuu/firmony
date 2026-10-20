@@ -62,6 +62,7 @@ import {
   aiAccuracy,
   robots,
   autobook,
+  vatRegistration,
   guides,
   lastDeclared,
   takeover,
@@ -237,6 +238,33 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   const acc = aiAccuracy.accuracyOf(rows)
   const total = acc.fields.find((f) => f.field === 'totalCents')
   check('the month: 2 of 3 unchanged, the total right 2 of 3, the café the worst', acc.documents === 3 && acc.unchanged === 2 && total.compared === 3 && total.right === 2 && acc.worst[0].party === 'Kaviareň' && acc.worst[0].changed === 1 && acc.bySource.find((x) => x.source === 'ai').unchanged === 1, JSON.stringify(acc))
+}
+{
+  // The registration for VAT a crossed turnover asks for (app/vat-registration.ts, § 4 of the VAT Act).
+  const plain = (text) => text.replace(/[\u00a0\u202f]/g, ' ')
+  check('five working days after a Friday: the next Friday; over a day off it moves', vatRegistration.workingDaysAfter('2026-10-16', 5) === '2026-10-23' && vatRegistration.workingDaysAfter('2026-12-21', 5) === '2026-12-30')
+  const s = (day, euros) => ({ day, cents: euros * 100 })
+  const w = vatRegistration.registrationWatch([s('2026-03-02', 30000), s('2026-10-14', 15000), s('2026-10-16', 6000), s('2026-11-20', 15000), s('2025-12-30', 99999)], 2026)
+  check(
+    'crossed 50 000 € on the day the sum went above it, payer from the next year; 62 500 € makes it a payer by that supply',
+    w.sum === 6600000 && w.crossed.on === '2026-10-16' && w.crossed.due === '2026-10-23' && w.now === '2026-11-20' && w.crossed.payerFrom === '2026-11-20',
+    JSON.stringify(w),
+  )
+  const under = vatRegistration.registrationWatch([s('2026-05-05', 50000), s('2026-06-01', -1000)], 2026)
+  check('exactly 50 000 € does not exceed it, a credit note takes back', under.crossed === null && under.sum === 4900000)
+  const company = { id: 'c1', name: 'Firma', vatStatus: 'none', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: null, address: 'x' }
+  const base = { views: [], filed: [], paid: new Map(), filings: new Set(), closings: [], missing: new Map(), handover: 0 }
+  const crossed = dues.deadlinesOf(company, { ...base, supplies: [s('2026-10-16', 51000)] }, '2026-10-26').find((d) => d.kind === 'vatRegister')
+  check('a deadline of ours, late once the five working days passed, pressing', crossed?.day === '2026-10-23' && crossed.late && crossed.state === 'open' && dues.DUE_SIDE.vatRegister === 'ours' && dues.pressing([crossed], '2026-10-26').length === 1, JSON.stringify(crossed))
+  const done = dues.deadlinesOf(company, { ...base, supplies: [s('2026-10-16', 51000)], vatRegistered: new Set(['2026']) }, '2026-10-26').find((d) => d.kind === 'vatRegister')
+  check('recorded as filed, it is done', done?.state === 'done' && !done.late)
+  const near = dues.deadlinesOf(company, { ...base, supplies: [s('2026-10-16', 42000)] }, '2026-10-26').find((d) => d.kind === 'vatRegister')
+  check('near the threshold: a line that runs to the year\'s end, never late', near?.state === 'running' && near.day === '2026-12-31' && !near.late && near.vatRegister.near && plain(dueViews.dueState(near)) === 'Obrat 42 000,00 €')
+  check('a payer has none', !dues.deadlinesOf({ ...company, vatStatus: 'payer' }, { ...base, supplies: [s('2026-10-16', 51000)] }, '2026-10-26').some((d) => d.kind === 'vatRegister'))
+  check(
+    'the client is told, until it is filed',
+    deadlines.clientDeadlines(company, [crossed], '2026-10-26', new Map()).some((d) => plain(d.label) === 'Registrácia pre DPH: obrat prekročil 50 000 €') && !deadlines.clientDeadlines(company, [done], '2026-10-26', new Map()).some((d) => plain(d.label).startsWith('Registrácia')),
+  )
 }
 {
   // Documents the app books by itself (app/autobook.ts).

@@ -74,6 +74,7 @@ export function clientDeadlines(
     if (d.kind === 'vat')
       out.push({ day: d.day, label: company.vatStatus === 'payer' ? t.deadline.vat(periodName(period)) : t.taxes.period(periodName(period)), state: filedState(d), tone: d.state === 'done' ? 'ok' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
     else if (d.kind === 'vatFix') out.push({ day: d.day, label: t.deadline.vatFix(d.fix ?? 'O', periodName(period)), state: t.deadline.ours, tone: 'blue' })
+    else if (d.kind === 'vatRegister' && d.vatRegister?.crossedOn && d.state !== 'done') out.push({ day: d.day, label: t.deadline.vatRegister, state: t.deadline.ours, tone: 'blue', href: '/app/spravy' })
     else if (d.kind === 'vatPay') out.push({ day: d.day, label: t.deadline.vatPay(periodName(period)), state: d.state === 'done' ? t.deadline.vatPaid : t.deadline.vatToPay(formatEurExact(d.cents)), tone: d.state === 'done' ? 'ok' : 'amber', href: '/app/dane' })
     else if (d.kind === 'closing') {
       closing = true

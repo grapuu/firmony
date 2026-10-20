@@ -568,6 +568,8 @@ function flashOf(c: Ctx): string | null {
       return t.ledger.flashes.opening
     case 'neoznacene':
       return t.deadlines.flashes.unmarked
+    case 'oznacene':
+      return t.deadlines.flashes.marked
     default:
       return null
   }
@@ -638,6 +640,21 @@ teamRoutes.post('/klienti/:id/podane', async (c) => {
   ])
   const back = typeof body.spat === 'string' && BACK.test(body.spat) ? body.spat : '/ucto/terminy'
   return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=neoznacene`, 303)
+})
+
+// The application for the registration for VAT a crossed turnover asks for (app/vat-registration.ts), filed by the
+// company or under its power of attorney in the portal: recorded as filed for its year, or taken back.
+teamRoutes.post('/klienti/:id/dph-registracia', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  const year = typeof body.rok === 'string' && /^20\d\d$/.test(body.rok) ? body.rok : null
+  if (!year || Number(year) > Number(dayOf(now()).slice(0, 4))) return c.text('Bad request', 400)
+  const undo = body.zrusit === '1'
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: company.id, user: who.user.id, action: undo ? 'vatRegistration.unfiled' : 'vatRegistration.filed', subject: year })])
+  const back = typeof body.spat === 'string' && BACK.test(body.spat) ? body.spat : '/ucto/terminy'
+  return c.redirect(`${back}${back.includes('?') ? '&' : '?'}ok=${undo ? 'neoznacene' : 'oznacene'}`, 303)
 })
 
 async function clientPage(

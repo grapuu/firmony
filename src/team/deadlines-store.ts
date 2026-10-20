@@ -16,6 +16,7 @@ import { compareDues, deadlinesOf, summaryWindow, vatWindow, type ClosingFact, t
 import { handedOverSql, visible } from './store'
 import { REGISTRATION_EVENTS, registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
 import { healthInsured, isContract, isPension } from '../app/payroll'
+import type { Supply } from '../app/vat-registration'
 
 type Row = Record<string, unknown>
 
@@ -58,7 +59,7 @@ export async function companyDeadlines(db: D1Database, company: string, today: s
 }
 
 async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], today: string): Promise<{ companies: Company[]; dues: DueRow[] }> {
-  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows, intrastatRows] = await db.batch<Row>([
+  const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows, intrastatRows, supplyRows, vatRegRows] = await db.batch<Row>([
     db
       .prepare(
         `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, ${handedOverSql('c')} AS handover
@@ -118,7 +119,37 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
     db.prepare(`SELECT o.company_id, o.quarter FROM oss_returns o JOIN companies c ON c.id = o.company_id WHERE ${sql}`).bind(...binds),
     // Intrastat's months whose first report was sent (intrastat.ts).
     db.prepare(`SELECT i.company_id, i.month, i.flow FROM intrastat_returns i JOIN companies c ON c.id = i.company_id WHERE i.seq = 1 AND ${sql}`).bind(...binds),
+    // What a company that is no VAT payer supplied, by day, for its turnover (vat-registration.ts): its invoices and
+    // takings without tax, a credit note taking back; not late interest or an advance (no supply), not what is exempt or
+    // has its place abroad (a service to a business abroad, outside the Union, the one-stop shop, a triangular trade), nor
+    // a supply of services to a customer with a VAT number of another state.
+    db
+      .prepare(
+        `SELECT d.company_id, COALESCE(d.supplied_on, d.issued_on) AS day, SUM(d.total_cents - COALESCE(d.vat_cents, 0)) AS cents
+           FROM documents d JOIN companies c ON c.id = d.company_id
+          WHERE ${sql} AND c.vat_payer = 0 AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.kind = 'invoice_out'
+            AND COALESCE(d.category, 'sales') IN ('sales', 'sales_goods')
+            AND COALESCE(d.vat_mode, d.vat_hint, 'none') NOT IN ('exempt', 'eu_service', 'outside', 'oss', 'triangle')
+            AND NOT (d.party_vat_id IS NOT NULL AND upper(substr(trim(d.party_vat_id), 1, 2)) <> 'SK' AND COALESCE(d.category, '') <> 'sales_goods')
+            AND COALESCE(d.supplied_on, d.issued_on) >= ?
+          GROUP BY d.company_id, COALESCE(d.supplied_on, d.issued_on)`,
+      )
+      .bind(...binds, `${Number(today.slice(0, 4)) - 1}-01-01`),
+    // The application for the registration for VAT recorded as filed, by year; the newest record counts.
+    db
+      .prepare(`SELECT ev.company_id, ev.subject, ev.action FROM events ev JOIN companies c ON c.id = ev.company_id WHERE ${sql} AND ev.action IN ('vatRegistration.filed', 'vatRegistration.unfiled') ORDER BY ev.id`)
+      .bind(...binds),
   ])
+  const supplies = new Map<string, Supply[]>()
+  for (const r of supplyRows?.results ?? []) if (typeof r.day === 'string') push(supplies, String(r.company_id), { day: r.day, cents: Number(r.cents ?? 0) })
+  const vatRegistered = new Map<string, Set<string>>()
+  for (const r of vatRegRows?.results ?? []) {
+    const id = String(r.company_id)
+    const years = vatRegistered.get(id) ?? new Set<string>()
+    if (r.action === 'vatRegistration.filed') years.add(String(r.subject))
+    else years.delete(String(r.subject))
+    vatRegistered.set(id, years)
+  }
   const ossFiled = new Map<string, Set<string>>()
   for (const r of ossRows?.results ?? []) ossFiled.set(String(r.company_id), (ossFiled.get(String(r.company_id)) ?? new Set<string>()).add(String(r.quarter)))
   const intrastatSent = new Map<string, Set<string>>()
@@ -227,6 +258,8 @@ const dividendsFact = (year: number, raw: unknown): Pick<ClosingFact, 'dividends
       registered: registered.get(company.id) ?? new Map<string, string>(),
       oss: ossFiled.get(company.id) ?? new Set<string>(),
       intrastat: intrastatSent.get(company.id) ?? new Set<string>(),
+      supplies: supplies.get(company.id) ?? [],
+      vatRegistered: vatRegistered.get(company.id) ?? new Set<string>(),
     }
     for (const due of deadlinesOf(company, facts, today)) dues.push({ ...due, company, companyName: company.name })
   }

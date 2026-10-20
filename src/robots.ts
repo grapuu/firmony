@@ -46,12 +46,16 @@ export async function announceSite(db: D1Database, on: boolean, send: typeof fet
   const changed = Object.entries(pages).filter(([path, day]) => told[path] !== day).map(([path]) => `${BRAND.origin}${path}`)
   if (changed.length === 0) return 'same'
   try {
+    // A Worker's fetch names no client of its own; the notice says who sends it.
     const res = await send('https://api.indexnow.org/indexnow', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'User-Agent': `${BRAND.name} (+${BRAND.origin})` },
       body: JSON.stringify({ host: DOMAIN, key: INDEXNOW_KEY, keyLocation: `${BRAND.origin}/${INDEXNOW_KEY}.txt`, urlList: changed }),
     })
-    if (res.status !== 200 && res.status !== 202) return 'failed'
+    if (res.status !== 200 && res.status !== 202) {
+      console.error('IndexNow refused the notice', res.status)
+      return 'failed'
+    }
   } catch {
     return 'failed'
   }

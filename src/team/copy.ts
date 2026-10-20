@@ -67,15 +67,17 @@ export const team = typesetAll({
         },
       },
       handover: 'Odovzdanie účtovníctva',
+      vatRegister: (year: string) => typeset(`Registrácia pre DPH: obrat za rok ${year} prekročil 50 000 €`),
     },
     state: {
+      turnover: (amount: string) => typeset(`Obrat ${amount}`),
       ready: 'Pripravené na podanie',
       blocked: (n: number) => typeset(`Treba vyriešiť: ${n}`),
       running: { period: 'Obdobie beží', quarter: 'Štvrťrok beží', month: 'Mesiac beží', contract: 'Zmluva ešte beží' },
-      open: { payrollPay: 'Platí klient', vat: 'Nepodané', oss: 'Pripraviť a podať', intrastat: 'Pripraviť a odoslať', dividendTax: 'Odviesť a oznámiť', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Evidovať jednotlivých príjemcov', registration: 'Podať v portáli', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
+      open: { payrollPay: 'Platí klient', vat: 'Nepodané', vatRegister: 'Podať žiadosť', oss: 'Pripraviť a podať', intrastat: 'Pripraviť a odoslať', dividendTax: 'Odviesť a oznámiť', closing: 'Pripraviť a podať', payroll: 'Spracovať', payrollReports: 'Evidovať jednotlivých príjemcov', registration: 'Podať v portáli', handover: 'Odovzdať' } as Partial<Record<string, string>> & { vat: string },
       missing: (n: number) => typeset(`${plural(n, 'Chýba', 'Chýbajú', 'Chýba')} ${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}`),
       toPay: (amount: string) => typeset(`Na úhradu ${amount}`),
-      done: { vat: 'Podané', summary: 'Podaný', intrastat: 'Odoslané', vatPay: 'Zaplatené', taxPay: 'Zaplatené', closing: 'Podané', payroll: 'Uzavreté', payrollReports: 'Podané', registration: 'Podané', handover: 'Odovzdané' } as Partial<Record<string, string>> & {
+      done: { vat: 'Podané', vatRegister: 'Žiadosť podaná', summary: 'Podaný', intrastat: 'Odoslané', vatPay: 'Zaplatené', taxPay: 'Zaplatené', closing: 'Podané', payroll: 'Uzavreté', payrollReports: 'Podané', registration: 'Podané', handover: 'Odovzdané' } as Partial<Record<string, string>> & {
         vat: string
       },
     },
@@ -91,10 +93,15 @@ export const team = typesetAll({
       intrastat: 'Súbor je na stránke Intrastat: po odoslaní ho označte tam. Mesiac bez tovaru sa hlási ako nulový.',
       dividendTax: 'Zrazenú daň klient odvedie na účet daňového úradu, oznámenie o zrazení a odvedení dane podávame my. Označte ho na stránke závierky.',
       summaryD: 'Po termíne: dodatočný súhrnný výkaz len so zmenenými riadkami. Zákon mu lehotu neurčuje: podajte ho čím skôr.',
+      vatRegister: (crossed: string, payer: string) =>
+        typeset(`Obrat prekročil 50 000 € ${crossed}. Žiadosť o registráciu pre DPH podáva firma do piatich pracovných dní (§ 4 ods. 2 zákona o DPH), platiteľom je od ${payer}. Po podaní ju označte tu a registráciu zapíšte v údajoch klienta.`),
+      vatNear: (amount: string) =>
+        typeset(`Obrat tohto roka je ${amount}. Pri 50 000 € treba do piatich pracovných dní požiadať o registráciu pre DPH. Rátame vystavené faktúry a tržby, nie služby s miestom dodania v zahraničí; obrat spred našej zmluvy nepoznáme.`),
       payrollReports: 'Každá poisťovňa a finančná správa majú samostatnú evidenciu. Prehľad finančnej správy sa určuje podľa mesiaca skutočne vyplatených príjmov.',
     },
     unmark: 'Zrušiť označenie',
-    flashes: { unmarked: 'Označenie sme zrušili.' },
+    mark: 'Označiť ako podané',
+    flashes: { unmarked: 'Označenie sme zrušili.', marked: 'Označili sme ako podané.' },
     open: 'Otvoriť',
     cardEmpty: (days: number) => typeset(`Na najbližších ${days} dní nič otvorené.`),
     cardAll: 'Termíny všetkých klientov',

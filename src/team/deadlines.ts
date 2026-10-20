@@ -47,8 +47,9 @@ import { registrationDues, type RegistrationDue, type RegistrationEmployee } fro
 import { nextQuarter, ossDue, quarterOfDay, quarterRange } from '../app/oss'
 import { FLOWS, intrastatDue, monthEnd, sinceOf, settingsOf } from '../app/intrastat'
 import { dividendTaxDue } from '../app/distribution'
+import { VAT_REGISTRATION, registrationWatch, type Supply } from '../app/vat-registration'
 
-export type DueKind = 'vat' | 'vatFix' | 'summary' | 'oss' | 'intrastat' | 'dividendTax' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
+export type DueKind = 'vat' | 'vatFix' | 'vatRegister' | 'summary' | 'oss' | 'intrastat' | 'dividendTax' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
@@ -56,6 +57,7 @@ export type DueSide = 'ours' | 'client'
 export const DUE_SIDE: Record<DueKind, DueSide> = {
   vat: 'ours',
   vatFix: 'ours',
+  vatRegister: 'ours',
   summary: 'ours',
   oss: 'ours',
   intrastat: 'ours',
@@ -85,6 +87,9 @@ export type MarkedKind = (typeof MARKED_KINDS)[keyof typeof MARKED_KINDS]
 export type DueState = 'ready' | 'blocked' | 'open' | 'running' | 'done'
 
 export interface Due {
+  /** The registration for VAT a crossed turnover asks for (vat-registration.ts): the day it was crossed, and from when the
+   *  company is a payer; for a turnover near the threshold, `near` and no day crossed. */
+  vatRegister?: { crossedOn: string | null; payerFrom: string | null; near: boolean }
   /** A registration with the Social Insurance Agency or a health insurer (registrations.ts). */
   registration?: RegistrationDue
   reportId?: string
@@ -207,6 +212,10 @@ export interface DueFacts {
   oss?: Set<string>
   /** Intrastat's months sent, as `${month}:${flow}` (intrastat.ts). */
   intrastat?: Set<string>
+  /** What a company that is no VAT payer supplied, day by day, for its turnover (vat-registration.ts). */
+  supplies?: Supply[]
+  /** The years whose application for the registration for VAT was recorded as filed. */
+  vatRegistered?: Set<string>
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -283,9 +292,24 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const done = k.dividends.filedOn !== null
       ossDues.push({ companyId: company.id, kind: 'dividendTax', period: String(k.year), day, state: done ? 'done' : 'open', late: !done && today > day, count: 0, cents: k.dividends.withheld, fix: null })
     }
-  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage' | 'registration'>>) =>
+  const add = (due: Pick<Due, 'kind' | 'period' | 'day' | 'state'> & Partial<Pick<Due, 'count' | 'cents' | 'fix' | 'deliveryStatus' | 'manualRecorded' | 'reportId' | 'reportKind' | 'sourceChanged' | 'payrollStage' | 'registration' | 'vatRegister'>>) =>
     // Sent and waiting for its receipt is not late, whenever the receipt comes: what was ours to do by the day is done.
     out.push({ companyId: company.id, count: 0, cents: 0, fix: null, ...due, late: (due.state === 'open' || due.state === 'ready' || due.state === 'blocked') && today > due.day && due.deliveryStatus !== 'submitted' })
+
+  // The registration for VAT of a company that is no payer: within five working days of the day its turnover of a calendar
+  // year exceeded 50 000 € (§ 4(1), (2) of the VAT Act); last year's too, crossed in its last days. Near the threshold, a
+  // line that it is near, until the year's end.
+  if (company.vatStatus !== 'payer' && facts.supplies) {
+    const thisYear = Number(today.slice(0, 4))
+    for (const year of [thisYear - 1, thisYear]) {
+      const watch = registrationWatch(facts.supplies, year)
+      const filedReg = facts.vatRegistered?.has(String(year)) ?? false
+      if (watch.crossed)
+        add({ kind: 'vatRegister', period: String(year), day: watch.crossed.due, state: filedReg ? 'done' : 'open', cents: watch.sum, vatRegister: { crossedOn: watch.crossed.on, payerFrom: watch.crossed.payerFrom, near: false } })
+      else if (year === thisYear && watch.sum > VAT_REGISTRATION.near)
+        add({ kind: 'vatRegister', period: String(year), day: `${year}-12-31`, state: 'running', cents: watch.sum, vatRegister: { crossedOn: null, payerFrom: null, near: true } })
+    }
+  }
 
   if (company.vatStatus !== 'none') {
     const quarterly = company.vatQuarterly
@@ -408,7 +432,8 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
   const ahead = addDays(today, DEADLINES.aheadDays)
   const back = addDays(today, -DEADLINES.doneDays)
   out.push(...ossDues)
-  return out.filter((d) => (d.state === 'done' ? d.day >= back : d.state !== 'running' || d.day <= ahead))
+  // A turnover near the threshold of the registration for VAT is said whenever it is near, whatever the day.
+  return out.filter((d) => (d.state === 'done' ? d.day >= back : d.state !== 'running' || d.day <= ahead || Boolean(d.vatRegister?.near)))
 }
 
 /** Where a deadline stands on the screen: overdue, within a week, within a month, later, or done. */
@@ -423,7 +448,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, summary: 2, oss: 2, intrastat: 2, dividendTax: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, vatRegister: 1, summary: 2, oss: 2, intrastat: 2, dividendTax: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

@@ -52,6 +52,7 @@ import { checkAssetVat } from './asset-vat.runtime.mjs'
 import { checkWorkPay } from './work-pay.runtime.mjs'
 import { checkAiAccuracy } from './ai-accuracy.runtime.mjs'
 import { checkAutobook } from './autobook.runtime.mjs'
+import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
 import { checkJointStock } from './joint-stock.runtime.mjs'
 import { checkLists } from './lists.runtime.mjs'
@@ -94,7 +95,7 @@ const mf = new Miniflare(
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
           if (new URL(request.url).hostname === 'api.indexnow.org') {
-            notices.push(JSON.parse(await request.text()))
+            notices.push({ ...JSON.parse(await request.text()), agent: request.headers.get('user-agent') })
             return new MfResponse('', { status: notices.length === 1 ? 202 : 200 })
           }
           const banked = await bank.answer(request)
@@ -483,7 +484,7 @@ await settle(500)
   const first = notices[0]
   check(
     'the schedule tells IndexNow of every page of the sitemap, with the key and where it is',
-    notices.length === 1 && first.host === 'firmony.io' && first.key === 'bacfe8b9cdfff70dd1e00785593ea3f8' && first.keyLocation === 'https://firmony.io/bacfe8b9cdfff70dd1e00785593ea3f8.txt' && listed.length > 5 && listed.every((u) => first.urlList.includes(u)) && first.urlList.length === listed.length,
+    notices.length === 1 && first.agent === 'Firmony (+https://firmony.io)' && first.host === 'firmony.io' && first.key === 'bacfe8b9cdfff70dd1e00785593ea3f8' && first.keyLocation === 'https://firmony.io/bacfe8b9cdfff70dd1e00785593ea3f8.txt' && listed.length > 5 && listed.every((u) => first.urlList.includes(u)) && first.urlList.length === listed.length,
     JSON.stringify(notices),
   )
   await worker.scheduled({ cron: '*/15 * * * *' })
@@ -4899,6 +4900,7 @@ await checkAssetVat({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CA
 await checkWorkPay({ db, acc, admin, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAiAccuracy({ db, acc, admin, lucia, nowS, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAutobook({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkVatRegistration({ db, acc, lucia, nowS, day })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPrehlad({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkHealthReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR, foreign:handoverForeign })
