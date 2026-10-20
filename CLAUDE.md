@@ -432,7 +432,9 @@ over. Bring this section up to date first whenever a session ends.
       record in the Cloudflare zone (`google-site-verification=...`, keep it), the sitemap sent, the home page's indexing
       requested. It found that "Disallow: /ucto" in robots.txt closed `/uctovnictvo-pre-sro` (a prefix): mended
       (`src/robots.ts`, private paths by their slash and "$", a unit check that every sitemap page is open), Google reads
-      robots.txt again within a day, then request indexing of the guides in Search Console (URL inspection). For the
+      robots.txt again within a day, then request indexing of the guides in Search Console (URL inspection). Indexing
+      requested on 20 October: `/`, `/mzdova-kalkulacka`, `/ako-vybrat-uctovnika`, `/cena-uctovnictva`; still to request:
+      `/uctovnictvo-pre-sro` (once robots.txt is read again), `/online-uctovnik`, `/e-faktura-2027` (about ten a day). For the
       assistants (his word: when somebody asks ChatGPT, Claude or Gemini which accountant for a new s. r. o., Firmony must
       come up): `/llms.txt` and `/llms-full.txt` (llmstxt.org, prices from config, every guide), every AI crawler named in
       robots.txt (Cloudflare's AI bot policies checked: all allowed), IndexNow (`INDEXNOW_KEY`, the key at
@@ -444,8 +446,10 @@ over. Bring this section up to date first whenever a session ends.
       declined ("video nahrávať nebudeme"): "Verify later", so the profile is not public; look again in a few days whether
       a postcard or a phone is offered. Left to him: Bing Webmaster Tools (he signs in with Google himself, the builder
       makes no account; then import from Search Console) and the brand's profiles linking firmony.io. IndexNow refused the
-      Worker's first notice at 19:45 (a GET from the browser was accepted, 202); the notice now names its sender
-      (`User-Agent`) and the log says the status: check the Worker's Observability events and `site_state` in D1. Said to him: the brand comes first in
+      Worker's notices with 429 (Cloudflare's shared addresses) while the same notice from the browser pane was taken
+      (200, every page sent that evening, the calculator too); the Worker now tries Bing's address as well and, refused
+      by both, waits a day (`indexnow-wait` in `site_state`). A new page can be told by hand from the browser pane: a GET
+      of `https://api.indexnow.org/indexnow?url=<page>&key=<INDEXNOW_KEY>`. Said to him: the brand comes first in
       days to weeks once indexed; words like "účtovníctvo" or "účtovník" take months of guides and links, and nobody can
       promise the first place for them.
    9. **The registration for VAT** (built 20 October 2026, `src/app/vat-registration.ts`; § 4(1), (2), (15) of the VAT Act
