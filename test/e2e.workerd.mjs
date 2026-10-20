@@ -71,6 +71,7 @@ if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, 
 const lookups = []
 const readings = []
 const notices = []
+let indexNowAnswer = null
 // The bank of Firma A: what it holds is set by the part of the test that reads it.
 const bankFeed = { transactions: [], balance: '0.00' }
 const bank = pretendBank({ iban: 'SK3112000000198742637541', transactions: () => bankFeed.transactions, balance: () => bankFeed.balance, extraAccount: 'SK7311000000002934567890' })
@@ -95,9 +96,9 @@ const mf = new Miniflare(
         bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.io', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey, ANNOUNCE: '1' },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
-          if (new URL(request.url).hostname === 'api.indexnow.org') {
-            notices.push({ ...JSON.parse(await request.text()), agent: request.headers.get('user-agent') })
-            return new MfResponse('', { status: notices.length === 1 ? 202 : 200 })
+          if (['api.indexnow.org', 'www.bing.com'].includes(new URL(request.url).hostname)) {
+            notices.push({ ...JSON.parse(await request.text()), agent: request.headers.get('user-agent'), sentTo: new URL(request.url).hostname })
+            return new MfResponse('', { status: indexNowAnswer ?? (notices.length === 1 ? 202 : 200) })
           }
           const banked = await bank.answer(request)
           if (banked) return new MfResponse(await banked.text(), { status: banked.status, headers: { 'content-type': 'application/json' } })
@@ -498,6 +499,20 @@ await settle(500)
   await settle(300)
   for (let i = 0; i < 50 && notices.length < 2; i++) await settle(100)
   check('a guide whose day moved is told alone', notices.length === 2 && notices[1].urlList.join() === 'https://firmony.io/cena-uctovnictva', JSON.stringify(notices[1]))
+  // Refused at both addresses: the next try waits a day.
+  indexNowAnswer = 429
+  told['/online-uctovnik'] = '2026-01-01'
+  await db.prepare("UPDATE site_state SET value = ? WHERE key = 'indexnow'").bind(JSON.stringify(told)).run()
+  await worker.scheduled({ cron: '*/15 * * * *' })
+  for (let i = 0; i < 50 && notices.length < 4; i++) await settle(100)
+  await settle(200)
+  const wait = await db.prepare("SELECT value FROM site_state WHERE key = 'indexnow-wait'").first()
+  check('refused by IndexNow, Bing is asked, and the next try waits a day', notices.length === 4 && notices[2].sentTo === 'api.indexnow.org' && notices[3].sentTo === 'www.bing.com' && Number(wait?.value ?? 0) > Date.now() / 1000 + 86000, JSON.stringify(notices.slice(2)))
+  await worker.scheduled({ cron: '*/15 * * * *' })
+  await settle(500)
+  check('meanwhile nothing is sent', notices.length === 4)
+  indexNowAnswer = null
+  await db.prepare("DELETE FROM site_state WHERE key = 'indexnow-wait'").run()
 }
 check('a request older than a year is deleted', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 0)
 check('newer requests stay', (await count()) >= 4)

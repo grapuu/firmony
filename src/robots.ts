@@ -33,38 +33,51 @@ export function sitemapXml(): string {
  * told is kept in `site_state`, so a page is told again only when its day moves; a refused notice is tried again by
  * the next run.
  */
-export async function announceSite(db: D1Database, on: boolean, send: typeof fetch = fetch): Promise<'off' | 'same' | 'sent' | 'failed'> {
+export async function announceSite(db: D1Database, on: boolean, send: typeof fetch = fetch): Promise<'off' | 'same' | 'sent' | 'failed' | 'waiting'> {
   if (!on) return 'off'
+  const at = Math.floor(Date.now() / 1000)
+  const rows = await db.prepare("SELECT key, value FROM site_state WHERE key IN ('indexnow', 'indexnow-wait')").all<{ key: string; value: string }>()
+  const wait = Number(rows.results.find((r) => r.key === 'indexnow-wait')?.value ?? 0)
+  if (wait > at) return 'waiting'
   const pages = Object.fromEntries(sitePages())
-  const row = await db.prepare("SELECT value FROM site_state WHERE key = 'indexnow'").first<{ value: string }>()
   let told: Record<string, string> = {}
   try {
-    told = row ? (JSON.parse(row.value) as Record<string, string>) : {}
+    told = JSON.parse(rows.results.find((r) => r.key === 'indexnow')?.value ?? '{}') as Record<string, string>
   } catch {
     told = {}
   }
   const changed = Object.entries(pages).filter(([path, day]) => told[path] !== day).map(([path]) => `${BRAND.origin}${path}`)
   if (changed.length === 0) return 'same'
-  try {
-    // A Worker's fetch names no client of its own; the notice says who sends it.
-    const res = await send('https://api.indexnow.org/indexnow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8', 'User-Agent': `${BRAND.name} (+${BRAND.origin})` },
-      body: JSON.stringify({ host: DOMAIN, key: INDEXNOW_KEY, keyLocation: `${BRAND.origin}/${INDEXNOW_KEY}.txt`, urlList: changed }),
-    })
-    if (res.status !== 200 && res.status !== 202) {
-      console.error('IndexNow refused the notice', res.status)
-      return 'failed'
+  const keep = (key: string, value: string) =>
+    db.prepare('INSERT INTO site_state (key, value, at) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO UPDATE SET value = excluded.value, at = excluded.at').bind(key, value, at).run()
+  // IndexNow's own address first, then Bing's, which shares every notice with the others. A Worker's fetch names no
+  // client of its own; the notice says who sends it. Refused by both (on 20 October 2026 api.indexnow.org answered the
+  // Worker 429 while it took the same notice from a browser), the next try waits a day, so the schedule does not knock
+  // every quarter of an hour.
+  const statuses: number[] = []
+  for (const endpoint of INDEXNOW_ENDPOINTS) {
+    try {
+      const res = await send(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'User-Agent': `${BRAND.name} (+${BRAND.origin})` },
+        body: JSON.stringify({ host: DOMAIN, key: INDEXNOW_KEY, keyLocation: `${BRAND.origin}/${INDEXNOW_KEY}.txt`, urlList: changed }),
+      })
+      if (res.status === 200 || res.status === 202) {
+        await keep('indexnow', JSON.stringify(pages))
+        return 'sent'
+      }
+      statuses.push(res.status)
+    } catch {
+      statuses.push(0)
     }
-  } catch {
-    return 'failed'
   }
-  await db
-    .prepare("INSERT INTO site_state (key, value, at) VALUES ('indexnow', ?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value, at = excluded.at")
-    .bind(JSON.stringify(pages), Math.floor(Date.now() / 1000))
-    .run()
-  return 'sent'
+  console.error('IndexNow refused the notice', statuses.join(' '))
+  await keep('indexnow-wait', String(at + 86_400))
+  return 'failed'
 }
+
+/** Where IndexNow takes a notice: its own address, then Bing's. */
+export const INDEXNOW_ENDPOINTS = ['https://api.indexnow.org/indexnow', 'https://www.bing.com/indexnow'] as const
 
 /** Crawlers of search engines and of the assistants that search for their answers, named one by one. */
 export const CRAWLERS = [
