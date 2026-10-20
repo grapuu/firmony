@@ -60,6 +60,8 @@ import {
   time,
   workPay,
   aiAccuracy,
+  robots,
+  guides,
   lastDeclared,
   takeover,
   takeoverStore,
@@ -234,6 +236,24 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   const acc = aiAccuracy.accuracyOf(rows)
   const total = acc.fields.find((f) => f.field === 'totalCents')
   check('the month: 2 of 3 unchanged, the total right 2 of 3, the café the worst', acc.documents === 3 && acc.unchanged === 2 && total.compared === 3 && total.right === 2 && acc.worst[0].party === 'Kaviareň' && acc.worst[0].changed === 1 && acc.bySource.find((x) => x.source === 'ai').unchanged === 1, JSON.stringify(acc))
+}
+{
+  // What crawlers may read (robots.ts). On 20 October 2026 "Disallow: /ucto" kept /uctovnictvo-pre-sro out of Google.
+  const text = robots.robotsTxt()
+  const open = ['/', '/investori', '/podmienky', '/pravne-informacie', '/llms.txt', '/llms-full.txt', '/sitemap.xml', ...guides.GUIDES.map((g) => g.path)]
+  const closed = ['/app', '/app/prihlasenie', '/ucto', '/ucto/klienti/x', '/zacat', '/zacat/hotovo', '/objednavka/abc', '/f/abc', '/auth/passkey']
+  check('every public page and guide is open to crawlers', open.every((p) => robots.robotsAllows(text, p)), open.filter((p) => !robots.robotsAllows(text, p)).join())
+  check('the forms, the app, the team and invoices are not', closed.every((p) => !robots.robotsAllows(text, p)), closed.filter((p) => robots.robotsAllows(text, p)).join())
+  check('the matcher knows "$" and the longest rule', !robots.robotsAllows('Allow: /\nDisallow: /a$', '/a') && robots.robotsAllows('Allow: /\nDisallow: /a$', '/ab') && robots.robotsAllows('Disallow: /a\nAllow: /ab', '/abc'))
+  check('the assistants\' crawlers are named one by one', ['GPTBot', 'OAI-SearchBot', 'ClaudeBot', 'Claude-SearchBot', 'PerplexityBot', 'Google-Extended', 'Bingbot'].every((bot) => text.includes(`User-agent: ${bot}\n`)) && text.includes('Sitemap: https://firmony.io/sitemap.xml'))
+  const llms = robots.llmsTxt()
+  check(
+    'llms.txt says every price as config has it, the operator and every guide',
+    llms.startsWith('# Firmony\n\n> ') && config.PLANS.every((p) => llms.includes(`${p.name}: ${p.price} € mesačne`)) && llms.includes(`${config.PAYROLL_PRICE} € mesačne za človeka`) && llms.includes(`${config.CLOSING_PRICE} € raz ročne`) && llms.includes('europio s. r. o.') && guides.GUIDES.every((g) => llms.includes(`https://firmony.io${g.path}`)) && !/[  —]/.test(llms),
+    llms,
+  )
+  const full = robots.llmsFullTxt()
+  check('llms-full.txt carries every guide in full', guides.GUIDES.every((g) => full.includes(`# ${g.first} ${g.second}`) && g.sections.every((s) => full.includes(`## ${s.h}`))) && full.length > llms.length * 3)
 }
 
 // The register

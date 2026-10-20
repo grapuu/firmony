@@ -1,11 +1,12 @@
 import { GUIDES } from './content/guides'
 import { article, breadcrumbs, faqPage, jsonLd, organization, service, SITE_UPDATED, website } from './seo'
+import { llmsFullTxt, llmsTxt, robotsTxt } from './robots'
 import { GuidePage } from './views/guide'
 import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
-import { APP, BRAND, CUSTOM_PLAN, INVESTORS, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
+import { APP, BRAND, CUSTOM_PLAN, INDEXNOW_KEY, INVESTORS, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
 import { copy } from './copy'
 import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
 import { typeset } from './format'
@@ -642,7 +643,10 @@ app.route('/auth', securityRoutes)
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
 
-app.get('/robots.txt', (c) => c.text(['User-agent: *', 'Disallow: /zacat', 'Disallow: /objednavka', 'Disallow: /app', 'Disallow: /ucto', 'Disallow: /f/', `Sitemap: ${BRAND.origin}/sitemap.xml`, ''].join('\n')))
+app.get('/robots.txt', (c) => c.text(robotsTxt()))
+app.get('/llms.txt', (c) => c.text(llmsTxt()))
+app.get('/llms-full.txt', (c) => c.text(llmsFullTxt()))
+app.get(`/${INDEXNOW_KEY}.txt`, (c) => c.text(INDEXNOW_KEY))
 
 // The guides (content/guides.ts): one page a question people search, with its own data for search engines.
 for (const guide of GUIDES) {

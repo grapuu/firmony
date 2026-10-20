@@ -100,6 +100,12 @@ export const ACCOUNTANT_RATES = {
   takeover: 3000,
 } as const
 
+/**
+ * The key of IndexNow (indexnow.org), which tells Bing, Seznam, Yandex and Naver at once that a page changed; Bing is
+ * what ChatGPT searches. It is public by design: the site serves it at /<key>.txt to prove the site sent the notice.
+ */
+export const INDEXNOW_KEY = 'bacfe8b9cdfff70dd1e00785593ea3f8'
+
 /** How soon a request is answered, as the pages promise it. */
 export const REPLY_WITHIN = 'do jedného pracovného dňa'
 

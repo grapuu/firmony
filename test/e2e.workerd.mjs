@@ -322,7 +322,19 @@ check(
   page.includes('Anthropic, PBC') && page.includes('Enable Banking Oy') && page.replace(/\u00a0/g, ' ').includes('5 rokov od skončenia zmluvy') && page.includes('href="/podmienky#clanok-8"'),
 )
 res = await get('/robots.txt')
-check('robots keeps the form out and names the sitemap', (await res.text()).includes('Disallow: /zacat'))
+{
+  const text = await res.text()
+  check('robots keeps the form and the team out, not a guide that begins like the team', text.includes('Disallow: /zacat') && text.includes('Disallow: /ucto/') && !/^Disallow: \/ucto$/m.test(text) && text.includes('Sitemap: https://firmony.io/sitemap.xml'))
+}
+res = await get('/llms.txt')
+{
+  const text = await res.text()
+  check('llms.txt answers in plain text with the prices and the guides', res.status === 200 && (res.headers.get('content-type') ?? '').startsWith('text/plain') && text.startsWith('# Firmony') && text.includes('Štart: 89 € mesačne') && text.includes('https://firmony.io/uctovnictvo-pre-sro'))
+}
+res = await get('/llms-full.txt')
+check('llms-full.txt carries the guides', res.status === 200 && (await res.text()).includes('## Časté otázky'))
+res = await get('/bacfe8b9cdfff70dd1e00785593ea3f8.txt')
+check('the IndexNow key is served as itself', res.status === 200 && (await res.text()) === 'bacfe8b9cdfff70dd1e00785593ea3f8')
 res = await get('/sitemap.xml')
 {
   const map = await res.text()
