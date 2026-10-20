@@ -343,7 +343,13 @@ over. Bring this section up to date first whenever a session ends.
       proposed it (a column or a table, never overwritten by the booking), and show the team a page "Presnosť AI"
       (`/ucto/ai`): for the documents booked in a month, each field the reader proposed (kind, supplier, IČO, number,
       days, total, VAT and its rates, category, VAT mode) against what was booked, the share booked with no change, the
-      worst suppliers and kinds. (b) A set of at least 30 made-up Slovak documents as pictures and PDFs (eKasa receipts
+      worst suppliers and kinds. **(a) built on 20 October 2026**: `documents.reading` (schema step 70, the fields
+      `READ_FIELDS` of `src/app/xml.ts` as the reader or an e-invoice gave them, written by `readingStatement` and
+      `insertDocumentStatement`, never by the booking), `src/team/ai-accuracy.ts` (`normal` compares names, numbers and
+      IČO without case, spaces or dots; an e-invoice is not judged by a category it never says), the page
+      `src/views/ai-accuracy.tsx` ("Presnosť AI" in the team's menu: a month's booked documents, unchanged and by source,
+      field by field, the ten suppliers put right most), test/ai-accuracy.runtime.mjs. Documents read before step 70
+      have no reading and are left out. (b) A set of at least 30 made-up Slovak documents as pictures and PDFs (eKasa receipts
       with their codes, invoices of payers and non-payers, foreign invoices, credit notes, a photo at an angle, a
       crumpled receipt) and `npm run test:reader`, which runs the real reader on them (needs `ANTHROPIC_API_KEY`, not
       in CI) and reports each field's accuracy; improve the prompt and the tool (`READER`, `src/app/read.ts`) until

@@ -200,6 +200,8 @@ import { orderLinkMail } from '../order-mail'
 import { ContractReleasePage, ContractReviewPage, type ReleaseForm } from '../views/contract-review'
 import { BillingPage } from '../views/billing'
 import { WorkPage } from '../views/work-pay'
+import { AiPage } from '../views/ai-accuracy'
+import { accuracyOf, comparedOf } from './ai-accuracy'
 import { lastMonths, payOf, workCsv, workStatement } from './work-pay'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
@@ -5331,6 +5333,16 @@ teamRoutes.get('/vykaz.csv', async (c) => {
       'Cache-Control': 'private, no-store',
     },
   })
+})
+
+// How well the reader reads (team/ai-accuracy.ts): an accountant sees her clients' documents, the administrator all.
+teamRoutes.get('/ai', async (c) => {
+  const who = c.get('who')
+  const months = lastMonths(dayOf(now()))
+  const asked = c.req.query('mesiac') ?? ''
+  const month = months.includes(asked) ? asked : (months[0] as string)
+  const accuracy = accuracyOf(await comparedOf(c.env.DB, { id: who.user.id, team: who.user.team ?? null }, month, demoOn(c)))
+  return shell(c, 'ai', t.ai.title, <AiPage month={month} months={months} accuracy={accuracy} />)
 })
 
 teamRoutes.get('/fakturacia', (c) => (isAdmin(c.get('who').user) ? billingPage(c) : missingPage(c)))

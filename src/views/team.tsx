@@ -35,7 +35,7 @@ import { pressing } from '../team/deadlines'
 import type { DueRow } from '../team/deadlines-store'
 import { DueItem } from './deadlines'
 
-export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'billing' | 'people' | 'work' | 'incidents'
+export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'billing' | 'people' | 'work' | 'ai' | 'incidents'
 
 /** The team's places. `menu`: seldom used, so on a phone it is always in the bar's menu, never a tab. */
 const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean; menu?: boolean }[] = [
@@ -47,6 +47,7 @@ const NAV: { place: TeamPlace; href: string; label: string; short: string; art: 
   { place: 'billing', href: '/ucto/fakturacia', label: t.nav.billing, short: t.nav.short.billing, art: ART.savings, admin: true },
   { place: 'people', href: '/ucto/tim', label: t.nav.people, short: t.nav.short.people, art: ART.lens, admin: true },
   { place: 'work', href: '/ucto/vykaz', label: t.nav.work, short: t.nav.short.work, art: ART.savings },
+  { place: 'ai', href: '/ucto/ai', label: t.nav.ai, short: t.nav.short.ai, art: ART.chip, menu: true },
   { place: 'incidents', href: '/ucto/incidenty', label: t.nav.incidents, short: t.nav.short.incidents, art: ART.lens, menu: true },
 ]
 

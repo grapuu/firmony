@@ -59,6 +59,7 @@ import {
   distribution,
   time,
   workPay,
+  aiAccuracy,
   lastDeclared,
   takeover,
   takeoverStore,
@@ -217,6 +218,21 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   check('the last twelve months, this one first, across a year', workPay.lastMonths('2026-02-10', 3).join() === '2026-02,2026-01,2025-12')
   const csv = workPay.workCsv([row({ documents: 40, vat: ['2026-09'] })])
   check('the statement for Excel: its sum in the last line', csv.startsWith('\uFEFFKlient;') && csv.trim().split('\r\n').at(-1) === 'Spolu;;40;20,00;1;12,00;0,00;0;0,00;0;0,00;0,00;32,00', csv)
+  // How well the reader reads (team/ai-accuracy.ts).
+  const read = { kind: 'receipt', party: 'Kaviareň Pod Hradom, s. r. o.', partyIco: '12345678', number: 'A 12', vs: null, issuedOn: '2026-10-14', dueOn: null, totalCents: 1240, vatCents: 232, currency: 'EUR', category: 'meals' }
+  const same = aiAccuracy.compareFields(read, { ...read, party: 'KAVIAREŇ POD HRADOM s.r.o.', partyIco: '012345678', number: 'a12' })
+  check('a reading left as it was: every field right, names and numbers without case, spaces and dots', aiAccuracy.READ_FIELDS.every((f) => same[f] !== false) && same.vs === null && same.dueOn === null, JSON.stringify(same))
+  const fixed = aiAccuracy.compareFields(read, { ...read, totalCents: 1420, category: 'office', dueOn: '2026-10-20' })
+  check('a total, a category and a due day put right by the accountant', fixed.totalCents === false && fixed.category === false && fixed.dueOn === false && fixed.issuedOn === true, JSON.stringify(fixed))
+  check("an e-invoice is not judged by a category it never says", aiAccuracy.compareFields({ ...read, category: null }, read, 'xml').category === null)
+  const rows = [
+    { docId: '1', companyId: 'c', party: 'Kaviareň', source: 'ai', fields: same },
+    { docId: '2', companyId: 'c', party: 'Kaviareň', source: 'ai', fields: fixed },
+    { docId: '3', companyId: 'c', party: 'Orange', source: 'xml', fields: aiAccuracy.compareFields(read, read, 'xml') },
+  ]
+  const acc = aiAccuracy.accuracyOf(rows)
+  const total = acc.fields.find((f) => f.field === 'totalCents')
+  check('the month: 2 of 3 unchanged, the total right 2 of 3, the café the worst', acc.documents === 3 && acc.unchanged === 2 && total.compared === 3 && total.right === 2 && acc.worst[0].party === 'Kaviareň' && acc.worst[0].changed === 1 && acc.bySource.find((x) => x.source === 'ai').unchanged === 1, JSON.stringify(acc))
 }
 
 // The register

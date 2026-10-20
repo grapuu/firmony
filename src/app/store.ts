@@ -12,7 +12,7 @@ import { autoAdvances } from './advance-auto'
 import { settingsOf, type IntrastatSettings } from './intrastat'
 import { isLegalForm, legalFormOf, type LegalForm } from '../rpo'
 import { isTaxOffice, type TaxOffice } from './vat-xml'
-import type { Entry, Reading, Statement } from './xml'
+import { readingJson, type Entry, type Reading, type Statement } from './xml'
 import { isRatioMode, ratiosOf, type RatioMode, type RatioYear } from './vat-ratio'
 import { assetVatsOf, assetYearsOf, type AssetVat } from './vat-assets'
 import { badDebtsOf, type BadDebt } from './bad-debt'
@@ -894,8 +894,8 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
     .prepare(
       `INSERT INTO documents (id, company_id, created_at, source, added_by, file_key, file_type, file_name, file_bytes, file_hash, status, read_by,
          kind, party, party_ico, party_iban, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, proposal, invoice_id,
-         party_vat_id, supplied_on, foreign_party, corrects, vat_lines, prepaid)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         party_vat_id, supplied_on, foreign_party, corrects, vat_lines, prepaid, reading)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       d.id,
@@ -926,6 +926,7 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
       d.invoiceId ?? null,
       ...vatHints(r),
       r?.prepaid ? 1 : 0,
+      r && d.readBy === 'xml' ? readingJson(r) : null,
     )
 }
 
@@ -946,7 +947,7 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
     .prepare(
       `UPDATE documents SET status = 'read', read_by = ?, kind = ?, party = ?, party_ico = ?, party_iban = ?, number = ?, vs = ?,
          issued_on = ?, due_on = ?, total_cents = ?, vat_cents = ?, currency = ?, category = ?, proposal = ?,
-         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?, ekasa_uid = ?, ekasa_okp = ?
+         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?, ekasa_uid = ?, ekasa_okp = ?, reading = ?
        WHERE id = ? AND company_id = ? AND status = 'reading'`,
     )
     .bind(
@@ -967,6 +968,7 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
       ...vatHints(reading),
       reading.ekasaUid ?? null,
       reading.ekasaOkp ?? null,
+      by.startsWith('person') ? null : readingJson(reading),
       doc,
       company,
     )

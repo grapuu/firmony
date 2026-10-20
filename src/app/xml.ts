@@ -241,6 +241,18 @@ export interface Reading {
   prepaid?: boolean
 }
 
+/** The fields of a reading kept as the reader gave them (`documents.reading`) and compared with the booking on the
+ *  page "Presnosť AI" (team/ai-accuracy.ts), in the order the page lists them. */
+export const READ_FIELDS = ['kind', 'party', 'partyIco', 'number', 'vs', 'issuedOn', 'dueOn', 'totalCents', 'vatCents', 'currency', 'category'] as const
+export type ReadField = (typeof READ_FIELDS)[number]
+
+/** What is kept of a reading: its fields as the reader gave them. */
+export function readingJson(r: Reading): string {
+  const out: Record<string, unknown> = {}
+  for (const field of READ_FIELDS) out[field] = (r as unknown as Record<string, unknown>)[field] ?? null
+  return JSON.stringify(out)
+}
+
 function partyOf(node: unknown): { name: string | null; ids: string[]; vatId: string | null; country: string | null } {
   const party = at(node, 'Party')
   const name = text(at(party, 'PartyLegalEntity', 'RegistrationName')) ?? text(at(party, 'PartyName', 'Name'))

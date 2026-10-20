@@ -1535,6 +1535,9 @@ const MIGRATIONS: readonly string[][] = [
   // The accountants paid for the work done (20 October 2026, team/work-pay.ts): her month's events are read by user
   // and time, and whether a document, a period or a company was dealt with before by its subject.
   ['CREATE INDEX IF NOT EXISTS events_user ON events (user_id, at)', 'CREATE INDEX IF NOT EXISTS events_subject ON events (subject, action, at)'],
+  // What the reader proposed for a document, as it proposed it (20 October 2026, team/ai-accuracy.ts): written once when
+  // the document is read and never by the booking, so the page "Presnosť AI" compares it with what was booked.
+  ['ALTER TABLE documents ADD COLUMN reading TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
