@@ -38,8 +38,20 @@ over. Bring this section up to date first whenever a session ends.
    the deduction from a supplier's invoice not paid within 100 days (§ 53b, under "VAT"), mended after an independent review
    (schema step 66); the supplier's bad debts (§ 25a, schema step 67, under "VAT"); triangular trade (under "VAT"); the
    adjustment of the deduction on investment property (§ 54 to § 54d, schema step 68, under "VAT").
-   **Nothing is live**: there
-   is no Cloudflare Worker, no domain, no database. PRs #8 and #9 (Codex's work) were merged into `main` on
+   **Live since 20 October 2026** (his word of 15:58: "uz mame kupenu firmony.io chcem aby bolo vsetko ostre live a
+   chcem aby sme to mohli skusat"; set up from the browser pane, his own sign-ins, each step approved by him):
+   firmony.io bought at Websupport (service 16566885, until 20 October 2027), its nameservers jake and
+   ursula.ns.cloudflare.com; the zone in his Cloudflare account (grrrrjuhas@gmail.com, account
+   08f4741da6290be38d3170a30d20d1e2, zone 52f9b883879d75db0a91109468ccac79, Free plan; Workers on the paid plan); D1
+   `firmony` in the EU (24b965d5-d57f-4ffe-aec6-1de4e7889fee) and R2 `firmony-files` in the EU; the Worker `firmony`
+   built by Workers Builds from `grapuu/firmony` `main` (every push to `main` deploys), at firmony.io and
+   www.firmony.io (custom domains in `wrangler.jsonc`) and firmony.grrrrjuhas.workers.dev (noindex); `/healthz` said
+   schema 68. Email Routing: `ahoj@firmony.io` forwarded to grrrrjuhas@gmail.com, the catch-all to the Worker (it
+   takes `doklady-<code>@` and refuses the rest); Email Sending onboarded for firmony.io at the top level
+   (cf-bounce records, DMARC p=reject; 200 a day to start). The site is public and indexable. Left to him: the
+   Anthropic key (Secret `ANTHROPIC_API_KEY`), the first administrator (`/app/prvy-spravca`, the code made there
+   by him, never in chat), then a test client made by hand (no IČO needed, the paper contract ticked) and an
+   accountant on /ucto/tim to try every side. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
 2. **A new workspace.** Add the repository with `add_repo` (owner `grapuu`, repo `firmony`, access "push"), clone
@@ -51,8 +63,8 @@ over. Bring this section up to date first whenever a session ends.
 3. **What is next is his, not code**: his guide, in Slovak and in order, is `docs/spustenie.md` (the domain
    first, because passkeys are bound to it; then D1 and R2 in the EU, the Worker from GitHub, email, the
    Anthropic key, the first administrator at `/app/prvy-spravca`, the accountant, europio in Fakturácia, and what
-   comes before the first client). His word: firmony.io (69,90 € a year at Websupport), not bought yet; the code
-   says firmony.ai until he writes that it is bought (`DOMAIN` in `src/config.ts`, a route in `wrangler.jsonc`).
+   comes before the first client). The domain, D1, R2, the Worker and email are done (item 1); the code says
+   firmony.io (`DOMAIN` in `src/config.ts`, the routes in `wrangler.jsonc`).
    Besides: the meeting with the accountant he picked, about two weeks after 17 October (her pay is
    `ACCOUNTANT_PAY`: 28, 55, 110 € a client, 5 € a payroll, 90 € a closing); the trade "Vedenie účtovníctva" for
    europio; liability insurance; a lawyer for the terms, the contract and the power of attorney
