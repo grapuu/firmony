@@ -150,7 +150,11 @@ over. Bring this section up to date first whenever a session ends.
    an empty selection, records dataset hash and preserves the full small report in the log as well as JSON.
    Reader keeps manual dispatch and also runs on the exact test branch `codex/reader-categories` when fixture /
    harness files change. Existing repository secret only, never read. Artifact upload failure due to existing
-   quota does not override model quality. Actual run/result must still be recorded after the branch push.
+   quota does not override model quality. First real run 39622411334 (head 74f0aba) read all 30, totals / VAT
+   30/30, IČO 27/27, issue date 29/30, category 26/30 (direct 16/18). It FAILED the unchanged date floor;
+   no expected label was altered. Follow-up preserves the raw dotted source date and validates its day/month
+   conversion, and reconciles category with the final resolved invoice direction. Added five regression checks.
+   A new real Reader run and exact-head full Checks are required before this block is merged.
 
    E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
    **E prepared by ChatGPT, 21 October 2026:** `docs/drafts/` contains three plain-text emails without dashes,

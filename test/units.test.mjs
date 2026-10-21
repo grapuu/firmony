@@ -936,6 +936,16 @@ for (const value of ['2026-02-29', '2026-02-31', '2026-04-31', '2026-13-01']) {
 }
 check('valid leap days survive AI validation', reader.readingFrom({ je_doklad: true, datum_vystavenia: '2028-02-29' }).issuedOn === '2028-02-29')
 {
+  const date = (original, converted) => reader.readingFrom({ je_doklad: true, datum_vystavenia_text: original, datum_vystavenia: converted }).issuedOn
+  check('a Slovak dotted source date overrides a reversed AI conversion', date('6. 11. 2026', '2026-06-11') === '2026-11-06' && date('11.06.2026', '2026-11-06') === '2026-06-11')
+  check('an impossible dotted source date is not repaired by a plausible AI guess', date('29. 2. 2026', '2026-03-01') === null)
+  check('a source ISO date stays exact; a written foreign date uses the validated conversion', date('2026-04-07', '2026-07-04') === '2026-04-07' && date('April 7, 2026', '2026-04-07') === '2026-04-07')
+  const company = { name: 'TEST-ONLY Our company', ico: '50000005' }
+  const sale = (category) => reader.readingFrom({ je_doklad: true, typ: 'faktura_prijata', dodavatel: company.name, ico_dodavatela: company.ico, odberatel: 'TEST-ONLY Customer', ico_odberatela: '50300019', kategoria: category }, company)
+  check('a resolved outgoing invoice uses revenue categories for services and goods', sale('services').category === 'sales' && sale('goods').category === 'sales_goods')
+  check('a purchase never inherits a revenue category; an ambiguous outgoing cost is left to the accountant', reader.readingFrom({ je_doklad: true, typ: 'faktura_prijata', kategoria: 'sales' }).category === null && sale('material').category === null && sale('advance').category === 'advance')
+}
+{
   // The direction of an invoice is decided by its sides (the real reader took two received invoices for issued ones).
   const us = { name: 'TEST Odberateľ s. r. o.', ico: '50000005' }
   const sides = {

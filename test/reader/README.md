@@ -12,7 +12,7 @@ Výstup uvádza celú zhodu kategórií aj osobitnú zhodu pri scenároch nezáv
 
 ## Spustenie a dôkaz
 
-Workflow Reader používa už existujúci repozitárový secret; hodnotu netreba čítať ani zadávať do chatu. Zachované je ručné spustenie v Actions. Pridané je úzko obmedzené spustenie pri zmene testov vo vetve `codex/reader-categories`, aby bolo možné vykonať zadaný beh aj cez konektor, ktorý nemá dispatch operáciu. Zmena samotného CLAUDE.md či tohto README beh znovu nevyvolá.
+Workflow Reader používa už existujúci repozitárový secret; hodnotu netreba čítať ani zadávať do chatu. Zachované je ručné spustenie v Actions. Pridané je úzko obmedzené spustenie pri zmene testov alebo samotnej čítačky vo vetve `codex/reader-categories`, aby bolo možné vykonať zadaný beh aj cez konektor, ktorý nemá dispatch operáciu. Zmena samotného CLAUDE.md beh znovu nevyvolá.
 
 Kompletný malý syntetický report sa uloží do `.wrangler/reader/report.json` a aj do logu za značkou `READER_REPORT_JSON`, s modelom, časom a odtlačkom očakávanej sady. Upload ZIP archívu môže zlyhať pre existujúcu kvótu GitHub; taký výpadok neprebíja výsledok čítačky. Chyba merania a nedosiahnutie pôvodného limitu naďalej spôsobia neúspešný krok.
 

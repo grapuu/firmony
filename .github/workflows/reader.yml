@@ -10,6 +10,7 @@ on:
       - test/reader/**
       - test/reader.mjs
       - test/reader.entry.ts
+      - src/app/read.ts
       - scripts/reader/make-documents.py
       - .github/workflows/reader.yml
   workflow_dispatch:
