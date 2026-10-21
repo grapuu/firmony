@@ -95,6 +95,28 @@ over. Bring this section up to date first whenever a session ends.
    other advantages too, and read psychological studies (in the original, with their sources) and choose the marketing
    tactics by them. To do with him: a research of what the studies show (pricing, loss and gain, fairness, trust,
    referral) and what Revolut, Trading 212 and Robinhood actually do, then a short pick for Firmony.
+7. **Given to ChatGPT on 21 October 2026, 11:19, until Saturday 24 October** (his word: "daj mi vsetky body co chces do
+   soboty ... budem pracovat s chatgpt"). Whoever does a piece marks it done here. Every push to `main` deploys to
+   firmony.io, so each piece goes on its own branch and reaches `main` only with every check green; schema steps only
+   added (the next is 73). In this order:
+   A. The app brought to the AML program (`docs/aml/program.html`), before the first client: (1) the contract
+      concluded only after the declaration, the QES verification, the KUV, PEP and sanctions checks, the risk and, for
+      zvýšené, the designated person's consent (the order page takes the declaration and the signed file, the
+      administrator verifies on /ucto/ziadosti, only then "Uzavrieť zmluvu"; a paper client made only after it);
+      (2) § 19 ods. 2: everything kept 5 years after the end, the client downloading for 90 days, then only the
+      designated person reading; a prospect without a contract 5 years from the refusal; terms 8.8 and 10.4, the
+      privacy notice and the FAQ with new versions; (3) the declaration asks the actual place of business and whether
+      the client acts on its own behalf, and every KUV has § 7 ods. 3's data; (4) `suggestedLevel` 'high' for a PEP or
+      a person established in a high-risk country (the EU list of Delegated Regulation 2016/1675 and FATF's, read in
+      the original, kept with their day) and for regular partners there; (5) the AML page records, with who and when,
+      the PEP check, the EU and UN sanctions check, the KUV's sources and the QES check, and a client is verified only
+      with them; (6) internal reports seen only by their author and the designated person; (7) a deadline to update a
+      client's data, yearly for nízke and štandardné, every 6 months for zvýšené.
+   B. Research, no code: the feeling of winning (item 5), studies read in the original and what Revolut, Trading 212
+      and Robinhood do, a pick of 5 to 10 for Firmony; prices stay.
+   C. The next guides of item 10.8, in their order.
+   D. Categories added to `test/reader/expected.json`, the workflow "Reader" run.
+   E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
 6. **The picture he follows** is the artifact "Kruh Firmony" (https://claude.ai/artifact/6RwoEgbSJZx3hpdBafRN3M):
    all seven stages full, and his steps before launch at the end. Its source was a scratch file of the session of
    17 October; a new session reads the page with the Artifact tool (`action: "read"`, then the saved file) and
