@@ -1,4 +1,4 @@
-import {aml,archiveEnded,purgeCompany,forgetRecords,GUIDES} from '../.wrangler/dist/stores.js'
+import {aml,archiveEnded,purgeCompany,forgetRecords,GUIDES,BUILD_METADATA,SCHEMA_VERSION} from '../.wrangler/dist/stores.js'
 import {checkAmlAdmission,ensureAmlOfficer,seedAmlDossier,testDeclaration} from './aml.runtime.mjs'
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
 // email service and the pretend register of test/pretend.mjs. Nothing leaves the machine.
@@ -386,7 +386,14 @@ res = await get('/mzdova-kalkulacka')
   check('the sitemap and llms.txt name it', (await (await get('/sitemap.xml')).text()).includes('<loc>https://firmony.io/mzdova-kalkulacka</loc>') && (await (await get('/llms.txt')).text()).includes('https://firmony.io/mzdova-kalkulacka'))
 }
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 77)
+{
+  const health = await res.json()
+  check('health says the ready database schema', res.status === 200 && health.ok === true && health.schema === SCHEMA_VERSION)
+  check('health identifies the compiled commit with only allowlisted build metadata',
+    JSON.stringify(health.build) === JSON.stringify(BUILD_METADATA) &&
+    Object.keys(health.build).sort().join(',') === 'revision,source' &&
+    (health.build.revision === null ? health.build.source === 'unknown' : /^[a-f0-9]{40}$/.test(health.build.revision) && ['git', 'cloudflare'].includes(health.build.source)))
+}
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.io/cennik?x=1', { redirect: 'manual' })
