@@ -4,7 +4,8 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
-1. **Where it stands.** The software is done: the client's app, the accountants' side, the books, VAT, payroll,
+1. **Where it stands.** Implemented and automatically tested software still needs the real launch steps in item 3
+   and `docs/spustenie.md`; no completed live-client trial or production restore drill is claimed. The client's app, the accountants' side, the books, VAT, payroll,
    the closing, billing, the contract online, the end of a contract and the investors' sign-up, closed as one
    circle in seven stages on 17 October 2026 ("Closing the loop" below). Everything is on GitHub, `grapuu/firmony`
    (private), branch `main` (`claude/kruh` stays at `76b81a0`, the end of 17 October). GitHub's checks (the workflow
@@ -99,7 +100,7 @@ over. Bring this section up to date first whenever a session ends.
 7. **Given to ChatGPT on 21 October 2026, 11:19, until Saturday 24 October** (his word: "daj mi vsetky body co chces do
    soboty ... budem pracovat s chatgpt"). Whoever does a piece marks it done here. Every push to `main` deploys to
    firmony.io, so each piece goes on its own branch and reaches `main` only with every check green; schema steps only
-   added (the next is 73). In this order:
+   added (73 was next in the original brief; current schema is 77, next is 78). In this order:
    A. The app brought to the AML program (`docs/aml/program.html`), before the first client: (1) the contract
       concluded only after the declaration, the QES verification, the KUV, PEP and sanctions checks, the risk and, for
       zvýšené, the designated person's consent (the order page takes the declaration and the signed file, the
@@ -189,6 +190,18 @@ over. Bring this section up to date first whenever a session ends.
    original: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html. The agreed goAML target stays
    19 November; actual registration / signature / insurance / legal release and production restore drill remain
    real operational actions. This documentation correction changes no application behaviour or schema.
+
+   **Overenie nasadenia, 21. októbra 2026:** A, E, B, D, C aj opravený postup spustenia sú na `main` v PR #10-15.
+   O 18:14 CEST verejný web potvrdil všetkých päť nových návodov z PR #14 vrátane zdrojov, štruktúrovaných údajov,
+   sitemap a llms.txt; `/healthz` uvádzal schému 77. Starší endpoint neuvádzal commit, preto ostáva konkrétna
+   revízia predmetom overenia v #16. Vetva `codex/deployment-proof` vkladá celý commit pri zostavení do `/healthz`
+   a pridáva pasívne `Production verification` po každom pushi do `main`, s najviac 20-minútovým čakaním na
+   očakávaný commit, schému a všetky návody. Žiadne nové kľúče ani nastavenia v Cloudflare. Deväť regresných testov
+   odmieta staré, skrátené a chýbajúce verzie, neplatné odpovede aj chybnú schému; runtime preveruje skutočný
+   zostavený endpoint. Pred zlúčením platia všetky presné kontroly vetvy. Skutočný výsledok po nasadení zapísať
+   do #16 a PR. Podrobnosti: `docs/deployment.md`. Originál technickej dokumentácie prečítaný 21. októbra:
+   https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#default-variables.
+   Žiadna zmena schémy ani tvrdenie o dokončenej produkčnej obnove.
 
    E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
    **E prepared by ChatGPT, 21 October 2026:** `docs/drafts/` contains three plain-text emails without dashes,

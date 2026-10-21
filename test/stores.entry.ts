@@ -50,3 +50,5 @@ export { forgetProspects } from '../src/aml/prospects'
 export * as amlAutoReview from '../src/aml/auto-review'
 
 export { GUIDES } from '../src/content/guides'
+export { BUILD_METADATA } from '../src/generated/deployment'
+export { SCHEMA_VERSION } from '../src/db'

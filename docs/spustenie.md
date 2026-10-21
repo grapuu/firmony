@@ -18,6 +18,10 @@ je 77; ďalšie zmeny schémy sú iba nové kroky.
 Hotové 20. októbra 2026. Worker je pripojený k `grapuu/firmony`. Každý push do `main` spúšťa nasadenie. Zmeny sa
 pripravujú v samostatnej vetve a zlučujú až po všetkých požadovaných kontrolách podľa CLAUDE.md.
 
+Po zlúčení overte aj výsledok `Production verification`: potvrdí celý commit aktívny na firmony.io, schému a
+verejné návody. Podrobnosti sú v [overení nasadenia](deployment.md). Úspešná kontrola vetvy sama nepotvrdzuje
+dokončené nasadenie v Cloudflare.
+
 ## 4. E-mail
 
 Hotové 20. októbra 2026. Príjem cez Email Routing aj odosielanie pre firmony.io sú nastavené. Pri skúške overte

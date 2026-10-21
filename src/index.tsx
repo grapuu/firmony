@@ -6,6 +6,7 @@ import { app as appCopy } from './app/copy'
 import { admissionForOrder, dossierOfOrder, prepareDossier, signatureFile } from './aml/store'
 import { declarationPdf } from './aml/pdf'
 import { GUIDES } from './content/guides'
+import { BUILD_METADATA } from './generated/deployment'
 import { article, breadcrumbs, faqPage, jsonLd, organization, plain, service, SITE_UPDATED, website } from './seo'
 import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
 import { wageCalc, wageQueryOf, wageYearOf } from './app/wage-calc'
@@ -782,9 +783,9 @@ app.get('/sitemap.xml', (c) => {
 app.get('/healthz', async (c) => {
   try {
     await ensureSchema(c.env.DB)
-    return c.json({ ok: true, schema: SCHEMA_VERSION })
+    return c.json({ ok: true, schema: SCHEMA_VERSION, build: BUILD_METADATA })
   } catch {
-    return c.json({ ok: false }, 503)
+    return c.json({ ok: false, build: BUILD_METADATA }, 503)
   }
 })
 

@@ -8,14 +8,16 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check": "tsc --noEmit && tsc -p tsconfig.browser.json",
-    "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs",
+    "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs && node --test test/deployment.test.mjs",
     "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs",
     "test:ui": "node test/visual.mjs",
-    "build:assets": "node scripts/build-security.mjs",
+    "build:assets": "node scripts/build-metadata.mjs && node scripts/build-security.mjs",
     "test:browser": "node test/passkeys.browser.mjs",
     "test:load": "node test/build.mjs && node --no-warnings test/load.mjs",
     "test:reader": "esbuild test/reader.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/reader-bundle.mjs && node --no-warnings test/reader.mjs",
-    "test:peppol": "node --no-warnings test/peppol.mjs"
+    "test:peppol": "node --no-warnings test/peppol.mjs",
+    "postinstall": "node scripts/build-metadata.mjs",
+    "verify:deployment": "esbuild test/deployment.entry.ts --bundle --format=esm --platform=node --log-level=warning --outfile=.wrangler/tmp/deployment-probe.mjs && node scripts/verify-deployment.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "14.0.0",
