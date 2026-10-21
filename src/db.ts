@@ -1,3 +1,7 @@
+import { AML_ENHANCED_SCHEMA } from './aml/enhanced'
+import { AML_PROSPECT_SCHEMA } from './aml/prospect-schema'
+import { AML_RETENTION_SCHEMA } from './aml/retention'
+import { AML_SCHEMA } from './aml/schema'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
@@ -1544,6 +1548,14 @@ const MIGRATIONS: readonly string[][] = [
   // Documents the app books by itself where the accountant turned it on for a client (20 October 2026, app/autobook.ts);
   // such a document is booked by 'auto'. The index finds them for her month's check.
   ['ALTER TABLE companies ADD COLUMN autobook INTEGER NOT NULL DEFAULT 0', 'CREATE INDEX IF NOT EXISTS documents_auto ON documents (company_id, booked_at) WHERE booked_by = \'auto\''],
+  // 73: AML admission and immutable verification evidence (21 October 2026).
+  AML_SCHEMA,
+  // 74: full five-year AML retention and restricted archival access.
+  AML_RETENTION_SCHEMA,
+  // 75: confidential findings and retention before a contract exists.
+  AML_PROSPECT_SCHEMA,
+  // 76: original account and first-payment evidence for high-risk remote admission.
+  AML_ENHANCED_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
@@ -1644,10 +1656,10 @@ export function upsertInvestorStatement(db: D1Database, r: { email: string; brok
 export async function purge(db: D1Database): Promise<void> {
   const ts = now()
   await db.batch([
-    db.prepare('DELETE FROM requests WHERE created_at < ?').bind(ts - RETENTION.requestDays * 86400),
+    // Client/prospect records are erased only by the full AML retention workflow (app/purge.ts).
     db.prepare('DELETE FROM investor_requests WHERE updated_at < ?').bind(ts - RETENTION.requestDays * 86400),
     db.prepare('DELETE FROM outbox WHERE created_at < ?').bind(ts - RETENTION.outboxDays * 86400),
-    db.prepare('DELETE FROM inbound_mail WHERE received_at < ?').bind(ts - RETENTION.outboxDays * 86400),
+    db.prepare('DELETE FROM inbound_mail WHERE company_id IS NULL AND received_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM throttle WHERE expires_at < ?').bind(ts),
   ])
 }

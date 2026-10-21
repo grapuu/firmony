@@ -315,7 +315,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; m
           <ul class="plain">
             {ended.map((company) => (
               <li class="plain__row plain__row--two">
-                <a class="link plain__name" href={`/ucto/klienti/${company.id}/aml`}>
+                <a class="link plain__name" href={`/ucto/archiv/${company.id}`}>
                   {company.name}
                 </a>
                 <span class="plain__sub">
@@ -1787,6 +1787,7 @@ export const RequestsPage: FC<{ requests: Request[]; investors: { total: number;
 )
 
 export interface NewClientValues {
+  amlOrder?: string
   ico: string
   name: string
   address: string
@@ -1825,6 +1826,8 @@ export const NewClientPage: FC<{
     <section class="info info--form">
       <form class="stack" method="post" action="/ucto/klienti" novalidate>
         <input type="hidden" name="ziadost" value={values.request} />
+        <input type="hidden" name="aml" value={values.amlOrder ?? ''} />
+        {!values.amlOrder ? <p class="notice">Najprv dokončite overenie pred zmluvou. <a class="link" href="/ucto/aml/papier">Začať overenie klienta s papierovou zmluvou</a></p> : <p class="info__source">Údaje sú naviazané na overenú osobu a firmu. Ich zmena vyžaduje nové overenie.</p>}
         <div class="fgrid">
           <div class="fgrid__cell">
             <label class="field__label" for="n-ico">

@@ -1,3 +1,4 @@
+import { accessOpenSql } from '../aml/retention'
 // The client's app in the database. Every read and every change names the company it belongs to, so nobody
 // reaches another company's payments or documents by guessing an id. Whether a payment still needs a document
 // is read from links and exempt every time and never stored on its own.
@@ -44,6 +45,7 @@ export interface Company {
   startOn: string | null
   /** The end of the contract: when it was set, by whom, from which side (the client's notice, or ours), and its last day. */
   noticeAt: number | null
+  archivedAt?: number | null
   noticeBy: string | null
   noticeSide: 'client' | 'firmony' | null
   endsOn: string | null
@@ -239,7 +241,7 @@ export interface InvoiceNumbering {
   from: number | null
 }
 
-export const COMPANY_COLUMNS = `c.id, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
+export const COMPANY_COLUMNS = `c.id, c.aml_archived_at, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
   c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.approval_two_from, c.dunning, c.autobook,
@@ -283,6 +285,7 @@ export function companyOf(row: Row): Company {
     termsVersion: str(row.terms_version),
     startOn: str(row.start_on),
     noticeAt: num(row.notice_at),
+    archivedAt: num(row.aml_archived_at),
     noticeBy: str(row.notice_by),
     noticeSide: row.notice_side === 'firmony' ? 'firmony' : row.notice_at ? 'client' : null,
     endsOn: str(row.ends_on),
@@ -631,7 +634,7 @@ export async function userById(db: D1Database, id: string): Promise<User | null>
 export async function firstCompanyOf(db: D1Database, userId: string): Promise<string | null> {
   const row = await db
     .prepare(
-      `SELECT m.company_id FROM members m JOIN companies c ON c.id = m.company_id AND c.closed_at IS NULL
+      `SELECT m.company_id FROM members m JOIN companies c ON c.id = m.company_id AND ${accessOpenSql('c')}
        WHERE m.user_id = ? ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at LIMIT 1`,
     )
     .bind(userId)
@@ -642,7 +645,7 @@ export async function firstCompanyOf(db: D1Database, userId: string): Promise<st
 /** The companies a user is a member of, for switching between them. */
 export async function companiesOf(db: D1Database, userId: string): Promise<{ id: string; name: string }[]> {
   const rows = await db
-    .prepare('SELECT c.id, c.name FROM members m JOIN companies c ON c.id = m.company_id AND c.closed_at IS NULL WHERE m.user_id = ? ORDER BY c.name')
+    .prepare(`SELECT c.id, c.name FROM members m JOIN companies c ON c.id = m.company_id AND ${accessOpenSql('c')} WHERE m.user_id = ? ORDER BY c.name`)
     .bind(userId)
     .all<{ id: string; name: string }>()
   return rows.results
@@ -669,7 +672,7 @@ export async function whoBySession(db: D1Database, sessionId: string): Promise<W
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN members m ON m.user_id = s.user_id AND m.company_id = s.company_id
-       LEFT JOIN companies c ON c.id = m.company_id AND c.closed_at IS NULL
+       LEFT JOIN companies c ON c.id = m.company_id AND ${accessOpenSql('c')}
        LEFT JOIN users acc ON acc.id = c.accountant_id
        WHERE s.id = ? AND s.expires_at > ?`,
     )

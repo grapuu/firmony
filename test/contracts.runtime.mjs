@@ -1,8 +1,9 @@
+import {ensureAmlOfficer,seedAmlDossier} from './aml.runtime.mjs'
 // The race controls use the real D1 transaction, not a mock of the acceptance statements.
 import { check } from './check.mjs'
 import { acceptStatements, contractCatalogueHash, contractGate, orderOf, orderOfferHash, resolveContract } from '../.wrangler/dist/stores.js'
 
-export async function checkContractTransactions(db) {
+export async function checkContractTransactions(db,files) {
   const ts = Math.floor(Date.now() / 1000)
   await db
     .prepare("INSERT INTO users (id, created_at, email, name, team) VALUES ('contract-expert', ?, 'expert@contract.test', 'Test expert', 'accountant')")
@@ -16,7 +17,11 @@ export async function checkContractTransactions(db) {
     .bind(ts, ts + 3600)
     .run()
   const order = () => db.prepare("SELECT * FROM orders WHERE id = 'contract-race'").first().then(orderOf)
+  const officer=await ensureAmlOfficer(db)
+  await db.prepare("UPDATE orders SET directors = ? WHERE id = 'contract-race'").bind(JSON.stringify([{name:'Test Owner',role:'Konateľ'}])).run()
+  await seedAmlDossier(db,files,'contract-race',officer)
   const release = {
+    FILES:files,
     CONTRACT_RELEASE: JSON.stringify({
       catalogueHash: await contractCatalogueHash(),
       legalReview: 'TEST-ONLY lawyer',

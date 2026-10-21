@@ -136,7 +136,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          'Na základe plnej moci podávame v mene firmy priznania, výkazy a hlásenia finančnej správe, Sociálnej poisťovni a zdravotným poisťovniam. Ak to vyžaduje zákon č. 297/2008 Z. z., údaje odovzdáme Finančnej spravodajskej jednotke.',
+          'Na základe plnej moci podávame v mene firmy priznania, výkazy a hlásenia finančnej správe, Sociálnej poisťovni a zdravotným poisťovniam. Na plnenie povinností podľa zákona č. 297/2008 Z. z. spracúvame osobné údaje aj bez súhlasu dotknutých osôb (§ 19 ods. 1 a § 21 ods. 3). Ak to vyžaduje tento zákon, údaje odovzdáme Finančnej spravodajskej jednotke.',
         )}
       </p>
       <p>
@@ -148,12 +148,12 @@ export const Legal: FC = () => (
       <h3 class="h4">Ako dlho ich uchovávame</h3>
       <p>
         {t(
-          `Žiadosti ${RETENTION.requestDays / 365 === 1 ? '12 mesiacov' : `${RETENTION.requestDays} dní`} od odoslania, ak z nich nevznikne zmluva, a zápis na daňové priznanie z investícií rovnako dlho od posledného zápisu. Odoslané e-maily ${RETENTION.outboxDays} dní. Odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
+          `Údaje záujemcu a podklady z rokovania, z ktorého nevznikla zmluva, uchovávame päť rokov od odmietnutia alebo skončenia rokovania podľa AML programu. Zápis na daňové priznanie z investícií uchovávame ${RETENTION.requestDays} dní od posledného zápisu. Technické záznamy odoslaných upozornení ${RETENTION.outboxDays} dní a odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
         )}
       </p>
       <p>
         {t(
-          `Údaje o zmluve, plnú moc a záznamy z identifikácie klienta (vyhlásenie, riziko a vnútorné oznámenia) 5 rokov od skončenia zmluvy, ako ukladá zákon č. 297/2008 Z. z., a potom ich vymažeme; faktúry za naše služby 10 rokov. Pri e-mailoch, ktoré prídu na adresu firmy pre doklady, uchovávame odosielateľa a predmet ${RETENTION.outboxDays} dní a prílohy ako doklady firmy, výpisy z banky rovnako. Doklady a ostatné údaje firmy si firma po skončení zmluvy stiahne v aplikácii. Vymažeme ich po uplynutí 90 dní od skončenia, keď firma potvrdí ich prevzatie, inak rok po skončení zmluvy, spolu s prístupmi ľudí, ktorí už k žiadnej inej firme nepatria. Otvorený prípad alebo podanie, ktoré ešte nie je vybavené, výmaz odloží.`,
+          `Doklady, platby, bankové výpisy, účtovníctvo, správy, udalosti, zmluvu, plnú moc a záznamy o identifikácii, riziku a internom posúdení uchovávame päť rokov od skončenia zmluvy podľa § 19 ods. 2 zákona č. 297/2008 Z. z. Klient si údaje stiahne počas zmluvy a 90 dní po jej skončení. Potom sú dostupné iba určenej osobe na čítanie na splnenie zákonných povinností. Uchovanie môže predĺžiť písomná žiadosť FSJ v určenom rozsahu najviac o ďalších päť rokov; iné zákonné povinnosti a prebiehajúce zákonné konanie môžu vyžadovať dlhšiu lehotu. Naše vlastné účtovné doklady vrátane faktúr za služby uchovávame desať rokov podľa zákona o účtovníctve. Údaje obsahu správ a spracovania dokladov nezanikajú s technickým záznamom e-mailového upozornenia.`,
         )}
       </p>
 

@@ -7474,3 +7474,9 @@ a.wtable__name {
   padding: 0;
   border: 0;
 }
+
+/* Extra AML facts are shown when the client selects the relevant answer. */
+.decl__business-address, .decl__principal { display: none; }
+.decl:has([name="businessAtSeat"][value="0"]:checked) .decl__business-address,
+.decl:has([name="ownBehalf"][value="0"]:checked) .decl__principal { display: block; }
+@supports not selector(:has(*)) { .decl__business-address, .decl__principal { display: block; } }

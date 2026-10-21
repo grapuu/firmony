@@ -1,12 +1,9 @@
-// What happens to a company's data after its contract (point 8.8 and 10.4 of the terms). Ninety days past the last
-// day, the schedule deletes the files and everything the company had in the app: documents, payments, accounts,
-// the bank's consents (closed at the bank too) and statements, invoices, messages, the email that came in, the suppliers' rules,
-// the returns, the closings and the other filings marked as filed, the employees and their payroll, and the accountant's own entries of the books (the client took the books along in its
-// download), the handover, its people's access, and the accounts of people who belong to no company and to no team
-// any more.
-// What stays is what the law against money laundering keeps for five years after the end (s. 19 of Act No.
-// 297/2008 Z. z.): the company's row with the contract, the order it was concluded by, the power of attorney, the
-// declarations, the risk, the internal reports and the record of events. After those five years they go as well.
+import { forgetProspects } from '../aml/prospects'
+import { archiveDueSql, retentionExpiredSql } from '../aml/retention'
+// All business records remain for at least five years after the end (§ 19(2), Act 297/2008).
+// The client's download access ends after ninety days. Only the designated person can read the archive.
+// Holds and other statutory obligations extend retention. Original law, read 21 October 2026:
+// https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html
 import { ENDING } from '../config'
 import { now } from '../db'
 import { bankReady, closeSession, type BankEnv } from './bank'
@@ -54,7 +51,7 @@ const LONELY = `SELECT m.user_id FROM members m JOIN users u ON u.id = m.user_id
  */
 async function thaw(db: D1Database, companyId: string): Promise<{ files: number; rows: number }> {
   await db
-    .prepare('UPDATE companies SET purge_started_at = NULL WHERE id = ? AND purge_started_at IS NOT NULL AND purge_delete_started_at IS NULL AND purged_at IS NULL')
+    .prepare('UPDATE companies SET purge_started_at = NULL WHERE id = ? AND purge_started_at IS NOT NULL AND purge_delete_started_at IS NULL AND purged_at IS NULL AND aml_archived_at IS NULL')
     .bind(companyId)
     .run()
   return { files: 0, rows: 0 }
@@ -66,7 +63,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
   // A hold keeps everything as it is, the freeze included: evidence is not changed while a case is open.
   if (await evidenceBlocked(db, companyId)) return { files: 0, rows: 0 }
   // The client confirms that the archive of every year arrived before anything is deleted. One who never does is not
-  // kept forever: a year past the last day the data go all the same (points 8.8 and 10.4 of the terms).
+  // kept forever: after the five-year legal minimum, an unconfirmed export cannot prevent eventual erasure.
   // A company with nothing to take along has nothing to confirm.
   const years = await exportYears(db, companyId)
   let revision = years.length === 0 ? await dataRevision(db, companyId) : await confirmedRevision(db, companyId, years)
@@ -76,19 +73,19 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
   }
   if (revision === null) return thaw(db, companyId)
   // Freeze new writes before any external file deletion. A change since the handover check cancels this claim.
-  const claim = await db.prepare(`UPDATE companies SET purge_started_at = COALESCE(purge_started_at, ?) WHERE id = ? AND purged_at IS NULL AND demo = 0 AND ends_on < ?
+  const claim = await db.prepare(`UPDATE companies SET purge_started_at = COALESCE(purge_started_at, ?) WHERE id = ? AND purged_at IS NULL AND demo = 0 AND ${retentionExpiredSql('companies','?')}
     AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = companies.id), 0) = ?
     AND NOT (${pendingFilingsSql('companies.id')})
     AND NOT (${pendingPayrollSql('companies.id')})
     AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
-    AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`).bind(now(), companyId, purgeFloor(today), revision).run()
+    AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`).bind(now(), companyId, today, revision).run()
   if ((claim.meta?.changes ?? 0) === 0) return thaw(db, companyId)
   // A full day between freezing writes and the irreversible phase gives operations a real intervention window.
   const destructive = await db.prepare(`UPDATE companies SET purge_delete_started_at = COALESCE(purge_delete_started_at, ?1)
-    WHERE id = ?2 AND purged_at IS NULL AND purge_started_at <= ?3
+    WHERE id = ?2 AND purged_at IS NULL AND purge_started_at <= ?3 AND ${retentionExpiredSql('companies','?4')}
       AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
       AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`)
-    .bind(now(), companyId, now() - PURGE_GRACE_SECONDS).run()
+    .bind(now(), companyId, now() - PURGE_GRACE_SECONDS, today).run()
   if ((destructive.meta.changes ?? 0) === 0) return { files: 0, rows: 0 }
   const canDelete = async () => !await evidenceBlocked(db, companyId)
 
@@ -186,14 +183,37 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
   return { files, rows: results.reduce((sum, r) => sum + (r.meta?.changes ?? 0), 0) }
 }
 
+/** Revoke customer access at ninety days while retaining every business record and original. */
+export async function archiveEnded(env: PurgeEnv, today: string): Promise<number> {
+  const db = env.DB
+  const rows = await db.prepare(`SELECT id FROM companies WHERE demo = 0 AND operator = 0 AND aml_archived_at IS NULL
+    AND ${archiveDueSql('companies','?')} ORDER BY ends_on LIMIT ?`).bind(today, ENDING.perRun).all<{id: string}>()
+  let count = 0
+  for (const {id} of rows.results) {
+    if (bankReady(env)) {
+      const links = await db.prepare("SELECT session_id FROM bank_links WHERE company_id = ? AND kind = 'eb' AND status = 'active' AND session_id IS NOT NULL").bind(id).all<{session_id:string}>()
+      for (const link of links.results) await closeSession(env,link.session_id).catch(() => null)
+    }
+    const results = await db.batch([
+      db.prepare(`UPDATE companies SET aml_archived_at = ?1, closed_at = COALESCE(closed_at,?1), purge_started_at = COALESCE(purge_started_at,?1)
+        WHERE id = ?2 AND aml_archived_at IS NULL AND ${archiveDueSql('companies','?3')}`).bind(now(),id,today),
+      db.prepare('DELETE FROM sessions WHERE company_id = ? AND EXISTS (SELECT 1 FROM companies WHERE id = ? AND aml_archived_at IS NOT NULL)').bind(id,id),
+      db.prepare("INSERT INTO events (at,company_id,action) SELECT ?1,?2,'company.aml.archived' WHERE EXISTS (SELECT 1 FROM companies WHERE id = ?2 AND aml_archived_at = ?1)").bind(now(),id),
+    ])
+    if ((results[0]?.meta.changes ?? 0) > 0) count++
+  }
+  return count
+}
+
 /** The schedule's part: companies past their ninety days lose their data; past five years, the rest. */
 export async function purgeEnded(env: PurgeEnv, today: string): Promise<number> {
   const db = env.DB
+  await archiveEnded(env, today)
   const due = await db
-    .prepare(`SELECT id FROM companies WHERE ends_on IS NOT NULL AND ends_on < ? AND purged_at IS NULL AND demo = 0
+    .prepare(`SELECT id FROM companies WHERE ${retentionExpiredSql('companies','?')} AND purged_at IS NULL AND demo = 0
       AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
       AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL) ORDER BY COALESCE(purge_checked_at, 0), ends_on LIMIT ?`)
-    .bind(purgeFloor(today), ENDING.perRun)
+    .bind(today, ENDING.perRun)
     .all<{ id: string }>()
   let purged = 0
   for (const row of due.results) {
@@ -206,6 +226,7 @@ export async function purgeEnded(env: PurgeEnv, today: string): Promise<number> 
     }
   }
   await forgetRecords(env, today)
+  await forgetProspects(env, today)
   await forgetLonely(db)
   return purged
 }
@@ -229,28 +250,37 @@ export async function forgetLonely(db: D1Database): Promise<number> {
 export async function forgetRecords(env: PurgeEnv, today: string): Promise<number> {
   const db = env.DB
   const due = await db
-    .prepare(`SELECT id FROM companies WHERE purged_at IS NOT NULL AND ends_on IS NOT NULL AND ends_on < ? AND demo = 0
+    .prepare(`SELECT id FROM companies WHERE purged_at IS NOT NULL AND ${retentionExpiredSql('companies','?')} AND demo = 0
       AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
       AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL) ORDER BY ends_on LIMIT ?`)
-    .bind(recordsFloor(today), ENDING.perRun)
+    .bind(today, ENDING.perRun)
     .all<{ id: string }>()
   let deleted = 0
   for (const { id } of due.results) {
     const claim = await db.prepare(`UPDATE companies SET records_delete_started_at = COALESCE(records_delete_started_at, ?1)
-      WHERE id = ?2 AND purged_at IS NOT NULL AND ends_on < ?3
+      WHERE id = ?2 AND purged_at IS NOT NULL AND ${retentionExpiredSql('companies','?3')}
         AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
         AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`)
-      .bind(now(), id, recordsFloor(today)).run()
+      .bind(now(), id, today).run()
     if (!claim.meta.changes) continue
     const canDelete = async () => !await evidenceBlocked(db, id)
-    if (env.FILES) await deletePrefix(env.FILES, `companies/${id}/`, new Set(), canDelete)
+    await db.prepare(`UPDATE requests SET aml_ended_at = (SELECT unixepoch(ends_on || 'T12:00:00Z') FROM companies WHERE id = ?1) WHERE id IN (SELECT request_id FROM orders WHERE company_id = ?1)`).bind(id).run()
+    const orders = await db.prepare('SELECT id FROM orders WHERE company_id = ?').bind(id).all<{id:string}>()
+    if (env.FILES) {
+      await deletePrefix(env.FILES, `companies/${id}/`, new Set(), canDelete)
+      for (const order of orders.results) await deletePrefix(env.FILES, `onboarding/${order.id}/`, new Set(), canDelete)
+    }
     await db.batch([
+      ...['aml_checks','aml_decisions'].map((table) => db.prepare(`DELETE FROM ${table} WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))`).bind(id)),
+      db.prepare('DELETE FROM aml_bank_evidence WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))').bind(id),
+      db.prepare('DELETE FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1)').bind(id),
       db.prepare('DELETE FROM company_files WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM declarations WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM risks WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM reports WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM contract_snapshots WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM billing_tariffs WHERE company_id = ?').bind(id),
+      ...['aml_prospect_reports','aml_prospect_holds'].map((table) => db.prepare(`DELETE FROM ${table} WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?)`).bind(id)),
       db.prepare('DELETE FROM order_reviews WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?)').bind(id),
       db.prepare('DELETE FROM orders WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM events WHERE company_id = ?').bind(id),

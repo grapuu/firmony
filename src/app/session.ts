@@ -1,3 +1,4 @@
+import { accessOpenSql } from '../aml/retention'
 // Signing in without a password: a link to the address we know, valid for twenty minutes (a welcome link for a few
 // days) and for one use, and then a cookie for thirty days. The database keeps only hashes of both, so neither can
 // be read back out of it. A session is a user's, and is in one of their companies at a time; somebody of the team
@@ -77,7 +78,7 @@ export async function startSession(c: Context, db: D1Database, userId: string, c
 /** Moves a session to another company of the same user; nothing happens unless the user is its member. */
 export function switchStatement(db: D1Database, session: string, user: string, company: string): D1PreparedStatement {
   return db
-    .prepare('UPDATE sessions SET company_id = ?1 WHERE id = ?2 AND user_id = ?3 AND EXISTS (SELECT 1 FROM members m JOIN companies c ON c.id = m.company_id AND c.closed_at IS NULL WHERE m.user_id = ?3 AND m.company_id = ?1)')
+    .prepare(`UPDATE sessions SET company_id = ?1 WHERE id = ?2 AND user_id = ?3 AND EXISTS (SELECT 1 FROM members m JOIN companies c ON c.id = m.company_id AND ${accessOpenSql('c')} WHERE m.user_id = ?3 AND m.company_id = ?1)`)
     .bind(company, session, user)
 }
 

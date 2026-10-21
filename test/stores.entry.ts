@@ -37,3 +37,12 @@ export { coverageJsonSql as legacyPayrollCoverage } from '../src/payroll-reporti
 export { closeRunStatement, reopenRunStatement } from '../src/app/payroll-store'
 export { billingScheduled, deliverBill, operatorOf } from '../src/team/billing-store'
 export { monthStart } from '../src/team/billing'
+
+export * as aml from '../src/aml/store'
+export * as amlModel from '../src/aml/model'
+export * as amlPolicy from '../src/aml/countries'
+export { ensureSchema } from '../src/db'
+
+export * as amlEnhanced from '../src/aml/enhanced'
+export { archiveEnded } from '../src/app/purge'
+export { forgetProspects } from '../src/aml/prospects'

@@ -117,6 +117,16 @@ over. Bring this section up to date first whenever a session ends.
       onboarded online, a document of an account in its name in an EU bank and the first payment from it (program
       4.6 f)); a record that the accountant reviewed what the app booked by itself (6.1); the terms and the privacy
       notice say that personal data are processed under the AML Act without consent (4.3, § 21 ods. 3).
+   **ChatGPT implementation in progress, 21 October 2026:** branch `codex/aml-before-first-client`.
+   Source base updated to `74a48b6` including today's revised programme. No production deployment of this work yet.
+   Additive steps 73-76 implement pre-contract dossiers, source-bound professional checks, restricted designated
+   person decisions, full five-year retention, prospect records and account/first-payment originals for high risk.
+   Unit suite passed 1410 checks before the final high-risk extension; 27 focused admission checks passed before it.
+   These counts are intermediate, not final acceptance. Runtime fixtures, archive journeys and UI are still being
+   completed. Do not merge until exact-head Node 24 check/unit/runtime/UI/Peppol are all green. EUR-Lex's full
+   consolidated text is currently blocked by its bot check; the country table is verified against the Commission's
+   primary publication and FATF's original June 2026 statements. Do not claim the blocked original was read.
+   Legal source read in full: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (§§ 7-12,14-21).
    B. Research, no code: the feeling of winning (item 5), studies read in the original and what Revolut, Trading 212
       and Robinhood do, a pick of 5 to 10 for Firmony; prices stay.
    C. The next guides of item 10.8, in their order.

@@ -1,6 +1,9 @@
+import { admissionForOrder, dossierOfOrder, sourceIntact, bankOriginalsIntact } from './aml/store'
+import type { Admission } from './aml/model'
 import { CLOSING_PRICE, OFFLINE_TERMS, OPERATOR, PAYROLL_PRICE, PLANS, TERMS_VERSION, type PlanId } from './config'
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, termsText, type TermsSection } from './content/terms'
 import archive20261013 from './content/terms-archive/2026-10-13.json'
+import archive20261018 from './content/terms-archive/2026-10-18.json'
 import { now, sha256Hex } from './db'
 import type { Order } from './order'
 
@@ -20,6 +23,7 @@ export interface ContractRelease {
 }
 export interface ContractBindings {
   CONTRACT_RELEASE?: string
+  FILES?: R2Bucket
 }
 export interface OrderReview {
   id: number
@@ -34,13 +38,14 @@ export interface OrderReview {
   expires_at: number
 }
 export interface ContractApproval {
+  aml?: Admission
   release: ContractRelease
   review: OrderReview
   offerHash: string
 }
 export interface ContractGate {
   ready: boolean
-  reason: 'release' | 'review' | 'bespoke' | 'hold' | 'ready'
+  reason: 'release' | 'review' | 'bespoke' | 'hold' | 'aml' | 'ready'
   offerHash: string
   approval: ContractApproval | null
 }
@@ -135,7 +140,10 @@ export async function contractGate(db: D1Database, env: ContractBindings, order:
   const accountant =
     review.accountant_id && (await db.prepare("SELECT 1 AS x FROM users WHERE id = ? AND team IN ('admin', 'accountant')").bind(review.accountant_id).first())
   if (!accountant) return { ready: false, reason: 'review', offerHash, approval: null }
-  return { ready: true, reason: 'ready', offerHash, approval: { release, review, offerHash } }
+  const aml = await admissionForOrder(db, order)
+  const dossier=await dossierOfOrder(db,order.id)
+  if (!aml || !dossier || !await sourceIntact(env.FILES,dossier.dossier) || aml.level === 'high' && !await bankOriginalsIntact(db,env.FILES,dossier.dossier,dossier.decision?.bank_id ?? '')) return { ready: false, reason: 'aml', offerHash, approval: null }
+  return { ready: true, reason: 'ready', offerHash, approval: { release, review, offerHash, aml } }
 }
 
 export interface ContractSnapshot {
@@ -248,10 +256,11 @@ export async function resolveContract(db: D1Database, companyId: string, termsVe
       sha256: null,
       notice: 'Zmluvu sme s Vami uzavreli písomne mimo aplikácie. Jej podpísané znenie máte u seba; ak ho potrebujete, napíšte nám a pošleme kópiu.',
     }
-  if (termsVersion === archive20261013.version)
+  const archived = [archive20261013, archive20261018].find((a) => a.version === termsVersion)
+  if (archived)
     return {
       status: 'archive',
-      terms: archive20261013,
+      terms: archived,
       snapshot: null,
       data: null,
       sha256: null,

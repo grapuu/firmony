@@ -1,3 +1,5 @@
+import {aml} from '../.wrangler/dist/stores.js'
+import {checkAmlAdmission,ensureAmlOfficer,seedAmlDossier} from './aml.runtime.mjs'
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
 // email service and the pretend register of test/pretend.mjs. Nothing leaves the machine.
 //
@@ -328,7 +330,7 @@ page = await res.text()
 check('the legal page names the company and the data authority', res.status === 200 && page.includes('Mestského súdu Košice') && page.includes('Úrad na ochranu osobných údajov'))
 check(
   'the privacy notice names who reads documents and accounts, and how long a contract is kept',
-  page.includes('Anthropic, PBC') && page.includes('Enable Banking Oy') && page.replace(/\u00a0/g, ' ').includes('5 rokov od skončenia zmluvy') && page.includes('href="/podmienky#clanok-8"'),
+  page.includes('Anthropic, PBC') && page.includes('Enable Banking Oy') && page.replace(/\u00a0/g, ' ').includes('päť rokov od skončenia zmluvy') && page.includes('href="/podmienky#clanok-8"'),
 )
 res = await get('/robots.txt')
 {
@@ -382,7 +384,7 @@ res = await get('/mzdova-kalkulacka')
   check('the sitemap and llms.txt name it', (await (await get('/sitemap.xml')).text()).includes('<loc>https://firmony.io/mzdova-kalkulacka</loc>') && (await (await get('/llms.txt')).text()).includes('https://firmony.io/mzdova-kalkulacka'))
 }
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 72)
+check('health says the schema', (await res.json()).schema === 76)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.io/cennik?x=1', { redirect: 'manual' })
@@ -534,7 +536,7 @@ await settle(500)
   indexNowAnswer = null
   await db.prepare("DELETE FROM site_state WHERE key = 'indexnow-wait'").run()
 }
-check('a request older than a year is deleted', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 0)
+check('a prospect is not erased after only a year', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 1)
 check('newer requests stay', (await count()) >= 4)
 check(
   'a sign-up not renewed for a year is deleted, newer ones stay',
@@ -1248,9 +1250,9 @@ check('an accountant cannot make a client', res.status === 404 && (await db.prep
 res = await admin.post('/ucto/klienti', { ico: '57442452', name: 'Duplicitná', person: 'X Y', email: 'x@y.test', plan: 'start' })
 check('a company that is already ours is not made twice', res.status === 422 && /už.u.nás je/.test(await res.text()))
 const manualClient = {
-  ico: '',
+  ico: '55118888',
   name: 'Nová firma s. r. o.',
-  address: '',
+  address: 'Testovacia 12, Košice',
   person: 'Peter Nový',
   email: 'peter@nova-firma.test',
   plan: 'rast',
@@ -1265,6 +1267,13 @@ check(
   'a client is not made by hand without a contract signed on paper',
   res.status === 422 && (await res.text()).includes('Bez podpísanej zmluvy') && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE name = 'Nová firma s. r. o.'").first())?.n === 0,
 )
+res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
+check('a paper signature alone cannot bypass pre-contract AML verification',res.status === 422 && !(await db.prepare("SELECT id FROM companies WHERE name = 'Nová firma s. r. o.'").first()))
+await db.prepare(`INSERT INTO orders (id,token,created_at,expires_at,request_id,ico,company,address,directors,plan,person,email,legal_form,aml_paper) VALUES ('aml-manual','TEST ONLY token',?,?, 'req-x',?,?,?,?,'rast',?,?,'sro',1)`)
+  .bind(nowS,nowS+86400,manualClient.ico,manualClient.name,manualClient.address,JSON.stringify([{name:manualClient.person,role:'Konateľ'}]),manualClient.person,manualClient.email).run()
+const amlOfficer = await ensureAmlOfficer(db)
+await seedAmlDossier(db,files,'aml-manual',amlOfficer)
+manualClient.aml = 'aml-manual'
 const before3 = (await sent()).length
 res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
 await settle()
@@ -1600,6 +1609,7 @@ check(
     page.includes('value="slovenská"'),
 )
 const decl = {
+  businessAtSeat:'1',businessCountries:'SK',ownBehalf:'1',residenceCountry:'SK',citizenships:'SK',partnerCountries:'SK',o1ResidenceCountry:'SK',o1Citizenships:'SK',
   name: 'Anna Malá',
   rc: '905312/0010',
   dob: '',
@@ -1635,7 +1645,7 @@ check(
 res = await anna.post('/app/vyhlasenie', { ...decl, rc: '905312/0011' })
 check('a birth number that cannot be one is said at its field', res.status === 422 && (await res.text()).includes('Toto rodné číslo nie je platné'))
 const beforeDecl = (await sent()).length
-res = await anna.post('/app/vyhlasenie', decl)
+res = await anna.upload('/app/vyhlasenie', {name:'TEST_ONLY-signed.pdf',type:'application/pdf',bytes:signedPdf}, decl, 'podpis')
 check('the owner gives it', res.status === 303 && res.headers.get('location') === '/app/vyhlasenie?ok=vyhlasenie', res.status)
 await settle()
 const declRow = await db.prepare("SELECT id, data, created_by, checked_at FROM declarations WHERE company_id = 'co-a'").first()
@@ -1678,7 +1688,7 @@ await peter.post('/app/firma/prepnut', { firma: made?.id ?? '' })
 await db.prepare("DELETE FROM members WHERE company_id = 'co-a' AND user_id = ?").bind(peterUserId).run()
 
 // A change is a new version; the old one is kept, and only the newest can be checked
-res = await anna.post('/app/vyhlasenie', { ...decl, address: 'Hlavná 6, 040 01 Košice' })
+res = await anna.upload('/app/vyhlasenie', {name:'TEST_ONLY-signed-v2.pdf',type:'application/pdf',bytes:signedPdf}, { ...decl, address: 'Hlavná 6, 040 01 Košice' }, 'podpis')
 const versions = (await db.prepare("SELECT id, data FROM declarations WHERE company_id = 'co-a' ORDER BY created_at, rowid").all()).results
 const newest = versions.at(-1)
 check('a change is kept as a new version beside the old one', res.status === 303 && versions.length === 2 && JSON.parse(newest?.data ?? '{}').director?.address === 'Hlavná 6, 040 01 Košice')
@@ -1695,7 +1705,7 @@ check(
     page.includes('Ján Spoločník, 40 %') &&
     page.includes('Predaj kvetov') &&
     page.includes('EA123456') &&
-    page.includes('Totožnosť a údaje overené'),
+    page.includes('Doklady a vykonané kontroly'),
 )
 check('with the risk it points to', page.includes('navrhujeme: štandardné'))
 res = await anna.get('/ucto/klienti/co-a/aml')
@@ -1712,33 +1722,22 @@ check(
   )?.checked_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 0,
 )
 res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: newest?.id ?? '' })
-check(
-  'she marks it checked, on record',
-  res.status === 303 &&
-    (
-      await db
-        .prepare('SELECT checked_by FROM declarations WHERE id = ?')
-        .bind(newest?.id ?? '')
-        .first()
-    )?.checked_by === lucia?.id &&
-    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 1,
-)
-res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: newest?.id ?? '' })
-check('twice is once', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 1)
-res = await anna.get('/app/vyhlasenie')
-check('the client sees it checked', (await res.text()).includes('Overené'))
-res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'kriticke' })
-check('a level that is none is not kept', (await db.prepare("SELECT COUNT(*) AS n FROM risks WHERE company_id = 'co-a'").first())?.n === 0)
-res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'standard', poznamka: 'Hotovosť nad 10 000 €.' })
-const riskRow = await db.prepare("SELECT level, note, created_by FROM risks WHERE company_id = 'co-a'").first()
-check(
-  'the risk is set, with why, on record',
-  res.status === 303 &&
-    riskRow?.level === 'standard' &&
-    riskRow.created_by === lucia?.id &&
-    riskRow.note === 'Hotovosť nad 10 000 €.' &&
-    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'risk.set'").first())?.n === 1,
-)
+check('the legacy checked button cannot bypass signature, KUV or sanctions evidence',res.status === 409 && (await db.prepare('SELECT checked_at FROM declarations WHERE id = ?').bind(newest.id).first()).checked_at === null)
+let companyAml = await aml.dossierOfCompany(db,'co-a')
+const companyCheckFields = (kind) => ({druh:kind,vysledok:'clear',zdroj:`TEST ONLY current independent ${kind} source`,podpisujuci:'Anna Malá',kvalifikovany:'1',hash:companyAml.dossier.facts_hash})
+for (const kind of ['identity','kuv','pep','eu-sanctions','un-sanctions','countries']) {
+  res=await acc.post(`/ucto/aml/spisy/${companyAml.dossier.id}/kontrola`,companyCheckFields(kind))
+  check(`the assigned accountant records the ${kind} check through the protected route`,res.status===303)
+}
+res=await acc.post(`/ucto/aml/spisy/${companyAml.dossier.id}/rozhodnutie`,{rozhodnutie:'approved',riziko:'standard',dovod:'TEST ONLY independent complete review',hash:companyAml.dossier.facts_hash})
+check('an assigned accountant cannot substitute for the designated person',res.status===404)
+res=await admin.post(`/ucto/aml/spisy/${companyAml.dossier.id}/rozhodnutie`,{rozhodnutie:'approved',riziko:'standard',dovod:'TEST ONLY independent complete review',hash:companyAml.dossier.facts_hash})
+check('the designated person confirms all current evidence in one decision',res.status===303 && (await db.prepare('SELECT checked_by FROM declarations WHERE id = ?').bind(newest.id).first()).checked_by===amlOfficer.id)
+res=await anna.get('/app/vyhlasenie')
+check('the client sees the completed verification',(await res.text()).includes('Overené'))
+res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'low', poznamka:'TEST ONLY unsupported downgrade' })
+const riskRow=await db.prepare("SELECT level,created_by FROM risks WHERE company_id='co-a' ORDER BY created_at DESC,rowid DESC LIMIT 1").first()
+check('the old risk endpoint cannot overwrite the designated decision',res.status===409 && riskRow.level==='standard' && riskRow.created_by===amlOfficer.id)
 res = await acc.post('/ucto/klienti/co-a/aml/oznamenie', { text: '  ' })
 check('an empty report is not taken', res.status === 422)
 const beforeRep = (await sent()).length
@@ -4326,7 +4325,8 @@ check(
 // director the register names (Zelený dvor s. r. o.: two directors in office, one whose office ended).
 // ---------------------------------------------------------------------------------------------------------------
 
-await checkContractTransactions(db)
+await checkContractTransactions(db,files)
+await checkAmlAdmission(db,files)
 
 const zeleny = { ico: '55012345', mode: 'company', plan: 'rast', situation: 'switch', name: 'Tomáš Dvorský', email: 'tomas@zelenydvor.test', phone: '', note: '' }
 res = await post('/zacat', zeleny, { ip: '198.51.100.20' })
@@ -4412,12 +4412,17 @@ let orderLink = await latestLink()
 const orderMail = (await linkMails()).pop()
 check(
   "the email carries the link to the contract, the register's name and the reviewed plan",
-  Boolean(orderLink) && orderMail.subject === 'Firmony: zmluva pre Zelený dvor s. r. o.' && orderMail.text.includes('Firma: Zelený dvor s. r. o.') && orderMail.text.includes('Balík: Rast') && orderMail.text.includes('Odkaz platí 7 dní'),
+  Boolean(orderLink) && orderMail.subject === 'Firmony: podklady pred začatím spolupráce' && orderMail.text.includes('Zelený dvor s. r. o.') && orderMail.text.includes('Odkaz platí 7 dní'),
   orderMail?.text,
 )
 check('the request counts as answered', (await db.prepare('SELECT status FROM requests WHERE id = ?').bind(orderRow.request_id).first())?.status === 'contacted')
 res = await admin.get(reviewPath)
 check('the review says when the link went out and offers a new one', (await res.text()).includes('Poslať nový odkaz'))
+res = await get(orderLink)
+page=await res.text()
+check('before AML admission the public link collects evidence and cannot conclude a contract',page.includes('Overenie pred začatím spolupráce') && !page.includes('name="agree"'))
+if(process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/aml-intake.html`,page)
+await seedAmlDossier(db,files,orderRow.id,await ensureAmlOfficer(db))
 res = await get(orderLink)
 page = await res.text()
 check(
@@ -4434,7 +4439,7 @@ check('the order page is not for search engines', (res.headers.get('x-robots-tag
 const months = [...page.matchAll(/name="start" id="start-\d" value="(\d{4}-\d{2}-01)"/g)].map((m) => m[1])
 check('six months are offered, the launch the first of them at the earliest', months.length === 6 && months[0] >= '2027-01-01', months.join(' '))
 check('the page carries the reviewed proposal', page.includes(`name="proposal" value="${proposal}"`))
-const validContract = { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1', proposal }
+const validContract = { plan: 'rast', start: months[1], director: 'Mgr. Lucia Zelená', agree: '1', proposal }
 res = await admin.post(reviewPath, { ...reviewFields, decision: 'hold' })
 res = await get(orderLink)
 page = await res.text()
@@ -4573,7 +4578,7 @@ check(
 
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-accepted.html`, page)
 const exactContract = await resolveContract(db, madeCompany.id, '2099-01-01')
-check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-18')
+check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-21')
 check('the acceptance digest covers the exact stored UTF-8 bytes', exactContract.sha256 === createHash('sha256').update(exactContract.data).digest('hex'))
 check('approval and exact tariff evidence are retained with the contract', exactContract.snapshot.catalogue.payrollCents === 1500 && exactContract.snapshot.catalogue.closingCents === 24900 && exactContract.snapshot.approval.accountantId === lucia.id)
 let immutableContract = false
@@ -4948,7 +4953,7 @@ await checkSocialMigration({ db, nowS, day })
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
-await setEnd(day(-91))
+await setEnd(day(-80))
 const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").all()
 // A recapitulative statement marked as filed while the contract ran, and a closing.
 await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES ('co-a', 'sv', '2026-01', ?, ?, NULL)").bind(day(-120), nowS).run()

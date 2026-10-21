@@ -534,6 +534,7 @@ check(
 )
 const words = appCopy.app.declaration.errors
 const full = {
+  businessAtSeat:'1',businessCountries:'SK',ownBehalf:'1',residenceCountry:'SK',citizenships:'SK',partnerCountries:'SK',
   name: 'Martin Novák',
   rc: '780123/0008',
   dob: '',
@@ -575,7 +576,7 @@ check(
   wrongs({ pep: '', cash: '', abroad: '', kuv: '', turnover: 'vela' }) === 'abroad cash kuv pep turnover' && wrongs({ idKind: 'x' }) === 'idNumber' && wrongs({ idNumber: '12' }) === 'idNumber',
 )
 check('partners outside the EU are named', wrongs({ abroad: '1' }) === 'abroadWhere' && wrongs({ abroad: '1', abroadWhere: 'USA' }) === '')
-const owner = { o1Name: 'Jana Nováková', o1Rc: '', o1Dob: '2. 5. 1990', o1Address: 'Hlavná 5, 040 01 Košice', o1Nationality: 'slovenská', o1Share: '50 %' }
+const owner = { o1ResidenceCountry:'SK',o1Citizenships:'SK', o1Name: 'Jana Nováková', o1Rc: '', o1Dob: '2. 5. 1990', o1Address: 'Hlavná 5, 040 01 Košice', o1Nationality: 'slovenská', o1Share: '50 %' }
 check(
   'other owners are asked for when the director is not the only one',
   wrongs({ kuv: 'with' }) === 'owners' &&
@@ -2571,10 +2572,10 @@ async function zipped(entries, note) {
     ending.serviceOpen(c, '2026-12-31') && !ending.serviceOpen(c, '2027-01-01') && ending.intakeOpen(c, '2027-01-10') && !ending.intakeOpen(c, '2027-01-11'),
   )
   check(
-    'the days the schedule compares with: ten days for intake, ninety to delete, five years to forget',
+    'the schedule keeps all business records for five calendar years, independently of client access',
     ending.intakeFloor('2027-01-10') === '2026-12-31' &&
-      ending.purgeFloor('2027-04-01') === '2027-01-01' &&
-      ending.purgeFloor('2027-03-31') === '2026-12-31' &&
+      ending.purgeFloor('2027-04-01') === '2022-04-01' &&
+      ending.purgeFloor('2027-03-31') === '2022-03-31' &&
       ending.recordsFloor('2032-01-01') === '2027-01-01',
   )
   check('the side that ended it is kept', ending.endingOf({ endsOn: '2026-12-31', noticeSide: 'firmony' }, '2026-11-01')?.side === 'firmony' && e('2026-11-01')?.side === 'client')
@@ -2611,8 +2612,8 @@ async function zipped(entries, note) {
 {
   const text = terms.termsText().replace(/ /g, ' ')
   check(
-    'the terms promise ten days for the last month, thirty for the handover, access until deleting, ninety days once confirmed or a year without it',
-    /10\.4 .*10 dní po jej skončení.*Do 30 dní.*potvrdíte.*kým údaje nevymažeme podľa bodu 8\.8/.test(text) && /8\.8 .*po uplynutí 90 dní od skončenia, keď potvrdíte.*inak rok po skončení zmluvy.*päť rokov/.test(text),
+    'the terms separate the ninety-day download window from complete five-year retention',
+    text.includes('10 dní po jej skončení') && text.includes('Do 30 dní od skončenia') && text.includes('Prístup do aplikácie trvá 90 dní') && text.includes('päť rokov od skončenia zmluvy') && !text.includes('inak rok po skončení'),
   )
   check("the figures of the terms are the config's", config.ENDING.intakeDays === 10 && config.ENDING.handoverDays === 30 && config.ENDING.keepDays === 90 && config.ENDING.unconfirmedDays === 365 && config.ENDING.recordsYears === 5)
 }

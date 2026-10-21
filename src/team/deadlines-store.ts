@@ -1,3 +1,5 @@
+import { companyDossierSql, companyVerifiedSql, decisionCurrentSql, reviewDueOn, companyDossiersSql, lastCompanyReviewSql } from '../aml/model'
+import type { Level } from '../app/aml'
 import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
 import { closureCurrentSql, latestPayoutSql, socialPayrollStatusSql as payrollStatusSql, socialReportCurrentSql as reportCurrentSql, currentTargetActiveSql as targetActiveSql } from '../payroll-reporting/sql'
 import { distributionOf, withheldOf } from '../app/distribution'
@@ -64,7 +66,14 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
   const [companyRows, filedRows, paidRows, missingRows, filingRows, closingRows, employeeRows, runRows, payrollReportRows, peopleRows, registeredRows, ossRows, intrastatRows, supplyRows, vatRegRows, debitRows, ttRows, annualRows] = await db.batch<Row>([
     db
       .prepare(
-        `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings, ${handedOverSql('c')} AS handover
+        `SELECT ${COMPANY_COLUMNS}, c.payroll AS payroll_settings,
+          ${companyVerifiedSql('c')} AS aml_verified,
+          (SELECT a.decided_at FROM aml_decisions a WHERE a.id = (${lastCompanyReviewSql('c')})) AS aml_reviewed_at,
+          (SELECT a.level FROM aml_decisions a WHERE a.id = (${lastCompanyReviewSql('c')})) AS aml_level,
+          (SELECT MIN(k.checked_at) FROM aml_checks k WHERE k.dossier_id IN (${companyDossiersSql('c')})
+            AND k.id > COALESCE((SELECT MAX(CAST(j.value AS INTEGER)) FROM aml_decisions a,json_each(a.checks) j WHERE a.id = (${lastCompanyReviewSql('c')})),0)) AS aml_pending_check_at,
+          (SELECT MIN(d.created_at) FROM aml_dossiers d WHERE d.id IN (${companyDossiersSql('c')}) AND d.sequence >
+            COALESCE((SELECT ad.sequence FROM aml_dossiers ad JOIN aml_decisions a ON a.dossier_id = ad.id WHERE a.id = (${lastCompanyReviewSql('c')})),0)) AS aml_pending_data_at, ${handedOverSql('c')} AS handover
            FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE ${sql} ORDER BY c.name COLLATE NOCASE`,
       )
       .bind(...binds),
@@ -281,7 +290,21 @@ const dividendsFact = (year: number, raw: unknown): Pick<ClosingFact, 'dividends
   }
 
   const dues: DueRow[] = []
+  const amlFacts = new Map((companyRows?.results ?? []).map((r) => [String(r.id),r]))
+
   for (const listed of companies) {
+    const aml = amlFacts.get(listed.id)
+    if (!listed.endsOn || today <= listed.endsOn) {
+      const verified = aml?.aml_verified === 1
+      const reviewedDay = typeof aml?.aml_reviewed_at === 'number' ? bratislavaDay(Number(aml.aml_reviewed_at)) : null
+      const level: Level = aml?.aml_level === 'high' ? 'high' : aml?.aml_level === 'low' ? 'low' : 'standard'
+      const periodic = reviewedDay ? reviewDueOn(reviewedDay,level) : bratislavaDay(listed.createdAt)
+      const changes = [aml?.aml_pending_check_at,aml?.aml_pending_data_at].filter((v):v is number => typeof v === 'number')
+      const changedDay = changes.length ? bratislavaDay(Math.min(...changes)) : today
+      const day = verified ? periodic : [periodic,changedDay].sort()[0]!
+      dues.push({companyId:listed.id,kind:'aml',period:reviewedDay,day,state:verified?'open':'blocked',late:day<today,count:verified?0:1,cents:0,fix:null,
+        company:listed,companyName:listed.name})
+    }
     const returns = filed.get(listed.id) ?? []
     const held = docs.get(listed.id) ?? []
     const window = vatWindow(listed, today)

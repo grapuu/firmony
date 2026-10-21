@@ -1,0 +1,110 @@
+// Synthetic attestations exercise workflow protection. They do not claim cryptographic QES validation.
+import { check } from './check.mjs'
+import { aml, amlEnhanced, amlModel, acceptStatements, contractGate, contractCatalogueHash, orderOfferHash, orderOf } from '../.wrangler/dist/stores.js'
+
+export const testDeclaration = (extra = {}) => ({
+  version: 2, director: { name: 'AML Test Owner', birthNumber: '', birthDate: '1990-01-01', address: 'Testovacia 12, Košice', nationality: 'slovenská', citizenships: 'SK', residenceCountry: 'SK', pep: false, idKind: 'op', idNumber: 'TESTONLY123' },
+  kuv: 'self', owners: [], activity: 'Vývoj softvéru', income: 'Príjmy z vlastných služieb', turnover: 'do-50', cash: false, abroad: false, abroadWhere: '',
+  businessAtSeat: true, businessAddress: '', businessCountries: 'SK', ownBehalf: true, partnerCountries: 'SK', ...extra,
+})
+
+export async function ensureAmlOfficer(db) {
+  const existing = await aml.officer(db)
+  if (existing) return { id: existing.id, team: 'admin', name: existing.name, email: existing.email, reminders: true }
+  await db.prepare("INSERT INTO users (id,created_at,email,name,team) VALUES ('aml-test-officer',unixepoch(),'officer@aml.test','TEST ONLY officer','admin')").run()
+  await db.prepare("INSERT INTO events (at,user_id,action) VALUES (unixepoch(),'aml-test-officer','team.bootstrap')").run()
+  await aml.bootstrapOfficerStatement(db, 'aml-test-officer').run()
+  return { id: 'aml-test-officer', team: 'admin', name: 'TEST ONLY officer', email: 'officer@aml.test', reminders: true }
+}
+export async function seedAmlDossier(db, files, orderId, officerUser, declaration = testDeclaration()) {
+  const row = await db.prepare('SELECT * FROM orders WHERE id = ?').bind(orderId).first()
+  const order = orderOf(row)
+  const data = { ...declaration, director: { ...declaration.director, name: order.directors?.[0]?.name ?? declaration.director.name } }
+  const bytes = new TextEncoder().encode('%PDF-1.7\nTEST_ONLY_SYNTHETIC_NO_REAL_SIGNATURE\n%%EOF\n')
+  const file = { bytes, type: 'pdf', name: 'TEST_ONLY-signed-declaration.pdf', sha256: await aml.bytesHash(bytes) }
+  const made = await aml.prepareDossier(db, files, { order }, data, file, null)
+  await made.statement.run()
+  let view = await aml.dossierOfOrder(db, order.id)
+  for (const kind of ['identity','kuv','pep','eu-sanctions','un-sanctions','countries']) {
+    const done = await aml.recordCheck(db, officerUser, view, { kind, result: 'clear', source: `TEST ONLY independent ${kind} evidence reference`, subject: view.dossier.signer_name, qualified: true, hash: view.dossier.facts_hash })
+    if (!done) throw new Error(`Could not seed ${kind}`)
+  }
+  view = await aml.dossierOfOrder(db, order.id)
+  const level = view.dossier.required_risk
+  if (!await aml.decideDossier(db, officerUser, view, { level, decision: 'approved', note: 'TEST ONLY complete source review', enhanced: level === 'high' ? 'TEST ONLY wealth, funds and additional independent sources' : '', hash: view.dossier.facts_hash })) throw new Error('Could not seed approval')
+  return aml.dossierOfOrder(db, order.id)
+}
+export async function seedAmlBank(db,files,view,user) {
+  const bytes=new TextEncoder().encode('%PDF-1.7\nTEST_ONLY bank original\n%%EOF')
+  const original={bytes,sha256:await aml.bytesHash(bytes)}
+  await (await amlEnhanced.prepareBankEvidence(db,files,view.dossier,original,original,user.id)).run()
+  const proof=(await amlEnhanced.bankEvidence(db,view.dossier.id))[0]
+  return {id:proof.id,iban:'SK3112000000198742637541',country:'SK',owner:JSON.parse(view.dossier.company_facts).name,reference:'TEST ONLY independently verified actual incoming payment'}
+}
+export async function checkAmlAdmission(db, files) {
+  const user = await ensureAmlOfficer(db)
+  const ts = Math.floor(Date.now()/1000)
+  await db.prepare("INSERT INTO users (id,created_at,email,name,team) VALUES ('aml-other-admin',?,'other@aml.test','Other administrator','admin'),('aml-expert',?,'expert@aml.test','AML accountant','accountant')").bind(ts,ts).run()
+  await db.prepare(`INSERT INTO orders (id,token,created_at,expires_at,ico,company,address,register_line,directors,plan,person,email)
+    VALUES ('aml-live-order','test-token-hash',?,?,'90909090','TEST ONLY AML company','Testovacia 12, Košice','TEST ONLY register',?,'rast','AML Test Owner','owner@aml.test')`)
+    .bind(ts,ts+86400,JSON.stringify([{ name:'AML Test Owner',role:'Konateľ' }])).run()
+  const order = () => db.prepare("SELECT * FROM orders WHERE id='aml-live-order'").first().then(orderOf)
+  check('AML admission is absent before any identity evidence', await aml.admissionForOrder(db,await order()) === null)
+  const bytes = new TextEncoder().encode('%PDF-1.7\nTEST ONLY ORIGINAL\n%%EOF\n')
+  const file = { bytes,type:'pdf',name:'TEST_ONLY.pdf',sha256:await aml.bytesHash(bytes) }
+  const made = await aml.prepareDossier(db,files,{ order:await order() },testDeclaration(),file,null)
+  await made.statement.run()
+  let view = await aml.dossierOfOrder(db,'aml-live-order')
+  let bank
+  const decision = (who, level='low', enhanced='') => aml.decideDossier(db,who,view,{ level,enhanced,decision:'approved',note:'TEST ONLY independently reviewed',hash:view.dossier.facts_hash,bank })
+  check('an uploaded PDF alone does not verify a signature or open signing', !view.ready && !await decision(user))
+  const input = (kind, extra={}) => ({ kind,result:'clear',source:`TEST ONLY ${kind} independent evidence`,subject:'AML Test Owner',qualified:true,hash:view.dossier.facts_hash,...extra })
+  check('a qualified-signature attestation with another subject is refused', !await aml.recordCheck(db,user,view,input('identity',{subject:'Another Person'})))
+  check('a signature without explicit qualified-and-content validation is refused', !await aml.recordCheck(db,user,view,input('identity',{qualified:false})))
+  check('a check without a real evidence reference is refused', !await aml.recordCheck(db,user,view,input('kuv',{source:'yes'})))
+  for (const kind of ['identity','kuv','pep','eu-sanctions','un-sanctions']) check(`the ${kind} check records its actor and source`, await aml.recordCheck(db,user,view,input(kind)))
+  view = await aml.dossierOfOrder(db,'aml-live-order')
+  check('missing geography still prevents approval after the other five checks', !await decision(user))
+  check('geography is recorded separately from sanctions', await aml.recordCheck(db,user,view,input('countries')))
+  view = await aml.dossierOfOrder(db,'aml-live-order')
+  check('an ordinary administrator cannot approve the AML dossier', !await decision({id:'aml-other-admin',team:'admin'}))
+  let forged=false
+  try { await db.prepare(`INSERT INTO aml_decisions (dossier_id,decided_at,decided_by,decision,level,note,enhanced_source,nonce,checks,facts_hash,policy_version)
+    VALUES (?,? ,?,'approved','low','TEST ONLY forged unchecked decision',NULL,?,'{}',?,?)`).bind(view.dossier.id,ts,user.id,crypto.randomUUID(),view.dossier.facts_hash,view.dossier.policy_version).run() } catch { forged=true }
+  check('SQL refuses a forged approval with no current check identities',forged)
+  check('only the designated person confirms complete source-bound verification',await decision(user))
+  view = await aml.dossierOfOrder(db,'aml-live-order')
+  check('complete verification now opens the AML part of admission',view.ready && await aml.admissionForOrder(db,await order()) !== null)
+  check('a later PEP result is recorded without replacing the old evidence',await aml.recordCheck(db,user,view,input('pep',{result:'high'})))
+  view = await aml.dossierOfOrder(db,'aml-live-order')
+  check('a later PEP finding invalidates the old approval immediately',!view.ready && await aml.admissionForOrder(db,await order()) === null)
+  check('the verified PEP cannot be downgraded to low risk',!await decision(user,'low'))
+  check('high risk without documented enhanced care stays blocked',!await decision(user,'high'))
+  check('high risk with consent still requires original account and first-payment proof',!await decision(user,'high','TEST ONLY complete additional wealth and funds evidence'))
+  bank=await seedAmlBank(db,files,view,user)
+  check('high risk requires an explicit officer decision and enhanced evidence',await decision(user,'high','TEST ONLY wealth, funds, additional sources and measures'))
+  view = await aml.dossierOfOrder(db,'aml-live-order')
+  const release={ FILES:files,CONTRACT_RELEASE:JSON.stringify({catalogueHash:await contractCatalogueHash(),legalReview:'TEST ONLY lawyer',insuranceReview:'TEST ONLY insurer',validUntil:ts+86400}) }
+  await db.prepare(`INSERT INTO order_reviews (order_id,reviewed_at,reviewed_by,decision,offer_hash,plan,evidence,accountant_id,expires_at)
+    VALUES ('aml-live-order',?,?,'standard',?,'rast','TEST ONLY supported scope','aml-expert',?)`).bind(ts,user.id,await orderOfferHash(await order()),ts+86400).run()
+  await files.put(view.dossier.file_key,new TextEncoder().encode('TEST ONLY TAMPERED'))
+  check('a missing or altered original blocks the contract even with complete database records',!(await contractGate(db,release,await order())).ready)
+  await files.put(view.dossier.file_key,bytes)
+  const gate=await contractGate(db,release,await order())
+  check('scope, released terms and complete AML evidence are all required',gate.ready && gate.approval?.aml?.level==='high')
+  const acceptance=await acceptStatements(db,await order(),{plan:'rast',signedBy:'AML Test Owner',signedRole:'Konateľ',startOn:'2027-01-01',ipHash:'0'.repeat(64),approval:gate.approval},{companyId:'aml-accepted',userId:'aml-owner',existingUser:false,inbox:'aml-accepted-inbox'})
+  await aml.recordCheck(db,user,view,input('un-sanctions',{result:'match'}))
+  await db.batch(acceptance.statements)
+  check('a sanction finding between preview and commit blocks every acceptance write',!(await db.prepare("SELECT id FROM companies WHERE id='aml-accepted'").first()) && !(await db.prepare("SELECT id FROM users WHERE id='aml-owner'").first()))
+  view=await aml.dossierOfOrder(db,'aml-live-order')
+  await aml.recordCheck(db,user,view,input('un-sanctions'))
+  view=await aml.dossierOfOrder(db,'aml-live-order')
+  await decision(user,'high','TEST ONLY renewed evidence of wealth, funds and measures')
+  const current=await contractGate(db,release,await order())
+  const accepted=await acceptStatements(db,await order(),{plan:'rast',signedBy:'AML Test Owner',signedRole:'Konateľ',startOn:'2027-01-01',ipHash:'0'.repeat(64),approval:current.approval},{companyId:'aml-accepted',userId:'aml-owner',existingUser:false,inbox:'aml-accepted-inbox'})
+  await db.batch(accepted.statements)
+  const declaration=await db.prepare("SELECT * FROM declarations WHERE company_id='aml-accepted'").first()
+  check('acceptance preserves the pre-contract declaration, checker and original dossier',Boolean(declaration?.checked_at) && JSON.parse(declaration.data).version===2 && (await db.prepare("SELECT aml_dossier_id FROM companies WHERE id='aml-accepted'").first()).aml_dossier_id===view.dossier.id)
+  check('calendar review dates clamp correctly at month end and leap years',amlModel.reviewDueOn('2026-08-31','high')==='2027-02-28' && amlModel.reviewDueOn('2024-02-29','low')==='2025-02-28')
+  check('the foreign keys of the admitted company remain valid',(await db.prepare('PRAGMA foreign_key_check').all()).results.length===0)
+}

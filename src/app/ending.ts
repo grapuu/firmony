@@ -27,7 +27,7 @@ export interface Ending {
   intakeUntil: string
   /** The day by which the books are handed over in the app. */
   handoverBy: string
-  /** The last day of access; the data are deleted the day after. */
+  /** The last day of client access; statutory records remain in the restricted archive. */
   accessUntil: string
 }
 
@@ -54,8 +54,8 @@ export const intakeOpen = (company: Pick<Company, 'endsOn'>, today: string): boo
 /** For SQL over a company aliased c, `(c.ends_on IS NULL OR c.ends_on >= ?)` bound to this day: its intake is open today. */
 export const intakeFloor = (today: string): string => addDays(today, -ENDING.intakeDays)
 
-/** The day whose companies are past their access: `c.ends_on < ?` bound to this day means deleted today. */
-export const purgeFloor = (today: string): string => addDays(today, -ENDING.keepDays)
+/** Legacy cutoff helper: erasure is governed by the full five-year retention, never the access window. */
+export const purgeFloor = (today: string): string => recordsFloor(today)
 
 /** The day whose companies are past the year that waits for the client's confirmation of its archives: `c.ends_on < ?`. */
 export const unconfirmedFloor = (today: string): string => addDays(today, -ENDING.unconfirmedDays)
@@ -63,5 +63,7 @@ export const unconfirmedFloor = (today: string): string => addDays(today, -ENDIN
 /** The day whose companies are past the five years the law keeps their identification: `c.ends_on < ?`. */
 export function recordsFloor(today: string): string {
   const y = Number(today.slice(0, 4)) - ENDING.recordsYears
-  return `${y}${today.slice(4)}`
+  const month = Number(today.slice(5,7))
+  const day = Math.min(Number(today.slice(8,10)), new Date(Date.UTC(y,month,0)).getUTCDate())
+  return `${y}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
 }

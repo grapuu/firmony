@@ -1,3 +1,4 @@
+import { accessOpenSql } from '../aml/retention'
 // What Act No. 297/2008 Z. z. asks of us as an obliged person, kept in the app (his word of 13 October 2026: nothing
 // by email, everything in our own locked system): the client's declaration (who acts for the company, who its
 // beneficial owners are, what it does and where its money comes from), our check of it, the risk we put the client
@@ -5,7 +6,10 @@
 // its own and none is ever changed or removed, so that what was known on a day can be shown for five years (s. 19).
 // A client never sees a report (s. 18: nobody may tell the client): the reports live only on the team's pages.
 import { now } from '../db'
+import { countryCodes, validCountryCodes, highRiskInText, monitoredCountry } from '../aml/countries'
 import { eventStatement } from './store'
+import { CURRENT_OFFICER_SQL } from '../aml/schema'
+import { companyVerifiedSql, quoteSql } from '../aml/model'
 
 export interface Person {
   name: string
@@ -16,6 +20,8 @@ export interface Person {
   address: string
   nationality: string
   pep: boolean
+  residenceCountry?: string
+  citizenships?: string
 }
 
 export interface Director extends Person {
@@ -32,6 +38,13 @@ export type Kuv = 'self' | 'with' | 'others'
 export type Turnover = 'do-50' | '50-200' | '200-1000' | 'nad-1000'
 
 export interface Declaration {
+  version?: 2
+  businessAtSeat?: boolean
+  businessAddress?: string
+  businessCountries?: string
+  ownBehalf?: boolean
+  principal?: { kind: 'person' | 'company'; name: string; birthNumber: string; birthDate: string; address: string; ico: string }
+  partnerCountries?: string
   director: Director
   /** Who the beneficial owners are: the director alone, the director and others, or others only. */
   kuv: Kuv
@@ -46,8 +59,8 @@ export interface Declaration {
 
 export const TURNOVERS: readonly Turnover[] = ['do-50', '50-200', '200-1000', 'nad-1000']
 export const KUVS: readonly Kuv[] = ['self', 'with', 'others']
-export const ID_KINDS: readonly Director['idKind'][] = ['op', 'pas', 'iny']
-export const OWNER_SLOTS = 3
+export const ID_KINDS: readonly Director['idKind'][] = ['op', 'pas']
+export const OWNER_SLOTS = 12
 
 /**
  * Whether a Slovak or Czech birth number can be one: nine digits (born before 1954, no check digit) or ten that the
@@ -74,7 +87,7 @@ export function birthNumberValid(value: string): boolean {
 }
 
 /** A day of birth typed the Slovak way ("7. 3. 1994"), as YYYY-MM-DD; '' when empty, null when it is no such day. */
-export function birthDateOf(text: string, today: string): string | null {
+export function birthDateOf(text: string, today: string, minAge = 15): string | null {
   const plain = text.replace(/\s/g, '')
   if (plain === '') return ''
   const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(plain)
@@ -84,7 +97,7 @@ export function birthDateOf(text: string, today: string): string | null {
   const check = new Date(`${day}T12:00:00Z`)
   if (check.getUTCFullYear() !== y || check.getUTCMonth() + 1 !== mo || check.getUTCDate() !== d) return null
   // Somebody born at least fifteen years ago and less than a hundred and twenty.
-  if (day > `${Number(today.slice(0, 4)) - 15}${today.slice(4)}` || y < Number(today.slice(0, 4)) - 120) return null
+  if (day > `${Number(today.slice(0, 4)) - minAge}${today.slice(4)}` || y < Number(today.slice(0, 4)) - 120) return null
   return day
 }
 
@@ -99,6 +112,9 @@ const text = (body: Record<string, unknown>, name: string, max: number) => (type
 export function valuesFrom(body: Record<string, unknown>): DeclarationValues {
   const v: DeclarationValues = {}
   const fields: [string, number][] = [
+    ['businessAtSeat', 1], ['businessAddress', 300], ['businessCountries', 400],
+    ['ownBehalf', 1], ['principalKind', 7], ['principalName', 200], ['principalRc', 14], ['principalDob', 14], ['principalAddress', 300], ['principalIco', 20],
+    ['residenceCountry', 2], ['citizenships', 100], ['partnerCountries', 400],
     ['name', 120],
     ['rc', 14],
     ['dob', 14],
@@ -114,7 +130,7 @@ export function valuesFrom(body: Record<string, unknown>): DeclarationValues {
     ['cash', 1],
     ['abroad', 1],
     ['abroadWhere', 200],
-    ['truthful', 1],
+    ['truthful', 1], ['ownersOverflow', 1],
   ]
   for (const [name, max] of fields) v[name] = text(body, name, max)
   for (let i = 1; i <= OWNER_SLOTS; i++) {
@@ -125,7 +141,7 @@ export function valuesFrom(body: Record<string, unknown>): DeclarationValues {
       ['Address', 200],
       ['Nationality', 60],
       ['Share', 60],
-      ['Pep', 1],
+      ['Pep', 1], ['ResidenceCountry', 2], ['Citizenships', 100],
     ] as [string, number][]) {
       v[`o${i}${name}`] = text(body, `o${i}${name}`, max)
     }
@@ -159,10 +175,33 @@ export function checkDeclaration(
   },
 ): Checked {
   const errors: DeclarationErrors = {}
+  if (v.ownersOverflow === '1') errors.owners = 'Úplnú vlastnícku štruktúru musí najprv individuálne spracovať určená osoba. Neúplné vyhlásenie nemôžeme prijať.'
+  const countries = (key: string, required = true) => {
+    const raw = (v[key] ?? '').trim()
+    if ((required || raw !== '') && !validCountryCodes(raw)) errors[key] = 'Uveďte kódy krajín, napríklad SK alebo SK, CZ.'
+    return countryCodes(raw).join(', ')
+  }
+  if (v.businessAtSeat !== '0' && v.businessAtSeat !== '1') errors.businessAtSeat = words.choose
+  if (v.businessAtSeat === '0' && (v.businessAddress ?? '').length < 8) errors.businessAddress = words.address
+  const businessCountries = countries('businessCountries')
+  if (v.ownBehalf !== '0' && v.ownBehalf !== '1') errors.ownBehalf = words.choose
+  let principal: Declaration['principal']
+  if (v.ownBehalf === '0') {
+    if (v.principalKind !== 'person' && v.principalKind !== 'company') errors.principalKind = words.choose
+    if ((v.principalName ?? '').length < 3) errors.principalName = words.name
+    if (v.principalKind === 'company' && !/^\d{8}$/.test(v.principalIco ?? '')) errors.principalIco = 'Uveďte IČO osoby, v ktorej mene Vaša firma koná.'
+    if (v.principalKind === 'company' && (v.principalAddress ?? '').length < 8) errors.principalAddress = words.address
+    const birthDate = birthDateOf(v.principalDob ?? '', today)
+    if (v.principalKind === 'person' && (!(v.principalRc ?? '') && !birthDate || (v.principalRc ?? '') !== '' && !birthNumberValid(v.principalRc ?? ''))) errors.principalDob = words.dob
+    principal = { kind: v.principalKind === 'person' ? 'person' : 'company', name: v.principalName ?? '', birthNumber: v.principalRc ?? '', birthDate: birthDate ?? '', address: v.principalAddress ?? '', ico: v.principalIco ?? '' }
+  }
+  const residenceCountry = countries('residenceCountry')
+  const citizenships = countries('citizenships')
+  const partnerCountries = countries('partnerCountries', v.abroad === '1')
   const person = (prefix: string, name: string, rc: string, dob: string, address: string, nationality: string, required: boolean) => {
     if (name.length < 5 || !name.includes(' ')) errors[`${prefix}name`] = words.name
     if (rc !== '' && !birthNumberValid(rc)) errors[`${prefix}rc`] = words.rc
-    const birthDate = birthDateOf(dob, today)
+    const birthDate = birthDateOf(dob, today, prefix ? 0 : 15)
     if (birthDate === null || (rc === '' && birthDate === '' && required)) errors[`${prefix}dob`] = words.dob
     if (address.length < 8) errors[`${prefix}address`] = words.address
     if (nationality.length < 3) errors[`${prefix}nationality`] = words.nationality
@@ -181,7 +220,7 @@ export function checkDeclaration(
     if (!any || kuv === 'self') continue
     const p = person(`o${i}`, name, v[`o${i}Rc`] ?? '', v[`o${i}Dob`] ?? '', v[`o${i}Address`] ?? '', v[`o${i}Nationality`] ?? '', true)
     if ((v[`o${i}Share`] ?? '').length < 1) errors[`o${i}share`] = words.owner
-    owners.push({ ...p, share: v[`o${i}Share`] ?? '', pep: v[`o${i}Pep`] === '1' })
+    owners.push({ ...p, share: v[`o${i}Share`] ?? '', pep: v[`o${i}Pep`] === '1', residenceCountry: countries(`o${i}ResidenceCountry`), citizenships: countries(`o${i}Citizenships`) })
   }
   if (kuv && kuv !== 'self' && owners.length === 0) errors.owners = words.owners
   if ((v.activity ?? '').length < 3) errors.activity = words.activity
@@ -195,7 +234,8 @@ export function checkDeclaration(
   if (Object.keys(errors).length > 0 || !idKind || !kuv || !turnover) return { declaration: null, errors }
   return {
     declaration: {
-      director: { ...director, pep: v.pep === '1', idKind, idNumber: (v.idNumber ?? '').replace(/\s/g, '').toUpperCase() },
+      version: 2, businessAtSeat: v.businessAtSeat === '1', businessAddress: v.businessAtSeat === '0' ? v.businessAddress : '', businessCountries, ownBehalf: v.ownBehalf === '1', principal, partnerCountries,
+      director: { ...director, residenceCountry, citizenships, pep: v.pep === '1', idKind, idNumber: (v.idNumber ?? '').replace(/\s/g, '').toUpperCase() },
       kuv,
       owners: kuv === 'self' ? [] : owners,
       activity: v.activity ?? '',
@@ -213,6 +253,9 @@ export function checkDeclaration(
 export function valuesOfDeclaration(d: Declaration): DeclarationValues {
   const sk = (day: string) => (day ? `${Number(day.slice(8, 10))}. ${Number(day.slice(5, 7))}. ${day.slice(0, 4)}` : '')
   const v: DeclarationValues = {
+    businessAtSeat: d.businessAtSeat === undefined ? '' : d.businessAtSeat ? '1' : '0', businessAddress: d.businessAddress ?? '', businessCountries: d.businessCountries ?? '',
+    ownBehalf: d.ownBehalf === undefined ? '' : d.ownBehalf ? '1' : '0', principalKind: d.principal?.kind ?? '', principalName: d.principal?.name ?? '', principalRc: d.principal?.birthNumber ?? '', principalDob: sk(d.principal?.birthDate ?? ''), principalAddress: d.principal?.address ?? '', principalIco: d.principal?.ico ?? '',
+    residenceCountry: d.director.residenceCountry ?? '', citizenships: d.director.citizenships ?? '', partnerCountries: d.partnerCountries ?? '',
     name: d.director.name,
     rc: d.director.birthNumber,
     dob: sk(d.director.birthDate),
@@ -238,6 +281,8 @@ export function valuesOfDeclaration(d: Declaration): DeclarationValues {
     v[`o${i + 1}Nationality`] = o.nationality
     v[`o${i + 1}Share`] = o.share
     v[`o${i + 1}Pep`] = o.pep ? '1' : ''
+    v[`o${i + 1}ResidenceCountry`] = o.residenceCountry ?? ''
+    v[`o${i + 1}Citizenships`] = o.citizenships ?? ''
   })
   return v
 }
@@ -256,9 +301,14 @@ export const LEVELS: readonly Level[] = ['low', 'standard', 'high']
  * otherwise each of large cash and partners outside the EU is a factor, none is low, one standard, two high.
  */
 export function suggestedLevel(d: Declaration): Level {
-  if (d.director.pep || d.owners.some((o) => o.pep)) return 'high'
-  const factors = [d.cash, d.abroad].filter(Boolean).length
-  return factors === 0 ? 'low' : factors === 1 ? 'standard' : 'high'
+  const persons = [d.director, ...d.owners]
+  const places = [d.businessCountries, d.partnerCountries, d.abroadWhere, ...persons.flatMap((p) => [p.citizenships, p.nationality, p.residenceCountry, p.address])].filter((v): v is string => typeof v === 'string')
+  if (persons.some((p) => p.pep) || places.some(highRiskInText)) return 'high'
+  const monitoring = places.some((p) => countryCodes(p).some(monitoredCountry))
+  const eu = new Set('AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(' '))
+  const outsideEu = persons.some((p) => p.residenceCountry && !eu.has(p.residenceCountry))
+  const factors = [d.cash, d.abroad, outsideEu].filter(Boolean).length
+  return factors >= 2 ? 'high' : factors === 1 || monitoring ? 'standard' : 'low'
 }
 
 export interface StoredDeclaration {
@@ -268,6 +318,7 @@ export interface StoredDeclaration {
   data: Declaration
   checkedAt: number | null
   checkedByName: string | null
+  verified?: boolean
 }
 
 type Row = Record<string, unknown>
@@ -287,7 +338,7 @@ function parsed(value: unknown): Declaration | null {
 export async function latestDeclaration(db: D1Database, company: string): Promise<StoredDeclaration | null> {
   const row = await db
     .prepare(
-      `SELECT d.*, cb.name AS created_by_name, kb.name AS checked_by_name FROM declarations d
+      `SELECT d.*, cb.name AS created_by_name, kb.name AS checked_by_name, ${companyVerifiedSql('c')} AS verified FROM declarations d JOIN companies c ON c.id = d.company_id
        LEFT JOIN users cb ON cb.id = d.created_by LEFT JOIN users kb ON kb.id = d.checked_by
        WHERE d.company_id = ? ORDER BY d.created_at DESC, d.rowid DESC LIMIT 1`,
     )
@@ -295,7 +346,7 @@ export async function latestDeclaration(db: D1Database, company: string): Promis
     .first<Row>()
   const data = row ? parsed(row.data) : null
   if (!row || !data) return null
-  return { id: String(row.id), createdAt: num(row.created_at) ?? 0, createdByName: str(row.created_by_name), data, checkedAt: num(row.checked_at), checkedByName: str(row.checked_by_name) }
+  return { id: String(row.id), createdAt: num(row.created_at) ?? 0, createdByName: str(row.created_by_name), data, checkedAt: num(row.checked_at), checkedByName: str(row.checked_by_name), verified: row.verified === 1 }
 }
 
 export function declarationStatements(db: D1Database, company: string, user: string, d: Declaration, extra: D1PreparedStatement[] = []): { id: string; statements: D1PreparedStatement[] } {
@@ -324,11 +375,11 @@ export function checkDeclarationStatement(db: D1Database, company: string, id: s
 export type DeclarationState = 'missing' | 'waiting' | 'checked'
 
 export function declarationStateOf(d: StoredDeclaration | null): DeclarationState {
-  return !d ? 'missing' : d.checkedAt === null ? 'waiting' : 'checked'
+  return !d ? 'missing' : d.checkedAt === null || d.verified !== true ? 'waiting' : 'checked'
 }
 
 /** The same as SQL over a company aliased c, for lists. */
-export const DECLARATION_STATE_SQL = `(SELECT CASE WHEN d.checked_at IS NOT NULL THEN 'checked' ELSE 'waiting' END FROM declarations d WHERE d.company_id = c.id ORDER BY d.created_at DESC, d.rowid DESC LIMIT 1)`
+export const DECLARATION_STATE_SQL = `(SELECT CASE WHEN d.checked_at IS NOT NULL AND ${companyVerifiedSql('c')} THEN 'checked' ELSE 'waiting' END FROM declarations d WHERE d.company_id = c.id ORDER BY d.created_at DESC, d.rowid DESC LIMIT 1)`
 
 export interface Risk {
   level: Level
@@ -380,9 +431,10 @@ export async function reportsOf(db: D1Database, company: string, viewer: { id: s
     .prepare(
       `SELECT r.*, cb.name AS created_by_name, db.name AS decided_by_name FROM reports r
        LEFT JOIN users cb ON cb.id = r.created_by LEFT JOIN users db ON db.id = r.decided_by
-       WHERE r.company_id = ? AND (? = 1 OR r.created_by = ?) ORDER BY r.created_at DESC, r.rowid DESC LIMIT 50`,
+       WHERE r.company_id = ? AND EXISTS (SELECT 1 FROM companies c WHERE c.id = r.company_id AND
+         (? = ${CURRENT_OFFICER_SQL} OR (${quoteSql(viewer.id)} = r.created_by AND ${accessOpenSql('c')}))) ORDER BY r.created_at DESC, r.rowid DESC LIMIT 50`,
     )
-    .bind(company, viewer.admin ? 1 : 0, viewer.id)
+    .bind(company, viewer.id)
     .all<Row>()
   return rows.results.map((r) => ({
     id: String(r.id),
@@ -411,12 +463,12 @@ export function reportStatements(db: D1Database, company: string, user: string, 
 /** The designated person's decision on a report, once. */
 export function decideStatement(db: D1Database, company: string, id: string, user: string, decision: Decision, note: string): D1PreparedStatement {
   return db
-    .prepare('UPDATE reports SET decided_at = ?, decided_by = ?, decision = ?, decision_note = ? WHERE id = ? AND company_id = ? AND decided_at IS NULL')
-    .bind(now(), user, decision, note, id, company)
+    .prepare(`UPDATE reports SET decided_at = ?, decided_by = ?, decision = ?, decision_note = ? WHERE id = ? AND company_id = ? AND decided_at IS NULL AND ? = ${CURRENT_OFFICER_SQL}`)
+    .bind(now(), user, decision, note, id, company, user)
 }
 
 /** Open reports of a company aliased c, as SQL: what the designated person still has to decide. */
-export const OPEN_REPORTS_SQL = `(SELECT COUNT(*) FROM reports r WHERE r.company_id = c.id AND r.decided_at IS NULL)`
+export const openReportsSql = (user: string) => `(SELECT COUNT(*) FROM reports r WHERE r.company_id = c.id AND r.decided_at IS NULL AND (r.created_by = ${quoteSql(user)} OR ${quoteSql(user)} = ${CURRENT_OFFICER_SQL}))`
 
 /**
  * The last day of a contract given notice on a day: the notice period is one month and starts on the first day of
