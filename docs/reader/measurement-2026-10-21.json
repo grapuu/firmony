@@ -1,0 +1,1619 @@
+{
+  "measuredOn": "2026-10-21",
+  "scope": "30 unchanged synthetic fixtures; not a population accuracy estimate. All category labels were fixed before the first model run. Unknown business purpose remains for professional review.",
+  "criticalFloor": 0.98,
+  "requiredFields": [
+    "totalCents",
+    "vatCents",
+    "issuedOn",
+    "partyIco"
+  ],
+  "first": {
+    "runId": 39622411334,
+    "sourceHead": "74f0aba5885e50d5d3e6040aa9a0879d6644d05e",
+    "conclusion": "failure",
+    "report": {
+      "model": "claude-haiku-5-5",
+      "at": "2026-10-21T15:04:50.887Z",
+      "datasetSha256": "3d2fe6d65cc6b3e1888fc3cd1ac086e9960ed3013623664a532421f36ea27cd3",
+      "categoryDirect": {
+        "right": 16,
+        "of": 18
+      },
+      "table": [
+        {
+          "field": "kind",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "party",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "partyIco",
+          "right": 27,
+          "of": 27,
+          "share": 1
+        },
+        {
+          "field": "number",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "vs",
+          "right": 16,
+          "of": 16,
+          "share": 1
+        },
+        {
+          "field": "issuedOn",
+          "right": 29,
+          "of": 30,
+          "share": 0.9666666666666667
+        },
+        {
+          "field": "dueOn",
+          "right": 20,
+          "of": 20,
+          "share": 1
+        },
+        {
+          "field": "totalCents",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "vatCents",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "currency",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "category",
+          "right": 26,
+          "of": 30,
+          "share": 0.8666666666666667
+        },
+        {
+          "field": "ekasaUid",
+          "right": 10,
+          "of": 10,
+          "share": 1
+        },
+        {
+          "field": "ekasaOkp",
+          "right": 10,
+          "of": 10,
+          "share": 1
+        },
+        {
+          "field": "corrects",
+          "right": 2,
+          "of": 2,
+          "share": 1
+        }
+      ],
+      "results": [
+        {
+          "file": "blocek-04.jpg",
+          "ms": 2385,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": false,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [
+            "issuedOn",
+            "category"
+          ],
+          "got": {
+            "issuedOn": "2026-09-10",
+            "category": "representation"
+          },
+          "want": {
+            "issuedOn": "2026-10-09",
+            "category": "material"
+          }
+        },
+        {
+          "file": "blocek-01.jpg",
+          "ms": 2549,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-02.jpg",
+          "ms": 2736,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-03.jpg",
+          "ms": 3142,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-05.jpg",
+          "ms": 2236,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-06.jpg",
+          "ms": 2265,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-07.jpg",
+          "ms": 2376,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-08.jpg",
+          "ms": 1992,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-09.jpg",
+          "ms": 2073,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-10.jpg",
+          "ms": 2274,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-01.pdf",
+          "ms": 2795,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-02.pdf",
+          "ms": 3103,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-03.pdf",
+          "ms": 2887,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-04.jpg",
+          "ms": 3243,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-05.png",
+          "ms": 2575,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-06.jpg",
+          "ms": 2844,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-07.pdf",
+          "ms": 2704,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-08.pdf",
+          "ms": 2885,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-10.jpg",
+          "ms": 2456,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-09.png",
+          "ms": 3075,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-11.png",
+          "ms": 2894,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-02.pdf",
+          "ms": 2322,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": null,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-01.pdf",
+          "ms": 2991,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": null,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-12.pdf",
+          "ms": 3671,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-03.png",
+          "ms": 2218,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": null,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-04.pdf",
+          "ms": 2885,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "dobropis-01.pdf",
+          "ms": 2974,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {
+            "corrects": true
+          },
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "goods"
+          },
+          "want": {
+            "category": "material"
+          }
+        },
+        {
+          "file": "dobropis-02.jpg",
+          "ms": 3029,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "corrects": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "vydana-01.pdf",
+          "ms": 2626,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {},
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "services"
+          },
+          "want": {
+            "category": "sales"
+          }
+        },
+        {
+          "file": "vydana-02.png",
+          "ms": 3091,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {},
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "services"
+          },
+          "want": {
+            "category": "sales"
+          }
+        }
+      ]
+    }
+  },
+  "afterGeneralFix": {
+    "runId": 39623756526,
+    "sourceHead": "f602de1bf6ca123142f764e97866bf0ebb1722ce",
+    "conclusion": "success",
+    "report": {
+      "model": "claude-haiku-5-5",
+      "at": "2026-10-21T15:14:33.602Z",
+      "datasetSha256": "3d2fe6d65cc6b3e1888fc3cd1ac086e9960ed3013623664a532421f36ea27cd3",
+      "categoryDirect": {
+        "right": 16,
+        "of": 18
+      },
+      "table": [
+        {
+          "field": "kind",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "party",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "partyIco",
+          "right": 27,
+          "of": 27,
+          "share": 1
+        },
+        {
+          "field": "number",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "vs",
+          "right": 16,
+          "of": 16,
+          "share": 1
+        },
+        {
+          "field": "issuedOn",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "dueOn",
+          "right": 20,
+          "of": 20,
+          "share": 1
+        },
+        {
+          "field": "totalCents",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "vatCents",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "currency",
+          "right": 30,
+          "of": 30,
+          "share": 1
+        },
+        {
+          "field": "category",
+          "right": 22,
+          "of": 30,
+          "share": 0.7333333333333333
+        },
+        {
+          "field": "ekasaUid",
+          "right": 10,
+          "of": 10,
+          "share": 1
+        },
+        {
+          "field": "ekasaOkp",
+          "right": 10,
+          "of": 10,
+          "share": 1
+        },
+        {
+          "field": "corrects",
+          "right": 2,
+          "of": 2,
+          "share": 1
+        }
+      ],
+      "results": [
+        {
+          "file": "blocek-03.jpg",
+          "ms": 2537,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-01.jpg",
+          "ms": 2620,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-04.jpg",
+          "ms": 2551,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-02.jpg",
+          "ms": 3326,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "goods"
+          },
+          "want": {
+            "category": "material"
+          }
+        },
+        {
+          "file": "blocek-07.jpg",
+          "ms": 2300,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": null
+          },
+          "want": {
+            "category": "material"
+          }
+        },
+        {
+          "file": "blocek-06.jpg",
+          "ms": 2346,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": null
+          },
+          "want": {
+            "category": "services"
+          }
+        },
+        {
+          "file": "blocek-05.jpg",
+          "ms": 2504,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-08.jpg",
+          "ms": 2176,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "blocek-10.jpg",
+          "ms": 1930,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "goods"
+          },
+          "want": {
+            "category": "material"
+          }
+        },
+        {
+          "file": "blocek-09.jpg",
+          "ms": 2938,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": null,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "ekasaUid": true,
+            "ekasaOkp": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-01.pdf",
+          "ms": 2999,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-02.pdf",
+          "ms": 2636,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-03.pdf",
+          "ms": 2786,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-05.png",
+          "ms": 2842,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-04.jpg",
+          "ms": 3293,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {},
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "goods"
+          },
+          "want": {
+            "category": "material"
+          }
+        },
+        {
+          "file": "faktura-06.jpg",
+          "ms": 3459,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-07.pdf",
+          "ms": 2732,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {},
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": null
+          },
+          "want": {
+            "category": "services"
+          }
+        },
+        {
+          "file": "faktura-08.pdf",
+          "ms": 3099,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {},
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "goods"
+          },
+          "want": {
+            "category": "material"
+          }
+        },
+        {
+          "file": "faktura-09.png",
+          "ms": 3217,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-10.jpg",
+          "ms": 3270,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-11.png",
+          "ms": 2831,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "faktura-12.pdf",
+          "ms": 3133,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-01.pdf",
+          "ms": 2810,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": null,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-03.png",
+          "ms": 2391,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": null,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-02.pdf",
+          "ms": 3793,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": null,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "zahranicna-04.pdf",
+          "ms": 2805,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": null,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "dobropis-01.pdf",
+          "ms": 3312,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": false
+          },
+          "extra": {
+            "corrects": true
+          },
+          "wrong": [
+            "category"
+          ],
+          "got": {
+            "category": "goods"
+          },
+          "want": {
+            "category": "material"
+          }
+        },
+        {
+          "file": "dobropis-02.jpg",
+          "ms": 3108,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {
+            "corrects": true
+          },
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "vydana-01.pdf",
+          "ms": 3002,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        },
+        {
+          "file": "vydana-02.png",
+          "ms": 2921,
+          "fields": {
+            "kind": true,
+            "party": true,
+            "partyIco": true,
+            "number": true,
+            "vs": true,
+            "issuedOn": true,
+            "dueOn": true,
+            "totalCents": true,
+            "vatCents": true,
+            "currency": true,
+            "category": true
+          },
+          "extra": {},
+          "wrong": [],
+          "got": {},
+          "want": {}
+        }
+      ]
+    }
+  },
+  "interpretation": "Critical-field floor passed after preserving the source date and resolving category after invoice direction. Category agreement fell from 26/30 to 22/30; direct-category agreement stayed 16/18. These two runs do not establish a category improvement. No fixture label changed, no new account or secret was created. Artifact upload blocked by existing GitHub quota; the reports are preserved from READER_REPORT_JSON job logs."
+}
