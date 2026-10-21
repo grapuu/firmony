@@ -111,7 +111,12 @@ over. Bring this section up to date first whenever a session ends.
       the original, kept with their day) and for regular partners there; (5) the AML page records, with who and when,
       the PEP check, the EU and UN sanctions check, the KUV's sources and the QES check, and a client is verified only
       with them; (6) internal reports seen only by their author and the designated person; (7) a deadline to update a
-      client's data, yearly for nízke and štandardné, every 6 months for zvýšené.
+      client's data, yearly for nízke and štandardné, every 6 months for zvýšené; (8) added after the check of
+      21 October: a national or resident of a country on FATF's grey list is 'standard' in `suggestedLevel`; the
+      declaration takes only an identity card or a passport (no "Iný doklad", no driving licence); for a 'high' client
+      onboarded online, a document of an account in its name in an EU bank and the first payment from it (program
+      4.6 f)); a record that the accountant reviewed what the app booked by itself (6.1); the terms and the privacy
+      notice say that personal data are processed under the AML Act without consent (4.3, § 21 ods. 3).
    B. Research, no code: the feeling of winning (item 5), studies read in the original and what Revolut, Trading 212
       and Robinhood do, a pick of 5 to 10 for Firmony; prices stay.
    C. The next guides of item 10.8, in their order.
@@ -482,6 +487,17 @@ over. Bring this section up to date first whenever a session ends.
       Claude doc of 13 October, retention among them; that doc is superseded): `docs/aml/program.html` and its PDF
       `docs/aml/Program-vlastnej-cinnosti-europio-v1.pdf`, every rule read that night in Act 297/2008 as effective from
       17 August 2026 on slov-lex, checked by an independent reader (24 corrections made), for him to print and sign.
+      Checked again on 21 October 2026, about noon (his word: "musíme si byť 100 percent istí"), by two new readers,
+      one against the Act's text, one against FSJ's guidance PPZ-FSJ-11-005/2024-KPO, its list of high-risk countries
+      of 4 February 2026 (the EU list and FATF's call for action; FATF's grey list is a risk factor only, "štandardné")
+      and its contacts (minv.sk, ?kontakty-fsj: Pribinova 2, 09610 11111); every finding verified in the source before
+      it was mended: KUV data as § 7 ods. 3, § 12 ods. 2 písm. a) for a client not physically present, § 35 ods. 1,
+      the FSJ contacts, § 15 of Act 289/2016 and art. 5n of Reg. 833/2014 for sanctions, § 30 for inspections, § 234 of
+      the Criminal Code in training, a stand-in when he is away (the external accountant reports herself), and **13.4,
+      a transitional clause**: until the app, the terms and the privacy notice do what the program says, no client is
+      taken on unless the designated person does the step by hand and keeps a dated record, and nothing of 9.1 is
+      deleted before 9.2's five years. 12 pages. A copy of the PDF and of the trade certificate (.asice and a readable
+      PDF) is on his Mac in Documents/europio (AML, Úradné dokumenty).
       **The app must be brought to it before the first client** (the reader found these, each verified in the code):
       (1) the contract is concluded only after the declaration, its QES verification, the KUV, PEP and sanctions
       checks and, for zvýšené riziko, the designated person's consent (§ 8 ods. 2; today `src/order.ts` concludes it
