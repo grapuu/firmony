@@ -117,30 +117,30 @@ over. Bring this section up to date first whenever a session ends.
       onboarded online, a document of an account in its name in an EU bank and the first payment from it (program
       4.6 f)); a record that the accountant reviewed what the app booked by itself (6.1); the terms and the privacy
       notice say that personal data are processed under the AML Act without consent (4.3, § 21 ods. 3).
-   **ChatGPT AML implementation, 21 October 2026:** branch `codex/aml-before-first-client`, PR #10.
-   Source base is `74a48b6`, preserving today's revised programme and its PDF. Additive steps 73-77; the first 72
-   are protected by an independently calculated digest and an actual upgrade of an isolated schema-72 D1.
-   Pre-contract declaration, original QES file, six source-bound checks, officer decision and high-risk EU bank /
-   first-payment evidence gate both online acceptance and manual paper creation. A missing current officer denies
-   permission, including SQL NULL cases. Accepted public links obey the same ninety-day limit as client sessions.
-   All business records remain at least five calendar years; the legal archive is read-only for the designated
-   person. Internal reports are limited to the author and designated person. Unresolved AML findings stop erasure.
-   Annual / six-month AML deadlines and source-bound professional reviews of automatic bookings are implemented.
-   New terms and privacy versions: 2026-10-21; historical contract snapshots and older terms remain intact.
-   Verified intermediate results: published `5367049` passed every GitHub check on Node 24. Local runtime after
-   the final access/migration fixes passed all 2036 checks; units 1423, Peppol 25. Additional retention tests and
-   final exact-head CI are still required before merge. Local TS7 cannot resolve /proc/self/exe in the sandbox;
-   supplemental TS6 checks pass, while GitHub runs the exact package script. UI checks pass at 1440/390/320 px;
-   manual screenshots could not be downloaded because GitHub's existing artifact quota blocks their upload.
-   Read `docs/aml/implementation.md` for operation, tests and limitations. Joint signers and physical identity
-   verification do not yet have a complete application flow and remain blocked, rather than bypassing AML.
-   Law read: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (§§ 7-12,14-21).
-   EU list verified from the Commission's primary table; original FATF statements dated 19 June 2026 were read.
-   EUR-Lex still blocks the full consolidated original with a bot check. That original-reading requirement remains
-   OPEN for the designated person / lawyer; do not claim it done. Recheck the lists before the first real client.
-   Signing the programme, goAML registration, real legal/insurance approval and the live-month trial remain his.
+   **A software merged by ChatGPT, 21 October 2026:** PR #10, merge `b39155a` into live main, from verified head
+   `79cb772`. GitHub run 39619478172 passed check, units (1423), Peppol (25), Node 24 runtime (2042), UI at
+   1440/390/320 px and browser journeys (31). The focused AML/migration set passed 53 checks locally.
+   Additive steps 73-77 preserve the original 72, including a real old-schema upgrade test. Pre-contract AML and
+   original-file checks gate online and paper acceptance; high risk also requires EU account / first-payment
+   evidence. Internal reports are author/officer-only; unresolved AML findings stop erasure. The client and old
+   accepted order link lose access after 90 days; full records remain at least five calendar years. Added review
+   deadlines and source-bound professional checks of automatic bookings. Terms/privacy versions: 2026-10-21.
+   Read `docs/aml/implementation.md`. Joint signers and physical identification without QES remain unsupported
+   and blocked. No claim of an automatic cryptographic QES validator or completed live-client trial.
+   Source: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (§§7-12,14-21), read in original.
+   Commission country table and FATF originals checked 21 October. Reading the full consolidated EUR-Lex original
+   remains OPEN because of its bot check; recheck it and the lists with the designated person / lawyer before
+   the first client. Legal release stays closed without actual legal and insurance approval. Signing the AML
+   programme, goAML, the original-source handoff and live-month trial remain launch dependencies. Screenshot
+   download was prevented by existing GitHub artifact quota; automatic browser/UI checks passed.
    B. Research, no code: the feeling of winning (item 5), studies read in the original and what Revolut, Trading 212
       and Robinhood do, a pick of 5 to 10 for Firmony; prices stay.
+   **B research completed by ChatGPT, 21 October 2026:** `docs/research/customer-value-2026-10-21.md`, private
+   internal document only. Six primary works cover price perception, reference gains/losses, fairness, trust,
+   operational transparency and referrals. Theory, experiments and observational results are distinguished.
+   Current official Revolut, Trading 212 and US Robinhood sources were checked; Revolut's future December fee
+   terms were excluded in favour of the currently effective July PDF. Nine concrete proposals include metrics,
+   limits and a pilot; no product code, marketing promise, referral reward or client price was changed.
    C. The next guides of item 10.8, in their order.
    D. Categories added to `test/reader/expected.json`, the workflow "Reader" run.
    E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
