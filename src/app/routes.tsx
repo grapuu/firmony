@@ -35,6 +35,7 @@ import { booksRefused, getPaper, keepPaper, paperResponse, papersOf, poaStateOf 
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
 import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
+import { bankHealthOf } from './overview'
 import {
   advancePayments,
   advancesOf,
@@ -450,7 +451,7 @@ appRoutes.get('/', async (c) => {
   const company = who.company.id
   const day = today()
   const month = day.slice(0, 7)
-  const [missingAll, figures, messages, counts, byMonth, started] = await Promise.all([
+  const [missingAll, figures, messages, counts, byMonth, started, unread] = await Promise.all([
     listPayments(db, company, 'missing', 200),
     monthFigures(db, company, `${month}-01`, `${nextMonth(month)}-01`),
     listMessages(db, company, 1),
@@ -463,7 +464,7 @@ appRoutes.get('/', async (c) => {
       .all<{ month: string; n: number }>(),
     db
       .prepare(
-        `SELECT EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'upload') AS upload,
+        `SELECT EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND deleted_at IS NULL AND duplicate_of IS NULL AND source <> 'firmony') AS upload,
                 EXISTS (SELECT 1 FROM declarations WHERE company_id = ?1) AS declaration,
                 EXISTS (SELECT 1 FROM documents WHERE company_id = ?1 AND source = 'email') AS email,
                 EXISTS (SELECT 1 FROM company_files WHERE company_id = ?1 AND kind = 'poa' AND deleted_at IS NULL) AS poa,
@@ -474,31 +475,36 @@ appRoutes.get('/', async (c) => {
       )
       .bind(company)
       .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null; switched: number }>(),
+    unseenFromFirmony(db, company),
   ])
   const [suggested, dues, bills] = await Promise.all([
     suggestions(db, company, missingAll),
     companyDeadlines(db, company, day),
     billRows(db, day, company, 24).then((rows) => rows.filter((r) => r.state !== 'paid')),
   ])
+  const ready = bankReady(c.env)
+  // A consent of Enable Banking or a token of Fio that ends; a statement from an account the company does not have
+  // yet; the statement of last month, still to be added.
+  const open = serviceOpen(who.company, day)
+  const [bankLinks, statements, due, approvals] = await Promise.all([
+    open ? linksOf(db, company) : Promise.resolve([]),
+    statementsOf(db, company),
+    intakeOpen(who.company, day) ? statementDue(db, company, day) : Promise.resolve(null),
+    open && who.company.approvals ? approvalQueueOf(db, who) : Promise.resolve(null),
+  ])
+  const at = now()
   const steps = {
     declaration: started?.declaration === 1,
     poa: started?.poa === 1,
-    payments: (counts?.n ?? 0) > 0,
+    // A connected account or an accepted zero-movement statement completes setup too. Freshness is separate.
+    payments: (counts?.n ?? 0) > 0 || bankLinks.some((l) => l.status === 'active' && (l.validUntil === null || l.validUntil > at))
+      || statements.some((s) => s.status === 'taken' || s.status === 'known'),
     upload: started?.upload === 1,
     email: started?.email === 1,
     people: (started?.people ?? 1) > 1,
     switching: started?.situation === 'switch',
     switched: started?.switched === 1,
   }
-  const ready = bankReady(c.env)
-  // A consent of Enable Banking or a token of Fio that ends; a statement from an account the company does not have
-  // yet; the statement of last month, still to be added.
-  const open = serviceOpen(who.company, day)
-  const [bankNotice, statements, due] = await Promise.all([
-    open ? linksOf(db, company).then((links) => noticeOf(links)) : Promise.resolve(null),
-    statementsOf(db, company),
-    intakeOpen(who.company, day) ? statementDue(db, company, day) : Promise.resolve(null),
-  ])
   return shell(
     c,
     'home',
@@ -506,7 +512,7 @@ appRoutes.get('/', async (c) => {
     <Overview
       firstName={firstName(who.user.name)}
       missing={missingAll.slice(0, 6)}
-      missingCount={missingAll.length}
+      missingCount={byMonth.results.reduce((total, row) => total + row.n, 0)}
       suggested={new Set(suggested.keys())}
       paymentsCount={counts?.n ?? 0}
       figures={figures}
@@ -516,12 +522,15 @@ appRoutes.get('/', async (c) => {
       inbox={inboxAddress(who.company)}
       accountant={who.company.accountantName}
       last={messages[0] ?? null}
-      now={now()}
+      now={at}
       flash={flashOf(c)}
       steps={steps.declaration && steps.poa && steps.payments && steps.upload ? null : steps}
       me={who.user.id}
       bankReady={ready}
-      bankNotice={bankNotice}
+      bankNotice={noticeOf(bankLinks, at)}
+      bankHealth={bankHealthOf(bankLinks, at)}
+      unread={unread}
+      approval={approvals?.mine[0] ? { dueOn: approvals.mine[0].dueOn } : null}
       waiting={waitingFirst(statements)}
       owner={who.role === 'owner'}
       statementDue={due}
@@ -2053,11 +2062,8 @@ appRoutes.post('/firma/schvalovanie', async (c) => {
   return c.redirect('/app/firma?ok=schvalovanie#schvalovanie', 303)
 })
 
-/** The suppliers' invoices that wait for approving: those the person may approve first, then those that wait for others. */
-appRoutes.get('/schvalovanie', async (c) => {
-  const who = c.get('who')
-  const db = c.env.DB
-  const approver = await approverOf(db, who)
+/** Shared by the queue and the overview: only approvals this person is currently allowed to give. */
+async function approvalQueueOf(db: D1Database, who: { role: string; user: { id: string }; company: Company }) {
   const rows = who.company.approvals
     ? (
         await db
@@ -2071,9 +2077,11 @@ appRoutes.get('/schvalovanie', async (c) => {
           .all<Record<string, unknown>>()
       ).results.map(docOf)
     : []
-  // Each first approver once: whether he may still approve (a first approval of somebody who may not counts for nothing).
-  const firsts = new Map<string, Approver | null>()
-  for (const user of new Set(rows.map((d) => d.firstApprovedBy).filter((u): u is string => Boolean(u)))) firsts.set(user, await memberApprover(db, who.company.id, user))
+  // One membership read instead of one query for every distinct first approver on a busy company overview.
+  const people = await db.prepare('SELECT user_id,role,approver,approve_limit FROM members WHERE company_id=?').bind(who.company.id)
+    .all<{ user_id: string; role: string; approver: number; approve_limit: number | null }>()
+  const firsts = new Map<string, Approver>(people.results.map((p) => [p.user_id, { owner: p.role === 'owner', approver: p.role === 'owner' || p.approver === 1, limit: p.role === 'owner' ? null : p.approve_limit }]))
+  const approver: Approver | null = who.role === 'owner' ? { owner: true, approver: true, limit: null } : firsts.get(who.user.id) ?? null
   const stepOf = (d: Doc) => {
     const cents = approvalCents(d)
     const firstMay = !d.firstApprovedBy || mayApprove(firsts.get(d.firstApprovedBy) ?? null, cents)
@@ -2081,11 +2089,18 @@ appRoutes.get('/schvalovanie', async (c) => {
   }
   const mine = rows.filter((d) => mayApprove(approver, approvalCents(d)) && ['first', 'again', 'final'].includes(stepOf(d)))
   const others = rows.filter((d) => !mine.includes(d))
+  return { approver, mine, others, ibanMine: others.filter((d) => stepOf(d) === 'iban').map((d) => d.id) }
+}
+
+/** The suppliers' invoices that wait for approving: those the person may approve first, then those that wait for others. */
+appRoutes.get('/schvalovanie', async (c) => {
+  const who = c.get('who')
+  const { approver, mine, others, ibanMine } = await approvalQueueOf(c.env.DB, who)
   return shell(
     c,
     'documents',
     t.approvalsQueue.title,
-    <ApprovalsPage on={who.company.approvals} mine={mine} others={others} me={who.user.id} today={today()} approver={Boolean(approver?.owner || approver?.approver)} ibanMine={others.filter((d) => stepOf(d) === 'iban').map((d) => d.id)} />,
+    <ApprovalsPage on={who.company.approvals} mine={mine} others={others} me={who.user.id} today={today()} approver={Boolean(approver?.owner || approver?.approver)} ibanMine={ibanMine} />,
   )
 })
 

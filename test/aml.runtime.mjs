@@ -127,8 +127,11 @@ export async function checkAmlAdmission(db, files) {
   check('a missing current officer cannot authorize self-appointment through SQL NULL',noOfficerDenied)
   await db.prepare("UPDATE users SET team='admin' WHERE id='aml-other-admin'").run()
   await db.prepare('INSERT INTO aml_officers(user_id,appointed_at,appointed_by,reason) VALUES(?,unixepoch(),?,?)').bind(originalOfficer,'aml-other-admin','TEST ONLY restoring the verified programme owner').run()
-  const dues=await teamDeadlines(db,user,false,new Date().toISOString().slice(0,10),{company:'aml-accepted'})
-  check('an accepted high-risk client has a six-month review deadline',dues.dues.some((d)=>d.kind==='aml' && d.day===amlModel.reviewDueOn(new Date(ts*1000).toISOString().slice(0,10),'high')))
+  const skDay=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Bratislava'})
+  const reviewed=await db.prepare("SELECT a.decided_at FROM aml_decisions a JOIN companies c ON c.aml_dossier_id=a.dossier_id WHERE c.id='aml-accepted' AND a.decision='approved' ORDER BY a.id DESC LIMIT 1").first()
+  const reviewedDay=skDay.format(new Date(reviewed.decided_at*1000))
+  const dues=await teamDeadlines(db,user,false,skDay.format(new Date()),{company:'aml-accepted'})
+  check('an accepted high-risk client has a six-month review deadline from its actual Bratislava review day',dues.dues.some((d)=>d.kind==='aml' && d.day===amlModel.reviewDueOn(reviewedDay,'high')))
   await db.prepare("INSERT INTO documents(id,company_id,created_at,source,file_key,file_name,status,kind,category,total_cents,vat_cents,currency,booked_at,booked_by) VALUES('aml-auto-doc','aml-accepted',?,'upload','TEST-auto','TEST.pdf','read','receipt','services',1200,0,'EUR',?,'auto')").bind(ts,ts).run()
   const source=(await db.prepare(`SELECT ${amlAutoReview.autoSnapshotSql('d')} AS source FROM documents d WHERE d.id='aml-auto-doc'`).first()).source
   const token=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source)).then((b)=>Buffer.from(b).toString('hex'))

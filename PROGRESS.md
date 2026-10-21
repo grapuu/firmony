@@ -1,5 +1,19 @@
 # Firmony: progress of the continuation
 
+## Pravdivý klientsky prehľad, J1 (Codex, 22. október 2026 CEST)
+
+Implementovaný [spoločný výber ďalšieho kroku](docs/client-overview.md) z existujúcich údajov.
+Úhrada, výpis, doklady, správa, osobné schválenie a potrebné nastavenie sa už neschovajú za všeobecný
+pokojný nadpis odvodený iba zo spárovania. Ostatné známe kroky zostávajú viditeľné. Schvaľovanie používa
+rovnaký výber ako jeho existujúca fronta a aktuálne oprávnenia sa čítajú bez série dotazov na jednotlivých ľudí.
+Chýbajúce doklady sa počítajú z celého súčtu podľa mesiacov, banka ukazuje problém a posledné úspešné načítanie.
+Pripojenie bez pohybov, prijatý nulový výpis a automaticky prijatý doklad nevyvolávajú zbytočné prvé nastavenie.
+
+Zachované ceny, vzhľad, navigácia, účtovné postupy, AML a oprávnenia; bez novej schémy.
+Pridané kombinované jednotkové a HTTP scenáre, deväť stavov pre desktop a mobil a skutočné prekliknutie
+hlavnej akcie v prehliadači. Povinné kontroly finálneho commitu a produkčný dôkaz sú evidované v PR.
+J2 až J5, explicitné dokončenie klientskej otázky a používateľský pilot zostávajú otvorené.
+
 ## Jednoduchosť ako základ produktu (Codex, 21. október 2026)
 
 Na pokyn majiteľa pripravený [produktový smer a odovzdanie](docs/strategy/12-product-simplicity.md)

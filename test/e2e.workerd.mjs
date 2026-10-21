@@ -56,6 +56,7 @@ import { checkWorkPay } from './work-pay.runtime.mjs'
 import { checkAiAccuracy } from './ai-accuracy.runtime.mjs'
 import { checkAutobook } from './autobook.runtime.mjs'
 import { checkAutobookAtomic } from './autobook-atomic.runtime.mjs'
+import { checkOverviewRuntime } from './overview.runtime.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
@@ -777,7 +778,7 @@ check(
 )
 res = await appGet('/app')
 page = await res.text()
-check('with every payment in order the overview says so', page.includes('Všetko máme.') && page.includes('Nemusíte nič robiť.'), page.match(/ptitle__sans">[^<]*/)?.[0])
+check('with every payment in order the overview does not invent missing documents or promise all work is complete', !page.includes('data-overview-action="documents"') && !page.includes('Nemusíte nič robiť.'), page.match(/ptitle__sans">[^<]*/)?.[0])
 res = await appPost('/app/platby/pa-fuel/zrusit', {})
 check('and it can be undone', (await db.prepare("SELECT exempt FROM payments WHERE id = 'pa-fuel'").first())?.exempt === null)
 
@@ -5169,5 +5170,6 @@ check(
     (await files.list({ prefix: 'companies/co-a/' })).objects.length === 0,
 )
 
+await checkOverviewRuntime({ db, nowS, day, signIn, as, capture: process.env.FIRMONY_CAPTURE_DIR })
 await mf.dispose()
 done('runtime')

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { checkPrehlad } from './prehlad.units.mjs'
+import { checkOverview } from './overview.units.mjs'
 import {
   aml,
   appCopy,
@@ -7215,4 +7216,5 @@ await (await import('./social.units.mjs')).checkSocial()
   check('a working day remembered is the same as worked out', vat.workingDayFrom('2026-04-03') === '2026-04-07' && vat.workingDayFrom('2026-04-03') === '2026-04-07' && vat.workingDayFrom('2026-12-24') === '2026-12-28')
 }
 
+checkOverview()
 done('units')
