@@ -157,7 +157,7 @@ export interface ContractSnapshot {
   startOn: string
   plan: ReturnType<typeof contractCatalogue>['plans'][number]
   catalogue: ReturnType<typeof contractCatalogue>
-  approval: { catalogueHash: string; releaseValidUntil: number; reviewId: number; accountantId: string | null }
+  approval: { catalogueHash: string; releaseValidUntil: number; reviewId: number; accountantId: string | null; aml?: {dossierId:string;decisionId:number;factsHash:string} }
 }
 export async function contractSnapshot(
   order: Order,
@@ -191,6 +191,7 @@ export async function contractSnapshot(
       releaseValidUntil: approval.release.validUntil,
       reviewId: approval.review.id,
       accountantId: approval.review.accountant_id,
+      ...(approval.aml ? {aml:{dossierId:approval.aml.dossierId,decisionId:approval.aml.decisionId,factsHash:approval.aml.factsHash}} : {}),
     },
   }
   const data = JSON.stringify(snapshot)

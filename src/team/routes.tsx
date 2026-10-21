@@ -1,3 +1,4 @@
+import { recordAutoReview } from '../aml/auto-review'
 import { orderAdmissionSql, quoteSql } from '../aml/model'
 import { AmlDossierPanel } from '../views/aml-admission'
 import { admissionForOrder, dossierOfCompany, isOfficer, officer } from '../aml/store'
@@ -982,6 +983,14 @@ teamRoutes.post('/klienti/:id/pripomenut', async (c) => {
 })
 
 /** Booking by itself for a client, on or off (app/autobook.ts); turned on, what is ready is booked at once. */
+teamRoutes.post('/klienti/:id/samo/:doc/posudit',async(c)=>{
+  const company=await companyParam(c)
+  if(!company) return missingPage(c)
+  const body=await c.req.parseBody()
+  if(body.posudene!=='1') return c.text('Potvrďte posúdenie dokladu a jeho súladu s profilom klienta.',422)
+  const ok=await recordAutoReview(c.env.DB,company.id,c.req.param('doc'),c.get('who').user.id,String(body.hash ?? ''),String(body.poznamka ?? ''))
+  return ok?c.redirect(`/ucto/klienti/${company.id}#samo`,303):c.text('Doklad sa zmenil, posúdenie už existuje alebo chýba konkrétna poznámka. Otvorte aktuálny doklad.',409)
+})
 teamRoutes.post('/klienti/:id/samo', async (c) => {
   const who = c.get('who')
   const company = await companyParam(c)
@@ -1285,7 +1294,7 @@ async function amlPage(c: Ctx, company: Company, extra: { error?: string; draft?
     c,
     'clients',
     t.aml.title,
-    <AmlPage user={who.user} officer={designated} readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} verification={<AmlDossierPanel view={dossier} officer={designated} returnTo={`/ucto/klienti/${company.id}/aml`} download={dossier ? `/ucto/aml/spisy/${dossier.dossier.id}/subor` : ''} />} company={company} stored={stored} risks={risks} suggested={stored ? suggestedLevel(stored.data) : null} reports={reports} now={now()} flash={flashOf(c)} {...extra} />,
+    <AmlPage user={who.user} officer={designated} readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} verification={<AmlDossierPanel readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} view={dossier} officer={designated} returnTo={`/ucto/klienti/${company.id}/aml`} download={dossier ? `/ucto/aml/spisy/${dossier.dossier.id}/subor` : ''} />} company={company} stored={stored} risks={risks} suggested={stored ? suggestedLevel(stored.data) : null} reports={reports} now={now()} flash={flashOf(c)} {...extra} />,
     status,
   )
 }

@@ -589,6 +589,20 @@ check(
   aml.checkDeclaration({ ...full, ...owner }, '2026-10-13', words).declaration?.owners.length === 0 &&
     aml.checkDeclaration({ ...full, kuv: 'with', ...owner, o1Pep: '1' }, '2026-10-13', words).declaration?.owners[0]?.pep === true,
 )
+check('an actual business address is required when different from the seat',wrongs({businessAtSeat:'0',businessAddress:''}).includes('businessAddress') && wrongs({businessAtSeat:'0',businessAddress:'Prevádzka 12, Košice'})==='')
+check('acting for another person requires the identified principal',wrongs({ownBehalf:'0'}).includes('principalKind') && wrongs({ownBehalf:'0',principalKind:'company',principalName:'TEST zastúpená s. r. o.',principalIco:'12345678',principalAddress:'TEST sídlo 12, Košice'})==='')
+check('an identity document other than an identity card or passport is not accepted',wrongs({idKind:'iny'})==='idNumber')
+check('a minor beneficial owner is recorded without applying the director age bound',wrongs({kuv:'others',...owner,o1Dob:'2. 5. 2020'})==='')
+check('all beneficial owners through the twelfth slot are preserved, rather than silently dropping the fourth',aml.checkDeclaration({...full,kuv:'others',...Object.fromEntries(Object.entries(owner).map(([key,value])=>[key.replace(/^o1/,'o4'),value]))},'2026-10-21',words).declaration?.owners[0]?.name==='Jana Nováková')
+check('a declared ownership overflow cannot be submitted as a complete dossier',wrongs({ownersOverflow:'1'}).includes('owners'))
+check('country of residence and every citizenship are mandatory for a KUV',wrongs({kuv:'others',...owner,o1ResidenceCountry:'',o1Citizenships:''}).includes('o1Citizenships') && wrongs({kuv:'others',...owner,o1ResidenceCountry:'',o1Citizenships:''}).includes('o1ResidenceCountry'))
+const riskData=given.declaration
+check('PEP status always requires high risk',aml.suggestedLevel({...riskData,director:{...riskData.director,pep:true}})==='high')
+check('citizenship in an EU high-risk country is sufficient even with residence in Slovakia',aml.suggestedLevel({...riskData,director:{...riskData.director,citizenships:'SK, RU'}})==='high')
+check('residence and business partners in a high-risk country independently require high risk',aml.suggestedLevel({...riskData,director:{...riskData.director,residenceCountry:'IR'}})==='high' && aml.suggestedLevel({...riskData,partnerCountries:'SK, AF'})==='high')
+check('FATF monitoring alone gives standard risk and does not become blanket high risk',aml.suggestedLevel({...riskData,director:{...riskData.director,citizenships:'BG'}})==='standard')
+check('two standard programme factors require high risk',aml.suggestedLevel({...riskData,cash:true,director:{...riskData.director,citizenships:'BG'}})==='high')
+check('an Austrian address does not falsely match Russia',aml.suggestedLevel({...riskData,director:{...riskData.director,address:'TEST Rakúska 12, Košice'}})==='low')
 const asGiven = aml.valuesOfDeclaration(given.declaration)
 check(
   'a declaration opens again in the form as it was given, without the statement',

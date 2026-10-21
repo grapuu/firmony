@@ -1,6 +1,6 @@
 import { prepareBankEvidence } from './aml/enhanced'
 import { AmlIntakePage } from './views/aml-admission'
-import { checkDeclaration, valuesFrom, type DeclarationValues } from './app/aml'
+import { checkDeclaration, valuesFrom, valuesOfDeclaration, type DeclarationValues } from './app/aml'
 import { app as appCopy } from './app/copy'
 import { admissionForOrder, dossierOfOrder, prepareDossier, signatureFile } from './aml/store'
 import { declarationPdf } from './aml/pdf'
@@ -494,7 +494,7 @@ app.get('/objednavka/:token', async (c) => {
   if (closed) return closed
   const intake = await dossierOfOrder(c.env.DB, order.id)
   if (!await admissionForOrder(c.env.DB, order) || c.req.query('upravit') === '1') {
-    const values: DeclarationValues = { name: order.directors?.length === 1 ? order.directors[0]?.name ?? '' : '', businessCountries: 'SK' }
+    const values: DeclarationValues = intake ? valuesOfDeclaration(intake.declaration) : { name: order.directors?.length === 1 ? order.directors[0]?.name ?? '' : '', businessCountries: 'SK',businessAtSeat:'',ownBehalf:'' }
     return page(c, orderMeta('Overenie pred začatím spolupráce'), <AmlIntakePage order={order} token={token} view={intake} values={values} editing={c.req.query('upravit') === '1'} />)
   }
   const months = startMonths(bratislavaToday())

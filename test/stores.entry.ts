@@ -46,3 +46,5 @@ export { ensureSchema } from '../src/db'
 export * as amlEnhanced from '../src/aml/enhanced'
 export { archiveEnded } from '../src/app/purge'
 export { forgetProspects } from '../src/aml/prospects'
+
+export * as amlAutoReview from '../src/aml/auto-review'

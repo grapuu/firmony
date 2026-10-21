@@ -1,5 +1,5 @@
-import type { BankEvidence } from './enhanced'
-import { bankCurrentSql } from './enhanced'
+import type { BankEvidence } from './enhanced-model'
+import { bankCurrentSql } from './enhanced-model'
 import type { Order } from '../order'
 import type { Company } from '../app/store'
 import type { Declaration, Level } from '../app/aml'

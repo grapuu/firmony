@@ -114,7 +114,7 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
 /** Companies whose data were deleted after their contract, for the administrator: what the law keeps of them. */
 export async function endedCompanies(db: D1Database, user: User): Promise<{ id: string; name: string; ico: string | null; endsOn: string; purgedAt: number }[]> {
   const rows = await db
-    .prepare(`SELECT c.id, c.name, c.ico, c.ends_on, COALESCE(c.aml_archived_at,c.purged_at,0) AS purged_at FROM companies c WHERE ${archiveDueSql('c', AML_TODAY_SQL)} AND c.demo = 0 AND ${quoteSql(user.id)} = ${CURRENT_OFFICER_SQL} ORDER BY c.ends_on DESC LIMIT 200`)
+    .prepare(`SELECT c.id, c.name, c.ico, c.ends_on, COALESCE(c.aml_archived_at,c.purged_at,unixepoch(date(c.ends_on,'+91 days')||'T00:00:00Z')) AS purged_at FROM companies c WHERE ${archiveDueSql('c', AML_TODAY_SQL)} AND c.demo = 0 AND ${quoteSql(user.id)} = ${CURRENT_OFFICER_SQL} ORDER BY c.ends_on DESC LIMIT 200`)
     .all<{ id: string; name: string; ico: string | null; ends_on: string; purged_at: number }>()
   return rows.results.map((r) => ({ id: r.id, name: r.name, ico: r.ico, endsOn: r.ends_on, purgedAt: r.purged_at }))
 }

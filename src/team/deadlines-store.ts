@@ -1,3 +1,4 @@
+import { autoReviewedSql } from '../aml/auto-review'
 import { companyDossierSql, companyVerifiedSql, decisionCurrentSql, reviewDueOn, companyDossiersSql, lastCompanyReviewSql } from '../aml/model'
 import type { Level } from '../app/aml'
 import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
@@ -209,6 +210,7 @@ async function deadlinesWhere(db: D1Database, sql: string, binds: unknown[], tod
   for (const r of ossRows?.results ?? []) ossFiled.set(String(r.company_id), (ossFiled.get(String(r.company_id)) ?? new Set<string>()).add(String(r.quarter)))
   const intrastatSent = new Map<string, Set<string>>()
   for (const r of intrastatRows?.results ?? []) intrastatSent.set(String(r.company_id), (intrastatSent.get(String(r.company_id)) ?? new Set<string>()).add(`${String(r.month)}:${String(r.flow)}`))
+  const autoRows=await db.prepare(`SELECT d.company_id,substr(date(d.booked_at,'unixepoch'),1,7) AS month,COUNT(*) AS count FROM documents d JOIN companies c ON c.id=d.company_id WHERE ${sql} AND d.booked_by='auto' AND d.deleted_at IS NULL AND NOT (${autoReviewedSql('d')}) GROUP BY d.company_id,month`).bind(...binds).all<{company_id:string;month:string;count:number}>()
   const companies = (companyRows?.results ?? []).map(companyOf)
   const handover = new Map((companyRows?.results ?? []).map((r) => [String(r.id), Number(r.handover ?? 0)]))
   const filed = new Map<string, FiledReturn[]>()
@@ -336,6 +338,13 @@ const dividendsFact = (year: number, raw: unknown): Pick<ClosingFact, 'dividends
     for (const due of deadlinesOf(company, facts, today)) dues.push({ ...due, company, companyName: company.name })
   }
   dues.sort(compareDues)
+  for(const row of autoRows.results) {
+    const company=companies.find((c)=>c.id===row.company_id)
+    if(!company) continue
+    const end=new Date(`${row.month}-15T12:00:00Z`);end.setUTCMonth(end.getUTCMonth()+2,0)
+    const day=end.toISOString().slice(0,10)
+    dues.push({company,companyId:company.id,companyName:company.name,kind:'amlBooking',period:row.month,day,state:'open',late:day<today,count:row.count,cents:0,fix:null})
+  }
   return { companies, dues }
 }
 

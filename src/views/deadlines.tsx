@@ -22,6 +22,7 @@ const t = team.deadlines
 export function dueWhat(d: Pick<DueRow, 'kind' | 'period' | 'fix' | 'reportKind' | 'payrollStage' | 'registration'> & { company: Pick<DueRow['company'], 'vatStatus'> }): string {
   const period = d.period ?? ''
   switch (d.kind) {
+    case 'amlBooking': return 'Odborné posúdenie automaticky zaúčtovaných dokladov'
     case 'aml': return 'Kontrola a aktualizácia údajov klienta'
     case 'vat':
       return d.company.vatStatus === 'reg7a' ? t.what.vat7a(periodName(period)) : t.what.vat(periodName(period))
@@ -75,6 +76,7 @@ export function registrationWhat(r: Pick<RegistrationDue, 'agency' | 'move' | 'n
 
 /** Where it stands, in words: "Pripravené na podanie", "Treba vyriešiť: 3", "Na úhradu 1 234,56 €". */
 export function dueState(d: Pick<Due, 'kind' | 'state' | 'count' | 'cents' | 'period'> & Pick<Due, 'deliveryStatus' | 'payrollStage' | 'sourceChanged'>): string {
+  if(d.kind==='amlBooking') return `Na posúdenie: ${d.count}`
   if (d.kind === 'aml') return d.state === 'blocked' ? 'Údaje čakajú na odborné overenie' : 'Pravidelná kontrola údajov'
   if (d.payrollStage === 'payout') return 'Výplatu treba overiť'
   if (d.kind === 'vatRegister' && d.state === 'running') return t.state.turnover(formatEurExact(d.cents))
@@ -103,6 +105,7 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
   const base = `/ucto/klienti/${d.company.id}`
   if (d.deliveryStatus && ['vat', 'summary', 'closing'].includes(d.kind)) return `${base}/podania?obdobie=${d.period}`
   switch (d.kind) {
+    case 'amlBooking': return `${base}#samo`
     case 'aml':
       return `${base}/aml`
     case 'vat':
@@ -150,6 +153,7 @@ export function dueHref(d: Pick<DueRow, 'kind' | 'period' | 'deliveryStatus' | '
 
 /** A line under the deadline that says what to know about it. */
 function noteOf(d: Due): string | null {
+  if(d.kind==='amlBooking') return 'Posúďte pôvodné doklady a súvisiace platby najneskôr do konca nasledujúceho mesiaca. Samotné automatické zaúčtovanie nie je odbornou kontrolou.'
   if (d.kind === 'aml') return 'Určená osoba uzavrie kontrolu po overení aktuálnych údajov. Nové neoverené vyhlásenie neposúva pôvodný termín.'
   if (d.payrollStage === 'payout') return 'Plánovaný výplatný termín nestačí. Účtovník musí osobitne overiť skutočnú výplatu aj vykazované obdobie prehľadu finančnej správy.'
   if (d.sourceChanged) return 'Pôvodné potvrdenie zostáva v histórii. Odborník musí posúdiť aktuálne podklady a správny druh opravy.'

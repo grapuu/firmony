@@ -307,7 +307,7 @@ export function suggestedLevel(d: Declaration): Level {
   const monitoring = places.some((p) => countryCodes(p).some(monitoredCountry))
   const eu = new Set('AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(' '))
   const outsideEu = persons.some((p) => p.residenceCountry && !eu.has(p.residenceCountry))
-  const factors = [d.cash, d.abroad, outsideEu].filter(Boolean).length
+  const factors = [d.cash, d.abroad, outsideEu, monitoring].filter(Boolean).length
   return factors >= 2 ? 'high' : factors === 1 || monitoring ? 'standard' : 'low'
 }
 

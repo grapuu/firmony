@@ -1,3 +1,4 @@
+import { fiveYearsAfter } from '../aml/retention'
 // The accountants' side: the same frame and look as the client's app, with a column of its own. Built for doing
 // the work quickly: what waits is counted everywhere, a document is booked on one screen with its original
 // beside the form, and "Zaúčtovať a ďalší" goes straight to the next one.
@@ -322,7 +323,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; m
                   {company.ico ? <span>{company.ico}</span> : null}
                   <span>{t.client.ended(dayName(company.endsOn))}</span>
                   <span>{t.ended.purged(dayName(dayOf(company.purgedAt)))}</span>
-                  <span>{t.ended.until(dayName(`${Number(company.endsOn.slice(0, 4)) + 5}${company.endsOn.slice(4)}`))}</span>
+                  <span>{t.ended.until(dayName(fiveYearsAfter(company.endsOn)))}</span>
                 </span>
               </li>
             ))}
@@ -383,7 +384,7 @@ export interface ClientPageProps {
   /** The company's details as they were sent, with what is wrong with them. */
   details?: { values: DetailsValues; errors: DetailsErrors }
   /** What the app booked by itself in the last month (app/autobook.ts), newest first. */
-  auto?: { id: string; party: string | null; issuedOn: string | null; totalCents: number | null; bookedAt: number }[]
+  auto?: { id: string; party: string | null; issuedOn: string | null; totalCents: number | null; bookedAt: number;reviewed:boolean;token:string }[]
 }
 
 /** The company's details as the form shows them. */
@@ -1053,6 +1054,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
                             <span>{d.issuedOn ? dayShort(d.issuedOn) : ''}</span>
                             <span>{d.totalCents !== null ? formatEurExact(d.totalCents) : ''}</span>
                           </span>
+                          {d.reviewed ? <span class="pill pill--ok">Odborne posúdené</span> : <form class="stack" method="post" action={`/ucto/klienti/${p.company.id}/samo/${d.id}/posudit`}><input type="hidden" name="hash" value={d.token} /><label class="field__label" for={`auto-review-${d.id}`}>Výsledok posúdenia a dôvod</label><textarea id={`auto-review-${d.id}`} class="field__input field__area" name="poznamka" rows={2} minlength={12} maxlength={2000} required /><label class="tickbox"><input type="checkbox" name="posudene" value="1" required /><span>Posúdil som pôvodný doklad, súvisiacu platbu a súlad s profilom klienta. Podozrivý prípad riešim dôverným interným oznámením.</span></label><button class="btn btn--line btn--small" type="submit">Zapísať odborné posúdenie</button></form>}
                         </li>
                       ))}
                     </ul>

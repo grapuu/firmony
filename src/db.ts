@@ -1,4 +1,5 @@
-import { AML_ENHANCED_SCHEMA } from './aml/enhanced'
+import { AML_AUTO_REVIEW_SCHEMA } from './aml/auto-review-schema'
+import { AML_ENHANCED_SCHEMA } from './aml/enhanced-schema'
 import { AML_PROSPECT_SCHEMA } from './aml/prospect-schema'
 import { AML_RETENTION_SCHEMA } from './aml/retention'
 import { AML_SCHEMA } from './aml/schema'
@@ -1556,6 +1557,8 @@ const MIGRATIONS: readonly string[][] = [
   AML_PROSPECT_SCHEMA,
   // 76: original account and first-payment evidence for high-risk remote admission.
   AML_ENHANCED_SCHEMA,
+  // 77: source-bound professional review of automatic bookings.
+  AML_AUTO_REVIEW_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

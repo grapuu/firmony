@@ -19,6 +19,7 @@ export const AmlIntakePage: FC<{ order: Order; token: string; view: DossierView 
         <h2 class="info__title">Podklady sme prijali</h2>
         <p>Údaje a súbor {view.dossier.file_name} preveríme. Zmluvu budete môcť uzavrieť až po dokončení overenia a potvrdení rozsahu služby.</p>
         <p>Pri úprave údajov preveríme novú verziu.</p>
+        <details><summary class="link">Doplniť bankové podklady na vyžiadanie</summary><p>Ak sme Vás o to požiadali, doplňte doklad o účte na meno Vašej firmy v banke pôsobiacej v EÚ a doklad o prvej platbe Firmony z tohto účtu. Pokyny k platbe dostanete osobitne. Samotné nahranie zmluvu neuzatvára.</p><form class="stack" method="post" enctype="multipart/form-data" action={`/objednavka/${token}/banka`}><label class="field__label" for="bank-account">Doklad o účte, najviac 25 MB</label><input id="bank-account" class="field__input" type="file" name="ucet" accept=".pdf,.asice" required /><label class="field__label" for="bank-payment">Doklad o prvej platbe, najviac 25 MB</label><input id="bank-payment" class="field__input" type="file" name="platba" accept=".pdf,.asice" required /><button class="btn btn--line" type="submit">Doplniť podklady</button></form></details>
         <a class="btn btn--line" href={`/objednavka/${token}?upravit=1`}>Upraviť podklady</a>
       </section> : <>
         <p>Vyplňte údaje, stiahnite vyhlásenie a podpíšte ho kvalifikovaným elektronickým podpisom. Potom nahrajte podpísaný PDF alebo ASiC-E súbor a odošlite podklady.</p>

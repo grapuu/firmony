@@ -1,7 +1,6 @@
 // The team's page of a client under the law against money laundering (aml.ts): the declaration in full with the
 // check of it, the risk the client is put in, and the internal reports of unusual operations with the designated
-// person's decision. Only the team reaches it (/ucto); an accountant sees her own reports, the administrator, who is
-// the designated person, all of them. Nothing here is ever shown to the client (s. 18 of the Act).
+// person's decision. Only the team reaches it (/ucto); an accountant sees her own reports, only the explicitly designated person sees all reports. Other administrators see only their own. Nothing here is ever shown to the client (s. 18 of the Act).
 import type { FC, Child } from 'hono/jsx'
 import { APP } from '../config'
 import { app, dayName, whenName } from '../app/copy'
@@ -196,7 +195,7 @@ export const AmlPage: FC<AmlPageProps> = (p) => {
   const today = dayOf(p.now)
   return (
     <>
-      <a class="back" href={`/ucto/klienti/${p.company.id}`}>
+      <a class="back" href={p.readOnly ? `/ucto/archiv/${p.company.id}` : `/ucto/klienti/${p.company.id}`}>
         {p.company.name}
       </a>
       <header class="phead">
@@ -212,7 +211,7 @@ export const AmlPage: FC<AmlPageProps> = (p) => {
           <Reports readOnly={p.readOnly} company={p.company} reports={p.reports} admin={p.officer === true} today={today} draft={p.draft} />
         </div>
         <aside class="pgrid__side">
-          <section class="info"><h2 class="info__title">Riziková skupina</h2><p>{p.risks[0] ? a.levels[p.risks[0].level] : 'Čaká na potvrdenie určenej osoby.'}</p></section>
+          <section class="info"><h2 class="info__title">Riziková skupina</h2>{p.suggested ? <p>{a.suggested(a.levels[p.suggested])}</p> : null}<p>{p.risks[0] ? a.levels[p.risks[0].level] : 'Čaká na potvrdenie určenej osoby.'}</p></section>
         </aside>
       </div>
     </>

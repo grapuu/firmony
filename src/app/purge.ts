@@ -109,6 +109,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
   const people = lonely.results.map((r) => r.user_id)
   const statements: D1PreparedStatement[] = [
     db.prepare('DELETE FROM links WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM aml_auto_reviews WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM documents WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payments WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM accounts WHERE company_id = ?').bind(companyId),
