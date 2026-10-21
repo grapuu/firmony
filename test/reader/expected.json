@@ -29,7 +29,8 @@
      "base": 387,
      "vat": 73
     }
-   ]
+   ],
+   "category": "representation"
   },
   {
    "file": "blocek-02.jpg",
@@ -56,7 +57,8 @@
      "base": 520,
      "vat": 26
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "blocek-03.jpg",
@@ -78,7 +80,8 @@
      "base": 6263,
      "vat": 1441
     }
-   ]
+   ],
+   "category": "fuel"
   },
   {
    "file": "blocek-04.jpg",
@@ -105,7 +108,8 @@
      "base": 561,
      "vat": 28
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "blocek-05.jpg",
@@ -132,7 +136,8 @@
      "base": 3151,
      "vat": 599
     }
-   ]
+   ],
+   "category": "representation"
   },
   {
    "file": "blocek-06.jpg",
@@ -154,7 +159,8 @@
      "base": 488,
      "vat": 112
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "blocek-07.jpg",
@@ -176,7 +182,8 @@
      "base": 1919,
      "vat": 441
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "blocek-08.jpg",
@@ -198,7 +205,8 @@
      "base": 3427,
      "vat": 788
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "blocek-09.jpg",
@@ -220,7 +228,8 @@
      "base": 1244,
      "vat": 236
     }
-   ]
+   ],
+   "category": "travel"
   },
   {
    "file": "blocek-10.jpg",
@@ -242,7 +251,8 @@
      "base": 2518,
      "vat": 579
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "faktura-01.pdf",
@@ -263,7 +273,8 @@
      "base": 2780,
      "vat": 639
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "faktura-02.pdf",
@@ -284,7 +295,8 @@
      "base": 12000,
      "vat": 2760
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "faktura-03.pdf",
@@ -299,7 +311,8 @@
    "vatCents": 0,
    "currency": "EUR",
    "corrects": null,
-   "vatLines": null
+   "vatLines": null,
+   "category": "services"
   },
   {
    "file": "faktura-04.jpg",
@@ -320,7 +333,8 @@
      "base": 93600,
      "vat": 21528
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "faktura-05.png",
@@ -341,7 +355,8 @@
      "base": 2802,
      "vat": 644
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "faktura-06.jpg",
@@ -362,7 +377,8 @@
      "base": 5530,
      "vat": 1272
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "faktura-07.pdf",
@@ -383,7 +399,8 @@
      "base": 8000,
      "vat": 1840
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "faktura-08.pdf",
@@ -404,7 +421,8 @@
      "base": 41900,
      "vat": 9637
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "faktura-09.png",
@@ -425,7 +443,8 @@
      "base": 4900,
      "vat": 1127
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "faktura-10.jpg",
@@ -446,7 +465,8 @@
      "base": 3290,
      "vat": 757
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "faktura-11.png",
@@ -461,7 +481,8 @@
    "vatCents": 0,
    "currency": "EUR",
    "corrects": null,
-   "vatLines": null
+   "vatLines": null,
+   "category": "services"
   },
   {
    "file": "faktura-12.pdf",
@@ -482,7 +503,8 @@
      "base": 2220,
      "vat": 511
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "zahranicna-01.pdf",
@@ -503,7 +525,8 @@
      "base": 5064,
      "vat": 0
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "zahranicna-02.pdf",
@@ -524,7 +547,8 @@
      "base": 4490,
      "vat": 0
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "zahranicna-03.png",
@@ -539,7 +563,8 @@
    "vatCents": 0,
    "currency": "USD",
    "corrects": null,
-   "vatLines": null
+   "vatLines": null,
+   "category": "services"
   },
   {
    "file": "zahranicna-04.pdf",
@@ -560,7 +585,8 @@
      "base": 21000,
      "vat": 0
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "dobropis-01.pdf",
@@ -581,7 +607,8 @@
      "base": 5000,
      "vat": 1150
     }
-   ]
+   ],
+   "category": "material"
   },
   {
    "file": "dobropis-02.jpg",
@@ -602,7 +629,8 @@
      "base": 1290,
      "vat": 297
     }
-   ]
+   ],
+   "category": "services"
   },
   {
    "file": "vydana-01.pdf",
@@ -623,7 +651,8 @@
      "base": 60000,
      "vat": 13800
     }
-   ]
+   ],
+   "category": "sales"
   },
   {
    "file": "vydana-02.png",
@@ -644,7 +673,8 @@
      "base": 120000,
      "vat": 27600
     }
-   ]
+   ],
+   "category": "sales"
   }
  ]
 }

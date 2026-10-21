@@ -2,7 +2,7 @@
 // Claude's (Anthropic's API, READER in config.ts); an e-invoice is read by our own code (xml.ts). Without the key,
 // or when the reader cannot say, the document goes to the accountant, and the client is told only that.
 import { READER } from '../config'
-import { CATEGORIES, CATEGORY_IDS, dayOfText, isCategory } from './booking'
+import { CATEGORIES, CATEGORY_IDS, categoriesFor, dayOfText, isCategory } from './booking'
 import { ekasaOkp, ekasaUid } from './ekasa'
 import { toCents, type Reading } from './xml'
 import type { DocKind } from './match'
@@ -62,6 +62,7 @@ const TOOL = {
       cislo_dokladu: { type: 'string' },
       variabilny_symbol: { type: 'string' },
       datum_vystavenia: { type: 'string', description: 'RRRR-MM-DD' },
+      datum_vystavenia_text: { type: 'string', description: 'Prepíš pôvodný dátum vystavenia z dokladu bez zmeny poradia číslic a oddeľovačov, bez času. Slúži na overenie prevodu do RRRR-MM-DD.' },
       datum_splatnosti: { type: 'string', description: 'RRRR-MM-DD' },
       suma_celkom: { type: 'string', description: 'Celková suma na úhradu s DPH, s desatinnou bodkou, napríklad 12.40. Pri dobropise bez mínusu.' },
       dph_celkom: {
@@ -112,6 +113,15 @@ const clean = (value: unknown, max = 160): string | null => (typeof value === 's
 const isoDay = (value: unknown): string | null => {
   const text = clean(value, 20)
   return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? dayOfText(text) || null : null
+}
+
+/** A dotted day on a Slovak document is day.month.year; keep that order even if the model's ISO conversion differs. */
+const issuedDay = (value: unknown, original: unknown): string | null => {
+  const raw = clean(original, 40)
+  const dotted = raw?.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})\.?$/)
+  if (dotted) return isoDay(`${dotted[3]}-${dotted[2]?.padStart(2, '0')}-${dotted[1]?.padStart(2, '0')}`)
+  if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return isoDay(raw)
+  return isoDay(value)
 }
 
 const icoOf = (value: unknown): string | null => {
@@ -175,7 +185,7 @@ export function readingFrom(input: Record<string, unknown>, company?: { name: st
     partyIban: iban && /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(iban) ? iban : null,
     number: clean(input.cislo_dokladu, 40),
     vs: clean(input.variabilny_symbol, 20)?.replace(/\D/g, '') || null,
-    issuedOn: isoDay(input.datum_vystavenia),
+    issuedOn: issuedDay(input.datum_vystavenia, input.datum_vystavenia_text),
     dueOn: isoDay(input.datum_splatnosti),
     totalCents,
     vatCents,
@@ -189,7 +199,12 @@ export function readingFrom(input: Record<string, unknown>, company?: { name: st
     ekasaUid: ekasaUid(input.ekasa_uid),
     ekasaOkp: ekasaOkp(input.ekasa_okp),
   }
-  return company ? withSides(reading, input, company) : reading
+  const sided = company ? withSides(reading, input, company) : reading
+  // Classify after resolving the actual direction: selling a service is revenue, never a purchased service.
+  if (sided.kind === 'invoice_out' && sided.category === 'services') sided.category = 'sales'
+  if (sided.kind === 'invoice_out' && sided.category === 'goods') sided.category = 'sales_goods'
+  if (sided.category && !categoriesFor(sided.kind).includes(sided.category)) sided.category = null
+  return sided
 }
 
 /**
@@ -258,6 +273,8 @@ export async function readDocument(key: string | undefined, file: { kind: FileKi
   const prompt = [
     `Si účtovník na Slovensku. Prečítaj tento doklad firmy ${company.name}${company.ico ? ` (IČO ${company.ico})` : ''} a zapíš ho nástrojom ${TOOL.name}.`,
     'Pri faktúre a dobropise zapíš obe strany, dodávateľa aj odberateľa. Ak je naša firma odberateľ, je to faktúra prijatá a druhá strana je dodávateľ; ak je naša firma dodávateľ, je to faktúra vydaná a druhá strana je odberateľ.',
+    'Slovenský číselný dátum s bodkami má poradie deň, mesiac, rok. Pri vystavení prepíš aj pôvodný dátum do datum_vystavenia_text a až potom ho preveď do RRRR-MM-DD. Deň a mesiac nezamieňaj. Nepoužívaj dátum dodania namiesto dátumu vystavenia.',
+    'Pri vydanej faktúre za službu použi sales, za predaný tovar sales_goods. services a goods sú prijaté náklady. goods znamená nákup na ďalší predaj, nie akýkoľvek predmet. Účel výdavku, ktorý na doklade nie je, si nevymýšľaj.',
     'Sumy píš presne tak, ako sú na doklade; celkovú sumu a DPH ber zo súhrnu dokladu. Nič nedomýšľaj: čo na doklade nie je, nechaj prázdne.',
   ].join(' ')
   let answer: Response
