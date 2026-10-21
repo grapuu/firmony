@@ -122,6 +122,9 @@ export async function checkAmlAdmission(db, files) {
   check('an authorized historical review remains valid after officer succession',Boolean(await db.prepare(`SELECT 1 FROM companies c WHERE c.id='aml-accepted' AND ${amlModel.companyVerifiedSql('c')}`).first()))
   await db.prepare("UPDATE users SET team=NULL WHERE id='aml-other-admin'").run()
   check('revoking the current officer does not revive an older appointment',!await aml.isOfficer(db,user) && await aml.officer(db)===null)
+  let noOfficerDenied = false
+  try { await db.prepare('INSERT INTO aml_officers(user_id,appointed_at,appointed_by,reason) VALUES(?,unixepoch(),?,?)').bind(originalOfficer,originalOfficer,'TEST ONLY unauthorized appointment with no current officer').run() } catch { noOfficerDenied = true }
+  check('a missing current officer cannot authorize self-appointment through SQL NULL',noOfficerDenied)
   await db.prepare("UPDATE users SET team='admin' WHERE id='aml-other-admin'").run()
   await db.prepare('INSERT INTO aml_officers(user_id,appointed_at,appointed_by,reason) VALUES(?,unixepoch(),?,?)').bind(originalOfficer,'aml-other-admin','TEST ONLY restoring the verified programme owner').run()
   const dues=await teamDeadlines(db,user,false,new Date().toISOString().slice(0,10),{company:'aml-accepted'})
@@ -134,5 +137,26 @@ export async function checkAmlAdmission(db, files) {
   check('the same reviewed source is not counted twice',!await amlAutoReview.recordAutoReview(db,'aml-accepted','aml-auto-doc',user.id,token,'TEST ONLY repeat review'))
   await db.prepare("UPDATE documents SET total_cents=1300 WHERE id='aml-auto-doc'").run()
   check('changing the underlying source invalidates the old professional review',!(await db.prepare(`SELECT 1 FROM documents d WHERE d.id='aml-auto-doc' AND ${amlAutoReview.autoReviewedSql('d')}`).first()))
+  // A refused prospect has the same complete five-calendar-year minimum, with separate FSJ and NOO holds.
+  await db.prepare(`INSERT INTO orders(id,token,created_at,expires_at,ico,company,address,directors,plan,person,email,legal_form)
+    VALUES('aml-retention','TEST retention',?,?,'90556677','TEST refused company','TEST 12, Košice',?,'rast','AML Test Owner','refused@aml.test','sro')`).bind(ts,ts+86400,JSON.stringify([{name:'AML Test Owner',role:'Konateľ'}])).run()
+  const prospect=await seedAmlDossier(db,files,'aml-retention',user)
+  await db.prepare("UPDATE orders SET status='expired',expires_at=1,aml_ended_at=unixepoch('2020-02-29T12:00:00Z') WHERE id='aml-retention'").run()
+  await forgetProspects({DB:db,FILES:files},'2025-02-28')
+  check('the fifth anniversary still retains every original of a refused prospect',Boolean(await files.head(prospect.dossier.file_key)) && Boolean(await db.prepare("SELECT id FROM aml_dossiers WHERE id=?").bind(prospect.dossier.id).first()))
+  await db.prepare("INSERT INTO aml_prospect_reports(id,order_id,created_at,created_by,body) VALUES('aml-retention-report','aml-retention',?,?, 'TEST ONLY unresolved internal finding')").bind(ts,user.id).run()
+  await forgetProspects({DB:db,FILES:files},'2026-10-21')
+  check('an unresolved internal finding protects a refused prospect after five years',(await db.prepare("SELECT aml_purge_started_at FROM orders WHERE id='aml-retention'").first()).aml_purge_started_at===null)
+  await db.prepare("UPDATE aml_prospect_reports SET decided_at=?,decided_by=?,decision='not',decision_note='TEST ONLY independently resolved' WHERE id='aml-retention-report'").bind(ts,user.id).run()
+  const holdKey='onboarding/aml-retention/holds/TEST_ONLY.pdf'
+  await files.put(holdKey,bytes)
+  await db.prepare("INSERT INTO aml_prospect_holds(id,order_id,created_at,created_by,until_on,file_key,file_sha256,file_bytes,reference) VALUES('aml-retention-hold','aml-retention',?,?,'2027-02-28',?,?,?,'TEST ONLY written FSJ request')").bind(ts,user.id,holdKey,file.sha256,bytes.length).run()
+  await forgetProspects({DB:db,FILES:files},'2026-10-21')
+  check('a written FSJ extension protects the full refused-prospect dossier',(await db.prepare("SELECT aml_purge_started_at FROM orders WHERE id='aml-retention'").first()).aml_purge_started_at===null && Boolean(await files.head(holdKey)))
+  await forgetProspects({DB:db,FILES:files},'2028-03-01')
+  check('lawful prospect erasure still waits for the intervention window',(await db.prepare("SELECT aml_delete_started_at FROM orders WHERE id='aml-retention'").first()).aml_delete_started_at===null && Boolean(await files.head(prospect.dossier.file_key)))
+  await db.prepare("UPDATE orders SET aml_purge_started_at=? WHERE id='aml-retention'").bind(ts-86401).run()
+  await forgetProspects({DB:db,FILES:files},'2028-03-01')
+  check('lawful erasure removes the refused prospect dossier and both kinds of original',!(await db.prepare("SELECT id FROM orders WHERE id='aml-retention'").first()) && !(await files.head(prospect.dossier.file_key)) && !(await files.head(holdKey)))
   check('the foreign keys of the admitted company remain valid',(await db.prepare('PRAGMA foreign_key_check').all()).results.length===0)
 }

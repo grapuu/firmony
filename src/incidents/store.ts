@@ -132,7 +132,9 @@ export const evidenceBlocked = (db: D1Database, company: string) =>
     .prepare(
       `SELECT 1 AS x WHERE
   EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = ?1 AND released_at IS NULL)
-  OR EXISTS (SELECT 1 FROM incidents WHERE company_id = ?1 AND closed_at IS NULL)`,
+  OR EXISTS (SELECT 1 FROM incidents WHERE company_id = ?1 AND closed_at IS NULL)
+  OR EXISTS (SELECT 1 FROM reports WHERE company_id = ?1 AND decided_at IS NULL)
+  OR EXISTS (SELECT 1 FROM aml_prospect_reports r JOIN orders o ON o.id = r.order_id WHERE o.company_id = ?1 AND r.decided_at IS NULL)`,
     )
     .bind(company)
     .first()

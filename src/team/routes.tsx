@@ -1,7 +1,7 @@
 import { recordAutoReview } from '../aml/auto-review'
 import { orderAdmissionSql, quoteSql } from '../aml/model'
 import { AmlDossierPanel } from '../views/aml-admission'
-import { admissionForOrder, dossierOfCompany, isOfficer, officer } from '../aml/store'
+import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
 import { registerAmlRoutes } from '../aml/routes'
 // The accountants' side under /ucto. Only somebody of the team gets in: a client who types the address gets the
 // same "not found" as for anything that does not exist. Every company, document and payment is checked against
@@ -887,6 +887,11 @@ teamRoutes.post('/klienti', async (c) => {
   const admission = amlOrder ? await admissionForOrder(db,amlOrder) : null
   if (!amlOrder || amlOrder.status !== 'open' || !admission) errors.form = 'Pred založením klienta potrebujeme úplné overenie a potvrdenie určenej osoby.'
   else if (ico !== amlOrder.ico || values.name !== amlOrder.company || values.address !== (amlOrder.address ?? '') || values.person !== admission.signerName || values.email.toLowerCase() !== amlOrder.email.toLowerCase()) errors.form = 'Údaje sa od overenia zmenili. Najprv potrebujeme overiť novú verziu.'
+  if (amlOrder && admission) {
+    const dossier = await dossierOfOrder(db,amlOrder.id)
+    if (!oneMayConclude(amlOrder.legalForm,amlOrder.directors,amlOrder.acting)) errors.form = 'Pred založením klienta treba samostatne identifikovať všetky osoby, ktoré podľa registra konajú spoločne.'
+    if (!dossier || !await sourceIntact(c.env.FILES,dossier.dossier) || admission.level === 'high' && !await bankOriginalsIntact(db,c.env.FILES,dossier.dossier,dossier.decision?.bank_id ?? '')) errors.form = 'Pôvodné podklady overenia nie sú úplné. Najprv potrebujeme obnoviť a skontrolovať originály.'
+  }
 
   if (Object.keys(errors).length > 0) return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={accountants} errors={errors} found={found} months={months} />, 422)
 

@@ -11,6 +11,7 @@ import type { Who } from '../app/store'
 import { now, sha256Hex, withinLimit } from '../db'
 import { newToken } from '../app/session'
 import { normalizeIco } from '../ico'
+import { lookupCompany, lookupEntity, oneMayConclude } from '../rpo'
 import { flushOutbox, queueStatement } from '../mail'
 import { later, siteOrigin } from '../http'
 import { ORDER, PLANS } from '../config'
@@ -67,10 +68,18 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     const name = text(body.firma,160), address = text(body.adresa,200), person = text(body.osoba,120), email = text(body.email,200).toLowerCase()
     const plan = PLANS.find((p) => p.id === body.balik)
     if (!ico || name.length < 3 || address.length < 8 || person.length < 5 || !person.includes(' ') || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !plan) return c.text('Doplňte platné údaje firmy, osoby a e-mail.',422)
+    // Programme 4.2 a)-c), § 7-8 Act 297/2008: never invent a sole director from a typed name.
+    // https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html
+    const lookup = await lookupCompany(ico)
+    const registered = 'found' in lookup ? lookup.found : null
+    const entity = registered?.rpoId ? await lookupEntity(registered.rpoId) : null
+    if (!registered || registered.terminated || !entity || entity.directors.length === 0) return c.text('Údaje firmy a oprávnenie konať sa nepodarilo overiť v registri. Skontrolujte IČO a skúste to znova.',409)
+    if (name !== registered.name || address !== registered.address || !entity.directors.some((d) => d.name === person)) return c.text('Obchodné meno, sídlo a konajúca osoba musia zodpovedať aktuálnemu registru.',422)
+    if (!oneMayConclude(entity.form ?? registered.form,entity.directors,entity.acting)) return c.text('Za túto firmu konajú viaceré osoby spoločne. Tento postup podporuje jedného samostatne konajúceho zástupcu. Pred založením účtu treba individuálne overiť všetky konajúce osoby.',409)
     const id = crypto.randomUUID(), token = newToken(), ts = now()
-    const inserted = await db.prepare(`INSERT INTO orders (id,token,created_at,expires_at,ico,company,address,directors,plan,person,email,legal_form,aml_paper)
-      SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'sro',1 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?12 AND team = 'admin')`)
-      .bind(id,await sha256Hex(token),ts,ts+ORDER.days*86400,ico,name,address,JSON.stringify([{name:person,role:'Konateľ'}]),plan.id,person,email,user.id).run()
+    const inserted = await db.prepare(`INSERT INTO orders (id,token,created_at,expires_at,ico,company,address,directors,plan,person,email,legal_form,aml_paper,acting,register_line)
+      SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,1,?13,?14 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?15 AND team = 'admin')`)
+      .bind(id,await sha256Hex(token),ts,ts+ORDER.days*86400,ico,registered.name,registered.address,JSON.stringify(entity.directors),plan.id,person,email,entity.form ?? registered.form,entity.acting,registered.registerLine,user.id).run()
     if (!inserted.meta.changes) return missing(c)
     const link=`${siteOrigin(c)}/objednavka/${token}`
     await db.batch([queueStatement(db,{key:`aml-intake:${id}`,to:email,subject:'Firmony: podklady pred začatím spolupráce',body:`Dobrý deň,\n\nna tomto odkaze vyplníte vyhlásenie a nahráte podpísaný súbor pre ${name}:\n${link}\n\nPodklady najprv overíme. Týmto odkazom ešte neuzatvárate zmluvu.\n\nFirmony`}),db.prepare("INSERT INTO events (at,user_id,action,subject) VALUES (?,?,'aml.paper.intake.created',?)").bind(ts,user.id,id)])
@@ -200,7 +209,8 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     const db=c.env.DB,user=c.get('who').user,id=c.req.param('id')
     if (!await isOfficer(db,user) || !identifier.test(id) || !c.env.FILES) return missing(c)
     const body=await c.req.parseBody(),reference=text(body.referencia,1000),until=text(body.do,10),file=await signatureFile(body.subor)
-    if (reference.length < 12 || !/^\d{4}-\d{2}-\d{2}$/.test(until) || !file) return c.text('Doplňte písomnú žiadosť FSJ, referenciu a platný dátum.',422)
+    const date = new Date(`${until}T12:00:00Z`)
+    if (reference.length < 12 || !/^\d{4}-\d{2}-\d{2}$/.test(until) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== until || !file) return c.text('Doplňte písomnú žiadosť FSJ, referenciu a platný dátum.',422)
     const hold=crypto.randomUUID(),key=`onboarding/${id}/holds/${hold}.${file.type}`
     await c.env.FILES.put(key,file.bytes,{httpMetadata:{contentType:file.type==='pdf'?'application/pdf':'application/vnd.etsi.asic-e+zip'}})
     try {await db.prepare(`INSERT INTO aml_prospect_holds (id,order_id,created_at,created_by,until_on,file_key,file_sha256,file_bytes,reference)

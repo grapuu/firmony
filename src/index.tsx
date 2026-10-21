@@ -1,4 +1,5 @@
 import { prepareBankEvidence } from './aml/enhanced'
+import { accessOpenSql } from './aml/retention'
 import { AmlIntakePage } from './views/aml-admission'
 import { checkDeclaration, valuesFrom, valuesOfDeclaration, type DeclarationValues } from './app/aml'
 import { app as appCopy } from './app/copy'
@@ -478,7 +479,12 @@ const bratislavaToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Euro
 const orderMissing = (c: Ctx) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: '/objednavka', noindex: true }, <NotFound />, 404)
 
 async function orderClosed(c: Ctx, order: Order) {
-  if (order.status === 'accepted') return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} contract={order.companyId ? await resolveContract(c.env.DB, order.companyId, order.termsVersion) : null} />)
+  if (order.status === 'accepted') {
+    // The old bearer link obeys the same ninety-day access limit as the signed-in client.
+    const accessible = order.companyId && await c.env.DB.prepare(`SELECT 1 FROM companies c WHERE c.id = ? AND ${accessOpenSql('c')}`).bind(order.companyId).first()
+    if (!accessible) return orderMissing(c)
+    return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} contract={await resolveContract(c.env.DB, order.companyId!, order.termsVersion)} />)
+  }
   if (order.status === 'expired')
     return page(c, orderMeta(copy.order.expiredTitle), <OrderGone kind="expired" again={`/zacat?ico=${encodeURIComponent(order.ico)}&balik=${encodeURIComponent(order.plan)}`} />, 410)
   if (await isClient(c.env.DB, order.ico)) return page(c, orderMeta(copy.order.clientTitle), <OrderGone kind="client" />, 409)

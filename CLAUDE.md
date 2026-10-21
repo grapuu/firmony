@@ -117,16 +117,28 @@ over. Bring this section up to date first whenever a session ends.
       onboarded online, a document of an account in its name in an EU bank and the first payment from it (program
       4.6 f)); a record that the accountant reviewed what the app booked by itself (6.1); the terms and the privacy
       notice say that personal data are processed under the AML Act without consent (4.3, § 21 ods. 3).
-   **ChatGPT implementation in progress, 21 October 2026:** branch `codex/aml-before-first-client`.
-   Source base updated to `74a48b6` including today's revised programme. No production deployment of this work yet.
-   Additive steps 73-76 implement pre-contract dossiers, source-bound professional checks, restricted designated
-   person decisions, full five-year retention, prospect records and account/first-payment originals for high risk.
-   Unit suite passed 1410 checks before the final high-risk extension; 27 focused admission checks passed before it.
-   These counts are intermediate, not final acceptance. Runtime fixtures, archive journeys and UI are still being
-   completed. Do not merge until exact-head Node 24 check/unit/runtime/UI/Peppol are all green. EUR-Lex's full
-   consolidated text is currently blocked by its bot check; the country table is verified against the Commission's
-   primary publication and FATF's original June 2026 statements. Do not claim the blocked original was read.
-   Legal source read in full: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (§§ 7-12,14-21).
+   **ChatGPT AML implementation, 21 October 2026:** branch `codex/aml-before-first-client`, PR #10.
+   Source base is `74a48b6`, preserving today's revised programme and its PDF. Additive steps 73-77; the first 72
+   are protected by an independently calculated digest and an actual upgrade of an isolated schema-72 D1.
+   Pre-contract declaration, original QES file, six source-bound checks, officer decision and high-risk EU bank /
+   first-payment evidence gate both online acceptance and manual paper creation. A missing current officer denies
+   permission, including SQL NULL cases. Accepted public links obey the same ninety-day limit as client sessions.
+   All business records remain at least five calendar years; the legal archive is read-only for the designated
+   person. Internal reports are limited to the author and designated person. Unresolved AML findings stop erasure.
+   Annual / six-month AML deadlines and source-bound professional reviews of automatic bookings are implemented.
+   New terms and privacy versions: 2026-10-21; historical contract snapshots and older terms remain intact.
+   Verified intermediate results: published `5367049` passed every GitHub check on Node 24. Local runtime after
+   the final access/migration fixes passed all 2036 checks; units 1423, Peppol 25. Additional retention tests and
+   final exact-head CI are still required before merge. Local TS7 cannot resolve /proc/self/exe in the sandbox;
+   supplemental TS6 checks pass, while GitHub runs the exact package script. UI checks pass at 1440/390/320 px;
+   manual screenshots could not be downloaded because GitHub's existing artifact quota blocks their upload.
+   Read `docs/aml/implementation.md` for operation, tests and limitations. Joint signers and physical identity
+   verification do not yet have a complete application flow and remain blocked, rather than bypassing AML.
+   Law read: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (§§ 7-12,14-21).
+   EU list verified from the Commission's primary table; original FATF statements dated 19 June 2026 were read.
+   EUR-Lex still blocks the full consolidated original with a bot check. That original-reading requirement remains
+   OPEN for the designated person / lawyer; do not claim it done. Recheck the lists before the first real client.
+   Signing the programme, goAML registration, real legal/insurance approval and the live-month trial remain his.
    B. Research, no code: the feeling of winning (item 5), studies read in the original and what Revolut, Trading 212
       and Robinhood do, a pick of 5 to 10 for Firmony; prices stay.
    C. The next guides of item 10.8, in their order.

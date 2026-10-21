@@ -12,6 +12,7 @@ import { checkContractTransactions } from './contracts.runtime.mjs'
 import { checkSecurity } from './security.runtime.mjs'
 import { checkIncidents } from './incidents.runtime.mjs'
 import { checkRestore } from './restore.runtime.mjs'
+import { checkAmlMigration } from './aml-migration.runtime.mjs'
 import { checkBilling } from './billing.runtime.mjs'
 import { checkBeforeStart } from './start.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
@@ -1272,8 +1273,13 @@ check('a paper signature alone cannot bypass pre-contract AML verification',res.
 await db.prepare(`INSERT INTO orders (id,token,created_at,expires_at,request_id,ico,company,address,directors,plan,person,email,legal_form,aml_paper) VALUES ('aml-manual','TEST ONLY token',?,?, 'req-x',?,?,?,?,'rast',?,?,'sro',1)`)
   .bind(nowS,nowS+86400,manualClient.ico,manualClient.name,manualClient.address,JSON.stringify([{name:manualClient.person,role:'Konateľ'}]),manualClient.person,manualClient.email).run()
 const amlOfficer = await ensureAmlOfficer(db)
-await seedAmlDossier(db,files,'aml-manual',amlOfficer)
+const manualDossier = await seedAmlDossier(db,files,'aml-manual',amlOfficer)
 manualClient.aml = 'aml-manual'
+const manualOriginal = await (await files.get(manualDossier.dossier.file_key)).arrayBuffer()
+await files.put(manualDossier.dossier.file_key,'TEST ONLY altered identity original')
+res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
+check('a paper client cannot be created with a corrupted identity original',res.status === 422 && !(await db.prepare("SELECT id FROM companies WHERE name='Nová firma s. r. o.'").first()))
+await files.put(manualDossier.dossier.file_key,manualOriginal)
 const before3 = (await sent()).length
 res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
 await settle()
@@ -1753,6 +1759,7 @@ check(
 res = await anna.get('/app/spravy')
 check('the client is never told of a report', !(await res.text()).includes('9 900'))
 res = await admin.post('/ucto/klienti/co-a/aml/oznamenie', { text: 'Poznámka správcu k tomu istému.' })
+check('an unresolved AML finding independently blocks destructive cleanup',await (await import('../.wrangler/dist/stores.js')).evidenceBlocked(db,'co-a'))
 res=await security.admin2.get('/ucto/klienti/co-a/aml')
 check('another administrator sees neither the report nor its decision controls',!(await res.text()).includes('Tri vklady hotovosti'))
 res = await acc.get('/ucto/klienti/co-a/aml')
@@ -1797,6 +1804,8 @@ check(
 )
 
 // The notice: given in the app by the owner, taken back while the contract runs
+const otherPendingReports = (await db.prepare("SELECT id FROM reports WHERE company_id='co-a' AND decided_at IS NULL").all()).results
+for (const pending of otherPendingReports) await admin.post(`/ucto/klienti/co-a/aml/oznamenie/${pending.id}`, { rozhodnutie: 'not', poznamka: 'TEST ONLY complete independent source review resolved this finding.' })
 const [ny, nm] = day(0).slice(0, 7).split('-').map(Number)
 const endsOn = new Date(Date.UTC(ny, nm + 1, 0)).toISOString().slice(0, 10)
 res = await anna.get('/app/firma')
@@ -4629,6 +4638,10 @@ check(
     (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 1 &&
     (await db.prepare("SELECT plan FROM orders WHERE ico = '55012345'").first())?.plan === 'rast',
 )
+await db.prepare('UPDATE companies SET ends_on=? WHERE id=?').bind(day(-91),madeCompany.id).run()
+res = await get(orderLink)
+check('the original accepted public link also stops exposing the contract after ninety days',res.status === 404 && !(await res.text()).includes('data-contract'))
+await db.prepare('UPDATE companies SET ends_on=NULL WHERE id=?').bind(madeCompany.id).run()
 res = await post('/zacat', { ...zeleny, email: 'iny@zelenydvor.test' }, { ip: '198.51.100.22' })
 check('a company that is already a client gets no second contract by email', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmena=1')
 res = await get('/objednavka/' + 'x'.repeat(43))
@@ -4951,6 +4964,7 @@ await checkSocialReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, 
 await checkPayrollMigration({ db, nowS, day })
 await checkHealthMigration({ db, nowS, day })
 await checkSocialMigration({ db, nowS, day })
+await checkAmlMigration()
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
