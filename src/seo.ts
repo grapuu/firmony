@@ -5,7 +5,7 @@
 import { BRAND, CLOSING_PRICE, OPERATOR, PAYROLL_PRICE, PLANS } from './config'
 
 /** When the public pages last changed, for the sitemap. */
-export const SITE_UPDATED = '2026-10-20'
+export const SITE_UPDATED = '2026-10-21'
 
 const id = (name: string) => `${BRAND.origin}/#${name}`
 

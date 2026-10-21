@@ -48,3 +48,5 @@ export { archiveEnded } from '../src/app/purge'
 export { forgetProspects } from '../src/aml/prospects'
 
 export * as amlAutoReview from '../src/aml/auto-review'
+
+export { GUIDES } from '../src/content/guides'
