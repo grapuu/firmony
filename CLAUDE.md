@@ -492,7 +492,10 @@ over. Bring this section up to date first whenever a session ends.
       (3) the declaration asks the actual place of business when not the seat (§ 7 ods. 1 písm. b)) and whether the
       client acts on its own behalf (§ 10 ods. 1 písm. f)); (4) a person established in a high-risk country makes
       `suggestedLevel` 'high' (§ 12 ods. 1); (5) internal reports seen only by their author and the designated person
-      (today every administrator). The certificate comes to europio's box on slovensko.sk within three working days. Liability insurance (no public price found; estimated 200 to
+      (today every administrator). **The certificate came on 21 October 2026, 11:23** (Okresný úrad Košice, odbor živnostenského podnikania,
+      OU-KE-OZP1-2026/067993-2, živnostenský register 820-111590; "Vedenie účtovníctva", the trade arose on
+      20 October 2026; the PDF in an .asice signed by the office's qualified signature); he took it from europio's box
+      that day. The .asice is the legal original to keep. Liability insurance (no public price found; estimated 200 to
       600 € a year, a fixed cost outside the per-client margins) and the advokát come before the first client.
    8. **SEO without ads** (his word of 20 October 2026, 18:04: "absolútne top elitné a špičkové SEO ... aby sme skákali
       1 ... keď niekto napíše firmony, aby sme boli prví, no aj podľa kľúčových slov, ako napr. firma, účtovník,
