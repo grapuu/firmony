@@ -31,6 +31,13 @@ const rast = plan('rast')
 const firma = plan('firma')
 const year = (monthly: number, people = 0) => (monthly + people * PAYROLL_PRICE) * 12 + CLOSING_PRICE
 
+// New legal guides: originals read on Slov-Lex, 21 October 2026. Claim / section mapping, effective dates and
+// boundaries are in docs/research/seo-sources-2026-10-21.md. In particular, §110a is an exception to §57's
+// ordinary formation form; VAT turnover uses a calendar year and two different thresholds. No old §112 checklist.
+// Sources: 513/1991 and 29/2026 effective 20260817; 222/2004 effective 20260101; 595/2003 effective 20260101
+// (relevant provisions also compared with 20261231 and the enacted 20270101 text); 431/2002 effective 20260601;
+// 563/2009 effective 20260901. The cited VAT sections also match the enacted 20270101 text.
+
 export const GUIDES: Guide[] = [
   {
     path: '/e-faktura-2027',
@@ -341,6 +348,371 @@ export const GUIDES: Guide[] = [
     published: '2026-10-20',
     modified: '2026-10-20',
     keywords: ['ako vybrať účtovníka', 'účtovník pre novú s.r.o.', 'kde nájsť účtovníka', 'založil som s.r.o. účtovník', 'účtovná kancelária alebo online účtovník'],
+  },
+  {
+    path: '/zalozenie-sro',
+    nav: 'Založenie s. r. o.',
+    title: `Založenie s. r. o. po 17. 8. 2026: postup a dokumenty | ${BRAND.name}`,
+    description: 'Ako založiť s. r. o. podľa pravidiel od 17. augusta 2026. Notár alebo advokát, výnimka pre zjednodušený postup, základné imanie a prvé účtovníctvo.',
+    first: 'Založenie s. r. o.',
+    second: 'Podľa pravidiel od augusta 2026.',
+    lead: 'Pri bežnom založení už nestačí vzor spoločenskej zmluvy s overenými podpismi. Od 17. augusta 2026 zákon vyžaduje notársku zápisnicu alebo dokument autorizovaný advokátom. Osobitný zjednodušený elektronický postup však zostáva zachovaný. Tu je, ako sa v možnostiach zorientovať.',
+    sections: [
+      {
+        h: 'Najprv si vyberte správny postup',
+        p: [
+          'Pri štandardnom založení sa spoločenská zmluva vyhotovuje ako notárska zápisnica o právnom úkone alebo ako dokument autorizovaný advokátom. Podpisujú ju všetci zakladatelia. Pri jedinom zakladateľovi ju nahrádza zakladateľská listina v rovnakej zákonom určenej forme. Upravuje to § 57 ods. 1 až 3 Obchodného zákonníka.',
+          'Výnimkou je zjednodušené založenie cez určený elektronický formulár podľa § 57 ods. 4 a § 110a. Nie je preto správne tvrdiť, že každá nová s. r. o. bez výnimky musí vzniknúť cez notára alebo advokáta.',
+          'Právny stav tohto návodu je overený k 21. októbru 2026. Ide o založenie novej spoločnosti, nie o kúpu už existujúcej firmy.',
+        ],
+      },
+      {
+        h: 'Kedy prichádza do úvahy zjednodušené založenie',
+        p: ['Podmienky § 110a ods. 2 musia byť splnené súčasne. Medzi ne patria:'],
+        list: [
+          'najviac päť spoločníkov a založenie na účel podnikania',
+          'najviac 15 vybraných činností zo zákonného zoznamu voľných živností',
+          'obchodné meno s dodatkom „s. r. o.“',
+          'výlučne peňažné vklady a konateľ ako správca vkladu',
+          'spoločnosť nemá ustanovenú dozornú radu',
+          'splnené sú aj ostatné zákonné podmienky zápisu, ktoré tento postup neruší',
+        ],
+      },
+      {
+        h: 'Pripravte údaje, oprávnenia a vklady',
+        p: [
+          'Spoločenská zmluva podľa § 110 obsahuje najmä obchodné meno, sídlo, spoločníkov, predmet podnikania, základné imanie, jednotlivé vklady a ich splatenie, prvých konateľov, spôsob ich konania a správcu vkladov. Tieto údaje si ujasnite pred vyhotovením dokumentu.',
+          'Základné imanie s. r. o. musí byť aspoň 5 000 € a vklad jedného spoločníka aspoň 750 € (§ 108 a § 109). Základné imanie nie je cenník právnika ani súdny poplatok. Správca vkladu vydáva pravdivé písomné vyhlásenie o splatení vkladov podľa § 60; nejde len o formálny podpis.',
+          'Nepoužívajte bez kontroly starý checklist odkazujúci na § 112. Tento paragraf bol od 17. augusta 2026 vypustený. Konkrétne nastavenie vkladov patrí do aktuálne pripravovanej zakladateľskej dokumentácie.',
+        ],
+      },
+      {
+        h: 'Založenie ešte neznamená vznik firmy',
+        p: [
+          'Spoločnosť vzniká až dňom zápisu do obchodného registra. Podľa § 62 sa návrh podáva do 90 dní od založenia alebo od doručenia listiny preukazujúcej živnostenské či iné podnikateľské oprávnenie.',
+          'Nový zákon č. 29/2026 Z. z. upravuje registráciu na registrovom súde aj u registrátora. Návrh sa podáva elektronickým formulárom cez špecializovaný portál, musí byť autorizovaný a musí mať všetky zápisové podklady. Osoba, ktorá ho podáva, potrebuje elektronickú schránku aktivovanú na doručovanie (§ 44 a § 45).',
+          'Pri návrhu registrovému súdu zákon nepripúšťa jeho bežné dopĺňanie alebo opravu po podaní; na odstránenie nedostatkov slúžia námietky. Skontrolujte preto údaje a prílohy pred odoslaním. Samotné odoslanie formulára nie je potvrdením zápisu.',
+        ],
+      },
+      {
+        h: 'Účtovníctvo pripravte od prvého dňa',
+        p: [
+          'Právnická osoba vedie účtovníctvo odo dňa vzniku podľa § 4 ods. 1 zákona o účtovníctve. Účtovníkovi odovzdajte zakladateľské dokumenty, vyhlásenie správcu vkladu, prvé doklady a bankové podklady. Prakticky je vhodné dohodnúť si ich preberanie ešte pred zápisom.',
+          'Vo Firmony po vzniku firmy doplníme jej údaje podľa IČO z registra. Prevzatie služby podlieha identifikácii a odbornému schváleniu. Tento návod nie je ponukou právneho založenia spoločnosti ani prísľubom automatického prijatia každej firmy.',
+        ],
+      },
+    ],
+    faq: [
+      { q: 'Stačí od augusta 2026 overiť podpisy na vzore spoločenskej zmluvy?', a: 'Pri štandardnom založení nie. § 57 vyžaduje notársku zápisnicu alebo dokument autorizovaný advokátom. Samostatnou možnosťou je zákonom vymedzené zjednodušené elektronické založenie podľa § 110a.' },
+      { q: 'Koľko musí mať s. r. o. základné imanie?', a: 'Aspoň 5 000 €. Vklad jedného spoločníka musí byť aspoň 750 €. Právne služby a registračné poplatky sú samostatné položky.' },
+      { q: 'Kedy moja spoločnosť právne vznikne?', a: 'Dňom zápisu do obchodného registra, nie podpisom zakladateľskej listiny ani odoslaním návrhu.' },
+      { q: 'Musím mať účtovníctvo, aj keď firma ešte nič nepredala?', a: 'Áno. Právnická osoba vedie účtovníctvo už odo dňa vzniku. Prvé účtovné prípady môžu súvisieť napríklad s vkladmi a počiatočnými nákladmi.' },
+    ],
+    sources: [
+      { title: 'Obchodný zákonník: § 57, § 60, § 62 a § 108 až § 110a, znenie od 17. 8. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/1991/513/20260817.html#paragraf-57' },
+      { title: 'Zákon č. 29/2026 Z. z.: § 44 a § 45 a zmeny Obchodného zákonníka, od 17. 8. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2026/29/20260817.html#paragraf-44' },
+      { title: 'Zákon o účtovníctve: § 4, znenie od 1. 6. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html#paragraf-4' },
+    ],
+    published: '2026-10-21',
+    modified: '2026-10-21',
+    keywords: ['založenie s.r.o. 2026', 'založenie sro po 17.8.2026', 's.r.o. notár advokát', 'zjednodušené založenie sro', 'základné imanie sro'],
+  },
+  {
+    path: '/registracia-dph',
+    nav: 'Registrácia na DPH',
+    title: `Registrácia na DPH: obrat 50 000 € a hranica 62 500 € | ${BRAND.name}`,
+    description: 'Kedy sa firma stáva platiteľom DPH v roku 2026, dokedy podať žiadosť a prečo prekročenie 50 000 € nie je to isté ako prekročenie 62 500 €.',
+    first: 'Registrácia na DPH.',
+    second: 'Dve hranice, odlišné následky.',
+    lead: 'Pri bežnej tuzemskej firme sledujete obrat za kalendárny rok. Presiahnutie 50 000 € spravidla znamená platiteľstvo od nasledujúceho januára. Presiahnutie 62 500 € ho môže spustiť už konkrétnym dodaním v tom istom roku. Žiadosť však nečaká do januára.',
+    sections: [
+      {
+        h: 'Obrat nie je zostatok na bankovom účte',
+        p: [
+          'Podľa § 4 ods. 15 zákona o DPH je základom obratu hodnota dodaných tovarov a služieb v tuzemsku bez dane, s výnimkami uvedenými v tomto ustanovení. Nie je to mechanický súčet každej prijatej platby ani účtovný zisk. Niektoré oslobodené plnenia sa vylučujú, iné sa môžu započítavať; príležitostný predaj majetku má vlastné pravidlo.',
+          'Pre hranice v § 4 ods. 1 písm. a) a b) sa sleduje kalendárny rok. Staré pravidlo 12 po sebe idúcich mesiacov sem nepreberajte. Tento návod opisuje bežnú tuzemskú zdaniteľnú osobu podľa pravidiel overených k 21. októbru 2026.',
+        ],
+      },
+      {
+        h: 'Keď presiahnete 50 000 €',
+        p: [
+          'Ak hodnota plnení zahrnovaných do obratu v kalendárnom roku presiahne 50 000 €, podávate žiadosť o registráciu do piatich pracovných dní od presiahnutia. Ak nenastane skorší zákonný dôvod, platiteľom sa stanete 1. januára nasledujúceho roka (§ 4 ods. 1 písm. a) a ods. 2). Samotných presne 50 000 € ešte nie je presiahnutie.',
+          'Príklad: v roku 2026 máte započítateľný obrat 49 000 € a ďalším bežným tuzemským dodaním 3 000 € dosiahnete 52 000 €. Žiadosť podáte už po tomto dodaní do piatich pracovných dní. Pri tomto príklade sa bez ďalšieho dôvodu stanete platiteľom 1. januára 2027.',
+        ],
+      },
+      {
+        h: 'Keď v tom istom roku presiahnete 62 500 €',
+        p: [
+          'Platiteľom sa stávate už dodaním tovaru alebo služby, ktorým obrat v prebiehajúcom kalendárnom roku presiahne 62 500 € (§ 4 ods. 1 písm. b)). Nečakáte na január ani na doručenie rozhodnutia. Pri bežnom zdaniteľnom dodaní sa DPH týka tohto dodania, nie iba sumy nad hranicou.',
+          'Pokračovanie príkladu: po obrate 52 000 € dodáte v roku 2026 ďalšiu bežne zdaniteľnú tuzemskú službu za 12 000 €. Obrat je 64 000 € a platiteľstvo vzniká týmto dodaním. Ak ste žiadosť po prekročení 50 000 € už podali, skorší vznik platiteľstva bezodkladne oznámite daňovému úradu podľa § 4 ods. 5. Ak podaná nebola, postupujete podľa príslušnej päťdňovej lehoty v § 4 ods. 2.',
+          'Takýto obchod preverte ešte pred dohodnutím konečnej ceny a vystavením faktúry. Pri nehnuteľnostiach, prijatých platbách na ne, nástupníctve alebo nadobudnutí podniku môžu rozhodovať iné ustanovenia § 4 ods. 1.',
+        ],
+      },
+      {
+        h: 'Dobrovoľná registrácia a zahraničné služby',
+        p: [
+          'Platiteľom sa môžete stať aj dobrovoľne pred presiahnutím hraníc, pri splnení § 4 ods. 6 až 8. Rozlišujte dobrovoľnú žiadosť a osobitnú možnosť skoršieho platiteľstva po presiahnutí 50 000 €. Konkrétny deň závisí od zvoleného zákonného postupu.',
+          'Ani nízky obrat neznamená, že nemusíte riešiť DPH. § 7a môže vyžadovať registráciu ešte pred prijatím určitej služby od dodávateľa z iného členského štátu alebo pred dodaním určitej služby odberateľovi v inom členskom štáte. Zákon tu nestanovuje hranicu 50 000 €. Musia však byť splnené jeho podmienky miesta dodania a osoby povinnej platiť daň.',
+          'Registrácia podľa § 7a sama osebe nie je plným platiteľstvom podľa § 4. Samostatne sa posudzujú aj nákupy tovaru z EÚ a ďalšie cezhraničné situácie. Nepoužívajte jeden univerzálny postup na všetky zahraničné faktúry.',
+        ],
+      },
+      {
+        h: 'Čo si pripraviť pre účtovníka',
+        p: ['Pri blížiacej sa hranici odporúčame kontrolovať plánované dodania, nielen už vystavené faktúry. Pre posúdenie pripravte:'],
+        list: [
+          'dátumy a hodnoty dodaní od začiatku kalendárneho roka',
+          'krajinu a miesto dodania, oslobodené plnenia a príležitostný predaj majetku',
+          'väčšie pripravované zákazky a podmienky ceny s odberateľom',
+          'už podané žiadosti, oznámenia a doručené rozhodnutia',
+          'zahraničné služby, ktoré budete prijímať alebo dodávať ešte pred plným platiteľstvom',
+        ],
+      },
+    ],
+    faq: [
+      { q: 'Mám presne 50 000 € obratu. Už som prekročil hranicu?', a: 'Nie. § 4 používa presiahnutie 50 000 €. Sleduje sa však obrat určený zákonom, ktorý nemusí byť totožný so súčtom úhrad na účte.' },
+      { q: 'Po presiahnutí 50 000 € stačí podať žiadosť v januári?', a: 'Nie. Lehota na žiadosť je päť pracovných dní od presiahnutia. Odlišuje sa od dňa, keď sa stanete platiteľom.' },
+      { q: 'Po presiahnutí 62 500 € platím DPH iba z rozdielu?', a: 'Pri bežnom zdaniteľnom dodaní nie. Platiteľom sa stávate dodaním, ktorým sa hranica presiahne, a posudzuje sa toto dodanie ako celok.' },
+      { q: 'Môže mať povinnosť registrácie aj firma s malým obratom?', a: 'Áno. Napríklad pri službách z EÚ alebo do EÚ môžu byť splnené podmienky § 7a ešte pred prijatím či dodaním služby, bez hranice 50 000 €. Nejde tým automaticky o plné platiteľstvo DPH.' },
+    ],
+    sources: [
+      { title: 'Zákon o DPH: § 4 ods. 1 až 8 a ods. 15, znenie platné v roku 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html#paragraf-4' },
+      { title: 'Zákon o DPH: § 7a, registrácia pri cezhraničných službách (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html#paragraf-7a' },
+    ],
+    published: '2026-10-21',
+    modified: '2026-10-21',
+    keywords: ['registrácia DPH 50000', 'obrat DPH 62500', 'kedy sa stať platiteľom DPH', 'registrácia DPH päť pracovných dní', 'registrácia 7a'],
+  },
+  {
+    path: '/danove-priznanie-pravnickej-osoby',
+    nav: 'Daňové priznanie s. r. o.',
+    title: `Daňové priznanie právnickej osoby za rok 2026: sadzby a termín | ${BRAND.name}`,
+    description: 'Daňové priznanie s. r. o. za rok 2026: termín, odklad, sadzby 10 %, 21 % a 24 %, minimálna daň a rozdiel medzi priznaním a účtovnou závierkou.',
+    first: 'Daňové priznanie právnickej osoby.',
+    second: 'Čo pripraviť za rok 2026.',
+    lead: 'Pri s. r. o. sa priznanie začína spoľahlivo uzavretým účtovníctvom. Sadzba sa určuje podľa zdaniteľných príjmov, samotná daň sa však počíta zo základu dane. Strata alebo nulová činnosť automaticky neznamenajú, že sa priznanie nepodáva alebo nič neplatí.',
+    sections: [
+      {
+        h: 'Kto podáva a kedy',
+        p: [
+          'Bežná podnikateľská s. r. o. podáva priznanie aj pri strate alebo bez tržieb. Výnimky v § 41 ods. 1 zákona o dani z príjmov sa nevzťahujú všeobecne na neaktívne obchodné spoločnosti. Likvidácia, konkurz, zánik alebo zmena zdaňovacieho obdobia vyžadujú samostatné posúdenie.',
+          'Základná lehota podľa § 49 ods. 2 je tri kalendárne mesiace po uplynutí zdaňovacieho obdobia. Pri kalendárnom roku 2026 to podľa pravidiel overených k 21. októbru 2026 znamená 31. marec 2027. V rovnakej lehote sa spravidla platí aj daň. Pri hospodárskom roku nepreberajte automaticky marcový termín.',
+          'S. r. o. zapísaná v obchodnom registri doručuje podania finančnej správe elektronicky podľa § 14 daňového poriadku. Nestačí mať pripravený dokument v počítači; podanie musí byť riadne doručené.',
+        ],
+      },
+      {
+        h: 'Odklad treba oznámiť včas',
+        p: [
+          'Oznámením podaným do riadnej lehoty možno podľa § 49 ods. 3 predĺžiť lehotu najviac o tri celé kalendárne mesiace. Ak súčasťou príjmov sú zdaniteľné príjmy zo zdrojov v zahraničí, najviac o šesť celých kalendárnych mesiacov. V oznámení uvediete novú lehotu, ktorá je koncom kalendárneho mesiaca; presúva sa aj splatnosť dane.',
+          'Pri bežnej s. r. o. s kalendárnym rokom 2026 to znamená najneskôr 30. jún 2027, pri splnení podmienky zahraničných príjmov najneskôr 30. september 2027. Samotná faktúra od zahraničného dodávateľa nie je zahraničný príjem. Pre spoločnosť v konkurze alebo likvidácii platí odlišný režim žiadosti, nie toto bežné oznámenie.',
+        ],
+      },
+      {
+        h: 'Sadzba dane: 10 %, 21 % alebo 24 %',
+        p: [
+          'Pre bežný základ dane právnickej osoby znížený o daňovú stratu stanovuje § 15 písm. b) bod 1 sadzby podľa zdaniteľných príjmov, teda výnosov, za zdaňovacie obdobie. Nie podľa zisku, zostatku na účte ani hranice obratu na registráciu DPH.',
+          'Účtovný výsledok hospodárenia nie je automaticky základ dane. Podľa § 17 sa upravuje napríklad o položky, ktoré nie sú daňovým výdavkom, a o ďalšie zákonné rozdiely. Osobitné základy dane majú samostatné pravidlá.',
+        ],
+        list: [
+          '10 % pri zdaniteľných príjmoch najviac 100 000 € vrátane',
+          '21 % pri zdaniteľných príjmoch nad 100 000 € do 5 000 000 € vrátane',
+          '24 % pri zdaniteľných príjmoch nad 5 000 000 €',
+        ],
+      },
+      {
+        h: 'Minimálna daň môže vzniknúť aj pri strate',
+        p: [
+          'Ak vypočítaná daň po zákonných úpravách nedosiahne minimálnu daň alebo firma vykáže stratu, preveruje sa § 46b. Pre celé zdaňovacie obdobie začínajúce najskôr 1. januára 2026 zákon stanovuje nasledujúce pásma podľa zdaniteľných príjmov. Účinnosť novej úpravy určuje aj § 52zzzj ods. 5.',
+          'Existujú výnimky, napríklad pri prvom priznaní za obdobie, v ktorom spoločnosť vznikla, ak nejde o právneho nástupcu. Kratšie obdobie a podmienky zníženia či zápočtu majú vlastné pravidlá. Nižšie sumy preto nie sú univerzálnym výpočtom pre každú firmu.',
+        ],
+        list: [
+          'do 50 000 € vrátane: 340 €',
+          'nad 50 000 € do 250 000 € vrátane: 960 €',
+          'nad 250 000 € do 500 000 € vrátane: 1 920 €',
+          'nad 500 000 € do 5 000 000 € vrátane: 3 840 €',
+          'nad 5 000 000 €: 11 520 €',
+        ],
+      },
+      {
+        h: 'Čo odovzdať na uzavretie roka',
+        p: ['Toto je praktický zoznam podkladov pre účtovníka, nie automatický zoznam príloh priznania. Rozsah závisí od činnosti firmy:'],
+        list: [
+          'všetky prijaté a vydané doklady, bankové výpisy a pokladničné doklady',
+          'neuhradené pohľadávky a záväzky a vysvetlenie sporných zostatkov',
+          'stav majetku, odpisy, zásoby a výsledky inventarizácie',
+          'mzdy, odvody, zmluvy, úvery, pôžičky a vzťahy so spoločníkmi',
+          'zahraničné príjmy, zaplatené zahraničné dane, daňové straty a preddavky',
+        ],
+      },
+      {
+        h: 'Priznanie a závierka sú dve povinnosti',
+        p: [
+          'Podľa § 49 ods. 11 sa na účely priznania zostavuje účtovná závierka a v zákonnej lehote sa ukladá podľa zákona o účtovníctve. Podané daňové priznanie samo osebe nenahrádza uloženie závierky do registra účtovných závierok. Pre bežnú s. r. o. ide o elektronické dokumenty podľa § 23a.',
+          'Pred uzavretím si s účtovníkom potvrďte výslednú daň, lehotu, platobné údaje a prijatie podaní. Vo Firmony sa závierka a priznanie pripravujú v účtovnej časti; odbornú kontrolu a podanie zabezpečuje účtovníčka. Automatický návrh nie je potvrdením od úradu.',
+        ],
+      },
+    ],
+    faq: [
+      { q: 'Firma v roku 2026 nemala tržby. Musí podať priznanie?', a: 'Bežná podnikateľská s. r. o. áno. Osobitne sa posúdi minimálna daň a jej výnimky; samotná nulová činnosť neznamená všeobecné oslobodenie.' },
+      { q: 'Hranica 100 000 € pre 10 % sadzbu znamená zisk?', a: 'Nie. Ide o zdaniteľné príjmy, teda výnosy za obdobie. Sadzba sa následne použije na príslušný základ dane znížený o daňovú stratu.' },
+      { q: 'Môžem si automaticky posunúť termín na september, keď nakupujem zo zahraničia?', a: 'Nie. Šesťmesačné predĺženie oznámením je viazané na zdaniteľné príjmy zo zdrojov v zahraničí. Zahraničný dodávateľ sám osebe túto podmienku nevytvára.' },
+      { q: 'Stačí podať priznanie a závierka je tým vybavená?', a: 'Nie. Priznanie a uloženie účtovnej závierky sú samostatné povinnosti. Overte si riadne doručenie oboch dokumentov.' },
+    ],
+    sources: [
+      { title: 'Zákon o dani z príjmov: § 15, § 17, § 41, § 46b a § 49, účinné znenie roku 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2003/595/20260101.html#paragraf-15' },
+      { title: 'Zákon o dani z príjmov: § 52zzzj ods. 5, prvé použitie nových pásiem minimálnej dane (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2003/595/20260101.html#paragraf-52zzzj' },
+      { title: 'Zákon o dani z príjmov: overené rovnaké ustanovenia aj v znení od 31. 12. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2003/595/20261231.html#paragraf-49' },
+      { title: 'Zákon o dani z príjmov: overená rovnaká lehota aj v už vyhlásenom znení od 1. 1. 2027 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2003/595/20270101.html#paragraf-49' },
+      { title: 'Daňový poriadok: § 14, elektronické podania, znenie od 1. 9. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2009/563/20260901.html#paragraf-14' },
+      { title: 'Zákon o účtovníctve: § 23a, elektronické ukladanie dokumentov (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html#paragraf-23a' },
+    ],
+    published: '2026-10-21',
+    modified: '2026-10-21',
+    keywords: ['daňové priznanie právnickej osoby 2026', 'daňové priznanie sro 2027 termín', 'sadzba dane právnickej osoby 10 21 24', 'minimálna daň sro 2026', 'odklad daňového priznania sro'],
+  },
+  {
+    path: '/zmena-uctovnika',
+    nav: 'Zmena účtovníka',
+    title: `Zmena účtovníka: postup a zoznam podkladov na prevzatie | ${BRAND.name}`,
+    description: 'Ako pripraviť bezpečnú zmenu účtovníka, aj počas roka. Odovzdávací protokol, účtovné dáta, plné moci, termíny a kontrola po prevzatí.',
+    first: 'Zmena účtovníka.',
+    second: 'S jasným odovzdaním a termínmi.',
+    lead: 'Pri zmene účtovníka nejde iba o presun faktúr. Nový účtovník potrebuje nadviazať na zostatky, podané priznania, majetok aj otvorené povinnosti. Najbezpečnejší začiatok je dohodnúť dátum prevzatia a kto ešte podá ktoré dokumenty.',
+    sections: [
+      {
+        h: 'Najprv zmluva a dátum prevzatia',
+        p: [
+          'Zákon o účtovníctve v § 5 umožňuje poveriť účtovníctvom inú osobu. Neukladá všeobecné pravidlo, že sa účtovník smie meniť len v januári. Podmienky ukončenia terajšej služby však vychádzajú z Vašej zmluvy a príslušného práva; neexistuje jedna výpovedná lehota pre všetky účtovné kancelárie.',
+          'Prakticky odporúčame písomne určiť posledné obdobie pôvodného účtovníka, prvý deň nového a zodpovednú osobu za najbližšie podania. Osobitne si potvrďte mzdy, DPH, výkazy, ročnú závierku a rozpracované výzvy úradov. Nepredpokladajte, že podanie automaticky dokončí druhá strana.',
+        ],
+      },
+      {
+        h: 'Odovzdajte účtovníctvo, nielen priečinok s PDF',
+        p: ['Nasledujúci zoznam je odporúčanie na kontrolované prevzatie. Nie každá firma má všetky uvedené agendy a univerzálny zákonný exportný formát z neho nevzniká. Vyžiadajte si najmä:'],
+        list: [
+          'účtovný denník, hlavnú knihu, obratovú predvahu a účtový rozvrh vrátane analytík',
+          'saldokonto pohľadávok a záväzkov vrátane čiastočných úhrad',
+          'doklady a úplné bankové výpisy, stav pokladnice a inventarizačné podklady',
+          'evidenciu majetku, odpisové plány, zásoby, úvery a pôžičky',
+          'podané priznania a výkazy spolu s potvrdeniami o doručení, opravami a otvorenými výzvami',
+          'mzdové podklady, zamestnancov, rozpracované povinnosti a potrebnú historickú dokumentáciu',
+          'predchádzajúce závierky, daňové straty, preddavky a nastavenia DPH',
+        ],
+      },
+      {
+        h: 'Spíšte odovzdávací protokol',
+        p: [
+          'Do protokolu odporúčame uviesť deň odovzdania, obdobia, zoznam súborov a listín, konečné zostatky a známe chýbajúce podklady. Priložte zoznam nedokončených úloh s menom zodpovednej osoby a termínom. Takto viete odlíšiť prevzatý stav od toho, čo sa bude ešte dopĺňať.',
+          'Po importe overte, že súčty sedia na odovzdanú predvahu, otvorené faktúry obsahujú správne zostávajúce sumy a nadväzuje banka, pokladnica a majetok. Chyba v zdrojových dátach sa samotným presunom do nového systému neopraví. Úplnosť a preukázateľnosť vyžaduje § 8 zákona o účtovníctve.',
+        ],
+      },
+      {
+        h: 'Plná moc musí nadviazať bez medzery',
+        p: [
+          'Podľa § 9 daňového poriadku je plnomocenstvo voči správcovi dane účinné doručením alebo udelením do zápisnice. Nové plnomocenstvo v uvedenom rozsahu nahrádza predchádzajúce a v tej istej veci môže byť len jeden zástupca. Odvolanie či výpoveď plnomocenstva sú tiež účinné voči správcovi dane po doručení alebo zápise do zápisnice.',
+          'So zástupcami preto dohodnite poradie krokov a overte oprávnenie na konkrétne podania. Prístupy do aplikácií, banky a ďalších úradných systémov spravujte osobitne. Heslá a súkromné podpisové prostriedky neposielajte novému účtovníkovi ako náhradu riadneho oprávnenia.',
+        ],
+      },
+      {
+        h: 'Uchovanie dokladov pokračuje aj po zmene',
+        p: [
+          'Poverením účtovníka sa firma nezbavuje zákonnej zodpovednosti podľa § 5 ods. 2. Účtovné doklady, knihy a závierky sa podľa § 35 uchovávajú spravidla desať rokov nasledujúcich po roku, ktorého sa týkajú. § 36 a osobitné predpisy môžu vyžadovať dlhšie uchovanie.',
+          'Lehota na prístup do aplikácie nie je zákonná doba archivácie účtovných dokladov. Pred zrušením prístupov si prevezmite a overte čitateľný úplný archív a určte, kto ho bude ďalej uchovávať. Osobitné AML uchovávanie poskytovateľa nenahrádza účtovnú archivačnú povinnosť Vašej firmy.',
+        ],
+      },
+      {
+        h: 'Ako sa podklady preberajú vo Firmony',
+        p: [
+          'Účtovníčka má nástroje na prevzatie obratovej predvahy, otvorených položiek, majetku, zamestnancov a predchádzajúcich závierok zo súborov. Rozpoznanie a vhodnosť konkrétneho exportu sa overujú pri prevzatí; nesľubujeme bez kontroly úplný import z každého programu.',
+          'Pred začatím služby sa overuje firma a oprávnená osoba. Cieľom je, aby ste podklady odovzdali naraz podľa dohodnutého zoznamu a dostali konkrétne otázky len k tomu, čo chýba alebo nesedí. Termín prevzatia sa potvrdí podľa rozsahu a stavu Vášho účtovníctva.',
+        ],
+      },
+    ],
+    faq: [
+      { q: 'Môžem zmeniť účtovníka počas roka?', a: 'Áno, zákon o účtovníctve zmenu neviaže len na začiatok roka. Dodržte však zmluvné podmienky ukončenia a určte dátum prevzatia aj zodpovednosť za podania.' },
+      { q: 'Stačia novému účtovníkovi faktúry v PDF?', a: 'Obvykle nie. Na nadviazanie potrebuje aj účtovné zostatky, otvorené položky, históriu podaní a podľa činnosti ďalšie evidencie. Zoznam sa dohodne podľa Vašej firmy.' },
+      { q: 'Prestávam po odovzdaní zodpovedať za účtovníctvo?', a: 'Nie. Podľa § 5 ods. 2 zostáva zákonná zodpovednosť účtovnej jednotke aj pri externom účtovníkovi. Zmluvná zodpovednosť poskytovateľa sa posudzuje samostatne.' },
+      { q: 'Môžem po prechode zmazať staré doklady?', a: 'Nie iba preto, že ste zmenili účtovníka. Dodržte zákonné uchovávanie a najprv overte úplnosť a čitateľnosť prevzatého archívu.' },
+    ],
+    sources: [
+      { title: 'Zákon o účtovníctve: § 5 a § 8, poverenie a preukázateľnosť účtovníctva (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html#paragraf-5' },
+      { title: 'Zákon o účtovníctve: § 35 a § 36, uchovávanie dokumentácie (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html#paragraf-35' },
+      { title: 'AML zákon: § 19, osobitné uchovávanie u poskytovateľa (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html#paragraf-19' },
+      { title: 'Daňový poriadok: § 9, zastupovanie, znenie od 1. 9. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2009/563/20260901.html#paragraf-9' },
+    ],
+    published: '2026-10-21',
+    modified: '2026-10-21',
+    keywords: ['zmena účtovníka', 'prechod k novému účtovníkovi', 'odovzdanie účtovníctva', 'zmena účtovníka počas roka', 'prevzatie účtovníctva'],
+  },
+  {
+    path: '/kontrolny-a-suhrnny-vykaz',
+    nav: 'Kontrolný a súhrnný výkaz',
+    title: `Kontrolný a súhrnný výkaz DPH: rozdiel a termíny | ${BRAND.name}`,
+    description: 'Kto podáva kontrolný a súhrnný výkaz DPH, aké majú obdobia, lehoty a výnimky. Aj súhrnný výkaz neplatiteľa registrovaného podľa § 7a.',
+    first: 'Kontrolný a súhrnný výkaz.',
+    second: 'Nie sú to rovnaké podania.',
+    lead: 'Kontrolný výkaz rozpisuje zákonom určené údaje k DPH. Súhrnný výkaz zachytáva vybrané dodania do iných členských štátov EÚ. Firma môže podávať oba, iba jeden alebo v konkrétnom období žiadny. O povinnosti nerozhoduje len názov faktúry ani to, či má firma IČ DPH.',
+    sections: [
+      {
+        h: 'Čo je kontrolný výkaz',
+        p: [
+          'Podľa § 78a zákona o DPH ho podáva platiteľ elektronicky za zdaňovacie obdobie, za ktoré má povinnosť podať priznanie, s výnimkami uvedenými v tomto ustanovení. Obsahuje údaje z určených prijatých a vydaných faktúr, opráv a ďalších plnení. Nie je náhradou daňového priznania k DPH.',
+          'Bežná lehota je do 25 dní po skončení zdaňovacieho obdobia. Pre platiteľa, ktorý riadne splnil registračnú povinnosť, ale pri prvom období ešte nedostal IČ DPH, zákon ustanovuje osobitnú lehotu päť pracovných dní od doručenia rozhodnutia. Právny stav je tu overený k 21. októbru 2026.',
+        ],
+      },
+      {
+        h: 'Kedy kontrolný výkaz nevzniká',
+        p: [
+          'Nulové priznanie automaticky neznamená nulový kontrolný výkaz, ktorý treba odoslať. § 78a ods. 1 obsahuje výnimku, ak v priznaní nie je povinnosť uviesť žiadne údaje o plneniach. Ďalšia sa týka len dodaní oslobodených podľa § 43 alebo § 47 pri splnení podmienok odpočítania uvedených v zákone.',
+          'Osoba registrovaná iba podľa § 7 alebo § 7a sa tým nestáva platiteľom podľa § 4. Samotná táto registrácia jej nevytvára povinnosť podávať kontrolný výkaz ako platiteľ. Pri cezhraničných obchodoch však môže mať inú povinnosť, napríklad priznanie alebo súhrnný výkaz.',
+        ],
+      },
+      {
+        h: 'Čo patrí do súhrnného výkazu',
+        p: [
+          '§ 80 uvádza najmä určené oslobodené dodania a premiestnenia tovaru do EÚ, účasť prvého odberateľa na trojstrannom obchode, vybrané služby s miestom dodania v inom členskom štáte, pri ktorých daň platí príjemca, a prípady režimu call-off stock.',
+          'Nie každá faktúra do zahraničia je položkou súhrnného výkazu. Rozhoduje druh plnenia, miesto dodania a splnenie konkrétnych podmienok. Napríklad samotné prijatie zahraničnej služby nie je jej dodaním do EÚ. Služby oslobodené podľa práva štátu miesta dodania sa podľa § 80 ods. 5 do výkazu neuvádzajú.',
+          'Aj zdaniteľná osoba registrovaná podľa § 7 alebo § 7a podáva výkaz za štvrťrok, v ktorom dodala službu spĺňajúcu § 80 ods. 1 písm. d). Preto môže mať súhrnný výkaz aj neplatiteľ DPH.',
+        ],
+      },
+      {
+        h: 'Mesačný alebo štvrťročný?',
+        p: [
+          'Pre platiteľa je východiskom súhrnný výkaz za kalendárny mesiac. Štvrťročné podávanie je možné podľa § 80 ods. 2, ak hodnota určených tovarových plnení nepresiahne 50 000 € v príslušnom štvrťroku ani v predchádzajúcich štyroch kalendárnych štvrťrokoch. Pri presiahnutí sa mení postup už v danom štvrťroku.',
+          'Táto hranica 50 000 € nie je hranicou registrácie na DPH. Ide o iné pravidlo, iné obdobie a vybrané plnenia. Obdobie súhrnného výkazu sa preto nemusí zhodovať so zdaňovacím obdobím priznania k DPH.',
+          'Pre osobu registrovanú podľa § 7 alebo § 7a pri uvedených službách zákon určuje štvrťrok. Pri jej účasti ako prvého odberateľa na trojstrannom obchode sa uplatní osobitná väzba na § 80 ods. 2.',
+        ],
+      },
+      {
+        h: 'Lehoty, opravy a potvrdenia',
+        p: [
+          'Súhrnný výkaz sa podáva elektronicky najneskôr do 25 dní po skončení príslušného obdobia (§ 80 ods. 9). Ak posledný deň daňovej lehoty pripadne na sobotu, nedeľu alebo deň pracovného pokoja, podľa § 27 ods. 4 daňového poriadku sa posúva na najbližší nasledujúci pracovný deň.',
+          'Ak chybu zistíte pred uplynutím lehoty, zákon pri oboch výkazoch upravuje opravné podanie. Po lehote ide o dodatočný výkaz s doplnenými alebo opravenými údajmi (§ 78a ods. 12 a § 80 ods. 8). Oprava samotného daňového priznania tým nemusí byť vybavená, posudzuje sa samostatne.',
+          'Odporúčame uchovať odoslaný súbor aj potvrdenie o doručení a sledovať prípadné výzvy na odstránenie nedostatkov. Stav „pripravené“ v aplikácii ešte neznamená prijatie výkazu finančnou správou.',
+        ],
+      },
+      {
+        h: 'Čo pripravuje Firmony a čo kontroluje účtovníčka',
+        p: [
+          'Z údajov účtovníctva sa pripravujú XML podklady k priznaniu a kontrolnému výkazu a podklady k súhrnnému výkazu. Účtovníčka kontroluje režim plnenia, obdobie, IČ DPH a väzbu na doklady. Podanie a jeho prijatie sa overujú osobitne.',
+          'Ak doklad nemá dostatočné údaje, treba ho doplniť alebo odborne posúdiť. Cieľom je jedna konkrétna otázka k chýbajúcej informácii, nie prenesenie celého výpočtu na klienta.',
+        ],
+      },
+    ],
+    faq: [
+      { q: 'Je kontrolný výkaz to isté ako priznanie k DPH?', a: 'Nie. Ide o samostatné podanie s vlastným obsahom. Pri povinnosti podať priznanie sa osobitne preveria pravidlá a výnimky pre kontrolný výkaz.' },
+      { q: 'Podáva súhrnný výkaz aj neplatiteľ DPH?', a: 'Áno, napríklad osoba registrovaná podľa § 7a za štvrťrok, v ktorom dodala službu spĺňajúcu § 80 ods. 1 písm. d). Samotné prijatie služby zo zahraničia túto povinnosť nevytvára.' },
+      { q: 'Mám štvrťročnú DPH. Je automaticky štvrťročný aj súhrnný výkaz?', a: 'Nie. Obdobie súhrnného výkazu sa posudzuje podľa § 80 samostatne, vrátane tovarového limitu a druhu registrácie.' },
+      { q: 'Musím podať prázdny súhrnný výkaz, keď nebol žiadny obchod podľa § 80?', a: 'Povinnosť je viazaná na plnenia a udalosti uvedené v § 80. Ak v období žiadne také plnenie ani udalosť nenastali, z tohto ustanovenia povinnosť prázdneho výkazu nevzniká.' },
+    ],
+    sources: [
+      { title: 'Zákon o DPH: § 78 a § 78a, priznanie a kontrolný výkaz, znenie roku 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html#paragraf-78a' },
+      { title: 'Zákon o DPH: § 80, súhrnný výkaz a jeho obdobie (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html#paragraf-80' },
+      { title: 'Zákon o DPH: § 4, § 7 a § 7a, odlišné druhy registrácie (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html#paragraf-7a' },
+      { title: 'Daňový poriadok: § 27 ods. 4, počítanie lehôt, od 1. 9. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2009/563/20260901.html#paragraf-27' },
+    ],
+    published: '2026-10-21',
+    modified: '2026-10-21',
+    keywords: ['kontrolný výkaz DPH', 'súhrnný výkaz DPH', 'súhrnný výkaz 7a', 'kontrolný a súhrnný výkaz rozdiel', 'lehota súhrnný výkaz'],
   },
 ]
 

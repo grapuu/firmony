@@ -1,4 +1,4 @@
-import {aml,archiveEnded,purgeCompany,forgetRecords} from '../.wrangler/dist/stores.js'
+import {aml,archiveEnded,purgeCompany,forgetRecords,GUIDES} from '../.wrangler/dist/stores.js'
 import {checkAmlAdmission,ensureAmlOfficer,seedAmlDossier,testDeclaration} from './aml.runtime.mjs'
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
 // email service and the pretend register of test/pretend.mjs. Nothing leaves the machine.
@@ -350,8 +350,9 @@ check('the IndexNow key is served as itself', res.status === 200 && (await res.t
 res = await get('/sitemap.xml')
 {
   const map = await res.text()
-  check('the sitemap lists the pages and the guides, each with its day', map.includes('https://firmony.io/pravne-informacie') && ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik', '/ako-vybrat-uctovnika'].every((p) => map.includes(`<loc>https://firmony.io${p}</loc><lastmod>`)))
-  for (const path of ['/e-faktura-2027', '/cena-uctovnictva', '/uctovnictvo-pre-sro', '/online-uctovnik', '/ako-vybrat-uctovnika']) {
+  check('the sitemap lists the pages and every guide with its actual modification day', map.includes('https://firmony.io/pravne-informacie') && GUIDES.every((g) => map.includes(`<loc>https://firmony.io${g.path}</loc><lastmod>${g.modified}</lastmod>`)))
+  for (const guide of GUIDES) {
+    const path = guide.path
     const r = await get(path)
     const html = await r.text()
     if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/guide${path.replace(/\//g, '-')}.html`, html)
@@ -359,7 +360,7 @@ res = await get('/sitemap.xml')
     const types = ld ? JSON.parse(ld[1])['@graph'].map((n) => n['@type']) : []
     check(
       `the guide ${path} answers with its heading, its canonical address and its data, runs no script`,
-      r.status === 200 && /<h1 /.test(html) && html.includes(`<link rel="canonical" href="https://firmony.io${path}"`) && types.includes('Article') && types.includes('BreadcrumbList') && !/<script(?![^>]*application\/ld\+json)/i.test(html) && (r.headers.get('content-security-policy') ?? '').includes("script-src 'none'") && !/ style=/i.test(html),
+      r.status === 200 && /<h1 /.test(html) && html.includes(`<link rel="canonical" href="https://firmony.io${path}"`) && types.includes('Article') && types.includes('BreadcrumbList') && (guide.faq.length === 0 || types.includes('FAQPage')) && guide.sources.every((source) => html.includes(`href="${source.url.replace(/&/g, '&amp;')}"`)) && !/<script(?![^>]*application\/ld\+json)/i.test(html) && (r.headers.get('content-security-policy') ?? '').includes("script-src 'none'") && !/ style=/i.test(html),
       JSON.stringify(types),
     )
   }

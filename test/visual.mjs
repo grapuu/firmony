@@ -1,7 +1,7 @@
 // HTML is captured from the real workerd requests in e2e.workerd.mjs. Only local fixture pages and local assets load.
 import { chromium } from 'playwright'
 import { createServer } from 'node:http'
-import { readFile, mkdir } from 'node:fs/promises'
+import { readFile, mkdir, readdir } from 'node:fs/promises'
 import { resolve, extname, sep } from 'node:path'
 
 const fixtures = resolve(process.env.FIRMONY_CAPTURE_DIR ?? '.wrangler/ui')
@@ -15,6 +15,10 @@ pages.push('thanks.html', 'requests.html', 'contract-stale.html', 'new-client.ht
 pages.push('team-home.html', 'vat-ready.html', 'payment-before.html', 'first-admin.html', 'contract-release.html')
 pages.push('payroll-registrations.html', 'handover-resign.html', 'contract-lapsed.html', 'team-people.html', 'client-poa.html')
 pages.push('podania-balik.html', 'assets.html', 'asset.html', 'closing-pod.html', 'stock.html', 'stock-item.html', 'payroll-full.html', 'settlement.html', 'takeover.html', 'oss.html', 'intrastat.html', 'intrastat-goods.html', 'joint-review.html', 'distribution.html', 'podania-extras.html', 'credit-form.html', 'credit-note.html', 'invoice-vat-form.html', 'advance-request.html', 'advance-document.html', 'advance-final-form.html', 'advance-final.html', 'invoice-dollars.html', 'invoice-repeat.html', 'invoices-repeats.html', 'payorders.html', 'invoice-numbering.html', 'trips-empty.html', 'trip-form.html', 'trip.html', 'trips.html', 'trip-book.html', 'cash.html', 'cash-form.html', 'invoice-late.html', 'centers.html', 'takings.html', 'approvals.html', 'payroll-meals.html', 'payroll-garnish.html', 'vat-ratio.html', 'bad-debt.html', 'asset-vat.html', 'work-pay.html', 'ai-accuracy.html', 'guide-e-faktura-2027.html', 'guide-cena-uctovnictva.html', 'guide-uctovnictvo-pre-sro.html', 'guide-online-uctovnik.html', 'guide-ako-vybrat-uctovnika.html', 'client-auto.html', 'wage-calc.html', 'wage-calc-result.html')
+// Runtime captures every registered guide; include new ones without maintaining another route list here.
+for (const name of (await readdir(fixtures)).filter((name) => /^guide-.*\.html$/.test(name)).sort()) {
+  if (!pages.includes(name)) pages.push(name)
+}
 for (const name of pages) await readFile(resolve(fixtures, name))
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon' }
 const server = createServer(async (req, res) => {

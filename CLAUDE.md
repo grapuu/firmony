@@ -142,6 +142,26 @@ over. Bring this section up to date first whenever a session ends.
    terms were excluded in favour of the currently effective July PDF. Nine concrete proposals include metrics,
    limits and a pilot; no product code, marketing promise, referral reward or client price was changed.
    C. The next guides of item 10.8, in their order.
+   **C implemented by ChatGPT, 21 October 2026:** five guides added in the requested order:
+   `/zalozenie-sro`, `/registracia-dph`, `/danove-priznanie-pravnickej-osoby`, `/zmena-uctovnika`,
+   `/kontrolny-a-suhrnny-vykaz`. Primary sources and claim mapping: `docs/research/seo-sources-2026-10-21.md`.
+   Originals read on Slov-Lex: https://static.slov-lex.sk/static/SK/ZZ/1991/513/20260817.html (§57,60,62,108-110a),
+   https://static.slov-lex.sk/static/SK/ZZ/2026/29/20260817.html (§39,42-45 and Commercial Code amendments),
+   https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html (§4,7,7a,78,78a,80),
+   https://static.slov-lex.sk/static/SK/ZZ/2003/595/20260101.html (§15,17,41,46b,49,52zzzj(5)),
+   https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html (§4,5,8,23a,35,36),
+   https://static.slov-lex.sk/static/SK/ZZ/2009/563/20260901.html (§9,14,27). Relevant corporate-tax provisions
+   also compared with the already enacted 20261231 and 20270101 versions; unchanged. VAT §4,7a,78a,80 likewise
+   match the enacted 20270101 version. Do not cite Tax Code 20260101 as current:
+   that version ended 31 August. No invented provider fees or unlimited import / filing promises.
+   **Correction to historical formation / registry claims below:** ordinary formation requires a notarial record
+   or an advocate-authorised document, but §110a expressly preserves the simplified electronic exception. §112
+   and §105a were repealed; do not reuse their old requirements. §44/45 of Act 29/2026 do not establish a blanket
+   rule that every ordinary registry proposal must be filed through an advocate or notary. Qualified objections
+   are a different procedure. The exact form / fee for europio's specific change remains for its advocate to confirm.
+   Every registered guide now receives runtime route / canonical / structured data / source / sitemap checks;
+   captured new guides join UI checks at all three widths. SITE_UPDATED is 2026-10-21. Changes reach main only
+   after all exact-head checks. Current schema is 77, next additive step 78; this content block changes no schema.
    D. Categories added to `test/reader/expected.json`, the workflow "Reader" run.
    **D implemented and measured by ChatGPT, 21 October 2026:** all 30 expected documents now contain category.
    `test/reader/categories.json` records labels and reasons from the synthetic generator, never model outputs;
@@ -517,8 +537,8 @@ over. Bring this section up to date first whenever a session ends.
       client and of its API (the Financial Administration estimates 5 to 12 € a month a company, podnikajte.sk's
       questions and answers of 10 December 2025; at 12 € in place of the 2 € `TECH` holds, a usual Štart month leaves
       about 71 % instead of 82 %, Rast 72 % instead of 78 %); an insurer, professional liability for accounting services; an advokát in Košice, one
-      package: the sole shareholder's decision adding "Vedenie účtovníctva" (since 17 August 2026 in a notarial record
-      or authorised by an advokát), its filing to the commercial register (50 €), reading the terms, the contract, the
+      package: the sole shareholder's decision adding "Vedenie účtovníctva" (the advocate must confirm the exact form
+      for this particular change), its filing to the commercial register (fee to confirm), reading the terms, the contract, the
       power of attorney, the AML program and the accountant's contract, with a price.
    6. **The accountant's contract** by item 1: her own trade, a monthly invoice by the statement, her own errors put
       right free, liability, confidentiality, AML training, processing of personal data (art. 28 GDPR); for the advokát.
@@ -530,7 +550,7 @@ over. Bring this section up to date first whenever a session ends.
       70eefb22-f24b-41a1-8104-ddc739858878): the free trade "Vedenie účtovníctva", fee 0 €, no day of start (so the
       trade arises on the day of the notice, europio being in the register already), no prevádzkareň, and the change in
       the commercial register NOT sent through the office (no decision with a qualified signature was ready; since
-      17 August 2026 a notary registers changes). From that day europio is an obliged person under the AML Act, so by
+      17 August 2026 the registry has a new legal framework; see the source correction in item 7.C). From that day europio is an obliged person under the AML Act, so by
       **19 November 2026**: the change of the business object in the commercial register through a notary, and the
       registration in goAML (§ 21(2) as amended by Act No. 73/2026 Z. z.: 30 days from becoming an obliged person;
       pravnenoviny.sk). The AML program was written anew on 21 October 2026 (his word: ChatGPT found errors in the
