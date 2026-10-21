@@ -1,0 +1,21 @@
+Predmet: Firmony: cenová ponuka digitálneho poštára a API pre slovenskú eFaktúru
+
+Dobrý deň,
+
+pripravujeme Firmony, slovenskú účtovnú službu prevádzkovanú spoločnosťou europio s. r. o., IČO 57 442 452. Vyvíjame vlastnú aplikáciu pre klientov aj účtovníkov a hľadáme partnera na doručovanie štruktúrovaných elektronických faktúr.
+
+Prosím Vás o písomnú cenovú ponuku osobitne na službu digitálneho poštára pre jednu klientsku spoločnosť a osobitne na API, ktorým by sme spravovali viac klientskych spoločností. Zaujíma nás príjem aj odosielanie, registrácia každého klienta, jednorazové náklady, mesačné minimum, poplatok za dokument, zahrnutý objem a prípadná viazanosť. Uveďte, prosím, aj DPH a menu cien. Na začiatku potrebujeme riešenie pre malý počet klientov bez neúmerného pevného minima; neskôr chceme vedieť náklady pri 100, 1 000 a 5 000 spoločnostiach. Ide o modelové objemy pre ponuku, nie objednávku.
+
+Prosím potvrďte, v akom rozsahu a odkedy viete zabezpečiť slovenskú eFaktúru pre rok 2027 a aké certifikácie alebo partnerstvá na to využívate. Potrebujeme vedieť, kto zabezpečí doručenie a prípadné hlásenie údajov Finančnej správe, kto bude zmluvnou stranou klienta a ako sa rieši jeho poverenie. Zaujíma nás Peppol BIS Billing, podporované slovenské pravidlá, faktúry a dobropisy, validácia, potvrdenia o doručení, odmietnutie a oprava chýb.
+
+Pošlite nám, prosím, dokumentáciu API a informáciu o testovacom prostredí, oddelení spoločností, prihlasovaní, webhookoch, opakovaní požiadaviek bez duplicitného odoslania a dostupnosti služby. Potrebujeme aj podmienky ochrany údajov, miesto ich spracúvania, archiváciu, export pôvodných správ s potvrdeniami a postup pri odchode klienta k inému poskytovateľovi.
+
+Radi si následne dohodneme technický rozhovor. Touto správou zatiaľ žiadame len informácie a cenovú ponuku.
+
+Ďakujem.
+
+Christian Juhás
+konateľ europio s. r. o.
+Firmony
+ahoj@firmony.io
++421 907 178 695

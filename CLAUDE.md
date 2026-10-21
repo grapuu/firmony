@@ -144,6 +144,16 @@ over. Bring this section up to date first whenever a session ends.
    C. The next guides of item 10.8, in their order.
    D. Categories added to `test/reader/expected.json`, the workflow "Reader" run.
    E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
+   **E prepared by ChatGPT, 21 October 2026:** `docs/drafts/` contains three plain-text emails without dashes,
+   signed Christian Juhás, and a proposed accountant contract. Nothing was sent or signed. Rates mirror
+   `ACCOUNTANT_RATES` and still need the accountant's agreement; the draft includes duplicate-work rules, own
+   corrections free, monthly invoice, independent work, confidentiality, AML training and a processor appendix.
+   See `docs/drafts/README.md` for assumptions and primary sources. Commercial Code 513/1991 effective
+   17 August 2026 (§269, §§373-386), Labour Code 311/2001 effective 1 September 2026 (§1), and AML Act
+   297/2008 effective 17 August 2026 (§§17-21) were read on Slov-Lex. EDPB's original final Guidelines 07/2020
+   were read for Article 28. EUR-Lex blocks the full GDPR original; the lawyer must complete that source check
+   and the actual processing appendix before signing. No insurance cover, liability cap or new price is invented.
+
 6. **The picture he follows** is the artifact "Kruh Firmony" (https://claude.ai/artifact/6RwoEgbSJZx3hpdBafRN3M):
    all seven stages full, and his steps before launch at the end. Its source was a scratch file of the session of
    17 October; a new session reads the page with the Artifact tool (`action: "read"`, then the saved file) and

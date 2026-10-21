@@ -1,0 +1,106 @@
+PRACOVNÝ NÁVRH PRE ADVOKÁTA
+Zmluva o poskytovaní účtovných služieb externým účtovníkom
+
+Tento text je návrh na doplnenie a právne posúdenie. Pred podpisom treba doplniť údaje druhej strany, prílohy, termíny, daňový režim odmien a potvrdiť sadzby. Účinnosť ani súhlas druhej strany sa nepredpokladá.
+
+1. Zmluvné strany
+
+Objednávateľ: europio s. r. o., K lesu 2218/39A, 040 18 Košice, IČO 57 442 452, DIČ 2122734449, Obchodný register Mestského súdu Košice, oddiel Sro, vložka 64897/V, zastúpená konateľom Christianom Juhásom, kontakt ahoj@firmony.io. Ďalej europio.
+
+Poskytovateľ: DOPLNIŤ obchodné meno alebo meno, sídlo alebo miesto podnikania, IČO, DIČ, IČ DPH, register a číslo oprávnenia na vedenie účtovníctva, účet a kontaktnú osobu. Ďalej účtovník.
+
+2. Predmet a prijatie klienta
+
+Účtovník bude pre europio spracúvať účtovné prípady, kontrolovať doklady a automatické zápisy, viesť účtovné knihy, pripravovať dohodnuté výkazy, priznania, uzávierky a mzdovú agendu v rozsahu svojho oprávnenia a potvrdených objednávok. Za klientsku zmluvu služby Firmony zodpovedá voči klientovi europio; táto zmluva sama osebe nemení jeho povinnosti voči klientovi.
+
+Každú pridelenú spoločnosť účtovník najprv prijme v zaznamenanej objednávke. Tá určí rozsah agendy, obdobia, termíny dodania podkladov, interné kontrolné termíny, objem, zastupovanie pri podaní a osobitnú cenu práce, ktorú nepokrýva článok 4. Pridelenie bez súhlasu účtovníka nevytvára neobmedzenú kapacitnú povinnosť. Pri veľkej alebo neštandardnej firme sa rozsah a kapacita odsúhlasia individuálne pred prevzatím.
+
+Bez osobitného dohodnutého oprávnenia účtovník nevykonáva za klienta platby, neuzatvára jeho zmluvy, neposkytuje služby vyhradené inému regulovanému povolaniu a neprijíma za europio záväzky. Podanie orgánu verejnej moci urobí len v rozsahu platného splnomocnenia a zaznamená jeho skutočný výsledok s pôvodným potvrdením.
+
+3. Kvalita, automatizácia a termíny
+
+Účtovník vykonáva prijaté služby odborne, riadne a včas. Návrh AI alebo stav zaúčtované automaticky nenahrádza odborné posúdenie. Účtovník kontroluje doklad, súvisiacu platbu, správnosť zaúčtovania a daňového režimu a jeho súlad s poznanou činnosťou klienta. Kontrolu automatických zápisov zaznamená ku konkrétnej verzii najneskôr do konca nasledujúceho mesiaca podľa AML programu; skorší termín uzávierky alebo podania má prednosť. Pred výstupom skontroluje úplnosť podkladov, zosúladenie a relevantné chyby.
+
+Chýbajúci doklad, neistotu, možnú chybu, prekročenie kapacity alebo konflikt záujmov bezodkladne zaznamená a oznámi europio v zabezpečenej aplikácii. Na otázku, ktorú nemožno bezpečne vyriešiť, si vyžiada odborné rozhodnutie. Nevytvára fiktívne schválenia, platby ani potvrdenia úradu. Ak hrozí lehota, upozorní na to bez čakania na bežné spracovanie správy.
+
+europio zabezpečí dohodnuté prístupy, dostupné podklady, pravidlá práce v aplikácii a kontaktnú osobu pre odbornú eskaláciu. Za neúplné alebo oneskorené podklady sa účtovník nepovažuje automaticky za zbaveného zodpovednosti: musí včas konkretizovať prekážku, jej dôsledky a potrebnú nápravu.
+
+4. Návrh odmien a pravidlá výkazu
+
+Nasledujúce sadzby vychádzajú z aktuálneho návrhu v aplikácii. Strany ich pred podpisom výslovne potvrdia a určia, či sú bez DPH; pri splnení zákonných podmienok sa k odmene pripočíta DPH. Bez doplnenia daňového režimu a schválenia sadzieb sa táto časť nepovažuje za dohodnutý cenník.
+
+Za prvé odborné vybavenie jedného dokladu, jeho zaúčtovanie alebo odôvodnené vyradenie, je navrhnutá odmena 0,50 eura. Ten istý doklad sa opakovaným vybavením nespoplatní znova. Odmena nepatrí za svojvoľné vyradenie dokladu alebo obídenie kontroly.
+
+Za prvé riadne podanie pravidelného priznania DPH za jedno obdobie vrátane súvisiacich dohodnutých výkazov je navrhnutá odmena 12 eur. Za iný aktívny mesiac klienta prideleného účtovníkovi, za ktorý sa vo výkaze neúčtuje takáto odmena za DPH, je navrhnutá mesačná odmena 6 eur. Mesačná starostlivosť zahŕňa dohodnutú bežnú kontrolu, termíny, komunikáciu a kontrolu automatických zápisov. Pri štvrťročnej DPH sa odmena 12 eur viaže na prvé podanie obdobia; v ostatných aktívnych mesiacoch sa použije dohodnutá mesačná odmena.
+
+Za prvé uzavretie miezd je navrhnutá odmena 4 eurá za osobu a mzdový mesiac. Za prvé dokončenie a podanie dohodnutej ročnej závierky s priznaním právnickej osoby je navrhnutá odmena 90 eur za rok. Za prvé prevzatie novej spoločnosti, počiatočné stavy alebo import, je navrhnutá odmena 30 eur jednorazovo za spoločnosť. Obsah prevzatia a odovzdané výstupy sa zapíšu do objednávky.
+
+Oprava vlastnej chyby, opätovné zaúčtovanie toho istého dokladu, opakované podanie toho istého obdobia a opätovné uzavretie rovnakých miezd alebo roka nevytvárajú novú odmenu za pôvodný úkon. Práca navyše spôsobená novými podkladmi klienta, cudzou chybou alebo zmenou rozsahu sa dohodne a nacení osobitne pred vykonaním; nemožno ju automaticky považovať za bezplatnú opravu vlastnej chyby. Registrácie zamestnancov ani iné úkony bez sadzby sa nenaceňujú domyslenou sumou.
+
+Automaticky vykonaný úkon bez účasti účtovníka nie je samostatne vykázaným odborným vybavením dokladu. Ak súčasné meranie v aplikácii nezachytí odbornú kontrolu alebo oprávnený úkon správne, strany ju doložia a opravia výkaz. Aplikácia sama jednostranne nerozhoduje o spornom nároku.
+
+5. Fakturácia
+
+Podkladom mesačnej faktúry je výkaz konkrétnych úkonov, identifikátorov, období a sadzieb v aplikácii. Účtovník ho skontroluje do piateho pracovného dňa nasledujúceho mesiaca. Výhrady a opravy sa zaznamenajú s dôvodom; duplicitný úkon sa nezapočíta. europio sa k výhradám vyjadrí do piatich pracovných dní. Tieto lehoty sú návrhom zmluvnej dohody.
+
+Účtovník vystaví faktúru za nespornú časť a dohodnuté opravy. Navrhnutá splatnosť je 14 dní od doručenia riadnej faktúry. Spor o časť výkazu neodkladá zaplatenie nesporných položiek. Zmeny sadzieb sa dohodnú písomne do budúcnosti; už vykonaná práca sa spätne nepreceňuje jednostranne.
+
+6. Samostatnosť a kapacita
+
+Účtovník poskytuje služby ako samostatný podnikateľ s vlastným platným oprávnením. Organizuje si postup a čas prijatých úloh pri dodržaní termínov, odborných pravidiel, bezpečnosti a práv klienta. Môže poskytovať služby aj ďalším zákazníkom pri zachovaní mlčanlivosti a vylúčení konfliktu záujmov. Využitie aplikácie Firmony slúži bezpečnosti, koordinácii a preukázateľnosti výstupov.
+
+Skutočný spôsob spolupráce musí zodpovedať tejto samostatnosti. Ak by mal znaky závislej práce, strany pred pokračovaním zabezpečia príslušný pracovnoprávny vzťah. Samotný názov zmluvy ani živnostenské oprávnenie neslúži na zakrytie závislej práce.
+
+7. Mlčanlivosť, bezpečnosť a odovzdanie
+
+Účtovník zachová mlčanlivosť o klientskych, osobných, obchodných a technických údajoch aj po skončení spolupráce. Použije ich len na prijaté služby alebo splnenie vlastnej zákonnej povinnosti. Oprávnenému poskytnutiu údajov úradu táto zmluva nebráni.
+
+Používa vlastný účet s prideleným rozsahom prístupu, zabezpečené zariadenie a overenie vyžadované aplikáciou. Prístup nezdieľa. Údaje neposiela do vlastných neschválených úložísk ani do externých AI nástrojov. Zistený únik alebo neoprávnený prístup oznámi europio bez zbytočného odkladu, zmluvne najneskôr do 24 hodín od zistenia, aj keď ešte nemá úplné informácie. Zachová dôkazy a spolupracuje na náprave.
+
+Záznamy a výstupy vedie v aplikácii tak, aby ich bolo možné úplne prevziať. Svoje staršie nástroje a všeobecné odborné znalosti si ponecháva; ku klientskym výstupom poskytne europio práva potrebné na ich používanie, odovzdanie klientovi, opravu a archiváciu. Rozsah prípadných autorských práv advokát spresní. Klientske podklady nezadrží ako nátlak pri spore o odmenu.
+
+8. AML
+
+Pred prvým prístupom ku klientovi účtovník absolvuje odbornú prípravu, dostane aktuálny AML program a potvrdí oboznámenie. Zúčastní sa aktualizácií a pravidelného školenia podľa programu. Potrebné previerky a prístup sa zdokumentujú pred začatím práce.
+
+Možnú neobvyklú obchodnú operáciu oznámi určenej osobe zabezpečeným postupom bez zbytočného odkladu a v naliehavom prípade ju kontaktuje aj telefonicky. Zachová mlčanlivosť voči klientovi o internom oznámení a jeho vybavení. Vlastné zákonné povinnosti účtovníka ako povinnej osoby vrátane registrácie a ohlásenia FSJ tým nie sú prenesené ani zrušené. Ak sú splnené zákonné podmienky použitia programu europio, riadi sa ním; tento návrh neustanovuje automatickú výnimku z ostatných povinností.
+
+9. Osobné údaje a návrh spracovateľskej prílohy
+
+Pred začatím spracúvania strany podpíšu vyplnenú prílohu zodpovedajúcu ich skutočným úlohám. Pri klientskom účtovníctve môže byť europio sprostredkovateľom klienta a účtovník jeho ďalším sprostredkovateľom; na vlastné AML alebo iné vlastné zákonné účely môže mať účtovník samostatné postavenie prevádzkovateľa. Roly sa určujú podľa konkrétnej činnosti a advokát ich overí aj oproti zmluve s klientom. Súhlas klienta s ďalším sprostredkovateľom sa zabezpečí v potrebnom rozsahu.
+
+Predmetom prílohy je spracúvanie údajov potrebné na objednané účtovníctvo a mzdy. Trvá počas objednávky a potom iba v rozsahu doložených povinností uchovania. Zahŕňa prevzatie, usporiadanie, kontrolu, výpočet, účtovanie, prípravu podania, opravu, odovzdanie a zákonné uchovanie. Dotknuté osoby môžu byť zamestnanci, štatutári, vlastníci a KUV, odberatelia, dodávatelia a kontaktné osoby klienta. Údaje môžu zahŕňať identifikačné, kontaktné, bankové, pracovné a mzdové údaje, rodné čísla a nevyhnutné údaje o zdraví pri mzdovej agende. Rozsah sa obmedzí na skutočne objednané činnosti.
+
+Pri spracúvaní v mene inej osoby účtovník postupuje len podľa zdokumentovaných zákonných pokynov oprávneného prevádzkovateľa a europio. Upozorní na pokyn, ktorý považuje za protiprávny. Bez predchádzajúceho dohodnutého písomného povolenia nezapojí ďalšiu osobu ani neurobí prenos mimo schválených krajín. Za povolenú ďalšiu osobu zabezpečí zodpovedajúce povinnosti a záruky.
+
+Účtovník zabezpečí mlčanlivosť oprávnených osôb, primerané technické a organizačné opatrenia, oddelenie klientov, riadenie prístupov a ich odobratie, ochranu zariadení, bezpečný prenos, obnoviteľnosť dohodnutých údajov a preukázateľné riešenie incidentov. Konkrétne opatrenia, miesta spracúvania, schválené osoby a kontakty sa vyplnia v prílohe pred prístupom k údajom.
+
+Pomôže pri žiadostiach dotknutých osôb, bezpečnosti, oznamovaní porušení, posúdení vplyvu a komunikácii s príslušným úradom. Poskytne informácie potrebné na preukázanie plnenia a umožní primeranú kontrolu vrátane auditu oprávneným subjektom pri ochrane údajov iných klientov. Po skončení spracúvania údaje vráti alebo vymaže podľa pokynu a dohodnutého harmonogramu vrátane kópií, ak ich uchovanie nevyžaduje zákon; taký dôvod presne označí, údaje oddelí a obmedzí ich použitie. Advokát doplní úplné znenie prílohy podľa článku 28 GDPR a overí súlad s AML uchovaním.
+
+10. Chyby, náhrada škody a poistenie
+
+Účtovník bez ďalšej odmeny odstráni vlastnú preukázanú chybu a poskytne súčinnosť na nápravu jej následkov. Zistenie, dotknuté obdobia, príčina, oprava a výsledok sa zdokumentujú. Právo europio zabezpečiť neodkladnú nápravu inou odborne spôsobilou osobou tým nie je dotknuté.
+
+Za škodu spôsobenú porušením jeho povinností zodpovedá v rozsahu príslušných právnych predpisov. Nárok sa posudzuje podľa preukázanej povinnosti, porušenia, vzniku a výšky škody, príčinnej súvislosti, súčinnosti a povinnosti zmierniť následky. Samotné tvrdenie klienta, existencia automatizácie ani zaplatenie sumy europio nie sú automatickým dôkazom zodpovednosti účtovníka. Účtovník sa môže vyjadriť a dostať primeranú možnosť účasti na riešení; neodkladná ochrana klienta sa tým neodkladá.
+
+Strany si bezodkladne oznámia uplatnený nárok a uchovajú dôkazy. Poskytnú si potrebnú súčinnosť s poisťovňou a právnym zástupcom. Tento návrh nevytvára neobmedzenú záruku za každý nárok klienta ani nevylučuje zákonný nárok vopred. Prípadné osobitné zodpovednostné dojednanie a jeho vymáhateľnosť posúdi advokát podľa konkrétnych rizík a poistky.
+
+Pred dohodnutím poistnej povinnosti sa doloží skutočná ponuka s limitom, spoluúčasťou, výlukami a režimom nahlasovania. Limit a dátum začiatku krytia sa doplnia písomne. Bez poistnej zmluvy sa krytie nepredpokladá a jeho absencia sama osebe nezbavuje povinnú stranu zákonnej zodpovednosti.
+
+11. Trvanie a skončenie
+
+Zmluva sa navrhuje na dobu neurčitú. Navrhnutá výpovedná lehota je jeden mesiac od prvého dňa mesiaca nasledujúceho po doručení výpovede. Konkrétne objednávky musia obsahovať bezpečný plán odovzdania a zastupovania pri blízkych lehotách. Pri závažnom porušení, strate oprávnenia alebo bezpečnostnom incidente môže europio okamžite obmedziť prístupy a strany postupujú podľa právne potvrdených podmienok ukončenia.
+
+Účtovník odovzdá stav každej agendy, otvorené úlohy, termíny, výstupy, prijaté potvrdenia a zistené riziká. europio zabezpečí preberajúcu osobu a odobratie prístupov. Už vzniknuté odmeny a zákonné povinnosti uchovania, mlčanlivosti a náhrady škody skončením nezanikajú.
+
+12. Podpis a povinné doplnenia
+
+Pred podpisom sa doplní identita účtovníka, živnostenské oprávnenie, prvé prijaté objednávky s rozsahom a termínmi, potvrdené sadzby a DPH, úplná spracovateľská príloha, prípadná poistná povinnosť a záznam o školení AML. Rozhodné právo a riešenie sporov advokát zosúladí so zvyškom dokumentácie. Zmeny zmluvy vyžadujú dohodu strán v zachytiteľnej písomnej forme.
+
+V DOPLNIŤ dňa DOPLNIŤ
+
+Za europio s. r. o.
+Christian Juhás
+
+Za poskytovateľa
+DOPLNIŤ meno a podpis
