@@ -19,7 +19,7 @@ function fixture({ health = () => healthy, status = 200, html = page, sitemap = 
     return new Response(html)
   }
 }
-const probe = (fetcher, extra = {}) => verifyDeployment({ origin, revision: current, schema: 77, guides: [guide], fetcher, timeoutMs: 40, pollMs: 2, log: () => {}, ...extra })
+const probe = (fetcher, extra = {}) => verifyDeployment({ origin, revision: current, schema: 77, guides: [guide], fetcher, timeoutMs: 250, pollMs: 2, log: () => {}, ...extra })
 
 test('build uses the full platform revision before a different local checkout', () => {
   assert.deepEqual(buildMetadata(current.toUpperCase(), previous), { revision: current, source: 'cloudflare' })
@@ -89,4 +89,19 @@ test('transport failures and invalid responses do not publish response bodies or
 test('no abbreviated revision or empty page list can produce a successful empty probe', async () => {
   await assert.rejects(probe(fixture(), { revision: current.slice(0, 7) }), /40-znakový/)
   await assert.rejects(probe(fixture(), { guides: [] }), /zoznam stránok/)
+})
+
+test('an unfinished retry at the deadline preserves the last concrete deployment failure', async () => {
+  const originalNow = Date.now
+  let clock = originalNow()
+  let healthCalls = 0
+  const fetcher = fixture({ llms: false })
+  try {
+    Date.now = () => clock
+    await assert.rejects(probe(async (url) => {
+      if (new URL(url).pathname === '/healthz' && ++healthCalls === 2) clock += 1000
+      return fetcher(url)
+    }, { timeoutMs: 100, pollMs: 0 }), /llms/)
+    assert.equal(healthCalls, 2)
+  } finally { Date.now = originalNow }
 })

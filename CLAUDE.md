@@ -203,6 +203,24 @@ over. Bring this section up to date first whenever a session ends.
    https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#default-variables.
    Žiadna zmena schémy ani tvrdenie o dokončenej produkčnej obnove.
 
+   **Nasadenie potvrdené:** PR #17 je zlúčený ako `c218589471d6d61883433c5c802686fd5e5b0fa5`. Presné Checks
+   39635309439 aj následné main Checks 39636678501 prešli. Production verification 39636678598 o 18:44:58 CEST
+   potvrdilo tento commit, schému 77 a všetkých 10 návodov. Opakované healthz o 21:30:42 CEST vrátilo rovnaký
+   commit so source cloudflare. #16 je uzavretá s dôkazmi; príčina pôvodného oneskorenia nebola preukázaná.
+
+   **Súbežné automatické účtovanie, 21. októbra 2026:** vetva `codex/autobook-atomic` opravuje zápis podľa
+   zastaraných podkladov a zdvojenie auditnej udalosti pri dvoch spracovaniach v tej istej sekunde. Doklad sa číta
+   spolu s existujúcou revíziou firmy; nastavenia a podané priznania sa pri novej revízii obnovia. SQL zápis
+   vyžaduje rovnakú revíziu, aktuálne zapnutú automatiku a aktívne údaje firmy. Audit sa vloží iba po vlastnej
+   úspešnej zmene v tej istej transakcii. Žiadna nová schéma, nový model, zmena referenčných kategórií ani nové kľúče.
+   Pôvodný kód zlyhal v 12 z prvých 15 cielených kontrol; opravená sada má 17 scenárov v skutočnom workerd/D1
+   vrátane podaného priznania a zmien medzi dokladmi. Pred zlúčením platia všetky presné Checks a po ňom overenie
+   nasadenia. Podrobnosti a hranice: `docs/autobook-consistency.md`. Originálne technické zdroje prečítané:
+   https://developers.cloudflare.com/d1/worker-api/d1-database/#batch,
+   https://www.sqlite.org/c3ref/changes.html, https://www.sqlite.org/lang_returning.html.
+   Celá sada odhalila aj nestabilitu správy pri uplynutí limitu overenia nasadenia: nedokončené opakovanie už
+   nezahodí poslednú konkrétnu príčinu. Deterministický regresný test riadi okamih vypršania; produkčný limit sa nemení.
+
    E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
    **E prepared by ChatGPT, 21 October 2026:** `docs/drafts/` contains three plain-text emails without dashes,
    signed Christian Juhás, and a proposed accountant contract. Nothing was sent or signed. Rates mirror
