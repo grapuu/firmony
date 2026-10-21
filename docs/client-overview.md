@@ -70,7 +70,9 @@ Jednotkové scenáre kombinujú termíny, úhrady, správy, prvé kroky a bankov
 skutočný workerd a D1: vlastník a kolega, limit a dve schválenia, nulové pohyby, chýbajúci výpis, neznáma
 alebo chybná banka, viac súčasných úloh, 243 chýbajúcich podkladov a skončený príjem. Samostatný prehliadačový
 scenár na mobile prejde hlavným tlačidlom až k správe a overí, že sa nevytvorila odpoveď.
-Deväť nových stavov vstupuje do existujúceho UI overenia pri 1440, 390 a 320 px.
+Desať nových stavov vstupuje do existujúceho UI overenia pri 1440, 390 a 320 px vrátane prvých krokov
+kolegu, ktorý nemôže obnoviť bankový súhlas vlastníka. Vysvetlenie používa existujúcu pozíciu ovládania,
+aby na mobile nevytvorilo ďalší široký stĺpec.
 Existujúce AML očakávanie používa skutočný bratislavský deň zaznamenaného odborného rozhodnutia;
 opakovaná faktúra sa kontroluje voči okamihu plánovanej úlohy. Zmena opravuje časové predpoklady testov,
 nemení výpočet termínov alebo vystavovanie faktúr v aplikácii.

@@ -264,7 +264,7 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean; owner: boole
             {step.done ? (
               <span class="pill pill--ok">{app.start.done}</span>
             ) : !owner && (step.href === '/app/vyhlasenie' || step.href === '/app/banka#prepojit') ? (
-              <span class="first__sub">{app.home.next.owner}</span>
+              <span class="first__sub first__go">{app.home.next.owner}</span>
             ) : (
               <a class={`btn ${step.optional ? 'btn--text' : 'btn--line'} btn--small first__go`} href={step.href}>
                 {step.text.link}

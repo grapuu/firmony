@@ -10,7 +10,7 @@ Chýbajúce doklady sa počítajú z celého súčtu podľa mesiacov, banka ukaz
 Pripojenie bez pohybov, prijatý nulový výpis a automaticky prijatý doklad nevyvolávajú zbytočné prvé nastavenie.
 
 Zachované ceny, vzhľad, navigácia, účtovné postupy, AML a oprávnenia; bez novej schémy.
-Pridané kombinované jednotkové a HTTP scenáre, deväť stavov pre desktop a mobil a skutočné prekliknutie
+Pridané kombinované jednotkové a HTTP scenáre, desať stavov pre desktop a mobil a skutočné prekliknutie
 hlavnej akcie v prehliadači. Povinné kontroly finálneho commitu a produkčný dôkaz sú evidované v PR.
 J2 až J5, explicitné dokončenie klientskej otázky a používateľský pilot zostávajú otvorené.
 

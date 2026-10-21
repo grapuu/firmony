@@ -32,6 +32,14 @@ export async function checkOverviewRuntime({ db, nowS, day, signIn, as, capture 
   html = await home()
   check('overview HTTP: matched payments get a strictly scoped statement, not a promise of complete accounting', html.includes('data-overview-state="matched"') && html.replace(/[  ]/g,' ').includes('Doklady k platbám máme.') && html.includes('Týka sa to platieb') && !html.includes('Nemusíte nič robiť.'))
   save('overview-ready', html)
+  await db.batch([db.prepare("DELETE FROM links WHERE document_id='overview-doc'"), db.prepare("DELETE FROM payments WHERE id='overview-payment'")])
+  html = await home(member)
+  check('overview HTTP: unfinished bank setup is explained to a colleague without an owner-only connection link', html.includes('class="first"') && !html.includes('data-overview-action="setup-bank"') && !html.includes('href="/app/banka#prepojit"'))
+  save('overview-member-onboarding', html)
+  await db.batch([
+    db.prepare("INSERT INTO payments(id,company_id,account_id,created_at,booked_on,amount_cents,ref) VALUES('overview-payment',?,'overview-account',?,?,-1200,'TEST-ONLY overview-payment')").bind(company, nowS, day(-1)),
+    db.prepare("INSERT INTO links(document_id,payment_id,company_id,how,created_at) VALUES('overview-doc','overview-payment',?,'auto',?)").bind(company, nowS),
+  ])
 
   await db.prepare("UPDATE accounts SET balance_on=? WHERE id='overview-account'").bind(day(-45)).run()
   html = await home()
