@@ -4,6 +4,14 @@
 # log; the report is kept for a week as the artifact "reader-report".
 name: Reader
 on:
+  push:
+    branches: [codex/reader-categories]
+    paths:
+      - test/reader/**
+      - test/reader.mjs
+      - test/reader.entry.ts
+      - scripts/reader/make-documents.py
+      - .github/workflows/reader.yml
   workflow_dispatch:
     inputs:
       only:
@@ -31,6 +39,8 @@ jobs:
           FIRMONY_READER_ONLY: ${{ inputs.only }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
+        # The measured result is in the log too; an artifact quota error is not a model-quality result.
+        continue-on-error: true
         with:
           name: reader-report
           path: .wrangler/reader/report.json

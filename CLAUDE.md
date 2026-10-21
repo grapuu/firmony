@@ -143,6 +143,15 @@ over. Bring this section up to date first whenever a session ends.
    limits and a pilot; no product code, marketing promise, referral reward or client price was changed.
    C. The next guides of item 10.8, in their order.
    D. Categories added to `test/reader/expected.json`, the workflow "Reader" run.
+   **D implementation prepared by ChatGPT, 21 October 2026:** all 30 expected documents now contain category.
+   `test/reader/categories.json` records labels and reasons from the synthetic generator, never model outputs;
+   the generator preserves them. Context-dependent cases are labelled explicitly and a separate direct-category
+   denominator prevents confusing missing business purpose with OCR accuracy. The harness validates labels and
+   an empty selection, records dataset hash and preserves the full small report in the log as well as JSON.
+   Reader keeps manual dispatch and also runs on the exact test branch `codex/reader-categories` when fixture /
+   harness files change. Existing repository secret only, never read. Artifact upload failure due to existing
+   quota does not override model quality. Actual run/result must still be recorded after the branch push.
+
    E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
    **E prepared by ChatGPT, 21 October 2026:** `docs/drafts/` contains three plain-text emails without dashes,
    signed Christian Juhás, and a proposed accountant contract. Nothing was sent or signed. Rates mirror

@@ -2,3 +2,4 @@
 export { readDocument, sniff } from '../src/app/read'
 export { compareFields, READ_FIELDS } from '../src/team/ai-accuracy'
 export { READER } from '../src/config'
+export { CATEGORY_IDS } from '../src/app/booking'

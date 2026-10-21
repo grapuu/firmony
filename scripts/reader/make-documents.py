@@ -24,6 +24,8 @@ MONO_B = os.path.join(FONTS, 'DejaVuSansMono-Bold.ttf')
 SANS = os.path.join(FONTS, 'DejaVuSans.ttf')
 SANS_B = os.path.join(FONTS, 'DejaVuSans-Bold.ttf')
 US = {'name': 'TEST Odberateľ s. r. o.', 'ico': '50000005', 'dic': '2120000005', 'icdph': 'SK2120000005', 'address': 'Hlavná 12, 040 01 Košice'}
+with open(os.path.join(ROOT, 'test', 'reader', 'categories.json'), encoding='utf-8') as category_file:
+    CATEGORY_EXPECTATIONS = json.load(category_file)
 
 rnd = random.Random(20261020)
 
@@ -374,7 +376,8 @@ def main():
             img.save(path, 'PNG', optimize=True)
         else:
             img.convert('RGB').save(path, 'JPEG', quality=78)
-        exp = {'file': name, **{k: v for k, v in exp.items()}}
+        # Labels are set from the fixture's contents and documented scenario, never from the model's answer.
+        exp = {'file': name, 'category': CATEGORY_EXPECTATIONS[name]['category'], **{k: v for k, v in exp.items()}}
         expected.append(exp)
 
     for i, (seller, items, iso, clock, number, fx) in enumerate(RECEIPTS, 1):

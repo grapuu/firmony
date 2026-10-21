@@ -6,16 +6,23 @@
 // The documents come from scripts/reader/make-documents.py; the report goes to .wrangler/reader/report.json. It fails
 // when totals, VAT, the day of issue or the IČO are right on fewer than 98 % of the documents.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { compareFields, READ_FIELDS, READER, readDocument, sniff } from '../.wrangler/tmp/reader-bundle.mjs'
+import { compareFields, READ_FIELDS, READER, readDocument, sniff, CATEGORY_IDS } from '../.wrangler/tmp/reader-bundle.mjs'
+import { createHash } from 'node:crypto'
 
 const KEY = process.env.ANTHROPIC_API_KEY
 if (!KEY) {
   console.log('ANTHROPIC_API_KEY is not set: the reader cannot be asked. Nothing was measured.')
   process.exit(2)
 }
-const set = JSON.parse(readFileSync(new URL('./reader/expected.json', import.meta.url), 'utf8'))
+const dataset = readFileSync(new URL('./reader/expected.json', import.meta.url), 'utf8')
+const set = JSON.parse(dataset)
+const categories = JSON.parse(readFileSync(new URL('./reader/categories.json', import.meta.url),'utf8'))
 const only = process.env.FIRMONY_READER_ONLY
 const docs = set.documents.filter((d) => !only || d.file.includes(only))
+if (docs.length === 0) throw new Error('No fixture matched: nothing was measured.')
+for (const doc of set.documents) {
+  if (!CATEGORY_IDS.includes(doc.category) || categories[doc.file]?.category !== doc.category) throw new Error(`Missing or inconsistent expected category: ${doc.file}`)
+}
 const MUST = ['totalCents', 'vatCents', 'issuedOn', 'partyIco']
 const FLOOR = 0.98
 
@@ -39,7 +46,7 @@ async function worker() {
     const got = { ...r, vatCents: r.vatCents ?? 0 }
     const want = { ...doc, vatCents: doc.vatCents ?? 0 }
     const fields = compareFields(got, want, 'ai')
-    // A field the set does not say (the category: which cost a receipt is, is the accountant's call) is not judged.
+    // Only genuinely unspecified fields are excluded; category is now present for every fixture.
     for (const field of READ_FIELDS) if (!(field in doc)) fields[field] = null
     const extra = {}
     if (doc.ekasaUid !== undefined) extra.ekasaUid = (r.ekasaUid ?? null) === doc.ekasaUid
@@ -65,8 +72,14 @@ const extraShare = (key) => {
 const table = [...READ_FIELDS.map(share), ...['ekasaUid', 'ekasaOkp', 'corrects'].map(extraShare)].filter((row) => row.of > 0)
 console.log(`\nReader ${READER.model}: ${read.length} of ${results.length} documents read, ${read.filter((r) => r.wrong.length === 0).length} with every field right.`)
 for (const row of table) console.log(`${row.field.padEnd(12)} ${String(row.right).padStart(3)} / ${String(row.of).padEnd(3)} ${(row.share * 100).toFixed(1)} %`)
+const independent = results.filter((r) => !categories[r.file]?.contextDependent)
+const categoryDirect = {right:independent.filter((r) => r.fields?.category === true).length,of:independent.length}
+console.log(`Category on context-independent scenarios: ${categoryDirect.right} / ${categoryDirect.of}. Full category accuracy uses documented scenario labels, not proof of tax treatment.`)
 mkdirSync('.wrangler/reader', { recursive: true })
-writeFileSync('.wrangler/reader/report.json', JSON.stringify({ model: READER.model, at: new Date().toISOString(), table, results }, null, 1))
+const report = { model: READER.model, at: new Date().toISOString(), datasetSha256:createHash('sha256').update(dataset).digest('hex'),categoryDirect,table,results }
+writeFileSync('.wrangler/reader/report.json', JSON.stringify(report, null, 1))
+// Preserve the small synthetic report in the job log even when GitHub's artifact quota blocks its ZIP upload.
+console.log(`READER_REPORT_JSON ${JSON.stringify(report)}`)
 const short = table.filter((row) => MUST.includes(row.field) && row.share < FLOOR)
 if (short.length > 0) {
   console.log(`\nBelow ${FLOOR * 100} %: ${short.map((row) => row.field).join(', ')}`)
