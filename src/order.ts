@@ -1,3 +1,4 @@
+import { orderAdmissionSql, quoteSql } from './aml/model'
 // The order a request becomes when the register knows its company as an s. r. o., an a. s. or a j. s. a.: a link to it
 // goes by email to the address that was typed (so whoever opens it can read that mailbox), and a member of the
 // statutory body the register names, who may act for it alone, accepts the terms there. Accepting creates the company, the person's account and their membership in one batch, keeps who
@@ -22,6 +23,9 @@ export interface Order {
   /** The legal form (null for an order made before it was kept: an s. r. o.), and how the statutory body acts. */
   legalForm: LegalForm | null
   acting: string | null
+  amlPaper?: boolean
+  directorsJson?: string | null
+  tokenHash?: string | null
   plan: string
   person: string
   email: string
@@ -65,6 +69,9 @@ export function orderOf(row: Row): Order {
     directors: directorsOf(row.directors),
     legalForm: isLegalForm(row.legal_form) ? row.legal_form : null,
     acting: str(row.acting),
+    amlPaper: row.aml_paper === 1,
+    directorsJson: str(row.directors),
+    tokenHash: str(row.token),
     plan: String(row.plan),
     person: String(row.person),
     email: String(row.email),
@@ -128,7 +135,7 @@ export async function latestOrderOfRequest(db: D1Database, requestId: string): P
 export function renewOrderStatement(db: D1Database, orderId: string, ts: number, tokenHash: string): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE orders SET expires_at = ?2 + ?3, token = ?4 WHERE id = ?1 AND status = 'open' AND expires_at <= ?2
+      `UPDATE orders SET expires_at = ?2 + ?3, token = ?4 WHERE id = ?1 AND status = 'open' AND expires_at <= ?2 AND aml_delete_started_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = orders.ico AND c.closed_at IS NULL AND c.demo = 0 AND c.operator = 0)`,
     )
     .bind(orderId, ts, ORDER.days * 86400, tokenHash)
@@ -165,6 +172,8 @@ export interface Accepted {
  */
 export async function acceptStatements(db: D1Database, order: Order, a: Acceptance, ids: { companyId: string; userId: string; existingUser: boolean; inbox: string }): Promise<Accepted> {
   const ts = now()
+  const aml = a.approval.aml
+  if (!aml || a.signedBy !== aml.signerName) throw new Error('Verified AML admission for the signer is required')
   const plan = planById(a.plan)
   const priceCents = Math.round((plan?.price ?? 0) * 100)
   const frozen = await contractSnapshot(order, a, ids.companyId, ts, a.approval)
@@ -176,6 +185,7 @@ export async function acceptStatements(db: D1Database, order: Order, a: Acceptan
       .prepare(
         `UPDATE orders SET status = 'accepted', accepted_at = ?3, company_id = ?2, signed_by = ?4, start_on = ?5, price_cents = ?6, terms_version = ?7, ip_hash = ?8, plan = ?9, signed_role = ?12
          WHERE id = ?1 AND status = 'open' AND expires_at > ?3
+           AND ${orderAdmissionSql('orders', quoteSql(aml.dossierId), String(aml.decisionId))}
            AND EXISTS (SELECT 1 FROM order_reviews r JOIN users u ON u.id = r.accountant_id
              WHERE r.order_id = ?1 AND r.id = ?10 AND r.id = (SELECT MAX(id) FROM order_reviews WHERE order_id = ?1)
                AND r.decision = 'standard' AND r.offer_hash = ?11 AND r.expires_at > ?3 AND r.plan = ?9
@@ -184,14 +194,20 @@ export async function acceptStatements(db: D1Database, order: Order, a: Acceptan
       .bind(order.id, ids.companyId, ts, a.signedBy, a.startOn, priceCents, TERMS_VERSION, a.ipHash, a.plan, a.approval.review.id, a.approval.offerHash, a.signedRole ?? null),
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, register_line, vat_payer, plan, inbox, request_id, order_id, contract_at, terms_version, signed_by, start_on, accountant_id, legal_form, signed_role)
-         SELECT ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?1, ?3, ?12, ?13, ?14, ?15, ?16, ?17 WHERE ${mine}`,
+        `INSERT INTO companies (id, created_at, name, ico, address, register_line, vat_payer, plan, inbox, request_id, order_id, contract_at, terms_version, signed_by, start_on, accountant_id, legal_form, signed_role, aml_dossier_id)
+         SELECT ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?1, ?3, ?12, ?13, ?14, ?15, ?16, ?17, ?18 WHERE ${mine}`,
       )
-      .bind(order.id, ids.companyId, ts, order.company, order.ico, order.address, order.registerLine, plan?.vatPayer ? 1 : 0, a.plan, ids.inbox, order.requestId, TERMS_VERSION, a.signedBy, a.startOn, a.approval.review.accountant_id, order.legalForm ?? 'sro', a.signedRole ?? null),
+      .bind(order.id, ids.companyId, ts, order.company, order.ico, order.address, order.registerLine, plan?.vatPayer ? 1 : 0, a.plan, ids.inbox, order.requestId, TERMS_VERSION, a.signedBy, a.startOn, a.approval.review.accountant_id, order.legalForm ?? 'sro', a.signedRole ?? null, aml.dossierId),
+    ...(ids.existingUser ? [] : [db.prepare(`INSERT OR IGNORE INTO users (id, created_at, email, name) SELECT ?4, ?3, ?5, ?6 WHERE ${mine}`).bind(order.id, ids.companyId, ts, ids.userId, order.email, a.signedBy)]),
+    db.prepare(`INSERT INTO declarations (id, company_id, created_at, created_by, data, checked_at, checked_by)
+      SELECT d.declaration_id, ?2, d.created_at, ?4, d.declaration, a.decided_at, a.decided_by FROM aml_dossiers d JOIN aml_decisions a ON a.dossier_id = d.id
+      WHERE d.id = ?5 AND a.id = ?6 AND ${mine}`).bind(order.id, ids.companyId, ts, ids.userId, aml.dossierId, aml.decisionId),
+    db.prepare(`INSERT INTO risks (id, company_id, created_at, created_by, level, note)
+      SELECT ?4, ?2, a.decided_at, a.decided_by, a.level, a.note FROM aml_decisions a WHERE a.id = ?5 AND ${mine}`).bind(order.id, ids.companyId, ts, crypto.randomUUID(), aml.decisionId),
     db.prepare(`INSERT INTO contract_snapshots (company_id, order_id, accepted_at, terms_version, sha256, data)
       SELECT ?2, ?1, ?3, ?4, ?5, ?6 WHERE ${mine}`)
       .bind(order.id, ids.companyId, ts, TERMS_VERSION, frozen.sha256, frozen.data),
-    ...(ids.existingUser ? [] : [db.prepare(`INSERT OR IGNORE INTO users (id, created_at, email, name) SELECT ?4, ?3, ?5, ?6 WHERE ${mine}`).bind(order.id, ids.companyId, ts, ids.userId, order.email, a.signedBy)]),
+
     db.prepare(`INSERT OR IGNORE INTO members (company_id, user_id, role, created_at) SELECT ?2, ?4, 'owner', ?3 WHERE ${mine}`).bind(order.id, ids.companyId, ts, ids.userId),
     db
       .prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?3, ?2, ?4, 'contract.accepted', ?1, ?5 WHERE ${mine}`)

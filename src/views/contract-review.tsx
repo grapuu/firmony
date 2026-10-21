@@ -166,6 +166,7 @@ export const ContractReviewPage: FC<{
         )}
       </section>
     ) : null}
+    {order ? <section class="info"><h2 class="info__title">Overenie pred zmluvou</h2><p>Pred podpisom musí byť úplné vyhlásenie, overenie kvalifikovaného podpisu, KUV, PEP, sankcií, krajín a rozhodnutie určenej osoby.</p><a class="btn btn--line" href={`/ucto/aml/objednavky/${order.id}`}>Otvoriť doklady a kontroly</a></section> : null}
     {order && order.status === 'expired' ? (
       <section class="info">
         <h2 class="info__title">Objednávka vypršala</h2>
@@ -190,15 +191,15 @@ export const ContractReviewPage: FC<{
     ) : null}
     {order && order.status === 'open' && review?.decision === 'standard' ? (
       <section class="info">
-        <h2 class="info__title">Odkaz na zmluvu</h2>
+        <h2 class="info__title">Odkaz na overenie a zmluvu</h2>
         <p class="info__lead">
           {linkSentAt
             ? `Poslali sme ho na ${order.email} ${new Intl.DateTimeFormat('sk-SK', { timeZone: 'Europe/Bratislava', day: 'numeric', month: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(linkSentAt * 1000))}. Nový odkaz nahradí predchádzajúci.`
             : released
               ? `Ešte sme ho neposlali. Pošleme ho na ${order.email}.`
-              : 'Pošleme ho, keď bude znenie zmluvy a cenníka schválené po právnom a poistnom posúdení.'}
+              : 'Odkaz na podklady možno poslať už teraz. Uzavretie zmluvy zostáva zablokované do úplného overenia a právneho a poistného schválenia.'}
         </p>
-        {released && review.expires_at > Math.floor(Date.now() / 1000) ? (
+        {review.expires_at > Math.floor(Date.now() / 1000) ? (
           <form method="post" action={`/ucto/ziadosti/${requestId}/odkaz`}>
             <button class="btn btn--line" type="submit">
               {linkSentAt ? 'Poslať nový odkaz' : 'Poslať odkaz'}

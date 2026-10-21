@@ -50,12 +50,13 @@ import { dividendTaxDue } from '../app/distribution'
 import { VAT_REGISTRATION, registrationWatch, type Supply } from '../app/vat-registration'
 import { monthTax, type Debit } from '../app/transaction-tax'
 
-export type DueKind = 'vat' | 'vatFix' | 'vatRegister' | 'transactionTax' | 'payrollAnnual' | 'summary' | 'oss' | 'intrastat' | 'dividendTax' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
+export type DueKind = 'aml' | 'amlBooking' | 'vat' | 'vatFix' | 'vatRegister' | 'transactionTax' | 'payrollAnnual' | 'summary' | 'oss' | 'intrastat' | 'dividendTax' | 'vatPay' | 'docs' | 'closing' | 'taxPay' | 'taxAdvance' | 'payrollPay' | 'payroll' | 'payrollReports' | 'payrollReport' | 'registration' | 'handover'
 
 /** Whose a deadline is: ours to file, or the client's to bring or to pay. */
 export type DueSide = 'ours' | 'client'
 
 export const DUE_SIDE: Record<DueKind, DueSide> = {
+  aml: 'ours', amlBooking:'ours',
   vat: 'ours',
   vatFix: 'ours',
   vatRegister: 'ours',
@@ -481,7 +482,7 @@ export function groupOf(due: Pick<Due, 'state' | 'late' | 'day'>, today: string)
   return 'later'
 }
 
-const KIND_ORDER: Record<DueKind, number> = { vat: 0, vatFix: 1, vatRegister: 1, transactionTax: 2, payrollAnnual: 6, summary: 2, oss: 2, intrastat: 2, dividendTax: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
+const KIND_ORDER: Record<DueKind, number> = { aml: 0, amlBooking:0, vat: 0, vatFix: 1, vatRegister: 1, transactionTax: 2, payrollAnnual: 6, summary: 2, oss: 2, intrastat: 2, dividendTax: 2, vatPay: 3, docs: 4, payroll: 5, payrollReports: 6, payrollReport: 6, registration: 6, closing: 7, taxPay: 8, taxAdvance: 8, payrollPay: 8, handover: 9 }
 
 /** The order of the screen: by day, then by company, then by kind. Done ones the newest first. */
 export function compareDues<T extends Due & { companyName: string }>(a: T, b: T): number {

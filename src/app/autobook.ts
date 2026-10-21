@@ -1,3 +1,5 @@
+import { autoSnapshotSql, autoReviewedSql } from '../aml/auto-review'
+import { sha256Hex } from '../db'
 // Documents the app books by itself (20 October 2026; his word: "čím viac náš softvér bude robiť a čím bude lepší, tým
 // máme vyššiu maržu ... urob ho elitný a dokonalý už teraz"; item 2(d) of the handover). A document is booked without
 // the accountant only when everything agrees and nothing is left to judge: the supplier's rule she made and used at
@@ -135,15 +137,15 @@ export async function autoBook(db: D1Database, company: string | null = null, li
 }
 
 /** What the app booked by itself for a company in the last days, newest first, for the accountant's check. */
-export async function autoBooked(db: D1Database, company: string, days = 31): Promise<{ id: string; party: string | null; issuedOn: string | null; totalCents: number | null; bookedAt: number }[]> {
+export async function autoBooked(db: D1Database, company: string, days = 31): Promise<{ id: string; party: string | null; issuedOn: string | null; totalCents: number | null; bookedAt: number; reviewed: boolean; token:string }[]> {
   const rows = await db
     .prepare(
-      `SELECT id, party, issued_on, total_cents, booked_at FROM documents
-       WHERE company_id = ? AND booked_by = 'auto' AND booked_at >= ? AND deleted_at IS NULL ORDER BY booked_at DESC LIMIT 50`,
+      `SELECT d.id,d.party,d.issued_on,d.total_cents,d.booked_at,${autoReviewedSql('d')} AS reviewed,${autoSnapshotSql('d')} AS source FROM documents d
+       WHERE d.company_id = ? AND d.booked_by = 'auto' AND (d.booked_at >= ? OR NOT (${autoReviewedSql('d')})) AND d.deleted_at IS NULL ORDER BY reviewed,d.booked_at LIMIT 100`,
     )
     .bind(company, now() - days * 86400)
-    .all<{ id: string; party: string | null; issued_on: string | null; total_cents: number | null; booked_at: number }>()
-  return rows.results.map((r) => ({ id: r.id, party: r.party, issuedOn: r.issued_on, totalCents: r.total_cents, bookedAt: Number(r.booked_at) }))
+    .all<{ id: string; party: string | null; issued_on: string | null; total_cents: number | null; booked_at: number;reviewed:number;source:string }>()
+  return Promise.all(rows.results.map(async(r) => ({ id: r.id, party: r.party, issuedOn: r.issued_on, totalCents: r.total_cents, bookedAt: Number(r.booked_at),reviewed:Boolean(r.reviewed),token:await sha256Hex(r.source) })))
 }
 
 /** The accountant turns booking by itself on or off for a client. */

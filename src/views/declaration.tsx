@@ -4,7 +4,7 @@
 // member of the company is told only where it stands.
 import type { Child, FC } from 'hono/jsx'
 import { app, dayName, whenName } from '../app/copy'
-import { ID_KINDS, KUVS, OWNER_SLOTS, TURNOVERS, maskBirthNumber, type DeclarationErrors, type DeclarationState, type DeclarationValues, type StoredDeclaration } from '../app/aml'
+import { ID_KINDS, KUVS, OWNER_SLOTS, TURNOVERS, declarationStateOf, maskBirthNumber, type DeclarationErrors, type DeclarationState, type DeclarationValues, type StoredDeclaration } from '../app/aml'
 import { Flash, Heading } from './inside'
 import { dayOf } from './inside-pages'
 
@@ -95,10 +95,10 @@ const Part: FC<{ id: string; title: string; lead?: string; children: Child }> = 
   </section>
 )
 
-const Form: FC<{ values: DeclarationValues; errors: DeclarationErrors; editing: boolean }> = ({ values, errors, editing }) => {
+export const DeclarationForm: FC<{ values: DeclarationValues; errors: DeclarationErrors; editing: boolean; action?: string; children?: Child; multipart?: boolean }> = ({ values, errors, editing, action = '/app/vyhlasenie', children, multipart }) => {
   const wrong = Object.keys(errors).length > 0
   return (
-    <form class="decl" method="post" action="/app/vyhlasenie" novalidate>
+    <form class="decl" method="post" action={action} enctype={multipart ? 'multipart/form-data' : undefined} novalidate>
       {wrong ? <Flash text={d.errors.form} tone="error" /> : null}
       <Part id="konatel" title={d.director} lead={d.directorLead}>
         <div class="fgrid">
@@ -107,6 +107,8 @@ const Form: FC<{ values: DeclarationValues; errors: DeclarationErrors; editing: 
           <Field name="dob" label={d.dob} values={values} errors={errors} hint={d.dobHint} mode="numeric" placeholder="12. 3. 1990" max={14} />
           <Field name="address" label={d.address} values={values} errors={errors} hint={d.addressHint} wide max={200} />
           <Field name="nationality" label={d.nationality} values={values} errors={errors} max={60} />
+          <Field name="citizenships" label="Kódy všetkých štátnych príslušností" hint="Napríklad SK. Pri viacerých uveďte SK, CZ." values={values} errors={errors} max={100} />
+          <Field name="residenceCountry" label="Kód krajiny pobytu" hint="Napríklad SK alebo CZ." values={values} errors={errors} max={2} />
           <div class="fgrid__cell">
             <label class="field__label" for="v-idKind">
               {d.idKind}
@@ -146,13 +148,15 @@ const Form: FC<{ values: DeclarationValues; errors: DeclarationErrors; editing: 
           </p>
           {errors.owners ? <p class="field__error">{errors.owners}</p> : null}
           {Array.from({ length: OWNER_SLOTS }, (_, k) => k + 1).map((i) => (
-            <fieldset class={`decl__owner${Object.keys(errors).some((key) => key.startsWith(`o${i}`)) ? ' decl__owner--wrong' : ''}`}>
+            <details open={i === 1 || Boolean(values[`o${i}Name`]) || Object.keys(errors).some((key) => key.startsWith(`o${i}`))}><summary class="link">{d.owner(i)}</summary><fieldset class={`decl__owner${Object.keys(errors).some((key) => key.startsWith(`o${i}`)) ? ' decl__owner--wrong' : ''}`}>
               <legend class="decl__ownertitle">{d.owner(i)}</legend>
               <div class="fgrid">
                 <Field name={`o${i}Name`} error={`o${i}name`} label={d.name} values={values} errors={errors} wide max={120} placeholder=" " />
                 <Field name={`o${i}Rc`} error={`o${i}rc`} label={d.rc} values={values} errors={errors} hint={d.rcHint} mode="numeric" max={14} />
                 <Field name={`o${i}Dob`} error={`o${i}dob`} label={d.dob} values={values} errors={errors} mode="numeric" placeholder="12. 3. 1990" max={14} />
                 <Field name={`o${i}Address`} error={`o${i}address`} label={d.address} values={values} errors={errors} wide max={200} />
+                <Field name={`o${i}Citizenships`} label="Kódy všetkých štátnych príslušností" values={values} errors={errors} max={100} />
+                <Field name={`o${i}ResidenceCountry`} label="Kód krajiny pobytu" values={values} errors={errors} max={2} />
                 <Field name={`o${i}Nationality`} error={`o${i}nationality`} label={d.nationality} values={values} errors={errors} max={60} />
                 <Field name={`o${i}Share`} error={`o${i}share`} label={d.share} values={values} errors={errors} placeholder={d.sharePlaceholder} max={60} />
               </div>
@@ -160,8 +164,9 @@ const Form: FC<{ values: DeclarationValues; errors: DeclarationErrors; editing: 
                 <input type="checkbox" name={`o${i}Pep`} value="1" checked={values[`o${i}Pep`] === '1'} />
                 <span>{d.ownerPep}</span>
               </label>
-            </fieldset>
+            </fieldset></details>
           ))}
+          <label class="tickbox"><input type="checkbox" name="ownersOverflow" value="1" checked={values.ownersOverflow === '1'} /><span>Konečných užívateľov výhod je viac ako 12. Potrebujem individuálne spracovanie úplnej štruktúry.</span></label>
         </div>
       </Part>
 
@@ -193,6 +198,33 @@ const Form: FC<{ values: DeclarationValues; errors: DeclarationErrors; editing: 
         </div>
       </Part>
 
+      <Part id="miesto" title="Miesto podnikania a zastupovanie">
+        <YesNo name="businessAtSeat" legend="Vykonáva Vaša firma podnikateľskú činnosť na adrese sídla?" values={values} errors={errors} />
+        <div class="fgrid decl__business-address">
+          <Field name="businessAddress" label="Skutočné miesto podnikateľskej činnosti" hint="Vyplňte, ak je odlišné od sídla." values={values} errors={errors} wide max={300} />
+        </div>
+        <div class="fgrid">
+          <Field name="businessCountries" label="Kódy krajín sídla, pobočiek a prevádzkarní" hint="Napríklad SK alebo SK, CZ." values={values} errors={errors} wide max={400} />
+          <Field name="partnerCountries" label="Kódy krajín pravidelných obchodných partnerov" hint="Napríklad SK, CZ, DE. Pri obchodoch mimo EÚ je tento údaj povinný." values={values} errors={errors} wide max={400} />
+        </div>
+        <YesNo name="ownBehalf" legend="Koná Vaša firma vo vlastnom mene a na vlastný účet?" lead="Ide o firmu, za ktorú toto vyhlásenie vypĺňate." values={values} errors={errors} />
+        <div class="decl__principal">
+          <p class="info__lead">Ak nie, záväzne uveďte osobu, v ktorej mene firma koná.</p>
+          <label class="field__label" for="v-principalKind">Druh osoby</label>
+          <select id="v-principalKind" class="field__input" name="principalKind" aria-invalid={errors.principalKind ? 'true' : undefined}>
+            <option value="">Vyberte</option><option value="person" selected={values.principalKind === 'person'}>Fyzická osoba</option><option value="company" selected={values.principalKind === 'company'}>Právnická osoba</option>
+          </select>
+          {errors.principalKind ? <p class="field__error">{errors.principalKind}</p> : null}
+          <div class="fgrid">
+            <Field name="principalName" label="Meno a priezvisko alebo obchodné meno" values={values} errors={errors} wide max={200} />
+            <Field name="principalRc" label="Rodné číslo fyzickej osoby" values={values} errors={errors} max={14} />
+            <Field name="principalDob" label="Dátum narodenia, ak rodné číslo nebolo pridelené" values={values} errors={errors} max={14} placeholder="12. 3. 1990" />
+            <Field name="principalAddress" label="Sídlo právnickej osoby" values={values} errors={errors} wide max={300} />
+            <Field name="principalIco" label="IČO právnickej osoby" values={values} errors={errors} max={20} />
+          </div>
+        </div>
+      </Part>
+      {children}
       <section class="info decl__part decl__end" aria-label={d.send}>
         <label class="tickbox tickbox--top">
           <input type="checkbox" name="truthful" value="1" aria-invalid={errors.truthful ? 'true' : undefined} />
@@ -321,9 +353,10 @@ export interface DeclarationPageProps {
   now: number
   flash?: string | null
   error?: string | null
+  signature?: Child
 }
 
-export const DeclarationPage: FC<DeclarationPageProps> = ({ state, stored, owner, editing, values, errors, now, flash, error }) => (
+export const DeclarationPage: FC<DeclarationPageProps> = ({ state, stored, owner, editing, values, errors, now, flash, error, signature }) => (
   <>
     <header class="phead phead--row">
       <div>
@@ -340,7 +373,7 @@ export const DeclarationPage: FC<DeclarationPageProps> = ({ state, stored, owner
       </section>
     ) : (
       <div class="pgrid">
-        <div class="pgrid__main">{editing || !stored ? <Form values={values} errors={errors} editing={Boolean(stored)} /> : <Summary stored={stored} now={now} />}</div>
+        <div class="pgrid__main">{editing || !stored ? <DeclarationForm values={values} errors={errors} editing={Boolean(stored)} multipart>{signature}</DeclarationForm> : <Summary stored={stored} now={now} />}</div>
         <aside class="pgrid__side">
           <section class={`info poastate poastate--${state}`} aria-live="polite">
             <p class="poastate__text">{d.stateLead[state]}</p>

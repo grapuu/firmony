@@ -291,7 +291,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete aj po skončení zmluvy.',
+        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
       },
       {
         q: 'Ako spolu budeme komunikovať?',

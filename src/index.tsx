@@ -1,3 +1,10 @@
+import { prepareBankEvidence } from './aml/enhanced'
+import { accessOpenSql } from './aml/retention'
+import { AmlIntakePage } from './views/aml-admission'
+import { checkDeclaration, valuesFrom, valuesOfDeclaration, type DeclarationValues } from './app/aml'
+import { app as appCopy } from './app/copy'
+import { admissionForOrder, dossierOfOrder, prepareDossier, signatureFile } from './aml/store'
+import { declarationPdf } from './aml/pdf'
 import { GUIDES } from './content/guides'
 import { article, breadcrumbs, faqPage, jsonLd, organization, plain, service, SITE_UPDATED, website } from './seo'
 import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
@@ -123,7 +130,7 @@ app.use('*', async (c, next) => {
     if (declared === undefined) return c.text('Length required', 411)
     const length = Number(declared)
     if (!Number.isInteger(length) || length < 0) return c.text('Bad request', 400)
-    const allowed = UPLOADS.test(url.pathname) ? APP.uploadBytes : /^\/ucto\//.test(url.pathname) ? LIMITS.teamFormBytes : /^\/app\//.test(url.pathname) ? LIMITS.appFormBytes : LIMITS.formBytes
+    const allowed = (/^\/objednavka\/[^/]+\/banka$/.test(url.pathname) || /^\/ucto\/aml\/spisy\/[^/]+\/banka$/.test(url.pathname)) ? 52 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/(?:overenie|vyhlasenie\.pdf)$/.test(url.pathname) || /^\/app\/vyhlasenie(?:\/pdf)?$/.test(url.pathname) || /^\/ucto\/aml\/objednavky\/[^/]+\/uchovanie$/.test(url.pathname)) ? 26 * 1024 * 1024 : UPLOADS.test(url.pathname) ? APP.uploadBytes : /^\/ucto\//.test(url.pathname) ? LIMITS.teamFormBytes : /^\/app\//.test(url.pathname) ? LIMITS.appFormBytes : LIMITS.formBytes
     if (length > allowed) return c.text('Too large', 413)
   }
   await next()
@@ -472,7 +479,12 @@ const bratislavaToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Euro
 const orderMissing = (c: Ctx) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: '/objednavka', noindex: true }, <NotFound />, 404)
 
 async function orderClosed(c: Ctx, order: Order) {
-  if (order.status === 'accepted') return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} contract={order.companyId ? await resolveContract(c.env.DB, order.companyId, order.termsVersion) : null} />)
+  if (order.status === 'accepted') {
+    // The old bearer link obeys the same ninety-day access limit as the signed-in client.
+    const accessible = order.companyId && await c.env.DB.prepare(`SELECT 1 FROM companies c WHERE c.id = ? AND ${accessOpenSql('c')}`).bind(order.companyId).first()
+    if (!accessible) return orderMissing(c)
+    return page(c, orderMeta(copy.order.doneTitle), <OrderDone order={order} contract={await resolveContract(c.env.DB, order.companyId!, order.termsVersion)} />)
+  }
   if (order.status === 'expired')
     return page(c, orderMeta(copy.order.expiredTitle), <OrderGone kind="expired" again={`/zacat?ico=${encodeURIComponent(order.ico)}&balik=${encodeURIComponent(order.plan)}`} />, 410)
   if (await isClient(c.env.DB, order.ico)) return page(c, orderMeta(copy.order.clientTitle), <OrderGone kind="client" />, 409)
@@ -486,6 +498,11 @@ app.get('/objednavka/:token', async (c) => {
   if (!order) return orderMissing(c)
   const closed = await orderClosed(c, order)
   if (closed) return closed
+  const intake = await dossierOfOrder(c.env.DB, order.id)
+  if (!await admissionForOrder(c.env.DB, order) || c.req.query('upravit') === '1') {
+    const values: DeclarationValues = intake ? valuesOfDeclaration(intake.declaration) : { name: order.directors?.length === 1 ? order.directors[0]?.name ?? '' : '', businessCountries: 'SK',businessAtSeat:'',ownBehalf:'' }
+    return page(c, orderMeta('Overenie pred začatím spolupráce'), <AmlIntakePage order={order} token={token} view={intake} values={values} editing={c.req.query('upravit') === '1'} />)
+  }
   const months = startMonths(bratislavaToday())
   const directors = order.directors ?? []
   const gate = await contractGate(c.env.DB, c.env, order)
@@ -498,6 +515,52 @@ app.get('/objednavka/:token', async (c) => {
   }
   return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} gate={gate} stale={await staleReview(c.env.DB, order)} />)
 })
+
+// Identification is completed before the contract. A signature upload remains pending professional validation.
+async function intakeSubmission(c: Ctx, pdfOnly: boolean) {
+  const db = c.env.DB
+  await ensureSchema(db)
+  const token = c.req.param('token') ?? ''
+  const order = await orderByToken(db, token)
+  if (!order) return orderMissing(c)
+  const closed = await orderClosed(c, order)
+  if (closed) return closed
+  if (!await withinLimit(db, pdfOnly ? 'aml-pdf' : 'aml-intake', order.id, pdfOnly ? 12 : 6, 3600)) return c.text('Skúste to, prosím, neskôr.', 429)
+  const body = await c.req.parseBody()
+  const values = valuesFrom(body)
+  if (pdfOnly) values.truthful = '1' // A draft to sign is not a declaration submitted to us.
+  const checked = checkDeclaration(values, bratislavaToday(), appCopy.declaration.errors)
+  const show = (error?: string, status: 409 | 422 = 422) => page(c, orderMeta('Overenie pred začatím spolupráce'), <AmlIntakePage order={order} token={token} view={null} values={values} errors={checked.errors} error={error} editing />, status)
+  if (!checked.declaration) return show('Doplňte, prosím, označené údaje.')
+  if (pdfOnly) return new Response(await declarationPdf(order, checked.declaration), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="Firmony-vyhlasenie.pdf"', 'Cache-Control': 'private, no-store' } })
+  const file = await signatureFile(body.podpis)
+  if (!file) { checked.errors.podpis = 'Nahrajte pôvodný podpísaný PDF alebo ASiC-E súbor, najviac 25 MB.'; return show() }
+  if (!c.env.FILES) return show('Podklady teraz nevieme bezpečne uložiť. Skúste to, prosím, neskôr.', 409)
+  try {
+    const made = await prepareDossier(db, c.env.FILES, { order }, checked.declaration, file, null)
+    await db.batch([made.statement, db.prepare("INSERT INTO events (at, action, subject) VALUES (?, 'aml.intake.submitted', ?)").bind(now(), made.dossier.id)])
+  } catch {
+    // Preserve an original after an uncertain write. Retention reconciles unlinked files; never delete a possible original here.
+    return show('Údaje alebo stav objednávky sa zmenili. Skontrolujte ich a skúste odoslanie znova.', 409)
+  }
+  return c.redirect(`/objednavka/${token}`, 303)
+}
+app.post('/objednavka/:token/vyhlasenie.pdf', (c) => intakeSubmission(c, true))
+app.post('/objednavka/:token/overenie', (c) => intakeSubmission(c, false))
+app.post('/objednavka/:token/banka',async(c)=>{
+  await ensureSchema(c.env.DB)
+  const order=await orderByToken(c.env.DB,c.req.param('token'))
+  if (!order || order.status !== 'open' || order.expiresAt <= now() || !c.env.FILES) return c.notFound()
+  if (!await withinLimit(c.env.DB,'aml-bank',order.id,8,3600)) return c.text('Skúste to, prosím, neskôr.',429)
+  const view=await dossierOfOrder(c.env.DB,order.id)
+  if(!view) return c.notFound()
+  const body=await c.req.parseBody(),account=await signatureFile(body.ucet),payment=await signatureFile(body.platba)
+  if(!account || !payment) return c.text('Nahrajte oba pôvodné doklady ako PDF alebo ASiC-E, každý najviac 25 MB.',422)
+  const statement=await prepareBankEvidence(c.env.DB,c.env.FILES,view.dossier,account,payment,null,order.tokenHash ?? null)
+  await statement.run()
+  return c.redirect(`/objednavka/${c.req.param('token')}`,303)
+})
+
 
 /** A standard review whose seven days have passed: the director may ask for a new link. */
 async function staleReview(db: D1Database, order: Order): Promise<boolean> {
@@ -571,6 +634,7 @@ app.post('/objednavka/:token', async (c) => {
     values.agree = false
     return form(409, { form: 'Ponuka sa zmenila. Prečítajte si aktuálne podmienky a potvrďte ich znova.' })
   }
+  if (signedBy !== gate.approval.aml?.signerName) return form(409, { form: 'Zmluvu môže uzavrieť iba osoba, ktorej totožnosť sme overili. Pri zmene zastupujúcej osoby potrebujeme nové overenie.' })
   if (plan.id !== gate.approval.review.plan) return form(409, { form: 'Vybraný balík potrebuje nové potvrdenie rozsahu služby. Napíšte nám, prosím.' })
   if (!(await withinLimit(db, 'order', connection(c), ORDER.acceptsPerHour, 3600))) return form(429, { form: copy.order.errors.throttle })
 

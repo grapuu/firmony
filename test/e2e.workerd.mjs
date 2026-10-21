@@ -1,3 +1,5 @@
+import {aml,archiveEnded,purgeCompany,forgetRecords} from '../.wrangler/dist/stores.js'
+import {checkAmlAdmission,ensureAmlOfficer,seedAmlDossier,testDeclaration} from './aml.runtime.mjs'
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
 // email service and the pretend register of test/pretend.mjs. Nothing leaves the machine.
 //
@@ -10,6 +12,7 @@ import { checkContractTransactions } from './contracts.runtime.mjs'
 import { checkSecurity } from './security.runtime.mjs'
 import { checkIncidents } from './incidents.runtime.mjs'
 import { checkRestore } from './restore.runtime.mjs'
+import { checkAmlMigration } from './aml-migration.runtime.mjs'
 import { checkBilling } from './billing.runtime.mjs'
 import { checkBeforeStart } from './start.runtime.mjs'
 import { checkAutomation } from './automation.runtime.mjs'
@@ -328,7 +331,7 @@ page = await res.text()
 check('the legal page names the company and the data authority', res.status === 200 && page.includes('Mestského súdu Košice') && page.includes('Úrad na ochranu osobných údajov'))
 check(
   'the privacy notice names who reads documents and accounts, and how long a contract is kept',
-  page.includes('Anthropic, PBC') && page.includes('Enable Banking Oy') && page.replace(/\u00a0/g, ' ').includes('5 rokov od skončenia zmluvy') && page.includes('href="/podmienky#clanok-8"'),
+  page.includes('Anthropic, PBC') && page.includes('Enable Banking Oy') && page.replace(/\u00a0/g, ' ').includes('päť rokov od skončenia zmluvy') && page.includes('href="/podmienky#clanok-8"'),
 )
 res = await get('/robots.txt')
 {
@@ -382,7 +385,7 @@ res = await get('/mzdova-kalkulacka')
   check('the sitemap and llms.txt name it', (await (await get('/sitemap.xml')).text()).includes('<loc>https://firmony.io/mzdova-kalkulacka</loc>') && (await (await get('/llms.txt')).text()).includes('https://firmony.io/mzdova-kalkulacka'))
 }
 res = await get('/healthz')
-check('health says the schema', (await res.json()).schema === 72)
+check('health says the schema', (await res.json()).schema === 77)
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
 res = await mf.dispatchFetch('http://firmony.io/cennik?x=1', { redirect: 'manual' })
@@ -534,7 +537,7 @@ await settle(500)
   indexNowAnswer = null
   await db.prepare("DELETE FROM site_state WHERE key = 'indexnow-wait'").run()
 }
-check('a request older than a year is deleted', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 0)
+check('a prospect is not erased after only a year', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 1)
 check('newer requests stay', (await count()) >= 4)
 check(
   'a sign-up not renewed for a year is deleted, newer ones stay',
@@ -1248,9 +1251,9 @@ check('an accountant cannot make a client', res.status === 404 && (await db.prep
 res = await admin.post('/ucto/klienti', { ico: '57442452', name: 'Duplicitná', person: 'X Y', email: 'x@y.test', plan: 'start' })
 check('a company that is already ours is not made twice', res.status === 422 && /už.u.nás je/.test(await res.text()))
 const manualClient = {
-  ico: '',
+  ico: '55118888',
   name: 'Nová firma s. r. o.',
-  address: '',
+  address: 'Testovacia 12, Košice',
   person: 'Peter Nový',
   email: 'peter@nova-firma.test',
   plan: 'rast',
@@ -1265,6 +1268,18 @@ check(
   'a client is not made by hand without a contract signed on paper',
   res.status === 422 && (await res.text()).includes('Bez podpísanej zmluvy') && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE name = 'Nová firma s. r. o.'").first())?.n === 0,
 )
+res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
+check('a paper signature alone cannot bypass pre-contract AML verification',res.status === 422 && !(await db.prepare("SELECT id FROM companies WHERE name = 'Nová firma s. r. o.'").first()))
+await db.prepare(`INSERT INTO orders (id,token,created_at,expires_at,request_id,ico,company,address,directors,plan,person,email,legal_form,aml_paper) VALUES ('aml-manual','TEST ONLY token',?,?, 'req-x',?,?,?,?,'rast',?,?,'sro',1)`)
+  .bind(nowS,nowS+86400,manualClient.ico,manualClient.name,manualClient.address,JSON.stringify([{name:manualClient.person,role:'Konateľ'}]),manualClient.person,manualClient.email).run()
+const amlOfficer = await ensureAmlOfficer(db)
+const manualDossier = await seedAmlDossier(db,files,'aml-manual',amlOfficer)
+manualClient.aml = 'aml-manual'
+const manualOriginal = await (await files.get(manualDossier.dossier.file_key)).arrayBuffer()
+await files.put(manualDossier.dossier.file_key,'TEST ONLY altered identity original')
+res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
+check('a paper client cannot be created with a corrupted identity original',res.status === 422 && !(await db.prepare("SELECT id FROM companies WHERE name='Nová firma s. r. o.'").first()))
+await files.put(manualDossier.dossier.file_key,manualOriginal)
 const before3 = (await sent()).length
 res = await admin.post('/ucto/klienti', { ...manualClient, mimo: '1' })
 await settle()
@@ -1505,13 +1520,11 @@ check('a search that finds nothing says so', /nič nenašli/.test(await res.text
 res = await peter.get('/app')
 page = await res.text()
 check(
-  'a new company is shown its first steps: who stands behind it, the power of attorney, then the bank',
+  'a verified new company starts with its completed declaration and the remaining first steps',
   page.includes('Začíname') &&
-    page.indexOf('href="/app/vyhlasenie"') > 0 &&
-    page.indexOf('href="/app/vyhlasenie"') < page.indexOf('href="/app/plna-moc"') &&
+    page.includes('Hotovo') && !page.includes('href="/app/vyhlasenie"') &&
     page.indexOf('href="/app/plna-moc"') < page.indexOf('href="/app/banka#prepojit"') &&
-    page.includes('href="/app/firma#doklady-emailom"') &&
-    page.includes('0 / 4'),
+    page.includes('href="/app/firma#doklady-emailom"'),
 )
 check('a company that is founded is not offered the notice to a former accountant', !page.includes('href="/app/prechod"'))
 res = await anna.get('/app')
@@ -1600,6 +1613,7 @@ check(
     page.includes('value="slovenská"'),
 )
 const decl = {
+  businessAtSeat:'1',businessCountries:'SK',ownBehalf:'1',residenceCountry:'SK',citizenships:'SK',partnerCountries:'SK',o1ResidenceCountry:'SK',o1Citizenships:'SK',
   name: 'Anna Malá',
   rc: '905312/0010',
   dob: '',
@@ -1635,7 +1649,7 @@ check(
 res = await anna.post('/app/vyhlasenie', { ...decl, rc: '905312/0011' })
 check('a birth number that cannot be one is said at its field', res.status === 422 && (await res.text()).includes('Toto rodné číslo nie je platné'))
 const beforeDecl = (await sent()).length
-res = await anna.post('/app/vyhlasenie', decl)
+res = await anna.upload('/app/vyhlasenie', {name:'TEST_ONLY-signed.pdf',type:'application/pdf',bytes:signedPdf}, decl, 'podpis')
 check('the owner gives it', res.status === 303 && res.headers.get('location') === '/app/vyhlasenie?ok=vyhlasenie', res.status)
 await settle()
 const declRow = await db.prepare("SELECT id, data, created_by, checked_at FROM declarations WHERE company_id = 'co-a'").first()
@@ -1678,7 +1692,7 @@ await peter.post('/app/firma/prepnut', { firma: made?.id ?? '' })
 await db.prepare("DELETE FROM members WHERE company_id = 'co-a' AND user_id = ?").bind(peterUserId).run()
 
 // A change is a new version; the old one is kept, and only the newest can be checked
-res = await anna.post('/app/vyhlasenie', { ...decl, address: 'Hlavná 6, 040 01 Košice' })
+res = await anna.upload('/app/vyhlasenie', {name:'TEST_ONLY-signed-v2.pdf',type:'application/pdf',bytes:signedPdf}, { ...decl, address: 'Hlavná 6, 040 01 Košice' }, 'podpis')
 const versions = (await db.prepare("SELECT id, data FROM declarations WHERE company_id = 'co-a' ORDER BY created_at, rowid").all()).results
 const newest = versions.at(-1)
 check('a change is kept as a new version beside the old one', res.status === 303 && versions.length === 2 && JSON.parse(newest?.data ?? '{}').director?.address === 'Hlavná 6, 040 01 Košice')
@@ -1688,6 +1702,7 @@ res = await acc.get('/ucto')
 check("the accountant's list says the client's data wait for her", (await res.text()).includes('Údaje na overenie'))
 res = await acc.get('/ucto/klienti/co-a/aml')
 page = (await res.text()).replace(/ /g, ' ')
+if(process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/aml-review.html`,page)
 check(
   'she reads the declaration in full',
   res.status === 200 &&
@@ -1695,7 +1710,7 @@ check(
     page.includes('Ján Spoločník, 40 %') &&
     page.includes('Predaj kvetov') &&
     page.includes('EA123456') &&
-    page.includes('Totožnosť a údaje overené'),
+    page.includes('Doklady a vykonané kontroly'),
 )
 check('with the risk it points to', page.includes('navrhujeme: štandardné'))
 res = await anna.get('/ucto/klienti/co-a/aml')
@@ -1712,33 +1727,22 @@ check(
   )?.checked_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 0,
 )
 res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: newest?.id ?? '' })
-check(
-  'she marks it checked, on record',
-  res.status === 303 &&
-    (
-      await db
-        .prepare('SELECT checked_by FROM declarations WHERE id = ?')
-        .bind(newest?.id ?? '')
-        .first()
-    )?.checked_by === lucia?.id &&
-    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 1,
-)
-res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: newest?.id ?? '' })
-check('twice is once', (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 1)
-res = await anna.get('/app/vyhlasenie')
-check('the client sees it checked', (await res.text()).includes('Overené'))
-res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'kriticke' })
-check('a level that is none is not kept', (await db.prepare("SELECT COUNT(*) AS n FROM risks WHERE company_id = 'co-a'").first())?.n === 0)
-res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'standard', poznamka: 'Hotovosť nad 10 000 €.' })
-const riskRow = await db.prepare("SELECT level, note, created_by FROM risks WHERE company_id = 'co-a'").first()
-check(
-  'the risk is set, with why, on record',
-  res.status === 303 &&
-    riskRow?.level === 'standard' &&
-    riskRow.created_by === lucia?.id &&
-    riskRow.note === 'Hotovosť nad 10 000 €.' &&
-    (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'risk.set'").first())?.n === 1,
-)
+check('the legacy checked button cannot bypass signature, KUV or sanctions evidence',res.status === 409 && (await db.prepare('SELECT checked_at FROM declarations WHERE id = ?').bind(newest.id).first()).checked_at === null)
+let companyAml = await aml.dossierOfCompany(db,'co-a')
+const companyCheckFields = (kind) => ({druh:kind,vysledok:'clear',zdroj:`TEST ONLY current independent ${kind} source`,podpisujuci:'Anna Malá',kvalifikovany:'1',hash:companyAml.dossier.facts_hash})
+for (const kind of ['identity','kuv','pep','eu-sanctions','un-sanctions','countries']) {
+  res=await acc.post(`/ucto/aml/spisy/${companyAml.dossier.id}/kontrola`,companyCheckFields(kind))
+  check(`the assigned accountant records the ${kind} check through the protected route`,res.status===303)
+}
+res=await acc.post(`/ucto/aml/spisy/${companyAml.dossier.id}/rozhodnutie`,{rozhodnutie:'approved',riziko:'standard',dovod:'TEST ONLY independent complete review',hash:companyAml.dossier.facts_hash})
+check('an assigned accountant cannot substitute for the designated person',res.status===404)
+res=await admin.post(`/ucto/aml/spisy/${companyAml.dossier.id}/rozhodnutie`,{rozhodnutie:'approved',riziko:'standard',dovod:'TEST ONLY independent complete review',hash:companyAml.dossier.facts_hash})
+check('the designated person confirms all current evidence in one decision',res.status===303 && (await db.prepare('SELECT checked_by FROM declarations WHERE id = ?').bind(newest.id).first()).checked_by===amlOfficer.id)
+res=await anna.get('/app/vyhlasenie')
+check('the client sees the completed verification',(await res.text()).includes('Overené'))
+res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'low', poznamka:'TEST ONLY unsupported downgrade' })
+const riskRow=await db.prepare("SELECT level,created_by FROM risks WHERE company_id='co-a' ORDER BY created_at DESC,rowid DESC LIMIT 1").first()
+check('the old risk endpoint cannot overwrite the designated decision',res.status===409 && riskRow.level==='standard' && riskRow.created_by===amlOfficer.id)
 res = await acc.post('/ucto/klienti/co-a/aml/oznamenie', { text: '  ' })
 check('an empty report is not taken', res.status === 422)
 const beforeRep = (await sent()).length
@@ -1755,6 +1759,9 @@ check(
 res = await anna.get('/app/spravy')
 check('the client is never told of a report', !(await res.text()).includes('9 900'))
 res = await admin.post('/ucto/klienti/co-a/aml/oznamenie', { text: 'Poznámka správcu k tomu istému.' })
+check('an unresolved AML finding independently blocks destructive cleanup',await (await import('../.wrangler/dist/stores.js')).evidenceBlocked(db,'co-a'))
+res=await security.admin2.get('/ucto/klienti/co-a/aml')
+check('another administrator sees neither the report nor its decision controls',!(await res.text()).includes('Tri vklady hotovosti'))
 res = await acc.get('/ucto/klienti/co-a/aml')
 page = await res.text()
 check("an accountant reads her own reports, not the others'", page.includes('Tri vklady hotovosti') && !page.includes('Poznámka správcu'))
@@ -1797,6 +1804,8 @@ check(
 )
 
 // The notice: given in the app by the owner, taken back while the contract runs
+const otherPendingReports = (await db.prepare("SELECT id FROM reports WHERE company_id='co-a' AND decided_at IS NULL").all()).results
+for (const pending of otherPendingReports) await admin.post(`/ucto/klienti/co-a/aml/oznamenie/${pending.id}`, { rozhodnutie: 'not', poznamka: 'TEST ONLY complete independent source review resolved this finding.' })
 const [ny, nm] = day(0).slice(0, 7).split('-').map(Number)
 const endsOn = new Date(Date.UTC(ny, nm + 1, 0)).toISOString().slice(0, 10)
 res = await anna.get('/app/firma')
@@ -4326,7 +4335,8 @@ check(
 // director the register names (Zelený dvor s. r. o.: two directors in office, one whose office ended).
 // ---------------------------------------------------------------------------------------------------------------
 
-await checkContractTransactions(db)
+await checkContractTransactions(db,files)
+await checkAmlAdmission(db,files)
 
 const zeleny = { ico: '55012345', mode: 'company', plan: 'rast', situation: 'switch', name: 'Tomáš Dvorský', email: 'tomas@zelenydvor.test', phone: '', note: '' }
 res = await post('/zacat', zeleny, { ip: '198.51.100.20' })
@@ -4412,12 +4422,17 @@ let orderLink = await latestLink()
 const orderMail = (await linkMails()).pop()
 check(
   "the email carries the link to the contract, the register's name and the reviewed plan",
-  Boolean(orderLink) && orderMail.subject === 'Firmony: zmluva pre Zelený dvor s. r. o.' && orderMail.text.includes('Firma: Zelený dvor s. r. o.') && orderMail.text.includes('Balík: Rast') && orderMail.text.includes('Odkaz platí 7 dní'),
+  Boolean(orderLink) && orderMail.subject === 'Firmony: podklady pred začatím spolupráce' && orderMail.text.includes('Zelený dvor s. r. o.') && orderMail.text.includes('Odkaz platí 7 dní'),
   orderMail?.text,
 )
 check('the request counts as answered', (await db.prepare('SELECT status FROM requests WHERE id = ?').bind(orderRow.request_id).first())?.status === 'contacted')
 res = await admin.get(reviewPath)
 check('the review says when the link went out and offers a new one', (await res.text()).includes('Poslať nový odkaz'))
+res = await get(orderLink)
+page=await res.text()
+check('before AML admission the public link collects evidence and cannot conclude a contract',page.includes('Overenie pred začatím spolupráce') && !page.includes('name="agree"'))
+if(process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/aml-intake.html`,page)
+await seedAmlDossier(db,files,orderRow.id,await ensureAmlOfficer(db),{...testDeclaration(),director:{...testDeclaration().director,name:'Tomáš Dvorský'}})
 res = await get(orderLink)
 page = await res.text()
 check(
@@ -4562,7 +4577,7 @@ check('the new client lands in the app, welcomed', res.status === 200 && page.in
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/welcome.html`, page)
 check(
   'with who stands behind it first, the power of attorney, and the notice for the former accountant, which the request said',
-  page.includes('Začíname') && page.indexOf('href="/app/vyhlasenie"') > 0 && page.indexOf('href="/app/vyhlasenie"') < page.indexOf('href="/app/plna-moc"') && page.includes('href="/app/prechod"'),
+  page.includes('Začíname') && page.includes('Hotovo') && !page.includes('href="/app/vyhlasenie"') && page.includes('href="/app/plna-moc"') && page.includes('href="/app/prechod"'),
 )
 res = await get('/app/zmluva', { headers: { cookie: contractCookie } })
 page = (await res.text()).replace(/\u00a0/g, ' ')
@@ -4573,7 +4588,7 @@ check(
 
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-accepted.html`, page)
 const exactContract = await resolveContract(db, madeCompany.id, '2099-01-01')
-check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-18')
+check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-21')
 check('the acceptance digest covers the exact stored UTF-8 bytes', exactContract.sha256 === createHash('sha256').update(exactContract.data).digest('hex'))
 check('approval and exact tariff evidence are retained with the contract', exactContract.snapshot.catalogue.payrollCents === 1500 && exactContract.snapshot.catalogue.closingCents === 24900 && exactContract.snapshot.approval.accountantId === lucia.id)
 let immutableContract = false
@@ -4623,6 +4638,10 @@ check(
     (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 1 &&
     (await db.prepare("SELECT plan FROM orders WHERE ico = '55012345'").first())?.plan === 'rast',
 )
+await db.prepare('UPDATE companies SET ends_on=? WHERE id=?').bind(day(-91),madeCompany.id).run()
+res = await get(orderLink)
+check('the original accepted public link also stops exposing the contract after ninety days',res.status === 404 && !(await res.text()).includes('data-contract'))
+await db.prepare('UPDATE companies SET ends_on=NULL WHERE id=?').bind(madeCompany.id).run()
 res = await post('/zacat', { ...zeleny, email: 'iny@zelenydvor.test' }, { ip: '198.51.100.22' })
 check('a company that is already a client gets no second contract by email', res.status === 303 && res.headers.get('location') === '/zacat/hotovo?zmena=1')
 res = await get('/objednavka/' + 'x'.repeat(43))
@@ -4763,7 +4782,7 @@ res = await anna.get('/app/platby')
 check('nor a statement', !(await res.text()).includes('action="/app/banka"'))
 res = await anna.get('/app')
 page = (await res.text()).replace(/ /g, ' ')
-check('the line says when the data go and why, and leads to the download', page.includes('si stiahnite a potvrďte ich prevzatie') && page.includes('keď prevzatie potvrdíte, inak rok po skončení zmluvy') && page.includes('href="/app/firma#stiahnut"'))
+check('the line separates download access and five-year legal retention', page.includes('si stiahnite do') && page.includes('päť rokov od skončenia zmluvy') && page.includes('href="/app/firma#stiahnut"'))
 
 // Everything of the company, a year at a time
 /** The files of a ZIP as an unzipper reads them, each checked against its local header and its sum. */
@@ -4945,10 +4964,11 @@ await checkSocialReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, 
 await checkPayrollMigration({ db, nowS, day })
 await checkHealthMigration({ db, nowS, day })
 await checkSocialMigration({ db, nowS, day })
+await checkAmlMigration()
 await checkRestore({ db, files, annaCookie, site, today: day(0), nowS })
 
 // Ninety days past the last day the company's data are deleted; the identification stays five years
-await setEnd(day(-91))
+await setEnd(day(-80))
 const poaKept = await db.prepare("SELECT r2_key FROM company_files WHERE company_id = 'co-a' AND kind = 'poa'").all()
 // A recapitulative statement marked as filed while the contract ran, and a closing.
 await db.prepare("INSERT INTO filings (company_id, kind, period, filed_on, filed_at, filed_by) VALUES ('co-a', 'sv', '2026-01', ?, ?, NULL)").bind(day(-120), nowS).run()
@@ -5044,48 +5064,42 @@ for (const y of handoverYears) {
   await anna.post('/app/export/potvrdit', { export: m.receipt, potvrdit: '1' })
 }
 await tick(Date.now()); await settle(500)
-const stagedPurge = await db.prepare("SELECT purge_started_at, purge_delete_started_at, purged_at FROM companies WHERE id = 'co-a'").first()
-check('the schedule observes the full intervention window before deleting acknowledged data', stagedPurge.purge_started_at !== null && stagedPurge.purge_delete_started_at === null && stagedPurge.purged_at === null)
-// A frozen company's consent that runs out must not stop every other client's bank: the schedule's one statement
-// for all consents leaves it alone, and another company's consent still expires in the same run.
-const revisionOf = async (id) => (await db.prepare('SELECT revision FROM company_data_revisions WHERE company_id = ?').bind(id).first())?.revision ?? 0
-const frozenRevision = await revisionOf('co-a')
-await db.prepare("UPDATE companies SET purge_started_at = NULL WHERE id = 'co-a'").run()
-await db.batch([
-  db.prepare("INSERT INTO bank_links (id, company_id, created_at, bank, country, state, status, valid_until, kind) VALUES ('frozen-link', 'co-a', ?, 'Fio banka', 'SK', 'frozen-state', 'active', ?, 'fio')").bind(nowS, nowS - 60),
-  db.prepare("INSERT INTO bank_links (id, company_id, created_at, bank, country, state, status, valid_until, kind) VALUES ('other-link', 'co-b', ?, 'Fio banka', 'SK', 'other-state', 'active', ?, 'fio')").bind(nowS, nowS - 60),
-  db.prepare("INSERT INTO messages (id, company_id, created_at, author, side, body) VALUES ('frozen-message', 'co-a', ?, NULL, 'firmony', 'Archív máte stiahnutý.')").bind(nowS),
-  db.prepare("UPDATE company_data_revisions SET revision = ? WHERE company_id = 'co-a'").bind(frozenRevision),
-  db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-a'").bind(stagedPurge.purge_started_at),
-])
-await tick(Date.now()); await settle(300)
-check(
-  "a frozen company's ended consent does not keep another company's from expiring",
-  (await db.prepare("SELECT status FROM bank_links WHERE id = 'other-link'").first())?.status === 'expired' &&
-    (await db.prepare("SELECT status FROM bank_links WHERE id = 'frozen-link'").first())?.status === 'active',
-)
-check('a bank consent is no accounting data: it leaves the confirmed archive standing', (await revisionOf('co-a')) === frozenRevision && (await db.prepare("SELECT purge_started_at FROM companies WHERE id = 'co-a'").first())?.purge_started_at !== null)
-res = await anna.get('/app/spravy')
-check(
-  'a client reads the messages while the handover is finalized, and reading changes no confirmed archive',
-  res.status === 200 && (await db.prepare("SELECT seen_at FROM messages WHERE id = 'frozen-message'").first())?.seen_at !== null && (await revisionOf('co-a')) === frozenRevision,
-)
-// A freeze whose reason is gone is lifted before anything is deleted, and set again once the archive is confirmed.
-await db.prepare("UPDATE company_data_revisions SET revision = revision + 1 WHERE company_id = 'co-a'").run()
-await tick(Date.now()); await settle(300)
-check('a change of the data during the day of grace lifts the freeze instead of leaving the company stuck', (await db.prepare("SELECT purge_started_at, purged_at FROM companies WHERE id = 'co-a'").first())?.purge_started_at === null)
-await db.prepare("UPDATE company_data_revisions SET revision = revision - 1 WHERE company_id = 'co-a'").run()
-await tick(Date.now()); await settle(300)
-check('the confirmed archive freezes it again', (await db.prepare("SELECT purge_started_at FROM companies WHERE id = 'co-a'").first())?.purge_started_at !== null)
-await db.prepare("UPDATE companies SET purge_started_at = NULL WHERE id = 'co-a'").run()
-await db.prepare("DELETE FROM bank_links WHERE id IN ('frozen-link', 'other-link')").run()
-await db.prepare("UPDATE companies SET purge_started_at = ? WHERE id = 'co-a'").bind(nowS - 86401).run()
-await tick(Date.now()); await settle(500)
-const purgedRow = await db.prepare("SELECT purged_at, closed_at, name FROM companies WHERE id = 'co-a'").first()
-check("the schedule deletes the company's data after its ninety days", typeof purgedRow?.purged_at === 'number' && typeof purgedRow.closed_at === 'number' && purgedRow.name === 'Firma A s. r. o.')
-let frozenWrite = false
-try { await db.prepare("INSERT INTO payroll_runs (company_id, period, lines) VALUES ('co-a', '2026-02', '[]')").run() } catch { frozenWrite = true }
-check('a completed purge cannot receive fresh accounting writes after its handover was finalized', frozenWrite)
+check('even a fully acknowledged export cannot shorten five-year retention',(await db.prepare("SELECT purge_started_at,purged_at FROM companies WHERE id='co-a'").first()).purge_started_at === null)
+await setEnd(day(-91))
+const recordsBeforeArchive=await db.prepare("SELECT (SELECT COUNT(*) FROM documents WHERE company_id='co-a') AS docs,(SELECT COUNT(*) FROM messages WHERE company_id='co-a') AS messages,(SELECT COUNT(*) FROM payments WHERE company_id='co-a') AS payments").first()
+res=await anna.get(`/app/export?rok=${handoverYears[0]}`)
+check('client export access ends by the calendar even before the archive scheduler runs',res.status!==200)
+res=await acc.get('/ucto/klienti/co-a/aml')
+check('the assigned accountant loses archived AML access before the scheduler runs',res.status===404)
+await archiveEnded({DB:db,FILES:files},day(0))
+const recordsAfterArchive=await db.prepare("SELECT (SELECT COUNT(*) FROM documents WHERE company_id='co-a') AS docs,(SELECT COUNT(*) FROM messages WHERE company_id='co-a') AS messages,(SELECT COUNT(*) FROM payments WHERE company_id='co-a') AS payments").first()
+check('archiving after ninety days preserves every document, message and payment',JSON.stringify(recordsBeforeArchive)===JSON.stringify(recordsAfterArchive) && (await files.list({prefix:'companies/co-a/'})).objects.length>0)
+const amlArchiveAdmin=as((await signIn('ahoj@firmony.io')).cookie)
+res=await amlArchiveAdmin.get('/ucto/archiv/co-a')
+page=await res.text()
+check('only the designated person gets a read-only archive with complete yearly exports',res.status===200 && page.includes('data-aml-archive') && page.includes('/ucto/archiv/co-a/uctovnictvo.zip') && !(/<section[^>]*data-aml-archive[\s\S]*?<\/section>/.exec(page)?.[0] ?? '').includes('method="post"'))
+if(process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/aml-archive.html`,page)
+res=await amlArchiveAdmin.get('/ucto/archiv/co-a/aml.json')
+const archivedAml=await res.json()
+check('the archive preserves all declaration versions, sources, decisions, reports and events',res.status===200 && archivedAml.declarations.length===2 && archivedAml.dossiers.length===2 && archivedAml.history.some((h)=>h.checks.length>=6 && h.decisions.length>0) && archivedAml.reports.length>=2 && archivedAml.events.length>0)
+res=await security.admin2.get('/ucto/archiv/co-a/aml.json')
+check('an unrelated administrator cannot fetch another officer’s legal archive',res.status===404)
+res=await acc.get('/ucto/archiv/co-a/aml.json')
+check('the ordinary accountant cannot fetch the archive JSON directly',res.status===404)
+res=await amlArchiveAdmin.post(`/ucto/aml/spisy/${companyAml.dossier.id}/kontrola`,companyCheckFields('pep'))
+check('even the designated person cannot rewrite archived verification',res.status===404)
+const retainedUntil=new Date(`${day(-91)}T12:00:00Z`);retainedUntil.setUTCFullYear(retainedUntil.getUTCFullYear()+5);retainedUntil.setUTCDate(retainedUntil.getUTCDate()+1)
+const afterFiveYears=retainedUntil.toISOString().slice(0,10)
+const beforeFiveYears=await purgeCompany({DB:db,FILES:files},'co-a',day(0))
+check('an archived company still cannot be erased before the legal period',beforeFiveYears.rows===0 && beforeFiveYears.files===0)
+const stagedPurge=await purgeCompany({DB:db,FILES:files},'co-a',afterFiveYears)
+check('the destructive phase still waits for the intervention window after legal expiry',stagedPurge.rows===0 && (await db.prepare("SELECT purge_delete_started_at FROM companies WHERE id='co-a'").first()).purge_delete_started_at===null)
+await db.prepare("UPDATE companies SET purge_started_at=? WHERE id='co-a'").bind(nowS-86401).run()
+const lawfulPurge=await purgeCompany({DB:db,FILES:files},'co-a',afterFiveYears)
+check('after five calendar years the controlled financial purge completes',lawfulPurge.rows>0)
+let frozenWrite=false
+try{await db.prepare("INSERT INTO payroll_runs(company_id,period,lines) VALUES('co-a','2026-02','[]')").run()}catch{frozenWrite=true}
+check('a completed purge cannot receive fresh accounting writes',frozenWrite)
 const leftover = await db
   .prepare(
     `SELECT (SELECT COUNT(*) FROM documents WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM payments WHERE company_id = 'co-a') + (SELECT COUNT(*) FROM messages WHERE company_id = 'co-a')
@@ -5109,7 +5123,7 @@ check('documents, payments, messages, invoices, accounts, people, the handover, 
 const objects = await files.list({ prefix: 'companies/co-a/' })
 check(
   'and so are their files, all but the power of attorney',
-  objects.objects.every((o) => poaKept.results.some((p) => p.r2_key === o.key)) && poaKept.results.every((p) => objects.objects.some((o) => o.key === p.r2_key)),
+  objects.objects.every((o) => o.key.startsWith('companies/co-a/aml/') || poaKept.results.some((p) => p.r2_key === o.key)) && poaKept.results.every((p) => objects.objects.some((o) => o.key === p.r2_key)),
   objects.objects.map((o) => o.key).join(' '),
 )
 check(
@@ -5130,19 +5144,14 @@ res = await sendMail(
 check('its address for documents no longer exists', res.status === 400)
 res = await admin.get('/ucto')
 page = await res.text()
-check('the administrator finds it among the clients that ended, with what the law keeps', page.includes('Skončení klienti') && page.includes('href="/ucto/klienti/co-a/aml"'))
+check('the administrator finds it among the clients that ended, with what the law keeps', page.includes('Skončení klienti') && page.includes('href="/ucto/archiv/co-a"'))
 res = await admin.get('/ucto/klienti/co-a/aml')
 check('and opens its identification', res.status === 200 && (await res.text()).replace(/\u00a0/g, ' ').includes('Identifikácia a riziko'))
 res = await acc.get('/ucto/klienti/co-a/aml')
 check('an accountant does not', res.status === 404)
 res = await admin.get('/ucto/klienti/co-a')
 check('nor does anybody open its page of work', res.status === 404)
-await db
-  .prepare("UPDATE companies SET ends_on = ? WHERE id = 'co-a'")
-  .bind(shiftDay(day(0), -5 * 366))
-  .run()
-await tick(Date.now())
-await settle(500)
+await forgetRecords({DB:db,FILES:files},afterFiveYears)
 check(
   'five years past the end the rest goes too',
   (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE id = 'co-a'").first())?.n === 0 &&

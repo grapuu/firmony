@@ -1,11 +1,10 @@
 // The team's page of a client under the law against money laundering (aml.ts): the declaration in full with the
 // check of it, the risk the client is put in, and the internal reports of unusual operations with the designated
-// person's decision. Only the team reaches it (/ucto); an accountant sees her own reports, the administrator, who is
-// the designated person, all of them. Nothing here is ever shown to the client (s. 18 of the Act).
-import type { FC } from 'hono/jsx'
+// person's decision. Only the team reaches it (/ucto); an accountant sees her own reports, only the explicitly designated person sees all reports. Other administrators see only their own. Nothing here is ever shown to the client (s. 18 of the Act).
+import type { FC, Child } from 'hono/jsx'
 import { APP } from '../config'
 import { app, dayName, whenName } from '../app/copy'
-import { LEVELS, type Level, type Report, type Risk, type StoredDeclaration } from '../app/aml'
+import { declarationStateOf, type Level, type Report, type Risk, type StoredDeclaration } from '../app/aml'
 import type { Company, User } from '../app/store'
 import { team as t } from '../team/copy'
 import { Flash, Heading } from './inside'
@@ -20,7 +19,7 @@ const LEVEL_PILL: Record<Level, string> = { low: 'pill--ok', standard: 'pill--bl
 const born = (rc: string, day: string) => (rc ? rc : day ? dayName(day) : a.no)
 
 const Declaration: FC<{ company: Company; stored: StoredDeclaration | null; today: string }> = ({ company, stored, today }) => {
-  const state = !stored ? 'missing' : stored.checkedAt === null ? 'waiting' : 'checked'
+  const state = declarationStateOf(stored)
   return (
     <section class="info" id="udaje" aria-labelledby="udaje-t">
       <header class="info__row">
@@ -110,12 +109,7 @@ const Declaration: FC<{ company: Company; stored: StoredDeclaration | null; toda
           ) : (
             <>
               <p class="info__lead">{a.how}</p>
-              <form method="post" action={`/ucto/klienti/${company.id}/aml/overit`}>
-                <input type="hidden" name="vyhlasenie" value={stored.id} />
-                <button class="btn btn--blue btn--small" type="submit">
-                  {a.check}
-                </button>
-              </form>
+              <p class="info__lead">Dokončenie overenia sa potvrdzuje pri záznamoch jednotlivých kontrol.</p>
             </>
           )}
         </>
@@ -124,61 +118,13 @@ const Declaration: FC<{ company: Company; stored: StoredDeclaration | null; toda
   )
 }
 
-const RiskCard: FC<{ company: Company; risks: Risk[]; suggested: Level | null; today: string }> = ({ company, risks, suggested, today }) => {
-  const current = risks[0]?.level ?? suggested ?? 'standard'
-  return (
-    <section class="info" id="riziko" aria-labelledby="riziko-t">
-      <header class="info__row">
-        <h2 id="riziko-t" class="info__title">
-          {a.risk}
-        </h2>
-        {risks[0] ? <span class={`pill ${LEVEL_PILL[risks[0].level]}`}>{a.levels[risks[0].level]}</span> : null}
-      </header>
-      <p class="info__lead">{a.riskLead}</p>
-      {suggested ? <p class="info__lead aml__suggest">{a.suggested(a.levels[suggested])}</p> : null}
-      <form class="stack" method="post" action={`/ucto/klienti/${company.id}/aml/riziko`} novalidate>
-        <fieldset class="yesno">
-          <legend class="sr">{a.risk}</legend>
-          <div class="yesno__options">
-            {LEVELS.map((level) => (
-              <label class="yesno__option">
-                <input type="radio" name="uroven" value={level} checked={current === level} />
-                <span>{a.levels[level]}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <label class="field__label" for="riziko-poznamka">
-          {a.riskNote}
-        </label>
-        <textarea id="riziko-poznamka" class="field__input field__area" name="poznamka" rows={2} maxlength={1000} />
-        <button class="btn btn--line stack__submit" type="submit">
-          {a.riskSave}
-        </button>
-      </form>
-      {risks.length === 0 ? (
-        <p class="info__empty">{a.riskNone}</p>
-      ) : (
-        <ul class="risks">
-          {risks.map((risk) => (
-            <li class="risks__row">
-              <span class="risks__who">{a.riskBy(a.levels[risk.level], risk.createdByName, whenName(risk.createdAt, today))}</span>
-              {risk.note ? <span class="risks__note">{risk.note}</span> : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
-}
-
-const Reports: FC<{ company: Company; reports: Report[]; admin: boolean; today: string; draft?: string }> = ({ company, reports, admin, today, draft }) => (
+const Reports: FC<{ company: Company; reports: Report[]; admin: boolean; readOnly?: boolean; today: string; draft?: string }> = ({ company, reports, admin, today, draft, readOnly }) => (
   <section class="info" id="oznamenia" aria-labelledby="oznamenia-t">
     <h2 id="oznamenia-t" class="info__title">
       {a.reports}
     </h2>
     <p class="info__lead">{a.reportsLead}</p>
-    <form class="stack" method="post" action={`/ucto/klienti/${company.id}/aml/oznamenie`} novalidate>
+    {!readOnly ? <form class="stack" method="post" action={`/ucto/klienti/${company.id}/aml/oznamenie`} novalidate>
       <label class="field__label" for="oznamenie">
         {a.reportBody}
       </label>
@@ -188,7 +134,7 @@ const Reports: FC<{ company: Company; reports: Report[]; admin: boolean; today: 
       <button class="btn btn--line stack__submit" type="submit">
         {a.reportSend}
       </button>
-    </form>
+    </form> : null}
     {reports.length === 0 ? (
       <p class="info__empty">{a.reportEmpty}</p>
     ) : (
@@ -231,6 +177,9 @@ const Reports: FC<{ company: Company; reports: Report[]; admin: boolean; today: 
 
 export interface AmlPageProps {
   user: User
+  officer?: boolean
+  readOnly?: boolean
+  verification?: Child
   company: Company
   stored: StoredDeclaration | null
   risks: Risk[]
@@ -246,7 +195,7 @@ export const AmlPage: FC<AmlPageProps> = (p) => {
   const today = dayOf(p.now)
   return (
     <>
-      <a class="back" href={`/ucto/klienti/${p.company.id}`}>
+      <a class="back" href={p.readOnly ? `/ucto/archiv/${p.company.id}` : `/ucto/klienti/${p.company.id}`}>
         {p.company.name}
       </a>
       <header class="phead">
@@ -258,10 +207,11 @@ export const AmlPage: FC<AmlPageProps> = (p) => {
       <div class="pgrid pgrid--wide">
         <div class="pgrid__main">
           <Declaration company={p.company} stored={p.stored} today={today} />
-          <Reports company={p.company} reports={p.reports} admin={p.user.team === 'admin'} today={today} draft={p.draft} />
+          {p.verification}
+          <Reports readOnly={p.readOnly} company={p.company} reports={p.reports} admin={p.officer === true} today={today} draft={p.draft} />
         </div>
         <aside class="pgrid__side">
-          <RiskCard company={p.company} risks={p.risks} suggested={p.suggested} today={today} />
+          <section class="info"><h2 class="info__title">Riziková skupina</h2>{p.suggested ? <p>{a.suggested(a.levels[p.suggested])}</p> : null}<p>{p.risks[0] ? a.levels[p.risks[0].level] : 'Čaká na potvrdenie určenej osoby.'}</p></section>
         </aside>
       </div>
     </>

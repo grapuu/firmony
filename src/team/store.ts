@@ -1,3 +1,6 @@
+import { accessOpenSql, archiveDueSql, AML_TODAY_SQL } from '../aml/retention'
+import { CURRENT_OFFICER_SQL } from '../aml/schema'
+import { quoteSql } from '../aml/model'
 // The accountants' side in the database. An accountant sees the companies she is assigned to; an administrator
 // sees all of them. Every function that reads a company's things is given the user and checks it.
 import { MAIL } from '../config'
@@ -5,7 +8,7 @@ import { now } from '../db'
 import { type Category, type PaidBy } from '../app/booking'
 import { CASH_PAID_COLUMN, PAID_ON_COLUMN, COMPANY_COLUMNS, DOC_FROM, MISSING, companyOf, docOf, type Company, type Doc, type Team, type User } from '../app/store'
 import { POA_STATE_SQL, type PoaState } from '../app/papers'
-import { DECLARATION_STATE_SQL, OPEN_REPORTS_SQL, type DeclarationState } from '../app/aml'
+import { DECLARATION_STATE_SQL, openReportsSql, type DeclarationState } from '../app/aml'
 
 type Row = Record<string, unknown>
 
@@ -21,7 +24,7 @@ export function canSee(user: User, company: Pick<Company, 'accountantId'>): bool
 /** The SQL that limits companies (alias c) to what a user of the team may see. */
 export function visible(user: User, demo: boolean): { sql: string; binds: unknown[] } {
   const own = isAdmin(user) ? '' : 'AND c.accountant_id = ?'
-  return { sql: `c.closed_at IS NULL ${own} ${demo ? '' : 'AND c.demo = 0'}`, binds: isAdmin(user) ? [] : [user.id] }
+  return { sql: `${accessOpenSql('c')} ${own} ${demo ? '' : 'AND c.demo = 0'}`, binds: isAdmin(user) ? [] : [user.id] }
 }
 
 /** Only an explicit personal reply closes the response clock. Filing notices, reminders and read receipts do
@@ -85,7 +88,7 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
          pending.created_at AS waiting,
          ${POA_STATE_SQL} AS poa,
          ${DECLARATION_STATE_SQL} AS declaration,
-         ${OPEN_REPORTS_SQL} AS open_reports,
+         ${openReportsSql(user.id)} AS open_reports,
          ${handedOverSql('c')} AS handover
        FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id
        JOIN visible_companies vc ON vc.id = c.id
@@ -109,9 +112,9 @@ export async function teamClients(db: D1Database, user: User, demo: boolean): Pr
 }
 
 /** Companies whose data were deleted after their contract, for the administrator: what the law keeps of them. */
-export async function endedCompanies(db: D1Database): Promise<{ id: string; name: string; ico: string | null; endsOn: string; purgedAt: number }[]> {
+export async function endedCompanies(db: D1Database, user: User): Promise<{ id: string; name: string; ico: string | null; endsOn: string; purgedAt: number }[]> {
   const rows = await db
-    .prepare('SELECT id, name, ico, ends_on, purged_at FROM companies WHERE purged_at IS NOT NULL AND demo = 0 ORDER BY ends_on DESC LIMIT 200')
+    .prepare(`SELECT c.id, c.name, c.ico, c.ends_on, COALESCE(c.aml_archived_at,c.purged_at,unixepoch(date(c.ends_on,'+91 days')||'T00:00:00Z')) AS purged_at FROM companies c WHERE ${archiveDueSql('c', AML_TODAY_SQL)} AND c.demo = 0 AND ${quoteSql(user.id)} = ${CURRENT_OFFICER_SQL} ORDER BY c.ends_on DESC LIMIT 200`)
     .all<{ id: string; name: string; ico: string | null; ends_on: string; purged_at: number }>()
   return rows.results.map((r) => ({ id: r.id, name: r.name, ico: r.ico, endsOn: r.ends_on, purgedAt: r.purged_at }))
 }
@@ -140,8 +143,8 @@ export async function failedMail(db: D1Database): Promise<{ n: number; error: st
  */
 export async function teamCompany(db: D1Database, user: User, id: string, ended = false): Promise<Company | null> {
   const row = await db
-    .prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.id = ? AND (c.closed_at IS NULL OR (? = 1 AND c.purged_at IS NOT NULL))`)
-    .bind(id, ended && isAdmin(user) ? 1 : 0)
+    .prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.id = ?1 AND (${accessOpenSql('c')} OR (?2 = 1 AND ?3 = ${CURRENT_OFFICER_SQL}))`)
+    .bind(id, ended ? 1 : 0, user.id)
     .first<Row>()
   const company = row ? companyOf(row) : null
   return company && canSee(user, company) ? company : null

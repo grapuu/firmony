@@ -1,3 +1,7 @@
+import { prepareDossier, signatureFile } from '../aml/store'
+import { companyFacts } from '../aml/model'
+import { declarationPdf } from '../aml/pdf'
+import { bootstrapOfficerStatement } from '../aml/store'
 // The client's app under /app. Signing in is open; everything else needs a session, and every read and change
 // is made for the company of that session (store.ts). Forms answer with a redirect to a page that says what
 // happened, so a reload never sends anything twice.
@@ -221,6 +225,7 @@ appRoutes.post('/prihlasenie', async (c) => {
       await db.batch([
         db.prepare("INSERT OR IGNORE INTO users (id, created_at, email, name, team) SELECT ?, ?, ?, ?, 'admin' WHERE NOT EXISTS (SELECT 1 FROM users WHERE team IS NOT NULL)").bind(id, now(), c.env.TEAM_BOOTSTRAP_EMAIL, TEAM.bootstrapName),
         db.prepare("INSERT INTO events (at, user_id, action) SELECT ?, id, 'team.bootstrap' FROM users WHERE id = ? AND team = 'admin'").bind(now(), id),
+        bootstrapOfficerStatement(db, id),
       ])
       user = await userByEmail(db, email)
     }
@@ -2253,6 +2258,7 @@ async function declarationPage(c: Ctx, form: { values: DeclarationValues; errors
     'company',
     t.declaration.title,
     <DeclarationPage
+      signature={<section class="info stack"><h2 class="info__title">Podpísané vyhlásenie</h2><p>Skontrolujte predvyplnené údaje, stiahnite vyhlásenie a podpíšte ho kvalifikovaným elektronickým podpisom.</p><button class="btn btn--line" type="submit" formaction="/app/vyhlasenie/pdf">Stiahnuť vyhlásenie na podpis</button><label class="field__label" for="dek-podpis">Pôvodný podpísaný súbor, najviac 25 MB</label><input id="dek-podpis" class="field__input" name="podpis" type="file" accept=".pdf,.asice" />{form?.errors.podpis ? <p class="field__error">{form.errors.podpis}</p> : null}</section>}
       state={declarationStateOf(stored)}
       stored={owner ? stored : null}
       owner={owner}
@@ -2269,17 +2275,29 @@ async function declarationPage(c: Ctx, form: { values: DeclarationValues; errors
 
 appRoutes.get('/vyhlasenie', (c) => declarationPage(c))
 
+appRoutes.post('/vyhlasenie/pdf', async (c) => {
+  const who = c.get('who')
+  if (who.role !== 'owner') return c.notFound()
+  const values = valuesFrom(await c.req.parseBody())
+  const { declaration, errors } = checkDeclaration({ ...values, truthful: '1' }, today(), t.declaration.errors)
+  if (!declaration) return declarationPage(c, { values, errors }, 422)
+  return c.body(await declarationPdf(who.company, declaration), 200, { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="Firmony-vyhlasenie.pdf"', 'Cache-Control': 'private, no-store' })
+})
 appRoutes.post('/vyhlasenie', async (c) => {
   const who = c.get('who')
   if (who.role !== 'owner') return declarationPage(c, null, 403)
   const db = c.env.DB
-  const values = valuesFrom(await c.req.parseBody())
+  const body = await c.req.parseBody()
+  const values = valuesFrom(body)
   if (!(await withinLimit(db, 'declaration', who.company.id, APP.declarationsPerHour, 3600))) return declarationPage(c, { values, errors: {}, error: t.declaration.errors.throttle }, 429)
   const { declaration, errors } = checkDeclaration(values, today(), t.declaration.errors)
   if (!declaration) return declarationPage(c, { values, errors }, 422)
   const company = who.company
+  const file = await signatureFile(body.podpis)
+  if (!file || !c.env.FILES) return declarationPage(c, { values, errors: { podpis: 'Nahrajte pôvodný podpísaný PDF alebo ASiC-E súbor, najviac 25 MB.' } }, 422)
   const made = declarationStatements(db, company.id, who.user.id, declaration)
-  await db.batch([...made.statements, ringStatement(db, 'declaration', made.id, company.accountantEmail ?? BRAND.email, bell.teamDeclaration(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml`))])
+  const dossier = await prepareDossier(db,c.env.FILES,{company:company.id,declarationId:made.id,facts:companyFacts(company)},declaration,file,who.user.id)
+  await db.batch([...made.statements, dossier.statement, ringStatement(db, 'declaration', made.id, company.accountantEmail ?? BRAND.email, bell.teamDeclaration(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml`))])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect('/app/vyhlasenie?ok=vyhlasenie', 303)
 })

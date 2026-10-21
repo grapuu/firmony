@@ -357,7 +357,7 @@ export async function checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, toda
     .prepare(
       "INSERT INTO companies (id, created_at, name, plan, inbox, accountant_id, start_on, ends_on) VALUES ('co-lock-purge', ?, 'Odovzdaná s. r. o.', 'start', 'lockspurge', ?, ?, ?)",
     )
-    .bind(nowS, lucia.id, `${y}-01-01`, new Date(Date.parse(`${today}T12:00:00Z`) - 120 * 86_400_000).toISOString().slice(0, 10))
+    .bind(nowS, lucia.id, `${y}-01-01`, '2020-01-01')
     .run()
   await changeLockStatement(db, 'co-lock-purge', end, 'Skontrolované pred odovzdaním', lucia.id, 0, await dataRevision(db, 'co-lock-purge')).run()
   for (const year of await exportYears(db, 'co-lock-purge')) {

@@ -30,7 +30,7 @@ export async function checkIncidents({ db, files, admin, anna, acc, lucia, secur
       .prepare(
         `INSERT INTO companies (id, created_at, name, plan, inbox, accountant_id, ends_on ${extras ? ', purged_at' : ''}) VALUES (?1, ?2, ?3, 'start', ?1, ?4, ?5 ${extras ? ', ?2' : ''})`,
       )
-      .bind(id, nowS, `Test ${id} s. r. o.`, lucia.id, day(-120))
+      .bind(id, nowS, `Test ${id} s. r. o.`, lucia.id, day(-1900))
       .run()
     if (!extras) {
       await db
@@ -301,7 +301,7 @@ export async function checkIncidents({ db, files, admin, anna, acc, lucia, secur
   await closeIncident(db, second, paperCase, ref)
   const concurrentRetirement = await Promise.all([acc.post(`/ucto/klienti/co-retired-paper/odovzdanie/${activeId}/odstranit`, {}), acc.post(`/ucto/klienti/co-retired-paper/odovzdanie/${activeId}/odstranit`, {})])
   check('concurrent attachment retirement records exactly one successful mutation', concurrentRetirement.filter((r) => r.status === 303).length === 1 && concurrentRetirement.every((r) => [303,404,409].includes(r.status)) && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE subject = ? AND action = 'handover.removed'").bind(activeId).first()).n === 1)
-  await db.prepare("UPDATE companies SET ends_on = ? WHERE id = 'co-retired-paper'").bind(day(-120)).run()
+  await db.prepare("UPDATE companies SET ends_on = ? WHERE id = 'co-retired-paper'").bind(day(-1900)).run()
   await confirm('co-retired-paper')
   await purgeCompany({ DB: db, FILES: files }, 'co-retired-paper', today)
   await db
@@ -352,14 +352,15 @@ export async function checkIncidents({ db, files, admin, anna, acc, lucia, secur
 
   // The client never confirmed its archives: kept while it may still take them, gone a year past the last day.
   await make('co-unconfirmed')
+  await db.prepare("UPDATE companies SET ends_on = ? WHERE id = 'co-unconfirmed'").bind(day(-370)).run()
   await purgeCompany({ DB: db, FILES: files }, 'co-unconfirmed', today)
-  check('an archive not confirmed keeps the data within the year after the end', (await db.prepare("SELECT purge_started_at FROM companies WHERE id = 'co-unconfirmed'").first()).purge_started_at === null)
-  await db.prepare('UPDATE companies SET ends_on = ? WHERE id = ?').bind(day(-370), 'co-unconfirmed').run()
+  check('an unconfirmed archive stays intact one year after the end', (await db.prepare("SELECT purge_started_at FROM companies WHERE id = 'co-unconfirmed'").first()).purge_started_at === null)
+  await db.prepare('UPDATE companies SET ends_on = ? WHERE id = ?').bind(day(-1900), 'co-unconfirmed').run()
   await purgeCompany({ DB: db, FILES: files }, 'co-unconfirmed', today)
   await db.prepare('UPDATE companies SET purge_started_at = ? WHERE id = ?').bind(nowS - 86401, 'co-unconfirmed').run()
   await purgeCompany({ DB: db, FILES: files }, 'co-unconfirmed', today)
   check(
-    'a year past the last day the data go all the same, the original file too',
+    'after five years an unconfirmed archive follows the same controlled erasure as confirmed data',
     Boolean((await db.prepare("SELECT purged_at FROM companies WHERE id = 'co-unconfirmed'").first()).purged_at) &&
       !(await db.prepare("SELECT id FROM documents WHERE company_id = 'co-unconfirmed'").first()) &&
       !(await files.head('companies/co-unconfirmed/documents/original.pdf')),

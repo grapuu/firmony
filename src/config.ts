@@ -291,9 +291,9 @@ export const APP = {
 /**
  * The end of a contract (point 10.4 of the terms): the last month's documents and payments are taken for ten days
  * past the last day (the day the monthly reminder asks them by), the books are handed over in the app within 30, and
- * everything can be downloaded for 90. Then the company's data are deleted, all but the contract, the power of
- * attorney and the identification, which the law against money laundering keeps for five years after the end
- * (s. 19 of Act No. 297/2008 Z. z.); after those five years they go too.
+ * everything can be downloaded for 90 days. All business records remain in a read-only archive for five years
+ * after the end (§ 19(2), Act 297/2008), accessible only to the designated person. Holds can extend retention.
+ * https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (read 21 October 2026).
  */
 export const ENDING = {
   intakeDays: 10,
@@ -430,7 +430,7 @@ export const READER = {
 export const EKASA_VERIFY = 'https://opd.financnasprava.sk/'
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
-export const PRIVACY_VERSION = '2026-10-14'
+export const PRIVACY_VERSION = '2026-10-21'
 
 /**
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an
@@ -439,7 +439,7 @@ export const PRIVACY_VERSION = '2026-10-14'
  * (src/content/terms.ts): acceptance keeps the complete wording and tariffs with SHA-256. Signing also requires
  * explicit legal/insurance release approval and a documented review of the particular order.
  */
-export const TERMS_VERSION = '2026-10-18'
+export const TERMS_VERSION = '2026-10-21'
 
 /** The terms version of a client created by hand with a contract signed on paper, outside the app. */
 export const OFFLINE_TERMS = 'offline'

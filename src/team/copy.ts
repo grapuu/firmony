@@ -278,7 +278,7 @@ export const team = typesetAll({
     endedByUs: (when: string, day: string) =>
       typeset(`Zmluvu sme ukončili ${when}. Posledný deň je ${day}: dokončite práce za zaplatené obdobia a do 30 dní odovzdajte účtovníctvo nižšie (bod 10.4 podmienok).`),
     afterEnd: (intake: string, handover: string, purge: string) =>
-      typeset(`Doklady za posledný mesiac berie aplikácia do ${intake}. Účtovníctvo odovzdajte do ${handover}. Údaje vymažeme najskôr ${purge}, keď klient potvrdí prevzatie archívov, bez potvrdenia rok po skončení; otvorený prípad alebo uchovanie výmaz odloží. Zmluva, plná moc a identifikácia zostávajú podľa retenčných lehôt.`),
+      typeset(`Doklady za posledný mesiac berie aplikácia do ${intake}. Účtovníctvo odovzdajte do ${handover}. Všetky údaje uchovávame päť rokov od skončenia zmluvy. Klientsky prístup trvá 90 dní, potom archív číta iba určená osoba. Otvorený prípad, zákonné uchovanie alebo nevybavené podanie výmaz odloží.`),
     handoverDue: (day: string) => typeset(`Odovzdať do ${day}`),
     handoverLate: 'Odovzdanie mešká',
     purged: (day: string, until: string) => typeset(`Údaje firmy sme vymazali ${day}. Zmluvu, plnú moc a identifikáciu uchovávame najmenej do ${until}; otvorený prípad môže vyžadovať dlhšie uchovanie.`),
@@ -338,8 +338,8 @@ export const team = typesetAll({
   },
   ended: {
     title: 'Skončení klienti',
-    lead: 'Údaje firmy sú vymazané. Zmluvu, plnú moc a identifikáciu uchovávame päť rokov od skončenia zmluvy, ako ukladá zákon č. 297/2008 Z. z.',
-    purged: (day: string) => typeset(`vymazané ${day}`),
+    lead: 'Po 90 dňoch od skončenia zmluvy skončil klientsky prístup. Úplný archív uchovávame päť rokov od skončenia zmluvy. Je dostupný iba určenej osobe na čítanie.',
+    purged: (day: string) => typeset(`archivované ${day}`),
     until: (day: string) => typeset(`záznamy do ${day}`),
   },
   aml: {

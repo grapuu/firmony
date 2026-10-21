@@ -102,6 +102,8 @@ export function verifiedRecently(who: Who, at: number, seconds = SECURITY.teamSe
 }
 /** Authentication freshness, separate from the route's company/role authorization. */
 export function sensitivePath(path: string, method: string): boolean {
+  if (/^\/ucto\/(?:aml|archiv)(?:\/|$)/.test(path)) return true
+  if (/^\/ucto\/klienti\/[^/]+\/aml(?:\/|$)/.test(path) && method !== 'GET' && method !== 'HEAD') return true
   if (/^\/ucto\/klienti\/[^/]+\/mzdove-podania\/[^/]+\/pripravit$/.test(path)) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/mzdove-podania(?:\/|$)/.test(path) && (method !== 'GET' && method !== 'HEAD' || /\/(?:dokument|potvrdenka\/[^/]+)$/.test(path))) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/podania\/[^/]+\/(?:stav|dokument\.xml|potvrdenka\/[^/]+)$/.test(path)) return true

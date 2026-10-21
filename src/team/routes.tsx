@@ -1,3 +1,8 @@
+import { recordAutoReview } from '../aml/auto-review'
+import { orderAdmissionSql, quoteSql } from '../aml/model'
+import { AmlDossierPanel } from '../views/aml-admission'
+import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
+import { registerAmlRoutes } from '../aml/routes'
 // The accountants' side under /ucto. Only somebody of the team gets in: a client who types the address gets the
 // same "not found" as for anything that does not exist. Every company, document and payment is checked against
 // what the user may see (an accountant her own clients, an administrator everybody).
@@ -196,7 +201,7 @@ import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
-import { latestOrderOfRequest, renewOrderStatement, type Order } from '../order'
+import { latestOrderOfRequest, renewOrderStatement, orderOf, acceptedAs, type Order } from '../order'
 import { orderLinkMail } from '../order-mail'
 import { ContractReleasePage, ContractReviewPage, type ReleaseForm } from '../views/contract-review'
 import { BillingPage } from '../views/billing'
@@ -587,7 +592,7 @@ teamRoutes.get('/', async (c) => {
   const who = c.get('who')
   const [rows, ended, { dues }, mail] = await Promise.all([
     teamClients(c.env.DB, who.user, demoOn(c)),
-    isAdmin(who.user) ? endedCompanies(c.env.DB) : Promise.resolve([]),
+    isAdmin(who.user) ? endedCompanies(c.env.DB, who.user) : Promise.resolve([]),
     teamDeadlines(c.env.DB, who.user, demoOn(c), dayOf(now())),
     isAdmin(who.user) ? failedMail(c.env.DB) : Promise.resolve(null),
   ])
@@ -823,6 +828,11 @@ teamRoutes.get('/klienti/novy', async (c) => {
     start: startMonths(dayOf(now()))[0] ?? '',
     offline: false,
   }
+  const amlId = c.req.query('aml') ?? ''
+  const amlRow = ID.test(amlId) ? await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(amlId).first<Record<string,unknown>>() : null
+  const amlOrder = amlRow ? orderOf(amlRow) : values.request ? await latestOrderOfRequest(c.env.DB,values.request) : null
+  const admission = amlOrder ? await admissionForOrder(c.env.DB,amlOrder) : null
+  if (amlOrder && admission) Object.assign(values,{amlOrder:amlOrder.id,ico:amlOrder.ico,name:amlOrder.company,address:amlOrder.address ?? '',person:admission.signerName,email:amlOrder.email,legalForm:amlOrder.legalForm ?? 'sro'})
   return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={await accountantsList(c.env.DB)} errors={{}} months={startMonths(dayOf(now()))} />)
 })
 
@@ -834,6 +844,7 @@ teamRoutes.post('/klienti', async (c) => {
   const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).trim().slice(0, max) : '')
   const accountants = await accountantsList(db)
   const values: NewClientValues = {
+    amlOrder: text('aml',64),
     ico: text('ico', 20),
     name: text('name', 160),
     address: text('address', 200),
@@ -871,8 +882,20 @@ teamRoutes.post('/klienti', async (c) => {
   // A client is made by hand only with a contract signed on paper: the app then says so, and the first month counts
   // for deadlines and the closing as it does for a contract concluded online.
   if (!values.offline) errors.offline = t.newClient.errors.offline
+  const amlRow = ID.test(values.amlOrder ?? '') ? await db.prepare('SELECT * FROM orders WHERE id = ?').bind(values.amlOrder).first<Record<string,unknown>>() : null
+  const amlOrder = amlRow ? orderOf(amlRow) : null
+  const admission = amlOrder ? await admissionForOrder(db,amlOrder) : null
+  if (!amlOrder || amlOrder.status !== 'open' || !admission) errors.form = 'Pred založením klienta potrebujeme úplné overenie a potvrdenie určenej osoby.'
+  else if (ico !== amlOrder.ico || values.name !== amlOrder.company || values.address !== (amlOrder.address ?? '') || values.person !== admission.signerName || values.email.toLowerCase() !== amlOrder.email.toLowerCase()) errors.form = 'Údaje sa od overenia zmenili. Najprv potrebujeme overiť novú verziu.'
+  if (amlOrder && admission) {
+    const dossier = await dossierOfOrder(db,amlOrder.id)
+    if (!oneMayConclude(amlOrder.legalForm,amlOrder.directors,amlOrder.acting)) errors.form = 'Pred založením klienta treba samostatne identifikovať všetky osoby, ktoré podľa registra konajú spoločne.'
+    if (!dossier || !await sourceIntact(c.env.FILES,dossier.dossier) || admission.level === 'high' && !await bankOriginalsIntact(db,c.env.FILES,dossier.dossier,dossier.decision?.bank_id ?? '')) errors.form = 'Pôvodné podklady overenia nie sú úplné. Najprv potrebujeme obnoviť a skontrolovať originály.'
+  }
+
   if (Object.keys(errors).length > 0) return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={accountants} errors={errors} found={found} months={months} />, 422)
 
+  if (!amlOrder || !admission) return missingPage(c)
   const companyId = crypto.randomUUID()
   const existing = await userByEmail(db, values.email)
   const userId = existing?.id ?? crypto.randomUUID()
@@ -882,26 +905,35 @@ teamRoutes.post('/klienti', async (c) => {
   const registerLine = registered && 'found' in registered && registered.found ? registered.found.registerLine : null
   let inbox = inboxCode()
   for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
+  const mine = `EXISTS (SELECT 1 FROM orders WHERE id = ${quoteSql(amlOrder.id)} AND company_id = ${quoteSql(companyId)} AND accepted_at = ${ts})`
   const statements: D1PreparedStatement[] = [
+    db.prepare(`UPDATE orders SET status = 'accepted',company_id = ?1,accepted_at = ?2,signed_by = ?3,terms_version = '${OFFLINE_TERMS}',start_on = ?4
+      WHERE id = ?5 AND status = 'open' AND expires_at > ?2 AND ${orderAdmissionSql('orders',quoteSql(admission.dossierId),String(admission.decisionId))}
+      AND EXISTS (SELECT 1 FROM users WHERE id = ?6 AND team = 'admin')`).bind(companyId,ts,admission.signerName,values.start,amlOrder.id,who.user.id),
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, request_id, contract_at, terms_version, signed_by, start_on, legal_form, signed_role, register_line)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?, ?, ?, ?)`,
+        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, request_id, contract_at, terms_version, signed_by, start_on, legal_form, signed_role, register_line, aml_dossier_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?, ?, ?, ?, ? WHERE ${mine}`,
       )
-      .bind(companyId, ts, values.name, ico, values.address || null, values.vat ? 1 : 0, values.plan, inbox, values.accountant || null, values.request || null, ts, values.person, values.start, values.legalForm || null, values.role || null, registerLine),
-    ...(existing ? [] : [db.prepare('INSERT INTO users (id, created_at, email, name) VALUES (?, ?, ?, ?)').bind(userId, ts, values.email, values.person)]),
-    db.prepare("INSERT OR IGNORE INTO members (company_id, user_id, role, created_at, invited_by) VALUES (?, ?, 'owner', ?, ?)").bind(companyId, userId, ts, who.user.id),
+      .bind(companyId, ts, values.name, ico, values.address || null, values.vat ? 1 : 0, values.plan, inbox, values.accountant || null, values.request || null, ts, values.person, values.start, values.legalForm || null, values.role || null, registerLine, admission.dossierId),
+    ...(existing ? [] : [db.prepare(`INSERT INTO users (id,created_at,email,name) SELECT ?,?,?,? WHERE ${mine}`).bind(userId,ts,values.email,values.person)]),
+    db.prepare(`INSERT OR IGNORE INTO members (company_id,user_id,role,created_at,invited_by) SELECT ?,?,'owner',?,? WHERE ${mine}`).bind(companyId, userId, ts, who.user.id),
     eventStatement(db, { company: companyId, user: who.user.id, action: 'company.created', detail: { request: values.request || null } }),
+    db.prepare(`INSERT INTO declarations (id,company_id,created_at,created_by,data,checked_at,checked_by)
+      SELECT d.declaration_id,?1,d.created_at,?2,d.declaration,a.decided_at,a.decided_by FROM aml_dossiers d JOIN aml_decisions a ON a.dossier_id = d.id
+      WHERE d.id = ?3 AND a.id = ?4 AND ${mine}`).bind(companyId,userId,admission.dossierId,admission.decisionId),
+    db.prepare(`INSERT INTO risks (id,company_id,created_at,created_by,level,note) SELECT ?1,?2,a.decided_at,a.decided_by,a.level,a.note FROM aml_decisions a WHERE a.id = ?3 AND ${mine}`).bind(crypto.randomUUID(),companyId,admission.decisionId),
     // The price list of the day the paper contract was signed: what the client is billed by (billing-store.ts).
     paperTariffStatement(db, companyId, who.user.id),
   ]
-  if (values.request) statements.push(db.prepare("UPDATE requests SET status = 'client' WHERE id = ?").bind(values.request))
+  if (values.request) statements.push(db.prepare(`UPDATE requests SET status = 'client' WHERE id = ? AND ${mine}`).bind(values.request))
+  try { await db.batch(statements) } catch { return shell(c,'clients',t.newClient.title,<NewClientPage values={values} accountants={accountants} errors={{form:'Stav overenia sa zmenil. Skontrolujte ho a skúste založenie znova.'}} months={months} />,409) }
+  if (!await acceptedAs(db,amlOrder.id,companyId)) return missingPage(c)
   if (values.welcome) {
-    const { token, statement } = await newLink(db, userId, TEAM.welcomeDays * 24 * 60)
-    statements.push(statement, ringStatement(db, 'welcome', companyId, values.email, bell.welcome(`${siteOrigin(c)}/app/vstup?t=${token}`)))
+    const welcome = await newLink(db,userId,TEAM.welcomeDays*24*60)
+    await db.batch([welcome.statement,ringStatement(db,'welcome',companyId,values.email,bell.welcome(`${siteOrigin(c)}/app/vstup?t=${welcome.token}`))])
+    later(c,flushOutbox(db,c.env.EMAIL))
   }
-  await db.batch(statements)
-  if (values.welcome) later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${companyId}?ok=${values.welcome ? 'zalozeny-mail' : 'zalozeny'}`, 303)
 })
 
@@ -956,6 +988,14 @@ teamRoutes.post('/klienti/:id/pripomenut', async (c) => {
 })
 
 /** Booking by itself for a client, on or off (app/autobook.ts); turned on, what is ready is booked at once. */
+teamRoutes.post('/klienti/:id/samo/:doc/posudit',async(c)=>{
+  const company=await companyParam(c)
+  if(!company) return missingPage(c)
+  const body=await c.req.parseBody()
+  if(body.posudene!=='1') return c.text('Potvrďte posúdenie dokladu a jeho súladu s profilom klienta.',422)
+  const ok=await recordAutoReview(c.env.DB,company.id,c.req.param('doc'),c.get('who').user.id,String(body.hash ?? ''),String(body.poznamka ?? ''))
+  return ok?c.redirect(`/ucto/klienti/${company.id}#samo`,303):c.text('Doklad sa zmenil, posúdenie už existuje alebo chýba konkrétna poznámka. Otvorte aktuálny doklad.',409)
+})
 teamRoutes.post('/klienti/:id/samo', async (c) => {
   const who = c.get('who')
   const company = await companyParam(c)
@@ -1254,12 +1294,12 @@ teamRoutes.post('/klienti/:id/odovzdanie/:file/odstranit', async (c) => {
 async function amlPage(c: Ctx, company: Company, extra: { error?: string; draft?: string } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const db = c.env.DB
-  const [stored, risks, reports] = await Promise.all([latestDeclaration(db, company.id), risksOf(db, company.id), reportsOf(db, company.id, { id: who.user.id, admin: isAdmin(who.user) })])
+  const [stored, risks, reports, dossier, designated] = await Promise.all([latestDeclaration(db, company.id), risksOf(db, company.id), reportsOf(db, company.id, { id: who.user.id, admin: false }), dossierOfCompany(db, company.id), isOfficer(db, who.user)])
   return shell(
     c,
     'clients',
     t.aml.title,
-    <AmlPage user={who.user} company={company} stored={stored} risks={risks} suggested={stored ? suggestedLevel(stored.data) : null} reports={reports} now={now()} flash={flashOf(c)} {...extra} />,
+    <AmlPage user={who.user} officer={designated} readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} verification={<AmlDossierPanel readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} view={dossier} officer={designated} returnTo={`/ucto/klienti/${company.id}/aml`} download={dossier ? `/ucto/aml/spisy/${dossier.dossier.id}/subor` : ''} />} company={company} stored={stored} risks={risks} suggested={stored ? suggestedLevel(stored.data) : null} reports={reports} now={now()} flash={flashOf(c)} {...extra} />,
     status,
   )
 }
@@ -1270,29 +1310,12 @@ teamRoutes.get('/klienti/:id/aml', async (c) => {
 })
 
 teamRoutes.post('/klienti/:id/aml/overit', async (c) => {
-  const who = c.get('who')
-  const company = await companyParam(c, true)
-  if (!company) return missingPage(c)
-  const body = await c.req.parseBody()
-  const id = typeof body.vyhlasenie === 'string' && ID.test(body.vyhlasenie) ? body.vyhlasenie : ''
-  const db = c.env.DB
-  // Only the newest declaration, and only once: an older one opened in another tab is never checked in its place.
-  const [checked] = await db.batch([checkDeclarationStatement(db, company.id, id, who.user.id)])
-  if ((checked?.meta?.changes ?? 0) > 0) await db.batch([eventStatement(db, { company: company.id, user: who.user.id, action: 'declaration.checked', subject: id })])
-  return c.redirect(`/ucto/klienti/${company.id}/aml?ok=overene#udaje`, 303)
+  const company = await companyParam(c)
+  return company ? amlPage(c, company, { error: 'Overenie potvrďte po zaznamenaní všetkých kontrol v časti Doklady a vykonané kontroly.' }, 409) : missingPage(c)
 })
-
 teamRoutes.post('/klienti/:id/aml/riziko', async (c) => {
-  const who = c.get('who')
-  const company = await companyParam(c, true)
-  if (!company) return missingPage(c)
-  const body = await c.req.parseBody()
-  const level = typeof body.uroven === 'string' && (LEVELS as readonly string[]).includes(body.uroven) ? (body.uroven as Level) : null
-  if (!level) return c.redirect(`/ucto/klienti/${company.id}/aml#riziko`, 303)
-  const note = typeof body.poznamka === 'string' ? body.poznamka.replace(/\r\n?/g, '\n').trim().slice(0, 1000) : ''
-  const db = c.env.DB
-  await db.batch(riskStatements(db, company.id, who.user.id, level, note || null))
-  return c.redirect(`/ucto/klienti/${company.id}/aml?ok=riziko#riziko`, 303)
+  const company = await companyParam(c)
+  return company ? amlPage(c, company, { error: 'Rizikovú skupinu potvrdzuje určená osoba spolu s úplným overením aktuálnych údajov.' }, 409) : missingPage(c)
 })
 
 teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
@@ -1306,10 +1329,10 @@ teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
   const db = c.env.DB
   const made = reportStatements(db, company.id, who.user.id, text)
   // Every administrator is the designated person's door: a doorbell that names neither the client nor the report.
-  const admins = await db.prepare("SELECT email FROM users WHERE team = 'admin'").all<{ email: string }>()
+  const designated = await officer(db)
   await db.batch([
     ...made.statements,
-    ...admins.results.map((admin) => ringStatement(db, 'report', made.id, admin.email, bell.teamReport(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml#oznamenia`))),
+    ...(designated ? [ringStatement(db, 'report', made.id, designated.email, bell.teamReport(`${siteOrigin(c)}/ucto/klienti/${company.id}/aml#oznamenia`))] : []),
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   return c.redirect(`/ucto/klienti/${company.id}/aml?ok=oznamenie#oznamenia`, 303)
@@ -1318,7 +1341,7 @@ teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
 teamRoutes.post('/klienti/:id/aml/oznamenie/:report', async (c) => {
   const who = c.get('who')
   const company = await companyParam(c, true)
-  if (!company || !isAdmin(who.user)) return missingPage(c)
+  if (!company || !await isOfficer(c.env.DB, who.user)) return missingPage(c)
   const report = c.req.param('report')
   const body = await c.req.parseBody()
   const decision = body.rozhodnutie === 'reported' ? 'reported' : body.rozhodnutie === 'not' ? 'not' : null
@@ -5566,7 +5589,7 @@ teamRoutes.post('/ziadosti/:id', async (c) => {
   const status = typeof body.stav === 'string' && ['new', 'contacted', 'declined'].includes(body.stav) ? body.stav : null
   if (status && ID.test(id)) {
     await c.env.DB.batch([
-      c.env.DB.prepare("UPDATE requests SET status = ? WHERE id = ? AND status <> 'client'").bind(status, id),
+      c.env.DB.prepare(`UPDATE requests SET status = ?1, aml_ended_at = CASE WHEN ?1 = 'declined' THEN COALESCE(aml_ended_at,unixepoch()) ELSE NULL END WHERE id = ?2 AND status <> 'client'`).bind(status, id),
       eventStatement(c.env.DB, { company: null, user: who.user.id, action: 'request.status', subject: id, detail: { status } }),
     ])
   }
@@ -5600,11 +5623,11 @@ async function sendOrderLink(c: Ctx, order: Order, requestId: string, user: stri
   const review = await latestOrderReview(db, order.id)
   const ts = now()
   if (!review || review.decision !== 'standard' || review.expires_at <= ts || order.status !== 'open') return false
-  if (!approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash())) return false
+  // This link first collects AML evidence. Contract signing remains independently blocked by contractGate.
   const token = newToken()
   const tokenHash = await sha256Hex(token)
   const days = Math.max(1, Math.floor((review.expires_at - ts) / 86400))
-  const mail = orderLinkMail(order.company, review.plan, `${siteOrigin(c)}/objednavka/${token}`, days)
+  const mail = {subject:'Firmony: podklady pred začatím spolupráce',body:`Dobrý deň,\n\nna tomto odkaze doplníte podklady pre ${order.company}:\n${siteOrigin(c)}/objednavka/${token}\n\nNajprv dokončíme overenie a potvrdíme rozsah služby. Zmluvu môžete uzavrieť až potom. Odkaz platí ${days} dní.\n\nFirmony`}
   // The email is keyed by its link, not by the second: two links sent in one second are two emails, and the one
   // that works is always among them.
   const results = await db.batch([
@@ -5679,7 +5702,7 @@ teamRoutes.post('/ziadosti/:id/odkaz', async (c) => {
   if (!ID.test(id) || !await getRequest(c.env.DB, id)) return missingPage(c)
   const order = await latestOrderOfRequest(c.env.DB, id)
   if (order && !oneMayConclude(order.legalForm ?? 'sro', order.directors, order.acting)) return reviewPage(c, 'Odkaz neposielame: za firmu nekoná jeden človek sám. Zmluvu podpíšu všetci, ktorí za firmu konajú, na papieri.', 409)
-  if (!order || !(await sendOrderLink(c, order, id, who.user.id))) return reviewPage(c, 'Odkaz teraz poslať nemožno: zmluvu musí potvrdiť platné štandardné posúdenie a schválené znenie.', 409)
+  if (!order || !(await sendOrderLink(c, order, id, who.user.id))) return reviewPage(c, 'Odkaz teraz poslať nemožno: potrebujeme platné posúdenie rozsahu služby.', 409)
   return c.redirect(`/ucto/ziadosti/${id}/posudenie?ok=odkaz`, 303)
 })
 
@@ -5732,3 +5755,5 @@ teamRoutes.route('/klienti/:companyId/mzdove-podania', payrollReportRoutes)
 teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/prihlasenie', 303)))
 
 export { canSee }
+
+registerAmlRoutes(teamRoutes, (c, title, child, status = 200) => shell(c, 'requests', title, child, status))
