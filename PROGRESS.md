@@ -1,5 +1,19 @@
 # Firmony: progress of the continuation
 
+## Jednoduchosť ako základ produktu (Codex, 21. október 2026)
+
+Na pokyn majiteľa pripravený [produktový smer a odovzdanie](docs/strategy/12-product-simplicity.md)
+pre Clauda aj Codex. Východisko je živý `main` po PR #18, `e46796114a163077321e639500f3b3fd95a4063d`.
+Matica potrieb klienta a účtovníčky vychádza z existujúcich obrazoviek a oddeľuje overený stav od návrhu.
+Poradie J1 až J5 začína pravdivým spoločným stavom `/app`, pokračuje odovzdaním dokladu a otázkou,
+pracovným Dnes účtovníčky a členením firmy; zmeny navigácie sa najprv porovnajú na reálnych úlohách.
+Každý krok má konkrétne miesta v kóde, akceptačné scenáre a navrhnuté meranie s používateľmi.
+
+Táto zmena obsahuje iba poznámky. Nové rozhranie, ciele pilotu ani zhoda celej aplikácie s WCAG nie sú
+označené za dokončené. Ceny, otvorený slogan, databáza a produkčné správanie sa nemenia. Ďalšia
+implementácia: J1 podľa dokumentu, v samostatnej vetve a so všetkými povinnými kontrolami pred zlúčením.
+Staršie záznamy pod týmto bodom sú história, nie aktuálny zoznam otvorenej práce.
+
 ## Ordinary MVPP preparation with shared identity and verified analytical facts (Codex, 17 October 2026)
 
 Continues PR #8 on `codex/firmony-security-and-evidence`, remote parent
