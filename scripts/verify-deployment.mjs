@@ -53,6 +53,9 @@ export async function verifyDeployment({ origin, revision, schema, guides, fetch
       log(`Nasadenie potvrdené: ${expected}, schéma ${schema}, návody ${guides.length}.`)
       return { revision: expected, schema, guides: guides.length }
     } catch (error) {
+      // A retry may exhaust the remaining budget between reads. Keep the last actual finding instead of
+      // replacing it with a generic deadline/transport message from that unfinished attempt.
+      if (last && Date.now() >= deadline) break
       // Error messages are ours or generic transport names; never log response bodies or arbitrary server text.
       const message = error instanceof ProbeError ? error.message : 'Verejný web zatiaľ neodpovedá.'
       if (message !== last) log(message)

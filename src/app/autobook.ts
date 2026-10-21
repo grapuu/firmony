@@ -11,7 +11,7 @@ import { sha256Hex } from '../db'
 import { AUTOBOOK } from '../config'
 import { now } from '../db'
 import { CATEGORIES, supplierKey, type Category } from './booking'
-import { eventStatement, getCompany, getDocument, getPayment, vatCompanyOf, vatDocOf, type Company, type Doc, type Payment } from './store'
+import { eventStatement, getCompany, getDocumentSnapshot, getPayment, vatCompanyOf, vatDocOf, type Company, type Doc, type Payment } from './store'
 import { bratislavaDay } from '../time'
 import { vatOf, type VatData } from './vat'
 import { docPreview, filedReturns, type FiledReturn } from './vat-store'
@@ -92,42 +92,63 @@ export async function autoBook(db: D1Database, company: string | null = null, li
     )
     .bind(company, AUTOBOOK.limitCents, limit)
     .all<{ id: string; company_id: string }>()
-  const companies = new Map<string, { company: Company; filed: FiledReturn[] } | null>()
+  const companies = new Map<string, { company: Company; filed: FiledReturn[]; revision: number } | null>()
   const today = bratislavaDay(now())
   let booked = 0
   for (const row of rows.results) {
     try {
-      if (!companies.has(row.company_id)) {
+      // Capture before any eligibility reads. Every accounting-source edit advances this existing revision.
+      // A cached company/return check is reusable only at that revision, including between documents of this run.
+      const snapshot = await getDocumentSnapshot(db, row.company_id, row.id)
+      if (!snapshot) continue
+      const { doc, revision } = snapshot
+      if (!doc.paymentId) continue
+      if (!companies.get(row.company_id) || companies.get(row.company_id)?.revision !== revision) {
         const found = await getCompany(db, row.company_id)
-        companies.set(row.company_id, found ? { company: found, filed: found.vatStatus === 'payer' ? await filedReturns(db, found.id) : [] } : null)
+        companies.set(row.company_id, found ? { company: found, filed: found.vatStatus === 'payer' ? await filedReturns(db, found.id) : [], revision } : null)
       }
       const of = companies.get(row.company_id)
       if (!of) continue
-      const doc = await getDocument(db, row.company_id, row.id)
-      if (!doc || !doc.paymentId) continue
       const [rule, payment] = await Promise.all([ruleFor(db, row.company_id, doc), getPayment(db, row.company_id, doc.paymentId)])
       const verdict = autoBookable(doc, of.company, rule, payment, of.filed, today)
       if (!verdict.ok) continue
       const at = now()
       const v = verdict.vat
-      const results = await db.batch([
+      // D1 executes this batch as one transaction; changes() counts the immediately preceding UPDATE, excluding
+      // triggers. The audit must belong to this write, even if another worker booked in the same second.
+      // https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
+      // https://www.sqlite.org/c3ref/changes.html
+      // https://www.sqlite.org/lang_returning.html
+      const results = await db.batch<{ revision: number }>([
         db
           .prepare(
             `UPDATE documents SET booked_at = ?1, booked_by = 'auto',
                vat_mode = ?2, vat_lines = ?3, supplied_on = ?4, party_vat_id = ?5, corrects = NULL, vat_period = NULL
              WHERE id = ?6 AND company_id = ?7 AND booked_at IS NULL AND deleted_at IS NULL AND status = 'read' AND duplicate_of IS NULL
                AND total_cents IS ?8 AND category IS ?9 AND vat_deduct IS ?10
-               AND EXISTS (SELECT 1 FROM links WHERE document_id = ?6 AND payment_id = ?11)`,
+               AND EXISTS (SELECT 1 FROM links WHERE document_id = ?6 AND payment_id = ?11)
+               AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?7), 0) = ?12
+               AND EXISTS (SELECT 1 FROM companies WHERE id = ?7 AND autobook = 1 AND purged_at IS NULL
+                 AND purge_started_at IS NULL AND aml_archived_at IS NULL)`,
           )
-          .bind(at, v ? v.mode : null, v ? JSON.stringify(v.lines) : null, v ? v.suppliedOn : doc.suppliedOn, v ? v.vatId : doc.partyVatId, doc.id, doc.companyId, doc.totalCents, doc.category, doc.vatDeduct ? 1 : 0, doc.paymentId),
+          .bind(at, v ? v.mode : null, v ? JSON.stringify(v.lines) : null, v ? v.suppliedOn : doc.suppliedOn, v ? v.vatId : doc.partyVatId, doc.id, doc.companyId, doc.totalCents, doc.category, doc.vatDeduct ? 1 : 0, doc.paymentId, revision),
         db
           .prepare(
             `INSERT INTO events (at, company_id, user_id, action, subject, detail)
-             SELECT ?1, ?2, NULL, 'document.autobooked', ?3, ?4 WHERE EXISTS (SELECT 1 FROM documents WHERE id = ?3 AND booked_by = 'auto' AND booked_at = ?1)`,
+             SELECT ?1, ?2, NULL, 'document.autobooked', ?3, ?4 WHERE changes() = 1
+               AND EXISTS (SELECT 1 FROM documents WHERE id = ?3 AND booked_by = 'auto' AND booked_at = ?1)
+             RETURNING (SELECT revision FROM company_data_revisions WHERE company_id = ?2) AS revision`,
           )
           .bind(at, doc.companyId, doc.id, JSON.stringify({ category: doc.category, payment: doc.paymentId })),
       ])
-      if ((results[0]?.meta.changes ?? 0) > 0) booked++
+      if ((results[0]?.meta.changes ?? 0) > 0) {
+        booked++
+        // Our own booking changes the revision, but not the cached company settings or filed returns. Capture
+        // the new revision inside the same transaction; a later external edit will still force a fresh read.
+        const after = results[1]?.results[0]?.revision
+        if (typeof after === 'number') of.revision = after
+        else companies.delete(row.company_id)
+      }
     } catch (err) {
       // A period locked since, or anything else: the document waits for the accountant.
       console.error('booking by itself failed', err instanceof Error ? err.name : 'error')

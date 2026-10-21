@@ -55,6 +55,7 @@ import { checkAssetVat } from './asset-vat.runtime.mjs'
 import { checkWorkPay } from './work-pay.runtime.mjs'
 import { checkAiAccuracy } from './ai-accuracy.runtime.mjs'
 import { checkAutobook } from './autobook.runtime.mjs'
+import { checkAutobookAtomic } from './autobook-atomic.runtime.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
@@ -4963,6 +4964,7 @@ await checkAssetVat({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CA
 await checkWorkPay({ db, acc, admin, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAiAccuracy({ db, acc, admin, lucia, nowS, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAutobook({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkAutobookAtomic({ db, nowS, day })
 await checkVatRegistration({ db, acc, lucia, nowS, day })
 await checkTransactionTax({ db, acc, lucia, nowS, day })
 await checkPayrollReports({ db, files, acc, admin, lucia, nowS, day, signIn, as, unzip, capture: process.env.FIRMONY_CAPTURE_DIR })

@@ -872,6 +872,14 @@ export async function getDocument(db: D1Database, company: string, id: string): 
   return row ? docOf(row) : null
 }
 
+/** Read the document and its company's source revision in one database snapshot, before automatic-booking checks. */
+export async function getDocumentSnapshot(db: D1Database, company: string, id: string): Promise<{ doc: Doc; revision: number } | null> {
+  const row = await db.prepare(`SELECT ${DOC_COLUMNS},
+    COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = d.company_id), 0) AS source_revision
+    FROM ${DOC_FROM} WHERE d.company_id = ? AND d.id = ? AND d.deleted_at IS NULL`).bind(company, id).first<Row>()
+  return row ? { doc: docOf(row), revision: Number(row.source_revision) } : null
+}
+
 export async function documentsOfPayment(db: D1Database, company: string, payment: string): Promise<Doc[]> {
   const rows = await db.prepare(`SELECT ${DOC_COLUMNS} FROM ${DOC_FROM} WHERE d.company_id = ? AND l.payment_id = ? AND d.deleted_at IS NULL ORDER BY l.created_at`).bind(company, payment).all<Row>()
   return rows.results.map(docOf)
