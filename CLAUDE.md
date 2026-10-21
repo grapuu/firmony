@@ -50,8 +50,9 @@ over. Bring this section up to date first whenever a session ends.
    takes `doklady-<code>@` and refuses the rest); Email Sending onboarded for firmony.io at the top level
    (cf-bounce records, DMARC p=reject; 200 a day to start). The site is public and indexable. The Anthropic key is the Worker's Secret
    `ANTHROPIC_API_KEY` since 20 October, 21:00 (item 10.2b). Left to him: the first administrator (`/app/prvy-spravca`, the code made there
-   by him, never in chat), then a test client made by hand (no IČO needed, the paper contract ticked) and an
-   accountant on /ucto/tim to try every side. PRs #8 and #9 (Codex's work) were merged into `main` on
+   by him, never in chat), then the designated AML person / accountant on /ucto/tim. As of 21 October, a
+   production test client requires the same real registry, pre-contract AML, QES and release checks as any client;
+   the old no-IČO / paper-checkbox shortcut is removed. Fictional companies belong in the isolated playground. PRs #8 and #9 (Codex's work) were merged into `main` on
    17 October at 10:20, so every paragraph above "# Firmony: working notes" that says "continue PR #8" or "no
    merge" is history.
 2. **A new workspace.** Add the repository with `add_repo` (owner `grapuu`, repo `firmony`, access "push"), clone
@@ -180,6 +181,14 @@ over. Bring this section up to date first whenever a session ends.
    categorisation still requires professional review. Both unedited reports and limitations are committed in
    `docs/reader/measurement-2026-10-21.json`. Expected dataset SHA-256 is unchanged. No claim of population
    accuracy or autonomous accounting. The final documentation head still requires full exact-head Checks.
+
+   **A launch handoff corrected, 21 October 2026:** `docs/spustenie.md` and the active instructions here now
+   reflect pre-contract AML. No no-IČO paper-checkbox client in production, including the Saturday trial. Existing
+   domain / infrastructure / reader setup is marked complete, not a request to buy or create it again. Exact
+   officer / paper-intake routes were checked in source. §21(2) and §36d were reread in the current Slov-Lex
+   original: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html. The agreed goAML target stays
+   19 November; actual registration / signature / insurance / legal release and production restore drill remain
+   real operational actions. This documentation correction changes no application behaviour or schema.
 
    E. For him to send: Qvalia, the insurer, the advokát (item 10.5); the accountant's contract (item 10.6).
    **E prepared by ChatGPT, 21 October 2026:** `docs/drafts/` contains three plain-text emails without dashes,
@@ -529,10 +538,11 @@ over. Bring this section up to date first whenever a session ends.
       other page of the site runs none). Seen in Chromium with the timelines taken out of CSS and `CSS.supports` (1440
       and 390 px): the papers fly in and the rows light up as before. Not seen in a real old Safari; the hero's drift,
       the words lit and the tiles' spring stay still there.
-   4. **Tried live** once he is the first administrator (`/app/prvy-spravca`): a test client made by hand (no IČO,
-      the paper contract ticked, `grrrrjuhas+klient@gmail.com`), an accountant (`grrrrjuhas+uctovnicka@gmail.com`),
-      a month walked through (documents by photo and email, the bank statement, booking, VAT, payroll), every fault
-      written down and mended.
+   4. **Tried live** once he is the first administrator (`/app/prvy-spravca`): follow the updated
+      `docs/spustenie.md`. Production needs a real verified firm, pre-contract AML / QES and actual legal / insurance
+      release, then an accountant and a month walked through (photo, email, bank, books, VAT, payroll as applicable,
+      corrections and exports), every fault recorded and mended. The old no-IČO / paper-checkbox shortcut is removed.
+      Use the isolated playground for fictional data; do not invent identity evidence or release references.
    5. **For him to send** (plain text, no dashes, signed "Christian Juhás"): Qvalia, the price of the digital postman a
       client and of its API (the Financial Administration estimates 5 to 12 € a month a company, podnikajte.sk's
       questions and answers of 10 December 2025; at 12 € in place of the 2 € `TECH` holds, a usual Štart month leaves
