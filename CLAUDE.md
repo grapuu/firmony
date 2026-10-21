@@ -4,6 +4,20 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Produktový pokyn majiteľa z 21. októbra 2026: jednoduchosť ako základ Firmony.** Pred ďalšou úpravou
+rozhrania si prečítajte `docs/strategy/12-product-simplicity.md`. Jedna účtovná služba, dva pracovné pohľady:
+klient vidí stav firmy a potrebný ďalší krok, účtovníčka priority a odborné rozhodnutia. Zložitosť nesie systém.
+Dokument obsahuje maticu štyroch potrieb, overený stav existujúcich obrazoviek, návrh práce a poradie J1 až J5
+s akceptačnými scenármi. Najbližšia implementácia je J1, pravdivý jednotný stav `/app`; spárované platby samy
+neznamenajú, že klient nemá žiadnu ďalšiu úlohu. Hotová je táto príprava a odovzdanie, nie navrhnuté úpravy UI
+ani používateľský pilot. Ceny, otvorený slogan, odborné agendy, serverové oprávnenia a AML brány sa nemenia.
+Primárne návrhové podklady prečítané 21. 10. 2026: https://www.w3.org/TR/WCAG22/ (najmä 2.4.3, 2.4.7,
+3.3.1, 3.3.2, 3.3.7, 4.1.3), https://www.w3.org/WAI/WCAG22/Understanding/redundant-entry.html,
+https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html,
+https://design-system.service.gov.uk/patterns/check-answers/ a
+https://design-system.service.gov.uk/patterns/complete-multiple-tasks/. Ide o produktový návrh a technické
+usmernenia; dokument nepotvrdzuje zhodu celej aplikácie s WCAG ani nemení právny výklad.
+
 1. **Where it stands.** Implemented and automatically tested software still needs the real launch steps in item 3
    and `docs/spustenie.md`; no completed live-client trial or production restore drill is claimed. The client's app, the accountants' side, the books, VAT, payroll,
    the closing, billing, the contract online, the end of a contract and the investors' sign-up, closed as one

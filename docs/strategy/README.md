@@ -1,5 +1,11 @@
 # Firmony: stratégia a realizácia
 
+**Aktualizácia produktového smerovania, 21. 10. 2026:** požiadavku majiteľa na čitateľnú, ľudskú a
+jednoduchú Firmony rozpracúva [12 Jednoduchosť produktu](12-product-simplicity.md). Obsahuje aktuálne
+východisko v kóde po PR #18 a poradie navrhnutých úprav J1 až J5. Pred zmenami rozhrania čítajte najprv
+tento dokument a `CLAUDE.md`; nasledujúci balík z 15. 10. je historické východisko. Návrhy užšieho segmentu
+alebo kalendára uvedené nižšie nie sú novým rozhodnutím majiteľa ani aktuálnym potvrdením pripravenosti.
+
 Stav k **15. októbru 2026**. Tento balík rozširuje [prvý audit](../konkurencny-audit-2026-10-15.md), neopakuje už opravené uzamknutie období, históriu podaní, mesačný SV ani bezpečné odovzdanie dát. Východiskom je [PR #4](https://github.com/grapuu/firmony/pull/4), commit `58f6520b7f1d190adfbce9bddea536633a9413db`. Ide o návrh stratégie a overenie kódu; rozhovory s klientmi ani produkčné overenie neprebehli.
 
 | Dokument | Rozhodnutie, ktoré umožňuje |
@@ -15,6 +21,7 @@ Stav k **15. októbru 2026**. Tento balík rozširuje [prvý audit](../konkurenc
 | [09 Top 10 Strategic Priorities](09-top-10-priorities.md) | Poradie práce a spôsob overenia každej investície |
 | [10 Red Team Report](10-red-team-report.md) | Ako môžeme zlyhať a čo tomu musí zabrániť |
 | [11 Jeden systém a automatizácia](11-shared-product-and-automation.md) | Minimum práce klienta, odborná kontrola, opravené prekážky a merateľné dokončenie |
+| [12 Jednoduchosť produktu](12-product-simplicity.md) | Jedna služba, dva pracovné pohľady, konkrétne úpravy existujúcich obrazoviek a overenie jednoduchosti |
 | [Zdroje](sources.md) | Primárne URL, dátum, rozsah a limity dôkazov |
 | [Register pripravenosti](launch-evidence.json) | Strojovo čitateľné brány; neznámy údaj nie je úspech |
 
