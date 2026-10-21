@@ -8,9 +8,14 @@ over. Bring this section up to date first whenever a session ends.
 rozhrania si prečítajte `docs/strategy/12-product-simplicity.md`. Jedna účtovná služba, dva pracovné pohľady:
 klient vidí stav firmy a potrebný ďalší krok, účtovníčka priority a odborné rozhodnutia. Zložitosť nesie systém.
 Dokument obsahuje maticu štyroch potrieb, overený stav existujúcich obrazoviek, návrh práce a poradie J1 až J5
-s akceptačnými scenármi. Najbližšia implementácia je J1, pravdivý jednotný stav `/app`; spárované platby samy
-neznamenajú, že klient nemá žiadnu ďalšiu úlohu. Hotová je táto príprava a odovzdanie, nie navrhnuté úpravy UI
-ani používateľský pilot. Ceny, otvorený slogan, odborné agendy, serverové oprávnenia a AML brány sa nemenia.
+s akceptačnými scenármi. **J1 implementované 22. 10. 2026 CEST:** `docs/client-overview.md` opisuje pravdivý
+stav `/app`, poradie a viditeľnosť zostávajúcich krokov, spoločnú osobnú frontu schvaľovania, aktuálnosť banky
+a nastavenie aj pri nulových pohyboch alebo automaticky prijatom doklade. Spárované platby nie sú potvrdením
+ukončenia celej služby. Rozhranie používa existujúci vzhľad a oprávnenia; schéma ostáva 77, ďalšia je 78.
+Úspešné kontroly finálneho commitu a overenie produkčnej revízie sa evidujú v PR. Ďalej J2: jednoduché odovzdanie
+dokladu a odpoveď na konkrétnu otázku. Model zatiaľ nemá samostatné dokončenie klientskej otázky; neprečítaná
+správa neznamená potvrdenie vybavenia. J2 až J5 a používateľský pilot zostávajú otvorené. Ceny, otvorený slogan,
+odborné agendy, serverové oprávnenia a AML brány sa nemenia.
 Primárne návrhové podklady prečítané 21. 10. 2026: https://www.w3.org/TR/WCAG22/ (najmä 2.4.3, 2.4.7,
 3.3.1, 3.3.2, 3.3.7, 4.1.3), https://www.w3.org/WAI/WCAG22/Understanding/redundant-entry.html,
 https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html,

@@ -16,6 +16,8 @@ import { Tile } from './home'
 import { Flash, Heading } from './inside'
 import { CenterSelect } from './centers'
 import type { CostCenter } from '../app/centers'
+import { overviewActions, type BankHealth, type FirstStepsState } from '../app/overview'
+export type { FirstStepsState } from '../app/overview'
 
 const ACCEPT = 'image/*,application/pdf,.pdf,.xml,text/xml,application/xml'
 
@@ -214,6 +216,9 @@ export interface OverviewProps {
   /** Whether the bank can be linked, and what the overview says about a consent that ends. */
   bankReady?: boolean
   bankNotice?: BankNotice
+  bankHealth?: BankHealth | null
+  unread?: number
+  approval?: { dueOn: string | null } | null
   /** Statements from accounts the company does not have yet, one for each account (the owner answers them). */
   waiting?: StatementView[]
   owner?: boolean
@@ -223,26 +228,11 @@ export interface OverviewProps {
   closed?: string | null
 }
 
-export interface FirstStepsState {
-  /** The declaration for the law against money laundering is given: without it we may not start. */
-  declaration: boolean
-  /** The power of attorney is uploaded: without it we file nothing for the company. */
-  poa: boolean
-  payments: boolean
-  upload: boolean
-  email: boolean
-  people: boolean
-  /** The company changes accountants (what its request said): the notice to the former one is offered. */
-  switching: boolean
-  /** The notice went out, or the former accountant's papers are here: the step is done. */
-  switched?: boolean
-}
-
 /**
  * A new company's first steps, as Dougs and Pennylane open their apps: four that matter (who stands behind the
  * company, the power of attorney, the bank, the first document), the rest for later.
  */
-const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps, bankReady }) => {
+const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean; owner: boolean }> = ({ steps, bankReady, owner }) => {
   const s = app.start.steps
   const list = [
     { done: steps.declaration, href: '/app/vyhlasenie', text: s.declaration, optional: false },
@@ -273,6 +263,8 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps
             </span>
             {step.done ? (
               <span class="pill pill--ok">{app.start.done}</span>
+            ) : !owner && (step.href === '/app/vyhlasenie' || step.href === '/app/banka#prepojit') ? (
+              <span class="first__sub first__go">{app.home.next.owner}</span>
             ) : (
               <a class={`btn ${step.optional ? 'btn--text' : 'btn--line'} btn--small first__go`} href={step.href}>
                 {step.text.link}
@@ -287,18 +279,23 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean }> = ({ steps
 
 export const Overview: FC<OverviewProps> = (props) => {
   const { missing, missingCount } = props
-  const calm = missingCount === 0 && props.paymentsCount > 0
-  // Nothing is missing, but a tax waits to be paid: the one thing left for the client, said in the panel itself.
-  const taxDue = props.deadlines.some((d) => d.href === '/app/dane' && d.tone === 'amber')
   // Ten days past the contract's last day nothing more is asked of the client: only the download is left.
   const ended = Boolean(props.closed)
+  const actions = overviewActions({
+    closed: ended, today: props.today, owner: Boolean(props.owner), missing: missingCount, deadlines: props.deadlines,
+    unread: props.unread ?? 0, approval: props.approval ?? null, confirmAccount: props.waiting?.[0]?.id ?? null,
+    statementDue: props.statementDue ?? null, bankNotice: props.bankNotice ?? null, bankReady: Boolean(props.bankReady), steps: props.steps ?? null,
+  })
+  const primary = actions[0]
+  const bankHealth = ended ? null : props.bankHealth
+  const calm = !primary && !bankHealth && missingCount === 0 && props.paymentsCount > 0
   // A new company with no payment yet is welcomed to its first steps; once payments come, what they lack leads.
   const welcome = Boolean(props.steps) && !ended && props.paymentsCount === 0
   return (
     <div class="over">
       <div class="over__main">
         {ended ? (
-          <section class="hello hello--ended" aria-labelledby="stav">
+          <section class="hello hello--ended" aria-labelledby="stav" data-overview-state="ended">
             <p class="hello__name">{app.home.hello(props.firstName)}</p>
             <Heading id="stav" first={app.ending.overTitle} second={app.ending.overSerif} />
             <p class="hello__lead">{props.closed}</p>
@@ -306,29 +303,51 @@ export const Overview: FC<OverviewProps> = (props) => {
               {app.ending.download}
             </a>
           </section>
+        ) : primary ? (
+          <section class="hello" aria-labelledby="stav" data-overview-state="action">
+            <p class="hello__name">{app.home.hello(props.firstName)}</p>
+            <Heading id="stav" first={app.home.next.title} second={primary.title} />
+            <p class="hello__lead">{primary.lead}</p>
+            {primary.dueOn ? <p class="overview-due">{app.home.next.due(dayName(primary.dueOn, props.today))}</p> : null}
+            <a class="btn btn--blue overview-go" href={primary.href} data-overview-action={primary.id}>{primary.button}</a>
+            {actions.length > 1 ? (
+              <div class="overview-next">
+                <h2 class="sect" id="dalsie-kroky">{app.home.next.more}</h2>
+                <ul aria-labelledby="dalsie-kroky">
+                  {actions.slice(1).map((action) => (
+                    <li>
+                      <a class="link" href={action.href} data-overview-action={action.id}>{action.title}</a>
+                      {action.dueOn ? <span class="overview-due">{app.home.next.due(dayName(action.dueOn, props.today))}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </section>
+        ) : bankHealth ? (
+          <section class="hello" aria-labelledby="stav" data-overview-state="bank">
+            <p class="hello__name">{app.home.hello(props.firstName)}</p>
+            <Heading id="stav" first={app.home.bankHealth.title} />
+            <p class="hello__lead">{app.home.bankHealth.lead}</p>
+          </section>
         ) : welcome ? (
-          <section class="hello" aria-labelledby="stav">
+          <section class="hello" aria-labelledby="stav" data-overview-state="welcome">
             <p class="hello__name">{app.home.hello(props.firstName)}</p>
             <Heading id="stav" first={app.home.welcomeTitle} second={app.home.welcomeSerif} />
           </section>
         ) : calm ? (
-          <section class="calm" aria-labelledby="stav">
+          <section class="calm" aria-labelledby="stav" data-overview-state="matched">
             <div class="calm__text">
               <p class="calm__hello">{app.home.hello(props.firstName)}</p>
               <h1 id="stav" class="calm__title">
-                <span class="calm__sans">{app.home.doneTitle}</span> <em class="calm__serif">{taxDue ? app.home.doneSerifTax : app.home.doneSerif}</em>
+                <span class="calm__sans">{app.home.doneTitle}</span> <em class="calm__serif">{app.home.doneSerif}</em>
               </h1>
-              <p class="calm__lead">{taxDue ? app.home.doneLeadTax : app.home.doneLead}</p>
-              {taxDue ? (
-                <a class="btn btn--white calm__pay" href="/app/dane">
-                  {app.home.payTax}
-                </a>
-              ) : null}
+              <p class="calm__lead">{app.home.doneLead}</p>
             </div>
             <img class="calm__glass" src={ART.seal?.small?.src ?? ''} width="240" height="240" alt="" />
           </section>
         ) : (
-          <section class="hello" aria-labelledby="stav">
+          <section class="hello" aria-labelledby="stav" data-overview-state="empty">
             <p class="hello__name">{app.home.hello(props.firstName)}</p>
             {props.paymentsCount === 0 ? (
               <Heading id="stav" first={app.home.noPayments} />
@@ -338,7 +357,16 @@ export const Overview: FC<OverviewProps> = (props) => {
           </section>
         )}
         <Flash text={props.flash} />
-        <BankNoticeBar notice={props.bankNotice ?? null} today={props.today} />
+        <BankNoticeBar notice={ended ? null : props.bankNotice ?? null} today={props.today} owner={Boolean(props.owner)} ready={Boolean(props.bankReady)} />
+        {bankHealth ? (
+          <div class="banknotice" role="status">
+            <div class="banknotice__health">
+              <p>{app.home.bankHealth[bankHealth.kind](bankHealth.bank)}</p>
+              <p>{bankHealth.syncedAt === null ? app.home.bankHealth.unknown : app.home.bankHealth.last(whenName(bankHealth.syncedAt, props.now))}</p>
+            </div>
+            <a class="btn btn--line btn--small" href="/app/banka">{app.home.bankHealth.go}</a>
+          </div>
+        ) : null}
         {ended ? null : (props.waiting ?? []).map((st) => <ConfirmAccount st={st} owner={Boolean(props.owner)} />)}
         {!ended && props.statementDue ? (
           <section class="stmtdue" aria-labelledby="vypis-chyba">
@@ -353,7 +381,7 @@ export const Overview: FC<OverviewProps> = (props) => {
             </a>
           </section>
         ) : null}
-        {props.steps && !ended ? <FirstSteps steps={props.steps} bankReady={props.bankReady} /> : null}
+        {props.steps && !ended ? <FirstSteps steps={props.steps} bankReady={props.bankReady} owner={Boolean(props.owner)} /> : null}
         {ended ? null : props.paymentsCount === 0 ? (
           props.steps ? null : (
             <p class="over__empty">{app.home.noPaymentsLead}</p>

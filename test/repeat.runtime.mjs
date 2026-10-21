@@ -68,7 +68,10 @@ export async function checkRepeats({ db, nowS, signIn, as, day, tick, capture })
   check('a second repeat of the same invoice is not started', (await db.prepare('SELECT COUNT(*) AS n FROM invoice_repeats WHERE template_id = ?').bind(templateId).first())?.n === 1)
 
   // The schedule: the next invoice today, once.
-  await tick(Date.now())
+  const scheduledAt = Date.now()
+  const scheduledDay = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(scheduledAt))
+  const scheduledDue = new Date(Date.parse(`${scheduledDay}T12:00:00Z`) + 14 * 86400000).toISOString().slice(0, 10)
+  await tick(scheduledAt)
   let issued = null
   for (let i = 0; i < 30 && !issued; i++) {
     issued = await db
@@ -86,9 +89,9 @@ export async function checkRepeats({ db, nowS, signIn, as, day, tick, capture })
   check(
     'the schedule issues it today: the next number, the same customer and lines, due as many days after it',
     issued?.number === String(Number(template?.number) + 1) &&
-      issued.issued_on === today &&
-      issued.delivered_on === today &&
-      issued.due_on === day(14) &&
+      issued.issued_on === scheduledDay &&
+      issued.delivered_on === scheduledDay &&
+      issued.due_on === scheduledDue &&
       issued.total_cents === 61500 &&
       issued.customer_name === 'TEST-ONLY Nájomca s. r. o.' &&
       lines.length === 1 &&

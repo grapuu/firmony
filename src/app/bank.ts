@@ -498,7 +498,7 @@ export async function linksOf(db: D1Database, company: string): Promise<BankLink
 export type BankNotice = { kind: 'renew'; bank: string; until: number; fio: boolean } | { kind: 'ended'; bank: string; fio: boolean } | null
 
 export function noticeOf(links: BankLinkView[], at: number = now()): BankNotice {
-  const ended = links.find((l) => l.status === 'expired')
+  const ended = links.find((l) => l.status === 'expired' || (l.status === 'active' && l.validUntil !== null && l.validUntil <= at))
   if (ended) return { kind: 'ended', bank: ended.bank, fio: ended.kind === 'fio' }
   const soon = links.find((l) => l.status === 'active' && l.validUntil !== null && l.validUntil - at < BANK.renewDays * 86400)
   return soon && soon.validUntil !== null ? { kind: 'renew', bank: soon.bank, until: soon.validUntil, fio: soon.kind === 'fio' } : null

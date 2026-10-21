@@ -9,6 +9,7 @@ import { ART, BANK, BANK_WAYS, STATEMENTS, type BankWay } from '../config'
 import { formatEur } from '../format'
 import { app, dayName, whenName } from '../app/copy'
 import type { Aspsp, BankLinkView, BankNotice } from '../app/bank'
+import { bankRenewHref } from '../app/overview'
 import type { StatementView } from '../app/statements'
 import { Tile } from './home'
 import { Flash, Heading } from './inside'
@@ -520,12 +521,12 @@ export const BankCard: FC<{ links: BankLinkView[]; today: string; ready: boolean
 }
 
 /** A consent or a token that ends soon or ended, said where the client looks first. */
-export const BankNoticeBar: FC<{ notice: BankNotice; today: string }> = ({ notice, today }) =>
+export const BankNoticeBar: FC<{ notice: BankNotice; today: string; owner: boolean; ready: boolean }> = ({ notice, today, owner, ready }) =>
   notice ? (
     <div class="banknotice" role="status">
       <p>{notice.kind === 'renew' ? b.notice.renew(notice.bank, dayName(dayOfSeconds(notice.until), today)) : b.notice.ended(notice.bank)}</p>
-      <a class="btn btn--blue btn--small" href={notice.fio ? '/app/banka?banka=fio#postup-banka' : pickHref(notice.bank)}>
+      {owner ? <a class="btn btn--blue btn--small" href={bankRenewHref(notice, ready)}>
         {b.notice.go}
-      </a>
+      </a> : <p>{app.home.next.owner}</p>}
     </div>
   ) : null

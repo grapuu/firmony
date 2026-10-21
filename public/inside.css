@@ -5905,8 +5905,39 @@ select.field__input {
   border-top: 1px solid var(--line);
 }
 
-.calm__pay {
+.overview-go {
   margin-top: 20px;
+}
+
+.overview-due {
+  display: block;
+  margin-top: 8px;
+  color: var(--soft);
+  font-size: 0.9375rem;
+}
+
+.overview-next {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.overview-next ul {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  list-style: none;
+}
+
+.overview-next li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.banknotice__health {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* The books: the trial balance, the journal, an account, the open items, payments without a document, internal

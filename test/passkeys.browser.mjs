@@ -370,11 +370,24 @@ try {
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES ('browser-co', 'browser-client', 'owner', ?)").bind(now),
   ])
   const clientContext = await browser.newContext({ viewport: { width: 390, height: 844 } }), clientPage = await clientContext.newPage()
+  clientPage.on('pageerror', (e) => errors.push(e.message))
   await clientPage.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort())
   const clientToken = randomBytes(32).toString('base64url')
   await db.prepare("INSERT INTO login_links (id, user_id, created_at, expires_at) VALUES (?, 'browser-client', ?, ?)").bind(createHash('sha256').update(clientToken).digest('hex'), now, now + 600).run()
   await clientPage.goto(`${origin}/app/vstup?t=${clientToken}`)
   await Promise.all([clientPage.waitForURL(`${origin}/app`), clientPage.locator('form[action="/app/vstup"] button[type=submit]').click()])
+  // Isolate the overview task from the payroll deadlines used by the evidence scenarios below.
+  await db.batch([
+    db.prepare("INSERT INTO companies(id,created_at,name,ico,plan,inbox,start_on) VALUES('browser-overview-co',?,'TEST-BROWSER Prehľad','50888874','rast','browser-overview','2026-01-01')").bind(now),
+    db.prepare("INSERT INTO members(company_id,user_id,role,created_at) VALUES('browser-overview-co','browser-client','owner',?)").bind(now),
+    db.prepare("UPDATE sessions SET company_id='browser-overview-co' WHERE user_id='browser-client'"),
+    db.prepare("INSERT INTO messages(id,company_id,created_at,side,body) VALUES('browser-overview-message','browser-overview-co',?,'firmony','TEST-BROWSER-OVERVIEW správa pre klienta')").bind(now),
+  ])
+  await clientPage.reload()
+  check('the mobile customer overview exposes its unread message as the primary usable action', await clientPage.locator('[data-overview-action]').first().getAttribute('data-overview-action') === 'message' && await clientPage.locator('[data-overview-action="message"]').first().getAttribute('href') === '/app/spravy' && await clientPage.locator('[data-overview-state="action"]').count() === 1)
+  await Promise.all([clientPage.waitForURL(`${origin}/app/spravy`), clientPage.locator('[data-overview-action="message"]').first().click()])
+  check('the mobile primary action reaches the actual message without manufacturing a reply', await clientPage.getByText('TEST-BROWSER-OVERVIEW správa pre klienta', { exact: true }).count() === 1 && (await db.prepare("SELECT seen_at FROM messages WHERE id='browser-overview-message'").first()).seen_at !== null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id='browser-overview-co' AND action='message.sent'").first()).n === 0)
+  await db.prepare("UPDATE sessions SET company_id='browser-co' WHERE user_id='browser-client'").run()
   await clientPage.goto(`${origin}/app/podania/${filingId}`)
   check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)
   await clientPage.goto(`${origin}/app/mzdove-podania/${payrollTarget.id}/verzie/${acceptedPayrollId}`)
