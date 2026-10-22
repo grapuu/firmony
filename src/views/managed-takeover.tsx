@@ -36,7 +36,7 @@ export const ClientTakeover: FC<ClientTakeoverProps> = ({company,h,owner,open,su
       <label class="field" for="prechod-email"><span class="field__label">Jej e-mail</span><input class="field__input" id="prechod-email" name="email" value={values?.email ?? ''} type="email" maxlength={254} required autocomplete="off" /></label>
       <label class="field" for="prechod-den"><span class="field__label">Požadovaný deň prevzatia, ak ho poznáte</span><input class="field__input" id="prechod-den" name="den" value={values?.day ?? ''} type="date" /><span class="field__hint">Termín ešte potvrdíme podľa Vašej doterajšej zmluvy a pripravenosti podkladov.</span></label>
       <details><summary>Čo nám zadávate</summary><p>{HANDOVER_CONSENT}</p></details>
-      <label class="check" for="prechod-suhlas"><input id="prechod-suhlas" type="checkbox" name="suhlas" value="ano" required /><span>Za firmu {company.name} žiadam o koordináciu v uvedenom rozsahu a potvrdzujem, že ju môžem zadať.</span></label>
+      <label class="tickbox" for="prechod-suhlas"><input id="prechod-suhlas" type="checkbox" name="suhlas" value="ano" required /><span>Za firmu {company.name} žiadam o koordináciu v uvedenom rozsahu a potvrdzujem, že ju môžem zadať.</span></label>
       <button class="btn btn--blue stack__submit" type="submit">Poveriť Firmony koordináciou</button>
       <p class="field__hint">Táto žiadosť sama neukončí pôvodnú zmluvu. Potrebný podpis alebo plnomocenstvo s Vami vybavíme osobitne.</p>
     </form> : !owner && !h ? <p>Koordináciu môže zadať vlastník firemného účtu. Požiadajte ho o tento krok.</p> : !open ? <p>Po skončení služby sa nové prevzatie nezačína. Ak potrebujete pomoc, napíšte nám v Správach.</p> : null}
@@ -87,7 +87,7 @@ export const TeamTakeover: FC<TeamTakeoverProps> = ({company,h,files,revision,op
         <p class="field__hint">Najviac 10 súborov naraz. PDF, export ZIP/XML/CSV/Excel alebo fotografie. Údaje pôvodnej účtovníčky sa tým ešte nezaúčtujú.</p><button class="btn btn--line" type="submit">Uložiť prijaté podklady</button>
       </form> : null}
     </> : <p>Táto evidencia je iba na čítanie. Odvolaná koordinácia sa neobnovuje bez novej žiadosti klienta.</p>}
-    {files.length ? <ul class="plain">{files.map(f => <li class="plain__row"><a class="link plain__name" href={`/ucto/klienti/${company.id}/prevzatie/${f.id}`}>{f.fileName}</a></li>)}</ul> : null}
+    {files.length ? <ul class="plain">{files.map(f => <li class="plain__row plain__row--two"><a class="link plain__name" href={`/ucto/klienti/${company.id}/prevzatie/${f.id}`}>{f.fileName}</a></li>)}</ul> : null}
     <details><summary>História koordinácie</summary><ol class="managed-takeover__history">{history.map(e => {const data = JSON.parse(e.data) as {state:ManagedHandover['state'];reason:string}; return <li><strong>{HANDOVER_STATES[data.state]}</strong><p>{whenName(e.at,now)}, {e.by_name}. Verzia {e.revision}.</p><p class="managed-takeover__text">{data.reason || 'Žiadosť klienta bola prijatá.'}</p></li>})}</ol></details>
   </section>
 }

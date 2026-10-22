@@ -9,6 +9,7 @@ export async function checkManagedTakeoverBrowser({page,clientPage,db,origin}) {
   check('managed takeover browser: the primary task is the short coordination request and the legacy letter is disclosed separately',await clientPage.getByRole('button',{name:'Poveriť Firmony koordináciou',exact:true}).isVisible() && await clientPage.locator('.managed-takeover__manual').getAttribute('open') === null)
   await clientPage.getByLabel('Meno účtovníčky alebo kancelárie',{exact:true}).fill('TEST-BROWSER Doterajšia kancelária')
   await clientPage.getByLabel('Jej e-mail',{exact:true}).fill('browser-old-accountant@example.test')
+  check('managed takeover browser: consent uses the existing readable checkbox layout',await clientPage.locator('#prechod-suhlas').evaluate(e => {const p=e.parentElement, text=p.querySelector('span');const c=e.getBoundingClientRect(),t=text.getBoundingClientRect();return c.width >= 16 && t.width > 180 && t.left >= c.right && getComputedStyle(p).display === 'flex'}))
   let posts = 0
   const listener = r => {if(r.method() === 'POST' && new URL(r.url()).pathname === '/app/prechod/poverit') posts++}
   clientPage.on('request',listener)

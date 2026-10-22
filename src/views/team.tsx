@@ -224,7 +224,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; m
           </>
         )}
       </section>
-      {takeovers.length ? <section class="info managed-takeover" aria-labelledby="prevzatia-t"><h2 class="info__title" id="prevzatia-t">Prevzatia firiem</h2><ul class="plain">{takeovers.map(h => <li class="plain__row"><a class="link plain__name" href={`/ucto/klienti/${h.companyId}/prevzatie#koordinacia`}>{h.companyName}</a><span class="plain__sub">{HANDOVER_STATES[h.state]}{h.responsibleName ? `, ${h.responsibleName}` : ', čaká na pridelenú účtovníčku'}{h.dueOn ? `, ďalší krok do ${dayName(h.dueOn,today)}` : ''}</span></li>)}</ul></section> : null}
+      {takeovers.length ? <section class="info managed-takeover" aria-labelledby="prevzatia-t"><h2 class="info__title" id="prevzatia-t">Prevzatia firiem</h2><ul class="plain">{takeovers.map(h => <li class="plain__row plain__row--two"><a class="link plain__name" href={`/ucto/klienti/${h.companyId}/prevzatie#koordinacia`}>{h.companyName}</a><span class="plain__sub">{HANDOVER_STATES[h.state]}{h.responsibleName ? `, ${h.responsibleName}` : ', čaká na pridelenú účtovníčku'}{h.dueOn ? `, ďalší krok do ${dayName(h.dueOn,today)}` : ''}</span></li>)}</ul></section> : null}
       <dl class="figs__grid figs__grid--four">
         <div class="fig">
           <dt>{t.clients.toBook}</dt>
