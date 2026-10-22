@@ -1,5 +1,9 @@
 # Firmony: stratégia a realizácia
 
+**Dôvera a výhodnosť, 22. 10. 2026:** [originály, verejné postupy finančných aplikácií a implementácia](../research/trust-and-value-2026-10-22.md).
+Pravdivý ročný súčet, vlastné vstupy zákazníka, odborná rola a nezáväzný začiatok. Stav návrhov je odlíšený od
+implementácie; účinok na predaj treba zmerať. Ceny, hlavný slogan a smerovanie sa nemenia.
+
 **Aktualizácia produktového smerovania, 21. 10. 2026:** požiadavku majiteľa na čitateľnú, ľudskú a
 jednoduchú Firmony rozpracúva [12 Jednoduchosť produktu](12-product-simplicity.md). Obsahuje aktuálne
 východisko v kóde po PR #18 a poradie navrhnutých úprav J1 až J5. Pred zmenami rozhrania čítajte najprv

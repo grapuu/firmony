@@ -9,6 +9,7 @@ import { check, done } from './check.mjs'
 import { readHealthText } from './health-text.mjs'
 import { readSocialXml } from './social-xml.mjs'
 import { checkDeliveryBrowser } from './delivery.browser.mjs'
+import { checkCustomerValueBrowser } from './customer-value.browser.mjs'
 import { payslip } from '../.wrangler/dist/stores.js'
 
 const assets = resolve('public'),
@@ -97,6 +98,7 @@ try {
     executablePath: process.env.FIRMONY_CHROME,
     args: ['--no-sandbox'],
   })
+  await checkCustomerValueBrowser({ browser, origin })
   const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
     }),

@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { EXAMPLE, compare, type CalcResult } from '../calc'
+import { annualPlanCents, type CalcResult } from '../calc'
 import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, type Art, type PlanId } from '../config'
 import { copy, planRows } from '../copy'
 import { formatEur } from '../format'
@@ -115,6 +115,7 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
           </div>
           <p class="hero__card-text">{copy.card.text}</p>
           <StartForm carry={carry} id="ico-hero" compact />
+          <p class="hero__card-next">{copy.card.next}</p>
           <p class="hero__card-foot">
             <span>{copy.card.fine}</span>
             <a class="link" href={withCarry('/zacat', carry, { nova: '1' })}>
@@ -473,8 +474,8 @@ const Duo: FC = () => (
     </header>
     <div class="wrap duo__grid">
       {[
-        { side: copy.duo.ai, art: ART.chip, kind: 'ai' },
         { side: copy.duo.human, art: ART.lens, kind: 'human' },
+        { side: copy.duo.ai, art: ART.chip, kind: 'ai' },
       ].map(({ side, art, kind }) => (
         <article class={`card duo__card duo__card--${kind}`}>
           <Tile art={art} size="lg" />
@@ -541,10 +542,15 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
                   <span class="plan__for">{rows.forWhom}</span>
                 </span>
               </div>
-              <p class="plan__price">
-                <span class="plan__amount">{formatEur(plan.price * 100)}</span>
-                <span class="plan__per">{copy.pricing.perMonth}</span>
-              </p>
+              <div class="plan__cost">
+                <p class="plan__price">
+                  <span class="plan__amount">{formatEur(plan.price * 100)}</span>
+                  <span class="plan__per">{copy.pricing.perMonth}</span>
+                </p>
+                <p class="plan__annual" data-plan-year={plan.id}>
+                  {copy.pricing.annual}: <strong>{formatEur(annualPlanCents(plan))}</strong>
+                </p>
+              </div>
               <a class={`btn ${lead ? 'btn--blue' : 'btn--line'} plan__cta`} href={withCarry('/zacat', carry, { balik: plan.id })}>
                 {`Chcem balík ${plan.name}`}
               </a>
@@ -585,9 +591,14 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
         </div>
       </article>
       <div class="pricing__fine">
+        <p>{copy.pricing.annualBasis}</p>
         <p>{copy.pricing.included}</p>
         <p>
           <strong>{copy.pricing.closing}</strong> {copy.pricing.vat}
+        </p>
+        <p class="pricing__links">
+          <a href="/podmienky">{copy.pricing.documents}</a>
+          <a href="/pravne-informacie#ochrana-udajov">{copy.pricing.privacy}</a>
         </p>
       </div>
       <ul class="promises">
@@ -615,11 +626,10 @@ const Field: FC<{ name: string; label: string; value: string; placeholder: strin
   </label>
 )
 
-const Comparison: FC<{ result: CalcResult; example: boolean }> = ({ result, example }) => {
+const Comparison: FC<{ result: CalcResult }> = ({ result }) => {
   if (result.kind === 'empty') return <p class="calc__message">{copy.calc.empty}</p>
   return (
     <>
-      {example ? <p class="calc__example">{copy.calc.example}</p> : null}
       <p class="calc__line">
         <span>{copy.calc.today}</span>
         <strong>{formatEur(result.todayYear)}</strong>
@@ -632,11 +642,14 @@ const Comparison: FC<{ result: CalcResult; example: boolean }> = ({ result, exam
             <span>{`S Firmony, balík ${result.plan.name}`}</span>
             <strong>{formatEur(result.usYear)}</strong>
           </p>
-          <p class={`calc__line calc__line--total${result.difference > 0 ? ' calc__line--save' : ''}`}>
-            <span>{result.difference >= 0 ? copy.calc.save : copy.calc.more}</span>
-            <strong>{formatEur(Math.abs(result.difference))}</strong>
-          </p>
-          <p class="small">{example ? copy.calc.empty : copy.calc.note}</p>
+          {result.difference === 0 ? <p class="calc__message">{copy.calc.same}</p> : (
+            <p class="calc__line calc__line--total">
+              <span>{result.difference > 0 ? copy.calc.save : copy.calc.more}</span>
+              <strong>{formatEur(Math.abs(result.difference))}</strong>
+            </p>
+          )}
+          <p class="small">{copy.calc.note}</p>
+          <p class="small">{copy.calc.resultBasis}</p>
         </>
       )}
     </>
@@ -653,7 +666,7 @@ const Calculator: FC<{ state: CalcState; carry: Carry }> = ({ state, carry }) =>
       </header>
       <div class="wrap">
         <div class="calc">
-          <form class="calc__form" method="get" action="/#kalkulacka" novalidate>
+          <form class="calc__form" method="get" action="/#kalkulacka" aria-describedby="calc-input-help" novalidate>
             <CarryFields carry={carry} />
             <Field name="mesacne" label={copy.calc.monthly} value={state.values.monthly} placeholder="60" suffix="€" />
             <Field name="za-doklad" label={copy.calc.perDoc} value={state.values.perDoc} placeholder="5,20" suffix="€" />
@@ -673,13 +686,14 @@ const Calculator: FC<{ state: CalcState; carry: Carry }> = ({ state, carry }) =>
               </span>
             </fieldset>
             <Field name="ludia" label={copy.calc.people} value={state.values.people} placeholder="0" mode="numeric" />
+            <p class="small calc__help" id="calc-input-help">{copy.calc.inputHelp}</p>
             <button class="btn btn--blue calc__button" type="submit">
               {copy.calc.button}
             </button>
           </form>
           <div class="calc__result" role="status">
             <Picture art={ART.savings} className="calc__object" sizes="(max-width: 960px) 96px, 140px" />
-            {state.invalid ? <p class="calc__message">{copy.calc.invalid}</p> : <Comparison result={!r || r.kind === 'empty' ? compare(EXAMPLE) : r} example={!r || r.kind === 'empty'} />}
+            {state.invalid ? <p class="calc__message">{copy.calc.invalid}</p> : <Comparison result={r ?? { kind: 'empty' }} />}
           </div>
         </div>
       </div>
