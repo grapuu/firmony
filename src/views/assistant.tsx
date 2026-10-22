@@ -15,9 +15,9 @@ export const AssistantPage:FC<{company:{id:string;name:string};base:string;conte
       <input type="hidden" name="firma" value={company.id} /><input type="hidden" name="odoslanie" value={submission??crypto.randomUUID()} />
       <input type="hidden" name="kontext" value={context} />
       <label class="field" for="asistent-text"><span class="field__label">Vaša otázka</span>
-        <textarea class="field__input field__area" id="asistent-text" name="otazka" rows={3} maxlength={ASSISTANT.questionChars} required aria-describedby="asistent-sukromie" aria-invalid={error?'true':undefined}>{question}</textarea></label>
+        <textarea class="field__input field__area" id="asistent-text" name="otazka" rows={3} maxlength={ASSISTANT.questionChars} required aria-label="Vaša otázka" aria-describedby="asistent-sukromie" aria-invalid={error?'true':undefined}>{question}</textarea></label>
       <label class="field" for="asistent-doklad"><span class="field__label">Doklad, ak sa ho otázka týka</span>
-        <select class="field__input" id="asistent-doklad" name="doklad"><option value="">Bez konkrétneho dokladu</option>
+        <select class="field__input" id="asistent-doklad" name="doklad" aria-label="Doklad, ak sa ho otázka týka"><option value="">Bez konkrétneho dokladu</option>
           {documents.map(d=><option value={d.id} selected={d.id===document}>{d.label}</option>)}
         </select></label>
       <p class="field__hint" id="asistent-sukromie">Pri otázke vlastnými slovami pošleme spoločnosti Anthropic iba jej text. Doklady, výpisy a ďalšie údaje firmy do tohto volania neposielame. Nepíšte heslá ani zbytočné osobné údaje. <a class="link" href="/pravne-informacie#asistent">Podrobnosti o spracovaní</a>.</p>

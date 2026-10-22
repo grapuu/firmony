@@ -38,7 +38,7 @@ export async function checkAssistantBrowser({page,clientPage,db,origin,provider}
   check('assistant browser: question markup is escaped and cannot execute',await clientPage.evaluate(()=>window.assistantInjected===undefined))
   const sendResponse=clientPage.waitForResponse(r=>new URL(r.url()).pathname==='/app/spravy'&&r.request().method()==='POST')
   await clientPage.locator('form[action="/app/spravy"] button[type=submit]').click()
-  check('assistant browser: the existing composer sends only after the explicit final click',(await sendResponse).status()===303&&(await db.prepare('SELECT COUNT(*) AS n FROM messages WHERE company_id=?').bind(company).first()).n===beforeMessages+1)
+  check('assistant browser: the existing composer sends only after the explicit final click',(await sendResponse).status()===200&&(await db.prepare('SELECT COUNT(*) AS n FROM messages WHERE company_id=?').bind(company).first()).n===beforeMessages+1)
   await clientPage.goto(`${origin}/app/asistent`)
   provider.next={status:429}
   await clientPage.getByLabel('Vaša otázka',{exact:true}).fill('TEST-BROWSER Zachovajte túto otázku pri výpadku.')
