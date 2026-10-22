@@ -343,6 +343,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; m
 // ---------------------------------------------------------------------------------------------------------------
 
 export interface ClientPageProps {
+  assistant?: boolean
   user: User
   company: Company
   members: User[]
@@ -716,6 +717,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
       <a class="back" href="/ucto">
         {t.client.back}
       </a>
+      {p.assistant?<p><a class="link" href={`/ucto/klienti/${c.id}/asistent`}>Asistent k tejto firme</a></p>:null}
       <header class="phero">
         <p class="phero__kind phero__kind--row">
           <span>{t.clients.plan(planName(c.plan))}</span>

@@ -13,6 +13,25 @@
     else fn()
   }
 
+  ready(function () {
+    document.querySelectorAll('form[data-assistant-form]').forEach(function (form) {
+      var progress = form.querySelector('.assistant__pending'), button = form.querySelector('button[type=submit]')
+      function reset() {
+        form.removeAttribute('aria-busy')
+        if (progress) progress.hidden = true
+        if (button && button.dataset.waiting === '1') { button.disabled = false; delete button.dataset.waiting }
+      }
+      window.addEventListener('pageshow', reset)
+      form.addEventListener('submit', function (event) {
+        if (event.submitter && event.submitter.hasAttribute('formaction')) return
+        if (form.getAttribute('aria-busy') === 'true') { event.preventDefault(); return }
+        form.setAttribute('aria-busy', 'true')
+        if (progress) progress.hidden = false
+        if (button) { button.dataset.waiting = '1'; button.disabled = true }
+      })
+    })
+  })
+
   /** A photo as a JPEG of at most 2400 px on its long side; anything that cannot be made smaller goes as it is. */
   function smaller(file) {
     if (!/^image\/(jpeg|png|webp|heic|heif)$/.test(file.type) || file.size <= SMALL_ENOUGH || !window.createImageBitmap) return Promise.resolve(file)

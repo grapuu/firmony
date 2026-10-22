@@ -1267,11 +1267,13 @@ export const MessagesPage: FC<{
   submission?: string
   paymentId?: string | null
   me?: string
-}> = ({ messages, accountant, now, payments, flash, error, draft, submission, paymentId, me }) => (
+  assistant?: boolean
+}> = ({ messages, accountant, now, payments, flash, error, draft, submission, paymentId, me, assistant }) => (
   <>
     <header class="phead">
       <Heading first={app.messages.title} />
       <p class="phead__lead">{app.messages.lead}</p>
+      {assistant?<p><a class="link" href="/app/asistent">Spýtať sa asistenta na stav firmy</a></p>:null}
     </header>
     <section class="talk" aria-label={app.messages.title}>
       {messages.length === 0 ? (

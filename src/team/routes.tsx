@@ -1,6 +1,11 @@
 import { recordAutoReview } from '../aml/auto-review'
 import { completionFacts, handoverContactText, handoverHistory, managedHandover, managedHandoverQueue, updateHandover, type HandoverUpdate } from '../migration/store'
 import { checksFrom } from '../migration/model'
+import { AssistantControl, AssistantPage } from '../views/assistant'
+import { assistantAnswer, assistantDocuments } from '../assistant/context'
+import { assistantAllowed, assistantControl, setAssistantEnabled, type AssistantScope } from '../assistant/store'
+import { assistantTopic } from '../assistant/model'
+import { askAssistant } from '../assistant/service'
 import { orderAdmissionSql, quoteSql } from '../aml/model'
 import { AmlDossierPanel } from '../views/aml-admission'
 import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
@@ -755,6 +760,7 @@ async function clientPage(
     'clients',
     company.name,
     <ClientPage
+      assistant={await assistantAllowed(db,{company:company.id,actor:who.user.id,side:'team'})}
       user={who.user}
       company={company}
       members={members}
@@ -5489,13 +5495,45 @@ teamRoutes.get('/vykaz.csv', async (c) => {
 })
 
 // How well the reader reads (team/ai-accuracy.ts): an accountant sees her clients' documents, the administrator all.
+teamRoutes.get('/ai/asistent',async c=>isAdmin(c.get('who').user)?shell(c,'ai','Prevádzka asistenta',<AssistantControl control={await assistantControl(c.env.DB)} flash={c.req.query('ok')==='ulozene'} />):missingPage(c))
+teamRoutes.post('/ai/asistent',async c=>{
+  const user=c.get('who').user;if(!isAdmin(user))return missingPage(c)
+  const body=await c.req.parseBody()
+  if(body.zapnute!=='ano'&&body.zapnute!=='nie')return c.text('Vyberte platné nastavenie.',422)
+  if(!await setAssistantEnabled(c.env.DB,user.id,body.zapnute==='ano'))return missingPage(c)
+  return c.redirect('/ucto/ai/asistent?ok=ulozene',303)
+})
+async function teamAssistantPage(c:Ctx,company:Company,result?:Awaited<ReturnType<typeof askAssistant>>) {
+  const s:AssistantScope={company:company.id,actor:c.get('who').user.id,side:'team'},db=c.env.DB
+  if(!await assistantAllowed(db,s))return missingPage(c)
+  const document=result?.document??c.req.query('doklad')??''
+  if(document&&!ID.test(document))return missingPage(c)
+  const [documents,control]=await Promise.all([assistantDocuments(db,s,document),assistantControl(db)])
+  if(document&&!documents.some(d=>d.id===document))return missingPage(c)
+  const topic=assistantTopic(c.req.query('tema')),answer=result?.answer??(topic?await assistantAnswer(db,s,company,topic,document):undefined)
+  if(topic&&!answer&&!result)return missingPage(c)
+  return shell(c,'clients','Asistent Firmony',<><a class="back" href={`/ucto/klienti/${company.id}`}>Späť na firmu</a>
+    <AssistantPage company={company} context={`${s.actor}:${s.company}`} base={`/ucto/klienti/${company.id}/asistent`} documents={documents}
+      available={Boolean(c.env.ANTHROPIC_API_KEY)&&control.enabled} answer={answer??undefined} question={result?.question} document={document} error={result?.error} team /></>,result?.status??200)
+}
+teamRoutes.get('/klienti/:id/asistent',async c=>{const company=await teamCompany(c.env.DB,c.get('who').user,c.req.param('id'));return company?teamAssistantPage(c,company):missingPage(c)})
+teamRoutes.post('/klienti/:id/asistent',async c=>{
+  const who=c.get('who'),db=c.env.DB,company=await teamCompany(db,who.user,c.req.param('id'));if(!company)return missingPage(c)
+  const body=await c.req.parseBody(),s:AssistantScope={company:company.id,actor:who.user.id,side:'team'}
+  if(body.firma!==s.company||body.kontext!==`${s.actor}:${s.company}`)return c.text('Účet alebo firma sa zmenili. Obnovte stránku.',409)
+  const fresh=async()=>{const again=await currentWho(c,db);return Boolean(again?.user.id===s.actor&&again.user.team&&await teamCompany(db,again.user,s.company)&&!(await securityGate(c,again)))}
+  const result=await askAssistant(db,c.env.ANTHROPIC_API_KEY,s,company,{id:body.odoslanie,question:body.otazka,document:body.doklad},fresh)
+  if(!await fresh())return missingPage(c)
+  return teamAssistantPage(c,company,result)
+})
+
 teamRoutes.get('/ai', async (c) => {
   const who = c.get('who')
   const months = lastMonths(dayOf(now()))
   const asked = c.req.query('mesiac') ?? ''
   const month = months.includes(asked) ? asked : (months[0] as string)
   const accuracy = accuracyOf(await comparedOf(c.env.DB, { id: who.user.id, team: who.user.team ?? null }, month, demoOn(c)))
-  return shell(c, 'ai', t.ai.title, <AiPage month={month} months={months} accuracy={accuracy} />)
+  return shell(c, 'ai', t.ai.title, <>{isAdmin(who.user)?<p><a class="link" href="/ucto/ai/asistent">Prevádzka AI asistenta</a></p>:null}<AiPage month={month} months={months} accuracy={accuracy} /></>)
 })
 
 teamRoutes.get('/fakturacia', (c) => (isAdmin(c.get('who').user) ? billingPage(c) : missingPage(c)))

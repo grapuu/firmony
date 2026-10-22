@@ -90,6 +90,15 @@ Najprv 5 skutočných prechodov so záznamom času klienta a účtovníka. Toto 
 
 ### G2. Vlastný asistent znamená vlastný kontext a kontrolu, nie vševediaci model
 
+**Implementované 22. 10. 2026:** [Asistent](../assistant.md), schéma 79, ďalšia 80.
+Klient a pridelená účtovníčka majú priamy stav zo svojich údajov, zdroje a čas. Vlastná otázka ide
+do cloudu iba na klasifikáciu témy, nie spolu s firemnými údajmi. Odpoveď zostaví Firmony.
+Odborná otázka sa viditeľne pripraví do existujúcich správ a až potom odošle klientom.
+Denné transakčné limity, idempotencia aj pri neistom zápise, vypínač, kontrola aktuálneho oprávnenia,
+metadáta bez chatu, export/archív a informácia o poskytovateľovi sú súčasť implementácie.
+Nie je to vševediaci daňový poradca. Nejde o dôkaz úplnej správnosti, právny release alebo živý pilot.
+Nasledujúce odseky zachovávajú pôvodný návrhový rozsah; presná implementácia a hranice sú v dokumente.
+
 Existujúci Anthropic kľúč sa nečíta ani nevytvára nový. Ďalšia implementácia môže použiť serverové API,
 ale doterajšia čítačka sa nemení na otvorený chat bez dátového a prevádzkového návrhu.
 
@@ -202,7 +211,8 @@ Nasadenie overuje aj skutočné dve verejné stránky s aktuálnymi záznamami v
 SHA-256 zhodné verejné `/free-invoice.js` a `/app.css` oproti danému zostaveniu. Správny Worker commit
 bez pripraveného skriptu nie je úspešné nasadenie nástroja. Overovanie iba číta verejné dáta.
 
-Ďalší kódový kandidát je G1, v samostatnej vetve a s novým krokom schémy 78, ak ho model vyžaduje.
+G1 a G2 sú implementované v samostatných vetvách; ich presný rozsah je vo vyššie prepojených dokumentoch.
+Ďalšie ekonomicky neurčené kampane G3/G4 sa bez parametrov a financovania nepredstierajú ako aktívne.
 J2 odborné uzavretie otázky, J3 až J5, skutočný prevádzkový pilot a právne/poistné spustenie zostávajú otvorené.
 Žiadna z týchto stratégií nepotvrdzuje miliardovú hodnotu alebo garantovaný podiel na trhu.
 

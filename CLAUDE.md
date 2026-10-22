@@ -4,6 +4,30 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Asistent G2 implementovaný 22. 10. 2026:** `docs/assistant.md`. Klient zo Správ na `/app/asistent`,
+pridelená účtovníčka/admin z firmy na `/ucto/klienti/:id/asistent`. Šesť priamych tém bez AI; otázka
+vlastnými slovami používa existujúce Anthropic API iba na výber pevnej témy. Model nevidí firemný kontext;
+Firmony načíta aktuálne údaje a zostaví text, vlastné odkazy aj čas. Žiadne generované právne/daňové rady,
+platby, podpisy, podania alebo zmeny knihy. Príprava otázky účtovníčke zachová aktuálny text a doklad,
+nič neposiela; až ďalší klik použije existujúci idempotentný composer. Presné limity 12/40/200 volaní
+denne používateľ/firma/globálne, 1 200 znakov, 128 výstupných tokenov a 12 sekúnd. Neistý pokus sa
+automaticky neopakuje. Firma, účet, členstvo/pridelenie a vypnutie sa preveria aj po čakaní.
+Admin `/ucto/ai/asistent` má meranie a čerstvo overený vypínač. Rýchle otázky a ľudská cesta ostávajú.
+Neukladá sa chat, iba chránené metadáta použitia s odtlačkom a známymi/neznámymi tokenmi; export/archív
+a riadený výmaz pokryté. Nový iba krok **79**, prvých 78 chráni SHA-256 regresia, ďalší **80**.
+`PRIVACY_VERSION=2026-10-22`, nová pravdivá informácia o dobrovoľnom prenose otázky a výnimkách retencie
+poskytovateľa. Kľúč sa nečíta ani nemení, čítačka ostáva, TERMS_VERSION a ceny ostávajú. Nový endpoint
+API `2026-10-21`, existujúci Haiku 5.5 podporuje forced tool; produkčný pilot sa nepredstiera.
+Povinné kontroly presného commitu a produkčný dôkaz v PR; overenie nasadenia zahŕňa aj `/inside.js`.
+G2 už nie je iba návrh; G3-G6, odborné uzavretie J2, J3-J5 a skutočné právne/poistné kroky zostávajú.
+Primárne originály prečítané 22. 10. 2026, citované aj v kóde a dokumente:
+https://platform.claude.com/docs/en/api/messages/create , https://platform.claude.com/docs/en/api/versioning ,
+https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools ,
+https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training ,
+https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data ,
+https://static.slov-lex.sk/static/SK/ZZ/2018/18/20260818.html (§3 ods.2, rozsah pri GDPR).
+GDPR na EUR-Lex bol blokovaný robotickou kontrolou; netvrdiť nové prečítanie originálu ani právny release.
+
 **Jednotné vstupy do spravovaného prechodu, 22. 10. 2026:** hlavná karta „Meníte účtovníčku“
 a produktové odseky v návodoch `/online-uctovnik`, `/ako-vybrat-uctovnika`, `/zmena-uctovnika`
 teraz rovnako ako FAQ vysvetľujú kontakt a potvrdenie koordinácie, overenie oprávnenia, odborné
@@ -50,8 +74,9 @@ Originály opäť prečítané 22. 10. 2026 a citované v kóde:
 https://static.slov-lex.sk/static/SK/ZZ/1964/40/20260731.html (§§31-33b,40; aktuálne, nie januárové),
 https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html (§§5,8),
 https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (§19).
-Skutočné plnomocenstvo, právny release a päť živých prevzatí ostávajú na ľuďoch. G2 AI asistent, G3 kredit,
-G4 založenie a G6 komunita sú zatiaľ návrhy v dokumente 13. Ceny, slogan a smerovanie sa nemenia.
+Skutočné plnomocenstvo, právny release a päť živých prevzatí ostávajú na ľuďoch. G2 AI asistent je
+implementovaný v novšom zázname vyššie; G3 kredit, G4 založenie a G6 komunita sú návrhy v dokumente 13.
+Ceny, slogan a smerovanie sa nemenia.
 Všeobecné odborné vybavenie otázok J2, J3-J5 a používateľský pilot ostávajú otvorené.
 
 **Pokyn majiteľa 22. 10. 2026, ďalšie zákaznícke výhody:**

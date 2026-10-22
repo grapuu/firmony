@@ -1,5 +1,19 @@
 # Firmony: progress of the continuation
 
+## Asistent pre klienta aj účtovníčku, G2 (Codex, 22. október 2026 CEST)
+
+[Implementácia](docs/assistant.md) v existujúcej službe: priame otázky bez cloudu a vlastná otázka
+cez existujúce API. Model iba vyberá tému, Firmony skladá odpoveď z oprávnených aktuálnych údajov,
+uvádza zdroje a čas. Cudzia firma/doklad, strata členstva či pridelenia, prepnutá session a vypnutie
+počas volania neposkytnú odpoveď. Žiadne platby, generované daňové rady, voľné SQL alebo automatické podania.
+Odborná otázka sa najprv pripraví z aktuálneho textu a výberu dokladu; klient ju ešte skontroluje a odošle.
+Transakčné limity a opakovanie UUID chránia platené volania aj pri neistom finálnom zápise.
+Admin má metadáta použitia a overený vypínač; textový chat sa neukladá, použitie patrí do exportu/archívu.
+Nová schéma 79, prvých 78 nezmenených. Ďalší krok 80. Nová privacy verzia a pravdivý popis toku otázky,
+bez nového kľúča, účtu alebo zmeny cien. Rozhranie ostáva v pôvodnom dizajne a dvoch pracovných pohľadoch.
+HTTP/D1 súbeh, poruchy, tri rozpočty, browser formuláre a päť UI stavov; presné výsledky celej povinnej sady
+a živé nasadenie sú v PR. Syntetický provider nie je produkčný pilot. G3-G6 a odborné uzavretie J2 ostávajú otvorené.
+
 ## Rovnaký postup prechodu na všetkých vstupoch (Codex, 22. október 2026 CEST)
 
 Karta hlavnej stránky a tri existujúce návody opisujú spravovanú koordináciu rovnako ako nové FAQ.

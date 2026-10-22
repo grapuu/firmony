@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { checkPrehlad } from './prehlad.units.mjs'
 import { checkOverview } from './overview.units.mjs'
+import { checkAssistantUnits } from './assistant.units.mjs'
 import { checkFreeInvoiceUnits } from './free-invoice.units.mjs'
 import {
   freeInvoice,
@@ -7220,4 +7221,5 @@ await (await import('./social.units.mjs')).checkSocial()
 }
 
 checkOverview()
+checkAssistantUnits()
 done('units')
