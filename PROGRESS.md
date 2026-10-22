@@ -1,5 +1,13 @@
 # Firmony: progress of the continuation
 
+## Dokončenie a nasadenie asistenta G2 (Cline, 22. október 2026 CEST)
+
+PR #29 bol zablokovaný skutočným zlyhaním browser testu, nie len kvótou artefaktov: prístupný názov
+selectu/textarea obsahoval hodnotu alebo možnosti. Oprava `aria-label` + asertia 200 (JSON receipt) +
+vymazanie 95 artefaktov + `continue-on-error` na diagnostický upload. Overené: check, 1 485 unit,
+12 deployment, 25 peppol, 102 browser. Zlúčené do main, Workers Builds úspešné, production verification
+úspešná. Pridané doc 14 a art-spec. Schéma 79; ceny a terms bez zmeny.
+
 ## Asistent pre klienta aj účtovníčku, G2 (Codex, 22. október 2026 CEST)
 
 [Implementácia](docs/assistant.md) v existujúcej službe: priame otázky bez cloudu a vlastná otázka

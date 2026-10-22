@@ -4,6 +4,15 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Dokončenie a nasadenie asistenta G2, 22. 10. 2026 (Cline):** PR #29 bol zablokovaný skutočným zlyhaním browser
+testu, nie len kvótou artefaktov: prístupný názov `<select>` a `<textarea>` asistenta obsahoval aj hodnotu alebo
+možnosti (pole obalené v `<label>`), preto ich `getByLabel` nenašiel. Opravené explicitným `aria-label`; asertia testu
+`303` → `200` (skladateľ správ odpovedá JSON receipt). Vymazaných 95 artefaktov a diagnostický upload
+`accounting-layout` má `continue-on-error`, aby plná kvóta nezablokovala merge. Lokálne overené: `npm run check`,
+1 485 unit + 12 deployment + 25 peppol + 102 browser testov. Zlúčené do `main` (`67e4cb9`), Workers Builds úspešné,
+production verification úspešná — asistent je live. Pridané `docs/strategy/14-customer-win-handoff.md` (pokyn
+majiteľa) a `docs/art-spec-2026-10-22.md` (3D obrázky). Schéma 79, ceny a terms bez zmeny.
+
 **Asistent G2 implementovaný 22. 10. 2026:** `docs/assistant.md`. Klient zo Správ na `/app/asistent`,
 pridelená účtovníčka/admin z firmy na `/ucto/klienti/:id/asistent`. Šesť priamych tém bez AI; otázka
 vlastnými slovami používa existujúce Anthropic API iba na výber pevnej témy. Model nevidí firemný kontext;
