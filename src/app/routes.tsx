@@ -321,7 +321,8 @@ appRoutes.use('*', async (c, next) => {
       const own = await firstCompanyOf(c.env.DB, who.user.id)
       if (own && reads) {
         await c.env.DB.batch([switchStatement(c.env.DB, who.session, who.user.id, own)])
-        return c.redirect(new URL(c.req.url).pathname, 303)
+        const url = new URL(c.req.url)
+        return c.redirect(takeoverLoginNext(`${url.pathname}${url.search}`) ?? url.pathname, 303)
       }
       return reads ? c.redirect('/ucto', 303) : c.text('Forbidden', 403)
     }
