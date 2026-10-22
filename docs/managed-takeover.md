@@ -79,6 +79,7 @@ odvolanie, export a konečný výmaz. SHA-256 stráži prvých 77 nezmenených s
 `test/managed-takeover.browser.mjs` skúša reálne klientské a tímové formuláre, labely, mobil,
 upload a odvolanie; tri nové stavy sú aj v povinnej UI sade. Všetky povinné kontroly presnej
 finálnej revízie a následné živé nasadenie sa evidujú v PR. Lokálna TS6 nenahrádza `npm run check` v CI.
+Production verification preveruje aj presný verejný `/inside.css` oproti zostaveniu, popri pôvodných nástrojoch.
 
 Právny release, platné zastupovanie a skutočné prevzatia sa kódom nepotvrdzujú. Pilot ostáva päť
 reálnych prechodov: aktívny čas oboch rolí, kontakty, podpisy, chýbajúce podklady a čas do kontroly.
