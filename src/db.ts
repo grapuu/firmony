@@ -5,6 +5,7 @@ import { AML_RETENTION_SCHEMA } from './aml/retention'
 import { AML_SCHEMA } from './aml/schema'
 import { MANAGED_HANDOVER_SCHEMA } from './migration/schema'
 import { ASSISTANT_SCHEMA } from './assistant/schema'
+import { FORMATION_SCHEMA } from './formation/schema'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
@@ -1565,6 +1566,8 @@ const MIGRATIONS: readonly string[][] = [
   MANAGED_HANDOVER_SCHEMA,
   // 79: bounded cloud topic routing, immutable usage evidence and the operational switch.
   ASSISTANT_SCHEMA,
+  // 80: company formation requests, professional workflow and retained revision evidence.
+  FORMATION_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

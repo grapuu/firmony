@@ -4,6 +4,9 @@ import { declarationPdf } from '../aml/pdf'
 import { bootstrapOfficerStatement } from '../aml/store'
 import { cancelHandover, managedHandover, requestHandover } from '../migration/store'
 import { requestErrors, takeoverLoginNext, type HandoverRequestValues } from '../migration/model'
+import { cancelFormation, formationCase, requestFormation } from '../formation/store'
+import { requestErrors as formationRequestErrors, type FormationRequestValues } from '../formation/model'
+import { ClientFormation } from '../views/formation'
 import { accessOpenSql } from '../aml/retention'
 import { TakeoverCompanyChoice } from '../views/managed-takeover'
 import { AssistantPage } from '../views/assistant'
@@ -2348,6 +2351,47 @@ appRoutes.post('/prechod/odvolat', async (c) => {
   if (body.firma !== who.company.id || typeof body.ziadost !== 'string' || !/^\d+$/.test(String(body.verzia))) return switchPage(c,{error:'Firma alebo verzia žiadosti sa zmenila. Obnovte stránku.'},409)
   const changed = await cancelHandover(c.env.DB,who.company.id,who.user.id,body.ziadost,Number(body.verzia))
   return changed ? c.redirect('/app/prechod?ok=odvolane#koordinacia',303) : switchPage(c,{error:'Žiadosť sa medzitým zmenila alebo je už uzavretá. Obnovte stránku.'},409)
+})
+
+async function formationPage(c: Ctx, notice: { flash?: string | null; error?: string | null; values?: FormationRequestValues; errors?: string[]; submission?: string } = {}, status?: ContentfulStatusCode) {
+  const who = c.get('who')
+  const f = await formationCase(c.env.DB, who.company.id)
+  const ok = c.req.query('ok')
+  const flash = notice.flash ?? (ok === 'zalozenie' ? 'Žiadosť sme prijali. Priebeh založenia uvidíte tu.' : ok === 'zrusene' ? 'Koordinácia je zrušená. Doterajšie záznamy zostávajú zachované.' : null)
+  return shell(c, 'company', 'Založenie s.r.o.', <ClientFormation company={who.company} f={f} owner={who.role === 'owner'} submission={notice.submission ?? crypto.randomUUID()} values={notice.values} errors={notice.errors} />, status ?? 200)
+}
+
+appRoutes.get('/zalozenie', (c) => formationPage(c))
+
+appRoutes.post('/zalozenie', async (c) => {
+  const who = c.get('who'), db = c.env.DB
+  if (who.role !== 'owner') return formationPage(c, { error: 'Žiadosť o založenie môže zadať vlastník firemného účtu.' }, 403)
+  if (!serviceOpen(who.company, today())) return formationPage(c, { error: 'Služba už skončila. Nové založenie sa nezačína.' }, 409)
+  if (!(await withinLimit(db, 'formation', who.company.id, 20, 3600))) return formationPage(c, { error: t.messages.throttle }, 429)
+  const body = await c.req.parseBody()
+  const values = { name: typeof body.meno === 'string' ? body.meno.trim() : '', email: typeof body.email === 'string' ? body.email.trim().toLowerCase() : '', idea: typeof body.predmet === 'string' ? body.predmet.trim() : '' }
+  const submission = typeof body.odoslanie === 'string' && /^[a-f0-9-]{36}$/.test(body.odoslanie) ? body.odoslanie : ''
+  if (body.firma !== who.company.id) return formationPage(c, { error: 'Aktívna firma sa zmenila. Obnovte stránku a zadajte žiadosť pre správnu firmu.', values }, 409)
+  const errors = formationRequestErrors(values, body.suhlas === '1')
+  if (!submission) errors.push('Otvorte aktuálny formulár a žiadosť zopakujte.')
+  if (errors.length) return formationPage(c, { values, errors, submission: submission || undefined }, 422)
+  const created = await requestFormation(db, who.company, who.user, values, submission)
+  const current = await formationCase(db, who.company.id)
+  if (!created && current && (current.contactName !== values.name || current.contactEmail !== values.email || current.idea !== values.idea)) return formationPage(c, { error: 'Firma už má žiadosť s inými údajmi. Pôvodnú môžete zrušiť a zadať novú; tento pokus ju nezmenil.' }, 409)
+  if (!created && (!current || current.state === 'cancelled')) return formationPage(c, { error: 'Táto žiadosť už bola zrušená alebo sa zmenila. Pre novú použite aktuálny formulár.' }, 409)
+  if (created) {
+    await ringStatement(db, 'formation', submission, who.company.accountantEmail ?? BRAND.email, bell.teamManagedTakeover(`${siteOrigin(c)}/ucto/klienti/${who.company.id}/zalozenie`)).run()
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return c.redirect('/app/zalozenie?ok=zalozenie#zalozenie', 303)
+})
+
+appRoutes.post('/zalozenie/zrusit', async (c) => {
+  const who = c.get('who'), body = await c.req.parseBody()
+  if (who.role !== 'owner') return formationPage(c, { error: 'Koordináciu môže zrušiť vlastník firemného účtu.' }, 403)
+  if (body.firma !== who.company.id || typeof body.ziadost !== 'string' || !/^\d+$/.test(String(body.verzia))) return formationPage(c, { error: 'Firma alebo verzia žiadosti sa zmenila. Obnovte stránku.' }, 409)
+  const changed = await cancelFormation(c.env.DB, who.company.id, who.user.id, body.ziadost, Number(body.verzia))
+  return changed ? c.redirect('/app/zalozenie?ok=zrusene#zalozenie', 303) : formationPage(c, { error: 'Žiadosť sa medzitým zmenila alebo je už uzavretá. Obnovte stránku.' }, 409)
 })
 
 appRoutes.post('/prechod/odoslane', async (c) => {
