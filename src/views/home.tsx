@@ -3,6 +3,7 @@ import { annualPlanCents, type CalcResult } from '../calc'
 import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, type Art, type PlanId } from '../config'
 import { copy, planRows } from '../copy'
 import { formatEur } from '../format'
+import { FreeToolsTeaser } from './free-tools'
 
 /** Where a visitor came from (utm_* and ref), carried by every link and form to the request. */
 export type Carry = readonly (readonly [string, string])[]
@@ -897,6 +898,7 @@ export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => 
     <Einvoice />
     <Pricing carry={carry} />
     <Calculator state={calc} carry={carry} />
+    <FreeToolsTeaser />
     <Paths carry={carry} />
     <About />
     <Faq />

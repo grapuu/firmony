@@ -1,5 +1,6 @@
 // What the unit checks look at, bundled once (npm test builds it with esbuild).
 export * as calc from '../src/calc'
+export * as freeInvoice from '../src/tools/invoice'
 export * as config from '../src/config'
 export * as format from '../src/format'
 export * as ico from '../src/ico'

@@ -6,4 +6,5 @@ node_modules
 __pycache__
 
 /public/security.js
+/public/free-invoice.js
 /src/generated/deployment.ts

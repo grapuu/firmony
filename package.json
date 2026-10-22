@@ -11,7 +11,7 @@
     "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs && node --test test/deployment.test.mjs",
     "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs",
     "test:ui": "node test/visual.mjs",
-    "build:assets": "node scripts/build-metadata.mjs && node scripts/build-security.mjs",
+    "build:assets": "node scripts/build-metadata.mjs && node scripts/build-security.mjs && node scripts/build-tools.mjs",
     "test:browser": "node test/passkeys.browser.mjs",
     "test:load": "node test/build.mjs && node --no-warnings test/load.mjs",
     "test:reader": "esbuild test/reader.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/reader-bundle.mjs && node --no-warnings test/reader.mjs",

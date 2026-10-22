@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { checkPrehlad } from './prehlad.units.mjs'
 import { checkOverview } from './overview.units.mjs'
+import { checkFreeInvoiceUnits } from './free-invoice.units.mjs'
 import {
+  freeInvoice,
   aml,
   appCopy,
   bank,
@@ -105,6 +107,7 @@ import { camtXml } from './pretend.mjs'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 
 const NB = ' '
+checkFreeInvoiceUnits({ invoice: freeInvoice, check })
 
 // Recorded submission, a checked receipt and statutory corrections are separate decisions.
 {
