@@ -60,6 +60,7 @@ import { checkOverviewRuntime } from './overview.runtime.mjs'
 import { checkDeliveryRuntime } from './delivery.runtime.mjs'
 import { checkManagedTakeover } from './managed-takeover.runtime.mjs'
 import { checkAssistantRuntime } from './assistant.runtime.mjs'
+import { checkFormationRuntime } from './formation.runtime.mjs'
 import { assistantProviderFixture } from './assistant.fixture.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
@@ -5221,5 +5222,6 @@ await checkOverviewRuntime({ db, nowS, day, signIn, as, capture: process.env.FIR
 await checkDeliveryRuntime({ mf, db, signIn, nowS, day })
 await checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,capture:process.env.FIRMONY_CAPTURE_DIR})
 await checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,provider:assistantProvider,capture:process.env.FIRMONY_CAPTURE_DIR})
+await checkFormationRuntime({db,files,as,signIn,lucia,nowS,day,capture:process.env.FIRMONY_CAPTURE_DIR})
 await mf.dispose()
 done('runtime')

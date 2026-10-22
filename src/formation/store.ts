@@ -58,7 +58,7 @@ export async function updateFormation(db: D1Database, company: Company, user: Us
   if (!isFormationState(v.state) || !mayMove(h.state, v.state)) return 'Tento prechod stavu nie je povolený. Obnovte stránku.'
   const at = now()
   const facts = { companyName: company.name, registeredOn: company.ico ?? null }
-  const write = db.prepare(`UPDATE formation_cases SET state = ?1,updated_at = ?2,updated_by = ?3,responsible_id = ?4,due_on = ?5,
+  const write = db.prepare(`UPDATE formation_cases SET state = ?1,revision = revision + 1,updated_at = ?2,updated_by = ?3,responsible_id = ?4,due_on = ?5,
       authority_reference = ?6,public_note = ?7,client_action = ?8,steps = ?9,completion_source = ?10,reason = ?11
     WHERE id = ?12 AND company_id = ?13 AND revision = ?14 AND ${formationOpenSql('?13')}
       AND EXISTS (SELECT 1 FROM companies WHERE id = ?13 AND accountant_id = ?4)

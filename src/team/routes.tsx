@@ -1,7 +1,7 @@
 import { recordAutoReview } from '../aml/auto-review'
 import { completionFacts, handoverContactText, handoverHistory, managedHandover, managedHandoverQueue, updateHandover, type HandoverUpdate } from '../migration/store'
 import { checksFrom } from '../migration/model'
-import { formationCase, updateFormation, type FormationUpdate } from '../formation/store'
+import { formationCase, formationQueue, updateFormation, type FormationUpdate } from '../formation/store'
 import { stepsFrom, type FormationState } from '../formation/model'
 import { TeamFormation } from '../views/formation'
 import { AssistantControl, AssistantPage } from '../views/assistant'
@@ -600,14 +600,15 @@ async function accountantsList(db: D1Database): Promise<{ id: string; name: stri
 
 teamRoutes.get('/', async (c) => {
   const who = c.get('who')
-  const [rows, ended, { dues }, mail, takeovers] = await Promise.all([
+  const [rows, ended, { dues }, mail, takeovers, formations] = await Promise.all([
     teamClients(c.env.DB, who.user, demoOn(c)),
     isAdmin(who.user) ? endedCompanies(c.env.DB, who.user) : Promise.resolve([]),
     teamDeadlines(c.env.DB, who.user, demoOn(c), dayOf(now())),
     isAdmin(who.user) ? failedMail(c.env.DB) : Promise.resolve(null),
     managedHandoverQueue(c.env.DB,who.user,demoOn(c)),
+    formationQueue(c.env.DB,who.user,demoOn(c)),
   ])
-  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} mail={mail} ended={ended} takeovers={takeovers} now={now()} flash={flashOf(c)} />)
+  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} mail={mail} ended={ended} takeovers={takeovers} formations={formations} now={now()} flash={flashOf(c)} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------

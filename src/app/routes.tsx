@@ -2376,9 +2376,13 @@ appRoutes.post('/zalozenie', async (c) => {
   if (!submission) errors.push('Otvorte aktuálny formulár a žiadosť zopakujte.')
   if (errors.length) return formationPage(c, { values, errors, submission: submission || undefined }, 422)
   const created = await requestFormation(db, who.company, who.user, values, submission)
-  if (!created) return formationPage(c, { error: 'Firma už má žiadosť o založenie, alebo sa žiadosť nepodarilo uložiť. Obnovte stránku.' }, 409)
-  await ringStatement(db, 'formation', submission, who.company.accountantEmail ?? BRAND.email, bell.teamManagedTakeover(`${siteOrigin(c)}/ucto/klienti/${who.company.id}/zalozenie`)).run()
-  later(c, flushOutbox(db, c.env.EMAIL))
+  const current = await formationCase(db, who.company.id)
+  if (!created && current && (current.contactName !== values.name || current.contactEmail !== values.email || current.idea !== values.idea)) return formationPage(c, { error: 'Firma už má žiadosť s inými údajmi. Pôvodnú môžete zrušiť a zadať novú; tento pokus ju nezmenil.' }, 409)
+  if (!created && (!current || current.state === 'cancelled')) return formationPage(c, { error: 'Táto žiadosť už bola zrušená alebo sa zmenila. Pre novú použite aktuálny formulár.' }, 409)
+  if (created) {
+    await ringStatement(db, 'formation', submission, who.company.accountantEmail ?? BRAND.email, bell.teamManagedTakeover(`${siteOrigin(c)}/ucto/klienti/${who.company.id}/zalozenie`)).run()
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
   return c.redirect('/app/zalozenie?ok=zalozenie#zalozenie', 303)
 })
 

@@ -55,7 +55,8 @@ export const FORMATION_SCHEMA = [
     OR NEW.contact_name IS NOT OLD.contact_name OR NEW.contact_email IS NOT OLD.contact_email OR NEW.idea IS NOT OLD.idea
     BEGIN SELECT RAISE(ABORT,'Company formation cannot change its request'); END`,
   `CREATE TRIGGER formation_cases_step BEFORE UPDATE ON formation_cases WHEN
-    NOT (OLD.state = 'requested' AND NEW.state IN ('preparing','registering')
+    NOT (NEW.state = 'cancelled'
+    OR OLD.state = 'requested' AND NEW.state IN ('preparing','registering')
     OR OLD.state = 'preparing' AND NEW.state IN ('waiting','registering')
     OR OLD.state = 'waiting' AND NEW.state IN ('preparing','registering')
     OR OLD.state = 'registering' AND NEW.state IN ('waiting','completed')

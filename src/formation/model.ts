@@ -37,7 +37,7 @@ export function mayMove(from: FormationState, to: FormationState): boolean {
   if (from === 'cancelled') return false
   if (to === 'cancelled') return true
   if (from === to) return from !== 'completed'
-  return ({ requested: ['preparing'], preparing: ['waiting', 'registering'], waiting: ['preparing', 'registering'], registering: ['waiting', 'completed'], completed: ['registering'], cancelled: [] } as Record<FormationState, FormationState[]>)[from].includes(to)
+  return ({ requested: ['preparing', 'registering'], preparing: ['waiting', 'registering'], waiting: ['preparing', 'registering'], registering: ['waiting', 'completed'], completed: ['registering'], cancelled: [] } as Record<FormationState, FormationState[]>)[from].includes(to)
 }
 
 export const formationDay = (value: string) => /^20\d{2}-(0[1-9]|1[0-2])-([012]\d|3[01])$/.test(value) && new Date(`${value}T12:00:00Z`).toISOString().slice(0, 10) === value
