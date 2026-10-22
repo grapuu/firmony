@@ -11,7 +11,10 @@ prístupu sa stratil kontext otvorenej stránky. Skrytý univerzálny formulár 
 
 Teraz klient odosiela jeden súbor a žiada výslovné potvrdenie prijatia zo servera. Potvrdenie obsahuje aktuálny
 účet a firmu a vznikne po dokončení existujúceho uloženia. Prijatie nie je potvrdenie správnosti účtovania.
-Server rozlišuje nový doklad, už prijatý súbor, bankový výpis a odmietnutie. Bežné formuláre bez JavaScriptu
+Server rozlišuje nový doklad, už prijatý súbor, bankový výpis a odmietnutie.
+Protokol používa len `/app/doklady` a `/app/platby/:id/doklad`; samostatný bankový formulár a plná moc
+používajú pôvodné bežné odoslanie, vlastnú validáciu a presmerovanie. Regresný prehliadačový scenár
+overuje plnú moc uloženú raz na odborné overenie, bez označenia ako skontrolovanej. Bežné formuláre bez JavaScriptu
 naďalej dostávajú HTML alebo pôvodné presmerovanie.
 
 Každý súbor zostáva v pamäti otvorenej stránky spolu s výsledkom. Po chybe klient vidí, ktoré prijatia sú

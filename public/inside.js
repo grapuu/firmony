@@ -184,8 +184,11 @@
     run()
   }
 
-  function isStatement(form) {
-    return /\/banka$/.test(form.getAttribute('action') || '')
+  function hasUploadReceipt(form) {
+    // Only these endpoints implement the per-document receipt. Bank statements and powers of attorney
+    // keep their own native form, redirect and validation; a successful HTML answer is not this protocol.
+    var path = new URL(form.action, location.href).pathname
+    return path === '/app/doklady' || /^\/app\/platby\/[^/]+\/doklad$/.test(path)
   }
 
   ready(function () {
@@ -196,13 +199,13 @@
       if (!input || !input.matches || !input.matches('form[data-upload] input[type=file]')) return
       var form = input.form
       if (!input.files || !input.files.length) return
-      if (isStatement(form)) return form.submit()
+      if (!hasUploadReceipt(form)) return form.submit()
       send(form, Array.prototype.slice.call(input.files))
     })
 
     document.addEventListener('submit', function (event) {
       var form = event.target
-      if (form.matches('form[data-upload]') && !isStatement(form)) {
+      if (form.matches('form[data-upload]') && hasUploadReceipt(form)) {
         event.preventDefault()
         var existing = batches.find(function (batch) { return batch.form === form && batch.rows.some(function (row) { return row.state !== 'done' }) })
         if (existing) return existing.box.focus()
@@ -262,7 +265,7 @@
     // Files dropped on the card for adding them.
     document.querySelectorAll('[data-drop]').forEach(function (zone) {
       var form = zone.querySelector('form[data-upload]')
-      if (!form) return
+      if (!form || !hasUploadReceipt(form)) return
       var depth = 0
       zone.addEventListener('dragenter', function (event) {
         event.preventDefault()

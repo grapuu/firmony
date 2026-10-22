@@ -1,6 +1,5 @@
 // Real customer forms on a phone, with deliberate loss of an already-committed server response.
 import { check } from './check.mjs'
-import { readFile } from 'node:fs/promises'
 
 export async function checkDeliveryBrowser({ page, db, origin }) {
   const company = 'browser-overview-co'
@@ -57,4 +56,16 @@ export async function checkDeliveryBrowser({ page, db, origin }) {
   await page.locator('form[data-message] button[type=submit]').click()
   await page.locator('[data-send-status]').getByText(/Napíšte/).waitFor()
   check('delivery browser: validation leaves the customer in an editable composer', await page.locator('#sprava').getAttribute('readonly') === null && await page.locator('.talk').count() === 1)
+  // The older bank/power-of-attorney forms share data-upload, but have their own native response contract.
+  await page.goto(`${origin}/app/plna-moc`)
+  const poaRequest = page.waitForRequest((request) => new URL(request.url()).pathname === '/app/plna-moc' && request.method() === 'POST')
+  await Promise.all([
+    page.waitForURL(`${origin}/app/plna-moc?ok=plna-moc`),
+    page.locator('#plna-moc-file').setInputFiles({ name: 'TEST-BROWSER j2-power.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nTEST-ONLY power of attorney awaiting professional verification') }),
+  ])
+  const postedPoa = await poaRequest
+  check('delivery browser: the existing power-of-attorney picker follows its native upload and success redirect', postedPoa.headers()['accept'].includes('text/html') && !postedPoa.headers()['x-firmony-context'] && await page.locator('.upload-status').count() === 0)
+  const poa = await db.prepare('SELECT COUNT(*) AS n, MAX(checked_at) AS checked FROM company_files WHERE company_id=? AND file_name=?').bind(company, 'TEST-BROWSER j2-power.pdf').first()
+  check('delivery browser: a power-of-attorney upload is stored once for review and never accepted as a checked document', poa.n === 1 && poa.checked === null && (await db.prepare('SELECT COUNT(*) AS n FROM documents WHERE company_id=?').bind(company).first()).n === 2)
+
 }

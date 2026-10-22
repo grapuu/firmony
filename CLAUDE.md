@@ -17,6 +17,9 @@ ukončenia celej služby. Rozhranie používa existujúci vzhľad a oprávnenia;
 súboru, zachovanie dávky pri prerušení, opakovanie len nepotvrdených položiek, ochrana pred prepnutou firmou
 alebo účtom a idempotentná správa vrátane súbežného pokusu. Bez trvalého ukladania rozpracovaných osobných
 údajov do prehliadača. `test/delivery.runtime.mjs` a `test/delivery.browser.mjs` vrátane straty už uloženej odpovede.
+Kompatibilita formulárov: JSON potvrdenie používa iba príjem dokladov a priradenie k platbe;
+bankový formulár a plná moc zostávajú na pôvodnom bežnom odoslaní. Browser regresia overuje skutočnú
+plnú moc uloženú raz na kontrolu a pôvodné presmerovanie, bez automatického označenia overenia.
 Samostatný stav konkrétnej otázky a potvrdenie jej odborného vybavenia ostávajú otvorené; prečítanie ani
 prijatie súboru to nenahrádza. J3 až J5 a používateľský pilot zostávajú otvorené. Schéma 77, ďalšia 78.
 **Pokyn majiteľa 22. 10. 2026, dôvera a výhodnosť:** `docs/research/trust-and-value-2026-10-22.md`

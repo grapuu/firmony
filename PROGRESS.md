@@ -10,6 +10,8 @@ porovnanie, bez zmeny cien. Pridané reálne HTTP a mobilné browser scenáre. P
 Po čítaní pôvodného aktuálneho a vyhláseného budúceho zákona o DPH spresnená aj e-fakturačná komunikácia
 a existujúci návod: určené dodania, rozdielne povinnosti príjemcu a platiteľa, sankcie a pripravované napojenie.
 Bez fotografií, novej schémy, zmluvných sľubov, sledovania citlivých vstupov alebo programu odmien.
+Pri záverečnej kontrole opravená aj kompatibilita odosielania plnej moci: rozšírený protokol je obmedzený
+na dva dokladové endpointy, plná moc a banka majú pôvodné formuláre. Pridaný skutočný browser regresný scenár.
 Predajný účinok a porozumenie skutočných záujemcov zostávajú na pilot; výskum nie je garancia rastu.
 
 
