@@ -1932,7 +1932,7 @@ async function assistantPage(c:Ctx,result?:Awaited<ReturnType<typeof askAssistan
   if(topic&&!answer&&!result)return c.notFound()
   return shell(c,'messages','Asistent Firmony',<AssistantPage company={who.company} context={`${who.user.id}:${who.company.id}`} base="/app/asistent"
     documents={documents} available={Boolean(c.env.ANTHROPIC_API_KEY)&&control.enabled} answer={answer??undefined}
-    question={result?.question} document={document} error={result?.error} />,result?.status??200)
+    question={result?.question} document={document} error={result?.error} submission={result?.submission} />,result?.status??200)
 }
 appRoutes.get('/asistent',(c)=>assistantPage(c))
 appRoutes.post('/asistent',async c=>{

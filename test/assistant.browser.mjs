@@ -27,7 +27,9 @@ export async function checkAssistantBrowser({page,clientPage,db,origin,provider}
   }
   // The secondary button submits the live textarea and document selector, not a stale hidden copy.
   const exactQuestion='TEST-BROWSER Nová odborná otázka bez AI <script>window.assistantInjected=1</script>'
+  const answeredId=await clientPage.locator('input[name=odoslanie]').inputValue()
   await clientPage.getByLabel('Vaša otázka',{exact:true}).fill(exactQuestion)
+  check('assistant browser: editing a confirmed question starts a new attempt without another server round trip',await clientPage.locator('input[name=odoslanie]').inputValue()!==answeredId)
   const beforeMessages=(await db.prepare('SELECT COUNT(*) AS n FROM messages WHERE company_id=?').bind(company).first()).n
   await clientPage.getByRole('button',{name:'Pripraviť otázku účtovníčke',exact:true}).click()
   await clientPage.locator('form[action="/app/spravy"] textarea[name=sprava]').waitFor({state:'visible'})
@@ -43,6 +45,10 @@ export async function checkAssistantBrowser({page,clientPage,db,origin,provider}
   const errorResponse=clientPage.waitForResponse(r=>new URL(r.url()).pathname==='/app/asistent'&&r.request().method()==='POST')
   await clientPage.getByRole('button',{name:'Opýtať sa AI',exact:true}).click()
   check('assistant browser: an unavailable provider preserves the editable question and the human path',(await errorResponse).status()===503&&await clientPage.getByLabel('Vaša otázka',{exact:true}).inputValue()==='TEST-BROWSER Zachovajte túto otázku pri výpadku.'&&await clientPage.getByRole('button',{name:'Pripraviť otázku účtovníčke',exact:true}).isEnabled()&&await clientPage.locator('[data-assistant-answer]').count()===0)
+  const beforeRetry=provider.requests.length,retryId=await clientPage.locator('input[name=odoslanie]').inputValue()
+  const retryResponse=clientPage.waitForResponse(r=>new URL(r.url()).pathname==='/app/asistent'&&r.request().method()==='POST')
+  await clientPage.getByRole('button',{name:'Opýtať sa AI',exact:true}).click()
+  check('assistant browser: retry from the returned error form reuses the attempt and makes no second paid call',(await retryResponse).status()===503&&provider.requests.length===beforeRetry&&await clientPage.locator('input[name=odoslanie]').inputValue()===retryId)
   await page.goto(`${origin}/ucto/klienti/${company}/asistent?tema=overview`)
   check('assistant browser: the assigned accountant uses the same source-backed view with no client escalation button',await page.locator('[data-assistant-answer]').isVisible()&&await page.getByRole('button',{name:'Pripraviť otázku účtovníčke',exact:true}).count()===0)
   await page.goto(`${origin}/ucto/ai/asistent`)

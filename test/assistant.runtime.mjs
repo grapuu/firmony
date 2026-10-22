@@ -51,6 +51,7 @@ export async function checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,p
   check('assistant: usage retains a fingerprint and known meters but no question or model-written advice',use.state==='done'&&use.input_tokens===127&&use.output_tokens===9&&use.fingerprint.length===64&&!JSON.stringify(use).includes(sent.otazka)&&!JSON.stringify(use).includes('999 eur'))
   res=await owner.post('/app/asistent',sent);html=await res.text()
   check('assistant: reloading the same submission never repeats a paid call',res.status===200&&provider.requests.length===startCalls+1&&!html.includes('Untrusted advice'))
+  check('assistant: the confirmed HTML preserves the exact submission id for an ordinary browser retry',html.includes(`name="odoslanie" value="${sent.odoslanie}"`))
   await db.prepare("INSERT INTO documents(id,company_id,created_at,source,status,number) VALUES('assistant-added-later',?,?,'upload','manual','TEST-NEW')").bind(co,nowS).run()
   res=await owner.post('/app/asistent',sent)
   check('assistant: a cached topic re-reads current facts instead of replaying an old financial answer',plain(await res.text()).includes('V evidencii sú 3 doklady')&&provider.requests.length===startCalls+1)
@@ -74,6 +75,7 @@ export async function checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,p
   const unconfirmed=fields(),beforeUnconfirmed=provider.requests.length
   res=await owner.post('/app/asistent',unconfirmed);html=await res.text()
   check('assistant: an unconfirmed final write keeps the question and never claims a saved answer',res.status===503&&html.includes(unconfirmed.otazka)&&!html.includes('data-assistant-answer'))
+  check('assistant: an uncertain HTML form preserves its paid attempt rather than minting a new one',html.includes(`name="odoslanie" value="${unconfirmed.odoslanie}"`))
   await owner.post('/app/asistent',unconfirmed)
   check('assistant: retrying an unconfirmed write does not repeat the provider call',provider.requests.length===beforeUnconfirmed+1)
   await db.exec('DROP TRIGGER assistant_test_finish')

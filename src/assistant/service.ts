@@ -4,12 +4,12 @@ import { assistantId, assistantQuestion, type AssistantAnswer } from './model'
 import { classifyQuestion } from './provider'
 import { getDocument, type Company } from '../app/store'
 
-export interface AssistantResult { status:200|404|409|422|429|503; error?:string; answer?:AssistantAnswer; question:string; document:string }
+export interface AssistantResult { status:200|404|409|422|429|503; error?:string; answer?:AssistantAnswer; question:string; document:string; submission?:string }
 
 export async function askAssistant(db:D1Database,key:string|undefined,s:AssistantScope,company:Company,
   fields:{id:unknown;question:unknown;document:unknown},fresh:()=>Promise<boolean>):Promise<AssistantResult> {
   const question=assistantQuestion(fields.question),document=typeof fields.document==='string'?fields.document:'',id=fields.id
-  const base={question:typeof fields.question==='string'?fields.question.slice(0,1200):'',document}
+  const base={question:typeof fields.question==='string'?fields.question.slice(0,1200):'',document,submission:assistantId(id)?id.toLowerCase():undefined}
   const fail=(status:Exclude<AssistantResult['status'],200>,error:string):AssistantResult=>({...base,status,error})
   if(!question)return fail(422,'Napíšte otázku najviac na 1 200 znakov. Neposielajte prílohy, heslá ani údaje, ktoré s otázkou nesúvisia.')
   if(!assistantId(id))return fail(422,'Otvorte novú otázku a odošlite ju znova.')
@@ -20,7 +20,7 @@ export async function askAssistant(db:D1Database,key:string|undefined,s:Assistan
   const requestId=id.toLowerCase()
   let reservation:Awaited<ReturnType<typeof reserveQuestion>>
   try{reservation=await reserveQuestion(db,s,requestId,question,document)}catch{return fail(503,'Uloženie otázky nevieme potvrdiť. Váš text zostáva vo formulári. Vyberte rýchlu otázku alebo pripravte otázku účtovníčke.')}
-  if(reservation.kind==='conflict')return fail(409,'Toto odoslanie už patrí inej otázke. Použite Novú otázku; Váš text zostáva vo formulári.')
+  if(reservation.kind==='conflict')return {...fail(409,'Toto odoslanie už patrí inej otázke. Váš text zostáva vo formulári. Po kontrole ho môžete odoslať ako novú otázku.'),submission:crypto.randomUUID()}
   if(reservation.kind==='limit')return fail(429,'Teraz sme dosiahli limit AI otázok alebo sa ešte spracúva predošlá. Rýchle otázky a kontakt s účtovníčkou môžete použiť hneď.')
   if(reservation.kind==='pending')return fail(409,'Spracovanie tejto otázky ešte nemáme potvrdené. Opakované odoslanie nespustí ďalšie volanie. Použite rýchlu otázku alebo pripravte správu účtovníčke.')
   if(reservation.kind==='unavailable')return fail(503,'Výsledok AI teraz nevieme potvrdiť. Váš text zostáva vo formulári; rýchle otázky a účtovníčka sú dostupné.')

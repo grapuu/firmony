@@ -5514,7 +5514,7 @@ async function teamAssistantPage(c:Ctx,company:Company,result?:Awaited<ReturnTyp
   if(topic&&!answer&&!result)return missingPage(c)
   return shell(c,'clients','Asistent Firmony',<><a class="back" href={`/ucto/klienti/${company.id}`}>Späť na firmu</a>
     <AssistantPage company={company} context={`${s.actor}:${s.company}`} base={`/ucto/klienti/${company.id}/asistent`} documents={documents}
-      available={Boolean(c.env.ANTHROPIC_API_KEY)&&control.enabled} answer={answer??undefined} question={result?.question} document={document} error={result?.error} team /></>,result?.status??200)
+      available={Boolean(c.env.ANTHROPIC_API_KEY)&&control.enabled} answer={answer??undefined} question={result?.question} document={document} error={result?.error} submission={result?.submission} team /></>,result?.status??200)
 }
 teamRoutes.get('/klienti/:id/asistent',async c=>{const company=await teamCompany(c.env.DB,c.get('who').user,c.req.param('id'));return company?teamAssistantPage(c,company):missingPage(c)})
 teamRoutes.post('/klienti/:id/asistent',async c=>{

@@ -12,6 +12,7 @@ platby, podpisy, podania alebo zmeny knihy. Príprava otázky účtovníčke zac
 nič neposiela; až ďalší klik použije existujúci idempotentný composer. Presné limity 12/40/200 volaní
 denne používateľ/firma/globálne, 1 200 znakov, 128 výstupných tokenov a 12 sekúnd. Neistý pokus sa
 automaticky neopakuje. Firma, účet, členstvo/pridelenie a vypnutie sa preveria aj po čakaní.
+Aj návratový HTML formulár drží totožné UUID; browser regresia opakuje skutočný chybový formulár.
 Admin `/ucto/ai/asistent` má meranie a čerstvo overený vypínač. Rýchle otázky a ľudská cesta ostávajú.
 Neukladá sa chat, iba chránené metadáta použitia s odtlačkom a známymi/neznámymi tokenmi; export/archív
 a riadený výmaz pokryté. Nový iba krok **79**, prvých 78 chráni SHA-256 regresia, ďalší **80**.

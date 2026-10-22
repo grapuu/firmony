@@ -71,6 +71,8 @@ nie o garantovanú eurovú cenu alebo dosiahnutú maržu. Cenu dodávateľa tu n
 Rezervácia je jeden podmienený SQL zápis; súbežné požiadavky neprekročia strop. UUID a odtlačok
 viažu pokus na firmu, autora a presný vstup. Opakovanie toho istého pokusu nepoužije API druhýkrát.
 Potvrdená téma sa môže znovu použiť, ale fakty sa vždy čítajú čerstvé. Zmenený text vyžaduje nový pokus.
+Aj vrátený HTML formulár zachová ten istý identifikátor vrátane chyby a neistého zápisu. Aktívna úprava
+textu alebo výberu dokladu vytvorí nový pokus; bez JavaScriptu sa pri konflikte najprv zachová koncept na kontrolu.
 Pri neistom finálnom zápise zostane text a ľudská cesta; opakované odoslanie nespustí ďalšie volanie.
 
 Oprávnenie, aktívna firma a prihlásený účet sa kontrolujú pred aj po externom čakaní a čítaní faktov.
