@@ -238,7 +238,7 @@ export const GUIDES: Guide[] = [
           'výpisy z banky chodia samé alebo ich raz mesačne pridáte',
           'umelá inteligencia doklad prečíta a spáruje s platbou',
           'účtovníčka vedie odbornú kontrolu a postará sa o dohodnutú agendu',
-          'v aplikácii vidíte, čo je hotové, a jedinú vec, ktorá od Vás chýba',
+          'v aplikácii vidíte, čo je hotové a čo potrebuje Vaše doplnenie alebo rozhodnutie',
         ],
       },
       {
@@ -250,7 +250,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Prechod od doterajšieho účtovníka',
         p: [
-          'Výpoveď so žiadosťou o odovzdanie podkladov Vám pripravíme, konateľ ju len podpíše. Podklady od doterajšieho účtovníka nahráte do aplikácie, počiatočné stavy prevezmeme z jeho programu a pokračujeme bez prerušenia.',
+          'V aplikácii zadáte kontakt na doterajšieho účtovníka a potvrdíte koordináciu prevzatia. Vaša účtovníčka vo Firmony preverí oprávnenie, dohodne odovzdanie a skontroluje podklady aj nadväznosť počiatočných stavov. Vy sa zapojíte pri potrebnom podpise alebo doplnení. Priebeh a ďalší krok vidíte v aplikácii; list a podklady si môžete vybaviť aj osobne.',
         ],
       },
     ],
@@ -261,7 +261,7 @@ export const GUIDES: Guide[] = [
     ],
     sources: [],
     published: '2026-10-20',
-    modified: '2026-10-20',
+    modified: '2026-10-22',
     keywords: ['online účtovník', 'účtovník online', 'účtovníctvo online', 'účtovník Bratislava', 'účtovník Košice'],
   },
   {
@@ -340,7 +340,7 @@ export const GUIDES: Guide[] = [
       { q: 'Musí mať účtovník osvedčenie alebo certifikát?', a: 'Nie. Vedenie účtovníctva je voľná živnosť, na ktorú netreba preukazovať vzdelanie ani prax. Prax a referencie si preto overte sami.' },
       { q: 'Kto zodpovedá za chybu v účtovníctve?', a: 'Voči úradom firma: poverením účtovníka sa zodpovednosti nezbavuje. Škodu, ktorú účtovník spôsobí porušením svojich povinností, môžete od neho žiadať podľa zmluvy a zákona.' },
       { q: 'Koľko stojí účtovník pre s. r. o.?', a: `Závisí od počtu dokladov, DPH, zamestnancov a závierky. Vo Firmony od ${eur(start.price)} mesačne bez DPH, mzdy ${eur(PAYROLL_PRICE)} mesačne za človeka a závierka s daňovým priznaním ${eur(CLOSING_PRICE)} ročne.` },
-      { q: 'Môžem zmeniť účtovníka počas roka?', a: 'Áno. Doterajšiemu účtovníkovi dáte výpoveď podľa zmluvy a požiadate o odovzdanie dokladov a účtovníctva, nový pokračuje od stavov, ktoré prevezme. Vo Firmony je výpoveď pre doterajšieho účtovníka pripravená v aplikácii.' },
+      { q: 'Môžem zmeniť účtovníka počas roka?', a: 'Áno. Doterajšiemu účtovníkovi dáte výpoveď podľa zmluvy a požiadate o odovzdanie dokladov a účtovníctva, nový pokračuje od stavov, ktoré prevezme. Vo Firmony môžete zadať kontakt a potvrdiť koordináciu prevzatia; účtovníčka preverí oprávnenie a dohodne odovzdanie. Pripravený list zostáva aj pre osobné vybavenie.' },
       { q: 'Je online účtovník rovnako spoľahlivý ako účtovník v meste?', a: 'Spoľahlivosť nezávisí od toho, kde účtovník sedí, ale od toho, čo je v zmluve, kto Vašu firmu kontroluje a ako rýchlo odpovedá. Položte online službe rovnakých desať otázok ako komukoľvek inému.' },
     ],
     sources: [
@@ -348,7 +348,7 @@ export const GUIDES: Guide[] = [
       { title: 'Podnikajte.sk: Zoznam voľných živností v roku 2026', url: 'https://www.podnikajte.sk/zivnost/zoznam-volnych-zivnosti-2026' },
     ],
     published: '2026-10-20',
-    modified: '2026-10-20',
+    modified: '2026-10-22',
     keywords: ['ako vybrať účtovníka', 'účtovník pre novú s.r.o.', 'kde nájsť účtovníka', 'založil som s.r.o. účtovník', 'účtovná kancelária alebo online účtovník'],
   },
   {
@@ -625,7 +625,7 @@ export const GUIDES: Guide[] = [
         h: 'Ako sa podklady preberajú vo Firmony',
         p: [
           'Účtovníčka má nástroje na prevzatie obratovej predvahy, otvorených položiek, majetku, zamestnancov a predchádzajúcich závierok zo súborov. Rozpoznanie a vhodnosť konkrétneho exportu sa overujú pri prevzatí; nesľubujeme bez kontroly úplný import z každého programu.',
-          'Pred začatím služby sa overuje firma a oprávnená osoba. Cieľom je, aby ste podklady odovzdali naraz podľa dohodnutého zoznamu a dostali konkrétne otázky len k tomu, čo chýba alebo nesedí. Termín prevzatia sa potvrdí podľa rozsahu a stavu Vášho účtovníctva.',
+          'Pred začatím služby sa overuje firma a oprávnená osoba. Po uzavretí zmluvy môžete v aplikácii zadať kontakt a potvrdiť koordináciu prevzatia. Účtovníčka preverí oprávnenie, dohodne odovzdanie a prijme podklady priamo. Vy vybavíte potrebný podpis alebo konkrétne doplnenie; priebeh a ďalší krok uvidíte v aplikácii. Termín prevzatia sa potvrdí podľa rozsahu a stavu Vášho účtovníctva.',
         ],
       },
     ],
@@ -642,7 +642,7 @@ export const GUIDES: Guide[] = [
       { title: 'Daňový poriadok: § 9, zastupovanie, znenie od 1. 9. 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2009/563/20260901.html#paragraf-9' },
     ],
     published: '2026-10-21',
-    modified: '2026-10-21',
+    modified: '2026-10-22',
     keywords: ['zmena účtovníka', 'prechod k novému účtovníkovi', 'odovzdanie účtovníctva', 'zmena účtovníka počas roka', 'prevzatie účtovníctva'],
   },
   {

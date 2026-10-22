@@ -36,7 +36,7 @@ Sú nižšie rozpracované ako ďalšie kroky, s konkrétnymi podmienkami spuste
 | Fakturácia klienta | `app/invoices.ts`, `views/invoices.tsx`, úhrady, dobropisy, zálohy, opakovanie, cudzie meny, UBL, PAY by square | Vyžaduje klientsky účet a službu. Nový verejný nástroj má výslovne užší rozsah. |
 | AI čítačka | `app/read.ts`, `READER`, existujúce Anthropic API a asynchrónny príjem dokladov | Nie je to vševediaci poradenský model. Verejná neobmedzená čítačka by mala náklady a nové dátové povinnosti. |
 | Prevzatie dát | `app/takeover.ts`, `takeover-store.ts`, `/ucto/klienti/:id/prevzatie` | Import a kontrola dát existujú; nesmieme sľúbiť bezchybný import ľubovoľného exportu. |
-| Prechod klienta | `/app/prechod`, `views/papers.tsx`, žiadosť, výpoveď, upload podkladov a záznam `switching.sent` | Klient dnes žiadosť odosiela sám. Evidencia odoslania nie je spravované prevzatie ani dôkaz prijatia starou účtovníčkou. |
+| Prechod klienta | `/app/prechod`, `views/papers.tsx`, žiadosť, výpoveď, upload podkladov a záznam `switching.sent` | Pôvodný stav pred G1: klient odosielal sám. Teraz môže potvrdiť koordináciu Firmony podľa [implementácie](../managed-takeover.md); osobná cesta ostáva. Evidencia odoslania stále nie je dôkaz prijatia. |
 | Mzdový výpočet | `/mzdova-kalkulacka`, existujúci mzdový engine, zvoliteľný rok | Nie je to všeobecný daňový a odvodový výpočet SZČO alebo s. r. o. z nahraných dokladov. |
 | Dôvera | právne podmienky, precontract AML, release gate, export, J1, potvrdenia odovzdania J2 | Reálne podpisy, poistenie a prevádzkový pilot musia byť doložené osobitne. |
 | Nasadenie | `main` -> existujúci Cloudflare Workers Builds -> firmony.io, `/healthz` s revíziou | GitHub prístup a overenie verejného výsledku nie sú priamy prístup do Cloudflare dashboardu alebo registrátora. |
@@ -73,7 +73,7 @@ prípad pre účtovníčku, príjem podkladov, konkrétne kontrolné záznamy a 
 Pôvodný návrh nižšie ostáva kontextom. Kontakt odosiela človek po overení oprávnenia; automatické
 externé odoslanie, platné zastupovanie a päť skutočných pilotných prechodov tým nie sú potvrdené.
 
-Najbližší veľký kandidát. Klient zadá kontakt pôvodnej účtovníčky, skontroluje konkrétne poverenie a potvrdí
+Pôvodné zadanie G1, dnes implementované v rozsahu vyššie. Klient zadá kontakt pôvodnej účtovníčky, skontroluje konkrétne poverenie a potvrdí
 rozsah. Prípady s chýbajúcim oprávnením alebo nedokončeným AML sa neodosielajú. Formy podpisu a rozsah
 zastupovania musí potvrdiť advokát; jednoduchý checkbox sa nesmie vydávať za kvalifikovaný podpis.
 

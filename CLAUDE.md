@@ -4,6 +4,15 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Jednotné vstupy do spravovaného prechodu, 22. 10. 2026:** hlavná karta „Meníte účtovníčku“
+a produktové odseky v návodoch `/online-uctovnik`, `/ako-vybrat-uctovnika`, `/zmena-uctovnika`
+teraz rovnako ako FAQ vysvetľujú kontakt a potvrdenie koordinácie, overenie oprávnenia, odborné
+prevzatie a len potrebné doplnenie klienta. Osobná cesta ostáva. Web nesľubuje automatický bezchybný
+import alebo pokračovanie bez prerušenia pred kontrolou exportu. Prehľad neschováva viac úloh za
+sľub jednej chýbajúcej veci. Zmenené iba opisy vlastného workflow, nie zákonné pravidlá a výpočty.
+Dátum troch upravených návodov je 22. 10. 2026; stratégia 13 už odlišuje stav pred a po G1.
+Ceny a smerovanie sa nemenia. Schéma 78, ďalšia 79. Samostatná vetva a povinné kontroly v PR.
+
 **Upozornenie na doplnenie pri prechode, 22. 10. 2026:** `docs/managed-takeover.md`.
 Nová alebo zmenená otázka účtovníčky vloží súkromný zvonček pre členov firmy v tej istej transakcii
 ako stav a história. Súbežný prehrávajúci pokus nevloží oznámenie; nezmenená otázka neposiela ďalšie.
