@@ -4,6 +4,16 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Založenie s.r.o. + prechod, G4, 22. 10. 2026 (Cline):** `docs/formation.md`. Klient na `/app/zalozenie` zadá žiadosť
+o založenie s.r.o. + vedenie účtovníctva; tím koordinuje na `/ucto/klienti/:id/zalozenie` (fronta na `/ucto`).
+Stavy requested → preparing → waiting → registering → completed, zrušenie odkiaľkoľvek. Kontrolný zoznam 7 krokov
+(listina, živnosť, imanie/banka, register, daňový úrad, poisťovne, DPH). Založenie je v cene pri 36-mesačnom vedení
+účtovníctva; pri skoršom odchode sa dopočíta (poctivá viazanosť, nie putá). Kód koordinuje; právne úkony vykonáva
+človek/právnik — žiadny sľub automatického založenia. Nemenná história, súbeh, export a riadený výmaz pokryté.
+Nový iba krok **80**, prvých 79 chráni SHA-256 regresia. Overené: `npm run check`, 1 485 unit + 12 deployment,
+2 272 runtime (18 nových formation testov), 102 browser. Zlúčené (`f00789c`), Workers Builds + production
+verification úspešné — live. Schéma 80, ceny a terms bez zmeny.
+
 **Dokončenie a nasadenie asistenta G2, 22. 10. 2026 (Cline):** PR #29 bol zablokovaný skutočným zlyhaním browser
 testu, nie len kvótou artefaktov: prístupný názov `<select>` a `<textarea>` asistenta obsahoval aj hodnotu alebo
 možnosti (pole obalené v `<label>`), preto ich `getByLabel` nenašiel. Opravené explicitným `aria-label`; asertia testu

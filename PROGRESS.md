@@ -1,5 +1,13 @@
 # Firmony: progress of the continuation
 
+## Založenie s.r.o. + prechod, G4 (Cline, 22. október 2026 CEST)
+
+[Implementácia](docs/formation.md): žiadosť klienta na `/app/zalozenie`, prípad tímu na `/ucto/klienti/:id/zalozenie`,
+stavy + kontrolný zoznam 7 krokov, fronta na `/ucto`, zrušenie, nemenná história, súbeh, export a riadený výmaz.
+Založenie v cene pri 36-mesačnom vedení; skorší odchod sa dopočíta. Kód koordinuje, právne úkony vykonáva človek.
+Krok 80, SHA-256 stráži prvých 79. Overené: check, 1 485 unit + 12 deployment, 2 272 runtime (18 formation),
+102 browser. Live.
+
 ## Dokončenie a nasadenie asistenta G2 (Cline, 22. október 2026 CEST)
 
 PR #29 bol zablokovaný skutočným zlyhaním browser testu, nie len kvótou artefaktov: prístupný názov
