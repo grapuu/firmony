@@ -4,7 +4,7 @@ export async function checkManagedTakeoverBrowser({page,clientPage,db,origin}) {
   const company = 'browser-overview-co', at = Math.floor(Date.now()/1000)
   await db.prepare("UPDATE companies SET contract_at=?,accountant_id='browser-admin' WHERE id=?").bind(at,company).run()
   // Authentication was exercised above; keep the workflow fixture within that actual verified session's time window.
-  await db.prepare("UPDATE sessions SET verified_at=? WHERE user_id='browser-admin' AND verified_credential IS NOT NULL").bind(at).run()
+  await db.prepare("UPDATE sessions SET verified_at=? WHERE user_id='browser-admin' AND credential_id IS NOT NULL").bind(at).run()
   await clientPage.goto(`${origin}/app/prechod`)
   check('managed takeover browser: the primary task is the short coordination request and the legacy letter is disclosed separately',await clientPage.getByRole('button',{name:'Poveriť Firmony koordináciou',exact:true}).isVisible() && await clientPage.locator('.managed-takeover__manual').getAttribute('open') === null)
   await clientPage.getByLabel('Meno účtovníčky alebo kancelárie',{exact:true}).fill('TEST-BROWSER Doterajšia kancelária')
