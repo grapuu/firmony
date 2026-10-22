@@ -5,7 +5,8 @@ Zadanie Christiana z 21. 10. 2026. Stav kódu overený na `main` po PR #18, comm
 ďalších úprav pre Clauda aj Codex. Pôvodná zmena PR #19 obsahovala iba projektové poznámky.
 **Aktualizácia 22. 10. 2026 CEST: J1 je implementované v [klientskom prehľade](../client-overview.md).**
 Nasledujúci text zostáva pôvodným zadaním; rozsah J1 a jeho hranice určuje uvedená implementačná poznámka.
-J2 až J5 a overenie s používateľmi zostávajú otvorené.
+Spoľahlivosť odosielania v J2 má [záznam implementácie](../client-delivery.md). Konkrétna otázka s odborným
+vybavením, J3 až J5 a overenie s používateľmi zostávajú otvorené.
 
 ## Rozhodnutie, ktorým sa má riadiť ďalší vývoj
 
@@ -194,8 +195,9 @@ Firmony, poradie J1 až J5 a časy pilotu sú naše návrhy.
 ## Pokyn na nadviazanie
 
 J1 má [samostatný záznam implementácie](../client-overview.md). Ďalšia implementačná práca je
-**J2: jednoduché odovzdanie dokladu a odpoveď na otázku**. Najprv overiť súčasné fakty a testy.
-J2 až J5 a používateľský pilot nie sú označené za hotové.
+**J2, spoľahlivé odosielanie, je implementované:** [záznam](../client-delivery.md). Ďalšia časť J2 je
+konkrétna otázka účtovníčky a výslovné odborné vybavenie; prečítanie správy ho nenahrádza. Táto časť J2,
+J3 až J5 a používateľský pilot nie sú označené za hotové.
 Každá úprava má vlastnú vetvu, aktualizáciu `CLAUDE.md` a pred zlúčením úspešné `npm run check`, `npm test`,
 Node 24 `npm run test:runtime`, `npm run test:ui`, `npm run test:peppol` a existujúce prehliadačové kontroly.
 `main` sa okamžite nasadzuje. Schéma ostáva 77; prípadná nová migrácia až 78, pôvodné kroky sa nemenia.

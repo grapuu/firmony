@@ -8,6 +8,7 @@ import { randomBytes, createHash } from 'node:crypto'
 import { check, done } from './check.mjs'
 import { readHealthText } from './health-text.mjs'
 import { readSocialXml } from './social-xml.mjs'
+import { checkDeliveryBrowser } from './delivery.browser.mjs'
 import { payslip } from '../.wrangler/dist/stores.js'
 
 const assets = resolve('public'),
@@ -387,6 +388,7 @@ try {
   check('the mobile customer overview exposes its unread message as the primary usable action', await clientPage.locator('[data-overview-action]').first().getAttribute('data-overview-action') === 'message' && await clientPage.locator('[data-overview-action="message"]').first().getAttribute('href') === '/app/spravy' && await clientPage.locator('[data-overview-state="action"]').count() === 1)
   await Promise.all([clientPage.waitForURL(`${origin}/app/spravy`), clientPage.locator('[data-overview-action="message"]').first().click()])
   check('the mobile primary action reaches the actual message without manufacturing a reply', await clientPage.getByText('TEST-BROWSER-OVERVIEW správa pre klienta', { exact: true }).count() === 1 && (await db.prepare("SELECT seen_at FROM messages WHERE id='browser-overview-message'").first()).seen_at !== null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id='browser-overview-co' AND action='message.sent'").first()).n === 0)
+  await checkDeliveryBrowser({ page: clientPage, db, origin })
   await db.prepare("UPDATE sessions SET company_id='browser-co' WHERE user_id='browser-client'").run()
   await clientPage.goto(`${origin}/app/podania/${filingId}`)
   check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)

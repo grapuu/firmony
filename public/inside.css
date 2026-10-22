@@ -850,29 +850,36 @@
   opacity: 0.6;
 }
 
-.progress {
-  display: grid;
-  gap: 8px;
+.upload-status {
   width: 100%;
-  color: var(--blue);
-  font-size: 0.9375rem;
-  font-weight: 600;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--mist);
+  color: var(--ink);
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 
-.progress__bar {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--blue-soft);
+.upload-status ul {
+  margin: 12px 0;
+  padding-left: 20px;
 }
 
-.progress__fill {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--blue);
-  transition: width 0.3s var(--ease);
+.upload-status li + li {
+  margin-top: 8px;
+}
+
+.upload-status__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-status__controls .btn {
+  white-space: normal;
 }
 
 .add__mail {

@@ -81,7 +81,7 @@ import { companyDeadlines } from '../team/deadlines-store'
 import { DEMO, seedDemo } from './demo'
 import { EXEMPTS, type Exempt } from './match'
 import { sniff } from './read'
-import { keepFilesFor, readOne, type NewFile } from './intake'
+import { keepFilesFor, readOne, type Kept, type NewFile } from './intake'
 import { remindAll, remindApprovals, remindBankRenewals, remindStatements, bratislava } from './remind'
 import { ratesFor, refreshRates } from './fx-store'
 import { orderItems, orderStatements, painXml, payables, paymentOrders, PAYABLE_DOC } from './payorders'
@@ -321,6 +321,11 @@ appRoutes.use('*', async (c, next) => {
   const path = new URL(c.req.url).pathname
   const security = await securityGate(c, who, sensitivePath(path, c.req.method) && (!/^\/app\/export(?:\/|$)/.test(path) || who.role === 'owner'))
   if (security) return security
+  // A second tab can switch the session's company or account while the first still holds unsent files or text.
+  if (!reads && wantsReceipt(c) && /^\/app\/(?:doklady|spravy|platby\/[^/]+\/doklad)$/.test(path)
+    && c.req.header('x-firmony-context') !== `${who.user.id}:${who.company.id}`) {
+    return c.json({ error: 'Prihlásený účet alebo firma sa zmenili. Otvorte Firmony v ďalšom okne, vráťte pôvodnú firmu a skúste odoslanie znova.' }, 409)
+  }
   c.set('who', who as ClientWho)
   await next()
 })
@@ -344,6 +349,8 @@ function flashOf(c: Ctx): string | null {
   switch (c.req.query('ok')) {
     case 'pridane':
       return t.documents.added(n)
+    case 'prijate':
+      return `Prijatie potvrdené. Počet súborov: ${n}.`
     case 'priradene':
       return t.payment.linked
     case 'netreba':
@@ -647,6 +654,15 @@ interface Taken {
   problems: string[]
 }
 
+const wantsReceipt = (c: Ctx) => c.req.header('accept') === 'application/json'
+
+/** An explicit receipt, never an HTML page or a followed sign-in redirect, confirms a browser's upload. */
+function uploadReceipt(c: Ctx, taken: Taken, kept: Kept | null, next: string, status: ContentfulStatusCode = 200) {
+  return c.json({ upload: 1, context: `${c.get('who').user.id}:${c.get('who').company.id}`, accepted: kept ? taken.files.length : 0,
+    added: kept?.added ?? 0, known: kept?.known.length ?? 0, statements: kept?.statements.statements ?? 0,
+    problems: taken.problems, next }, status)
+}
+
 /** The files of a form, each checked by what it is and not by what it is called. */
 async function takeFiles(c: Ctx): Promise<Taken> {
   const body = await c.req.parseBody({ all: true })
@@ -676,7 +692,7 @@ async function takeFiles(c: Ctx): Promise<Taken> {
 }
 
 /** Keeps the files of a form; whatever is to be read is read after the answer. */
-async function keepFiles(c: Ctx, files: NewFile[], payment: string | null): Promise<{ added: number; known: string[] }> {
+async function keepFiles(c: Ctx, files: NewFile[], payment: string | null): Promise<Kept> {
   const who = c.get('who')
   const { kept, work } = await keepFilesFor(c.env, who.company, { user: who.user.id, source: 'upload' }, files, payment)
   if (work) later(c, work)
@@ -723,12 +739,16 @@ async function documentsWithProblems(c: Ctx, problems: string[], status: Content
 
 appRoutes.post('/doklady', async (c) => {
   const who = c.get('who')
+  const bad = (problems: string[], status: ContentfulStatusCode) => wantsReceipt(c)
+    ? uploadReceipt(c, { files: [], problems }, null, '/app/doklady', status) : documentsWithProblems(c, problems, status)
   // Ten days past the last day: the page's card says that nothing more is taken.
-  if (!intakeOpen(who.company, today())) return documentsWithProblems(c, [], 409)
-  if (!c.env.FILES) return documentsWithProblems(c, [t.documents.noStorage], 503)
-  if ((await filesToday(c.env.DB, who.company.id)) >= APP.filesPerDay) return documentsWithProblems(c, [t.documents.perDay], 429)
+  if (!intakeOpen(who.company, today())) return bad([t.ending.noIntake(dayName(who.company.endsOn ?? today()))], 409)
+  if (!c.env.FILES) return bad([t.documents.noStorage], 503)
+  if ((await filesToday(c.env.DB, who.company.id)) >= APP.filesPerDay) return bad([t.documents.perDay], 429)
   const taken = await takeFiles(c)
-  const kept = taken.files.length > 0 ? await keepFiles(c, taken.files, null) : { added: 0, known: [] }
+  const kept = taken.files.length > 0 ? await keepFiles(c, taken.files, null) : null
+  if (wantsReceipt(c)) return uploadReceipt(c, taken, kept, kept?.statements.statements ? '/app/platby' : '/app/doklady', kept ? 200 : 422)
+  if (!kept) return documentsWithProblems(c, taken.problems, 422)
   const problems = [...taken.problems, ...kept.known.map((name) => t.documents.known(name))]
   if (problems.length > 0) return documentsWithProblems(c, problems, kept.added > 0 || kept.known.length > 0 ? 200 : 422, kept.added > 0 ? t.documents.added(kept.added) : null)
   return c.redirect(`/app/doklady?ok=pridane&n=${kept.added}`, 303)
@@ -739,13 +759,17 @@ appRoutes.post('/platby/:id/doklad', async (c) => {
   const id = c.req.param('id')
   const p = ID.test(id) ? await getPayment(c.env.DB, who.company.id, id) : null
   if (!p) return shell(c, 'payments', t.errors.notFound, <Missing />, 404)
-  if (!intakeOpen(who.company, today())) return paymentPage(c, id, {}, 409)
-  if (!c.env.FILES) return paymentPage(c, id, { error: t.documents.noStorage }, 503)
-  if ((await filesToday(c.env.DB, who.company.id)) >= APP.filesPerDay) return paymentPage(c, id, { error: t.documents.perDay }, 429)
+  const bad = (error: string, status: ContentfulStatusCode) => wantsReceipt(c)
+    ? uploadReceipt(c, { files: [], problems: [error] }, null, `/app/platby/${id}`, status) : paymentPage(c, id, { error }, status)
+  if (!intakeOpen(who.company, today())) return bad(t.ending.noIntake(dayName(who.company.endsOn ?? today())), 409)
+  if (!c.env.FILES) return bad(t.documents.noStorage, 503)
+  if ((await filesToday(c.env.DB, who.company.id)) >= APP.filesPerDay) return bad(t.documents.perDay, 429)
   const taken = await takeFiles(c)
   // A payment that needs no document takes none: what is sent there waits among the documents.
   const exempt = p.state === 'exempt'
-  const kept = taken.files.length > 0 ? await keepFiles(c, taken.files, exempt ? null : p.id) : { added: 0, known: [] }
+  const kept = taken.files.length > 0 ? await keepFiles(c, taken.files, exempt ? null : p.id) : null
+  if (wantsReceipt(c)) return uploadReceipt(c, taken, kept, exempt ? '/app/doklady' : `/app/platby/${id}`, kept ? 200 : 422)
+  if (!kept) return paymentPage(c, id, { error: taken.problems.join(' ') }, 422)
   const problems = [...taken.problems, ...kept.known.map((name) => t.documents.known(name))]
   if (problems.length > 0) return paymentPage(c, id, { error: problems.join(' ') }, taken.files.length > 0 ? 200 : 422)
   return c.redirect(exempt ? `/app/doklady?ok=pridane&n=${kept.added}` : `/app/platby/${id}?ok=priradene`, 303)
@@ -1840,7 +1864,7 @@ appRoutes.get('/subory/:id', async (c) => {
 // Messages
 // ---------------------------------------------------------------------------------------------------------------
 
-async function messagesPage(c: Ctx, extra: { error?: string; draft?: string } = {}, status: ContentfulStatusCode = 200) {
+async function messagesPage(c: Ctx, extra: { error?: string; draft?: string; submission?: string; paymentId?: string | null } = {}, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const db = c.env.DB
   const messages = await listMessages(db, who.company.id)
@@ -1883,22 +1907,39 @@ appRoutes.post('/spravy', async (c) => {
   const who = c.get('who')
   const body = await c.req.parseBody()
   const text = typeof body.sprava === 'string' ? body.sprava.replace(/\r\n?/g, '\n').trim() : ''
-  if (text === '') return messagesPage(c, { error: t.messages.emptyBody }, 422)
-  if (text.length > APP.messageChars) return messagesPage(c, { error: t.messages.tooLong, draft: text.slice(0, APP.messageChars) }, 422)
   const db = c.env.DB
-  if (!(await withinLimit(db, 'message', who.company.id, APP.messagesPerHour, 3600))) return messagesPage(c, { error: t.messages.throttle, draft: text }, 429)
   const paymentId = typeof body.platba === 'string' && ID.test(body.platba) ? body.platba : null
   const payment = paymentId ? await getPayment(db, who.company.id, paymentId) : null
-  const id = crypto.randomUUID()
+  const supplied = typeof body.odoslanie === 'string' ? body.odoslanie : ''
+  const id = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(supplied) ? supplied.toLowerCase() : crypto.randomUUID()
+  const bad = (error: string, status: ContentfulStatusCode) => wantsReceipt(c) ? c.json({ error }, status)
+    : messagesPage(c, { error, draft: text.slice(0, APP.messageChars), submission: id, paymentId: payment?.id ?? null }, status)
+  const sent = () => wantsReceipt(c) ? c.json({ message: 1, id, context: `${who.user.id}:${who.company.id}`, next: '/app/spravy?ok=poslane#posledna' })
+    : c.redirect('/app/spravy?ok=poslane#posledna', 303)
+  if (text === '') return bad(t.messages.emptyBody, 422)
+  if (text.length > APP.messageChars) return bad(t.messages.tooLong, 422)
+  const previous = () => db.prepare('SELECT company_id, author, side, body, payment_id FROM messages WHERE id = ?').bind(id)
+    .first<{ company_id: string; author: string | null; side: string; body: string; payment_id: string | null }>()
+  const matches = (row: Awaited<ReturnType<typeof previous>>) => row && row.company_id === who.company.id && row.author === who.user.id
+    && row.side === 'client' && row.body === text && row.payment_id === (payment?.id ?? null)
+  const conflict = 'Toto odoslanie už patrí inej správe. Otvorte Správy znova a skopírujte do nich svoj text.'
+  const prior = await previous()
+  if (prior) return matches(prior) ? sent() : bad(conflict, 409)
+  if (!(await withinLimit(db, 'message', who.company.id, APP.messagesPerHour, 3600))) return bad(t.messages.throttle, 429)
   // The team is rung once for what it has not read yet: a second message before anybody looked rings nothing.
   const unread = await db.prepare("SELECT 1 AS x FROM messages WHERE company_id = ? AND side = 'client' AND seen_at IS NULL LIMIT 1").bind(who.company.id).first()
-  await db.batch([
+  try { await db.batch([
     messageStatement(db, { id, company: who.company.id, author: who.user.id, side: 'client', body: text, payment: payment?.id ?? null }),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'message.sent', subject: id }),
     ...(unread ? [] : [ringStatement(db, 'message', id, who.company.accountantEmail ?? BRAND.email, bell.teamMessage(`${siteOrigin(c)}/ucto/klienti/${who.company.id}#spravy`))]),
-  ])
+  ]) } catch (error) {
+    // A concurrent retry can lose the UNIQUE race. D1 rolls the whole batch back, including its event and bell.
+    const saved = await previous()
+    if (saved) return matches(saved) ? sent() : bad(conflict, 409)
+    throw error
+  }
   later(c, flushOutbox(db, c.env.EMAIL))
-  return c.redirect('/app/spravy?ok=poslane#posledna', 303)
+  return sent()
 })
 
 // ---------------------------------------------------------------------------------------------------------------
