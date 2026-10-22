@@ -12,10 +12,19 @@ s akceptačnými scenármi. **J1 implementované 22. 10. 2026 CEST:** `docs/clie
 stav `/app`, poradie a viditeľnosť zostávajúcich krokov, spoločnú osobnú frontu schvaľovania, aktuálnosť banky
 a nastavenie aj pri nulových pohyboch alebo automaticky prijatom doklade. Spárované platby nie sú potvrdením
 ukončenia celej služby. Rozhranie používa existujúci vzhľad a oprávnenia; schéma ostáva 77, ďalšia je 78.
-Úspešné kontroly finálneho commitu a overenie produkčnej revízie sa evidujú v PR. Ďalej J2: jednoduché odovzdanie
-dokladu a odpoveď na konkrétnu otázku. Model zatiaľ nemá samostatné dokončenie klientskej otázky; neprečítaná
-správa neznamená potvrdenie vybavenia. J2 až J5 a používateľský pilot zostávajú otvorené. Ceny, otvorený slogan,
-odborné agendy, serverové oprávnenia a AML brány sa nemenia.
+Úspešné kontroly finálneho commitu a overenie produkčnej revízie sa evidujú v PR.
+**J2, odosielanie implementované 22. 10. 2026 CEST:** `docs/client-delivery.md`, vlastné potvrdenie každého
+súboru, zachovanie dávky pri prerušení, opakovanie len nepotvrdených položiek, ochrana pred prepnutou firmou
+alebo účtom a idempotentná správa vrátane súbežného pokusu. Bez trvalého ukladania rozpracovaných osobných
+údajov do prehliadača. `test/delivery.runtime.mjs` a `test/delivery.browser.mjs` vrátane straty už uloženej odpovede.
+Samostatný stav konkrétnej otázky a potvrdenie jej odborného vybavenia ostávajú otvorené; prečítanie ani
+prijatie súboru to nenahrádza. J3 až J5 a používateľský pilot zostávajú otvorené. Schéma 77, ďalšia 78.
+**Nový pokyn majiteľa 22. 10. 2026:** ďalej dôkladne overiť pôvodné psychologické štúdie a verejné postupy
+Revolutu, Trading 212 a Robinhoodu a premietnuť dôveru, jednoduchosť a overiteľnú výhodnosť do predaja na webe
+aj produktu. Fotografie zakladateľa a účtovníčky zatiaľ neriešiť. Nadviazať na existujúci výskum
+`docs/research/customer-value-2026-10-21.md`; nezamieňať jeho návrhy za dodané funkcie alebo overené výsledky.
+Ceny 89, 169 a 329 eur sú súčasné nastavenie, bez podkladov netvrdiť prvenstvo v cene alebo garantovanú úsporu.
+Otvorený slogan, odborné agendy, serverové oprávnenia a AML brány sa nemenia týmto krokom odosielania.
 Primárne návrhové podklady prečítané 21. 10. 2026: https://www.w3.org/TR/WCAG22/ (najmä 2.4.3, 2.4.7,
 3.3.1, 3.3.2, 3.3.7, 4.1.3), https://www.w3.org/WAI/WCAG22/Understanding/redundant-entry.html,
 https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html,

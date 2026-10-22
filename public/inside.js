@@ -31,63 +31,157 @@
       .catch(function () { return file })
   }
 
-  function progress(form, done, total) {
-    var box = form.querySelector('.progress')
-    if (!box) {
-      box = document.createElement('div')
-      box.className = 'progress'
-      box.setAttribute('role', 'status')
-      box.innerHTML = '<span class="progress__text"></span><span class="progress__bar"><span class="progress__fill"></span></span>'
-      form.appendChild(box)
-    }
-    box.querySelector('.progress__text').textContent = total === 1 ? 'Odosiela sa doklad…' : 'Odosiela sa ' + Math.min(done + 1, total) + ' z ' + total + '…'
-    box.querySelector('.progress__fill').style.width = Math.round((done / total) * 100) + '%'
+  var batches = []
+  var context = document.body.getAttribute('data-client-context')
+  var leaving = false
+
+  function hasDraft() {
+    return Array.prototype.some.call(document.querySelectorAll('form[data-message] textarea'), function (area) { return area.value.trim() !== '' })
   }
 
-  /** Puts a whole page the server answered in place of this one: a form that came back with a message. */
-  function show(html) {
-    document.open()
-    document.write(html)
-    document.close()
+  window.addEventListener('beforeunload', function (event) {
+    if (leaving || (!hasDraft() && !batches.some(function (batch) { return batch.rows.some(function (row) { return row.state !== 'done' && row.state !== 'rejected' }) }))) return
+    event.preventDefault()
+    event.returnValue = ''
+  })
+
+  function nextPage(path) {
+    if (typeof path !== 'string' || !/^\/app(?:[/?#]|$)/.test(path)) throw new Error('bad receipt')
+    leaving = true
+    location.assign(path)
   }
 
-  /** Sends the files of a form one by one, then goes where the last answer leads. */
+  async function receiptRequest(action, data) {
+    var controller = new AbortController()
+    var timeout = setTimeout(function () { controller.abort() }, 45000)
+    try {
+      var res = await fetch(action, { method: 'POST', body: data, credentials: 'same-origin', redirect: 'error', signal: controller.signal, headers: { accept: 'application/json', 'x-firmony-context': context } })
+      var receipt = res.headers.get('content-type') && res.headers.get('content-type').includes('application/json') ? await res.json() : null
+      return { res: res, receipt: receipt }
+    } finally { clearTimeout(timeout) }
+  }
+
+  function accessLink() {
+    var link = document.createElement('a')
+    link.href = '/app'
+    link.target = '_blank'
+    link.rel = 'noopener'
+    link.textContent = 'Overiť prístup v ďalšom okne'
+    return link
+  }
+
+  /** Each selected file keeps its own receipt. A dropped answer stays uncertain until a deliberate retry. */
   function send(form, files) {
     if (!files.length || form.classList.contains('is-busy')) return
+    var previous = batches.find(function (batch) { return batch.form === form })
+    if (previous && previous.rows.some(function (row) { return row.state !== 'done' })) {
+      files.forEach(function (file) {
+        var item = document.createElement('li')
+        previous.list.appendChild(item)
+        previous.rows.push({ file: file, ready: null, item: item, state: 'waiting', note: 'Čaká na odoslanie' })
+      })
+      previous.run()
+      return
+    }
+    if (previous) previous.box.remove()
     var card = form.closest('.add, .need, .have') || form
-    card.classList.add('is-busy')
-    form.classList.add('is-busy')
-    var total = files.length
-    var last = null
-    var chain = Promise.resolve()
-    files.forEach(function (file, index) {
-      chain = chain.then(function () {
-        progress(form, index, total)
-        return smaller(file).then(function (ready) {
-          var data = new FormData()
-          data.append('file', ready, ready.name)
-          return fetch(form.action, { method: 'POST', body: data, credentials: 'same-origin' }).then(function (res) {
-            if (!res.ok) return res.text().then(function (html) { throw { html: html } })
-            last = res
-          })
-        })
-      })
-    })
-    chain
-      .then(function () {
-        progress(form, total, total)
-        var url = new URL(last.url)
-        if (url.searchParams.get('ok') === 'pridane') url.searchParams.set('n', String(total))
-        location.assign(url.toString())
-      })
-      .catch(function (err) {
-        if (err && err.html) show(err.html)
-        else {
-          card.classList.remove('is-busy')
-          form.classList.remove('is-busy')
-          form.submit()
+    var box = document.createElement('section')
+    box.className = 'upload-status'
+    box.tabIndex = -1
+    box.setAttribute('aria-label', 'Odosielanie dokladov')
+    var status = document.createElement('p')
+    status.setAttribute('role', 'status')
+    var list = document.createElement('ul')
+    var controls = document.createElement('div')
+    controls.className = 'upload-status__controls'
+    box.append(status, list, controls)
+    // The universal picker is hidden. Its receipt belongs in the visible main content.
+    if (form.id === 'pick') document.getElementById('obsah').prepend(box)
+    else form.appendChild(box)
+    var batch = { form: form, box: box, list: list, rows: files.map(function (file) {
+      var item = document.createElement('li')
+      list.appendChild(item)
+      return { file: file, ready: null, item: item, state: 'waiting', note: 'Čaká na odoslanie' }
+    }), next: '/app/doklady' }
+    batches = batches.filter(function (entry) { return entry !== previous })
+    batches.push(batch)
+
+    function paint() {
+      batch.rows.forEach(function (row) { row.item.textContent = row.file.name + ': ' + row.note })
+      status.textContent = 'Potvrdené súbory: ' + batch.rows.filter(function (row) { return row.state === 'done' }).length + ' z ' + batch.rows.length + '.'
+    }
+    async function run() {
+      form.classList.add('is-busy')
+      card.classList.add('is-busy')
+      controls.replaceChildren()
+      paint()
+      for (var row of batch.rows) {
+        if (row.state === 'done' || row.state === 'rejected') continue
+        row.state = 'sending'
+        row.note = 'Odosiela sa'
+        paint()
+        try {
+          row.ready = row.ready || await smaller(row.file)
+          var data = new FormData(form)
+          data.delete('file')
+          data.append('file', row.ready, row.ready.name)
+          var answer = await receiptRequest(form.action, data)
+          var res = answer.res, receipt = answer.receipt
+          if (!res.ok || !receipt || receipt.upload !== 1 || receipt.context !== context || receipt.accepted !== 1 || receipt.problems.length) {
+            row.state = res.status === 422 ? 'rejected' : 'retry'
+            row.note = receipt && (receipt.error || (receipt.problems && receipt.problems.join(' '))) || 'Prijatie sa nepodarilo potvrdiť. Overte prístup a skúste to znova.'
+            if (row.state === 'retry') break
+            continue
+          }
+          row.state = 'done'
+          row.note = receipt.known ? 'Už ho máme, druhý doklad nevznikol' : receipt.statements ? 'Výpis prijatý, stav nájdete v Platbách' : 'Prijatie potvrdené'
+          batch.next = receipt.next
+        } catch (error) {
+          row.state = 'retry'
+          row.note = 'Spojenie sa prerušilo. Prijatie zatiaľ nemáme potvrdené.'
+          break
         }
-      })
+      }
+      form.classList.remove('is-busy')
+      card.classList.remove('is-busy')
+      paint()
+      var remaining = batch.rows.some(function (row) { return row.state !== 'done' })
+      if (!remaining && !hasDraft() && !batches.some(function (other) { return other !== batch && other.rows.some(function (row) { return row.state !== 'done' }) })) {
+        var destination = new URL(batch.next, location.origin)
+        destination.searchParams.set('ok', 'prijate')
+        destination.searchParams.set('n', String(batch.rows.length))
+        return nextPage(destination.pathname + destination.search)
+      }
+      if (batch.rows.some(function (row) { return row.state === 'retry' || row.state === 'waiting' })) {
+        var retry = document.createElement('button')
+        retry.type = 'button'
+        retry.className = 'btn btn--blue btn--small'
+        retry.textContent = 'Skúsiť nepotvrdené znova'
+        retry.addEventListener('click', run)
+        controls.append(retry, accessLink())
+      }
+      if (remaining) {
+        var choose = document.createElement('button')
+        choose.type = 'button'
+        choose.className = 'btn btn--line btn--small'
+        choose.textContent = 'Vybrať ďalšie súbory'
+        choose.addEventListener('click', function () {
+          var input = form.querySelector('input[type=file]')
+          input.value = ''
+          input.click()
+        })
+        controls.appendChild(choose)
+      }
+      if (batch.rows.some(function (row) { return row.state === 'done' })) {
+        var view = document.createElement('a')
+        view.href = batch.next
+        view.textContent = 'Pozrieť prijaté súbory'
+        controls.appendChild(view)
+      }
+      box.focus()
+    }
+    batch.run = run
+    run()
   }
 
   function isStatement(form) {
@@ -104,6 +198,53 @@
       if (!input.files || !input.files.length) return
       if (isStatement(form)) return form.submit()
       send(form, Array.prototype.slice.call(input.files))
+    })
+
+    document.addEventListener('submit', function (event) {
+      var form = event.target
+      if (form.matches('form[data-upload]') && !isStatement(form)) {
+        event.preventDefault()
+        var existing = batches.find(function (batch) { return batch.form === form && batch.rows.some(function (row) { return row.state !== 'done' }) })
+        if (existing) return existing.box.focus()
+        var input = form.querySelector('input[type=file]')
+        if (input && input.files.length) send(form, Array.from(input.files))
+        else if (input) input.click()
+      }
+      if (!form.matches('form[data-message]')) return
+      event.preventDefault()
+      if (form.classList.contains('is-busy')) return
+      var area = form.querySelector('textarea')
+      var button = form.querySelector('button[type=submit]')
+      var data = new FormData(form)
+      var status = form.querySelector('[data-send-status]')
+      if (!status) {
+        status = document.createElement('p')
+        status.className = 'composer__error'
+        status.setAttribute('data-send-status', '')
+        status.setAttribute('role', 'status')
+        form.appendChild(status)
+      }
+      status.textContent = 'Správa sa odosiela.'
+      form.classList.add('is-busy')
+      area.readOnly = true
+      button.disabled = true
+      receiptRequest(form.action, data)
+        .then(function (answer) {
+          var res = answer.res, receipt = answer.receipt
+          if (res.ok && receipt && receipt.message === 1 && receipt.context === context && receipt.id === data.get('odoslanie')) {
+            area.value = ''
+            return nextPage(receipt.next)
+          }
+          if (receipt && receipt.error && res.status < 500) {
+            status.textContent = receipt.error
+            area.readOnly = false
+          } else throw new Error('unconfirmed message')
+        })
+        .catch(function () {
+          status.textContent = 'Odoslanie zatiaľ nemáme potvrdené. Text zostal tu. Skúste odoslanie znova, rovnaká správa sa neuloží dvakrát. '
+          status.appendChild(accessLink())
+        })
+        .finally(function () { form.classList.remove('is-busy'); button.disabled = false })
     })
 
     // "Add a document" anywhere opens the camera or the files at once.

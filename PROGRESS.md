@@ -1,5 +1,15 @@
 # Firmony: progress of the continuation
 
+## Spoľahlivé odovzdanie dokladov a správ, časť J2 (Codex, 22. október 2026 CEST)
+
+Implementované [potvrdenie jednotlivých prijatí](docs/client-delivery.md), pokračovanie nepotvrdenej dávky
+po výpadku, zachovanie čiastočného výsledku a ochrana pred odoslaním do firmy prepnutou v druhom okne.
+Opakovaná správa vrátane súbehu vytvorí jeden záznam a jednu udalosť; text zostáva v otvorenom formulári.
+Pridané reálne HTTP/D1/R2 a mobilné prehliadačové scenáre so stratou odpovede až po serverovom zápise.
+Bez novej schémy a zmeny cien, smerovania, účtovných postupov či oprávnení. Finálne kontroly a nasadenie v PR.
+Výslovné odborné vybavenie konkrétnej otázky, J3 až J5 a používateľský pilot ešte otvorené.
+
+
 ## Pravdivý klientsky prehľad, J1 (Codex, 22. október 2026 CEST)
 
 Implementovaný [spoločný výber ďalšieho kroku](docs/client-overview.md) z existujúcich údajov.

@@ -869,7 +869,8 @@ export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose,
               {app.payment.ask}
             </h2>
             <p class="ask__lead">{app.payment.askLead}</p>
-            <form class="ask__form" method="post" action="/app/spravy" novalidate>
+            <form class="ask__form" method="post" action="/app/spravy" data-message novalidate>
+              <input type="hidden" name="odoslanie" value={crypto.randomUUID()} />
               <input type="hidden" name="platba" value={p.id} />
               <textarea class="field__input field__area ask__area" name="sprava" rows={3} maxlength={APP.messageChars} placeholder={app.payment.askPlaceholder}></textarea>
               <button class="btn btn--line btn--small" type="submit">
@@ -1253,8 +1254,10 @@ export const MessagesPage: FC<{
   flash?: string | null
   error?: string | null
   draft?: string
+  submission?: string
+  paymentId?: string | null
   me?: string
-}> = ({ messages, accountant, now, payments, flash, error, draft, me }) => (
+}> = ({ messages, accountant, now, payments, flash, error, draft, submission, paymentId, me }) => (
   <>
     <header class="phead">
       <Heading first={app.messages.title} />
@@ -1291,7 +1294,9 @@ export const MessagesPage: FC<{
         </ol>
       )}
       <Flash text={flash} />
-      <form class="composer" id="napisat" method="post" action="/app/spravy" novalidate>
+      <form class="composer" id="napisat" method="post" action="/app/spravy" data-message novalidate>
+        <input type="hidden" name="odoslanie" value={submission ?? crypto.randomUUID()} />
+        {paymentId ? <input type="hidden" name="platba" value={paymentId} /> : null}
         <label class="sr" for="sprava">
           {app.messages.placeholder}
         </label>

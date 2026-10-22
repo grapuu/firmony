@@ -120,7 +120,7 @@ export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, 
   return (
   <html lang="sk">
     <InsideHead title={`${title} | ${BRAND.name}`} />
-    <body class="inside">
+    <body class="inside" data-client-context={`${who.user.id}:${who.company.id}`}>
       <a class="skip" href="#obsah">
         {app.skip}
       </a>
