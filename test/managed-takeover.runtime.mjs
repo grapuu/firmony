@@ -53,6 +53,8 @@ export async function checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,ca
   res = await team.get(alertPath)
   check('managed takeover: a verified team member acquiring a client membership retains the exact task',res.status === 303 && res.headers.get('location') === alertPath && (await team.get(alertPath)).headers.get('location') === '/app/prechod#koordinacia')
   await db.prepare('DELETE FROM members WHERE company_id=? AND user_id=?').bind(company,lucia.id).run()
+  // Restore the team-only fixture: archiving a company correctly removes every session still scoped to it.
+  await db.prepare('UPDATE sessions SET company_id=NULL WHERE user_id=? AND company_id=?').bind(lucia.id,company).run()
   res = await owner.post('/app/prechod/poverit',{...request,email:'different@example.test'})
   check('managed takeover: reusing a request id cannot change its recipient or scope',res.status === 409 && (await db.prepare('SELECT contact_email FROM managed_handovers WHERE id=?').bind(id).first()).contact_email === request.email)
   check('managed takeover: the team has a company-scoped work queue',(await (await team.get('/ucto')).text()).includes(`/ucto/klienti/${company}/prevzatie#koordinacia`))
