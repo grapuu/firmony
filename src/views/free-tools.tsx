@@ -89,6 +89,7 @@ export const FreeInvoicePage: FC<{ today: string }> = ({ today }) => {
           <fieldset><legend>4. Za čo fakturujete</legend>
             <p class="free-note">Ceny v EUR, bez DPH. Množstvo najviac na 3 desatinné miesta, cena na 2. Každá položka sa zaokrúhli na cent.</p>
             <div data-invoice-lines></div>
+            <p class="free-invoice__inline-total" data-invoice-total role="status" aria-live="polite" aria-atomic="true">Spolu na úhradu: doplňte položky.</p>
             <button class="btn btn--line" type="button" data-add-line hidden data-js>Pridať položku</button>
           </fieldset>
           <details class="free-form__optional"><summary>Platobné údaje a poznámka</summary><div class="free-form__fields">

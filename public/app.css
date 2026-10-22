@@ -162,6 +162,7 @@
 .free-form__confirm label { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 1.6; margin-bottom: 14px; cursor: pointer; }
 .free-form__confirm input { flex: 0 0 auto; width: 20px; height: 20px; margin-top: 2px; accent-color: var(--blue); }
 .free-invoice__download { width: 100%; margin-block: 24px 14px; white-space: normal; }
+.free-invoice__inline-total { padding: 16px; margin-top: 18px; border-radius: 12px; background: var(--blue-soft); color: var(--blue); font-family: var(--display); font-size: 19px; font-weight: 600; }
 .free-errors { margin-top: 24px; padding: 18px; border: 1px solid var(--red-ink); border-radius: 14px; color: var(--red-ink); background: var(--red-soft); font-size: 14px; line-height: 1.5; }
 .free-errors ul { padding-left: 20px; margin-top: 8px; }
 .free-errors li { margin-top: 8px; }

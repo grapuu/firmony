@@ -10,6 +10,7 @@ const errors = document.querySelector<HTMLElement>('#invoice-errors')
 const addLine = document.querySelector<HTMLButtonElement>('[data-add-line]')
 const download = document.querySelector<HTMLButtonElement>('[data-download]')
 const load = document.querySelector<HTMLInputElement>('[data-load-draft]')
+const inlineTotal = document.querySelector<HTMLElement>('[data-invoice-total]')
 
 if (form && linesRoot && preview && status && errors && addLine && download && load) {
   let draft = blankInvoice('')
@@ -52,6 +53,8 @@ if (form && linesRoot && preview && status && errors && addLine && download && l
 
   const renderPreview = () => {
     const checked = checkInvoice(draft)
+    const totalMessage = `Spolu na úhradu: ${checked.total === null ? 'doplňte položky.' : formatEurExact(checked.total)}`
+    if (inlineTotal && inlineTotal.textContent !== totalMessage) inlineTotal.textContent = totalMessage
     preview.replaceChildren()
     preview.append(text('p', 'FAKTÚRA', 'free-preview__eyebrow'), text('h3', draft.number || 'Vaše číslo faktúry'))
     const parties = text('div', '', 'free-preview__parties')
@@ -156,7 +159,9 @@ if (form && linesRoot && preview && status && errors && addLine && download && l
       for (const [side, p] of [['supplier', draft.supplier], ['customer', draft.customer]] as const) for (const key of ['name', 'address', 'ico', 'dic', 'registry'] as const) { const control = field(`${side}.${key}`); if (control) control.value = p[key] }
       for (const name of ['number', 'issued', 'supplied', 'due', 'iban', 'vs', 'note'] as const) { const control = field(name); if (control) control.value = draft[name] }
       for (const name of ['nonVat', 'domestic']) (field(name) as HTMLInputElement).checked = false
-      renderLines(); attempted = false; errors.hidden = true; dirty = false; refresh()
+      renderLines(); attempted = false; errors.hidden = true; dirty = false
+      for (const control of form.querySelectorAll('[aria-invalid]')) control.removeAttribute('aria-invalid')
+      refresh()
       status.textContent = 'Údaje sú načítané. Skontrolujte ich a pred PDF znova potvrďte rozsah faktúry.'
     } catch { status.textContent = 'Tento súbor sa nedá načítať. Vyberte súbor JSON stiahnutý z tohto nástroja, najviac 200 kB. Vaše údaje zostali zachované.' }
     finally { load.value = '' }
