@@ -39,17 +39,17 @@ export async function formationQueue(db: D1Database, user: User, demo: boolean):
     ORDER BY (f.due_on IS NOT NULL),f.due_on,f.created_at,c.id`).bind(...(user.team === 'admin' ? [amlToday()] : [amlToday(), user.id])).all<Row>()
   return rows.results.map(r => ({ companyId: String(r.id), companyName: String(r.name), state: r.state as FormationState, dueOn: r.due_on as string | null, responsibleName: r.responsible_name as string | null }))
 }
-export async function requestFormation(db: D1Database, company: Company, user: string, v: FormationRequestValues, id: string): Promise<string | null> {
+export async function requestFormation(db: D1Database, company: Company, user: User, v: FormationRequestValues, id: string): Promise<boolean> {
   const at = now()
-  try {
-    await db.prepare(`INSERT INTO formation_cases(id,company_id,created_at,created_by,requester_name,company_snapshot,consent_version,consent_text,contact_name,contact_email,idea,updated_at,updated_by)
-      SELECT ?4,?1,?7,?2,?3,json_object('name',c.name,'ico',c.ico),?5,?6,?8,?9,?10,?7,?2 FROM companies c
-      WHERE c.id = ?1 AND ${formationOpenSql('?1')}
-      AND NOT EXISTS (SELECT 1 FROM formation_cases WHERE company_id = ?1 AND state <> 'cancelled')`)
-      .bind(company.id, user, v.name, id, FORMATION_CONSENT_VERSION, FORMATION_CONSENT, at, v.email, v.idea).run()
-    return null
-  } catch { return 'Žiadosť sa nepodarilo uložiť, alebo už pre túto firmu existuje. Obnovte stránku a skontrolujte stav.' }
+  const r = await db.prepare(`INSERT INTO formation_cases(id,company_id,created_at,created_by,requester_name,company_snapshot,consent_version,consent_text,contact_name,contact_email,idea,updated_at,updated_by)
+    SELECT ?1,?2,?3,?4,?5,json_object('name',c.name,'ico',c.ico),?6,?7,?8,?9,?10,?3,?4 FROM companies c
+    WHERE c.id = ?2 AND ${formationOpenSql('?2')}
+      AND EXISTS (SELECT 1 FROM members WHERE company_id = ?2 AND user_id = ?4 AND role = 'owner')
+      AND NOT EXISTS (SELECT 1 FROM formation_cases WHERE id = ?1 OR company_id = ?2 AND state <> 'cancelled')`)
+    .bind(id, company.id, at, user.id, user.name, FORMATION_CONSENT_VERSION, FORMATION_CONSENT, v.name.trim(), v.email.toLowerCase(), v.idea.trim()).run()
+  return (r.meta.changes ?? 0) > 0
 }
+
 export interface FormationUpdate {
   state: FormationState; due: string | null; authority: string; note: string; action: string
   steps: FormationSteps; reason: string
@@ -61,8 +61,9 @@ export async function updateFormation(db: D1Database, company: Company, user: Us
   const write = db.prepare(`UPDATE formation_cases SET state = ?1,updated_at = ?2,updated_by = ?3,responsible_id = ?4,due_on = ?5,
       authority_reference = ?6,public_note = ?7,client_action = ?8,steps = ?9,completion_source = ?10,reason = ?11
     WHERE id = ?12 AND company_id = ?13 AND revision = ?14 AND ${formationOpenSql('?13')}
-      AND EXISTS (SELECT 1 FROM companies WHERE id = ?13 AND accountant_id = ?3)
-      AND EXISTS (SELECT 1 FROM users WHERE id = ?3 AND team IN ('accountant','admin'))`)
+      AND EXISTS (SELECT 1 FROM companies WHERE id = ?13 AND accountant_id = ?4)
+      AND EXISTS (SELECT 1 FROM users WHERE id = ?4 AND team IN ('accountant','admin'))
+      AND EXISTS (SELECT 1 FROM users u JOIN companies c ON c.id = ?13 WHERE u.id = ?3 AND (u.team = 'admin' OR u.team = 'accountant' AND c.accountant_id = u.id))`)
     .bind(v.state, at, user.id, company.accountantId, v.due, v.authority, v.note, v.action, JSON.stringify(v.steps), v.state === 'completed' ? JSON.stringify(facts) : null, v.reason, h.id, company.id, h.revision)
   const statements = [write]
   if (v.action && v.action !== h.clientAction && v.state !== 'cancelled' && v.state !== 'completed') {
