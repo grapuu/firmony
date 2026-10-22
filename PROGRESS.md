@@ -7,6 +7,8 @@ Web vysvetľuje úlohu klienta, odbornú kontrolu a nezáväzný začiatok; roč
 balíku, rozsah/zodpovednosť a ochrana údajov dostupné pri cene. Kalkulačka už nepodsúva modelovú úsporu pred
 vstupom zákazníka, uvádza predpoklady a ukáže aj vyššiu cenu alebo rovnosť. Jediný výpočet roka pre balíky aj
 porovnanie, bez zmeny cien. Pridané reálne HTTP a mobilné browser scenáre. Povinné kontroly a nasadenie v PR.
+Po čítaní pôvodného aktuálneho a vyhláseného budúceho zákona o DPH spresnená aj e-fakturačná komunikácia
+a existujúci návod: určené dodania, rozdielne povinnosti príjemcu a platiteľa, sankcie a pripravované napojenie.
 Bez fotografií, novej schémy, zmluvných sľubov, sledovania citlivých vstupov alebo programu odmien.
 Predajný účinok a porozumenie skutočných záujemcov zostávajú na pilot; výskum nie je garancia rastu.
 

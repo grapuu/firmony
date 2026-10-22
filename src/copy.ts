@@ -22,7 +22,7 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: online účtovníctvo pre Vašu firmu od ${eur(start.price)} mesačne`,
-    description: `Vedenie účtovníctva, DPH, miezd a závierky pre s. r. o. online. Doklady prečíta umelá inteligencia, Vaša účtovníčka ich skontroluje a podá. Pevná cena podľa počtu dokladov, od ${eur(start.price)} mesačne.`,
+    description: `Účtovníctvo s pridelenou účtovníčkou, dokladmi a termínmi v jednej aplikácii. Balíky od ${eur(start.price)} mesačne bez DPH, závierka ${eur(CLOSING_PRICE)} ročne. Rozsah a cenu si prejdeme pred zmluvou.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
@@ -68,9 +68,9 @@ export const copy = typesetAll({
   /** Four true figures, each with what it means. */
   stats: [
     { value: eur(start.price), label: `mesačne za balík ${start.name}` },
-    { value: eur(0), label: 'za aplikáciu a e-faktúry' },
+    { value: eur(0), label: 'za aplikáciu k účtovnej službe' },
     { value: '1 deň', label: 'na odpoveď, po ľudsky' },
-    { value: '1. 1. 2027', label: 'štart, e-faktúry v cene' },
+    { value: '1. 1. 2027', label: 'plánovaný štart služby' },
   ],
 
   /** The hug of the brand, read word by word. */
@@ -86,9 +86,9 @@ export const copy = typesetAll({
     lead: 'Vyberte si a pozrite sa, ako to vyzerá.',
     example: 'Ilustračná ukážka',
     items: [
-      { id: 'doklady', title: 'Doklady a banka', text: 'Zaúčtujeme každý doklad a spárujeme platby.' },
+      { id: 'doklady', title: 'Doklady a banka', text: 'Spracovanie dokladov a párovanie platieb podľa dohodnutej agendy.' },
       { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za Vás.' },
-      { id: 'efaktury', title: 'E-faktúry', text: 'Prijmeme ich za Vás. Povinné sú od 1. 1. 2027.' },
+      { id: 'efaktury', title: 'E-faktúry', text: 'Príjem cez digitálneho poštára pripravujeme pred spustením služby.' },
       { id: 'mzdy', title: 'Mzdy', text: `Výplaty, odvody a hlásenia zamestnancov, ${eur(PAYROLL_PRICE)} mesačne za človeka.` },
       { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
       { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
@@ -164,10 +164,13 @@ export const copy = typesetAll({
   },
 
   einvoice: {
+    // Read 22 October 2026: current law and the enacted 2027 wording, especially § 71(5), § 85o(2)-(4),(9)-(10).
+    // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html
+    // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html#paragraf-85o
     date: '1. 1. 2027',
-    title: `Od ${BRAND.launch} musí každá firma vedieť prijať e-faktúru.`,
-    text: 'S Firmony je to v cene každého balíka. Faktúry nám prídu rovno do účtovníctva.',
-    source: 'Zákon o DPH, § 85o, vložený zákonom č. 385/2025 Z. z.',
+    title: 'E-faktúry sa týkajú aj neplatiteľov DPH.',
+    text: 'Pri určených tuzemských dodaniach ich vystavujú platitelia DPH. Vedieť ich prijať musia aj neplatitelia. Napojenie na digitálneho poštára pripravujeme pred spustením služby.',
+    source: 'Zákon o DPH, § 71 ods. 5 a § 85o, znenie od 1. 1. 2027.',
     more: 'Čo musí urobiť Vaša firma',
   },
 
@@ -312,7 +315,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Ako spolu budeme komunikovať?',
-        a: 'Všetko vybavíme v aplikácii: správy s účtovníčkou, doklady, zmluvu aj plnú moc. Nič sa nestratí v e-mailoch a Vaše údaje neležia v cudzích schránkach. E-mail Vám príde len ako upozornenie, že na Vás niečo čaká.',
+        a: 'Správy s účtovníčkou, doklady, zmluvu aj plnú moc nájdete v aplikácii. E-mail Vás upozorní na novú správu bez jej obsahu. Doklady môžete aj preposielať na adresu svojej firmy vo Firmony.',
       },
       {
         q: 'Ako môžete mať takúto cenu?',

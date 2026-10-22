@@ -193,6 +193,13 @@ check('every plan shows twelve monthly scopes plus the real annual closing befor
 }) && page.includes('Ročný súčet počíta') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Mzdy a individuálne dohodnuté práce'))
 check('the sales page explains its nonbinding first step and links terms and privacy beside pricing', page.includes('Zatiaľ nič neobjednávate') && page.includes('pred uzavretím zmluvy') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Rozsah a zodpovednosť v podmienkach') && page.includes('href="/pravne-informacie#ochrana-udajov"'))
 
+// Public e-invoice claims distinguish an enacted duty from a live delivery integration and its recipient scope.
+{
+  const response = await get('/e-faktura-2027'), html = (await response.text()).replace(/[\u00a0\u202f]/g, ' ')
+  check('e-invoice guide: receipt duties and five-day reporting are not applied to every non-VAT recipient', response.status === 200 && html.includes('pri ktorom má dodávateľ povinnosť vyhotoviť e-faktúru') && html.includes('nevzťahuje automaticky na každého neplatiteľa') && html.includes('Nie sú automatickou pokutou každému príjemcovi'))
+  check('e-invoice guide: original law, current modification and pending postman integration are visible without an invented supplier price', html.includes('2026-10-22') && html.includes('https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html') && html.includes('Napojenie na digitálneho poštára pripravujeme') && !html.includes('5 až 12 €'))
+}
+
 // The comparison
 res = await get('/?mesacne=100&za-doklad=3&doklady=50&zavierka=200&dph=ano&ludia=1')
 page = await res.text()

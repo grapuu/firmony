@@ -109,6 +109,20 @@ vopred určená hlavná metrika kvalifikovaného záujmu a ochranné metriky por
 Počet návštev či požadovaný nárast nemožno určiť bez východiskovej miery a variability. Nesledovať do
 analytiky sumy z kalkulačky, obsah správ, doklady ani citlivé údaje. Také meranie sa v tejto zmene nezapína.
 
+## Spresnenie právnej komunikácie e-faktúry
+
+Pri kontrole predaja sme našli aj príliš široké existujúce formulácie. Domovská stránka a návod teraz
+odlišujú zákonom určené dodania a príjem od oznamovacích povinností platiteľov a sankcií. Stav napojenia na
+poštára ostáva výslovne pripravovaný. Odstránený neoverený odhad cudzieho predplatného, návod má dátum
+úpravy 22. 10. 2026 a pôvodné zdroje namiesto sekundárnych článkov. Bez zmeny daňového enginu.
+
+Prečítané aktuálne aj už vyhlásené budúce znenie zákona na Slov-Lexe:
+https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html a
+https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html , najmä § 71 ods. 5, § 78a a § 85o ods. 2 až 14.
+Účinnosť a vloženie: https://static.slov-lex.sk/static/SK/ZZ/2025/385/20270101.html , čl. I bod 69 a čl. VIII.
+Doplnené primárnou dokumentáciou FS: https://www.financnasprava.sk/sk/podnikatelia/dane/dan-z-pridanej-hodnoty/e-faktura .
+Nejde o nový právny dokument alebo potvrdenie aktívneho doručovania Firmony.
+
 ## Originály a stav prístupu
 
 Prečítané alebo znovu otvorené 22. 10. 2026; bez dlhých citácií a bez kopírovania tabuliek článkov.
