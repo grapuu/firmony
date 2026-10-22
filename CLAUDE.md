@@ -16,6 +16,8 @@ mzdovou kalkulačkou a porovnaním nákladov. Vstup z hlavnej stránky, pätičk
 browser úložisko. CSP blokuje sieťové spojenia a bežné odoslanie formulára. PDF nie je archív, odoslanie,
 účtovné overenie ani štruktúrovaná eFaktúra. Existujúca klientská fakturácia a AML/release brány pokračujú.
 Nástroj má vlastné jednotkové, HTTP a skutočné browser scenáre; posledné Checks a živá revízia sa evidujú v PR.
+Production verification navyše číta obe stránky a preveruje presné SHA-256 verejného skriptu a CSS
+oproti zostaveniu. Správny Worker bez správneho nástroja sa neoznačí za úspešné nasadenie.
 Skutočný používateľský pilot ešte neprebehol. Dokladové údaje sa na meranie neposielajú.
 Kredit, piata firma zdarma, bezplatné založenie, doživotná viazanosť, verejný AI upload/chat ani sociálna
 sieť sa teraz nespúšťajú. Dokument má podmienky, ekonomiku a poradie G1 až G6. Najbližší kandidát G1:

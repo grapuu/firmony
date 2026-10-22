@@ -17,7 +17,7 @@
     "test:reader": "esbuild test/reader.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/reader-bundle.mjs && node --no-warnings test/reader.mjs",
     "test:peppol": "node --no-warnings test/peppol.mjs",
     "postinstall": "node scripts/build-metadata.mjs",
-    "verify:deployment": "esbuild test/deployment.entry.ts --bundle --format=esm --platform=node --log-level=warning --outfile=.wrangler/tmp/deployment-probe.mjs && node scripts/verify-deployment.mjs"
+    "verify:deployment": "node scripts/build-tools.mjs && esbuild test/deployment.entry.ts --bundle --format=esm --platform=node --log-level=warning --outfile=.wrangler/tmp/deployment-probe.mjs && node scripts/verify-deployment.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "14.0.0",

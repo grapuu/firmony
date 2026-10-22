@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { buildMetadata, generateBuildMetadata } from '../scripts/build-metadata.mjs'
 import { verifyDeployment } from '../scripts/verify-deployment.mjs'
+import { createHash } from 'node:crypto'
 
 const current = '1234567890abcdef1234567890abcdef12345678'
 const previous = 'abcdef1234567890abcdef1234567890abcdef12'
@@ -104,4 +105,30 @@ test('an unfinished retry at the deadline preserves the last concrete deployment
     }, { timeoutMs: 100, pollMs: 0 }), /llms/)
     assert.equal(healthCalls, 2)
   } finally { Date.now = originalNow }
+})
+
+test('a public tool needs its canonical page, content and current discovery records', async () => {
+  const tool = { path:'/nastroj', modified:'2026-10-22', markers:['data-tool'] }
+  const fallback = fixture()
+  const body = `<link rel="canonical" href="${origin}/nastroj"><div data-tool></div>`
+  const response = (broken = '') => async (url) => {
+    const path = new URL(url).pathname
+    if (path === '/nastroj') return new Response(broken === 'body' ? '<h1>Other</h1>' : body)
+    const answer = await fallback(url)
+    if (path === '/sitemap.xml') return new Response((await answer.text()) + (broken === 'map' ? '' : `<loc>${origin}/nastroj</loc><lastmod>${tool.modified}</lastmod>`))
+    if (path === '/llms.txt') return new Response((await answer.text()) + (broken === 'llms' ? '' : `${origin}/nastroj`))
+    return answer
+  }
+  assert.deepEqual(await probe(response(), { publicPages:[tool] }), {revision:current,schema:77,guides:1,tools:1,assets:0})
+  for (const broken of ['body','map','llms']) await assert.rejects(probe(response(broken), {publicPages:[tool]}), /nastroj/)
+})
+
+test('a stale or missing browser bundle cannot pass deployment verification at the correct Worker revision', async () => {
+  const bytes = 'TEST-ONLY-browser-bundle'
+  const assets = [{path:'/tool.js',sha256:createHash('sha256').update(bytes).digest('hex')}]
+  const fallback = fixture()
+  const fetcher = (body, status=200) => async (url) => new URL(url).pathname === '/tool.js' ? new Response(body,{status}) : fallback(url)
+  assert.equal((await probe(fetcher(bytes),{assets})).revision,current)
+  await assert.rejects(probe(fetcher('OLD-BUNDLE'),{assets}), /nezodpovedá zostaveniu/)
+  await assert.rejects(probe(fetcher('',404),{assets}), /HTTP 404/)
 })

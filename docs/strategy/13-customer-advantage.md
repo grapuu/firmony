@@ -193,6 +193,10 @@ rozumieť rozdielu medzi bezplatným nástrojom a platenou účtovnou službou. 
 Ide o plán, pilot neprebehol. Konverziu do kvalifikovaných klientov hodnotiť bez zachytávania údajov faktúry.
 Žiadny nový sledovací systém sa teraz nepridáva.
 
+Nasadenie overuje aj skutočné dve verejné stránky s aktuálnymi záznamami v sitemap/llms.txt a presné
+SHA-256 zhodné verejné `/free-invoice.js` a `/app.css` oproti danému zostaveniu. Správny Worker commit
+bez pripraveného skriptu nie je úspešné nasadenie nástroja. Overovanie iba číta verejné dáta.
+
 Ďalší kódový kandidát je G1, v samostatnej vetve a s novým krokom schémy 78, ak ho model vyžaduje.
 J2 odborné uzavretie otázky, J3 až J5, skutočný prevádzkový pilot a právne/poistné spustenie zostávajú otvorené.
 Žiadna z týchto stratégií nepotvrdzuje miliardovú hodnotu alebo garantovaný podiel na trhu.
