@@ -1,5 +1,13 @@
 # Firmony: progress of the continuation
 
+## Rovnaký postup prechodu na všetkých vstupoch (Codex, 22. október 2026 CEST)
+
+Karta hlavnej stránky a tri existujúce návody opisujú spravovanú koordináciu rovnako ako nové FAQ.
+Odstránená povinnosť klienta nahrať všetky podklady osobne aj nepodložený sľub pokračovania bez
+prerušenia pred overením importu. Pôvodná osobná alternatíva zostáva. Prehľad vysvetľuje všetky
+potrebné doplnenia; nepredstiera jedinú otázku pri viacerých úlohách. Právne pravidlá, ceny a výpočty
+sa nemenia. Stratégia 13 rozlišuje historický inventár a implementovaný G1. Kontroly a nasadenie v PR.
+
 ## Upozornenie na doplnenie pri prechode (Codex, 22. október 2026 CEST)
 
 Uloženie novej otázky a súkromného upozornenia je jedna transakcia so stavom aj históriou.

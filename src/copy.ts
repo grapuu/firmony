@@ -240,7 +240,7 @@ export const copy = typesetAll({
     },
     switching: {
       title: 'Meníte účtovníčku',
-      text: 'Výpoveď pre doterajšiu účtovníčku máte v aplikácii pripravenú, stačí ju podpísať. Podklady od nej nahráte k nám a prevezmeme ich.',
+      text: 'Zadáte kontakt na doterajšiu účtovníčku a potvrdíte koordináciu. Dohodneme prevzatie a skontrolujeme podklady. Vy vybavíte len potrebný podpis alebo doplnenie.',
       cta: 'Chcem prejsť',
     },
     large: {
