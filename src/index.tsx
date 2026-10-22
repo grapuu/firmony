@@ -77,7 +77,7 @@ const CONTENT_SECURITY_POLICY = [
 ].join('; ')
 
 // The home page runs one script of its own (public/flow.js: the month played by scrolling where the browser has no
-// scroll timelines, Safari before 26); everything else of the site runs none.
+// scroll timelines, Safari before 26). The public invoice tool also permits its own script, and forbids form posts.
 const HOME_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace("script-src 'none'", "script-src 'self'")
 
 // The client's app adds one script of its own (public/inside.js: a file is sent as soon as it is picked, a photo

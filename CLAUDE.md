@@ -18,6 +18,9 @@ browser úložisko. CSP blokuje sieťové spojenia a bežné odoslanie formulár
 Nástroj má vlastné jednotkové, HTTP a skutočné browser scenáre; posledné Checks a živá revízia sa evidujú v PR.
 Production verification navyše číta obe stránky a preveruje presné SHA-256 verejného skriptu a CSS
 oproti zostaveniu. Správny Worker bez správneho nástroja sa neoznačí za úspešné nasadenie.
+Po reálnej vizuálnej kontrole nasadeného PDF nástroja je výber rozpracovaného súboru jeden slovenský
+ovládací prvok. Pôvodný file input ostáva funkčný pre klávesnicu s viditeľným fokusom; browser scenár
+otvára systémový výber cez Enter a overuje zachovanie údajov pri neplatnom súbore. Bez zmeny spracovania dát.
 Skutočný používateľský pilot ešte neprebehol. Dokladové údaje sa na meranie neposielajú.
 Kredit, piata firma zdarma, bezplatné založenie, doživotná viazanosť, verejný AI upload/chat ani sociálna
 sieť sa teraz nespúšťajú. Dokument má podmienky, ekonomiku a poradie G1 až G6. Najbližší kandidát G1:

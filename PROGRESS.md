@@ -2,6 +2,9 @@
 
 ## Bezplatný fakturačný nástroj a ďalšie zákaznícke výhody (Codex, 22. október 2026 CEST)
 
+Následná reálna kontrola živého webu doplnila jednotný slovenský výber súboru bez druhého systémového
+ovládača. Zachovaný skutočný file input a viditeľný klávesnicový fokus; browser test používa Enter a file chooser.
+
 Implementované `/faktura-zadarmo` a `/bezplatne-nastroje`, vstup z webu a vyhľadateľné metadáta.
 PDF a rozpracované JSON údaje vznikajú iba v prehliadači, bez účtu, karty a odoslania fakturačných údajov.
 Rozsah: bežná tuzemská B2B faktúra neplatiteľa DPH v EUR, najviac 50 položiek; presné centy, dátumy,
