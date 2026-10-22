@@ -26,6 +26,12 @@ export const CHECK_AREAS = {
 export type CheckArea = keyof typeof CHECK_AREAS
 export interface HandoverCheck { result: 'pending' | 'received' | 'not_applicable'; file: string; note: string }
 export type HandoverChecks = Record<CheckArea, HandoverCheck>
+export const takeoverAlertPath = (id: string) => `/app/prechod/otazka?ziadost=${id}`
+/** Only this exact internal task can be carried through the ordinary login form. No arbitrary return URL. */
+export function takeoverLoginNext(value: unknown): string | null {
+  const match = typeof value === 'string' ? /^\/app\/prechod\/otazka\?ziadost=([A-Za-z0-9-]{1,64})$/.exec(value) : null
+  return match ? takeoverAlertPath(match[1]!) : null
+}
 export const AREA_KEYS = Object.keys(CHECK_AREAS) as CheckArea[]
 export const emptyChecks = (): HandoverChecks => Object.fromEntries(AREA_KEYS.map(k => [k, { result: 'pending', file: '', note: '' }])) as HandoverChecks
 export const isHandoverState = (value: string): value is HandoverState => Object.hasOwn(HANDOVER_STATES, value)

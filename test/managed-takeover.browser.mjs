@@ -53,6 +53,15 @@ export async function checkManagedTakeoverBrowser({page,clientPage,db,origin}) {
   }
   await clientPage.goto(`${origin}/app`)
   check('managed takeover browser: the customer reaches an outstanding question from the overview',await clientPage.locator('[data-overview-action="managed-takeover"]').isVisible())
+  const activeCase = await db.prepare('SELECT id FROM managed_handovers WHERE company_id=?').bind(company).first()
+  const alertPath = `/app/prechod/otazka?ziadost=${activeCase.id}`
+  const bell = await db.prepare("SELECT body FROM outbox WHERE recipient='browser-client@example.test' AND substr(id,1,length(?1))=?1").bind(`bell:managed-question:${activeCase.id}:`).first()
+  check('managed takeover browser: an outstanding question has a private persisted notification link',Boolean(bell?.body.includes(alertPath)) && !bell.body.includes('TEST-BROWSER Potvrďte'))
+  await db.prepare("UPDATE sessions SET company_id='browser-co' WHERE user_id='browser-client'").run()
+  await clientPage.goto(`${origin}${alertPath}`)
+  check('managed takeover browser: a notification never silently switches the company in another open tab',await clientPage.locator('[data-takeover-company-choice]').isVisible() && (await db.prepare("SELECT company_id FROM sessions WHERE user_id='browser-client'").first()).company_id === 'browser-co')
+  await Promise.all([clientPage.waitForURL(`${origin}/app`),clientPage.getByRole('button',{name:'Otvoriť túto firmu',exact:true}).click()])
+  check('managed takeover browser: explicit selection opens the correct company and its actual question',(await db.prepare("SELECT company_id FROM sessions WHERE user_id='browser-client'").first()).company_id === company && await clientPage.locator('[data-overview-action="managed-takeover"]').isVisible())
   await clientPage.locator('[data-overview-action="managed-takeover"]').click()
   await clientPage.getByRole('button',{name:'Odvolať koordináciu',exact:true}).click()
   await clientPage.waitForURL(/ok=odvolane/)

@@ -1,8 +1,9 @@
 import { now } from '../db'
 import { BRAND, OPERATOR } from '../config'
+import { bell } from '../bell'
 import { dataRevision } from '../app/handover-store'
 import type { Company, User } from '../app/store'
-import { HANDOVER_CONSENT, HANDOVER_CONSENT_VERSION, AREA_KEYS, emptyChecks, handoverDay, handoverText, isHandoverState, mayMove, type HandoverChecks, type HandoverRequestValues, type HandoverState } from './model'
+import { HANDOVER_CONSENT, HANDOVER_CONSENT_VERSION, AREA_KEYS, emptyChecks, handoverDay, handoverText, isHandoverState, mayMove, takeoverAlertPath, type HandoverChecks, type HandoverRequestValues, type HandoverState } from './model'
 import { handoverOpenSql } from './schema'
 import { accessOpenSql, amlToday } from '../aml/retention'
 
@@ -82,15 +83,33 @@ export async function updateHandover(db: D1Database, company: Company, user: Use
     }
   }
   const at = now()
-  const r = await db.prepare(`UPDATE managed_handovers SET state = ?1,revision = revision + 1,updated_at = ?2,updated_by = ?3,responsible_id = ?4,due_on = ?5,
+  const write = db.prepare(`UPDATE managed_handovers SET state = ?1,revision = revision + 1,updated_at = ?2,updated_by = ?3,responsible_id = ?4,due_on = ?5,
     authority_reference = ?6,contact_reference = ?7,contact_on = ?8,public_note = ?9,client_action = ?10,checks = ?11,completion_source = ?12,reason = ?13
     WHERE id = ?14 AND company_id = ?15 AND revision = ?16 AND ${handoverOpenSql('?15')}
       AND EXISTS (SELECT 1 FROM companies WHERE id = ?15 AND accountant_id = ?4)
       AND EXISTS (SELECT 1 FROM users WHERE id = ?4 AND team IN ('accountant','admin'))
       AND EXISTS (SELECT 1 FROM users u JOIN companies c ON c.id = ?15 WHERE u.id = ?3 AND (u.team = 'admin' OR u.team = 'accountant' AND c.accountant_id = u.id))
       AND COALESCE((SELECT revision FROM company_data_revisions WHERE company_id = ?15),0) = ?17`)
-    .bind(state,at,user.id,company.accountantId,v.due,v.authority,v.contact,v.contactOn || null,v.note,v.action,JSON.stringify(v.checks),state === 'completed' ? JSON.stringify(facts) : null,v.reason,h.id,company.id,h.revision,sourceRevision).run()
-  return (r.meta.changes ?? 0) > 0 ? null : 'Žiadosť alebo podklady sa medzitým zmenili. Obnovte stránku; tento pokus nič neprepísal.'
+    .bind(state,at,user.id,company.accountantId,v.due,v.authority,v.contact,v.contactOn || null,v.note,v.action,JSON.stringify(v.checks),state === 'completed' ? JSON.stringify(facts) : null,v.reason,h.id,company.id,h.revision,sourceRevision)
+  const statements = [write]
+  if (v.action && v.action !== h.clientAction && state !== 'cancelled' && state !== 'completed') {
+    const notice = bell.managedTakeoverQuestion(`${BRAND.origin}${takeoverAlertPath(h.id)}`)
+    // D1 batch is one transaction. changes() counts only the preceding top-level UPDATE, including when it had
+    // history triggers. A losing CAS cannot send a bell. Originals read 22 October 2026:
+    // https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
+    // https://www.sqlite.org/c3ref/changes.html
+    statements.push(db.prepare(`INSERT OR IGNORE INTO outbox(id,recipient,reply_to,subject,body,created_at)
+      SELECT ?1 || u.id,u.email,?2,?3,?4,?5 FROM members m JOIN users u ON u.id = m.user_id
+      WHERE m.company_id = ?6 AND changes() > 0`)
+      .bind(`bell:managed-question:${h.id}:${h.revision + 1}:`,BRAND.email,notice.subject,notice.body,at,company.id))
+  }
+  try {
+    const [r] = await db.batch(statements)
+    return (r?.meta.changes ?? 0) > 0 ? null : 'Žiadosť alebo podklady sa medzitým zmenili. Obnovte stránku; tento pokus nič neprepísal.'
+  } catch {
+    console.error('managed takeover write not confirmed')
+    return 'Uloženie nemáme potvrdené. Obnovte stránku a skontrolujte aktuálny stav pred opakovaním.'
+  }
 }
 export async function cancelHandover(db: D1Database, company: string, user: string, id: string, revision: number): Promise<boolean> {
   const r = await db.prepare(`UPDATE managed_handovers SET state = 'cancelled',revision = revision + 1,updated_at = ?,updated_by = ?,client_action = '',reason = 'Klient odvolal koordináciu prevzatia.'

@@ -1,5 +1,16 @@
 # Firmony: progress of the continuation
 
+## Upozornenie na doplnenie pri prechode (Codex, 22. október 2026 CEST)
+
+Uloženie novej otázky a súkromného upozornenia je jedna transakcia so stavom aj históriou.
+Súbeh vytvorí iba jednu verziu; rovnaká otázka neposiela ďalšie upozornenie. E-mail neobsahuje otázku
+ani kontaktné údaje. Odkaz kontroluje členstvo a pri inej vlastnej firme žiada výslovné prepnutie;
+nič nemení obyčajným otvorením. Cieľ sa zachová aj pri emailovom prihlásení bez otvoreného redirectu.
+Regresie pokrývajú transakčný rollback, súbeh, súkromie, login a skutočné prepnutie cez prehliadač.
+Nový stav výberu firmy je aj v UI sade 1440/390/320 px. Bez zmeny schémy 78, cien alebo overovania tímu.
+Povinné kontroly presnej revízie a nasadenie sa evidujú v samostatnom PR. Doručenie závisí od existujúceho
+outboxu a mailovej služby; nesľubujeme matematické exactly-once doručenie cez SMTP.
+
 ## Zrozumiteľné vysvetlenie prechodu na webe (Codex, 22. október 2026 CEST)
 
 FAQ nadväzuje na spravovaný prechod G1: kontakt a potvrdenie, administratíva Firmony, odborná kontrola,

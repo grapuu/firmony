@@ -8,6 +8,14 @@ import type { ManagedHandover, HandoverUpdate } from '../migration/store'
 const moment = new Intl.DateTimeFormat('sk-SK',{timeZone:'Europe/Bratislava',dateStyle:'medium',timeStyle:'short'})
 const whenName = (seconds: number, _now: number) => moment.format(new Date(seconds * 1000))
 
+/** A mail link never silently changes the session company while another tab may still hold a form. */
+export const TakeoverCompanyChoice: FC<{company:{id:string;name:string}}> = ({company}) => <section class="info stack managed-takeover" data-takeover-company-choice>
+  <h1 class="info__title">Upozornenie patrí inej Vašej firme</h1>
+  <p>Otvoríte prehľad firmy <strong>{company.name}</strong>. Tam uvidíte aktuálnu požiadavku a priebeh prevzatia.</p>
+  <form method="post" action="/app/firma/prepnut"><input type="hidden" name="firma" value={company.id} /><button class="btn btn--blue" type="submit">Otvoriť túto firmu</button></form>
+  <a class="link" href="/app">Zostať v aktuálnej firme</a>
+</section>
+
 export interface ClientTakeoverProps {
   company: Company; h: ManagedHandover | null; owner: boolean; open: boolean; submission: string; now: number
   values?: HandoverRequestValues; errors?: string[]

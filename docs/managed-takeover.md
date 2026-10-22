@@ -23,6 +23,27 @@ Prijaté súbory môže nahrať priamo účtovníčka bez preposielania cez klie
 historické opravy, cudzie náklady a úkony mimo dohodnutej služby potrebujú predchádzajúcu dohodu.
 Ceny, slogan, účtovné jadro a predzmluvné AML/release brány sa nemenia.
 
+## Keď je potrebný klient
+
+Nová alebo zmenená neprázdna otázka účtovníčky uloží aj stručný e-mailový zvonček pre aktuálnych
+členov firmy. Telo obsahuje iba všeobecné upozornenie a odkaz. Samotná otázka, meno, kontakt ani
+podklady sa do e-mailu nekopírujú. Aktuálny prípad je zdroj pravdy; zrušená alebo už vybavená otázka
+sa starým odkazom neoživí. Nezmenená otázka neposiela ďalšie upozornenie pri každej úprave prípadu.
+
+Zápis prípadu, nemenná história a outbox sú jedna D1 transakcia. `changes()` nad predchádzajúcim
+UPDATE chráni pred upozornením po prehratom súbehu. Chyba vloženia outboxu vráti späť aj zmenu
+prípadu a úspešnú históriu. Neistá transportná odpoveď žiada obnoviť skutočný stav pred opakovaním.
+Jedinečný kľúč používa prípad, novú revíziu a člena. Existujúce odosielanie sa spustí až po úspešnom
+zápise a opakuje sa pôvodnou službou; uloženie nie je potvrdenie doručenia do schránky.
+
+`/app/prechod/otazka?ziadost=ID` znovu overí členstvo a klientsky prístup. Cudziemu používateľovi
+neukáže firmu ani otázku. Ak je aktívna iná vlastná firma, najprv ukáže jej názov a vyžiada
+výslovné prepnutie existujúcim POST formulárom. GET nemení firmu iným otvoreným formulárom.
+Pri správnej firme odkaz otvorí aktuálnu koordináciu. Po výslovnom prepnutí sa otvorí prehľad
+so skutočnou zostávajúcou úlohou. Odhlásenému klientovi sa tento konkrétny povolený cieľ prenesie
+cez emailové prihlásenie a vedomé potvrdenie mailbox odkazu. Všeobecné prihlasovanie neprijíma
+ľubovoľnú návratovú adresu. Passkeys tímu, kontrola čerstvého prístupu a ochrana POST zostávajú.
+
 ## Stavy a dôkaz dokončenia
 
 `requested → coordinating → waiting → reviewing → completed`. Kontrola sa môže vrátiť na chýbajúce
@@ -71,11 +92,16 @@ dát a zneplatní staré potvrdenie úplnosti exportu.
   nadväzuje na pôvodný režim programu; nový workflow neobchádza predzmluvné overenie ani uchovávanie.
 - [D1 batch](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch): transakčné dávky;
   nové triggery a revízne podmienky spájajú jediný úspešný zápis s dôkazom.
+- [SQLite changes](https://www.sqlite.org/c3ref/changes.html): iba predchádzajúci top-level zápis,
+  bez zmien jeho triggerov. Použité pre transakčný zvonček.
+- [D1 limity](https://developers.cloudflare.com/d1/platform/limits/): LIKE/GLOB majú 50 bajtov;
+  testy identifikátorov používajú porovnanie prefixu cez substr, nie dlhý LIKE vzor.
 
 ## Overenie a ďalší krok
 
 `test/managed-takeover.runtime.mjs` ovláda skutočný Worker/D1/R2: súbeh, prístup, stavy, zdroje,
-odvolanie, export a konečný výmaz. SHA-256 stráži prvých 77 nezmenených schém.
+odvolanie, export a konečný výmaz; aj rollback outboxu, súbeh otázok, súkromie, login a výber firmy.
+SHA-256 stráži prvých 77 nezmenených schém; tento doplnok nemení už nasadený krok 78.
 `test/managed-takeover.browser.mjs` skúša reálne klientské a tímové formuláre, labely, mobil,
 upload a odvolanie; tri nové stavy sú aj v povinnej UI sade. Všetky povinné kontroly presnej
 finálnej revízie a následné živé nasadenie sa evidujú v PR. Lokálna TS6 nenahrádza `npm run check` v CI.
