@@ -143,7 +143,7 @@ const NB = ' '
 let res = await get('/')
 let page = await res.text()
 check('the home page answers', res.status === 200)
-check('it puts the client in the story and explains the agreed scope', page.includes('Vy budujete firmu.') && page.includes('My strážime účtovníctvo.') && page.includes('dohodnutú účtovnú agendu'))
+check('it puts the client in the story and explains the agreed scope', page.includes('Vy budujete firmu.') && page.includes('My strážime účtovníctvo.') && page.includes('dohodnutú agendu') && page.includes('Doklady odfotíte alebo prepošlete'))
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
   'it names the prices of all three plans',
@@ -185,12 +185,33 @@ check(
 )
 check('the canonical address is the domain', page.includes('<link rel="canonical" href="https://firmony.io/"'))
 check('the real domain is for search engines', res.headers.get('x-robots-tag') === null)
-check('the worked example is shown before anything is typed', page.includes(`2${NB}128${NB}€`) && page.includes(`1${NB}317${NB}€`) && page.includes(`811${NB}€`))
+const calcResultPart = (html) => html.slice(html.indexOf('class="calc__result"'), html.indexOf('</section>', html.indexOf('class="calc__result"')))
+check('the comparison waits for visitor inputs instead of advertising an invented saving', calcResultPart(page).includes('Zadajte svoje náklady') && !calcResultPart(page).includes('calc__line') && !page.includes(`811${NB}€`))
+check('every plan shows twelve monthly scopes plus the real annual closing before its choice', ['start','rast','firma'].every((id, i) => {
+  const part = page.match(new RegExp(`data-plan-year="${id}"[^>]*>(.*?)</p>`))?.[1] ?? ''
+  return part.includes([`1${NB}317${NB}€`, `2${NB}277${NB}€`, `4${NB}197${NB}€`][i])
+}) && page.includes('Ročný súčet počíta') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Mzdy a individuálne dohodnuté práce'))
+check('the sales page explains its nonbinding first step and links terms and privacy beside pricing', page.includes('Zatiaľ nič neobjednávate') && page.includes('pred uzavretím zmluvy') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Rozsah a zodpovednosť v podmienkach') && page.includes('href="/pravne-informacie#ochrana-udajov"'))
+
+// Public e-invoice claims distinguish an enacted duty from a live delivery integration and its recipient scope.
+{
+  const response = await get('/e-faktura-2027'), html = (await response.text()).replace(/[\u00a0\u202f]/g, ' ')
+  check('e-invoice guide: receipt duties and five-day reporting are not applied to every non-VAT recipient', response.status === 200 && html.includes('pri ktorom má dodávateľ povinnosť vyhotoviť e-faktúru') && html.includes('nevzťahuje automaticky na každého neplatiteľa') && html.includes('Nie sú automatickou pokutou každému príjemcovi'))
+  check('e-invoice guide: original law, current modification and pending postman integration are visible without an invented supplier price', html.includes('2026-10-22') && html.includes('https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html') && html.includes('Napojenie na digitálneho poštára pripravujeme') && !html.includes('5 až 12 €'))
+}
 
 // The comparison
 res = await get('/?mesacne=100&za-doklad=3&doklady=50&zavierka=200&dph=ano&ludia=1')
 page = await res.text()
 check('a comparison of typed numbers', page.includes(`3${NB}200${NB}€`) && page.includes('balík Rast') && page.includes(`2${NB}457${NB}€`) && page.includes(`743${NB}€`))
+res = await get('/?mesacne=30&doklady=10')
+page = await res.text()
+check('a more expensive Firmony result is displayed plainly with the same total style as a saving', calcResultPart(page).includes('platili viac') && calcResultPart(page).includes(`957${NB}€`) && !calcResultPart(page).includes('calc__line--save'))
+res = await get('/?mesacne=89&doklady=10&zavierka=249')
+page = await res.text()
+check('equal annual costs are stated as equal, not zero savings', calcResultPart(page).includes('ročná cena rovnaká') && !calcResultPart(page).includes('Ušetríte ročne'))
+res = await get('/?mesacne=0&za-doklad=0&doklady=0&zavierka=0&ludia=0')
+check('zero or empty inputs do not restore the old promotional example', !calcResultPart(await res.text()).includes('calc__line'))
 res = await get('/?mesacne=abc')
 check('numbers that are none are said to be wrong', (await res.text()).includes('Skontrolujte čísla'))
 res = await get('/?mesacne=500&doklady=400')

@@ -17,14 +17,33 @@ ukončenia celej služby. Rozhranie používa existujúci vzhľad a oprávnenia;
 súboru, zachovanie dávky pri prerušení, opakovanie len nepotvrdených položiek, ochrana pred prepnutou firmou
 alebo účtom a idempotentná správa vrátane súbežného pokusu. Bez trvalého ukladania rozpracovaných osobných
 údajov do prehliadača. `test/delivery.runtime.mjs` a `test/delivery.browser.mjs` vrátane straty už uloženej odpovede.
+Kompatibilita formulárov: JSON potvrdenie používa iba príjem dokladov a priradenie k platbe;
+bankový formulár a plná moc zostávajú na pôvodnom bežnom odoslaní. Browser regresia overuje skutočnú
+plnú moc uloženú raz na kontrolu a pôvodné presmerovanie, bez automatického označenia overenia.
 Samostatný stav konkrétnej otázky a potvrdenie jej odborného vybavenia ostávajú otvorené; prečítanie ani
 prijatie súboru to nenahrádza. J3 až J5 a používateľský pilot zostávajú otvorené. Schéma 77, ďalšia 78.
-**Nový pokyn majiteľa 22. 10. 2026:** ďalej dôkladne overiť pôvodné psychologické štúdie a verejné postupy
-Revolutu, Trading 212 a Robinhoodu a premietnuť dôveru, jednoduchosť a overiteľnú výhodnosť do predaja na webe
-aj produktu. Fotografie zakladateľa a účtovníčky zatiaľ neriešiť. Nadviazať na existujúci výskum
-`docs/research/customer-value-2026-10-21.md`; nezamieňať jeho návrhy za dodané funkcie alebo overené výsledky.
-Ceny 89, 169 a 329 eur sú súčasné nastavenie, bez podkladov netvrdiť prvenstvo v cene alebo garantovanú úsporu.
-Otvorený slogan, odborné agendy, serverové oprávnenia a AML brány sa nemenia týmto krokom odosielania.
+**Pokyn majiteľa 22. 10. 2026, dôvera a výhodnosť:** `docs/research/trust-and-value-2026-10-22.md`
+nadväzuje na predchádzajúci výskum. Desať nosných originálov, dve doplnkové práce s obmedzeným prístupom,
+overiteľné verejné postupy Revolutu, Trading 212 a Robinhoodu a osem návrhov so stavom implementácie a meraním.
+**V tejto vetve implementované:** web vysvetlí prácu klienta, odbornú úlohu účtovníčky a nezáväzný prvý krok;
+pri balíku ukáže ročný základ so závierkou z rovnakého `annualPlanCents` ako kalkulačka, podmienky a ochranu údajov.
+Kalkulačka čaká na skutočné vstupy a rovnako viditeľne ukáže úsporu, vyššiu cenu aj rovnosť. Vstupy majú
+vysvetlený rozsah a výsledok svoje predpoklady. Technické HTTP a mobilné testy nepotvrdzujú predajnú účinnosť.
+Štúdie sú v dokumente oddelené od hypotéz pre Firmony; S11 iba abstrakt, S12 iba bibliografia. Cenník konkurenta
+sám osebe nepreukazuje rovnaký rozsah ani prvenstvo Firmony v cene. Ceny 89, 169 a 329 eur zostávajú, bez
+zľavy, nového referral programu alebo vymyslenej úspory času. Fotografie zakladateľa a účtovníčky zatiaľ neriešiť.
+Hlavný slogan a dizajnový základ, zmluvy, odborné agendy, oprávnenia a AML brány ostávajú. Ďalší krok:
+pilot porozumenia ceny a služby; konkrétna otázka s odborným vybavením v J2, potom J3 až J5. Výsledky a
+nasadenie presného finálneho commitu sa evidujú v PR, neoznačovať za hotovú alebo poistenú celú službu.
+**Spresnenie e-fakturačnej komunikácie 22. 10. 2026:** `src/copy.ts` a návod `/e-faktura-2027` už
+nezovšeobecňujú povinné vystavovanie, príjem, päťdňové oznamovanie a sankcie na každú firmu. Rozlišujú
+pripravený formát a pripravované napojenie na digitálneho poštára; bez neoverenej cudzej ceny 5 až 12 eur.
+Prečítané originály: aktuálny zákon o DPH https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html ;
+už vyhlásené znenie od 1. 1. 2027 https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html , najmä
+§ 71 ods. 5, § 78a a § 85o ods. 2 až 14; novela https://static.slov-lex.sk/static/SK/ZZ/2025/385/20270101.html ,
+čl. I bod 69 a čl. VIII. Doplnkový primárny zdroj FS: https://www.financnasprava.sk/sk/podnikatelia/dane/dan-z-pridanej-hodnoty/e-faktura .
+Zdrojové odkazy sú aj v kóde a návode, upravený dátum 22. 10. 2026. Konkrétne zákonné výnimky sa na webe
+nesmú nahrádzať tvrdením o úplnej ostrej prevádzke poštára. Zmena je v komunikácii, nie v daňovom engine.
 Primárne návrhové podklady prečítané 21. 10. 2026: https://www.w3.org/TR/WCAG22/ (najmä 2.4.3, 2.4.7,
 3.3.1, 3.3.2, 3.3.7, 4.1.3), https://www.w3.org/WAI/WCAG22/Understanding/redundant-entry.html,
 https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html,

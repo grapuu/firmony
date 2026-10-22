@@ -2126,12 +2126,6 @@ textarea {
   filter: drop-shadow(0 16px 20px rgb(20 30 130 / 0.16));
 }
 
-.calc__example {
-  margin-bottom: 8px;
-  color: var(--soft);
-  font-size: 0.9375rem;
-}
-
 .calc__line {
   display: flex;
   align-items: baseline;
@@ -2162,9 +2156,6 @@ textarea {
   font-size: clamp(1.75rem, 2.6vw, 2.25rem);
 }
 
-.calc__line--save strong {
-  color: var(--blue);
-}
 
 .calc__message {
   color: var(--soft);
@@ -4140,4 +4131,47 @@ textarea {
       --sr: 7deg;
     }
   }
+}
+
+/* Clear costs beside the decision; the three plan rows keep their existing subgrid. */
+.hero__card-next {
+  margin-top: 18px;
+  color: var(--soft);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.plan__cost {
+  padding-bottom: 24px;
+}
+
+.plan__cost .plan__price {
+  padding-bottom: 12px;
+}
+
+.plan__annual {
+  color: var(--soft);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.plan__annual strong {
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 24px;
+  margin-top: 10px;
+}
+
+.calc__help {
+  grid-column: 1 / -1;
+  color: var(--soft);
+  line-height: 1.55;
 }

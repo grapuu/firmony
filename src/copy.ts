@@ -1,5 +1,7 @@
 // Every visible text of the site, in Slovak, typeset once (src/format.ts). Prices and limits come from
 // src/config.ts, so a text can never say another figure than the plans have.
+// Price/trust decisions and primary sources, with transfer limits: docs/research/trust-and-value-2026-10-22.md.
+// These are product hypotheses; no conversion uplift or market-wide cheapest claim is asserted.
 import { APP, BRAND, CLOSING_PRICE, INVESTORS, OPERATOR, ORDER, PAYROLL_PRICE, PLANS, REPLY_WITHIN, type Plan } from './config'
 import { formatEur, typeset, typesetAll } from './format'
 
@@ -20,7 +22,7 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: online účtovníctvo pre Vašu firmu od ${eur(start.price)} mesačne`,
-    description: `Vedenie účtovníctva, DPH, miezd a závierky pre s. r. o. online. Doklady prečíta umelá inteligencia, Vaša účtovníčka ich skontroluje a podá. Pevná cena podľa počtu dokladov, od ${eur(start.price)} mesačne.`,
+    description: `Účtovníctvo s pridelenou účtovníčkou, dokladmi a termínmi v jednej aplikácii. Balíky od ${eur(start.price)} mesačne bez DPH, závierka ${eur(CLOSING_PRICE)} ročne. Rozsah a cenu si prejdeme pred zmluvou.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
@@ -28,8 +30,8 @@ export const copy = typesetAll({
   hero: {
     first: 'Vy budujete firmu.',
     second: 'My strážime účtovníctvo.',
-    lead: 'Doklady, termíny a správy s účtovníčkou na jednom mieste. Vy poznáte svoju firmu. My sa staráme o dohodnutú účtovnú agendu a ozveme sa, keď potrebujeme Vaše rozhodnutie.',
-    price: `Od ${eur(start.price)} mesačne. Platíte podľa počtu dokladov.`,
+    lead: 'Doklady odfotíte alebo prepošlete. Účtovníčka sa postará o dohodnutú agendu a v aplikácii uvidíte, čo je hotové a čo potrebuje Vaše rozhodnutie.',
+    price: `Od ${eur(start.price)} mesačne bez DPH. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
   },
@@ -37,7 +39,8 @@ export const copy = typesetAll({
   /** The card in the opening where a client starts: the IČO. */
   card: {
     title: 'Začnite s IČO Vašej firmy',
-    text: 'Názov a sídlo doplníme z registra. Je to nezáväzné.',
+    text: 'Názov a sídlo doplníme z registra. Zatiaľ nič neobjednávate.',
+    next: 'Po nezáväznom dopyte si prejdeme Vašu agendu. Rozsah služby a cenu dostanete pred uzavretím zmluvy.',
     fine: `Ozveme sa ${REPLY_WITHIN}.`,
   },
 
@@ -45,7 +48,7 @@ export const copy = typesetAll({
   flow: {
     first: 'Vy pošlete doklady.',
     second: 'My ich skontrolujeme.',
-    lead: 'Bloček odfotíte, faktúru prepošlete. Umelá inteligencia ich prečíta, účtovníčka všetko skontroluje a podá priznania.',
+    lead: 'Bloček odfotíte, faktúru prepošlete. Systém pomôže s čítaním a párovaním. Účtovníčka vedie odbornú kontrolu a postará sa o dohodnuté priznania.',
     label: 'Ukážka: október Vašej firmy vo Firmony, všetko zaúčtované',
     month: 'Október 2026',
     company: 'Vaša firma',
@@ -65,9 +68,9 @@ export const copy = typesetAll({
   /** Four true figures, each with what it means. */
   stats: [
     { value: eur(start.price), label: `mesačne za balík ${start.name}` },
-    { value: eur(0), label: 'za aplikáciu a e-faktúry' },
+    { value: eur(0), label: 'za aplikáciu k účtovnej službe' },
     { value: '1 deň', label: 'na odpoveď, po ľudsky' },
-    { value: '1. 1. 2027', label: 'štart, e-faktúry v cene' },
+    { value: '1. 1. 2027', label: 'plánovaný štart služby' },
   ],
 
   /** The hug of the brand, read word by word. */
@@ -78,14 +81,14 @@ export const copy = typesetAll({
 
   /** Everything in the price: pick one and see it. */
   services: {
-    first: 'Všetko, čo firma potrebuje.',
+    first: 'Doklady, dane aj odpovede.',
     second: 'Na jednom mieste.',
     lead: 'Vyberte si a pozrite sa, ako to vyzerá.',
     example: 'Ilustračná ukážka',
     items: [
-      { id: 'doklady', title: 'Doklady a banka', text: 'Zaúčtujeme každý doklad a spárujeme platby.' },
+      { id: 'doklady', title: 'Doklady a banka', text: 'Spracovanie dokladov a párovanie platieb podľa dohodnutej agendy.' },
       { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za Vás.' },
-      { id: 'efaktury', title: 'E-faktúry', text: 'Prijmeme ich za Vás. Povinné sú od 1. 1. 2027.' },
+      { id: 'efaktury', title: 'E-faktúry', text: 'Príjem cez digitálneho poštára pripravujeme pred spustením služby.' },
       { id: 'mzdy', title: 'Mzdy', text: `Výplaty, odvody a hlásenia zamestnancov, ${eur(PAYROLL_PRICE)} mesačne za človeka.` },
       { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
       { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
@@ -154,17 +157,20 @@ export const copy = typesetAll({
 
   /** The machine and the person. */
   duo: {
-    first: 'Rýchlosť stroja.',
-    second: 'Istota človeka.',
+    first: 'Menej rutiny pre Vás.',
+    second: 'Odborná kontrola pre Vašu firmu.',
     ai: { title: 'Umelá inteligencia', items: ['prečíta bloček aj faktúru', 'navrhne zaúčtovanie', 'spáruje platby z banky'] },
-    human: { title: 'Vaša účtovníčka', items: ['všetko skontroluje', 'podá priznania a výkazy', 'odpovie na Vaše otázky'] },
+    human: { title: 'Vaša účtovníčka', items: ['vedie odbornú kontrolu', 'rieši neštandardné prípady a dohodnuté podania', 'odpovie na Vaše otázky'] },
   },
 
   einvoice: {
+    // Read 22 October 2026: current law and the enacted 2027 wording, especially § 71(5), § 85o(2)-(4),(9)-(10).
+    // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html
+    // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html#paragraf-85o
     date: '1. 1. 2027',
-    title: `Od ${BRAND.launch} musí každá firma vedieť prijať e-faktúru.`,
-    text: 'S Firmony je to v cene každého balíka. Faktúry nám prídu rovno do účtovníctva.',
-    source: 'Zákon o DPH, § 85o, vložený zákonom č. 385/2025 Z. z.',
+    title: 'E-faktúry sa týkajú aj neplatiteľov DPH.',
+    text: 'Pri určených tuzemských dodaniach ich vystavujú platitelia DPH. Vedieť ich prijať musia aj neplatitelia. Napojenie na digitálneho poštára pripravujeme pred spustením služby.',
+    source: 'Zákon o DPH, § 71 ods. 5 a § 85o, znenie od 1. 1. 2027.',
     more: 'Čo musí urobiť Vaša firma',
   },
 
@@ -173,6 +179,10 @@ export const copy = typesetAll({
     second: 'Platíte podľa počtu dokladov.',
     lead: 'Vyberte si podľa počtu dokladov za mesiac a podľa toho, či ste platiteľom DPH.',
     perMonth: 'mesačne',
+    annual: 'Za 12 mesiacov so závierkou',
+    annualBasis: 'Ročný súčet počíta s rovnakým balíkom počas 12 mesiacov a jednou závierkou s daňovým priznaním. Mzdy a individuálne dohodnuté práce sú navyše.',
+    documents: 'Rozsah a zodpovednosť v podmienkach',
+    privacy: 'Ako chránime Vaše údaje',
     rows: { docs: 'Doklady', vat: 'DPH', people: 'Mzdy' },
     included: `V každom balíku: zaúčtovanie dokladov a platieb, e-faktúry, mesačný prehľad, stráženie termínov a odpovede ${REPLY_WITHIN}.`,
     closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne. Mzdy: ${eur(PAYROLL_PRICE)} mesačne za človeka.`,
@@ -191,15 +201,15 @@ export const copy = typesetAll({
   /** What we promise, said once and plainly, next to the prices. */
   promises: [
     { title: 'Bez viazanosti', text: 'Mesačná výpovedná lehota.' },
-    { title: 'Platíte podľa dokladov', text: 'Mesiac s viac dokladmi vyúčtujeme ako vyšší balík. Žiadne skryté poplatky.' },
+    { title: 'Rozumiete cene vopred', text: 'Vidíte mesačný balík, ročnú závierku aj mzdy. Viac dokladov môže znamenať vyšší balík.' },
     { title: 'Odpoveď do pracovného dňa', text: 'Po slovensky, nie úradnícky.' },
     { title: 'Účtovníctvo je Vaše', text: 'Keď odídete, všetko Vám odovzdáme.' },
   ],
 
   calc: {
-    title: 'Koľko ušetríte?',
-    lead: 'Napíšte, koľko dnes platíte svojej účtovníčke. Sumy uvádzajte bez DPH.',
-    monthly: 'Mesačný paušál',
+    title: 'Čo Vám vychádza výhodnejšie?',
+    lead: 'Porovnajte náklady na rovnaký rozsah služieb za celý rok. Vyplňte svoje údaje bez DPH.',
+    monthly: 'Dnešné mesačné náklady vrátane miezd',
     perDoc: 'Poplatok za doklad',
     docs: 'Dokladov mesačne',
     closing: 'Závierka a priznanie ročne',
@@ -208,13 +218,15 @@ export const copy = typesetAll({
     yes: 'Áno',
     people: 'Ľudia na mzde',
     button: 'Porovnať',
-    example: 'Príklad: paušál 60 €, 20 dokladov po 5,20 € a závierka 160 €.',
-    empty: 'Zadajte svoje čísla a porovnáme ich s našou cenou.',
-    today: 'Dnes zaplatíte ročne',
+    empty: 'Zadajte svoje náklady. Uvidíte ročný súčet a rozdiel oproti Firmony.',
+    today: 'Vaše zadané náklady za rok',
     save: 'Ušetríte ročne',
     more: 'S nami by ste ročne platili viac o',
     custom: 'Pre firmu s takýmto počtom dokladov pripravíme ponuku na mieru.',
-    note: `Porovnávame aj so závierkou za ${eur(CLOSING_PRICE)} a mzdami za ${eur(PAYROLL_PRICE)} mesačne na človeka.`,
+    same: 'Pri týchto údajoch je ročná cena rovnaká.',
+    note: `Firmony počíta aj so závierkou za ${eur(CLOSING_PRICE)} a mzdami za ${eur(PAYROLL_PRICE)} mesačne na človeka. Rovnaký počet dokladov a ľudí predpokladáme každý mesiac. Práce dohodnuté individuálne v súčte nie sú.`,
+    inputHelp: 'Do mesačných nákladov zahrňte aj poplatky za mzdy a používaný účtovný softvér. Poplatok za doklad a ročnú závierku zadajte osobitne, aby sa nezapočítali dvakrát. Vyššiu aj nižšiu cenu ukážeme rovnakým spôsobom.',
+    resultBasis: 'Orientačné cenové porovnanie podľa Vašich vstupov. Rozdiel nepotvrdzuje rovnakú kvalitu ani rozsah služieb. Konkrétnu ponuku si prejdeme spolu.',
     invalid: 'Skontrolujte čísla. Sumy píšte v eurách, napríklad 60 alebo 5,20.',
   },
 
@@ -267,7 +279,15 @@ export const copy = typesetAll({
     items: [
       {
         q: 'Kto mi bude viesť účtovníctvo?',
-        a: 'Účtovníčka s praxou, ktorá bude mať Vašu firmu na starosti. Rutinnú prácu za ňu urobí umelá inteligencia. Ona všetko skontroluje, podá priznania a odpovie na Vaše otázky.',
+        a: 'Vaša firma má pridelenú účtovníčku. Systém jej pomáha s čítaním dokladov a párovaním platieb. Ona vedie odbornú kontrolu, rieši neštandardné prípady, dohodnuté podania a Vaše otázky.',
+      },
+      {
+        q: 'Čo musím robiť ja?',
+        a: 'Doklady odfotíte, nahráte alebo prepošlete na adresu svojej firmy vo Firmony. Pri nahrávaní vidíte potvrdenie prijatia. Keď potrebujeme vysvetliť nákup, doplniť údaj alebo schváliť rozhodnutie, ozveme sa v aplikácii. Potrebné overenie a nastavenie prejdeme na začiatku spolu.',
+      },
+      {
+        q: 'Objednávam si službu už zadaním IČO?',
+        a: 'Nie. Najprv doplníme údaje z registra a po nezáväznom dopyte si prejdeme Vašu agendu. Pred uzavretím zmluvy dostanete rozsah služby, cenu a podmienky spolupráce. Zmluva má samostatný krok po overení údajov a totožnosti.',
       },
       {
         q: 'Viete viesť aj väčšiu firmu?',
@@ -295,11 +315,11 @@ export const copy = typesetAll({
       },
       {
         q: 'Ako spolu budeme komunikovať?',
-        a: 'Všetko vybavíme v aplikácii: správy s účtovníčkou, doklady, zmluvu aj plnú moc. Nič sa nestratí v e-mailoch a Vaše údaje neležia v cudzích schránkach. E-mail Vám príde len ako upozornenie, že na Vás niečo čaká.',
+        a: 'Správy s účtovníčkou, doklady, zmluvu aj plnú moc nájdete v aplikácii. E-mail Vás upozorní na novú správu bez jej obsahu. Doklady môžete aj preposielať na adresu svojej firmy vo Firmony.',
       },
       {
         q: 'Ako môžete mať takúto cenu?',
-        a: 'Rutinu za nás robí umelá inteligencia a nemáme drahú kanceláriu. Platíte za prácu, ktorú za Vás niekto naozaj urobí, nie za papiere.',
+        a: 'Čítanie dokladov, párovanie a ďalšie opakované úkony zjednodušuje systém. Účtovníčka sa môže venovať odbornej kontrole a Vašim otázkam. Platíte za dohodnutý rozsah služby. Mesačný balík, závierku aj mzdy vidíte v cenníku.',
       },
     ],
   },

@@ -44,41 +44,41 @@ export const GUIDES: Guide[] = [
     nav: 'E-faktúra od roku 2027',
     title: `E-faktúra od 1. 1. 2027: čo musí urobiť Vaša firma | ${BRAND.name}`,
     description:
-      'Od 1. januára 2027 musia firmy prijímať faktúry elektronicky cez digitálneho poštára, aj keď nie sú platiteľmi DPH. Kto musí čo urobiť, čo to stojí a aké sú pokuty.',
+      'E-faktúry od roku 2027 pri určených tuzemských dodaniach. Kto ich vystavuje, kto prijíma aj bez DPH a čo pripravuje Firmony.',
     first: 'E-faktúra od 1. januára 2027.',
     second: 'Čo musí urobiť Vaša firma.',
     lead:
-      'Od 1. januára 2027 si slovenské firmy posielajú faktúry iba elektronicky, v jednotnom formáte a cez digitálneho poštára. Týka sa to aj neplatiteľov DPH. Tu je, čo sa mení, kto musí čo urobiť a ako sa na to pripraviť.',
+      'Od 1. januára 2027 sa pri určených tuzemských dodaniach uplatní elektronická fakturácia. Vystavovanie, prijímanie a oznamovanie údajov majú rozdielne pravidlá. Príjem sa môže týkať aj neplatiteľa DPH.',
     sections: [
       {
         h: 'Čo sa mení',
         p: [
-          'Faktúry medzi firmami za tuzemské dodania tovarov a služieb (B2B) a faktúry pre štát a verejnú správu (B2G) budú elektronické. Nejde o PDF poslané e-mailom ani o naskenovaný papier. E-faktúra je súbor so štruktúrovanými údajmi podľa európskej normy EN 16931, ktorý program prečíta bez ručného prepisovania.',
+          'Režim sa týka určených tuzemských dodaní od platiteľov DPH zdaniteľným osobám a nezdaniteľným právnickým osobám podľa § 85o ods. 2 a 3, so zákonnými výnimkami. Nejde o PDF poslané e-mailom ani o naskenovaný papier. E-faktúra je súbor so štruktúrovanými údajmi podľa európskej normy EN 16931, ktorý program prečíta bez ručného prepisovania.',
           'Faktúry posiela a prijíma digitálny poštár: certifikovaný poskytovateľ v sieti Peppol, ktorý doručí faktúru správnemu príjemcovi a jej údaje oznámi finančnej správe.',
         ],
       },
       {
         h: 'Kto musí e-faktúry prijímať',
-        p: ['Prijímať ich musí každá právnická osoba a každý podnikateľ, ktorý je zdaniteľnou osobou. Teda aj firma, ktorá nie je platiteľom DPH, živnostník, slobodné povolanie či prenajímateľ nehnuteľnosti.'],
+        p: ['Ak prijímate tuzemské dodanie, pri ktorom má dodávateľ povinnosť vyhotoviť e-faktúru, musíte zabezpečiť jej prijatie doručovacou službou podľa § 71 ods. 5. Platí to aj pre neplatiteľa DPH; rozhoduje postavenie príjemcu a konkrétne plnenie.'],
         list: ['s. r. o. a akciové spoločnosti, platitelia DPH aj neplatitelia', 'živnostníci a samostatne zárobkovo činné osoby', 'advokáti, architekti, lekári a iné slobodné povolania', 'prenajímatelia nehnuteľností'],
       },
       {
         h: 'Kto ich musí vystavovať',
         p: [
-          'Vystavovať e-faktúry musia platitelia DPH pri tuzemských dodaniach iným podnikateľom. Faktúru treba vystaviť do 15 dní od dodania, aj opravnú. Faktúry spotrebiteľom (B2C) a do zahraničia sa zatiaľ nemenia. Cezhraničné e-faktúry prídu podľa európskej iniciatívy ViDA najskôr v roku 2030.',
+          'Povinnosť majú platitelia podľa § 4, 4b alebo 4c pri dodaniach a zálohách podľa § 85o ods. 2. Výnimky zahŕňajú uvedené oslobodené plnenia a zjednodušené faktúry. Lehoty určuje § 85o ods. 6 až 8; pri oprave základu dane podľa § 25 ods. 1 sa základná lehota počíta od konca príslušného mesiaca. Nie každá faktúra patrí do povinného režimu.',
         ],
       },
       {
         h: 'Digitálny poštár a čo stojí',
         p: [
-          'Každá firma, ktorá musí e-faktúry prijímať, si musí zmluvne zabezpečiť digitálneho poštára. Môže to byť jej účtovný program, webová aplikácia alebo služba účtovníka. Finančná správa odhaduje, že predplatné nebude vyššie ako priemer v EÚ, teda 5 až 12 € mesačne. Konkrétnu cenu určuje poskytovateľ.',
-          'Po prijatí e-faktúry má podnikateľ 5 dní na oznámenie jej údajov finančnej správe. Robí to automaticky digitálny poštár.',
+          'Príjem môže zabezpečiť účtovný program alebo iná služba napojená na certifikovaného poskytovateľa. Konkrétnu cenu a rozsah určuje ponuka poskytovateľa. Firmony napojenie pripravuje; dodávateľskú cenu zatiaľ nemáme potvrdenú.',
+          'Oznamovanie podľa § 85o ods. 9 a 10 sa týka určených platiteľov DPH. Päťdňová lehota pri prijatí podľa odseku 10 sa nevzťahuje automaticky na každého neplatiteľa. Údaje sa oznamujú prostredníctvom doručovacej služby.',
         ],
       },
       {
         h: 'Pokuty',
         p: [
-          'Za neoznámenie, nesprávne alebo oneskorené oznámenie údajov hrozí pokuta do 10 000 €, pri opakovanom porušení do 100 000 €. Neuloží sa, ak ide o zrejmý omyl, ktorý firma hneď opraví, alebo ak zlyhal digitálny poštár a údaje sa oznámili hneď po odstránení poruchy.',
+          'Pokuty do 10 000 € a pri opakovaní do 100 000 € podľa § 85o ods. 12 až 14 sa viažu na oznamovacie povinnosti určených platiteľov, so zákonnými výnimkami. Nie sú automatickou pokutou každému príjemcovi e-faktúry.',
         ],
       },
       {
@@ -91,25 +91,27 @@ export const GUIDES: Guide[] = [
     faq: [
       {
         q: 'Musím prijímať e-faktúry, aj keď nie som platiteľom DPH?',
-        a: 'Áno. Od 1. januára 2027 ich musí vedieť prijímať každá právnická osoba a každý podnikateľ, ktorý je zdaniteľnou osobou, aj keď nie je platiteľom DPH.',
+        a: 'Áno, ak prijímate plnenie, pri ktorom má dodávateľ zákonnú povinnosť vyhotoviť e-faktúru. Samotné neplatiteľstvo DPH nevylučuje povinnosť zabezpečiť jej prijatie.',
       },
       {
         q: 'Stačí od roku 2027 poslať faktúru v PDF e-mailom?',
-        a: 'Pri tuzemských faktúrach medzi firmami nie, ak ich vystavuje platiteľ DPH. E-faktúra je súbor so štruktúrovanými údajmi podľa normy EN 16931, ktorý sa posiela cez digitálneho poštára. Spotrebiteľom môžete faktúry posielať ako doteraz.',
+        a: 'Samotné PDF nespĺňa štruktúrovaný formát povinnej e-faktúry. Povinný režim má výnimky; pri zaslaní iným spôsobom než doručovacou službou zákon vyžaduje súhlas príjemcu. Podrobnosti určuje § 85o ods. 2 a 4.',
       },
       {
         q: 'Koľko stojí digitálny poštár?',
-        a: 'Cenu určuje poskytovateľ. Finančná správa odhaduje, že predplatné nebude vyššie ako priemer v EÚ, teda 5 až 12 € mesačne.',
+        a: 'Cenu a limity určuje konkrétna ponuka poskytovateľa. Porovnajte aj napojenie na účtovníctvo, príjem, odosielanie a prípadné objemové príplatky.',
       },
-      { q: 'Čo sa stane s kontrolným výkazom?', a: 'Podľa novely sa kontrolné výkazy majú zrušiť od 1. júla 2030, keď údaje z faktúr bude finančná správa dostávať priamo.' },
+      { q: 'Zaniká kontrolný výkaz od roku 2027?', a: 'Nie. Kontrolný výkaz podľa § 78a zostáva v roku 2027 zachovaný. Začiatok e-fakturácie ho sám osebe neruší.' },
     ],
+    // Original law read 22 October 2026: current 2026 and enacted 2027 wording, not just a press summary.
     sources: [
-      { title: 'Podnikajte.sk: E-faktúra od 1. 1. 2027, otázky a odpovede', url: 'https://www.podnikajte.sk/pripravovane-zmeny-v-legislative/efaktura-od-1-1-2027-otazky-odpovede' },
-      { title: 'Právne noviny: Od januára 2027 musí elektronickú faktúru vedieť prijať aj neplatiteľ DPH', url: 'https://pravnenoviny.sk/elektronicka-faktura-povinnost-prijimat/' },
-      { title: 'Podnikajte.sk: Čo vedieť o digitálnych poštároch', url: 'https://www.podnikajte.sk/zakonne-povinnosti-podnikatela/e-faktura-co-vediet-o-digitalnych-postaroch' },
+      { title: 'Zákon o DPH: § 71 ods. 5, § 78a a § 85o, vyhlásené znenie od 1. 1. 2027 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html#paragraf-85o' },
+      { title: 'Zákon č. 385/2025 Z. z.: čl. I bod 69 a čl. VIII, pravidlá a účinnosť (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2025/385/20270101.html' },
+      { title: 'Zákon o DPH: aktuálne znenie účinné v roku 2026 (Slov-Lex)', url: 'https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html' },
+      { title: 'Finančná správa: oficiálna dokumentácia eFaktúry a Peppol', url: 'https://www.financnasprava.sk/sk/podnikatelia/dane/dan-z-pridanej-hodnoty/e-faktura' },
     ],
     published: '2026-10-20',
-    modified: '2026-10-20',
+    modified: '2026-10-22',
     keywords: ['e-faktúra 2027', 'povinná elektronická fakturácia', 'digitálny poštár', 'e-faktúra neplatiteľ DPH', 'Peppol'],
   },
   {
@@ -203,7 +205,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Ako to robí Firmony',
         p: [
-          'Doklady prečíta umelá inteligencia a navrhne zaúčtovanie. Účtovníčka všetko skontroluje, podá priznania a odpovie na otázky. Účtovná kniha, DPH, mzdy aj závierka vznikajú v našej vlastnej aplikácii, takže v nej vidíte, čo je hotové a čo od Vás ešte treba.',
+          'Doklady prečíta umelá inteligencia a navrhne zaúčtovanie. Účtovníčka vedie odbornú kontrolu, rieši neštandardné prípady, dohodnuté podania a otázky. Účtovná kniha, DPH, mzdy aj závierka vznikajú v našej vlastnej aplikácii, takže v nej vidíte, čo je hotové a čo od Vás ešte treba.',
         ],
       },
     ],
@@ -235,7 +237,7 @@ export const GUIDES: Guide[] = [
           'bloček odfotíte v telefóne, faktúru prepošlete na adresu Vašej firmy pre doklady',
           'výpisy z banky chodia samé alebo ich raz mesačne pridáte',
           'umelá inteligencia doklad prečíta a spáruje s platbou',
-          'účtovníčka všetko skontroluje, zaúčtuje a podá priznania',
+          'účtovníčka vedie odbornú kontrolu a postará sa o dohodnutú agendu',
           'v aplikácii vidíte, čo je hotové, a jedinú vec, ktorá od Vás chýba',
         ],
       },
@@ -328,7 +330,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Kedy je Firmony pre Vás a kedy nie',
         p: [
-          `Firmony je pre s. r. o., ktoré chcú mať účtovníctvo online: doklady odfotiť alebo preposlať, mať prehľad v aplikácii a pevnú cenu podľa počtu dokladov, od ${eur(start.price)} mesačne bez DPH. Vašu firmu má na starosti účtovníčka, ktorá všetko skontroluje, podá priznania a odpovie ${REPLY_WITHIN}. Služba začína ${BRAND.launch}.`,
+          `Firmony je pre s. r. o., ktoré chcú mať účtovníctvo online: doklady odfotiť alebo preposlať, mať prehľad v aplikácii a pevnú cenu podľa počtu dokladov, od ${eur(start.price)} mesačne bez DPH. Vašu firmu má na starosti účtovníčka, ktorá vedie odbornú kontrolu, rieši dohodnuté podania a odpovie ${REPLY_WITHIN}. Služba začína ${BRAND.launch}.`,
           'Ak chcete účtovníka, s ktorým sa pravidelne stretávate osobne, budete spokojnejší s miestnym účtovníkom alebo kanceláriou. Ak vediete väčšiu firmu so stovkami dokladov mesačne, pripravíme Vám ponuku na mieru a otvorene povieme, či sme pre Vás tí správni.',
         ],
       },

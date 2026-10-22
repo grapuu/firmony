@@ -1,5 +1,20 @@
 # Firmony: progress of the continuation
 
+## Dôvera a výhodnosť na verejnom webe (Codex, 22. október 2026 CEST)
+
+Na nový pokyn majiteľa [rozšírená rešerš originálov a konkrétna implementácia](docs/research/trust-and-value-2026-10-22.md).
+Web vysvetľuje úlohu klienta, odbornú kontrolu a nezáväzný začiatok; ročný základ so závierkou je pri každom
+balíku, rozsah/zodpovednosť a ochrana údajov dostupné pri cene. Kalkulačka už nepodsúva modelovú úsporu pred
+vstupom zákazníka, uvádza predpoklady a ukáže aj vyššiu cenu alebo rovnosť. Jediný výpočet roka pre balíky aj
+porovnanie, bez zmeny cien. Pridané reálne HTTP a mobilné browser scenáre. Povinné kontroly a nasadenie v PR.
+Po čítaní pôvodného aktuálneho a vyhláseného budúceho zákona o DPH spresnená aj e-fakturačná komunikácia
+a existujúci návod: určené dodania, rozdielne povinnosti príjemcu a platiteľa, sankcie a pripravované napojenie.
+Bez fotografií, novej schémy, zmluvných sľubov, sledovania citlivých vstupov alebo programu odmien.
+Pri záverečnej kontrole opravená aj kompatibilita odosielania plnej moci: rozšírený protokol je obmedzený
+na dva dokladové endpointy, plná moc a banka majú pôvodné formuláre. Pridaný skutočný browser regresný scenár.
+Predajný účinok a porozumenie skutočných záujemcov zostávajú na pilot; výskum nie je garancia rastu.
+
+
 ## Spoľahlivé odovzdanie dokladov a správ, časť J2 (Codex, 22. október 2026 CEST)
 
 Implementované [potvrdenie jednotlivých prijatí](docs/client-delivery.md), pokračovanie nepotvrdenej dávky
