@@ -7520,7 +7520,7 @@ a.wtable__name {
 @supports not selector(:has(*)) { .decl__business-address, .decl__principal { display: block; } }
 
 /* Managed takeover uses the existing client/team layout; evidence is disclosed when needed. */
-.managed-takeover { margin-block: 1.5rem; }
+.managed-takeover { margin-block: 1.5rem; overflow-wrap: anywhere; }
 .managed-takeover p, .managed-takeover summary, .managed-takeover a, .managed-takeover legend { overflow-wrap: anywhere; }
 .managed-takeover details { margin-block: 1rem; }
 .managed-takeover summary, .managed-takeover__manual > summary { cursor: pointer; font-weight: 600; padding-block: .75rem; }
