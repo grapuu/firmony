@@ -1,4 +1,6 @@
 import { recordAutoReview } from '../aml/auto-review'
+import { completionFacts, handoverContactText, handoverHistory, managedHandover, managedHandoverQueue, updateHandover, type HandoverUpdate } from '../migration/store'
+import { checksFrom } from '../migration/model'
 import { orderAdmissionSql, quoteSql } from '../aml/model'
 import { AmlDossierPanel } from '../views/aml-admission'
 import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
@@ -14,7 +16,7 @@ import { closureStatements, reportItems as payrollReportItems, runReopenBlocked 
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { APP, ART, ENDING, OFFLINE_TERMS, OPERATOR, PLANS, TEAM } from '../config'
-import { ensureSchema, now, sha256Hex } from '../db'
+import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
@@ -590,13 +592,14 @@ async function accountantsList(db: D1Database): Promise<{ id: string; name: stri
 
 teamRoutes.get('/', async (c) => {
   const who = c.get('who')
-  const [rows, ended, { dues }, mail] = await Promise.all([
+  const [rows, ended, { dues }, mail, takeovers] = await Promise.all([
     teamClients(c.env.DB, who.user, demoOn(c)),
     isAdmin(who.user) ? endedCompanies(c.env.DB, who.user) : Promise.resolve([]),
     teamDeadlines(c.env.DB, who.user, demoOn(c), dayOf(now())),
     isAdmin(who.user) ? failedMail(c.env.DB) : Promise.resolve(null),
+    managedHandoverQueue(c.env.DB,who.user,demoOn(c)),
   ])
-  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} mail={mail} ended={ended} now={now()} flash={flashOf(c)} />)
+  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} mail={mail} ended={ended} takeovers={takeovers} now={now()} flash={flashOf(c)} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -4663,9 +4666,11 @@ async function booksStart(db: D1Database, company: Company): Promise<string | nu
   return opening?.on ?? company.startOn ?? null
 }
 
-async function takeoverPage(c: Ctx, company: Company, extra: { error?: TakeoverPageProps['error']; values?: Partial<TakeoverPageProps['values']> } = {}, status: ContentfulStatusCode = 200) {
+async function takeoverPage(c: Ctx, company: Company, extra: { error?: TakeoverPageProps['error']; values?: Partial<TakeoverPageProps['values']>; managedValues?: HandoverUpdate } = {}, status: ContentfulStatusCode = 200) {
   const db = c.env.DB
-  const [start, prior, batches] = await Promise.all([booksStart(db, company), priorListOf(db, company.id), batchesOf(db, company.id)])
+  const revision = await dataRevision(db,company.id)
+  const [start, prior, batches, managed, files] = await Promise.all([booksStart(db, company), priorListOf(db, company.id), batchesOf(db, company.id), managedHandover(db,company.id),papersOf(db,company.id,'takeover')])
+  const history = managed ? await handoverHistory(db,company.id,managed.id) : []
   const ok = c.req.query('ok')
   return shell(
     c,
@@ -4676,9 +4681,10 @@ async function takeoverPage(c: Ctx, company: Company, extra: { error?: TakeoverP
       start={start}
       prior={prior}
       batches={batches}
+      managed={{company,h:managed,files,revision,open:!company.archivedAt && (!company.endsOn || company.endsOn >= dayOf(now())),now:now(),history,values:extra.managedValues}}
       error={extra.error ?? null}
       values={{ day: extra.values?.day ?? textDay(start ?? `${dayOf(now()).slice(0, 4)}-01-01`), side: extra.values?.side ?? '', rows: extra.values?.rows ?? {} }}
-      flash={status === 200 && ok ? (t.takeover.flashes[ok] ?? null) : null}
+      flash={status === 200 && ok ? (ok === 'priebeh' ? 'Priebeh a záznam kontroly sú uložené.' : ok === 'podklady' ? 'Prijaté súbory sú uložené. Nasleduje kontrola a prípadný import.' : t.takeover.flashes[ok] ?? null) : null}
     />,
     status,
   )
@@ -4718,6 +4724,53 @@ const pastedOf = (body: Record<string, unknown>) => (typeof body.riadky === 'str
 teamRoutes.get('/klienti/:id/prevzatie', async (c) => {
   const company = await companyParam(c)
   return company ? takeoverPage(c, company) : missingPage(c)
+})
+
+teamRoutes.get('/klienti/:id/prevzatie/prechod/ziadost.txt', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const h = await managedHandover(c.env.DB,company.id)
+  if (!h || !h.authorityReference || !['coordinating','waiting','reviewing'].includes(h.state)) return missingPage(c)
+  c.header('Content-Disposition','attachment; filename="ziadost-o-podklady.txt"')
+  return c.text(handoverContactText(company,h))
+})
+
+teamRoutes.post('/klienti/:id/prevzatie/prechod/stav', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB, body = await c.req.parseBody(), h = await managedHandover(db,company.id)
+  const refuse = (text: string, values?: HandoverUpdate, status: ContentfulStatusCode = 422) => takeoverPage(c,company,{error:{card:'managed',text},managedValues:values},status)
+  if (body.firma !== company.id || !h || body.ziadost !== h.id || !/^\d+$/.test(String(body.verzia)) || Number(body.verzia) !== h.revision) return refuse('Žiadosť, firma alebo verzia sa medzitým zmenila. Obnovte stránku.',undefined,409)
+  const field = (key: string) => typeof body[key] === 'string' ? body[key].trim() : ''
+  const values: HandoverUpdate = {state:field('stav'),due:field('termin'),authority:field('opravnenie'),contact:field('kontakt'),contactOn:field('kontakt_den'),note:field('verejne'),action:field('od_klienta'),reason:field('dovod'),checks:checksFrom(body),sourceRevision:Number(body.podklady_verzia)}
+  if (values.state === 'completed') {
+    const facts = await completionFacts(db,company.id)
+    if (!c.env.FILES || (await Promise.all(facts.files.map(f => c.env.FILES!.head(f.r2_key)))).some((head,i) => !head || head.size !== facts.files[i]!.file_size)) return refuse('Niektorý originál nie je dostupný v úložisku. Najprv obnovte podklady; dokončenie sa neuložilo.',values,409)
+  }
+  const error = await updateHandover(db,company,c.get('who').user,h,values,dayOf(now()))
+  return error ? refuse(error,values,409) : c.redirect(`${takeoverPath(company)}?ok=priebeh#koordinacia`,303)
+})
+
+teamRoutes.post('/klienti/:id/prevzatie/prechod/podklady', async (c) => {
+  const company = await companyParam(c)
+  if (!company) return missingPage(c)
+  const db = c.env.DB, body = await c.req.parseBody({all:true}), h = await managedHandover(db,company.id)
+  const refuse = (text: string, status: ContentfulStatusCode = 422) => takeoverPage(c,company,{error:{card:'managed',text}},status)
+  if (body.firma !== company.id || !h || body.ziadost !== h.id || Number(body.verzia) !== h.revision || ['cancelled','completed'].includes(h.state) || company.endsOn && company.endsOn < dayOf(now())) return refuse('Koordinácia sa zmenila alebo už nie je otvorená. Obnovte stránku.',409)
+  if (!(await withinLimit(db,'managed-takeover-files',company.id,30,3600))) return refuse(app.messages.throttle,429)
+  const files = ([] as unknown[]).concat(body.file ?? []).filter((v):v is File => v instanceof File && v.size > 0)
+  if (!files.length || files.length > ENDING.handoverAtOnce) return refuse(`Vyberte jeden až ${ENDING.handoverAtOnce} súborov.`)
+  const refused = await booksRefused(db,company.id,'takeover',files)
+  if (refused) return refuse('Súbory sa nedajú prijať. Skontrolujte ich formát, veľkosť a voľné miesto; podporujeme PDF, exporty alebo fotografie.')
+  for (const file of files) {
+    try {
+      const kept = await keepPaper(db,c.env.FILES,{company:company.id,user:c.get('who').user.id},'takeover',{name:file.name,bytes:new Uint8Array(await file.arrayBuffer())},p => [eventStatement(db,{company:company.id,user:c.get('who').user.id,action:'takeover.managed.file',subject:p.id,detail:{case:h.id,revision:h.revision}})])
+      if (!kept.ok) return refuse('Súbor sa neuložil. Už uložené súbory vidíte nižšie; zopakujte iba chýbajúce.',503)
+    } catch {
+      return refuse('Koordinácia alebo úložisko sa počas nahrávania zmenili. Skontrolujte uložené súbory a zopakujte iba chýbajúce.',409)
+    }
+  }
+  return c.redirect(`${takeoverPath(company)}?ok=podklady#koordinacia`,303)
 })
 
 /** The trial balance: read into the opening balances' form, which she checks and saves there; nothing is stored here. */

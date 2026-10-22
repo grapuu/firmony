@@ -26,6 +26,7 @@ export interface OverviewAction {
 }
 
 export interface OverviewFacts {
+  takeoverAction?: string | null
   closed: boolean
   today: string
   owner: boolean
@@ -67,6 +68,7 @@ export function overviewActions(facts: OverviewFacts): OverviewAction[] {
     add('documents', { ...text.documents, title: app.home.missingTitle(facts.missing) }, '/app/platby', 3, due)
   }
   if (facts.approval) add('approval', text.approval, '/app/schvalovanie', 4, facts.approval.dueOn)
+  if (facts.takeoverAction) add('managed-takeover', {title:'Doplnenie k prevzatiu účtovníctva',lead:facts.takeoverAction,button:'Vybaviť s účtovníčkou'}, '/app/prechod#koordinacia',5)
   // Reading a message does not prove a question was answered. Do not infer an obligation to reply from its text.
   if (facts.unread > 0) add('message', text.message, '/app/spravy', 5)
   if (facts.steps) {

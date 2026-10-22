@@ -82,7 +82,7 @@ export async function verifyDeployment({ origin, revision, schema, guides, publi
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { BRAND, GUIDES, SCHEMA_VERSION, TOOL_DEPLOYMENT_PAGES } = await import('../.wrangler/tmp/deployment-probe.mjs')
   try {
-    const assets = await Promise.all(['/free-invoice.js', '/app.css'].map(async (path) => ({ path, sha256: createHash('sha256').update(await readFile(new URL(`../public${path}`, import.meta.url))).digest('hex') })))
+    const assets = await Promise.all(['/free-invoice.js', '/app.css', '/inside.css'].map(async (path) => ({ path, sha256: createHash('sha256').update(await readFile(new URL(`../public${path}`, import.meta.url))).digest('hex') })))
     await verifyDeployment({ origin: BRAND.origin, revision: process.argv[2], schema: SCHEMA_VERSION, guides: GUIDES, publicPages: TOOL_DEPLOYMENT_PAGES, assets })
   }
   catch (error) { console.error(error.message); process.exitCode = 1 }

@@ -1,4 +1,6 @@
 import { fiveYearsAfter } from '../aml/retention'
+import type { HandoverQueueItem } from '../migration/store'
+import { HANDOVER_STATES } from '../migration/model'
 // The accountants' side: the same frame and look as the client's app, with a column of its own. Built for doing
 // the work quickly: what waits is counted everywhere, a document is booked on one screen with its original
 // beside the form, and "Zaúčtovať a ďalší" goes straight to the next one.
@@ -166,7 +168,7 @@ export interface EndedCompany {
 
 const TODAY_SHOWN = 8
 
-export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; mail?: { n: number; error: string | null } | null; ended?: EndedCompany[]; now: number; flash?: string | null }> = ({ user, rows, dues = [], mail = null, ended = [], now, flash }) => {
+export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; mail?: { n: number; error: string | null } | null; ended?: EndedCompany[]; takeovers?:HandoverQueueItem[]; now: number; flash?: string | null }> = ({ user, rows, dues = [], mail = null, ended = [], takeovers = [], now, flash }) => {
   const sum = (pick: (row: ClientRow) => number) => rows.reduce((total, row) => total + pick(row), 0)
   const waiting = rows.filter((row) => row.waiting !== null).length
   const admin = user.team === 'admin'
@@ -222,6 +224,7 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; m
           </>
         )}
       </section>
+      {takeovers.length ? <section class="info managed-takeover" aria-labelledby="prevzatia-t"><h2 class="info__title" id="prevzatia-t">Prevzatia firiem</h2><ul class="plain">{takeovers.map(h => <li class="plain__row plain__row--two"><a class="link plain__name" href={`/ucto/klienti/${h.companyId}/prevzatie#koordinacia`}>{h.companyName}</a><span class="plain__sub">{HANDOVER_STATES[h.state]}{h.responsibleName ? `, ${h.responsibleName}` : ', čaká na pridelenú účtovníčku'}{h.dueOn ? `, ďalší krok do ${dayName(h.dueOn,today)}` : ''}</span></li>)}</ul></section> : null}
       <dl class="figs__grid figs__grid--four">
         <div class="fig">
           <dt>{t.clients.toBook}</dt>

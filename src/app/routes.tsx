@@ -2,6 +2,8 @@ import { prepareDossier, signatureFile } from '../aml/store'
 import { companyFacts } from '../aml/model'
 import { declarationPdf } from '../aml/pdf'
 import { bootstrapOfficerStatement } from '../aml/store'
+import { cancelHandover, managedHandover, requestHandover } from '../migration/store'
+import { requestErrors, type HandoverRequestValues } from '../migration/model'
 // The client's app under /app. Signing in is open; everything else needs a session, and every read and change
 // is made for the company of that session (store.ts). Forms answer with a redirect to a page that says what
 // happened, so a reload never sends anything twice.
@@ -484,10 +486,11 @@ appRoutes.get('/', async (c) => {
       .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null; switched: number }>(),
     unseenFromFirmony(db, company),
   ])
-  const [suggested, dues, bills] = await Promise.all([
+  const [suggested, dues, bills, managed] = await Promise.all([
     suggestions(db, company, missingAll),
     companyDeadlines(db, company, day),
     billRows(db, day, company, 24).then((rows) => rows.filter((r) => r.state !== 'paid')),
+    managedHandover(db,company),
   ])
   const ready = bankReady(c.env)
   // A consent of Enable Banking or a token of Fio that ends; a statement from an account the company does not have
@@ -509,7 +512,7 @@ appRoutes.get('/', async (c) => {
     upload: started?.upload === 1,
     email: started?.email === 1,
     people: (started?.people ?? 1) > 1,
-    switching: started?.situation === 'switch',
+    switching: started?.situation === 'switch' && (!managed || managed.state === 'cancelled'),
     switched: started?.switched === 1,
   }
   return shell(
@@ -517,6 +520,7 @@ appRoutes.get('/', async (c) => {
     'home',
     t.nav.home,
     <Overview
+      managedTakeover={managed}
       firstName={firstName(who.user.name)}
       missing={missingAll.slice(0, 6)}
       missingCount={byMonth.results.reduce((total, row) => total + row.n, 0)}
@@ -2218,7 +2222,7 @@ async function switchingSentAt(db: D1Database, company: string): Promise<number 
  * it, what the former accountant hands over is uploaded here (the accountant takes it over on the client's page),
  * and the client says when the letter went out, which ticks the step.
  */
-async function switchPage(c: Ctx, notice: { flash?: string | null; error?: string | null } = {}, status?: ContentfulStatusCode) {
+async function switchPage(c: Ctx, notice: { flash?: string | null; error?: string | null; values?: HandoverRequestValues; errors?: string[]; submission?: string } = {}, status?: ContentfulStatusCode) {
   const who = c.get('who')
   const q = (name: string, max: number) => (c.req.query(name) ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
   const values = { to: q('komu', 120), toAddress: q('adresa', 160), since: q('od', 20), until: q('do', 20) }
@@ -2227,9 +2231,9 @@ async function switchPage(c: Ctx, notice: { flash?: string | null; error?: strin
   const errors: { since?: string; until?: string } = {}
   if (since === null) errors.since = t.switching.dayHint
   if (until === null) errors.until = t.switching.dayHint
-  const [papers, sentAt] = await Promise.all([papersOf(c.env.DB, who.company.id, 'takeover'), switchingSentAt(c.env.DB, who.company.id)])
+  const [papers, sentAt, managed] = await Promise.all([papersOf(c.env.DB, who.company.id, 'takeover'), switchingSentAt(c.env.DB, who.company.id), managedHandover(c.env.DB,who.company.id)])
   const ok = c.req.query('ok')
-  const flash = notice.flash ?? (ok === 'podklady' ? t.switching.papersFlash : ok === 'odoslane' ? t.switching.sentFlash : null)
+  const flash = notice.flash ?? (ok === 'koordinacia' ? 'Žiadosť sme prijali. Priebeh prevzatia uvidíte tu.' : ok === 'odvolane' ? 'Koordinácia je odvolaná. Doterajšie záznamy zostávajú zachované.' : ok === 'podklady' ? t.switching.papersFlash : ok === 'odoslane' ? t.switching.sentFlash : null)
   return shell(
     c,
     'company',
@@ -2245,12 +2249,44 @@ async function switchPage(c: Ctx, notice: { flash?: string | null; error?: strin
       now={now()}
       flash={flash}
       error={notice.error ?? null}
+      managed={{company:who.company,h:managed,owner:who.role === 'owner',open:serviceOpen(who.company,today()),submission:notice.submission ?? crypto.randomUUID(),now:now(),values:notice.values,errors:notice.errors}}
     />,
     status ?? (since === null || until === null ? 422 : 200),
   )
 }
 
 appRoutes.get('/prechod', (c) => switchPage(c))
+
+appRoutes.post('/prechod/poverit', async (c) => {
+  const who = c.get('who'), db = c.env.DB
+  if (who.role !== 'owner') return switchPage(c,{error:'Koordináciu môže zadať vlastník firemného účtu.'},403)
+  if (!serviceOpen(who.company,today())) return switchPage(c,{error:'Služba už skončila. Nové prevzatie sa nezačína.'},409)
+  if (!(await withinLimit(db,'managed-takeover',who.company.id,20,3600))) return switchPage(c,{error:t.messages.throttle},429)
+  const body = await c.req.parseBody()
+  const values = {name:typeof body.meno === 'string' ? body.meno : '',email:typeof body.email === 'string' ? body.email.trim() : '',day:typeof body.den === 'string' ? body.den : ''}
+  const submission = typeof body.odoslanie === 'string' && /^[a-f0-9-]{36}$/.test(body.odoslanie) ? body.odoslanie : ''
+  if (body.firma !== who.company.id) return switchPage(c,{error:'Aktívna firma sa zmenila. Obnovte stránku a zadajte žiadosť pre správnu firmu.',values},409)
+  const errors = requestErrors(values,body.suhlas === 'ano')
+  if (!submission) errors.push('Otvorte aktuálny formulár a žiadosť zopakujte.')
+  if (errors.length) return switchPage(c,{values,errors,submission:submission || undefined},422)
+  const created = await requestHandover(db,who.company,who.user,submission,values)
+  const current = await managedHandover(db,who.company.id)
+  if (!created && current && (current.contactName !== values.name.trim() || current.contactEmail !== values.email.toLowerCase() || current.requestedOn !== (values.day || null))) return switchPage(c,{error:'Firma už má žiadosť s iným kontaktom alebo termínom. Pôvodnú koordináciu môžete odvolať a zadať novú; tento pokus ju nezmenil.'},409)
+  if (!created && (!current || current.state === 'cancelled')) return switchPage(c,{error:'Táto žiadosť už bola odvolaná alebo sa zmenila. Pre novú koordináciu použite aktuálny formulár.'},409)
+  if (created) {
+    await ringStatement(db,'managed-takeover',submission,who.company.accountantEmail ?? BRAND.email,bell.teamManagedTakeover(`${siteOrigin(c)}/ucto/klienti/${who.company.id}/prevzatie#koordinacia`)).run()
+    later(c,flushOutbox(db,c.env.EMAIL))
+  }
+  return c.redirect('/app/prechod?ok=koordinacia#koordinacia',303)
+})
+
+appRoutes.post('/prechod/odvolat', async (c) => {
+  const who = c.get('who'), body = await c.req.parseBody()
+  if (who.role !== 'owner') return switchPage(c,{error:'Koordináciu môže odvolať vlastník firemného účtu.'},403)
+  if (body.firma !== who.company.id || typeof body.ziadost !== 'string' || !/^\d+$/.test(String(body.verzia))) return switchPage(c,{error:'Firma alebo verzia žiadosti sa zmenila. Obnovte stránku.'},409)
+  const changed = await cancelHandover(c.env.DB,who.company.id,who.user.id,body.ziadost,Number(body.verzia))
+  return changed ? c.redirect('/app/prechod?ok=odvolane#koordinacia',303) : switchPage(c,{error:'Žiadosť sa medzitým zmenila alebo je už uzavretá. Obnovte stránku.'},409)
+})
 
 appRoutes.post('/prechod/odoslane', async (c) => {
   const who = c.get('who')

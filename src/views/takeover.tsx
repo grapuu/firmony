@@ -2,6 +2,7 @@
 // balances, the open items, the fixed assets, the employees and the statements she filed, each from a file of her
 // program or rows pasted; the lists read so far, each removable while nothing of it was used. takeover.ts reads them.
 import type { FC } from 'hono/jsx'
+import { TeamTakeover, type TeamTakeoverProps } from './managed-takeover'
 import { formatEurExact } from '../format'
 import { dayName } from '../app/copy'
 import type { Company } from '../app/store'
@@ -11,9 +12,10 @@ import { Flash, Heading } from './inside'
 
 const k = t.takeover
 
-export type TakeoverCard = 'trial' | 'items' | 'assets' | 'people' | 'prior' | 'batch'
+export type TakeoverCard = 'trial' | 'items' | 'assets' | 'people' | 'prior' | 'batch' | 'managed'
 
 export interface TakeoverPageProps {
+  managed?: TeamTakeoverProps
   company: Company
   /** The day the books begin, when they have one. */
   start: string | null
@@ -90,6 +92,8 @@ export const TakeoverPage: FC<TakeoverPageProps> = (p) => {
         <p class="phead__lead">{k.lead}</p>
       </header>
       <Flash text={p.flash} />
+      <Refused error={p.error} card="managed" />
+      {p.managed ? <TeamTakeover {...p.managed} /> : null}
       <div class="pgrid">
         <div class="pgrid__main">
           <Card id="trial" title={k.trial.title} lead={k.trial.lead}>

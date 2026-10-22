@@ -54,7 +54,7 @@ function workPage(path: string): string {
   if (/^\/app\/mzdove-podania(?:\/|$)/.test(path)) return '/app/mzdove-podania'
   const clientItem = /^\/app\/(doklady|platby|faktury)\/([^/]+)/.exec(path)
   if (clientItem) return `/app/${clientItem[1]}/${clientItem[2]}`
-  const clientPage = /^\/app\/(banka|firma|doklady|spravy|plna-moc|vyhlasenie)(?:\/|$)/.exec(path)
+  const clientPage = /^\/app\/(banka|firma|doklady|spravy|plna-moc|vyhlasenie|prechod)(?:\/|$)/.exec(path)
   if (clientPage) return `/app/${clientPage[1]}`
   const company = /^\/ucto\/klienti\/([^/]+)(?:\/(.*))?$/.exec(path)
   if (company) {
@@ -66,7 +66,7 @@ function workPage(path: string): string {
     if (filing) return `${base}/podania/${filing[1]}`
     const books = /^kniha\/(obdobia|platby|interne|pociatocne)(?:\/|$)/.exec(section)
     if (books) return `${base}/kniha/${books[1]}`
-    const page = /^(dph|mzdy|zavierka|aml)(?:\/|$)/.exec(section)
+    const page = /^(dph|mzdy|zavierka|aml|prevzatie)(?:\/|$)/.exec(section)
     if (page) return `${base}/${page[1]}`
     if (/^odovzdanie(?:\/|$)/.test(section)) return `${base}#odovzdanie`
     return base
@@ -102,6 +102,7 @@ export function verifiedRecently(who: Who, at: number, seconds = SECURITY.teamSe
 }
 /** Authentication freshness, separate from the route's company/role authorization. */
 export function sensitivePath(path: string, method: string): boolean {
+  if (method !== 'GET' && method !== 'HEAD' && (/^\/app\/prechod\/(?:poverit|odvolat)$/.test(path) || /^\/ucto\/klienti\/[^/]+\/prevzatie\/prechod(?:\/|$)/.test(path))) return true
   if (/^\/ucto\/(?:aml|archiv)(?:\/|$)/.test(path)) return true
   if (/^\/ucto\/klienti\/[^/]+\/aml(?:\/|$)/.test(path) && method !== 'GET' && method !== 'HEAD') return true
   if (/^\/ucto\/klienti\/[^/]+\/mzdove-podania\/[^/]+\/pripravit$/.test(path)) return true

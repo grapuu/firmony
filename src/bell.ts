@@ -31,6 +31,7 @@ export function ringStatement(db: D1Database, kind: string, about: string, to: s
 const days = `platí ${TEAM.welcomeDays} dní`
 
 export const bell = {
+  teamManagedTakeover: (link: string) => ring('koordinácia prevzatia', 'klient požiadal o koordináciu prevzatia účtovníctva. Kontakt a rozsah si pozrite po prihlásení:', link),
   // To the people of a client's company.
   answer: (link: string) => ring('máte novú správu', 'vo Firmony na Vás čaká nová správa od účtovníčky. Prečítate si ju po prihlásení:', link),
   missing: (link: string, settings: string) =>

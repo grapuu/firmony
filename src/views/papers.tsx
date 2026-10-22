@@ -2,6 +2,7 @@
 // with the request to hand over the books. Each is a sheet to save as a PDF or to print, as an invoice is, with what
 // to do beside it. The company's own data fill them in; what we do not know stays a line to write on.
 import type { FC } from 'hono/jsx'
+import { ClientTakeover, type ClientTakeoverProps } from './managed-takeover'
 import { signerRole } from '../rpo'
 import { OPERATOR } from '../config'
 import { app, dayName } from '../app/copy'
@@ -248,9 +249,10 @@ export interface SwitchPageProps {
   now?: number
   flash?: string | null
   error?: string | null
+  managed?: ClientTakeoverProps
 }
 
-export const SwitchPage: FC<SwitchPageProps> = ({ company, values, since, until, errors, papers = [], sentAt = null, now = 0, flash = null, error = null }) => (
+export const SwitchPage: FC<SwitchPageProps> = ({ company, values, since, until, errors, papers = [], sentAt = null, now = 0, flash = null, error = null, managed }) => (
   <>
     <header class="phead">
       <Heading first={s.title} second={s.serif} />
@@ -267,6 +269,9 @@ export const SwitchPage: FC<SwitchPageProps> = ({ company, values, since, until,
         {error}
       </p>
     ) : null}
+    {managed ? <ClientTakeover {...managed} /> : null}
+    <details class="managed-takeover__manual" open={Boolean(sentAt || values.to || values.toAddress || values.since || values.until)}>
+    <summary>List a podklady si chcem vybaviť osobne</summary>
     <div class="invoice invoice--side-first">
       <div class="invoice__paper">
         <LetterSheet company={company} values={values} since={since} until={until} startOn={company.startOn} />
@@ -366,6 +371,7 @@ export const SwitchPage: FC<SwitchPageProps> = ({ company, values, since, until,
         </section>
       </aside>
     </div>
+    </details>
   </>
 )
 

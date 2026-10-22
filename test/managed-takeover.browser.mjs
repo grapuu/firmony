@@ -1,0 +1,62 @@
+import { check } from './check.mjs'
+
+export async function checkManagedTakeoverBrowser({page,clientPage,db,origin}) {
+  const company = 'browser-overview-co', at = Math.floor(Date.now()/1000)
+  await db.prepare("UPDATE companies SET contract_at=?,accountant_id='browser-admin' WHERE id=?").bind(at,company).run()
+  // Authentication was exercised above; keep the workflow fixture within that actual verified session's time window.
+  await db.prepare("UPDATE sessions SET verified_at=? WHERE user_id='browser-admin' AND credential_id IS NOT NULL").bind(at).run()
+  await clientPage.goto(`${origin}/app/prechod`)
+  check('managed takeover browser: the primary task is the short coordination request and the legacy letter is disclosed separately',await clientPage.getByRole('button',{name:'Poveriť Firmony koordináciou',exact:true}).isVisible() && await clientPage.locator('.managed-takeover__manual').getAttribute('open') === null)
+  await clientPage.getByLabel('Meno účtovníčky alebo kancelárie',{exact:true}).fill('TEST-BROWSER Doterajšia kancelária')
+  await clientPage.getByLabel('Jej e-mail',{exact:true}).fill('browser-old-accountant@example.test')
+  check('managed takeover browser: consent uses the existing readable checkbox layout',await clientPage.locator('#prechod-suhlas').evaluate(e => {const p=e.parentElement, text=p.querySelector('span');const c=e.getBoundingClientRect(),t=text.getBoundingClientRect();return c.width >= 16 && t.width > 180 && t.left >= c.right && getComputedStyle(p).display === 'flex'}))
+  let posts = 0
+  const listener = r => {if(r.method() === 'POST' && new URL(r.url()).pathname === '/app/prechod/poverit') posts++}
+  clientPage.on('request',listener)
+  await clientPage.getByRole('button',{name:'Poveriť Firmony koordináciou',exact:true}).click()
+  check('managed takeover browser: confirmation is a deliberate required action before any request',posts === 0 && !(await db.prepare('SELECT id FROM managed_handovers WHERE company_id=?').bind(company).first()))
+  await clientPage.locator('#prechod-suhlas').check()
+  await Promise.all([clientPage.waitForURL(/ok=koordinacia/),clientPage.getByRole('button',{name:'Poveriť Firmony koordináciou',exact:true}).click()])
+  check('managed takeover browser: a real native submit creates the request and shows its actual status',posts === 1 && await clientPage.getByText('Žiadosť sme prijali',{exact:true}).isVisible() && (await db.prepare('SELECT COUNT(*) AS n FROM managed_handovers WHERE company_id=?').bind(company).first()).n === 1)
+  clientPage.off('request',listener)
+  for (const width of [320,390,1440]) {
+    await clientPage.setViewportSize({width,height:900})
+    check(`managed takeover browser: the client status and cancellation fit ${width}px`,await clientPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth) && await clientPage.getByRole('button',{name:'Odvolať koordináciu',exact:true}).isVisible())
+    await clientPage.screenshot({path:`.wrangler/screens/${width}-managed-client-browser.png`,fullPage:true})
+  }
+  await page.goto(`${origin}/ucto/klienti/${company}/prevzatie`)
+  const section = page.locator('#koordinacia')
+  await section.locator('#prevzatie-stav').selectOption('coordinating')
+  await section.locator('#prevzatie-termin').fill(new Date().toISOString().slice(0,10))
+  await section.locator('#prevzatie-opravnenie').fill('TEST-BROWSER Osobitný rozsah oprávnenia, konateľ a podpis overené na konkrétnom podklade.')
+  await section.locator('#prevzatie-dovod').fill('TEST-BROWSER Prevzatie koordinácie prideleným účtovníkom.')
+  await Promise.all([page.waitForURL(/ok=priebeh/),section.getByRole('button',{name:'Uložiť overený priebeh',exact:true}).click()])
+  check('managed takeover browser: the team form records an assigned next step without sending the prepared letter',(await db.prepare('SELECT state,responsible_id FROM managed_handovers WHERE company_id=?').bind(company).first()).state === 'coordinating' && await section.getByRole('link',{name:'Pripravený text žiadosti o podklady',exact:true}).isVisible() && !(await db.prepare("SELECT id FROM outbox WHERE recipient='browser-old-accountant@example.test'").first()))
+  await section.locator('#prevzatie-stav').selectOption('waiting')
+  await section.locator('#prevzatie-kontakt-den').fill(new Date().toISOString().slice(0,10))
+  await section.locator('#prevzatie-kontakt').fill('TEST-BROWSER E-mail skutočne odoslaný, evidencia Message-ID browser-test@example.test.')
+  await section.locator('#prevzatie-dovod').fill('TEST-BROWSER Kontakt sme zaznamenali po overení odoslanej správy.')
+  await Promise.all([page.waitForURL(/ok=priebeh/),section.getByRole('button',{name:'Uložiť overený priebeh',exact:true}).click()])
+  await section.locator('#prevzatie-podklady').setInputFiles({name:'TEST-BROWSER prevzate.csv',mimeType:'text/csv',buffer:Buffer.from('Účet;MD;D\n221;100;0\n411;0;100\n')})
+  await Promise.all([page.waitForURL(/ok=podklady/),section.getByRole('button',{name:'Uložiť prijaté podklady',exact:true}).click()])
+  const stored = await db.prepare("SELECT id FROM company_files WHERE company_id=? AND kind='takeover' AND file_name='TEST-BROWSER prevzate.csv'").bind(company).first()
+  check('managed takeover browser: the accountant uploads the export directly and receives a truthful persisted-file result',Boolean(stored?.id) && await section.getByRole('link',{name:'TEST-BROWSER prevzate.csv',exact:true}).isVisible())
+  await section.locator('#prevzatie-stav').selectOption('reviewing')
+  await section.locator('#prevzatie-otazka').fill('TEST-BROWSER Potvrďte rozsah prevzatých dokladov.')
+  await section.locator('#prevzatie-dovod').fill('TEST-BROWSER Podklady sú prijaté a žiadame nevyhnutné doplnenie.')
+  await Promise.all([page.waitForURL(/ok=priebeh/),section.getByRole('button',{name:'Uložiť overený priebeh',exact:true}).click()])
+  check('managed takeover browser: the actual review controls have unique ids and associated labels',await section.locator('fieldset').count() === 7 && await section.locator('input:not([type=hidden]),select,textarea').evaluateAll(es => es.every(e => e.labels?.length > 0)) && await page.evaluate(() => {const ids=[...document.querySelectorAll('[id]')].map(e=>e.id);return new Set(ids).size===ids.length}))
+  for (const width of [320,390,1440]) {
+    await page.setViewportSize({width,height:900})
+    check(`managed takeover browser: the seven-area review and file controls fit ${width}px`,await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    await page.screenshot({path:`.wrangler/screens/${width}-managed-team-browser.png`,fullPage:true})
+  }
+  await clientPage.goto(`${origin}/app`)
+  check('managed takeover browser: the customer reaches an outstanding question from the overview',await clientPage.locator('[data-overview-action="managed-takeover"]').isVisible())
+  await clientPage.locator('[data-overview-action="managed-takeover"]').click()
+  await clientPage.getByRole('button',{name:'Odvolať koordináciu',exact:true}).click()
+  await clientPage.waitForURL(/ok=odvolane/)
+  check('managed takeover browser: withdrawal is reflected in both persisted state and the new-request form',(await db.prepare('SELECT state FROM managed_handovers WHERE company_id=?').bind(company).first()).state === 'cancelled' && await clientPage.getByRole('button',{name:'Poveriť Firmony koordináciou',exact:true}).isVisible())
+  await page.reload()
+  check('managed takeover browser: a withdrawn request offers no accountant mutation or prepared-contact link',await section.getByRole('button',{name:'Uložiť overený priebeh',exact:true}).count() === 0 && await section.getByRole('link',{name:'Pripravený text žiadosti o podklady',exact:true}).count() === 0)
+}

@@ -58,6 +58,7 @@ import { checkAutobook } from './autobook.runtime.mjs'
 import { checkAutobookAtomic } from './autobook-atomic.runtime.mjs'
 import { checkOverviewRuntime } from './overview.runtime.mjs'
 import { checkDeliveryRuntime } from './delivery.runtime.mjs'
+import { checkManagedTakeover } from './managed-takeover.runtime.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
@@ -5213,5 +5214,6 @@ check(
 
 await checkOverviewRuntime({ db, nowS, day, signIn, as, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkDeliveryRuntime({ mf, db, signIn, nowS, day })
+await checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,capture:process.env.FIRMONY_CAPTURE_DIR})
 await mf.dispose()
 done('runtime')
