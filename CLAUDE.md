@@ -4,6 +4,20 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Upozornenie na doplnenie pri prechode, 22. 10. 2026:** `docs/managed-takeover.md`.
+Nová alebo zmenená otázka účtovníčky vloží súkromný zvonček pre členov firmy v tej istej transakcii
+ako stav a história. Súbežný prehrávajúci pokus nevloží oznámenie; nezmenená otázka neposiela ďalšie.
+E-mail obsahuje iba oznámenie a odkaz, nie otázku, meno, kontakt alebo podklady. Členstvo sa znovu
+kontroluje pri otvorení. Odkaz nesmie prepínať aktívnu firmu cez GET: pri inej vlastnej firme žiada
+výslovné prepnutie a následne otvorí jej prehľad s aktuálnou úlohou. Konkrétny bezpečný cieľ prežije
+aj bežné emailové prihlásenie; externý cieľ formulár neprijíma. Tímové passkeys a čerstvé overenie ostávajú.
+Zlyhanie zápisu outboxu vráti späť stav aj históriu. Existujúce opakovanie doručovania sa nemení;
+potvrdené uloženie oznámenia nie je dôkaz jeho doručenia do schránky. Žiadne ďalšie osobné údaje
+v analytike, nový AI prenos alebo externý kontakt pôvodnej účtovníčke. Schéma 78 sa nemení, ďalšia 79.
+Primárne technické originály prečítané 22. 10. 2026, citované v kóde:
+https://developers.cloudflare.com/d1/worker-api/d1-database/#batch a https://www.sqlite.org/c3ref/changes.html .
+Samostatná vetva; všetkých šesť povinných kontrol presnej revízie, vrátane Node 24, a živé nasadenie v PR.
+
 **Verejné vysvetlenie prechodu, 22. 10. 2026:** `src/copy.ts` nadväzuje na G1 z PR #25.
 FAQ opisuje kontakt a potvrdenie klienta, koordináciu Firmony, odborné prevzatie a nevyhnutný podpis/doplnenie.
 Pôvodná osobná cesta zostáva. Ukážka otázky k notebooku žiada faktúru a obchodný účel namiesto paušálneho

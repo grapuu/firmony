@@ -3,7 +3,9 @@ import { companyFacts } from '../aml/model'
 import { declarationPdf } from '../aml/pdf'
 import { bootstrapOfficerStatement } from '../aml/store'
 import { cancelHandover, managedHandover, requestHandover } from '../migration/store'
-import { requestErrors, type HandoverRequestValues } from '../migration/model'
+import { requestErrors, takeoverLoginNext, type HandoverRequestValues } from '../migration/model'
+import { accessOpenSql } from '../aml/retention'
+import { TakeoverCompanyChoice } from '../views/managed-takeover'
 // The client's app under /app. Signing in is open; everything else needs a session, and every read and change
 // is made for the company of that session (store.ts). Forms answer with a redirect to a page that says what
 // happened, so a reload never sends anything twice.
@@ -205,18 +207,20 @@ const closedIntake = (company: Company): string | null => (intakeOpen(company, t
 
 appRoutes.get('/prihlasenie', async (c) => {
   await ensureSchema(c.env.DB)
-  if (await currentWho(c, c.env.DB)) return c.redirect('/app', 303)
-  return render(c, <Door title={t.login.title}>{<LoginForm />}</Door>)
+  const next = takeoverLoginNext(c.req.query('n'))
+  if (await currentWho(c, c.env.DB)) return c.redirect(next ?? '/app', 303)
+  return render(c, <Door title={t.login.title}>{<LoginForm next={next ?? undefined} />}</Door>)
 })
 
 appRoutes.post('/prihlasenie', async (c) => {
   const body = await c.req.parseBody()
+  const next = takeoverLoginNext(body.n)
   const email = typeof body.email === 'string' ? body.email.trim().slice(0, 200) : ''
-  if (!EMAIL.test(email)) return render(c, <Door title={t.login.title}>{<LoginForm value={email} error={t.login.badEmail} />}</Door>, 422)
+  if (!EMAIL.test(email)) return render(c, <Door title={t.login.title}>{<LoginForm value={email} error={t.login.badEmail} next={next ?? undefined} />}</Door>, 422)
   const db = c.env.DB
   await ensureSchema(db)
   if (!(await withinLimit(db, 'signin', connection(c), APP.signInsPerHour, 3600))) {
-    return render(c, <Door title={t.login.title}>{<LoginForm value={email} error={t.login.throttle} />}</Door>, 429)
+    return render(c, <Door title={t.login.title}>{<LoginForm value={email} error={t.login.throttle} next={next ?? undefined} />}</Door>, 429)
   }
   // The same answer whether the address is ours or not: the form tells nobody who is a client.
   let user = await userByEmail(db, email)
@@ -235,7 +239,7 @@ appRoutes.post('/prihlasenie', async (c) => {
   }
   if (user && (await withinLimit(db, 'link', user.email.toLowerCase(), APP.linksPerHour, 3600))) {
     const { token, statement } = await newLink(db, user.id)
-    const link = `${siteOrigin(c)}/app/vstup?t=${token}`
+    const link = `${siteOrigin(c)}/app/vstup?t=${token}${next ? `&n=${encodeURIComponent(next)}` : ''}`
     await db.batch([statement, queueStatement(db, { key: `login:${crypto.randomUUID()}`, to: user.email, subject: t.login.mailSubject, body: t.login.mailBody(link) })])
     later(c, flushOutbox(db, c.env.EMAIL))
   }
@@ -277,7 +281,7 @@ appRoutes.post('/vstup', async (c) => {
   const signedIn = await userById(db, user)
   // A link asked for to confirm a sensitive step (the archive) leads back to it; any other address is the app's own.
   const next = typeof body.n === 'string' && /^\/app(?:\/|$)/.test(safeNext(body.n)) ? safeNext(body.n) : null
-  return c.redirect(signedIn?.team ? '/auth?next=%2Fucto' : (next ?? to), 303)
+  return c.redirect(signedIn?.team ? `/auth?next=${encodeURIComponent(takeoverLoginNext(next) ?? '/ucto')}` : (next ?? to), 303)
 })
 
 appRoutes.post('/odhlasit', async (c) => {
@@ -306,7 +310,11 @@ appRoutes.use('*', async (c, next) => {
   await ensureSchema(c.env.DB)
   const who = await currentWho(c, c.env.DB)
   const reads = c.req.method === 'GET' || c.req.method === 'HEAD'
-  if (!who) return reads ? c.redirect('/app/prihlasenie', 303) : c.text('Forbidden', 403)
+  if (!who) {
+    const url = new URL(c.req.url), id = url.searchParams.get('ziadost')
+    const next = url.pathname === '/app/prechod/otazka' && id && ID.test(id) ? takeoverLoginNext(`/app/prechod/otazka?ziadost=${id}`) : null
+    return reads ? c.redirect(`/app/prihlasenie${next ? `?n=${encodeURIComponent(next)}` : ''}`,303) : c.text('Forbidden',403)
+  }
   if (!who.company || !who.role) {
     // Somebody of the team works on the other side; one who also has a company of their own is taken into it.
     if (who.user.team) {
@@ -2256,6 +2264,17 @@ async function switchPage(c: Ctx, notice: { flash?: string | null; error?: strin
 }
 
 appRoutes.get('/prechod', (c) => switchPage(c))
+
+appRoutes.get('/prechod/otazka', async (c) => {
+  const who = c.get('who'), id = c.req.query('ziadost') ?? ''
+  if (!ID.test(id)) return c.notFound()
+  const company = await c.env.DB.prepare(`SELECT co.id,co.name FROM managed_handovers h
+    JOIN companies co ON co.id = h.company_id JOIN members m ON m.company_id = co.id
+    WHERE h.id = ? AND m.user_id = ? AND ${accessOpenSql('co')}`).bind(id,who.user.id).first<{id:string;name:string}>()
+  if (!company) return c.notFound()
+  if (company.id === who.company.id) return c.redirect('/app/prechod#koordinacia',303)
+  return shell(c,'company','Upozornenie k prevzatiu',<TakeoverCompanyChoice company={company} />)
+})
 
 appRoutes.post('/prechod/poverit', async (c) => {
   const who = c.get('who'), db = c.env.DB

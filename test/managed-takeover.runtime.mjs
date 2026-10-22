@@ -14,12 +14,31 @@ export async function checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,ca
     db.prepare("INSERT INTO users(id,created_at,name,email) VALUES(?,?,'TEST-ONLY Konateľ',?),('managed-member',?,'TEST-ONLY Kolega','managed-member@example.test')").bind(user,nowS,email,nowS),
     db.prepare("INSERT INTO members(company_id,user_id,role,created_at) VALUES(?,?,'owner',?),(?,'managed-member','member',?)").bind(company,user,nowS,company,nowS),
   ])
-  const owner = as((await signIn(email)).cookie), member = as((await signIn('managed-member@example.test')).cookie), team = as((await signIn('lucia@firmony.test')).cookie)
+  const ownerLogin = await signIn(email)
+  const owner = as(ownerLogin.cookie), member = as((await signIn('managed-member@example.test')).cookie), team = as((await signIn('lucia@firmony.test')).cookie)
+  const ownerSession = createHash('sha256').update(ownerLogin.cookie.split('=')[1]).digest('hex')
+  const anonymous = as('')
   const save = (name,html) => {if(capture) writeFileSync(`${capture}/${name}.html`,html)}
   const plain = text => text.replace(/[\u00a0\u202f]/g,' ')
   let res = await owner.get('/app/prechod'), html = await res.text()
   const id = html.match(/name="odoslanie" value="([a-f0-9-]{36})"/)?.[1]
   check('managed takeover: the owner sees a scoped coordination request and the original manual alternative',res.status === 200 && Boolean(id) && html.includes('Poveriť Firmony koordináciou') && html.includes('List a podklady si chcem vybaviť osobne'))
+  const alertPath = `/app/prechod/otazka?ziadost=${id}`
+  res = await anonymous.get(alertPath)
+  const signInPath = res.headers.get('location')
+  check('managed takeover: an unauthenticated alert preserves only its scoped task through login',res.status === 303 && new URL(signInPath,'https://firmony.io').searchParams.get('n') === alertPath && (await (await anonymous.get(signInPath)).text()).includes(`name="n" value="${alertPath}"`))
+  res = await anonymous.post('/app/prihlasenie',{email:'not-an-email',n:alertPath})
+  check('managed takeover: a login validation error preserves the intended task',res.status === 422 && (await res.text()).includes(`name="n" value="${alertPath}"`))
+  res = await anonymous.get('/app/prihlasenie?n=https%3A%2F%2Fevil.example%2F')
+  check('managed takeover: login never accepts an external return URL',!(await res.text()).includes('name="n"'))
+  res = await anonymous.post('/app/prihlasenie',{email,n:alertPath})
+  const loginMail = await db.prepare("SELECT body FROM outbox WHERE recipient=? AND id LIKE 'login:%' ORDER BY created_at DESC,rowid DESC LIMIT 1").bind(email).first()
+  const loginUrl = new URL(loginMail.body.match(/https:\/\/firmony.io\/app\/vstup\?[^\s]+/)[0])
+  check('managed takeover: the actual sign-in email retains the exact safe task',res.status === 303 && loginUrl.searchParams.get('n') === alertPath)
+  const enter = await (await anonymous.get(loginUrl.pathname+loginUrl.search)).text()
+  check('managed takeover: the mailbox link remains a confirmation page with the same task',enter.includes(`name="n" value="${alertPath}"`))
+  res = await anonymous.post('/app/vstup',{t:loginUrl.searchParams.get('t'),n:alertPath})
+  check('managed takeover: explicit mailbox confirmation returns to the requested task',res.status === 303 && res.headers.get('location') === alertPath)
   save('managed-takeover-request',html)
   const request = {firma:company,odoslanie:id,meno:'TEST-ONLY Stará kancelária',email:'old-accountant@example.test',den:day(10),suhlas:'ano'}
   res = await owner.post('/app/prechod/poverit',{...request,suhlas:''})
@@ -72,8 +91,38 @@ export async function checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,ca
   res = await team.form(`${base}/podklady`,[...await fields(),['file',original]])
   const file = await db.prepare("SELECT * FROM company_files WHERE company_id=? AND kind='takeover'").bind(company).first()
   check('managed takeover: the accountant can store a real export above the ordinary form limit',res.status === 303 && file?.file_size === original.bytes.length && (await files.head(file.r2_key))?.size === original.bytes.length && (await db.prepare("SELECT detail FROM events WHERE subject=? AND action='takeover.managed.file'").bind(file.id).first())?.detail.includes(id))
-  res = await team.post(`${base}/stav`,await form({stav:'reviewing',od_klienta:'TEST-ONLY Potvrďte obchodný rozsah prevzatia.'}))
+  const questionForm = await form({stav:'reviewing',od_klienta:'TEST-ONLY Potvrďte obchodný rozsah prevzatia.'})
+  const beforeQuestion = await current()
+  const beforeQuestionHistory = (await db.prepare('SELECT COUNT(*) AS n FROM managed_handover_history WHERE case_id=?').bind(id).first()).n
+  await db.prepare("CREATE TRIGGER test_managed_bell_failure BEFORE INSERT ON outbox WHEN NEW.id LIKE 'bell:managed-question:%' BEGIN SELECT RAISE(ABORT,'TEST-ONLY outbox failure'); END").run()
+  res = await team.post(`${base}/stav`,questionForm)
+  check('managed takeover: outbox persistence failure rolls back the question and its success history',res.status === 409 && (await current()).revision === beforeQuestion.revision && (await current()).client_action === '' && (await db.prepare('SELECT COUNT(*) AS n FROM managed_handover_history WHERE case_id=?').bind(id).first()).n === beforeQuestionHistory)
+  await db.prepare('DROP TRIGGER test_managed_bell_failure').run()
+  const concurrentQuestions = await Promise.all([team.post(`${base}/stav`,questionForm),team.post(`${base}/stav`,questionForm)])
+  res = concurrentQuestions.find(r => r.status === 303) ?? concurrentQuestions[0]
+  const noticePrefix = `bell:managed-question:${id}:`
+  const notices = (await db.prepare('SELECT recipient,body FROM outbox WHERE substr(id,1,length(?1))=?1').bind(noticePrefix).all()).results
+  check('managed takeover: concurrent question updates enqueue one private bell per eligible member',concurrentQuestions.filter(r=>r.status === 303).length === 1 && notices.length === 2 && notices.some(n=>n.recipient === email) && notices.every(n=>n.body.includes(alertPath) && !n.body.includes(questionForm.od_klienta) && !n.body.includes(request.meno)))
   check('managed takeover: an explicit client question stays a visible overview action',res.status === 303 && (await (await owner.get('/app')).text()).includes('data-overview-action="managed-takeover"'))
+  await db.batch([
+    db.prepare("INSERT INTO companies(id,created_at,name,plan,inbox) VALUES('co-managed-other',?,'TEST-ONLY Iná firma','rast','managed-other')").bind(nowS),
+    db.prepare("INSERT INTO members(company_id,user_id,role,created_at) VALUES('co-managed-other',?,'owner',?)").bind(user,nowS),
+    db.prepare("INSERT INTO users(id,created_at,email,name) VALUES('managed-stranger',?,'managed-stranger@example.test','TEST-ONLY Cudzí používateľ')").bind(nowS),
+    db.prepare("INSERT INTO members(company_id,user_id,role,created_at) VALUES('co-managed-other','managed-stranger','owner',?)").bind(nowS),
+  ])
+  const stranger = as((await signIn('managed-stranger@example.test')).cookie)
+  res = await stranger.get(alertPath)
+  check('managed takeover: an alert id discloses no company or question to a non-member',res.status === 404 && !(await res.text()).includes(request.meno))
+  check('managed takeover: an alert in its current company opens the authoritative case',(await owner.get(alertPath)).headers.get('location') === '/app/prechod#koordinacia')
+  await owner.post('/app/firma/prepnut',{firma:'co-managed-other'})
+  res = await owner.get(alertPath)
+  const choice = await res.text()
+  check('managed takeover: an alert for another owned company asks for explicit selection without switching on GET',res.status === 200 && choice.includes('data-takeover-company-choice') && choice.includes(`name="firma" value="${company}"`) && (await db.prepare('SELECT company_id FROM sessions WHERE id=?').bind(ownerSession).first()).company_id === 'co-managed-other')
+  save('managed-takeover-choice',choice)
+  await owner.post('/app/firma/prepnut',{firma:company})
+  check('managed takeover: explicit company selection exposes the outstanding task in the correct overview',(await (await owner.get('/app')).text()).includes('data-overview-action="managed-takeover"'))
+  res = await team.post(`${base}/stav`,await form({od_klienta:questionForm.od_klienta}))
+  check('managed takeover: an unchanged outstanding question does not send another bell',res.status === 303 && (await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE substr(id,1,length(?1))=?1').bind(noticePrefix).first()).n === 2)
   const teamHtml = await (await team.get(`/ucto/klienti/${company}/prevzatie`)).text()
   check('managed takeover: review joins stored originals, existing imports and all seven evidence areas',plain(teamHtml).includes(file.file_name) && (teamHtml.match(/name="stav_(?:books|items|bank|assets|payroll|filings|opening)"/g) ?? []).length === 7 && plain(teamHtml).includes('Počiatočné stavy z obratovej predvahy'),JSON.stringify({file:plain(teamHtml).includes(file.file_name),fields:(teamHtml.match(/name="stav_(?:books|items|bank|assets|payroll|filings|opening)"/g) ?? []).length,imports:plain(teamHtml).includes('Počiatočné stavy z obratovej predvahy')}))
   save('managed-takeover-team',teamHtml)

@@ -308,12 +308,13 @@ export const Door: FC<{ title: string; children: Child }> = ({ title, children }
   </html>
 )
 
-export const LoginForm: FC<{ value?: string; error?: string }> = ({ value = '', error }) => (
+export const LoginForm: FC<{ value?: string; error?: string; next?: string }> = ({ value = '', error, next }) => (
   <>
     <Tile art={ART.key} size="lg" eager />
     <Heading first={app.login.title} second={app.login.serif} small />
     <p class="door__lead">{app.login.lead}</p>
     <form class="door__form" method="post" action="/app/prihlasenie" novalidate>
+      {next ? <input type="hidden" name="n" value={next} /> : null}
       <label class="field__label" for="email">
         {app.login.email}
       </label>

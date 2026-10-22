@@ -4748,6 +4748,7 @@ teamRoutes.post('/klienti/:id/prevzatie/prechod/stav', async (c) => {
     if (!c.env.FILES || (await Promise.all(facts.files.map(f => c.env.FILES!.head(f.r2_key)))).some((head,i) => !head || head.size !== facts.files[i]!.file_size)) return refuse('Niektorý originál nie je dostupný v úložisku. Najprv obnovte podklady; dokončenie sa neuložilo.',values,409)
   }
   const error = await updateHandover(db,company,c.get('who').user,h,values,dayOf(now()))
+  if (!error) later(c,flushOutbox(db,c.env.EMAIL))
   return error ? refuse(error,values,409) : c.redirect(`${takeoverPath(company)}?ok=priebeh#koordinacia`,303)
 })
 
