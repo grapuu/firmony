@@ -1,5 +1,13 @@
 # Firmony: progress of the continuation
 
+## Zrozumiteľné vysvetlenie prechodu na webe (Codex, 22. október 2026 CEST)
+
+FAQ nadväzuje na spravovaný prechod G1: kontakt a potvrdenie, administratíva Firmony, odborná kontrola,
+prípadný potrebný podpis a viditeľný priebeh. Ukážka rozhovoru žiada len užitočný podklad a obchodný účel;
+nesľubuje paušálne daňové zaradenie podľa ceny notebooku. Ukážka e-faktúr pomenúva pripravované napojenie.
+Bez novej zľavy, zmeny sloganu, účtovného výpočtu alebo predstieranej aktivácie poštára. Povinné kontroly
+samostatnej vetvy a presné produkčné nasadenie sa evidujú v PR. Účinok na konverziu treba zmerať.
+
 ## Spravovaný prechod, G1 (Codex, 22. október 2026 CEST)
 
 [Implementácia](docs/managed-takeover.md): krátka žiadosť klienta a odvolanie; prípad na pracovisku
