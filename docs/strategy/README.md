@@ -1,5 +1,9 @@
 # Firmony: stratégia a realizácia
 
+**Ďalšie zákaznícke výhody, 22. 10. 2026:** [13 Bezplatné nástroje, prechod, kredity, AI a komunita](13-customer-advantage.md).
+Prvý verejný PDF fakturačný nástroj implementovaný; ostatné nápady majú stav návrhu, ekonomické predpoklady
+a podmienky spustenia. Bez zmeny cien alebo doživotnej viazanosti.
+
 **Dôvera a výhodnosť, 22. 10. 2026:** [originály, verejné postupy finančných aplikácií a implementácia](../research/trust-and-value-2026-10-22.md).
 Pravdivý ročný súčet, vlastné vstupy zákazníka, odborná rola a nezáväzný začiatok. Stav návrhov je odlíšený od
 implementácie; účinok na predaj treba zmerať. Ceny, hlavný slogan a smerovanie sa nemenia.

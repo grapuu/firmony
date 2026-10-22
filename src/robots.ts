@@ -10,6 +10,7 @@ import { GUIDES } from './content/guides'
 import { formatEur } from './format'
 import { plain, SITE_UPDATED } from './seo'
 import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
+import { INVOICE_PATH, TOOLS_PATH, TOOL_UPDATED } from './tools/invoice'
 
 /** The public pages with the day each last changed: the sitemap, and what IndexNow is told. */
 export function sitePages(): [string, string][] {
@@ -17,6 +18,8 @@ export function sitePages(): [string, string][] {
     ['/', SITE_UPDATED],
     ...GUIDES.map((g): [string, string] => [g.path, g.modified]),
     [WAGE_PATH, WAGE_PAGE.modified],
+    [TOOLS_PATH, TOOL_UPDATED],
+    [INVOICE_PATH, TOOL_UPDATED],
     ['/investori', SITE_UPDATED],
     ['/podmienky', SITE_UPDATED],
     ['/pravne-informacie', SITE_UPDATED],
@@ -163,7 +166,7 @@ export function llmsTxt(): string {
       '',
       '- Doklady: fotka bločku v aplikácii (aj v telefóne), preposlaný e-mail s faktúrou na adresu firmy, e-faktúry cez digitálneho poštára od 1. 1. 2027.',
       '- Banka: výpisy, ktoré banka sama posiela e-mailom, prepojenie Fio banky alebo výpis raz mesačne.',
-      '- Umelá inteligencia doklad prečíta a navrhne zaúčtovanie, platby spáruje s dokladmi. Účtovníčka všetko skontroluje, podá priznanie k DPH, kontrolný a súhrnný výkaz, mzdové hlásenia, závierku a daňové priznanie.',
+      '- Umelá inteligencia doklad prečíta a navrhne zaúčtovanie, platby spáruje s dokladmi. Účtovníčka robí odborné kontroly a rieši neštandardné prípady. Priznania, výkazy, mzdy a závierku pripravujeme podľa dohodnutého rozsahu služby.',
       '- Klient vidí v aplikácii, čo chýba, termíny a čo zaplatiť. Správy s účtovníčkou sú v aplikácii a odpovedáme ' + REPLY_WITHIN + '.',
       '- Účtovníctvo patrí klientovi: kedykoľvek si ho stiahne a pri odchode mu ho odovzdáme.',
       '',
@@ -174,6 +177,8 @@ export function llmsTxt(): string {
       '',
       '## Ďalšie stránky',
       '',
+      `- [Bezplatné nástroje](${BRAND.origin}${TOOLS_PATH}): bez registrácie a objednania účtovníctva.`,
+      `- [Faktúra zadarmo](${BRAND.origin}${INVOICE_PATH}): PDF pre bežné tuzemské dodanie neplatiteľa DPH medzi slovenskými podnikateľmi v EUR. Údaje spracúva iba prehliadač. Bez archívu, odoslania či eFaktúry.`,
       `- [Úvod a cenník](${BRAND.origin}/)`,
       `- [Obchodné podmienky](${BRAND.origin}/podmienky)`,
       `- [Právne informácie a ochrana údajov](${BRAND.origin}/pravne-informacie)`,

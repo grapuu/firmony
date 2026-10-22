@@ -1,5 +1,19 @@
 # Firmony: progress of the continuation
 
+## Bezplatný fakturačný nástroj a ďalšie zákaznícke výhody (Codex, 22. október 2026 CEST)
+
+Implementované `/faktura-zadarmo` a `/bezplatne-nastroje`, vstup z webu a vyhľadateľné metadáta.
+PDF a rozpracované JSON údaje vznikajú iba v prehliadači, bez účtu, karty a odoslania fakturačných údajov.
+Rozsah: bežná tuzemská B2B faktúra neplatiteľa DPH v EUR, najviac 50 položiek; presné centy, dátumy,
+SK IBAN, bezpečný text a názov súboru. PDF má kontrolované zalomenie dlhého textu a odmieta znaky,
+ktoré použitý writer nevie zachovať. Obnovenie vyžaduje nové potvrdenie rozsahu.
+Žiadna nová databáza, úprava existujúcej fakturácie, zníženie cien alebo automatický marketingový kredit.
+Samostatné jednotkové, HTTP a browser testy vrátane skutočného sťahovania a absencie sieťových zápisov.
+[Realizačný podklad](docs/strategy/13-customer-advantage.md) rozpracúva ďalšie návrhy majiteľa, aktuálne
+zahraničné originály, psychológiu nulovej ceny, náklady, hranice a postup G1 až G6 pre Clauda.
+Prvý ďalší kandidát je spravovaný prechod, nie doživotné uzamknutie klienta. Výsledky finálnych kontrol
+a overenie nasadeného commitu sú v PR. Používateľský pilot a ostatné návrhy sa neoznačujú za dokončené.
+
 ## Dôvera a výhodnosť na verejnom webe (Codex, 22. október 2026 CEST)
 
 Na nový pokyn majiteľa [rozšírená rešerš originálov a konkrétna implementácia](docs/research/trust-and-value-2026-10-22.md).

@@ -11,6 +11,8 @@ import { article, breadcrumbs, faqPage, jsonLd, organization, plain, service, SI
 import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
 import { wageCalc, wageQueryOf, wageYearOf } from './app/wage-calc'
 import { WageCalcPage } from './views/wage-calc'
+import { FreeInvoicePage, FreeToolsPage } from './views/free-tools'
+import { INVOICE_META, INVOICE_PATH, TOOLS_PATH } from './tools/invoice'
 import { announceSite, llmsFullTxt, llmsTxt, robotsTxt, sitemapXml } from './robots'
 import { GuidePage } from './views/guide'
 import { Hono, type Context } from 'hono'
@@ -137,7 +139,7 @@ app.use('*', async (c, next) => {
   await next()
   const inside = /^\/(app|ucto|auth|f)(\/|$)/.test(url.pathname)
   if (!c.res.headers.has('Content-Security-Policy'))
-    c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : url.pathname === '/' ? HOME_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
+    c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : url.pathname === INVOICE_PATH ? HOME_CONTENT_SECURITY_POLICY.replace("form-action 'self'", "form-action 'none'") : url.pathname === '/' ? HOME_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
   // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
   if (!c.res.headers.has('X-Frame-Options')) c.header('X-Frame-Options', 'DENY')
@@ -774,6 +776,21 @@ app.get(WAGE_PATH, (c) => {
     <WageCalcPage query={asked.query} result={result} error={asked.error} year={year} />,
   )
 })
+
+app.get(TOOLS_PATH, (c) => page(c, {
+  title: 'Bezplatné nástroje pre podnikateľov | Firmony',
+  description: 'Faktúra v PDF, mzdová kalkulačka a porovnanie nákladov na účtovníctvo. Bez registrácie a objednania účtovnej služby.',
+  path: TOOLS_PATH,
+}, <FreeToolsPage />))
+
+app.get(INVOICE_PATH, (c) => page(c, {
+  ...INVOICE_META, path: INVOICE_PATH,
+  jsonLd: jsonLd([organization(), breadcrumbs('Faktúra zadarmo', INVOICE_PATH), {
+    '@type': 'WebApplication', name: 'Firmony: faktúra zadarmo', url: `${BRAND.origin}${INVOICE_PATH}`,
+    description: INVOICE_META.description, applicationCategory: 'FinanceApplication', operatingSystem: 'Any', inLanguage: 'sk',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' }, provider: { '@id': `${BRAND.origin}/#organizacia` },
+  }]),
+}, <FreeInvoicePage today={bratislavaToday()} />))
 
 app.get('/sitemap.xml', (c) => {
   c.header('Content-Type', 'application/xml; charset=utf-8')

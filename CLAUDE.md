@@ -4,6 +4,35 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Pokyn majiteľa 22. 10. 2026, ďalšie zákaznícke výhody:**
+`docs/strategy/13-customer-advantage.md` zaznamenáva jeho návrhy: bezplatné nástroje, spravovaný prechod,
+servisný kredit 100 eur, založenie s. r. o., AI asistent a komunita. Cieľ najnižšej ceny a vysokej marže
+je otvorené ekonomické zadanie, nie preukázaný výsledok. Súčasné ceny 89/169/329 eur sa nemenia.
+**V tejto vetve implementované:** `/faktura-zadarmo`, bežná tuzemská B2B faktúra neplatiteľa DPH v EUR,
+živý náhľad, miestny PDF export, najviac 50 položiek, presná aritmetika, kontrola dátumov a SK IBAN,
+výslovný JSON export/obnova rozpracovania. `/bezplatne-nastroje` spája nový nástroj s existujúcou
+mzdovou kalkulačkou a porovnaním nákladov. Vstup z hlavnej stránky, pätičky, sitemap a llms.txt.
+Žiadny účet, platobná karta, zachytávanie kontaktu, uloženie faktúry na server, AI volanie alebo automatické
+browser úložisko. CSP blokuje sieťové spojenia a bežné odoslanie formulára. PDF nie je archív, odoslanie,
+účtovné overenie ani štruktúrovaná eFaktúra. Existujúca klientská fakturácia a AML/release brány pokračujú.
+Nástroj má vlastné jednotkové, HTTP a skutočné browser scenáre; posledné Checks a živá revízia sa evidujú v PR.
+Production verification navyše číta obe stránky a preveruje presné SHA-256 verejného skriptu a CSS
+oproti zostaveniu. Správny Worker bez správneho nástroja sa neoznačí za úspešné nasadenie.
+Skutočný používateľský pilot ešte neprebehol. Dokladové údaje sa na meranie neposielajú.
+Kredit, piata firma zdarma, bezplatné založenie, doživotná viazanosť, verejný AI upload/chat ani sociálna
+sieť sa teraz nespúšťajú. Dokument má podmienky, ekonomiku a poradie G1 až G6. Najbližší kandidát G1:
+spravovaný prechod s poverením a pravdivými stavmi; dnešný `/app/prechod` stále odosiela klient sám.
+Nové daňové odhady z dokladov sa nepredstierajú ako existujúca funkcia. Schéma ostáva 77, ďalšia je 78.
+Aktuálne právne originály prečítané 22. 10. 2026 a uvedené aj pri implementácii:
+https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html (§10, údaje dokladu a interné overenie),
+https://static.slov-lex.sk/static/SK/ZZ/1991/513/20260817.html (§3a, obchodné údaje; §57, forma založenia),
+https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html (§69 ods.5, uvedenie dane na doklade),
+https://static.slov-lex.sk/static/SK/ZZ/2026/29/20260817.html (zmena §57 ods.1 a 3).
+Nový psychologický originál Shampanier/Mazar/Ariely 2007 o nulovej cene a aktuálne originály Revolut,
+Trading 212, Robinhood, Zoho Invoice, Wave, Crunch a Xolo sú v dokumente so zdrojmi a obmedzeniami.
+Prístup k webu: GitHub main nasadzuje existujúci Cloudflare Workers Build; nasadenie sa overuje cez
+Production verification a verejné stránky. Nepredstierať priamy prístup do Cloudflare alebo registrátora.
+
 **Produktový pokyn majiteľa z 21. októbra 2026: jednoduchosť ako základ Firmony.** Pred ďalšou úpravou
 rozhrania si prečítajte `docs/strategy/12-product-simplicity.md`. Jedna účtovná služba, dva pracovné pohľady:
 klient vidí stav firmy a potrebný ďalší krok, účtovníčka priority a odborné rozhodnutia. Zložitosť nesie systém.

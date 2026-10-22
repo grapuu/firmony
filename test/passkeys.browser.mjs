@@ -10,6 +10,7 @@ import { readHealthText } from './health-text.mjs'
 import { readSocialXml } from './social-xml.mjs'
 import { checkDeliveryBrowser } from './delivery.browser.mjs'
 import { checkCustomerValueBrowser } from './customer-value.browser.mjs'
+import { checkFreeInvoiceBrowser } from './free-invoice.browser.mjs'
 import { payslip } from '../.wrangler/dist/stores.js'
 
 const assets = resolve('public'),
@@ -99,6 +100,7 @@ try {
     args: ['--no-sandbox'],
   })
   await checkCustomerValueBrowser({ browser, origin })
+  await checkFreeInvoiceBrowser({ browser, origin })
   const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
     }),

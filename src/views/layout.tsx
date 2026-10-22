@@ -4,6 +4,7 @@ import { copy } from '../copy'
 import { typeset } from '../format'
 import { GUIDES } from '../content/guides'
 import { WAGE_PAGE, WAGE_PATH } from '../content/wage-calc'
+import { TOOLS_PATH } from '../tools/invoice'
 
 export interface PageMeta {
   title: string
@@ -99,6 +100,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
               <a href="/#ako-to-funguje">{copy.nav.how}</a>
               <a href="/#cennik">{copy.nav.pricing}</a>
               <a href="/#kalkulacka">{copy.footer.calc}</a>
+              <a href={TOOLS_PATH}>Bezplatné nástroje</a>
               <a href="/#otazky">{copy.nav.faq}</a>
               <a href="/investori">{copy.nav.investors}</a>
               <a href="/app/prihlasenie">{copy.nav.login}</a>
