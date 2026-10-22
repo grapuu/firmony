@@ -71,8 +71,10 @@ export const FreeInvoicePage: FC<{ today: string }> = ({ today }) => {
       <div>
         <div class="free-invoice__draft-actions" hidden data-js>
           <button class="btn btn--line" type="button" data-save-draft>Stiahnuť rozpracované údaje</button>
-          <label class="btn btn--line" for="invoice-restore">Načítať uložené údaje</label>
-          <input id="invoice-restore" type="file" accept=".json,application/json" data-load-draft />
+          <label class="btn btn--line free-file" for="invoice-restore">
+            <span>Načítať uložené údaje</span>
+            <input id="invoice-restore" type="file" accept=".json,application/json" data-load-draft />
+          </label>
         </div>
         <p class="free-note">Údaje automaticky neukladáme. Ak chcete pokračovať neskôr, stiahnite si ich do súboru. Pred odchodom si uložte aj hotové PDF.</p>
         <form class="free-form" id="free-invoice-form" novalidate>

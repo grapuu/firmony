@@ -141,6 +141,9 @@
 .free-invoice__draft-actions[hidden], .free-errors[hidden], [data-add-line][hidden] { display: none; }
 .free-invoice__draft-actions .btn { font-size: 13px; min-height: 44px; white-space: normal; text-align: center; cursor: pointer; }
 .free-invoice__draft-actions input { width: 100%; font: inherit; font-size: 13px; color: var(--soft); }
+.free-file { position: relative; overflow: hidden; }
+.free-file input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.free-file:focus-within { outline: 3px solid var(--blue); outline-offset: 3px; }
 .free-form fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-top: 26px; }
 .free-form legend { padding-inline: 8px; color: var(--ink); font-family: var(--display); font-size: 19px; font-weight: 600; }
 .free-form__fields { display: grid; gap: 16px; }

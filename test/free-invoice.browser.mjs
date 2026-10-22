@@ -39,9 +39,11 @@ export async function checkFreeInvoiceBrowser({ browser, origin }) {
     const [draftDownload] = await Promise.all([page.waitForEvent('download'), page.locator('[data-save-draft]').click()])
     const draft = await readFile(await draftDownload.path())
     check('free invoice browser: a downloadable draft contains the entered data, with no server save', JSON.parse(draft).invoice.lines[0].price === '10,01' && JSON.parse(draft).format === 'firmony-invoice')
-    await page.locator('[data-load-draft]').setInputFiles({name:'wrong.json',mimeType:'application/json',buffer:Buffer.from('{broken')})
+    // The styled picker retains a real keyboard-operable native file input.
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('[data-load-draft]').press('Enter')])
+    await chooser.setFiles({name:'wrong.json',mimeType:'application/json',buffer:Buffer.from('{broken')})
     await page.getByText('Tento súbor sa nedá načítať.',{exact:false}).waitFor()
-    check('free invoice browser: a rejected import leaves the existing draft intact', (await page.locator('[data-invoice-status]').textContent()).includes('zostali zachované') && await page.locator('[name=number]').inputValue() === 'TEST-2026/001')
+    check('free invoice browser: the keyboard picker opens and a rejected import leaves the existing draft intact', (await page.locator('[data-invoice-status]').textContent()).includes('zostali zachované') && await page.locator('[name=number]').inputValue() === 'TEST-2026/001')
     await page.locator('[data-load-draft]').setInputFiles({name:'invoice.json',mimeType:'application/json',buffer:draft})
     await page.getByText('Údaje sú načítané.',{exact:false}).waitFor()
     check('free invoice browser: restoring a draft requires the issuer to confirm its scope again', !(await page.locator('[name=nonVat]').isChecked()) && !(await page.locator('[name=domestic]').isChecked()) && await page.locator('[name="lines.0.price"]').inputValue() === '10,01')
