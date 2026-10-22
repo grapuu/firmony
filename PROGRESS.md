@@ -1,5 +1,16 @@
 # Firmony: progress of the continuation
 
+## Spravovaný prechod, G1 (Codex, 22. október 2026 CEST)
+
+[Implementácia](docs/managed-takeover.md): krátka žiadosť klienta a odvolanie; prípad na pracovisku
+účtovníčky, zodpovednosť a termín, overené oprávnenie/kontaktovanie, vlastný príjem súborov, kontrola
+siedmich oblastí a nadväznosť na pôvodné importy. Priebeh a otázka sú aj na klientskom prehľade.
+Nemenná história každej verzie, ochrana súbehu a starých formulárov, úplný export, zachované uchovávanie
+a riadený konečný výmaz. Nový iba krok 78, prvých 77 bez zmeny. Osobná cesta klienta zostáva.
+Text kontaktu odosiela účtovníčka po overení oprávnenia; žiadny automatický podpis, výpoveď alebo
+predstierané prijatie či správnosť importu. Žiadne nové ceny a kľúče. HTTP/D1/R2 aj browser scenáre;
+finálne povinné kontroly a živá revízia v PR. G2-G6, používateľský pilot a právne/poistné kroky zostávajú otvorené.
+
 ## Bezplatný fakturačný nástroj a ďalšie zákaznícke výhody (Codex, 22. október 2026 CEST)
 
 Následná reálna kontrola živého webu doplnila jednotný slovenský výber súboru bez druhého systémového

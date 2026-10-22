@@ -285,6 +285,8 @@ export async function forgetRecords(env: PurgeEnv, today: string): Promise<numbe
       db.prepare('DELETE FROM order_reviews WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?)').bind(id),
       db.prepare('DELETE FROM orders WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM events WHERE company_id = ?').bind(id),
+      db.prepare('DELETE FROM managed_handover_history WHERE company_id = ?').bind(id),
+      db.prepare('DELETE FROM managed_handovers WHERE company_id = ?').bind(id),
       db.prepare('DELETE FROM companies WHERE id = ?').bind(id),
     ])
     deleted++

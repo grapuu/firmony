@@ -2,6 +2,8 @@
 // a payment has none. Everything else is shown so that nobody has to wonder whether it is in order.
 import { bratislavaClock, bratislavaDay } from '../time'
 import type { FC } from 'hono/jsx'
+import type { ManagedHandover } from '../migration/store'
+import { HANDOVER_STATES } from '../migration/model'
 import type { BankLinkView, BankNotice } from '../app/bank'
 import { BankCard, BankNoticeBar, ConfirmAccount } from './bank'
 import type { StatementView } from '../app/statements'
@@ -195,6 +197,7 @@ export const AddCard: FC<{ inbox: string; id?: string; wide?: boolean; action?: 
 // ---------------------------------------------------------------------------------------------------------------
 
 export interface OverviewProps {
+  managedTakeover?: ManagedHandover | null
   firstName: string
   missing: Payment[]
   missingCount: number
@@ -285,6 +288,7 @@ export const Overview: FC<OverviewProps> = (props) => {
     closed: ended, today: props.today, owner: Boolean(props.owner), missing: missingCount, deadlines: props.deadlines,
     unread: props.unread ?? 0, approval: props.approval ?? null, confirmAccount: props.waiting?.[0]?.id ?? null,
     statementDue: props.statementDue ?? null, bankNotice: props.bankNotice ?? null, bankReady: Boolean(props.bankReady), steps: props.steps ?? null,
+    takeoverAction: props.managedTakeover?.state !== 'cancelled' && props.managedTakeover?.state !== 'completed' ? props.managedTakeover?.clientAction : null,
   })
   const primary = actions[0]
   const bankHealth = ended ? null : props.bankHealth
@@ -357,6 +361,12 @@ export const Overview: FC<OverviewProps> = (props) => {
           </section>
         )}
         <Flash text={props.flash} />
+        {!ended && props.managedTakeover && props.managedTakeover.state !== 'cancelled' ? <section class="info managed-takeover" aria-labelledby="preh-prevzatie">
+          <h2 id="preh-prevzatie" class="info__title">Prevzatie účtovníctva</h2>
+          <p><strong>{HANDOVER_STATES[props.managedTakeover.state]}</strong>{props.managedTakeover.responsibleName ? `. Zodpovedá ${props.managedTakeover.responsibleName}.` : '. Žiadosť čaká na prevzatie účtovníčkou.'}</p>
+          {props.managedTakeover.publicNote ? <p class="managed-takeover__text">{props.managedTakeover.publicNote}</p> : null}
+          <a class="link" href="/app/prechod#koordinacia">Pozrieť priebeh prevzatia</a>
+        </section> : null}
         <BankNoticeBar notice={ended ? null : props.bankNotice ?? null} today={props.today} owner={Boolean(props.owner)} ready={Boolean(props.bankReady)} />
         {bankHealth ? (
           <div class="banknotice" role="status">

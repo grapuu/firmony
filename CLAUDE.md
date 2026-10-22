@@ -4,6 +4,24 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Spravovaný prechod G1 implementovaný 22. 10. 2026:** `docs/managed-takeover.md`.
+Klient na `/app/prechod` zadá kontakt a potvrdí koordináciu; osobná cesta zostáva. Účtovníčka má
+prípad na `/ucto` a v `/ucto/klienti/:id/prevzatie`, zodpovednosť, termín, záznam oprávnenia,
+skutočného kontaktovania, vlastný príjem podkladov a sedem oblastí kontroly. Otázka je aj na prehľade
+klienta. Dokončenie vyžaduje aktuálne podklady, uložené originály a podľa výsledku počiatočné stavy.
+Pôvodné importy sa používajú ďalej. Text žiadosti odosiela človek po kontrole oprávnenia, nie automatika.
+Checkbox nie je overený kvalifikovaný podpis ani univerzálna plná moc. Nemenná história, revízne podmienky,
+odvolanie a opakované overenie firmy/rolí chránia priebeh. Export zahŕňa prípady aj revízie; existujúci
+päťročný zákonný archív a 90-dňový klientsky prístup ostávajú. Nová schéma **78**, ďalšia **79**;
+prvých 77 krokov sa nemení, ich spoločný SHA-256 stráži regresia. Finálne kontroly a živá revízia v PR.
+Originály opäť prečítané 22. 10. 2026 a citované v kóde:
+https://static.slov-lex.sk/static/SK/ZZ/1964/40/20260731.html (§§31-33b,40; aktuálne, nie januárové),
+https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html (§§5,8),
+https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html (§19).
+Skutočné plnomocenstvo, právny release a päť živých prevzatí ostávajú na ľuďoch. G2 AI asistent, G3 kredit,
+G4 založenie a G6 komunita sú zatiaľ návrhy v dokumente 13. Ceny, slogan a smerovanie sa nemenia.
+Všeobecné odborné vybavenie otázok J2, J3-J5 a používateľský pilot ostávajú otvorené.
+
 **Pokyn majiteľa 22. 10. 2026, ďalšie zákaznícke výhody:**
 `docs/strategy/13-customer-advantage.md` zaznamenáva jeho návrhy: bezplatné nástroje, spravovaný prechod,
 servisný kredit 100 eur, založenie s. r. o., AI asistent a komunita. Cieľ najnižšej ceny a vysokej marže

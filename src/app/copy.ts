@@ -1628,7 +1628,7 @@ export const app = typesetAll({
   switching: {
     title: 'Prechod',
     serif: 'od doterajšej účtovníčky.',
-    lead: 'Výpoveď a žiadosť o odovzdanie podkladov máte pripravenú. Doplňte, komu ju posielate, podpíše ju ten, kto za firmu koná, a pošlete ju doterajšej účtovníčke.',
+    lead: 'Vyberte si koordináciu cez Firmony alebo pripravený list na vlastné odoslanie. Prevzaté údaje skontroluje Vaša účtovníčka.',
     formTitle: 'Doplniť do listu',
     to: 'Komu (meno alebo kancelária)',
     toAddress: 'Jej adresa',

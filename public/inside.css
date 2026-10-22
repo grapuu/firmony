@@ -7518,3 +7518,18 @@ a.wtable__name {
 .decl:has([name="businessAtSeat"][value="0"]:checked) .decl__business-address,
 .decl:has([name="ownBehalf"][value="0"]:checked) .decl__principal { display: block; }
 @supports not selector(:has(*)) { .decl__business-address, .decl__principal { display: block; } }
+
+/* Managed takeover uses the existing client/team layout; evidence is disclosed when needed. */
+.managed-takeover { margin-block: 1.5rem; }
+.managed-takeover p, .managed-takeover summary, .managed-takeover a, .managed-takeover legend { overflow-wrap: anywhere; }
+.managed-takeover details { margin-block: 1rem; }
+.managed-takeover summary, .managed-takeover__manual > summary { cursor: pointer; font-weight: 600; padding-block: .75rem; }
+.managed-takeover__request, .managed-takeover__files, .managed-takeover__cancel { margin-top: 1.25rem; }
+.managed-takeover__check { min-width: 0; margin-block: 1rem; padding: 1rem; border: 1px solid var(--line, #deded8); border-radius: .75rem; }
+.managed-takeover__check legend { padding-inline: .3rem; font-weight: 600; }
+.managed-takeover__check .field { margin-block: .75rem; }
+.managed-takeover__text { white-space: pre-wrap; }
+.managed-takeover__history { padding-left: 1.25rem; }
+.managed-takeover__history li { margin-block: 1rem; }
+.managed-takeover__manual { margin-top: 1.5rem; }
+@media print { .managed-takeover, .managed-takeover__manual > summary { display: none !important; } }

@@ -68,6 +68,11 @@ Použitie tu: skutočné 0 eur za konkrétny výsledok, bez povinného platenéh
 
 ### G1. Spravovaný prechod namiesto samostatného vybavovania klientom
 
+**Implementované 22. 10. 2026:** [spravovaný prechod](../managed-takeover.md), žiadosť a odvolanie,
+prípad pre účtovníčku, príjem podkladov, konkrétne kontrolné záznamy a prenositeľná história.
+Pôvodný návrh nižšie ostáva kontextom. Kontakt odosiela človek po overení oprávnenia; automatické
+externé odoslanie, platné zastupovanie a päť skutočných pilotných prechodov tým nie sú potvrdené.
+
 Najbližší veľký kandidát. Klient zadá kontakt pôvodnej účtovníčky, skontroluje konkrétne poverenie a potvrdí
 rozsah. Prípady s chýbajúcim oprávnením alebo nedokončeným AML sa neodosielajú. Formy podpisu a rozsah
 zastupovania musí potvrdiť advokát; jednoduchý checkbox sa nesmie vydávať za kvalifikovaný podpis.

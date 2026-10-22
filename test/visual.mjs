@@ -13,6 +13,7 @@ pages.push('health-missing.html','health-ready.html','health-error.html','health
 pages.push('overview-ready.html','overview-bank.html','overview-zero-bank.html','overview-expired.html','overview-member.html','overview-member-onboarding.html','overview-approval.html','overview-actions.html','overview-no-payments.html','overview-closed.html')
 pages.push('social-missing.html','social-ready.html','social-error.html','social-client.html','social-changed.html')
 pages.push('thanks.html', 'requests.html', 'contract-stale.html', 'new-client.html', 'switch.html', 'welcome.html', 'billing.html', 'client-bills.html')
+pages.push('managed-takeover-request.html','managed-takeover-client.html','managed-takeover-team.html')
 pages.push('free-tools.html', 'free-invoice.html')
 pages.push('team-home.html', 'vat-ready.html', 'payment-before.html', 'first-admin.html', 'contract-release.html')
 pages.push('payroll-registrations.html', 'handover-resign.html', 'contract-lapsed.html', 'team-people.html', 'client-poa.html')
