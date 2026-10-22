@@ -4,6 +4,14 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Verejné vysvetlenie prechodu, 22. 10. 2026:** `src/copy.ts` nadväzuje na G1 z PR #25.
+FAQ opisuje kontakt a potvrdenie klienta, koordináciu Firmony, odborné prevzatie a nevyhnutný podpis/doplnenie.
+Pôvodná osobná cesta zostáva. Ukážka otázky k notebooku žiada faktúru a obchodný účel namiesto paušálneho
+daňového záveru podľa ceny. Príjem cez poštára má aj v ukážke označené pripravované napojenie.
+Je to zrozumiteľnejšia komunikácia existujúceho rozsahu, bez zmeny cien, sloganu, zákonného výpočtu,
+zmlúv, AI modelu alebo spustenia živého poštára. Nadväzuje na výskum dôvery v `docs/research/trust-and-value-2026-10-22.md`;
+predajný účinok nie je zmeraný. Samostatná vetva a všetky povinné kontroly pred zlúčením, živá revízia v PR.
+
 **Spravovaný prechod G1 implementovaný 22. 10. 2026:** `docs/managed-takeover.md`.
 Klient na `/app/prechod` zadá kontakt a potvrdí koordináciu; osobná cesta zostáva. Účtovníčka má
 prípad na `/ucto` a v `/ucto/klienti/:id/prevzatie`, zodpovednosť, termín, záznam oprávnenia,

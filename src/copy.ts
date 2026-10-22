@@ -122,7 +122,7 @@ export const copy = typesetAll({
     },
     inbox: {
       title: 'Prijaté e-faktúry',
-      via: 'cez digitálneho poštára',
+      via: 'pripravované napojenie na poštára',
       rows: [
         ['Webhosting', '14,90 €'],
         ['Telefón a internet', '29,00 €'],
@@ -145,12 +145,12 @@ export const copy = typesetAll({
       ] as [string, string, string][],
       missing: 'Chýba jeden bloček z októbra. Pošlete nám ho, prosím?',
     },
-    /** A question to the accountant and her answer: Slovak tax law, said plainly (§ 22 ZDP: 1 700 €). */
+    /** An operational question and the next useful step, without a simulated blanket tax ruling. */
     ask: {
       who: 'Vaša účtovníčka',
       online: 'odpovedá do jedného pracovného dňa',
-      question: 'Môžem si dať do nákladov nový notebook?',
-      answer: 'Áno, ak ho používate na podnikanie. Do 1 700 € ide rovno do nákladov, drahší sa odpisuje. Pošlite mi faktúru.',
+      question: 'Kúpil som notebook do firmy. Čo mám poslať?',
+      answer: 'Pošlite faktúru a stručne napíšte, ako ho používate vo firme. Zaúčtovanie a prípadné odpisy preverím.',
       thanks: 'Super, ďakujem!',
     },
   },
@@ -295,7 +295,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Ako prejdem od súčasnej účtovníčky?',
-        a: 'Pozrite sa do zmluvy, aká dlhá je výpovedná lehota. Pri mesačnej lehote stačí poslať výpoveď v novembri. Výpoveď so žiadosťou o odovzdanie podkladov Vám pripravíme, konateľ alebo člen predstavenstva ju len podpíše. Podklady, ktoré Vám odovzdá, nahráte do aplikácie a ďalej sa o ne postaráme.',
+        a: 'V aplikácii nám zadáte kontakt na doterajšiu účtovníčku a potvrdíte koordináciu prechodu. Dohodneme prevzatie a Vaša účtovníčka skontroluje podklady. Vy sa zapojíte pri potrebnom podpise alebo doplnení. Priebeh aj ďalší krok uvidíte v aplikácii. Pripravený list si môžete vybaviť aj osobne.',
       },
       {
         q: 'Kto urobí závierku za rok 2026?',
