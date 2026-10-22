@@ -59,6 +59,8 @@ import { checkAutobookAtomic } from './autobook-atomic.runtime.mjs'
 import { checkOverviewRuntime } from './overview.runtime.mjs'
 import { checkDeliveryRuntime } from './delivery.runtime.mjs'
 import { checkManagedTakeover } from './managed-takeover.runtime.mjs'
+import { checkAssistantRuntime } from './assistant.runtime.mjs'
+import { assistantProviderFixture } from './assistant.fixture.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
@@ -78,6 +80,7 @@ if (process.env.FIRMONY_CAPTURE_DIR) mkdirSync(process.env.FIRMONY_CAPTURE_DIR, 
 const lookups = []
 const readings = []
 const notices = []
+const assistantProvider=assistantProviderFixture()
 let indexNowAnswer = null
 // The bank of Firma A: what it holds is set by the part of the test that reads it.
 const bankFeed = { transactions: [], balance: '0.00' }
@@ -103,6 +106,8 @@ const mf = new Miniflare(
         bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.io', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey, ANNOUNCE: '1' },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
+          const assistant=await assistantProvider.answer(request)
+          if(assistant)return new MfResponse(await assistant.text(),{status:assistant.status,headers:assistant.headers})
           if (['api.indexnow.org', 'www.bing.com'].includes(new URL(request.url).hostname)) {
             notices.push({ ...JSON.parse(await request.text()), agent: request.headers.get('user-agent'), sentTo: new URL(request.url).hostname })
             return new MfResponse('', { status: indexNowAnswer ?? (notices.length === 1 ? 202 : 200) })
@@ -5215,5 +5220,6 @@ check(
 await checkOverviewRuntime({ db, nowS, day, signIn, as, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkDeliveryRuntime({ mf, db, signIn, nowS, day })
 await checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,capture:process.env.FIRMONY_CAPTURE_DIR})
+await checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,provider:assistantProvider,capture:process.env.FIRMONY_CAPTURE_DIR})
 await mf.dispose()
 done('runtime')

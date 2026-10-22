@@ -6,6 +6,11 @@ import { cancelHandover, managedHandover, requestHandover } from '../migration/s
 import { requestErrors, takeoverLoginNext, type HandoverRequestValues } from '../migration/model'
 import { accessOpenSql } from '../aml/retention'
 import { TakeoverCompanyChoice } from '../views/managed-takeover'
+import { AssistantPage } from '../views/assistant'
+import { assistantAnswer, assistantDocuments } from '../assistant/context'
+import { assistantAllowed, assistantControl, type AssistantScope } from '../assistant/store'
+import { assistantQuestion, assistantTopic } from '../assistant/model'
+import { askAssistant } from '../assistant/service'
 // The client's app under /app. Signing in is open; everything else needs a session, and every read and change
 // is made for the company of that session (store.ts). Forms answer with a redirect to a page that says what
 // happened, so a reload never sends anything twice.
@@ -1888,7 +1893,7 @@ async function messagesPage(c: Ctx, extra: { error?: string; draft?: string; sub
     c,
     'messages',
     t.messages.title,
-    <MessagesPage messages={messages} accountant={who.company.accountantName} now={now()} payments={payments} flash={flashOf(c)} me={who.user.id} {...extra} />,
+    <MessagesPage messages={messages} accountant={who.company.accountantName} now={now()} payments={payments} flash={flashOf(c)} me={who.user.id} assistant={await assistantAllowed(db,clientAssistantScope(c))} {...extra} />,
     status,
   )
 }
@@ -1912,6 +1917,43 @@ appRoutes.post('/potvrdit', async (c) => {
     later(c, flushOutbox(db, c.env.EMAIL))
   }
   return c.redirect(`/app/potvrdit?poslane=1&next=${encodeURIComponent(next)}`, 303)
+})
+
+const clientAssistantScope=(c:Ctx):AssistantScope=>({company:c.get('who').company.id,actor:c.get('who').user.id,side:'client'})
+async function assistantPage(c:Ctx,result?:Awaited<ReturnType<typeof askAssistant>>) {
+  const who=c.get('who'),s=clientAssistantScope(c),db=c.env.DB
+  if(!await assistantAllowed(db,s))return c.notFound()
+  const document=result?.document??c.req.query('doklad')??''
+  if(document&&!ID.test(document))return c.notFound()
+  const [documents,control]=await Promise.all([assistantDocuments(db,s,document),assistantControl(db)])
+  if(document&&!documents.some(d=>d.id===document))return c.notFound()
+  const topic=assistantTopic(c.req.query('tema'))
+  const answer=result?.answer??(topic?await assistantAnswer(db,s,who.company,topic,document):undefined)
+  if(topic&&!answer&&!result)return c.notFound()
+  return shell(c,'messages','Asistent Firmony',<AssistantPage company={who.company} context={`${who.user.id}:${who.company.id}`} base="/app/asistent"
+    documents={documents} available={Boolean(c.env.ANTHROPIC_API_KEY)&&control.enabled} answer={answer??undefined}
+    question={result?.question} document={document} error={result?.error} submission={result?.submission} />,result?.status??200)
+}
+appRoutes.get('/asistent',(c)=>assistantPage(c))
+appRoutes.post('/asistent',async c=>{
+  const who=c.get('who'),body=await c.req.parseBody(),db=c.env.DB,s=clientAssistantScope(c)
+  if(body.firma!==s.company||body.kontext!==`${s.actor}:${s.company}`)return c.text('Účet alebo firma sa zmenili. Obnovte stránku.',409)
+  const fresh=async()=>{const again=await currentWho(c,db);return Boolean(again?.company?.id===s.company&&again?.user.id===s.actor&&again?.role&&!(await securityGate(c,again)))}
+  const result=await askAssistant(db,c.env.ANTHROPIC_API_KEY,s,who.company,{id:body.odoslanie,question:body.otazka,document:body.doklad},fresh)
+  if(!await fresh())return c.text('Účet alebo firma sa zmenili. Obnovte stránku.',409)
+  return assistantPage(c,result)
+})
+appRoutes.post('/asistent/odovzdat',async c=>{
+  const who=c.get('who'),body=await c.req.parseBody(),s=clientAssistantScope(c)
+  if(body.firma!==s.company||body.kontext!==`${s.actor}:${s.company}`)return c.text('Účet alebo firma sa zmenili. Obnovte stránku.',409)
+  const question=assistantQuestion(body.otazka)
+  if(!question)return assistantPage(c,{status:422,error:'Najprv napíšte otázku, ktorú chcete pripraviť účtovníčke.',question:'',document:''})
+  const document=typeof body.doklad==='string'?body.doklad:''
+  const d=document&&ID.test(document)?await getDocument(c.env.DB,s.company,document):null
+  if(document&&!d||!await assistantAllowed(c.env.DB,s))return c.notFound()
+  // Preparation only. The existing composer shows the exact text, then sends it once after the client's click.
+  const draft=`Otázka pre účtovníčku:\n${question}${d?`\n\nDoklad: ${d.number??d.fileName??d.id}\n${BRAND.origin}/app/doklady/${d.id}`:''}`
+  return messagesPage(c,{draft,submission:crypto.randomUUID()})
 })
 
 appRoutes.get('/spravy', (c) => messagesPage(c))

@@ -7533,3 +7533,14 @@ a.wtable__name {
 .managed-takeover__history li { margin-block: 1rem; }
 .managed-takeover__manual { margin-top: 1.5rem; }
 @media print { .managed-takeover, .managed-takeover__manual > summary { display: none !important; } }
+
+/* The assistant shares the existing frame; sources and actions remain usable on a narrow phone. */
+.assistant { min-width: 0; }
+.assistant p, .assistant li, .assistant a { overflow-wrap: anywhere; }
+.assistant__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; }
+.assistant__sources { padding-left: 1.25rem; }
+.assistant__sources li + li { margin-top: 1rem; }
+.assistant__sources p { margin-block: .35rem 0; }
+.assistant__topics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,16rem),1fr)); gap: .7rem; padding: 0; list-style: none; }
+.assistant__topics .btn { width: 100%; height: 100%; white-space: normal; text-align: left; }
+.assistant input, .assistant select, .assistant textarea { min-width: 0; max-width: 100%; }

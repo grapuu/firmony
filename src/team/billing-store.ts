@@ -68,6 +68,14 @@ async function tariffFor(db: D1Database, company: Company, paper: Map<string, Ta
   return paper.get(company.id) ?? priceListTariff('pricelist')
 }
 
+/** The same saved tariff as billing uses; a broken paper record must not masquerade as a confirmed price. */
+export async function tariffForClient(db:D1Database,company:Company):Promise<Tariff|'corrupt'> {
+  const row=await db.prepare('SELECT data FROM billing_tariffs WHERE company_id=?').bind(company.id).first<{data:string}>()
+  const tariff=row?tariffOfJson(row.data):null
+  if(row&&!tariff)return 'corrupt'
+  return tariffFor(db,company,new Map(tariff?[[company.id,tariff]]:[]))
+}
+
 export interface ClientBill {
   company: Company
   draft: BillingDraft

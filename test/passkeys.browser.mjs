@@ -12,6 +12,8 @@ import { checkDeliveryBrowser } from './delivery.browser.mjs'
 import { checkCustomerValueBrowser } from './customer-value.browser.mjs'
 import { checkFreeInvoiceBrowser } from './free-invoice.browser.mjs'
 import { checkManagedTakeoverBrowser } from './managed-takeover.browser.mjs'
+import { checkAssistantBrowser } from './assistant.browser.mjs'
+import { assistantProviderFixture } from './assistant.fixture.mjs'
 import { payslip } from '../.wrangler/dist/stores.js'
 
 const assets = resolve('public'),
@@ -19,6 +21,7 @@ const assets = resolve('public'),
 const bootstrap = randomBytes(32).toString('base64url'),
   now = Math.floor(Date.now() / 1000)
 let mf, browser
+const assistantProvider=assistantProviderFixture()
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, origin)
@@ -80,11 +83,12 @@ try {
           r2Buckets: { FILES: 'passkey-browser' },
           bindings: {
             DEMO: '1',
+            ANTHROPIC_API_KEY: 'TEST-ONLY local assistant fixture',
             TEAM_BOOTSTRAP_EMAIL: 'browser-admin@example.test',
             TEAM_BOOTSTRAP_TOKEN: bootstrap,
             TEAM_BOOTSTRAP_EXPIRES_AT: String(now + 3600),
           },
-          outboundService: () => new Response('offline', { status: 599 }),
+          outboundService: async request => await assistantProvider.answer(request) ?? new Response('offline', { status: 599 }),
         },
       ],
     }),
@@ -395,6 +399,7 @@ try {
   check('the mobile primary action reaches the actual message without manufacturing a reply', await clientPage.getByText('TEST-BROWSER-OVERVIEW správa pre klienta', { exact: true }).count() === 1 && (await db.prepare("SELECT seen_at FROM messages WHERE id='browser-overview-message'").first()).seen_at !== null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE company_id='browser-overview-co' AND action='message.sent'").first()).n === 0)
   await checkDeliveryBrowser({ page: clientPage, db, origin })
   await checkManagedTakeoverBrowser({page,clientPage,db,origin})
+  await checkAssistantBrowser({page,clientPage,db,origin,provider:assistantProvider})
   await db.prepare("UPDATE sessions SET company_id='browser-co' WHERE user_id='browser-client'").run()
   await clientPage.goto(`${origin}/app/podania/${filingId}`)
   check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)
