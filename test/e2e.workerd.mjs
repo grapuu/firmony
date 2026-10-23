@@ -159,7 +159,7 @@ check(
 const runs = (html) => (html.match(/<script(?![^>]*type="application\/ld\+json")[^>]*>/gi) ?? [])
 check(
   'it runs one script of its own, the month played where scroll timelines are missing, and nothing inline',
-  runs(page).length === 1 && /<script src="\/flow\.js" defer(="")?><\/script>/.test(page),
+  runs(page).length === 1 && /<script src="\/flow\.js(?:\?v=[a-f0-9]{8})?\" defer(="")?><\/script>/.test(page),
   runs(page).join(' '),
 )
 {

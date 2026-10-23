@@ -1,5 +1,21 @@
 # Firmony: progress of the continuation
 
+## Finálny polishing ponuky a oprava cache/deploy (Cline, 23. október 2026 CEST)
+
+Presné texty od majiteľa: eyebrow „Výhody, ktoré Vám ušetria štart“, nadpis „Začnite s Firmony a prvé dôležité
+veci máte za 0 €.“, podnadpis a štyri karty s akcentom „ZA 0 €“ (názov + popis) a nápoveda „Pozrite si všetky
+4 výhody…“. Jediná odchýlka: pomlčka v popise karty 1 nahradená bodkou, lebo projekt zakazuje dlhé pomlčky.
+Vizuálny polishing: nadpis o stupeň menší, sekcia kompaktnejšia (menší padding aj medzery), stredná karta
+dominantnejšia a bočné viac ustupujú (scale 0.85, opacity 0.85, posun 12 px), navigácia + nápoveda + CTA ako
+jeden celok, čistejší prechod do sekcie „Vy pošlete doklady“.
+
+Oprava cache/deploy: HTML malo `no-store`, ale CSS/JS/assets mali `public, max-age=0, must-revalidate` + etag,
+takže sa po deployi mohla miešať nová stránka so starým CSS/JS z cache. Pridaný cache-busting: `asset(path)`
+v config.ts pripája `?v=<revision>` (prvých 8 znakov commitu z BUILD_METADATA) k `/app.css` a `/flow.js`, takže
+každý deploy má vlastnú URL a prehliadač aj edge cache vždy ťahajú nový súbor. Overené: check, 1 494 unit +
+12 deployment, 2 272 runtime, UI sada 1440/390/320 px, Playwright Chromium aj WebKit na
+1440/1280/1920/768/390/320 (stred = 0 px, bočné karty viditeľné, bez pretečenia). Bez zmeny schémy.
+
 ## Nekonečný 3D kolotoč ponuky (Cline, 23. október 2026 CEST)
 
 Sekcia „Táto ponuka sa nedá odmietnuť“ je nekonečný kruhový kolotoč štyroch kariet: vpredu je hrdina presne

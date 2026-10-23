@@ -81,13 +81,13 @@
   stage.classList.add('offer__stage--js')
 
   // The four places of the ring: 0 the front, 1 right, 2 the back, 3 left. x is the horizontal offset in card
-  // widths, s the scale, o the opacity, z the stacking. The depth is a scale and a shadow, nothing 3D, so
-  // Chromium, Safari and Firefox all paint it alike.
+  // widths, s the scale, o the opacity, z the stacking, y the drop of the receding sides. The depth is a scale,
+  // a dim and a shadow, nothing 3D, so Chromium, Safari and Firefox all paint it alike.
   const PLACE = [
-    { x: 0, s: 1, o: 1, z: 40 },
-    { x: 0.96, s: 0.88, o: 0.9, z: 30 },
-    { x: 0, s: 0.78, o: 0, z: 10 },
-    { x: -0.96, s: 0.88, o: 0.9, z: 30 },
+    { x: 0, s: 1, o: 1, z: 40, y: 0 },
+    { x: 0.96, s: 0.85, o: 0.85, z: 30, y: 12 },
+    { x: 0, s: 0.78, o: 0, z: 10, y: 0 },
+    { x: -0.96, s: 0.85, o: 0.85, z: 30, y: 12 },
   ]
 
   // "Založenie s. r. o. zadarmo", the second card, opens in front.
@@ -99,7 +99,7 @@
     for (let i = 0; i < cards.length; i++) {
       const place = PLACE[((i - rotation) % 4 + 4) % 4]
       const card = cards[i]
-      card.style.transform = `translate(-50%, -50%) translateX(${(place.x * radius).toFixed(1)}px) scale(${place.s})`
+      card.style.transform = `translate(-50%, -50%) translateX(${(place.x * radius).toFixed(1)}px) translateY(${place.y}px) scale(${place.s})`
       card.style.opacity = String(place.o)
       card.style.zIndex = String(place.z)
       card.style.pointerEvents = place.o === 0 ? 'none' : ''

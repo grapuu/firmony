@@ -1,5 +1,5 @@
 import type { Child, FC } from 'hono/jsx'
-import { ART, BRAND, OPERATOR } from '../config'
+import { ART, BRAND, OPERATOR, asset } from '../config'
 import { copy } from '../copy'
 import { typeset } from '../format'
 import { GUIDES } from '../content/guides'
@@ -63,7 +63,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
       <link rel="preload" href="/fonts/funnel-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="preload" href="/fonts/news-latin-italic.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
-      <link rel="stylesheet" href="/app.css" />
+      <link rel="stylesheet" href={asset('/app.css')} />
     </head>
     <body class={meta.path === '/' ? 'is-home' : 'is-page'}>
       <a class="skip" href="#obsah">

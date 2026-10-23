@@ -1,6 +1,15 @@
 // Everything a page states as a fact lives here: the brand, the company behind it, the plans and the limits.
 // Change a price or a limit here and every page, email and test follows.
 
+import { BUILD_METADATA } from './generated/deployment'
+
+/** A static asset with the build's revision, so a new deploy always fetches the new file (the browser and the
+ *  edge cache would otherwise keep the old one under the same address). */
+export const asset = (path: string): string => {
+  const revision = BUILD_METADATA.revision
+  return revision ? `${path}?v=${revision.slice(0, 8)}` : path
+}
+
 /** The site's domain. Once the owner has bought his (firmony.io was his word), this one line changes, and so do the
  * route in wrangler.jsonc, the email routing in Cloudflare, and the tests that name the domain. */
 export const DOMAIN = 'firmony.io'

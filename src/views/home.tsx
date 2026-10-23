@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { annualPlanCents, type CalcResult } from '../calc'
-import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, type Art, type PlanId } from '../config'
+import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, asset, type Art, type PlanId } from '../config'
 import { copy, planRows } from '../copy'
 import { formatEur } from '../format'
 import { FreeToolsTeaser } from './free-tools'
@@ -202,7 +202,7 @@ const Flow: FC = () => {
         </div>
       </div>
       {/* Plays the month where scroll timelines are missing (public/flow.js); the only script of the site. */}
-      <script src="/flow.js" defer></script>
+      <script src={asset('/flow.js')} defer></script>
     </section>
   )
 }
@@ -243,11 +243,6 @@ const OFFER_ART: readonly (Art | null)[] = [ART.offerFirstMonth, ART.offerCompan
  *  a quarter turn on a click, an arrow key or a swipe, so it never ends and never jumps. */
 const Offer: FC<{ carry: Carry }> = ({ carry }) => {
   const o = copy.offer
-  // Each deal's title ends in "zadarmo"; split it so the word can be set as the poster's big accent.
-  const split = (title: string): [string, string] => {
-    const at = title.lastIndexOf(' zadarmo')
-    return at > 0 ? [title.slice(0, at), 'zadarmo'] : [title, '']
-  }
   return (
     <section class="section offer" aria-labelledby="offer-title">
       <div class="wrap">
@@ -262,24 +257,21 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
         <div class="offer__stage" data-offer-stage role="region" aria-roledescription="Kolotoč" aria-label={o.eyebrow} tabindex={0}>
           <div class="offer__ring">
             <ul class="offer__track">
-              {o.items.map((item, i) => {
-                const [main, accent] = split(item.title)
-                return (
-                  <li class="offer__card">
-                    <span class="offer__badge">0 €</span>
-                    <div class="offer__art" aria-hidden="true">
-                      <Picture art={OFFER_ART[i] ?? null} className="offer__img" sizes="(max-width: 700px) 58vw, 240px" />
-                    </div>
-                    <div class="offer__copy">
-                      <h3 class="offer__title" aria-label={item.title}>
-                        <span class="offer__title-main">{main}</span>
-                        {accent ? <span class="offer__title-accent">{accent}</span> : null}
-                      </h3>
-                      <p class="offer__text">{item.text}</p>
-                    </div>
-                  </li>
-                )
-              })}
+              {o.items.map((item, i) => (
+                <li class="offer__card">
+                  <span class="offer__badge">0 €</span>
+                  <div class="offer__art" aria-hidden="true">
+                    <Picture art={OFFER_ART[i] ?? null} className="offer__img" sizes="(max-width: 700px) 58vw, 240px" />
+                  </div>
+                  <div class="offer__copy">
+                    <h3 class="offer__title" aria-label={`${item.title} za 0 €`}>
+                      <span class="offer__title-main">{item.title}</span>
+                      <span class="offer__title-accent">{o.accent}</span>
+                    </h3>
+                    <p class="offer__text">{item.text}</p>
+                  </div>
+                </li>
+              ))}
             </ul>
           </div>
 

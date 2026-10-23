@@ -79,21 +79,23 @@ export const copy = typesetAll({
     second: 'AI prečíta doklady, systém zaúčtuje, účtovníčka skontroluje.',
   },
 
-  /** One offer the visitor cannot refuse: the whole deal in one place, the way Revolut and Robinhood sell a promo. */
+  /** One offer the visitor cannot refuse: four deals in a ring that turns without end. */
   offer: {
-    eyebrow: 'Prečo je Firmony výhodné',
-    title: 'Táto ponuka sa nedá odmietnuť.',
-    lead: 'Prvý mesiac zadarmo. Založenie s. r. o. zadarmo. Prechod zadarmo. Faktúry zadarmo. Začínate vyhrávať ešte pred prvou faktúrou.',
+    eyebrow: 'Výhody, ktoré Vám ušetria štart',
+    title: 'Začnite s Firmony a prvé dôležité veci máte za 0 €.',
+    lead: 'Prvý mesiac, založenie s. r. o., prechod aj faktúry. Bez zbytočných vstupných nákladov a bez komplikovaného začiatku.',
+    /** The big accent under each card's title, the same on all four. */
+    accent: 'ZA 0 €',
     items: [
-      { title: 'Prvý mesiac zadarmo', text: 'Vyskúšate bez rizika. Ak Vám to nesadne, odídete bez záväzku.' },
-      { title: 'Založenie s. r. o. zadarmo', text: 'Založíme firmu za Vás. Vy riešite len podpisy.' },
-      { title: 'Prechod zadarmo', text: 'Od starej účtovníčky prejdete bez práce. Stačí odkliknúť.' },
-      { title: 'Faktúry zadarmo', text: 'Vystavíte faktúru za minútu. Bez účtu, bez karty, navždy.' },
+      { title: 'Prvý mesiac', text: 'Firmony si vyskúšate bez záväzku. Najprv uvidíte, či vám sedí. Až potom sa rozhodnete.' },
+      { title: 'Založenie s. r. o.', text: 'Firmu založíme za vás. Vy riešite len podpisy a môžete začať rýchlejšie.' },
+      { title: 'Prechod k Firmony', text: 'So zmenou vám pomôžeme tak, aby ste nemuseli začínať od nuly ani platiť za samotný prechod.' },
+      { title: 'Faktúry', text: 'Faktúry vystavíte bez príplatku, jednoducho a hneď od začiatku v jednom systéme.' },
     ],
     cta: 'Chcem začať',
     fine: 'Bez viazanosti. Zmluvu môžete kedykoľvek vypovedať s mesačnou výpovednou lehotou.',
-    hint: 'Objavte všetky výhody. Posúvajte šípkami.',
-    hintMobile: 'Objavte všetky výhody. Potiahnite prstom.',
+    hint: 'Pozrite si všetky 4 výhody a vyberte si dôvod, prečo začať práve teraz.',
+    hintMobile: 'Pozrite si všetky 4 výhody a potiahnite prstom.',
   },
 
   /** Everything in the price: pick one and see it. */
