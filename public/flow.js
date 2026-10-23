@@ -65,68 +65,87 @@
   window.addEventListener('resize', queue)
 })()
 
-// The offer carousel on the home page: the card nearest the middle of the stage is the hero (marked
-// `offer__card--on`; the CSS lets the sides fall back), a click rolls the clicked card to the middle, and the
-// arrow keys step one card when the stage has focus. Scroll-snap itself runs in CSS; this only marks the hero
-// and turns clicks and keys into a smooth centring. Nothing animates for a visitor who asked for less motion.
+// The offer carousel on the home page: four cards on a virtual ring. The card in front is the hero in the middle,
+// the cards left and right are visible and readable, and the fourth hides behind it. A click on an arrow or a side
+// card turns the ring a quarter turn; the arrow keys and a swipe do the same. The turn is a 2.5D orbit — a
+// horizontal offset, a scale and a slight tilt from the card's place on the ring — nothing flies up or down, so
+// the ring never ends and never jumps. The CSS holds the motion, so less motion means an instant turn.
 ;(() => {
   const stage = document.querySelector('.offer__stage')
   if (!stage) return
   const cards = Array.from(stage.querySelectorAll('.offer__card'))
-  if (cards.length === 0) return
+  const prev = stage.querySelector('[data-offer-prev]')
+  const next = stage.querySelector('[data-offer-next]')
+  const count = stage.querySelector('[data-offer-count]')
+  if (cards.length === 0 || !prev || !next) return
   stage.classList.add('offer__stage--js')
 
-  const motion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
-  let reduced = motion ? motion.matches : false
-  if (motion && typeof motion.addEventListener === 'function') {
-    motion.addEventListener('change', (e) => {
-      reduced = e.matches
+  // The four places of the ring: 0 the front, 1 right, 2 the back, 3 left. x is the horizontal offset in card
+  // widths, s the scale, ry the tilt, o the opacity, z the stacking and f the brightness.
+  const PLACE = [
+    { x: 0, s: 1, ry: 0, o: 1, z: 40, f: 1 },
+    { x: 1, s: 0.84, ry: -18, o: 0.85, z: 30, f: 0.92 },
+    { x: 0, s: 0.72, ry: 0, o: 0, z: 10, f: 0.8 },
+    { x: -1, s: 0.84, ry: 18, o: 0.85, z: 30, f: 0.92 },
+  ]
+
+  // "Založenie s. r. o. zadarmo", the second card, opens in front.
+  let rotation = 1
+  let radius = 0
+
+  const render = () => {
+    const front = ((rotation % 4) + 4) % 4
+    for (let i = 0; i < cards.length; i++) {
+      const place = PLACE[((i - rotation) % 4 + 4) % 4]
+      const card = cards[i]
+      card.style.transform = `translate(-50%, -50%) translateX(${(place.x * radius).toFixed(1)}px) rotateY(${place.ry}deg) scale(${place.s})`
+      card.style.opacity = String(place.o)
+      card.style.zIndex = String(place.z)
+      card.style.filter = place.f === 1 ? 'none' : `brightness(${place.f})`
+      card.style.pointerEvents = place.o === 0 ? 'none' : ''
+      card.setAttribute('aria-hidden', place.o === 0 ? 'true' : 'false')
+      card.classList.toggle('offer__card--on', i === front)
+    }
+    if (count) count.textContent = `${front + 1} / ${cards.length}`
+  }
+
+  const measure = () => {
+    radius = cards[0].offsetWidth * 0.86
+    render()
+  }
+
+  const turn = (step) => {
+    rotation += step
+    render()
+  }
+
+  prev.addEventListener('click', () => turn(-1))
+  next.addEventListener('click', () => turn(1))
+
+  // A click on a side card brings it to the front.
+  for (let i = 0; i < cards.length; i++) {
+    cards[i].addEventListener('click', () => {
+      const place = ((i - rotation) % 4 + 4) % 4
+      if (place === 1) turn(1)
+      else if (place === 3) turn(-1)
     })
   }
-
-  // The card nearest the middle of the visible stage is the hero.
-  const mark = () => {
-    const box = stage.getBoundingClientRect()
-    const centre = box.left + box.width / 2
-    let hero = null
-    let best = Infinity
-    for (const card of cards) {
-      const c = card.getBoundingClientRect()
-      const d = Math.abs(c.left + c.width / 2 - centre)
-      if (d < best) {
-        best = d
-        hero = card
-      }
-    }
-    for (const card of cards) card.classList.toggle('offer__card--on', card === hero)
-  }
-
-  const centre = (card) => {
-    if (typeof card.scrollIntoView !== 'function') return
-    card.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'nearest', inline: 'center' })
-  }
-
-  for (const card of cards) card.addEventListener('click', () => centre(card))
 
   stage.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-    const index = cards.findIndex((card) => card.classList.contains('offer__card--on'))
-    const at = index === -1 ? 0 : index
-    const next = e.key === 'ArrowRight' ? Math.min(cards.length - 1, at + 1) : Math.max(0, at - 1)
-    centre(cards[next])
-    e.preventDefault()
+    if (e.key === 'ArrowRight') { turn(1); e.preventDefault() }
+    else if (e.key === 'ArrowLeft') { turn(-1); e.preventDefault() }
   })
 
-  let queued = false
-  const queue = () => {
-    if (queued) return
-    queued = true
-    requestAnimationFrame(() => {
-      queued = false
-      mark()
-    })
-  }
-  stage.addEventListener('scroll', queue, { passive: true })
-  window.addEventListener('resize', queue)
-  mark()
+  // A horizontal swipe turns the ring one card.
+  let startX = null
+  stage.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX }, { passive: true })
+  stage.addEventListener('touchend', (e) => {
+    if (startX === null) return
+    const dx = e.changedTouches[0].clientX - startX
+    if (Math.abs(dx) > 42) turn(dx < 0 ? 1 : -1)
+    startX = null
+  }, { passive: true })
+
+  window.addEventListener('resize', measure)
+  measure()
 })()

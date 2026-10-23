@@ -238,38 +238,71 @@ const Statement: FC = () => (
 /** The glass icon of each deal card, in the same order as copy.offer.items. */
 const OFFER_ART: readonly (Art | null)[] = [ART.offerFirstMonth, ART.offerCompanyFormation, ART.offerSwitch, ART.offerInvoices]
 
-/** The one offer the visitor cannot refuse: a spatial carousel of tall vertical panels, the way Revolut and
- *  Robinhood sell a promo. The centre card is the hero; the sides fall back and dim. Scroll-snap (CSS) plays the
- *  swipe, and public/flow.js marks the nearest card the hero and turns a click or the arrow keys into a smooth
- *  centring. */
+/** The one offer the visitor cannot refuse: four cards on a virtual ring. The card in front is the hero in the
+ *  middle, one card each side is visible and readable, and the fourth hides behind. public/flow.js turns the ring
+ *  a quarter turn on a click, an arrow key or a swipe, so it never ends and never jumps. */
 const Offer: FC<{ carry: Carry }> = ({ carry }) => {
   const o = copy.offer
+  // Each deal's title ends in "zadarmo"; split it so the word can be set as the poster's big accent.
+  const split = (title: string): [string, string] => {
+    const at = title.lastIndexOf(' zadarmo')
+    return at > 0 ? [title.slice(0, at), 'zadarmo'] : [title, '']
+  }
   return (
     <section class="section offer" aria-labelledby="offer-title">
       <div class="wrap">
-        <header class="head head--center">
+        <header class="head head--center offer__head">
           <p class="eyebrow">{o.eyebrow}</p>
           <h2 id="offer-title" class="title">
             <span class="title__sans">{o.title}</span>
           </h2>
           <p class="lead">{o.lead}</p>
         </header>
-        <div class="offer__stage" role="region" aria-label={o.eyebrow} tabindex={0}>
-          <ul class="offer__track">
-            {o.items.map((item, i) => (
-              <li class="offer__card">
-                <p class="offer__tag">0 €</p>
-                <div class="offer__icon" aria-hidden="true">
-                  <Picture art={OFFER_ART[i] ?? null} className="offer__img" sizes="(max-width: 700px) 62vw, 210px" />
-                </div>
-                <div class="offer__body">
-                  <h3 class="h3">{item.title}</h3>
-                  <p>{item.text}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+
+        <div class="offer__stage" data-offer-stage role="region" aria-roledescription="Kolotoč" aria-label={o.eyebrow} tabindex={0}>
+          <div class="offer__ring">
+            <ul class="offer__track">
+              {o.items.map((item, i) => {
+                const [main, accent] = split(item.title)
+                return (
+                  <li class="offer__card">
+                    <span class="offer__badge">0 €</span>
+                    <div class="offer__art" aria-hidden="true">
+                      <Picture art={OFFER_ART[i] ?? null} className="offer__img" sizes="(max-width: 700px) 58vw, 240px" />
+                    </div>
+                    <div class="offer__copy">
+                      <h3 class="offer__title" aria-label={item.title}>
+                        <span class="offer__title-main">{main}</span>
+                        {accent ? <span class="offer__title-accent">{accent}</span> : null}
+                      </h3>
+                      <p class="offer__text">{item.text}</p>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          <div class="offer__nav">
+            <button class="offer__arrow" type="button" data-offer-prev aria-label="Predchádzajúca ponuka">
+              <svg class="offer__arrow-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <span class="offer__count" data-offer-count aria-live="polite">2 / 4</span>
+            <button class="offer__arrow" type="button" data-offer-next aria-label="Nasledujúca ponuka">
+              <svg class="offer__arrow-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+
+          <p class="offer__hint">
+            <span class="offer__hint--desktop">{o.hint}</span>
+            <span class="offer__hint--mobile">{o.hintMobile}</span>
+          </p>
         </div>
+
         <p class="offer__cta">
           <a class="btn btn--blue" href={withCarry('/zacat', carry)}>{o.cta}</a>
         </p>

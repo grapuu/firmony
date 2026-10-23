@@ -1,17 +1,18 @@
 # Firmony: progress of the continuation
 
-## Redizajn ponuky „Táto ponuka sa nedá odmietnuť“ (Cline, 23. október 2026 CEST)
+## Nekonečný 3D kolotoč ponuky (Cline, 23. október 2026 CEST)
 
-Sekcia „Prečo je Firmony výhodné“ na domovke už nie je mriežka štyroch kariet, ale priestorový carousel
-vysokých zvislých panelov (`.offer__stage`, `.offer__track`, `.offer__card`). Stredná karta je hrdina:
-jediný skript (`public/flow.js`) pridá `offer__stage--js` a karte najbližšie k stredu `offer__card--on`;
-bočné karty ustúpia (zmenšenie, stlmenie, mierny 3D sklon cez `perspective`) a stredná sa vráti dopredu.
-Scroll-snap hrá potiahnutie aj koliesko; klik na kartu a šípky ju plynulo privedú do stredu; bočný padding
-trate zaručuje, že prvá karta sedí v strede hneď a posledná sa tam tiež dostane. Štyri nové 3D sklenené ikony
-sú veľkým vizuálom každej karty so „0 €“ odznakom a názvom/popisom. Na telefóne stage beží od okraja k okraju,
-jeden panel a kúsok ďalšieho. Bez skriptu či s `prefers-reduced-motion` stoja štyri plné, rovnako čitateľné
-karty. CTA, texty, farby a zmysel ponúk ostávajú. Overené: check, 1 494 unit + 12 deployment, 2 272 runtime,
-UI sada 1440/390/320 px. Bez zmeny schémy.
+Sekcia „Táto ponuka sa nedá odmietnuť“ je prestavaná z posúvateľného pásu na nekonečný kruhový kolotoč.
+Štyri karty stoja na virtuálnom kruhu: vpredu je hrdina presne v strede, po bokoch dve čitateľné karty,
+štvrtá je vzadu. `public/flow.js` (jediný skript) otáča kruh o štvrť otáčky na klik, šípku alebo potiahnutie
+(2.5D orbita: vodorovný posun, mierka, sklon), takže nikde nekončí ani nepreskakuje; desať klikov vľavo aj
+vpravo plynulo krúži. Na začiatku je vpredu „Založenie s. r. o. zadarmo“ (počítadlo „2 / 4“). Každá karta je
+sýty modrofialový sklenený panel s bielym „0 €“ odznakom, veľkou 3D ikonou (55–70 % karty) a plagátovým
+názvom, kde je „zadarmo“ veľké a svetlomodré. Šípky, počítadlo a nápoveda sú pod kruhom, potom CTA. Sekcia
+nemá okraj a biely–modrý–biely gradient ju plynulo prepája s hero aj mesiacom, bez veľkých prázdnych blokov.
+Bez skriptu stoja štyri karty v rade; pri `prefers-reduced-motion` je otočenie okamžité. Overené: check,
+1 494 unit + 12 deployment, 2 272 runtime, UI sada 1440/390/320 px a Playwright sonda stredu/rotácie na
+1440/1280/768/390. Bez zmeny schémy.
 
 ## Kalkulačka odvodov a dane SZČO (Cline, 23. október 2026 CEST)
 

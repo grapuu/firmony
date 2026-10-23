@@ -92,6 +92,8 @@ export const copy = typesetAll({
     ],
     cta: 'Chcem začať',
     fine: 'Bez viazanosti. Zmluvu môžete kedykoľvek vypovedať s mesačnou výpovednou lehotou.',
+    hint: 'Objavte všetky výhody. Posúvajte šípkami.',
+    hintMobile: 'Objavte všetky výhody. Potiahnite prstom.',
   },
 
   /** Everything in the price: pick one and see it. */

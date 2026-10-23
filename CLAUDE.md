@@ -3114,14 +3114,15 @@ invented), people (his real photo, an accountant with a name) and a finished thi
   `--card-r`). On a tablet the card comes under the panel and overlaps it by 96 px; on a phone the glass is one
   invoice in the top corner, and none below 380 px. The opening arrives once (words, card, glass) on load.
 - The offer the visitor cannot refuse (`.offer`, "Prečo je Firmony výhodné / Táto ponuka sa nedá odmietnuť"):
-  a spatial carousel of four tall vertical panels. The stage (`.offer__stage`) scrolls and snaps horizontally,
-  the track (`.offer__track`) carries the cards. The middle card is the hero: `public/flow.js` (the page's one
-  script) marks the nearest card `offer__card--on`, and the sides fall back and dim — smaller, dimmer, a slight
-  `rotateX` under the track's `perspective`. Scroll-snap plays the swipe, a click and the arrow keys roll a card
-  to the middle, and the track's side padding lets the first card sit centred at rest and the last card reach
-  the middle too. Each card is a glass panel (white into blue) with a big "0 €" badge and one of his four 3D
-  glass objects large in its middle. On a phone the stage runs edge to edge, one panel with the next peeking in.
-  Without the script, or with reduced motion, the four cards stand complete and equal.
+  four cards on a virtual ring that turns without end. The card in front is the hero in the middle, one card
+  each side stays visible and readable, the fourth hides behind it. `public/flow.js` (the page's one script)
+  turns the ring a quarter turn on a click, an arrow key or a swipe — a 2.5D orbit of horizontal offset, scale
+  and a slight tilt, so it never ends and never jumps; "Založenie s. r. o. zadarmo" opens in front and the count
+  reads "2 / 4". Each card is a rich blue-violet glass panel with a white "0 €" badge, one of his four 3D glass
+  objects large in its middle (55–70 % of the card) and a poster title whose "zadarmo" is set big and light blue.
+  Arrows, a count and a hint sit under the ring, the CTA follows. Without the script the four cards stand as a
+  row; with reduced motion the turn is instant. The section has no border and fades white–blue–white into the
+  sections around it.
 - One month (`.flow`, "Vy pošlete doklady. My urobíme zvyšok."): a white card of October as CloudTalk shows a
   feed (head, five rows each with its icon in a tile, title, amount and a green pill, and "Všetko zaúčtované")
   on a light panel. Where scroll timelines exist and the screen is at least 700 px high, the track is 235vh and
