@@ -235,6 +235,9 @@ const Statement: FC = () => (
   </div>
 )
 
+/** The glass icon of each deal card, in the same order as copy.offer.items. */
+const OFFER_ART: readonly (Art | null)[] = [ART.savings, ART.seed, ART.key, ART.paperInvoice]
+
 /** The one offer the visitor cannot refuse: the whole deal in one place, the way Revolut and Robinhood sell a promo. */
 const Offer: FC<{ carry: Carry }> = ({ carry }) => {
   const o = copy.offer
@@ -249,9 +252,12 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
           <p class="lead">{o.lead}</p>
         </header>
         <ul class="offer__grid">
-          {o.items.map((item) => (
+          {o.items.map((item, i) => (
             <li class="offer__card">
-              <Tick />
+              <div class="offer__top">
+                <Tile art={OFFER_ART[i] ?? null} size="lg" />
+                <span class="offer__tag">0 €</span>
+              </div>
               <h3 class="h3">{item.title}</h3>
               <p>{item.text}</p>
             </li>
