@@ -2064,8 +2064,8 @@ textarea {
    public/flow.js turns the ring a quarter turn on a click, an arrow key or a swipe. Without the script the four
    cards stand as a row; with reduced motion the turn is instant. */
 .offer {
-  --offer-w: clamp(300px, 24vw, 360px);
-  --offer-h: clamp(440px, 33vw, 480px);
+  --offer-w: clamp(320px, 27vw, 400px);
+  --offer-h: clamp(460px, 32vw, 500px);
   padding-top: clamp(64px, 7vw, 80px);
   background:
     radial-gradient(70% 56% at 50% 40%, var(--blue-soft) 0%, rgba(238, 240, 255, 0) 72%),
@@ -2104,7 +2104,6 @@ textarea {
 /* The ring's fixed height is only needed once the cards are absolutely placed in it. */
 .offer__stage--js .offer__ring {
   height: calc(var(--offer-h) + 40px);
-  perspective: 1500px;
 }
 
 .offer__track {
@@ -2120,18 +2119,25 @@ textarea {
   display: block;
 }
 
+/* Each deal has its own blue-violet hue; all stay in the same family. */
+.offer__card:nth-child(1) { --c1: #1024e0; --c2: #1d3df5; --c3: #2f6bff; }
+.offer__card:nth-child(2) { --c1: #1323d4; --c2: #1c2ef0; --c3: #5c27d6; }
+.offer__card:nth-child(3) { --c1: #1b1fd8; --c2: #3a2df0; --c3: #7a2be0; }
+.offer__card:nth-child(4) { --c1: #2a1fd0; --c2: #4a2ff0; --c3: #a92bb8; }
+
 .offer__card {
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: var(--offer-h);
-  padding: 26px;
-  border-radius: 28px;
+  padding: 28px;
+  border-radius: 30px;
   color: #fff;
   background:
-    radial-gradient(130% 78% at 50% -12%, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 55%),
-    radial-gradient(90% 70% at 100% 108%, rgba(255, 105, 140, 0.3) 0%, rgba(255, 105, 140, 0) 62%),
-    linear-gradient(158deg, #1323d4 0%, #1c2ef0 34%, #3a2df0 66%, #5c27d6 100%);
+    radial-gradient(130% 78% at 50% -12%, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 55%),
+    radial-gradient(95% 72% at 100% 108%, rgba(255, 105, 150, 0.34) 0%, rgba(255, 105, 150, 0) 62%),
+    radial-gradient(80% 70% at 0% 104%, rgba(120, 90, 255, 0.28) 0%, rgba(120, 90, 255, 0) 62%),
+    linear-gradient(158deg, var(--c1, #1323d4) 0%, var(--c2, #1c2ef0) 40%, var(--c3, #5c27d6) 100%);
   box-shadow: 0 24px 56px -22px rgba(14, 22, 110, 0.45);
   overflow: hidden;
   cursor: pointer;
@@ -2144,7 +2150,7 @@ textarea {
   top: 50%;
   width: var(--offer-w);
   height: var(--offer-h);
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity;
 }
 
 /* The hero in front glows a little brighter. */
@@ -2154,16 +2160,16 @@ textarea {
 
 .offer__badge {
   align-self: flex-start;
-  padding: 7px 16px;
+  padding: 9px 20px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   color: var(--blue-deep);
   font-family: var(--display);
   font-weight: 800;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   letter-spacing: -0.02em;
-  line-height: 1.15;
-  box-shadow: 0 10px 24px -10px rgba(8, 12, 90, 0.55);
+  line-height: 1;
+  box-shadow: 0 12px 28px -12px rgba(8, 12, 90, 0.6);
 }
 
 .offer__art {
@@ -2179,17 +2185,21 @@ textarea {
 .offer__art::before {
   content: '';
   position: absolute;
-  inset: -4%;
+  inset: -2%;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0) 72%);
+  background:
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(closest-side, rgba(120, 160, 255, 0.3), rgba(120, 160, 255, 0) 78%);
 }
 
 .offer__img {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
-  width: clamp(180px, 66%, 250px);
-  height: auto;
-  filter: drop-shadow(0 30px 42px -18px rgba(6, 8, 60, 0.62));
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 32px 46px -18px rgba(6, 8, 60, 0.6));
 }
 
 .offer__copy {
@@ -2199,10 +2209,10 @@ textarea {
 
 .offer__title {
   font-family: var(--display);
-  font-weight: 700;
-  font-size: clamp(1.5rem, 1.85vw, 1.8rem);
+  font-weight: 600;
+  font-size: clamp(1.5rem, 1.9vw, 1.9rem);
   line-height: 1.04;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: #fff;
   text-wrap: balance;
 }
@@ -2213,13 +2223,13 @@ textarea {
 
 .offer__title-accent {
   display: block;
-  margin-top: 0.1em;
-  font-size: 1.34em;
+  margin-top: 0.06em;
+  font-size: 1.55em;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: -0.01em;
-  line-height: 0.95;
-  color: #c7d5ff;
+  letter-spacing: -0.012em;
+  line-height: 0.9;
+  color: #bcd4ff;
 }
 
 .offer__text {
@@ -2313,8 +2323,8 @@ textarea {
 /* On a phone one dominant card sits in the middle; the neighbours peek from the edges. */
 @media (max-width: 720px) {
   .offer {
-    --offer-w: min(84vw, 340px);
-    --offer-h: clamp(392px, 104vw, 440px);
+    --offer-w: min(80vw, 340px);
+    --offer-h: clamp(410px, 108vw, 440px);
   }
   .offer__hint--desktop {
     display: none;

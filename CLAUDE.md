@@ -3115,14 +3115,16 @@ invented), people (his real photo, an accountant with a name) and a finished thi
   invoice in the top corner, and none below 380 px. The opening arrives once (words, card, glass) on load.
 - The offer the visitor cannot refuse (`.offer`, "Prečo je Firmony výhodné / Táto ponuka sa nedá odmietnuť"):
   four cards on a virtual ring that turns without end. The card in front is the hero in the middle, one card
-  each side stays visible and readable, the fourth hides behind it. `public/flow.js` (the page's one script)
+  each side stands beside it fully visible, the fourth hides behind. `public/flow.js` (the page's one script)
   turns the ring a quarter turn on a click, an arrow key or a swipe — a 2.5D orbit of horizontal offset, scale
-  and a slight tilt, so it never ends and never jumps; "Založenie s. r. o. zadarmo" opens in front and the count
-  reads "2 / 4". Each card is a rich blue-violet glass panel with a white "0 €" badge, one of his four 3D glass
-  objects large in its middle (55–70 % of the card) and a poster title whose "zadarmo" is set big and light blue.
-  Arrows, a count and a hint sit under the ring, the CTA follows. Without the script the four cards stand as a
-  row; with reduced motion the turn is instant. The section has no border and fades white–blue–white into the
-  sections around it.
+  and shadow, no 3D rotation (Safari hid the side cards under `rotateY`/`perspective`/`filter`), so it never
+  ends and never jumps; the side cards sit one card width from the front, the three span about 76 % of the
+  stage. "Založenie s. r. o. zadarmo" opens in front and the count reads "2 / 4". Each card is a rich
+  blue-violet glass panel (its own hue by `nth-child`) with a white "0 €" badge, one of his four 3D glass
+  objects large in its middle (the transparent margins are trimmed in the art, `object-fit: contain`) and a
+  poster title whose "zadarmo" is set big and light blue. Arrows, a count and a hint sit under the ring, the
+  CTA follows. Without the script the four cards stand as a row; with reduced motion the turn is instant. The
+  section has no border and fades white–blue–white into the sections around it.
 - One month (`.flow`, "Vy pošlete doklady. My urobíme zvyšok."): a white card of October as CloudTalk shows a
   feed (head, five rows each with its icon in a tile, title, amount and a green pill, and "Všetko zaúčtované")
   on a light panel. Where scroll timelines exist and the screen is at least 700 px high, the track is 235vh and

@@ -218,6 +218,15 @@ export type ArtSlot =
 /** One of his glass objects, cut square at 960 and 480 px. */
 const glass = (name: string): Art => ({ src: `/art/${name}.webp`, alt: '', width: 960, height: 960, small: { src: `/art/${name}-480.webp`, width: 480 } })
 
+/** One of the four offer icons, cut to its glass with the transparent margins removed (not a square). */
+const offerGlass = (name: string, width: number, height: number, smallWidth: number): Art => ({
+  src: `/art/${name}.webp`,
+  alt: '',
+  width,
+  height,
+  small: { src: `/art/${name}-480.webp`, width: smallWidth },
+})
+
 /**
  * The pictures of the site: 3D glass icons he makes in ChatGPT, never realistic photographs (his word of
  * 13 October 2026, 01:52: "realistické fotky generovať nebudem, to vyzerá úboho"). All of them are the same
@@ -253,11 +262,11 @@ export const ART: Record<ArtSlot, Art | null> = {
   paperBank: glass('card'),
   paperEinvoice: glass('mail'),
   paperReturn: glass('deadline'),
-  /* The four deals of the offer band, uploaded 23 October 2026 (art-src/icons/offer-*.png). */
-  offerFirstMonth: glass('offer-first-month'),
-  offerCompanyFormation: glass('offer-company-formation'),
-  offerSwitch: glass('offer-switch'),
-  offerInvoices: glass('offer-invoices'),
+  /* The four deals of the offer band, uploaded 23 October 2026 (art-src/icons/offer-*.png), margins trimmed. */
+  offerFirstMonth: offerGlass('offer-first-month', 720, 899, 360),
+  offerCompanyFormation: offerGlass('offer-company-formation', 872, 898, 435),
+  offerSwitch: offerGlass('offer-switch', 898, 750, 449),
+  offerInvoices: offerGlass('offer-invoices', 796, 899, 400),
   founder: null,
 }
 

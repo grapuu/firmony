@@ -2,17 +2,18 @@
 
 ## Nekonečný 3D kolotoč ponuky (Cline, 23. október 2026 CEST)
 
-Sekcia „Táto ponuka sa nedá odmietnuť“ je prestavaná z posúvateľného pásu na nekonečný kruhový kolotoč.
-Štyri karty stoja na virtuálnom kruhu: vpredu je hrdina presne v strede, po bokoch dve čitateľné karty,
-štvrtá je vzadu. `public/flow.js` (jediný skript) otáča kruh o štvrť otáčky na klik, šípku alebo potiahnutie
-(2.5D orbita: vodorovný posun, mierka, sklon), takže nikde nekončí ani nepreskakuje; desať klikov vľavo aj
-vpravo plynulo krúži. Na začiatku je vpredu „Založenie s. r. o. zadarmo“ (počítadlo „2 / 4“). Každá karta je
-sýty modrofialový sklenený panel s bielym „0 €“ odznakom, veľkou 3D ikonou (55–70 % karty) a plagátovým
-názvom, kde je „zadarmo“ veľké a svetlomodré. Šípky, počítadlo a nápoveda sú pod kruhom, potom CTA. Sekcia
-nemá okraj a biely–modrý–biely gradient ju plynulo prepája s hero aj mesiacom, bez veľkých prázdnych blokov.
-Bez skriptu stoja štyri karty v rade; pri `prefers-reduced-motion` je otočenie okamžité. Overené: check,
-1 494 unit + 12 deployment, 2 272 runtime, UI sada 1440/390/320 px a Playwright sonda stredu/rotácie na
-1440/1280/768/390. Bez zmeny schémy.
+Sekcia „Táto ponuka sa nedá odmietnuť“ je nekonečný kruhový kolotoč štyroch kariet: vpredu je hrdina presne
+v strede, po bokoch dve plne viditeľné karty, štvrtá vzadu. `public/flow.js` (jediný skript) otáča kruh o štvrť
+otáčky na klik, šípku, potiahnutie či klávesnicu — 2.5D orbita len z vodorovného posunu, mierky a tieňa (bez
+`rotateY`/`perspective`/`filter`, ktoré v Safari skrývali bočné karty), takže nikde nekončí ani nepreskakuje.
+Bočné karty stoja tesne vedľa hlavnej (dosah = jedna šírka karty), zostava zaberá ~76 % šírky a tri panely
+(≈342 px) sú súčasne viditeľné; na mobile jedna karta a výrez suseda. Vpredu otvára „Založenie s. r. o. zadarmo“
+(počítadlo „2 / 4“). Každá karta je sýty modrofialový sklenený panel s vlastným odtieňom, bielym „0 €“ odznakom,
+veľkou 3D ikonou (okraje orezané na sklo, `object-fit: contain`) a plagátovým názvom s veľkým svetlomodrým
+„ZADARMO“. Šípky, počítadlo a nápoveda sú pod kruhom, potom CTA; sekcia je bez okraja, biely–modrý–biely
+gradient ju prepája s hero aj mesiacom. Overené v Chromium aj WebKit (Playwright): stred = 0 px, bočné karty
+viditeľné a hit-testovateľné, rotácia ±10 klikov, 1440/1280/1920/768/390/320, bez pretečenia. check, 1 494 unit
++ 12 deployment, 2 272 runtime, UI sada 1440/390/320 px. Bez zmeny schémy.
 
 ## Kalkulačka odvodov a dane SZČO (Cline, 23. október 2026 CEST)
 
