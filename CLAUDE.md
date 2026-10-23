@@ -9,7 +9,8 @@ over. Bring this section up to date first whenever a session ends.
 daň 15 % do 100 000 € príjmov, inak progresívna 19/25/30/35 %, nezdaniteľná časť s redukciou. Čísla overené
 23. 10. 2026 proti primárnym zdrojom (Slov-Lex, Sociálna poisťovňa, VšZP, Finančná správa); osem kontrolných
 hodnôt systému sedí. Orientácia, bez súbehu/mikroodvodu/ZŤP. Engine `src/app/szco-calc.ts`, 5 nových unit testov.
-Live (schéma 80). Asistent ostáva na Claude API iba pre triedenie tém; generovanie odpovedí na všetky témy je
+Live (schéma 80). Pridaná aj `/sro-kalkulacka` (daň PO 10/21/24 %, dividendy 7 %) a domovka zviditeľňuje
+založenie a prechod zadarmo. Asistent ostáva na Claude API iba pre triedenie tém; generovanie odpovedí na všetky témy je
 pripravené ako plán v `docs/strategy/16`, kód zatiaľ nespúšťa (bezpečnosť generovaných účtovných odpovedí).
 
 **Založenie s.r.o. + prechod, G4, 22. 10. 2026 (Cline):** `docs/formation.md`. Klient na `/app/zalozenie` zadá žiadosť

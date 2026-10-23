@@ -7,6 +7,9 @@ daň 15 % do 100 000 € príjmov inak progresívna 19/25/30/35 %, nezdaniteľn�
 proti primárnym zdrojom; osem kontrolných hodnôt systému sedí. Orientácia, bez súbehu/mikroodvodu/ZŤP.
 1490 unit + 2272 runtime + 102 browser. Live.
 
+Pridané `/sro-kalkulacka` (daň PO 10/21/24 %, dividendy 7 %) a domovka zviditeľňuje založenie a prechod zadarmo.
+1494 unit + 2272 runtime + 102 browser. Live.
+
 ## Založenie s.r.o. + prechod, G4 (Cline, 22. október 2026 CEST)
 
 [Implementácia](docs/formation.md): žiadosť klienta na `/app/zalozenie`, prípad tímu na `/ucto/klienti/:id/zalozenie`,
