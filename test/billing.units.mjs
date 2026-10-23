@@ -1,6 +1,6 @@
 // Firmony's own billing (src/team/billing.ts): what a client is billed in a month, from its contract and its month.
 import { check } from './check.mjs'
-import { billing as b, config } from '../.wrangler/tmp/units-bundle.mjs'
+import { billing as b, config, invoices } from '../.wrangler/tmp/units-bundle.mjs'
 
 export function checkBillingRules() {
   const plans = config.PLANS.map((p) => ({ id: p.id, name: p.name, docs: p.docs, monthlyCents: Math.round(p.price * 100) }))
@@ -23,13 +23,43 @@ export function checkBillingRules() {
   check('a range of months includes both ends', b.monthsFrom('2026-11', '2027-02').join(' ') === '2026-11 2026-12 2027-01 2027-02' && b.monthsFrom('2027-02', '2027-01').length === 0)
 
   let d = b.draftOf(facts())
-  check('every month of the plan since the start is billed in advance, the current month included', keys(d) === 'plan:2027-01 plan:2027-02 plan:2027-03' && d.totalCents === 3 * 16900, keys(d))
+  check('every month of the plan since the start is billed in advance, the current month included', keys(d) === 'plan:2027-01 free:plan:2027-01 plan:2027-02 plan:2027-03' && d.totalCents === 2 * 16900, keys(d))
   d = b.draftOf(facts({ billed: new Set(['plan:2027-01', 'plan:2027-02']) }))
   check('what was billed is billed no more', keys(d) === 'plan:2027-03')
   d = b.draftOf(facts({ startOn: '2027-05-01' }))
   check('nothing is billed before the contract starts', d.lines.length === 0)
   d = b.draftOf(facts({ endsOn: '2027-02-28' }))
-  check('nothing of the plan is billed after the last month of the contract', keys(d) === 'plan:2027-01 plan:2027-02')
+  check('nothing of the plan is billed after the last month of the contract', keys(d) === 'plan:2027-01 free:plan:2027-01 plan:2027-02')
+
+  // „Prvý mesiac zadarmo“: the base plan of the client's first service month is 100 % off, once, and only the plan.
+  d = b.draftOf(facts())
+  const free = d.lines.find((l) => l.key === 'free:plan:2027-01')
+  check('the first month is discounted on the same invoice, its value visible', free?.cents === -16900 && free.description.includes('Prvý mesiac zadarmo') && free.description.includes('Rast'))
+  d = b.draftOf(facts({ docs: new Map([['2027-01', 64]]), people: new Map([['2027-01', 2]]) }))
+  check('the offer discounts only the base plan, never payroll or the extra for more documents', d.lines.filter((l) => l.key === 'extra:2027-01' || l.key === 'payroll:2027-01').every((l) => l.cents > 0))
+  d = b.draftOf(facts({ plan: 'start' }))
+  check('the discount is the price of the plan actually billed', d.lines.find((l) => l.key === 'free:plan:2027-01')?.cents === -8900)
+  d = b.draftOf(facts({ billed: new Set(['plan:2027-01']) }))
+  check('a first month billed before the offer is not discounted in arrears', !d.lines.some((l) => l.key.startsWith('free:')))
+  d = b.draftOf(facts({ billed: new Set(['plan:2027-01', 'free:plan:2027-01', 'plan:2027-02', 'plan:2027-03']) }))
+  check('a spent offer is billed no more', d.lines.length === 0)
+  d = b.draftOf(facts({ startOn: '2027-02-01' }))
+  check('only the first month is discounted, none after it', d.lines.some((l) => l.key === 'free:plan:2027-02') && !d.lines.some((l) => l.key === 'free:plan:2027-03'))
+  d = b.draftOf(facts({ endsOn: '2027-01-31' }))
+  check('the first month is discounted also when the contract ends in it', keys(d) === 'plan:2027-01 free:plan:2027-01')
+  d = b.draftOf(facts({ month: '2027-01' }))
+  check('a first month with nothing else nets to zero with both lines kept, never a negative total', d.lines.length === 2 && d.totalCents === 0 && d.lines.every((l) => l.cents !== 0) && d.totalCents >= 0)
+  // The discount is a price reduction, not a separate tax: it lowers the taxable base both now (no VAT) and once
+  // europio is a VAT payer, so VAT is counted on the net, not on the plan before the offer.
+  const taxedLines = [
+    { baseCents: 50700, vatRate: 23 }, // three plan months
+    { baseCents: -16900, vatRate: 23 }, // first month free
+    { baseCents: 16000, vatRate: 23 }, // the extra for more documents
+    { baseCents: 3000, vatRate: 23 }, // payroll
+  ]
+  const noVat = invoices.totalsOf(taxedLines, false)
+  const withVat = invoices.totalsOf(taxedLines, true)
+  check('the discount lowers the base for VAT rather than adding its own tax', noVat.total === 52800 && withVat.base === 52800 && withVat.vat === Math.round(52800 * 23 / 100) && withVat.total === 52800 + Math.round(52800 * 23 / 100))
 
   d = b.draftOf(facts({ docs: new Map([['2027-02', 64]]) }))
   const extra = d.lines.find((l) => l.key === 'extra:2027-02')

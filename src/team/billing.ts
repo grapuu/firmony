@@ -107,13 +107,22 @@ export function draftOf(f: BillingFacts): BillingDraft {
   const from = first > earliest ? first : earliest
   const line = (key: string, description: string, quantityMilli: number, unit: BillingLine['unit'], unitCents: number) => {
     const cents = Math.round((quantityMilli * unitCents) / 1000)
-    if (cents > 0 && !f.billed.has(key)) lines.push({ key, description, quantityMilli, unit, unitCents, cents })
+    if (cents !== 0 && !f.billed.has(key)) lines.push({ key, description, quantityMilli, unit, unitCents, cents })
   }
   if (!own) flags.add('plan')
   else {
     // The plan of each month in advance, the month of the invoice included, and none after the contract's last month.
     const until = last && last < f.month ? last : f.month
-    for (const m of monthsFrom(from, until)) line(`plan:${m}`, `Balík ${own.name}, ${monthText(m)}`, 1000, 'mes', own.monthlyCents)
+    for (const m of monthsFrom(from, until)) {
+      const key = `plan:${m}`
+      const billed = f.billed.has(key)
+      line(key, `Balík ${own.name}, ${monthText(m)}`, 1000, 'mes', own.monthlyCents)
+      // „Prvý mesiac zadarmo“: the base plan of the client's first service month is 100 % off, as its own line on the
+      // same invoice, so the offer stays visible (the full price and its value). Only the plan is discounted — payroll,
+      // the extra for a month with more documents and the closing are billed whole. Tied to the plan line of that one
+      // month: once it was billed (or fell out of reach), the offer is spent and is never applied again or in arrears.
+      if (m === first && !billed) line(`free:${key}`, `Prvý mesiac zadarmo: balík ${own.name}, ${monthText(m)}`, 1000, 'mes', -own.monthlyCents)
+    }
   }
   // What a month used, once it has ended: more documents than the plan is for, and payroll.
   const usedUntil = last && last < addMonths(f.month, -1) ? last : addMonths(f.month, -1)

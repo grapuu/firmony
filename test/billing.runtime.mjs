@@ -65,25 +65,25 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
   if (capture) writeFileSync(`${capture}/billing.html`, page)
   check('a closing prepared and not filed is not billed', !page.includes('Účtovná závierka a daňové priznanie'))
   check(
-    "the client's month is worked out: three months of the plan, last month as Firma, and two people",
-    page.includes(`id="klient-${companyId}"`) && page.includes(`: 64, vyúčtované ako balík Firma`) && page.includes('Mzdy za') && page.includes('697,00 €'),
+    "the client's month is worked out: three months of the plan with the first one free, last month as Firma, and two people",
+    page.includes(`id="klient-${companyId}"`) && page.includes(`: 64, vyúčtované ako balík Firma`) && page.includes('Mzdy za') && page.includes('528,00 €'),
   )
   res = await admin.post('/ucto/fakturacia/vystavit', { klient: companyId })
   await settle()
   const invoice = await db.prepare('SELECT i.* FROM invoices i JOIN billing_invoices b ON b.invoice_id = i.id WHERE b.client_id = ?').bind(companyId).first()
   check(
-    'the invoice is issued by europio in its own row of numbers, for 697 € without VAT, due in 14 days',
+    'the invoice is issued by europio in its own row of numbers, for 528 € without VAT, due in 14 days',
     res.status === 303 &&
       res.headers.get('location') === '/ucto/fakturacia?ok=vystavene&n=1#vystavene' &&
       invoice?.company_id === operator.id &&
       invoice.number === `${today.slice(0, 4)}0001` &&
-      invoice.total_cents === 69700 &&
+      invoice.total_cents === 52800 &&
       invoice.vat_cents === 0 &&
       invoice.due_on > today,
     `${res.status} ${res.headers.get('location')} ${JSON.stringify(invoice)}`,
   )
   const keys = (await db.prepare('SELECT key FROM billing_items WHERE client_id = ? ORDER BY key').bind(companyId).all()).results.map((r) => r.key)
-  check('what it billed is claimed by its keys', keys.join(' ') === [`extra:${prev}`, `payroll:${prev}`, `plan:${month}`, `plan:${prev}`, `plan:${prev2}`].sort().join(' '), keys.join(' '))
+  check('what it billed is claimed by its keys', keys.join(' ') === [`extra:${prev}`, `free:plan:${prev2}`, `payroll:${prev}`, `plan:${month}`, `plan:${prev}`, `plan:${prev2}`].sort().join(' '), keys.join(' '))
   let twice = false
   try {
     await db.prepare('INSERT INTO billing_items (client_id, key, invoice_id, cents) VALUES (?, ?, ?, 1)').bind(companyId, `plan:${month}`, 'x').run()
@@ -91,26 +91,30 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
     twice = true
   }
   check('a key cannot be billed twice', twice)
+  const discountLine = await db.prepare('SELECT base_cents FROM invoice_lines WHERE invoice_id = ? AND base_cents < 0').bind(invoice.id).first()
+  check('the invoice keeps the offer as its own negative line, the price and the discount both visible', discountLine?.base_cents === -16900)
   const copy = await db.prepare("SELECT * FROM documents WHERE company_id = ? AND source = 'firmony' AND id NOT LIKE 'bill-doc-%'").bind(companyId).first()
   const original = copy?.file_key ? await files.get(copy.file_key) : null
+  const originalText = original ? await original.text() : ''
   check(
-    "the client's copy is among its documents: a received invoice from europio, its e-invoice as the original",
+    "the client's copy is among its documents: a received invoice from europio, its e-invoice as the original, with the offer's own line",
     copy?.kind === 'invoice_in' &&
       copy.party === 'europio s. r. o.' &&
       copy.vs === invoice.number &&
-      copy.total_cents === 69700 &&
+      copy.total_cents === 52800 &&
       copy.category === 'services' &&
       Boolean(original) &&
-      (await original.text()).includes(`<cbc:ID>${invoice.number}</cbc:ID>`),
+      originalText.includes(`<cbc:ID>${invoice.number}</cbc:ID>`) &&
+      originalText.includes('Prvý mesiac zadarmo'),
   )
   check(
     "europio's own books hold it as an issued invoice",
     Boolean(await db.prepare("SELECT 1 AS x FROM documents WHERE company_id = ? AND source = 'issued' AND invoice_id = ?").bind(operator.id, invoice.id).first()),
   )
   const told = await db.prepare("SELECT body FROM messages WHERE company_id = ? AND side = 'firmony' AND body LIKE 'Vystavili sme faktúru%'").bind(companyId).first()
-  check('the client is told in the app, with the number, the amount and the due day', Boolean(told) && told.body.includes(invoice.number) && plain(told.body).includes('697,00 €'))
+  check('the client is told in the app, with the number, the amount and the due day', Boolean(told) && told.body.includes(invoice.number) && plain(told.body).includes('528,00 €'))
   const bell = (await sent()).find((m) => m.to === 'tomas@zelenydvor.test' && m.subject === 'Firmony: nová faktúra od Firmony')
-  check('and rung by email, with nothing of it in the email', Boolean(bell) && bell.text.includes('/app/firma#faktury-firmony') && !bell.text.includes('697') && !bell.text.includes(invoice.number))
+  check('and rung by email, with nothing of it in the email', Boolean(bell) && bell.text.includes('/app/firma#faktury-firmony') && !bell.text.includes('528') && !bell.text.includes(invoice.number))
   res = await admin.post('/ucto/fakturacia/vystavit', { klient: companyId })
   check('issued once, there is nothing more to issue for the month', res.status === 409 && (await db.prepare('SELECT COUNT(*) AS n FROM billing_invoices WHERE client_id = ?').bind(companyId).first())?.n === 1)
 
@@ -120,7 +124,7 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
   check("the client finds it on its company's page, to pay by its QR code", page.includes('Faktúry od Firmony') && page.includes(`Faktúra č. ${invoice.number}`) && page.includes(`href="/f/${invoice.token}"`))
   res = await client.get('/app')
   page = plain(await res.text())
-  check('and among its deadlines until it is paid', page.includes(`Faktúra Firmony č. ${invoice.number}`) && page.includes('Zaplatiť 697,00 €'))
+  check('and among its deadlines until it is paid', page.includes(`Faktúra Firmony č. ${invoice.number}`) && page.includes('Zaplatiť 528,00 €'))
   res = await get(`/f/${invoice.token}`)
   page = await res.text()
   check("its page is europio's invoice with the QR code for the payment", res.status === 200 && page.includes('europio s. r. o.') && page.includes(invoice.number) && page.includes('<svg'))
@@ -147,7 +151,7 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
   // Paid: europio's bank brings the payment with the invoice's number, and the invoice says so everywhere by itself.
   await db.prepare("INSERT INTO accounts (id, company_id, iban) VALUES ('acc-europio', ?, 'SK4311000000002934567890')").bind(operator.id).run()
   await db
-    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-bill-1', ?, 'acc-europio', ?, ?, 69700, 'Zelený dvor s. r. o.', ?, 'bill-1')")
+    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pay-bill-1', ?, 'acc-europio', ?, ?, 52800, 'Zelený dvor s. r. o.', ?, 'bill-1')")
     .bind(operator.id, Math.floor(Date.now() / 1000), today, invoice.number)
     .run()
   await matchCompany(db, operator.id)

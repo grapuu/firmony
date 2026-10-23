@@ -96,6 +96,28 @@ const lines = [line(1, 'Práca', 3000, 'hod', 13000, 23), line(2, 'Kniha', 1000,
 
 const cases = [
   ['an invoice of a VAT payer at three rates with a discount', invoices.ublOf(invoice, lines, seller)],
+  // The first-month-free offer is kept internally as its own negative line (the accounting shows the value of the
+  // offer), and exported as that line; the rules accept a negative line, so the same pattern as the discount above.
+  [
+    'the first-month-free offer nets to zero on a non-VAT-payer invoice',
+    invoices.ublOf(
+      { ...invoice, customerIcdph: null, iban: null, note: null },
+      [line(1, 'Balík Rast, január 2027', 1000, 'mes', 16900, 0), line(2, 'Prvý mesiac zadarmo: balík Rast, január 2027', 1000, 'mes', -16900, 0)],
+      { ...seller, icdph: null, vatPayer: false },
+    ),
+  ],
+  [
+    'the first-month-free offer beside paid extras, on a non-VAT-payer invoice',
+    invoices.ublOf(
+      { ...invoice, customerIcdph: null, iban: null, note: null },
+      [
+        line(1, 'Balík Rast, január 2027', 1000, 'mes', 16900, 0),
+        line(2, 'Prvý mesiac zadarmo: balík Rast, január 2027', 1000, 'mes', -16900, 0),
+        line(3, 'Mzdy za január 2027', 2000, 'ks', 1500, 0),
+      ],
+      { ...seller, icdph: null, vatPayer: false },
+    ),
+  ],
   ["a VAT payer's supply exempt from VAT", invoices.ublOf(invoice, [line(1, 'Školenie', 1000, null, 5000, 0)], seller)],
   [
     'an invoice of a company that is no VAT payer',
