@@ -178,6 +178,7 @@ export const copy = typesetAll({
     first: 'Jasná cena.',
     second: 'Platíte podľa počtu dokladov.',
     lead: 'Vyberte si podľa počtu dokladov za mesiac a podľa toho, či ste platiteľom DPH.',
+    firstMonthFree: 'Prvý mesiac zadarmo pre každého. Faktúry zadarmo pre našich klientov navždy.',
     perMonth: 'mesačne',
     annual: 'Za 12 mesiacov so závierkou',
     annualBasis: 'Ročný súčet počíta s rovnakým balíkom počas 12 mesiacov a jednou závierkou s daňovým priznaním. Mzdy a individuálne dohodnuté práce sú navyše.',

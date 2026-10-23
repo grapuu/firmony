@@ -526,6 +526,7 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
     <header class="wrap head head--center">
       <Title id="pricing-title" first={copy.pricing.first} second={copy.pricing.second} />
       <p class="lead">{copy.pricing.lead}</p>
+      <p class="pricing__offer">{copy.pricing.firstMonthFree}</p>
     </header>
     <div class="wrap">
       <div class="plans">
