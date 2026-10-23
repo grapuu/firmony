@@ -235,6 +235,37 @@ const Statement: FC = () => (
   </div>
 )
 
+/** The one offer the visitor cannot refuse: the whole deal in one place, the way Revolut and Robinhood sell a promo. */
+const Offer: FC<{ carry: Carry }> = ({ carry }) => {
+  const o = copy.offer
+  return (
+    <section class="section offer" aria-labelledby="offer-title">
+      <div class="wrap">
+        <header class="head head--center">
+          <p class="eyebrow">{o.eyebrow}</p>
+          <h2 id="offer-title" class="title">
+            <span class="title__sans">{o.title}</span>
+          </h2>
+          <p class="lead">{o.lead}</p>
+        </header>
+        <ul class="offer__grid">
+          {o.items.map((item) => (
+            <li class="offer__card">
+              <Tick />
+              <h3 class="h3">{item.title}</h3>
+              <p>{item.text}</p>
+            </li>
+          ))}
+        </ul>
+        <p class="offer__cta">
+          <a class="btn btn--blue" href={withCarry('/zacat', carry)}>{o.cta}</a>
+        </p>
+        <p class="offer__fine">{o.fine}</p>
+      </div>
+    </section>
+  )
+}
+
 /* Everything in the price: pick one and see it ------------------------------------------------------------ */
 
 /** The machine reading a slip: the slip under its beam, what was read, and the entry it proposes. */
@@ -891,6 +922,7 @@ const Final: FC<{ carry: Carry }> = ({ carry }) => (
 export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => (
   <>
     <Hero carry={carry} />
+    <Offer carry={carry} />
     <Flow />
     <Stats />
     <Statement />

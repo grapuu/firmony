@@ -79,6 +79,21 @@ export const copy = typesetAll({
     second: 'Postaráme sa, aby bežalo bez starostí.',
   },
 
+  /** One offer the visitor cannot refuse: the whole deal in one place, the way Revolut and Robinhood sell a promo. */
+  offer: {
+    eyebrow: 'Prečo je Firmony výhodné',
+    title: 'Táto ponuka sa nedá odmietnuť.',
+    lead: 'Prvý mesiac zadarmo. Založenie s. r. o. zadarmo. Prechod zadarmo. Faktúry zadarmo. Začínate vyhrávať ešte pred prvou faktúrou.',
+    items: [
+      { title: 'Prvý mesiac zadarmo', text: 'Vyskúšate bez rizika. Ak Vám to nesadne, odídete bez záväzku.' },
+      { title: 'Založenie s. r. o. zadarmo', text: 'Založíme firmu za Vás. Vy riešite len podpisy.' },
+      { title: 'Prechod zadarmo', text: 'Od starej účtovníčky prejdete bez práce. Stačí odkliknúť.' },
+      { title: 'Faktúry zadarmo', text: 'Vystavíte faktúru za minútu. Bez účtu, bez karty, navždy.' },
+    ],
+    cta: 'Chcem začať',
+    fine: 'Bez viazanosti. Zmluvu môžete kedykoľvek vypovedať s mesačnou výpovednou lehotou.',
+  },
+
   /** Everything in the price: pick one and see it. */
   services: {
     first: 'Doklady, dane aj odpovede.',
