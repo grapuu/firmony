@@ -9,7 +9,7 @@ export async function checkFreeInvoiceBrowser({ browser, origin }) {
   page.on('request', request => requests.push({ url: request.url(), method: request.method(), type: request.resourceType() }))
   try {
     await page.goto(`${origin}/bezplatne-nastroje`)
-    check('free invoice browser: all four public tools can be opened without an account', await page.locator('.free-tools__card').count() === 4 && await page.getByRole('link', {name:'Vytvoriť faktúru',exact:true}).count() === 1)
+    check('free invoice browser: all five public tools can be opened without an account', await page.locator('.free-tools__card').count() === 5 && await page.getByRole('link', {name:'Vytvoriť faktúru',exact:true}).count() === 1)
     await page.getByRole('link', {name:'Vytvoriť faktúru',exact:true}).click()
     await page.locator('[data-download]:enabled').waitFor()
     const start = requests.length

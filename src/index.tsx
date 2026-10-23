@@ -14,6 +14,9 @@ import { WageCalcPage } from './views/wage-calc'
 import { SZCO_PAGE, SZCO_PATH } from './content/szco-calc'
 import { szcoCalc, szcoQueryOf, szcoYearOf } from './app/szco-calc'
 import { SzcoCalcPage } from './views/szco-calc'
+import { SRO_PAGE, SRO_PATH } from './content/sro-calc'
+import { sroCalc, sroRevenueOf } from './app/sro-calc'
+import { SroCalcPage } from './views/sro-calc'
 import { FreeInvoicePage, FreeToolsPage } from './views/free-tools'
 import { INVOICE_META, INVOICE_PATH, TOOLS_PATH } from './tools/invoice'
 import { announceSite, llmsFullTxt, llmsTxt, robotsTxt, sitemapXml } from './robots'
@@ -812,6 +815,44 @@ app.get(SZCO_PATH, (c) => {
       ]),
     },
     <SzcoCalcPage query={asked.query} result={result} error={asked.error} year={year} />,
+  )
+})
+
+// The SRO corporate-tax and dividend calculator: a GET form computed by the engine (app/sro-calc.ts).
+app.get(SRO_PATH, (c) => {
+  const q = c.req.query()
+  const hasRevenue = q.prijem !== undefined
+  const revenue = hasRevenue ? sroRevenueOf(q.prijem) : null
+  const expenses = q.vydavky !== undefined ? (sroRevenueOf(q.vydavky) ?? 0) : 0
+  const error = hasRevenue && revenue === null
+  const query = revenue !== null ? { year: 2026, revenue, expenses } : null
+  const result = query ? sroCalc(query) : null
+  return page(
+    c,
+    {
+      title: typeset(SRO_PAGE.title),
+      description: typeset(SRO_PAGE.description),
+      path: SRO_PATH,
+      noindex: hasRevenue,
+      jsonLd: jsonLd([
+        organization(),
+        {
+          '@type': 'WebApplication',
+          '@id': `${BRAND.origin}${SRO_PATH}#kalkulacka`,
+          name: plain(`${SRO_PAGE.first} ${SRO_PAGE.second}`),
+          description: plain(SRO_PAGE.description),
+          url: `${BRAND.origin}${SRO_PATH}`,
+          applicationCategory: 'FinanceApplication',
+          operatingSystem: 'Any',
+          inLanguage: 'sk',
+          offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+          provider: { '@id': `${BRAND.origin}/#organizacia` },
+        },
+        breadcrumbs(SRO_PAGE.nav, SRO_PATH),
+        faqPage(SRO_PAGE.faq, SRO_PATH),
+      ]),
+    },
+    <SroCalcPage query={query} result={result} error={error} />,
   )
 })
 

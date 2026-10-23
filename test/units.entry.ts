@@ -102,6 +102,8 @@ export * as wageCalc from '../src/app/wage-calc'
 export * as wageContent from '../src/content/wage-calc'
 export * as szcoCalc from '../src/app/szco-calc'
 export * as szcoContent from '../src/content/szco-calc'
+export * as sroCalc from '../src/app/sro-calc'
+export * as sroContent from '../src/content/sro-calc'
 export * as guides from '../src/content/guides'
 
 export * as amlCountries from '../src/aml/countries'

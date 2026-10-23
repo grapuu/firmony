@@ -72,6 +72,8 @@ import {
   wageContent,
   szcoCalc,
   szcoContent,
+  sroCalc,
+  sroContent,
   guides,
   lastDeclared,
   takeover,
@@ -272,6 +274,15 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   const asked = szcoCalc.szcoQueryOf({ prijem: '25 000', rok: '2027', vydavky: 'pausal' }, '2026-10-23')
   check('the address read: the year asked and the mode', asked.query.year === 2027 && asked.query.revenue === 2_500_000 && asked.query.mode === 'pausal' && !asked.error)
   check('the page says the example the engine computes', szcoContent.SZCO_PAGE.faq[0].a.includes(format.formatEurExact(s.net)))
+}
+{
+  // The SRO corporate-tax and dividend calculator (app/sro-calc.ts): figures verified 23 October 2026.
+  const s = sroCalc.sroCalc({ year: 2026, revenue: 12_000_000, expenses: 4_000_000 })
+  check('a 120 000 € SRO with 40 000 € expenses: 21 % corporate tax and 7 % dividend tax', s.profit === 8_000_000 && s.rate === 21 && s.corporate === 1_680_000 && s.netProfit === 6_320_000 && s.dividend === 442_400 && s.net === 5_877_600, JSON.stringify(s))
+  const small = sroCalc.sroCalc({ year: 2026, revenue: 5_000_000, expenses: 1_000_000 })
+  check('up to 100 000 € revenue the rate is 10 %', small.rate === 10 && small.corporate === 400_000)
+  check('a revenue typed the Slovak way; nothing that is no revenue', sroCalc.sroRevenueOf('120 000') === 12_000_000 && sroCalc.sroRevenueOf('abc') === null)
+  check('the page says the example the engine computes', sroContent.SRO_PAGE.faq[0].a.includes(format.formatEurExact(s.net)))
 }
 {
   // The transaction tax on accounts at providers outside Slovakia (app/transaction-tax.ts, Act No. 279/2024 Z. z.).

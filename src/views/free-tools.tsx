@@ -1,12 +1,14 @@
 import type { FC } from 'hono/jsx'
 import { WAGE_PATH } from '../content/wage-calc'
 import { SZCO_PATH } from '../content/szco-calc'
+import { SRO_PATH } from '../content/sro-calc'
 import { INVOICE_PATH, TOOLS_PATH, blankInvoice } from '../tools/invoice'
 
 const TOOLS = [
   { href: INVOICE_PATH, title: 'Faktúra v PDF', tag: 'Bez registrácie', text: 'Bežná tuzemská faktúra neplatiteľa DPH. Vyplníte údaje, skontrolujete náhľad a stiahnete PDF vo svojom prehliadači.', action: 'Vytvoriť faktúru' },
   { href: WAGE_PATH, title: 'Čistá mzda a cena práce', tag: 'Bez registrácie', text: 'Z hrubej mzdy zistíte orientačnú čistú mzdu, odvody aj celkové náklady zamestnávateľa. Podľa zvoleného roka.', action: 'Vypočítať mzdu' },
   { href: SZCO_PATH, title: 'Odvody a daň živnostníka', tag: 'Bez registrácie', text: 'Z ročného príjmu zistíte orientačné odvody do poisťovní a daň SZČO s paušálnymi výdavkami 60 %.', action: 'Vypočítať odvody' },
+  { href: SRO_PATH, title: 'Daň a dividendy s. r. o.', tag: 'Bez registrácie', text: 'Z príjmu a výdavkov zistíte daň z príjmov s. r. o. a koľko zostane spoločníkovi po zdanení dividend.', action: 'Vypočítať daň' },
   { href: '/#kalkulacka', title: 'Porovnanie ceny účtovníctva', tag: 'Z Vašich údajov', text: 'Porovnajte svoje ročné náklady s Firmony vrátane závierky. Výsledok ukáže aj rovnakú alebo vyššiu cenu.', action: 'Porovnať náklady' },
 ] as const
 
