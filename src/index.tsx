@@ -11,6 +11,9 @@ import { article, breadcrumbs, faqPage, jsonLd, organization, plain, service, SI
 import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
 import { wageCalc, wageQueryOf, wageYearOf } from './app/wage-calc'
 import { WageCalcPage } from './views/wage-calc'
+import { SZCO_PAGE, SZCO_PATH } from './content/szco-calc'
+import { szcoCalc, szcoQueryOf, szcoYearOf } from './app/szco-calc'
+import { SzcoCalcPage } from './views/szco-calc'
 import { FreeInvoicePage, FreeToolsPage } from './views/free-tools'
 import { INVOICE_META, INVOICE_PATH, TOOLS_PATH } from './tools/invoice'
 import { announceSite, llmsFullTxt, llmsTxt, robotsTxt, sitemapXml } from './robots'
@@ -774,6 +777,41 @@ app.get(WAGE_PATH, (c) => {
       ]),
     },
     <WageCalcPage query={asked.query} result={result} error={asked.error} year={year} />,
+  )
+})
+
+// The SZČO tax-and-levy calculator: a GET form computed by the engine (app/szco-calc.ts), for search engines too.
+app.get(SZCO_PATH, (c) => {
+  const asked = szcoQueryOf(c.req.query(), bratislavaToday())
+  const year = szcoYearOf(c.req.query('rok'), bratislavaToday())
+  const result = asked.query ? szcoCalc(asked.query) : null
+  const computed = c.req.query('prijem') !== undefined
+  return page(
+    c,
+    {
+      title: typeset(SZCO_PAGE.title),
+      description: typeset(SZCO_PAGE.description),
+      path: SZCO_PATH,
+      noindex: computed,
+      jsonLd: jsonLd([
+        organization(),
+        {
+          '@type': 'WebApplication',
+          '@id': `${BRAND.origin}${SZCO_PATH}#kalkulacka`,
+          name: plain(`${SZCO_PAGE.first} ${SZCO_PAGE.second}`),
+          description: plain(SZCO_PAGE.description),
+          url: `${BRAND.origin}${SZCO_PATH}`,
+          applicationCategory: 'FinanceApplication',
+          operatingSystem: 'Any',
+          inLanguage: 'sk',
+          offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+          provider: { '@id': `${BRAND.origin}/#organizacia` },
+        },
+        breadcrumbs(SZCO_PAGE.nav, SZCO_PATH),
+        faqPage(SZCO_PAGE.faq, SZCO_PATH),
+      ]),
+    },
+    <SzcoCalcPage query={asked.query} result={result} error={asked.error} year={year} />,
   )
 })
 

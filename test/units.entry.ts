@@ -100,6 +100,8 @@ export * as vatRegistration from '../src/app/vat-registration'
 export * as transactionTax from '../src/app/transaction-tax'
 export * as wageCalc from '../src/app/wage-calc'
 export * as wageContent from '../src/content/wage-calc'
+export * as szcoCalc from '../src/app/szco-calc'
+export * as szcoContent from '../src/content/szco-calc'
 export * as guides from '../src/content/guides'
 
 export * as amlCountries from '../src/aml/countries'

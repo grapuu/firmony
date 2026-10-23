@@ -4,6 +4,7 @@ import { copy } from '../copy'
 import { typeset } from '../format'
 import { GUIDES } from '../content/guides'
 import { WAGE_PAGE, WAGE_PATH } from '../content/wage-calc'
+import { SZCO_PAGE, SZCO_PATH } from '../content/szco-calc'
 import { TOOLS_PATH } from '../tools/invoice'
 
 export interface PageMeta {
@@ -111,6 +112,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
                 <a href={g.path}>{typeset(g.nav)}</a>
               ))}
               <a href={WAGE_PATH}>{typeset(WAGE_PAGE.nav)}</a>
+              <a href={SZCO_PATH}>{typeset(SZCO_PAGE.nav)}</a>
             </nav>
             <nav class="foot__col" aria-label={copy.footer.company}>
               <p class="foot__head">{copy.footer.company}</p>

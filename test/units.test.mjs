@@ -70,6 +70,8 @@ import {
   transactionTax,
   wageCalc,
   wageContent,
+  szcoCalc,
+  szcoContent,
   guides,
   lastDeclared,
   takeover,
@@ -259,6 +261,17 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   check('the address read: the year asked, children capped at six, the declaration ticked', asked.query.year === 2027 && asked.query.gross === 200000 && asked.query.young === 2 && asked.query.teen === 6 && asked.query.declaration && !asked.error)
   check('no wage asked is the empty form; a wrong one is said', wageCalc.wageQueryOf({}, '2026-10-20').query === null && wageCalc.wageQueryOf({ hruba: 'x' }, '2026-10-20').error && wageCalc.wageYearOf(undefined, '2026-10-20') === 2026)
   check('the page says the examples the engine computes', wageContent.WAGE_PAGE.faq[0].a.includes(format.formatEurExact(wageCalc.wageCalc(q()).slip.net)) && wageContent.WAGE_PAGE.faq[1].a.includes(format.formatEurExact(132385)))
+}
+{
+  // The SZČO tax-and-levy calculator (app/szco-calc.ts): figures verified 23 October 2026 against the primary sources.
+  const s = szcoCalc.szcoCalc({ year: 2026, revenue: 2_500_000, mode: 'pausal', expenses: 0 })
+  check('a 25 000 € SZČO with the 60 % flat rate: minimum levies, no tax', s.expenses === 1_500_000 && s.spMonthly === 30_312 && s.zpMonthly === 12_192 && s.odvody === 510_048 && s.tax === 0 && s.net === 489_952, JSON.stringify(s))
+  const big = szcoCalc.szcoCalc({ year: 2026, revenue: 12_000_000, mode: 'pausal', expenses: 0 })
+  check('above 100 000 € the flat-rate cap and the progressive tax apply', big.expenses === 2_000_000 && big.tax > 0 && big.net === 12_000_000 - 2_000_000 - big.odvody - big.tax, `${big.tax}`)
+  check('a revenue typed the Slovak way; nothing that is no revenue', szcoCalc.szcoRevenueOf('25 000') === 2_500_000 && szcoCalc.szcoRevenueOf('25000,5') === 2_500_050 && szcoCalc.szcoRevenueOf('abc') === null && szcoCalc.szcoRevenueOf('0,50') === null)
+  const asked = szcoCalc.szcoQueryOf({ prijem: '25 000', rok: '2027', vydavky: 'pausal' }, '2026-10-23')
+  check('the address read: the year asked and the mode', asked.query.year === 2027 && asked.query.revenue === 2_500_000 && asked.query.mode === 'pausal' && !asked.error)
+  check('the page says the example the engine computes', szcoContent.SZCO_PAGE.faq[0].a.includes(format.formatEurExact(s.net)))
 }
 {
   // The transaction tax on accounts at providers outside Slovakia (app/transaction-tax.ts, Act No. 279/2024 Z. z.).

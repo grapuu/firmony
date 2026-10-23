@@ -10,6 +10,7 @@ import { GUIDES } from './content/guides'
 import { formatEur } from './format'
 import { plain, SITE_UPDATED } from './seo'
 import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
+import { SZCO_PAGE, SZCO_PATH } from './content/szco-calc'
 import { INVOICE_PATH, TOOLS_PATH, TOOL_UPDATED } from './tools/invoice'
 
 /** The public pages with the day each last changed: the sitemap, and what IndexNow is told. */
@@ -18,6 +19,7 @@ export function sitePages(): [string, string][] {
     ['/', SITE_UPDATED],
     ...GUIDES.map((g): [string, string] => [g.path, g.modified]),
     [WAGE_PATH, WAGE_PAGE.modified],
+    [SZCO_PATH, SZCO_PAGE.modified],
     [TOOLS_PATH, TOOL_UPDATED],
     [INVOICE_PATH, TOOL_UPDATED],
     ['/investori', SITE_UPDATED],
@@ -174,6 +176,7 @@ export function llmsTxt(): string {
       '',
       ...GUIDES.map((g) => `- [${g.first} ${g.second}](${BRAND.origin}${g.path}): ${g.description}`),
       `- [${WAGE_PAGE.first} ${WAGE_PAGE.second}](${BRAND.origin}${WAGE_PATH}): ${WAGE_PAGE.description}`,
+      `- [${SZCO_PAGE.first} ${SZCO_PAGE.second}](${BRAND.origin}${SZCO_PATH}): ${SZCO_PAGE.description}`,
       '',
       '## Ďalšie stránky',
       '',
