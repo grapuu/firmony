@@ -2,9 +2,11 @@
 
 ## Finálny polishing ponuky a oprava cache/deploy (Cline, 23. október 2026 CEST)
 
-Presné texty od majiteľa: eyebrow „Výhody, ktoré Vám ušetria štart“, nadpis „Začnite s Firmony a prvé dôležité
-veci máte za 0 €.“, podnadpis a štyri karty s akcentom „ZA 0 €“ (názov + popis) a nápoveda „Pozrite si všetky
-4 výhody…“. Jediná odchýlka: pomlčka v popise karty 1 nahradená bodkou, lebo projekt zakazuje dlhé pomlčky.
+Presné texty od majiteľa (finálne): eyebrow „Výhodnejší štart s Firmony“, nadpis „Začnite s náskokom. Štyri
+výhody za 0 €.“, podnadpis a štyri karty s akcentom „ZA 0 €“ (názov + popis) a nápoveda „Objavte všetky štyri
+výhody.“ (mobile „Potiahnite prstom a objavte ďalšie výhody.“). Jediná odchýlka: pomlčka v popise karty 1
+nahradená bodkou, lebo projekt zakazuje dlhé pomlčky. Zlepšený kontrast a riadkovanie doplnkového textu kariet
+(biely 0.94, line-height 1.55) bez pretečenia na žiadnej šírke.
 Vizuálny polishing: nadpis o stupeň menší, sekcia kompaktnejšia (menší padding aj medzery), stredná karta
 dominantnejšia a bočné viac ustupujú (scale 0.85, opacity 0.85, posun 12 px), navigácia + nápoveda + CTA ako
 jeden celok, čistejší prechod do sekcie „Vy pošlete doklady“.

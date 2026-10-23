@@ -81,9 +81,9 @@ export const copy = typesetAll({
 
   /** One offer the visitor cannot refuse: four deals in a ring that turns without end. */
   offer: {
-    eyebrow: 'Výhody, ktoré Vám ušetria štart',
-    title: 'Začnite s Firmony a prvé dôležité veci máte za 0 €.',
-    lead: 'Prvý mesiac, založenie s. r. o., prechod aj faktúry. Bez zbytočných vstupných nákladov a bez komplikovaného začiatku.',
+    eyebrow: 'Výhodnejší štart s Firmony',
+    title: 'Začnite s náskokom. Štyri výhody za 0 €.',
+    lead: 'Prvý mesiac, založenie s. r. o., prechod k nám aj faktúry. Pozrite sa, čo všetko získate za 0 €.',
     /** The big accent under each card's title, the same on all four. */
     accent: 'ZA 0 €',
     items: [
@@ -94,8 +94,8 @@ export const copy = typesetAll({
     ],
     cta: 'Chcem začať',
     fine: 'Bez viazanosti. Zmluvu môžete kedykoľvek vypovedať s mesačnou výpovednou lehotou.',
-    hint: 'Pozrite si všetky 4 výhody a vyberte si dôvod, prečo začať práve teraz.',
-    hintMobile: 'Pozrite si všetky 4 výhody a potiahnite prstom.',
+    hint: 'Objavte všetky štyri výhody.',
+    hintMobile: 'Potiahnite prstom a objavte ďalšie výhody.',
   },
 
   /** Everything in the price: pick one and see it. */

@@ -3113,8 +3113,8 @@ invented), people (his real photo, an accountant with a name) and a finished thi
   cenník", "Ako to funguje". The words keep left of the card at every height (`--pad-x`, `--card-w`,
   `--card-r`). On a tablet the card comes under the panel and overlaps it by 96 px; on a phone the glass is one
   invoice in the top corner, and none below 380 px. The opening arrives once (words, card, glass) on load.
-- The offer the visitor cannot refuse (`.offer`, "Výhody, ktoré Vám ušetria štart / Začnite s Firmony a prvé
-  dôležité veci máte za 0 €"): four cards on a virtual ring that turns without end. The card in front is the
+- The offer the visitor cannot refuse (`.offer`, "Výhodnejší štart s Firmony / Začnite s náskokom. Štyri výhody
+  za 0 €"): four cards on a virtual ring that turns without end. The card in front is the
   hero in the middle, one card each side stands beside it fully visible (scale 0.85, a touch dimmer and lower),
   the fourth hides behind. `public/flow.js` (the page's one script) turns the ring a quarter turn on a click, an
   arrow key or a swipe — a 2.5D orbit of horizontal offset, scale and shadow, no 3D rotation (Safari hid the side
