@@ -69,8 +69,8 @@ export const copy = typesetAll({
   stats: [
     { value: eur(start.price), label: `mesačne za balík ${start.name}` },
     { value: eur(0), label: 'za aplikáciu k účtovnej službe' },
+    { value: eur(0), label: 'za založenie s. r. o. pri 36-mesačnom vedení' },
     { value: '1 deň', label: 'na odpoveď, po ľudsky' },
-    { value: '1. 1. 2027', label: 'plánovaný štart služby' },
   ],
 
   /** The hug of the brand, read word by word. */
@@ -235,12 +235,12 @@ export const copy = typesetAll({
     second: 'My nadviažeme.',
     fresh: {
       title: 'Zakladáte firmu',
-      text: 'Od prvého dňa poriadok v účtovníctve. Povieme Vám, čo treba pri štarte vybaviť.',
-      cta: 'Zakladám firmu',
+      text: 'Založíme s. r. o. za Vás a účtovníctvo povedieme od prvého dňa. Založenie je v cene, ak u nás vediete účtovníctvo 36 mesiacov; vy riešite len podpisy.',
+      cta: 'Založím s. r. o.',
     },
     switching: {
       title: 'Meníte účtovníčku',
-      text: 'Zadáte kontakt na doterajšiu účtovníčku a potvrdíte koordináciu. Dohodneme prevzatie a skontrolujeme podklady. Vy vybavíte len potrebný podpis alebo doplnenie.',
+      text: 'Zadáte kontakt na doterajšiu účtovníčku a potvrdíte. Prevzatie aj odovzdanie podkladov vybavíme my. Vy riešite len potrebný podpis alebo doplnenie.',
       cta: 'Chcem prejsť',
     },
     large: {
