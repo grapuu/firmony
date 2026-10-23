@@ -212,17 +212,20 @@ export const StartDetails: FC<{
             </label>
             </div>
           </fieldset>
-          <fieldset class="field choice">
-            <legend class="field__label">{copy.start.situation}</legend>
-            <div class="choice__options">
-              {(['switch', 'fresh', 'other'] as const).map((id) => (
-                <label class="choice__option">
-                  <input type="radio" name="situation" value={id} checked={values.situation === id} />
-                  <span>{copy.start.situations[id]}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          {/* A founding company has already said what it needs; only an existing one chooses between a switch and other. */}
+          {fresh ? null : (
+            <fieldset class="field choice">
+              <legend class="field__label">{copy.start.situation}</legend>
+              <div class="choice__options">
+                {(['switch', 'fresh', 'other'] as const).map((id) => (
+                  <label class="choice__option">
+                    <input type="radio" name="situation" value={id} checked={values.situation === id} />
+                    <span>{copy.start.situations[id]}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <Text name="name" label={copy.start.name} value={values.name} error={errors.name} autocomplete="name" />
           <Text name="email" label={copy.start.email} value={values.email} error={errors.email} type="email" autocomplete="email" inputmode="email" />
           {state.kind === 'found' ? (
