@@ -4,6 +4,14 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Kalkulačka odvodov a dane SZČO, 23. 10. 2026 (Cline):** `/szco-kalkulacka`. Ročný príjem → paušálne výdavky
+60 % (strop 20 000 €), odvody SP 33,15 % (min 60 % / max 11× priemernej mzdy) a ZP 16 % (min 50 %, bez maxima),
+daň 15 % do 100 000 € príjmov, inak progresívna 19/25/30/35 %, nezdaniteľná časť s redukciou. Čísla overené
+23. 10. 2026 proti primárnym zdrojom (Slov-Lex, Sociálna poisťovňa, VšZP, Finančná správa); osem kontrolných
+hodnôt systému sedí. Orientácia, bez súbehu/mikroodvodu/ZŤP. Engine `src/app/szco-calc.ts`, 5 nových unit testov.
+Live (schéma 80). Asistent ostáva na Claude API iba pre triedenie tém; generovanie odpovedí na všetky témy je
+pripravené ako plán v `docs/strategy/16`, kód zatiaľ nespúšťa (bezpečnosť generovaných účtovných odpovedí).
+
 **Založenie s.r.o. + prechod, G4, 22. 10. 2026 (Cline):** `docs/formation.md`. Klient na `/app/zalozenie` zadá žiadosť
 o založenie s.r.o. + vedenie účtovníctva; tím koordinuje na `/ucto/klienti/:id/zalozenie` (fronta na `/ucto`).
 Stavy requested → preparing → waiting → registering → completed, zrušenie odkiaľkoľvek. Kontrolný zoznam 7 krokov

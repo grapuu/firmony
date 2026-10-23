@@ -1,5 +1,12 @@
 # Firmony: progress of the continuation
 
+## Kalkulačka odvodov a dane SZČO (Cline, 23. október 2026 CEST)
+
+`/szco-kalkulacka`: ročný príjem → paušál 60 % (strop 20 000 €), SP 33,15 % a ZP 16 % s min/max základmi,
+daň 15 % do 100 000 € príjmov inak progresívna 19/25/30/35 %, nezdaniteľná časť s redukciou. Čísla overené
+proti primárnym zdrojom; osem kontrolných hodnôt systému sedí. Orientácia, bez súbehu/mikroodvodu/ZŤP.
+1490 unit + 2272 runtime + 102 browser. Live.
+
 ## Založenie s.r.o. + prechod, G4 (Cline, 22. október 2026 CEST)
 
 [Implementácia](docs/formation.md): žiadosť klienta na `/app/zalozenie`, prípad tímu na `/ucto/klienti/:id/zalozenie`,
