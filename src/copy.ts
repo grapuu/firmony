@@ -75,8 +75,8 @@ export const copy = typesetAll({
 
   /** The hug of the brand, read word by word. */
   statement: {
-    first: 'Účtovníctvo nemá brzdiť Vašu firmu.',
-    second: 'Postaráme sa, aby bežalo bez starostí.',
+    first: 'Účtovníctvo, ktoré sa robí takmer samo.',
+    second: 'AI prečíta doklady, systém zaúčtuje, účtovníčka skontroluje.',
   },
 
   /** One offer the visitor cannot refuse: the whole deal in one place, the way Revolut and Robinhood sell a promo. */
