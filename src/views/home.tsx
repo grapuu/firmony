@@ -236,7 +236,7 @@ const Statement: FC = () => (
 )
 
 /** The glass icon of each deal card, in the same order as copy.offer.items. */
-const OFFER_ART: readonly (Art | null)[] = [ART.savings, ART.seed, ART.key, ART.paperInvoice]
+const OFFER_ART: readonly (Art | null)[] = [ART.offerFirstMonth, ART.offerCompanyFormation, ART.offerSwitch, ART.offerInvoices]
 
 /** The one offer the visitor cannot refuse: the whole deal in one place, the way Revolut and Robinhood sell a promo. */
 const Offer: FC<{ carry: Carry }> = ({ carry }) => {

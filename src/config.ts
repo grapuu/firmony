@@ -209,6 +209,10 @@ export type ArtSlot =
   | 'paperBank'
   | 'paperEinvoice'
   | 'paperReturn'
+  | 'offerFirstMonth'
+  | 'offerCompanyFormation'
+  | 'offerSwitch'
+  | 'offerInvoices'
   | 'founder'
 
 /** One of his glass objects, cut square at 960 and 480 px. */
@@ -249,6 +253,11 @@ export const ART: Record<ArtSlot, Art | null> = {
   paperBank: glass('card'),
   paperEinvoice: glass('mail'),
   paperReturn: glass('deadline'),
+  /* The four deals of the offer band, uploaded 23 October 2026 (art-src/icons/offer-*.png). */
+  offerFirstMonth: glass('offer-first-month'),
+  offerCompanyFormation: glass('offer-company-formation'),
+  offerSwitch: glass('offer-switch'),
+  offerInvoices: glass('offer-invoices'),
   founder: null,
 }
 
