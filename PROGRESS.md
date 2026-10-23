@@ -1,5 +1,18 @@
 # Firmony: progress of the continuation
 
+## Redizajn ponuky „Táto ponuka sa nedá odmietnuť“ (Cline, 23. október 2026 CEST)
+
+Sekcia „Prečo je Firmony výhodné“ na domovke už nie je mriežka štyroch kariet, ale priestorový carousel
+vysokých zvislých panelov (`.offer__stage`, `.offer__track`, `.offer__card`). Stredná karta je hrdina:
+jediný skript (`public/flow.js`) pridá `offer__stage--js` a karte najbližšie k stredu `offer__card--on`;
+bočné karty ustúpia (zmenšenie, stlmenie, mierny 3D sklon cez `perspective`) a stredná sa vráti dopredu.
+Scroll-snap hrá potiahnutie aj koliesko; klik na kartu a šípky ju plynulo privedú do stredu; bočný padding
+trate zaručuje, že prvá karta sedí v strede hneď a posledná sa tam tiež dostane. Štyri nové 3D sklenené ikony
+sú veľkým vizuálom každej karty so „0 €“ odznakom a názvom/popisom. Na telefóne stage beží od okraja k okraju,
+jeden panel a kúsok ďalšieho. Bez skriptu či s `prefers-reduced-motion` stoja štyri plné, rovnako čitateľné
+karty. CTA, texty, farby a zmysel ponúk ostávajú. Overené: check, 1 494 unit + 12 deployment, 2 272 runtime,
+UI sada 1440/390/320 px. Bez zmeny schémy.
+
 ## Kalkulačka odvodov a dane SZČO (Cline, 23. október 2026 CEST)
 
 `/szco-kalkulacka`: ročný príjem → paušál 60 % (strop 20 000 €), SP 33,15 % a ZP 16 % s min/max základmi,

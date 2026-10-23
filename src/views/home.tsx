@@ -238,7 +238,10 @@ const Statement: FC = () => (
 /** The glass icon of each deal card, in the same order as copy.offer.items. */
 const OFFER_ART: readonly (Art | null)[] = [ART.offerFirstMonth, ART.offerCompanyFormation, ART.offerSwitch, ART.offerInvoices]
 
-/** The one offer the visitor cannot refuse: the whole deal in one place, the way Revolut and Robinhood sell a promo. */
+/** The one offer the visitor cannot refuse: a spatial carousel of tall vertical panels, the way Revolut and
+ *  Robinhood sell a promo. The centre card is the hero; the sides fall back and dim. Scroll-snap (CSS) plays the
+ *  swipe, and public/flow.js marks the nearest card the hero and turns a click or the arrow keys into a smooth
+ *  centring. */
 const Offer: FC<{ carry: Carry }> = ({ carry }) => {
   const o = copy.offer
   return (
@@ -251,18 +254,22 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
           </h2>
           <p class="lead">{o.lead}</p>
         </header>
-        <ul class="offer__grid">
-          {o.items.map((item, i) => (
-            <li class="offer__card">
-              <div class="offer__top">
-                <Tile art={OFFER_ART[i] ?? null} size="lg" />
-                <span class="offer__tag">0 €</span>
-              </div>
-              <h3 class="h3">{item.title}</h3>
-              <p>{item.text}</p>
-            </li>
-          ))}
-        </ul>
+        <div class="offer__stage" role="region" aria-label={o.eyebrow} tabindex={0}>
+          <ul class="offer__track">
+            {o.items.map((item, i) => (
+              <li class="offer__card">
+                <p class="offer__tag">0 €</p>
+                <div class="offer__icon" aria-hidden="true">
+                  <Picture art={OFFER_ART[i] ?? null} className="offer__img" sizes="(max-width: 700px) 62vw, 210px" />
+                </div>
+                <div class="offer__body">
+                  <h3 class="h3">{item.title}</h3>
+                  <p>{item.text}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
         <p class="offer__cta">
           <a class="btn btn--blue" href={withCarry('/zacat', carry)}>{o.cta}</a>
         </p>
