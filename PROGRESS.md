@@ -1,5 +1,26 @@
 # Firmony: progress of the continuation
 
+## Odovzdanie Claudeovi: prvý mesiac zadarmo, transparentnosť založenia a cenník (Cline, 23.–24. 10. 2026 CEST)
+
+Finálna fáza pred prevzatím projektu Claudeom. Implementované a otestované:
+
+- **Prvý mesiac zadarmo** — 100 % zľava na základný mesačný balík prvého mesiaca služby nového klienta, ako
+  samostatný záporný riadok `free:plan:YYYY-MM` v tej istej transakcii ako riadok plánu (`src/team/billing.ts`
+  `draftOf`). `billing_items` unikátnym kľúčom bráni dvojitému uplatneniu; mzdy, dopočet za viac dokladov
+  a závierka sa účtujú v plnej výške; žiadne spätné zmeny vystavených faktúr. Overené na celej ceste (unit +
+  runtime: DB zápis, zobrazenie, UBL export, DPH základ).
+- **Transparentnosť založenia s. r. o.** — karta zobrazuje viditeľnú podmienku 36-mesačného vedenia + pomerného
+  dopočtu; „Bez viazanosti“ pod galériou nahradené presným textom + odkaz na FAQ `#zalozenie-podmienky`;
+  promise „Bez dlhej viazanosti“.
+- **Cenník a kalkulačka** — rozlíšený prvý rok (11×) a ďalšie roky (12×), závierka osobitne „raz za kalendárny
+  rok“; kalkulačka počíta prvý rok (`src/calc.ts`).
+- **E-faktúra** — záporný riadok zľavy je validný UBL/EN 16931/Peppol BIS 3.0 (test/peppol.mjs, pridané 2 prípady).
+- **Dokumenty** — `docs/formation-pricing.md`, `docs/terms-draft-promo-and-formation.md` (NÁVRHY, neodsúhlasené),
+  `docs/HANDOFF-TO-CLAUDE.md`.
+
+Posledné zelené testy: `npm run check`, 1 503 unit + deployment, 2 273 runtime, UI 1440/390/320. Schéma
+a TERMS_VERSION bez zmeny. Lokálny commit `168d020` + nové necommitnuté zmeny; push do `main` NIE je schválený.
+
 ## Finálny polishing ponuky a oprava cache/deploy (Cline, 23. október 2026 CEST)
 
 Presné texty od majiteľa (finálne): eyebrow „Výhodnejší štart s Firmony“, nadpis „Začnite s náskokom. Štyri

@@ -4,6 +4,22 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Odovzdanie projektu Claudeovi — prvý mesiac zadarmo, transparentnosť založenia a cenník (Cline, 23.–24. 10. 2026):**
+finálna fáza pred prevzatím. Implementované a otestované: (1) **Prvý mesiac zadarmo** — 100 % zľava na základný
+mesačný balík prvého mesiaca služby nového klienta, ako samostatný záporný riadok `free:plan:YYYY-MM` v tej istej
+transakcii ako riadok plánu (`src/team/billing.ts` `draftOf`, `billing_items` unikátny kľúč bráni dvojitému
+uplatneniu; mzdy/dopočet/závierka plné, žiadne spätné zmeny). (2) **Transparentnosť založenia** — karta „Založenie
+s. r. o.“ zobrazuje viditeľnú podmienku 36-mesačného vedenia + pomerného dopočtu; „Bez viazanosti“ pod galériou
+nahradené presným textom + odkaz na FAQ `#zalozenie-podmienky`; promise „Bez dlhej viazanosti“. (3) **Cenník
+a kalkulačka** — rozlíšený prvý rok (11×) a ďalšie roky (12×), závierka osobitne „raz za kalendárny rok“;
+`calc.firstYearPlanCents`/`standardYearPlanCents`/`firstYearCents`; kalkulačka počíta prvý rok. (4) **E-faktúra** —
+záporný riadok zľavy je validný UBL/EN 16931/Peppol BIS 3.0 (overené `test/peppol.mjs` proti CEN+PEPPOL Schematron;
+pridané 2 prípady promo zľavy). (5) **Dokumenty** — `docs/formation-pricing.md` a `docs/terms-draft-promo-and-formation.md`
+(suma C a právne ustanovenia sú NÁVRHY, neodsúhlasené), `docs/HANDOFF-TO-CLAUDE.md`. **Stav Gitu:** lokálny commit
+`168d020` + nové necommitnuté zmeny; push do `main` NIE je schválený (Workers Builds nasadzuje `main` do produkcie).
+Testy poslednýkrát zelené: `check`, 1 503 unit + deployment, 2 273 runtime, UI 1440/390/320. Schéma a TERMS_VERSION
+bez zmeny. Podrobnosti a otvorené rozhodnutia: `docs/HANDOFF-TO-CLAUDE.md`.
+
 **Kalkulačka odvodov a dane SZČO, 23. 10. 2026 (Cline):** `/szco-kalkulacka`. Ročný príjem → paušálne výdavky
 60 % (strop 20 000 €), odvody SP 33,15 % (min 60 % / max 11× priemernej mzdy) a ZP 16 % (min 50 %, bez maxima),
 daň 15 % do 100 000 € príjmov, inak progresívna 19/25/30/35 %, nezdaniteľná časť s redukciou. Čísla overené
