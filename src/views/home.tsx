@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { annualPlanCents, type CalcResult } from '../calc'
+import { firstYearPlanCents, standardYearPlanCents, type CalcResult } from '../calc'
 import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, asset, type Art, type PlanId } from '../config'
 import { copy, planRows } from '../copy'
 import { formatEur } from '../format'
@@ -269,6 +269,7 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
                       <span class="offer__title-accent">{o.accent}</span>
                     </h3>
                     <p class="offer__text">{item.text}</p>
+                    {item.condition ? <p class="offer__cond">{item.condition}</p> : null}
                   </div>
                 </li>
               ))}
@@ -298,7 +299,12 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
         <p class="offer__cta">
           <a class="btn btn--blue" href={withCarry('/zacat', carry)}>{o.cta}</a>
         </p>
-        <p class="offer__fine">{o.fine}</p>
+        <p class="offer__fine">
+          {o.fine}{' '}
+          <a class="link" href="#zalozenie-podmienky">
+            {o.fineLink}
+          </a>
+        </p>
       </div>
     </section>
   )
@@ -619,7 +625,7 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
                   <span class="plan__per">{copy.pricing.perMonth}</span>
                 </p>
                 <p class="plan__annual" data-plan-year={plan.id}>
-                  {copy.pricing.annual}: <strong>{formatEur(annualPlanCents(plan))}</strong>
+                  {copy.pricing.firstYear}: <strong>{formatEur(firstYearPlanCents(plan))}</strong> · {copy.pricing.nextYear}: <strong>{formatEur(standardYearPlanCents(plan))}</strong>
                 </p>
               </div>
               <a class={`btn ${lead ? 'btn--blue' : 'btn--line'} plan__cta`} href={withCarry('/zacat', carry, { balik: plan.id })}>
@@ -890,7 +896,7 @@ const Faq: FC = () => (
     </header>
     <div class="wrap faq">
       {copy.faq.items.map((item) => (
-        <details class="faq__item">
+        <details class="faq__item" id={item.id}>
           <summary>{item.q}</summary>
           <p>{item.a}</p>
         </details>

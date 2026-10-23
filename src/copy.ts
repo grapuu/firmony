@@ -19,6 +19,20 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
   }
 }
 
+/** One card of the offer band. A card may carry a visible condition (e.g. the free formation's 36 months). */
+export interface OfferItem {
+  title: string
+  text: string
+  condition?: string
+}
+
+/** One question on the home page, with an optional id so an offer can link straight to its answer. */
+export interface FaqItem {
+  q: string
+  a: string
+  id?: string
+}
+
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: online účtovníctvo pre Vašu firmu od ${eur(start.price)} mesačne`,
@@ -87,13 +101,22 @@ export const copy = typesetAll({
     /** The big accent under each card's title, the same on all four. */
     accent: 'ZA 0 €',
     items: [
-      { title: 'Prvý mesiac', text: 'Firmony si vyskúšate bez záväzku. Najprv uvidíte, či vám sedí. Až potom sa rozhodnete.' },
-      { title: 'Založenie s. r. o.', text: 'Firmu založíme za vás. Vy riešite len podpisy a môžete začať rýchlejšie.' },
+      {
+        title: 'Prvý mesiac',
+        text: 'Vyskúšajte Firmony naostro. Najprv uvidíte, či vám sedí. Až potom sa rozhodnete.',
+        condition: 'Prvý mesiac základného účtovného balíka za 0 €. Doplnkové služby sa účtujú podľa cenníka.',
+      },
+      {
+        title: 'Založenie s. r. o.',
+        text: 'Firmu vám pomôžeme založiť. Vy riešite len podpisy a môžete začať rýchlejšie.',
+        condition: 'Založenie je v cene pri 36-mesačnom vedení účtovníctva. Pri skoršom ukončení sa zostávajúce náklady pomerne doúčtujú podľa zmluvy.',
+      },
       { title: 'Prechod k Firmony', text: 'So zmenou vám pomôžeme tak, aby ste nemuseli začínať od nuly ani platiť za samotný prechod.' },
       { title: 'Faktúry', text: 'Faktúry vystavíte bez príplatku, jednoducho a hneď od začiatku v jednom systéme.' },
-    ],
+    ] as OfferItem[],
     cta: 'Chcem začať',
-    fine: 'Bez viazanosti. Zmluvu môžete kedykoľvek vypovedať s mesačnou výpovednou lehotou.',
+    fine: 'Účtovníctvo môžete vypovedať s mesačnou výpovednou lehotou. Pri bezplatnom založení s. r. o. platia osobitné podmienky 36-mesačnej spolupráce.',
+    fineLink: 'Podmienky bezplatného založenia',
     hint: 'Objavte všetky štyri výhody.',
     hintMobile: 'Potiahnite prstom a objavte ďalšie výhody.',
   },
@@ -197,15 +220,16 @@ export const copy = typesetAll({
     first: 'Jasná cena.',
     second: 'Platíte podľa počtu dokladov.',
     lead: 'Vyberte si podľa počtu dokladov za mesiac a podľa toho, či ste platiteľom DPH.',
-    firstMonthFree: 'Prvý mesiac zadarmo pre každého. Faktúry zadarmo pre našich klientov navždy.',
+    firstMonthFree: 'Prvý mesiac základného účtovného balíka za 0 €. Doplnkové služby sa účtujú podľa cenníka.',
     perMonth: 'mesačne',
-    annual: 'Za 12 mesiacov so závierkou',
-    annualBasis: 'Ročný súčet počíta s rovnakým balíkom počas 12 mesiacov a jednou závierkou s daňovým priznaním. Mzdy a individuálne dohodnuté práce sú navyše.',
+    firstYear: 'Prvých 12 mesiacov',
+    nextYear: 'Ďalších 12 mesiacov',
+    annualBasis: 'Prvý mesiac základného balíka je za 0 €, preto je prvých 12 mesiacov 11 × mesačná cena a ďalších 12 mesiacov 12 × mesačná cena. Závierka a daňové priznanie sa účtujú raz za kalendárny rok, mzdy mesačne za človeka; oboje je navyše.',
     documents: 'Rozsah a zodpovednosť v podmienkach',
     privacy: 'Ako chránime Vaše údaje',
     rows: { docs: 'Doklady', vat: 'DPH', people: 'Mzdy' },
     included: `V každom balíku: zaúčtovanie dokladov a platieb, e-faktúry, mesačný prehľad, stráženie termínov a odpovede ${REPLY_WITHIN}.`,
-    closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne. Mzdy: ${eur(PAYROLL_PRICE)} mesačne za človeka.`,
+    closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz za kalendárny rok. Mzdy: ${eur(PAYROLL_PRICE)} mesačne za človeka.`,
     vat: 'Ceny sú bez DPH, DPH zatiaľ nepripočítavame.',
     custom: `Viac ako ${largest.docs} dokladov mesačne? Pripravíme Vám ponuku na mieru.`,
     /** Beside the plans: the way in for a medium or large company, whose scope and price are agreed one by one. */
@@ -220,7 +244,7 @@ export const copy = typesetAll({
 
   /** What we promise, said once and plainly, next to the prices. */
   promises: [
-    { title: 'Bez viazanosti', text: 'Mesačná výpovedná lehota.' },
+    { title: 'Bez dlhej viazanosti', text: 'Mesačná výpovedná lehota. Pri bezplatnom založení s. r. o. platí osobitná 36-mesačná doba a pomerne sa dopočíta cena založenia.' },
     { title: 'Rozumiete cene vopred', text: 'Vidíte mesačný balík, ročnú závierku aj mzdy. Viac dokladov môže znamenať vyšší balík.' },
     { title: 'Odpoveď do pracovného dňa', text: 'Po slovensky, nie úradnícky.' },
     { title: 'Účtovníctvo je Vaše', text: 'Keď odídete, všetko Vám odovzdáme.' },
@@ -244,7 +268,7 @@ export const copy = typesetAll({
     more: 'S nami by ste ročne platili viac o',
     custom: 'Pre firmu s takýmto počtom dokladov pripravíme ponuku na mieru.',
     same: 'Pri týchto údajoch je ročná cena rovnaká.',
-    note: `Firmony počíta aj so závierkou za ${eur(CLOSING_PRICE)} a mzdami za ${eur(PAYROLL_PRICE)} mesačne na človeka. Rovnaký počet dokladov a ľudí predpokladáme každý mesiac. Práce dohodnuté individuálne v súčte nie sú.`,
+    note: `Firmony počíta prvý rok s 11 mesiacmi balíka (prvý mesiac je za 0 €) a ďalšie roky s 12 mesiacmi. Závierka ${eur(CLOSING_PRICE)} a mzdy ${eur(PAYROLL_PRICE)} mesačne na človeka sú navyše. Rovnaký počet dokladov a ľudí predpokladáme každý mesiac. Práce dohodnuté individuálne v súčte nie sú.`,
     inputHelp: 'Do mesačných nákladov zahrňte aj poplatky za mzdy a používaný účtovný softvér. Poplatok za doklad a ročnú závierku zadajte osobitne, aby sa nezapočítali dvakrát. Vyššiu aj nižšiu cenu ukážeme rovnakým spôsobom.',
     resultBasis: 'Orientačné cenové porovnanie podľa Vašich vstupov. Rozdiel nepotvrdzuje rovnakú kvalitu ani rozsah služieb. Konkrétnu ponuku si prejdeme spolu.',
     invalid: 'Skontrolujte čísla. Sumy píšte v eurách, napríklad 60 alebo 5,20.',
@@ -331,7 +355,12 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
+        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Výnimkou je bezplatné založenie s. r. o., pri ktorom platí 36-mesačná doba vedenia účtovníctva. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
+      },
+      {
+        id: 'zalozenie-podmienky',
+        q: 'Čo presne znamená „založenie s. r. o. za 0 €“?',
+        a: 'Koordináciu založenia s. r. o. aj vedenie účtovníctva od prvého dňa pre Vás zabezpečíme. Založenie je zahrnuté v cene služby, ak u nás vediete účtovníctvo nepretržite 36 mesiacov. Pri skoršom ukončení sa zostávajúci náklad založenia dopočíta pomerne podľa zmluvy. Presné podmienky a náklady si prejdeme pred uzavretím zmluvy, aby ste presne vedeli, čo získavate.',
       },
       {
         q: 'Ako spolu budeme komunikovať?',
@@ -341,7 +370,7 @@ export const copy = typesetAll({
         q: 'Ako môžete mať takúto cenu?',
         a: 'Čítanie dokladov, párovanie a ďalšie opakované úkony zjednodušuje systém. Účtovníčka sa môže venovať odbornej kontrole a Vašim otázkam. Platíte za dohodnutý rozsah služby. Mesačný balík, závierku aj mzdy vidíte v cenníku.',
       },
-    ],
+    ] as FaqItem[],
   },
 
   final: {
@@ -565,8 +594,8 @@ export const copy = typesetAll({
     },
     noVat: 'bez DPH',
     yearly: 'raz ročne',
-    invoicesValue: 'balík mesačne vopred, mzdy a doklady navyše za uplynulý mesiac, splatnosť 14 dní',
-    noticeValue: 'jeden mesiac, bez viazanosti',
+    invoicesValue: 'balík mesačne vopred, prvý mesiac balíka zadarmo, mzdy a doklady navyše za uplynulý mesiac, splatnosť 14 dní',
+    noticeValue: 'jeden mesiac',
     docsValue: `za mesiac do ${APP.docsByDay}. dňa nasledujúceho mesiaca`,
     answersValue: REPLY_WITHIN,
     plan: 'Balík',

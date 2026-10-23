@@ -182,8 +182,8 @@ check('a VAT payer starts at Rast', plan(10, true) === 'rast')
 check('more documents need a larger plan', plan(first.docs + 1, false) === 'rast' && plan(second.docs + 1, false) === 'firma' && plan(second.docs + 1, true) === 'firma')
 const withPeople = calc.compare({ monthly: 10000, perDoc: 0, docs: 10, closing: 0, vatPayer: false, people: 2 })
 check(
-  'payroll is added for each person',
-  withPeople.kind === 'compared' && withPeople.usYear === (first.price + 2 * config.PAYROLL_PRICE) * 1200 + config.CLOSING_PRICE * 100,
+  'payroll is added for each person, in the first year of eleven paid months',
+  withPeople.kind === 'compared' && withPeople.usYear === (first.price + 2 * config.PAYROLL_PRICE) * 1100 + config.CLOSING_PRICE * 100,
   JSON.stringify(withPeople),
 )
 check('beyond the largest plan is made to measure', plan(third.docs + 1, false) === null && plan(third.docs + 1, true) === null)
@@ -192,17 +192,17 @@ check(
   'the worked example adds up',
   example.kind === 'compared' &&
     example.todayYear === 212800 &&
-    example.usYear === first.price * 1200 + config.CLOSING_PRICE * 100 &&
+    example.usYear === first.price * 1100 + config.CLOSING_PRICE * 100 &&
     example.difference === 212800 - example.usYear &&
     example.plan.id === 'start',
   JSON.stringify(example),
 )
 check('nothing typed is nothing to compare', calc.compare({ monthly: 0, perDoc: 0, docs: 0, closing: 0, vatPayer: false, people: 0 }).kind === 'empty')
 const dearer = calc.compare({ monthly: 3000, perDoc: 0, docs: 10, closing: 0, vatPayer: false, people: 0 })
-check('being dearer is said as it is', dearer.kind === 'compared' && dearer.difference === 36000 - (first.price * 1200 + config.CLOSING_PRICE * 100))
+check('being dearer is said as it is', dearer.kind === 'compared' && dearer.difference === 36000 - (first.price * 1100 + config.CLOSING_PRICE * 100))
 check(
-  'our year is twelve months and the closing',
-  config.PLANS.every((p) => calc.compare({ monthly: 100, perDoc: 0, docs: p.docs, closing: 0, vatPayer: p.vatPayer, people: 0 }).usYear === p.price * 1200 + config.CLOSING_PRICE * 100),
+  'our first year is eleven paid months and the closing; later years are twelve',
+  config.PLANS.every((p) => calc.compare({ monthly: 100, perDoc: 0, docs: p.docs, closing: 0, vatPayer: p.vatPayer, people: 0 }).usYear === p.price * 1100 + config.CLOSING_PRICE * 100),
 )
 // His word of 13 October 2026: at least 60 % margin. What a client costs besides the accountant (the bank, the
 // digital postman, the reading, the servers: estimates until the quotes come) and a reserve of 2 % for our errors.
@@ -374,7 +374,7 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   const llms = robots.llmsTxt()
   check(
     'llms.txt says every price as config has it, the operator and every guide',
-    llms.startsWith('# Firmony\n\n> ') && config.PLANS.every((p) => llms.includes(`${p.name}: ${p.price} € mesačne`)) && llms.includes(`${config.PAYROLL_PRICE} € mesačne za človeka`) && llms.includes(`${config.CLOSING_PRICE} € raz ročne`) && llms.includes('europio s. r. o.') && guides.GUIDES.every((g) => llms.includes(`https://firmony.io${g.path}`)) && !/[  —]/.test(llms),
+    llms.startsWith('# Firmony\n\n> ') && config.PLANS.every((p) => llms.includes(`${p.name}: ${p.price} € mesačne`)) && llms.includes(`${config.PAYROLL_PRICE} € mesačne za človeka`) && llms.includes(`${config.CLOSING_PRICE} € raz za kalendárny rok`) && llms.includes('europio s. r. o.') && guides.GUIDES.every((g) => llms.includes(`https://firmony.io${g.path}`)) && !/[  —]/.test(llms),
     llms,
   )
   const full = robots.llmsFullTxt()

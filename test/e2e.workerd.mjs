@@ -194,10 +194,10 @@ check('the canonical address is the domain', page.includes('<link rel="canonical
 check('the real domain is for search engines', res.headers.get('x-robots-tag') === null)
 const calcResultPart = (html) => html.slice(html.indexOf('class="calc__result"'), html.indexOf('</section>', html.indexOf('class="calc__result"')))
 check('the comparison waits for visitor inputs instead of advertising an invented saving', calcResultPart(page).includes('Zadajte svoje náklady') && !calcResultPart(page).includes('calc__line') && !page.includes(`811${NB}€`))
-check('every plan shows twelve monthly scopes plus the real annual closing before its choice', ['start','rast','firma'].every((id, i) => {
+check('every plan shows its first year of eleven paid months and the standard twelve after it, with the closing kept apart', ['start','rast','firma'].every((id, i) => {
   const part = page.match(new RegExp(`data-plan-year="${id}"[^>]*>(.*?)</p>`))?.[1] ?? ''
-  return part.includes([`1${NB}317${NB}€`, `2${NB}277${NB}€`, `4${NB}197${NB}€`][i])
-}) && page.includes('Ročný súčet počíta') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Mzdy a individuálne dohodnuté práce'))
+  return part.includes([`979${NB}€`, `1${NB}859${NB}€`, `3${NB}619${NB}€`][i]) && part.includes([`1${NB}068${NB}€`, `2${NB}028${NB}€`, `3${NB}948${NB}€`][i])
+}) && page.includes('Prvý mesiac základného účtovného balíka za 0') && page.replace(/[\u00a0\u202f]/g, ' ').includes('raz za kalendárny rok'))
 check('the sales page explains its nonbinding first step and links terms and privacy beside pricing', page.includes('Zatiaľ nič neobjednávate') && page.includes('pred uzavretím zmluvy') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Rozsah a zodpovednosť v podmienkach') && page.includes('href="/pravne-informacie#ochrana-udajov"'))
 
 // Public e-invoice claims distinguish an enacted duty from a live delivery integration and its recipient scope.
@@ -210,11 +210,11 @@ check('the sales page explains its nonbinding first step and links terms and pri
 // The comparison
 res = await get('/?mesacne=100&za-doklad=3&doklady=50&zavierka=200&dph=ano&ludia=1')
 page = await res.text()
-check('a comparison of typed numbers', page.includes(`3${NB}200${NB}€`) && page.includes('balík Rast') && page.includes(`2${NB}457${NB}€`) && page.includes(`743${NB}€`))
+check('a comparison of typed numbers', page.includes(`3${NB}200${NB}€`) && page.includes('balík Rast') && page.includes(`2${NB}273${NB}€`) && page.includes(`927${NB}€`))
 res = await get('/?mesacne=30&doklady=10')
 page = await res.text()
-check('a more expensive Firmony result is displayed plainly with the same total style as a saving', calcResultPart(page).includes('platili viac') && calcResultPart(page).includes(`957${NB}€`) && !calcResultPart(page).includes('calc__line--save'))
-res = await get('/?mesacne=89&doklady=10&zavierka=249')
+check('a more expensive Firmony result is displayed plainly with the same total style as a saving', calcResultPart(page).includes('platili viac') && calcResultPart(page).includes(`868${NB}€`) && !calcResultPart(page).includes('calc__line--save'))
+res = await get('/?mesacne=89&doklady=10&zavierka=160')
 page = await res.text()
 check('equal annual costs are stated as equal, not zero savings', calcResultPart(page).includes('ročná cena rovnaká') && !calcResultPart(page).includes('Ušetríte ročne'))
 res = await get('/?mesacne=0&za-doklad=0&doklady=0&zavierka=0&ludia=0')

@@ -32,15 +32,25 @@ export function planFor(docs: number, vatPayer: boolean): Plan | null {
   return null
 }
 
-/** Twelve unchanged monthly scopes plus the annual closing; payroll remains separately visible. */
+/** A standard year's base plan alone: twelve unchanged months, no payroll, no closing, no first-month promo. */
+export const standardYearPlanCents = (plan: Plan) => plan.price * 1200
+
+/** A new client's first twelve months of the base plan: the first month is free, so eleven are paid. */
+export const firstYearPlanCents = (plan: Plan) => plan.price * 1100
+
+/** A standard subsequent year: twelve months plus the annual closing and payroll. */
 export const annualPlanCents = (plan: Plan, people = 0) => (plan.price + people * PAYROLL_PRICE) * 1200 + CLOSING_PRICE * 100
+
+/** A new client's first twelve months: eleven paid months (the first is free) plus the annual closing and payroll. */
+export const firstYearCents = (plan: Plan, people = 0) => (plan.price + people * PAYROLL_PRICE) * 1100 + CLOSING_PRICE * 100
 
 export function compare(input: CalcInput): CalcResult {
   const todayYear = (input.monthly + input.docs * input.perDoc) * 12 + input.closing
   if (todayYear <= 0) return { kind: 'empty' }
   const plan = planFor(input.docs, input.vatPayer)
   if (!plan) return { kind: 'custom', todayYear }
-  const usYear = annualPlanCents(plan, input.people)
+  // A prospective client's first year: one month free, then eleven paid, plus the closing and payroll.
+  const usYear = firstYearCents(plan, input.people)
   return { kind: 'compared', plan, todayYear, usYear, difference: todayYear - usYear }
 }
 
