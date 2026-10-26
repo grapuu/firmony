@@ -179,6 +179,26 @@ check('every picture a page names exists', pictures.length >= 5 && pictures.ever
 const css = readFileSync(publicDir + '/app.css', 'utf8')
 const fonts = [...css.matchAll(/url\((\/fonts\/[^)]+)\)/g)].map((m) => m[1])
 check('every font the stylesheet names exists', fonts.length >= 6 && fonts.every((src) => existsSync(publicDir + src)), fonts.join(' '))
+// A rule left open by a merge swallows every rule after it (26 October 2026: the workspace's and the analytics' styles).
+for (const sheet of ['app.css', 'inside.css']) {
+  const text = readFileSync(`${publicDir}/${sheet}`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')
+  let depth = 0
+  let nested = null
+  const open = []
+  for (const [i, ch] of [...text].entries()) {
+    if (ch === '{') {
+      const head = text.slice(text.lastIndexOf('}', i) + 1, i).replace(/[\s\S]*[;{]/, '').trim()
+      if (open.length > 0 && !open.at(-1).startsWith('@') && nested === null) nested = head
+      open.push(head)
+      depth++
+    } else if (ch === '}') {
+      open.pop()
+      depth--
+      if (depth < 0) break
+    }
+  }
+  check(`${sheet}: every rule is closed and none is opened inside a plain rule`, depth === 0 && nested === null, `${depth} ${nested ?? ''}`)
+}
 check(
   'the icons the page links when the logo exists',
   ['/favicon.ico', '/art/icon-192.png', '/art/icon-180.png', '/art/share.png'].every((src) => existsSync(publicDir + src)),

@@ -20,6 +20,12 @@ týždeň; prácu DeepSeeku a iných modelov brať ako nedôveryhodnú a overiť
   `PRIVACY_VERSION` 2026-10-26; staré znenie 2026-10-21 v archíve. Právnik ich má prečítať pred prvým klientom.
 - Poštár ostáva na neskôr (jeho slovo); od 1. 1. 2027 ho platiteľ DPH potrebuje aj vo fakturácii zadarmo. Kandidáti:
   Qvalia a Flowis (postarflowis.sk, cenník 26. 10.: Peppol Box zadarmo na príjem, Core 9,99 € s API).
+- **Nezávislá bezpečnostná kontrola večer 26. 10.** (8 nálezov, každý overený a opravený): adresa s escapovaným
+  prvým segmentom (`/%75cto/...`) obchádzala čerstvé potvrdenie kľúčom (platilo aj na živom webe, teraz 404); logo
+  PNG 1 200 000 × 1 pálilo CPU pri každom verejnom PDF (limit strany 4 000, dekódovanie raz a uložené vedľa loga);
+  analytika webu bez stropu riadkov (300 kľúčov za deň, súčty 2 roky); fakturačný účet s IČO z registra drží meno
+  a zápis z registra (`register_found`, tlačidlo Načítať znova z registra); ZIP roka jedným dotazom (limit D1
+  1 000 dotazov); správca hľadá účet podľa mena, IČO, e-mailu alebo odkazu /f/.
 Schéma po zlúčení **83**, ďalšia **84**.
 
 **Kalkulačka odvodov a dane SZČO, 23. 10. 2026 (Cline):** `/szco-kalkulacka`. Ročný príjem → paušálne výdavky
