@@ -13,11 +13,18 @@ a najpríjemnejšia fakturácia na slovenskom trhu, s Claude API tam, kde je bez
   PAY by square a e-faktúra (UBL, Peppol BIS 3.0) ako klient.
 - Úhrada sa označí ručne (`invoices.hand_paid_on`); pri zálohovej faktúre sa daňový doklad k prijatej platbe
   vystaví hneď (platba `hand:<id>`, `invoices_payment` drží jeden).
+- Faktúra ako PDF (`src/app/invoice-pdf.ts`, rovnaký model listu ako stránka, `src/app/invoice-sheet.ts`): stiahnuť,
+  zdieľať z telefónu, napísať e-mail vlastným programom, kopírovať odkaz; pripomienka po splatnosti rovnako.
+  Firmony odberateľovi nič neposiela (ani klientom účtovníctva) a upomienky samy nechodia.
+- Celý rok v jednom ZIP (`/app/fakturacia/export?rok=`, `src/app/invoicing-export.ts`): PDF, e-faktúry a zoznam
+  pre Excel; 10 za hodinu, udalosť `invoicing.exported`.
+- Stránka odberateľa `/f/<token>` pri faktúre fakturačného účtu hovorí, že Firmony nie je dodávateľ a neoveruje
+  jeho účet (ochrana pred zneužitím na podvodné faktúry); správca účet zablokuje na `/ucto/fakturacne-ucty`.
 - Odberatelia `/app/odberatelia` z vystavených faktúr: počet, fakturované, neuhradené (po dobropisoch), ďalšia faktúra.
 - Nastavenia `/app/fakturacia`: údaje na faktúre, IBAN (kontrolné číslice), splatnosť, platiteľ DPH s IČ DPH,
   zápis v registri; ponuka účtovníctva; zrušenie účtu so zmazaním (citlivý krok ako export).
 - Faktúra z jednej vety (`src/app/invoice-ai.ts`): Claude Haiku 5.5 s vynúteným nástrojom `invoice_draft`.
-  Modelu ide iba veta; výsledok sa kontroluje ako ručne zadaný; nič sa nevystaví. Limity 40/80/4000 za deň
+  Modelu ide iba veta; výsledok sa kontroluje ako ručne zadaný; nič sa nevystaví. Limity 40/80/1500 za deň
   (osoba/firma/všetci). Udalosť `invoice.ai` drží len výsledok a tokeny, nie text.
 
 ## Čo ich oddeľuje od účtovníctva
@@ -31,7 +38,7 @@ a najpríjemnejšia fakturácia na slovenskom trhu, s Claude API tam, kde je bez
 
 ## Ochrana pred zneužitím
 
-5 registrácií za hodinu z pripojenia, 3 e-maily s odkazom za deň na adresu, 400 registrácií za deň spolu,
+5 registrácií za hodinu z pripojenia aj zo siete /24, 3 e-maily s odkazom za deň na schránku (aj s +značkou), 120 registrácií za deň spolu,
 200 vystavených faktúr za deň v účte, 10 fakturačných účtov na osobu. Nedokončené registrácie sa mažú 7 dní
 po vypršaní odkazu.
 

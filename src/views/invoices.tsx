@@ -1000,7 +1000,7 @@ export const InvoicePage: FC<{
               </ul>
             </section>
           ) : null}
-          {side ? null : (
+          {side || seller.invoicingOnly ? null : (
             <section class="info">
               <h2 class="info__title">{a.payment}</h2>
               <p class="info__lead">{credit ? a.creditPayment : state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : invoice.kind === 'advance' ? t.sheet.advanceTotal : a.paymentNone}</p>

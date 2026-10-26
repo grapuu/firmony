@@ -4,6 +4,24 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Týždeň dokončenia, 26. 10. 2026 (Claude, vetva `claude/week`):** pokyn majiteľa: produkt dokonalý a na predaj tento
+týždeň; prácu DeepSeeku a iných modelov brať ako nedôveryhodnú a overiť. Hotové a otestované:
+- **Fakturácia zadarmo pre každého** (`docs/invoicing.md`, schéma **82**): verejná `/fakturacia`, IČO a e-mail, údaje
+  z registra, fakturačný účet oddelený od účtovníctva triggermi, faktúra z jednej vety cez Claude Haiku 5.5, ručné
+  označenie úhrady, odberatelia, ZIP za rok, zrušenie so zmazaním; správca vidí a blokuje účty na `/ucto/fakturacne-ucty`.
+  Podmienky fakturácie `INVOICING.termsVersion` 2026-10-26.
+- **Faktúry ako PDF, žiadne e-maily odberateľom** (jeho slovo 26. 10. 13:41): PDF, zdieľanie, mailto, odkaz; upomienky
+  e-mailom a odosielanie faktúr e-mailom z Firmony sú preč aj pre klientov; pri opakovaní príde len zvonček autorovi.
+- **AML opravy** dvoch nezávislých kontrol (19 nálezov, schéma **81**, `test/aml-fixes.runtime.mjs`).
+- **Analytika pre správcu** (`/ucto/analytika`, schéma **83**): vlastné denné súčty bez cookies a cudzích skriptov,
+  lievik z webu po zmluvu, funkcie, rýchlosť, klienti, AI; export len po čerstvom potvrdení kľúčom.
+- **Kalkulačky opravené** (pásma SZČO 2026/2027, zaokrúhlenie po fondoch, minimálna daň s. r. o.).
+- Zmluvné podmienky účtovníctva 2026-10-26 (prvý mesiac zadarmo, bod 4.7; vystavené faktúry sa nerátajú do dokladov),
+  `PRIVACY_VERSION` 2026-10-26; staré znenie 2026-10-21 v archíve. Právnik ich má prečítať pred prvým klientom.
+- Poštár ostáva na neskôr (jeho slovo); od 1. 1. 2027 ho platiteľ DPH potrebuje aj vo fakturácii zadarmo. Kandidáti:
+  Qvalia a Flowis (postarflowis.sk, cenník 26. 10.: Peppol Box zadarmo na príjem, Core 9,99 € s API).
+Schéma po zlúčení **83**, ďalšia **84**.
+
 **Kalkulačka odvodov a dane SZČO, 23. 10. 2026 (Cline):** `/szco-kalkulacka`. Ročný príjem → paušálne výdavky
 60 % (strop 20 000 €), odvody SP 33,15 % (min 60 % / max 11× priemernej mzdy) a ZP 16 % (min 50 %, bez maxima),
 daň 15 % do 100 000 € príjmov, inak progresívna 19/25/30/35 %, nezdaniteľná časť s redukciou. Čísla overené

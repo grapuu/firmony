@@ -128,7 +128,7 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   page = await (await me.get('/app/odberatelia')).text()
   check('invoicing: the customer is among the customers, with what is open', page.includes('TEST-ONLY Odberateľ s. r. o.') && page.includes(`/app/faktury/nova?odberatel=${invoiceId}`) && page.includes('150,00'))
   page = await (await me.get(`/app/faktury/${invoiceId}`)).text()
-  check('invoicing: its page has no card of the bank, whose payments a workspace does not read', !page.includes('Keď peniaze prídu na účet') && page.includes(`/app/faktury/${invoiceId}/pdf`))
+  check('invoicing: its page has no card of the bank, whose payments a workspace does not read', !page.includes('ako zaplatenú sami') && page.includes(`/app/faktury/${invoiceId}/pdf`))
   page = await (await me.get('/app/faktury')).text()
   check('invoicing: the list says the payment is marked by a click', page.includes('označíte ju jedným klikom') && !page.includes('Keď ju zaplatí, uvidíte to tu'))
   const yearNow = day(0).slice(0, 4)

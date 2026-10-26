@@ -303,7 +303,10 @@ export const AnalyticsPage: FC<AnalyticsPageProps> = ({ dash, sort, now }) => {
                 <span class="anfunnel__bar">
                   <Bar part={step.n} of={funnelTop} />
                 </span>
-                <span class="anfunnel__rate">{before && before.n > 0 ? typeset(`${shareOf(step.n, before.n)} z predošlého`) : ''}</span>
+                <span class="anfunnel__rate">
+                  {/* A share above the whole would be no step of a funnel: the steps are sums of a period, not people (the note below). */}
+                  {before && before.n > 0 && step.n <= before.n ? typeset(`${shareOf(step.n, before.n)} z predošlého`) : ''}
+                </span>
               </li>
             )
           })}
