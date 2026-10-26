@@ -3,7 +3,8 @@
 // Legal sources are opened and cited when the feature is wired into the routes and tests, as the handover does.
 
 export const FORMATION_CONSENT_VERSION = '2026-10-22'
-export const FORMATION_CONSENT = 'Žiadam Firmony o koordináciu založenia spoločnosti s ručením obmedzeným a o vedenie jej účtovníctva. Založenie je zahrnuté v cene služby, ak firma vedie účtovníctvo vo Firmony nepretržite 36 mesiacov; pri skoršom ukončení sa zostávajúci náklad založenia dopočíta pomerne podľa zmluvy. Potvrdzujem, že žiadosť zadávam oprávnene a že právne a administratívne úkony založenia vykonajú zodpovedné osoby; žiadosť sama firmu nezakladá ani nenahrádza podpis, ak je potrebný. Koordináciu môžem zrušiť; vykonané úkony a zákonná evidencia zostávajú zachované.'
+// The formation case of a client (G4) was taken out on 26 October 2026 (formation is free help, outside the contract);
+// what stays here is what the deployed schema step 80 reads.
 
 export const FORMATION_STATES = {
   requested: 'Žiadosť sme prijali',

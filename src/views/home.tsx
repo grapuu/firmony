@@ -269,6 +269,11 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
                       <span class="offer__title-accent">{o.accent}</span>
                     </h3>
                     <p class="offer__text">{item.text}</p>
+                    {'link' in item && item.link ? (
+                      <a class="offer__link" href={item.link.href}>
+                        {item.link.text}
+                      </a>
+                    ) : null}
                   </div>
                 </li>
               ))}

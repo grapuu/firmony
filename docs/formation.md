@@ -1,5 +1,8 @@
 # Založenie s.r.o. a prechod v jednom, G4 — špecifikácia
 
+> **26. 10. 2026: vypnuté.** Prípad založenia v aplikácii klienta (G4) bol odstránený. Vyžadoval firmu so zmluvou, takže ho zakladateľ nemohol použiť, a 36-mesačná viazanosť odporovala ponuke bez viazanosti. Majiteľ rozhodol, že pomoc so založením je bezplatná rada mimo zmluvy (Firmony nezakladá firmu za klienta; notára alebo advokáta a poplatky platí zakladateľ). Nasadený krok schémy 80 zostáva nezmenený. Tento dokument opisuje stav pred zmenou.
+
+
 22. 10. 2026. Nadväzuje na [spravovaný prechod G1](managed-takeover.md) a [16](strategy/16-accounting-advantages.md)
 a [17](strategy/17-formation-playbook.md). Toto je realizačná špecifikácia pre kód; samotný kód pôjde samostatnou
 vetvou s novým krokom schémy 80. Ceny 89/169/329 €, slogan a účtovné jadro sa nemenia.

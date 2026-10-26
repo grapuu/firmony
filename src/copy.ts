@@ -90,7 +90,7 @@ export const copy = typesetAll({
       { title: 'Prvý mesiac', text: 'Za prvý mesiac služby neplatíte nič. Ak Vám Firmony nesadne, vypoviete zmluvu do jeho konca a neplatíte ani euro.' },
       { title: 'Pomoc so založením', text: 'Prevedieme Vás založením s. r. o. krok za krokom: čo pripraviť, ku komu ísť a čo podpísať. Za našu pomoc neplatíte.' },
       { title: 'Prechod k Firmony', text: 'So zmenou Vám pomôžeme tak, aby ste nemuseli začínať od nuly ani platiť za samotný prechod.' },
-      { title: 'Fakturácia', text: 'Faktúry vystavujete zadarmo, aj keď u nás účtovníctvo nemáte. Našim klientom sa vystavené faktúry nerátajú do dokladov balíka.' },
+      { title: 'Fakturácia', text: 'Faktúry vystavujete zadarmo, aj keď u nás účtovníctvo nemáte. Našim klientom sa vystavené faktúry nerátajú do dokladov balíka.', link: { href: '/fakturacia', text: 'Začať fakturovať' } },
     ],
     cta: 'Chcem začať',
     fine: 'Bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Odmenu notára alebo advokáta a poplatky za zápis firmy platí zakladateľ.',

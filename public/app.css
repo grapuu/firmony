@@ -2246,6 +2246,15 @@ textarea {
   max-width: 26em;
 }
 
+.offer__link {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--white);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .offer__nav {
   display: flex;
   align-items: center;

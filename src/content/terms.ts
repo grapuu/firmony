@@ -166,14 +166,13 @@ export function termsReferences(): { ref: string; exists: boolean }[] {
   return out
 }
 
-/** The first day of each month a client can choose to start in, from the next month and never before the launch. */
+/**
+ * The first day of each month a client can choose to start in, from this month and never before the launch: a company
+ * founded this month is kept from the month it arose (§ 4 of the Act on Accounting; the site promises it), and the
+ * first month is free in any case (OFFER.firstMonthFree).
+ */
 export function startMonths(today: string): string[] {
   let [y, m] = today.slice(0, 7).split('-').map(Number) as [number, number]
-  m += 1
-  if (m > 12) {
-    m = 1
-    y += 1
-  }
   const [fy, fm] = ORDER.firstMonth.split('-').map(Number) as [number, number]
   if (y < fy || (y === fy && m < fm)) {
     y = fy
