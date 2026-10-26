@@ -6,7 +6,8 @@ import { assistantAnswer, assistantDocuments } from '../assistant/context'
 import { assistantAllowed, assistantControl, setAssistantEnabled, type AssistantScope } from '../assistant/store'
 import { assistantTopic } from '../assistant/model'
 import { askAssistant } from '../assistant/service'
-import { orderAdmissionSql, quoteSql } from '../aml/model'
+import { normalName, orderAdmissionSql, quoteSql } from '../aml/model'
+import { CURRENT_OFFICER_SQL } from '../aml/constants'
 import { AmlDossierPanel } from '../views/aml-admission'
 import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
 import { registerAmlRoutes } from '../aml/routes'
@@ -899,6 +900,8 @@ teamRoutes.post('/klienti', async (c) => {
   if (amlOrder && admission) {
     const dossier = await dossierOfOrder(db,amlOrder.id)
     if (!oneMayConclude(amlOrder.legalForm,amlOrder.directors,amlOrder.acting)) errors.form = 'Pred založením klienta treba samostatne identifikovať všetky osoby, ktoré podľa registra konajú spoločne.'
+    // As online: the identified signer is a member of the statutory body the register named for the order (program 4.2 b)).
+    if (!amlOrder.directors?.some((d) => normalName(d.name) === normalName(admission.signerName))) errors.form = 'Overená osoba nie je podľa registra členom štatutárneho orgánu. Papierovú zmluvu môže podpísať iba osoba konajúca za firmu podľa registra.'
     if (!dossier || !await sourceIntact(c.env.FILES,dossier.dossier) || admission.level === 'high' && !await bankOriginalsIntact(db,c.env.FILES,dossier.dossier,dossier.decision?.bank_id ?? '')) errors.form = 'Pôvodné podklady overenia nie sú úplné. Najprv potrebujeme obnoviť a skontrolovať originály.'
   }
 
@@ -1316,15 +1319,6 @@ async function amlPage(c: Ctx, company: Company, extra: { error?: string; draft?
 teamRoutes.get('/klienti/:id/aml', async (c) => {
   const company = await companyParam(c, true)
   return company ? amlPage(c, company) : missingPage(c)
-})
-
-teamRoutes.post('/klienti/:id/aml/overit', async (c) => {
-  const company = await companyParam(c)
-  return company ? amlPage(c, company, { error: 'Overenie potvrďte po zaznamenaní všetkých kontrol v časti Doklady a vykonané kontroly.' }, 409) : missingPage(c)
-})
-teamRoutes.post('/klienti/:id/aml/riziko', async (c) => {
-  const company = await companyParam(c)
-  return company ? amlPage(c, company, { error: 'Rizikovú skupinu potvrdzuje určená osoba spolu s úplným overením aktuálnych údajov.' }, 409) : missingPage(c)
 })
 
 teamRoutes.post('/klienti/:id/aml/oznamenie', async (c) => {
@@ -5820,10 +5814,14 @@ teamRoutes.post('/tim', async (c) => {
   if (Object.keys(errors).length > 0) return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={errors} />, 422)
   const existing = await userByEmail(db, values.email)
   if (existing?.id === who.user.id && values.role !== 'admin') return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={{ email: 'Vlastnú rolu správcu nemožno týmto formulárom znížiť.' }} />, 422)
+  // The designated person keeps the administrator's role until another is appointed (program 2.1): otherwise nobody
+  // could decide on reports or approve a client.
+  if (existing && values.role !== 'admin' && (await officer(db))?.id === existing.id) return shell(c, 'people', t.people.title, <PeoplePage people={await teamMembers(db)} values={values} errors={{ email: 'Toto je určená osoba AML. Najprv poverte inú určenú osobu na stránke Určená osoba AML, potom môžete jej rolu zmeniť.' }} />, 409)
   const id = existing?.id ?? crypto.randomUUID()
   const changed = await db.batch([
     existing
-      ? db.prepare("UPDATE users SET team = ?1 WHERE id = ?2 AND EXISTS (SELECT 1 FROM users WHERE id = ?3 AND team = 'admin') AND (?1 = 'admin' OR team IS NOT 'admin' OR EXISTS (SELECT 1 FROM users WHERE team = 'admin' AND id <> ?2))").bind(values.role, id, who.user.id)
+      ? db.prepare(`UPDATE users SET team = ?1 WHERE id = ?2 AND EXISTS (SELECT 1 FROM users WHERE id = ?3 AND team = 'admin') AND (?1 = 'admin' OR team IS NOT 'admin' OR EXISTS (SELECT 1 FROM users WHERE team = 'admin' AND id <> ?2))
+          AND (?1 = 'admin' OR ?2 IS NOT ${CURRENT_OFFICER_SQL})`).bind(values.role, id, who.user.id)
       : db.prepare("INSERT INTO users (id, created_at, email, name, team) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM users WHERE id = ?6 AND team = 'admin')").bind(id, now(), values.email, values.name, values.role, who.user.id),
     ...(existing && existing.id !== who.user.id ? [
       db.prepare("DELETE FROM sessions WHERE user_id = ?1 AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND team = 'admin') AND EXISTS (SELECT 1 FROM users WHERE id = ?1 AND team = ?3)").bind(id, who.user.id, values.role),

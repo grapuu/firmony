@@ -6,7 +6,11 @@
 // FATF's original statements, 19 June 2026: call-for-action-june-2026.html and
 // increased-monitoring-june-2026.html under https://www.fatf-gafi.org/en/publications/High-risk-and-other-monitored-jurisdictions/
 // Increased monitoring alone is not the FATF high-risk list. Keep the two sets distinct.
-export const COUNTRY_POLICY_VERSION = '2026-10-21'
+// The lists themselves were last checked on COUNTRY_LISTS_CHECKED_ON. The policy version also changes when the way the
+// lists are applied changes, so every dossier is re-evaluated under the corrected rule (26 October 2026: country codes
+// only in the code fields, country names only in the fields that hold a country name, never in a street address).
+export const COUNTRY_LISTS_CHECKED_ON = '2026-10-21'
+export const COUNTRY_POLICY_VERSION = '2026-10-26'
 export const COUNTRY_SOURCES = {
   eu: 'https://eur-lex.europa.eu/eli/reg_del/2016/1675/2026-01-29/eng',
   commission: 'https://finance.ec.europa.eu/financial-crime/anti-money-laundering-and-countering-financing-terrorism-international-level_en',
@@ -40,8 +44,15 @@ const aliases: Record<string, string[]> = {
   SY: ['Syria', 'Syrska', 'Syrian'], TT: ['Trinidad a Tobago', 'Trinidad and Tobago'], VU: ['Vanuatu'],
   VE: ['Venezuela', 'venezuelska'], VN: ['Vietnam', 'vietnamska'], YE: ['Jemen', 'Yemen', 'jemenska'],
 }
-export function highRiskInText(text: string): boolean {
-  if (countryCodes(text).some(highRiskCountry)) return true
+/** A field that holds country codes ("SK, CZ"): only its codes count, never a word of free text. */
+export const highRiskCodes = (codes: string): boolean => countryCodes(codes).some((code) => isCountryCode(code) && highRiskCountry(code))
+export const monitoredCodes = (codes: string): boolean => countryCodes(codes).some((code) => isCountryCode(code) && monitoredCountry(code))
+/**
+ * A field that holds the name of a country or a nationality ("ruská", "Rusko, Kazachstan"): only whole names count.
+ * A two-letter word is never read as a code here ("Na Hrebienku" is no Namibia), and a street address is never passed
+ * in at all ("Ruská Nová Ves" is a village in Slovakia).
+ */
+export function highRiskName(text: string): boolean {
   const value = ` ${normal(text)} `
   return Object.entries(aliases).some(([code, names]) => high.has(code) && names.some((name) => value.includes(` ${normal(name)} `)))
 }

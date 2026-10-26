@@ -1,5 +1,6 @@
-import {aml,archiveEnded,purgeCompany,forgetRecords,GUIDES,BUILD_METADATA,SCHEMA_VERSION} from '../.wrangler/dist/stores.js'
+import {aml,archiveEnded,purgeCompany,forgetRecords,GUIDES,BUILD_METADATA,SCHEMA_VERSION,startMonths,TERMS_VERSION} from '../.wrangler/dist/stores.js'
 import {checkAmlAdmission,ensureAmlOfficer,seedAmlDossier,testDeclaration} from './aml.runtime.mjs'
+import { checkAmlFixes } from './aml-fixes.runtime.mjs'
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
 // email service and the pretend register of test/pretend.mjs. Nothing leaves the machine.
 //
@@ -595,7 +596,9 @@ await settle(500)
   indexNowAnswer = null
   await db.prepare("DELETE FROM site_state WHERE key = 'indexnow-wait'").run()
 }
-check('a prospect is not erased after only a year', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 1)
+// A request that never reached the identification (no order, no dossier) ends a year after it was sent, as the
+// privacy notice says (finding of the review of 26 October 2026: before, it was kept for ever).
+check('a request that never reached the identification is erased a year after it was sent', (await db.prepare("SELECT COUNT(*) AS n FROM requests WHERE id = 'old'").first())?.n === 0)
 check('newer requests stay', (await count()) >= 4)
 check(
   'a sign-up not renewed for a year is deleted, newer ones stay',
@@ -1776,7 +1779,8 @@ check("a client gets nothing of the team's page", res.status === 404)
 check('she reads the newest version', page.includes('Hlavná 6, 040 01 Košice'))
 res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: declRow?.id ?? '' })
 check(
-  'an older version is never checked in place of the newest',
+  'the old checked button is gone, and an older version is never checked in place of the newest',
+  res.status === 404 &&
   (
     await db
       .prepare('SELECT checked_at FROM declarations WHERE id = ?')
@@ -1785,7 +1789,7 @@ check(
   )?.checked_at === null && (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'declaration.checked'").first())?.n === 0,
 )
 res = await acc.post('/ucto/klienti/co-a/aml/overit', { vyhlasenie: newest?.id ?? '' })
-check('the legacy checked button cannot bypass signature, KUV or sanctions evidence',res.status === 409 && (await db.prepare('SELECT checked_at FROM declarations WHERE id = ?').bind(newest.id).first()).checked_at === null)
+check('the legacy checked button cannot bypass signature, KUV or sanctions evidence',res.status === 404 && (await db.prepare('SELECT checked_at FROM declarations WHERE id = ?').bind(newest.id).first()).checked_at === null)
 let companyAml = await aml.dossierOfCompany(db,'co-a')
 const companyCheckFields = (kind) => ({druh:kind,vysledok:'clear',zdroj:`TEST ONLY current independent ${kind} source`,podpisujuci:'Anna Malá',kvalifikovany:'1',hash:companyAml.dossier.facts_hash})
 for (const kind of ['identity','kuv','pep','eu-sanctions','un-sanctions','countries']) {
@@ -1800,7 +1804,7 @@ res=await anna.get('/app/vyhlasenie')
 check('the client sees the completed verification',(await res.text()).includes('Overené'))
 res = await acc.post('/ucto/klienti/co-a/aml/riziko', { uroven: 'low', poznamka:'TEST ONLY unsupported downgrade' })
 const riskRow=await db.prepare("SELECT level,created_by FROM risks WHERE company_id='co-a' ORDER BY created_at DESC,rowid DESC LIMIT 1").first()
-check('the old risk endpoint cannot overwrite the designated decision',res.status===409 && riskRow.level==='standard' && riskRow.created_by===amlOfficer.id)
+check('the old risk endpoint is gone and cannot overwrite the designated decision',res.status===404 && riskRow.level==='standard' && riskRow.created_by===amlOfficer.id)
 res = await acc.post('/ucto/klienti/co-a/aml/oznamenie', { text: '  ' })
 check('an empty report is not taken', res.status === 422)
 const beforeRep = (await sent()).length
@@ -4490,7 +4494,8 @@ res = await get(orderLink)
 page=await res.text()
 check('before AML admission the public link collects evidence and cannot conclude a contract',page.includes('Overenie pred začatím spolupráce') && !page.includes('name="agree"'))
 if(process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/aml-intake.html`,page)
-await seedAmlDossier(db,files,orderRow.id,await ensureAmlOfficer(db),{...testDeclaration(),director:{...testDeclaration().director,name:'Tomáš Dvorský'}})
+// The signed declaration accepts the offer the contract is concluded on later: the second month offered, as below.
+await seedAmlDossier(db,files,orderRow.id,await ensureAmlOfficer(db),{...testDeclaration(),director:{...testDeclaration().director,name:'Tomáš Dvorský'},contract:{plan:'rast',startOn:startMonths(day(0))[1],terms:TERMS_VERSION}})
 res = await get(orderLink)
 page = await res.text()
 check(
@@ -4507,6 +4512,7 @@ check('the order page is not for search engines', (res.headers.get('x-robots-tag
 const months = [...page.matchAll(/name="start" id="start-\d" value="(\d{4}-\d{2}-01)"/g)].map((m) => m[1])
 check('six months are offered, the launch the first of them at the earliest', months.length === 6 && months[0] >= '2027-01-01', months.join(' '))
 check('the page carries the reviewed proposal', page.includes(`name="proposal" value="${proposal}"`))
+check('the page says the contract is concluded as the identified person signed it, the other months closed', page.includes('data-signed-offer') && /value="[^"]+"[^>]*disabled/.test(page.match(/name="start" id="start-0"[^>]*>/)?.[0] ?? ''))
 const validContract = { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1', proposal }
 res = await admin.post(reviewPath, { ...reviewFields, decision: 'hold' })
 res = await get(orderLink)
@@ -4556,6 +4562,8 @@ res = await post(orderLink, { ...validContract, proposal: '' }, { ip: '198.51.10
 check('a missing proposal digest cannot be bypassed by a direct post', res.status === 409)
 res = await post(orderLink, { ...validContract, plan: 'firma' }, { ip: '198.51.100.21' })
 check('changing the package requires a fresh scope decision', res.status === 409)
+res = await post(orderLink, { ...validContract, start: months[2] }, { ip: '198.51.100.21' })
+check('whoever holds the link cannot conclude it for another first month than the identified person signed', res.status === 409 && (await res.text()).includes('prijala v podpísanom vyhlásení') && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 0)
 
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Peter Starý', agree: '1' }, { ip: '198.51.100.21' })
 check('a director whose office ended cannot conclude it', res.status === 422 && (await res.text()).includes('Vyberte, prosím, kto zmluvu uzatvára'))
@@ -5223,5 +5231,10 @@ await checkDeliveryRuntime({ mf, db, signIn, nowS, day })
 await checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,capture:process.env.FIRMONY_CAPTURE_DIR})
 await checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,provider:assistantProvider,capture:process.env.FIRMONY_CAPTURE_DIR})
 await checkFormationRuntime({db,as,signIn,nowS})
+// The designated person's pages are sensitive (five minutes): each step there confirms the key afresh. A confirmation
+// replaces the session, so the next one starts from the cookie the last one gave.
+let bossFresh = boss.cookie
+const freshAdmin = async () => { bossFresh = (await verifyBrowser('ahoj@firmony.io', bossFresh)).cookie; return as(bossFresh) }
+await checkAmlFixes({ db, files, get, post, admin, acc, lucia, signIn, as, nowS, day, freshAdmin })
 await mf.dispose()
 done('runtime')

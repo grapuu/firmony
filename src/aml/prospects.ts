@@ -1,6 +1,6 @@
 import { localDaySql } from '../app/period-schema'
 import { now } from '../db'
-import { ENDING } from '../config'
+import { ENDING, RETENTION } from '../config'
 import { PURGE_GRACE_SECONDS } from '../incidents/store'
 import { AML_TODAY_SQL } from './retention'
 
@@ -9,9 +9,45 @@ const expiredSql = (o: string, day: string) => `${o}.aml_ended_at IS NOT NULL AN
 const clearSql = (o: string, day: string) => `NOT EXISTS (SELECT 1 FROM aml_prospect_reports r WHERE r.order_id = ${o}.id AND r.decided_at IS NULL)
   AND NOT EXISTS (SELECT 1 FROM aml_prospect_holds h WHERE h.order_id = ${o}.id AND h.until_on >= ${day})`
 
+/**
+ * A request from the site that never reached the identification of § 7 of Act 297/2008: no order of it has a dossier,
+ * an internal finding or a written FSJ request, none is open, accepted or a client's. Nothing of § 19(2) was obtained, so
+ * it is kept a year from when it was sent (RETENTION.requestDays), with its orders and their reviews, as the privacy
+ * notice says. A request whose order reached the identification keeps the five years from the end of negotiations below.
+ */
+const UNIDENTIFIED = `SELECT r.id FROM requests r WHERE r.created_at < ?1 AND r.status <> 'client'
+  AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.request_id = r.id)
+  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.request_id = r.id AND (o.company_id IS NOT NULL OR o.status = 'accepted' OR o.expires_at > unixepoch()
+    OR EXISTS (SELECT 1 FROM aml_dossiers d WHERE d.order_id = o.id) OR EXISTS (SELECT 1 FROM aml_prospect_reports p WHERE p.order_id = o.id)
+    OR EXISTS (SELECT 1 FROM aml_prospect_holds h WHERE h.order_id = o.id)))`
+export async function forgetUnidentified(env: { DB: D1Database; FILES?: R2Bucket }, at = now()): Promise<number> {
+  const db = env.DB
+  const cutoff = at - RETENTION.requestDays * 86400
+  const due = await db.prepare(`${UNIDENTIFIED} ORDER BY r.created_at LIMIT ?2`).bind(cutoff, ENDING.perRun * 10).all<{ id: string }>()
+  let deleted = 0
+  for (const { id } of due.results) {
+    const orders = await db.prepare('SELECT id FROM orders WHERE request_id = ?').bind(id).all<{ id: string }>()
+    if (env.FILES) for (const order of orders.results) {
+      // No dossier was ever written; a file of an upload that failed half way is the only thing that could be there.
+      const page = await env.FILES.list({ prefix: `onboarding/${order.id}/`, limit: 1000 })
+      if (page.objects.length) await env.FILES.delete(page.objects.map((f) => f.key))
+    }
+    const still = `EXISTS (${UNIDENTIFIED} AND r.id = ?2)`
+    const results = await db.batch([
+      db.prepare(`DELETE FROM events WHERE company_id IS NULL AND (subject = ?2 OR subject IN (SELECT id FROM orders WHERE request_id = ?2)) AND ${still}`).bind(cutoff, id),
+      db.prepare(`DELETE FROM order_reviews WHERE order_id IN (SELECT id FROM orders WHERE request_id = ?2) AND ${still}`).bind(cutoff, id),
+      db.prepare(`DELETE FROM orders WHERE request_id = ?2 AND ${still}`).bind(cutoff, id),
+      db.prepare(`DELETE FROM requests WHERE id = ?2 AND ${still}`).bind(cutoff, id),
+    ])
+    if ((results[3]?.meta.changes ?? 0) > 0) deleted++
+  }
+  return deleted
+}
+
 /** Refusal and an unrenewed offer's expiry start a recorded calendar retention period; an active client protects its earlier files. */
 export async function forgetProspects(env: { DB: D1Database; FILES?: R2Bucket }, today: string): Promise<number> {
   const db = env.DB
+  await forgetUnidentified(env)
   await db.batch([
     db.prepare(`UPDATE orders SET aml_ended_at = COALESCE((SELECT r.aml_ended_at FROM requests r WHERE r.id = orders.request_id),expires_at)
       WHERE company_id IS NULL AND status <> 'accepted' AND aml_ended_at IS NULL AND expires_at <= unixepoch()`),
@@ -48,6 +84,8 @@ export async function forgetProspects(env: { DB: D1Database; FILES?: R2Bucket },
       db.prepare(`DELETE FROM events WHERE company_id IS NULL AND (subject = ?1 OR subject IN (${dossierIds}))`).bind(id),
       db.prepare(`DELETE FROM aml_checks WHERE dossier_id IN (${dossierIds})`).bind(id),
       db.prepare(`DELETE FROM aml_decisions WHERE dossier_id IN (${dossierIds})`).bind(id),
+      db.prepare(`DELETE FROM aml_place_checks WHERE dossier_id IN (${dossierIds})`).bind(id),
+      db.prepare(`DELETE FROM aml_policy_reviews WHERE dossier_id IN (${dossierIds})`).bind(id),
       db.prepare('DELETE FROM aml_bank_evidence WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE order_id = ?)').bind(id),
       db.prepare('DELETE FROM aml_dossiers WHERE order_id = ?').bind(id),
       db.prepare('DELETE FROM aml_prospect_reports WHERE order_id = ?').bind(id),

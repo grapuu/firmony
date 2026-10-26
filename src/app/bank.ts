@@ -506,10 +506,12 @@ export function noticeOf(links: BankLinkView[], at: number = now()): BankNotice 
 
 /**
  * Takes an account that is not the company's (a person's own account chosen at the bank by mistake) out: it is read
- * no more at once. Its payments from the bank go with it only while the books have not touched any of them: none is
- * paired with a document, given an account or checked by the accountant, and no month is locked. Otherwise they stay
- * where they are, and the accountant is told, because taking them out would change books she has already worked on.
- * A statement's payments are kept either way.
+ * no more at once. Its payments from the bank leave the company's work only while the books have not touched any of
+ * them: none is paired with a document, given an account or checked by the accountant, and no month is locked.
+ * Otherwise they stay where they are, and the accountant is told, because taking them out would change books she has
+ * already worked on. A statement's payments are kept either way. Payments that leave are not erased: they are kept
+ * apart from the books, with the account's IBAN, until the company's five years end (§ 19(2) of Act 297/2008,
+ * program 9.1 b); app/purge.ts).
  */
 export async function dropAccount(db: D1Database, company: string, user: string, accountId: string): Promise<'dropped' | 'kept' | false> {
   const account = await db.prepare('SELECT id FROM accounts WHERE id = ? AND company_id = ? AND link_id IS NOT NULL').bind(accountId, company).first<{ id: string }>()
@@ -523,8 +525,16 @@ export async function dropAccount(db: D1Database, company: string, user: string,
     .bind(accountId, company)
     .first<{ touched: number }>()
   const keep = Boolean(touched?.touched)
+  const archived = `json_object('created_at', p.created_at, 'booked_on', p.booked_on, 'amount_cents', p.amount_cents, 'currency', p.currency,
+    'party', p.party, 'party_iban', p.party_iban, 'vs', p.vs, 'ss', p.ss, 'ks', p.ks, 'note', p.note, 'card', p.card, 'ref', p.ref,
+    'source', p.source, 'exempt', p.exempt, 'exempt_note', p.exempt_note, 'exempt_by', p.exempt_by)`
   await db.batch([
-    ...(keep ? [] : [db.prepare("DELETE FROM payments WHERE account_id = ? AND company_id = ? AND source = 'bank'").bind(accountId, company)]),
+    ...(keep ? [] : [
+      db.prepare(`INSERT OR IGNORE INTO dropped_payments (id, company_id, account_id, iban, dropped_at, dropped_by, data)
+        SELECT p.id, p.company_id, p.account_id, (SELECT a.iban FROM accounts a WHERE a.id = p.account_id), ?3, ?4, ${archived}
+        FROM payments p WHERE p.account_id = ?1 AND p.company_id = ?2 AND p.source = 'bank'`).bind(accountId, company, now(), user),
+      db.prepare("DELETE FROM payments WHERE account_id = ? AND company_id = ? AND source = 'bank' AND id IN (SELECT id FROM dropped_payments)").bind(accountId, company),
+    ]),
     db.prepare('UPDATE accounts SET link_id = NULL, remote_id = NULL WHERE id = ? AND company_id = ?').bind(accountId, company),
     ...(keep ? [] : [db.prepare('DELETE FROM accounts WHERE id = ? AND company_id = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE account_id = ?)').bind(accountId, company, accountId)]),
     eventStatement(db, { company, user, action: 'bank.account.dropped', subject: accountId, detail: { payments: keep ? 'kept' : 'removed' } }),

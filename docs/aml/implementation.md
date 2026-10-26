@@ -37,6 +37,17 @@ Originálne zoznamy FATF z 19. 6. 2026 sú oddelené. Zvýšené monitorovanie s
 https://www.fatf-gafi.org/en/publications/High-risk-and-other-monitored-jurisdictions/call-for-action-june-2026.html
 https://www.fatf-gafi.org/en/publications/High-risk-and-other-monitored-jurisdictions/increased-monitoring-june-2026.html
 
+## Opravy po dvoch nezávislých kontrolách (krok schémy 81, 26. 10. 2026)
+
+- Krajiny: kódy sa čítajú iba z polí s kódmi (pobyt, štátne príslušnosti, krajiny sídla a partnerov), názvy iba z polí s názvom krajiny alebo štátnej príslušnosti. Adresa ulice sa na krajinu nečíta. Partneri v krajine pod monitoringom FATF sú jeden faktor, nie dva. Verzia pravidiel krajín je `2026-10-26`, zoznamy sú overené 21. 10. 2026.
+- Zmena zoznamov (program 4.4 c)): určená osoba na stránke Určená osoba AML prehodnotí klientov. Server vypočíta požadovanú skupinu z uloženého vyhlásenia a zapíše ju s novou verziou (`aml_policy_reviews`). Klient, ktorého potvrdená skupina stačí, je hneď znova overený; ostatní potrebujú nové rozhodnutie.
+- Skutočné miesto výkonu činnosti (4.2 a)): ak nie je zhodné so sídlom, schválenie vyžaduje kontrolu z nezávislého zdroja (`aml_place_checks`).
+- Pravidelná aktualizácia (4.7): každé ďalšie schválenie toho istého klienta vyžaduje kontroly PEP, sankčných zoznamov EÚ a OSN a KUV zapísané po predchádzajúcom schválení.
+- Online zmluva: podpísané vyhlásenie obsahuje aj prijatie ponuky (balík, prvý mesiac, verzia podmienok). Zmluvu možno uzavrieť iba presne v tomto znení, aj na úrovni SQL; držiteľ e-mailového odkazu nemôže v mene overenej osoby uzavrieť nič iné. Papierová cesta overuje podpisujúceho voči štatutárnemu orgánu z registra rovnako.
+- Verejný odkaz objednávky nezobrazuje rodné čísla ani číslo dokladu; pri úprave sa píšu znova.
+- Uchovanie: odobratý člen firmy stráca prístup hneď, ale jeho záznam ostáva, kým sa uchovávajú záznamy firmy (`member_removals`). Platby odobratého bankového účtu sa presunú mimo účtovníctva do `dropped_payments` a vymažú sa až s firmou. Žiadosť z webu bez začatej identifikácie sa vymaže 365 dní od odoslania.
+- Interné oznámenie: autor vidí výsledok, nie odôvodnenie určenej osoby (7.2). Určenú osobu nemožno preradiť z roly správcu, kým nie je poverená iná.
+
 ## Pred prvým skutočným klientom
 
 Christian potvrdí totožnosť prvého správcu a jeho poverenie určenou osobou podľa podpísaného programu. Advokát overí podmienky, ochranu údajov, program, zmluvné dokumenty a nepokryté postupy. Poisťovňa písomne potvrdí konkrétne krytie; do aplikácie sa zaznamenajú skutočné referencie. Zostáva podpis programu, registrácia goAML a skúška úplného mesiaca s účtovníkom. Samotné zelené testy nenahrádzajú tieto kroky ani overenie skutočného kvalifikovaného podpisu.

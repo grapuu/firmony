@@ -148,7 +148,7 @@ export const Legal: FC = () => (
       <h3 class="h4">Ako dlho ich uchovávame</h3>
       <p>
         {t(
-          `Údaje záujemcu a podklady z rokovania, z ktorého nevznikla zmluva, uchovávame päť rokov od odmietnutia alebo skončenia rokovania podľa AML programu. Zápis na daňové priznanie z investícií uchovávame ${RETENTION.requestDays} dní od posledného zápisu. Technické záznamy odoslaných upozornení ${RETENTION.outboxDays} dní a odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
+          `Žiadosť z webu, ku ktorej sme nedostali podpísané vyhlásenie na overenie totožnosti, vymažeme ${RETENTION.requestDays} dní od jej odoslania, spolu s ponukou, ak sme ju poslali a už neplatí. Ak sme overenie začali alebo to vyžaduje zákon proti praniu špinavých peňazí, údaje záujemcu a podklady z rokovania, z ktorého nevznikla zmluva, uchovávame päť rokov od odmietnutia alebo skončenia rokovania podľa AML programu. Zápis na daňové priznanie z investícií uchovávame ${RETENTION.requestDays} dní od posledného zápisu. Technické záznamy odoslaných upozornení ${RETENTION.outboxDays} dní a odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
         )}
       </p>
       <p>

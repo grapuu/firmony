@@ -38,9 +38,14 @@ async function deletePrefix(files: R2Bucket, prefix: string, keep: Set<string> =
   return deleted
 }
 
-/** The people of a company who belong to nothing else once it is gone: no other company and no team. */
-const LONELY = `SELECT m.user_id FROM members m JOIN users u ON u.id = m.user_id
-  WHERE m.company_id = ?1 AND u.team IS NULL AND NOT EXISTS (SELECT 1 FROM members o WHERE o.user_id = m.user_id AND o.company_id <> ?1)`
+/**
+ * The people of a company, its members and those an owner took out of it (member_removals), who belong to nothing else
+ * once it is gone: no other company, no other company's kept records and no team.
+ */
+const LONELY = `SELECT u.id AS user_id FROM users u WHERE u.team IS NULL
+  AND (EXISTS (SELECT 1 FROM members m WHERE m.company_id = ?1 AND m.user_id = u.id) OR EXISTS (SELECT 1 FROM member_removals r WHERE r.company_id = ?1 AND r.user_id = u.id))
+  AND NOT EXISTS (SELECT 1 FROM members o WHERE o.user_id = u.id AND o.company_id <> ?1)
+  AND NOT EXISTS (SELECT 1 FROM member_removals r WHERE r.user_id = u.id AND r.company_id <> ?1)`
 
 /**
  * A freeze whose reason is gone is lifted, while nothing has been deleted yet: the data changed since the client
@@ -112,6 +117,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     db.prepare('DELETE FROM aml_auto_reviews WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM documents WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payments WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM dropped_payments WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM accounts WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM bank_links WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM statements WHERE company_id = ?').bind(companyId),
@@ -174,6 +180,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
       db.prepare('DELETE FROM users WHERE id = ? AND team IS NULL').bind(id),
     ]),
     db.prepare('DELETE FROM members WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM member_removals WHERE company_id = ?').bind(companyId),
     db
       .prepare('UPDATE companies SET purged_at = ?, closed_at = COALESCE(closed_at, ?), note = NULL, invoice_iban = NULL, invoice_footer = NULL, tax_account = NULL, payroll = NULL WHERE id = ? AND purged_at IS NULL')
       .bind(now(), now(), companyId),
@@ -226,19 +233,27 @@ export async function purgeEnded(env: PurgeEnv, today: string): Promise<number> 
       console.error('deleting a company failed', err instanceof Error ? err.name : 'error')
     }
   }
-  await forgetRecords(env, today)
-  await forgetProspects(env, today)
-  await forgetLonely(db)
+  // Each step on its own: a record kept back (an internal report not decided after five years) stops only its own
+  // company, never the erasure of prospects or of people the law no longer keeps.
+  for (const [name, step] of [['records', () => forgetRecords(env, today)], ['prospects', () => forgetProspects(env, today)], ['people', () => forgetLonely(db)]] as const) {
+    try {
+      await step()
+    } catch (err) {
+      console.error(`forgetting ${name} failed`, err instanceof Error ? err.name : 'error')
+    }
+  }
   return purged
 }
 
 /**
- * A person who belongs to no company and to no team any more (an owner removed them, their company was deleted) has
- * an account for nothing: it goes, with its sessions and links. Nobody is ever without a company in between: an
- * account is made in the same step as its membership.
+ * A person who belongs to no company and to no team any more has an account for nothing: it goes, with its sessions and
+ * links. One an owner took out of a company stays (without sessions or links) while that company's records are kept,
+ * so who did what stays known (program 9.1 c), 9.3); the company's purge five years after the end forgets the person
+ * with the removal, when nothing else is left. Nobody is ever without a company in between: an account is made in the same step as its membership.
  */
 export async function forgetLonely(db: D1Database): Promise<number> {
-  const lonely = 'SELECT u.id FROM users u WHERE u.team IS NULL AND NOT EXISTS (SELECT 1 FROM members m WHERE m.user_id = u.id)'
+  const lonely = `SELECT u.id FROM users u WHERE u.team IS NULL AND NOT EXISTS (SELECT 1 FROM members m WHERE m.user_id = u.id)
+    AND NOT EXISTS (SELECT 1 FROM member_removals r WHERE r.user_id = u.id)`
   const results = await db.batch([
     db.prepare(`DELETE FROM sessions WHERE user_id IN (${lonely})`),
     db.prepare(`DELETE FROM login_links WHERE user_id IN (${lonely})`),
@@ -250,49 +265,66 @@ export async function forgetLonely(db: D1Database): Promise<number> {
 /** Five years past the end, what the law kept goes too: the power of attorney, the identification, the contract. */
 export async function forgetRecords(env: PurgeEnv, today: string): Promise<number> {
   const db = env.DB
+  // A company whose evidence is kept back (a hold, an open incident, an internal report not decided) waits, and does
+  // not take the place of the others in the run.
   const due = await db
     .prepare(`SELECT id FROM companies WHERE purged_at IS NOT NULL AND ${retentionExpiredSql('companies','?')} AND demo = 0
       AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
-      AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL) ORDER BY ends_on LIMIT ?`)
+      AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM reports WHERE company_id = companies.id AND decided_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM aml_prospect_reports r JOIN orders o ON o.id = r.order_id WHERE o.company_id = companies.id AND r.decided_at IS NULL)
+      ORDER BY ends_on LIMIT ?`)
     .bind(today, ENDING.perRun)
     .all<{ id: string }>()
   let deleted = 0
   for (const { id } of due.results) {
-    const claim = await db.prepare(`UPDATE companies SET records_delete_started_at = COALESCE(records_delete_started_at, ?1)
-      WHERE id = ?2 AND purged_at IS NOT NULL AND ${retentionExpiredSql('companies','?3')}
-        AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
-        AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`)
-      .bind(now(), id, today).run()
-    if (!claim.meta.changes) continue
-    const canDelete = async () => !await evidenceBlocked(db, id)
-    await db.prepare(`UPDATE requests SET aml_ended_at = (SELECT unixepoch(ends_on || 'T12:00:00Z') FROM companies WHERE id = ?1) WHERE id IN (SELECT request_id FROM orders WHERE company_id = ?1)`).bind(id).run()
-    const orders = await db.prepare('SELECT id FROM orders WHERE company_id = ?').bind(id).all<{id:string}>()
-    if (env.FILES) {
-      await deletePrefix(env.FILES, `companies/${id}/`, new Set(), canDelete)
-      for (const order of orders.results) await deletePrefix(env.FILES, `onboarding/${order.id}/`, new Set(), canDelete)
+    try {
+      if (await forgetCompanyRecords(env, id, today)) deleted++
+    } catch (err) {
+      console.error('forgetting a company failed', err instanceof Error ? err.name : 'error')
     }
-    await db.batch([
-      ...['aml_checks','aml_decisions'].map((table) => db.prepare(`DELETE FROM ${table} WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))`).bind(id)),
-      db.prepare('DELETE FROM aml_bank_evidence WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))').bind(id),
-      db.prepare('DELETE FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1)').bind(id),
-      db.prepare('DELETE FROM company_files WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM declarations WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM risks WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM reports WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM contract_snapshots WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM billing_tariffs WHERE company_id = ?').bind(id),
-      ...['aml_prospect_reports','aml_prospect_holds'].map((table) => db.prepare(`DELETE FROM ${table} WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?)`).bind(id)),
-      db.prepare('DELETE FROM order_reviews WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?)').bind(id),
-      db.prepare('DELETE FROM orders WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM events WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM managed_handover_history WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM managed_handovers WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM formation_history WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM formation_cases WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM assistant_uses WHERE company_id = ?').bind(id),
-      db.prepare('DELETE FROM companies WHERE id = ?').bind(id),
-    ])
-    deleted++
   }
   return deleted
+}
+
+async function forgetCompanyRecords(env: PurgeEnv, id: string, today: string): Promise<boolean> {
+  const db = env.DB
+  if (await evidenceBlocked(db, id)) return false
+  const claim = await db.prepare(`UPDATE companies SET records_delete_started_at = COALESCE(records_delete_started_at, ?1)
+    WHERE id = ?2 AND purged_at IS NOT NULL AND ${retentionExpiredSql('companies','?3')}
+      AND NOT EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = companies.id AND released_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM incidents WHERE company_id = companies.id AND closed_at IS NULL)`)
+    .bind(now(), id, today).run()
+  if (!claim.meta.changes) return false
+  const canDelete = async () => !await evidenceBlocked(db, id)
+  await db.prepare(`UPDATE requests SET aml_ended_at = (SELECT unixepoch(ends_on || 'T12:00:00Z') FROM companies WHERE id = ?1) WHERE id IN (SELECT request_id FROM orders WHERE company_id = ?1)`).bind(id).run()
+  const orders = await db.prepare('SELECT id FROM orders WHERE company_id = ?').bind(id).all<{id:string}>()
+  if (env.FILES) {
+    await deletePrefix(env.FILES, `companies/${id}/`, new Set(), canDelete)
+    for (const order of orders.results) await deletePrefix(env.FILES, `onboarding/${order.id}/`, new Set(), canDelete)
+  }
+  await db.batch([
+    ...['aml_checks','aml_decisions','aml_place_checks','aml_policy_reviews'].map((table) => db.prepare(`DELETE FROM ${table} WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))`).bind(id)),
+    db.prepare('DELETE FROM aml_bank_evidence WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))').bind(id),
+    db.prepare('DELETE FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1)').bind(id),
+    db.prepare('DELETE FROM company_files WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM declarations WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM risks WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM reports WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM contract_snapshots WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM billing_tariffs WHERE company_id = ?').bind(id),
+    ...['aml_prospect_reports','aml_prospect_holds'].map((table) => db.prepare(`DELETE FROM ${table} WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?)`).bind(id)),
+    db.prepare('DELETE FROM order_reviews WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?)').bind(id),
+    db.prepare('DELETE FROM orders WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM events WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM managed_handover_history WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM managed_handovers WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM formation_history WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM formation_cases WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM assistant_uses WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM member_removals WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM dropped_payments WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM companies WHERE id = ?').bind(id),
+  ])
+  return true
 }

@@ -1,11 +1,13 @@
 // Synthetic attestations exercise workflow protection. They do not claim cryptographic QES validation.
 import { check } from './check.mjs'
-import { aml, amlEnhanced, amlModel,amlAutoReview,teamDeadlines,archiveEnded,forgetProspects, acceptStatements, contractGate, contractCatalogueHash, orderOfferHash, orderOf } from '../.wrangler/dist/stores.js'
+import { aml, amlEnhanced, amlModel,amlAutoReview,teamDeadlines,archiveEnded,forgetProspects, acceptStatements, contractGate, contractCatalogueHash, orderOfferHash, orderOf, TERMS_VERSION } from '../.wrangler/dist/stores.js'
 
 export const testDeclaration = (extra = {}) => ({
   version: 2, director: { name: 'AML Test Owner', birthNumber: '', birthDate: '1990-01-01', address: 'Testovacia 12, Košice', nationality: 'slovenská', citizenships: 'SK', residenceCountry: 'SK', pep: false, idKind: 'op', idNumber: 'TESTONLY123' },
   kuv: 'self', owners: [], activity: 'Vývoj softvéru', income: 'Príjmy z vlastných služieb', turnover: 'do-50', cash: false, abroad: false, abroadWhere: '',
-  businessAtSeat: true, businessAddress: '', businessCountries: 'SK', ownBehalf: true, partnerCountries: 'SK', ...extra,
+  businessAtSeat: true, businessAddress: '', businessCountries: 'SK', ownBehalf: true, partnerCountries: 'SK',
+  // The offer the signed declaration accepts (an online order): the acceptance must match it exactly.
+  contract: { plan: 'rast', startOn: '2027-01-01', terms: TERMS_VERSION }, ...extra,
 })
 
 export async function ensureAmlOfficer(db) {
@@ -82,6 +84,10 @@ export async function checkAmlAdmission(db, files) {
   check('high risk without documented enhanced care stays blocked',!await decision(user,'high'))
   check('high risk with consent still requires original account and first-payment proof',!await decision(user,'high','TEST ONLY complete additional wealth and funds evidence'))
   bank=await seedAmlBank(db,files,view,user)
+  view = await aml.dossierOfOrder(db,'aml-live-order')
+  check('a renewed approval cannot rest on the KUV and sanctions checks of the previous approval',!await decision(user,'high','TEST ONLY wealth, funds, additional sources and measures'))
+  for (const kind of ['kuv','eu-sanctions','un-sanctions']) await aml.recordCheck(db,user,view,input(kind))
+  view = await aml.dossierOfOrder(db,'aml-live-order')
   check('high risk requires an explicit officer decision and enhanced evidence',await decision(user,'high','TEST ONLY wealth, funds, additional sources and measures'))
   view = await aml.dossierOfOrder(db,'aml-live-order')
   const release={ FILES:files,CONTRACT_RELEASE:JSON.stringify({catalogueHash:await contractCatalogueHash(),legalReview:'TEST ONLY lawyer',insuranceReview:'TEST ONLY insurer',validUntil:ts+86400}) }
@@ -98,9 +104,13 @@ export async function checkAmlAdmission(db, files) {
   check('a sanction finding between preview and commit blocks every acceptance write',!(await db.prepare("SELECT id FROM companies WHERE id='aml-accepted'").first()) && !(await db.prepare("SELECT id FROM users WHERE id='aml-owner'").first()))
   view=await aml.dossierOfOrder(db,'aml-live-order')
   await aml.recordCheck(db,user,view,input('un-sanctions'))
+  for (const [kind,result] of [['pep','high'],['eu-sanctions','clear'],['kuv','clear']]) await aml.recordCheck(db,user,view,input(kind,{result}))
   view=await aml.dossierOfOrder(db,'aml-live-order')
-  await decision(user,'high','TEST ONLY renewed evidence of wealth, funds and measures')
+  check('a renewed approval with every review check recorded anew is accepted',await decision(user,'high','TEST ONLY renewed evidence of wealth, funds and measures'))
   const current=await contractGate(db,release,await order())
+  const unsigned=await acceptStatements(db,await order(),{plan:'rast',signedBy:'AML Test Owner',signedRole:'Konateľ',startOn:'2027-02-01',ipHash:'0'.repeat(64),approval:current.approval},{companyId:'aml-unsigned',userId:'aml-unsigned-owner',existingUser:false,inbox:'aml-unsigned-inbox'})
+  await db.batch(unsigned.statements)
+  check('SQL concludes nothing but the offer the identified person signed',!(await db.prepare("SELECT id FROM companies WHERE id='aml-unsigned'").first()) && (await order()).status==='open')
   const accepted=await acceptStatements(db,await order(),{plan:'rast',signedBy:'AML Test Owner',signedRole:'Konateľ',startOn:'2027-01-01',ipHash:'0'.repeat(64),approval:current.approval},{companyId:'aml-accepted',userId:'aml-owner',existingUser:false,inbox:'aml-accepted-inbox'})
   await db.batch(accepted.statements)
   const declaration=await db.prepare("SELECT * FROM declarations WHERE company_id='aml-accepted'").first()

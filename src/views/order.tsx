@@ -20,6 +20,8 @@ const Page: FC<{ children: Child; wide?: boolean }> = ({ children, wide }) => (
 )
 
 /** "január 2027" for the first day of a month. */
+const planName = (id: string) => PLANS.find((p) => p.id === id)?.name ?? id
+
 export function monthLabel(day: string): string {
   const names = ['január', 'február', 'marec', 'apríl', 'máj', 'jún', 'júl', 'august', 'september', 'október', 'november', 'december']
   return `${names[Number(day.slice(5, 7)) - 1] ?? ''} ${day.slice(0, 4)}`
@@ -144,7 +146,7 @@ export const OrderAsked: FC = () => (
   </Page>
 )
 
-export const OrderPage: FC<{ order: Order; token: string; months: string[]; values: OrderValues; errors: OrderErrors; gate: ContractGate; stale?: boolean }> = ({
+export const OrderPage: FC<{ order: Order; token: string; months: string[]; values: OrderValues; errors: OrderErrors; gate: ContractGate; stale?: boolean; signed?: { plan: string; startOn: string; terms: string } | null }> = ({
   order,
   token,
   months,
@@ -152,6 +154,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
   errors,
   gate,
   stale = false,
+  signed = null,
 }) => {
   const directors = order.directors ?? []
   if (!gate.ready) return <OrderWaiting order={order} token={token} gate={gate} stale={stale} />
@@ -187,6 +190,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
           </p>
         ) : null}
         <div class="details">
+          {signed ? <p class="small" data-signed-offer>{typeset(`Zmluvu uzavriete v znení, ktoré osoba konajúca za firmu prijala v podpísanom vyhlásení: balík ${planName(signed.plan)}, prvý mesiac ${monthLabel(signed.startOn)}, obchodné podmienky vo verzii ${signed.terms}.`)}</p> : null}
           <fieldset class="field choice" aria-describedby={errors.plan ? 'o-plan-error' : undefined}>
             <legend class="field__label">{o.plan}</legend>
             <div class="choice__options">
@@ -206,7 +210,7 @@ export const OrderPage: FC<{ order: Order; token: string; months: string[]; valu
             <div class="choice__options">
               {months.map((day, i) => (
                 <label class="choice__option">
-                  <input type="radio" name="start" id={`start-${i}`} value={day} checked={values.start === day} />
+                  <input type="radio" name="start" id={`start-${i}`} value={day} checked={values.start === day} disabled={signed ? signed.startOn !== day : undefined} />
                   <span>{monthLabel(day)}</span>
                 </label>
               ))}

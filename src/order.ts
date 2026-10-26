@@ -3,7 +3,9 @@ import { orderAdmissionSql, quoteSql } from './aml/model'
 // goes by email to the address that was typed (so whoever opens it can read that mailbox), and a member of the
 // statutory body the register names, who may act for it alone, accepts the terms there. Accepting creates the company, the person's account and their membership in one batch, keeps who
 // accepted which version when, and is done once: the UPDATE that closes the order is the first statement of the
-// batch and the rest only happens when it found the order open.
+// batch and the rest only happens when it found the order open. Since 26 October 2026 the order closes only on the
+// offer the identified person accepted in the declaration signed with a qualified signature (the plan, the first month
+// and the terms' version in its `contract`), so whoever holds the emailed link concludes nothing else in that name.
 import { ORDER, TERMS_VERSION, planById, type PlanId } from './config'
 import { now, sha256Hex } from './db'
 import { isLegalForm, type Director, type LegalForm } from './rpo'
@@ -186,6 +188,8 @@ export async function acceptStatements(db: D1Database, order: Order, a: Acceptan
         `UPDATE orders SET status = 'accepted', accepted_at = ?3, company_id = ?2, signed_by = ?4, start_on = ?5, price_cents = ?6, terms_version = ?7, ip_hash = ?8, plan = ?9, signed_role = ?12
          WHERE id = ?1 AND status = 'open' AND expires_at > ?3
            AND ${orderAdmissionSql('orders', quoteSql(aml.dossierId), String(aml.decisionId))}
+           AND EXISTS (SELECT 1 FROM aml_dossiers sd WHERE sd.id = ${quoteSql(aml.dossierId)} AND json_extract(sd.declaration, '$.contract.plan') IS ?9
+             AND json_extract(sd.declaration, '$.contract.startOn') IS ?5 AND json_extract(sd.declaration, '$.contract.terms') IS ?7)
            AND EXISTS (SELECT 1 FROM order_reviews r JOIN users u ON u.id = r.accountant_id
              WHERE r.order_id = ?1 AND r.id = ?10 AND r.id = (SELECT MAX(id) FROM order_reviews WHERE order_id = ?1)
                AND r.decision = 'standard' AND r.offer_hash = ?11 AND r.expires_at > ?3 AND r.plan = ?9
