@@ -34,6 +34,10 @@ import { customersOf, deleteWorkspace, handAdvanceOf, handPaidStatement, invoici
 import { sheetOf } from './invoice-sheet'
 import { invoicePdf, invoicePdfName, logoImage } from './invoice-pdf'
 import { invoiceYears, invoicingArchive } from './invoicing-export'
+import { providerOf, type PeppolEnv } from '../peppol/provider'
+import { peppolCopy as pc } from '../peppol/copy'
+import { blockedOf, companyParticipant, customerParticipant, participantState, queueSend, receivedList, receivedOne, receivedPaidStatements, receivedUnpaid, sendDue, sendStates, sendingsOf, trySend } from '../peppol/store'
+import { PeppolCard, PeppolCompany, ReceivedOne, ReceivedPage, type CompanyPeppol } from '../views/peppol'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
 import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
@@ -172,7 +176,7 @@ import {
 } from './store'
 import { readInvoice, readStatement, type Reading } from './xml'
 
-export interface AppBindings extends ContractBindings, SecurityBindings {
+export interface AppBindings extends ContractBindings, SecurityBindings, PeppolEnv {
   DB: D1Database
   EMAIL?: Mailer
   /** The documents' files (R2, EU). Without it nothing can be uploaded. */
@@ -357,13 +361,30 @@ appRoutes.use('*', async (c, next) => {
 async function shell(c: Ctx, place: Place | null, title: string, node: unknown, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const [missing, unread, companies] = await Promise.all([countMissing(c.env.DB, who.company.id), unseenFromFirmony(c.env.DB, who.company.id), companiesOf(c.env.DB, who.user.id)])
+  // A workspace's received e-invoices: a place of its own once the postman is connected or something came.
+  const received = who.company.invoicingOnly ? await receivedNav(c) : null
   return render(
     c,
-    <Shell who={who} place={place} missing={missing} unread={unread} companies={companies} title={title} ending={endingOf(who.company, today())}>
+    <Shell who={who} place={place} missing={missing} unread={unread} companies={companies} title={title} ending={endingOf(who.company, today())} received={received}>
       {node as never}
     </Shell>,
     status,
   )
+}
+
+/** The company's place in the Peppol network: its participant by its DIČ, what the SML says, whose postman. */
+async function companyPeppol(c: Ctx): Promise<CompanyPeppol> {
+  const who = c.get('who')
+  const participant = companyParticipant(who.company)
+  const provider = providerOf(c.env)
+  return { participant, lookup: participant ? await participantState(c.env.DB, participant) : null, live: provider !== null, ourSmp: provider?.smpHost ?? null }
+}
+
+async function receivedNav(c: Ctx): Promise<{ unpaid: number } | null> {
+  const db = c.env.DB
+  const id = c.get('who').company.id
+  const any = await db.prepare('SELECT 1 AS x FROM einvoice_received WHERE company_id = ? LIMIT 1').bind(id).first()
+  return providerOf(c.env) || any ? { unpaid: await receivedUnpaid(db, id) } : null
 }
 
 /** The words of a finished action, chosen by a key in the address: nothing typed by anyone reaches the page this way. */
@@ -467,6 +488,14 @@ function flashOf(c: Ctx): string | null {
       return iv.app.paid.flashUndo
     case 'nastavenia':
       return iv.app.settings.saved
+    case 'efaktura':
+      return pc.flash.sent
+    case 'efaktura-ide':
+      return pc.flash.queued
+    case 'efaktura-nie':
+      return pc.flash.failed
+    case 'prijata-zaplatena':
+      return iv.app.paid.flash
     default:
       return null
   }
@@ -602,6 +631,62 @@ appRoutes.post('/fakturacia/zrusit', async (c) => {
   if (next && (await startSession(c, c.env.DB, who.user.id, next))) return c.redirect('/app', 303)
   await endSession(c, c.env.DB)
   return c.redirect(`${INVOICING_PATH}?zrusene=1`, 303)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// What a workspace received through Peppol (a client's received e-invoices become its documents)
+// ---------------------------------------------------------------------------------------------------------------
+
+appRoutes.get('/prijate', async (c) => {
+  const who = c.get('who')
+  if (!who.company.invoicingOnly) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  return shell(c, 'received', pc.received.title, <ReceivedPage list={await receivedList(c.env.DB, who.company.id)} today={today()} />)
+})
+
+async function receivedPage(c: Ctx, id: string, error: string | null = null, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const x = who.company.invoicingOnly && ID.test(id) ? await receivedOne(c.env.DB, who.company.id, id) : null
+  if (!x) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  return shell(c, 'received', x.party ?? pc.received.title, <ReceivedOne x={x} today={today()} flash={flashOf(c)} error={error} />, status)
+}
+
+appRoutes.get('/prijate/:id', (c) => receivedPage(c, c.req.param('id')))
+
+appRoutes.post('/prijate/:id/zaplatena', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const x = who.company.invoicingOnly && ID.test(id) ? await receivedOne(c.env.DB, who.company.id, id) : null
+  if (!x) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  const body = await c.req.parseBody()
+  const day = dayOfText(typeof body.den === 'string' ? body.den : '')
+  if (!day || day > today()) return receivedPage(c, id, pc.received.errors.day, 422)
+  await c.env.DB.batch(receivedPaidStatements(c.env.DB, who.company.id, id, day, who.user.id))
+  return c.redirect(`/app/prijate/${id}?ok=prijata-zaplatena`, 303)
+})
+
+appRoutes.post('/prijate/:id/nezaplatena', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const x = who.company.invoicingOnly && ID.test(id) ? await receivedOne(c.env.DB, who.company.id, id) : null
+  if (!x) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  await c.env.DB.batch(receivedPaidStatements(c.env.DB, who.company.id, id, null, who.user.id))
+  return c.redirect(`/app/prijate/${id}`, 303)
+})
+
+appRoutes.get('/prijate/:id/xml', async (c) => {
+  const who = c.get('who')
+  const id = c.req.param('id')
+  const x = who.company.invoicingOnly && ID.test(id) ? await receivedOne(c.env.DB, who.company.id, id) : null
+  const object = x?.fileKey && c.env.FILES ? await c.env.FILES.get(x.fileKey) : null
+  if (!x || !object) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="e-faktura-${(x.number ?? x.id).replace(/[^A-Za-z0-9._-]+/g, '-')}.xml"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
 })
 
 appRoutes.get('/odberatelia', async (c) => {
@@ -2216,6 +2301,7 @@ async function companyPage(
       receipts={receipts}
       downloadError={extra.download ?? null}
       bills={bills}
+      peppol={<PeppolCompany state={await companyPeppol(c)} />}
     />,
     status,
   )
@@ -2999,6 +3085,7 @@ async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
       closed={closed}
       repeats={await repeatsOf(c.env.DB, who.company.id)}
       workspace={who.company.invoicingOnly}
+      einvoices={await sendStates(c.env.DB, who.company.id)}
     />
     </>,
     status,
@@ -3398,11 +3485,31 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
         error={extra.error ?? null}
       />
     ) : null
+  // The e-invoice: for a Slovak company's customer by its DIČ, whether it can receive (the SML, kept a while), and
+  // the sendings so far. A customer abroad or a person gets the PDF alone.
+  const blocked = blockedOf(who.company, invoice, today())
+  const receiver = customerParticipant(invoice)
+  const peppol =
+    blocked === 'draft' || blocked === 'proforma' || blocked === 'customerId' || !receiver ? null : (
+      <PeppolCard
+        view={{
+          live: providerOf(c.env) !== null,
+          blocked,
+          customer: blocked ? null : await participantState(db, receiver),
+          customerName: invoice.customerName,
+          sendings: await sendingsOf(db, who.company.id, invoice.id),
+          invoiceId: invoice.id,
+          issuedAt: invoice.createdAt,
+        }}
+        today={today()}
+        error={extra.error === pc.card.limit ? extra.error : null}
+      />
+    )
   return shell(
     c,
     'invoices',
     `${ti.sheet.kinds[invoice.kind] ?? ti.sheet.title} ${invoice.number}`,
-    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={who.company.invoicingOnly ? null : advance} repeat={repeat} late={late} side={hand} {...(hand ? {} : extra)} />,
+    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={who.company.invoicingOnly ? null : advance} repeat={repeat} late={late} side={hand} einvoice={peppol} {...(hand || extra.error === pc.card.limit ? {} : extra)} />,
     status,
   )
 }
@@ -3645,6 +3752,22 @@ appRoutes.post('/faktury/cislovanie', async (c) => {
     eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: 'invoices.numbering', detail: { prefix: values.prefix, sep, digits, from } }),
   ])
   return c.redirect('/app/faktury/cislovanie?ok=cislovanie', 303)
+})
+
+/** Sends an issued invoice as an e-invoice through the connected postman: written down once, handed over at once. */
+appRoutes.post('/faktury/:id/einvoice', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const provider = providerOf(c.env)
+  const invoice = ID.test(id) ? await getInvoice(db, who.company.id, id) : null
+  if (!invoice || !provider) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  const receiver = customerParticipant(invoice)
+  if (!receiver || (await participantState(db, receiver)).state !== 'found') return c.redirect(`/app/faktury/${invoice.id}#efaktura`, 303)
+  const queued = await queueSend(db, who.company, invoice, who.user.id, today())
+  if ('refused' in queued) return queued.refused === 'limit' ? invoicePage(c, invoice.id, { error: pc.card.limit }, 429) : c.redirect(`/app/faktury/${invoice.id}#efaktura`, 303)
+  const state = queued.fresh ? await trySend(db, provider, queued.id) : null
+  return c.redirect(`/app/faktury/${invoice.id}?ok=${state === 'sent' ? 'efaktura' : state === 'failed' ? 'efaktura-nie' : 'efaktura-ide'}#efaktura`, 303)
 })
 
 appRoutes.get('/faktury/:id', (c) => invoicePage(c, c.req.param('id')))

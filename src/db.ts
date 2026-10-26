@@ -9,6 +9,7 @@ import { ASSISTANT_SCHEMA } from './assistant/schema'
 import { FORMATION_SCHEMA } from './formation/schema'
 import { INVOICING_SCHEMA } from './app/invoicing-schema'
 import { ANALYTICS_SCHEMA } from './analytics/schema'
+import { PEPPOL_SCHEMA } from './peppol/schema'
 import { usageCutoff } from './analytics/model'
 import { bratislavaDay } from './time'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
@@ -1582,6 +1583,9 @@ const MIGRATIONS: readonly string[][] = [
   INVOICING_SCHEMA,
   // 83: first-party analytics in daily sums (analytics/schema.ts).
   ANALYTICS_SCHEMA,
+  // 84: e-invoices through the Peppol network (peppol/): the SML's answers kept a while, sendings with their state,
+  // what the network delivered.
+  PEPPOL_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

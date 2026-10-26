@@ -30,6 +30,10 @@ import { copy } from './copy'
 import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
 import { typeset } from './format'
 import { connection, isLocal, later, siteOrigin } from './http'
+import { providerOf } from './peppol/provider'
+import { applyEvents, sendDue } from './peppol/store'
+
+const PEPPOL_NOTICES = '/peppol/udalosti'
 import { recordRequest } from './analytics/record'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
@@ -138,7 +142,15 @@ app.use('*', async (c, next) => {
     url.pathname = url.pathname.replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1')
     return c.redirect(url.toString(), 301)
   }
-  if (!reads) {
+  // The postman's notices come from its servers, signed (peppol/provider.ts): no page of ours sends them, so no origin
+  // is asked; their length is, and the route checks the signature before reading anything.
+  const notice = !reads && url.pathname === PEPPOL_NOTICES
+  if (notice) {
+    const length = Number(c.req.header('content-length'))
+    if (!Number.isInteger(length) || length < 0) return c.text('Length required', 411)
+    if (length > 20 * 1024 * 1024) return c.text('Too large', 413)
+  }
+  if (!reads && !notice) {
     // A form may only be posted from our own pages, and says how long it is.
     const origin = c.req.header('origin')
     const sameOrigin = origin ? origin === url.origin : c.req.header('sec-fetch-site') === 'same-origin'
@@ -886,6 +898,17 @@ app.get('/f/:token/xml', async (c) => {
 })
 
 app.route('/auth', securityRoutes)
+// The postman tells of a sending's state and delivers e-invoices to our companies (peppol/store.ts).
+app.post(PEPPOL_NOTICES, async (c) => {
+  const provider = providerOf(c.env)
+  if (!provider) return c.text('Not found', 404)
+  const body = await c.req.text()
+  const events = await provider.events(c.req.raw, body)
+  if (!events) return c.text('Forbidden', 403)
+  const outcome = await applyEvents(c.env, provider, events, (work) => later(c, work))
+  return c.json({ ok: true, ...outcome })
+})
+
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
 
@@ -1091,6 +1114,13 @@ export default {
           await appScheduled(env, event.scheduledTime)
         } catch (err) {
           console.error('app schedule failed', err instanceof Error ? err.name : 'error')
+        }
+        try {
+          // E-invoices whose next try has come (the postman did not take them at once).
+          const provider = providerOf(env)
+          if (provider) await sendDue(env.DB, provider)
+        } catch (err) {
+          console.error('peppol schedule failed', err instanceof Error ? err.name : 'error')
         }
         try {
           await announceSite(env.DB, env.ANNOUNCE === '1')

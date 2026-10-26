@@ -476,6 +476,7 @@ export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceE
           {s.numberingLink}
         </a>
       </section>
+      {peppol as never}
       <section class="info" id="stiahnut" aria-labelledby="w-stiahnut">
         <h2 id="w-stiahnut" class="info__title">
           {v.app.download.title}

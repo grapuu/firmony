@@ -33,7 +33,7 @@ import { eventStatement, type Company } from './store'
 export function invoicingPath(path: string): boolean {
   // Nothing of an invoice is emailed from a workspace (his word of 26 October 2026), and no reminder goes by itself.
   if (/^\/app\/faktury\/upomienky$/.test(path) || /^\/app\/faktury\/[^/]+\/(?:zaloha|poslat|pripomenut)$/.test(path)) return false
-  return /^\/app\/(?:faktury(?:\/.*)?|odberatelia|fakturacia(?:\/[a-z-]+)?|logo|firma\/prepnut|potvrdit)$/.test(path)
+  return /^\/app\/(?:faktury(?:\/.*)?|odberatelia|prijate(?:\/[A-Za-z0-9-]{1,64}(?:\/(?:zaplatena|nezaplatena|xml))?)?|fakturacia(?:\/[a-z-]+)?|logo|firma\/prepnut|potvrdit)$/.test(path)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -376,6 +376,8 @@ export async function deleteWorkspace(db: D1Database, files: R2Bucket | undefine
     await db.batch([
       db.prepare(`DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ?1) AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM invoice_repeats WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM einvoice_sends WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM einvoice_received WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM invoices WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM documents WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM cost_centers WHERE company_id = ?1 AND ${guard}`).bind(company),

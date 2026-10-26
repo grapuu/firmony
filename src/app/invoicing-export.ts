@@ -20,7 +20,7 @@ export async function invoiceYears(db: D1Database, company: string): Promise<str
   return rows.results.map((r) => r.y).filter((y) => /^\d{4}$/.test(y))
 }
 
-const csv = (rows: (string | number | null)[][]) => `﻿${rows.map((row) => row.map((cell) => csvCell(cell)).join(';')).join('\r\n')}\r\n`
+const csv = (rows: (string | number | null)[][]) => `\uFEFF${rows.map((row) => row.map((cell) => csvCell(cell)).join(';')).join('\r\n')}\r\n`
 const piece = (text: string) => text.replace(/[\\/]+/g, '-').replace(/\s+/g, ' ').trim()
 
 /** The archive of a year, streamed: an invoice's PDF is made only when its turn comes. */

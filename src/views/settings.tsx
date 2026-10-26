@@ -16,6 +16,8 @@ import type { BillRow } from '../team/billing-store'
 import { ClientBills } from './billing'
 
 export interface CompanyPageProps {
+  /** The company's place in the Peppol network (views/peppol.tsx), under its data. */
+  peppol?: unknown
   company: Company
   people: Person[]
   me: Person
@@ -188,7 +190,7 @@ const Download: FC<{ years: string[]; handover: Paper[]; today: string; owner: b
 /** Cents as typed in a field: 5000 or 1250,50. */
 const moneyField = (cents: number): string => (cents % 100 === 0 ? String(cents / 100) : `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`)
 
-export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, receipts = [], downloadError, bills = [] }) => {
+export const CompanyPage: FC<CompanyPageProps> = ({ peppol = null, company, people, me, companies, inbox, invite, errors, flash, poa, declaration, today, noticeEnd, ending, years, handover, receipts = [], downloadError, bills = [] }) => {
   const owner = me.role === 'owner'
   const others = companies.filter((other) => other.id !== company.id)
   return (
@@ -248,6 +250,7 @@ export const CompanyPage: FC<CompanyPageProps> = ({ company, people, me, compani
               </a>
             </p>
           </section>
+          {peppol as never}
 
           <section class="info" id="zmluva" aria-labelledby="zmluva-t">
             <h2 id="zmluva-t" class="info__title">

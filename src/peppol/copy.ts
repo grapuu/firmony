@@ -1,0 +1,87 @@
+// The words of e-invoices through Peppol (26 October 2026). The person never has to know what Peppol is: an invoice is
+// "sent as an e-invoice", the postman is "the Peppol network" only where a word is needed. Short, the polite "Vy" in
+// capitals, no long dashes; every sentence is something the code does or the network said.
+import { typeset as plain } from '../format'
+
+// "e-faktúra" never breaks after its hyphen.
+const typeset = (text: string): string => plain(text).replace(/([Ee])-(?=faktúr)/g, '$1-\u2060')
+
+export const peppolCopy = {
+  card: {
+    title: 'E-faktúra',
+    sendLead: (customer: string) => typeset(`${customer} prijíma e-faktúry. Pošlite ju jedným klikom, doručí ju sieť Peppol a stav uvidíte tu.`),
+    missing: (customer: string) => typeset(`${customer} zatiaľ nie je v sieti Peppol, e-faktúru mu teraz nedoručíme. Pošlite mu PDF nižšie.`),
+    unknown: typeset('Sieť Peppol teraz neodpovedá. Skúste stránku obnoviť o chvíľu.'),
+    send: 'Odoslať e-faktúru',
+    sendAgain: 'Odoslať znova',
+    soon: (customer: string) => typeset(`${customer} prijíma e-faktúry. Odosielanie priamo z Firmony zapíname pred 1. 1. 2027. Dovtedy mu pošlite PDF.`),
+    soonMissing: typeset('Odosielanie e-faktúr priamo z Firmony zapíname pred 1. 1. 2027. Dovtedy pošlite odberateľovi PDF.'),
+    sellerId: typeset('Na odoslanie e-faktúry potrebujeme DIČ Vašej firmy. Doplňte ho v nastaveniach.'),
+    sellerIdLink: 'Doplniť DIČ',
+    ended: typeset('Zmluva skončila, e-faktúry už cez Firmony neposielame.'),
+    states: {
+      queued: 'Odosiela sa',
+      sent: 'Odoslaná',
+      delivered: 'Doručená',
+      rejected: 'Odmietnutá',
+      failed: 'Nedoručená',
+    } as Record<string, string>,
+    issued: 'Vystavená',
+    queuedLead: typeset('Odovzdávame ju sieti Peppol. Stav sa obnoví sám.'),
+    retrying: typeset('Sieť ju zatiaľ neprevzala, skúšame znova.'),
+    sentLead: typeset('Sieť Peppol ju prevzala a doručuje odberateľovi.'),
+    deliveredLead: typeset('Odberateľ e-faktúru dostal do svojho účtovníctva.'),
+    rejected: (reason: string) => typeset(`Odberateľ ju odmietol: ${reason}`),
+    rejectedNext: typeset('Ak treba niečo opraviť, vystavte dobropis a novú faktúru.'),
+    failed: (reason: string) => typeset(`E-faktúru sa nepodarilo doručiť: ${reason}`),
+    at: (day: string, time: string) => `${day} o ${time}`,
+    limit: typeset('Dnes ste už poslali veľa e-faktúr. Ďalšie pošlite zajtra alebo nám napíšte.'),
+    pdfTitle: 'Poslať aj ako PDF',
+  },
+  flash: {
+    sent: 'E-faktúra je odoslaná.',
+    queued: 'E-faktúru odovzdávame sieti Peppol.',
+    failed: 'E-faktúru sa nepodarilo odoslať.',
+  },
+  list: {
+    pill: { queued: 'E-faktúra sa odosiela', sent: 'E-faktúra odoslaná', delivered: 'E-faktúra doručená', rejected: 'E-faktúra odmietnutá', failed: 'E-faktúra nedoručená' } as Record<string, string>,
+  },
+  company: {
+    title: 'E-faktúry (Peppol)',
+    id: (id: string) => `Vaše označenie v sieti Peppol: ${id}`,
+    ours: typeset('Zapnuté. E-faktúry posielate aj prijímate priamo vo Firmony.'),
+    elsewhere: (host: string) => typeset(`Vaša firma je v sieti Peppol cez iného poštára (${host}). E-faktúry, ktoré Vám pošlú, chodia k nemu.`),
+    elsewhereNote: typeset('Ak ich chcete mať vo Firmony, zvoľte Firmony na portáli finančnej správy v časti eFaktúra.'),
+    registered: typeset('Vaša firma je v sieti Peppol a e-faktúry prijíma. Odosielanie a príjem priamo vo Firmony zapíname pred 1. 1. 2027.'),
+    missing: typeset('Vaša firma zatiaľ nie je v sieti Peppol. Od 1. 1. 2027 musí e-faktúry od platiteľov DPH vedieť prijímať.'),
+    howOurs: typeset('Stačí jeden krok: na portáli finančnej správy v časti eFaktúra zvoľte Firmony. Potom už nerobíte nič, prijaté e-faktúry sa zobrazia tu.'),
+    howSoon: typeset('Prihlásenie do siete priamo cez Firmony zapíname pred 1. 1. 2027.'),
+    noDic: typeset('Doplňte DIČ firmy: podľa neho Vás sieť Peppol nájde.'),
+    unknown: typeset('Sieť Peppol teraz neodpovedá. Stav overíme pri ďalšom otvorení.'),
+    portal: 'Portál finančnej správy',
+  },
+  received: {
+    nav: 'Prijaté',
+    title: 'Prijaté faktúry',
+    lead: typeset('E-faktúry, ktoré Vám poslali dodávatelia cez sieť Peppol. Zaplatíte ich QR kódom v aplikácii banky.'),
+    empty: typeset('Zatiaľ Vám nikto e-faktúru neposlal. Keď príde, nájdete ju tu.'),
+    supplier: 'Dodávateľ',
+    number: 'Číslo',
+    due: 'Splatnosť',
+    amount: 'Suma',
+    open: 'Otvoriť',
+    unpaid: 'Na zaplatenie',
+    paid: (day: string) => `Zaplatená ${day}`,
+    pay: 'Zaplatiť QR kódom',
+    payLead: typeset('Naskenujte kód v aplikácii svojej banky. Účet, suma a variabilný symbol sa vyplnia samy.'),
+    noQr: typeset('Faktúra neuvádza účet na platbu alebo je v inej mene. Zaplaťte ju podľa údajov dodávateľa.'),
+    iban: 'IBAN',
+    vs: 'Variabilný symbol',
+    mark: 'Označiť ako zaplatenú',
+    unmark: 'Zrušiť označenie',
+    xml: 'Stiahnuť e-faktúru (XML)',
+    receivedAt: (day: string) => `Prišla ${day}`,
+    back: 'Prijaté faktúry',
+    errors: { day: 'Deň platby napíšte ako 26. 10. 2026, nie neskôr ako dnes.' },
+  },
+}

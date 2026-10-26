@@ -19,6 +19,7 @@ import { CenterSelect } from './centers'
 import type { Company } from '../app/store'
 import { Tile } from './home'
 import { Flash, Heading, InsideHead } from './inside'
+import { EinvoicePill } from './peppol'
 import { Wordmark } from './layout'
 
 const t = app.invoices
@@ -50,7 +51,7 @@ const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) =
   return rate ? eurOf(i.totalCents, rate) : 0
 }
 
-export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[]; workspace?: boolean }> = ({ invoices, today, flash, closed = null, repeats = [], workspace = false }) => {
+export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[]; workspace?: boolean; einvoices?: Map<string, string> }> = ({ invoices, today, flash, closed = null, repeats = [], workspace = false, einvoices = new Map() }) => {
   const month = today.slice(0, 7)
   // In euros: an invoice in another currency at its rate.
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + eurosOf(i), 0)
@@ -149,6 +150,7 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
                               ? t.paidOn(dayName(i.paidOn, today))
                               : t.dueOn(dayName(i.dueOn, today))}
                         </span>
+                        {einvoices.has(i.id) ? <EinvoicePill state={einvoices.get(i.id) as never} /> : null}
                       </span>
                     </span>
                     <span class="row__end">
@@ -731,7 +733,9 @@ export const InvoicePage: FC<{
   late?: LateView | null
   /** What stands first in the side column (a workspace's payment by hand, app/invoicing.ts). */
   side?: unknown
-}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null, side = null }) => {
+  /** The invoice's e-invoice through Peppol (views/peppol.tsx), first of all when it can travel. */
+  einvoice?: unknown
+}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null, side = null, einvoice = null }) => {
   const a = t.actions
   const x = t.send
   const state = stateOf(invoice, today)
@@ -770,6 +774,7 @@ export const InvoicePage: FC<{
           <InvoiceSheet invoice={invoice} lines={lines} seller={seller} logo={logoSrc(seller, '/app/logo')} sheet={sheet} />
         </div>
         <aside class="invoice__side">
+          {einvoice as never}
           {side as never}
           <section class="info invoice__send" aria-labelledby="poslat-t">
             <h2 id="poslat-t" class="info__title">

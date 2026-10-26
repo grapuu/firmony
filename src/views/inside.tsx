@@ -9,8 +9,9 @@ import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
 import { invoicingCopy } from '../content/invoicing'
+import { peppolCopy } from '../peppol/copy'
 
-export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'taxes' | 'messages' | 'company' | 'customers'
+export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'taxes' | 'messages' | 'company' | 'customers' | 'received'
 
 /** The head of every page of the app: its own stylesheet after the site's, and its one small script. */
 export const InsideHead: FC<{ title: string; security?: boolean }> = ({ title, security = false }) => (
@@ -93,6 +94,8 @@ export interface ShellProps {
   title: string
   /** The contract's end, once it has a last day: a line above every page says what follows. */
   ending?: Ending | null
+  /** A workspace's received e-invoices: shown once the postman is connected or one came; the count waits to be paid. */
+  received?: { unpaid: number } | null
   children: Child
 }
 
@@ -120,16 +123,18 @@ export const Shell: FC<ShellProps> = (props) => {
   return <ClientShell {...props} />
 }
 
-/** The places of a workspace of invoicing alone (app/invoicing.ts): its invoices, its customers, its settings. */
+/** The places of a workspace of invoicing alone (app/invoicing.ts): its invoices, its customers, what it received, its settings. */
 const INVOICING_NAV: { place: Place; href: string; label: string; art: Art | null }[] = [
   { place: 'invoices', href: '/app/faktury', label: invoicingCopy.app.nav.invoices, art: ART.paperInvoice },
   { place: 'customers', href: '/app/odberatelia', label: invoicingCopy.app.nav.customers, art: ART.lens },
+  { place: 'received', href: '/app/prijate', label: peppolCopy.received.nav, art: ART.envelope },
   { place: 'company', href: '/app/fakturacia', label: invoicingCopy.app.nav.settings, art: ART.key },
 ]
 
 /** The frame of a workspace: the same column and tabs as a client's, with only what invoicing has. */
-const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, children }) => {
+const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, received = null, children }) => {
   const nav = invoicingCopy.app.nav
+  const items = INVOICING_NAV.filter((item) => item.place !== 'received' || received)
   return (
     <html lang="sk">
       <InsideHead title={`${title} | ${BRAND.name}`} />
@@ -167,10 +172,11 @@ const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, children
               </div>
             )}
             <nav class="side__nav">
-              {INVOICING_NAV.map((item) => (
+              {items.map((item) => (
                 <a class="side__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
                   <Tile art={item.art} size="sm" />
                   <span class="side__label">{item.label}</span>
+                  {item.place === 'received' && received ? <Count n={received.unpaid} /> : null}
                 </a>
               ))}
             </nav>
@@ -225,7 +231,7 @@ const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, children
           </div>
         </div>
         <nav class="tabs" aria-label={app.nav.label}>
-          {INVOICING_NAV.slice(0, 2).map((item) => (
+          {items.slice(0, 2).map((item) => (
             <InvoicingTab item={item} place={place} />
           ))}
           <a class="tabs__add" href="/app/faktury/nova" aria-label={nav.add}>
@@ -234,7 +240,7 @@ const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, children
             </span>
             <span class="tabs__label">{nav.addShort}</span>
           </a>
-          {INVOICING_NAV.slice(2).map((item) => (
+          {items.slice(2).map((item) => (
             <InvoicingTab item={item} place={place} />
           ))}
         </nav>

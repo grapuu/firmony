@@ -47,7 +47,7 @@ const noStatements = (): Taken => ({ statements: 0, added: 0, known: 0, confirm:
 export async function keepFilesFor(
   env: AppBindings,
   company: Company,
-  by: { user: string | null; source: Extract<DocSource, 'upload' | 'email'>; sender?: string | null },
+  by: { user: string | null; source: Extract<DocSource, 'upload' | 'email' | 'einvoice'>; sender?: string | null },
   files: NewFile[],
   payment: string | null,
   origin?: string,
@@ -64,7 +64,8 @@ export async function keepFilesFor(
   const seen = new Set<string>()
   for (const file of files) {
     // A bank statement sent among documents (or by the bank itself to the company's address) goes to the bank.
-    if (file.kind === 'xml') {
+    // What the Peppol network delivers is an e-invoice, never a bank statement.
+    if (file.kind === 'xml' && by.source !== 'einvoice') {
       const taken = await takeStatementFile(env, company, { user: by.user, source: by.source, sender: by.sender ?? null }, file, origin)
       if (taken) {
         for (const key of Object.keys(taken) as (keyof Taken)[]) kept.statements[key] += taken[key]
