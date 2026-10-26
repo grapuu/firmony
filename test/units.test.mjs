@@ -4,6 +4,7 @@ import { checkOverview } from './overview.units.mjs'
 import { checkAssistantUnits } from './assistant.units.mjs'
 import { checkFreeInvoiceUnits } from './free-invoice.units.mjs'
 import { checkInvoicingUnits } from './invoicing.units.mjs'
+import { checkInvoicePdfUnits } from './invoice-pdf.units.mjs'
 import {
   freeInvoice,
   invoiceAi,
@@ -2340,8 +2341,8 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
   )
 }
 
-// Reminders and late interest (18 October 2026): NV 21/2013, the ECB's rate on the first day of each half-year plus
-// eight points, a year of 365 days, the flat 40 €; reminders 3, 14 and 30 days after the due day, five days apart.
+// Late interest (18 October 2026): NV 21/2013, the ECB's rate on the first day of each half-year plus eight points, a
+// year of 365 days, the flat 40 €. (The reminders that went by themselves were taken out on 26 October 2026.)
 {
   const late = dunning.lateInterest(100_000, '2026-05-31', '2026-08-31')
   check(
@@ -2365,16 +2366,6 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
       dunning.FLAT_COMPENSATION === 4000 &&
       dunning.ratePercent(10650) === '10,65 %',
   )
-  check(
-    'reminders: 3, 14 and 30 days after the due day, none within five days of another, three at most',
-    dunning.reminderDue('2026-10-01', 0, '2026-10-03', null) === null &&
-      dunning.reminderDue('2026-10-01', 0, '2026-10-04', null) === 0 &&
-      dunning.reminderDue('2026-10-01', 1, '2026-10-14', '2026-10-04') === null &&
-      dunning.reminderDue('2026-10-01', 1, '2026-10-15', '2026-10-04') === 1 &&
-      dunning.reminderDue('2026-10-01', 1, '2026-10-15', '2026-10-13') === null &&
-      dunning.reminderDue('2026-10-01', 2, '2026-10-31', '2026-10-15') === 2 &&
-      dunning.reminderDue('2026-10-01', 3, '2026-12-31', null) === null,
-  )
   // Interest invoiced to 30 June: the next invoice counts from 1 July (no day twice), and nothing is left of a day
   // already counted; a later day than the due day only, never an earlier one.
   const rest = dunning.lateInterest(100_000, '2026-05-31', '2026-08-31', '2026-07-01')
@@ -2387,10 +2378,6 @@ check('every month, quarter or year, nothing else', repeat.isRepeatEvery('1') &&
       dunning.lateInterest(100_000, '2026-05-31', '2026-08-31', '2026-09-01') === null &&
       dunning.lateInterest(100_000, '2026-05-31', '2026-08-31', '2026-01-01')?.days === 92,
     JSON.stringify(rest),
-  )
-  check(
-    'the first reminder waits five days after the invoice was mailed',
-    dunning.reminderDue('2026-10-01', 0, '2026-10-04', '2026-10-02') === null && dunning.reminderDue('2026-10-01', 0, '2026-10-07', '2026-10-02') === 0,
   )
 }
 
@@ -6326,7 +6313,7 @@ async function zipped(entries, note) {
     ['/app/faktury', '/app/faktury/nova'],
     ['/app/platby/x/bez-dokladu', '/app/platby/x'],
     ['/app/doklady/x/odpojit', '/app/doklady/x'],
-    ['/app/faktury/x/poslat', '/app/faktury/x'],
+    ['/app/faktury/x/urok', '/app/faktury/x'],
     ['/app/firma/ludia/x/odobrat', '/app/firma'],
     ['/app/banka/x/nacitat', '/app/banka'],
     ['/ucto/klienti/x/odovzdanie/y/odstranit', '/ucto/klienti/x#odovzdanie'],
@@ -7308,4 +7295,5 @@ await (await import('./social.units.mjs')).checkSocial()
 checkOverview()
 checkAssistantUnits()
 checkInvoicingUnits({ invoiceAi, invoicing })
+await checkInvoicePdfUnits()
 done('units')

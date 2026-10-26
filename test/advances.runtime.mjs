@@ -166,16 +166,23 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
       advanceXml.includes('<cbc:PrepaidAmount currencyID="EUR">600.00</cbc:PrepaidAmount>') &&
       advanceXml.includes('<cbc:PayableAmount currencyID="EUR">0.00</cbc:PayableAmount>'),
   )
-  res = await client.post(`/app/faktury/${advance?.id}/poslat`, {})
-  const advanceMail = await db.prepare("SELECT subject, body FROM outbox WHERE recipient = 'objednavatel@example.sk' AND subject LIKE 'Daňový doklad%'").first()
+  // The client sends it himself (26 October 2026): its PDF, and an email of his own written for him.
+  const advanceSend = await (await client.get(`/app/faktury/${advance?.id}`)).text()
+  const advanceMailto = decodeURIComponent(/href="(mailto:[^"]+)"/.exec(advanceSend)?.[1]?.replace(/&amp;/g, '&') ?? '')
+  res = await client.get(`/app/faktury/${advance?.id}/pdf`)
   check(
-    'sent to the customer as the document of the advance received, nothing to pay',
-    res.status === 303 &&
-      advanceMail?.subject === `Daňový doklad k prijatej platbe ${year}0001 od TEST-ONLY Záloha s. r. o.` &&
-      plain(advanceMail.body).includes(`ďakujeme za zálohu 600,00 € prijatú`) &&
-      advanceMail.body.includes(`k zálohovej faktúre č. ZF${year}0001`) &&
-      !advanceMail.body.includes('splatnosťou'),
-    JSON.stringify(advanceMail),
+    'sent by the client as the document of the advance received: its PDF and an email that thanks for the payment, nothing to pay',
+    res.status === 200 &&
+      res.headers.get('content-type') === 'application/pdf' &&
+      (res.headers.get('content-disposition') ?? '').includes(`Danovy-doklad-k-prijatej-platbe-${year}0001.pdf`) &&
+      advanceMailto.startsWith('mailto:objednavatel@example.sk?subject=') &&
+      advanceMailto.includes(`Daňový doklad k prijatej platbe ${year}0001 od TEST-ONLY Záloha s. r. o.`) &&
+      advanceMailto.includes('ďakujeme za platbu 600,00 € prijatú') &&
+      advanceMailto.includes(`k zálohovej faktúre č. ZF${year}0001`) &&
+      !advanceMailto.includes('splatnosťou') &&
+      !advanceMailto.includes('Úhrada prevodom') &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE recipient = 'objednavatel@example.sk'").first())?.n === 0,
+    advanceMailto,
   )
   page = plain(await (await client.get(`/app/faktury/${requestId}`)).text())
   check(
@@ -312,12 +319,11 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
     JSON.stringify([plainAdvance, plainLines]),
   )
 
-  // Pairing issues it by itself: a request sent to its customer, money on its symbol, the next pairing (here the one
-  // an issued invoice starts) makes the document, links it and mails it to the customer.
+  // Pairing issues it by itself: money on a request's symbol, the next pairing (here the one an issued invoice starts)
+  // makes the document and links it; nothing is mailed to the customer (26 October 2026).
   await client.post('/app/firma/prepnut', { firma: company })
   res = await client.post('/app/faktury', form({ druh: 'zalohova' }))
   const autoRequestId = idOf(res)
-  await client.post(`/app/faktury/${autoRequestId}/poslat`, {})
   const autoRequest = await db.prepare('SELECT number, vs, sent_at FROM invoices WHERE id = ?').bind(autoRequestId).first()
   await db
     .prepare(
@@ -333,13 +339,10 @@ export async function checkAdvances({ db, nowS, signIn, as, day, capture }) {
       .first()
     if (!autoAdvance) await new Promise((r) => setTimeout(r, 100))
   }
-  const autoMail = await db
-    .prepare("SELECT subject FROM outbox WHERE recipient = 'objednavatel@example.sk' AND subject LIKE ?")
-    .bind(`Daňový doklad k prijatej platbe ${autoAdvance?.number ?? '-'}%`)
-    .first()
+  const autoMail = await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE recipient = 'objednavatel@example.sk'").first()
   check(
-    'money on a sent request issues its tax document by itself at the next pairing, linked, and mailed to the customer',
-    Boolean(autoRequest?.sent_at) && autoAdvance?.total_cents === 14400 && autoAdvance.how === 'auto' && Boolean(autoAdvance.sent_at) && Boolean(autoMail),
+    'money on a request issues its tax document by itself at the next pairing, linked, and mails the customer nothing',
+    autoAdvance?.total_cents === 14400 && autoAdvance.how === 'auto' && autoAdvance.sent_at === null && autoMail?.n === 0,
     JSON.stringify([autoRequest, autoAdvance, autoMail]),
   )
 

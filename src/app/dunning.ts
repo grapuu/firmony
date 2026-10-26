@@ -1,6 +1,6 @@
-// Reminders and late-payment interest (18 October 2026): an invoice not paid by its due day is reminded to the customer
-// by itself (a company's choice), and the interest the law gives on a commercial debt paid late is worked out and
-// invoiced with the flat compensation in one click.
+// Late-payment interest (18 October 2026): the interest the law gives on a commercial debt paid late is worked out and
+// invoiced with the flat compensation in one click. The reminders that went to the customer by themselves were taken
+// out on 26 October 2026 (Firmony emails no customer): the invoice's page prepares the reminder the client sends.
 //
 // What it leans on (read on 18 October 2026):
 // - Nariadenie vlády č. 21/2013 Z. z. in its version from 1 January 2015 (static.slov-lex.sk), under § 369 of the
@@ -36,9 +36,6 @@ export const LATE_MARGIN = 8000
 
 /** The flat compensation for the costs of claiming a debt (§ 2 of NV 21/2013, § 369c of the Commercial Code), in cents. */
 export const FLAT_COMPENSATION = 4000
-
-/** When the reminders go, in days after the due day: three at most. */
-export const REMIND_AFTER = [3, 14, 30] as const
 
 /** The ECB's rate on a day (the newest decision applied by then), in thousandths of a percent; null before the table. */
 export function mroOn(day: string): number | null {
@@ -94,16 +91,6 @@ export function lateInterest(cents: number, dueOn: string, until: string, since:
   }
   const days = segments.reduce((sum, s) => sum + s.days, 0)
   return { from, to: until, days, segments, cents: Math.round(exact) }
-}
-
-/** The reminder due on `today` for an invoice that is overdue: its step (0, 1, 2), or null when none is due yet. */
-export function reminderDue(dueOn: string, sent: number, today: string, lastContactOn: string | null): number | null {
-  if (sent >= REMIND_AFTER.length) return null
-  const after = REMIND_AFTER[sent] ?? 0
-  if (iso(at(dueOn) + after * DAY) > today) return null
-  // The invoice mailed or reminded in the last five days (by hand too) is enough for now.
-  if (lastContactOn && iso(at(lastContactOn) + 5 * DAY) > today) return null
-  return sent
 }
 
 /** A rate as Slovak writes it: 10,65 %. */

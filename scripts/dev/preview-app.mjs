@@ -129,8 +129,7 @@ function script(leads) {
     other: 'Toto je náhľad: nič sa neukladá. V aplikácii sa to hneď uloží.',
     book: 'Toto je náhľad: nič sa neukladá. V aplikácii sa doklad zaúčtuje a hneď sa otvorí ďalší.',
     export: 'Toto je náhľad. V aplikácii sa stiahne súbor CSV pre účtovný program.',
-    invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, odberateľ ju dostane e-mailom s QR kódom na platbu a keď ju zaplatí, sama sa označí ako zaplatená.',
-    invoiceMail: 'Toto je náhľad: nič sa neposiela. V aplikácii odberateľ dostane e-mail s odkazom na faktúru.',
+    invoice: 'Toto je náhľad: nič sa neukladá. V aplikácii faktúra dostane číslo, stiahnete si ju ako PDF s QR kódom na platbu a keď ju odberateľ zaplatí, sama sa označí ako zaplatená.',
     bank: 'Toto je náhľad. V aplikácii sa to hneď vykoná: platby sa načítajú z banky alebo sa banka či účet odpojí.',
     setup: 'Toto je náhľad: nič sa neukladá. V aplikácii stránka odteraz čaká na prvý výpis z tejto banky a povie Vám, keď príde.',
     account: 'Toto je náhľad: nič sa neukladá. V aplikácii sa podľa Vašej odpovede výpis zaúčtuje, alebo sa nezaúčtuje nič z neho.',
@@ -158,7 +157,6 @@ function script(leads) {
     if (/^\\/app\\/banka\\/.+\\/(nacitat|odpojit|odobrat)$/.test(a)) return 'bank';
     if (a === '/app/banka/nastavene') return 'setup';
     if (/^\\/app\\/vypisy\\//.test(a)) return 'account';
-    if (/^\\/app\\/faktury\\/[^/]+\\/(poslat|pripomenut)$/.test(a)) return 'invoiceMail';
     if (/^\\/app\\/faktury/.test(a)) return 'invoice';
     if (/^\\/ucto\\/doklady\\//.test(a)) return 'book';
     if (/\\/dph\\//.test(a)) return 'vat';

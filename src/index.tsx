@@ -33,7 +33,7 @@ import { connection, isLocal, later, siteOrigin } from './http'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, lookupEntity, oneMayConclude, type Company } from './rpo'
-import { appRoutes, appScheduled, logoResponse, xmlResponse, type AppBindings } from './app/routes'
+import { appRoutes, appScheduled, logoResponse, pdfResponse, xmlResponse, type AppBindings } from './app/routes'
 import { invoiceByToken, invoiceLines } from './app/invoices'
 import { getCompany, userByEmail } from './app/store'
 import { isPeriodLocked } from './app/periods'
@@ -844,8 +844,8 @@ app.get('/pravne-informacie', (c) =>
   page(c, { title: `Právne informácie | ${BRAND.name}`, description: typeset(`Kto stojí za ${BRAND.name} a ako chránime osobné údaje.`), path: '/pravne-informacie' }, <Legal />),
 )
 
-// The page of an issued invoice that its customer opens from the email, and its e-invoice: no sign-in, the token
-// of 32 random bytes is the key, and nothing of it is for search engines.
+// The page of an issued invoice that its customer opens from the link the client sent, its PDF and its e-invoice: no
+// sign-in, the token of 32 random bytes is the key, and nothing of it is for search engines.
 app.get('/f/:token', async (c) => {
   await ensureSchema(c.env.DB)
   const found = await invoiceByToken(c.env.DB, c.req.param('token'))
@@ -861,6 +861,15 @@ app.get('/f/:token/logo', async (c) => {
   const seller = found ? await getCompany(c.env.DB, found.company) : null
   if (!found || !seller) return c.notFound()
   return logoResponse(c.env.FILES, seller)
+})
+
+// The invoice's PDF for its customer (invoice-pdf.ts): the same rules as the page, a draft's token opens nothing.
+app.get('/f/:token/pdf', async (c) => {
+  await ensureSchema(c.env.DB)
+  const found = await invoiceByToken(c.env.DB, c.req.param('token'))
+  const seller = found ? await getCompany(c.env.DB, found.company) : null
+  if (!found || !seller || !found.invoice.number) return c.notFound()
+  return pdfResponse(found.invoice, await invoiceLines(c.env.DB, found.invoice.id), seller, c.env.FILES, c.req.query('nahlad') === '1', bratislavaToday())
 })
 
 app.get('/f/:token/xml', async (c) => {

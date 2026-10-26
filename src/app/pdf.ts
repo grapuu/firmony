@@ -93,7 +93,7 @@ export function textWidth(text: string, size: number, bold = false): number {
 }
 
 /** A text as a PDF string: its codes, with the brackets and the backslash escaped and every code above 126 in octal. */
-function pdfString(text: string): string {
+export function pdfString(text: string): string {
   let out = '('
   for (const ch of text) {
     const c = codeOf(ch)
@@ -224,12 +224,17 @@ export function pdfOf(doc: PdfDocument): Uint8Array {
   return latin1(pdfText(doc))
 }
 
+/** A core font's dictionary with this writer's encoding: Windows ANSI, the Slovak letters it lacks by /Differences. */
+export function fontDictionary(base: 'Helvetica' | 'Helvetica-Bold'): string {
+  const differences = `[${EXTRA.map(([, code, name]) => `${code} /${name}`).join(' ')}]`
+  return `<< /Type /Font /Subtype /Type1 /BaseFont /${base} /Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences ${differences} >> >>`
+}
+
 export function pdfText(doc: PdfDocument): string {
   const streams = layout(doc)
   const objects: string[] = []
   const add = (body: string) => objects.push(body)
-  const differences = `[${EXTRA.map(([, code, name]) => `${code} /${name}`).join(' ')}]`
-  const font = (base: string) => `<< /Type /Font /Subtype /Type1 /BaseFont /${base} /Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences ${differences} >> >>`
+  const font = fontDictionary
   // 1 the catalog, 2 the page tree, 3 and 4 the fonts, 5 the information; then each page and its content.
   const pageIds = streams.map((_, i) => 6 + i * 2)
   add('<< /Type /Catalog /Pages 2 0 R >>')

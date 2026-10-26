@@ -2161,16 +2161,64 @@ res = await get(`/f/${first?.token}/xml`)
 check('and downloads its e-invoice', res.status === 200 && (await res.text()).includes(`<cbc:ID>${year}0001</cbc:ID>`))
 res = await get(`/f/${'x'.repeat(43)}`)
 check('a link nobody was given opens nothing', res.status === 404)
+// Sent by the client himself (26 October 2026): Firmony emails no customer. The PDF to download or share, an email of
+// his own written for him, the customer's link to copy.
 const before7 = (await sent()).length
 res = await anna.post(`/app/faktury/${firstId}/poslat`, {})
 await settle()
-const invMail = (await sent()).slice(before7).find((m) => m.to === 'fakturacia@europio.test')
+check('nothing is mailed to a customer: the old address answers nothing', res.status === 404 && !(await sent()).slice(before7).some((m) => m.to === 'fakturacia@europio.test'))
+const invoiceRaw = await (await anna.get(`/app/faktury/${firstId}`)).text()
+const invMailto = decodeURIComponent(/href="(mailto:[^"]+)"/.exec(invoiceRaw)?.[1]?.replace(/&amp;/g, '&') ?? '')
 check(
-  'sent to the customer, a reply goes to the person who sent it',
-  res.status === 303 && Boolean(invMail) && invMail.replyTo === 'anna@firma-a.test' && invMail.text.includes(`/f/${first?.token}`) && invMail.subject.includes(`${year}0001`),
+  "the invoice offers its PDF first, sharing it from a phone, an email of the client's own and the customer's link to copy",
+  invoiceRaw.indexOf(`href="/app/faktury/${firstId}/pdf"`) > 0 &&
+    invoiceRaw.indexOf(`href="/app/faktury/${firstId}/pdf"`) < invoiceRaw.indexOf('mailto:') &&
+    invoiceRaw.includes(`data-share="/app/faktury/${firstId}/pdf?zdielat=1"`) &&
+    invoiceRaw.includes(`value="https://firmony.io/f/${first?.token}"`) &&
+    invoiceRaw.includes(`data-copy="https://firmony.io/f/${first?.token}"`) &&
+    !invoiceRaw.includes(`/app/faktury/${firstId}/poslat`) &&
+    invMailto.startsWith('mailto:fakturacia@europio.test?subject=') &&
+    invMailto.includes(`Faktúra ${year}0001 od `) &&
+    invMailto.includes(`posielame Vám faktúru č. ${year}0001 na sumu 120,00 €`) &&
+    invMailto.includes(`/f/${first?.token}`),
+  invMailto,
 )
+res = await anna.get(`/app/faktury/${firstId}/pdf`)
+let invPdf = Buffer.from(await res.arrayBuffer())
+check(
+  'its PDF downloads for a member: a valid file named by its number, kept by no cache, for no search engine',
+  res.status === 200 &&
+    res.headers.get('content-type') === 'application/pdf' &&
+    res.headers.get('content-disposition') === `attachment; filename="Faktura-${year}0001.pdf"; filename*=UTF-8''Faktura-${year}0001.pdf` &&
+    (res.headers.get('cache-control') ?? '').includes('no-store') &&
+    (res.headers.get('x-robots-tag') ?? '').includes('noindex') &&
+    res.headers.get('x-content-type-options') === 'nosniff' &&
+    invPdf.subarray(0, 9).toString('latin1') === '%PDF-1.4\n' &&
+    invPdf.subarray(-6).toString('latin1') === '%%EOF\n' &&
+    invPdf.toString('latin1').includes(`(${year}0001)`) &&
+    invPdf.toString('latin1').includes('/PayBySquare BMC'),
+  JSON.stringify([res.status, res.headers.get('content-disposition'), res.headers.get('cache-control'), res.headers.get('x-robots-tag')]),
+)
+res = await anna.get(`/app/faktury/${firstId}/pdf?nahlad=1`)
+check('and opens in the browser to look at', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('inline;'))
+await anna.get(`/app/faktury/${firstId}/pdf`)
+await anna.get(`/app/faktury/${firstId}/pdf?zdielat=1`)
+check(
+  'a download is recorded once a minute at most, looking at it and the phone fetching it ahead not at all',
+  (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE action = 'invoice.pdf' AND subject = ?").bind(firstId ?? '').first())?.n === 1,
+)
+res = await get(`/f/${first?.token}/pdf`)
+invPdf = Buffer.from(await res.arrayBuffer())
+check(
+  'the customer downloads the same PDF from the link, without signing in and for no search engine',
+  res.status === 200 && res.headers.get('content-type') === 'application/pdf' && (res.headers.get('x-robots-tag') ?? '').includes('noindex') && invPdf.toString('latin1').includes(`(${year}0001)`),
+)
+res = await get(`/f/${first?.token}`)
+page = await res.text()
+check("the customer's page offers the PDF first", page.includes(`href="/f/${first?.token}/pdf"`) && page.indexOf(`/f/${first?.token}/pdf`) < page.indexOf(`/f/${first?.token}/xml`))
+check('a stranger gets no PDF of the app, and a link nobody was given none', (await get(`/app/faktury/${firstId}/pdf`)).status === 303 && (await get(`/f/${'x'.repeat(43)}/pdf`)).status === 404)
 res = await peter.get(`/app/faktury/${firstId}`)
-check('another company never sees it', res.status === 404)
+check('another company never sees it, nor its PDF', res.status === 404 && (await peter.get(`/app/faktury/${firstId}/pdf`)).status === 404)
 // Paid by itself: the money is on the account with the invoice's number as its symbol
 await db
   .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, vs, ref) VALUES ('pa-inv', 'co-a', 'acc-a', ?, ?, 5000, 'europio s. r. o.', ?, 'inv-2')")
@@ -2242,7 +2290,7 @@ const draftToken = (
     .first()
 )?.token
 res = await get(`/f/${draftToken}`)
-check("a draft's link opens nothing", res.status === 404)
+check("a draft's link opens nothing, nor its PDF, and a draft has no PDF in the app", res.status === 404 && (await get(`/f/${draftToken}/pdf`)).status === 404 && (await anna.get(`/app/faktury/${laterId}/pdf`)).status === 404)
 res = await anna.post(`/app/faktury/${laterId}`, invoiceForm({}))
 const issuedDraft = await db
   .prepare('SELECT number, status, customer_name FROM invoices WHERE id = ?')
@@ -2261,7 +2309,7 @@ check(
     )?.customer_name === 'europio s. r. o.',
 )
 // The QR code a bank pays from: on an invoice that waits, not on one that is paid
-check('the email says the invoice carries a QR code for the bank', invMail.text.includes('QR kód'))
+check("the client's email says the invoice carries a QR code for the bank", invMailto.includes('QR kód'))
 res = await get(`/f/${first?.token}`)
 page = await res.text()
 check("the customer's page carries the QR code a bank pays from", page.includes('class="sheet__qr"') && /<path fill="#000000" d="M4 4h7/.test(page))
@@ -2274,10 +2322,11 @@ const paidToken = (
 res = await get(`/f/${paidToken}`)
 page = await res.text()
 check('a paid invoice says so to its customer, without a QR code to pay it twice', page.includes('Faktúra je zaplatená') && !page.includes('sheet__qr'))
-const before8 = (await sent()).length
-res = await anna.post(`/app/faktury/${secondId}/pripomenut`, {})
-await settle()
-check('a paid invoice is never reminded', res.status === 303 && !(await sent()).slice(before8).some((m) => m.subject.startsWith('Pripomienka')))
+const paidRaw = await (await anna.get(`/app/faktury/${secondId}`)).text()
+check(
+  'a paid invoice is never reminded, and its email asks for no payment',
+  !paidRaw.includes('Pripomenúť platbu') && !decodeURIComponent(/href="(mailto:[^"]+)"/.exec(paidRaw)?.[1]?.replace(/&amp;/g, '&') ?? '').includes('Úhrada prevodom'),
+)
 // Another invoice like an earlier one, and the customers of earlier invoices
 res = await anna.get(`/app/faktury/nova?podla=${firstId}`)
 page = await res.text()
@@ -2305,33 +2354,23 @@ check(
         .first()
     )?.number === `${year}0001`,
 )
-// Issued without the customer's email: sent to one typed beside it, which is kept with it
+// Issued without the customer's email: the email is written for the address the client types in his own program.
 res = await peter.get(`/app/faktury/${peterId}`)
-check("an invoice without the customer's email asks for one beside it", (await res.text()).includes('name="email"'))
-res = await peter.post(`/app/faktury/${peterId}/poslat`, { email: 'nie-je-email' })
+page = await res.text()
+check("an invoice without the customer's email asks for none: its email opens without an address", !page.includes('name="email"') && page.includes('href="mailto:?subject='))
+const before9 = (await sent()).length
+res = await peter.post(`/app/faktury/${peterId}/poslat`, { email: 'uctaren@europio.test' })
+await settle()
 check(
-  'an email that is none is refused',
-  res.status === 422 &&
+  'a typed email gets nothing and is not kept',
+  res.status === 404 &&
+    !(await sent()).slice(before9).some((m) => m.to === 'uctaren@europio.test') &&
     (
       await db
         .prepare('SELECT customer_email FROM invoices WHERE id = ?')
         .bind(peterId ?? '')
         .first()
     )?.customer_email === null,
-)
-const before9 = (await sent()).length
-res = await peter.post(`/app/faktury/${peterId}/poslat`, { email: 'uctaren@europio.test' })
-await settle()
-check(
-  'a typed email gets the invoice and stays with it',
-  res.status === 303 &&
-    (await sent()).slice(before9).some((m) => m.to === 'uctaren@europio.test') &&
-    (
-      await db
-        .prepare('SELECT customer_email FROM invoices WHERE id = ?')
-        .bind(peterId ?? '')
-        .first()
-    )?.customer_email === 'uctaren@europio.test',
 )
 
 // The bank by open banking: linked at the bank itself, read by itself, renewed, ended

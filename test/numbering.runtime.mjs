@@ -136,10 +136,26 @@ export async function checkNumbering({ db, nowS, signIn, as, day, capture }) {
     sheet.includes('<img class="sheet__logo" src="/app/logo?v=') && outside.includes(`src="/f/${token}/logo?v=`) && (await owner.get(`/f/${token}/logo`)).status === 200,
   )
   if (capture) writeFileSync(`${capture}/invoice-logo.html`, sheet)
+  const pdfOf = async (res) => ({ res, text: Buffer.from(await res.arrayBuffer()).toString('latin1') })
+  const withLogo = await pdfOf(await owner.get(`/app/faktury/${invoiceId}/pdf`))
+  const customerPdf = await pdfOf(await owner.get(`/f/${token}/pdf`))
+  const invoiceNumber = (await db.prepare('SELECT number FROM invoices WHERE id = ?').bind(invoiceId).first())?.number ?? ''
+  check(
+    'its PDF carries the logo (a PNG with alpha: its soft mask), in the app and for the customer, named by its own number',
+    withLogo.res.status === 200 &&
+      withLogo.text.includes('/Im1 Do') &&
+      /\/SMask \d+ 0 R/.test(withLogo.text) &&
+      customerPdf.text.includes('/Im1 Do') &&
+      (withLogo.res.headers.get('content-disposition') ?? '').includes(`filename="Faktura-${invoiceNumber.replace(/[^A-Za-z0-9._]+/g, '-')}.pdf"`),
+    withLogo.res.headers.get('content-disposition'),
+  )
   res = await owner.post('/app/faktury/logo/odstranit', {})
   check(
-    'removed, the invoices have none',
-    res.status === 303 && (await db.prepare('SELECT logo_key FROM companies WHERE id = ?').bind(company).first())?.logo_key === null && (await owner.get('/app/logo')).status === 404,
+    'removed, the invoices have none, nor their PDF',
+    res.status === 303 &&
+      (await db.prepare('SELECT logo_key FROM companies WHERE id = ?').bind(company).first())?.logo_key === null &&
+      (await owner.get('/app/logo')).status === 404 &&
+      !(await pdfOf(await owner.get(`/app/faktury/${invoiceId}/pdf`))).text.includes('/Im1'),
   )
   res = await owner.post('/app/faktury/cislovanie', { predpona: '', oddelovac: '/', cislice: '6', od: '1' })
   res = await owner.post('/app/faktury', form({}))

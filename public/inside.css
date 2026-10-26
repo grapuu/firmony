@@ -3940,14 +3940,48 @@ select.field__input {
   font-size: 0.9375rem;
 }
 
-.invoice__mail {
-  display: grid;
-  gap: 8px;
+/* Sending an invoice: the PDF first, the phone's share sheet, an email of the client's own, the customer's link. */
+.invoice__send,
+.invoice__remind {
+  gap: 10px;
 }
 
-.invoice__mail .field__input {
-  min-height: 48px;
-  font-size: 1rem;
+.invoice__linklabel {
+  margin-top: 6px;
+}
+
+.invoice__send .copyline {
+  margin-top: 0;
+}
+
+/* The customer's link in a field of its own: selected whole without a script, copied with one tap with it. */
+.copyline__input {
+  width: 100%;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.copyline__input:focus {
+  outline: none;
+}
+
+.copyline:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.invoice__text .field__area {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  resize: vertical;
 }
 
 /* Customers of earlier invoices, above a new one. */

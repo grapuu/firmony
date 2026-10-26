@@ -8,7 +8,7 @@ import type { BankLinkView, BankNotice } from '../app/bank'
 import { BankCard, BankNoticeBar, ConfirmAccount } from './bank'
 import type { StatementView } from '../app/statements'
 import { APP, ART, type Art } from '../config'
-import { formatEur } from '../format'
+import { formatEur, groupIban } from '../format'
 import { EXEMPT_NAMES, app, dayName, dayShort, monthName, readableName, signed } from '../app/copy'
 import { EXEMPTS } from '../app/match'
 import type { Deadline } from '../app/deadlines'
@@ -894,10 +894,8 @@ export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose,
   )
 }
 
-/** An IBAN in groups of four, as banks print it. */
-export function groupIban(iban: string): string {
-  return iban.replace(/\s/g, '').replace(/(.{4})(?=.)/g, '$1 ')
-}
+/** An IBAN in groups of four, as banks print it (format.ts: the invoice's PDF prints it the same). */
+export { groupIban }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Doklady

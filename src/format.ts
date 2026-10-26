@@ -19,6 +19,11 @@ export const formatEurExact = (cents: number): string => formatEur(cents, true)
 /** An amount in its currency as an invoice writes it: "120,00 €", another currency by its code, "120,00 USD". */
 export const formatMoney = (cents: number, currency = 'EUR'): string => (currency === 'EUR' ? formatEurExact(cents) : formatEurExact(cents).replace(/€$/, currency))
 
+/** An IBAN in groups of four, as banks print it. */
+export function groupIban(iban: string): string {
+  return iban.replace(/\s/g, '').replace(/(.{4})(?=.)/g, '$1 ')
+}
+
 /** A whole number with a space between thousands: "1 300". */
 export function formatCount(n: number): string {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)

@@ -1,6 +1,7 @@
 // Invoices issued again by themselves (18 October 2026): a company makes an issued invoice repeat every month, quarter
 // or year, and the schedule issues the next one on its day with the same customer, lines, taxation and currency, due
-// as many days after it as the invoice was, numbered in the invoices' row, and sends it to the customer when asked.
+// as many days after it as the invoice was, numbered in the invoices' row. Since 26 October 2026 nothing is mailed to the
+// customer: the person who started the repeat is rung to send its PDF (invoice_repeats.send stays, unused).
 //
 // The rule, said plainly:
 // - A repeat keeps the day of the month it started on: from the 31st it is the last day of a shorter month and the 31st
@@ -40,7 +41,6 @@ export interface Repeat {
   anchor: number
   nextOn: string
   untilOn: string | null
-  send: boolean
   stoppedAt: number | null
   lastInvoiceId: string | null
   lastOn: string | null
@@ -93,7 +93,6 @@ function repeatOf(row: Row): Repeat {
     anchor: Number(row.anchor),
     nextOn: String(row.next_on),
     untilOn: str(row.until_on),
-    send: Number(row.send) === 1,
     stoppedAt: typeof row.stopped_at === 'number' ? row.stopped_at : null,
     lastInvoiceId: str(row.last_invoice_id),
     lastOn: str(row.last_on),
@@ -126,15 +125,15 @@ export const mayRepeat = (invoice: StoredInvoice) => invoice.status === 'issued'
 /** Starts a repeat of an invoice; one that runs per invoice (a unique index keeps it so). */
 export function startRepeatStatements(
   db: D1Database,
-  args: { id: string; company: string; template: string; every: RepeatEvery; nextOn: string; untilOn: string | null; send: boolean; user: string },
+  args: { id: string; company: string; template: string; every: RepeatEvery; nextOn: string; untilOn: string | null; user: string },
 ): D1PreparedStatement[] {
   return [
     db
       .prepare(
         `INSERT INTO invoice_repeats (id, company_id, template_id, every, anchor, next_on, until_on, send, created_at, created_by)
-         SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ? FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued' AND kind = 'invoice' AND relates IS NULL`,
+         SELECT ?, ?, id, ?, ?, ?, ?, 0, ?, ? FROM invoices WHERE id = ? AND company_id = ? AND status = 'issued' AND kind = 'invoice' AND relates IS NULL`,
       )
-      .bind(args.id, args.company, args.every, Number(args.nextOn.slice(8, 10)), args.nextOn, args.untilOn, args.send ? 1 : 0, now(), args.user, args.template, args.company),
+      .bind(args.id, args.company, args.every, Number(args.nextOn.slice(8, 10)), args.nextOn, args.untilOn, now(), args.user, args.template, args.company),
     eventStatement(db, { company: args.company, user: args.user, action: 'invoice.repeat.started', subject: args.template, detail: { repeat: args.id, every: args.every, next: args.nextOn } }),
   ]
 }
@@ -156,8 +155,8 @@ export interface RepeatIssued {
 }
 
 /**
- * Issues every repeat whose day has come, at most `limit` a run. Returns what was issued, for the caller to send and
- * pair (the mail and the pairing live with the routes).
+ * Issues every repeat whose day has come, at most `limit` a run. Returns what was issued, for the caller to pair and to
+ * ring its people (the doorbell and the pairing live with the routes).
  */
 export async function issueRepeats(db: D1Database, today: string, limit = 50): Promise<RepeatIssued[]> {
   const due = await db
