@@ -5315,6 +5315,6 @@ const freshAdmin = async () => { bossFresh = (await verifyBrowser('ahoj@firmony.
 await checkInvoicingRuntime({ mf, db, post, get, sent, settle, as, admin, freshAdmin, day })
 await checkAmlFixes({ db, files, get, post, admin, acc, lucia, signIn, as, nowS, day, freshAdmin })
 await checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
-await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, adminCookie: async () => { bossFresh = (await verifyBrowser('ahoj@firmony.io', bossFresh)).cookie; return bossFresh }, capture: process.env.FIRMONY_CAPTURE_DIR })
 await mf.dispose()
 done('runtime')

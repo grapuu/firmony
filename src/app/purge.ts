@@ -109,6 +109,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     files += await deletePrefix(env.FILES, `companies/${companyId}/filings/`, new Set(), canDelete)
     files += await deletePrefix(env.FILES, `companies/${companyId}/papers/`, new Set(kept.results.map((r) => r.r2_key)), canDelete)
     files += await deletePrefix(env.FILES, `companies/${companyId}/brand/`, new Set(), canDelete)
+    files += await deletePrefix(env.FILES, `companies/${companyId}/einvoices/`, new Set(), canDelete)
   }
   const lonely = await db.prepare(LONELY).bind(companyId).all<{ user_id: string }>()
   const people = lonely.results.map((r) => r.user_id)
@@ -125,6 +126,7 @@ export async function purgeCompany(env: PurgeEnv, companyId: string, today = bra
     db.prepare('DELETE FROM invoice_repeats WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM einvoice_sends WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM einvoice_received WHERE company_id = ?').bind(companyId),
+    db.prepare('DELETE FROM peppol_bindings WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payment_order_items WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM payment_orders WHERE company_id = ?').bind(companyId),
     db.prepare('DELETE FROM trips WHERE company_id = ?').bind(companyId),
@@ -326,6 +328,8 @@ async function forgetCompanyRecords(env: PurgeEnv, id: string, today: string): P
     db.prepare('DELETE FROM assistant_uses WHERE company_id = ?').bind(id),
     db.prepare('DELETE FROM einvoice_sends WHERE company_id = ?').bind(id),
     db.prepare('DELETE FROM einvoice_received WHERE company_id = ?').bind(id),
+    db.prepare('DELETE FROM peppol_bindings WHERE company_id = ?').bind(id),
+    db.prepare('UPDATE peppol_unrouted SET company_id = NULL WHERE company_id = ?').bind(id),
     db.prepare('DELETE FROM member_removals WHERE company_id = ?').bind(id),
     db.prepare('DELETE FROM dropped_payments WHERE company_id = ?').bind(id),
     db.prepare('DELETE FROM companies WHERE id = ?').bind(id),

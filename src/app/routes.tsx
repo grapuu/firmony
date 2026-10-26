@@ -37,7 +37,7 @@ import { keptLogoKey, logoForPdf } from './logo-cache'
 import { invoiceYears, invoicingArchive } from './invoicing-export'
 import { providerOf, type PeppolEnv } from '../peppol/provider'
 import { peppolCopy as pc } from '../peppol/copy'
-import { blockedOf, companyParticipant, customerParticipant, participantState, queueSend, receivedList, receivedOne, receivedPaidStatements, receivedUnpaid, sendDue, sendStates, sendingsOf, trySend } from '../peppol/store'
+import { bindingOf, bindingWaits, blockedOf, companyParticipant, customerParticipant, participantState, queueSend, receivedList, receivedOne, receivedPaidStatements, receivedUnpaid, sendDue, sendStates, sendingsOf, trySend } from '../peppol/store'
 import { PeppolCard, PeppolCompany, ReceivedOne, ReceivedPage, type CompanyPeppol } from '../views/peppol'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
@@ -378,7 +378,15 @@ async function companyPeppol(c: Ctx): Promise<CompanyPeppol> {
   const who = c.get('who')
   const participant = companyParticipant(who.company)
   const provider = providerOf(c.env)
-  return { participant, lookup: participant ? await participantState(c.env.DB, participant) : null, live: provider !== null, ourSmp: provider?.smpHost ?? null }
+  const bound = participant !== null && (await bindingOf(c.env.DB, who.company.id)) === participant
+  return {
+    participant,
+    lookup: participant ? await participantState(c.env.DB, participant) : null,
+    live: provider !== null,
+    ourSmp: provider?.smpHost ?? null,
+    bound,
+    waits: !bound && (await bindingWaits(c.env.DB, who.company)),
+  }
 }
 
 async function receivedNav(c: Ctx): Promise<{ unpaid: number } | null> {
@@ -688,6 +696,8 @@ appRoutes.post('/prijate/:id/zaplatena', async (c) => {
   const id = c.req.param('id')
   const x = who.company.invoicingOnly && ID.test(id) ? await receivedOne(c.env.DB, who.company.id, id) : null
   if (!x) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  // A credit note or an invoice of a paid advance asks for no payment, so none is marked.
+  if (!x.payable) return c.redirect(`/app/prijate/${id}`, 303)
   const body = await c.req.parseBody()
   const day = dayOfText(typeof body.den === 'string' ? body.den : '')
   if (!day || day > today()) return receivedPage(c, id, pc.received.errors.day, 422)
@@ -3518,16 +3528,19 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
     ) : null
   // The e-invoice: for a Slovak company's customer by its DIČ, whether it can receive (the SML, kept a while), and
   // the sendings so far. A customer abroad or a person gets the PDF alone.
-  const blocked = blockedOf(who.company, invoice, today())
+  // A company sends through us once it is bound (peppol/store.ts): until then the card says how to turn it on.
+  const blocked = blockedOf(who.company, invoice, today(), await bindingOf(db, who.company.id))
   const receiver = customerParticipant(invoice)
   const shown = blocked === 'draft' || blocked === 'proforma' || blocked === 'customerId' || !receiver ? null : {
     live: providerOf(c.env) !== null,
     blocked,
-    customer: blocked ? null : await participantState(db, receiver),
+    customer: blocked === null || blocked === 'unbound' ? await participantState(db, receiver) : null,
     customerName: invoice.customerName,
     sendings: await sendingsOf(db, who.company.id, invoice.id),
     invoiceId: invoice.id,
     issuedAt: invoice.createdAt,
+    settings: who.company.invoicingOnly ? '/app/fakturacia' : '/app/firma',
+    creditHref: invoice.kind === 'invoice' ? `/app/faktury/nova?dobropis=${invoice.id}` : null,
   }
   const peppol = shown ? <PeppolCard view={shown} today={today()} error={extra.error === pc.card.limit ? extra.error : null} /> : null
   // When the e-invoice is how this invoice goes (sent, or one click away), the PDF is offered as the second way.

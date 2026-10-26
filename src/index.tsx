@@ -31,7 +31,7 @@ import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha25
 import { typeset } from './format'
 import { connection, isLocal, later, siteOrigin } from './http'
 import { providerOf } from './peppol/provider'
-import { applyEvents, sendDue } from './peppol/store'
+import { applyEvents, noteMalformed, purgePeppol, sendDue } from './peppol/store'
 
 const PEPPOL_NOTICES = '/peppol/udalosti'
 import { recordRequest } from './analytics/record'
@@ -158,7 +158,7 @@ app.use('*', async (c, next) => {
   if (notice) {
     const length = Number(c.req.header('content-length'))
     if (!Number.isInteger(length) || length < 0) return c.text('Length required', 411)
-    if (length > 20 * 1024 * 1024) return c.text('Too large', 413)
+    if (length > 15 * 1024 * 1024) return c.text('Too large', 413)
   }
   if (!reads && !notice) {
     // A form may only be posted from our own pages, and says how long it is.
@@ -912,11 +912,17 @@ app.route('/auth', securityRoutes)
 app.post(PEPPOL_NOTICES, async (c) => {
   const provider = providerOf(c.env)
   if (!provider) return c.text('Not found', 404)
-  const body = await c.req.text()
-  const events = await provider.events(c.req.raw, body)
-  if (!events) return c.text('Forbidden', 403)
-  const outcome = await applyEvents(c.env, provider, events, (work) => later(c, work))
-  return c.json({ ok: true, ...outcome })
+  // The signature covers the bytes as they came; nothing of the notice is read before it is checked.
+  const body = new Uint8Array(await c.req.arrayBuffer())
+  const notice = await provider.events(c.req.raw, body)
+  if (!notice) return c.text('Forbidden', 403)
+  // Too many events at once: refused whole, so the postman sends them again in parts and none is lost.
+  if (notice.tooMany) return c.text('Too many events', 413)
+  await noteMalformed(c.env.DB, provider.name, notice.malformed)
+  const outcome = await applyEvents(c.env, provider, notice.events, (work) => later(c, work))
+  // An event that failed is kept for the administrator, and the postman is asked to send the notice again: every step
+  // repeats safely (a reference is taken once, a status moves only forward).
+  return c.json({ ok: outcome.failed === 0, ...outcome, malformed: notice.malformed }, outcome.failed > 0 ? 503 : 200)
 })
 
 app.route('/app', appRoutes)
@@ -1129,6 +1135,8 @@ export default {
           // E-invoices whose next try has come (the postman did not take them at once).
           const provider = providerOf(env)
           if (provider) await sendDue(env.DB, provider)
+          // The SML's answers past three days, and what the postman's part keeps no longer.
+          await purgePeppol(env.DB, env.FILES)
         } catch (err) {
           console.error('peppol schedule failed', err instanceof Error ? err.name : 'error')
         }

@@ -13,7 +13,7 @@ import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bank
 import { registerAmlRoutes } from '../aml/routes'
 import { registerWorkspaceRoutes } from './workspaces'
 import { providerOf, type PeppolEnv } from '../peppol/provider'
-import { companyParticipant, participantState } from '../peppol/store'
+import { bindingOf, companyParticipant, participantState } from '../peppol/store'
 // The accountants' side under /ucto. Only somebody of the team gets in: a client who types the address gets the
 // same "not found" as for anything that does not exist. Every company, document and payment is checked against
 // what the user may see (an accountant her own clients, an administrator everybody).
@@ -766,10 +766,13 @@ async function clientPage(
   const participant = companyParticipant(company)
   const network = participant ? await participantState(db, participant) : null
   const postman = providerOf(c.env as PeppolEnv)
-  const peppolLine =
-    network?.state === 'found'
+  // Through Firmony only once bound (peppol/store.ts): a registration with our postman not confirmed yet is said so.
+  const bound = participant !== null && postman !== null && (await bindingOf(db, company.id)) === participant
+  const peppolLine = bound
+    ? 'E-faktúry cez Firmony'
+    : network?.state === 'found'
       ? postman?.smpHost && network.smp === postman.smpHost
-        ? 'E-faktúry cez Firmony'
+        ? 'E-faktúry: zvolili Firmony, čaká na potvrdenie'
         : 'E-faktúry: v sieti Peppol'
       : network?.state === 'missing'
         ? 'E-faktúry: mimo siete Peppol'

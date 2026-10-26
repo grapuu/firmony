@@ -381,6 +381,8 @@ export async function deleteWorkspace(db: D1Database, files: R2Bucket | undefine
       db.prepare(`DELETE FROM invoice_repeats WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM einvoice_sends WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM einvoice_received WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM peppol_bindings WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`UPDATE peppol_unrouted SET company_id = NULL WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM invoices WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM documents WHERE company_id = ?1 AND ${guard}`).bind(company),
       db.prepare(`DELETE FROM cost_centers WHERE company_id = ?1 AND ${guard}`).bind(company),

@@ -10,6 +10,8 @@ import { formatEurExact } from '../format'
 import { dayName } from '../app/copy'
 import { eventStatement, type User } from '../app/store'
 import { Flash, Heading } from '../views/inside'
+import { providerOf } from '../peppol/provider'
+import { bindByAdmin, bindingsList, deliverUnrouted, resolveUnrouted, unbindByAdmin, unroutedOne, unroutedOpen, type Unrouted } from '../peppol/store'
 
 type Shell = (c: Context, title: string, child: Child, status?: ContentfulStatusCode) => Promise<Response> | Response
 
@@ -26,6 +28,19 @@ interface Workspace {
 }
 
 const ID = /^[0-9a-f-]{36}$/
+/** A company's id as a form carries it: checked again against the companies of the registration's DIČ. */
+const COMPANY_ID = /^[A-Za-z0-9-]{1,64}$/
+
+const FLASH: Record<string, string> = {
+  zablokovany: 'Účet je zablokovaný.',
+  odblokovany: 'Účet je znova otvorený.',
+  pripojena: 'Firma je pripojená. E-faktúry posiela aj prijíma cez Firmony.',
+  obsadena: 'Účastník alebo firma je už pripojená inak. Najprv odpojte nesprávne pripojenie.',
+  vybavene: 'Označené ako vybavené.',
+  dorucena: 'E-faktúra je doručená firme.',
+  nikomu: 'E-faktúru teraz nemá komu doručiť: účastník nie je pripojený k otvorenej firme.',
+  odpojena: 'Firma je odpojená. E-faktúry cez Firmony už neposiela ani neprijíma.',
+}
 
 /**
  * The workspaces, the newest first; with a search, those whose name, IČO or owner's e-mail holds it, or whose invoice a
@@ -68,7 +83,106 @@ async function workspaces(db: D1Database, q = ''): Promise<Workspace[]> {
 
 const day = (seconds: number) => new Date(seconds * 1000).toISOString().slice(0, 10)
 
-const WorkspacesPage: FC<{ list: Workspace[]; q?: string; flash?: string | null }> = ({ list, q = '', flash = null }) => (
+const KIND: Record<Unrouted['kind'], string> = { received: 'Prijatá e-faktúra', registered: 'Prihlásenie do siete', event: 'Oznámenie poštára' }
+const REASON: Record<Unrouted['reason'], string> = {
+  unbound: 'Pre tohto účastníka nemáme pripojenú firmu. Keď ju pripojíte, e-faktúra jej príde sama.',
+  unverified: 'Firma zvolila Firmony na portáli finančnej správy.',
+  ambiguous: 'Toto DIČ má vo Firmony viac firiem. Pripojte len tú, ktorá Firmony naozaj zvolila.',
+  unknown: 'Pri oznámení toto DIČ nemala žiadna firma vo Firmony.',
+  conflict: 'Účastník alebo firma je už pripojená inak, alebo firma medzitým zmenila DIČ. Najprv odpojte nesprávne pripojenie.',
+  ended: 'Firma je zablokovaná alebo jej zmluva skončila; e-faktúra prišla potom.',
+  error: 'Oznámenie sa nepodarilo spracovať. Poštár ho pošle znova; ak sa to opakuje, napíšte vývoju.',
+}
+
+/** What every binding asks of the administrator before the click: it lets the company send and receive in its name. */
+const VERIFY =
+  'Pripojte firmu až po overení: jej DIČ sedí so zoznamom daňových subjektov finančnej správy a ten, kto účet vo Firmony používa, za firmu naozaj koná (overte to na kontakte z obchodného registra, nie z účtu).'
+
+interface PeppolDesk {
+  open: Unrouted[]
+  total: number
+  bindings: Awaited<ReturnType<typeof bindingsList>>
+}
+
+/** What the postman told us that waits for the administrator, and who sends and receives through us. */
+const PeppolDeskView: FC<{ desk: PeppolDesk }> = ({ desk }) =>
+  desk.open.length === 0 && desk.bindings.length === 0 ? null : (
+    <section class="info" id="peppol" aria-labelledby="peppol-desk-t">
+      <h2 id="peppol-desk-t" class="info__title">
+        E-faktúry v sieti Peppol
+      </h2>
+      {desk.open.length === 0 ? (
+        <p class="info__empty">Nič nečaká na vybavenie.</p>
+      ) : (
+        <>
+        {desk.open.some((u) => u.candidates.length > 0) ? <p class="flag">{VERIFY}</p> : null}
+        {desk.total > desk.open.length ? <p class="info__source">{`Zobrazených ${desk.open.length} najstarších z ${desk.total}.`}</p> : null}
+        <ul class="rows">
+          {desk.open.map((u) => (
+            <li class="row customers__row">
+              <div class="customers__who">
+                <p class="row__title">{`${KIND[u.kind]}${u.participant ? ` · ${u.participant}` : ''}`}</p>
+                <p class="row__sub">{[dayName(day(u.at)), u.company?.name ?? null].filter(Boolean).join(' · ')}</p>
+                <p class="row__sub">{REASON[u.reason]}</p>
+              </div>
+              <div class="customers__action">
+                {u.kind === 'registered'
+                  ? u.candidates.map((c) => (
+                      <form method="post" action={`/ucto/fakturacne-ucty/peppol/${u.id}/pripojit`}>
+                        <input type="hidden" name="firma" value={c.id} />
+                        <button class="btn btn--small btn--line" type="submit">
+                          {`Pripojiť ${c.name} (${[c.workspace ? 'fakturačný účet' : 'klient', c.ico ? `IČO ${c.ico}` : null, c.owner].filter(Boolean).join(', ')})`}
+                        </button>
+                      </form>
+                    ))
+                  : null}
+                {u.deliverTo ? (
+                  <form method="post" action={`/ucto/fakturacne-ucty/peppol/${u.id}/dorucit`}>
+                    <button class="btn btn--small btn--line" type="submit">
+                      {`Doručiť firme ${u.deliverTo}`}
+                    </button>
+                  </form>
+                ) : null}
+                {u.fileKey ? (
+                  <a class="btn btn--small btn--line" href={`/ucto/fakturacne-ucty/peppol/${u.id}/subor.xml`}>
+                    Stiahnuť e-faktúru
+                  </a>
+                ) : null}
+                <form method="post" action={`/ucto/fakturacne-ucty/peppol/${u.id}/vybavene`}>
+                  <button class="btn btn--small btn--line" type="submit">
+                    Vybavené
+                  </button>
+                </form>
+              </div>
+            </li>
+          ))}
+        </ul>
+        </>
+      )}
+      {desk.bindings.length > 0 ? (
+        <details class="peppol-desk__bound">
+          <summary>{`Pripojené firmy (${desk.bindings.length})`}</summary>
+          <ul class="rows">
+            {desk.bindings.map((b) => (
+              <li class="row customers__row">
+                <div class="customers__who">
+                  <p class="row__title">{b.name}</p>
+                  <p class="row__sub">{[b.participant, b.workspace ? 'fakturačný účet' : 'klient', `od ${dayName(day(b.boundAt))}`].join(' · ')}</p>
+                </div>
+                <form method="post" action={`/ucto/fakturacne-ucty/peppol/odpojit/${b.company}`} class="customers__action">
+                  <button class="btn btn--small btn--danger" type="submit">
+                    Odpojiť
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  )
+
+const WorkspacesPage: FC<{ list: Workspace[]; q?: string; flash?: string | null; desk?: PeppolDesk | null }> = ({ list, q = '', flash = null, desk = null }) => (
   <>
     <header class="phead">
       <Heading first="Fakturačné účty" small />
@@ -89,6 +203,7 @@ const WorkspacesPage: FC<{ list: Workspace[]; q?: string; flash?: string | null 
       ) : null}
     </form>
     <Flash text={flash} />
+    {desk ? <PeppolDeskView desk={desk} /> : null}
     {list.length === 0 ? (
       <section class="info">
         <p class="info__empty">Zatiaľ žiadny fakturačný účet.</p>
@@ -135,7 +250,62 @@ export function registerWorkspaceRoutes(routes: Hono<any>, shell: Shell, missing
     if (!admin(c)) return missing(c)
     const ok = c.req.query('ok')
     const q = (c.req.query('q') ?? '').trim().slice(0, 200)
-    return shell(c, 'Fakturačné účty', <WorkspacesPage list={await workspaces(c.env.DB, q)} q={q} flash={ok === 'zablokovany' ? 'Účet je zablokovaný.' : ok === 'odblokovany' ? 'Účet je znova otvorený.' : null} />)
+    const db = c.env.DB as D1Database
+    const open = await unroutedOpen(db)
+    const desk = { open: open.list, total: open.total, bindings: await bindingsList(db) }
+    const flash = ok ? (FLASH[ok] ?? null) : null
+    return shell(c, 'Fakturačné účty', <WorkspacesPage list={await workspaces(db, q)} q={q} flash={flash} desk={desk} />)
+  })
+  // The postman's notices the administrator settles (peppol/store.ts). Each is a sensitive action (security/policy.ts).
+  routes.post('/fakturacne-ucty/peppol/:id/pripojit', async (c) => {
+    if (!admin(c)) return missing(c)
+    const id = c.req.param('id')
+    const provider = providerOf(c.env)
+    const body = await c.req.parseBody()
+    const company = typeof body.firma === 'string' ? body.firma : ''
+    if (!ID.test(id) || !COMPANY_ID.test(company) || !provider) return missing(c)
+    const who = c.get('who') as { user: User }
+    const outcome = await bindByAdmin(c.env, provider.name, id, company, who.user.id, (work) => c.executionCtx.waitUntil(work.catch(() => null)))
+    if (outcome === 'gone' || outcome === 'mismatch') return missing(c)
+    return c.redirect(`/ucto/fakturacne-ucty?ok=${outcome === 'bound' ? 'pripojena' : 'obsadena'}#peppol`, 303)
+  })
+  routes.post('/fakturacne-ucty/peppol/:id/dorucit', async (c) => {
+    if (!admin(c)) return missing(c)
+    const id = c.req.param('id')
+    const who = c.get('who') as { user: User }
+    if (!ID.test(id)) return missing(c)
+    const outcome = await deliverUnrouted(c.env, id, who.user.id, (work) => c.executionCtx.waitUntil(work.catch(() => null)))
+    if (outcome === 'gone') return missing(c)
+    return c.redirect(`/ucto/fakturacne-ucty?ok=${outcome === 'delivered' ? 'dorucena' : 'nikomu'}#peppol`, 303)
+  })
+  routes.post('/fakturacne-ucty/peppol/:id/vybavene', async (c) => {
+    if (!admin(c)) return missing(c)
+    const id = c.req.param('id')
+    const who = c.get('who') as { user: User }
+    if (!ID.test(id) || !(await resolveUnrouted(c.env.DB, id, who.user.id))) return missing(c)
+    return c.redirect('/ucto/fakturacne-ucty?ok=vybavene#peppol', 303)
+  })
+  routes.post('/fakturacne-ucty/peppol/odpojit/:company', async (c) => {
+    if (!admin(c)) return missing(c)
+    const company = c.req.param('company')
+    const who = c.get('who') as { user: User }
+    if (!COMPANY_ID.test(company) || !(await unbindByAdmin(c.env.DB, company, who.user.id))) return missing(c)
+    return c.redirect('/ucto/fakturacne-ucty?ok=odpojena#peppol', 303)
+  })
+  routes.get('/fakturacne-ucty/peppol/:id/subor.xml', async (c) => {
+    if (!admin(c)) return missing(c)
+    const id = c.req.param('id')
+    const row = ID.test(id) ? await unroutedOne(c.env.DB, id) : null
+    const object = row?.fileKey && c.env.FILES ? await (c.env.FILES as R2Bucket).get(row.fileKey) : null
+    if (!object) return missing(c)
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Content-Disposition': `attachment; filename="e-faktura-${id.slice(0, 8)}.xml"`,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
   })
   for (const [path, close] of [['zablokovat', true], ['odblokovat', false]] as const) {
     routes.post(`/fakturacne-ucty/:id/${path}`, async (c) => {

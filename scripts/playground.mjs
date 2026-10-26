@@ -32,6 +32,7 @@ const port = Number(process.env.PORT ?? 8787)
 const bratislavaDay = (shift = 0) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.now() + shift * 86400000))
 // The Peppol network: the sample customers receive e-invoices; with PEPPOL=1 the pretend postman is connected too.
 const network = pretendPeppol({ registered: ['0245:2120000000', '0245:2023489446'] })
+let sampleBound = process.env.PEPPOL !== '1'
 const bank = pretendBank({
   iban: 'SK3112000000198742637541',
   balance: () => '5454.43',
@@ -200,6 +201,17 @@ createServer(async (req, res) => {
         return res.end(body)
       } catch {
         // Not a file: the Worker answers.
+      }
+    }
+    // With the pretend postman, the sample companies count as having chosen Firmony (in production only the postman's
+    // notice binds a company, peppol/store.ts): bound once they exist.
+    if (!sampleBound) {
+      try {
+        const db = await mf.getD1Database('DB')
+        await db.prepare("INSERT OR IGNORE INTO peppol_bindings (participant, company_id, provider, bound_at) SELECT '0245:' || dic, id, 'pretend', unixepoch() FROM companies WHERE demo = 1 AND dic GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'").run()
+        sampleBound = Boolean(await db.prepare('SELECT 1 AS x FROM peppol_bindings LIMIT 1').first())
+      } catch {
+        // The schema is not there yet: the next request tries again.
       }
     }
     const chunks = []

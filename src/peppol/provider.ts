@@ -25,14 +25,31 @@ export type SendOutcome = { ok: true; ref: string } | { ok: false; retry: boolea
 export type ProviderEvent =
   | { type: 'status'; ref: string; state: 'delivered' | 'rejected'; reason: string | null }
   | { type: 'received'; ref: string; sender: string | null; receiver: string; xml: string }
+  /** A company chose (or left) Firmony on the Financial Administration's portal: its representative signed in there. */
+  | { type: 'registered'; ref: string; participant: string }
+  | { type: 'unregistered'; ref: string; participant: string }
+
+/** A notice read: its events, how many could not be read, and whether it held more than one notice may. */
+export interface Notice {
+  events: ProviderEvent[]
+  malformed: number
+  tooMany: boolean
+}
+
+/**
+ * Events one notice may carry, and e-invoices among them: a longer one is refused whole (413), so the provider splits
+ * it and nothing is lost. An e-invoice costs a request a dozen database calls and its pairing; a Worker has a thousand.
+ */
+export const NOTICE_EVENTS = 100
+export const NOTICE_DOCUMENTS = 10
 
 export interface PeppolProvider {
   name: string
   /** The host of the provider's SMP, as the SML's record names it: tells a company registered with us from one elsewhere. */
   smpHost: string | null
   send(message: OutMessage): Promise<SendOutcome>
-  /** The events of a notice the provider sent us, its signature checked; null when it is not the provider's. */
-  events(request: Request, body: string): Promise<ProviderEvent[] | null>
+  /** The events of a notice the provider sent us, its signature checked over its bytes; null when it is not the provider's. */
+  events(request: Request, body: Uint8Array): Promise<Notice | null>
 }
 
 export interface PeppolEnv {
@@ -65,10 +82,20 @@ function fromBase64(text: string): string | null {
   }
 }
 
-async function hmacHex(secret: string, text: string): Promise<string> {
+async function hmacHex(secret: string, data: Uint8Array): Promise<string> {
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(text)))
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, data))
   return [...mac].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** "<t>." and the body's bytes, as they came: what the signature covers. */
+function signed(t: number, body: Uint8Array | string): Uint8Array {
+  const bytes = typeof body === 'string' ? enc.encode(body) : body
+  const head = enc.encode(`${t}.`)
+  const out = new Uint8Array(head.length + bytes.length)
+  out.set(head)
+  out.set(bytes, head.length)
+  return out
 }
 
 /** Equal in constant time for strings of one length. */
@@ -80,37 +107,42 @@ function same(a: string, b: string): boolean {
 }
 
 /** "t=<unix seconds>,v1=<hex HMAC-SHA256 of t.body>", at most five minutes old. */
-export async function signatureValid(header: string | null, body: string, secret: string, nowSeconds: number = Math.floor(Date.now() / 1000)): Promise<boolean> {
+export async function signatureValid(header: string | null, body: Uint8Array | string, secret: string, nowSeconds: number = Math.floor(Date.now() / 1000)): Promise<boolean> {
   if (!header || !secret) return false
   const parts = Object.fromEntries(header.split(',').map((p) => p.trim().split('=', 2) as [string, string]))
   const t = Number(parts.t)
   if (!Number.isInteger(t) || Math.abs(nowSeconds - t) > 300 || !/^[0-9a-f]{64}$/.test(parts.v1 ?? '')) return false
-  return same(await hmacHex(secret, `${t}.${body}`), parts.v1 ?? '')
+  return same(await hmacHex(secret, signed(t, body)), parts.v1 ?? '')
 }
 
-export async function signatureOf(body: string, secret: string, nowSeconds: number = Math.floor(Date.now() / 1000)): Promise<string> {
-  return `t=${nowSeconds},v1=${await hmacHex(secret, `${nowSeconds}.${body}`)}`
+export async function signatureOf(body: Uint8Array | string, secret: string, nowSeconds: number = Math.floor(Date.now() / 1000)): Promise<string> {
+  return `t=${nowSeconds},v1=${await hmacHex(secret, signed(nowSeconds, body))}`
 }
 
 const PARTICIPANT = /^\d{4}:[A-Za-z0-9._-]{1,50}$/
 
-/** What a notice says, each event checked; anything malformed is left out. */
-export function eventsOf(json: unknown): ProviderEvent[] {
-  const list = json && typeof json === 'object' && Array.isArray((json as { events?: unknown }).events) ? ((json as { events: unknown[] }).events) : []
+/** What a notice says, each event checked; anything malformed is counted, never applied. */
+export function eventsOf(json: unknown): Notice {
+  const list = json && typeof json === 'object' && Array.isArray((json as { events?: unknown }).events) ? ((json as { events: unknown[] }).events) : null
+  if (!list) return { events: [], malformed: 1, tooMany: false }
+  if (list.length > NOTICE_EVENTS || list.filter((e) => e && typeof e === 'object' && (e as { type?: unknown }).type === 'received').length > NOTICE_DOCUMENTS) return { events: [], malformed: 0, tooMany: true }
   const out: ProviderEvent[] = []
-  for (const raw of list.slice(0, 100)) {
-    if (!raw || typeof raw !== 'object') continue
-    const e = raw as Record<string, unknown>
+  let malformed = 0
+  for (const raw of list) {
+    const e = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
     const ref = typeof e.id === 'string' && /^[A-Za-z0-9._:-]{1,200}$/.test(e.id) ? e.id : null
-    if (!ref) continue
-    if (e.type === 'status' && (e.state === 'delivered' || e.state === 'rejected')) {
+    const before = out.length
+    if (ref && e.type === 'status' && (e.state === 'delivered' || e.state === 'rejected')) {
       out.push({ type: 'status', ref, state: e.state, reason: typeof e.reason === 'string' ? e.reason.replace(/[\u0000-\u001f]/g, ' ').slice(0, 500) : null })
-    } else if (e.type === 'received' && typeof e.receiver === 'string' && PARTICIPANT.test(e.receiver) && typeof e.document === 'string' && e.document.length <= 14_000_000) {
+    } else if (ref && (e.type === 'registered' || e.type === 'unregistered') && typeof e.participant === 'string' && PARTICIPANT.test(e.participant)) {
+      out.push(e.type === 'registered' ? { type: 'registered', ref, participant: e.participant.toLowerCase() } : { type: 'unregistered', ref, participant: e.participant.toLowerCase() })
+    } else if (ref && e.type === 'received' && typeof e.receiver === 'string' && PARTICIPANT.test(e.receiver) && typeof e.document === 'string' && e.document.length <= 14_000_000) {
       const xml = fromBase64(e.document)
-      if (xml) out.push({ type: 'received', ref, sender: typeof e.sender === 'string' && PARTICIPANT.test(e.sender) ? e.sender : null, receiver: e.receiver, xml })
+      if (xml) out.push({ type: 'received', ref, sender: typeof e.sender === 'string' && PARTICIPANT.test(e.sender) ? e.sender.toLowerCase() : null, receiver: e.receiver.toLowerCase(), xml })
     }
+    if (out.length === before) malformed++
   }
-  return out
+  return { events: out, malformed, tooMany: false }
 }
 
 /** The reference adapter: the protocol the app needs, over HTTPS with a bearer key. */
@@ -135,8 +167,8 @@ function referenceProvider(name: string, url: string, key: string, secret: strin
         }
         if (response.ok && typeof body.id === 'string' && /^[A-Za-z0-9._:-]{1,200}$/.test(body.id)) return { ok: true, ref: body.id }
         const reason = typeof body.error === 'string' ? body.error.slice(0, 300) : `HTTP ${response.status}`
-        // The network or the provider may recover; a document it refused will not.
-        return { ok: false, retry: response.status === 429 || response.status >= 500 || response.ok, reason }
+        // The network or the provider may recover (and 409 is the same key still being handled); a document it refused will not.
+        return { ok: false, retry: response.status === 409 || response.status === 429 || response.status >= 500 || response.ok, reason }
       } catch (err) {
         return { ok: false, retry: true, reason: err instanceof Error ? err.name : 'error' }
       }
@@ -144,9 +176,9 @@ function referenceProvider(name: string, url: string, key: string, secret: strin
     async events(request, body) {
       if (!(await signatureValid(request.headers.get('x-peppol-signature'), body, secret))) return null
       try {
-        return eventsOf(JSON.parse(body))
+        return eventsOf(JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(body)))
       } catch {
-        return []
+        return { events: [], malformed: 1, tooMany: false }
       }
     },
   }

@@ -239,6 +239,8 @@ export interface Reading {
   ekasaOkp?: string | null
   /** A prepayment invoice (386): it documents money paid already, so it is never offered to be paid. */
   prepaid?: boolean
+  /** The supplier's Peppol address as the e-invoice names it ("0245:2023489446"), set beside the network's sender. */
+  supplierEndpoint?: string | null
 }
 
 /** The fields of a reading kept as the reader gave them (`documents.reading`) and compared with the booking on the
@@ -281,6 +283,12 @@ function icoAmong(ids: string[]): string | null {
   return null
 }
 
+/** A currency's code as ISO 4217 writes it, else none. */
+const currencyOf = (code: string | null | undefined): string | null => {
+  const upper = code?.trim().toUpperCase() ?? ''
+  return /^[A-Z]{3}$/.test(upper) ? upper : null
+}
+
 /** Reads a UBL invoice; null when the file is not one. Whether we issued it is told by our own IČO. */
 export function readInvoice(xml: string, ourIco: string | null): Reading | null {
   const tree = parseXml(xml)
@@ -306,23 +314,34 @@ export function readInvoice(xml: string, ourIco: string | null): Reading | null 
     .map((line) => ({ rate: Math.round(line.rate), base: sign * line.base, vat: sign * line.vat }))
   const supplied = day(text(at(invoice, 'TaxPointDate')) ?? text(at(invoice, 'Delivery', 'ActualDeliveryDate')) ?? text(at(invoice, 'InvoicePeriod', 'EndDate')))
   const corrected = text(at(invoice, 'BillingReference', 'InvoiceDocumentReference', 'ID'))
+  const endpointNode = at(invoice, 'AccountingSupplierParty', 'Party', 'EndpointID')
+  const endpointScheme = endpointNode && typeof endpointNode === 'object' ? String((endpointNode as Record<string, unknown>)['@schemeID'] ?? '') : ''
+  const endpointValue = text(endpointNode)
+  const supplierEndpoint = /^\d{4}$/.test(endpointScheme) && endpointValue && /^[A-Za-z0-9._-]{1,50}$/.test(endpointValue) ? `${endpointScheme}:${endpointValue}`.toLowerCase() : null
+  // An e-invoice comes from anybody in the network: every text it gives is cut to what a field of ours holds, so one
+  // outsized value can neither fill a row nor stop what comes with it (the review of 26 October 2026).
+  const cap = (value: string | null | undefined, n: number): string | null => (value ? value.slice(0, n) : null)
+  const ibanText = iban ? iban.replace(/\s/g, '').toUpperCase() : null
+  const vsText = text(at(means, 'PaymentID'))?.replace(/\D/g, '') || null
   return {
-    partyVatId: other.vatId,
+    partyVatId: cap(other.vatId, 32),
     suppliedOn: supplied,
     foreign: other.country ? other.country !== 'SK' : null,
-    corrects: credit ? corrected : null,
-    vatLines: vatLines.length > 0 ? vatLines : null,
+    corrects: credit ? cap(corrected, 64) : null,
+    vatLines: vatLines.length > 0 ? vatLines.slice(0, 20) : null,
     kind: credit ? 'other' : ours ? 'invoice_out' : 'invoice_in',
-    party: other.name,
+    party: cap(other.name, 200),
     partyIco: icoAmong(other.ids),
-    partyIban: ours ? null : iban ? iban.replace(/\s/g, '').toUpperCase() : null,
-    number: text(at(invoice, 'ID')),
-    vs: text(at(means, 'PaymentID'))?.replace(/\D/g, '') || null,
+    partyIban: ours || !ibanText || ibanText.length > 34 ? null : ibanText,
+    number: cap(text(at(invoice, 'ID')), 64),
+    // A variable symbol has ten digits at most: a longer reference is none.
+    vs: vsText && vsText.length <= 10 ? vsText : null,
     issuedOn: day(text(at(invoice, 'IssueDate'))),
     dueOn: day(text(at(invoice, 'DueDate')) ?? text(at(means, 'PaymentDueDate'))),
     totalCents: toCents(text(payable)),
     vatCents: vat,
-    currency: (payable as Record<string, unknown> | undefined)?.['@currencyID'] as string | undefined ?? text(at(invoice, 'DocumentCurrencyCode')),
+    currency: currencyOf((payable as Record<string, unknown> | undefined)?.['@currencyID'] as string | undefined ?? text(at(invoice, 'DocumentCurrencyCode'))),
     ...(prepayment ? { prepaid: true } : {}),
+    supplierEndpoint,
   }
 }

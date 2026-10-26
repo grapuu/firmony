@@ -15,6 +15,18 @@ web ukazuje overenie a vetu, že odosielanie zapíname pred 1. 1. 2027. Po zmluv
 `src/peppol/provider.ts` a názov poskytovateľa v ochrane údajov (`#peppol`). Kandidáti Flowis a Qvalia, e-mail
 majiteľovi pripravený 26. 10. Fakty: od 1. 1. 2027 platiteľ DPH tuzemskú B2B faktúru len ako e-faktúru cez
 poštára (§ 85o, znenie od 1. 1. 2027); PDF ostáva pre neplatiteľov, B2C, zahraničie a zálohové faktúry.
+Nezávislá kontrola večer (15 nálezov, každý overený a opravený): firma posiela a prijíma len po **naviazaní**
+(`peppol_bindings`) z oznámenia poštára, že si Firmony zvolila na portáli FS (prihlásenie eID), **a po potvrdení
+správcom** na `/ucto/fakturacne-ucty#peppol` (klient aj fakturačný účet; čerstvé potvrdenie kľúčom; overiť DIČ v
+zozname FS a kontakt z registra). Prichádzajúce e-faktúry idú len naviazanej firme, ktorá má stále to DIČ, inak k
+správcovi aj s XML (`peppol_unrouted`, rok po vybavení), pri pripojení sa doručia samy; chyba udalosti = 503 a XML
+uložené; stav k neznámej referencii čaká (`einvoice_status_pending`); viac ako 100 udalostí alebo 10 e-faktúr 413;
+podpis nad bajtmi; polia e-faktúry orezané (`readInvoice`); dobropis a faktúra k zálohe bez QR a platby; iný
+odosielateľ než dodávateľ (EndpointID alebo DIČ) = varovanie bez QR, klientovi bez IBAN;
+doručená → odmietnutá povolené, odmietnutá sa znova neposiela (dobropis); schedule si odoslanie najprv zaberie;
+limity 300/deň klient, 50 fakturačný účet, 2 000 všetky; odpovede SML pod odtlačkom, 3 dni; súbory prijatých
+e-faktúr v 90-dňovom mazaní a v ZIP roka (`prijate/`). Druhá nezávislá kontrola opráv (10 nálezov) zapracovaná.
+Kým nie je zmluva s poskytovateľom, `providerOf` vracia null: naživo beží len overenie v SML a karty.
 
 **Týždeň dokončenia, 26. 10. 2026 (Claude, vetva `claude/week`):** pokyn majiteľa: produkt dokonalý a na predaj tento
 týždeň; prácu DeepSeeku a iných modelov brať ako nedôveryhodnú a overiť. Hotové a otestované:

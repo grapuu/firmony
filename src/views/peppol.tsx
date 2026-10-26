@@ -23,6 +23,10 @@ export interface PeppolView {
   sendings: Sending[]
   invoiceId: string
   issuedAt: number
+  /** Where the company's own e-invoice settings are: a client's company page or a workspace's settings. */
+  settings: string
+  /** The credit note that answers a rejected invoice; none for a credit note. */
+  creditHref: string | null
 }
 
 /** The steps of an e-invoice's way, each lit once reached. */
@@ -58,7 +62,8 @@ export const PeppolCard: FC<{ view: PeppolView; today: string; error?: string | 
   const c = p.card
   const current = view.sendings[0] ?? null
   const found = view.customer?.state === 'found'
-  const again = current && (current.state === 'rejected' || current.state === 'failed')
+  // A failed sending may go again; a rejected invoice is answered by a credit note, never sent again as it is.
+  const again = current?.state === 'failed'
   const sendForm = (label: string) => (
     <form method="post" action={`/app/faktury/${view.invoiceId}/einvoice`}>
       <button class="btn btn--blue invoice__wide" type="submit">
@@ -83,6 +88,11 @@ export const PeppolCard: FC<{ view: PeppolView; today: string; error?: string | 
             <>
               <p class="flag">{c.rejected(current.reason ?? '')}</p>
               <p class="info__source">{c.rejectedNext}</p>
+              {view.creditHref ? (
+                <a class="btn btn--line invoice__wide" href={view.creditHref}>
+                  {c.creditLink}
+                </a>
+              ) : null}
             </>
           ) : null}
           {current.state === 'failed' ? <p class="flag">{c.failed(current.reason ?? '')}</p> : null}
@@ -91,7 +101,7 @@ export const PeppolCard: FC<{ view: PeppolView; today: string; error?: string | 
       ) : view.blocked === 'sellerId' ? (
         <>
           <p class="info__lead">{c.sellerId}</p>
-          <a class="btn btn--line invoice__wide" href="/app/firma">
+          <a class="btn btn--line invoice__wide" href={`${view.settings}#peppol`}>
             {c.sellerIdLink}
           </a>
         </>
@@ -99,6 +109,13 @@ export const PeppolCard: FC<{ view: PeppolView; today: string; error?: string | 
         <p class="info__lead">{c.ended}</p>
       ) : !view.live ? (
         <p class="info__lead">{found ? c.soon(view.customerName) : c.soonMissing}</p>
+      ) : view.blocked === 'unbound' ? (
+        <>
+          <p class="info__lead">{found ? c.unbound(view.customerName) : c.unboundMissing}</p>
+          <a class="btn btn--line invoice__wide" href={`${view.settings}#peppol`}>
+            {c.unboundLink}
+          </a>
+        </>
       ) : view.customer?.state === 'missing' ? (
         <p class="info__lead">{c.missing(view.customerName)}</p>
       ) : view.customer?.state === 'unknown' ? (
@@ -123,27 +140,40 @@ export interface CompanyPeppol {
   live: boolean
   /** The connected postman's SMP host: a registration there is ours. */
   ourSmp: string | null
+  /** The company is bound to its participant: it sends and receives through Firmony. */
+  bound: boolean
+  /** The postman told us it chose Firmony; the administrator still confirms it. */
+  waits: boolean
 }
 
 /** Where the company stands in the Peppol network, in the company's settings. */
 export const PeppolCompany: FC<{ state: CompanyPeppol }> = ({ state }) => {
   const c = p.company
   const l = state.lookup
-  const ours = l?.state === 'found' && state.live && state.ourSmp !== null && l.smp === state.ourSmp
+  const on = state.live && state.bound
+  // The postman's notice for this company waits for the administrator's confirmation.
+  const waits = state.live && !state.bound && state.waits
+  // In the network with our postman, but not this account: said without naming anybody.
+  const ourButNot = state.live && !on && !waits && l?.state === 'found' && state.ourSmp !== null && l.smp === state.ourSmp
+  const pill = on ? { tone: 'delivered', text: c.pillOn } : waits ? { tone: 'queued', text: c.pillWaits } : l?.state === 'found' ? { tone: state.live ? 'sent' : 'delivered', text: c.pillNetwork } : null
   return (
     <section class="info einv" id="peppol" aria-labelledby="peppol-t">
       <h2 id="peppol-t" class="info__title">
         {c.title}
-        {l?.state === 'found' ? <span class={`pill einv__pill einv__pill--${ours || !state.live ? 'delivered' : 'sent'}`}>{ours ? 'Zapnuté' : 'V sieti'}</span> : null}
+        {pill ? <span class={`pill einv__pill einv__pill--${pill.tone}`}>{pill.text}</span> : null}
       </h2>
       {!state.participant ? (
         <p class="info__lead">{c.noDic}</p>
       ) : (
         <>
-          {l?.state === 'found' ? (
-            ours ? (
-              <p class="info__lead">{c.ours}</p>
-            ) : state.live ? (
+          {on ? (
+            <p class="info__lead">{c.ours}</p>
+          ) : waits ? (
+            <p class="info__lead">{c.waits}</p>
+          ) : ourButNot ? (
+            <p class="info__lead">{c.notThisAccount}</p>
+          ) : l?.state === 'found' ? (
+            state.live ? (
               <>
                 <p class="info__lead">{c.elsewhere(l.smp ?? '')}</p>
                 <p class="info__source">{c.elsewhereNote}</p>
@@ -167,7 +197,10 @@ export const PeppolCompany: FC<{ state: CompanyPeppol }> = ({ state }) => {
 }
 
 /** A received invoice's pill: paid green, past its due day amber, else blue (as the issued ones). */
-const tone = (x: Received, today: string) => (x.paidOn ? 'pill--ok' : x.dueOn && x.dueOn < today ? 'pill--amber' : 'pill--blue')
+const tone = (x: Received, today: string) => (!x.payable || x.paidOn ? 'pill--ok' : x.dueOn && x.dueOn < today ? 'pill--amber' : 'pill--blue')
+
+/** What a received e-invoice's pill says: a credit note and a paid advance's invoice ask for nothing. */
+const pillText = (x: Received, today: string) => (x.credit ? p.received.credit : x.prepaid ? p.received.prepaid : !x.payable ? p.received.noPay : x.paidOn ? p.received.paid(dayName(x.paidOn, today)) : p.received.unpaid)
 
 /** A workspace's received e-invoices. */
 export const ReceivedPage: FC<{ list: Received[]; today: string }> = ({ list, today }) => {
@@ -197,7 +230,7 @@ export const ReceivedPage: FC<{ list: Received[]; today: string }> = ({ list, to
                 </span>
                 <span class="row__end">
                   <span class="row__amount">{x.totalCents !== null ? formatMoney(x.totalCents, x.currency ?? 'EUR') : ''}</span>
-                  <span class={`pill ${tone(x, today)}`}>{x.paidOn ? r.paid(dayName(x.paidOn, today)) : r.unpaid}</span>
+                  <span class={`pill ${tone(x, today)}`}>{pillText(x, today)}</span>
                 </span>
               </a>
             </li>
@@ -212,7 +245,8 @@ export const ReceivedPage: FC<{ list: Received[]; today: string }> = ({ list, to
 export const ReceivedOne: FC<{ x: Received; today: string; flash?: string | null; error?: string | null }> = ({ x, today, flash = null, error = null }) => {
   const r = p.received
   const euro = (x.currency ?? 'EUR') === 'EUR'
-  const text = !x.paidOn && euro && x.partyIban && x.totalCents ? payBySquare({ iban: x.partyIban, amountCents: x.totalCents, vs: x.vs, due: x.dueOn, name: x.party ?? '', note: x.number ? `Faktura ${x.number}` : 'Faktura' }) : null
+  // A QR code only for an invoice to pay, from the supplier who sent it, in euros, with an account.
+  const text = x.payable && !x.mismatch && !x.paidOn && euro && x.partyIban && x.totalCents ? payBySquare({ iban: x.partyIban, amountCents: x.totalCents, vs: x.vs, due: x.dueOn, name: x.party ?? '', note: x.number ? `Faktura ${x.number}` : 'Faktura' }) : null
   const qr = text ? qrPicture(text) : null
   return (
     <>
@@ -224,13 +258,14 @@ export const ReceivedOne: FC<{ x: Received; today: string; flash?: string | null
           <Heading first={`${x.party ?? r.supplier}`} small />
           <p class="phead__lead">{[x.number, x.totalCents !== null ? formatMoney(x.totalCents, x.currency ?? 'EUR') : null].filter(Boolean).join(', ')}</p>
         </div>
-        <span class={`pill ${tone(x, today)} phead__aside`}>{x.paidOn ? r.paid(dayName(x.paidOn, today)) : r.unpaid}</span>
+        <span class={`pill ${tone(x, today)} phead__aside`}>{pillText(x, today)}</span>
       </header>
       <Flash text={flash} />
       <div class="invoice">
         <div class="invoice__paper">
           <section class="info">
-            {qr ? (
+            {x.mismatch && x.payable ? <p class="flag">{r.mismatch(x.sender)}</p> : null}
+            {x.credit ? <p class="info__lead">{r.creditLead}</p> : x.prepaid ? <p class="info__lead">{r.prepaidLead}</p> : qr ? (
               <div class="taxret__pay">
                 <figure class="sheet__qr taxret__qr">
                   <svg viewBox={`0 0 ${qr.size} ${qr.size}`} role="img" aria-label={r.pay} shape-rendering="crispEdges">
@@ -243,7 +278,7 @@ export const ReceivedOne: FC<{ x: Received; today: string; flash?: string | null
                   </figcaption>
                 </figure>
               </div>
-            ) : !x.paidOn ? (
+            ) : !x.paidOn && !x.mismatch ? (
               <p class="info__lead">{r.noQr}</p>
             ) : null}
             <dl class="kv">
@@ -273,11 +308,12 @@ export const ReceivedOne: FC<{ x: Received; today: string; flash?: string | null
               ) : null}
             </dl>
             <p class="info__source">{r.receivedAt(dayName(bratislavaDay(x.receivedAt), today))}</p>
+            {x.sender ? <p class="info__source">{r.sentBy(x.sender)}</p> : null}
           </section>
         </div>
         <aside class="invoice__side">
           <section class="info">
-            {x.paidOn ? (
+            {!x.payable ? null : x.paidOn ? (
               <form method="post" action={`/app/prijate/${x.id}/nezaplatena`}>
                 <button class="btn btn--line invoice__wide" type="submit">
                   {r.unmark}

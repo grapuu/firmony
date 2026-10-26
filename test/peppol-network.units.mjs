@@ -2,7 +2,7 @@
 // it, the postman's notices and their signature, which adapter runs, and what keeps an invoice from travelling.
 import { check } from './check.mjs'
 
-export async function checkPeppolNetworkUnits({ peppolParticipant: pp, peppolProvider: pv, peppolStore: ps }) {
+export async function checkPeppolNetworkUnits({ peppolParticipant: pp, peppolProvider: pv, peppolStore: ps, xml: x }) {
   // The example of OpenPeppol's own "CNAME to NAPTR Migration Process" v1.0.0 (17 April 2025), and the name the live
   // SML answered for a Slovak company of the Peppol Directory on 26 October 2026.
   check(
@@ -47,7 +47,7 @@ export async function checkPeppolNetworkUnits({ peppolParticipant: pp, peppolPro
       !(await pv.signatureValid('t=1,v1=zz', body, secret, at)),
   )
   const xml = '<Invoice/>'
-  const events = pv.eventsOf({
+  const notice = pv.eventsOf({
     events: [
       { type: 'status', id: 'pp-1', state: 'delivered' },
       { type: 'status', id: 'pp-2', state: 'rejected', reason: 'Zlá\nsuma' },
@@ -55,15 +55,23 @@ export async function checkPeppolNetworkUnits({ peppolParticipant: pp, peppolPro
       { type: 'received', id: 'in-1', sender: '0245:2023489446', receiver: '0245:2120000000', document: Buffer.from(xml).toString('base64') },
       { type: 'received', id: 'in-2', receiver: 'not one', document: 'eA==' },
       { type: 'received', id: 'bad id with spaces', receiver: '0245:2120000000', document: 'eA==' },
+      { type: 'registered', id: 'reg-1', participant: '0245:2120000000' },
+      { type: 'unregistered', id: 'reg-2', participant: 'nobody' },
       'nothing',
     ],
   })
+  const events = notice.events
   check(
-    'what a notice says is checked event by event; anything malformed is left out',
-    events.length === 3 && events[1].reason === 'Zlá suma' && events[2].type === 'received' && events[2].xml === xml && events[2].sender === '0245:2023489446',
-    JSON.stringify(events),
+    'what a notice says is checked event by event; anything malformed is counted, never applied',
+    events.length === 4 && events[1].reason === 'Zlá suma' && events[2].type === 'received' && events[2].xml === xml && events[2].sender === '0245:2023489446' &&
+      events[3].type === 'registered' && events[3].participant === '0245:2120000000' && notice.malformed === 5 && !notice.tooMany,
+    JSON.stringify(notice),
   )
-  check('no notice of a hundred and one events is read past the hundredth', pv.eventsOf({ events: Array.from({ length: 150 }, (_, i) => ({ type: 'status', id: `x${i}`, state: 'delivered' })) }).length === 100)
+  const many = pv.eventsOf({ events: Array.from({ length: 101 }, (_, i) => ({ type: 'status', id: `x${i}`, state: 'delivered' })) })
+  check('a notice of more than a hundred events is refused whole, none of it applied', many.tooMany && many.events.length === 0 && pv.eventsOf({ events: Array.from({ length: 100 }, (_, i) => ({ type: 'status', id: `x${i}`, state: 'delivered' })) }).events.length === 100)
+  check('a notice that is no list of events is counted as malformed', pv.eventsOf({}).malformed === 1 && pv.eventsOf(null).events.length === 0)
+  const bytes = new TextEncoder().encode(body)
+  check('the signature covers the bytes as they came', await pv.signatureValid(header, bytes, secret, at + 60))
 
   // Which postman runs.
   const env = { PEPPOL_PROVIDER: 'pretend', PEPPOL_API_URL: 'https://peppol.pretend.test/', PEPPOL_API_KEY: 'k', PEPPOL_WEBHOOK_SECRET: secret }
@@ -101,16 +109,39 @@ export async function checkPeppolNetworkUnits({ peppolParticipant: pp, peppolPro
 
   // What keeps an invoice from travelling.
   const company = { dic: '2120000000', icdph: null, endsOn: null }
+  const bound = '0245:2120000000'
   const invoice = { status: 'issued', number: '20260001', kind: 'invoice', customerDic: '2023489446', customerIcdph: null, customerCountry: null }
   check(
-    'an invoice travels when issued, no request for an advance, both sides Slovak companies, the contract open',
-    ps.blockedOf(company, invoice, '2026-10-26') === null &&
-      ps.blockedOf(company, { ...invoice, status: 'draft' }, '2026-10-26') === 'draft' &&
-      ps.blockedOf(company, { ...invoice, kind: 'proforma' }, '2026-10-26') === 'proforma' &&
-      ps.blockedOf({ ...company, dic: null }, invoice, '2026-10-26') === 'sellerId' &&
-      ps.blockedOf(company, { ...invoice, customerDic: null }, '2026-10-26') === 'customerId' &&
-      ps.blockedOf(company, { ...invoice, customerDic: null, customerIcdph: 'SK2023489446' }, '2026-10-26') === null &&
-      ps.blockedOf(company, { ...invoice, customerCountry: 'CZ' }, '2026-10-26') === 'customerId' &&
-      ps.blockedOf({ ...company, endsOn: '2026-01-31' }, invoice, '2026-10-26') === 'ended',
+    'an invoice travels when issued, no request for an advance, both sides Slovak companies, the contract open, the company bound',
+    ps.blockedOf(company, invoice, '2026-10-26', bound) === null &&
+      ps.blockedOf(company, { ...invoice, status: 'draft' }, '2026-10-26', bound) === 'draft' &&
+      ps.blockedOf(company, { ...invoice, kind: 'proforma' }, '2026-10-26', bound) === 'proforma' &&
+      ps.blockedOf({ ...company, dic: null }, invoice, '2026-10-26', bound) === 'sellerId' &&
+      ps.blockedOf(company, { ...invoice, customerDic: null }, '2026-10-26', bound) === 'customerId' &&
+      ps.blockedOf(company, { ...invoice, customerDic: null, customerIcdph: 'SK2023489446' }, '2026-10-26', bound) === null &&
+      ps.blockedOf(company, { ...invoice, customerCountry: 'CZ' }, '2026-10-26', bound) === 'customerId' &&
+      ps.blockedOf({ ...company, endsOn: '2026-01-31' }, invoice, '2026-10-26', bound) === 'ended' &&
+      // The day the contract ends is its last: the ten days the last documents still come in send nothing.
+      ps.blockedOf({ ...company, endsOn: '2026-10-25' }, invoice, '2026-10-26', bound) === 'ended' &&
+      ps.blockedOf(company, invoice, '2026-10-26', null) === 'unbound' &&
+      ps.blockedOf(company, invoice, '2026-10-26', '0245:2120000001') === 'unbound',
   )
+  const ubl = (supplierEndpoint) => `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="c" xmlns:cbc="b"><cbc:ID>1</cbc:ID><cac:AccountingSupplierParty><cac:Party>${supplierEndpoint}<cac:PartyName><cbc:Name>S</cbc:Name></cac:PartyName></cac:Party></cac:AccountingSupplierParty><cac:AccountingCustomerParty><cac:Party><cbc:EndpointID schemeID="0245">1111111111</cbc:EndpointID></cac:Party></cac:AccountingCustomerParty><cac:LegalMonetaryTotal><cbc:PayableAmount currencyID="EUR">1.00</cbc:PayableAmount></cac:LegalMonetaryTotal></Invoice>`
+  check(
+    'the supplier\'s address is read from the parsed supplier\'s party, never the customer\'s, quoted either way',
+    x.readInvoice(ubl('<cbc:EndpointID schemeID="0245">2023489446</cbc:EndpointID>'), null)?.supplierEndpoint === '0245:2023489446' &&
+      x.readInvoice(ubl("<cbc:EndpointID schemeID='0245'>2023489446</cbc:EndpointID>"), null)?.supplierEndpoint === '0245:2023489446' &&
+      x.readInvoice(ubl(''), null)?.supplierEndpoint === null,
+  )
+  check(
+    'an e-invoice its supplier did not send is told: another address, none, or a Slovak sender whose DIČ is not the supplier\'s VAT number',
+    !ps.senderMismatch('0245:2023489446', '0245:2023489446', 'SK2023489446') &&
+      !ps.senderMismatch('9930:de123456789', '9930:DE123456789', 'DE123456789') &&
+      ps.senderMismatch('0245:2155555555', '0245:2023489446', null) &&
+      ps.senderMismatch(null, '0245:2023489446', null) &&
+      ps.senderMismatch('0245:2023489446', null, null) &&
+      ps.senderMismatch('0245:2155555555', '0245:2155555555', 'SK2023489446'),
+  )
+  const tenDocuments = pv.eventsOf({ events: Array.from({ length: 11 }, (_, i) => ({ type: 'received', id: `d${i}`, receiver: '0245:2120000000', document: 'eA==' })) })
+  check('a notice of more than ten e-invoices is refused whole', tenDocuments.tooMany && tenDocuments.events.length === 0)
 }
