@@ -6,11 +6,11 @@ export function checkInvoicingUnits({ invoiceAi, invoicing }) {
   const reach = invoicing.invoicingPath
   check(
     'a workspace reaches its invoices, customers, settings, logo and the switch',
-    ['/app/faktury', '/app/faktury/nova', '/app/faktury/nova/veta', '/app/faktury/abc/pdf', '/app/odberatelia', '/app/fakturacia', '/app/fakturacia/zrusit', '/app/logo', '/app/firma/prepnut'].every(reach),
+    ['/app/faktury', '/app/faktury/nova', '/app/faktury/nova/veta', '/app/faktury/abc/pdf', '/app/odberatelia', '/app/fakturacia', '/app/fakturacia/zrusit', '/app/logo', '/app/firma/prepnut', '/app/potvrdit'].every(reach),
   )
   check(
     'and nothing of the books, the bank, the messages, the export or the reminders by email',
-    !['/app', '/app/platby', '/app/doklady', '/app/banka', '/app/spravy', '/app/firma', '/app/export', '/app/faktury/upomienky', '/app/faktury/abc/zaloha', '/app/asistent', '/app/vyhlasenie', '/app/fakturacia/x/y'].some(reach),
+    !['/app', '/app/platby', '/app/doklady', '/app/banka', '/app/spravy', '/app/firma', '/app/export', '/app/faktury/upomienky', '/app/faktury/abc/zaloha', '/app/faktury/abc/poslat', '/app/faktury/abc/pripomenut', '/app/asistent', '/app/vyhlasenie', '/app/fakturacia/x/y'].some(reach),
   )
   const draft = invoiceAi.draftOf(
     {

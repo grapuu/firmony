@@ -10,6 +10,7 @@ import { orderAdmissionSql, quoteSql } from '../aml/model'
 import { AmlDossierPanel } from '../views/aml-admission'
 import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
 import { registerAmlRoutes } from '../aml/routes'
+import { registerWorkspaceRoutes } from './workspaces'
 // The accountants' side under /ucto. Only somebody of the team gets in: a client who types the address gets the
 // same "not found" as for anything that does not exist. Every company, document and payment is checked against
 // what the user may see (an accountant her own clients, an administrator everybody).
@@ -5849,3 +5850,4 @@ teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/pri
 export { canSee }
 
 registerAmlRoutes(teamRoutes, (c, title, child, status = 200) => shell(c, 'requests', title, child, status))
+registerWorkspaceRoutes(teamRoutes, (c, title, child, status = 200) => shell(c as Ctx, null, title, child, status), (c) => missingPage(c as Ctx))

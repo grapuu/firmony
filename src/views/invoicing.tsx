@@ -295,14 +295,14 @@ export const SignupEnter: FC<{ token: string; company: string; ico: string | nul
   </Card>
 )
 
-export const SignupExpired: FC<{ tooMany?: boolean }> = ({ tooMany = false }) => (
+export const SignupExpired: FC<{ refused?: 'workspaces' | 'client' | 'blocked' }> = ({ refused }) => (
   <Card title={v.enter.expiredTitle}>
-    <p class="lead">{tooMany ? v.enter.tooMany : v.enter.expired}</p>
+    <p class="lead">{refused === 'client' ? v.enter.client : refused === 'workspaces' ? v.enter.tooMany : refused === 'blocked' ? v.enter.blocked : v.enter.expired}</p>
     <p class="signup-card__actions">
       <a class="btn btn--blue" href="/app/prihlasenie">
         {v.enter.signIn}
       </a>
-      {tooMany ? null : (
+      {refused ? null : (
         <a class="btn btn--line" href={`${INVOICING_PATH}#zacat`}>
           {v.enter.again}
         </a>
@@ -428,7 +428,15 @@ export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceE
             <div class="fgrid">
               <SettingsField name="meno" label={s.name} value={values.name} error={errors.name} max={160} wide />
               <SettingsField name="adresa" label={s.address} value={values.address} error={errors.address} max={240} wide />
-              <SettingsField name="ico" label={s.ico} value={values.ico} error={errors.ico} mode="numeric" max={12} />
+              <div class="fgrid__cell">
+                <label class="field__label" for="w-ico">
+                  {s.ico}
+                </label>
+                <input id="w-ico" class="field__input" value={values.ico} readonly aria-describedby="w-ico-hint" />
+                <p class="field__hint" id="w-ico-hint">
+                  {s.icoFixed}
+                </p>
+              </div>
               <SettingsField name="dic" label={s.dic} value={values.dic} error={errors.dic} mode="numeric" max={12} />
               <SettingsField name="icdph" label={s.icdph} value={values.icdph} error={errors.icdph} max={14} />
               <SettingsField name="register" label={s.register} value={values.registerLine} error={errors.registerLine} hint={s.registerHint} max={240} wide />

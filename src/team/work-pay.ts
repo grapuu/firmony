@@ -145,7 +145,7 @@ export async function workStatement(db: D1Database, userId: string, month: strin
         `SELECT id, name, ico, accountant_id = ?1 AND contract_at IS NOT NULL AND start_on IS NOT NULL AND start_on <= ?3
            AND (ends_on IS NULL OR ends_on >= ?2) AND purged_at IS NULL AS active, demo FROM companies
          WHERE (accountant_id = ?1 AND contract_at IS NOT NULL AND start_on IS NOT NULL AND start_on <= ?3 AND (ends_on IS NULL OR ends_on >= ?2) AND purged_at IS NULL)
-            OR id IN (SELECT company_id FROM events WHERE user_id = ?1 AND at >= ?4 AND at < ?5)`,
+            OR (invoicing_only = 0 AND id IN (SELECT company_id FROM events WHERE user_id = ?1 AND at >= ?4 AND at < ?5))`,
       )
       .bind(userId, first, last, from, to),
   ])

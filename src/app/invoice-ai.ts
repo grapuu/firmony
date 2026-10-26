@@ -18,7 +18,7 @@ export const INVOICE_AI = {
   /** Uses in a day: one person, one company, everybody. */
   perUser: 40,
   perCompany: 80,
-  perDay: 4000,
+  perDay: 1500,
 } as const
 
 const VAT_RATES = [23, 19, 5, 0] as const

@@ -61,6 +61,16 @@ const STROJAREN = {
   addresses: [{ validFrom: '2001-05-01', street: 'Priemyselná', regNumber: 0, buildingNumber: '3', postalCodes: ['04011'], municipality: { value: 'Košice' }, country: { value: 'Slovenská republika' } }],
   sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2001-05-01' }], registrationNumbers: [{ value: 'Sa/1234/V', validFrom: '2001-05-01' }] },
 }
+/** A company for free invoicing (26 October 2026): known to the register, a client of nobody. */
+const FAKTURACKA = {
+  id: 19066666,
+  identifiers: [{ value: '47111119', validFrom: '2019-06-01' }],
+  fullNames: [{ value: 'TEST-ONLY Fakturačka s. r. o.', validFrom: '2019-06-01' }],
+  addresses: [{ validFrom: '2019-06-01', street: 'Mlynská', regNumber: 0, buildingNumber: '12', postalCodes: ['04001'], municipality: { value: 'Košice' }, country: { value: 'Slovenská republika' } }],
+  establishment: '2019-06-01',
+  sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2019-06-01' }], registrationNumbers: [{ value: 'Sro/47111/V', validFrom: '2019-06-01' }] },
+}
+
 const INOVA = {
   id: 19077777,
   identifiers: [{ value: '56622222', validFrom: '2024-02-01' }],
@@ -102,6 +112,7 @@ export function registerAnswer(url, calls = []) {
   if (ico === '55012345') return Response.json({ results: [ZELENY], license: 'CC BY 4.0' })
   if (ico === '36611111') return Response.json({ results: [STROJAREN], license: 'CC BY 4.0' })
   if (ico === '56622222') return Response.json({ results: [INOVA], license: 'CC BY 4.0' })
+  if (ico === '47111119') return Response.json({ results: [FAKTURACKA], license: 'CC BY 4.0' })
   if (ico === '35757442') return new Response('busy', { status: 503 })
   return Response.json({ results: [], license: 'CC BY 4.0' })
 }

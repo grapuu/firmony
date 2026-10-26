@@ -69,6 +69,8 @@ export const invoicingCopy = {
     expired: typeset(`Odkaz platí ${INVOICING.linkHours} hodín a len raz. Ak ste účet už vytvorili, prihláste sa. Inak začnite znova.`),
     signIn: 'Prihlásiť sa',
     again: 'Začať znova',
+    blocked: typeset(`Váš fakturačný účet je zablokovaný a nový teraz nevytvoríte. Ak ide o omyl, napíšte nám na ${BRAND.email}.`),
+    client: typeset(`Táto firma už má vo ${BRAND.name} účet s účtovníctvom a faktúry vystavuje v ňom. Požiadajte jeho majiteľa o pozvánku, alebo sa prihláste.`),
     tooMany: typeset(`Na jednu e-\u2060mailovú adresu môže byť najviac ${INVOICING.workspacesPerUser} fakturačných účtov. Prihláste sa do niektorého z nich.`),
   },
   mail: {
@@ -111,7 +113,7 @@ export const invoicingCopy = {
   },
   why: {
     title: 'Prečo zadarmo?',
-    text: typeset(`${BRAND.name} je online účtovná služba pre slovenské firmy. Fakturáciu dávame zadarmo, aby ste nás spoznali bez rizika. Keď budete chcieť, povedieme Vám aj účtovníctvo od ${cheapest} € mesačne a Vaše faktúry už budú na mieste.`),
+    text: typeset(`${BRAND.name} je online účtovná služba pre slovenské firmy. Fakturáciu dávame zadarmo, aby ste nás spoznali bez rizika. Keď budete chcieť, povedieme Vám aj účtovníctvo od ${cheapest} € mesačne. Doterajšie faktúry Vám ostanú v aplikácii.`),
     link: 'Pozrieť účtovníctvo',
   },
   faq: {
@@ -140,7 +142,7 @@ export const invoicingCopy = {
       },
       {
         q: 'Čo keď budem chcieť aj účtovníctvo?',
-        a: typeset('V aplikácii kliknete na Účtovníctvo s Firmony. Vašu firmu preveríme a ponúkneme presnú cenu. Fakturovať môžete ďalej rovnako.'),
+        a: typeset('V nastaveniach kliknete na Účtovníctvo s Firmony. Vašu firmu preveríme a ponúkneme presnú cenu. Po uzavretí zmluvy fakturujete v účte s účtovníctvom, kde sa faktúry samy spárujú s platbami, a číslovanie nastavíte tak, aby plynulo pokračovalo. Doterajšie faktúry Vám ostanú.'),
       },
     ],
   },
@@ -175,6 +177,7 @@ export const invoicingCopy = {
   // ---- The workspace in the app -------------------------------------------------------------------------------
   app: {
     plan: 'Fakturácia zadarmo',
+    moved: typeset('Táto firma má už vo Firmony účet s účtovníctvom. Faktúry vystavujte v ňom, aby sa spárovali s platbami a číslovanie sa nezdvojilo. Účty prepnete vľavo hore.'),
     limit: typeset(`Dnes ste vystavili ${INVOICING.issuedPerDay} faktúr, čo je denný limit bezplatnej fakturácie. Ďalšie vystavíte zajtra; koncept môžete uložiť.`),
     nav: { invoices: 'Faktúry', customers: 'Odberatelia', settings: 'Nastavenia', add: 'Nová faktúra', addShort: 'Nová' },
     welcome: {
@@ -193,6 +196,7 @@ export const invoicingCopy = {
       name: 'Obchodné meno',
       address: 'Sídlo alebo miesto podnikania',
       ico: 'IČO',
+      icoFixed: typeset('IČO sa nemení. Pre inú firmu si vytvorte ďalší fakturačný účet.'),
       dic: 'DIČ',
       icdph: 'IČ DPH',
       register: 'Zápis v registri',
@@ -222,7 +226,7 @@ export const invoicingCopy = {
     },
     accounting: {
       title: 'Účtovníctvo s Firmony',
-      lead: typeset(`Keď nechcete riešiť účtovníctvo, DPH ani dane, povedieme ho za Vás od ${cheapest} € mesačne. Faktúry, ktoré tu vystavíte, budú hneď na mieste.`),
+      lead: typeset(`Keď nechcete riešiť účtovníctvo, DPH ani dane, povedieme ho za Vás od ${cheapest} € mesačne. Doterajšie faktúry Vám ostanú a v číslovaní plynulo pokračujete.`),
       button: 'Nezáväzne preveriť moju firmu',
     },
     remove: {
@@ -233,6 +237,7 @@ export const invoicingCopy = {
       error: 'Na potvrdenie napíšte presne ZRUŠIŤ.',
       onlyOwner: 'Účet ruší jeho majiteľ.',
       done: 'Fakturačný účet sme zrušili a údaje zmazali.',
+      failed: typeset(`Účet teraz nemožno zrušiť. Napíšte nám, prosím, na ${BRAND.email} a vyriešime to.`),
     },
     customers: {
       title: 'Odberatelia',
@@ -302,6 +307,7 @@ export const INVOICING_TERMS: { title: string; points: string[] }[] = [
     title: 'Osobné údaje',
     points: [
       typeset('Údaje Vášho účtu spracúvame ako prevádzkovateľ podľa informácie o ochrane osobných údajov. Osobné údaje odberateľov na faktúrach spracúvame ako sprostredkovateľ podľa čl. 28 GDPR, len aby fakturácia fungovala: uložíme ich, zobrazíme Vám a Vašim odberateľom cez odkaz a zmažeme so zrušením účtu.'),
+      typeset('Ďalšími sprostredkovateľmi sú Cloudflare, Inc. (servery, databáza a súbory v Európskej únii) a pri Faktúre z jednej vety Anthropic, PBC (USA), ktorej odovzdáme iba napísanú vetu na vyplnenie formulára; prenos do USA chránia štandardné zmluvné doložky Európskej komisie. S ich zapojením súhlasíte. O zmene sprostredkovateľov Vás vopred informujeme v aplikácii a môžete ju odmietnuť zrušením účtu.'),
       typeset('Údaje sú uložené v Európskej únii. Nepredávame ich a nepoužívame na reklamu.'),
     ],
   },

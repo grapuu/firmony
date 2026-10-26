@@ -492,7 +492,7 @@ export const INVOICING = {
   /** Sign-ups from one connection in an hour, to one address in a day, and all new sign-ups in a day. */
   signupsPerHour: 5,
   signupsPerEmailDay: 3,
-  signupsPerDay: 400,
+  signupsPerDay: 120,
   /** Invoices one workspace may issue in a day, and workspaces one person may own. */
   issuedPerDay: 200,
   workspacesPerUser: 10,

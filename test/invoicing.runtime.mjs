@@ -4,7 +4,7 @@ import { check } from './check.mjs'
 
 const typed = (d) => `${Number(d.slice(8))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
 
-export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, as, admin, day }) {
+export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, as, admin, freshAdmin, day }) {
   // The public page: indexable, with its sign-up, in the sitemap and in llms.txt.
   let res = await get('/fakturacia')
   let page = await res.text()
@@ -15,13 +15,13 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
 
   // A sign-up of a company the register knows.
   let before = (await sent()).length
-  res = await post('/fakturacia', { ico: '55012345', email: 'zeleny@example.test' }, { ip: '198.51.100.201' })
+  res = await post('/fakturacia', { ico: '47111119', email: 'zeleny@example.test' }, { ip: '198.51.100.201' })
   page = await res.text()
   await settle()
   let mail = (await sent()).slice(before).find((m) => m.to === 'zeleny@example.test')
   const token = mail?.text.match(/\/fakturacia\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
   check('invoicing: a sign-up answers that a link went out, and the link goes to the address typed', res.status === 200 && page.includes('Pozrite sa do e-mailu') && token.length === 43)
-  check('invoicing: the sign-up keeps the register\'s name, never the email in an address', (await db.prepare("SELECT company FROM invoicing_signups WHERE email = 'zeleny@example.test'").first())?.company === 'Zelený dvor s. r. o.' && !page.includes('?e='))
+  check('invoicing: the sign-up keeps the register\'s name, never the email in an address', (await db.prepare("SELECT company FROM invoicing_signups WHERE email = 'zeleny@example.test'").first())?.company === 'TEST-ONLY Fakturačka s. r. o.' && !page.includes('?e='))
 
   // Mistakes, a machine, a register that does not know the company.
   res = await post('/fakturacia', { ico: '12', email: 'nie-je-email' }, { ip: '198.51.100.202' })
@@ -45,7 +45,7 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   check('invoicing: an unknown link is said to be gone', res.status === 410)
   res = await get(`/fakturacia/vstup?t=${token}`)
   page = await res.text()
-  check('invoicing: the link opens a page with one button, not indexed', res.status === 200 && page.includes('Zelený dvor s. r. o.') && (res.headers.get('x-robots-tag') ?? '').includes('noindex') && (await db.prepare('SELECT used_at FROM invoicing_signups WHERE email = ?').bind('zeleny@example.test').first())?.used_at === null)
+  check('invoicing: the link opens a page with one button, not indexed', res.status === 200 && page.includes('TEST-ONLY Fakturačka s. r. o.') && (res.headers.get('x-robots-tag') ?? '').includes('noindex') && (await db.prepare('SELECT used_at FROM invoicing_signups WHERE email = ?').bind('zeleny@example.test').first())?.used_at === null)
   res = await post('/fakturacia/vstup', { t: token, meno: 'TEST-ONLY Zuzana Zelená' }, { ip: '198.51.100.201' })
   check('invoicing: without the consent nothing is made', res.status === 422 && (await res.text()).includes('súhlas'))
   res = await post('/fakturacia/vstup', { t: token, meno: 'TEST-ONLY Zuzana Zelená', suhlas: '1' }, { ip: '198.51.100.201' })
@@ -56,9 +56,17 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   const ws = await db.prepare("SELECT c.* FROM companies c JOIN members m ON m.company_id = c.id JOIN users u ON u.id = m.user_id WHERE u.email = 'zeleny@example.test'").first()
   check(
     'invoicing: the workspace is invoicing alone: no accountant, no contract, nothing billed',
-    ws?.invoicing_only === 1 && ws.accountant_id === null && ws.contract_at === null && ws.plan === 'faktury' && ws.name === 'Zelený dvor s. r. o.' && /58123\/V/.test(ws.register_line ?? ''),
+    ws?.invoicing_only === 1 && ws.accountant_id === null && ws.contract_at === null && ws.plan === 'faktury' && ws.name === 'TEST-ONLY Fakturačka s. r. o.' && /47111\/V/.test(ws.register_line ?? ''),
   )
   check('invoicing: its person has the name given on the link\'s page', (await db.prepare("SELECT name FROM users WHERE email = 'zeleny@example.test'").first())?.name === 'TEST-ONLY Zuzana Zelená')
+
+  // A client of ours invoices in its own company: its IČO makes no workspace for a stranger.
+  before = (await sent()).length
+  await post('/fakturacia', { ico: '55012345', email: 'cudzi@example.test' }, { ip: '198.51.100.207' })
+  await settle()
+  const strangerToken = (await sent()).slice(before).find((m) => m.to === 'cudzi@example.test')?.text.match(/\/fakturacia\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
+  res = await post('/fakturacia/vstup', { t: strangerToken, meno: 'TEST-ONLY Cudzí', suhlas: '1' }, { ip: '198.51.100.207' })
+  check('invoicing: a client\'s IČO makes no workspace for somebody who is not its member', res.status === 409 && (await res.text()).includes('pozvánku') && !(res.headers.get('set-cookie') ?? '').includes('firmony='))
 
   // The workspace reaches its invoicing and nothing else.
   const me = as(cookie)
@@ -75,7 +83,7 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   check('invoicing: no customers yet', res.status === 200 && (await res.text()).includes('Zatiaľ tu nikto nie je'))
 
   // Its settings.
-  const settings = { meno: 'Zelený dvor s. r. o.', adresa: 'Mlynská 12, 040 01 Košice', ico: '55012345', dic: '2121234567', icdph: '', register: 'Obchodný register Mestského súdu Košice, oddiel Sro, vložka č. 58123/V', iban: 'SK31 1200 0000 1987 4263 7542', splatnost: '14' }
+  const settings = { meno: 'TEST-ONLY Fakturačka s. r. o.', adresa: 'Mlynská 12, 040 01 Košice', ico: '47111119', dic: '2121234567', icdph: '', register: 'Obchodný register Mestského súdu Košice, oddiel Sro, vložka č. 58123/V', iban: 'SK31 1200 0000 1987 4263 7542', splatnost: '14' }
   res = await me.post('/app/fakturacia', settings)
   check('invoicing: an IBAN with wrong check digits is refused', res.status === 422 && (await res.text()).includes('IBAN nie je správny'))
   res = await me.post('/app/fakturacia', { ...settings, platitel: '1' })
@@ -179,10 +187,44 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   res = await mf.dispatchFetch(`http://localhost/cdn-cgi/local/email?from=${encodeURIComponent('niekto@example.test')}&to=${encodeURIComponent(`doklady-${ws.inbox}@firmony.io`)}`, { method: 'POST', body: 'From: niekto@example.test\r\nTo: x\r\nSubject: x\r\n\r\nx' })
   check('invoicing: mail to a workspace\'s address for documents is refused', res.status === 400)
 
+  // Nothing of an invoice is emailed from a workspace, and an escaped address reaches no route past the checks.
+  res = await me.post(`/app/faktury/${invoiceId}/poslat`, { email: 'obet@example.test' })
+  check('invoicing: a workspace emails no invoice', res.status === 403 && (await me.post(`/app/faktury/${invoiceId}/pripomenut`, {})).status === 403)
+  check('invoicing: an escaped character in an address of the app is no address', (await me.get('/app/expor%74?rok=2026')).status === 404 && (await me.get('/app/faktury/upomienk%79')).status === 404)
+
+  // The administrator stops a misused workspace: its people are out, its customers' links are gone; and lifts it.
+  const boss = await freshAdmin()
+  page = await (await boss.get('/ucto/fakturacne-ucty')).text()
+  check('invoicing: the administrator sees the workspaces, not their invoices', page.includes(ws.id) && page.includes('TEST-ONLY Fakturačka s. r. o.') && !page.includes('TEST-ONLY Odberateľ'))
+  const publicToken = (await db.prepare('SELECT token FROM invoices WHERE id = ?').bind(invoiceId).first())?.token
+  check('invoicing: before, the customer\'s link opens', (await get(`/f/${publicToken}`)).status === 200)
+  res = await boss.post(`/ucto/fakturacne-ucty/${ws.id}/zablokovat`, { dovod: 'TEST-ONLY phishing report' })
+  check('invoicing: stopped, the customer\'s link answers nothing and the person is out', res.status === 303 && (await get(`/f/${publicToken}`)).status === 404 && (await me.get('/app/faktury')).status === 303)
+  check('invoicing: the same person makes no new workspace meanwhile', (await db.prepare("SELECT action FROM events WHERE action = 'invoicing.blocked' AND subject = ?").bind(ws.id).first())?.action === 'invoicing.blocked')
+  res = await boss.post(`/ucto/fakturacne-ucty/${ws.id}/odblokovat`, {})
+  check('invoicing: lifted, the link opens again', res.status === 303 && (await get(`/f/${publicToken}`)).status === 200)
+  // Signed in again by a link from the email, as anybody without a passkey.
+  let before2 = (await sent()).length
+  await post('/app/prihlasenie', { email: 'zeleny@example.test' }, { ip: '198.51.100.206' })
+  await settle()
+  const link = (await sent()).slice(before2).filter((m) => m.to === 'zeleny@example.test').pop()?.text.match(/\/app\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
+  res = await post('/app/vstup', { t: link }, { ip: '198.51.100.206' })
+  const again = as((res.headers.get('set-cookie') ?? '').split(';')[0])
+  check('invoicing: the person signs in again into the workspace', (await again.get('/app/faktury')).status === 200)
+
+  // Ending it is as sensitive as an export: an older session is asked for a fresh link, which a workspace can reach.
+  const owner = await db.prepare("SELECT id FROM users WHERE email = 'zeleny@example.test'").first()
+  await db.prepare('UPDATE sessions SET created_at = created_at - 3600 WHERE user_id = ?').bind(owner.id).run()
+  res = await again.post('/app/fakturacia/zrusit', { potvrdenie: 'ZRUŠIŤ' })
+  const confirmAt = res.headers.get('location') ?? ''
+  check('invoicing: an older session is asked to confirm by a fresh link, on a page the workspace reaches', res.status === 303 && confirmAt.startsWith('/app/potvrdit') && (await again.get(confirmAt)).status === 200)
+  await db.prepare('UPDATE sessions SET created_at = created_at + 3600 WHERE user_id = ?').bind(owner.id).run()
+  const me2 = again
+
   // The end of a workspace: everything of it goes, the person is signed out.
-  res = await me.post('/app/fakturacia/zrusit', { potvrdenie: 'ano' })
+  res = await me2.post('/app/fakturacia/zrusit', { potvrdenie: 'ano' })
   check('invoicing: ending it asks for the word', res.status === 422)
-  res = await me.post('/app/fakturacia/zrusit', { potvrdenie: 'zrušiť' })
+  res = await me2.post('/app/fakturacia/zrusit', { potvrdenie: 'zrušiť' })
   check(
     'invoicing: ended, the workspace and its invoices are gone and the person is out',
     res.status === 303 &&
@@ -190,6 +232,6 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
       (await db.prepare('SELECT COUNT(*) AS n FROM companies WHERE id = ?').bind(ws.id).first())?.n === 0 &&
       (await db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE company_id = ?').bind(ws.id).first())?.n === 0 &&
       (await db.prepare('SELECT COUNT(*) AS n FROM documents WHERE company_id = ?').bind(ws.id).first())?.n === 0 &&
-      (await me.get('/app/faktury')).status === 303,
+      (await me2.get('/app/faktury')).status === 303,
   )
 }

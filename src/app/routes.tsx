@@ -540,6 +540,9 @@ appRoutes.post('/fakturacia', async (c) => {
   }
   const e = iv.app.settings.errors
   const errors: WorkspaceErrors = {}
+  // The IČO the workspace was made for stays (it is the register's, or the one the register did not know): another
+  // company is another workspace.
+  values.ico = who.company.ico ?? ''
   const ico = values.ico ? normalizeIco(values.ico) : null
   const dic = values.dic.replace(/\s/g, '')
   const icdph = values.icdph.replace(/\s/g, '').toUpperCase()
@@ -571,13 +574,10 @@ appRoutes.post('/fakturacia/zrusit', async (c) => {
   const body = await c.req.parseBody()
   const typed = typeof body.potvrdenie === 'string' ? body.potvrdenie.trim().toLocaleUpperCase('sk') : ''
   if (typed !== 'ZRUŠIŤ' && typed !== 'ZRUSIT') return workspacePage(c, null, {}, 422, iv.app.remove.error)
-  await deleteWorkspace(c.env.DB, c.env.FILES, who.company.id)
-  // The person goes on in another company of theirs, or is signed out when there is none.
+  if (!(await deleteWorkspace(c.env.DB, c.env.FILES, who.company.id, who.user.email))) return workspacePage(c, null, {}, 409, iv.app.remove.failed)
+  // Its sessions went with it: the person goes on in another company of theirs, or is signed out when there is none.
   const next = await firstCompanyOf(c.env.DB, who.user.id)
-  if (next) {
-    await c.env.DB.batch([switchStatement(c.env.DB, who.session, who.user.id, next)])
-    return c.redirect('/app', 303)
-  }
+  if (next && (await startSession(c, c.env.DB, who.user.id, next))) return c.redirect('/app', 303)
   await endSession(c, c.env.DB)
   return c.redirect(`${INVOICING_PATH}?zrusene=1`, 303)
 })
@@ -2881,10 +2881,10 @@ appRoutes.post('/faktury/nova/veta', async (c) => {
       filled.customerAddress = answer.found.address ?? ''
     }
   } else if (filled.customerName) {
-    // A customer invoiced before, by its name as written: its address and numbers as on its latest invoice.
+    // A customer invoiced before, by its whole name as written (no part of a name): its address and numbers as on its latest invoice.
     const earlier = await db
-      .prepare("SELECT id FROM invoices WHERE company_id = ? AND status = 'issued' AND lower(customer_name) LIKE ? ESCAPE '\\' ORDER BY issued_on DESC LIMIT 1")
-      .bind(who.company.id, `%${filled.customerName.toLowerCase().replace(/[\\%_]/g, (m) => `\\${m}`)}%`)
+      .prepare("SELECT id FROM invoices WHERE company_id = ? AND status = 'issued' AND lower(trim(customer_name)) = ? ORDER BY issued_on DESC LIMIT 1")
+      .bind(who.company.id, filled.customerName.toLowerCase().replace(/\s+/g, ' ').trim())
       .first<{ id: string }>()
     const prior = earlier ? await getInvoice(db, who.company.id, earlier.id) : null
     if (prior) {
@@ -3186,7 +3186,15 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
   const issued = dayOfText(values.issued) || today()
   const delivered = dayOfText(values.delivered) || issued
   const due = dayOfText(values.due) || issued
-  // A free workspace issues as many invoices as any business does in a day, and not more (the terms of use).
+  // A free workspace issues as many invoices as any business does in a day, and not more (the terms of use); and none
+  // once its person keeps the same company with us as a client: one company, one row of numbers, its books whole.
+  if (issue && who.company.invoicingOnly && who.company.ico) {
+    const client = await db
+      .prepare('SELECT 1 AS x FROM companies c JOIN members m ON m.company_id = c.id AND m.user_id = ? WHERE c.ico = ? AND c.invoicing_only = 0 AND c.contract_at IS NOT NULL AND c.closed_at IS NULL LIMIT 1')
+      .bind(who.user.id, who.company.ico)
+      .first()
+    if (client) return invoiceForm(c, draftId, values, { form: iv.app.moved }, 409)
+  }
   if (issue && who.company.invoicingOnly && !(await withinLimit(db, 'invoicing-issue', who.company.id, INVOICING.issuedPerDay, 86400)))
     return invoiceForm(c, draftId, values, { form: iv.app.limit }, 429)
   const id = draftId ?? crypto.randomUUID()

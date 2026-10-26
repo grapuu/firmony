@@ -741,7 +741,8 @@ export async function issuedInYear(db: D1Database, company: string, year: string
 /** An issued invoice by the token of its public page, with its company's id. */
 export async function invoiceByToken(db: D1Database, token: string): Promise<{ invoice: StoredInvoice; company: string } | null> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null
-  const row = await db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoices i LEFT JOIN users u ON u.id = i.created_by WHERE i.token = ? AND i.status = 'issued'`).bind(token).first<Row>()
+  const row = await db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoices i LEFT JOIN users u ON u.id = i.created_by WHERE i.token = ? AND i.status = 'issued'
+      AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.id = i.company_id AND c.invoicing_only = 1 AND c.closed_at IS NOT NULL)`).bind(token).first<Row>()
   return row ? { invoice: invoiceOf(row), company: String(row.company_id) } : null
 }
 

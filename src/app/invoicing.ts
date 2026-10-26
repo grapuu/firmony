@@ -31,8 +31,9 @@ import { eventStatement, type Company } from './store'
  * settings, its logo, and switching to another company. Everything else answers as if it did not exist.
  */
 export function invoicingPath(path: string): boolean {
-  if (/^\/app\/faktury\/upomienky$/.test(path) || /^\/app\/faktury\/[^/]+\/zaloha$/.test(path)) return false
-  return /^\/app\/(?:faktury(?:\/.*)?|odberatelia|fakturacia(?:\/[a-z-]+)?|logo|firma\/prepnut)$/.test(path)
+  // Nothing of an invoice is emailed from a workspace (his word of 26 October 2026), and no reminder goes by itself.
+  if (/^\/app\/faktury\/upomienky$/.test(path) || /^\/app\/faktury\/[^/]+\/(?:zaloha|poslat|pripomenut)$/.test(path)) return false
+  return /^\/app\/(?:faktury(?:\/.*)?|odberatelia|fakturacia(?:\/[a-z-]+)?|logo|firma\/prepnut|potvrdit)$/.test(path)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -108,7 +109,7 @@ function inboxCode(): string {
   return [...crypto.getRandomValues(new Uint8Array(10))].map((b) => alphabet[b % alphabet.length]).join('')
 }
 
-export type MadeWorkspace = { user: string; company: string; existing: boolean } | { refused: 'workspaces' }
+export type MadeWorkspace = { user: string; company: string; existing: boolean } | { refused: 'workspaces' | 'client' | 'blocked' }
 
 /**
  * The workspace a used sign-up makes, with its owner: the person of that address (made when new), the company as the
@@ -117,6 +118,14 @@ export type MadeWorkspace = { user: string; company: string; existing: boolean }
  */
 export async function makeWorkspace(db: D1Database, s: Signup): Promise<MadeWorkspace> {
   const known = await db.prepare('SELECT id FROM users WHERE email = ?').bind(s.email).first<{ id: string }>()
+  // A client of ours invoices in its own company's app: its IČO makes no workspace for anybody who is not its member.
+  if (s.ico) {
+    const client = await db
+      .prepare('SELECT c.id, EXISTS (SELECT 1 FROM members m WHERE m.company_id = c.id AND m.user_id = ?2) AS member FROM companies c WHERE c.ico = ?1 AND c.invoicing_only = 0 AND c.demo = 0 AND c.operator = 0 AND c.closed_at IS NULL AND c.contract_at IS NOT NULL LIMIT 1')
+      .bind(s.ico, known?.id ?? '')
+      .first<{ id: string; member: number }>()
+    if (client) return client.member === 1 && known ? { user: known.id, company: client.id, existing: true } : { refused: 'client' }
+  }
   if (known && s.ico) {
     const same = await db
       .prepare("SELECT c.id FROM companies c JOIN members m ON m.company_id = c.id AND m.user_id = ? AND m.role = 'owner' WHERE c.invoicing_only = 1 AND c.ico = ? AND c.closed_at IS NULL LIMIT 1")
@@ -125,6 +134,12 @@ export async function makeWorkspace(db: D1Database, s: Signup): Promise<MadeWork
     if (same) return { user: known.id, company: same.id, existing: true }
   }
   if (known) {
+    // A person whose workspace the administrator stopped makes no new one (the terms of use, point 4.2).
+    const blocked = await db
+      .prepare("SELECT 1 AS x FROM companies c JOIN members m ON m.company_id = c.id AND m.user_id = ? AND m.role = 'owner' WHERE c.invoicing_only = 1 AND c.closed_at IS NOT NULL LIMIT 1")
+      .bind(known.id)
+      .first()
+    if (blocked) return { refused: 'blocked' }
     const owned = await db
       .prepare("SELECT COUNT(*) AS n FROM companies c JOIN members m ON m.company_id = c.id AND m.user_id = ? AND m.role = 'owner' WHERE c.invoicing_only = 1 AND c.closed_at IS NULL")
       .bind(known.id)
@@ -137,17 +152,21 @@ export async function makeWorkspace(db: D1Database, s: Signup): Promise<MadeWork
   let inbox = inboxCode()
   for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
   await db.batch([
-    ...(known ? [] : [db.prepare('INSERT INTO users (id, created_at, email, name, reminders) VALUES (?, ?, ?, ?, 0)').bind(user, ts, s.email, s.name)]),
+    // Two links of one new address used at once: the second finds the person the first made (users.email is unique).
+    ...(known ? [] : [db.prepare('INSERT OR IGNORE INTO users (id, created_at, email, name, reminders) VALUES (?, ?, ?, ?, 0)').bind(user, ts, s.email, s.name)]),
     db
       .prepare(
         `INSERT INTO companies (id, created_at, name, ico, address, register_line, legal_form, vat_payer, plan, inbox, invoicing_only, terms_version)
          VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, ?)`,
       )
       .bind(company, ts, s.company, s.ico, s.address, s.registerLine, s.legalForm, INVOICING.plan, inbox, `fakturacia-${s.termsVersion}`),
-    db.prepare("INSERT INTO members (company_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)").bind(company, user, ts),
-    eventStatement(db, { company, user, action: 'invoicing.started', detail: { terms: s.termsVersion, source: s.source } }),
+    db.prepare("INSERT INTO members (company_id, user_id, role, created_at) SELECT ?1, id, 'owner', ?2 FROM users WHERE email = ?3").bind(company, ts, s.email),
+    db
+      .prepare("INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?1, ?2, id, 'invoicing.started', NULL, ?3 FROM users WHERE email = ?4")
+      .bind(ts, company, JSON.stringify({ terms: s.termsVersion, source: s.source }), s.email),
   ])
-  return { user, company, existing: false }
+  const owner = await db.prepare('SELECT id FROM users WHERE email = ?').bind(s.email).first<{ id: string }>()
+  return { user: owner?.id ?? user, company, existing: false }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -348,9 +367,29 @@ export async function customersOf(db: D1Database, company: string): Promise<Cust
  * ten years by § 35 of the Act on Accounting, and downloads them first). The people who belong to nothing else are
  * forgotten by the schedule (purge.ts `forgetLonely`). Only a workspace: a client's company ends by its contract.
  */
-export async function deleteWorkspace(db: D1Database, files: R2Bucket | undefined, company: string): Promise<boolean> {
+export async function deleteWorkspace(db: D1Database, files: R2Bucket | undefined, company: string, email: string): Promise<boolean> {
   const row = await db.prepare('SELECT invoicing_only FROM companies WHERE id = ?').bind(company).first<{ invoicing_only: number }>()
   if (row?.invoicing_only !== 1) return false
+  const guard = '(SELECT invoicing_only FROM companies WHERE id = ?1) = 1'
+  // The database first: a hold that keeps it (an incident) keeps the files too, and nothing is half deleted.
+  try {
+    await db.batch([
+      db.prepare(`DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ?1) AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM invoice_repeats WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM invoices WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM documents WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM cost_centers WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM events WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM sessions WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM members WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare(`DELETE FROM company_data_revisions WHERE company_id = ?1 AND ${guard}`).bind(company),
+      db.prepare('DELETE FROM invoicing_signups WHERE email = ?1').bind(email.toLowerCase()),
+      db.prepare('DELETE FROM companies WHERE id = ?1 AND invoicing_only = 1').bind(company),
+    ])
+  } catch (err) {
+    console.error('a workspace was not deleted', err instanceof Error ? err.name : 'error')
+    return false
+  }
   if (files) {
     let cursor: string | undefined
     do {
@@ -359,18 +398,5 @@ export async function deleteWorkspace(db: D1Database, files: R2Bucket | undefine
       cursor = list.truncated ? list.cursor : undefined
     } while (cursor)
   }
-  const guard = '(SELECT invoicing_only FROM companies WHERE id = ?1) = 1'
-  await db.batch([
-    db.prepare(`DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE company_id = ?1) AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM invoice_repeats WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM invoices WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM documents WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM cost_centers WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM events WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM sessions WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM members WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare(`DELETE FROM company_data_revisions WHERE company_id = ?1 AND ${guard}`).bind(company),
-    db.prepare('DELETE FROM companies WHERE id = ?1 AND invoicing_only = 1').bind(company),
-  ])
   return true
 }

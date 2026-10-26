@@ -129,6 +129,9 @@ app.use('*', async (c, next) => {
     url.hostname = CANONICAL_HOST
     return c.redirect(url.toString(), 301)
   }
+  // The app's and the team's addresses never hold an escaped character: one would reach a route by its decoded path past
+  // the checks that read the address as written (the review of 26 October 2026: /app/expor%74).
+  if (/^\/(?:app|ucto|auth|f)(?:\/|$)/.test(url.pathname) && url.pathname.includes('%')) return c.text('Not found', 404)
   if (reads && url.pathname.length > 1 && (url.pathname.endsWith('/') || url.pathname.includes('//'))) {
     url.pathname = url.pathname.replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1')
     return c.redirect(url.toString(), 301)
@@ -446,21 +449,23 @@ app.post(INVOICING_PATH, async (c) => {
   if (Object.keys(errors).length > 0) return again(errors, manual, 422)
   const db = c.env.DB
   await ensureSchema(db)
-  if (!(await withinLimit(db, 'invoicing-signup', connection(c), INVOICING.signupsPerHour, 3600))) return again({ form: f.errors.throttle }, manual, 429)
+  // A connection, and its neighbourhood (an IPv4 address by its /24; IPv6 counts by its /64 already).
+  const net = connection(c).includes(':') ? connection(c) : connection(c).split('.').slice(0, 3).join('.')
+  if (!(await withinLimit(db, 'invoicing-signup', connection(c), INVOICING.signupsPerHour, 3600)) || !(await withinLimit(db, 'invoicing-signup-net', net, INVOICING.signupsPerHour * 3, 3600)))
+    return again({ form: f.errors.throttle }, manual, 429)
+  // The register's word decides whenever it answers: a name and address typed count only for a company it does not
+  // know (a trade registered these days) or while it does not answer, whatever the form said.
+  const state = await companyState(c, ico ?? '')
+  if (state.kind === 'found' && state.company.terminated) return again({ ico: f.errors.ended }, false, 422)
+  if (state.kind === 'missing' && !icoLooksValid(ico ?? '')) return again({ ico: f.errors.icoWrong }, false, 422)
   let company: { name: string; address: string | null; registerLine: string | null; legalForm: string | null }
-  if (manual) company = { name: values.company, address: values.address, registerLine: null, legalForm: null }
-  else {
-    const state = await companyState(c, ico ?? '')
-    if (state.kind === 'found' && state.company.terminated) return again({ ico: f.errors.ended }, false, 422)
-    if (state.kind !== 'found') {
-      if (state.kind === 'missing' && !icoLooksValid(ico ?? '')) return again({ ico: f.errors.icoWrong }, false, 422)
-      // The register does not know it (a trade newly registered) or does not answer now: the name and address typed.
-      return again({}, true, 200)
-    }
-    company = { name: state.company.name, address: state.company.address || null, registerLine: state.company.registerLine, legalForm: state.company.form }
-  }
+  if (state.kind === 'found') company = { name: state.company.name, address: state.company.address || null, registerLine: state.company.registerLine, legalForm: state.company.form }
+  else if (manual) company = { name: values.company, address: values.address, registerLine: null, legalForm: null }
+  else return again({}, true, 200)
   if (!(await withinLimit(db, 'invoicing-signups', 'all', INVOICING.signupsPerDay, 86400))) return again({ form: f.errors.busy }, manual, 429)
-  if (await withinLimit(db, 'invoicing-mail', values.email.toLowerCase(), INVOICING.signupsPerEmailDay, 86400)) {
+  // One mailbox however it is written: "+tags" and capitals count as the same address.
+  const mailbox = values.email.toLowerCase().replace(/\+[^@]*@/, '@')
+  if (await withinLimit(db, 'invoicing-mail', mailbox, INVOICING.signupsPerEmailDay, 86400)) {
     const token = newToken()
     const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
     await db.batch([
@@ -503,7 +508,7 @@ app.post(`${INVOICING_PATH}/vstup`, async (c) => {
   const signup = await useSignup(db, token, name)
   if (!signup) return page(c, signupMeta, <SignupExpired />, 410)
   const made = await makeWorkspace(db, signup)
-  if ('refused' in made) return page(c, signupMeta, <SignupExpired tooMany />, 409)
+  if ('refused' in made) return page(c, signupMeta, <SignupExpired refused={made.refused} />, 409)
   await startSession(c, db, made.user, made.company)
   return c.redirect(made.existing ? '/app/faktury' : '/app/faktury?vitajte=1', 303)
 })

@@ -168,7 +168,7 @@ export const Legal: FC = () => (
       <h3 class="h4" id="fakturacia">Bezplatná fakturácia</h3>
       <p>{t('Ak si vytvoríte bezplatný fakturačný účet, spracúvame Váš e-mail, meno a údaje firmy, ktoré zadáte alebo načítame z registra, aby fakturácia fungovala podľa jej podmienok používania (článok 6 ods. 1 písm. b) GDPR). Kým registráciu nedokončíte, uchovávame e-mail, IČO a údaje firmy z registra najviac 8 dní.')}</p>
       <p>{t('Osobné údaje Vašich odberateľov, ktoré uvediete na faktúrach, spracúvame ako sprostredkovateľ podľa článku 28 GDPR, len na Váš pokyn a len aby ste mohli faktúry vystaviť, uložiť, stiahnuť a sprístupniť odberateľovi cez odkaz. Faktúry odberateľom neposielame. Kto má odkaz na faktúru, vidí ju, preto ho posielajte len odberateľovi.')}</p>
-      <p>{t('Ak použijete Faktúru z jednej vety, spoločnosti Anthropic pošleme iba napísanú vetu a vrátime návrh do formulára. Vetu u nás neukladáme; zaznamenáme len, že návrh vznikol, a počet tokenov. Údaje fakturačného účtu uchovávame, kým účet nezrušíte. Po zrušení ich zmažeme hneď a zo záloh databázy zmiznú najneskôr do 30 dní.')}</p>
+      <p>{t('Ak použijete Faktúru z jednej vety, spoločnosti Anthropic pošleme iba napísanú vetu a vrátime návrh do formulára. Vetu u nás neukladáme; zaznamenáme len, že návrh vznikol, a počet tokenov. Údaje fakturačného účtu uchovávame, kým účet nezrušíte. Po zrušení zmažeme faktúry a údaje firmy hneď; Váš e-mail a meno pri najbližšom nočnom spracovaní, ak u nás nemáte iný účet. Zo záloh databázy zmiznú najneskôr do 30 dní.')}</p>
 
       <h3 class="h4">Vaše práva</h3>
       <p>
