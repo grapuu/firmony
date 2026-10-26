@@ -4,8 +4,9 @@
 import { csvCell, csvMoney } from '../team/store'
 import { uniqueName, zipName, zipStream, type ZipEntry } from '../zip'
 import type { Company } from './store'
-import { invoiceLines, issuedInYear, stateOf, ublOf } from './invoices'
-import { invoicePdf, invoicePdfName, logoImage, type PdfImage } from './invoice-pdf'
+import { issuedInYear, issuedLinesInYear, stateOf, ublOf } from './invoices'
+import { invoicePdf, invoicePdfName, type PdfImage } from './invoice-pdf'
+import { logoForPdf } from './logo-cache'
 import { kindName, sheetOf } from './invoice-sheet'
 
 /** The most invoices whose PDFs go into one archive; the list names them all. */
@@ -26,8 +27,9 @@ const piece = (text: string) => text.replace(/[\\/]+/g, '-').replace(/\s+/g, ' '
 /** The archive of a year, streamed: an invoice's PDF is made only when its turn comes. */
 export async function invoicingArchive(db: D1Database, files: R2Bucket | undefined, company: Company, year: string, today: string): Promise<{ name: string; body: ReadableStream<Uint8Array> }> {
   const invoices = await issuedInYear(db, company.id, year)
-  const object = company.logoKey && files ? await files.get(company.logoKey).catch(() => null) : null
-  const logo: PdfImage | null = object ? await logoImage(new Uint8Array(await object.arrayBuffer())) : null
+  // Two queries for the whole year: D1 takes a thousand queries a request at most.
+  const linesOf = await issuedLinesInYear(db, company.id, year)
+  const logo: PdfImage | null = await logoForPdf(files, company.logoKey)
   const taken = new Set<string>(['citajte.txt', 'faktury.csv'])
   const list = invoices.map((invoice, i) => {
     const kind = kindName(invoice, company.vatPayer)
@@ -76,13 +78,11 @@ export async function invoicingArchive(db: D1Database, files: R2Bucket | undefin
     yield { name: 'citajte.txt', when: at, data: text(`${readme}\r\n`) }
     yield { name: 'faktury.csv', when: at, data: text(listCsv) }
     for (const { invoice, pdf, xml } of list) {
-      // The lines are read once for both files of an invoice.
-      let lines: Awaited<ReturnType<typeof invoiceLines>> | null = null
-      const read = async () => (lines ??= await invoiceLines(db, invoice.id))
-      if (pdf) yield { name: pdf, when: invoice.createdAt, data: async () => invoicePdf({ sheet: sheetOf(invoice, await read(), company, stateOf(invoice, today) !== 'paid'), number: invoice.number ?? '', logo }) }
-      if (xml) yield { name: xml, when: invoice.createdAt, data: async () => encoder.encode(ublOf(invoice, await read(), company)) }
+      const lines = linesOf.get(invoice.id) ?? []
+      if (pdf) yield { name: pdf, when: invoice.createdAt, data: async () => invoicePdf({ sheet: sheetOf(invoice, lines, company, stateOf(invoice, today) !== 'paid'), number: invoice.number ?? '', logo }) }
+      if (xml) yield { name: xml, when: invoice.createdAt, data: async () => encoder.encode(ublOf(invoice, lines, company)) }
     }
   }
-  const safe = company.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'firma'
+  const safe = company.name.normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'firma'
   return { name: `Faktury-${safe}-${year}.zip`, body: zipStream(entries()) }
 }

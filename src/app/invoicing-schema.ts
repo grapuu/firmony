@@ -5,6 +5,8 @@
 export const INVOICING_SCHEMA = [
   'ALTER TABLE companies ADD COLUMN invoicing_only INTEGER NOT NULL DEFAULT 0',
   'CREATE INDEX companies_invoicing ON companies (invoicing_only) WHERE invoicing_only = 1',
+  // The register knew the company at sign-up: its name and register entry then come only from the register.
+  'ALTER TABLE companies ADD COLUMN register_found INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE invoices ADD COLUMN hand_paid_on TEXT',
   'ALTER TABLE invoices ADD COLUMN hand_paid_by TEXT',
   `CREATE TABLE invoicing_signups (
@@ -19,6 +21,7 @@ export const INVOICING_SCHEMA = [
     address TEXT,
     register_line TEXT,
     legal_form TEXT,
+    register_found INTEGER NOT NULL DEFAULT 0,
     source TEXT,
     terms_version TEXT NOT NULL,
     privacy_version TEXT NOT NULL,

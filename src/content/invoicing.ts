@@ -212,7 +212,12 @@ export const invoicingCopy = {
       numberingLead: typeset('Vlastný rad čísel faktúr a Vaše logo.'),
       numberingLink: 'Nastaviť číslovanie a logo',
       onlyOwner: 'Údaje mení majiteľ účtu.',
+      registerLocked: typeset('Obchodné meno a zápis v registri preberáme z registra právnických osôb. Keď sa v registri zmenia, načítajte ich znova.'),
+      registerReload: 'Načítať znova z registra',
+      registerDone: 'Údaje sme načítali z registra.',
       errors: {
+        registerDown: typeset('Register právnických osôb teraz neodpovedá. Skúste to o chvíľu.'),
+        registerMissing: typeset(`Register už toto IČO nepozná alebo firma zanikla. Napíšte nám na ${BRAND.email}.`),
         name: 'Napíšte obchodné meno.',
         address: 'Napíšte adresu.',
         ico: 'IČO má 6 až 8 číslic.',

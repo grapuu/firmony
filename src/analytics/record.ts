@@ -28,12 +28,22 @@ const ROUTE_UPSERT = `INSERT INTO analytics_routes (day, side, method, route, n,
 const USAGE_UPSERT = `INSERT INTO analytics_usage (day, user_id, company_id, side, feature, n, last_at) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)
   ON CONFLICT (day, user_id, company_id, side, feature) DO UPDATE SET n = n + 1, last_at = MAX(last_at, excluded.last_at)`
 
-/** One statement for any number of the site's counters of a day. */
-function siteUpsert(db: D1Database, day: string, counters: readonly (readonly [string, string])[]): D1PreparedStatement {
-  const values = counters.map((_, i) => `(?1, ?${2 + i * 2}, ?${3 + i * 2}, 1)`).join(', ')
+/** Keys of a kind a day may hold before the rest are counted together: anybody may send any referrer or campaign tag,
+ * so a day's referrers, campaigns and failing paths stay a short list (the review of 26 October 2026). */
+export const SITE_KEYS_PER_DAY = 300
+export const SITE_OTHER = '(iné)'
+
+/** One statement for one of the site's counters of a day; a new key past the day's cap is counted as "(iné)". */
+function siteUpsert(db: D1Database, day: string, kind: string, key: string): D1PreparedStatement {
   return db
-    .prepare(`INSERT INTO analytics_site (day, kind, key, n) VALUES ${values} ON CONFLICT (day, kind, key) DO UPDATE SET n = n + 1`)
-    .bind(day, ...counters.flatMap(([kind, key]) => [kind, key]))
+    .prepare(
+      `INSERT INTO analytics_site (day, kind, key, n)
+        SELECT ?1, ?2, CASE WHEN ?2 NOT IN ('referrer', 'campaign', 'error') OR EXISTS (SELECT 1 FROM analytics_site WHERE day = ?1 AND kind = ?2 AND key = ?3)
+          OR (SELECT COUNT(*) FROM analytics_site WHERE day = ?1 AND kind = ?2) < ?4 THEN ?3 ELSE ?5 END, 1
+        WHERE 1
+        ON CONFLICT (day, kind, key) DO UPDATE SET n = n + 1`,
+    )
+    .bind(day, kind, key.slice(0, 200), SITE_KEYS_PER_DAY, SITE_OTHER)
 }
 
 async function write(db: D1Database, make: () => D1PreparedStatement[]): Promise<void> {
@@ -118,7 +128,7 @@ export function recordRequest(c: Context, db: D1Database | undefined, startedMs:
       cookie: c.req.header('cookie') ?? '',
       purpose: `${c.req.header('sec-purpose') ?? ''} ${c.req.header('purpose') ?? ''}`,
     })
-    if (counters.length > 0) later(c, write(db, () => [siteUpsert(db, day, counters)]))
+    if (counters.length > 0) later(c, write(db, () => counters.map(([kind, key]) => siteUpsert(db, day, kind, key))))
   } catch (err) {
     console.error('analytics not recorded', err instanceof Error ? err.name : 'error')
   }

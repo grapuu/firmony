@@ -32,7 +32,8 @@ import { INVOICING_PATH, invoicingCopy as iv } from '../content/invoicing'
 import { INVOICE_AI, askInvoiceDraft, fillValues } from './invoice-ai'
 import { customersOf, deleteWorkspace, handAdvanceOf, handPaidStatement, invoicingPath, issueHandAdvance, workspaceReady, workspaceStatement, type WorkspaceErrors, type WorkspaceValues } from './invoicing'
 import { sheetOf } from './invoice-sheet'
-import { invoicePdf, invoicePdfName, logoImage } from './invoice-pdf'
+import { invoicePdf, invoicePdfName, logoFits, logoSize } from './invoice-pdf'
+import { keptLogoKey, logoForPdf } from './logo-cache'
 import { invoiceYears, invoicingArchive } from './invoicing-export'
 import { providerOf, type PeppolEnv } from '../peppol/provider'
 import { peppolCopy as pc } from '../peppol/copy'
@@ -496,6 +497,8 @@ function flashOf(c: Ctx): string | null {
       return pc.flash.failed
     case 'prijata-zaplatena':
       return iv.app.paid.flash
+    case 'register':
+      return iv.app.settings.registerDone
     default:
       return null
   }
@@ -542,7 +545,9 @@ async function workspacePage(c: Ctx, values: WorkspaceValues | null = null, erro
       errors={errors}
       owner={who.role === 'owner'}
       ico={who.company.ico}
+      registerFound={who.company.registerFound}
       years={await invoiceYears(c.env.DB, who.company.id)}
+      peppol={<PeppolCompany state={await companyPeppol(c)} />}
       flash={flashOf(c)}
       removeError={removeError}
       downloadError={downloadError}
@@ -594,6 +599,12 @@ appRoutes.post('/fakturacia', async (c) => {
   // The IČO the workspace was made for stays (it is the register's, or the one the register did not know): another
   // company is another workspace.
   values.ico = who.company.ico ?? ''
+  // A company the register knew keeps the register's name and entry: nobody issues invoices under another name with
+  // its IČO (the review of 26 October 2026). They change by reading the register again.
+  if (who.company.registerFound) {
+    values.name = who.company.name
+    values.registerLine = who.company.registerLine ?? ''
+  }
   const ico = values.ico ? normalizeIco(values.ico) : null
   const dic = values.dic.replace(/\s/g, '')
   const icdph = values.icdph.replace(/\s/g, '').toUpperCase()
@@ -617,6 +628,26 @@ appRoutes.post('/fakturacia', async (c) => {
     ),
   )
   return c.redirect('/app/fakturacia?ok=nastavenia', 303)
+})
+
+/** The register's current name, seat and entry of a workspace's company, read again by its owner. */
+appRoutes.post('/fakturacia/register', async (c) => {
+  const who = c.get('who')
+  if (!workspaceOwner(c) || !who.company.ico) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  const db = c.env.DB
+  const e = iv.app.settings.errors
+  if (!(await withinLimit(db, 'workspace-register', who.company.id, 10, 3600))) return workspacePage(c, null, { register: e.registerDown }, 429)
+  const answer = await lookupCompany(who.company.ico)
+  if ('failed' in answer) return workspacePage(c, null, { register: e.registerDown }, 503)
+  const found = answer.found
+  if (!found || found.terminated) return workspacePage(c, null, { register: e.registerMissing }, 409)
+  await db.batch([
+    db
+      .prepare('UPDATE companies SET name = ?2, address = ?3, register_line = ?4, legal_form = ?5, register_found = 1 WHERE id = ?1 AND invoicing_only = 1')
+      .bind(who.company.id, found.name, found.address || who.company.address, found.registerLine, found.form),
+    eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoicing.register' }),
+  ])
+  return c.redirect('/app/fakturacia?ok=register', 303)
 })
 
 appRoutes.post('/fakturacia/zrusit', async (c) => {
@@ -3709,13 +3740,16 @@ appRoutes.post('/faktury/logo', async (c) => {
   const bytes = file instanceof File ? new Uint8Array(await file.arrayBuffer()) : new Uint8Array()
   const kind = bytes.length > 0 && bytes.length <= LOGO_BYTES ? logoTypeOf(bytes) : null
   if (!kind || !c.env.FILES) return numberingPage(c, { logoError: ti.numbering.logoBad }, 422)
+  // A PNG or JPEG is decoded for the PDF: its size is checked before it is kept.
+  const size = logoSize(bytes)
+  if (kind.ext !== 'webp' && (!size || !logoFits(size.width, size.height))) return numberingPage(c, { logoError: ti.numbering.logoBig }, 422)
   const key = `companies/${who.company.id}/brand/logo-${crypto.randomUUID()}.${kind.ext}`
   await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: kind.type } })
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE companies SET logo_key = ?, logo_type = ? WHERE id = ?').bind(key, kind.type, who.company.id),
     eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: 'invoices.logo' }),
   ])
-  if (who.company.logoKey) await c.env.FILES.delete(who.company.logoKey).catch(() => null)
+  if (who.company.logoKey) await c.env.FILES.delete([who.company.logoKey, keptLogoKey(who.company.logoKey)]).catch(() => null)
   return c.redirect('/app/faktury/cislovanie?ok=logo#logo', 303)
 })
 
@@ -3726,7 +3760,7 @@ appRoutes.post('/faktury/logo/odstranit', async (c) => {
     c.env.DB.prepare('UPDATE companies SET logo_key = NULL, logo_type = NULL WHERE id = ?').bind(who.company.id),
     eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: 'invoices.logo.removed' }),
   ])
-  if (who.company.logoKey && c.env.FILES) await c.env.FILES.delete(who.company.logoKey).catch(() => null)
+  if (who.company.logoKey && c.env.FILES) await c.env.FILES.delete([who.company.logoKey, keptLogoKey(who.company.logoKey)]).catch(() => null)
   return c.redirect('/app/faktury/cislovanie?ok=logo-odstranene#logo', 303)
 })
 
@@ -3808,8 +3842,7 @@ appRoutes.get('/faktury/:id/pdf', async (c) => {
 
 /** An issued invoice as its PDF file, with the company's logo when it has one the file can carry. */
 export async function pdfResponse(invoice: StoredInvoice, lines: Line[], seller: Company, files: R2Bucket | undefined, inline: boolean, day: string): Promise<Response> {
-  const object = seller.logoKey && files ? await files.get(seller.logoKey).catch(() => null) : null
-  const logo = object ? await logoImage(new Uint8Array(await object.arrayBuffer())) : null
+  const logo = await logoForPdf(files, seller.logoKey)
   const sheet = sheetOf(invoice, lines, seller, stateOf(invoice, day) !== 'paid')
   const name = invoicePdfName(sheet.kind, invoice.number ?? '')
   return new Response(invoicePdf({ sheet, number: invoice.number ?? '', logo }), {

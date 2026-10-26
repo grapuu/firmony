@@ -229,16 +229,36 @@ export async function checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, c
   await get('/cena-uctovnictva', { headers: { 'user-agent': DESKTOP } })
   check('analytics: put back, it counts again', (await until(() => site('path', '/cena-uctovnictva'), (n) => n === 1)) === 1)
 
-  // A person's rows go after 13 months; the daily sums stay.
+  // A person's rows go after 13 months; the daily sums stay two years.
+  const sumsDay = new Date(Date.now() - 500 * 86400 * 1000).toISOString().slice(0, 10)
   await db.batch([
     db.prepare("INSERT INTO analytics_usage (day, user_id, company_id, side, feature, n, last_at) VALUES ('2024-01-01', 'old-user', ?, 'client', 'faktury', 3, 1704100000)").bind(company),
     db.prepare("INSERT INTO analytics_usage (day, user_id, company_id, side, feature, n, last_at) VALUES (?, 'recent-user', ?, 'client', 'faktury', 1, ?)").bind(d, company, nowS),
-    db.prepare("INSERT INTO analytics_site (day, kind, key, n) VALUES ('2024-01-01', 'path', '/', 5)"),
+    db.prepare("INSERT INTO analytics_site (day, kind, key, n) VALUES (?, 'path', '/', 5)").bind(sumsDay),
+    db.prepare("INSERT INTO analytics_site (day, kind, key, n) VALUES ('2023-01-01', 'path', '/', 7)"),
+    db.prepare("INSERT INTO analytics_routes (day, side, method, route, n) VALUES ('2023-01-01', 'client', 'GET', '/app', 7)"),
   ])
   await tick(Date.now())
   const old = await until(() => db.prepare("SELECT COUNT(*) AS n FROM analytics_usage WHERE user_id = 'old-user'").first().then((r) => r.n), (n) => n === 0)
   check(
     "analytics: the schedule deletes a person's rows older than 13 months and keeps the sums and today's rows",
-    old === 0 && (await db.prepare("SELECT n FROM analytics_site WHERE day = '2024-01-01' AND kind = 'path' AND key = '/'").first())?.n === 5 && Boolean(await db.prepare("SELECT 1 FROM analytics_usage WHERE user_id = 'recent-user'").first()),
+    old === 0 && (await db.prepare("SELECT n FROM analytics_site WHERE day = ? AND kind = 'path' AND key = '/'").bind(sumsDay).first())?.n === 5 && Boolean(await db.prepare("SELECT 1 FROM analytics_usage WHERE user_id = 'recent-user'").first()),
   )
+  check(
+    'analytics: sums older than two years go',
+    !(await db.prepare("SELECT 1 FROM analytics_site WHERE day = '2023-01-01'").first()) && !(await db.prepare("SELECT 1 FROM analytics_routes WHERE day = '2023-01-01'").first()),
+  )
+
+  // Anybody may send any referrer or campaign tag: past the day's cap a new one is counted together, and a long one fits.
+  const capDay = d
+  await db.batch(Array.from({ length: 300 }, (_, i) => db.prepare("INSERT OR IGNORE INTO analytics_site (day, kind, key, n) VALUES (?, 'referrer', ?, 1)").bind(capDay, `cap-${i}.example`)))
+  await get('/cena-uctovnictva', { headers: { 'user-agent': DESKTOP, referer: 'https://one-more-new.example/x' } })
+  await until(() => site('referrer', '(iné)'), (n) => n === 1)
+  check(
+    "analytics: a referrer past the day's cap is counted as other, not as a new row",
+    (await site('referrer', '(iné)')) === 1 && !(await db.prepare("SELECT 1 FROM analytics_site WHERE kind = 'referrer' AND key = 'one-more-new.example'").first()),
+  )
+  const long = 'x'.repeat(60)
+  await get(`/cena-uctovnictva?utm_source=${long}&utm_medium=${long}&utm_campaign=${long}&ref=${long}`, { headers: { 'user-agent': DESKTOP } })
+  check('analytics: four long campaign tags still count the visit', (await until(() => site('path', '/cena-uctovnictva'), (n) => n === 3)) === 3)
 }

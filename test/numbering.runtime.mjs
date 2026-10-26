@@ -5,7 +5,7 @@
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
-export async function checkNumbering({ db, nowS, signIn, as, day, capture }) {
+export async function checkNumbering({ db, files, nowS, signIn, as, day, capture }) {
   const company = 'co-numbers'
   const plain = (text) => text.replace(/[  ]/g, ' ')
   const sk = (d) => `${Number(d.slice(8))}. ${Number(d.slice(5, 7))}. ${d.slice(0, 4)}`
@@ -114,6 +114,11 @@ export async function checkNumbering({ db, nowS, signIn, as, day, capture }) {
     'logo',
   )
   check('a logo that is no PNG, JPEG or WebP is refused (an SVG could carry a script)', res.status === 422 && plain(await res.text()).includes('Logo musí byť obrázok'))
+  // A PNG that says it is a strip of a million pixels: refused by its header, never kept or decoded.
+  const strip = Uint8Array.from(png.bytes)
+  new DataView(strip.buffer).setUint32(16, 1_200_000)
+  res = await owner.upload('/app/faktury/logo', { name: 'pasik.png', type: 'image/png', bytes: strip }, {}, 'logo')
+  check('a logo of a side over 4 000 pixels is refused before it is kept', res.status === 422 && plain(await res.text()).includes('najviac 4 000 bodov') && (await db.prepare('SELECT logo_key FROM companies WHERE id = ?').bind(company).first())?.logo_key === null)
   check('only an owner sets the logo', (await colleague.upload('/app/faktury/logo', png, {}, 'logo')).status === 403)
   res = await owner.upload('/app/faktury/logo', png, {}, 'logo')
   const kept = await db.prepare('SELECT logo_key, logo_type FROM companies WHERE id = ?').bind(company).first()
@@ -149,13 +154,15 @@ export async function checkNumbering({ db, nowS, signIn, as, day, capture }) {
       (withLogo.res.headers.get('content-disposition') ?? '').includes(`filename="Faktura-${invoiceNumber.replace(/[^A-Za-z0-9._]+/g, '-')}.pdf"`),
     withLogo.res.headers.get('content-disposition'),
   )
+  check('the logo is decoded once and kept beside it for the next PDFs', Boolean(await files.head(`${kept.logo_key}.pdfimage`)))
   res = await owner.post('/app/faktury/logo/odstranit', {})
   check(
     'removed, the invoices have none, nor their PDF',
     res.status === 303 &&
       (await db.prepare('SELECT logo_key FROM companies WHERE id = ?').bind(company).first())?.logo_key === null &&
       (await owner.get('/app/logo')).status === 404 &&
-      !(await pdfOf(await owner.get(`/app/faktury/${invoiceId}/pdf`))).text.includes('/Im1'),
+      !(await pdfOf(await owner.get(`/app/faktury/${invoiceId}/pdf`))).text.includes('/Im1') &&
+      !(await files.head(`${kept.logo_key}.pdfimage`)),
   )
   res = await owner.post('/app/faktury/cislovanie', { predpona: '', oddelovac: '/', cislice: '6', od: '1' })
   res = await owner.post('/app/faktury', form({}))
