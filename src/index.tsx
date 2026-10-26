@@ -30,6 +30,7 @@ import { copy } from './copy'
 import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
 import { typeset } from './format'
 import { connection, isLocal, later, siteOrigin } from './http'
+import { recordRequest } from './analytics/record'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, lookupEntity, oneMayConclude, type Company } from './rpo'
@@ -112,6 +113,7 @@ const PERMISSIONS_POLICY = ['accelerometer', 'camera', 'display-capture', 'geolo
 const CANONICAL_HOST = new URL(BRAND.origin).hostname
 
 app.use('*', async (c, next) => {
+  const started = Date.now()
   const url = new URL(c.req.url)
   const reads = c.req.method === 'GET' || c.req.method === 'HEAD'
   const local = isLocal(url.hostname)
@@ -158,6 +160,8 @@ app.use('*', async (c, next) => {
   if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || url.pathname.startsWith('/objednavka') || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
   if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store')
   if (url.protocol === 'https:') c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  // First-party analytics in daily sums (analytics/record.ts): written after the answer, never in its way.
+  recordRequest(c, c.env.DB, started)
 })
 
 function page(c: Ctx, meta: PageMeta, node: unknown, status: ContentfulStatusCode = 200) {

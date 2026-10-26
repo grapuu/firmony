@@ -214,6 +214,9 @@ import { ContractReleasePage, ContractReviewPage, type ReleaseForm } from '../vi
 import { BillingPage } from '../views/billing'
 import { WorkPage } from '../views/work-pay'
 import { AiPage } from '../views/ai-accuracy'
+import { AnalyticsPage } from '../views/analytics'
+import { clientSortOf, dashboardOf, exportCsv, exportOf } from '../analytics/store'
+import { periodOf as analyticsPeriod } from '../analytics/model'
 import { accuracyOf, comparedOf } from './ai-accuracy'
 import { bookingTime, lastMonths, payOf, workCsv, workStatement } from './work-pay'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
@@ -5537,6 +5540,38 @@ teamRoutes.get('/ai', async (c) => {
 })
 
 teamRoutes.get('/fakturacia', (c) => (isAdmin(c.get('who').user) ? billingPage(c) : missingPage(c)))
+
+// Analytika (26 October 2026): the administrator's page of how Firmony does, and its data for an analysis. Only an
+// administrator; anybody else of the team gets the same "not found" as any page they may not see (a client gets it
+// from the middleware). The downloads are sensitive (security/policy.ts): a fresh confirmation by a passkey first.
+teamRoutes.get('/analytika', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const at = now()
+  const dash = await dashboardOf(c.env.DB, { period: analyticsPeriod(c.req.query('obdobie')), today: dayOf(at), admin: { id: who.user.id } })
+  return shell(c, 'analytics', 'Analytika', <AnalyticsPage dash={dash} sort={clientSortOf(c.req.query('zoradit'))} now={at} />)
+})
+
+async function analyticsExport(c: Ctx, format: 'json' | 'csv') {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const db = c.env.DB
+  const at = now()
+  const dash = await dashboardOf(db, { period: analyticsPeriod(c.req.query('obdobie')), today: dayOf(at), admin: { id: who.user.id } })
+  const data = await exportOf(db, dash, at)
+  await db.batch([eventStatement(db, { company: null, user: who.user.id, action: 'analytics.exported', detail: { period: dash.period, format } })])
+  const name = `firmony-analytika-${dash.today}-${dash.period}d.${format}`
+  return new Response(format === 'json' ? JSON.stringify(data, null, 2) : exportCsv(data), {
+    headers: {
+      'Content-Type': format === 'json' ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+}
+teamRoutes.get('/analytika/export.json', (c) => analyticsExport(c, 'json'))
+teamRoutes.get('/analytika/export.csv', (c) => analyticsExport(c, 'csv'))
+
 
 // europio s. r. o. as the company that issues: its facts from the config, its account for payments, the month its own
 // books start, and the administrator as its owner, so that its own documents and bank come in like a client's.

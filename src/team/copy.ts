@@ -16,9 +16,10 @@ export const team = typesetAll({
     people: 'Tím',
     work: 'Výkaz práce',
     ai: 'Presnosť AI',
+    analytics: 'Analytika',
     incidents: 'Incidenty',
     own: 'Moja firma',
-    short: { clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', billing: 'Faktúry', people: 'Tím', work: 'Výkaz', ai: 'AI', incidents: 'Incidenty' },
+    short: { clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', billing: 'Faktúry', people: 'Tím', work: 'Výkaz', ai: 'AI', analytics: 'Analytika', incidents: 'Incidenty' },
     role: { admin: 'Správca', accountant: 'Účtovníčka' },
   },
   deadlines: {

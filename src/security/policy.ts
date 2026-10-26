@@ -110,6 +110,8 @@ export function sensitivePath(path: string, method: string): boolean {
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/mzdove-podania(?:\/|$)/.test(path) && (method !== 'GET' && method !== 'HEAD' || /\/(?:dokument|potvrdenka\/[^/]+)$/.test(path))) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/podania\/[^/]+\/(?:stav|dokument\.xml|potvrdenka\/[^/]+)$/.test(path)) return true
   if (/^\/app\/export(?:\/potvrdit)?$/.test(path)) return true
+  // The administrator's analytics leave the app only after a fresh confirmation (26 October 2026).
+  if (/^\/ucto\/analytika\/export\.(?:json|csv)$/.test(path)) return true
   if (/^\/ucto\/podania\/(?:balik\.zip|naraz)$/.test(path)) return true
   if (
     path.startsWith('/ucto/') &&

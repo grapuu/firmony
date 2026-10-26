@@ -108,3 +108,6 @@ export * as guides from '../src/content/guides'
 
 export * as amlCountries from '../src/aml/countries'
 export * as overview from '../src/app/overview'
+export * as analytics from '../src/analytics/model'
+export * as analyticsRecord from '../src/analytics/record'
+export * as analyticsStore from '../src/analytics/store'
