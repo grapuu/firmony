@@ -1,8 +1,8 @@
 // The SRO corporate-tax and dividend calculator (/sro-kalkulacka): a GET form computed by the engine. No script.
 import type { FC } from 'hono/jsx'
 import { formatEurExact, typeset as t } from '../format'
-import { SRO_PAGE as w, SRO_PATH } from '../content/sro-calc'
-import { sroCalc, sroRevenueOf, type SroQuery, type SroResult } from '../app/sro-calc'
+import { SRO_PAGE as w, SRO_PATH, sroMinimumNote } from '../content/sro-calc'
+import type { SroQuery, SroResult } from '../app/sro-calc'
 import { GUIDES } from '../content/guides'
 import { StartForm } from './home'
 
@@ -52,10 +52,11 @@ export const SroCalcPage: FC<{ query: SroQuery | null; result: SroResult | null;
           ) : result ? (
             <>
               <Line label={w.result.profit} value={eur(result.profit)} />
-              <Line label={w.result.corporate} value={`−${eur(result.corporate)}`} />
+              <Line label={result.minimumApplied ? w.result.corporateMinimum : w.result.corporate} value={`−${eur(result.corporate)}`} />
               <Line label={w.result.netProfit} value={eur(result.netProfit)} />
               <Line label={w.result.dividend} value={`−${eur(result.dividend)}`} />
               <Line label={w.result.net} value={eur(result.net)} total />
+              {result.minimumApplied ? <p class="small">{t(sroMinimumNote(result))}</p> : null}
               <p class="small">{t(w.result.note)}</p>
             </>
           ) : (

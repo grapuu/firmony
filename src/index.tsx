@@ -15,7 +15,7 @@ import { SZCO_PAGE, SZCO_PATH } from './content/szco-calc'
 import { szcoCalc, szcoQueryOf, szcoYearOf } from './app/szco-calc'
 import { SzcoCalcPage } from './views/szco-calc'
 import { SRO_PAGE, SRO_PATH } from './content/sro-calc'
-import { sroCalc, sroRevenueOf } from './app/sro-calc'
+import { sroCalc, sroQueryOf } from './app/sro-calc'
 import { SroCalcPage } from './views/sro-calc'
 import { FreeInvoicePage, FreeToolsPage } from './views/free-tools'
 import { INVOICE_META, INVOICE_PATH, TOOLS_PATH } from './tools/invoice'
@@ -820,12 +820,7 @@ app.get(SZCO_PATH, (c) => {
 
 // The SRO corporate-tax and dividend calculator: a GET form computed by the engine (app/sro-calc.ts).
 app.get(SRO_PATH, (c) => {
-  const q = c.req.query()
-  const hasRevenue = q.prijem !== undefined
-  const revenue = hasRevenue ? sroRevenueOf(q.prijem) : null
-  const expenses = q.vydavky !== undefined ? (sroRevenueOf(q.vydavky) ?? 0) : 0
-  const error = hasRevenue && revenue === null
-  const query = revenue !== null ? { year: 2026, revenue, expenses } : null
+  const { query, error, asked } = sroQueryOf(c.req.query())
   const result = query ? sroCalc(query) : null
   return page(
     c,
@@ -833,7 +828,7 @@ app.get(SRO_PATH, (c) => {
       title: typeset(SRO_PAGE.title),
       description: typeset(SRO_PAGE.description),
       path: SRO_PATH,
-      noindex: hasRevenue,
+      noindex: asked,
       jsonLd: jsonLd([
         organization(),
         {

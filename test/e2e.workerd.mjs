@@ -416,6 +416,18 @@ res = await get('/mzdova-kalkulacka')
   check('a wage that is none is said', wrong.includes('Hrubú mzdu napíšte v eurách'))
   check('the sitemap and llms.txt name it', (await (await get('/sitemap.xml')).text()).includes('<loc>https://firmony.io/mzdova-kalkulacka</loc>') && (await (await get('/llms.txt')).text()).includes('https://firmony.io/mzdova-kalkulacka'))
 }
+// The SZČO and s. r. o. calculators: what is left before the real business costs, the minimum tax, a wrong amount said.
+{
+  const plain = async (path) => (await (await get(path)).text()).replace(/[\u00a0\u202f]/g, ' ')
+  const szco = await plain('/szco-kalkulacka?prijem=25000&rok=2026&vydavky=pausal')
+  check('the SZČO calculator: 25 000 € with the flat rate leaves 19 899,64 € before the real business costs, social insurance 303,11 € a month', szco.includes('19 899,64 €') && szco.includes('pred skutočnými nákladmi na podnikanie') && szco.includes('303,11 € mesačne') && !szco.includes('ročné zúčtovanie za Vás'))
+  const low = await plain('/szco-kalkulacka?prijem=2000&rok=2026&vydavky=pausal')
+  check('the SZČO calculator: 2 000 € pays no social insurance', low.includes('sociálne poistenie sa neplatí'))
+  const sro = await plain('/sro-kalkulacka?prijem=30000&vydavky=28000')
+  check('the s. r. o. calculator: 30 000 € and 28 000 € pay the minimum tax 340 €, not 200 €', sro.includes('(minimálna daň)') && sro.includes('−340,00 €') && sro.includes('by bola 200,00 €'))
+  const wrongSro = await plain('/sro-kalkulacka?prijem=30000&vydavky=abc')
+  check('the s. r. o. calculator: expenses that are no amount are said, never taken as nought', wrongSro.includes('Sumy píšte v eurách') && !wrongSro.includes('calc__line--total'))
+}
 // Public tools do not require a session and must never accept invoice data at a write endpoint.
 for (const [path, name] of [['/bezplatne-nastroje','free-tools'],['/faktura-zadarmo','free-invoice']]) {
   const response = await get(path), html = await response.text()

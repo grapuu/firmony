@@ -265,24 +265,57 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   check('the page says the examples the engine computes', wageContent.WAGE_PAGE.faq[0].a.includes(format.formatEurExact(wageCalc.wageCalc(q()).slip.net)) && wageContent.WAGE_PAGE.faq[1].a.includes(format.formatEurExact(132385)))
 }
 {
-  // The SZČO tax-and-levy calculator (app/szco-calc.ts): figures verified 23 October 2026 against the primary sources.
+  // The SZČO tax-and-levy calculator (app/szco-calc.ts): tax figures verified 23 October 2026, social insurance by the
+  // income test from 1 July 2026 read on 26 October 2026 (socpoist.sk, podnikajte.sk).
   const s = szcoCalc.szcoCalc({ year: 2026, revenue: 2_500_000, mode: 'pausal', expenses: 0 })
-  check('a 25 000 € SZČO with the 60 % flat rate: minimum levies, no tax', s.expenses === 1_500_000 && s.spMonthly === 30_312 && s.zpMonthly === 12_192 && s.odvody === 510_048 && s.tax === 0 && s.net === 489_952, JSON.stringify(s))
+  check('a 25 000 € SZČO with the 60 % flat rate: above 9 144 € the minimum levies 303,11 € and 121,92 €, no tax', s.expenses === 1_500_000 && s.social.every((h) => h.band === 'base' && h.limit === 'minimum' && h.monthly === 30_311) && s.spYear === 363_732 && s.zpMonthly === 12_192 && s.odvody === 510_036 && s.tax === 0, JSON.stringify(s))
+  check('the flat-rate expenses are not spent: what is left is the revenue less levies and tax (19 899,64 €)', s.net === 2_500_000 - s.odvody - s.tax && s.net === 1_989_964, `${s.net}`)
+  const real = szcoCalc.szcoCalc({ year: 2026, revenue: 5_000_000, mode: 'real', expenses: 1_000_000 })
+  check('real expenses are spent: what is left is the revenue less expenses, levies and tax', real.net === 5_000_000 - 1_000_000 - real.odvody - real.tax && real.social[1].band === 'base' && real.social[1].limit === null)
   const big = szcoCalc.szcoCalc({ year: 2026, revenue: 12_000_000, mode: 'pausal', expenses: 0 })
-  check('above 100 000 € the flat-rate cap and the progressive tax apply', big.expenses === 2_000_000 && big.tax > 0 && big.net === 12_000_000 - 2_000_000 - big.odvody - big.tax, `${big.tax}`)
+  check('above 100 000 € the flat-rate cap and the progressive tax apply', big.expenses === 2_000_000 && big.tax > 0 && big.net === 12_000_000 - big.odvody - big.tax, `${big.tax}`)
+  const t26 = szcoCalc.szcoTest(2026)
+  const t27 = szcoCalc.szcoTest(2027)
+  check('the income test: 10,5 times the subsistence minimum of 1 January of the income year (2 876,90 €, 2 983,37 €) and six average wages (9 144 €, 9 720 €)', t26.lower === 287_690 && t26.upper === 914_400 && t27.lower === 298_337 && t27.upper === 972_000, JSON.stringify([t26, t27]))
+  const none = szcoCalc.szcoCalc({ year: 2026, revenue: 287_690, mode: 'pausal', expenses: 0 })
+  check('an income up to the lower limit pays no social insurance, health insurance still', none.spYear === 0 && none.social.every((h) => h.band === 'none') && none.zpYear === 146_304)
+  const middle = szcoCalc.szcoCalc({ year: 2026, revenue: 700_000, mode: 'pausal', expenses: 0 })
+  const edge = szcoCalc.szcoCalc({ year: 2026, revenue: 914_400, mode: 'pausal', expenses: 0 })
+  check('an income in the middle band pays from the special base 396,24 € (131,34 € a month), up to 9 144 € inclusive', middle.social.every((h) => h.band === 'special' && h.base === 39_624 && h.monthly === 13_134) && middle.spYear === 157_608 && edge.social[1].band === 'special' && szcoCalc.szcoCalc({ year: 2026, revenue: 287_691, mode: 'pausal', expenses: 0 }).social[1].band === 'special')
+  const above = szcoCalc.szcoCalc({ year: 2026, revenue: 914_401, mode: 'pausal', expenses: 0 })
+  check('above the middle band the base from the tax base, at least 914,40 €, at most 16 764 €', above.social[1].band === 'base' && above.social[1].monthly === 30_311 && szcoCalc.szcoCalc({ year: 2026, revenue: 100_000_000, mode: 'real', expenses: 0 }).social[1].monthly === 555_726)
+  const y27 = szcoCalc.szcoCalc({ year: 2027, revenue: 300_000, mode: 'pausal', expenses: 0 })
+  check("2027: the Agency's example, 3 000 € of income pays 139,61 € from the special base 421,20 €", y27.social[1].band === 'special' && y27.social[1].base === 42_120 && y27.social[1].monthly === 13_961)
+  const split = szcoCalc.szcoCalc({ year: 2027, revenue: 950_000, mode: 'pausal', expenses: 0 })
+  check('2027: January to June follow the test of 1 July 2026, July to December that of 1 July 2027', split.social[0].test.year === 2026 && split.social[0].band === 'base' && split.social[0].monthly === 32_221 && split.social[1].test.year === 2027 && split.social[1].band === 'special' && split.spYear === (32_221 + 13_961) * 6)
+  check('2026 is worked out whole by the test of 1 July 2026', s.social[0].test.year === 2026 && s.social[1].test.year === 2026)
+  check('each fund rounded down on its own: 303,11 €, 5 557,26 €, 131,34 €, 139,61 €, 322,21 € as the Agency publishes', szcoCalc.szcoPremium(91_440) === 30_311 && szcoCalc.szcoPremium(1_676_400) === 555_726 && szcoCalc.szcoPremium(39_624) === 13_134 && szcoCalc.szcoPremium(42_120) === 13_961 && szcoCalc.szcoPremium(97_200) === 32_221 && Math.round(91_440 * 0.3315) === 30_312)
   check('a revenue typed the Slovak way; nothing that is no revenue', szcoCalc.szcoRevenueOf('25 000') === 2_500_000 && szcoCalc.szcoRevenueOf('25000,5') === 2_500_050 && szcoCalc.szcoRevenueOf('abc') === null && szcoCalc.szcoRevenueOf('0,50') === null)
   const asked = szcoCalc.szcoQueryOf({ prijem: '25 000', rok: '2027', vydavky: 'pausal' }, '2026-10-23')
   check('the address read: the year asked and the mode', asked.query.year === 2027 && asked.query.revenue === 2_500_000 && asked.query.mode === 'pausal' && !asked.error)
-  check('the page says the example the engine computes', szcoContent.SZCO_PAGE.faq[0].a.includes(format.formatEurExact(s.net)))
+  const page = szcoContent.SZCO_PAGE
+  check('the page says the example the engine computes, before the real business costs', page.faq[0].a.includes(`${format.formatEurExact(s.net)} pred skutočnými nákladmi na podnikanie`) && page.form.empty.includes(format.formatEurExact(s.net)))
+  check('the page says the limits and premiums the engine computes', page.faq[1].a.includes(format.formatEur(t26.lower)) && page.faq[1].a.includes(format.formatEur(t26.upper)) && page.faq[1].a.includes(format.formatEur(13_134)) && page.faq[1].a.includes(format.formatEur(30_311)) && page.faq[1].a.includes(format.formatEur(12_192)) && page.sections[0].p[1].includes(format.formatEur(t27.lower)))
+  const texts = [JSON.stringify(page), JSON.stringify(sroContent.SRO_PAGE), readFileSync(new URL('../src/views/szco-calc.tsx', import.meta.url), 'utf8'), readFileSync(new URL('../src/views/sro-calc.tsx', import.meta.url), 'utf8')]
+  check('the calculators address the reader with a capital V and promise no service for a sole trader', texts.every((t) => !/(^|[\s(„"'])(vy|vás|vám|vami|váš|vaš[aeiouy]\w*)(?=[\s,.;:!?)"'])/u.test(t)) && !/ročné zúčtovanie za Vás/u.test(texts.join(' ')))
 }
 {
-  // The SRO corporate-tax and dividend calculator (app/sro-calc.ts): figures verified 23 October 2026.
+  // The SRO corporate-tax and dividend calculator (app/sro-calc.ts): figures verified 23 October 2026, the minimum tax
+  // (§ 46b) added 26 October 2026 from the closing's own bands.
   const s = sroCalc.sroCalc({ year: 2026, revenue: 12_000_000, expenses: 4_000_000 })
-  check('a 120 000 € SRO with 40 000 € expenses: 21 % corporate tax and 7 % dividend tax', s.profit === 8_000_000 && s.rate === 21 && s.corporate === 1_680_000 && s.netProfit === 6_320_000 && s.dividend === 442_400 && s.net === 5_877_600, JSON.stringify(s))
+  check('a 120 000 € SRO with 40 000 € expenses: 21 % corporate tax and 7 % dividend tax', s.profit === 8_000_000 && s.rate === 21 && s.corporate === 1_680_000 && !s.minimumApplied && s.netProfit === 6_320_000 && s.dividend === 442_400 && s.net === 5_877_600, JSON.stringify(s))
   const small = sroCalc.sroCalc({ year: 2026, revenue: 5_000_000, expenses: 1_000_000 })
   check('up to 100 000 € revenue the rate is 10 %', small.rate === 10 && small.corporate === 400_000)
+  const minimum = sroCalc.sroCalc({ year: 2026, revenue: 3_000_000, expenses: 2_800_000 })
+  check('30 000 € revenue and 28 000 € expenses: 10 % would be 200 €, the minimum tax 340 € is paid; dividends follow from it', minimum.computed === 20_000 && minimum.corporate === 34_000 && minimum.minimumApplied && minimum.netProfit === 166_000 && minimum.dividend === 11_620 && minimum.net === 154_380, JSON.stringify(minimum))
+  const loss = sroCalc.sroCalc({ year: 2026, revenue: 3_000_000, expenses: 3_500_000 })
+  check('no profit: the minimum tax all the same, nothing to pay out', loss.corporate === 34_000 && loss.netProfit === -34_000 && loss.dividend === 0 && loss.net === 0)
+  const bands = sroCalc.sroMinimumBands(2026)
+  check('the minimum tax bands are those of the closing: 340, 960, 1 920, 3 840 and 11 520 €, each edge where the band changes', bands.map((b) => b.tax).join() === '34000,96000,192000,384000,1152000' && sroCalc.SRO_MINIMUM_EDGES.every((e) => closing.minimumTax(2026, e) !== closing.minimumTax(2026, e + 1)))
   check('a revenue typed the Slovak way; nothing that is no revenue', sroCalc.sroRevenueOf('120 000') === 12_000_000 && sroCalc.sroRevenueOf('abc') === null)
-  check('the page says the example the engine computes', sroContent.SRO_PAGE.faq[0].a.includes(format.formatEurExact(s.net)))
+  const q = (fields) => sroCalc.sroQueryOf(fields)
+  check('expenses that are no amount are said, never taken as nought; empty or 0 is nought', q({ prijem: '120 000', vydavky: 'abc' }).error && q({ prijem: '120 000', vydavky: '' }).query.expenses === 0 && q({ prijem: '120 000', vydavky: '0' }).query.expenses === 0 && q({ prijem: '120 000', vydavky: '40 000' }).query.expenses === 4_000_000 && q({}).query === null && !q({}).error)
+  check('the page says the examples the engine computes', sroContent.SRO_PAGE.faq[0].a.includes(format.formatEurExact(s.net)) && sroContent.SRO_PAGE.faq[1].a.includes(format.formatEurExact(minimum.minimum)) && sroContent.SRO_PAGE.faq[1].a.includes(format.formatEurExact(minimum.computed)) && sroContent.SRO_PAGE.result.note.includes(format.formatEur(1_152_000)))
 }
 {
   // The transaction tax on accounts at providers outside Slovakia (app/transaction-tax.ts, Act No. 279/2024 Z. z.).
