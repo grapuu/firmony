@@ -1,6 +1,6 @@
 import { admissionForOrder, dossierOfOrder, sourceIntact, bankOriginalsIntact } from './aml/store'
 import type { Admission } from './aml/model'
-import { CLOSING_PRICE, OFFLINE_TERMS, OPERATOR, PAYROLL_PRICE, PLANS, TERMS_VERSION, type PlanId } from './config'
+import { CLOSING_PRICE, OFFER, OFFLINE_TERMS, OPERATOR, PAYROLL_PRICE, PLANS, TERMS_VERSION, type PlanId } from './config'
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, termsText, type TermsSection } from './content/terms'
 import archive20261013 from './content/terms-archive/2026-10-13.json'
 import archive20261018 from './content/terms-archive/2026-10-18.json'
@@ -58,6 +58,8 @@ export function contractCatalogue() {
     plans: PLANS.map((p) => ({ id: p.id, name: p.name, docs: p.docs, monthlyCents: Math.round(p.price * 100), vatPayer: p.vatPayer })),
     payrollCents: Math.round(PAYROLL_PRICE * 100),
     closingCents: Math.round(CLOSING_PRICE * 100),
+    firstMonthFree: OFFER.firstMonthFree,
+    issuedInvoicesFree: OFFER.issuedInvoicesFree,
     scope: 'reviewed-micro-v1',
   }
 }

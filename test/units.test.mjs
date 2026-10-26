@@ -554,8 +554,12 @@ check(
     aml.birthDateOf('1990', '2026-10-13') === null,
 )
 check(
-  'a notice ends on the last day of the month after it',
-  aml.noticeEndsOn('2026-10-13') === '2026-11-30' &&
+  'a notice ends on the last day of the month after it, and one given within a free first month ends with that month',
+  aml.noticeEndsOn('2027-01-31', { startOn: '2027-01-01', firstMonthFree: true }) === '2027-01-31' &&
+    aml.noticeEndsOn('2026-11-20', { startOn: '2027-01-01', firstMonthFree: true }) === '2027-01-31' &&
+    aml.noticeEndsOn('2027-02-01', { startOn: '2027-01-01', firstMonthFree: true }) === '2027-03-31' &&
+    aml.noticeEndsOn('2027-01-10', { startOn: '2027-01-01', firstMonthFree: false }) === '2027-02-28' &&
+    aml.noticeEndsOn('2026-10-13') === '2026-11-30' &&
     aml.noticeEndsOn('2026-10-31') === '2026-11-30' &&
     aml.noticeEndsOn('2026-12-05') === '2027-01-31' &&
     aml.noticeEndsOn('2027-12-31') === '2028-01-31' &&

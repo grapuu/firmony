@@ -35,7 +35,7 @@ export async function operatorOf(db: D1Database): Promise<Company | null> {
 /** Today's price list, as a tariff: for a paper contract on the day it is made, or in place of a missing one. */
 export function priceListTariff(source: Tariff['source']): Tariff {
   const catalogue = contractCatalogue()
-  return { source, plans: catalogue.plans.map((p) => ({ id: p.id, name: p.name, docs: p.docs, monthlyCents: p.monthlyCents })), payrollCents: catalogue.payrollCents, closingCents: catalogue.closingCents }
+  return { source, plans: catalogue.plans.map((p) => ({ id: p.id, name: p.name, docs: p.docs, monthlyCents: p.monthlyCents })), payrollCents: catalogue.payrollCents, closingCents: catalogue.closingCents, firstMonthFree: catalogue.firstMonthFree, issuedInvoicesFree: catalogue.issuedInvoicesFree }
 }
 
 /** The prices of a paper contract, kept when the client is made (the same batch). */
@@ -51,7 +51,8 @@ function tariffOfJson(raw: unknown): Tariff | null {
       t.plans.every((p) => typeof p.id === 'string' && typeof p.name === 'string' && Number.isSafeInteger(p.docs) && Number.isSafeInteger(p.monthlyCents)) &&
       Number.isSafeInteger(t.payrollCents) &&
       Number.isSafeInteger(t.closingCents)
-    return ok ? { ...t, source: 'paper' } : null
+    // A paper contract saved before the offer has neither part of it.
+    return ok ? { ...t, source: 'paper', firstMonthFree: t.firstMonthFree === true, issuedInvoicesFree: t.issuedInvoicesFree === true } : null
   } catch {
     return null
   }
@@ -63,7 +64,9 @@ async function tariffFor(db: D1Database, company: Company, paper: Map<string, Ta
   if (contract.status === 'corrupt') return 'corrupt'
   if (contract.snapshot) {
     const c = contract.snapshot.catalogue
-    return { source: 'contract', plans: c.plans.map((p) => ({ id: p.id, name: p.name, docs: p.docs, monthlyCents: p.monthlyCents })), payrollCents: c.payrollCents, closingCents: c.closingCents }
+    // A contract concluded before the offer was saved without it, and keeps what it said.
+    const offer = c as { firstMonthFree?: unknown; issuedInvoicesFree?: unknown }
+    return { source: 'contract', plans: c.plans.map((p) => ({ id: p.id, name: p.name, docs: p.docs, monthlyCents: p.monthlyCents })), payrollCents: c.payrollCents, closingCents: c.closingCents, firstMonthFree: offer.firstMonthFree === true, issuedInvoicesFree: offer.issuedInvoicesFree === true }
   }
   return paper.get(company.id) ?? priceListTariff('pricelist')
 }
@@ -100,7 +103,7 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
     db.prepare(`SELECT t.company_id, t.data FROM billing_tariffs t JOIN companies c ON c.id = t.company_id WHERE ${where}`),
     // A document counts in the month it came to us, once: not a duplicate, not discarded, and not our own invoice.
     db.prepare(
-      `SELECT d.company_id, CASE ${bucket} END AS month, COUNT(*) AS n FROM documents d JOIN companies c ON c.id = d.company_id
+      `SELECT d.company_id, CASE ${bucket} END AS month, COUNT(*) AS n, SUM(CASE WHEN d.source = 'issued' THEN 1 ELSE 0 END) AS issued FROM documents d JOIN companies c ON c.id = d.company_id
         WHERE ${where} AND d.created_at >= ? AND d.created_at < ? AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.source <> 'firmony'
         GROUP BY d.company_id, month`,
     ).bind(bounds[0], bounds[bounds.length - 1]),
@@ -118,11 +121,20 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
     const t = tariffOfJson(r.data)
     if (t) paper.set(String(r.company_id), t)
   }
-  const docs = new Map<string, Map<string, number>>()
+  // Each month's documents, and of them the invoices the client issued in the app (free under the offer).
+  const allDocs = new Map<string, Map<string, number>>()
+  const issuedDocs = new Map<string, Map<string, number>>()
   for (const r of docRows?.results ?? []) {
     if (typeof r.month !== 'string') continue
     const id = String(r.company_id)
-    docs.set(id, (docs.get(id) ?? new Map<string, number>()).set(r.month, Number(r.n)))
+    allDocs.set(id, (allDocs.get(id) ?? new Map<string, number>()).set(r.month, Number(r.n)))
+    issuedDocs.set(id, (issuedDocs.get(id) ?? new Map<string, number>()).set(r.month, Number(r.issued ?? 0)))
+  }
+  const docsOf = (id: string, tariff: Tariff | 'corrupt') => {
+    const all = allDocs.get(id) ?? new Map<string, number>()
+    if (tariff === 'corrupt' || !tariff.issuedInvoicesFree) return all
+    const issued = issuedDocs.get(id)
+    return new Map([...all].map(([m, n]) => [m, Math.max(0, n - (issued?.get(m) ?? 0))]))
   }
   const employees = new Map<string, { startedOn: string; endedOn: string | null }[]>()
   for (const r of employeeRows?.results ?? []) {
@@ -147,12 +159,12 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
             endsOn: company.endsOn,
             plan: company.plan,
             tariff,
-            docs: docs.get(company.id) ?? new Map(),
+            docs: docsOf(company.id, tariff),
             people,
             closings: closings.get(company.id) ?? [],
             billed: billed.get(company.id) ?? new Set(),
           })
-    out.push({ company, draft, corrupt: tariff === 'corrupt', docsLastMonth: docs.get(company.id)?.get(addMonths(month, -1)) ?? 0 })
+    out.push({ company, draft, corrupt: tariff === 'corrupt', docsLastMonth: docsOf(company.id, tariff).get(addMonths(month, -1)) ?? 0 })
   }
   return out
 }

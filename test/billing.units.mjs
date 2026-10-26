@@ -65,6 +65,18 @@ export function checkBillingRules() {
   d = b.draftOf(facts({ tariff: { ...tariff, plans: plans.map((p) => (p.id === 'rast' ? { ...p, monthlyCents: 15000 } : p)) } }))
   check('the price is the contract’s, not today’s', d.lines[0]?.cents === 15000)
 
+  // The offer of 26 October 2026: the first month costs nothing, saved with the contract's prices.
+  const offered = { ...tariff, firstMonthFree: true }
+  d = b.draftOf(facts({ tariff: offered, docs: new Map([['2027-01', 99]]), people: new Map([['2027-01', 2], ['2027-02', 1]]) }))
+  check('the first month of an offered contract bills no plan, no documents above it and no payroll; the next ones are billed as ever',
+    keys(d) === 'plan:2027-02 plan:2027-03 payroll:2027-02' && d.totalCents === 2 * 16900 + 1500, keys(d))
+  d = b.draftOf(facts({ tariff: offered, closings: [2027], month: '2028-02', billed: new Set(['plan:2027-02']) }))
+  check('the free first month never frees the closing of the year', d.lines.some((l) => l.key === 'closing:2027') && !d.lines.some((l) => l.key === 'plan:2027-01'))
+  d = b.draftOf(facts({ tariff: offered, startOn: '2027-03-01' }))
+  check('a contract that starts in the month of the invoice bills nothing yet', d.lines.length === 0, keys(d))
+  d = b.draftOf(facts({ tariff: { ...tariff, firstMonthFree: false } }))
+  check('a contract saved without the offer pays its first month', keys(d) === 'plan:2027-01 plan:2027-02 plan:2027-03')
+
   check('people are counted in a month they were employed in at all', b.peopleIn('2027-02', [
     { startedOn: '2027-02-28', endedOn: null },
     { startedOn: '2026-01-01', endedOn: '2027-02-01' },

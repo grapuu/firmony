@@ -474,9 +474,20 @@ export const openReportsSql = (user: string) => `(SELECT COUNT(*) FROM reports r
  * The last day of a contract given notice on a day: the notice period is one month and starts on the first day of
  * the month after the notice arrived (terms, point 10.2), so it ends on the last day of that month.
  */
-export function noticeEndsOn(day: string): string {
+export function noticeEndsOn(day: string, trial?: { startOn: string | null; firstMonthFree: boolean }): string {
+  // A contract whose first month is free (OFFER) may be tried: notice given until that month's last day ends it on
+  // that day, so the client never pays for a month it did not want. Otherwise the end of the month after the notice.
+  if (trial?.firstMonthFree && trial.startOn) {
+    const firstEnd = monthEnd(trial.startOn)
+    if (day <= firstEnd) return firstEnd
+  }
   const y = Number(day.slice(0, 4))
   const m = Number(day.slice(5, 7))
   const last = new Date(Date.UTC(y, m + 1, 0))
   return last.toISOString().slice(0, 10)
+}
+
+/** The last day of the month a day is in. */
+function monthEnd(day: string): string {
+  return new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)), 0)).toISOString().slice(0, 10)
 }

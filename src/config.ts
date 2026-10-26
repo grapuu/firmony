@@ -88,6 +88,14 @@ export const CLOSING_PRICE = 249
 export const PAYROLL_PRICE = 15
 
 /**
+ * The offer (his word of 26 October 2026): the first calendar month of a contract costs nothing (no plan, no
+ * documents above it, no payroll; the closing is billed as ever), and the invoices a client issues in the app do not
+ * count among its plan's documents. Both are saved with a contract's prices (`contractCatalogue`), so a change of the
+ * offer later never touches a contract concluded before it; a contract saved without them has neither.
+ */
+export const OFFER = { firstMonthFree: true, issuedInvoicesFree: true } as const
+
+/**
  * What a freelance accountant is paid for the work she did (his yes of 20 October 2026, 17:13: "za odpracovanú
  * prácu sa mi to páči, to dáva zmysel"), in cents, in place of a sum a client by plan (28, 55 and 110 € until then).
  * What the app does by itself costs nothing, so the margin grows as the reading gets better. Counted each month from

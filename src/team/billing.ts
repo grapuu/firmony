@@ -22,6 +22,10 @@ export interface Tariff {
   plans: TariffPlan[]
   payrollCents: number
   closingCents: number
+  /** The contract's first calendar month costs nothing: no plan, no documents above it, no payroll (OFFER). */
+  firstMonthFree: boolean
+  /** Invoices the client issues in the app do not count among the plan's documents (OFFER). */
+  issuedInvoicesFree: boolean
 }
 
 export interface BillingFacts {
@@ -107,6 +111,8 @@ export function draftOf(f: BillingFacts): BillingDraft {
   const from = first > earliest ? first : earliest
   const line = (key: string, description: string, quantityMilli: number, unit: BillingLine['unit'], unitCents: number) => {
     const cents = Math.round((quantityMilli * unitCents) / 1000)
+    // The first month of a contract that was offered free is never billed, whatever it held.
+    if (f.tariff.firstMonthFree && /^(plan|extra|payroll):/.test(key) && key.endsWith(`:${first}`)) return
     if (cents > 0 && !f.billed.has(key)) lines.push({ key, description, quantityMilli, unit, unitCents, cents })
   }
   if (!own) flags.add('plan')

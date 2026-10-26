@@ -42,7 +42,7 @@ import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
 import { filedReturns, taxPaid } from './vat-store'
-import { billingScheduled, billRows } from '../team/billing-store'
+import { billingScheduled, billRows, tariffForClient } from '../team/billing-store'
 import { booksRefused, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
 import { bell, ringStatement } from '../bell'
@@ -2038,7 +2038,7 @@ async function companyPage(
       poa={poaStateOf(papers)}
       declaration={declarationStateOf(declared)}
       today={today()}
-      noticeEnd={noticeEndsOn(today())}
+      noticeEnd={await clientNoticeEnd(c.env.DB, who.company, today())}
       ending={endingOf(who.company, today())}
       years={years}
       handover={handover}
@@ -2514,13 +2514,19 @@ appRoutes.get('/zmluva', async (c) => {
   return shell(c, 'company', t.contractPage.title, <ContractPage company={who.company} order={order} contract={contract} />)
 })
 
+/** When the client's notice given on a day ends the contract: a contract whose first month is free ends with it. */
+async function clientNoticeEnd(db: D1Database, company: Company, day: string): Promise<string> {
+  const tariff = await tariffForClient(db, company)
+  return noticeEndsOn(day, { startOn: company.startOn, firstMonthFree: tariff !== 'corrupt' && tariff.firstMonthFree })
+}
+
 appRoutes.post('/firma/vypoved', async (c) => {
   const who = c.get('who')
   if (who.role !== 'owner') return companyPage(c, { errors: { notice: t.notice.onlyOwner } }, 403)
   const body = await c.req.parseBody()
   if (body.potvrdit !== '1') return companyPage(c, { errors: { notice: t.notice.must } }, 422)
   const db = c.env.DB
-  const end = noticeEndsOn(today())
+  const end = await clientNoticeEnd(db, who.company, today())
   // Given once: a second click, or a second person at the same moment, changes nothing and writes nothing.
   const [given] = await db.batch([
     db.prepare("UPDATE companies SET notice_at = ?, notice_by = ?, notice_side = 'client', ends_on = ? WHERE id = ? AND notice_at IS NULL").bind(now(), who.user.id, end, who.company.id),
