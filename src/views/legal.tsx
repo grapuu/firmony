@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx'
 import { AUTHORITIES, BRAND, OPERATOR, PRIVACY_VERSION, RETENTION } from '../config'
 import { typeset as t } from '../format'
+import { USAGE_MONTHS } from '../analytics/model'
 
 const effective = (() => {
   const [y, m, d] = PRIVACY_VERSION.split('-').map(Number)
@@ -10,7 +11,8 @@ const effective = (() => {
 
 const Mail: FC = () => <a href={`mailto:${BRAND.email}`}>{BRAND.email}</a>
 
-/** Who runs Firmony, how personal data are handled, and that there are no cookies. */
+/** Who runs Firmony, how personal data are handled, what is measured (first-party, in daily sums), and that there are
+ * no cookies on the site. */
 export const Legal: FC = () => (
   <section class="section page">
     <div class="wrap narrow page__inner legal">
@@ -169,6 +171,25 @@ export const Legal: FC = () => (
       <p>{t('Ak si vytvoríte bezplatný fakturačný účet, spracúvame Váš e-mail, meno a údaje firmy, ktoré zadáte alebo načítame z registra, aby fakturácia fungovala podľa jej podmienok používania (článok 6 ods. 1 písm. b) GDPR). Kým registráciu nedokončíte, uchovávame e-mail, IČO a údaje firmy z registra najviac 8 dní.')}</p>
       <p>{t('Osobné údaje Vašich odberateľov, ktoré uvediete na faktúrach, spracúvame ako sprostredkovateľ podľa článku 28 GDPR, len na Váš pokyn a len aby ste mohli faktúry vystaviť, uložiť, stiahnuť a sprístupniť odberateľovi cez odkaz. Faktúry odberateľom neposielame. Kto má odkaz na faktúru, vidí ju, preto ho posielajte len odberateľovi.')}</p>
       <p>{t('Ak použijete Faktúru z jednej vety, spoločnosti Anthropic pošleme iba napísanú vetu a vrátime návrh do formulára. Vetu u nás neukladáme; zaznamenáme len, že návrh vznikol, a počet tokenov. Údaje fakturačného účtu uchovávame, kým účet nezrušíte. Po zrušení zmažeme faktúry a údaje firmy hneď; Váš e-mail a meno pri najbližšom nočnom spracovaní, ak u nás nemáte iný účet. Zo záloh databázy zmiznú najneskôr do 30 dní.')}</p>
+      <h3 class="h4" id="meranie">
+        Meranie návštevnosti a používania
+      </h3>
+      <p>
+        {t(
+          'Návštevnosť webu meriame sami, bez cookies, bez cudzích skriptov a bez sledovania jednotlivých ľudí. Za každý deň ukladáme len súčty: koľkokrát bola stránka zobrazená (jej adresa bez parametrov, kľúče a identifikátory v nej nahradíme), z akej domény ste prišli (len doména, nie celá adresa), označenie kampane z adresy stránky (utm_source, utm_medium, utm_campaign, ref), či ide o mobil, tablet alebo počítač, a zvlášť počet návštev automatov vyhľadávačov, zobrazení prihlásených používateľov a chýb stránok. IP adresu ani celý identifikátor prehliadača na to neukladáme.',
+        )}
+      </p>
+      <p>
+        {t(
+          `V aplikácii pre klientov a v časti pre náš tím ukladáme za každý deň súčty požiadaviek podľa stránky aplikácie, ich výsledok a čas spracovania na serveri. O prihlásenom používateľovi ukladáme, ktoré časti aplikácie v daný deň použil a koľkokrát: identifikátor používateľa a firmy, deň, časť aplikácie, počet a čas poslednej požiadavky. Tieto záznamy o používateľoch mažeme po ${USAGE_MONTHS} mesiacoch, denné súčty bez údajov o osobách uchovávame dlhodobo.`,
+        )}
+      </p>
+      <p>
+        {t(
+          'Pomáhajú nám zistiť, ktoré funkcie ľudia používajú, kde službu zlepšiť a kde je aplikácia pomalá. Ide o náš oprávnený záujem zlepšovať službu (článok 6 ods. 1 písm. f) GDPR). Vidí ich len správca Firmony. Na analýzu si ich môže stiahnuť bez e-mailov a mien ľudí, s identifikátormi používateľov nahradenými jednosmerným odtlačkom. Proti tomuto spracúvaniu môžete kedykoľvek namietať na ',
+        )}
+        <Mail />.
+      </p>
 
       <h3 class="h4">Vaše práva</h3>
       <p>
@@ -183,7 +204,7 @@ export const Legal: FC = () => (
       <h3 class="h4" id="cookies">
         Cookies
       </h3>
-      <p>{t('Webová stránka nepoužíva cookies ani nástroje na sledovanie návštevnosti. Aplikácia pre klientov používa jedno nevyhnutné cookie, ktoré slúži na prihlásenie.')}</p>
+      <p>{t('Webová stránka nepoužíva cookies ani cudzie nástroje na sledovanie návštevnosti. Návštevnosť meriame sami v denných súčtoch, ako je opísané vyššie. Aplikácia pre klientov používa jedno nevyhnutné cookie, ktoré slúži na prihlásenie.')}</p>
 
       <p class="small">{`Platné od ${effective}.`}</p>
     </div>

@@ -63,6 +63,7 @@ import { checkManagedTakeover } from './managed-takeover.runtime.mjs'
 import { checkAssistantRuntime } from './assistant.runtime.mjs'
 import { checkFormationRuntime } from './formation.runtime.mjs'
 import { checkInvoicingRuntime } from './invoicing.runtime.mjs'
+import { checkAnalyticsRuntime } from './analytics.runtime.mjs'
 import { assistantProviderFixture } from './assistant.fixture.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
@@ -5289,5 +5290,6 @@ let bossFresh = boss.cookie
 const freshAdmin = async () => { bossFresh = (await verifyBrowser('ahoj@firmony.io', bossFresh)).cookie; return as(bossFresh) }
 await checkInvoicingRuntime({ mf, db, post, get, sent, settle, as, admin, freshAdmin, day })
 await checkAmlFixes({ db, files, get, post, admin, acc, lucia, signIn, as, nowS, day, freshAdmin })
+await checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
 await mf.dispose()
 done('runtime')

@@ -401,13 +401,15 @@ const SettingsField: FC<{ name: string; label: string; value: string; error?: st
   </div>
 )
 
-export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceErrors; owner: boolean; ico: string | null; flash?: string | null; removeError?: string | null }> = ({
+export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceErrors; owner: boolean; ico: string | null; years?: string[]; flash?: string | null; removeError?: string | null; downloadError?: string | null }> = ({
   values,
   errors,
   owner,
   ico,
+  years = [],
   flash = null,
   removeError = null,
+  downloadError = null,
 }) => {
   const s = v.app.settings
   const r = v.app.remove
@@ -473,6 +475,22 @@ export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceE
         <a class="btn btn--line" href="/app/faktury/cislovanie">
           {s.numberingLink}
         </a>
+      </section>
+      <section class="info" id="stiahnut" aria-labelledby="w-stiahnut">
+        <h2 id="w-stiahnut" class="info__title">
+          {v.app.download.title}
+        </h2>
+        <p class="info__lead">{years.length > 0 ? v.app.download.lead : v.app.download.none}</p>
+        {downloadError ? <p class="field__error">{downloadError}</p> : null}
+        {years.length > 0 ? (
+          <p class="workspace-welcome__actions">
+            {years.map((year, i) => (
+              <a class={`btn ${i === 0 ? 'btn--blue' : 'btn--line'}`} href={`/app/fakturacia/export?rok=${year}`} download>
+                {v.app.download.year(year)}
+              </a>
+            ))}
+          </p>
+        ) : null}
       </section>
       <section class="info info--soft" aria-labelledby="w-uctovnictvo">
         <h2 id="w-uctovnictvo" class="info__title">

@@ -8,6 +8,9 @@ import { MANAGED_HANDOVER_SCHEMA } from './migration/schema'
 import { ASSISTANT_SCHEMA } from './assistant/schema'
 import { FORMATION_SCHEMA } from './formation/schema'
 import { INVOICING_SCHEMA } from './app/invoicing-schema'
+import { ANALYTICS_SCHEMA } from './analytics/schema'
+import { usageCutoff } from './analytics/model'
+import { bratislavaDay } from './time'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
@@ -1577,6 +1580,8 @@ const MIGRATIONS: readonly string[][] = [
   // from the books by triggers; an invoice paid by the user's word; sign-ups waiting for their link. Also: the
   // assistant's use moves the data revision only on the client's side.
   INVOICING_SCHEMA,
+  // 83: first-party analytics in daily sums (analytics/schema.ts).
+  ANALYTICS_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
@@ -1684,5 +1689,7 @@ export async function purge(db: D1Database): Promise<void> {
     db.prepare('DELETE FROM throttle WHERE expires_at < ?').bind(ts),
     // A sign-up of invoicing not finished: kept a week past its link (the privacy notice says 8 days at most).
     db.prepare('DELETE FROM invoicing_signups WHERE expires_at < ?').bind(ts - 7 * 86400),
+    // Which part of the app a person used on a day: 13 months (analytics/model.ts); the daily sums stay.
+    db.prepare('DELETE FROM analytics_usage WHERE day < ?').bind(usageCutoff(bratislavaDay(ts))),
   ])
 }

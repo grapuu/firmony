@@ -229,9 +229,16 @@ export const invoicingCopy = {
       lead: typeset(`Keď nechcete riešiť účtovníctvo, DPH ani dane, povedieme ho za Vás od ${cheapest} € mesačne. Doterajšie faktúry Vám ostanú a v číslovaní plynulo pokračujete.`),
       button: 'Nezáväzne preveriť moju firmu',
     },
+    download: {
+      title: 'Stiahnuť všetky faktúry',
+      lead: typeset('Jeden ZIP za rok: každá faktúra ako PDF a ako e-faktúra na import do účtovného programu, a zoznam pre Excel. Hodí sa pre účtovníka aj na archív.'),
+      year: (year: string) => `Rok ${year}`,
+      none: typeset('Keď vystavíte prvú faktúru, stiahnete si ich tu.'),
+      throttle: typeset('Faktúry ste sťahovali už veľakrát za poslednú hodinu. Skúste to o chvíľu.'),
+    },
     remove: {
       title: 'Zrušiť fakturačný účet',
-      lead: typeset('Zmažeme všetky faktúry a údaje tohto účtu. Najprv si faktúry stiahnite: podľa zákona o účtovníctve ich máte uchovávať 10 rokov.'),
+      lead: typeset('Zmažeme všetky faktúry a údaje tohto účtu. Najprv si faktúry stiahnite (vyššie, Stiahnuť všetky faktúry): podľa zákona o účtovníctve ich máte uchovávať 10 rokov.'),
       confirm: 'Na potvrdenie napíšte ZRUŠIŤ',
       button: 'Zrušiť účet a zmazať faktúry',
       error: 'Na potvrdenie napíšte presne ZRUŠIŤ.',

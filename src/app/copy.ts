@@ -876,6 +876,7 @@ export const app = typesetAll({
     title: 'Faktúry',
     serif: 'Vystavené za minútu.',
     lead: 'Faktúru vystavíte tu a odberateľovi ju pošlete ako PDF e-mailom alebo správou z telefónu. Keď ju zaplatí, uvidíte to tu.',
+    leadWorkspace: 'Faktúru vystavíte tu a odberateľovi ju pošlete ako PDF e-mailom alebo správou z telefónu. Keď Vám zaplatí, označíte ju jedným klikom.',
     add: 'Nová faktúra',
     toCollect: 'Čaká na zaplatenie',
     overdueSum: 'Po splatnosti',
@@ -1145,6 +1146,8 @@ export const app = typesetAll({
       lead: 'Vystavené vo Firmony.',
       paid: 'Faktúra je zaplatená. Ďakujeme.',
       print: 'Faktúru si stiahnete ako PDF tlačidlom hore.',
+      unverified: (seller: string) =>
+        typeset(`Faktúru vystavil ${seller} v bezplatnej fakturácii Firmony. Firmony nie je dodávateľom a neoveruje jeho bankový účet. Ak Vás faktúra prekvapila alebo sa účet nezhoduje s dohodou, overte si ju priamo u dodávateľa ešte pred platbou.`),
     },
   },
   bank: {

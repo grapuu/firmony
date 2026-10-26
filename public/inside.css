@@ -4324,6 +4324,16 @@ select.field__input {
   font-weight: 600;
 }
 
+.public__note {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--mist);
+  color: var(--text);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 .public__foot {
   display: flex;
   flex-wrap: wrap;
@@ -7640,6 +7650,205 @@ a.wtable__name {
 }
 
 .customers__figures dt {
+
+/* Analytika (26 October 2026): the administrator's one page. Big numbers with a small line of the days under each,
+   tables in the cards of the team side; the lines and bars are inline SVG drawn on the server, coloured here. */
+.analytics {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.analytics .phead {
+  margin-bottom: 0;
+}
+
+.antools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+
+.antools .filters {
+  margin-bottom: 0;
+}
+
+.antools__export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  color: var(--soft);
+  font-size: 0.9375rem;
+}
+
+.antools__range {
+  margin-top: -10px;
+}
+
+.ansec {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* A wide table scrolls inside its card; the card itself stays as wide as the page. */
+.analytics .info {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* A long label wraps; a value stays on its line. */
+.analytics .info .kv dt {
+  flex: 0 1 auto;
+}
+
+.analytics .info .kv dd {
+  flex: none;
+  white-space: nowrap;
+}
+
+.anhead {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.figs__grid.anfigs .fig:last-child {
+  grid-column: auto;
+}
+
+.anfig {
+  grid-template-rows: auto auto auto 1fr;
+}
+
+.anfig .fig__note {
+  margin: 0;
+}
+
+.anfig__spark {
+  margin: 6px 0 0;
+}
+
+.anfig--red .fig__value {
+  color: var(--red-ink);
+}
+
+.anfigs--small .fig {
+  padding: 14px 18px;
+}
+
+.anfigs--small .fig__value {
+  font-size: 1.375rem;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 28px;
+  overflow: visible;
+}
+
+.spark__line {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.spark__area {
+  fill: var(--blue-soft);
+}
+
+.anfig--red .spark__line {
+  stroke: var(--red);
+}
+
+.anfig--red .spark__area {
+  fill: var(--red-soft);
+}
+
+.anbar {
+  display: block;
+  width: 100%;
+  height: 8px;
+}
+
+.anbar__track {
+  fill: var(--mist-2);
+}
+
+.anbar__fill {
+  fill: var(--blue);
+}
+
+.anfunnel {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.anfunnel__step {
+  display: grid;
+  grid-template-columns: minmax(0, 15em) 5.5em minmax(0, 1fr) 9.5em;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.9375rem;
+}
+
+.anfunnel__step:first-child {
+  border-top: 0;
+}
+
+.anfunnel__name {
+  color: var(--soft);
+}
+
+.anfunnel__n {
+  color: var(--ink);
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.anfunnel__rate {
+  color: var(--dim);
+  font-size: 0.8125rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.angrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.angrid > .info {
+  align-content: start;
+  align-self: start;
+  min-width: 0;
+}
+
+.antable .antable__key {
+  overflow-wrap: break-word;
+}
+
+.antable__route {
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.antable__sub {
+  display: block;
   color: var(--dim);
   font-size: 0.8125rem;
 }
@@ -7694,4 +7903,81 @@ a.wtable__name {
 /* A workspace's settings: a button in a card keeps its own width. */
 .inside--invoicing .info > .btn {
   justify-self: start;
+
+.antable th.antable__trend,
+.antable td.antable__trend {
+  width: 136px;
+  min-width: 96px;
+  padding-left: 20px;
+  vertical-align: middle;
+}
+
+.antable th.antable__aml,
+.antable td.antable__aml {
+  padding-left: 18px;
+}
+
+.antable--wide {
+  min-width: 620px;
+}
+
+.antable--clients {
+  min-width: 940px;
+}
+
+.anred {
+  color: var(--red-ink);
+}
+
+.analytics .filters.anwrap {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.anelse {
+  margin: 0;
+}
+
+.anlinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+.anfoot {
+  margin-top: -6px;
+}
+
+@media (max-width: 1080px) {
+  .angrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .anfunnel__step {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .anfunnel__bar {
+    grid-column: 1 / -1;
+  }
+
+  .anfunnel__rate {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+}
+
+/* On a phone the line of the days is in the figures; the tables keep their numbers. */
+@media (max-width: 560px) {
+  .antable th.antable__trend,
+  .antable td.antable__trend {
+    display: none;
+  }
+
+  .figs__grid.anfigs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

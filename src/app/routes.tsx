@@ -33,6 +33,7 @@ import { INVOICE_AI, askInvoiceDraft, fillValues } from './invoice-ai'
 import { customersOf, deleteWorkspace, handAdvanceOf, handPaidStatement, invoicingPath, issueHandAdvance, workspaceReady, workspaceStatement, type WorkspaceErrors, type WorkspaceValues } from './invoicing'
 import { sheetOf } from './invoice-sheet'
 import { invoicePdf, invoicePdfName, logoImage } from './invoice-pdf'
+import { invoiceYears, invoicingArchive } from './invoicing-export'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
 import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
@@ -500,17 +501,45 @@ function workspaceValuesOf(company: Company): WorkspaceValues {
   }
 }
 
-async function workspacePage(c: Ctx, values: WorkspaceValues | null = null, errors: WorkspaceErrors = {}, status: ContentfulStatusCode = 200, removeError: string | null = null) {
+async function workspacePage(c: Ctx, values: WorkspaceValues | null = null, errors: WorkspaceErrors = {}, status: ContentfulStatusCode = 200, removeError: string | null = null, downloadError: string | null = null) {
   const who = c.get('who')
   if (!who.company.invoicingOnly) return shell(c, null, t.errors.notFound, <Missing />, 404)
   return shell(
     c,
     'company',
     iv.app.settings.title,
-    <WorkspaceSettings values={values ?? workspaceValuesOf(who.company)} errors={errors} owner={who.role === 'owner'} ico={who.company.ico} flash={flashOf(c)} removeError={removeError} />,
+    <WorkspaceSettings
+      values={values ?? workspaceValuesOf(who.company)}
+      errors={errors}
+      owner={who.role === 'owner'}
+      ico={who.company.ico}
+      years={await invoiceYears(c.env.DB, who.company.id)}
+      flash={flashOf(c)}
+      removeError={removeError}
+      downloadError={downloadError}
+    />,
     status,
   )
 }
+
+/** A year of the workspace's invoices as one ZIP: PDFs, e-invoices and a list (app/invoicing-export.ts). */
+appRoutes.get('/fakturacia/export', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const year = c.req.query('rok') ?? ''
+  if (!who.company.invoicingOnly || !/^\d{4}$/.test(year) || !(await invoiceYears(db, who.company.id)).includes(year)) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  if (!(await withinLimit(db, 'invoicing-export', who.company.id, 10, 3600))) return workspacePage(c, null, {}, 429, null, iv.app.download.throttle)
+  await db.batch([eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoicing.exported', subject: year })])
+  const archive = await invoicingArchive(db, c.env.FILES, who.company, year, today())
+  return new Response(archive.body, {
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${archive.name}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+})
 
 appRoutes.get('/fakturacia', (c) => workspacePage(c))
 
@@ -2969,6 +2998,7 @@ async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
       flash={flashOf(c)}
       closed={closed}
       repeats={await repeatsOf(c.env.DB, who.company.id)}
+      workspace={who.company.invoicingOnly}
     />
     </>,
     status,
@@ -3707,8 +3737,11 @@ async function repeatScheduled(env: AppBindings, day: string): Promise<void> {
   const db = env.DB
   for (const done of await issueRepeats(db, day)) {
     try {
-      await afterReading(db, done.company.id, done.documentId)
-      await matchCompany(db, done.company.id)
+      // A workspace of invoicing alone has no bank and no books: nothing to pair or to book.
+      if (!done.company.invoicingOnly) {
+        await afterReading(db, done.company.id, done.documentId)
+        await matchCompany(db, done.company.id)
+      }
       const people = await db
         .prepare(
           `SELECT u.email FROM members m JOIN users u ON u.id = m.user_id

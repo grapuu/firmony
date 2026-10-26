@@ -50,7 +50,7 @@ const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) =
   return rate ? eurOf(i.totalCents, rate) : 0
 }
 
-export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[] }> = ({ invoices, today, flash, closed = null, repeats = [] }) => {
+export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[]; workspace?: boolean }> = ({ invoices, today, flash, closed = null, repeats = [], workspace = false }) => {
   const month = today.slice(0, 7)
   // In euros: an invoice in another currency at its rate.
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + eurosOf(i), 0)
@@ -66,7 +66,7 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
       <header class="phead phead--row">
         <div>
           <Heading first={t.title} second={t.serif} />
-          <p class="phead__lead">{t.lead}</p>
+          <p class="phead__lead">{workspace ? t.leadWorkspace : t.lead}</p>
         </div>
         {closed ? null : (
           <span class="phead__actions">
@@ -1000,10 +1000,12 @@ export const InvoicePage: FC<{
               </ul>
             </section>
           ) : null}
-          <section class="info">
-            <h2 class="info__title">{a.payment}</h2>
-            <p class="info__lead">{credit ? a.creditPayment : state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : invoice.kind === 'advance' ? t.sheet.advanceTotal : a.paymentNone}</p>
-          </section>
+          {side ? null : (
+            <section class="info">
+              <h2 class="info__title">{a.payment}</h2>
+              <p class="info__lead">{credit ? a.creditPayment : state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : invoice.kind === 'advance' ? t.sheet.advanceTotal : a.paymentNone}</p>
+            </section>
+          )}
         </aside>
       </div>
     </>
@@ -1031,6 +1033,7 @@ export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; sell
           </button>
         </div>
         {invoice.paidOn && invoice.kind !== 'credit' ? <p class="public__paid">{t.public.paid}</p> : null}
+        {seller.invoicingOnly ? <p class="public__note">{t.public.unverified(seller.name)}</p> : null}
         <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={!invoice.paidOn} logo={logoSrc(seller, `/f/${token}/logo`)} />
         <p class="public__foot">
           {t.public.print} <Wordmark href={BRAND.origin} />

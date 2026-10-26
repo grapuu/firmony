@@ -127,6 +127,26 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   check('invoicing: and the mark can be taken back', res.status === 303 && (await db.prepare('SELECT hand_paid_on FROM invoices WHERE id = ?').bind(invoiceId).first())?.hand_paid_on === null)
   page = await (await me.get('/app/odberatelia')).text()
   check('invoicing: the customer is among the customers, with what is open', page.includes('TEST-ONLY Odberateľ s. r. o.') && page.includes(`/app/faktury/nova?odberatel=${invoiceId}`) && page.includes('150,00'))
+  page = await (await me.get(`/app/faktury/${invoiceId}`)).text()
+  check('invoicing: its page has no card of the bank, whose payments a workspace does not read', !page.includes('Keď peniaze prídu na účet') && page.includes(`/app/faktury/${invoiceId}/pdf`))
+  page = await (await me.get('/app/faktury')).text()
+  check('invoicing: the list says the payment is marked by a click', page.includes('označíte ju jedným klikom') && !page.includes('Keď ju zaplatí, uvidíte to tu'))
+  const yearNow = day(0).slice(0, 4)
+  page = await (await me.get('/app/fakturacia')).text()
+  check('invoicing: the settings offer a year of invoices in one ZIP', page.includes(`/app/fakturacia/export?rok=${yearNow}`) && page.includes('Stiahnuť všetky faktúry'))
+  res = await me.get(`/app/fakturacia/export?rok=${yearNow}`)
+  const zipText = Buffer.from(await res.arrayBuffer()).toString('latin1')
+  check(
+    'invoicing: the ZIP holds each invoice as a PDF and an e-invoice, and the list',
+    res.status === 200 && res.headers.get('content-type') === 'application/zip' && (res.headers.get('content-disposition') ?? '').includes(`-${yearNow}.zip`) &&
+      zipText.includes('faktury.csv') && /pdf\/Faktura-\d{8}\.pdf/.test(zipText) && /e-faktury\/Faktura-\d{8}\.xml/.test(zipText) && zipText.includes('%PDF-1.4') && zipText.includes('<Invoice'),
+  )
+  check('invoicing: a year without invoices, or no year, is no archive', (await me.get('/app/fakturacia/export?rok=1999')).status === 404 && (await me.get('/app/fakturacia/export?rok=x')).status === 404)
+  const shareToken = (await db.prepare('SELECT token FROM invoices WHERE id = ?').bind(invoiceId).first())?.token
+  page = await (await get(`/f/${shareToken}`)).text()
+  check('invoicing: the customer\'s page says Firmony does not vouch for a workspace\'s account', page.includes('neoveruje jeho bankový účet'))
+  res = await get(`/f/${shareToken}/pdf`)
+  check('invoicing: and gives the PDF', res.status === 200 && res.headers.get('content-type') === 'application/pdf')
 
   // An invoice from one sentence: the form filled, nothing issued, the sentence kept nowhere.
   const issuedBefore = (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE company_id = ?").bind(ws.id).first())?.n

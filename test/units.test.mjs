@@ -5,7 +5,11 @@ import { checkAssistantUnits } from './assistant.units.mjs'
 import { checkFreeInvoiceUnits } from './free-invoice.units.mjs'
 import { checkInvoicingUnits } from './invoicing.units.mjs'
 import { checkInvoicePdfUnits } from './invoice-pdf.units.mjs'
+import { checkAnalyticsUnits } from './analytics.units.mjs'
 import {
+  analytics,
+  analyticsRecord,
+  analyticsStore,
   freeInvoice,
   invoiceAi,
   invoicing,
@@ -7296,4 +7300,5 @@ checkOverview()
 checkAssistantUnits()
 checkInvoicingUnits({ invoiceAi, invoicing })
 await checkInvoicePdfUnits()
+checkAnalyticsUnits({ analytics, analyticsRecord, analyticsStore, security, check })
 done('units')
