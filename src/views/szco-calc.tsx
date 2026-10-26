@@ -2,10 +2,11 @@
 // questions and its sources. No script.
 import type { FC } from 'hono/jsx'
 import { formatEurExact, typeset as t } from '../format'
-import { SZCO_PAGE as w, SZCO_PATH } from '../content/szco-calc'
+import { SZCO_PAGE as w, SZCO_PATH, szcoNote, szcoSocialNote } from '../content/szco-calc'
 import { szcoYears, type SzcoQuery, type SzcoResult } from '../app/szco-calc'
 import { GUIDES } from '../content/guides'
 import { StartForm } from './home'
+import { copy } from '../copy'
 
 const eur = (cents: number) => formatEurExact(cents)
 const amount = (cents: number) => (cents / 100).toFixed(2).replace('.', ',').replace(/,00$/, '')
@@ -79,15 +80,18 @@ export const SzcoCalcPage: FC<{ query: SzcoQuery | null; result: SzcoResult | nu
           ) : result ? (
             <>
               <Line label={w.result.revenue} value={eur(result.query.revenue)} />
-              <Line label={w.result.expenses} value={`−${eur(result.expenses)}`} />
+              <Line label={result.query.mode === 'pausal' ? w.result.expenses : w.result.realExpenses} value={`−${eur(result.expenses)}`} />
               <Line label={w.result.czd} value={eur(result.czd)} />
-              <Line label={w.result.sp} value={`−${eur(result.spMonthly * 12)}`} />
-              <Line label={w.result.zp} value={`−${eur(result.zpMonthly * 12)}`} />
+              <Line label={w.result.sp} value={`−${eur(result.spYear)}`} />
+              <Line label={w.result.zp} value={`−${eur(result.zpYear)}`} />
               <Line label={w.result.odvody} value={`−${eur(result.odvody)}`} />
               <Line label={w.result.nczd} value={`−${eur(result.nczd)}`} />
               <Line label={w.result.tax} value={`−${eur(result.tax)}`} />
-              <Line label={w.result.net} value={eur(result.net)} total />
-              <p class="small">{t(w.result.note)}</p>
+              <Line label={result.query.mode === 'pausal' ? w.result.netPausal : w.result.net} value={eur(result.net)} total />
+              {szcoSocialNote(result).map((line) => (
+                <p class="small">{t(line)}</p>
+              ))}
+              <p class="small">{t(szcoNote(result.query.year))}</p>
             </>
           ) : (
             <p class="calc__message">{t(w.form.empty)}</p>
@@ -125,8 +129,11 @@ export const SzcoCalcPage: FC<{ query: SzcoQuery | null; result: SzcoResult | nu
       </section>
       <section class="guide__start" aria-labelledby="guide-start">
         <h2 id="guide-start" class="h3">Začnite s IČO Vašej firmy</h2>
-        <p>{t('Odvody, dane aj ročné zúčtovanie za Vás vybavíme. Názov a sídlo doplníme z registra, je to nezáväzné.')}</p>
+        <p>{t('Účtovníctvo, dane a mzdy pre s. r. o. za Vás vybavíme. Ak už s. r. o. máte, zadajte jej IČO. Názov a sídlo doplníme z registra, je to nezáväzné.')}</p>
         <StartForm carry={[]} id="ico-szco" compact />
+        <p class="small">
+          <a class="link" href="/zacat?nova=1">{copy.final.noCompany}</a>
+        </p>
       </section>
       <nav class="guide__more" aria-label="Ďalšie články">
         <h2 class="h3">Ďalšie články</h2>
