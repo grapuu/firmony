@@ -4,6 +4,18 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Poštár zabudovaný vo Firmony, 26. 10. 2026 večer (Claude, vetva `claude/peppol`, schéma 84):** `docs/peppol.md`.
+Pokyn majiteľa: e-faktúry musia byť integrované priamo v našom riešení, jednoducho pre klienta aj účtovníčku, štýl
+Robinhood/Trading 212; poskytovateľ doručovacej služby je len diaľnica. Hotové: overenie odberateľa vo verejnom
+registri Peppol (SML OpenPeppol `participant.sml.prod.tech.peppol.org`, U-NAPTR cez DoH, overené naživo na slovenskej
+firme), karta E-faktúra na faktúre (Odoslať, Odoslaná, Doručená, Odmietnutá s dôvodom, Odoslať znova), podpísané
+oznámenia `POST /peppol/udalosti`, prijaté e-faktúry klientovi do Dokladov a fakturačnému účtu do Prijaté s QR
+kódom, stav Peppol firmy v nastaveniach a u účtovníčky. Bez zmluvy s poskytovateľom (premenné `PEPPOL_*` nenastavené)
+web ukazuje overenie a vetu, že odosielanie zapíname pred 1. 1. 2027. Po zmluve: adaptér jeho API v
+`src/peppol/provider.ts` a názov poskytovateľa v ochrane údajov (`#peppol`). Kandidáti Flowis a Qvalia, e-mail
+majiteľovi pripravený 26. 10. Fakty: od 1. 1. 2027 platiteľ DPH tuzemskú B2B faktúru len ako e-faktúru cez
+poštára (§ 85o, znenie od 1. 1. 2027); PDF ostáva pre neplatiteľov, B2C, zahraničie a zálohové faktúry.
+
 **Týždeň dokončenia, 26. 10. 2026 (Claude, vetva `claude/week`):** pokyn majiteľa: produkt dokonalý a na predaj tento
 týždeň; prácu DeepSeeku a iných modelov brať ako nedôveryhodnú a overiť. Hotové a otestované:
 - **Fakturácia zadarmo pre každého** (`docs/invoicing.md`, schéma **82**): verejná `/fakturacia`, IČO a e-mail, údaje
@@ -26,7 +38,7 @@ týždeň; prácu DeepSeeku a iných modelov brať ako nedôveryhodnú a overiť
   analytika webu bez stropu riadkov (300 kľúčov za deň, súčty 2 roky); fakturačný účet s IČO z registra drží meno
   a zápis z registra (`register_found`, tlačidlo Načítať znova z registra); ZIP roka jedným dotazom (limit D1
   1 000 dotazov); správca hľadá účet podľa mena, IČO, e-mailu alebo odkazu /f/.
-Schéma po zlúčení **83**, ďalšia **84**.
+Schéma po zlúčení **83** (live 26. 10. 2026 večer), s poštárom **84**, ďalšia **85**.
 
 **Kalkulačka odvodov a dane SZČO, 23. 10. 2026 (Cline):** `/szco-kalkulacka`. Ročný príjem → paušálne výdavky
 60 % (strop 20 000 €), odvody SP 33,15 % (min 60 % / max 11× priemernej mzdy) a ZP 16 % (min 50 %, bez maxima),

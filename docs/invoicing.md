@@ -20,6 +20,8 @@ a najpríjemnejšia fakturácia na slovenskom trhu, s Claude API tam, kde je bez
   pre Excel; 10 za hodinu, udalosť `invoicing.exported`.
 - Stránka odberateľa `/f/<token>` pri faktúre fakturačného účtu hovorí, že Firmony nie je dodávateľ a neoveruje
   jeho účet (ochrana pred zneužitím na podvodné faktúry); správca účet zablokuje na `/ucto/fakturacne-ucty`.
+- E-faktúry cez sieť Peppol (`docs/peppol.md`): overenie odberateľa, odoslanie jedným klikom po zapojení poskytovateľa,
+  prijaté e-faktúry v záložke Prijaté (`/app/prijate`) s QR kódom na úhradu.
 - Odberatelia `/app/odberatelia` z vystavených faktúr: počet, fakturované, neuhradené (po dobropisoch), ďalšia faktúra.
 - Nastavenia `/app/fakturacia`: údaje na faktúre, IBAN (kontrolné číslice), splatnosť, platiteľ DPH s IČ DPH,
   zápis v registri; ponuka účtovníctva; zrušenie účtu so zmazaním (citlivý krok ako export).
