@@ -76,7 +76,7 @@ export const copy = typesetAll({
   /** The hug of the brand, read word by word. */
   statement: {
     first: 'Účtovníctvo, ktoré sa robí takmer samo.',
-    second: 'AI prečíta doklady, systém zaúčtuje, účtovníčka skontroluje.',
+    second: 'AI prečíta doklady, systém navrhne zaúčtovanie, účtovníčka skontroluje.',
   },
 
   /** One offer the visitor cannot refuse: four deals in a ring that turns without end. */
