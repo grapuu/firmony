@@ -110,6 +110,8 @@ export function sensitivePath(path: string, method: string): boolean {
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/mzdove-podania(?:\/|$)/.test(path) && (method !== 'GET' && method !== 'HEAD' || /\/(?:dokument|potvrdenka\/[^/]+)$/.test(path))) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/podania\/[^/]+\/(?:stav|dokument\.xml|potvrdenka\/[^/]+)$/.test(path)) return true
   if (/^\/app\/export(?:\/potvrdit)?$/.test(path)) return true
+  // Ending a workspace of invoicing deletes every invoice of it: as fresh a proof as an export.
+  if (path === '/app/fakturacia/zrusit' && method !== 'GET' && method !== 'HEAD') return true
   if (/^\/ucto\/podania\/(?:balik\.zip|naraz)$/.test(path)) return true
   if (
     path.startsWith('/ucto/') &&

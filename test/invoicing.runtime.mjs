@@ -120,6 +120,25 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   page = await (await me.get('/app/odberatelia')).text()
   check('invoicing: the customer is among the customers, with what is open', page.includes('TEST-ONLY Odberateľ s. r. o.') && page.includes(`/app/faktury/nova?odberatel=${invoiceId}`) && page.includes('150,00'))
 
+  // An invoice from one sentence: the form filled, nothing issued, the sentence kept nowhere.
+  const issuedBefore = (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE company_id = ?").bind(ws.id).first())?.n
+  page = await (await me.get('/app/faktury/nova')).text()
+  check('invoicing: a new invoice offers to fill it from one sentence', page.includes('action="/app/faktury/nova/veta"') && page.includes('name="veta"'))
+  res = await me.post('/app/faktury/nova/veta', { veta: 'ahoj' })
+  check('invoicing: a sentence of nothing is said to be short', res.status === 422 && (await res.text()).includes('pár slov'))
+  const sentence = 'TEST-ONLY 3 hodiny konzultácií po 50 € pre Zelený dvor, IČO 55012345, splatnosť 14 dní'
+  res = await me.post('/app/faktury/nova/veta', { veta: sentence })
+  page = await res.text()
+  check(
+    'invoicing: the sentence fills the customer from the register and the lines, and issues nothing',
+    res.status === 200 && page.includes('value="Konzultácie"') && page.includes('value="50,00"') && page.includes('value="Zelený dvor s. r. o."') && page.includes('Skontrolujte') &&
+      (await db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE company_id = ?').bind(ws.id).first())?.n === issuedBefore,
+  )
+  const used = await db.prepare("SELECT detail FROM events WHERE company_id = ? AND action = 'invoice.ai' ORDER BY rowid DESC LIMIT 1").bind(ws.id).first()
+  check('invoicing: the use is counted with its tokens, never with its words', Boolean(used) && JSON.parse(used.detail).in === 612 && !String(used.detail).includes('konzultácií'))
+  res = await me.post('/app/faktury/nova/veta', { veta: 'TEST-ONLY NIC z tohto nebude' })
+  check('invoicing: an answer that is no draft leaves the form to the person', res.status === 422 && (await res.text()).includes('nevedeli pripraviť'))
+
   // A request for an advance, paid by hand: its tax document follows by itself, and the mark then stays.
   res = await me.post('/app/faktury', { ...invoice, druh: 'zalohova' })
   const requestId = res.headers.get('location')?.match(/\/app\/faktury\/([0-9a-f-]{36})/)?.[1] ?? ''

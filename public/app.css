@@ -615,6 +615,7 @@ textarea {
 }
 
 .top__nav a {
+  white-space: nowrap;
   padding: 8px 12px;
   border-radius: 10px;
   color: var(--text);
@@ -3708,6 +3709,18 @@ textarea {
 /* Between a laptop and a tablet the title takes two lines, and the coins would stand in them. */
 @media (min-width: 861px) and (max-width: 1180px) {
   .hero__float--2 {
+    display: none;
+  }
+}
+
+/* Six places in the header from 1081 px: the two a reader needs least give way until they fit. */
+@media (max-width: 1240px) {
+  .top__nav a {
+    padding-inline: 9px;
+  }
+
+  .top__nav a[href="/#kto-sme"],
+  .top__nav a[href="/#otazky"] {
     display: none;
   }
 }

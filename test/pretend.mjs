@@ -144,6 +144,20 @@ export async function readerAnswer(request, calls = []) {
   calls.push(body)
   if (!request.headers.get('x-api-key')) return Response.json({ type: 'error', error: { type: 'authentication_error' } }, { status: 401 })
   const tool = body?.tools?.[0]?.name
+  // An invoice from one sentence (invoice-ai.ts): a draft of what the sentence says, or none when it asks for none.
+  if (tool === 'invoice_draft') {
+    const sentence = String(body?.messages?.[0]?.content ?? '')
+    if (sentence.includes('NIC')) return Response.json({ id: 'msg_pretend', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'Nie.' }], usage: { input_tokens: 300, output_tokens: 4 } })
+    return Response.json({
+      id: 'msg_pretend',
+      type: 'message',
+      role: 'assistant',
+      model: body?.model,
+      content: [{ type: 'tool_use', id: 'toolu_pretend', name: tool, input: { customer_name: 'Zelený dvor', customer_ico: '55012345', lines: [{ description: 'Konzultácie', quantity: 3, unit: 'hod', unit_price: 50 }], due_days: 14 } }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 612, output_tokens: 88 },
+    })
+  }
   // A test's photo may say what is written on it: the bytes PRETEND and a JSON object of the tool's fields.
   const data = body?.messages?.[0]?.content?.find((part) => part.source)?.source?.data
   const said = data ? /PRETEND(\{.*\})/s.exec(Buffer.from(data, 'base64').toString('utf8')) : null

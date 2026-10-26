@@ -4659,7 +4659,7 @@ check(
 
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-accepted.html`, page)
 const exactContract = await resolveContract(db, madeCompany.id, '2099-01-01')
-check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-21')
+check('the saved contract takes precedence over a newer live version label', exactContract.status === 'snapshot' && exactContract.snapshot.plan.monthlyCents === 16900 && exactContract.snapshot.catalogue.terms.version === '2026-10-26')
 check('the acceptance digest covers the exact stored UTF-8 bytes', exactContract.sha256 === createHash('sha256').update(exactContract.data).digest('hex'))
 check('approval and exact tariff evidence are retained with the contract', exactContract.snapshot.catalogue.payrollCents === 1500 && exactContract.snapshot.catalogue.closingCents === 24900 && exactContract.snapshot.approval.accountantId === lucia.id)
 let immutableContract = false

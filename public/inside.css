@@ -7642,6 +7642,7 @@ a.wtable__name {
 
 /* An invoice from one sentence: above the invoice's form, one line to write and a button. */
 .info--ai {
+  max-width: 980px;
   margin-bottom: 20px;
   border-color: var(--blue-line);
   background: linear-gradient(180deg, var(--blue-soft) 0%, var(--white) 100%);
@@ -7653,5 +7654,10 @@ a.wtable__name {
 }
 
 .ai-sentence .btn {
+  justify-self: start;
+}
+
+/* A workspace's settings: a button in a card keeps its own width. */
+.inside--invoicing .info > .btn {
   justify-self: start;
 }
