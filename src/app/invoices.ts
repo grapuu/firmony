@@ -439,6 +439,8 @@ export interface StoredInvoice {
   /** Who issued it (a user's id). */
   createdBy: string | null
   paidOn: string | null
+  /** Marked paid by hand (a workspace of invoicing alone, which has no bank with us): the day, null otherwise. */
+  handPaidOn?: string | null
   /**
    * An invoice; a credit note (dobropis) of an invoice issued before; a request for an advance (zálohová faktúra,
    * no tax document, numbered ZF… with its own variable symbol); the tax document of an advance received (§ 73).
@@ -639,10 +641,10 @@ export const ON_REQUEST_SQL = "p.company_id = i.company_id AND i.vs IS NOT NULL 
 const ON_REQUEST = ON_REQUEST_SQL
 const INVOICE_COLUMNS = `i.*, u.name AS created_by_name,
   CASE WHEN i.kind = 'proforma'
-    THEN (SELECT p.booked_on FROM payments p WHERE ${ON_REQUEST} ORDER BY p.booked_on LIMIT 1)
-    ELSE COALESCE((SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1),
+    THEN COALESCE(i.hand_paid_on, (SELECT p.booked_on FROM payments p WHERE ${ON_REQUEST} ORDER BY p.booked_on LIMIT 1))
+    ELSE COALESCE(i.hand_paid_on, (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1),
       (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) END AS paid_on,
-  CASE WHEN i.kind = 'proforma' THEN (SELECT COALESCE(SUM(p.amount_cents), 0) FROM payments p WHERE ${ON_REQUEST}) ELSE 0 END AS paid_cents,
+  CASE WHEN i.kind = 'proforma' THEN CASE WHEN i.hand_paid_on IS NOT NULL THEN i.total_cents ELSE (SELECT COALESCE(SUM(p.amount_cents), 0) FROM payments p WHERE ${ON_REQUEST}) END ELSE 0 END AS paid_cents,
   (SELECT o.number FROM invoices o WHERE o.id = i.relates AND o.company_id = i.company_id) AS relates_number,
   (SELECT dc.center_id FROM documents dc WHERE dc.id = i.document_id AND dc.company_id = i.company_id) AS doc_center_id,
   (SELECT o.number FROM invoices o WHERE o.id = i.corrects AND o.company_id = i.company_id) AS corrects_number,
@@ -675,6 +677,7 @@ function invoiceOf(row: Row): StoredInvoice {
     createdByName: str(row.created_by_name),
     createdBy: str(row.created_by),
     paidOn: str(row.paid_on),
+    handPaidOn: str(row.hand_paid_on),
     kind: row.kind === 'credit' || row.kind === 'proforma' || row.kind === 'advance' ? row.kind : 'invoice',
     vs: str(row.vs),
     relates: str(row.relates),

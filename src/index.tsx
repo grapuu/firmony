@@ -25,7 +25,7 @@ import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
-import { APP, BRAND, CUSTOM_PLAN, INDEXNOW_KEY, INVESTORS, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
+import { APP, BRAND, CUSTOM_PLAN, INDEXNOW_KEY, INVESTORS, INVOICING, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
 import { copy } from './copy'
 import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
 import { typeset } from './format'
@@ -56,6 +56,9 @@ import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
 import { NotFound, StartDetails, StartIco, Thanks, type CompanyState, type DetailsErrors, type DetailsValues, type Situation } from './views/start'
 import { InvestorsPage, InvestorsThanks, type InvestorValues } from './views/investors'
+import { InvoicingPage, InvoicingTermsPage, SignupEnter, SignupExpired, SignupSent, type SignupErrors, type SignupFormValues } from './views/invoicing'
+import { INVOICING_PATH, invoicingCopy } from './content/invoicing'
+import { makeWorkspace, newSignupStatement, signupFor, useSignup } from './app/invoicing'
 
 export interface Bindings extends AppBindings {
   DB: D1Database
@@ -155,7 +158,7 @@ app.use('*', async (c, next) => {
   c.header('Permissions-Policy', PERMISSIONS_POLICY)
   c.header('Content-Language', 'sk')
   // Only the real domain is for search engines: not a preview address, not a form step.
-  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || url.pathname.startsWith('/objednavka') || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
+  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || url.pathname.startsWith('/objednavka') || url.pathname.startsWith(`${INVOICING_PATH}/vstup`) || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
   if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store')
   if (url.protocol === 'https:') c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
 })
@@ -398,6 +401,111 @@ app.post('/zacat', async (c) => {
   if (plan === CUSTOM_PLAN) next.set('mieru', '1')
   const query = next.toString()
   return c.redirect(`/zacat/hotovo${query ? `?${query}` : ''}`, 303)
+})
+
+// ---------------------------------------------------------------------------
+// Invoicing for everyone (26 October 2026, app/invoicing.ts): the page, its sign-up, the link that finishes it
+// ---------------------------------------------------------------------------
+
+const invoicingMeta: PageMeta = {
+  title: invoicingCopy.meta.title,
+  description: invoicingCopy.meta.description,
+  path: INVOICING_PATH,
+  ctaHref: '#zacat',
+  ctaText: invoicingCopy.form.submit,
+  jsonLd: jsonLd([organization(), website(), faqPage(invoicingCopy.faq.items, INVOICING_PATH)]),
+}
+const signupMeta: PageMeta = { title: `${invoicingCopy.enter.title} | ${BRAND.name}`, description: invoicingCopy.meta.description, path: `${INVOICING_PATH}/vstup` }
+const emptySignup: SignupFormValues = { email: '', ico: '', company: '', address: '' }
+
+app.get(INVOICING_PATH, (c) => page(c, invoicingMeta, <InvoicingPage carry={carryFrom((name) => c.req.query(name))} values={emptySignup} errors={{}} manual={false} />))
+
+app.get(`${INVOICING_PATH}/podmienky`, (c) => page(c, { title: `${invoicingCopy.terms.title} | ${BRAND.name}`, description: invoicingCopy.terms.lead, path: `${INVOICING_PATH}/podmienky` }, <InvoicingTermsPage />))
+
+/**
+ * A sign-up: the address, the person and the IČO; the company as the register names it, or as typed when the register
+ * does not know it or does not answer. The link that finishes it goes to the address typed, at most a few times a day,
+ * and carries nothing a stranger typed but the link itself; the page answers the same whatever the address.
+ */
+app.post(INVOICING_PATH, async (c) => {
+  const body = await c.req.parseBody()
+  const carry = carryFrom((name) => body[name])
+  const f = invoicingCopy.form
+  const values: SignupFormValues = { email: field(body.email, 200), ico: field(body.ico, 20), company: field(body.firma, 160), address: field(body.adresa, 240) }
+  // A field nobody sees, which only a machine fills in: answered as if it had worked, and kept nowhere.
+  if (field(body.web, 200) !== '') return page(c, signupMeta, <SignupSent email={values.email.slice(0, 200)} />)
+  const manual = body.rucne === '1'
+  const again = (errors: SignupErrors, asManual: boolean, status: ContentfulStatusCode) =>
+    page(c, invoicingMeta, <InvoicingPage carry={carry} values={values} errors={Object.keys(errors).length > 0 && !errors.form ? { ...errors, form: f.errors.summary } : errors} manual={asManual} />, status)
+  const errors: SignupErrors = {}
+  const ico = normalizeIco(values.ico)
+  if (!EMAIL.test(values.email)) errors.email = f.errors.email
+  if (!ico) errors.ico = f.errors.ico
+  if (manual && values.company.length < 2) errors.company = f.errors.company
+  if (manual && values.address.length < 5) errors.address = f.errors.address
+  if (Object.keys(errors).length > 0) return again(errors, manual, 422)
+  const db = c.env.DB
+  await ensureSchema(db)
+  if (!(await withinLimit(db, 'invoicing-signup', connection(c), INVOICING.signupsPerHour, 3600))) return again({ form: f.errors.throttle }, manual, 429)
+  let company: { name: string; address: string | null; registerLine: string | null; legalForm: string | null }
+  if (manual) company = { name: values.company, address: values.address, registerLine: null, legalForm: null }
+  else {
+    const state = await companyState(c, ico ?? '')
+    if (state.kind === 'found' && state.company.terminated) return again({ ico: f.errors.ended }, false, 422)
+    if (state.kind !== 'found') {
+      if (state.kind === 'missing' && !icoLooksValid(ico ?? '')) return again({ ico: f.errors.icoWrong }, false, 422)
+      // The register does not know it (a trade newly registered) or does not answer now: the name and address typed.
+      return again({}, true, 200)
+    }
+    company = { name: state.company.name, address: state.company.address || null, registerLine: state.company.registerLine, legalForm: state.company.form }
+  }
+  if (!(await withinLimit(db, 'invoicing-signups', 'all', INVOICING.signupsPerDay, 86400))) return again({ form: f.errors.busy }, manual, 429)
+  if (await withinLimit(db, 'invoicing-mail', values.email.toLowerCase(), INVOICING.signupsPerEmailDay, 86400)) {
+    const token = newToken()
+    const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
+    await db.batch([
+      await newSignupStatement(db, token, { email: values.email, ico, company: company.name, address: company.address, registerLine: company.registerLine, legalForm: company.legalForm, source }),
+      queueStatement(db, {
+        key: `invoicing-signup:${(await sha256Hex(token)).slice(0, 24)}`,
+        to: values.email,
+        subject: invoicingCopy.mail.subject,
+        body: invoicingCopy.mail.body(`${siteOrigin(c)}${INVOICING_PATH}/vstup?t=${token}`),
+      }),
+    ])
+    later(c, flushOutbox(db, c.env.EMAIL))
+  }
+  return page(c, signupMeta, <SignupSent email={values.email} />)
+})
+
+// The link from the email asks for one click: a mail scanner that opens links by itself must not use it up.
+app.get(`${INVOICING_PATH}/vstup`, async (c) => {
+  await ensureSchema(c.env.DB)
+  const token = c.req.query('t') ?? ''
+  const signup = await signupFor(c.env.DB, token)
+  if (!signup) return page(c, signupMeta, <SignupExpired />, 410)
+  return page(c, signupMeta, <SignupEnter token={token} company={signup.company} ico={signup.ico} email={signup.email} />)
+})
+
+app.post(`${INVOICING_PATH}/vstup`, async (c) => {
+  const body = await c.req.parseBody()
+  const token = typeof body.t === 'string' ? body.t : ''
+  const name = field(body.meno, 120).replace(/\s+/g, ' ')
+  const db = c.env.DB
+  await ensureSchema(db)
+  const errors: { name?: string; agree?: string } = {}
+  if (name.length < 2) errors.name = invoicingCopy.form.errors.name
+  if (body.suhlas !== '1') errors.agree = invoicingCopy.enter.agreeError
+  if (errors.name || errors.agree) {
+    const signup = await signupFor(db, token)
+    if (!signup) return page(c, signupMeta, <SignupExpired />, 410)
+    return page(c, signupMeta, <SignupEnter token={token} company={signup.company} ico={signup.ico} email={signup.email} name={name} errors={errors} />, 422)
+  }
+  const signup = await useSignup(db, token, name)
+  if (!signup) return page(c, signupMeta, <SignupExpired />, 410)
+  const made = await makeWorkspace(db, signup)
+  if ('refused' in made) return page(c, signupMeta, <SignupExpired tooMany />, 409)
+  await startSession(c, db, made.user, made.company)
+  return c.redirect(made.existing ? '/app/faktury' : '/app/faktury?vitajte=1', 303)
 })
 
 // ---------------------------------------------------------------------------

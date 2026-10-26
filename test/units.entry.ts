@@ -108,3 +108,5 @@ export * as guides from '../src/content/guides'
 
 export * as amlCountries from '../src/aml/countries'
 export * as overview from '../src/app/overview'
+export * as invoiceAi from '../src/app/invoice-ai'
+export * as invoicing from '../src/app/invoicing'

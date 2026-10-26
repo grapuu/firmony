@@ -6,6 +6,7 @@ import { AML_SCHEMA } from './aml/schema'
 import { MANAGED_HANDOVER_SCHEMA } from './migration/schema'
 import { ASSISTANT_SCHEMA } from './assistant/schema'
 import { FORMATION_SCHEMA } from './formation/schema'
+import { INVOICING_SCHEMA } from './app/invoicing-schema'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
@@ -1568,6 +1569,10 @@ const MIGRATIONS: readonly string[][] = [
   ASSISTANT_SCHEMA,
   // 80: company formation requests, professional workflow and retained revision evidence.
   FORMATION_SCHEMA,
+  // Invoicing for everyone (26 October 2026, app/invoicing.ts): a workspace of a business's invoices alone, kept apart
+  // from the books by triggers; an invoice paid by the user's word; sign-ups waiting for their link. Also: the
+  // assistant's use moves the data revision only on the client's side.
+  INVOICING_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
@@ -1673,5 +1678,7 @@ export async function purge(db: D1Database): Promise<void> {
     db.prepare('DELETE FROM outbox WHERE created_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM inbound_mail WHERE company_id IS NULL AND received_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM throttle WHERE expires_at < ?').bind(ts),
+    // A sign-up of invoicing not finished: kept a week past its link (the privacy notice says 8 days at most).
+    db.prepare('DELETE FROM invoicing_signups WHERE expires_at < ?').bind(ts - 7 * 86400),
   ])
 }

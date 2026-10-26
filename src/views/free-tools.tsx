@@ -3,8 +3,10 @@ import { WAGE_PATH } from '../content/wage-calc'
 import { SZCO_PATH } from '../content/szco-calc'
 import { SRO_PATH } from '../content/sro-calc'
 import { INVOICE_PATH, TOOLS_PATH, blankInvoice } from '../tools/invoice'
+import { INVOICING_PATH } from '../content/invoicing'
 
 const TOOLS = [
+  { href: INVOICING_PATH, title: 'Fakturácia zadarmo', tag: 'S účtom zadarmo', text: 'Faktúry, dobropisy a zálohové faktúry s QR kódom, uložené a číslované. Pre platiteľov DPH aj neplatiteľov.', action: 'Začať fakturovať' },
   { href: INVOICE_PATH, title: 'Faktúra v PDF', tag: 'Bez registrácie', text: 'Bežná tuzemská faktúra neplatiteľa DPH. Vyplníte údaje, skontrolujete náhľad a stiahnete PDF vo svojom prehliadači.', action: 'Vytvoriť faktúru' },
   { href: WAGE_PATH, title: 'Čistá mzda a cena práce', tag: 'Bez registrácie', text: 'Z hrubej mzdy zistíte orientačnú čistú mzdu, odvody aj celkové náklady zamestnávateľa. Podľa zvoleného roka.', action: 'Vypočítať mzdu' },
   { href: SZCO_PATH, title: 'Odvody a daň živnostníka', tag: 'Bez registrácie', text: 'Z ročného príjmu zistíte orientačné odvody do poisťovní a daň SZČO s paušálnymi výdavkami 60 %.', action: 'Vypočítať odvody' },
@@ -121,7 +123,8 @@ export const FreeInvoicePage: FC<{ today: string }> = ({ today }) => {
     </div>
     <section class="tool-page__next">
       <h2>Čo tento nástroj zvládne</h2>
-      <p>Jednorazové vytvorenie faktúry neplatiteľa DPH s najviac 50 položkami. Pre platiteľov DPH, zahraničie, zálohy, dobropisy a osobitné režimy použite zodpovedajúci fakturačný systém. PDF nie je štruktúrovaná eFaktúra ani doručenie digitálnym poštárom.</p>
+      <p>Jednorazové vytvorenie faktúry neplatiteľa DPH s najviac 50 položkami. PDF nie je štruktúrovaná eFaktúra ani doručenie digitálnym poštárom.</p>
+      <p>Pre platiteľov DPH, zahraničie, zálohy, dobropisy, QR kód na platbu, uložené faktúry a e-faktúru je tu <a class="link" href={INVOICING_PATH}>fakturácia Firmony</a>. Je tiež zadarmo, len s účtom.</p>
       <p>Údaje ani súbory z tohto formulára neposielame Firmony alebo AI. Pri zatvorení stránky sa neuložené údaje stratia. Existenciu firmy ani údaje v registri neoverujeme. Za správne údaje, číslovanie, interné overenie a uchovanie dokladu zodpovedá vystavovateľ.</p>
       <p>Právne podklady skontrolované 22. 10. 2026: <a href="https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html#paragraf-10" rel="noopener noreferrer">§ 10 zákona o účtovníctve</a>, <a href="https://static.slov-lex.sk/static/SK/ZZ/1991/513/20260817.html#paragraf-3a" rel="noopener noreferrer">§ 3a Obchodného zákonníka</a> a <a href="https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html#paragraf-69" rel="noopener noreferrer">§ 69 ods. 5 zákona o DPH</a>.</p>
       <h2>Faktúrou sa účtovníctvo nekončí</h2><p>Ak chcete odovzdať aj účtovníctvo, prejdeme s Vami rozsah služby a cenu. Bezplatný nástroj môžete používať aj bez toho.</p>

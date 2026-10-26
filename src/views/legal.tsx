@@ -165,6 +165,11 @@ export const Legal: FC = () => (
       <p>{t('Odpoveď a odkazy zostaví aplikácia z evidovaných údajov firmy, do ktorej máte prístup. Asistent nerozhoduje o dani, nevykonáva platby, nemení účtovné knihy a neposiela podania. Text otázky ani odpoveď ako rozhovor u nás trvalo neukladáme. Uchovávame záznam použitia s identifikátorom firmy a používateľa, časom, témou, modelom, dostupným počtom tokenov a odtlačkom otázky bez jej textu. Patrí k auditnej histórii služby s nižšie uvedeným uchovávaním. Správu účtovníčke uložíme až po Vašom výslovnom odoslaní z pripraveného formulára.')}</p>
       <p>{t('Anthropic pri štandardnom API uvádza odstránenie vstupov a výstupov do 30 dní, s výnimkami napríklad pre zákonné povinnosti a presadzovanie pravidiel bezpečného používania. Pri označení porušenia pravidiel môže údaje uchovávať dlhšie. Nepredpokladáme osobitnú dohodu o nulovom uchovávaní. Podrobnosti sú v ')}<a href="https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data" rel="noopener noreferrer">informácii Anthropic o uchovávaní</a>.</p>
 
+      <h3 class="h4" id="fakturacia">Bezplatná fakturácia</h3>
+      <p>{t('Ak si vytvoríte bezplatný fakturačný účet, spracúvame Váš e-mail, meno a údaje firmy, ktoré zadáte alebo načítame z registra, aby fakturácia fungovala podľa jej podmienok používania (článok 6 ods. 1 písm. b) GDPR). Kým registráciu nedokončíte, uchovávame e-mail, IČO a údaje firmy z registra najviac 8 dní.')}</p>
+      <p>{t('Osobné údaje Vašich odberateľov, ktoré uvediete na faktúrach, spracúvame ako sprostredkovateľ podľa článku 28 GDPR, len na Váš pokyn a len aby ste mohli faktúry vystaviť, uložiť, stiahnuť a sprístupniť odberateľovi cez odkaz. Faktúry odberateľom neposielame. Kto má odkaz na faktúru, vidí ju, preto ho posielajte len odberateľovi.')}</p>
+      <p>{t('Ak použijete Faktúru z jednej vety, spoločnosti Anthropic pošleme iba napísanú vetu a vrátime návrh do formulára. Vetu u nás neukladáme; zaznamenáme len, že návrh vznikol, a počet tokenov. Údaje fakturačného účtu uchovávame, kým účet nezrušíte. Po zrušení ich zmažeme hneď a zo záloh databázy zmiznú najneskôr do 30 dní.')}</p>
+
       <h3 class="h4">Vaše práva</h3>
       <p>
         {t(

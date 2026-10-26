@@ -13,6 +13,7 @@ import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
 import { SZCO_PAGE, SZCO_PATH } from './content/szco-calc'
 import { SRO_PAGE, SRO_PATH } from './content/sro-calc'
 import { INVOICE_PATH, TOOLS_PATH, TOOL_UPDATED } from './tools/invoice'
+import { INVOICING_PATH, INVOICING_UPDATED } from './content/invoicing'
 
 /** The public pages with the day each last changed: the sitemap, and what IndexNow is told. */
 export function sitePages(): [string, string][] {
@@ -22,6 +23,8 @@ export function sitePages(): [string, string][] {
     [WAGE_PATH, WAGE_PAGE.modified],
     [SZCO_PATH, SZCO_PAGE.modified],
     [SRO_PATH, SRO_PAGE.modified],
+    [INVOICING_PATH, INVOICING_UPDATED],
+    [`${INVOICING_PATH}/podmienky`, INVOICING_UPDATED],
     [TOOLS_PATH, TOOL_UPDATED],
     [INVOICE_PATH, TOOL_UPDATED],
     ['/investori', SITE_UPDATED],
@@ -183,6 +186,7 @@ export function llmsTxt(): string {
       '',
       '## Ďalšie stránky',
       '',
+      `- [Fakturácia zadarmo](${BRAND.origin}${INVOICING_PATH}): faktúry, dobropisy a zálohové faktúry pre s. r. o. aj živnostníkov, platiteľov DPH aj neplatiteľov. PDF s QR kódom PAY by square a e-faktúra Peppol BIS 3.0. Bez platobnej karty, aj bez objednania účtovníctva.`,
       `- [Bezplatné nástroje](${BRAND.origin}${TOOLS_PATH}): bez registrácie a objednania účtovníctva.`,
       `- [Faktúra zadarmo](${BRAND.origin}${INVOICE_PATH}): PDF pre bežné tuzemské dodanie neplatiteľa DPH medzi slovenskými podnikateľmi v EUR. Údaje spracúva iba prehliadač. Bez archívu, odoslania či eFaktúry.`,
       `- [Úvod a cenník](${BRAND.origin}/)`,

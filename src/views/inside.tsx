@@ -8,8 +8,9 @@ import type { Ending } from '../app/ending'
 import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
+import { invoicingCopy } from '../content/invoicing'
 
-export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'taxes' | 'messages' | 'company'
+export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'taxes' | 'messages' | 'company' | 'customers'
 
 /** The head of every page of the app: its own stylesheet after the site's, and its one small script. */
 export const InsideHead: FC<{ title: string; security?: boolean }> = ({ title, security = false }) => (
@@ -114,7 +115,144 @@ const EndBanner: FC<{ ending: Ending }> = ({ ending }) => {
   )
 }
 
-export const Shell: FC<ShellProps> = ({ who, place, missing, unread, companies, title, ending = null, children }) => {
+export const Shell: FC<ShellProps> = (props) => {
+  if (props.who.company.invoicingOnly) return <InvoicingShell {...props} />
+  return <ClientShell {...props} />
+}
+
+/** The places of a workspace of invoicing alone (app/invoicing.ts): its invoices, its customers, its settings. */
+const INVOICING_NAV: { place: Place; href: string; label: string; art: Art | null }[] = [
+  { place: 'invoices', href: '/app/faktury', label: invoicingCopy.app.nav.invoices, art: ART.paperInvoice },
+  { place: 'customers', href: '/app/odberatelia', label: invoicingCopy.app.nav.customers, art: ART.lens },
+  { place: 'company', href: '/app/fakturacia', label: invoicingCopy.app.nav.settings, art: ART.key },
+]
+
+/** The frame of a workspace: the same column and tabs as a client's, with only what invoicing has. */
+const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, children }) => {
+  const nav = invoicingCopy.app.nav
+  return (
+    <html lang="sk">
+      <InsideHead title={`${title} | ${BRAND.name}`} />
+      <body class="inside inside--invoicing" data-client-context={`${who.user.id}:${who.company.id}`}>
+        <a class="skip" href="#obsah">
+          {app.skip}
+        </a>
+        <div class="shell">
+          <aside class="side" aria-label={app.nav.label}>
+            <div class="side__top">
+              <Wordmark href="/app/faktury" label={nav.invoices} />
+            </div>
+            {companies.length > 1 ? (
+              <details class="side__company side__company--switch">
+                <summary class="side__summary">
+                  <span class="side__name">{who.company.name}</span>
+                  <span class="side__plan">{invoicingCopy.app.plan}</span>
+                </summary>
+                <div class="side__switch">
+                  <p class="side__switchlabel">{app.nav.switch}</p>
+                  {companies.map((other) => (
+                    <form method="post" action="/app/firma/prepnut">
+                      <input type="hidden" name="firma" value={other.id} />
+                      <button class="side__other" type="submit" aria-current={other.id === who.company.id ? 'true' : undefined}>
+                        {other.name}
+                      </button>
+                    </form>
+                  ))}
+                </div>
+              </details>
+            ) : (
+              <div class="side__company">
+                <span class="side__name">{who.company.name}</span>
+                <span class="side__plan">{invoicingCopy.app.plan}</span>
+              </div>
+            )}
+            <nav class="side__nav">
+              {INVOICING_NAV.map((item) => (
+                <a class="side__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
+                  <Tile art={item.art} size="sm" />
+                  <span class="side__label">{item.label}</span>
+                </a>
+              ))}
+            </nav>
+            <a class="btn btn--blue side__add" href="/app/faktury/nova">
+              {nav.add}
+            </a>
+            <div class="side__foot">
+              {who.user.team ? (
+                <a class="side__team" href="/ucto">
+                  {app.nav.team}
+                </a>
+              ) : null}
+              <span class="side__user">{who.user.name}</span>
+              <span class="side__email">{who.user.email}</span>
+              <a class="side__out" href="/auth?next=%2Fapp%2Ffaktury">
+                Zabezpečenie prístupu
+              </a>
+              <form method="post" action="/app/odhlasit">
+                <button class="side__out" type="submit">
+                  {app.nav.signOut}
+                </button>
+              </form>
+            </div>
+          </aside>
+          <div class="stage">
+            <header class="bar">
+              <Wordmark href="/app/faktury" label={nav.invoices} />
+              <BarMenu label={who.company.name} user={who.user}>
+                {companies.length > 1 ? (
+                  <>
+                    <p class="barmenu__label">{app.nav.switch}</p>
+                    {companies.map((other) => (
+                      <form method="post" action="/app/firma/prepnut">
+                        <input type="hidden" name="firma" value={other.id} />
+                        <button class="barmenu__item" type="submit" aria-current={other.id === who.company.id ? 'true' : undefined}>
+                          {other.name}
+                        </button>
+                      </form>
+                    ))}
+                  </>
+                ) : null}
+                {who.user.team ? (
+                  <a class="barmenu__item" href="/ucto">
+                    {app.nav.team}
+                  </a>
+                ) : null}
+              </BarMenu>
+            </header>
+            <main id="obsah" class="content">
+              {children}
+            </main>
+          </div>
+        </div>
+        <nav class="tabs" aria-label={app.nav.label}>
+          {INVOICING_NAV.slice(0, 2).map((item) => (
+            <InvoicingTab item={item} place={place} />
+          ))}
+          <a class="tabs__add" href="/app/faktury/nova" aria-label={nav.add}>
+            <span class="tabs__plus" aria-hidden="true">
+              +
+            </span>
+            <span class="tabs__label">{nav.addShort}</span>
+          </a>
+          {INVOICING_NAV.slice(2).map((item) => (
+            <InvoicingTab item={item} place={place} />
+          ))}
+        </nav>
+      </body>
+    </html>
+  )
+}
+
+const InvoicingTab: FC<{ item: (typeof INVOICING_NAV)[number]; place: Place | null }> = ({ item, place }) => (
+  <a class="tabs__link" href={item.href} aria-current={place === item.place ? 'page' : undefined}>
+    <span class="tabs__icon">
+      <Picture art={item.art} className="tabs__img" sizes="28px" />
+    </span>
+    <span class="tabs__label">{item.label}</span>
+  </a>
+)
+
+const ClientShell: FC<ShellProps> = ({ who, place, missing, unread, companies, title, ending = null, children }) => {
   // Ten days past the last day nothing more is taken: the buttons for a document lead to the page that says so.
   const intake = !ending || ending.phase !== 'ended'
   return (

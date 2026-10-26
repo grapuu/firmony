@@ -21,7 +21,7 @@ export async function companyOfAddress(db: D1Database, to: string): Promise<Comp
   const domain = BRAND.email.split('@')[1]?.toLowerCase()
   const m = new RegExp(`^${APP.inboxPrefix}([a-z0-9]{6,12})@(.+)$`).exec(to.trim().toLowerCase())
   if (!m || m[2] !== domain) return null
-  const row = await db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.inbox = ? AND c.closed_at IS NULL`).bind(m[1]).first<Row>()
+  const row = await db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE c.inbox = ? AND c.closed_at IS NULL AND c.invoicing_only = 0`).bind(m[1]).first<Row>()
   return row ? companyOf(row) : null
 }
 

@@ -7,6 +7,7 @@ import { WAGE_PAGE, WAGE_PATH } from '../content/wage-calc'
 import { SZCO_PAGE, SZCO_PATH } from '../content/szco-calc'
 import { SRO_PAGE, SRO_PATH } from '../content/sro-calc'
 import { TOOLS_PATH } from '../tools/invoice'
+import { INVOICING_PATH } from '../content/invoicing'
 
 export interface PageMeta {
   title: string
@@ -77,6 +78,9 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
             <a href="/#cennik">{copy.nav.pricing}</a>
             <a href="/#kto-sme">{copy.nav.about}</a>
             <a href="/#otazky">{copy.nav.faq}</a>
+            <a href={INVOICING_PATH} aria-current={meta.path === INVOICING_PATH ? 'page' : undefined}>
+              Faktúry zadarmo
+            </a>
             <a href="/investori" aria-current={meta.path === '/investori' ? 'page' : undefined}>
               {copy.nav.investors}
             </a>
@@ -102,6 +106,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
               <a href="/#ako-to-funguje">{copy.nav.how}</a>
               <a href="/#cennik">{copy.nav.pricing}</a>
               <a href="/#kalkulacka">{copy.footer.calc}</a>
+              <a href={INVOICING_PATH}>Fakturácia zadarmo</a>
               <a href={TOOLS_PATH}>Bezplatné nástroje</a>
               <a href="/#otazky">{copy.nav.faq}</a>
               <a href="/investori">{copy.nav.investors}</a>

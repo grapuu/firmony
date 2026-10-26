@@ -174,7 +174,9 @@ export async function checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,p
   check('assistant: the global cap also holds across simultaneous companies and users',globals.filter(x=>x.kind==='new').length===1&&(await db.prepare('SELECT COUNT(*) AS n FROM assistant_uses WHERE day=?').bind(day(0)).first()).n===200)
   const entries=await handoverData(db,co,day(0).slice(0,4),nowS)
   const exported=JSON.parse(new TextDecoder().decode(await entries.find(e=>e.name==='data/asistent-pouzitie.json').data()))
-  check('assistant: a full company export carries usage evidence without raw questions',exported.length===40&&exported.some(r=>r.id===sent.odoslanie)&&!JSON.stringify(exported).includes(sent.otazka))
+  const clientUses=(await db.prepare("SELECT COUNT(*) AS n FROM assistant_uses WHERE company_id=? AND side='client'").bind(co).first()).n
+  check('assistant: a full company export carries the client\'s usage evidence without raw questions',exported.length===clientUses&&clientUses>0&&exported.some(r=>r.id===sent.odoslanie)&&!JSON.stringify(exported).includes(sent.otazka))
+  check('assistant: the team\'s use of the assistant is no data of the client\'s export (26 October 2026)',exported.every(r=>r.side!=='team')&&(await db.prepare("SELECT COUNT(*) AS n FROM assistant_uses WHERE company_id=? AND side='team'").bind(co).first()).n>0)
   await db.prepare('UPDATE companies SET ends_on=? WHERE id=?').bind(day(-100),co).run()
   await archiveEnded({DB:db,FILES:files},day(0))
   check('assistant: ending service removes assistant access while retaining audit evidence',(await owner.get('/app/asistent')).status!==200&&(await db.prepare('SELECT COUNT(*) AS n FROM assistant_uses WHERE company_id=?').bind(co).first()).n===40)

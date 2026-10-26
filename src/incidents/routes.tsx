@@ -36,7 +36,7 @@ async function list(c: Ctx, error?: string, status: ContentfulStatusCode = 200) 
   const who = c.get('who'),
     db = c.env.DB
   const companies = await db
-    .prepare("SELECT id, name FROM companies WHERE demo = 0 AND (?1 = 'admin' OR accountant_id = ?2) ORDER BY name LIMIT 500")
+    .prepare("SELECT id, name FROM companies WHERE demo = 0 AND invoicing_only = 0 AND (?1 = 'admin' OR accountant_id = ?2) ORDER BY name LIMIT 500")
     .bind(who.user.team, who.user.id)
     .all<{ id: string; name: string }>()
   const people = await db.prepare('SELECT id, name FROM users WHERE team IS NOT NULL ORDER BY name').all<{ id: string; name: string }>()

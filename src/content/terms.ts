@@ -61,11 +61,12 @@ const SECTIONS: TermsSection[] = [
     title: 'Cena a platby',
     points: [
       `Mesačná cena je cena Vášho balíka podľa cenníka na stránke ${domain} v deň uzavretia zmluvy a je uvedená v objednávke. Za mzdy sa k nej pripočíta cena podľa cenníka za každého človeka, ktorého firma v danom mesiaci zamestnávala. Ceny sú bez DPH. Kým nie sme platiteľom DPH, DPH nepripočítavame; keď sa ním staneme, pripočítame ju v zákonnej sadzbe.`,
-      `Každý balík je určený pre počet dokladov za mesiac uvedený v cenníku. Rátajú sa doklady, ktoré v danom mesiaci pribudli v aplikácii, vrátane faktúr, ktoré ste v nej vystavili; nerátame ten istý doklad poslaný dvakrát, vymazaný doklad ani naše faktúry Vám. Mesiac, v ktorom ich bude viac, vyúčtujeme ako najbližší vyšší balík. Ak ich bude viac ako ${PLANS[PLANS.length - 1]?.docs ?? 0} za mesiac, dohodneme sa na cene; kým sa nedohodneme, účtujeme cenu najvyššieho balíka, a ak sa nedohodneme, môžeme zmluvu vypovedať.`,
+      `Každý balík je určený pre počet dokladov za mesiac uvedený v cenníku. Rátajú sa doklady, ktoré v danom mesiaci pribudli v aplikácii; nerátame faktúry, ktoré ste v nej vystavili, ten istý doklad poslaný dvakrát, vymazaný doklad ani naše faktúry Vám. Mesiac, v ktorom ich bude viac, vyúčtujeme ako najbližší vyšší balík. Ak ich bude viac ako ${PLANS[PLANS.length - 1]?.docs ?? 0} za mesiac, dohodneme sa na cene; kým sa nedohodneme, účtujeme cenu najvyššieho balíka, a ak sa nedohodneme, môžeme zmluvu vypovedať.`,
       'Cenu balíka fakturujeme mesačne vopred. Mzdy a rozdiel za mesiac vyúčtovaný ako vyšší balík fakturujeme za uplynulý mesiac na tej istej faktúre. Závierku a daňové priznanie fakturujeme po ich podaní. Faktúry sú splatné do 14 dní prevodom na účet uvedený na faktúre a nájdete ich v aplikácii.',
       'Práce mimo balíka podľa bodu 2.6 fakturujeme podľa dohody.',
       'Ak ste v omeškaní s platbou viac ako 30 dní, môžeme po upozornení v aplikácii najmenej 10 dní vopred pozastaviť prácu až do zaplatenia. Za následky pozastavenia nezodpovedáme. Pri omeškaní môžeme požadovať úrok z omeškania podľa Obchodného zákonníka.',
       'Ceny môžeme zmeniť. Zmenu oznámime v aplikácii najmenej 30 dní vopred. Ak so zmenou nesúhlasíte, môžete zmluvu vypovedať ku dňu, keď má zmena nastať.',
+      'Prvý mesiac služby je zadarmo: za balík, vyšší balík ani mzdy za tento mesiac neplatíte. Ak zmluvu vypoviete v prvom mesiaci služby, odchylne od bodu 10.2 skončí posledným dňom tohto mesiaca a za službu nezaplatíte nič. Na účely bodu 10.4 sa prvý mesiac považuje za zaplatený. Závierku a daňové priznanie, ak sme ich podali, fakturujeme podľa bodu 4.3.',
     ],
   },
   {

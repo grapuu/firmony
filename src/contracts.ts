@@ -4,6 +4,7 @@ import { CLOSING_PRICE, OFFER, OFFLINE_TERMS, OPERATOR, PAYROLL_PRICE, PLANS, TE
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, termsText, type TermsSection } from './content/terms'
 import archive20261013 from './content/terms-archive/2026-10-13.json'
 import archive20261018 from './content/terms-archive/2026-10-18.json'
+import archive20261021 from './content/terms-archive/2026-10-21.json'
 import { now, sha256Hex } from './db'
 import type { Order } from './order'
 
@@ -259,7 +260,7 @@ export async function resolveContract(db: D1Database, companyId: string, termsVe
       sha256: null,
       notice: 'Zmluvu sme s Vami uzavreli písomne mimo aplikácie. Jej podpísané znenie máte u seba; ak ho potrebujete, napíšte nám a pošleme kópiu.',
     }
-  const archived = [archive20261013, archive20261018].find((a) => a.version === termsVersion)
+  const archived = [archive20261013, archive20261018, archive20261021].find((a) => a.version === termsVersion)
   if (archived)
     return {
       status: 'archive',

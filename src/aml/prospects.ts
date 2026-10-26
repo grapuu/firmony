@@ -5,7 +5,7 @@ import { PURGE_GRACE_SECONDS } from '../incidents/store'
 import { AML_TODAY_SQL } from './retention'
 
 const expiredSql = (o: string, day: string) => `${o}.aml_ended_at IS NOT NULL AND ${o}.expires_at <= unixepoch() AND date(${localDaySql(`${o}.aml_ended_at`)},'+5 years','floor') < ${day}
-  AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = ${o}.ico AND c.demo = 0 AND (c.ends_on IS NULL OR date(c.ends_on,'+5 years','floor') >= ${day}))`
+  AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = ${o}.ico AND c.demo = 0 AND c.invoicing_only = 0 AND (c.ends_on IS NULL OR date(c.ends_on,'+5 years','floor') >= ${day}))`
 const clearSql = (o: string, day: string) => `NOT EXISTS (SELECT 1 FROM aml_prospect_reports r WHERE r.order_id = ${o}.id AND r.decided_at IS NULL)
   AND NOT EXISTS (SELECT 1 FROM aml_prospect_holds h WHERE h.order_id = ${o}.id AND h.until_on >= ${day})`
 
@@ -21,7 +21,7 @@ export async function forgetProspects(env: { DB: D1Database; FILES?: R2Bucket },
   ])
   const candidates = await db.prepare(`SELECT o.id FROM orders o WHERE o.company_id IS NULL AND o.status <> 'accepted'
     AND o.aml_ended_at IS NOT NULL AND date(${localDaySql('o.aml_ended_at')},'+5 years','floor') < ?1
-    AND ${clearSql('o','?1')} AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = o.ico AND c.demo = 0
+    AND ${clearSql('o','?1')} AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = o.ico AND c.demo = 0 AND c.invoicing_only = 0
       AND (c.ends_on IS NULL OR date(c.ends_on,'+5 years','floor') >= ?1)) ORDER BY o.aml_ended_at LIMIT ?2`)
     .bind(today,ENDING.perRun).all<{id:string}>()
   let deleted=0

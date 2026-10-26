@@ -465,7 +465,7 @@ export const READER = {
 export const EKASA_VERIFY = 'https://opd.financnasprava.sk/'
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
-export const PRIVACY_VERSION = '2026-10-22'
+export const PRIVACY_VERSION = '2026-10-26'
 
 /**
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an
@@ -474,7 +474,29 @@ export const PRIVACY_VERSION = '2026-10-22'
  * (src/content/terms.ts): acceptance keeps the complete wording and tariffs with SHA-256. Signing also requires
  * explicit legal/insurance release approval and a documented review of the particular order.
  */
-export const TERMS_VERSION = '2026-10-21'
+export const TERMS_VERSION = '2026-10-26'
+
+/**
+ * Invoicing for everyone (26 October 2026, his word: "Bude to navždy zadarmo pre každého. Pre ľudí, čo používajú našu
+ * účtovnú firmu, pre ľudí, čo nepoužívajú"): a workspace of a business's own invoices, without our accounting, made
+ * by the business itself from /fakturacia (src/app/invoicing.ts). Nothing of it is emailed to a customer: the invoice
+ * is downloaded or shared by the user. The limits keep the free service from being used to flood anybody or anything.
+ */
+export const INVOICING = {
+  /** The plan a workspace carries (no price: nothing of it is billed). */
+  plan: 'faktury',
+  /** The version of the terms of use of invoicing (src/content/invoicing-terms.ts); bump it with every change. */
+  termsVersion: '2026-10-26',
+  /** How long the link that finishes a sign-up works. */
+  linkHours: 24,
+  /** Sign-ups from one connection in an hour, to one address in a day, and all new sign-ups in a day. */
+  signupsPerHour: 5,
+  signupsPerEmailDay: 3,
+  signupsPerDay: 400,
+  /** Invoices one workspace may issue in a day, and workspaces one person may own. */
+  issuedPerDay: 200,
+  workspacesPerUser: 10,
+} as const
 
 /** The terms version of a client created by hand with a contract signed on paper, outside the app. */
 export const OFFLINE_TERMS = 'offline'

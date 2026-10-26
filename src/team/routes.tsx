@@ -886,7 +886,7 @@ teamRoutes.post('/klienti', async (c) => {
   if (values.name.length < 2) errors.name = t.newClient.errors.name
   if (values.person.length < 2) errors.person = t.newClient.errors.person
   if (!EMAIL.test(values.email)) errors.email = t.newClient.errors.email
-  if (ico && (await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL').bind(ico).first())) errors.ico = t.newClient.errors.exists
+  if (ico && (await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL AND invoicing_only = 0').bind(ico).first())) errors.ico = t.newClient.errors.exists
   if (!months.includes(values.start)) errors.start = t.newClient.errors.start
   // A client is made by hand only with a contract signed on paper: the app then says so, and the first month counts
   // for deadlines and the closing as it does for a contract concluded online.

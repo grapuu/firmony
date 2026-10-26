@@ -17,14 +17,16 @@ export function isAdmin(user: User): boolean {
 }
 
 /** Whether somebody of the team may see a company: an administrator always, an accountant only her own. */
-export function canSee(user: User, company: Pick<Company, 'accountantId'>): boolean {
+export function canSee(user: User, company: Pick<Company, 'accountantId'> & { invoicingOnly?: boolean }): boolean {
+  // A workspace of invoicing alone is nobody's of the team (app/invoicing.ts): it is no client.
+  if (company.invoicingOnly) return false
   return user.team === 'admin' || (user.team === 'accountant' && company.accountantId === user.id)
 }
 
 /** The SQL that limits companies (alias c) to what a user of the team may see. */
 export function visible(user: User, demo: boolean): { sql: string; binds: unknown[] } {
   const own = isAdmin(user) ? '' : 'AND c.accountant_id = ?'
-  return { sql: `${accessOpenSql('c')} ${own} ${demo ? '' : 'AND c.demo = 0'}`, binds: isAdmin(user) ? [] : [user.id] }
+  return { sql: `${accessOpenSql('c')} AND c.invoicing_only = 0 ${own} ${demo ? '' : 'AND c.demo = 0'}`, binds: isAdmin(user) ? [] : [user.id] }
 }
 
 /** Only an explicit personal reply closes the response clock. Filing notices, reminders and read receipts do

@@ -4579,3 +4579,236 @@ textarea {
   color: var(--soft);
   line-height: 1.55;
 }
+
+/* Invoicing for everyone (/fakturacia, 26 October 2026): the site's own parts, with the sign-up in the hero's card. */
+.pill--glass {
+  display: inline-flex;
+  margin-bottom: 22px;
+  padding: 7px 14px;
+  border: 1px solid rgb(255 255 255 / 0.32);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.12);
+  color: var(--white);
+  font-size: 0.875rem;
+  font-weight: 500;
+  backdrop-filter: blur(6px);
+}
+
+/* The sign-up's card is taller than the home page's: its glass keeps above it, and the third piece rests. */
+.hero--invoicing .hero__float--1 {
+  top: 5%;
+  right: 12%;
+}
+
+.hero--invoicing .hero__float--2 {
+  top: 6%;
+  right: 34%;
+}
+
+.hero--invoicing .hero__float--3 {
+  display: none;
+}
+
+.signup {
+  display: grid;
+  gap: 16px;
+}
+
+.signup__field .field__input {
+  width: 100%;
+}
+
+.signup__note {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--mist);
+  color: var(--text);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.signup__submit {
+  width: 100%;
+  justify-content: center;
+}
+
+.signup__fine {
+  color: var(--dim);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.invoicing-features__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.invoicing-features__card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--white);
+  box-shadow: var(--shadow-sm);
+}
+
+.invoicing-features__card h3 {
+  font-family: var(--display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.invoicing-features__card p {
+  color: var(--soft);
+  line-height: 1.6;
+}
+
+.invoicing-steps__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  list-style: none;
+}
+
+.invoicing-steps__item {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 28px;
+  border-radius: var(--r-card);
+  background: var(--mist);
+}
+
+.invoicing-steps__n {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--blue);
+  color: var(--white);
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.invoicing-steps__item h3 {
+  font-family: var(--display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.invoicing-steps__item p {
+  color: var(--soft);
+  line-height: 1.6;
+}
+
+.invoicing-why__box {
+  display: grid;
+  justify-items: start;
+  gap: 18px;
+  padding: clamp(28px, 4vw, 48px);
+  border: 1px solid var(--blue-line);
+  border-radius: var(--r-panel);
+  background: var(--blue-soft);
+}
+
+.invoicing-why__title {
+  font-family: var(--display);
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--blue);
+}
+
+.invoicing-why__box p {
+  color: var(--text);
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+.final__title em {
+  display: block;
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+  color: #ffb9c6;
+}
+
+.final .btn--white {
+  margin-top: 32px;
+}
+
+.signup-card .lead {
+  margin-top: 16px;
+}
+
+.signup-card .signup {
+  margin-top: 28px;
+}
+
+.signup-card__facts {
+  display: grid;
+  gap: 2px;
+  margin-top: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.signup-card__facts div {
+  display: grid;
+  grid-template-columns: 7em minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--mist);
+}
+
+.signup-card__facts dt {
+  color: var(--dim);
+}
+
+.signup-card__facts dd {
+  color: var(--ink);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.signup-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+@media (max-width: 960px) {
+  .invoicing-features__grid,
+  .invoicing-steps__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .invoicing-features__grid,
+  .invoicing-steps__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invoicing-features__card,
+  .invoicing-steps__item {
+    padding: 22px;
+  }
+
+  .signup-card__facts div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}

@@ -3,8 +3,11 @@ import { checkPrehlad } from './prehlad.units.mjs'
 import { checkOverview } from './overview.units.mjs'
 import { checkAssistantUnits } from './assistant.units.mjs'
 import { checkFreeInvoiceUnits } from './free-invoice.units.mjs'
+import { checkInvoicingUnits } from './invoicing.units.mjs'
 import {
   freeInvoice,
+  invoiceAi,
+  invoicing,
   aml,
   appCopy,
   bank,
@@ -7250,4 +7253,5 @@ await (await import('./social.units.mjs')).checkSocial()
 
 checkOverview()
 checkAssistantUnits()
+checkInvoicingUnits({ invoiceAi, invoicing })
 done('units')

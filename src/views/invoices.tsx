@@ -1,5 +1,6 @@
 // Faktúry: the list with what waits to be paid, the form, the invoice as a sheet of paper, and the page a customer
 // opens from the email. The sheet is one component for the app, the customer's page, the accountant and print.
+import { invoicingCopy } from '../content/invoicing'
 import type { FC } from 'hono/jsx'
 import { ART, BRAND } from '../config'
 import { formatEur, formatEurExact, formatMoney } from '../format'
@@ -217,6 +218,42 @@ export interface InvoiceFormProps {
   title?: string
   /** The company's cost centres (centers.ts): the invoice's document takes the one picked. */
   centers?: CostCenter[]
+  /** A new invoice: the sentence Claude fills it from (invoice-ai.ts), and why it could not. */
+  ai?: { sentence: string; error?: string | null } | null
+}
+
+/** An invoice from one sentence: a form of its own above the invoice's, which fills the invoice's and issues nothing. */
+const FromSentence: FC<{ sentence: string; error?: string | null; proforma: boolean }> = ({ sentence, error = null, proforma }) => {
+  const a = invoicingCopy.ai
+  return (
+    <section class="info info--ai" aria-labelledby="veta-t">
+      <h2 id="veta-t" class="info__title">
+        {a.title}
+      </h2>
+      <p class="info__lead">{a.lead}</p>
+      <form class="ai-sentence" method="post" action="/app/faktury/nova/veta" novalidate>
+        {proforma ? <input type="hidden" name="druh" value="zalohova" /> : null}
+        <label class="field__label" for="f-veta">
+          {a.label}
+        </label>
+        <textarea id="f-veta" class="field__input field__area" name="veta" rows={2} maxlength={600} placeholder={a.placeholder} aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'f-veta-error' : 'f-veta-hint'}>
+          {sentence}
+        </textarea>
+        {error ? (
+          <p class="field__error" id="f-veta-error">
+            {error}
+          </p>
+        ) : (
+          <p class="field__hint" id="f-veta-hint">
+            {a.privacy}
+          </p>
+        )}
+        <button class="btn btn--blue" type="submit">
+          {a.button}
+        </button>
+      </form>
+    </section>
+  )
 }
 
 const Text: FC<{ name: string; label: string; value: string; error?: string; hint?: string; wide?: boolean; type?: string; mode?: 'numeric' | 'decimal' | 'email'; max?: number }> = ({ name, label, value, error, hint, wide, type = 'text', mode, max = 200 }) => (
@@ -229,7 +266,7 @@ const Text: FC<{ name: string; label: string; value: string; error?: string; hin
   </div>
 )
 
-export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [], credit = null, final = null, title, centers = [] }) => {
+export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, errors, found, preview, recent = [], credit = null, final = null, title, centers = [], ai = null }) => {
   const f = t.form
   // A credit note's lines are typed as what the invoice is lowered by; its sums show with the minus they will have.
   const totals = totalsOf(credit ? creditLines(preview) : preview, vatPayer)
@@ -246,6 +283,7 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
         {final ? <p class="phead__lead">{f.finalLead}</p> : null}
       </header>
       <Flash text={errors.form} tone="error" />
+      {ai ? <FromSentence sentence={ai.sentence} error={ai.error} proforma={Boolean(values.proforma)} /> : null}
       <form class="invform" method="post" action={id ? `/app/faktury/${id}` : '/app/faktury'} novalidate>
         <input type="hidden" name="riadky" value={String(values.lines.length)} />
         {values.proforma ? <input type="hidden" name="druh" value="zalohova" /> : null}
@@ -805,7 +843,9 @@ export const InvoicePage: FC<{
   repeat?: { running: Repeat | null; next: string; open: boolean } | null
   /** An invoice paid late or still unpaid: its late interest, and the invoice of it issued already. */
   late?: LateView | null
-}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null }) => {
+  /** What stands first in the side column (a workspace's payment by hand, app/invoicing.ts). */
+  side?: unknown
+}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null, side = null }) => {
   const a = t.actions
   const state = stateOf(invoice, today)
   const credit = invoice.kind === 'credit'
@@ -831,6 +871,7 @@ export const InvoicePage: FC<{
           <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={state !== 'paid'} logo={logoSrc(seller, '/app/logo')} />
         </div>
         <aside class="invoice__side">
+          {side as never}
           <section class="info">
             {invoice.customerEmail ? (
               <form method="post" action={`/app/faktury/${invoice.id}/poslat`}>

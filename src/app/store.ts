@@ -87,6 +87,8 @@ export interface Company {
   /** The company's logo on its invoices: its key in R2 (which changes with each new picture) and its type. */
   logoKey: string | null
   logoType: string | null
+  /** A workspace of invoicing alone (app/invoicing.ts): no contract, no accountant, nothing of the books. */
+  invoicingOnly: boolean
 }
 
 export type Team = 'accountant' | 'admin'
@@ -245,7 +247,7 @@ export const COMPANY_COLUMNS = `c.id, c.aml_archived_at, c.created_at, c.name, c
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
   c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
   c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.approval_two_from, c.dunning, c.autobook,
-  c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type,
+  c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type, c.invoicing_only,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method,
   (SELECT json_group_array(json_object('year', r.year, 'coef', r.coef, 'how', r.how, 'settled', CASE WHEN json_valid(r.settled) THEN json(r.settled) END,
      'settledAt', r.settled_at, 'settledBy', (SELECT u.name FROM users u WHERE u.id = r.settled_by)))
@@ -313,6 +315,7 @@ export function companyOf(row: Row): Company {
     },
     logoKey: str(row.logo_key),
     logoType: str(row.logo_type),
+    invoicingOnly: row.invoicing_only === 1,
   }
 }
 
@@ -635,7 +638,7 @@ export async function firstCompanyOf(db: D1Database, userId: string): Promise<st
   const row = await db
     .prepare(
       `SELECT m.company_id FROM members m JOIN companies c ON c.id = m.company_id AND ${accessOpenSql('c')}
-       WHERE m.user_id = ? ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at LIMIT 1`,
+       WHERE m.user_id = ? ORDER BY c.invoicing_only, CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, m.created_at LIMIT 1`,
     )
     .bind(userId)
     .first<{ company_id: string }>()

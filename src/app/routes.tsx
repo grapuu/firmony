@@ -19,7 +19,7 @@ import { clientPayrollReportRoutes } from '../payroll-reporting/routes'
 import { clientFilingRoutes } from '../filings/routes'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, BANK, BANK_WAYS, BRAND, ENDING, FIO, TEAM } from '../config'
+import { APP, BANK, BANK_WAYS, BRAND, ENDING, FIO, INVOICING, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
@@ -27,6 +27,10 @@ import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPa
 import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, logoSrc, type LateView, type NumberingValues } from '../views/invoices'
+import { CustomersPage, HandPaid, WorkspaceSettings, WorkspaceWelcome } from '../views/invoicing'
+import { INVOICING_PATH, invoicingCopy as iv } from '../content/invoicing'
+import { INVOICE_AI, askInvoiceDraft, fillValues } from './invoice-ai'
+import { customersOf, deleteWorkspace, handAdvanceOf, handPaidStatement, invoicingPath, issueHandAdvance, workspaceReady, workspaceStatement, type WorkspaceErrors, type WorkspaceValues } from './invoicing'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
 import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
@@ -338,6 +342,8 @@ appRoutes.use('*', async (c, next) => {
   const security = await securityGate(c, who, sensitivePath(path, c.req.method) && (!/^\/app\/export(?:\/|$)/.test(path) || who.role === 'owner'))
   if (security) return security
   // A second tab can switch the session's company or account while the first still holds unsent files or text.
+  // A workspace of invoicing alone reaches its invoicing and nothing else of the app (app/invoicing.ts).
+  if (who.company.invoicingOnly && !invoicingPath(path)) return reads ? c.redirect('/app/faktury', 303) : c.text('Forbidden', 403)
   if (!reads && wantsReceipt(c) && /^\/app\/(?:doklady|spravy|platby\/[^/]+\/doklad)$/.test(path)
     && c.req.header('x-firmony-context') !== `${who.user.id}:${who.company.id}`) {
     return c.json({ error: 'Prihlásený účet alebo firma sa zmenili. Otvorte Firmony v ďalšom okne, vráťte pôvodnú firmu a skúste odoslanie znova.' }, 409)
@@ -459,6 +465,14 @@ function flashOf(c: Ctx): string | null {
       return t.notice.flash
     case 'vypoved-spat':
       return t.notice.withdrawn
+    case 'zaplatena':
+      return iv.app.paid.flash
+    case 'zaloha-prijata':
+      return iv.app.paid.flashAdvance
+    case 'nezaplatena':
+      return iv.app.paid.flashUndo
+    case 'nastavenia':
+      return iv.app.settings.saved
     default:
       return null
   }
@@ -467,6 +481,144 @@ function flashOf(c: Ctx): string | null {
 function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// A workspace of invoicing alone (app/invoicing.ts): its settings, its customers, an invoice paid by hand
+// ---------------------------------------------------------------------------------------------------------------
+
+/** What only a workspace's owner may do; anybody else, or a client's company, is answered as if it were not there. */
+function workspaceOwner(c: Ctx): boolean {
+  const who = c.get('who')
+  return who.company.invoicingOnly && who.role === 'owner'
+}
+
+function workspaceValuesOf(company: Company): WorkspaceValues {
+  return {
+    name: company.name,
+    address: company.address ?? '',
+    ico: company.ico ?? '',
+    dic: company.dic ?? '',
+    icdph: company.icdph ?? '',
+    registerLine: company.registerLine ?? '',
+    vatPayer: company.vatPayer,
+    iban: company.invoiceIban ? groupIban(company.invoiceIban) : '',
+    dueDays: String(company.invoiceDueDays),
+    footer: company.invoiceFooter ?? '',
+  }
+}
+
+async function workspacePage(c: Ctx, values: WorkspaceValues | null = null, errors: WorkspaceErrors = {}, status: ContentfulStatusCode = 200, removeError: string | null = null) {
+  const who = c.get('who')
+  if (!who.company.invoicingOnly) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  return shell(
+    c,
+    'company',
+    iv.app.settings.title,
+    <WorkspaceSettings values={values ?? workspaceValuesOf(who.company)} errors={errors} owner={who.role === 'owner'} ico={who.company.ico} flash={flashOf(c)} removeError={removeError} />,
+    status,
+  )
+}
+
+appRoutes.get('/fakturacia', (c) => workspacePage(c))
+
+appRoutes.post('/fakturacia', async (c) => {
+  const who = c.get('who')
+  if (!workspaceOwner(c)) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  const body = await c.req.parseBody()
+  const text = (name: string, max: number) => (typeof body[name] === 'string' ? (body[name] as string).replace(/\s+/g, ' ').trim().slice(0, max) : '')
+  const values: WorkspaceValues = {
+    name: text('meno', 160),
+    address: text('adresa', 240),
+    ico: text('ico', 12),
+    dic: text('dic', 12),
+    icdph: text('icdph', 14),
+    registerLine: text('register', 240),
+    vatPayer: body.platitel === '1',
+    iban: text('iban', 42),
+    dueDays: text('splatnost', 3),
+    footer: who.company.invoiceFooter ?? '',
+  }
+  const e = iv.app.settings.errors
+  const errors: WorkspaceErrors = {}
+  const ico = values.ico ? normalizeIco(values.ico) : null
+  const dic = values.dic.replace(/\s/g, '')
+  const icdph = values.icdph.replace(/\s/g, '').toUpperCase()
+  const iban = values.iban ? plainIban(values.iban) : ''
+  const due = /^\d{1,3}$/.test(values.dueDays) ? Number(values.dueDays) : -1
+  if (values.name.length < 2) errors.name = e.name
+  if (values.address.length < 5) errors.address = e.address
+  if (values.ico && !ico) errors.ico = e.ico
+  if (dic && !/^\d{10}$/.test(dic)) errors.dic = e.dic
+  if (icdph && !/^SK\d{10}$/.test(icdph)) errors.icdph = e.icdph
+  if (values.vatPayer && !icdph) errors.icdph = e.vatId
+  if (iban && !isIban(iban)) errors.iban = e.iban
+  if (due < 0 || due > 365) errors.dueDays = e.dueDays
+  if (Object.keys(errors).length > 0) return workspacePage(c, values, { ...errors, form: e.summary }, 422)
+  await c.env.DB.batch(
+    workspaceStatement(
+      c.env.DB,
+      who.company.id,
+      { name: values.name, address: values.address, ico, dic: dic || null, icdph: icdph || null, registerLine: values.registerLine || null, vatPayer: values.vatPayer, iban: iban || null, dueDays: due, footer: who.company.invoiceFooter },
+      who.user.id,
+    ),
+  )
+  return c.redirect('/app/fakturacia?ok=nastavenia', 303)
+})
+
+appRoutes.post('/fakturacia/zrusit', async (c) => {
+  const who = c.get('who')
+  if (!workspaceOwner(c)) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  const body = await c.req.parseBody()
+  const typed = typeof body.potvrdenie === 'string' ? body.potvrdenie.trim().toLocaleUpperCase('sk') : ''
+  if (typed !== 'ZRUŠIŤ' && typed !== 'ZRUSIT') return workspacePage(c, null, {}, 422, iv.app.remove.error)
+  await deleteWorkspace(c.env.DB, c.env.FILES, who.company.id)
+  // The person goes on in another company of theirs, or is signed out when there is none.
+  const next = await firstCompanyOf(c.env.DB, who.user.id)
+  if (next) {
+    await c.env.DB.batch([switchStatement(c.env.DB, who.session, who.user.id, next)])
+    return c.redirect('/app', 303)
+  }
+  await endSession(c, c.env.DB)
+  return c.redirect(`${INVOICING_PATH}?zrusene=1`, 303)
+})
+
+appRoutes.get('/odberatelia', async (c) => {
+  const who = c.get('who')
+  if (!who.company.invoicingOnly) return shell(c, null, t.errors.notFound, <Missing />, 404)
+  return shell(c, 'customers', iv.app.customers.title, <CustomersPage customers={await customersOf(c.env.DB, who.company.id)} />)
+})
+
+/** Marks a workspace's invoice or request paid on a day (not ahead, not before it was issued); a request's advance document follows. */
+appRoutes.post('/faktury/:id/zaplatena', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const invoice = who.company.invoicingOnly && ID.test(id) ? await getInvoice(db, who.company.id, id) : null
+  if (!invoice || invoice.status !== 'issued' || (invoice.kind !== 'invoice' && invoice.kind !== 'proforma')) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  if (invoice.handPaidOn) return c.redirect(`/app/faktury/${invoice.id}`, 303)
+  const body = await c.req.parseBody()
+  const day = dayOfText(typeof body.den === 'string' ? body.den : '')
+  if (!day || day > today() || day < invoice.issuedOn) return invoicePage(c, invoice.id, { error: iv.app.paid.errors.day }, 422)
+  await db.batch(handPaidStatement(db, who.company.id, invoice.id, day, who.user.id))
+  if (invoice.kind === 'proforma') {
+    const fresh = await getInvoice(db, who.company.id, invoice.id)
+    const made = fresh ? await issueHandAdvance(db, who.company, fresh, who.user.id, today()) : null
+    if (made) return c.redirect(`/app/faktury/${made}?ok=zaloha-prijata`, 303)
+  }
+  return c.redirect(`/app/faktury/${invoice.id}?ok=zaplatena`, 303)
+})
+
+appRoutes.post('/faktury/:id/nezaplatena', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const invoice = who.company.invoicingOnly && ID.test(id) ? await getInvoice(db, who.company.id, id) : null
+  if (!invoice || !invoice.handPaidOn) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
+  // The tax document of an advance stands: the mark it was made from stays (a difference is put right by a credit note).
+  if (invoice.kind === 'proforma' && (await handAdvanceOf(db, who.company.id, invoice.id))) return c.redirect(`/app/faktury/${invoice.id}`, 303)
+  await db.batch(handPaidStatement(db, who.company.id, invoice.id, null, who.user.id))
+  return c.redirect(`/app/faktury/${invoice.id}?ok=nezaplatena`, 303)
+})
 
 appRoutes.get('/', async (c) => {
   const who = c.get('who')
@@ -2646,6 +2798,7 @@ async function invoiceForm(
   status: ContentfulStatusCode = 200,
   found: string | null = null,
   recent: { id: string; name: string }[] = [],
+  ai: { sentence: string; error?: string | null } | null = null,
 ) {
   const who = c.get('who')
   // A credit note shows the invoice it corrects; a final invoice the request and the advances it deducts.
@@ -2670,10 +2823,82 @@ async function invoiceForm(
       final={final}
       title={title}
       centers={await listCenters(c.env.DB, who.company.id)}
+      ai={id || credit || final ? null : (ai ?? { sentence: '' })}
     />,
     status,
   )
 }
+
+/**
+ * An invoice from one sentence (invoice-ai.ts): the new invoice's form filled by Claude from what the person wrote, never
+ * issued by it. The customer is taken from the register by its IČO, else from an earlier invoice of the same name.
+ */
+appRoutes.post('/faktury/nova/veta', async (c) => {
+  const who = c.get('who')
+  const db = c.env.DB
+  const day = today()
+  if (!serviceOpen(who.company, day)) return invoicesPage(c, 409)
+  const body = await c.req.parseBody()
+  const sentence = typeof body.veta === 'string' ? body.veta.replace(/\s+/g, ' ').trim().slice(0, INVOICE_AI.chars) : ''
+  const vatPayer = who.company.vatPayer
+  const values: InvoiceValues = {
+    customerName: '',
+    customerAddress: '',
+    customerIco: '',
+    customerDic: '',
+    customerIcdph: '',
+    customerEmail: '',
+    issued: textDay(day),
+    delivered: textDay(day),
+    due: textDay(addDays(day, who.company.invoiceDueDays)),
+    iban: await invoiceIban(db, who.company),
+    note: '',
+    lines: [emptyLine(vatPayer), emptyLine(vatPayer), emptyLine(vatPayer)],
+    ...(body.druh === 'zalohova' ? { proforma: true } : {}),
+  }
+  const a = iv.ai
+  const refuse = async (error: string, status: ContentfulStatusCode) => invoiceForm(c, null, values, {}, status, null, await recentCustomers(db, who.company.id), { sentence, error })
+  if (sentence.length < 5) return refuse(a.errors.short, 422)
+  const key = c.env.ANTHROPIC_API_KEY
+  if (!key) return refuse(a.errors.unavailable, 503)
+  if (
+    !(await withinLimit(db, 'invoice-ai-user', who.user.id, INVOICE_AI.perUser, 86400)) ||
+    !(await withinLimit(db, 'invoice-ai-company', who.company.id, INVOICE_AI.perCompany, 86400)) ||
+    !(await withinLimit(db, 'invoice-ai', 'all', INVOICE_AI.perDay, 86400))
+  )
+    return refuse(a.errors.limit, 429)
+  const asked = await askInvoiceDraft(key, sentence, vatPayer)
+  // What is counted is the use and its tokens, never the sentence.
+  await db.batch([eventStatement(db, { company: who.company.id, user: who.user.id, action: 'invoice.ai', detail: { ok: Boolean(asked.draft), in: asked.inputTokens, out: asked.outputTokens } })])
+  if (!asked.draft) return refuse(a.errors.failed, 422)
+  const filled = fillValues(values, asked.draft, vatPayer, (days) => textDay(addDays(day, days)))
+  let found: string = a.done
+  if (asked.draft.customerIco && normalizeIco(asked.draft.customerIco)) {
+    const answer = await lookupCompany(normalizeIco(asked.draft.customerIco) ?? '')
+    if ('found' in answer && answer.found) {
+      filled.customerIco = answer.found.ico
+      filled.customerName = answer.found.name
+      filled.customerAddress = answer.found.address ?? ''
+    }
+  } else if (filled.customerName) {
+    // A customer invoiced before, by its name as written: its address and numbers as on its latest invoice.
+    const earlier = await db
+      .prepare("SELECT id FROM invoices WHERE company_id = ? AND status = 'issued' AND lower(customer_name) LIKE ? ESCAPE '\\' ORDER BY issued_on DESC LIMIT 1")
+      .bind(who.company.id, `%${filled.customerName.toLowerCase().replace(/[\\%_]/g, (m) => `\\${m}`)}%`)
+      .first<{ id: string }>()
+    const prior = earlier ? await getInvoice(db, who.company.id, earlier.id) : null
+    if (prior) {
+      filled.customerName = prior.customerName
+      filled.customerAddress = prior.customerAddress ?? ''
+      filled.customerIco = prior.customerIco ?? ''
+      filled.customerDic = prior.customerDic ?? ''
+      filled.customerIcdph = prior.customerIcdph ?? ''
+      filled.customerCountry = prior.customerCountry ?? ''
+      filled.customerEmail = prior.customerEmail ?? ''
+    } else found = a.doneNoCustomer
+  }
+  return invoiceForm(c, null, filled, {}, 200, found, [], { sentence })
+})
 
 /** An issued request for an advance of the company, which a final invoice or an advance's tax document belongs to. */
 async function requestOf(db: D1Database, company: string, id: string | undefined): Promise<StoredInvoice | null> {
@@ -2727,10 +2952,15 @@ async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
   const invoices = await listInvoices(c.env.DB, who.company.id)
   const closed = serviceOpen(who.company, today()) ? null : t.ending.noInvoices(dayName(who.company.endsOn ?? today()))
+  const welcome = who.company.invoicingOnly ? (
+    <WorkspaceWelcome ready={workspaceReady(who.company)} register={!who.company.registerLine} empty={invoices.every((i) => i.status !== 'issued')} />
+  ) : null
   return shell(
     c,
     'invoices',
     ti.title,
+    <>
+    {welcome}
     <InvoicesPage
       invoices={invoices}
       today={today()}
@@ -2738,7 +2968,8 @@ async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
       closed={closed}
       repeats={await repeatsOf(c.env.DB, who.company.id)}
       dunning={closed ? null : { on: who.company.dunning, owner: who.role === 'owner' }}
-    />,
+    />
+    </>,
     status,
   )
 }
@@ -2955,6 +3186,9 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
   const issued = dayOfText(values.issued) || today()
   const delivered = dayOfText(values.delivered) || issued
   const due = dayOfText(values.due) || issued
+  // A free workspace issues as many invoices as any business does in a day, and not more (the terms of use).
+  if (issue && who.company.invoicingOnly && !(await withinLimit(db, 'invoicing-issue', who.company.id, INVOICING.issuedPerDay, 86400)))
+    return invoiceForm(c, draftId, values, { form: iv.app.limit }, 429)
   const id = draftId ?? crypto.randomUUID()
   const documentId = crypto.randomUUID()
   try {
@@ -2987,7 +3221,8 @@ async function saveInvoice(c: Ctx, draftId: string | null) {
     console.error('an invoice failed', err instanceof Error ? err.name : 'error')
     return invoiceForm(c, draftId, values, { form: ti.errors.form }, 409)
   }
-  if (issue)
+  // A workspace of invoicing alone has no books and no bank with us: nothing to read or pair.
+  if (issue && !who.company.invoicingOnly)
     later(
       c,
       (async () => {
@@ -3112,11 +3347,23 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
       }
     : null
   const late = await lateOf(db, who.company.id, invoice, credits)
+  // A workspace's invoice or request is paid by the user's word: the card that marks it, first in the side column.
+  const hand =
+    who.company.invoicingOnly && (invoice.kind === 'invoice' || invoice.kind === 'proforma') && (invoice.totalCents > 0 || invoice.handPaidOn) ? (
+      <HandPaid
+        invoiceId={invoice.id}
+        proforma={invoice.kind === 'proforma'}
+        paidOn={invoice.handPaidOn ?? null}
+        today={today()}
+        advance={invoice.kind === 'proforma' ? await handAdvanceOf(db, who.company.id, invoice.id) : null}
+        error={extra.error ?? null}
+      />
+    ) : null
   return shell(
     c,
     'invoices',
     `${ti.sheet.kinds[invoice.kind] ?? ti.sheet.title} ${invoice.number}`,
-    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={advance} repeat={repeat} late={late} {...extra} />,
+    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={who.company.invoicingOnly ? null : advance} repeat={repeat} late={late} side={hand} {...(hand ? {} : extra)} />,
     status,
   )
 }

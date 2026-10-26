@@ -136,15 +136,16 @@ export function renewOrderStatement(db: D1Database, orderId: string, ts: number,
   return db
     .prepare(
       `UPDATE orders SET expires_at = ?2 + ?3, token = ?4 WHERE id = ?1 AND status = 'open' AND expires_at <= ?2 AND aml_delete_started_at IS NULL
-         AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = orders.ico AND c.closed_at IS NULL AND c.demo = 0 AND c.operator = 0)`,
+         AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = orders.ico AND c.closed_at IS NULL AND c.demo = 0 AND c.operator = 0 AND c.invoicing_only = 0)`,
     )
     .bind(orderId, ts, ORDER.days * 86400, tokenHash)
 }
 
 /** Whether a company with this IČO is already a client (a second contract for it is not taken online). */
 export async function isClient(db: D1Database, ico: string): Promise<boolean> {
-  // europio, which issues Firmony's invoices, keeps its own books in the app, and is no client of itself.
-  return Boolean(await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL AND demo = 0 AND operator = 0').bind(ico).first())
+  // europio, which issues Firmony's invoices, keeps its own books in the app, and is no client of itself; a workspace of
+  // invoicing alone (app/invoicing.ts) is nobody's contract.
+  return Boolean(await db.prepare('SELECT 1 AS x FROM companies WHERE ico = ? AND closed_at IS NULL AND demo = 0 AND operator = 0 AND invoicing_only = 0').bind(ico).first())
 }
 
 export interface Acceptance {
