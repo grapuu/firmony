@@ -51,13 +51,15 @@ export function registerArchiveRoutes(app: Hono<Env>, render: Render) {
     if (!company) return c.notFound()
     const db=c.env.DB
     const dossierIds=companyDossiersSql('c')
-    const rows=await Promise.all(['declarations','risks','reports','events','aml_auto_reviews'].map(async(table) =>
+    const rows=await Promise.all(['declarations','risks','reports','events','aml_auto_reviews','member_removals','dropped_payments'].map(async(table) =>
       [table,(await db.prepare(`SELECT * FROM ${table} WHERE company_id = ? ORDER BY rowid`).bind(company.id).all()).results] as const))
     const dossiers=await db.prepare(`SELECT * FROM aml_dossiers WHERE id IN (SELECT x.id FROM companies c JOIN aml_dossiers x ON x.id IN (${dossierIds}) WHERE c.id = ?)` ).bind(company.id).all()
     const ids=dossiers.results.map((d)=>String(d.id))
     const history=await Promise.all(ids.map(async(id)=>({id,
       checks:(await db.prepare('SELECT * FROM aml_checks WHERE dossier_id = ? ORDER BY id').bind(id).all()).results,
-      decisions:(await db.prepare('SELECT * FROM aml_decisions WHERE dossier_id = ? ORDER BY id').bind(id).all()).results,bankEvidence:(await db.prepare('SELECT * FROM aml_bank_evidence WHERE dossier_id=? ORDER BY created_at,rowid').bind(id).all()).results})))
+      decisions:(await db.prepare('SELECT * FROM aml_decisions WHERE dossier_id = ? ORDER BY id').bind(id).all()).results,bankEvidence:(await db.prepare('SELECT * FROM aml_bank_evidence WHERE dossier_id=? ORDER BY created_at,rowid').bind(id).all()).results,
+      placeChecks:(await db.prepare('SELECT * FROM aml_place_checks WHERE dossier_id = ? ORDER BY id').bind(id).all()).results,
+      policyReviews:(await db.prepare('SELECT * FROM aml_policy_reviews WHERE dossier_id = ? ORDER BY id').bind(id).all()).results})))
     const prospectReports=await db.prepare('SELECT * FROM aml_prospect_reports WHERE order_id IN (SELECT id FROM orders WHERE company_id = ?) ORDER BY created_at,id').bind(company.id).all()
     return c.body(JSON.stringify({company:{id:company.id,name:company.name,ico:company.ico,endsOn:company.endsOn},...Object.fromEntries(rows),dossiers:dossiers.results,history,prospectReports:prospectReports.results},null,2),200,
       {'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="Firmony-AML-historia.json"','Cache-Control':'private, no-store'})

@@ -4,6 +4,9 @@ import type { Company } from '../app/store'
 import type { Order } from '../order'
 import { sha256Hex } from '../db'
 import { orderFacts, companyFacts } from './model'
+import { BRAND, OPERATOR, planById } from '../config'
+import { formatEur } from '../format'
+import { AML_NO_CONSENT } from './consent'
 
 export const declarationFingerprint = (facts: unknown, declaration: Declaration) => sha256Hex(JSON.stringify({ company: facts, declaration }))
 export async function declarationPdf(order: Order | Company, d: Declaration): Promise<string> {
@@ -27,8 +30,13 @@ export async function declarationPdf(order: Order | Company, d: Declaration): Pr
     { kind: 'text', text: `Skutočné miesto činnosti: ${d.businessAtSeat ? order.address ?? 'sídlo spoločnosti' : d.businessAddress ?? ''}. Krajiny sídla a prevádzkarní: ${d.businessCountries ?? ''}.` },
     { kind: 'text', text: `Firma koná vo vlastnom mene a na vlastný účet: ${d.ownBehalf ? 'áno' : 'nie'}.` })
   if (!d.ownBehalf && d.principal) blocks.push({ kind: 'text', text: `Osoba, v ktorej mene firma koná: ${d.principal.name}, ${d.principal.kind === 'company' ? `IČO ${d.principal.ico}, sídlo ${d.principal.address}` : d.principal.birthNumber ? `rodné číslo ${d.principal.birthNumber}` : `dátum narodenia ${d.principal.birthDate}`}.` })
+  const plan = d.contract ? planById(d.contract.plan) : null
+  if (d.contract && plan) blocks.push({ kind: 'heading', text: 'Prijatie ponuky' },
+    { kind: 'text', text: `Ako osoba konajúca za firmu prijímam ponuku služby Firmony spoločnosti ${OPERATOR.name}, IČO ${OPERATOR.companyId}: balík ${plan.name} za ${formatEur(plan.price * 100)} mesačne bez DPH, prvý mesiac služby ${d.contract.startOn.slice(5, 7)}/${d.contract.startOn.slice(0, 4)}, podľa obchodných podmienok vo verzii ${d.contract.terms} (${BRAND.origin}/podmienky).` },
+    { kind: 'text', text: 'Zmluva vznikne až po dokončení overenia podľa § 8 ods. 2 zákona č. 297/2008 Z. z., keď ju potvrdíte na stránke objednávky, a iba v tomto znení. Inú ponuku, iný balík alebo iný začiatok toto vyhlásenie nepokrýva.' })
   blocks.push({ kind: 'heading', text: 'Potvrdenie' },
-    { kind: 'text', text: 'Záväzne vyhlasujem, že uvedené údaje sú pravdivé a úplné. Zmenu oznámim službe Firmony bez zbytočného odkladu. Toto vyhlásenie nie je uzavretím zmluvy o účtovných službách.' },
+    { kind: 'text', text: `Záväzne vyhlasujem, že uvedené údaje sú pravdivé a úplné. Zmenu oznámim službe Firmony bez zbytočného odkladu.${d.contract ? '' : ' Toto vyhlásenie nie je uzavretím zmluvy o účtovných službách.'}` },
+    { kind: 'text', text: AML_NO_CONSENT },
     { kind: 'text', text: `Odtlačok údajov SHA-256: ${await declarationFingerprint(facts, d)}` },
     { kind: 'text', text: 'Dokument podpíšte kvalifikovaným elektronickým podpisom. Podpísaný súbor nahrajte vo formulári, z ktorého ste vyhlásenie stiahli.' })
   return pdfText({ title: 'Firmony: vyhlásenie pred uzavretím zmluvy', header: { left: 'Firmony | Vyhlásenie', right: `IČO ${order.ico}` }, blocks })

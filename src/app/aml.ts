@@ -6,7 +6,7 @@ import { accessOpenSql } from '../aml/retention'
 // its own and none is ever changed or removed, so that what was known on a day can be shown for five years (s. 19).
 // A client never sees a report (s. 18: nobody may tell the client): the reports live only on the team's pages.
 import { now } from '../db'
-import { countryCodes, validCountryCodes, highRiskInText, monitoredCountry } from '../aml/countries'
+import { countryCodes, validCountryCodes, highRiskCodes, highRiskName, monitoredCodes } from '../aml/countries'
 import { eventStatement } from './store'
 import { CURRENT_OFFICER_SQL } from '../aml/schema'
 import { companyVerifiedSql, quoteSql } from '../aml/model'
@@ -55,6 +55,13 @@ export interface Declaration {
   cash: boolean
   abroad: boolean
   abroadWhere: string
+  /**
+   * The offer the person acting for the company accepts in the same document it signs with a qualified signature
+   * before admission (an online order only): the plan, the first month and the version of the terms. The contract is
+   * concluded later only in exactly this form (order.ts, acceptStatements), so whoever holds the emailed link can
+   * conclude nothing the identified person did not sign.
+   */
+  contract?: { plan: string; startOn: string; terms: string }
 }
 
 export const TURNOVERS: readonly Turnover[] = ['do-50', '50-200', '200-1000', 'nad-1000']
@@ -131,6 +138,7 @@ export function valuesFrom(body: Record<string, unknown>): DeclarationValues {
     ['abroad', 1],
     ['abroadWhere', 200],
     ['truthful', 1], ['ownersOverflow', 1],
+    ['contractPlan', 10], ['contractStart', 10], ['contractAgree', 1],
   ]
   for (const [name, max] of fields) v[name] = text(body, name, max)
   for (let i = 1; i <= OWNER_SLOTS; i++) {
@@ -249,20 +257,25 @@ export function checkDeclaration(
   }
 }
 
-/** The form filled with a declaration given before, so that changing it starts from what is there. */
-export function valuesOfDeclaration(d: Declaration): DeclarationValues {
+/**
+ * The form filled with a declaration given before, so that changing it starts from what is there. With `secrets` false
+ * (a page anybody holding an emailed link can open) the birth numbers and the document's number are left empty, to be
+ * typed again.
+ */
+export function valuesOfDeclaration(d: Declaration, { secrets = true }: { secrets?: boolean } = {}): DeclarationValues {
+  const secret = (value: string) => (secrets ? value : '')
   const sk = (day: string) => (day ? `${Number(day.slice(8, 10))}. ${Number(day.slice(5, 7))}. ${day.slice(0, 4)}` : '')
   const v: DeclarationValues = {
     businessAtSeat: d.businessAtSeat === undefined ? '' : d.businessAtSeat ? '1' : '0', businessAddress: d.businessAddress ?? '', businessCountries: d.businessCountries ?? '',
-    ownBehalf: d.ownBehalf === undefined ? '' : d.ownBehalf ? '1' : '0', principalKind: d.principal?.kind ?? '', principalName: d.principal?.name ?? '', principalRc: d.principal?.birthNumber ?? '', principalDob: sk(d.principal?.birthDate ?? ''), principalAddress: d.principal?.address ?? '', principalIco: d.principal?.ico ?? '',
+    ownBehalf: d.ownBehalf === undefined ? '' : d.ownBehalf ? '1' : '0', principalKind: d.principal?.kind ?? '', principalName: d.principal?.name ?? '', principalRc: secret(d.principal?.birthNumber ?? ''), principalDob: sk(d.principal?.birthDate ?? ''), principalAddress: d.principal?.address ?? '', principalIco: d.principal?.ico ?? '',
     residenceCountry: d.director.residenceCountry ?? '', citizenships: d.director.citizenships ?? '', partnerCountries: d.partnerCountries ?? '',
     name: d.director.name,
-    rc: d.director.birthNumber,
+    rc: secret(d.director.birthNumber),
     dob: sk(d.director.birthDate),
     address: d.director.address,
     nationality: d.director.nationality,
     idKind: d.director.idKind,
-    idNumber: d.director.idNumber,
+    idNumber: secret(d.director.idNumber),
     pep: d.director.pep ? '1' : '0',
     kuv: d.kuv,
     activity: d.activity,
@@ -272,10 +285,13 @@ export function valuesOfDeclaration(d: Declaration): DeclarationValues {
     abroad: d.abroad ? '1' : '0',
     abroadWhere: d.abroadWhere,
     truthful: '',
+    contractPlan: d.contract?.plan ?? '',
+    contractStart: d.contract?.startOn ?? '',
+    contractAgree: '',
   }
   d.owners.slice(0, OWNER_SLOTS).forEach((o, i) => {
     v[`o${i + 1}Name`] = o.name
-    v[`o${i + 1}Rc`] = o.birthNumber
+    v[`o${i + 1}Rc`] = secret(o.birthNumber)
     v[`o${i + 1}Dob`] = sk(o.birthDate)
     v[`o${i + 1}Address`] = o.address
     v[`o${i + 1}Nationality`] = o.nationality
@@ -297,18 +313,30 @@ export type Level = 'low' | 'standard' | 'high'
 export const LEVELS: readonly Level[] = ['low', 'standard', 'high']
 
 /**
- * The risk the declaration points to, as the program sets it (section 2): a politically exposed person makes it high;
- * otherwise each of large cash and partners outside the EU is a factor, none is low, one standard, two high.
+ * The risk the declaration points to, as the program sets it (sections 3.4 and 4.4): a politically exposed person, or a
+ * person, a seat, a branch or regular partners in a high-risk country, make it high. Otherwise each standard factor
+ * counts once: large cash; regular partners outside the EU or in a country under FATF's increased monitoring (one
+ * relationship, one factor, however many lists it is on); a director or beneficial owner living outside the EU or
+ * holding citizenship or residence of a monitored country; a seat or branch in a monitored country. None is low, one
+ * standard, two or more high.
+ *
+ * Country codes are read only from the fields that hold codes, and country names only from the fields that hold the
+ * name of a country or a nationality. A street address is never read for a country: "Na Hrebienku" is no Namibia,
+ * "Rue de la Paix" no Laos and "Ruská Nová Ves" no Russia.
  */
 export function suggestedLevel(d: Declaration): Level {
   const persons = [d.director, ...d.owners]
-  const places = [d.businessCountries, d.partnerCountries, d.abroadWhere, ...persons.flatMap((p) => [p.citizenships, p.nationality, p.residenceCountry, p.address])].filter((v): v is string => typeof v === 'string')
-  if (persons.some((p) => p.pep) || places.some(highRiskInText)) return 'high'
-  const monitoring = places.some((p) => countryCodes(p).some(monitoredCountry))
+  const text = (v: unknown): string => (typeof v === 'string' ? v : '')
+  const personCodes = persons.flatMap((p) => [text(p.citizenships), text(p.residenceCountry)])
+  const codeFields = [text(d.businessCountries), text(d.partnerCountries), ...personCodes]
+  const nameFields = [text(d.abroadWhere), ...persons.map((p) => text(p.nationality))]
+  if (persons.some((p) => p.pep) || codeFields.some(highRiskCodes) || nameFields.some(highRiskName)) return 'high'
   const eu = new Set('AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(' '))
-  const outsideEu = persons.some((p) => p.residenceCountry && !eu.has(p.residenceCountry))
-  const factors = [d.cash, d.abroad, outsideEu, monitoring].filter(Boolean).length
-  return factors >= 2 ? 'high' : factors === 1 || monitoring ? 'standard' : 'low'
+  const partners = d.abroad || monitoredCodes(text(d.partnerCountries))
+  const people = persons.some((p) => (p.residenceCountry && !eu.has(p.residenceCountry)) || monitoredCodes(text(p.citizenships)) || monitoredCodes(text(p.residenceCountry)))
+  const seat = monitoredCodes(text(d.businessCountries))
+  const factors = [d.cash, partners, people, seat].filter(Boolean).length
+  return factors >= 2 ? 'high' : factors === 1 ? 'standard' : 'low'
 }
 
 export interface StoredDeclaration {

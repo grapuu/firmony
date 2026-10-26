@@ -8,6 +8,7 @@ import {
   freeInvoice,
   invoiceAi,
   invoicing,
+  amlConsent,
   aml,
   appCopy,
   bank,
@@ -672,6 +673,26 @@ check('residence and business partners in a high-risk country independently requ
 check('FATF monitoring alone gives standard risk and does not become blanket high risk',aml.suggestedLevel({...riskData,director:{...riskData.director,citizenships:'BG'}})==='standard')
 check('two standard programme factors require high risk',aml.suggestedLevel({...riskData,cash:true,director:{...riskData.director,citizenships:'BG'}})==='high')
 check('an Austrian address does not falsely match Russia',aml.suggestedLevel({...riskData,director:{...riskData.director,address:'TEST Rakúska 12, Košice'}})==='low')
+// Review of 26 October 2026: a street address is never read for a country, a two-letter word never as a code outside the
+// code fields, and a name only in the fields that hold a country's name.
+for (const address of ['Na Hrebienku 12, Bratislava','Na Příkopě 10, Praha','Rue de la Paix, Paris','Ruská Nová Ves 15, 080 05','Ruské Pekľany 3, 082 66','Iránska 4, Košice','Sy 12, LA 9, Bratislava'])
+  check(`a street address is no country: ${address}`,aml.suggestedLevel({...riskData,director:{...riskData.director,address},owners:[]})==='low' && aml.suggestedLevel({...riskData,kuv:'with',owners:[{...riskData.director,name:'TEST Druhý',address,share:'50 %'}]})==='low')
+check('a high-risk nationality written as a name is high',aml.suggestedLevel({...riskData,director:{...riskData.director,nationality:'ruská'}})==='high' && aml.suggestedLevel({...riskData,director:{...riskData.director,nationality:'iránska'}})==='high')
+check('a high-risk citizenship or residence code is high',aml.suggestedLevel({...riskData,director:{...riskData.director,citizenships:'SK, KP'}})==='high' && aml.suggestedLevel({...riskData,director:{...riskData.director,residenceCountry:'MM'}})==='high')
+check('partners named in a high-risk country are high',aml.suggestedLevel({...riskData,abroad:true,abroadWhere:'Irán, Turecko',partnerCountries:'TR'})==='high')
+check('a two-letter word of the partners in words is no country code',aml.suggestedLevel({...riskData,abroad:true,abroadWhere:'Nórsko a Švajčiarsko, na sever',partnerCountries:'NO, CH'})==='standard')
+check('regular partners in a non-EU monitored country are one factor, not two',aml.suggestedLevel({...riskData,abroad:true,abroadWhere:'Bosna a Hercegovina',partnerCountries:'BA'})==='standard')
+check('a director living in a non-EU monitored country is one factor, not two',aml.suggestedLevel({...riskData,director:{...riskData.director,residenceCountry:'BA',citizenships:'BA'}})==='standard')
+check('two different factors still make it high',aml.suggestedLevel({...riskData,cash:true,abroad:true,abroadWhere:'Bosna a Hercegovina',partnerCountries:'BA'})==='high' && aml.suggestedLevel({...riskData,abroad:true,abroadWhere:'USA',partnerCountries:'US',director:{...riskData.director,residenceCountry:'BA'}})==='high')
+check('the declaration says how many owners it takes and how the data are checked, as the app does it',
+  !JSON.stringify(appCopy.app.declaration).includes('troch') && appCopy.app.declaration.ownersLead.includes('12') && !appCopy.app.declaration.stateLead.waiting.includes('plnou mocou'))
+check('the processing without consent cites the Act as the programme does (4.3, 9.4)', amlConsent.AML_NO_CONSENT.includes('bez súhlasu') && amlConsent.AML_NO_CONSENT.includes('§ 19 ods. 1 a § 21 ods. 3'))
+check('the public order page refills a declaration without birth numbers or the document number',(() => {
+  const owned = aml.checkDeclaration({ ...full, kuv: 'with', o1Name: 'Jana Nováková', o1Rc: '', o1Dob: '2. 5. 1990', o1Address: 'Hlavná 5, 040 01 Košice', o1Nationality: 'slovenská', o1Share: '50 %', o1ResidenceCountry: 'SK', o1Citizenships: 'SK' }, '2026-10-13', words).declaration
+  const shown = aml.valuesOfDeclaration({ ...owned, owners: [{ ...owned.owners[0], birthNumber: '9055120017' }], principal: { kind: 'person', name: 'X Y', birthNumber: '7801230008', birthDate: '', address: '', ico: '' } }, { secrets: false })
+  const kept = aml.valuesOfDeclaration(owned)
+  return shown.rc === '' && shown.idNumber === '' && shown.o1Rc === '' && shown.principalRc === '' && shown.name === 'Martin Novák' && kept.rc === '780123/0008' && kept.idNumber === 'HK123456'
+})())
 const asGiven = aml.valuesOfDeclaration(given.declaration)
 check(
   'a declaration opens again in the form as it was given, without the statement',

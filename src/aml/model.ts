@@ -13,6 +13,10 @@ export const CHECK_LABELS: Record<CheckKind, string> = {
   pep: 'Kontrola PEP vo verejných zdrojoch', 'eu-sanctions': 'Sankčné zoznamy EÚ', 'un-sanctions': 'Sankčné zoznamy OSN',
   countries: 'Krajiny, štátna príslušnosť, pobyt a obchodní partneri',
 }
+/** The actual place of business, checked apart from the six (program 4.2 a)): only when the declaration says it is not the seat. */
+export const PLACE_CHECK_LABEL = 'Skutočné miesto výkonu činnosti z nezávislého zdroja'
+/** The checks a new approval must have recorded anew after the previous approval of the same client (program 4.7). */
+export const REVIEW_FRESH_KINDS = ['pep', 'eu-sanctions', 'un-sanctions', 'kuv'] as const
 export const quoteSql = (s: string) => `'${s.replace(/'/g, "''")}'`
 export const normalName = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('sk').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 export function orderFacts(o: Order) {
@@ -36,7 +40,16 @@ export interface AmlDecision {
   by_name?: string | null
   bank_id?: string | null; bank_iban?: string | null; bank_country?: string | null; bank_owner?: string | null; bank_payment_ref?: string | null
 }
-export interface DossierView { dossier: Dossier; declaration: Declaration; checks: Verification[]; decision: AmlDecision | null; ready: boolean; declarationHash?: string; bankEvidence?: BankEvidence[] }
+export interface PlaceCheck { id: number; dossier_id: string; result: 'clear' | 'match' | 'unresolved'; checked_at: number; checked_by: string; source: string; facts_hash: string; by_name?: string | null }
+export interface PolicyReview { id: number; dossier_id: string; policy_version: string; required_risk: Level; previous_risk: Level; reviewed_at: number; reviewed_by: string; note: string; facts_hash: string }
+export interface DossierView {
+  dossier: Dossier; declaration: Declaration; checks: Verification[]; decision: AmlDecision | null; ready: boolean; declarationHash?: string; bankEvidence?: BankEvidence[]
+  placeChecks?: PlaceCheck[]; policyReviews?: PolicyReview[]
+  /** The risk the declaration requires now: the newest re-evaluation under a newer list of countries, else the dossier's own. */
+  requiredRisk?: Level
+  /** Whether the dossier was evaluated under the current lists of countries (its own version or a re-evaluation). */
+  policyCurrent?: boolean
+}
 export interface Admission { dossierId: string; decisionId: number; factsHash: string; signerName: string; level: Level }
 
 /** Every recorded result must still be the latest result of its kind, including within the same second. */
@@ -54,11 +67,56 @@ export function riskFloorSql(dossier: string, level: string): string {
       AND k.id = (SELECT MAX(n.id) FROM aml_checks n WHERE n.dossier_id = k.dossier_id AND n.kind = k.kind))
     AND (${dossier}.required_risk <> 'standard' OR ${level} <> 'low')))`
 }
+// riskFloorSql and checksCurrentSql above are part of schema step 73 and stay byte for byte as they are. What follows is
+// the rule as it stands since step 81 (26 October 2026): the floor of the newest re-evaluation, the place of business,
+// and fresh checks on a review.
+
+/** The newest re-evaluation of a dossier under a newer list of countries (program 4.4 c)), as SQL. */
+export const latestPolicyReviewSql = (d: string) => `(SELECT r.id FROM aml_policy_reviews r WHERE r.dossier_id = ${d}.id ORDER BY r.id DESC LIMIT 1)`
+/** The risk a dossier requires now: its newest re-evaluation's, else its own. */
+export const requiredRiskSql = (d: string) => `COALESCE((SELECT r.required_risk FROM aml_policy_reviews r WHERE r.id = ${latestPolicyReviewSql(d)}), ${d}.required_risk)`
+/** Whether the dossier stands under the current lists: evaluated under them when it was made, or re-evaluated since. */
+export const policyCurrentSql = (d: string) => `COALESCE((SELECT r.policy_version FROM aml_policy_reviews r WHERE r.id = ${latestPolicyReviewSql(d)}), ${d}.policy_version) = '${COUNTRY_POLICY_VERSION}'`
+/** The same floor as riskFloorSql, over any expression of the required risk. */
+export function floorSql(required: string, dossierId: string, level: string): string {
+  return `(${level} = 'high' OR (${required} <> 'high' AND NOT EXISTS
+    (SELECT 1 FROM aml_checks k WHERE k.dossier_id = ${dossierId} AND k.kind IN ('pep','countries') AND k.result = 'high'
+      AND k.id = (SELECT MAX(n.id) FROM aml_checks n WHERE n.dossier_id = k.dossier_id AND n.kind = k.kind))
+    AND (${required} <> 'standard' OR ${level} <> 'low')))`
+}
+/** The actual place of business, when the declaration says it is not the seat: its newest check, clear, of these facts. */
+export function placeCurrentSql(d: string, checks: string): string {
+  return `(COALESCE(json_extract(${d}.declaration,'$.businessAtSeat'),1) <> 0 OR EXISTS (SELECT 1 FROM aml_place_checks pk
+    WHERE pk.dossier_id = ${d}.id AND pk.id = json_extract(${checks},'$.place') AND pk.facts_hash = ${d}.facts_hash AND pk.result = 'clear'
+      AND pk.id = (SELECT MAX(n.id) FROM aml_place_checks n WHERE n.dossier_id = ${d}.id)))`
+}
+/** The dossiers of the same client as a dossier: of its order before the contract, or of its company. */
+export function sameClientDossiersSql(d: string): string {
+  return `SELECT x.id FROM aml_dossiers x LEFT JOIN orders xo ON xo.id = x.order_id
+    WHERE (${d}.order_id IS NOT NULL AND x.order_id = ${d}.order_id)
+      OR COALESCE(x.company_id, xo.company_id) = COALESCE(${d}.company_id, (SELECT o.company_id FROM orders o WHERE o.id = ${d}.order_id))`
+}
+/**
+ * A new approval after an earlier one of the same client (a periodic review, or a decision again after a finding) rests on
+ * PEP, sanctions and KUV checks recorded after the earlier approval, never on the checks it was taken on (program 4.7).
+ * `before` is the newest earlier approval's id expression; the checks are the new decision's JSON.
+ */
+export function freshChecksSql(d: string, checks: string, before: string): string {
+  return `(NOT EXISTS (SELECT 1 FROM aml_decisions p WHERE p.id = ${before}) OR (${REVIEW_FRESH_KINDS.map((kind) => `EXISTS (SELECT 1 FROM aml_checks k JOIN aml_decisions p ON p.id = ${before}
+    WHERE k.id = json_extract(${checks}, '$."${kind}"') AND k.kind = '${kind}' AND k.checked_at >= p.decided_at
+      AND k.id > COALESCE(json_extract(p.checks, '$."${kind}"'), 0))`).join(' AND ')}))`
+}
+/** The newest approval of the same client before a decision of a given id (or before any new one, with no id). */
+export function previousApprovalSql(d: string, decisionId?: string): string {
+  return `(SELECT p.id FROM aml_decisions p WHERE p.decision = 'approved' AND p.dossier_id IN (${sameClientDossiersSql(d)})
+    ${decisionId ? `AND p.id < ${decisionId}` : ''} ORDER BY p.id DESC LIMIT 1)`
+}
 export function decisionCurrentSql(d = 'd', a = 'a', currentOfficer = true): string {
   return `${a}.decision = 'approved' AND ${a}.facts_hash = ${d}.facts_hash
-    AND ${d}.policy_version = '${COUNTRY_POLICY_VERSION}' AND ${a}.policy_version = ${d}.policy_version
+    AND ${a}.policy_version = ${d}.policy_version AND ${policyCurrentSql(d)}
     ${currentOfficer ? `AND ${a}.decided_by = ${CURRENT_OFFICER_SQL}` : ''} AND ${a}.id = (SELECT MAX(z.id) FROM aml_decisions z WHERE z.dossier_id = ${d}.id)
-    AND ${bankCurrentSql(d,a)} AND ${riskFloorSql(d, `${a}.level`)} AND ${checksCurrentSql(`${d}.id`, `${a}.checks`, `${d}.facts_hash`)}`
+    AND ${bankCurrentSql(d,a)} AND ${floorSql(requiredRiskSql(d), `${d}.id`, `${a}.level`)} AND ${checksCurrentSql(`${d}.id`, `${a}.checks`, `${d}.facts_hash`)}
+    AND ${placeCurrentSql(d, `${a}.checks`)}`
 }
 export function orderAdmissionSql(o = 'orders', dossier?: string, decision?: string): string {
   return `EXISTS (SELECT 1 FROM aml_dossiers ad JOIN aml_decisions aa ON aa.dossier_id = ad.id WHERE ad.order_id = ${o}.id

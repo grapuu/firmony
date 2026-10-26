@@ -1,3 +1,4 @@
+import { accessOpenSql } from '../aml/retention'
 // How well the reader reads (his word of 20 October 2026: "naša AI musí byť úplne dokonalá"): what it proposed for each
 // document is kept as it proposed it (`documents.reading`, written once when the document is read), and a booked
 // document's fields are compared with it. A field the accountant left as read was read right; one she changed was not.
@@ -94,6 +95,7 @@ export async function comparedOf(db: D1Database, user: { id: string; team: strin
          d.vat_cents, d.currency, d.category
        FROM documents d JOIN companies c ON c.id = d.company_id
        WHERE d.reading IS NOT NULL AND d.booked_at >= ?1 AND d.booked_at < ?2 AND d.booked_by IS NOT 'auto' ${own} ${demo ? '' : 'AND c.demo = 0'}
+         AND ${accessOpenSql('c')}
        ORDER BY d.booked_at LIMIT 5000`,
     )
     .bind(from, to, ...(user.team === 'admin' ? [] : [user.id]))

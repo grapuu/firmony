@@ -2254,11 +2254,20 @@ appRoutes.post('/firma/ludia/:id/odobrat', async (c) => {
   const db = c.env.DB
   const id = c.req.param('id')
   if (who.role !== 'owner') return companyPage(c, { errors: { form: t.company.onlyOwner } }, 403)
-  const [removed] = await db.batch([
+  // The person loses access at once (the company's sessions; every session and link when nothing else is left), but
+  // the person row stays while the company's records are kept, so who did what stays known for the five years of
+  // § 19 of Act 297/2008 (program 9.1 c), 9.3). purge.ts forgets it only after them.
+  const lonely = `NOT EXISTS (SELECT 1 FROM members WHERE user_id = ?1) AND EXISTS (SELECT 1 FROM users WHERE id = ?1 AND team IS NULL)`
+  const results = await db.batch([
+    db.prepare(`INSERT INTO member_removals (company_id, user_id, removed_at, removed_by) SELECT ?1, m.user_id, ?3, ?4 FROM members m
+      WHERE m.company_id = ?1 AND m.user_id = ?2 AND m.role <> 'owner' AND m.user_id <> ?4`).bind(who.company.id, id, now(), who.user.id),
     db.prepare("DELETE FROM members WHERE company_id = ? AND user_id = ? AND role <> 'owner' AND user_id <> ?").bind(who.company.id, id, who.user.id),
+    db.prepare('DELETE FROM sessions WHERE user_id = ?1 AND company_id = ?2 AND NOT EXISTS (SELECT 1 FROM members WHERE company_id = ?2 AND user_id = ?1)').bind(id, who.company.id),
+    db.prepare(`DELETE FROM sessions WHERE user_id = ?1 AND ${lonely}`).bind(id),
+    db.prepare(`DELETE FROM login_links WHERE user_id = ?1 AND ${lonely}`).bind(id),
     eventStatement(db, { company: who.company.id, user: who.user.id, action: 'member.removed', subject: id }),
   ])
-  return c.redirect((removed?.meta?.changes ?? 0) > 0 ? '/app/firma?ok=odobraty#ludia' : '/app/firma#ludia', 303)
+  return c.redirect((results[1]?.meta?.changes ?? 0) > 0 ? '/app/firma?ok=odobraty#ludia' : '/app/firma#ludia', 303)
 })
 
 appRoutes.post('/firma/pripomienky', async (c) => {

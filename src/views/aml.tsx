@@ -146,7 +146,8 @@ const Reports: FC<{ company: Company; reports: Report[]; admin: boolean; readOnl
             {r.decision && r.decidedAt ? (
               <p class="report__decision">
                 {a.decided(a.decisions[r.decision], r.decidedByName, whenName(r.decidedAt, today))}
-                {r.decisionNote ? `. ${r.decisionNote}` : ''}
+                {/* Program 7.2: the author learns the result, not the designated person's reasons. */}
+                {admin && r.decisionNote ? `. ${r.decisionNote}` : ''}
               </p>
             ) : admin ? (
               <form class="stack report__decide" method="post" action={`/ucto/klienti/${company.id}/aml/oznamenie/${r.id}`} novalidate>

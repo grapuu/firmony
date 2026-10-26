@@ -3,6 +3,7 @@ import { AML_ENHANCED_SCHEMA } from './aml/enhanced-schema'
 import { AML_PROSPECT_SCHEMA } from './aml/prospect-schema'
 import { AML_RETENTION_SCHEMA } from './aml/retention'
 import { AML_SCHEMA } from './aml/schema'
+import { AML_POLICY_SCHEMA } from './aml/policy-schema'
 import { MANAGED_HANDOVER_SCHEMA } from './migration/schema'
 import { ASSISTANT_SCHEMA } from './assistant/schema'
 import { FORMATION_SCHEMA } from './formation/schema'
@@ -1569,7 +1570,10 @@ const MIGRATIONS: readonly string[][] = [
   ASSISTANT_SCHEMA,
   // 80: company formation requests, professional workflow and retained revision evidence.
   FORMATION_SCHEMA,
-  // Invoicing for everyone (26 October 2026, app/invoicing.ts): a workspace of a business's invoices alone, kept apart
+  // 81: AML re-evaluation after a list update, the place of business, fresh checks on a review, retained former members
+  // and dropped bank payments (findings of two independent reviews, 26 October 2026).
+  AML_POLICY_SCHEMA,
+  // 82: invoicing for everyone (26 October 2026, app/invoicing.ts): a workspace of a business's invoices alone, kept apart
   // from the books by triggers; an invoice paid by the user's word; sign-ups waiting for their link. Also: the
   // assistant's use moves the data revision only on the client's side.
   INVOICING_SCHEMA,
@@ -1669,11 +1673,11 @@ export function upsertInvestorStatement(db: D1Database, r: { email: string; brok
     .bind(crypto.randomUUID(), ts, ts, r.email.toLowerCase(), r.brokers.length > 0 ? r.brokers.join(',') : null, r.way, r.source, r.privacyVersion)
 }
 
-/** What the privacy notice promises: requests a year, sent and received email ninety days, counters two days. */
+/** What the privacy notice promises: investors' sign-ups a year, sent and received email ninety days, counters two days. Requests: aml/prospects.ts. */
 export async function purge(db: D1Database): Promise<void> {
   const ts = now()
   await db.batch([
-    // Client/prospect records are erased only by the full AML retention workflow (app/purge.ts).
+    // Client/prospect records are erased only by the full AML retention workflow (app/purge.ts, aml/prospects.ts).
     db.prepare('DELETE FROM investor_requests WHERE updated_at < ?').bind(ts - RETENTION.requestDays * 86400),
     db.prepare('DELETE FROM outbox WHERE created_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM inbound_mail WHERE company_id IS NULL AND received_at < ?').bind(ts - RETENTION.outboxDays * 86400),

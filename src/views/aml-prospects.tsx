@@ -11,7 +11,7 @@ export const AmlProspectPanel: FC<{orderId:string;reports:ProspectReport[];holds
     <button class="btn btn--line" type="submit">Poslať určenej osobe</button>
   </form> : null}
   {reports.map((r) => <article class="info"><h3 class="info__title">Oznámenie z {whenName(r.created_at,today)}</h3><p>{r.body}</p>
-    {r.decided_at ? <p class="info__source">Posúdené {whenName(r.decided_at,today)}. {r.decision === 'reported' ? 'Ohlásené FSJ.' : 'Neohlásiť.'} {r.decision_note}</p> : officer && !readOnly ? <form class="stack" method="post" action={`/ucto/aml/objednavky/${orderId}/oznamenie/${r.id}`}>
+    {r.decided_at ? <p class="info__source">Posúdené {whenName(r.decided_at,today)}. {r.decision === 'reported' ? 'Ohlásené FSJ.' : 'Neohlásiť.'} {officer ? r.decision_note : null}</p> : officer && !readOnly ? <form class="stack" method="post" action={`/ucto/aml/objednavky/${orderId}/oznamenie/${r.id}`}>
       <label class="field__label" for={`aml-report-${r.id}`}>Rozhodnutie a dôvod alebo referencia na hlásenie FSJ</label><textarea id={`aml-report-${r.id}`} class="field__input field__area" name="dovod" rows={3} minlength={12} maxlength={2000} required />
       <div class="decl__buttons"><button class="btn btn--line" type="submit" name="rozhodnutie" value="reported">Ohlásené FSJ</button><button class="btn btn--line" type="submit" name="rozhodnutie" value="not">Neohlásiť s odôvodnením</button></div>
     </form> : <p>Čaká na posúdenie určenej osoby.</p>}

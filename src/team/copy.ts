@@ -349,7 +349,7 @@ export const team = typesetAll({
     state: { missing: 'Údaje chýbajú', waiting: 'Údaje na overenie', checked: 'Identifikácia overená' },
     declaration: 'Údaje od klienta',
     missing: 'Klient údaje ešte nevyplnil. V aplikácii ich má ako prvý krok; bez nich podľa zákona nezačíname.',
-    how: 'Porovnajte ich s obchodným registrom (konatelia alebo predstavenstvo, spoločníci alebo akcionári, konečný užívateľ výhod) a s plnou mocou podpísanou cez eID. Ak sedia, označte ich ako overené; ak nie, napíšte klientovi.',
+    how: 'Porovnajte ich s obchodným registrom (konatelia alebo predstavenstvo, spoločníci alebo akcionári, konečný užívateľ výhod) a s vyhlásením podpísaným kvalifikovaným elektronickým podpisom. Každú kontrolu zapíšte nižšie; ak údaje nesedia, napíšte klientovi.',
     check: 'Totožnosť a údaje overené',
     checked: (when: string, who: string | null) => typeset(who ? `Overené ${when}, ${who}.` : `Overené ${when}.`),
     checkedFlash: 'Údaje sme označili ako overené.',

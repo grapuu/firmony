@@ -18,7 +18,9 @@ import { ORDER, PLANS } from '../config'
 import { orderOf, type Order } from '../order'
 import { AmlDossierPanel } from '../views/aml-admission'
 import { officerSql } from './schema'
-import { bankOriginalsIntact, bytesHash, decideDossier, dossierOfOrder, dossierView, isOfficer, officer, recordCheck, signatureFile, sourceIntact } from './store'
+import { bankOriginalsIntact, bytesHash, decideDossier, dossierOfOrder, dossierView, isOfficer, officer, recordCheck, reevaluatePolicy, signatureFile, sourceIntact } from './store'
+import { COUNTRY_LISTS_CHECKED_ON, COUNTRY_POLICY_VERSION } from './countries'
+import { latestPolicyReviewSql } from './model'
 import type { Dossier, DossierView } from './model'
 
 type Env = { Bindings: AppBindings; Variables: { who: Who } }
@@ -143,7 +145,7 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     const found=await accessible(c,c.req.param('id'),false)
     if(!found) return missing(c)
     const decisions=await c.env.DB.prepare('SELECT * FROM aml_decisions WHERE dossier_id = ? ORDER BY id').bind(found.view.dossier.id).all()
-    return c.body(JSON.stringify({dossier:found.view.dossier,checks:found.view.checks,decisions:decisions.results},null,2),200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="Firmony-overenie-historia.json"','Cache-Control':'private, no-store'})
+    return c.body(JSON.stringify({dossier:found.view.dossier,checks:found.view.checks,placeChecks:found.view.placeChecks ?? [],policyReviews:found.view.policyReviews ?? [],decisions:decisions.results},null,2),200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="Firmony-overenie-historia.json"','Cache-Control':'private, no-store'})
   })
   app.post('/aml/spisy/:id/kontrola', async (c) => {
     const found = await accessible(c, c.req.param('id'), true)
@@ -235,11 +237,35 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     const current = await officer(c.env.DB)
     const allowed = await isOfficer(c.env.DB, user)
     const people = allowed ? await c.env.DB.prepare("SELECT id,name,email FROM users WHERE team = 'admin' ORDER BY name").all<{ id: string; name: string | null; email: string }>() : null
+    // Dossiers of clients still served, made under an older list of countries and not re-evaluated since (program 4.4 c)).
+    const stale = allowed ? await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM aml_dossiers d LEFT JOIN orders ao ON ao.id = d.order_id
+      LEFT JOIN companies ac ON ac.id = COALESCE(d.company_id, ao.company_id)
+      WHERE COALESCE((SELECT r.policy_version FROM aml_policy_reviews r WHERE r.id = ${latestPolicyReviewSql('d')}), d.policy_version) <> ?
+        AND (ao.company_id IS NULL AND ao.status = 'open' OR ac.id IS NOT NULL AND ${accessOpenSql('ac')})`).bind(COUNTRY_POLICY_VERSION).first<{ n: number }>() : null
+    const count = (v: string | undefined) => (v && /^\d{1,4}$/.test(v) ? Number(v) : null)
+    const reviewed = count(c.req.query('prehodnotene')), rising = count(c.req.query('rast'))
+    const done = reviewed === null ? null : `Prehodnotených klientov: ${reviewed}. Nové rozhodnutie potrebuje: ${rising ?? 0}.`
     return render(c, 'Určená osoba AML', <section class="info stack"><h1 class="h1">Určená osoba AML</h1>
       <p>{current ? `${current.name ?? current.email}` : 'Určená osoba zatiaľ nie je aktivovaná.'}</p>
-      <p>Prvý správca aktivuje určenú osobu podľa programu. Ďalšie poverenie zaznamenáva súčasná určená osoba. Rola administrátora sama osebe nesprístupňuje interné oznámenia.</p>
+      <p>Prvý správca aktivuje určenú osobu podľa programu. Ďalšie poverenie zaznamenáva súčasná určená osoba. Rola administrátora sama osebe nesprístupňuje interné oznámenia. Súčasnú určenú osobu nemožno preradiť z roly správcu, kým nie je poverená iná.</p>
       {allowed ? <form class="stack" method="post" action="/ucto/aml/urcena-osoba"><label class="field__label" for="aml-osoba">Nová určená osoba</label><select class="field__input" id="aml-osoba" name="osoba">{people?.results.map((p) => <option value={p.id}>{p.name ?? p.email}</option>)}</select><label class="field__label" for="aml-poverenie">Referencia na schválenú zmenu programu a dôvod</label><textarea class="field__input field__area" id="aml-poverenie" name="dovod" minlength={12} maxlength={2000} required /><button class="btn btn--line" type="submit">Zapísať poverenie</button></form> : null}
+      {allowed ? <section class="info stack" id="zoznamy" aria-labelledby="aml-zoznamy-t"><h2 id="aml-zoznamy-t" class="info__title">Zmena zoznamov krajín</h2>
+        <p>Pravidlá krajín platia vo verzii {COUNTRY_POLICY_VERSION} (zoznamy EÚ a FATF overené {COUNTRY_LISTS_CHECKED_ON}). Klientov overených podľa staršej verzie: {stale?.n ?? 0}.</p>
+        {done ? <p class="notice" role="status">{done}</p> : null}
+        <p>Prehodnotenie vypočíta požadovanú rizikovú skupinu z uloženého vyhlásenia každého klienta podľa aktuálnych zoznamov. Klient, ktorého potvrdená skupina stačí, je znova overený. Klient so zvýšenou požadovanou skupinou potrebuje nové rozhodnutie a jeho kroky.</p>
+        <form class="stack" method="post" action="/ucto/aml/urcena-osoba/prehodnotit"><label class="field__label" for="aml-prehodnotenie">Referencia na kontrolu zoznamov a dôvod prehodnotenia</label><textarea class="field__input field__area" id="aml-prehodnotenie" name="dovod" minlength={12} maxlength={2000} required /><button class="btn btn--line" type="submit">Prehodnotiť rizikové skupiny klientov</button></form>
+      </section> : null}
     </section>)
+  })
+  app.post('/aml/urcena-osoba/prehodnotit', async (c) => {
+    const db = c.env.DB
+    const user = c.get('who').user
+    if (!await isOfficer(db, user)) return missing(c)
+    const body = await c.req.parseBody()
+    const result = await reevaluatePolicy(db, user, text(body.dovod))
+    if (!result) return c.text('Doplňte referenciu na kontrolu zoznamov a dôvod prehodnotenia.', 422)
+    await db.prepare("INSERT INTO events (at,user_id,action,detail) VALUES (?,?,'aml.policy.reevaluated',?)").bind(now(), user.id, JSON.stringify({ version: COUNTRY_POLICY_VERSION, reviewed: result.reviewed, rising: result.rising.length })).run()
+    return c.redirect(`/ucto/aml/urcena-osoba?prehodnotene=${result.reviewed}&rast=${result.rising.length}#zoznamy`, 303)
   })
   app.post('/aml/urcena-osoba', async (c) => {
     const db = c.env.DB

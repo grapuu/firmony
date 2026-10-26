@@ -1,6 +1,6 @@
 import { prepareBankEvidence } from './aml/enhanced'
 import { accessOpenSql } from './aml/retention'
-import { AmlIntakePage } from './views/aml-admission'
+import { AmlIntakePage, type IntakeContract } from './views/aml-admission'
 import { checkDeclaration, valuesFrom, valuesOfDeclaration, type DeclarationValues } from './app/aml'
 import { app as appCopy } from './app/copy'
 import { admissionForOrder, dossierOfOrder, prepareDossier, signatureFile } from './aml/store'
@@ -25,7 +25,7 @@ import { Hono, type Context } from 'hono'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
-import { APP, BRAND, CUSTOM_PLAN, INDEXNOW_KEY, INVESTORS, INVOICING, LIMITS, OPERATOR, ORDER, PRIVACY_VERSION, REPLY_WITHIN, TEAM, planById, type InvestorBroker, type InvestorWay } from './config'
+import { APP, BRAND, CUSTOM_PLAN, INDEXNOW_KEY, INVESTORS, INVOICING, LIMITS, OPERATOR, ORDER, PLANS, PRIVACY_VERSION, REPLY_WITHIN, TEAM, TERMS_VERSION, planById, type InvestorBroker, type InvestorWay } from './config'
 import { copy } from './copy'
 import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
 import { typeset } from './format'
@@ -613,6 +613,22 @@ async function orderClosed(c: Ctx, order: Order) {
   return null
 }
 
+/** What an online order's declaration offers to accept (none on paper: the paper contract is signed apart). */
+const intakeContract = (order: Order, months: string[]): IntakeContract | null =>
+  order.amlPaper ? null : { plans: PLANS.map((p) => ({ id: p.id, name: p.name, price: p.price })), months, terms: TERMS_VERSION }
+
+/**
+ * Why the offer the identified person signed no longer allows the contract, or null: the terms changed, the first month
+ * passed, or the reviewed plan is another. Then the declaration has to be signed again with the offer as it is now.
+ */
+function signedOfferStale(signed: { plan: string; startOn: string; terms: string } | undefined, months: string[], reviewedPlan: string | null): string | null {
+  if (!signed) return 'Vyhlásenie, ktoré ste podpísali, ešte neobsahovalo prijatie ponuky. Vyplňte a podpíšte ho, prosím, znova.'
+  if (signed.terms !== TERMS_VERSION) return 'Obchodné podmienky sa od podpisu vyhlásenia zmenili. Vyplňte a podpíšte vyhlásenie, prosím, znova.'
+  if (!months.includes(signed.startOn)) return 'Prvý mesiac služby z podpísaného vyhlásenia už nemožno zvoliť. Vyplňte a podpíšte vyhlásenie, prosím, znova.'
+  if (reviewedPlan && signed.plan !== reviewedPlan) return 'Potvrdený balík je iný ako v podpísanom vyhlásení. Vyplňte a podpíšte vyhlásenie, prosím, znova.'
+  return null
+}
+
 app.get('/objednavka/:token', async (c) => {
   await ensureSchema(c.env.DB)
   const token = c.req.param('token')
@@ -621,21 +637,31 @@ app.get('/objednavka/:token', async (c) => {
   const closed = await orderClosed(c, order)
   if (closed) return closed
   const intake = await dossierOfOrder(c.env.DB, order.id)
-  if (!await admissionForOrder(c.env.DB, order) || c.req.query('upravit') === '1') {
-    const values: DeclarationValues = intake ? valuesOfDeclaration(intake.declaration) : { name: order.directors?.length === 1 ? order.directors[0]?.name ?? '' : '', businessCountries: 'SK',businessAtSeat:'',ownBehalf:'' }
-    return page(c, orderMeta('Overenie pred začatím spolupráce'), <AmlIntakePage order={order} token={token} view={intake} values={values} editing={c.req.query('upravit') === '1'} />)
-  }
   const months = startMonths(bratislavaToday())
+  const admitted = await admissionForOrder(c.env.DB, order)
+  const editing = c.req.query('upravit') === '1'
+  const gate = admitted && !editing ? await contractGate(c.env.DB, c.env, order) : null
+  const stale = gate && !order.amlPaper ? signedOfferStale(intake?.declaration.contract, months, gate.approval?.review.plan ?? null) : null
+  if (!admitted || editing || stale) {
+    // Anybody holding the emailed link opens this page: birth numbers and the document's number are typed again, never shown.
+    const review = await latestOrderReview(c.env.DB, order.id)
+    const values: DeclarationValues = intake ? valuesOfDeclaration(intake.declaration, { secrets: false }) : { name: order.directors?.length === 1 ? order.directors[0]?.name ?? '' : '', businessCountries: 'SK',businessAtSeat:'',ownBehalf:'' }
+    if (!values.contractPlan) values.contractPlan = planById(review?.plan ?? order.plan)?.id ?? ''
+    if (values.contractStart && !months.includes(values.contractStart)) values.contractStart = ''
+    const form = editing || Boolean(stale) || !intake
+    return page(c, orderMeta('Overenie pred začatím spolupráce'), <AmlIntakePage order={order} token={token} view={intake} values={values} editing={editing || Boolean(stale)} error={stale ?? undefined} contract={intakeContract(order, months)} retype={Boolean(intake) && form} />)
+  }
   const directors = order.directors ?? []
-  const gate = await contractGate(c.env.DB, c.env, order)
+  const contractGateNow = gate ?? await contractGate(c.env.DB, c.env, order)
+  const signed = intake?.declaration.contract
   const values: OrderValues = {
-    plan: planById(gate.approval?.review.plan ?? order.plan)?.id ?? 'start',
-    start: months[0] ?? '',
+    plan: planById(signed?.plan ?? contractGateNow.approval?.review.plan ?? order.plan)?.id ?? 'start',
+    start: signed && months.includes(signed.startOn) ? signed.startOn : months[0] ?? '',
     director: directors.length === 1 ? (directors[0]?.name ?? '') : '',
     directorName: '',
     agree: false,
   }
-  return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} gate={gate} stale={await staleReview(c.env.DB, order)} />)
+  return page(c, orderMeta(copy.order.title), <OrderPage order={order} token={token} months={months} values={values} errors={{}} gate={contractGateNow} stale={await staleReview(c.env.DB, order)} signed={signed ?? null} />)
 })
 
 // Identification is completed before the contract. A signature upload remains pending professional validation.
@@ -652,8 +678,19 @@ async function intakeSubmission(c: Ctx, pdfOnly: boolean) {
   const values = valuesFrom(body)
   if (pdfOnly) values.truthful = '1' // A draft to sign is not a declaration submitted to us.
   const checked = checkDeclaration(values, bratislavaToday(), appCopy.declaration.errors)
-  const show = (error?: string, status: 409 | 422 = 422) => page(c, orderMeta('Overenie pred začatím spolupráce'), <AmlIntakePage order={order} token={token} view={null} values={values} errors={checked.errors} error={error} editing />, status)
-  if (!checked.declaration) return show('Doplňte, prosím, označené údaje.')
+  const months = startMonths(bratislavaToday())
+  const contract = intakeContract(order, months)
+  const show = (error?: string, status: 409 | 422 = 422) => page(c, orderMeta('Overenie pred začatím spolupráce'), <AmlIntakePage order={order} token={token} view={null} values={values} errors={checked.errors} error={error} editing contract={contract} />, status)
+  // An online order: the declaration the person signs also accepts the offer, so the contract can later be concluded
+  // only as that person signed it (order.ts, acceptStatements). Without it the signed file would bind nobody to it.
+  if (contract) {
+    const plan = PLANS.find((p) => p.id === values.contractPlan)
+    if (!plan) checked.errors.contractPlan = 'Vyberte balík.'
+    if (!months.includes(values.contractStart ?? '')) checked.errors.contractStart = 'Vyberte prvý mesiac služby.'
+    if (values.contractAgree !== '1') checked.errors.contractAgree = 'Bez prijatia ponuky nemožno zmluvu po overení uzavrieť.'
+    if (checked.declaration && plan && !checked.errors.contractStart && !checked.errors.contractAgree) checked.declaration.contract = { plan: plan.id, startOn: values.contractStart ?? '', terms: TERMS_VERSION }
+  }
+  if (!checked.declaration || (contract && !checked.declaration.contract)) return show('Doplňte, prosím, označené údaje.')
   if (pdfOnly) return new Response(await declarationPdf(order, checked.declaration), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="Firmony-vyhlasenie.pdf"', 'Cache-Control': 'private, no-store' } })
   const file = await signatureFile(body.podpis)
   if (!file) { checked.errors.podpis = 'Nahrajte pôvodný podpísaný PDF alebo ASiC-E súbor, najviac 25 MB.'; return show() }
@@ -758,6 +795,11 @@ app.post('/objednavka/:token', async (c) => {
   }
   if (signedBy !== gate.approval.aml?.signerName) return form(409, { form: 'Zmluvu môže uzavrieť iba osoba, ktorej totožnosť sme overili. Pri zmene zastupujúcej osoby potrebujeme nové overenie.' })
   if (plan.id !== gate.approval.review.plan) return form(409, { form: 'Vybraný balík potrebuje nové potvrdenie rozsahu služby. Napíšte nám, prosím.' })
+  // Only the offer the identified person accepted in the declaration signed with a qualified signature (finding of the
+  // review of 26 October 2026): whoever holds the emailed link concludes nothing else in that person's name.
+  const signedOffer = (await dossierOfOrder(db, order.id))?.declaration.contract
+  if (!signedOffer || signedOffer.plan !== plan.id || signedOffer.startOn !== values.start || signedOffer.terms !== TERMS_VERSION)
+    return form(409, { form: 'Zmluvu možno uzavrieť iba v znení, ktoré osoba konajúca za firmu prijala v podpísanom vyhlásení: ten istý balík, prvý mesiac a obchodné podmienky. Pri zmene treba vyhlásenie podpísať znova.' })
   if (!(await withinLimit(db, 'order', connection(c), ORDER.acceptsPerHour, 3600))) return form(429, { form: copy.order.errors.throttle })
 
   const existing = await userByEmail(db, order.email)

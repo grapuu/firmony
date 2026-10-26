@@ -1497,7 +1497,7 @@ export const app = typesetAll({
     state: { missing: 'Čakáme na údaje', waiting: 'Overujeme ich', checked: 'Overené' },
     stateLead: {
       missing: 'Kým údaje nemáme, nemôžeme podľa zákona začať. Vyplňte ich, prosím, ešte pred začiatkom zmluvy.',
-      waiting: 'Údaje máme. Účtovníčka ich porovná s obchodným registrom a s plnou mocou. Nemusíte nič robiť.',
+      waiting: 'Údaje máme. Porovnáme ich s registrami a overíme kvalifikovaný podpis na vyhlásení. Nemusíte nič robiť.',
       checked: 'Údaje máme overené. Ak sa niečo zmení, napríklad spoločníci, akcionári alebo adresa, zmeňte ich tu.',
     },
     director: 'Kto za firmu koná',
@@ -1522,7 +1522,7 @@ export const app = typesetAll({
     kuvLead: 'Konečný užívateľ výhod je človek, ktorému patrí aspoň 25 % firmy alebo hlasov, ktorý firmu inak ovláda alebo v prospech ktorého firma podniká. Ak taký nie je, sú nimi ľudia vo vrcholovom manažmente (konateľ, členovia predstavenstva).',
     kuvs: { self: 'Len mne', with: 'Mne a ďalším ľuďom', others: 'Iným ľuďom, nie mne' },
     owners: 'Ďalší koneční užívatelia výhod',
-    ownersLead: 'Napíšte každého, komu patrí aspoň 25 % firmy alebo ju ovláda. Najviac troch; ak ich je viac, napíšte nám.',
+    ownersLead: 'Napíšte každého, komu patrí aspoň 25 % firmy alebo ju ovláda. Formulár má miesto pre 12 ľudí; ak ich je viac, označte to nižšie a úplnú štruktúru spracujeme osobitne.',
     owner: (n: number) => typeset(`${n}. človek`),
     share: 'Podiel alebo ako firmu ovláda',
     sharePlaceholder: 'Napríklad 50 %',
