@@ -13,7 +13,8 @@ export async function handoverData(db: D1Database, company: string, year: string
     ['prilohy', 'SELECT * FROM company_files WHERE company_id = ?1 ORDER BY id'],
     ['spravovane-prevzatie', 'SELECT * FROM managed_handovers WHERE company_id = ?1 ORDER BY created_at,id'],
     ['historia-spravovaneho-prevzatia', 'SELECT * FROM managed_handover_history WHERE company_id = ?1 ORDER BY case_id,revision'],
-    ['asistent-pouzitie', 'SELECT * FROM assistant_uses WHERE company_id = ?1 ORDER BY created_at,id'],
+    // The client's own questions only; the team's use (and the fingerprint of a question) is not the client's data.
+    ['asistent-pouzitie', "SELECT * FROM assistant_uses WHERE company_id = ?1 AND side = 'client' ORDER BY created_at,id"],
     ['uzamknutie-obdobi', 'SELECT * FROM period_locks WHERE company_id = ?1'],
     ['historia-uzamknutia', 'SELECT * FROM period_lock_history WHERE company_id = ?1 ORDER BY version'],
     ['majetok', 'SELECT * FROM assets WHERE company_id = ?1 ORDER BY in_use_on, number'],

@@ -4,15 +4,6 @@
 # log; the report is kept for a week as the artifact "reader-report".
 name: Reader
 on:
-  push:
-    branches: [codex/reader-categories]
-    paths:
-      - test/reader/**
-      - test/reader.mjs
-      - test/reader.entry.ts
-      - src/app/read.ts
-      - scripts/reader/make-documents.py
-      - .github/workflows/reader.yml
   workflow_dispatch:
     inputs:
       only:
