@@ -3520,27 +3520,23 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
   // the sendings so far. A customer abroad or a person gets the PDF alone.
   const blocked = blockedOf(who.company, invoice, today())
   const receiver = customerParticipant(invoice)
-  const peppol =
-    blocked === 'draft' || blocked === 'proforma' || blocked === 'customerId' || !receiver ? null : (
-      <PeppolCard
-        view={{
-          live: providerOf(c.env) !== null,
-          blocked,
-          customer: blocked ? null : await participantState(db, receiver),
-          customerName: invoice.customerName,
-          sendings: await sendingsOf(db, who.company.id, invoice.id),
-          invoiceId: invoice.id,
-          issuedAt: invoice.createdAt,
-        }}
-        today={today()}
-        error={extra.error === pc.card.limit ? extra.error : null}
-      />
-    )
+  const shown = blocked === 'draft' || blocked === 'proforma' || blocked === 'customerId' || !receiver ? null : {
+    live: providerOf(c.env) !== null,
+    blocked,
+    customer: blocked ? null : await participantState(db, receiver),
+    customerName: invoice.customerName,
+    sendings: await sendingsOf(db, who.company.id, invoice.id),
+    invoiceId: invoice.id,
+    issuedAt: invoice.createdAt,
+  }
+  const peppol = shown ? <PeppolCard view={shown} today={today()} error={extra.error === pc.card.limit ? extra.error : null} /> : null
+  // When the e-invoice is how this invoice goes (sent, or one click away), the PDF is offered as the second way.
+  const einvoiceFirst = Boolean(shown && shown.live && (shown.sendings.length > 0 || (!shown.blocked && shown.customer?.state === 'found')))
   return shell(
     c,
     'invoices',
     `${ti.sheet.kinds[invoice.kind] ?? ti.sheet.title} ${invoice.number}`,
-    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={who.company.invoicingOnly ? null : advance} repeat={repeat} late={late} side={hand} einvoice={peppol} {...(hand || extra.error === pc.card.limit ? {} : extra)} />,
+    <InvoicePage invoice={invoice} lines={lines} seller={who.company} today={today()} link={`${siteOrigin(c)}/f/${invoice.token}`} flash={flashOf(c)} credits={credits} advance={who.company.invoicingOnly ? null : advance} repeat={repeat} late={late} side={hand} einvoice={peppol} einvoiceFirst={einvoiceFirst} {...(hand || extra.error === pc.card.limit ? {} : extra)} />,
     status,
   )
 }

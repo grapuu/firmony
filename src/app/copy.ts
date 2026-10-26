@@ -1098,6 +1098,7 @@ export const app = typesetAll({
     },
     send: {
       title: 'Poslať odberateľovi',
+      titleAlso: 'Poslať aj ako PDF',
       lead: 'Stiahnite si PDF alebo ho z telefónu zdieľajte. Odberateľ faktúru otvorí aj na odkaze, s QR kódom na platbu.',
       download: 'Stiahnuť PDF',
       share: 'Zdieľať',

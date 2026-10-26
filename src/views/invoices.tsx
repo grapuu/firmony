@@ -735,7 +735,9 @@ export const InvoicePage: FC<{
   side?: unknown
   /** The invoice's e-invoice through Peppol (views/peppol.tsx), first of all when it can travel. */
   einvoice?: unknown
-}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null, side = null, einvoice = null }) => {
+  /** The e-invoice is the way this invoice goes: the PDF is the second one, its button no longer the main one. */
+  einvoiceFirst?: boolean
+}> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null, side = null, einvoice = null, einvoiceFirst = false }) => {
   const a = t.actions
   const x = t.send
   const state = stateOf(invoice, today)
@@ -778,10 +780,10 @@ export const InvoicePage: FC<{
           {side as never}
           <section class="info invoice__send" aria-labelledby="poslat-t">
             <h2 id="poslat-t" class="info__title">
-              {x.title}
+              {einvoiceFirst ? x.titleAlso : x.title}
             </h2>
             <p class="info__lead">{x.lead}</p>
-            <a class="btn btn--blue invoice__wide" href={pdf} download={pdfName}>
+            <a class={`btn ${einvoiceFirst ? 'btn--line' : 'btn--blue'} invoice__wide`} href={pdf} download={pdfName}>
               {x.download}
             </a>
             <button class="btn btn--line invoice__wide" type="button" data-share={`${pdf}?zdielat=1`} data-name={pdfName} data-title={message.subject} data-text={message.short} hidden>

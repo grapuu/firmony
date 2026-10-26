@@ -19,7 +19,7 @@ import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
-import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, ecbAnswer, registerAnswer, statementMail } from '../test/pretend.mjs'
+import { PEPPOL_TEST, PRETEND_MAIL, camtXml, pretendBank, pretendFio, pretendPeppol, readerAnswer, ecbAnswer, registerAnswer, statementMail } from '../test/pretend.mjs'
 
 const root = new URL('..', import.meta.url).pathname
 const dist = join(root, '.wrangler/dist')
@@ -30,6 +30,8 @@ const port = Number(process.env.PORT ?? 8787)
 // café of yesterday is in both and arrives once; the money for invoice 20260007 pays it; a new card payment and a
 // fee arrive. Its sign-in is /playground/banka, which asks once and comes back.
 const bratislavaDay = (shift = 0) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.now() + shift * 86400000))
+// The Peppol network: the sample customers receive e-invoices; with PEPPOL=1 the pretend postman is connected too.
+const network = pretendPeppol({ registered: ['0245:2120000000', '0245:2023489446'] })
 const bank = pretendBank({
   iban: 'SK3112000000198742637541',
   balance: () => '5454.43',
@@ -71,9 +73,11 @@ const mf = new Miniflare(convertV4MiniflareOptions({
       compatibilityDate: '2026-10-01',
       d1Databases: { DB: 'firmony-playground' },
       r2Buckets: { FILES: 'firmony-files' },
-      bindings: { DEMO: '1', TEAM_BOOTSTRAP_EMAIL: 'spravca@firmony.test', TEAM_BOOTSTRAP_TOKEN: playgroundActivation, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), ANTHROPIC_API_KEY: 'pretend', ...(withBank ? { ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey } : {}) },
+      bindings: { DEMO: '1', TEAM_BOOTSTRAP_EMAIL: 'spravca@firmony.test', TEAM_BOOTSTRAP_TOKEN: playgroundActivation, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), ANTHROPIC_API_KEY: 'pretend', ...(withBank ? { ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey } : {}), ...(process.env.PEPPOL === '1' ? { PEPPOL_PROVIDER: 'pretend', PEPPOL_API_URL: PEPPOL_TEST.url, PEPPOL_API_KEY: PEPPOL_TEST.key, PEPPOL_WEBHOOK_SECRET: PEPPOL_TEST.secret, PEPPOL_SMP_HOST: PEPPOL_TEST.smp } : {}) },
       serviceBindings: { EMAIL: 'pretend-mail' },
       async outboundService(request) {
+        const networked = await network.answer(request.clone())
+        if (networked) return new MfResponse(await networked.text(), { status: networked.status, headers: { 'content-type': 'application/json' } })
         const banked = await bank.answer(request)
         if (banked) return new MfResponse(await banked.text(), { status: banked.status, headers: { 'content-type': 'application/json' } })
         const fromFio = await fio.answer(request)
