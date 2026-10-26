@@ -746,18 +746,39 @@ export async function invoiceByToken(db: D1Database, token: string): Promise<{ i
   return row ? { invoice: invoiceOf(row), company: String(row.company_id) } : null
 }
 
+const lineOf = (row: Row): Line => ({
+  position: Number(row.position),
+  description: String(row.description),
+  quantityMilli: Number(row.quantity_milli),
+  unit: str(row.unit),
+  unitCents: Number(row.unit_cents),
+  vatRate: Number(row.vat_rate),
+  baseCents: Number(row.base_cents),
+  vatCents: typeof row.vat_cents === 'number' ? row.vat_cents : null,
+})
+
 export async function invoiceLines(db: D1Database, invoice: string): Promise<Line[]> {
   const rows = await db.prepare('SELECT * FROM invoice_lines WHERE invoice_id = ? ORDER BY position').bind(invoice).all<Row>()
-  return rows.results.map((row) => ({
-    position: Number(row.position),
-    description: String(row.description),
-    quantityMilli: Number(row.quantity_milli),
-    unit: str(row.unit),
-    unitCents: Number(row.unit_cents),
-    vatRate: Number(row.vat_rate),
-    baseCents: Number(row.base_cents),
-    vatCents: typeof row.vat_cents === 'number' ? row.vat_cents : null,
-  }))
+  return rows.results.map(lineOf)
+}
+
+/** The lines of every invoice a company issued in a year, by invoice, in one query (a year may hold thousands). */
+export async function issuedLinesInYear(db: D1Database, company: string, year: string): Promise<Map<string, Line[]>> {
+  const rows = await db
+    .prepare(
+      `SELECT l.* FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+        WHERE i.company_id = ? AND i.status = 'issued' AND substr(i.issued_on, 1, 4) = ? ORDER BY l.invoice_id, l.position`,
+    )
+    .bind(company, year)
+    .all<Row>()
+  const out = new Map<string, Line[]>()
+  for (const row of rows.results) {
+    const id = String(row.invoice_id)
+    const list = out.get(id) ?? []
+    list.push(lineOf(row))
+    out.set(id, list)
+  }
+  return out
 }
 
 /** The lines of the credit notes issued to an invoice (each a minus), leaving out one (a draft being issued). */

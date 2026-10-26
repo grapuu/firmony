@@ -372,6 +372,16 @@ export const WorkspaceWelcome: FC<{ ready: boolean; register: boolean; empty: bo
   )
 }
 
+/** A value the register gives: shown, never sent (the route keeps the register's). */
+const LockedField: FC<{ name: string; label: string; value: string }> = ({ name, label, value }) => (
+  <div class="fgrid__cell fgrid__cell--wide">
+    <label class="field__label" for={`w-${name}`}>
+      {label}
+    </label>
+    <input id={`w-${name}`} class="field__input" value={value} readonly />
+  </div>
+)
+
 const SettingsField: FC<{ name: string; label: string; value: string; error?: string; hint?: string; mode?: string; max: number; wide?: boolean }> = ({ name, label, value, error, hint, mode, max, wide }) => (
   <div class={`fgrid__cell${wide ? ' fgrid__cell--wide' : ''}`}>
     <label class="field__label" for={`w-${name}`}>
@@ -401,11 +411,12 @@ const SettingsField: FC<{ name: string; label: string; value: string; error?: st
   </div>
 )
 
-export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceErrors; owner: boolean; ico: string | null; years?: string[]; flash?: string | null; removeError?: string | null; downloadError?: string | null }> = ({
+export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceErrors; owner: boolean; ico: string | null; registerFound?: boolean; years?: string[]; flash?: string | null; removeError?: string | null; downloadError?: string | null }> = ({
   values,
   errors,
   owner,
   ico,
+  registerFound = false,
   years = [],
   flash = null,
   removeError = null,
@@ -428,7 +439,7 @@ export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceE
               {s.firm}
             </h2>
             <div class="fgrid">
-              <SettingsField name="meno" label={s.name} value={values.name} error={errors.name} max={160} wide />
+              {registerFound ? <LockedField name="meno" label={s.name} value={values.name} /> : <SettingsField name="meno" label={s.name} value={values.name} error={errors.name} max={160} wide />}
               <SettingsField name="adresa" label={s.address} value={values.address} error={errors.address} max={240} wide />
               <div class="fgrid__cell">
                 <label class="field__label" for="w-ico">
@@ -441,8 +452,21 @@ export const WorkspaceSettings: FC<{ values: WorkspaceValues; errors: WorkspaceE
               </div>
               <SettingsField name="dic" label={s.dic} value={values.dic} error={errors.dic} mode="numeric" max={12} />
               <SettingsField name="icdph" label={s.icdph} value={values.icdph} error={errors.icdph} max={14} />
-              <SettingsField name="register" label={s.register} value={values.registerLine} error={errors.registerLine} hint={s.registerHint} max={240} wide />
+              {registerFound ? (
+                <LockedField name="register" label={s.register} value={values.registerLine} />
+              ) : (
+                <SettingsField name="register" label={s.register} value={values.registerLine} error={errors.registerLine} hint={s.registerHint} max={240} wide />
+              )}
             </div>
+            {registerFound ? (
+              <p class="field__hint">
+                {s.registerLocked}{' '}
+                <button class="btn btn--text" type="submit" formaction="/app/fakturacia/register" formnovalidate>
+                  {s.registerReload}
+                </button>
+              </p>
+            ) : null}
+            {errors.register ? <p class="field__error">{errors.register}</p> : null}
             <label class="agree">
               <input type="checkbox" name="platitel" value="1" checked={values.vatPayer} />
               <span>{s.vatPayer}</span>

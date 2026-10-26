@@ -866,6 +866,7 @@ export const app = typesetAll({
       logoSaved: 'Logo sme uložili, faktúry ho už majú.',
       logoRemoved: 'Logo sme odstránili.',
       logoBad: 'Logo musí byť obrázok PNG, JPEG alebo WebP do 512 kB.',
+      logoBig: 'Logo môže mať najviac 4 000 bodov na každej strane a nesmie byť úzky pásik. Zmenšite ho a nahrajte znova.',
       onlyOwner: 'Číslovanie mení majiteľ firmy.',
       errors: {
         prefix: 'Predpona môže mať len písmená, číslice a pomlčku, najviac 8 znakov.',

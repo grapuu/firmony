@@ -1691,5 +1691,8 @@ export async function purge(db: D1Database): Promise<void> {
     db.prepare('DELETE FROM invoicing_signups WHERE expires_at < ?').bind(ts - 7 * 86400),
     // Which part of the app a person used on a day: 13 months (analytics/model.ts); the daily sums stay.
     db.prepare('DELETE FROM analytics_usage WHERE day < ?').bind(usageCutoff(bratislavaDay(ts))),
+    // The daily sums of the site and the app: two years, the dashboard reads at most ninety days.
+    db.prepare('DELETE FROM analytics_site WHERE day < ?').bind(bratislavaDay(ts - 731 * 86400)),
+    db.prepare('DELETE FROM analytics_routes WHERE day < ?').bind(bratislavaDay(ts - 731 * 86400)),
   ])
 }

@@ -133,7 +133,17 @@ app.use('*', async (c, next) => {
   }
   // The app's and the team's addresses never hold an escaped character: one would reach a route by its decoded path past
   // the checks that read the address as written (the review of 26 October 2026: /app/expor%74).
-  if (/^\/(?:app|ucto|auth|f)(?:\/|$)/.test(url.pathname) && url.pathname.includes('%')) return c.text('Not found', 404)
+  // Hono routes by the decoded path, so the first segment escaped (/%75cto/...) is the same address too (the review of
+  // the evening): any escaped path that decodes into those parts, or does not decode, is no address.
+  if (url.pathname.includes('%')) {
+    let decoded: string | null
+    try {
+      decoded = decodeURIComponent(url.pathname)
+    } catch {
+      decoded = null
+    }
+    if (decoded === null || /^\/+(?:app|ucto|auth|f|peppol)(?:\/|$)/i.test(decoded)) return c.text('Not found', 404)
+  }
   if (reads && url.pathname.length > 1 && (url.pathname.endsWith('/') || url.pathname.includes('//'))) {
     url.pathname = url.pathname.replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1')
     return c.redirect(url.toString(), 301)
@@ -473,7 +483,7 @@ app.post(INVOICING_PATH, async (c) => {
     const token = newToken()
     const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
     await db.batch([
-      await newSignupStatement(db, token, { email: values.email, ico, company: company.name, address: company.address, registerLine: company.registerLine, legalForm: company.legalForm, source }),
+      await newSignupStatement(db, token, { email: values.email, ico, company: company.name, address: company.address, registerLine: company.registerLine, legalForm: company.legalForm, registerFound: state.kind === 'found', source }),
       queueStatement(db, {
         key: `invoicing-signup:${(await sha256Hex(token)).slice(0, 24)}`,
         to: values.email,

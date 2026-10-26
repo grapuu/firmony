@@ -90,6 +90,14 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   check('invoicing: a VAT payer is asked for the IČ DPH', res.status === 422 && (await res.text()).includes('IČ DPH'))
   res = await me.post('/app/fakturacia', { ...settings, iban: 'SK31 1200 0000 1987 4263 7541' })
   check('invoicing: the settings are kept', res.status === 303 && (await db.prepare('SELECT invoice_iban, dic FROM companies WHERE id = ?').bind(ws.id).first())?.invoice_iban === 'SK3112000000198742637541')
+  res = await me.post('/app/fakturacia', { ...settings, iban: 'SK31 1200 0000 1987 4263 7541', meno: 'TEST-ONLY Cudzia s. r. o.', register: 'TEST-ONLY iný zápis' })
+  const named = await db.prepare('SELECT name, register_line, register_found FROM companies WHERE id = ?').bind(ws.id).first()
+  check('invoicing: a company the register knew keeps the register\'s name and entry', res.status === 303 && named?.register_found === 1 && named.name === 'TEST-ONLY Fakturačka s. r. o.' && named.register_line !== 'TEST-ONLY iný zápis')
+  page = await (await me.get('/app/fakturacia')).text()
+  check('invoicing: the settings show them read only, with the way to read the register again', page.includes('formaction="/app/fakturacia/register"') && !page.includes('name="meno"'))
+  await db.prepare("UPDATE companies SET name = 'TEST-ONLY Stará s. r. o.' WHERE id = ?").bind(ws.id).run()
+  res = await me.post('/app/fakturacia/register', {})
+  check('invoicing: reading the register again brings its name back', res.status === 303 && (await db.prepare('SELECT name FROM companies WHERE id = ?').bind(ws.id).first())?.name === 'TEST-ONLY Fakturačka s. r. o.')
   page = await (await me.get('/app/faktury')).text()
   check('invoicing: with the account set, the first invoice is offered', page.includes('Vystaviť prvú faktúru'))
 
@@ -210,7 +218,7 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   // Nothing of an invoice is emailed from a workspace, and an escaped address reaches no route past the checks.
   res = await me.post(`/app/faktury/${invoiceId}/poslat`, { email: 'obet@example.test' })
   check('invoicing: a workspace emails no invoice', res.status === 403 && (await me.post(`/app/faktury/${invoiceId}/pripomenut`, {})).status === 403)
-  check('invoicing: an escaped character in an address of the app is no address', (await me.get('/app/expor%74?rok=2026')).status === 404 && (await me.get('/app/faktury/upomienk%79')).status === 404)
+  check('invoicing: an escaped character in an address of the app is no address', (await me.get('/app/expor%74?rok=2026')).status === 404 && (await me.get('/app/faktury/upomienk%79')).status === 404 && (await me.get('/%61pp/export?rok=2026')).status === 404 && (await me.get('/%2fapp/faktury')).status === 404 && (await admin.get('/%75cto/analytika/export.json')).status === 404 && (await admin.get('/%75cto/aml')).status === 404)
 
   // The administrator stops a misused workspace: its people are out, its customers' links are gone; and lifts it.
   const boss = await freshAdmin()
@@ -218,6 +226,9 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   check('invoicing: the administrator sees the workspaces, not their invoices', page.includes(ws.id) && page.includes('TEST-ONLY Fakturačka s. r. o.') && !page.includes('TEST-ONLY Odberateľ'))
   const publicToken = (await db.prepare('SELECT token FROM invoices WHERE id = ?').bind(invoiceId).first())?.token
   check('invoicing: before, the customer\'s link opens', (await get(`/f/${publicToken}`)).status === 200)
+  page = await (await boss.get(`/ucto/fakturacne-ucty?q=${encodeURIComponent(`https://firmony.io/f/${publicToken}`)}`)).text()
+  check('invoicing: the administrator finds a workspace by the link a report brings', page.includes(ws.id) && (await (await boss.get('/ucto/fakturacne-ucty?q=nikto-taky')).text()).includes('Zatiaľ žiadny fakturačný účet'))
+  check('invoicing: and by its IČO', (await (await boss.get('/ucto/fakturacne-ucty?q=47111119')).text()).includes(ws.id))
   res = await boss.post(`/ucto/fakturacne-ucty/${ws.id}/zablokovat`, { dovod: 'TEST-ONLY phishing report' })
   check('invoicing: stopped, the customer\'s link answers nothing and the person is out', res.status === 303 && (await get(`/f/${publicToken}`)).status === 404 && (await me.get('/app/faktury')).status === 303)
   check('invoicing: the same person makes no new workspace meanwhile', (await db.prepare("SELECT action FROM events WHERE action = 'invoicing.blocked' AND subject = ?").bind(ws.id).first())?.action === 'invoicing.blocked')

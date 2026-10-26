@@ -47,6 +47,8 @@ export interface SignupValues {
   address: string | null
   registerLine: string | null
   legalForm: string | null
+  /** The register knew the IČO: the name and register entry are its own and stay so in the workspace. */
+  registerFound: boolean
   source: string | null
 }
 
@@ -55,10 +57,10 @@ export async function newSignupStatement(db: D1Database, token: string, s: Signu
   const ts = now()
   return db
     .prepare(
-      `INSERT INTO invoicing_signups (id, created_at, expires_at, email, ico, company, address, register_line, legal_form, source, terms_version, privacy_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO invoicing_signups (id, created_at, expires_at, email, ico, company, address, register_line, legal_form, register_found, source, terms_version, privacy_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(await sha256Hex(token), ts, ts + INVOICING.linkHours * 3600, s.email.toLowerCase(), s.ico, s.company, s.address, s.registerLine, s.legalForm, s.source, INVOICING.termsVersion, PRIVACY_VERSION)
+    .bind(await sha256Hex(token), ts, ts + INVOICING.linkHours * 3600, s.email.toLowerCase(), s.ico, s.company, s.address, s.registerLine, s.legalForm, s.registerFound ? 1 : 0, s.source, INVOICING.termsVersion, PRIVACY_VERSION)
 }
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/
@@ -81,6 +83,7 @@ function signupOf(row: Record<string, unknown>): Signup {
     address: str(row.address),
     registerLine: str(row.register_line),
     legalForm: str(row.legal_form),
+    registerFound: row.register_found === 1,
     source: str(row.source),
     termsVersion: String(row.terms_version),
   }
@@ -156,10 +159,10 @@ export async function makeWorkspace(db: D1Database, s: Signup): Promise<MadeWork
     ...(known ? [] : [db.prepare('INSERT OR IGNORE INTO users (id, created_at, email, name, reminders) VALUES (?, ?, ?, ?, 0)').bind(user, ts, s.email, s.name)]),
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, register_line, legal_form, vat_payer, plan, inbox, invoicing_only, terms_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, ?)`,
+        `INSERT INTO companies (id, created_at, name, ico, address, register_line, legal_form, vat_payer, plan, inbox, invoicing_only, terms_version, register_found)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, ?, ?)`,
       )
-      .bind(company, ts, s.company, s.ico, s.address, s.registerLine, s.legalForm, INVOICING.plan, inbox, `fakturacia-${s.termsVersion}`),
+      .bind(company, ts, s.company, s.ico, s.address, s.registerLine, s.legalForm, INVOICING.plan, inbox, `fakturacia-${s.termsVersion}`, s.registerFound ? 1 : 0),
     db.prepare("INSERT INTO members (company_id, user_id, role, created_at) SELECT ?1, id, 'owner', ?2 FROM users WHERE email = ?3").bind(company, ts, s.email),
     db
       .prepare("INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?1, ?2, id, 'invoicing.started', NULL, ?3 FROM users WHERE email = ?4")
@@ -186,7 +189,7 @@ export interface WorkspaceValues {
   footer: string
 }
 
-export type WorkspaceErrors = Partial<Record<keyof WorkspaceValues | 'form', string>>
+export type WorkspaceErrors = Partial<Record<keyof WorkspaceValues | 'form' | 'register', string>>
 
 /** The company's data as an owner of a workspace sets them (a client's are kept by its accountant). */
 export function workspaceStatement(db: D1Database, company: string, v: { name: string; address: string | null; ico: string | null; dic: string | null; icdph: string | null; registerLine: string | null; vatPayer: boolean; iban: string | null; dueDays: number; footer: string | null }, user: string): D1PreparedStatement[] {

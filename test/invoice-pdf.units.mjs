@@ -277,6 +277,16 @@ export async function checkInvoicePdfUnits() {
   const started = Date.now()
   const bomb = await pdfs.logoImage(png({ width: 1, height: 1, color: 2, rows: [[7, 8, 9]], idat: deflateSync(Buffer.concat([Buffer.from([0, 7, 8, 9]), Buffer.alloc(50_000_000)])) }))
   check('a PNG whose data would inflate to far more than its rows is read only as far as its rows', bomb?.width === 1 && JSON.stringify([...inflateSync(Buffer.from(bomb.data))]) === '[7,8,9]' && Date.now() - started < 3000, String(Date.now() - started))
+  const strip = Date.now()
+  check(
+    'a strip of a million pixels by one, or a side over 4 000, is no logo, and saying so takes no time',
+    (await pdfs.logoImage(png({ width: 1_200_000, height: 1, color: 0, rows: [], idat: deflateSync(Buffer.alloc(10)) }))) === null &&
+      (await pdfs.logoImage(png({ width: 4001, height: 100, color: 0, rows: [], idat: deflateSync(Buffer.alloc(10)) }))) === null &&
+      !pdfs.logoFits(4001, 100) && !pdfs.logoFits(3000, 20) && pdfs.logoFits(2000, 200) && pdfs.logoFits(1800, 30) &&
+      Date.now() - strip < 1000,
+  )
+  const tall = await pdfs.logoImage(png({ width: 7, height: 600, color: 0, rows: Array.from({ length: 600 }, () => [10, 20, 30, 40, 50, 60, 70]) }))
+  check('a tall narrow logo is brought down within the picture', tall?.height === 200 && tall.width === 2, JSON.stringify([tall?.width, tall?.height]))
   check('a picture of more than 4 million pixels is no logo', (await pdfs.logoImage(png({ width: 2001, height: 2000, color: 0, rows: [], idat: deflateSync(Buffer.alloc(10)) }))) === null)
   const webp = new Uint8Array([...Buffer.from('RIFF'), 0, 0, 0, 0, ...Buffer.from('WEBPVP8 ')])
   check(

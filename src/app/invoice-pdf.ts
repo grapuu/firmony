@@ -110,6 +110,23 @@ export interface PdfImage {
  */
 const LOGO_PIXELS = 4_000_000
 const LOGO_MAX = { width: 600, height: 200 }
+/** No side longer than this and no strip thinner than a hundredth of its length: a logo, not a weapon (the review of 26 October 2026). */
+const LOGO_SIDE = 4000
+const LOGO_RATIO = 100
+
+/** Whether a picture's size is one we decode and embed. */
+export const logoFits = (width: number, height: number): boolean =>
+  width > 0 && height > 0 && width <= LOGO_SIDE && height <= LOGO_SIDE && width * height <= LOGO_PIXELS && Math.max(width, height) / Math.min(width, height) <= LOGO_RATIO
+
+/** A PNG's or a JPEG's size from its header; null for anything else (a WebP is shown on the page and never decoded here). */
+export function logoSize(b: Uint8Array): { width: number; height: number } | null {
+  if (b.length >= 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+    const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+    return { width: view.getUint32(16), height: view.getUint32(20) }
+  }
+  const jpeg = jpegInfo(b)
+  return jpeg ? { width: jpeg.width, height: jpeg.height } : null
+}
 
 async function through(data: Uint8Array, stream: TransformStream<Uint8Array, Uint8Array>): Promise<Uint8Array> {
   const piped = new Blob([data]).stream().pipeThrough(stream)
@@ -246,7 +263,7 @@ function unfilter(raw: Uint8Array, height: number, stride: number, bpp: number):
 /** A PNG's pixels as grey or RGB samples of 8 bits and an alpha of 8 bits (null when every pixel is opaque). */
 async function pngPixels(b: Uint8Array): Promise<{ width: number; height: number; channels: 1 | 3; color: Uint8Array; alpha: Uint8Array | null } | null> {
   const png = pngChunks(b)
-  if (!png || png.interlace !== 0 || png.width === 0 || png.height === 0 || png.width * png.height > LOGO_PIXELS) return null
+  if (!png || png.interlace !== 0 || !logoFits(png.width, png.height)) return null
   const { width, height, depth, color } = png
   const channels = color === 0 ? 1 : color === 2 ? 3 : color === 3 ? 1 : color === 4 ? 2 : color === 6 ? 4 : 0
   const depthOk = color === 0 || color === 3 ? [1, 2, 4, 8].includes(depth) : depth === 8
@@ -313,8 +330,9 @@ function shrink(px: { width: number; height: number; channels: 1 | 3; color: Uin
       sum.fill(0)
       let weight = 0
       let count = 0
-      for (let dy = 0; dy < factor; dy++) {
-        for (let dx = 0; dx < factor; dx++) {
+      // A block never reaches past the picture: work stays the picture's own size.
+      for (let dy = 0; dy < factor && y * factor + dy < px.height; dy++) {
+        for (let dx = 0; dx < factor && x * factor + dx < px.width; dx++) {
           const p = (y * factor + dy) * px.width + x * factor + dx
           const a = px.alpha ? (px.alpha[p] as number) : 255
           for (let c = 0; c < n; c++) sum[c] = (sum[c] as number) + (px.color[p * n + c] as number) * a
@@ -333,6 +351,7 @@ function shrink(px: { width: number; height: number; channels: 1 | 3; color: Uin
 /** The company's logo as the file embeds it; null for a picture it does not take (WebP, 16 bits, interlaced, broken). */
 export async function logoImage(bytes: Uint8Array): Promise<PdfImage | null> {
   const jpeg = jpegInfo(bytes)
+  if (jpeg && !logoFits(jpeg.width, jpeg.height)) return null
   if (jpeg) return { filter: 'DCTDecode', width: jpeg.width, height: jpeg.height, colorSpace: jpeg.components === 1 ? 'DeviceGray' : 'DeviceRGB', data: bytes, alpha: null }
   try {
     const decoded = await pngPixels(bytes)
