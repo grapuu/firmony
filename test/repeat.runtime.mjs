@@ -1,7 +1,8 @@
 // Invoices issued again by themselves (18 October 2026), in workerd: an issued invoice is made to repeat every month
 // from today, the schedule issues the next one with the same customer and lines, numbered in the invoices' row, due as
-// many days after it, mails it to the customer, moves the repeat a month on and issues nothing twice; the repeat is
-// listed, stopped, and refused for a day in the past and for a credit note.
+// many days after it, mails nothing to the customer but rings the person who started it with a doorbell (26 October
+// 2026), moves the repeat a month on and issues nothing twice; the repeat is listed, stopped, and refused for a day in
+// the past and for a credit note.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
@@ -46,7 +47,7 @@ export async function checkRepeats({ db, nowS, signIn, as, day, tick, capture })
   let page = plain(pageRaw)
   check(
     'an issued invoice offers to repeat, its next day a month on, kept to its day of the month',
-    page.includes(`action="/app/faktury/${templateId}/opakovat"`) && page.includes('Každý mesiac') && page.includes('name="poslat"'),
+    page.includes(`action="/app/faktury/${templateId}/opakovat"`) && page.includes('Každý mesiac') && !page.includes('name="poslat"'),
   )
   res = await client.post(`/app/faktury/${templateId}/opakovat`, { kazdych: '1', od: sk(day(-1)), do: '', poslat: '1' })
   check('a repeat may not start in the past', res.status === 422 && plain(await res.text()).includes('nie skôr ako dnes'))
@@ -55,13 +56,13 @@ export async function checkRepeats({ db, nowS, signIn, as, day, tick, capture })
   res = await client.post(`/app/faktury/${templateId}/opakovat`, { kazdych: '1', od: sk(today), do: '', poslat: '1' })
   const repeat = await db.prepare('SELECT id, every, anchor, next_on, send FROM invoice_repeats WHERE template_id = ? AND stopped_at IS NULL').bind(templateId).first()
   check(
-    'it repeats every month from today, mailed',
+    'it repeats every month from today, mailed to nobody whatever an old form posts',
     res.status === 303 &&
       (res.headers.get('location') ?? '').includes('ok=opakovanie') &&
       repeat?.every === 1 &&
       repeat.next_on === today &&
       repeat.anchor === Number(today.slice(8)) &&
-      repeat.send === 1,
+      repeat.send === 0,
     JSON.stringify(repeat),
   )
   res = await client.post(`/app/faktury/${templateId}/opakovat`, { kazdych: '3', od: sk(today), do: '', poslat: '' })
@@ -100,18 +101,23 @@ export async function checkRepeats({ db, nowS, signIn, as, day, tick, capture })
       Boolean(issued.document_id),
     JSON.stringify([issued, lines]),
   )
-  let mail = null
-  for (let i = 0; i < 30 && !mail; i++) {
-    mail = await db
-      .prepare("SELECT subject, reply_to FROM outbox WHERE recipient = 'najomca@example.sk' AND subject LIKE ?")
-      .bind(`Faktúra ${issued?.number ?? ''}%`)
+  let bell = null
+  for (let i = 0; i < 30 && !bell; i++) {
+    bell = await db
+      .prepare("SELECT subject, body FROM outbox WHERE recipient = 'repeat@example.sk' AND id = ?")
+      .bind(`bell:invoice-repeated:${issued?.id ?? ''}:repeat@example.sk`)
       .first()
-    if (!mail) await new Promise((r) => setTimeout(r, 100))
+    if (!bell) await new Promise((r) => setTimeout(r, 100))
   }
   check(
-    'and mails it to the customer, the reply to who started the repeat',
-    mail?.subject === `Faktúra ${issued?.number} od TEST-ONLY Opakovaná s. r. o.` && mail.reply_to === 'repeat@example.sk',
-    JSON.stringify(mail),
+    'nothing goes to the customer; who started the repeat gets a doorbell with the link to the new invoice and nothing else',
+    (await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE recipient = 'najomca@example.sk'").first())?.n === 0 &&
+      issued?.sent_at === null &&
+      bell?.subject === 'Firmony: faktúra je vystavená' &&
+      bell.body.includes(`/app/faktury/${issued?.id}`) &&
+      !bell.body.includes('Nájomca') &&
+      !bell.body.includes('615'),
+    JSON.stringify(bell),
   )
   const moved = await db
     .prepare('SELECT next_on, last_invoice_id, failed FROM invoice_repeats WHERE id = ?')
@@ -147,7 +153,7 @@ export async function checkRepeats({ db, nowS, signIn, as, day, tick, capture })
     .run()
 
   const issuedRaw = await (await client.get(`/app/faktury/${issued?.id}`)).text()
-  check('the invoice it issued says so', plain(issuedRaw).includes('Vystavená sama z opakovania'))
+  check('the invoice it issued says so, and offers its PDF to send', plain(issuedRaw).includes('Vystavená sama z opakovania') && issuedRaw.includes(`href="/app/faktury/${issued?.id}/pdf"`))
   const templateRaw = await (await client.get(`/app/faktury/${templateId}`)).text()
   if (capture) writeFileSync(`${capture}/invoice-repeat.html`, templateRaw)
   page = plain(templateRaw)

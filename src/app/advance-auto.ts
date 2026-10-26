@@ -1,20 +1,17 @@
 // The tax document of an advance received, issued by itself (18 October 2026). § 73 of the VAT Act asks for it within
 // 15 days of the payment; it is wholly given by the request and the payment (the amount split by the request's rates,
 // the day received), so nobody needs to click it: when money comes on a request's variable symbol, pairing issues its
-// document (`autoAdvances`, called by `matchCompany`), links it to the payment and, when the request was sent to the
-// customer by email, sends the document too. The request's page still has the button for one that waits (a payment
-// read before this was built).
+// document (`autoAdvances`, called by `matchCompany`) and links it to the payment. Nothing is mailed to the customer
+// (26 October 2026): the client downloads or shares its PDF. The request's page still has the button for one that
+// waits (a payment read before this was built).
 //
 // The rule, said plainly:
 // - A payment in, on the symbol of an issued request, that has no tax document and no document paired to it.
 // - Not after the request's final invoice (money then pays that invoice), not for a VAT payer's request without
 //   Slovak VAT (none can be made), not after the contract's service ended.
 // - One document a payment: the unique index on invoices.payment_id makes a second try fail whole.
-import { BRAND } from '../config'
-import { formatMoney } from '../format'
-import { queueStatement } from '../mail'
 import { bratislavaDay } from '../time'
-import { app, dayName } from './copy'
+import { app } from './copy'
 import { serviceOpen } from './ending'
 import { advanceLines, advancePayments, finalOf, getInvoice, invoiceLines, saveInvoiceStatements, totalsOf, type InvoiceValues, type StoredInvoice } from './invoices'
 import { newToken } from './session'
@@ -91,35 +88,8 @@ export async function issueAdvances(db: D1Database, company: Company, request: S
       continue
     }
     out.push({ invoiceId, documentId })
-    await mailAdvance(db, company, request, invoiceId)
   }
   return out
-}
-
-/** Sends an advance's document to the customer when the request went to the customer by email. */
-async function mailAdvance(db: D1Database, company: Company, request: StoredInvoice, invoiceId: string): Promise<void> {
-  if (!request.sentAt || !request.customerEmail) return
-  const invoice = await getInvoice(db, company.id, invoiceId)
-  if (!invoice?.number) return
-  const from = request.createdBy ? await db.prepare('SELECT email FROM users WHERE id = ?').bind(request.createdBy).first<{ email: string }>() : null
-  await db.batch([
-    queueStatement(db, {
-      key: `invoice:send:${invoice.id}:advance`,
-      to: request.customerEmail,
-      replyTo: from?.email ?? null,
-      subject: ti.mail.advanceSubject(invoice.number, company.name, company.vatPayer),
-      body: ti.mail.advanceBody(
-        company.name,
-        invoice.number,
-        request.number ?? '',
-        formatMoney(invoice.totalCents, invoice.currency).replace(/ /g, ' '),
-        dayName(invoice.deliveredOn).replace(/ /g, ' '),
-        `${BRAND.origin}/f/${invoice.token}`,
-        company.vatPayer,
-      ),
-    }),
-    db.prepare('UPDATE invoices SET sent_at = ? WHERE id = ? AND company_id = ?').bind(Math.floor(Date.now() / 1000), invoice.id, company.id),
-  ])
 }
 
 /** The requests of a company with money on their symbol that has no document yet: their documents, made. */

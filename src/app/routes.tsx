@@ -27,6 +27,8 @@ import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPa
 import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, logoSrc, type LateView, type NumberingValues } from '../views/invoices'
+import { sheetOf } from './invoice-sheet'
+import { invoicePdf, invoicePdfName, logoImage } from './invoice-pdf'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
 import { answerAccount, statementById, statementDue, statementsOf, takeStatementFile } from './statements'
@@ -63,7 +65,6 @@ import {
   invoiceLines,
   linesOf,
   listInvoices,
-  ON_REQUEST_SQL,
   plainIban,
   isIban,
   saveInvoiceStatements,
@@ -83,7 +84,7 @@ import { balanceOf, canonicalAccount, payableOf, type Books } from './ledger'
 import { booksOf } from './ledger-store'
 import { lookupCompany } from '../rpo'
 import { normalizeIco } from '../ico'
-import { formatEur, formatEurExact, formatMoney } from '../format'
+import { formatEur, formatEurExact } from '../format'
 import { app as t, dayName, monthName } from './copy'
 import { clientDeadlines, nextMonth } from './deadlines'
 import { companyDeadlines } from '../team/deadlines-store'
@@ -102,7 +103,7 @@ import { TripFormPage, TripPage, TripsPage } from '../views/trips'
 import { CASH_KINDS, CASH_LIMIT, cashLines, isCashKind, lowestFrom, readCash, type CashErrors, type CashValues } from './cash'
 import { cashDocuments, cashPayments, cashStatements, pendingCashReceipts, removeCashStatements } from './cash-store'
 import { dataRevision } from './handover-store'
-import { FLAT_COMPENSATION, lateInterest, ratePercent, REMIND_AFTER, reminderDue } from './dunning'
+import { FLAT_COMPENSATION, lateInterest, ratePercent } from './dunning'
 import { centerCode, centerTotals } from './centers'
 import { addCenterStatements, archiveCenterStatement, budgetStatement, centerBudgets, documentCenters, documentCenterStatement, listCenters } from './centers-store'
 import { CentersPage } from '../views/centers'
@@ -409,10 +410,6 @@ function flashOf(c: Ctx): string | null {
       return t.invoices.saved
     case 'koncept-zahodeny':
       return t.invoices.deleted
-    case 'poslana':
-      return t.invoices.actions.sentFlash
-    case 'pripomenuta':
-      return t.invoices.actions.remindedFlash
     case 'zaloha':
       return t.invoices.actions.advanceFlash
     case 'opakovanie':
@@ -423,10 +420,6 @@ function flashOf(c: Ctx): string | null {
       return t.dunning.interestDone
     case 'stredisko':
       return t.centers.docSaved
-    case 'upomienky-zapnute':
-      return t.dunning.savedOn
-    case 'upomienky-vypnute':
-      return t.dunning.savedOff
     case 'banka-pripojena':
       return t.bank.flash.pripojena(n)
     case 'banka-bez-uctu':
@@ -2737,7 +2730,6 @@ async function invoicesPage(c: Ctx, status: ContentfulStatusCode = 200) {
       flash={flashOf(c)}
       closed={closed}
       repeats={await repeatsOf(c.env.DB, who.company.id)}
-      dunning={closed ? null : { on: who.company.dunning, owner: who.role === 'owner' }}
     />,
     status,
   )
@@ -3015,7 +3007,7 @@ appRoutes.post('/faktury/:id/zaloha', async (c) => {
   return c.redirect(`/app/faktury/${request.id}${made.length > 0 ? '?ok=zaloha' : ''}`, 303)
 })
 
-/** Makes an issued invoice repeat: how often, its next day (today or later), its last day, and whether it is mailed. */
+/** Makes an issued invoice repeat: how often, its next day (today or later), its last day. Nothing is mailed to the customer. */
 appRoutes.post('/faktury/:id/opakovat', async (c) => {
   const who = c.get('who')
   const db = c.env.DB
@@ -3032,7 +3024,7 @@ appRoutes.post('/faktury/:id/opakovat', async (c) => {
   if (!every || !next || next < today()) return fail(ti.actions.repeatBadDay)
   if (untilText && (!until || until < next)) return fail(ti.actions.repeatBadUntil)
   try {
-    await db.batch(startRepeatStatements(db, { id: crypto.randomUUID(), company: who.company.id, template: invoice.id, every, nextOn: next, untilOn: until, send: body.poslat === '1', user: who.user.id }))
+    await db.batch(startRepeatStatements(db, { id: crypto.randomUUID(), company: who.company.id, template: invoice.id, every, nextOn: next, untilOn: until, user: who.user.id }))
   } catch (err) {
     // It repeats already (a second click): nothing more is started.
     console.error('a repeat failed', err instanceof Error ? err.name : 'error')
@@ -3253,18 +3245,6 @@ appRoutes.post('/faktury/:id/urok', async (c) => {
   return c.redirect(`/app/faktury/${newId}?ok=urok`, 303)
 })
 
-/** An owner turns the reminders that go by themselves on or off. */
-appRoutes.post('/faktury/upomienky', async (c) => {
-  const who = c.get('who')
-  if (who.role !== 'owner') return shell(c, 'invoices', t.errors.notFound, <Missing />, 403)
-  const on = (await c.req.parseBody()).zapnut === '1'
-  await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE companies SET dunning = ? WHERE id = ?').bind(on ? 1 : 0, who.company.id),
-    eventStatement(c.env.DB, { company: who.company.id, user: who.user.id, action: on ? 'dunning.on' : 'dunning.off', subject: who.company.id }),
-  ])
-  return c.redirect(`/app/faktury?ok=${on ? 'upomienky-zapnute' : 'upomienky-vypnute'}`, 303)
-})
-
 /** The largest logo taken (512 kB): a picture for the head of an invoice. */
 const LOGO_BYTES = 512 * 1024
 
@@ -3384,75 +3364,48 @@ appRoutes.post('/faktury/:id', async (c) => {
   return saveInvoice(c, id)
 })
 
-/** What an issued invoice still asks for: an invoice less its credit notes; anything else its total. */
-async function stillAsked(db: D1Database, company: string, invoice: StoredInvoice): Promise<number> {
-  if (invoice.kind !== 'invoice') return invoice.totalCents
-  const row = await db
-    .prepare("SELECT COALESCE(SUM(total_cents), 0) AS credited FROM invoices WHERE company_id = ? AND corrects = ? AND kind = 'credit' AND status = 'issued'")
-    .bind(company, invoice.id)
-    .first<{ credited: number }>()
-  return invoice.totalCents + Number(row?.credited ?? 0)
-}
-
-/** Sends the invoice to its customer, or reminds them of it; a reply goes to the person who sent it. */
-async function mailInvoice(c: Ctx, id: string, reminder: boolean) {
+/**
+ * The invoice as a PDF (invoice-pdf.ts): to download (attachment) or, with ?nahlad=1, to look at in the browser. Firmony
+ * emails no invoice to a customer (the owner's word of 26 October 2026): the client sends this file himself. A download
+ * is recorded once a minute at most for an invoice and a person (?zdielat=1, the phone's share sheet fetching it ahead,
+ * is not one).
+ */
+appRoutes.get('/faktury/:id/pdf', async (c) => {
   const who = c.get('who')
   const db = c.env.DB
+  const id = c.req.param('id')
   const invoice = ID.test(id) ? await getInvoice(db, who.company.id, id) : null
   if (!invoice || invoice.status !== 'issued' || !invoice.number) return shell(c, 'invoices', t.errors.notFound, <Missing />, 404)
-  // An invoice issued without the customer's email is sent to one typed beside it, which is kept with it.
-  if (!invoice.customerEmail) {
-    const body = await c.req.parseBody()
-    const typed = typeof body.email === 'string' ? body.email.trim().slice(0, 200) : ''
-    if (!EMAIL.test(typed)) return invoicePage(c, id, { error: ti.actions.badEmail }, 422)
-    await db.prepare('UPDATE invoices SET customer_email = ? WHERE id = ? AND company_id = ? AND customer_email IS NULL').bind(typed, invoice.id, who.company.id).run()
-    invoice.customerEmail = typed
+  const preview = c.req.query('nahlad') === '1'
+  if (!preview && c.req.query('zdielat') !== '1') {
+    await db
+      .prepare(
+        `INSERT INTO events (at, company_id, user_id, action, subject) SELECT ?1, ?2, ?3, 'invoice.pdf', ?4
+          WHERE NOT EXISTS (SELECT 1 FROM events WHERE subject = ?4 AND action = 'invoice.pdf' AND user_id = ?3 AND at > ?1 - 60)`,
+      )
+      .bind(now(), who.company.id, who.user.id, invoice.id)
+      .run()
   }
-  // A paid invoice is never reminded, nor a credit note, an advance's document or a final invoice its advances paid; nor
-  // an invoice its credit notes took back whole, nor a request whose final invoice is issued (that one asks now). A
-  // reminder asks for what is left after the credit notes.
-  const asked = reminder ? await stillAsked(db, who.company.id, invoice) : invoice.totalCents
-  if (reminder && (['paid', 'credit'].includes(stateOf(invoice, today())) || asked <= 0 || (invoice.kind === 'proforma' && (await finalOf(db, who.company.id, invoice.id)))))
-    return c.redirect(`/app/faktury/${invoice.id}`, 303)
-  if (!(await withinLimit(db, 'invoice-mail', who.company.id, 30, 3600))) return invoicePage(c, id, { error: t.messages.throttle }, 429)
-  const link = `${siteOrigin(c)}/f/${invoice.token}`
-  const total = formatMoney(asked, invoice.currency).replace(/ /g, ' ')
-  const due = dayName(invoice.dueOn).replace(/ /g, ' ')
-  const iban = invoice.iban ? groupIban(invoice.iban) : null
-  await db.batch([
-    queueStatement(db, {
-      key: `invoice:${reminder ? 'remind' : 'send'}:${invoice.id}:${now()}`,
-      to: invoice.customerEmail,
-      replyTo: who.user.email,
-      subject:
-        reminder
-          ? ti.mail.reminderSubject(invoice.number, who.company.name, invoice.kind === 'proforma')
-          : invoice.kind === 'proforma'
-            ? ti.mail.proformaSubject(invoice.number, who.company.name)
-            : invoice.kind === 'credit'
-              ? ti.mail.creditSubject(invoice.number, who.company.name)
-              : invoice.kind === 'advance'
-                ? ti.mail.advanceSubject(invoice.number, who.company.name, who.company.vatPayer)
-                : ti.mail.subject(invoice.number, who.company.name),
-      body: reminder
-        ? ti.mail.reminderBody(who.company.name, invoice.number, total, due, iban, link, invoice.kind === 'proforma', invoice.vs ?? invoice.number, asked !== invoice.totalCents)
-        : invoice.kind === 'proforma'
-          ? ti.mail.proformaBody(who.company.name, invoice.number, invoice.vs ?? '', total, due, iban, link)
-          : invoice.kind === 'credit'
-            ? ti.mail.creditBody(who.company.name, invoice.number, invoice.correctsNumber ?? '', total, link, invoice.reason)
-            : invoice.kind === 'advance'
-              ? ti.mail.advanceBody(who.company.name, invoice.number, invoice.relatesNumber ?? '', total, dayName(invoice.deliveredOn).replace(/\u00a0/g, ' '), link, who.company.vatPayer)
-              : ti.mail.body(who.company.name, invoice.number, total, due, iban, link, invoice.note, invoice.vs ?? invoice.number),
-    }),
-    db.prepare(`UPDATE invoices SET ${reminder ? 'reminded_at' : 'sent_at'} = ? WHERE id = ? AND company_id = ?`).bind(now(), invoice.id, who.company.id),
-    eventStatement(db, { company: who.company.id, user: who.user.id, action: reminder ? 'invoice.reminded' : 'invoice.sent', subject: invoice.id }),
-  ])
-  later(c, flushOutbox(db, c.env.EMAIL))
-  return c.redirect(`/app/faktury/${invoice.id}?ok=${reminder ? 'pripomenuta' : 'poslana'}`, 303)
-}
+  return pdfResponse(invoice, await invoiceLines(db, invoice.id), who.company, c.env.FILES, preview, today())
+})
 
-appRoutes.post('/faktury/:id/poslat', (c) => mailInvoice(c, c.req.param('id'), false))
-appRoutes.post('/faktury/:id/pripomenut', (c) => mailInvoice(c, c.req.param('id'), true))
+/** An issued invoice as its PDF file, with the company's logo when it has one the file can carry. */
+export async function pdfResponse(invoice: StoredInvoice, lines: Line[], seller: Company, files: R2Bucket | undefined, inline: boolean, day: string): Promise<Response> {
+  const object = seller.logoKey && files ? await files.get(seller.logoKey).catch(() => null) : null
+  const logo = object ? await logoImage(new Uint8Array(await object.arrayBuffer())) : null
+  const sheet = sheetOf(invoice, lines, seller, stateOf(invoice, day) !== 'paid')
+  const name = invoicePdfName(sheet.kind, invoice.number ?? '')
+  return new Response(invoicePdf({ sheet, number: invoice.number ?? '', logo }), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'private, no-store',
+      // The browser's own viewer shows it: a sandbox would stop that.
+      'Content-Security-Policy': "default-src 'none'; object-src 'self'; frame-ancestors 'self'",
+      'X-Robots-Tag': 'noindex, nofollow',
+    },
+  })
+}
 
 appRoutes.get('/faktury/:id/xml', async (c) => {
   const who = c.get('who')
@@ -3482,8 +3435,9 @@ appRoutes.notFound((c) => (c.get('who') ? shell(c, null, t.errors.notFound, <Mis
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * Invoices whose repeat has come: issued (repeat.ts), paired with a payment that came already, and mailed to the
- * customer when the repeat says so, as "Poslať odberateľovi" mails them (the reply goes to who started the repeat).
+ * Invoices whose repeat has come: issued (repeat.ts) and paired with a payment that came already. Firmony mails nothing
+ * to the customer: the person who started the repeat (or, when that person left the company, its owners) gets a
+ * doorbell with the link to the new invoice, to download it and send it.
  */
 async function repeatScheduled(env: AppBindings, day: string): Promise<void> {
   const db = env.DB
@@ -3491,105 +3445,18 @@ async function repeatScheduled(env: AppBindings, day: string): Promise<void> {
     try {
       await afterReading(db, done.company.id, done.documentId)
       await matchCompany(db, done.company.id)
-      const invoice = await getInvoice(db, done.company.id, done.invoiceId)
-      if (!done.repeat.send || !invoice?.customerEmail || !invoice.number) continue
-      const by = done.repeat.createdBy ? await db.prepare('SELECT email FROM users WHERE id = ?').bind(done.repeat.createdBy).first<{ email: string }>() : null
-      const total = formatMoney(invoice.totalCents, invoice.currency).replace(/\u00a0/g, ' ')
-      const due = dayName(invoice.dueOn).replace(/\u00a0/g, ' ')
-      await db.batch([
-        queueStatement(db, {
-          key: `invoice:send:${invoice.id}:repeat`,
-          to: invoice.customerEmail,
-          replyTo: by?.email ?? null,
-          subject: ti.mail.subject(invoice.number, done.company.name),
-          body: ti.mail.body(done.company.name, invoice.number, total, due, invoice.iban ? groupIban(invoice.iban) : null, `${BRAND.origin}/f/${invoice.token}`, invoice.note, invoice.vs ?? invoice.number),
-        }),
-        db.prepare('UPDATE invoices SET sent_at = ? WHERE id = ? AND company_id = ?').bind(now(), invoice.id, done.company.id),
-        eventStatement(db, { company: done.company.id, user: null, action: 'invoice.sent', subject: invoice.id, detail: { repeat: done.repeat.id } }),
-      ])
+      const people = await db
+        .prepare(
+          `SELECT u.email FROM members m JOIN users u ON u.id = m.user_id
+            WHERE m.company_id = ?1 AND (u.id = ?2 OR (m.role = 'owner' AND NOT EXISTS (SELECT 1 FROM members s WHERE s.company_id = ?1 AND s.user_id = ?2)))
+            ORDER BY m.created_at`,
+        )
+        .bind(done.company.id, done.repeat.createdBy ?? '')
+        .all<{ email: string }>()
+      const link = `${BRAND.origin}/app/faktury/${done.invoiceId}`
+      if (people.results.length > 0) await db.batch(people.results.map((p) => ringStatement(db, 'invoice-repeated', done.invoiceId, p.email, bell.invoiceRepeated(link))))
     } catch (err) {
       console.error('after a repeated invoice', err instanceof Error ? err.name : 'error')
-    }
-  }
-  await flushOutbox(db, env.EMAIL)
-}
-
-/**
- * Reminders that go by themselves (dunning.ts): from nine in Bratislava, each overdue invoice of a company that turned
- * them on, sent to its customer by email before, gets its next reminder when its day has come (3, 14 and 30 days after
- * the due day, none within five days of the invoice mailed or another reminder, one sent by hand too); each step once
- * (the outbox key and the count). Only an invoice nobody paid, that asks for something after its credit notes (and for
- * what it asks), with no money on its symbol a person still has to pair, of a request without its final invoice, and
- * only once the company's bank (a statement, a payment, a linked bank read) reaches the day before the step's day: a
- * payment the bank has not told us of yet is no reason to remind. The query asks all of it, so a hundred invoices that
- * are not due cannot keep the ones that are from their turn.
- */
-async function dunningScheduled(env: AppBindings, day: string): Promise<void> {
-  const db = env.DB
-  const after = (n: number) => `CASE i.reminders WHEN 0 THEN ${REMIND_AFTER[0] - n} WHEN 1 THEN ${REMIND_AFTER[1] - n} ELSE ${REMIND_AFTER[2] - n} END`
-  const rows = await db
-    .prepare(
-      `SELECT i.id, i.company_id FROM invoices i JOIN companies c ON c.id = i.company_id
-        WHERE c.dunning = 1 AND c.demo = 0 AND c.purged_at IS NULL AND c.closed_at IS NULL
-          AND i.status = 'issued' AND i.kind IN ('invoice', 'proforma') AND i.interest_of IS NULL
-          AND i.customer_email IS NOT NULL AND i.sent_at IS NOT NULL AND i.reminders < 3
-          AND i.due_on <= date(?1, '-' || (${after(0)}) || ' days')
-          AND date(max(i.sent_at, COALESCE(i.reminded_at, 0)), 'unixepoch') <= date(?1, '-5 days')
-          AND (CASE WHEN i.kind = 'proforma'
-                 THEN NOT EXISTS (SELECT 1 FROM payments p WHERE ${ON_REQUEST_SQL})
-                   AND NOT EXISTS (SELECT 1 FROM invoices f WHERE f.company_id = i.company_id AND f.relates = i.id AND f.kind = 'invoice' AND f.status = 'issued')
-                 ELSE i.total_cents <> 0
-                   AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = i.document_id)
-                   AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
-                   AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.company_id = i.company_id AND p.amount_cents > 0 AND p.booked_on >= i.issued_on
-                     AND ltrim(p.vs, '0') = ltrim(COALESCE(i.vs, i.number), '0') AND NOT EXISTS (SELECT 1 FROM links pl WHERE pl.payment_id = p.id))
-               END)
-          AND i.total_cents + COALESCE((SELECT SUM(cr.total_cents) FROM invoices cr WHERE cr.company_id = i.company_id AND cr.corrects = i.id AND cr.kind = 'credit' AND cr.status = 'issued'), 0) > 0
-          AND (SELECT max(COALESCE((SELECT MAX(p.booked_on) FROM payments p WHERE p.company_id = i.company_id), ''),
-                          COALESCE((SELECT MAX(s.to_on) FROM statements s WHERE s.company_id = i.company_id AND s.status IN ('taken', 'known')), ''),
-                          COALESCE((SELECT date(MAX(b.synced_at), 'unixepoch') FROM bank_links b WHERE b.company_id = i.company_id AND b.status = 'active'), '')))
-              >= date(i.due_on, '+' || (${after(1)}) || ' days')
-        ORDER BY i.due_on LIMIT 100`,
-    )
-    .bind(day)
-    .all<{ id: string; company_id: string }>()
-  const companies = new Map<string, Company | null>()
-  for (const row of rows.results) {
-    try {
-      if (!companies.has(row.company_id)) companies.set(row.company_id, await getCompany(db, row.company_id))
-      const company = companies.get(row.company_id)
-      const invoice = company ? await getInvoice(db, company.id, row.id) : null
-      if (!company || !invoice?.number || !invoice.customerEmail || !serviceOpen(company, day) || stateOf(invoice, day) !== 'overdue') continue
-      const contact = Math.max(invoice.sentAt ?? 0, invoice.remindedAt ?? 0)
-      const step = reminderDue(invoice.dueOn, invoice.reminders, day, contact > 0 ? bratislava(contact * 1000).day : null)
-      if (step === null) continue
-      const asked = await stillAsked(db, company.id, invoice)
-      if (asked <= 0) continue
-      const from = invoice.createdBy ? await db.prepare('SELECT email FROM users WHERE id = ?').bind(invoice.createdBy).first<{ email: string }>() : null
-      const proforma = invoice.kind === 'proforma'
-      await db.batch([
-        db.prepare('UPDATE invoices SET reminders = ?, reminded_at = ? WHERE id = ? AND company_id = ? AND reminders = ?').bind(step + 1, now(), invoice.id, company.id, step),
-        queueStatement(db, {
-          key: `invoice:dun:${invoice.id}:${step}`,
-          to: invoice.customerEmail,
-          replyTo: from?.email ?? null,
-          subject: t.dunning.subject(step, invoice.number, company.name, proforma),
-          body: ti.mail.reminderBody(
-            company.name,
-            invoice.number,
-            formatMoney(asked, invoice.currency).replace(/\u00a0/g, ' '),
-            dayName(invoice.dueOn).replace(/\u00a0/g, ' '),
-            invoice.iban ? groupIban(invoice.iban) : null,
-            `${BRAND.origin}/f/${invoice.token}`,
-            proforma,
-            invoice.vs ?? invoice.number,
-            asked !== invoice.totalCents,
-          ),
-        }),
-        eventStatement(db, { company: company.id, user: null, action: 'invoice.dunned', subject: invoice.id, detail: { step } }),
-      ])
-    } catch (err) {
-      console.error('a reminder failed', err instanceof Error ? err.name : 'error')
     }
   }
   await flushOutbox(db, env.EMAIL)
@@ -3631,11 +3498,6 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await repeatScheduled(env, bratislava(at).day)
   } catch (err) {
     console.error('repeated invoices failed', err instanceof Error ? err.name : 'error')
-  }
-  try {
-    if (bratislava(at).hour >= 9) await dunningScheduled(env, bratislava(at).day)
-  } catch (err) {
-    console.error('reminders of invoices failed', err instanceof Error ? err.name : 'error')
   }
   try {
     const b = bratislava(at)

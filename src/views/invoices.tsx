@@ -1,11 +1,14 @@
 // Faktúry: the list with what waits to be paid, the form, the invoice as a sheet of paper, and the page a customer
-// opens from the email. The sheet is one component for the app, the customer's page, the accountant and print.
+// opens from the link the client sent. The sheet is one model (invoice-sheet.ts) for the app, the customer's page, the
+// accountant, print and the PDF.
 import type { FC } from 'hono/jsx'
 import { ART, BRAND } from '../config'
 import { formatEur, formatEurExact, formatMoney } from '../format'
 import { app, dayName } from '../app/copy'
-import { COUNTRIES, INVOICE_CURRENCIES, INVOICE_MODES, INTEREST_NOTE, customerCountryOf, MODE_TERMS, UNITS, VAT_RATES, creditLines, eurVat, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
-import { payBySquare, qrPicture } from '../app/paybysquare'
+import { COUNTRIES, INVOICE_CURRENCIES, INVOICE_MODES, UNITS, VAT_RATES, creditLines, stateOf, totalsOf, type Errors, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
+import { kindName, sheetOf, type InvoiceSheetModel, type SheetPair } from '../app/invoice-sheet'
+import { invoicePdfName } from '../app/invoice-pdf'
+import { invoiceMailto, invoiceMessage } from '../app/invoice-send'
 import { REVERSE_KINDS } from '../app/vat'
 import { REPEAT_EVERY, type Repeat } from '../app/repeat'
 import { ratePercent, type LateInterest } from '../app/dunning'
@@ -15,7 +18,6 @@ import { CenterSelect } from './centers'
 import type { Company } from '../app/store'
 import { Tile } from './home'
 import { Flash, Heading, InsideHead } from './inside'
-import { groupIban } from './inside-pages'
 import { Wordmark } from './layout'
 
 const t = app.invoices
@@ -37,9 +39,6 @@ const addDaysTo = (day: string, days: number) => new Date(Date.parse(`${day}T12:
 
 const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill--blue', overdue: 'pill--amber', paid: 'pill--ok', credit: 'pill--grey' }
 
-/** What a document is called: a credit note is a "Dobropis", an invoice a "Faktúra". */
-const kindName = (i: Pick<StoredInvoice, 'kind'>, vatPayer = true) => (i.kind === 'advance' && !vatPayer ? t.sheet.advanceNoVat : (t.sheet.kinds[i.kind] ?? t.sheet.title))
-/** The variable symbol the customer pays by: a request for an advance has its own, an invoice its number. */
 /** Where the company's logo is served, with its key's end so a new picture is not taken from a cache. */
 export const logoSrc = (seller: Pick<Company, 'logoKey'>, path: string): string | null => (seller.logoKey ? `${path}?v=${seller.logoKey.slice(-12)}` : null)
 
@@ -50,17 +49,7 @@ const eurosOf = (i: Pick<StoredInvoice, 'currency' | 'fxRate' | 'totalCents'>) =
   return rate ? eurOf(i.totalCents, rate) : 0
 }
 
-// A request is paid with its own symbol; an advance's tax document is paid already (no symbol to pay with).
-const vsOf = (i: Pick<StoredInvoice, 'kind' | 'vs' | 'number'>) => (i.kind === 'proforma' ? i.vs : i.kind === 'advance' ? null : (i.vs ?? i.number))
-
-export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[]; dunning?: { on: boolean; owner: boolean } | null }> = ({
-  invoices,
-  today,
-  flash,
-  closed = null,
-  repeats = [],
-  dunning = null,
-}) => {
+export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?: string | null; closed?: string | null; repeats?: Repeat[] }> = ({ invoices, today, flash, closed = null, repeats = [] }) => {
   const month = today.slice(0, 7)
   // In euros: an invoice in another currency at its rate.
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + eurosOf(i), 0)
@@ -121,25 +110,6 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
               <dd class="fig__value fig__value--in">{formatEur(paid)}</dd>
             </div>
           </dl>
-          {dunning ? (
-            <section class="info" aria-labelledby="upomienky-t">
-              <h2 id="upomienky-t" class="info__title">
-                {d.title}
-              </h2>
-              <p class="info__lead">{d.lead}</p>
-              <p class="info__source">{dunning.on ? d.on : d.off}</p>
-              {dunning.owner ? (
-                <form method="post" action="/app/faktury/upomienky">
-                  <input type="hidden" name="zapnut" value={dunning.on ? '0' : '1'} />
-                  <button class={`btn ${dunning.on ? 'btn--line' : 'btn--blue'} btn--small`} type="submit">
-                    {dunning.on ? d.turnOff : d.turnOn}
-                  </button>
-                </form>
-              ) : (
-                <p class="info__source">{d.ownerOnly}</p>
-              )}
-            </section>
-          ) : null}
           {repeats.length > 0 ? (
             <section class="info invoices__repeats" aria-labelledby="opakovane-t">
               <h2 id="opakovane-t" class="info__title">
@@ -563,223 +533,139 @@ export const InvoiceFormPage: FC<InvoiceFormProps> = ({ id, values, vatPayer, er
 // The invoice as paper
 // ---------------------------------------------------------------------------------------------------------------
 
-const qty = (milli: number) => (milli % 1000 === 0 ? String(milli / 1000) : (milli / 1000).toFixed(3).replace(/0+$/, '').replace('.', ','))
-
-/** The QR code a bank's app pays from, for an issued invoice with an account and something to pay. */
-function payQr(invoice: StoredInvoice, total: number, seller: Company) {
-  const vs = vsOf(invoice)
-  if (!invoice.number || !invoice.iban || !vs) return null
-  const text = payBySquare({ iban: invoice.iban, amountCents: total, vs, due: invoice.dueOn, name: seller.name, note: `${kindName(invoice)} ${invoice.number}` })
-  return text ? qrPicture(text) : null
-}
-
-export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; pay?: boolean; logo?: string | null }> = ({ invoice, lines, seller, pay = true, logo = null }) => {
-  const s = t.sheet
-  const credit = invoice.kind === 'credit'
-  const money = (cents: number) => formatMoney(cents, invoice.currency)
-  // In another currency: the rate, and the VAT also in euros (art. 230 of the Directive).
-  const fx = invoice.currency !== 'EUR' ? rateMicro(invoice.fxRate) : null
-  const totals = totalsOf(lines, seller.vatPayer)
-  // A credit note is not paid by the customer: no QR code, no account to pay to.
-  // Nor is the tax document of money already received.
-  // Slovak banks pay a QR code in euros only.
-  const qr = pay && !credit && invoice.kind !== 'advance' && invoice.currency === 'EUR' ? payQr(invoice, totals.total, seller) : null
+/** The invoice as paper: the sheet the PDF draws too (invoice-sheet.ts), so the page and the file say the same. */
+export const InvoiceSheet: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; pay?: boolean; logo?: string | null; sheet?: InvoiceSheetModel }> = ({ invoice, lines, seller, pay = true, logo = null, sheet }) => {
+  const m = sheet ?? sheetOf(invoice, lines, seller, pay)
+  const Ids: FC<{ ids: SheetPair[] }> = ({ ids }) => (
+    <p class="sheet__ids">
+      {ids.map((id) => (
+        <span>
+          {id.label} {id.value}
+        </span>
+      ))}
+    </p>
+  )
   return (
-    <article class="sheet" aria-label={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''}`}>
+    <article class="sheet" aria-label={`${m.kind} ${invoice.number ?? ''}`}>
       <header class="sheet__head">
         <div class="sheet__from">
-          {logo ? <img class="sheet__logo" src={logo} alt={seller.name} /> : null}
-          <p class="sheet__company">{seller.name}</p>
-          {seller.address ? <p>{seller.address}</p> : null}
-          <p class="sheet__ids">
-            {seller.ico ? (
-              <span>
-                {s.ico} {seller.ico}
-              </span>
-            ) : null}
-            {seller.dic ? (
-              <span>
-                {s.dic} {seller.dic}
-              </span>
-            ) : null}
-            {seller.icdph ? (
-              <span>
-                {s.icdph} {seller.icdph}
-              </span>
-            ) : null}
-          </p>
+          {logo ? <img class="sheet__logo" src={logo} alt={m.seller.name} /> : null}
+          <p class="sheet__company">{m.seller.name}</p>
+          {m.seller.lines.map((line) => (
+            <p>{line}</p>
+          ))}
+          <Ids ids={m.seller.ids} />
         </div>
         <div class="sheet__title">
-          <p class={invoice.kind === 'advance' ? 'sheet__kind sheet__kind--long' : 'sheet__kind'}>{kindName(invoice, seller.vatPayer)}</p>
-          <p class="sheet__number">{invoice.number ? s.number(invoice.number) : t.draftName}</p>
-          {invoice.relatesNumber ? <p class="sheet__ref">{s.relates(invoice.relatesNumber)}</p> : null}
-          {credit && invoice.correctsNumber && invoice.correctsIssuedOn ? <p class="sheet__ref">{s.corrects(invoice.correctsNumber, dayName(invoice.correctsIssuedOn))}</p> : null}
+          <p class={m.long ? 'sheet__kind sheet__kind--long' : 'sheet__kind'}>{m.kind}</p>
+          <p class="sheet__number">{m.number}</p>
+          {m.refs.map((ref) => (
+            <p class="sheet__ref">{ref}</p>
+          ))}
         </div>
       </header>
       <div class="sheet__parties">
         <div class="sheet__to">
-          <p class="sheet__label">{s.customer}</p>
-          <p class="sheet__company">{invoice.customerName}</p>
-          {invoice.customerAddress ? <p>{invoice.customerAddress}</p> : null}
-          {customerCountryOf(invoice) !== 'SK' ? <p>{COUNTRIES[customerCountryOf(invoice)] ?? customerCountryOf(invoice)}</p> : null}
-          <p class="sheet__ids">
-            {invoice.customerIco ? (
-              <span>
-                {s.ico} {invoice.customerIco}
-              </span>
-            ) : null}
-            {invoice.customerDic ? (
-              <span>
-                {s.dic} {invoice.customerDic}
-              </span>
-            ) : null}
-            {invoice.customerIcdph ? (
-              <span>
-                {s.icdph} {invoice.customerIcdph}
-              </span>
-            ) : null}
-          </p>
+          <p class="sheet__label">{m.customerLabel}</p>
+          <p class="sheet__company">{m.customer.name}</p>
+          {m.customer.lines.map((line) => (
+            <p>{line}</p>
+          ))}
+          <Ids ids={m.customer.ids} />
         </div>
         <dl class="sheet__dates">
-          <div>
-            <dt>{s.issued}</dt>
-            <dd>{dayName(invoice.issuedOn)}</dd>
-          </div>
-          <div>
-            <dt>{invoice.kind === 'advance' ? s.received : s.delivered}</dt>
-            <dd>{dayName(invoice.deliveredOn)}</dd>
-          </div>
-          {invoice.kind === 'advance' ? null : (
+          {m.dates.map((d) => (
             <div>
-              <dt>{s.due}</dt>
-              <dd>{dayName(invoice.dueOn)}</dd>
+              <dt>{d.label}</dt>
+              <dd>{d.value}</dd>
             </div>
-          )}
-          {vsOf(invoice) ? (
-            <div>
-              <dt>{s.vs}</dt>
-              <dd>{vsOf(invoice)}</dd>
-            </div>
-          ) : null}
+          ))}
         </dl>
       </div>
       <div class="sheet__table">
         <table>
           <thead>
             <tr>
-              <th scope="col">{s.description}</th>
-              <th scope="col">{s.quantity}</th>
-              <th scope="col">{s.unitPrice}</th>
-              {seller.vatPayer ? <th scope="col">{s.vat}</th> : null}
-              <th scope="col">{s.amount}</th>
+              <th scope="col">{m.head.description}</th>
+              <th scope="col">{m.head.quantity}</th>
+              <th scope="col">{m.head.unitPrice}</th>
+              {m.head.vat ? <th scope="col">{m.head.vat}</th> : null}
+              <th scope="col">{m.head.amount}</th>
             </tr>
           </thead>
           <tbody>
-            {lines.map((line) => (
+            {m.rows.map((row) => (
               <tr>
                 <td>
-                  {line.description}
-                  <span class="sheet__lineinfo">
-                    {qty(line.quantityMilli)} {line.unit ?? ''} × {money(line.unitCents)}
-                    {seller.vatPayer ? `, ${s.vat} ${line.vatRate} %` : ''}
-                  </span>
+                  {row.description}
+                  <span class="sheet__lineinfo">{row.info}</span>
                 </td>
-                <td>
-                  {qty(line.quantityMilli)} {line.unit ?? ''}
-                </td>
-                <td>{money(line.unitCents)}</td>
-                {seller.vatPayer ? <td>{line.vatRate} %</td> : null}
-                <td>{money(line.baseCents)}</td>
+                <td>{row.quantity}</td>
+                <td>{row.unitPrice}</td>
+                {row.vat ? <td>{row.vat}</td> : null}
+                <td>{row.amount}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {credit && invoice.reason ? (
+      {m.reason ? (
         <p class="sheet__note">
-          <strong>{s.reason}:</strong> {invoice.reason}
+          <strong>{m.reason.label}:</strong> {m.reason.value}
         </p>
       ) : null}
-      {invoice.interestOf ? (
-        <p class="sheet__note sheet__mode">{INTEREST_NOTE}</p>
-      ) : seller.vatPayer && invoice.mode !== 'domestic' ? (
-        <p class="sheet__note sheet__mode">{MODE_TERMS[invoice.mode].text}</p>
-      ) : null}
-      {invoice.kind === 'proforma' ? <p class="sheet__note">{s.proformaNote}</p> : null}
+      {m.mode ? <p class="sheet__note sheet__mode">{m.mode}</p> : null}
+      {m.proforma ? <p class="sheet__note">{m.proforma}</p> : null}
       <div class="sheet__bottom">
         <div class="sheet__payment">
-        {qr ? (
-          <figure class="sheet__qr">
-            <svg viewBox={`0 0 ${qr.size} ${qr.size}`} role="img" aria-label={s.qrLabel} shape-rendering="crispEdges">
-              <rect width={String(qr.size)} height={String(qr.size)} fill="#ffffff" />
-              <path fill="#000000" d={qr.path} />
-            </svg>
-            <figcaption>
-              {s.qr}
-              <span>PAY by square</span>
-            </figcaption>
-          </figure>
-        ) : null}
-        {credit || invoice.kind === 'advance' ? null : (
-        <dl class="sheet__pay">
-          <div>
-            <dt>{s.method}</dt>
-            <dd>{s.transfer}</dd>
-          </div>
-          {invoice.iban ? (
-            <div>
-              <dt>{s.iban}</dt>
-              <dd>{groupIban(invoice.iban)}</dd>
-            </div>
+          {m.qr ? (
+            <figure class="sheet__qr">
+              <svg viewBox={`0 0 ${m.qr.size} ${m.qr.size}`} role="img" aria-label={m.qrCaption.label} shape-rendering="crispEdges">
+                <rect width={String(m.qr.size)} height={String(m.qr.size)} fill="#ffffff" />
+                <path fill="#000000" d={m.qr.path} />
+              </svg>
+              <figcaption>
+                {m.qrCaption.text}
+                <span>{m.qrCaption.brand}</span>
+              </figcaption>
+            </figure>
           ) : null}
-          {vsOf(invoice) ? (
-            <div>
-              <dt>{s.vs}</dt>
-              <dd>{vsOf(invoice)}</dd>
-            </div>
+          {m.pay ? (
+            <dl class="sheet__pay">
+              {m.pay.map((p) => (
+                <div>
+                  <dt>{p.label}</dt>
+                  <dd>{p.value}</dd>
+                </div>
+              ))}
+            </dl>
           ) : null}
-        </dl>
-        )}
         </div>
         <dl class="sheet__totals">
-          {seller.vatPayer
-            ? totals.rates.flatMap((r) => [
-                <div>
-                  <dt>{s.base(r.rate)}</dt>
-                  <dd>{money(r.base)}</dd>
-                </div>,
-                <div>
-                  <dt>{s.vatOf(r.rate)}</dt>
-                  <dd>{money(r.vat)}</dd>
-                </div>,
-              ])
-            : null}
+          {m.totals.map((p) => (
+            <div>
+              <dt>{p.label}</dt>
+              <dd>{p.value}</dd>
+            </div>
+          ))}
           <div class="sheet__total">
-            <dt>{credit ? s.creditTotal : invoice.kind === 'advance' ? s.advanceTotal : s.total}</dt>
-            <dd>{money(totals.total)}</dd>
+            <dt>{m.total.label}</dt>
+            <dd>{m.total.value}</dd>
           </div>
-          {fx && seller.vatPayer
-            ? [
-                ...eurVat(totals, fx).rates.filter((r) => r.rate > 0).map((r) => (
-                  <div class="sheet__eur">
-                    <dt>{s.vatEur(r.rate)}</dt>
-                    <dd>{formatEurExact(r.vat)}</dd>
-                  </div>
-                )),
-                <div class="sheet__eur">
-                  <dt>{s.vatEurTotal}</dt>
-                  <dd>{formatEurExact(eurVat(totals, fx).vat)}</dd>
-                </div>,
-              ]
-            : null}
+          {m.eur.map((p) => (
+            <div class="sheet__eur">
+              <dt>{p.label}</dt>
+              <dd>{p.value}</dd>
+            </div>
+          ))}
         </dl>
       </div>
-      {fx && invoice.fxRate ? <p class="sheet__note">{invoice.fxDay ? s.fx(invoice.currency, invoice.fxRate, dayName(invoice.fxDay)) : s.fxTyped(invoice.currency, invoice.fxRate)}</p> : null}
-      {invoice.note ? <p class="sheet__note">{invoice.note}</p> : null}
+      {m.fx ? <p class="sheet__note">{m.fx}</p> : null}
+      {m.note ? <p class="sheet__note">{m.note}</p> : null}
       <footer class="sheet__foot">
-        {seller.vatPayer ? null : <p>{s.noVat}</p>}
-        {seller.registerLine ? <p>{seller.registerLine}</p> : null}
-        {invoice.createdByName ? <p>{s.by(invoice.createdByName)}</p> : null}
+        {m.foot.map((line) => (
+          <p>{line}</p>
+        ))}
       </footer>
     </article>
   )
@@ -807,8 +693,21 @@ export const InvoicePage: FC<{
   late?: LateView | null
 }> = ({ invoice, lines, seller, today, link, flash, error, credits = [], advance = null, repeat = null, late = null }) => {
   const a = t.actions
+  const x = t.send
   const state = stateOf(invoice, today)
   const credit = invoice.kind === 'credit'
+  // What the customer gets: the PDF (downloaded, or shared from a phone), an email the client writes, the link.
+  const sheet = sheetOf(invoice, lines, seller, state !== 'paid')
+  const pdf = `/app/faktury/${invoice.id}/pdf`
+  const pdfName = invoicePdfName(sheet.kind, invoice.number ?? '')
+  // What it still asks for: an invoice less its credit notes.
+  const asked = invoice.kind === 'invoice' ? invoice.totalCents + credits.reduce((sum, cn) => sum + cn.totalCents, 0) : invoice.totalCents
+  const payable = state === 'unpaid' || state === 'overdue'
+  const said = { asked, payable: payable && asked > 0, qr: sheet.qr !== null }
+  const message = invoiceMessage(invoice, seller, link, said)
+  // Past its due day, not paid, asking for something, and no request whose final invoice asks now: a reminder to send.
+  const remind = state === 'overdue' && asked > 0 && !(invoice.kind === 'proforma' && advance?.final)
+  const reminder = remind ? invoiceMessage(invoice, seller, link, { ...said, reminder: true }) : null
   return (
     <>
       <a class="back" href="/app/faktury">
@@ -826,44 +725,70 @@ export const InvoicePage: FC<{
       <Flash text={flash} />
       <Flash text={error} tone="error" />
       {invoice.repeatId ? <p class="phead__lead">{a.repeated}</p> : null}
-      <div class="invoice">
+      <div class="invoice invoice--side-first">
         <div class="invoice__paper">
-          <InvoiceSheet invoice={invoice} lines={lines} seller={seller} pay={state !== 'paid'} logo={logoSrc(seller, '/app/logo')} />
+          <InvoiceSheet invoice={invoice} lines={lines} seller={seller} logo={logoSrc(seller, '/app/logo')} sheet={sheet} />
         </div>
         <aside class="invoice__side">
-          <section class="info">
-            {invoice.customerEmail ? (
-              <form method="post" action={`/app/faktury/${invoice.id}/poslat`}>
-                <button class={`btn ${invoice.sentAt ? 'btn--line' : 'btn--blue'} invoice__wide`} type="submit">
-                  {invoice.sentAt ? a.resend : a.send}
-                </button>
-              </form>
-            ) : (
-              <form class="invoice__mail" method="post" action={`/app/faktury/${invoice.id}/poslat`} novalidate>
-                <p class="info__lead">{a.noEmail}</p>
-                <label class="field__label" for="poslat-email">
-                  {a.emailLabel}
-                </label>
-                <input id="poslat-email" class="field__input" type="email" name="email" maxlength={200} autocomplete="off" />
-                <button class="btn btn--blue invoice__wide" type="submit">
-                  {a.send}
-                </button>
-              </form>
-            )}
-            {invoice.sentAt ? <p class="info__source">{a.sent(dayName(new Date(invoice.sentAt * 1000).toISOString().slice(0, 10), today))}</p> : null}
-            {state === 'overdue' && invoice.customerEmail ? (
-              <form method="post" action={`/app/faktury/${invoice.id}/pripomenut`}>
-                <button class="btn btn--line invoice__wide" type="submit">
-                  {a.remind}
-                </button>
-              </form>
-            ) : null}
-            <button class="btn btn--line invoice__wide" type="button" data-print hidden>
-              {a.print}
-            </button>
-            <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.id}/xml`}>
-              {a.xml}
+          <section class="info invoice__send" aria-labelledby="poslat-t">
+            <h2 id="poslat-t" class="info__title">
+              {x.title}
+            </h2>
+            <p class="info__lead">{x.lead}</p>
+            <a class="btn btn--blue invoice__wide" href={pdf} download={pdfName}>
+              {x.download}
             </a>
+            <button class="btn btn--line invoice__wide" type="button" data-share={`${pdf}?zdielat=1`} data-name={pdfName} data-title={message.subject} data-text={message.short} hidden>
+              {x.share}
+            </button>
+            <a class="btn btn--line invoice__wide" href={invoiceMailto(invoice, seller, link, said)}>
+              {x.email}
+            </a>
+            <label class="field__label invoice__linklabel" for="odkaz-odberatel">
+              {x.link}
+            </label>
+            <p class="copyline copyline--one">
+              <input id="odkaz-odberatel" class="copyline__text copyline__input" type="text" value={link} readonly aria-label={x.linkLabel} />
+              <button class="copyline__button" type="button" data-copy={link} data-done={x.copied} hidden>
+                {x.copyLink}
+              </button>
+            </p>
+            <a class="link invoice__view" href={link}>
+              {a.view}
+            </a>
+            {invoice.sentAt ? <p class="info__source">{a.sent(dayName(new Date(invoice.sentAt * 1000).toISOString().slice(0, 10), today))}</p> : null}
+          </section>
+          {reminder ? (
+            <section class="info invoice__remind" id="pripomenut" aria-labelledby="pripomenut-t">
+              <h2 id="pripomenut-t" class="info__title">
+                {x.remindTitle}
+              </h2>
+              <p class="info__lead">{x.remindLead(formatMoney(asked, invoice.currency))}</p>
+              <a class="btn btn--line invoice__wide" href={invoiceMailto(invoice, seller, link, { ...said, reminder: true })}>
+                {x.remindEmail}
+              </a>
+              <button class="btn btn--line invoice__wide" type="button" data-share={`${pdf}?zdielat=1`} data-name={pdfName} data-title={reminder.subject} data-text={reminder.short} hidden>
+                {x.remindShare}
+              </button>
+              <button class="btn btn--line invoice__wide" type="button" data-copy={reminder.body} data-done={x.copied} hidden>
+                {x.remindCopy}
+              </button>
+              <details class="more more--quiet invoice__text">
+                <summary class="more__summary">{x.remindText}</summary>
+                <div class="more__body">
+                  <textarea class="field__input field__area" readonly rows={12} aria-label={x.remindText}>
+                    {reminder.body}
+                  </textarea>
+                </div>
+              </details>
+            </section>
+          ) : null}
+          <section class="info">
+            {invoice.kind === 'proforma' ? null : (
+              <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.id}/xml`}>
+                {a.xml}
+              </a>
+            )}
             {invoice.relates ? (
               <a class="btn btn--line invoice__wide" href={`/app/faktury/${invoice.relates}`}>
                 {t.sheet.kinds.proforma} {invoice.relatesNumber ?? ''}
@@ -985,7 +910,7 @@ export const InvoicePage: FC<{
                 <>
                   <p class="info__lead">{a.repeatOn(a.repeatEveryLower[repeat.running.every] ?? '', dayName(repeat.running.nextOn, today))}</p>
                   {repeat.running.untilOn ? <p class="info__source">{a.repeatUntilOn(dayName(repeat.running.untilOn, today))}</p> : null}
-                  {repeat.running.send ? <p class="info__source">{a.repeatSends}</p> : null}
+                  <p class="info__source">{a.repeatSends}</p>
                   {repeat.running.failed && a.repeatFailed[repeat.running.failed] ? <p class="flag">{a.repeatFailed[repeat.running.failed]}</p> : null}
                   <form method="post" action={`/app/faktury/opakovanie/${repeat.running.id}/zastavit`}>
                     <button class="btn btn--line invoice__wide" type="submit">
@@ -1012,12 +937,6 @@ export const InvoicePage: FC<{
                     {a.repeatUntil}
                   </label>
                   <input id="op-do" class="field__input" name="do" value="" maxlength={16} />
-                  {invoice.customerEmail ? (
-                    <label class="tickbox">
-                      <input type="checkbox" name="poslat" value="1" checked />
-                      <span>{a.repeatSend}</span>
-                    </label>
-                  ) : null}
                   <button class="btn btn--blue invoice__wide" type="submit">
                     {a.repeatStart}
                   </button>
@@ -1044,26 +963,13 @@ export const InvoicePage: FC<{
             <h2 class="info__title">{a.payment}</h2>
             <p class="info__lead">{credit ? a.creditPayment : state === 'paid' && invoice.paidOn ? t.paidOn(dayName(invoice.paidOn, today)) : invoice.kind === 'advance' ? t.sheet.advanceTotal : a.paymentNone}</p>
           </section>
-          <section class="info">
-            <h2 class="info__title">{a.link}</h2>
-            <p class="info__lead">{a.linkLead}</p>
-            <p class="copyline copyline--one">
-              <span class="copyline__text">{link}</span>
-              <button class="copyline__button" type="button" data-copy={link} data-done={app.add.copied} hidden>
-                {app.add.copy}
-              </button>
-            </p>
-            <a class="link invoice__view" href={link}>
-              {a.view}
-            </a>
-          </section>
         </aside>
       </div>
     </>
   )
 }
 
-/** The page a customer opens from the email: the sheet, how to save it, the e-invoice. No sign-in. */
+/** The page a customer opens from the link the client sent: the PDF first, the sheet with its QR code, the e-invoice. No sign-in. */
 export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; seller: Company; token: string }> = ({ invoice, lines, seller, token }) => (
   <html lang="sk">
     <InsideHead title={`${kindName(invoice, seller.vatPayer)} ${invoice.number ?? ''} | ${seller.name}`} />
@@ -1071,6 +977,9 @@ export const PublicInvoicePage: FC<{ invoice: StoredInvoice; lines: Line[]; sell
       <main class="public">
         <div class="public__bar">
           <p class="public__lead">{t.public.lead}</p>
+          <a class="btn btn--blue btn--small" href={`/f/${token}/pdf`} download={invoicePdfName(kindName(invoice, seller.vatPayer), invoice.number ?? '')}>
+            {t.send.download}
+          </a>
           {invoice.kind === 'proforma' ? null : (
             <a class="btn btn--line btn--small" href={`/f/${token}/xml`}>
               {t.actions.xml}

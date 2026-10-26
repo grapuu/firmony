@@ -1,10 +1,10 @@
 // Reminders and late interest (18 October 2026), in workerd: an invoice to a business forty days overdue shows its
 // late interest; issued in one click as an invoice of the interest and the flat 40 € outside VAT (once); interest of
 // later days is invoiced again without the flat 40 €, and an invoice of interest a credit note took back counts for
-// nothing; an invoice of interest is never copied or repeated. An owner turns the reminders on, and the schedule sends
-// the reminder, the second and the third on their days, five days apart, only once the bank reaches the day and five
-// days after the invoice was mailed, past a hundred invoices that are not due, in a locked period too; an invoice
-// credited whole is not reminded, one credited in part for what is left, a request with its final invoice never.
+// nothing; an invoice of interest is never copied or repeated. Since 26 October 2026 Firmony mails no reminder: the
+// page of an overdue invoice prepares the client's own (an email, the phone's share sheet, the text to copy), for what
+// is left after the credit notes; none for an invoice credited whole or a request with its final invoice, and the
+// schedule sends nothing.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
 
@@ -48,7 +48,6 @@ export async function checkDunning({ db, nowS, lucia, signIn, as, day, tick, cap
     'r0-dph': '23',
   })
   const invoiceId = idOf(res)
-  await owner.post(`/app/faktury/${invoiceId}/poslat`, {})
   const number = (await db.prepare('SELECT number FROM invoices WHERE id = ?').bind(invoiceId).first())?.number
   const raw = await (await owner.get(`/app/faktury/${invoiceId}`)).text()
   if (capture) writeFileSync(`${capture}/invoice-late.html`, raw)
@@ -172,15 +171,10 @@ export async function checkDunning({ db, nowS, lucia, signIn, as, day, tick, cap
     JSON.stringify([credit, creditDoc]),
   )
 
-  // Reminders by themselves.
-  check('only an owner turns the reminders on', (await colleague.post('/app/faktury/upomienky', { zapnut: '1' })).status === 403)
+  // Reminders the client sends himself (26 October 2026).
+  check('the switch of the reminders that went by themselves is gone', (await owner.post('/app/faktury/upomienky', { zapnut: '1' })).status === 404 && (await db.prepare('SELECT dunning FROM companies WHERE id = ?').bind(company).first())?.dunning === 0)
   page = plain(await (await owner.get('/app/faktury')).text())
-  check('the invoices offer the reminders, off', page.includes('Upomienky odberateľom') && page.includes('Zapnúť upomienky'))
-  res = await owner.post('/app/faktury/upomienky', { zapnut: '1' })
-  check('an owner turns them on', res.status === 303 && (await db.prepare('SELECT dunning FROM companies WHERE id = ?').bind(company).first())?.dunning === 1)
-  const nine = Date.parse(`${day(0)}T09:30:00Z`)
-  const mails = async (to = 'neplatic@example.sk') =>
-    (await db.prepare("SELECT id, subject, body FROM outbox WHERE recipient = ? AND id LIKE 'invoice:dun:%' ORDER BY created_at, id").bind(to).all()).results
+  check('the invoices offer no reminders by themselves', !page.includes('Upomienky odberateľom') && !page.includes('/app/faktury/upomienky'))
   const late = (email, extra = {}) =>
     owner.post('/app/faktury', {
       akcia: 'vystavit',
@@ -217,13 +211,12 @@ export async function checkDunning({ db, nowS, lucia, signIn, as, day, tick, cap
       'r0-dph': '23',
       dovod: 'Zľava za oneskorenie',
     })
-  // One credited in part, one credited whole, a request whose final invoice is issued: each mailed to its customer.
+  // One credited in part, one credited whole, a request whose final invoice is issued.
   const partId = idOf(await late('dobropis@example.sk'))
   await creditOf(partId, '500,00')
   const wholeId = idOf(await late('cely@example.sk'))
   await creditOf(wholeId, '1000,00')
   const requestId = idOf(await late('zaloha@example.sk', { druh: 'zalohova' }))
-  for (const id of [partId, wholeId, requestId]) await owner.post(`/app/faktury/${id}/poslat`, {})
   const finalRes = await owner.post('/app/faktury', {
     akcia: 'vystavit',
     vyuctovanie: requestId,
@@ -246,74 +239,51 @@ export async function checkDunning({ db, nowS, lucia, signIn, as, day, tick, cap
     'the request got its final invoice',
     finalRes.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE relates = ? AND kind = 'invoice' AND status = 'issued'").bind(requestId).first())?.n === 1,
   )
-  // The months of the invoices locked by the accountant: reminders are no change of the books.
-  const monthEnd = (d) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)), 0)).toISOString().slice(0, 10)
-  await db
-    .prepare("INSERT INTO period_locks (company_id, through_on, version, change_id, changed_at, changed_by, reason) VALUES (?, ?, 1, 'lock-co-dunning', ?, ?, 'TEST-ONLY uzávierka')")
-    .bind(company, monthEnd(day(-60)), nowS, lucia.id)
-    .run()
-  // Mailed six days ago, but the bank has told nothing of the days after the due day: no reminder yet.
-  await db.prepare('UPDATE invoices SET sent_at = sent_at - 6 * 86400 WHERE company_id = ? AND sent_at IS NOT NULL').bind(company).run()
-  await tick(nine)
+  const mailtos = (raw) => [...raw.matchAll(/href="(mailto:[^"]+)"/g)].map((m) => decodeURIComponent(m[1].replace(/&amp;/g, '&')))
+  const lateRaw = await (await owner.get(`/app/faktury/${invoiceId}`)).text()
+  if (capture) writeFileSync(`${capture}/invoice-remind.html`, lateRaw)
+  const reminder = mailtos(lateRaw).find((m) => m.includes('Pripomienka'))
   check(
-    'no reminder while the bank has not reached the days after the due day',
-    (await mails()).length === 0 && (await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first())?.reminders === 0,
+    'an overdue invoice prepares the reminder: an email to the customer with what it asks, its due day and the account, to share from a phone, the text to copy',
+    plain(lateRaw).includes('Pripomenúť platbu') &&
+      plain(lateRaw).includes('zostáva zaplatiť 1 230,00 €') &&
+      Boolean(reminder) &&
+      reminder.startsWith('mailto:neplatic@example.sk?subject=') &&
+      reminder.includes(`Pripomienka úhrady faktúry ${number} od TEST-ONLY Upomienky s. r. o.`) &&
+      reminder.includes(`pripomíname Vám úhradu faktúry č. ${number} na sumu 1 230,00 € so splatnosťou ${long(day(-40))}. Platbu sme zatiaľ nedostali.`) &&
+      reminder.includes('Úhrada prevodom na účet SK31 1200 0000 1987 4263 7541') &&
+      reminder.includes('Ak ste už zaplatili') &&
+      (lateRaw.match(/data-share="[^"]*\/pdf\?zdielat=1"/g) ?? []).length === 2 &&
+      lateRaw.includes('Kopírovať text pripomienky') &&
+      lateRaw.includes('<textarea'),
+    reminder,
   )
+  const partRaw = await (await owner.get(`/app/faktury/${partId}`)).text()
+  check(
+    'one credited in part is reminded of what is left; one credited whole is not, nor a request with its final invoice',
+    mailtos(partRaw).some((m) => m.includes('po dobropise na sumu 615,00 €')) &&
+      !(await (await owner.get(`/app/faktury/${wholeId}`)).text()).includes('Pripomenúť platbu') &&
+      !(await (await owner.get(`/app/faktury/${requestId}`)).text()).includes('Pripomenúť platbu'),
+  )
+  check('the removed reminder addresses answer nothing', (await owner.post(`/app/faktury/${invoiceId}/pripomenut`, {})).status === 404 && (await owner.post(`/app/faktury/${invoiceId}/poslat`, {})).status === 404)
+  // The schedule at nine, with the bank up to date and an old company switched on: nothing goes to any customer.
+  await db.prepare('UPDATE companies SET dunning = 1 WHERE id = ?').bind(company).run()
+  await db.prepare('UPDATE invoices SET sent_at = ? WHERE company_id = ? AND kind IN (?, ?)').bind(nowS - 10 * 86400, company, 'invoice', 'proforma').run()
   await db
     .prepare(
       "INSERT INTO statements (id, company_id, account_id, iban, created_at, source, from_on, to_on, status) VALUES ('st-dunning', ?, 'acc-dunning', 'SK3112000000198742637541', ?, 'upload', ?, ?, 'taken')",
     )
     .bind(company, nowS, day(-70), day(-1))
     .run()
-  await db.prepare('UPDATE invoices SET sent_at = ? WHERE id = ?').bind(nowS, invoiceId).run()
-  await tick(nine + 30_000)
-  check('nor within five days of the invoice mailed', (await mails()).length === 0)
-  await db.prepare('UPDATE invoices SET sent_at = sent_at - 6 * 86400 WHERE id = ?').bind(invoiceId).run()
-  // A hundred older invoices reminded by hand today: not due, so they keep nobody from a turn.
-  await db
-    .prepare(
-      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
-       INSERT INTO invoices (id, company_id, created_at, status, year, seq, number, customer_name, issued_on, delivered_on, due_on, base_cents, vat_cents, total_cents, token, kind, customer_email, sent_at, reminders, reminded_at)
-       SELECT 'starve-' || i, ?1, ?2, 'issued', 2026, 9000 + i, 'S' || i, 'TEST-ONLY Iný', ?4, ?4, ?3, 100, 0, 100, 'tok-starve-' || i, 'invoice', 'starve@example.sk', ?2 - 864000, 1, ?2 FROM n`,
-    )
-    .bind(company, nowS, day(-80), day(-20))
-    .run()
-  await tick(nine + 60_000)
-  let sent = await mails()
-  let row = await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first()
+  await tick(Date.parse(`${day(0)}T09:30:00Z`))
   check(
-    'the schedule sends the first reminder of an overdue invoice, past a hundred not due, in a locked month',
-    sent.length === 1 && sent[0].subject === `Pripomienka: faktúra ${number} od TEST-ONLY Upomienky s. r. o.` && row?.reminders === 1,
-    JSON.stringify([sent, row]),
+    'the schedule mails no reminder to any customer',
+    (await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE id LIKE 'invoice:%'").first())?.n === 0 &&
+      (await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE recipient IN ('neplatic@example.sk', 'dobropis@example.sk', 'cely@example.sk', 'zaloha@example.sk')").first())?.n === 0 &&
+      (await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first())?.reminders === 0,
   )
-  const part = await mails('dobropis@example.sk')
-  check(
-    'one credited in part is reminded of what is left; one credited whole is not, nor a request with its final invoice',
-    part.length === 1 &&
-      plain(part[0].body).includes('po dobropise na sumu 615,00 €') &&
-      (await mails('cely@example.sk')).length === 0 &&
-      (await mails('zaloha@example.sk')).length === 0 &&
-      (await mails('starve@example.sk')).length === 0,
-    JSON.stringify(part),
-  )
-  res = await owner.post(`/app/faktury/${wholeId}/pripomenut`, {})
-  check('nor by hand', res.status === 303 && (await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE recipient = 'cely@example.sk' AND id LIKE 'invoice:remind:%'").first())?.n === 0)
-  await tick(nine + 90_000)
-  sent = await mails()
-  check('not the next one within five days', sent.length === 1 && (await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first())?.reminders === 1)
-  await db.prepare('UPDATE invoices SET reminded_at = reminded_at - 6 * 86400 WHERE id = ?').bind(invoiceId).run()
-  await tick(nine + 120_000)
-  await db.prepare('UPDATE invoices SET reminded_at = reminded_at - 6 * 86400 WHERE id = ?').bind(invoiceId).run()
-  await tick(nine + 180_000)
-  await db.prepare('UPDATE invoices SET reminded_at = reminded_at - 6 * 86400 WHERE id = ?').bind(invoiceId).run()
-  await tick(nine + 240_000)
-  sent = await mails()
-  row = await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(invoiceId).first()
-  check(
-    'then the reminder and the second reminder, three at most',
-    sent.length === 3 && sent[1].subject.startsWith('Upomienka: faktúra') && sent[2].subject.startsWith('Druhá upomienka: faktúra') && row?.reminders === 3,
-    JSON.stringify([sent, row]),
-  )
+  // An invoice reminded by itself before 26 October 2026 keeps saying so.
+  await db.prepare('UPDATE invoices SET reminders = 3 WHERE id = ?').bind(invoiceId).run()
   page = plain(await (await owner.get(`/app/faktury/${invoiceId}`)).text())
-  check('the invoice says how many went', page.includes('Upomienky poslané samé: 3 z 3'))
+  check('an invoice reminded before still says how many went', page.includes('Firmony poslalo odberateľovi upomienky e-mailom: 3.') && page.includes('Firmony ju poslalo e-mailom'))
 }

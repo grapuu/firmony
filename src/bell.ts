@@ -1,10 +1,10 @@
 // Every email Firmony sends to a client or to its team is a doorbell. His word of 13 October 2026: "nechcem žiadnu
 // komunikáciu mailom ... všetko v našom uzamknutom ekosystéme". A doorbell says that something waits in the app and
 // links to it, and carries nothing else: no message, no amount, no supplier, no name of a person, no personal data.
-// What it announces is read after signing in. Three emails carry what they must: the sign-in link (the key to the
-// door), an invitation (who invites, so that it is not taken for phishing) and an invoice a client sends to its own
-// customer, who has no account with us. People who are not clients yet (a request from the site, the link to the
-// contract) get the two emails of the site, since they have no account to read anything in.
+// What it announces is read after signing in. Two emails carry what they must: the sign-in link (the key to the door)
+// and an invitation (who invites, so that it is not taken for phishing). Firmony sends no invoice to a client's own
+// customer (26 October 2026): the client downloads or shares its PDF. People who are not clients yet (a request from
+// the site, the link to the contract) get the two emails of the site, since they have no account to read anything in.
 //
 // A doorbell is rung once for what it announces (its key in the outbox); for messages, once for each batch the other
 // side has not read yet (the callers look at `seen_at`), so five messages in a row are one email.
@@ -42,6 +42,7 @@ export const bell = {
   bank: (link: string) => ring('obnovte prístup k banke', 'prístup Firmony k Vašej banke čoskoro vyprší. Obnovíte ho po prihlásení, trvá to minútu:', link),
   statement: (month: string, link: string, settings: string) =>
     ring(`výpis z banky za ${month}`, `do Firmony ešte neprišiel výpis z banky za ${month}. Pridáte ho po prihlásení, trvá to minútu:`, link, [`Pripomienky vypnete tu: ${settings}`]),
+  invoiceRepeated: (link: string) => ring('faktúra je vystavená', 'opakovaná faktúra je vystavená. Stiahnite si ju a pošlite odberateľovi:', link),
   approve: (link: string, settings: string) =>
     ring('faktúry na schválenie', 'vo Firmony na Vaše schválenie čakajú faktúry dodávateľov. Uvidíte ich po prihlásení:', link, [`Pripomienky vypnete tu: ${settings}`]),
   statementConfirm: (link: string) => ring('potvrďte účet z výpisu', 'do Firmony prišiel výpis z účtu, ktorý u Vás ešte nemáme. Po prihlásení potvrďte, či je to účet Vašej firmy:', link),

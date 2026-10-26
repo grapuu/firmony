@@ -328,6 +328,52 @@
       })
     })
 
+    // An invoice's PDF shared from a phone (Mail, WhatsApp, Messages): only where the browser shares a file. The file is
+    // fetched ahead, so the share sheet opens at the tap (Safari asks for the share within the tap itself).
+    var pdfFiles = {}
+    function pdfFile(url, name) {
+      if (!pdfFiles[url]) {
+        pdfFiles[url] = fetch(url, { credentials: 'same-origin' })
+          .then(function (res) {
+            if (!res.ok) throw new Error('pdf')
+            return res.blob()
+          })
+          .then(function (blob) { return new File([blob], name, { type: 'application/pdf' }) })
+        pdfFiles[url].catch(function () { delete pdfFiles[url] })
+      }
+      return pdfFiles[url]
+    }
+    var sharesFiles = false
+    try {
+      sharesFiles = Boolean(navigator.canShare && window.File && navigator.canShare({ files: [new File(['%PDF-1.4'], 'faktura.pdf', { type: 'application/pdf' })] }))
+    } catch (e) {}
+    document.querySelectorAll('[data-share]').forEach(function (button) {
+      if (!sharesFiles) return
+      var url = button.getAttribute('data-share')
+      var name = button.getAttribute('data-name') || 'faktura.pdf'
+      var ready = null
+      pdfFile(url, name).then(function (file) { ready = file }, function () {})
+      button.hidden = false
+      button.addEventListener('click', function () {
+        var share = function (file) {
+          return navigator.share({ files: [file], title: button.getAttribute('data-title') || '', text: button.getAttribute('data-text') || '' })
+        }
+        // Closing the share sheet is no error.
+        if (ready) {
+          share(ready).catch(function () {})
+          return
+        }
+        button.disabled = true
+        pdfFile(url, name)
+          .then(share)
+          .catch(function (err) {
+            // The tap's permission ran out while the file came: the PDF opens, and its viewer shares it.
+            if (err && err.name === 'NotAllowedError') location.href = url.split('?')[0] + '?nahlad=1'
+          })
+          .then(function () { button.disabled = false })
+      })
+    })
+
     // An invoice: printed, or saved as a PDF from the print dialog.
     document.querySelectorAll('[data-print]').forEach(function (button) {
       button.hidden = false
