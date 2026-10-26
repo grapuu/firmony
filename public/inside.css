@@ -7655,6 +7655,62 @@ a.wtable__name {
 }
 
 .customers__figures dt {
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.customers__figures dd {
+  margin: 0;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.customers__open {
+  color: var(--amber) !important;
+  font-weight: 600;
+}
+
+.hand-paid {
+  border-color: var(--blue-line);
+}
+
+@media (max-width: 860px) {
+  .customers__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customers__figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customers__action {
+    justify-self: start;
+  }
+}
+
+/* An invoice from one sentence: above the invoice's form, one line to write and a button. */
+.info--ai {
+  max-width: 980px;
+  margin-bottom: 20px;
+  border-color: var(--blue-line);
+  background: linear-gradient(180deg, var(--blue-soft) 0%, var(--white) 100%);
+}
+
+.ai-sentence {
+  display: grid;
+  gap: 8px;
+}
+
+.ai-sentence .btn {
+  justify-self: start;
+}
+
+/* A workspace's settings: a button in a card keeps its own width. */
+.inside--invoicing .info > .btn {
+  justify-self: start;
+}
+
 
 /* Analytika (26 October 2026): the administrator's one page. Big numbers with a small line of the days under each,
    tables in the cards of the team side; the lines and bars are inline SVG drawn on the server, coloured here. */
@@ -7857,57 +7913,6 @@ a.wtable__name {
   color: var(--dim);
   font-size: 0.8125rem;
 }
-
-.customers__figures dd {
-  margin: 0;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.customers__open {
-  color: var(--amber) !important;
-  font-weight: 600;
-}
-
-.hand-paid {
-  border-color: var(--blue-line);
-}
-
-@media (max-width: 860px) {
-  .customers__row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .customers__figures {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .customers__action {
-    justify-self: start;
-  }
-}
-
-/* An invoice from one sentence: above the invoice's form, one line to write and a button. */
-.info--ai {
-  max-width: 980px;
-  margin-bottom: 20px;
-  border-color: var(--blue-line);
-  background: linear-gradient(180deg, var(--blue-soft) 0%, var(--white) 100%);
-}
-
-.ai-sentence {
-  display: grid;
-  gap: 8px;
-}
-
-.ai-sentence .btn {
-  justify-self: start;
-}
-
-/* A workspace's settings: a button in a card keeps its own width. */
-.inside--invoicing .info > .btn {
-  justify-self: start;
 
 .antable th.antable__trend,
 .antable td.antable__trend {
