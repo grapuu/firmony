@@ -83,17 +83,17 @@ export const copy = typesetAll({
   offer: {
     eyebrow: 'Výhodnejší štart s Firmony',
     title: 'Začnite s náskokom. Štyri výhody za 0 €.',
-    lead: 'Prvý mesiac, založenie s. r. o., prechod k nám aj faktúry. Pozrite sa, čo všetko získate za 0 €.',
+    lead: 'Prvý mesiac, pomoc so založením s. r. o., prechod k nám aj fakturácia. Pozrite sa, čo všetko u nás získate za 0 €.',
     /** The big accent under each card's title, the same on all four. */
     accent: 'ZA 0 €',
     items: [
-      { title: 'Prvý mesiac', text: 'Firmony si vyskúšate bez záväzku. Najprv uvidíte, či vám sedí. Až potom sa rozhodnete.' },
-      { title: 'Založenie s. r. o.', text: 'Firmu založíme za vás. Vy riešite len podpisy a môžete začať rýchlejšie.' },
-      { title: 'Prechod k Firmony', text: 'So zmenou vám pomôžeme tak, aby ste nemuseli začínať od nuly ani platiť za samotný prechod.' },
-      { title: 'Faktúry', text: 'Faktúry vystavíte bez príplatku, jednoducho a hneď od začiatku v jednom systéme.' },
+      { title: 'Prvý mesiac', text: 'Za prvý mesiac služby neplatíte nič. Ak Vám Firmony nesadne, vypoviete zmluvu do jeho konca a neplatíte ani euro.' },
+      { title: 'Pomoc so založením', text: 'Prevedieme Vás založením s. r. o. krok za krokom: čo pripraviť, ku komu ísť a čo podpísať. Za našu pomoc neplatíte.' },
+      { title: 'Prechod k Firmony', text: 'So zmenou Vám pomôžeme tak, aby ste nemuseli začínať od nuly ani platiť za samotný prechod.' },
+      { title: 'Fakturácia', text: 'Faktúry vystavujete zadarmo, aj keď u nás účtovníctvo nemáte. Našim klientom sa vystavené faktúry nerátajú do dokladov balíka.' },
     ],
     cta: 'Chcem začať',
-    fine: 'Bez viazanosti. Zmluvu môžete kedykoľvek vypovedať s mesačnou výpovednou lehotou.',
+    fine: 'Bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Odmenu notára alebo advokáta a poplatky za zápis firmy platí zakladateľ.',
     hint: 'Objavte všetky štyri výhody.',
     hintMobile: 'Potiahnite prstom a objavte ďalšie výhody.',
   },
@@ -197,7 +197,7 @@ export const copy = typesetAll({
     first: 'Jasná cena.',
     second: 'Platíte podľa počtu dokladov.',
     lead: 'Vyberte si podľa počtu dokladov za mesiac a podľa toho, či ste platiteľom DPH.',
-    firstMonthFree: 'Prvý mesiac zadarmo pre každého. Faktúry zadarmo pre našich klientov navždy.',
+    firstMonthFree: 'Prvý mesiac zadarmo. Vystavené faktúry sa do dokladov balíka nerátajú.',
     perMonth: 'mesačne',
     annual: 'Za 12 mesiacov so závierkou',
     annualBasis: 'Ročný súčet počíta s rovnakým balíkom počas 12 mesiacov a jednou závierkou s daňovým priznaním. Mzdy a individuálne dohodnuté práce sú navyše.',
@@ -255,7 +255,7 @@ export const copy = typesetAll({
     second: 'My nadviažeme.',
     fresh: {
       title: 'Zakladáte firmu',
-      text: 'Založíme s. r. o. za Vás a účtovníctvo povedieme od prvého dňa. Založenie je v cene, ak u nás vediete účtovníctvo 36 mesiacov; vy riešite len podpisy.',
+      text: 'So založením s. r. o. Vám pomôžeme zadarmo a účtovníctvo povedieme od mesiaca, v ktorom firma vznikne. Odmenu notára alebo advokáta a poplatky za zápis platí zakladateľ.',
       cta: 'Založím s. r. o.',
     },
     switching: {
@@ -331,7 +331,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
+        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
       },
       {
         q: 'Ako spolu budeme komunikovať?',
@@ -565,8 +565,8 @@ export const copy = typesetAll({
     },
     noVat: 'bez DPH',
     yearly: 'raz ročne',
-    invoicesValue: 'balík mesačne vopred, mzdy a doklady navyše za uplynulý mesiac, splatnosť 14 dní',
-    noticeValue: 'jeden mesiac, bez viazanosti',
+    invoicesValue: 'prvý mesiac zadarmo, potom balík mesačne vopred, mzdy a doklady navyše za uplynulý mesiac, splatnosť 14 dní',
+    noticeValue: 'jeden mesiac, bez viazanosti; v prvom mesiaci zmluva skončí s jeho koncom',
     docsValue: `za mesiac do ${APP.docsByDay}. dňa nasledujúceho mesiaca`,
     answersValue: REPLY_WITHIN,
     plan: 'Balík',

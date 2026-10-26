@@ -1,9 +1,6 @@
 import { recordAutoReview } from '../aml/auto-review'
 import { completionFacts, handoverContactText, handoverHistory, managedHandover, managedHandoverQueue, updateHandover, type HandoverUpdate } from '../migration/store'
 import { checksFrom } from '../migration/model'
-import { formationCase, formationQueue, updateFormation, type FormationUpdate } from '../formation/store'
-import { stepsFrom, type FormationState } from '../formation/model'
-import { TeamFormation } from '../views/formation'
 import { AssistantControl, AssistantPage } from '../views/assistant'
 import { assistantAnswer, assistantDocuments } from '../assistant/context'
 import { assistantAllowed, assistantControl, setAssistantEnabled, type AssistantScope } from '../assistant/store'
@@ -600,15 +597,14 @@ async function accountantsList(db: D1Database): Promise<{ id: string; name: stri
 
 teamRoutes.get('/', async (c) => {
   const who = c.get('who')
-  const [rows, ended, { dues }, mail, takeovers, formations] = await Promise.all([
+  const [rows, ended, { dues }, mail, takeovers] = await Promise.all([
     teamClients(c.env.DB, who.user, demoOn(c)),
     isAdmin(who.user) ? endedCompanies(c.env.DB, who.user) : Promise.resolve([]),
     teamDeadlines(c.env.DB, who.user, demoOn(c), dayOf(now())),
     isAdmin(who.user) ? failedMail(c.env.DB) : Promise.resolve(null),
     managedHandoverQueue(c.env.DB,who.user,demoOn(c)),
-    formationQueue(c.env.DB,who.user,demoOn(c)),
   ])
-  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} mail={mail} ended={ended} takeovers={takeovers} formations={formations} now={now()} flash={flashOf(c)} />)
+  return shell(c, 'clients', t.clients.title, <ClientsPage user={who.user} rows={rows} dues={dues} mail={mail} ended={ended} takeovers={takeovers} now={now()} flash={flashOf(c)} />)
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -4734,35 +4730,6 @@ const pastedOf = (body: Record<string, unknown>) => (typeof body.riadky === 'str
 teamRoutes.get('/klienti/:id/prevzatie', async (c) => {
   const company = await companyParam(c)
   return company ? takeoverPage(c, company) : missingPage(c)
-})
-
-const formationPath = (company: Company) => `/ucto/klienti/${company.id}/zalozenie`
-
-async function formationTeamPage(c: Ctx, company: Company, extra: { error?: string } = {}, status: ContentfulStatusCode = 200) {
-  const f = await formationCase(c.env.DB, company.id)
-  if (!f) return missingPage(c)
-  return shell(c, 'clients', `Založenie s.r.o.: ${company.name}`, <><a class="back" href={`/ucto/klienti/${company.id}`}>Späť na firmu</a>
-    <TeamFormation company={company} f={f} base={formationPath(company)} />
-    {extra.error ? <p class="notice notice--error">{extra.error}</p> : null}
-  </>, status)
-}
-
-teamRoutes.get('/klienti/:id/zalozenie', async (c) => {
-  const company = await companyParam(c)
-  return company ? formationTeamPage(c, company) : missingPage(c)
-})
-
-teamRoutes.post('/klienti/:id/zalozenie', async (c) => {
-  const company = await companyParam(c)
-  if (!company) return missingPage(c)
-  const db = c.env.DB, body = await c.req.parseBody(), f = await formationCase(db, company.id)
-  const refuse = (text: string) => formationTeamPage(c, company, { error: text }, 409)
-  if (body.firma !== company.id || !f || body.ziadost !== f.id || !/^\d+$/.test(String(body.verzia)) || Number(body.verzia) !== f.revision) return refuse('Žiadosť, firma alebo verzia sa medzitým zmenila. Obnovte stránku.')
-  const field = (key: string) => typeof body[key] === 'string' ? body[key].trim() : ''
-  const values: FormationUpdate = { state: field('stav') as FormationState, due: field('termin') || null, authority: field('opravnenie'), note: '', action: field('otazka'), steps: stepsFrom(body), reason: field('dovod') }
-  const error = await updateFormation(db, company, c.get('who').user, f, values)
-  if (!error) later(c, flushOutbox(db, c.env.EMAIL))
-  return error ? refuse(error) : c.redirect(`${formationPath(company)}?ok=priebeh`, 303)
 })
 
 teamRoutes.get('/klienti/:id/prevzatie/prechod/ziadost.txt', async (c) => {

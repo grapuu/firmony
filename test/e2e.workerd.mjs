@@ -5222,6 +5222,6 @@ await checkOverviewRuntime({ db, nowS, day, signIn, as, capture: process.env.FIR
 await checkDeliveryRuntime({ mf, db, signIn, nowS, day })
 await checkManagedTakeover({db,files,as,signIn,lucia,nowS,day,capture:process.env.FIRMONY_CAPTURE_DIR})
 await checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,provider:assistantProvider,capture:process.env.FIRMONY_CAPTURE_DIR})
-await checkFormationRuntime({db,files,as,signIn,lucia,nowS,day,capture:process.env.FIRMONY_CAPTURE_DIR})
+await checkFormationRuntime({db,as,signIn,nowS})
 await mf.dispose()
 done('runtime')
