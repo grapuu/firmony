@@ -7986,3 +7986,144 @@ a.wtable__name {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* An e-invoice through Peppol (views/peppol.tsx): its state as a pill, its way as three steps lit as they are reached. */
+.einv .info__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.einv__pill--queued,
+.einv__pill--sent {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.einv__pill--delivered {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.einv__pill--rejected,
+.einv__pill--failed {
+  background: var(--red-soft);
+  color: var(--red-ink);
+}
+
+.einv__steps {
+  list-style: none;
+  margin: 2px 0 14px;
+  padding: 0;
+}
+
+.einv__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 12px;
+  padding-bottom: 14px;
+}
+
+.einv__step:last-child {
+  padding-bottom: 0;
+}
+
+/* The line to the next step, green once this one is reached. */
+.einv__step::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 20px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.einv__step:last-child::before {
+  display: none;
+}
+
+.einv__step--on::before {
+  background: var(--green);
+}
+
+.einv__dot {
+  grid-row: span 2;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--white);
+  box-sizing: border-box;
+}
+
+.einv__step--on .einv__dot {
+  border-color: var(--green);
+  background: var(--green) var(--check) center / 10px no-repeat;
+}
+
+.einv__step--wait .einv__dot {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  animation: einv-wait 1.6s var(--ease, ease) infinite alternate;
+}
+
+.einv__step--bad .einv__dot {
+  border-color: var(--red-ink);
+  background: var(--red-ink);
+}
+
+@keyframes einv-wait {
+  from {
+    background: var(--blue-soft);
+  }
+  to {
+    background: var(--white);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .einv__step--wait .einv__dot {
+    animation: none;
+  }
+}
+
+.einv__label {
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.einv__step--off .einv__label {
+  color: var(--dim);
+  font-weight: 500;
+}
+
+.einv__step--bad .einv__label {
+  color: var(--red-ink);
+}
+
+.einv__at {
+  grid-column: 2;
+  color: var(--soft);
+  font-size: 0.8125rem;
+}
+
+/* The mark of an invoice's e-invoice in the list. */
+.einv__mark {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.einv__mark--delivered {
+  color: var(--green);
+}
+
+.einv__mark--rejected,
+.einv__mark--failed {
+  color: var(--red-ink);
+}

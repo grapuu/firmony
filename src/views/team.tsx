@@ -361,6 +361,8 @@ export interface ClientPageProps {
   draft?: string
   /** How the client's bank stands, in a line. */
   bankLine?: string | null
+  /** Whether the client receives e-invoices through Peppol, and through whose postman. */
+  peppolLine?: string | null
   /** The power of attorney the client uploaded, the newest first. */
   papers: Paper[]
   poa: PoaState
@@ -735,6 +737,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           {c.address ? <span>{c.address}</span> : null}
           <span>{c.accountantName ?? t.clients.nobody}</span>
           {p.bankLine ? <span>{p.bankLine}</span> : null}
+          {p.peppolLine ? <span>{p.peppolLine}</span> : null}
           {p.ending ? <span class="pill pill--amber">{p.ending.phase === 'ending' ? t.client.ends(dayName(p.ending.endsOn)) : t.client.ended(dayName(p.ending.endsOn))}</span> : null}
         </p>
       </header>

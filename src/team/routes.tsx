@@ -12,6 +12,8 @@ import { AmlDossierPanel } from '../views/aml-admission'
 import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
 import { registerAmlRoutes } from '../aml/routes'
 import { registerWorkspaceRoutes } from './workspaces'
+import { providerOf, type PeppolEnv } from '../peppol/provider'
+import { companyParticipant, participantState } from '../peppol/store'
 // The accountants' side under /ucto. Only somebody of the team gets in: a client who types the address gets the
 // same "not found" as for anything that does not exist. Every company, document and payment is checked against
 // what the user may see (an accountant her own clients, an administrator everybody).
@@ -760,11 +762,24 @@ async function clientPage(
       : mailed
         ? t.client.bankStatements(whenName(mailed.createdAt, day))
         : t.client.noBank
+  // Whether the client receives e-invoices, and through whose postman (peppol/): the accountant knows where they land.
+  const participant = companyParticipant(company)
+  const network = participant ? await participantState(db, participant) : null
+  const postman = providerOf(c.env as PeppolEnv)
+  const peppolLine =
+    network?.state === 'found'
+      ? postman?.smpHost && network.smp === postman.smpHost
+        ? 'E-faktúry cez Firmony'
+        : 'E-faktúry: v sieti Peppol'
+      : network?.state === 'missing'
+        ? 'E-faktúry: mimo siete Peppol'
+        : null
   return shell(
     c,
     'clients',
     company.name,
     <ClientPage
+      peppolLine={peppolLine}
       assistant={await assistantAllowed(db,{company:company.id,actor:who.user.id,side:'team'})}
       user={who.user}
       company={company}

@@ -6,7 +6,11 @@ import { checkFreeInvoiceUnits } from './free-invoice.units.mjs'
 import { checkInvoicingUnits } from './invoicing.units.mjs'
 import { checkInvoicePdfUnits } from './invoice-pdf.units.mjs'
 import { checkAnalyticsUnits } from './analytics.units.mjs'
+import { checkPeppolNetworkUnits } from './peppol-network.units.mjs'
 import {
+  peppolParticipant,
+  peppolProvider,
+  peppolStore,
   analytics,
   analyticsRecord,
   analyticsStore,
@@ -7301,4 +7305,5 @@ checkAssistantUnits()
 checkInvoicingUnits({ invoiceAi, invoicing })
 await checkInvoicePdfUnits()
 checkAnalyticsUnits({ analytics, analyticsRecord, analyticsStore, security, check })
+await checkPeppolNetworkUnits({ peppolParticipant, peppolProvider, peppolStore })
 done('units')

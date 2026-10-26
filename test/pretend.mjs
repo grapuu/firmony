@@ -2,7 +2,7 @@
 // Worker of its own (it keeps every message and hands the list back over fetch), and the Register of Legal
 // Entities, which knows europio s. r. o. (the answer seen on 12 October 2026), knows nobody else, and fails for
 // one number so that a failure can be looked at.
-import { createVerify, generateKeyPairSync, randomUUID } from 'node:crypto'
+import { createHash, createHmac, createVerify, generateKeyPairSync, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 export const PRETEND_MAIL = `
@@ -427,3 +427,81 @@ export function statementMail({ to, from = 'vypisy@banka.test', xml, name = 'vyp
     '',
   ].join('\r\n')
 }
+
+/**
+ * The Peppol network as the app meets it (peppol/): the SML answered over Cloudflare's DNS over HTTPS, and a postman
+ * that speaks the reference protocol of peppol/provider.ts. Participants registered with this postman answer with its
+ * SMP; `elsewhere` ones with another's. The postman keeps what it was sent; `refuse` names a receiver it refuses for
+ * good, `busy` makes it answer 503 a number of times. `notice` signs events the way the postman sends them to us.
+ */
+export const PEPPOL_TEST = {
+  url: 'https://peppol.pretend.test',
+  key: 'TEST-ONLY-peppol-key',
+  secret: 'TEST-ONLY-peppol-webhook-secret-0123456789',
+  smp: 'smp.pretend.test',
+}
+
+export function pretendPeppol({ registered = [], elsewhere = [] } = {}) {
+  const names = new Map()
+  const sent = []
+  const state = { busy: 0, refuse: new Set(), down: false }
+  const base32 = (bytes) => {
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+    let out = '', bits = 0, value = 0
+    for (const b of bytes) {
+      value = (value << 8) | b
+      bits += 8
+      while (bits >= 5) {
+        out += A[(value >>> (bits - 5)) & 31]
+        bits -= 5
+      }
+    }
+    if (bits > 0) out += A[(value << (5 - bits)) & 31]
+    return out
+  }
+  const name = (participant) => `${base32(createHash('sha256').update(participant.toLowerCase()).digest())}.iso6523-actorid-upis.participant.sml.prod.tech.peppol.org`.toLowerCase()
+  const register = (participant, smp) => names.set(name(participant), smp)
+  for (const p of registered) register(p, PEPPOL_TEST.smp)
+  for (const p of elsewhere) register(p, 'smp.other-postman.test')
+  return {
+    sent,
+    state,
+    register,
+    async answer(request) {
+      const url = new URL(request.url)
+      if (url.hostname === 'cloudflare-dns.com' && url.pathname === '/dns-query') {
+        if (state.down) return new Response('down', { status: 502 })
+        const asked = (url.searchParams.get('name') ?? '').toLowerCase()
+        const smp = names.get(asked)
+        return Response.json(
+          smp
+            ? { Status: 0, Answer: [{ name: asked, type: 35, TTL: 60, data: `100 10 "U" "Meta:SMP" "!.*!https://${smp}!" .` }] }
+            : { Status: 3, Authority: [{ name: 'participant.sml.prod.tech.peppol.org', type: 6, TTL: 900, data: 'pretend' }] },
+        )
+      }
+      if (url.origin === PEPPOL_TEST.url && url.pathname === '/v1/documents' && request.method === 'POST') {
+        if (request.headers.get('authorization') !== `Bearer ${PEPPOL_TEST.key}`) return Response.json({ error: 'unauthorised' }, { status: 401 })
+        if (state.busy > 0) {
+          state.busy--
+          return Response.json({ error: 'busy' }, { status: 503 })
+        }
+        const body = await request.json()
+        if (state.refuse.has(body.receiver)) return Response.json({ error: 'Príjemca e-faktúry nie je platný.' }, { status: 422 })
+        const key = request.headers.get('idempotency-key')
+        const again = sent.find((s) => s.key === key)
+        if (again) return Response.json({ id: again.id }, { status: 200 })
+        const id = `pp-${sent.length + 1}`
+        sent.push({ id, key, ...body, xml: Buffer.from(body.document, 'base64').toString('utf8') })
+        return Response.json({ id }, { status: 201 })
+      }
+      return null
+    },
+    /** A notice as the postman posts it to /peppol/udalosti: the body and its signature header. */
+    notice(events, { at = Math.floor(Date.now() / 1000), secret = PEPPOL_TEST.secret } = {}) {
+      const body = JSON.stringify({ events })
+      const v1 = createHmac('sha256', secret).update(`${at}.${body}`).digest('hex')
+      return { body, signature: `t=${at},v1=${v1}` }
+    },
+  }
+}
+

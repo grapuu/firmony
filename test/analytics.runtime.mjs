@@ -28,7 +28,7 @@ export async function checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, c
   // The schema: every step before this one unchanged (the 80 of claude/week; once steps 81 and 82 are merged, the pin
   // becomes `slice(0, 82)` with their hash), and this step the last.
   check('analytics: the 80 earlier schema steps are unchanged', createHash('sha256').update(JSON.stringify(migrationSteps.slice(0, 80))).digest('hex') === '2e54ad4468c880713a84b65366c6e0bd7a278e2214fe4858d27bf6b9648b04ed')
-  check('analytics: its schema step is the last one', JSON.stringify(migrationSteps.at(-1)).includes('CREATE TABLE IF NOT EXISTS analytics_site') && migrationSteps.filter((s) => JSON.stringify(s).includes('analytics_site')).length === 1)
+  check('analytics: its schema step is step 83', JSON.stringify(migrationSteps[82]).includes('CREATE TABLE IF NOT EXISTS analytics_site') && migrationSteps.filter((s) => JSON.stringify(s).includes('CREATE TABLE IF NOT EXISTS analytics_site')).length === 1)
   check('analytics: the database is at the last step', (await db.prepare("SELECT value FROM meta WHERE key = 'schema'").first()).value === String(migrationSteps.length))
 
   const d = today()

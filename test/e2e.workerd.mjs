@@ -76,7 +76,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { crc32 } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
-import { PRETEND_MAIL, camtXml, pretendBank, pretendFio, readerAnswer, ecbAnswer, registerAnswer, statementMail } from './pretend.mjs'
+import { PEPPOL_TEST, PRETEND_MAIL, camtXml, pretendBank, pretendFio, pretendPeppol, readerAnswer, ecbAnswer, registerAnswer, statementMail } from './pretend.mjs'
+import { checkPeppolNetwork } from './peppol-network.runtime.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -93,6 +94,8 @@ const bank = pretendBank({ iban: 'SK3112000000198742637541', transactions: () =>
 const FIO_TOKEN = 'Fio2026tokenAbCdEfGh0123456789IjKlMnOpQrStUvWxYz0123456789abcdef'.slice(0, 64)
 const fioFeed = { transactions: [], closing: 0 }
 const fio = pretendFio({ iban: 'SK2283300000002801234567', tokens: [FIO_TOKEN], transactions: () => fioFeed.transactions, closing: () => fioFeed.closing })
+// The Peppol network: the SML over DNS over HTTPS for every Worker, and the pretend postman for the one that has it.
+const network = pretendPeppol({ registered: ['0245:2023489446'] })
 const mf = new Miniflare(
   convertV4MiniflareOptions({
     // Miniflare otherwise fetches https://workers.cloudflare.com/cf.json for Request.cf metadata.
@@ -110,6 +113,8 @@ const mf = new Miniflare(
         bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.io', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey, ANNOUNCE: '1' },
         serviceBindings: { EMAIL: 'pretend-mail' },
         async outboundService(request) {
+          const networked = await network.answer(request.clone())
+          if (networked) return new MfResponse(await networked.text(), { status: networked.status, headers: { 'content-type': 'application/json' } })
           const assistant=await assistantProvider.answer(request)
           if(assistant)return new MfResponse(await assistant.text(),{status:assistant.status,headers:assistant.headers})
           if (['api.indexnow.org', 'www.bing.com'].includes(new URL(request.url).hostname)) {
@@ -126,6 +131,25 @@ const mf = new Miniflare(
           if (answer) return new MfResponse(await answer.text(), { status: answer.status, headers: { 'content-type': 'application/json' } })
           const ecb = ecbAnswer(request.url)
           if (ecb) return new MfResponse(await ecb.text(), { status: ecb.status, headers: { 'content-type': 'text/xml' } })
+          return new MfResponse('unexpected request', { status: 599 })
+        },
+      },
+      {
+        // The same app with the pretend postman connected (peppol/provider.ts), on the same database and files.
+        name: 'firmony-peppol',
+        routes: ['peppol.firmony.io/*'],
+        modulesRoot: dist,
+        modules: [{ type: 'ESModule', path: `${dist}/index.js` }],
+        compatibilityDate: '2026-10-01',
+        d1Databases: { DB: 'firmony-e2e' },
+        r2Buckets: { FILES: 'firmony-e2e-files' },
+        bindings: { ANTHROPIC_API_KEY: 'pretend', PEPPOL_PROVIDER: 'pretend', PEPPOL_API_URL: PEPPOL_TEST.url, PEPPOL_API_KEY: PEPPOL_TEST.key, PEPPOL_WEBHOOK_SECRET: PEPPOL_TEST.secret, PEPPOL_SMP_HOST: PEPPOL_TEST.smp },
+        serviceBindings: { EMAIL: 'pretend-mail' },
+        async outboundService(request) {
+          const networked = await network.answer(request.clone())
+          if (networked) return new MfResponse(await networked.text(), { status: networked.status, headers: { 'content-type': 'application/json' } })
+          const read = await readerAnswer(request)
+          if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
           return new MfResponse('unexpected request', { status: 599 })
         },
       },
@@ -5291,5 +5315,6 @@ const freshAdmin = async () => { bossFresh = (await verifyBrowser('ahoj@firmony.
 await checkInvoicingRuntime({ mf, db, post, get, sent, settle, as, admin, freshAdmin, day })
 await checkAmlFixes({ db, files, get, post, admin, acc, lucia, signIn, as, nowS, day, freshAdmin })
 await checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
 await mf.dispose()
 done('runtime')
