@@ -20,7 +20,7 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   await settle()
   let mail = (await sent()).slice(before).find((m) => m.to === 'zeleny@example.test')
   const token = mail?.text.match(/\/fakturacia\/vstup\?t=([A-Za-z0-9_-]{43})/)?.[1] ?? ''
-  check('invoicing: a sign-up answers that a link went out, and the link goes to the address typed', res.status === 200 && page.includes('Pozrite sa do e-mailu') && token.length === 43)
+  check('invoicing: a sign-up answers that a link went out, and the link goes to the address typed', res.status === 200 && page.replace(/\u2060/g, '').includes('Pozrite sa do e-mailu') && token.length === 43)
   check('invoicing: the sign-up keeps the register\'s name, never the email in an address', (await db.prepare("SELECT company FROM invoicing_signups WHERE email = 'zeleny@example.test'").first())?.company === 'TEST-ONLY Fakturačka s. r. o.' && !page.includes('?e='))
 
   // Mistakes, a machine, a register that does not know the company.
