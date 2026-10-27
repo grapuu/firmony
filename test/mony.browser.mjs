@@ -97,5 +97,32 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
   await sheet.getByRole('link', { name: 'Cenník', exact: true }).click()
   await clientPage.waitForFunction(() => location.hash === '#cennik')
   check('site menu: a link followed to a part of the page closes it', await sheet.isHidden())
+
+  // On a phone Mony opens over the whole screen and holds the page still; folded, the page is where it was, and a
+  // cloud left open does not open again by itself on the next page.
+  await clientPage.evaluate(() => window.scrollTo({ top: 1500, behavior: 'instant' }))
+  const before = await clientPage.evaluate(() => Math.round(scrollY))
+  await clientPage.getByRole('button', { name: 'Otvoriť Mony', exact: true }).click()
+  await clientPage.waitForTimeout(450)
+  const whole = await clientPage.locator('#mony-panel').boundingBox()
+  check(
+    'mony phone: it covers the screen and holds the page still',
+    Boolean(whole) && Math.round(whole.x) === 0 && Math.round(whole.y) === 0 && Math.round(whole.width) === 390 && Math.round(whole.height) === 844 &&
+      (await clientPage.evaluate(() => document.documentElement.classList.contains('mony-held') && getComputedStyle(document.body).position === 'fixed')),
+    JSON.stringify({ whole, held: await clientPage.evaluate(() => [document.documentElement.className, getComputedStyle(document.body).position, innerWidth, innerHeight]) }),
+  )
+  await clientPage.mouse.move(195, 400)
+  await clientPage.mouse.wheel(0, 900)
+  await clientPage.screenshot({ path: '.wrangler/screens/390-mony-phone.png' })
+  await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
+  check('mony phone: folded, the page is exactly where it was', before > 0 && (await clientPage.evaluate(() => Math.round(scrollY))) === before && !(await clientPage.evaluate(() => document.documentElement.classList.contains('mony-held'))))
+  await clientPage.evaluate(() => {
+    try {
+      localStorage.setItem('mony:open', '1')
+    } catch {}
+  })
+  await clientPage.reload()
+  await clientPage.getByRole('button', { name: 'Otvoriť Mony', exact: true }).waitFor({ state: 'visible' })
+  check('mony phone: left open, it waits folded on the next page', await clientPage.locator('#mony-panel').isHidden())
   await clientPage.setViewportSize({ width: 1440, height: 900 })
 }

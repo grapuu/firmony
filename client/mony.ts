@@ -142,14 +142,48 @@ if (root && panel && launcher && log && form && input) {
   for (const turn of turns) bubble(turn.role, turn.text)
   showChips()
 
+  // On a phone Mony opens over the whole screen, like a chat app (his word of 28 October 2026: the page ran away under
+  // the chat). The page behind is held still where it was, and the sheet follows the part of the screen the keyboard
+  // leaves visible, so neither the page nor the cloud moves while the person scrolls or types.
+  const phone = window.matchMedia('(max-width: 900px)')
+  const viewport = window.visualViewport
+  let heldAt: number | null = null
+  const hold = () => {
+    if (!phone.matches || heldAt !== null) return
+    heldAt = window.scrollY
+    document.body.style.top = `-${heldAt}px`
+    document.documentElement.classList.add('mony-held')
+  }
+  const release = () => {
+    if (heldAt === null) return
+    const at = heldAt
+    heldAt = null
+    document.documentElement.classList.remove('mony-held')
+    document.body.style.top = ''
+    window.scrollTo({ top: at, behavior: 'instant' as ScrollBehavior })
+  }
+  const fit = () => {
+    if (!viewport || heldAt === null) {
+      root.style.removeProperty('--mony-vh')
+      root.style.removeProperty('--mony-top')
+      return
+    }
+    root.style.setProperty('--mony-vh', `${Math.round(viewport.height)}px`)
+    root.style.setProperty('--mony-top', `${Math.round(viewport.offsetTop)}px`)
+  }
+  viewport?.addEventListener('resize', fit)
+  viewport?.addEventListener('scroll', fit)
+
   const open = (focus: boolean) => {
     panel.hidden = false
     launcher.hidden = true
     launcher.setAttribute('aria-expanded', 'true')
     root.classList.add('is-open')
     store.set(local, OPEN, '1')
+    hold()
+    fit()
     scroll()
-    if (focus) input.focus()
+    if (focus) input.focus({ preventScroll: true })
   }
   const fold = () => {
     panel.hidden = true
@@ -157,8 +191,17 @@ if (root && panel && launcher && log && form && input) {
     launcher.setAttribute('aria-expanded', 'false')
     root.classList.remove('is-open')
     store.set(local, OPEN, '0')
-    launcher.focus()
+    release()
+    fit()
+    launcher.focus({ preventScroll: true })
   }
+  // Turned from a phone's width to a wide one while open: the page is let go and the cloud is the corner's again.
+  phone.addEventListener('change', () => {
+    if (!root.classList.contains('is-open')) return
+    if (phone.matches) hold()
+    else release()
+    fit()
+  })
 
   const ask = async (question: string) => {
     const q = question.trim()
@@ -246,5 +289,6 @@ if (root && panel && launcher && log && form && input) {
   })
 
   root.hidden = false
-  if (store.get(local, OPEN) === '1') open(false)
+  // A cloud left open opens again on the next page; on a phone, where it covers the page, it waits to be asked.
+  if (store.get(local, OPEN) === '1' && !phone.matches) open(false)
 }

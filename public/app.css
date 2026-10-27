@@ -5802,6 +5802,13 @@ textarea {
   }
 }
 
+@keyframes mony-sheet {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
 @keyframes mony-dot {
   50% {
     background: var(--blue);
@@ -5827,17 +5834,50 @@ textarea {
     height: 34px;
   }
 
+  /* Opened on a phone, Mony is the whole screen, sized to what the keyboard leaves visible (client/mony.ts sets
+     --mony-vh and --mony-top from the visual viewport), and the page behind is held still. */
   .mony.is-open {
-    right: 8px;
-    left: 8px;
-    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    top: var(--mony-top, 0px);
+    right: 0;
+    bottom: auto;
+    left: 0;
     z-index: 70;
+    height: var(--mony-vh, 100dvh);
   }
 
   .mony.is-open .mony__panel {
     width: 100%;
-    height: min(640px, calc(100dvh - 24px));
-    border-radius: 30px 30px 10px 30px;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overscroll-behavior: contain;
+  }
+
+  .mony.is-open .mony__head {
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
+  }
+
+  .mony.is-open .mony__note {
+    margin-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The whole screen slides up a little as it opens, as a sheet does, rather than growing from the corner. */
+  .mony.is-open .mony__panel {
+    transform-origin: 50% 100%;
+    animation-name: mony-sheet;
+  }
+
+  html.mony-held,
+  html.mony-held body {
+    overflow: hidden;
+  }
+
+  html.mony-held body {
+    position: fixed;
+    right: 0;
+    left: 0;
+    width: 100%;
   }
 
   .mony__label {

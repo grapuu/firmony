@@ -4,6 +4,13 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Mony na telefóne, 28. 10. 2026 po polnoci (Claude, `main`):** jeho slovo o 00:11: Mony na telefóne „uteká“, pri
+posúvaní v čete sa posúva stránka. Do 900 px sa Mony otvorí cez celú obrazovku ako aplikácia četu (`.mony.is-open`,
+výsuv zdola `mony-sheet`), stránka pod ňou stojí (`html.mony-held`, body `position: fixed` s `top` podľa posunu,
+`client/mony.ts` `hold`/`release`), po zatvorení je stránka tam, kde bola. Výška a horný okraj idú z visualViewport
+(`--mony-vh`, `--mony-top`), takže klávesnica panel nevytlačí; fokus bez posunu. Na telefóne sa Mony na ďalšej stránke
+sama neotvára. Browser regresia v `test/mony.browser.mjs` (390 px: panel 390×844, stránka drží, posun obnovený).
+
 **Telefón a tablet, 27. 10. 2026 v noci (Claude, `main`):** jeho slovo o 23:06: mobilné rozloženie amatérske, prerobiť na
 elitné; o 23:08 celý web na telefóne, tablete a všetkých šírkach dokonalý a pri balíku Na mieru žiadna cena, len kontakt
 (veľkým firmám sa podmienky nastavia osobne, priorita sú malé a nové s. r. o.). Telefón (≤640 px, koniec
