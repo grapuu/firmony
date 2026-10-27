@@ -13,7 +13,8 @@ prstom a ďalšia vykukuje (scroll-snap); porovnanie ako päť dvojíc (`versus_
 ponuka za 1 € s obrázkom hore a štyrmi bodmi ako zoznam fajok (od 900 px nižšie); Mony o kúsok menšia. Tablet: tri
 dôvody a dva stĺpce porovnania vedľa seba, cenník ako trojstĺpcový hárok až po 721 px, ponuka za 1 € dvojstĺpcová do
 701 px. Na mieru: „Podmienky dohodneme osobne“ a tlačidlo „Kontaktujte nás“, vo formulári „Na mieru, podmienky
-dohodneme osobne“, v llms.txt „podmienky na mieru“. Kontrola v skutočnom prehliadači pri 320, 390, 768, 820 a 1024 px.
+dohodneme osobne“, v llms.txt „podmienky na mieru“. Kontrola v skutočnom prehliadači pri 320, 390, 768, 820 a 1024 px. Návod `/zalozenie-sro` má hneď pod úvodom panel ponuky
+za 1 € (`guide__deal` v `src/views/guide.tsx`), na stránke pre investorov sú pravidlá na telefóne rad kariet.
 
 **S. r. o. za 1 €, 27. 10. 2026 večer (Claude, `main`):** jeho rozhodnutie o 22:24 až 22:38: ceny 89/169/329 € ostávajú,
 náklady na minimum, trh „zaliať“ ponukou založenia s. r. o. za 1 € (nie „zadarmo“: zákaz klamlivého „zadarmo“ a model

@@ -207,6 +207,10 @@ check(
     ['36 mesiacov', 'prvé 3 mesiace platené vopred', 'osobné ručenie zakladateľa', 'najviac 12 mesačných poplatkov', 'nespája s prvým mesiacom zadarmo', 'Základné imanie', 'prvých 20 firiem'].every((t) => page.replace(/\u00a0/g, ' ').includes(t)) &&
     !page.includes('platí zakladateľ') && page.replace(/\u00a0/g, ' ').includes('Výnimkou je ponuka s. r. o. za 1 €'),
 )
+{
+  const guide = (await (await get('/zalozenie-sro')).text()).replace(/\u00a0/g, ' ')
+  check('the guide to founding an s. r. o. offers it for 1 € at once', guide.includes('class="guide__deal"') && guide.includes('Chcem s. r. o. za 1 €') && guide.includes('href="/zacat?nova=1"') && guide.includes('href="/#sro-za-euro"'))
+}
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
   'it names the prices of all three plans',

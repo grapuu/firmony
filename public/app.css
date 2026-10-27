@@ -5888,6 +5888,76 @@ textarea {
   }
 }
 
+/* The guide to founding an s. r. o. tells at once that we found it for 1 €: a small panel of the same light. */
+.guide__deal {
+  position: relative;
+  overflow: hidden;
+  margin: 28px 0 8px;
+  padding: clamp(22px, 3vw, 32px);
+  border-radius: 22px;
+  background-color: #1a2ae6;
+  background-image:
+    radial-gradient(50% 80% at 100% 0%, rgb(255 66 94 / 0.85) 0%, rgb(255 66 94 / 0) 100%),
+    radial-gradient(50% 80% at 70% 120%, rgb(146 58 255 / 0.85) 0%, rgb(146 58 255 / 0) 100%),
+    linear-gradient(160deg, #1424e0 0%, #1e30f2 55%, #3a2ef0 100%);
+  color: #fff;
+}
+
+.legal .guide__deal p {
+  margin: 0;
+  color: #fff;
+}
+
+.legal .guide__deal .guide__deal-more {
+  color: #fff;
+}
+
+.guide__deal-title {
+  font-family: var(--display);
+  font-size: clamp(1.375rem, 2.6vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.guide__deal-big {
+  white-space: nowrap;
+  font-size: 1.35em;
+}
+
+.legal .guide__deal .guide__deal-text {
+  margin-top: 6px;
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-style: italic;
+  color: #ffb9c6;
+}
+
+.legal .guide__deal .guide__deal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 18px;
+}
+
+.guide__deal-cta {
+  background: #fff;
+  color: var(--blue);
+}
+
+.guide__deal-cta:hover {
+  background: #eef0ff;
+  color: var(--blue);
+}
+
+.guide__deal-more {
+  color: #fff;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 /* From a tablet down, the four points of the s. r. o. for 1 € are a list of ticks, not four narrow boxes. */
 @media (max-width: 900px) {
   .deal__points {
@@ -6043,6 +6113,7 @@ textarea {
   /* Cards in a row under the thumb: the next one peeks in, so it is clear that there is more. */
   .why__grid,
   .extras__grid,
+  .irules,
   .plans {
     display: grid;
     grid-auto-columns: 84%;
@@ -6062,14 +6133,21 @@ textarea {
 
   .why__grid::-webkit-scrollbar,
   .extras__grid::-webkit-scrollbar,
+  .irules::-webkit-scrollbar,
   .plans::-webkit-scrollbar {
     display: none;
   }
 
   .why__card,
   .extras__card,
+  .irule,
   .plan {
     scroll-snap-align: start;
+  }
+
+  .istep {
+    gap: 8px;
+    padding: 22px;
   }
 
   .why__card {

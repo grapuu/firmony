@@ -5,6 +5,7 @@ import type { Guide } from '../content/guides'
 import { GUIDES } from '../content/guides'
 import { dayName } from '../app/copy'
 import { typeset as t } from '../format'
+import { copy } from '../copy'
 import { StartForm } from './home'
 
 export const GuidePage: FC<{ guide: Guide }> = ({ guide: g }) => (
@@ -23,6 +24,23 @@ export const GuidePage: FC<{ guide: Guide }> = ({ guide: g }) => (
         </h1>
         <p class="lead">{t(g.lead)}</p>
         <p class="small">{`Aktualizované ${dayName(g.modified)}`}</p>
+        {g.path === '/zalozenie-sro' ? (
+          // Whoever reads how to found an s. r. o. is told at once that we found it for 1 € (27 October 2026).
+          <aside class="guide__deal" aria-label={copy.formation.cta}>
+            <p class="guide__deal-title">
+              {copy.formation.first} <span class="guide__deal-big">{copy.formation.big}</span>
+            </p>
+            <p class="guide__deal-text">{copy.formation.second}</p>
+            <p class="guide__deal-actions">
+              <a class="btn guide__deal-cta" href="/zacat?nova=1">
+                {copy.formation.cta}
+              </a>
+              <a class="guide__deal-more" href="/#sro-za-euro">
+                Podmienky ponuky
+              </a>
+            </p>
+          </aside>
+        ) : null}
         {g.sections.map((s) => (
           <section>
             <h2 class="h3">{t(s.h)}</h2>
