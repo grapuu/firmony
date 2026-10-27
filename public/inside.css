@@ -8157,3 +8157,83 @@ a.wtable__name {
   color: var(--red-ink);
 }
 
+
+/* Používatelia (/ucto/pouzivatelia): everybody we know, for the administrator. ------------------------------ */
+
+.people__figs {
+  margin-bottom: 24px;
+}
+
+.people__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 18px;
+}
+
+.people__export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+}
+
+.people__table {
+  min-width: 860px;
+}
+
+.people__name,
+.people__mail,
+.people__cname,
+.people__company .small {
+  display: block;
+}
+
+.people__name {
+  font-weight: 600;
+}
+
+.people__mail {
+  margin-top: 2px;
+  color: var(--soft);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.people__mail:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.people__phone a {
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.people__kinds {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.people__cname {
+  font-weight: 600;
+}
+
+.people__when {
+  white-space: nowrap;
+}
+
+.people__cards {
+  display: grid;
+  gap: 20px;
+}
+
+.people__keys {
+  margin-top: 14px;
+}

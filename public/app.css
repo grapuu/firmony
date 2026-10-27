@@ -444,6 +444,175 @@ textarea {
   transition: text-decoration-color 0.2s;
 }
 
+/* What is free and the extra service, to the eye first (his word of 27 October 2026). */
+.top__nav a.top__hot,
+.top__sheet a.top__hot {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+/* The phone's menu: the places of the header's menu, which has no room there. Without a script it opens and
+   closes by its button; with one (public/fresh.js) it also closes when a link is followed. */
+.top__menu {
+  display: none;
+  position: relative;
+}
+
+.top__burger {
+  display: grid;
+  place-content: center;
+  gap: 4px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  cursor: pointer;
+  list-style: none;
+}
+
+.top__burger::-webkit-details-marker {
+  display: none;
+}
+
+.top__bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.top__menu[open] .top__burger {
+  background: var(--mist);
+}
+
+.top__sheet {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  width: min(280px, calc(100vw - 32px));
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.top__sheet a {
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.top__sheet a:hover {
+  background: var(--mist);
+  color: var(--blue);
+}
+
+@media (max-width: 1080px) {
+  .top__menu {
+    display: block;
+  }
+
+  .top__cta {
+    margin-left: auto;
+  }
+}
+
+/* The way in to sign in is in the phone's menu: the header keeps the button and the menu. */
+@media (max-width: 560px) {
+  .top__login {
+    display: none;
+  }
+}
+
+.foot__col a.foot__hot {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+/* Ešte viac od Firmony: the investors' tax return and the free tools, two cards. */
+.extras__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  max-width: 980px;
+  margin-block: 0;
+  padding-block: 0;
+  list-style: none;
+}
+
+.extras__card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: clamp(24px, 3vw, 36px);
+}
+
+.extras__card--invest {
+  border-color: var(--blue-line);
+  background: linear-gradient(165deg, #eef0ff 0%, var(--white) 62%);
+}
+
+.extras__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extras__tag {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.extras__tag--extra {
+  background: var(--blue);
+  color: #fff;
+}
+
+.extras__tag--free {
+  background: var(--green-soft, #e6f6ec);
+  color: var(--green, #16794a);
+}
+
+.extras__card .h3 {
+  margin: 4px 0 0;
+}
+
+.extras__text {
+  margin: 0;
+  color: var(--soft);
+  line-height: 1.55;
+}
+
+.extras__links {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extras__button {
+  justify-self: start;
+  margin-top: 6px;
+}
+
+@media (max-width: 760px) {
+  .extras__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* A word in a sentence that opens Mony rather than another page. */
 .link--button {
   padding: 0;

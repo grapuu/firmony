@@ -3,6 +3,7 @@
 // person's decision. Only the team reaches it (/ucto); an accountant sees her own reports, only the explicitly designated person sees all reports. Other administrators see only their own. Nothing here is ever shown to the client (s. 18 of the Act).
 import type { FC, Child } from 'hono/jsx'
 import { APP } from '../config'
+import { typeset } from '../format'
 import { app, dayName, whenName } from '../app/copy'
 import { declarationStateOf, type Level, type Report, type Risk, type StoredDeclaration } from '../app/aml'
 import type { Company, User } from '../app/store'
@@ -18,7 +19,7 @@ const LEVEL_PILL: Record<Level, string> = { low: 'pill--ok', standard: 'pill--bl
 
 const born = (rc: string, day: string) => (rc ? rc : day ? dayName(day) : a.no)
 
-const Declaration: FC<{ company: Company; stored: StoredDeclaration | null; today: string }> = ({ company, stored, today }) => {
+const Declaration: FC<{ company: Company; stored: StoredDeclaration | null; today: string; hidden?: boolean }> = ({ company, stored, today, hidden }) => {
   const state = declarationStateOf(stored)
   return (
     <section class="info" id="udaje" aria-labelledby="udaje-t">
@@ -28,7 +29,10 @@ const Declaration: FC<{ company: Company; stored: StoredDeclaration | null; toda
         </h2>
         <span class={`pill ${STATE_PILL[state]}`}>{a.state[state]}</span>
       </header>
-      {!stored ? (
+      {hidden ? (
+        // His word of 27 October 2026: the people's personal data are seen and checked by the designated person alone.
+        <p class="info__lead">{typeset('Osobné údaje z vyhlásenia, rodné čísla, adresy a doklady, vidí a overuje len určená osoba. Podozrivé veci napíšte do oznámenia nižšie.')}</p>
+      ) : !stored ? (
         <p class="info__empty">{a.missing}</p>
       ) : (
         <>
@@ -207,8 +211,8 @@ export const AmlPage: FC<AmlPageProps> = (p) => {
       <Flash text={p.error} tone="error" />
       <div class="pgrid pgrid--wide">
         <div class="pgrid__main">
-          <Declaration company={p.company} stored={p.stored} today={today} />
-          {p.verification}
+          <Declaration company={p.company} stored={p.stored} today={today} hidden={p.officer !== true} />
+          {p.officer === true ? p.verification : null}
           <Reports readOnly={p.readOnly} company={p.company} reports={p.reports} admin={p.officer === true} today={today} draft={p.draft} />
         </div>
         <aside class="pgrid__side">

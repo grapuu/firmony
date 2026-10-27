@@ -54,6 +54,7 @@ import { checkBadDebt } from './bad-debt.runtime.mjs'
 import { checkTriangle } from './triangle.runtime.mjs'
 import { checkAssetVat } from './asset-vat.runtime.mjs'
 import { checkWorkPay } from './work-pay.runtime.mjs'
+import { checkUsers } from './users.runtime.mjs'
 import { checkAiAccuracy } from './ai-accuracy.runtime.mjs'
 import { checkAutobook } from './autobook.runtime.mjs'
 import { checkAutobookAtomic } from './autobook-atomic.runtime.mjs'
@@ -192,6 +193,12 @@ check(
   'the founder speaks to people in his own words, and whoever does not know something is sent to Mony in the corner',
   page.includes('pocit, že som na to všetko sám') && page.includes('my Vám poradíme') && !page.includes('Vaša účtovníčka Vám poradí') &&
     page.replace(/\u00a0/g, ' ').includes('našej pomocníčky vpravo dole') && (page.match(/data-mony-call/g) ?? []).length === 2,
+)
+check(
+  'the free tools and the investors\' extra service stand out: in the menu, the phone\'s menu, a section of their own and the footer',
+  (page.match(/class="top__hot"/g) ?? []).length === 4 && page.includes('class="top__menu"') && page.includes('Ešte viac od Firmony.') && page.includes('Daňové priznanie z investícií') &&
+    page.includes('extras__tag--extra') && page.includes('extras__tag--free') && ['/faktura-zadarmo', '/mzdova-kalkulacka', '/szco-kalkulacka', '/sro-kalkulacka'].every((h) => page.includes(`href="${h}"`)) &&
+    (page.match(/class="foot__hot"/g) ?? []).length === 3,
 )
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
@@ -537,7 +544,7 @@ check('the dividend rate is said as it is for 2026', plain(page).includes('sprav
 res = await get('/')
 const homeForLinks = await res.text()
 check('the home page leads to it', homeForLinks.includes('href="/investori"'))
-check('a client finds the way in from the site, in its header and its footer', (homeForLinks.match(/href="\/app\/prihlasenie"/g) ?? []).length === 2)
+check('a client finds the way in from the site, in its header, the phone\'s menu and its footer', (homeForLinks.match(/href="\/app\/prihlasenie"/g) ?? []).length === 3)
 const investorPairs = [
   ['email', 'Investor@Example.sk'],
   ['broker', 'xtb'],
@@ -1830,8 +1837,16 @@ check("the accountant's list says the client's data wait for her", (await res.te
 res = await acc.get('/ucto/klienti/co-a/aml')
 page = (await res.text()).replace(/ /g, ' ')
 if(process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/aml-review.html`,page)
+// His word of 27 October 2026: the people's personal data are seen and checked by the designated person alone.
 check(
-  'she reads the declaration in full',
+  'the accountant sees the identification only as its state, never the personal data',
+  res.status === 200 && page.includes('vidí a overuje len určená osoba') && !page.includes('905312/0010') && !page.includes('EA123456') && !page.includes('Doklady a vykonané kontroly'),
+)
+check('with the risk it points to', page.includes('navrhujeme: štandardné'))
+res = await admin.get('/ucto/klienti/co-a/aml')
+page = (await res.text()).replace(/ /g, ' ')
+check(
+  'the designated person reads the declaration in full',
   res.status === 200 &&
     page.includes('905312/0010') &&
     page.includes('Ján Spoločník, 40 %') &&
@@ -1839,7 +1854,6 @@ check(
     page.includes('EA123456') &&
     page.includes('Doklady a vykonané kontroly'),
 )
-check('with the risk it points to', page.includes('navrhujeme: štandardné'))
 res = await anna.get('/ucto/klienti/co-a/aml')
 check("a client gets nothing of the team's page", res.status === 404)
 check('she reads the newest version', page.includes('Hlavná 6, 040 01 Košice'))
@@ -1860,7 +1874,9 @@ let companyAml = await aml.dossierOfCompany(db,'co-a')
 const companyCheckFields = (kind) => ({druh:kind,vysledok:'clear',zdroj:`TEST ONLY current independent ${kind} source`,podpisujuci:'Anna Malá',kvalifikovany:'1',hash:companyAml.dossier.facts_hash})
 for (const kind of ['identity','kuv','pep','eu-sanctions','un-sanctions','countries']) {
   res=await acc.post(`/ucto/aml/spisy/${companyAml.dossier.id}/kontrola`,companyCheckFields(kind))
-  check(`the assigned accountant records the ${kind} check through the protected route`,res.status===303)
+  check(`an accountant can no longer record the ${kind} check`,res.status===404)
+  res=await admin.post(`/ucto/aml/spisy/${companyAml.dossier.id}/kontrola`,companyCheckFields(kind))
+  check(`the designated person records the ${kind} check through the protected route`,res.status===303)
 }
 res=await acc.post(`/ucto/aml/spisy/${companyAml.dossier.id}/rozhodnutie`,{rozhodnutie:'approved',riziko:'standard',dovod:'TEST ONLY independent complete review',hash:companyAml.dossier.facts_hash})
 check('an assigned accountant cannot substitute for the designated person',res.status===404)
@@ -5124,6 +5140,7 @@ await checkBadDebt({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAP
 await checkTriangle({ db, acc, lucia, nowS, day })
 await checkAssetVat({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkWorkPay({ db, acc, admin, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkUsers({ db, admin, acc, lucia, nowS, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAiAccuracy({ db, acc, admin, lucia, nowS, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAutobook({ db, acc, lucia, nowS, day, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkAutobookAtomic({ db, nowS, day })

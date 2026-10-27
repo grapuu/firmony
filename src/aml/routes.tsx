@@ -39,9 +39,12 @@ async function accessible(c: Ctx, id: string, write: boolean): Promise<{ view: D
   const o = d.order_id ? await db.prepare('SELECT * FROM orders WHERE id = ?').bind(d.order_id).first<Record<string, unknown>>() : null
   const companyId = d.company_id ?? (typeof o?.company_id === 'string' ? o.company_id : null)
   const company = companyId ? await db.prepare(`SELECT c.id, c.closed_at, c.accountant_id, (${accessOpenSql('c')}) AS active FROM companies c WHERE c.id = ?`).bind(companyId).first<{ id: string; closed_at: number | null; accountant_id: string | null; active: number }>() : null
+  // His word of 27 October 2026: the people's identification (birth numbers, addresses, documents, the signed file) is
+  // seen and checked by the designated person alone, never by an accountant or another administrator.
+  if (!await isOfficer(db, user)) return null
   if (company) {
-    if (!company.active ? write || !await isOfficer(db, user) : user.team !== 'admin' && company.accountant_id !== user.id) return null
-  } else if (user.team !== 'admin' || write && o?.status !== 'open') return null
+    if (!company.active && write) return null
+  } else if (write && o?.status !== 'open') return null
   const view = await dossierView(db, d)
   return view ? { view, order: o ? orderOf(o) : null, back: company ? `/ucto/klienti/${company.id}/aml` : `/ucto/aml/objednavky/${d.order_id}` } : null
 }
@@ -90,7 +93,7 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
   })
   app.get('/aml/objednavky/:id', async (c) => {
     const user = c.get('who').user
-    if (user.team !== 'admin') return missing(c)
+    if (!await isOfficer(c.env.DB, user)) return missing(c)
     const raw = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(c.req.param('id')).first<Record<string, unknown>>()
     if (!raw) return missing(c)
     const order = orderOf(raw)

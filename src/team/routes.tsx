@@ -294,6 +294,8 @@ import {
   bratislavaDay,
 } from '../app/store'
 import { dayOf } from '../views/inside-pages'
+import { KIND_SLUGS, isOwner, matchesSearch, peopleCsv, peopleOf, personDetail, type PersonKind } from './people'
+import { UserPage, UsersPage } from '../views/users'
 import { Tile } from '../views/home'
 import { Door, Heading } from '../views/inside'
 import {
@@ -355,10 +357,10 @@ function render(c: Ctx, node: unknown, status: ContentfulStatusCode = 200) {
 
 async function shell(c: Ctx, place: TeamPlace | null, title: string, node: unknown, status: ContentfulStatusCode = 200) {
   const who = c.get('who')
-  const [counts, own] = await Promise.all([teamCounts(c.env.DB, who.user, demoOn(c)), companiesOf(c.env.DB, who.user.id)])
+  const [counts, own, owner] = await Promise.all([teamCounts(c.env.DB, who.user, demoOn(c)), companiesOf(c.env.DB, who.user.id), isOwner(c.env.DB, who.user)])
   return render(
     c,
-    <TeamShell user={who.user} place={place} counts={counts} ownCompany={own.length > 0} title={title} mony={monyFor(c.env, who.user)}>
+    <TeamShell user={who.user} place={place} counts={counts} ownCompany={own.length > 0} owner={owner} title={title} mony={monyFor(c.env, who.user)}>
       {node as never}
     </TeamShell>,
     status,
@@ -788,6 +790,7 @@ async function clientPage(
       user={who.user}
       company={company}
       members={members}
+      owner={await isOwner(db, who.user)}
       queue={queue}
       toCheck={toCheck}
       missing={missing}
@@ -5554,6 +5557,44 @@ teamRoutes.get('/ai', async (c) => {
 })
 
 teamRoutes.get('/fakturacia', (c) => (isAdmin(c.get('who').user) ? billingPage(c) : missingPage(c)))
+
+// Používatelia (27 October 2026, his word: the e-mails, contacts and data of every user, simple and clear): everybody
+// Firmony knows by e-mail, for the owner's own account alone (isOwner), not another administrator nor an accountant; the list for Excel after a fresh passkey (any .csv of /ucto).
+async function peopleWanted(c: Ctx) {
+  const at = now()
+  const people = await peopleOf(c.env.DB, dayOf(at))
+  const slug = c.req.query('kto') ?? ''
+  const kind = (Object.entries(KIND_SLUGS).find(([, s]) => s === slug)?.[0] as PersonKind | undefined) ?? null
+  const query = (c.req.query('hladat') ?? '').trim().slice(0, 80)
+  const shown = people.filter((p) => (kind === null || p.kinds.includes(kind)) && matchesSearch(p, query))
+  return { at, people, kind, query, shown }
+}
+teamRoutes.get('/pouzivatelia', async (c) => {
+  if (!(await isOwner(c.env.DB, c.get('who').user))) return missingPage(c)
+  const { at, people, kind, query, shown } = await peopleWanted(c)
+  return shell(c, 'users', 'Používatelia', <UsersPage people={people} shown={shown} kind={kind} query={query} now={at} />)
+})
+teamRoutes.get('/pouzivatelia.csv', async (c) => {
+  const who = c.get('who')
+  if (!(await isOwner(c.env.DB, who.user))) return missingPage(c)
+  const { at, shown, kind } = await peopleWanted(c)
+  await c.env.DB.batch([eventStatement(c.env.DB, { company: null, user: who.user.id, action: 'people.exported', detail: { rows: shown.length, kind } })])
+  return new Response(peopleCsv(shown), {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="firmony-pouzivatelia-${dayOf(at)}.csv"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
+})
+teamRoutes.get('/pouzivatelia/:key', async (c) => {
+  if (!(await isOwner(c.env.DB, c.get('who').user))) return missingPage(c)
+  const at = now()
+  const person = (await peopleOf(c.env.DB, dayOf(at))).find((p) => p.key === c.req.param('key'))
+  if (!person) return missingPage(c)
+  const detail = person.userId ? await personDetail(c.env.DB, person.userId) : null
+  return shell(c, 'users', person.name ?? person.email, <UserPage person={person} detail={detail} now={at} />)
+})
 
 // Analytika (26 October 2026): the administrator's page of how Firmony does, and its data for an analysis. Only an
 // administrator; anybody else of the team gets the same "not found" as any page they may not see (a client gets it

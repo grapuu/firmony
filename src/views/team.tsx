@@ -40,15 +40,16 @@ import { pressing } from '../team/deadlines'
 import type { DueRow } from '../team/deadlines-store'
 import { DueItem } from './deadlines'
 
-export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'billing' | 'people' | 'work' | 'ai' | 'analytics' | 'workspaces' | 'incidents'
+export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'users' | 'billing' | 'people' | 'work' | 'ai' | 'analytics' | 'workspaces' | 'incidents'
 
 /** The team's places. `menu`: seldom used, so on a phone it is always in the bar's menu, never a tab. */
-const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean; menu?: boolean }[] = [
+const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean; owner?: boolean; menu?: boolean }[] = [
   { place: 'clients', href: '/ucto', label: t.nav.clients, short: t.nav.short.clients, art: ART.tree },
   { place: 'deadlines', href: '/ucto/terminy', label: t.nav.deadlines, short: t.nav.short.deadlines, art: ART.paperReturn },
   { place: 'queue', href: '/ucto/doklady', label: t.nav.queue, short: t.nav.short.queue, art: ART.paperInvoice },
   { place: 'inbox', href: '/ucto/spravy', label: t.nav.inbox, short: t.nav.short.inbox, art: ART.chat },
   { place: 'requests', href: '/ucto/ziadosti', label: t.nav.requests, short: t.nav.short.requests, art: ART.envelope, admin: true },
+  { place: 'users', href: '/ucto/pouzivatelia', label: t.nav.users, short: t.nav.short.users, art: ART.key, admin: true, owner: true },
   { place: 'billing', href: '/ucto/fakturacia', label: t.nav.billing, short: t.nav.short.billing, art: ART.savings, admin: true },
   { place: 'people', href: '/ucto/tim', label: t.nav.people, short: t.nav.short.people, art: ART.lens, admin: true },
   { place: 'work', href: '/ucto/vykaz', label: t.nav.work, short: t.nav.short.work, art: ART.savings },
@@ -66,14 +67,16 @@ export interface TeamShellProps {
   place: TeamPlace | null
   counts: { queue: number; inbox: number; requests: number }
   ownCompany: boolean
+  /** The owner's own account: the only one that sees the people's contacts (team/people.ts, isOwner). */
+  owner?: boolean
   title: string
   /** Mony in the corner, for whom it answers here; none without its key. */
   mony?: MonyAudience | null
   children: Child
 }
 
-export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany, title, mony = null, children }) => {
-  const items = NAV.filter((item) => !item.admin || user.team === 'admin')
+export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany, owner = false, title, mony = null, children }) => {
+  const items = NAV.filter((item) => (!item.admin || user.team === 'admin') && (!item.owner || owner))
   const tabs = items.filter((item) => !item.menu).slice(0, TABS)
   const menu = items.filter((item) => !tabs.includes(item))
   const count = (p: TeamPlace) => (p === 'queue' ? counts.queue : p === 'inbox' ? counts.inbox : p === 'requests' ? counts.requests : 0)
@@ -354,6 +357,8 @@ export interface ClientPageProps {
   user: User
   company: Company
   members: User[]
+  /** The owner's own account sees the people's e-mails; nobody else of the team (team/people.ts, isOwner). */
+  owner?: boolean
   queue: QueueDoc[]
   toCheck: ToCheck[]
   missing: Payment[]
@@ -1036,7 +1041,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
               {p.members.map((m) => (
                 <li class="plain__row plain__row--two">
                   <span class="plain__name">{m.name}</span>
-                  <span class="plain__mail">{m.email}</span>
+                  {p.owner ? <span class="plain__mail">{m.email}</span> : null}
                 </li>
               ))}
             </ul>

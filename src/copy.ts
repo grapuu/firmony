@@ -103,6 +103,28 @@ export const copy = typesetAll({
     },
   },
 
+  // His word of 27 October 2026: what is free and the extra service for investors were hidden at the foot of the site.
+  extras: {
+    first: 'Ešte viac od Firmony.',
+    second: 'Extra služba a nástroje zadarmo.',
+    invest: {
+      tag: 'Extra služba',
+      title: 'Daňové priznanie z investícií',
+      text: 'Investujete cez XTB, Trading 212, Interactive Brokers alebo Revolut? Pripravíme Vám daňové priznanie z akcií, ETF a dividend. Zapíšte sa a ozveme sa v januári.',
+      button: 'Chcem priznanie',
+    },
+    tools: {
+      tag: 'Zadarmo',
+      title: 'Nástroje zadarmo',
+      text: 'Bez registrácie a bez platobnej karty, pre každého:',
+      invoice: 'Faktúra v PDF',
+      wage: 'Mzdová kalkulačka',
+      szco: 'Dane a odvody živnostníka',
+      sro: 'Daň a dividendy s. r. o.',
+      button: 'Všetky nástroje',
+    },
+  },
+
   /** One offer the visitor cannot refuse: four deals in a ring that turns without end. */
   offer: {
     eyebrow: 'Výhodnejší štart s Firmony',
@@ -118,13 +140,7 @@ export const copy = typesetAll({
     ],
     cta: 'Chcem začať',
     fine: 'Bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Odmenu notára alebo advokáta a poplatky za zápis firmy platí zakladateľ.',
-    tools: {
-      lead: 'Ďalšie nástroje zadarmo:',
-      invoice: 'faktúra v PDF',
-      wage: 'mzdová kalkulačka',
-      taxes: 'výpočet daní',
-      all: 'Všetky nástroje',
-    },
+
     hint: 'Objavte všetky štyri výhody.',
     hintMobile: 'Potiahnite prstom a objavte ďalšie výhody.',
   },

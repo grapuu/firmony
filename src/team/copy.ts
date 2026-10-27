@@ -12,6 +12,7 @@ export const team = typesetAll({
     queue: 'Na zaúčtovanie',
     inbox: 'Správy',
     requests: 'Žiadosti z webu',
+    users: 'Používatelia',
     billing: 'Fakturácia',
     people: 'Tím',
     work: 'Výkaz práce',
@@ -20,7 +21,7 @@ export const team = typesetAll({
     workspaces: 'Fakturačné účty',
     incidents: 'Incidenty',
     own: 'Moja firma',
-    short: { clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', billing: 'Faktúry', people: 'Tím', work: 'Výkaz', ai: 'AI', analytics: 'Analytika', workspaces: 'Fakturácia zdarma', incidents: 'Incidenty' },
+    short: { clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', users: 'Ľudia', billing: 'Faktúry', people: 'Tím', work: 'Výkaz', ai: 'AI', analytics: 'Analytika', workspaces: 'Fakturácia zdarma', incidents: 'Incidenty' },
     role: { admin: 'Správca', accountant: 'Účtovníčka' },
   },
   deadlines: {

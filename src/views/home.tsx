@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx'
 import { MONY } from '../assistant/mony'
 import { annualPlanCents, type CalcResult } from '../calc'
+import { SRO_PATH } from '../content/sro-calc'
 import { SZCO_PATH } from '../content/szco-calc'
 import { WAGE_PATH } from '../content/wage-calc'
 import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, asset, type Art, type PlanId } from '../config'
@@ -315,24 +316,6 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
           <a class="btn btn--blue" href={withCarry('/zacat', carry)}>{o.cta}</a>
         </p>
         <p class="offer__fine">{o.fine}</p>
-        <p class="offer__tools">
-          {o.tools.lead}{' '}
-          <a class="link" href="/faktura-zadarmo">
-            {o.tools.invoice}
-          </a>
-          ,{' '}
-          <a class="link" href={WAGE_PATH}>
-            {o.tools.wage}
-          </a>
-          ,{' '}
-          <a class="link" href={SZCO_PATH}>
-            {o.tools.taxes}
-          </a>
-          .{' '}
-          <a class="link" href="/bezplatne-nastroje">
-            {o.tools.all}
-          </a>
-        </p>
       </div>
     </section>
   )
@@ -476,6 +459,64 @@ const Comparison: FC<{ result: CalcResult }> = ({ result }) => {
         </>
       )}
     </>
+  )
+}
+
+/** What else Firmony gives: the investors' tax return, an extra service, and the tools free for anybody. */
+const Extras: FC = () => {
+  const x = copy.extras
+  return (
+    <section class="section extras" aria-labelledby="extras-title">
+      <header class="wrap head head--center">
+        <Title id="extras-title" first={x.first} second={x.second} />
+      </header>
+      <ul class="wrap extras__grid">
+        <li class="card extras__card extras__card--invest">
+          <div class="extras__top">
+            <Tile art={ART.rocket} size="lg" />
+            <span class="extras__tag extras__tag--extra">{x.invest.tag}</span>
+          </div>
+          <h3 class="h3">{x.invest.title}</h3>
+          <p class="extras__text">{x.invest.text}</p>
+          <a class="btn btn--blue extras__button" href="/investori">
+            {x.invest.button}
+          </a>
+        </li>
+        <li class="card extras__card">
+          <div class="extras__top">
+            <Tile art={ART.toolPdf} size="lg" />
+            <span class="extras__tag extras__tag--free">{x.tools.tag}</span>
+          </div>
+          <h3 class="h3">{x.tools.title}</h3>
+          <p class="extras__text">{x.tools.text}</p>
+          <ul class="extras__links">
+            <li>
+              <a class="link" href="/faktura-zadarmo">
+                {x.tools.invoice}
+              </a>
+            </li>
+            <li>
+              <a class="link" href={WAGE_PATH}>
+                {x.tools.wage}
+              </a>
+            </li>
+            <li>
+              <a class="link" href={SZCO_PATH}>
+                {x.tools.szco}
+              </a>
+            </li>
+            <li>
+              <a class="link" href={SRO_PATH}>
+                {x.tools.sro}
+              </a>
+            </li>
+          </ul>
+          <a class="btn btn--line extras__button" href="/bezplatne-nastroje">
+            {x.tools.button}
+          </a>
+        </li>
+      </ul>
+    </section>
   )
 }
 
@@ -690,6 +731,7 @@ export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => 
     <Flow />
     <Offer carry={carry} />
     <Pricing carry={carry} />
+    <Extras />
     <Calculator state={calc} carry={carry} />
     <About />
     <Faq />

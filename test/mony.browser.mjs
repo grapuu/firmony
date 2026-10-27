@@ -83,4 +83,19 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
   await clientPage.locator('#zacat [data-mony-call]').click()
   check('mony browser: the close of the site opens Mony too', await clientPage.locator('#mony-panel').isVisible())
   await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
+
+  // A phone has the site's menu behind a button, the free tools and the investors first; a link followed closes it.
+  await clientPage.setViewportSize({ width: 390, height: 844 })
+  await clientPage.goto(`${origin}/`)
+  check('site menu: on a phone the header menu is folded into a button', (await clientPage.locator('.top__nav').isHidden()) && (await clientPage.locator('.top__sheet').isHidden()))
+  await clientPage.locator('.top__burger').click()
+  const sheet = clientPage.locator('.top__sheet')
+  check('site menu: it opens with the free tools and the investors first', (await sheet.isVisible()) && (await sheet.locator('a').first().textContent()) === 'Nástroje zadarmo')
+  const box = await sheet.boundingBox()
+  check('site menu: it fits the phone', Boolean(box) && box.x >= 0 && box.x + box.width <= 390)
+  await clientPage.screenshot({ path: '.wrangler/screens/390-site-menu.png' })
+  await sheet.getByRole('link', { name: 'Cenník', exact: true }).click()
+  await clientPage.waitForFunction(() => location.hash === '#cennik')
+  check('site menu: a link followed to a part of the page closes it', await sheet.isHidden())
+  await clientPage.setViewportSize({ width: 1440, height: 900 })
 }

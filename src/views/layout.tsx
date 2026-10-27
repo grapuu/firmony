@@ -89,10 +89,10 @@ export const Layout: FC<{ meta: PageMeta; live?: boolean; mony?: boolean; childr
             <a href="/#cennik">{copy.nav.pricing}</a>
             <a href="/#kto-sme">{copy.nav.about}</a>
             <a href="/#otazky">{copy.nav.faq}</a>
-            <a href="/bezplatne-nastroje" aria-current={meta.path === '/bezplatne-nastroje' || meta.path === INVOICING_PATH ? 'page' : undefined}>
+            <a class="top__hot" href="/bezplatne-nastroje" aria-current={meta.path === '/bezplatne-nastroje' || meta.path === INVOICING_PATH ? 'page' : undefined}>
               Zadarmo
             </a>
-            <a href="/investori" aria-current={meta.path === '/investori' ? 'page' : undefined}>
+            <a class="top__hot" href="/investori" aria-current={meta.path === '/investori' ? 'page' : undefined}>
               {copy.nav.investors}
             </a>
           </nav>
@@ -102,6 +102,28 @@ export const Layout: FC<{ meta: PageMeta; live?: boolean; mony?: boolean; childr
           <a class="btn btn--blue btn--small top__cta" href={meta.ctaHref ?? '/zacat'}>
             {meta.ctaText ?? copy.nav.start}
           </a>
+          {/* On a phone the menu above has no room: the same places, the free and the extra first to the eye. */}
+          <details class="top__menu">
+            <summary class="top__burger">
+              <span class="mony__sr">Menu</span>
+              <span class="top__bar" aria-hidden="true"></span>
+              <span class="top__bar" aria-hidden="true"></span>
+              <span class="top__bar" aria-hidden="true"></span>
+            </summary>
+            <nav class="top__sheet" aria-label="Menu">
+              <a class="top__hot" href="/bezplatne-nastroje">
+                Nástroje zadarmo
+              </a>
+              <a class="top__hot" href="/investori">
+                Daňové priznanie z investícií
+              </a>
+              <a href="/#ako-to-funguje">{copy.nav.how}</a>
+              <a href="/#cennik">{copy.nav.pricing}</a>
+              <a href="/#kto-sme">{copy.nav.about}</a>
+              <a href="/#otazky">{copy.nav.faq}</a>
+              <a href="/app/prihlasenie">{copy.nav.login}</a>
+            </nav>
+          </details>
         </div>
       </header>
       <main id="obsah">{children}</main>
@@ -117,10 +139,16 @@ export const Layout: FC<{ meta: PageMeta; live?: boolean; mony?: boolean; childr
               <a href="/#ako-to-funguje">{copy.nav.how}</a>
               <a href="/#cennik">{copy.nav.pricing}</a>
               <a href="/#kalkulacka">{copy.footer.calc}</a>
-              <a href={INVOICING_PATH}>Fakturácia zadarmo</a>
-              <a href={TOOLS_PATH}>Bezplatné nástroje</a>
+              <a class="foot__hot" href={INVOICING_PATH}>
+                Fakturácia zadarmo
+              </a>
+              <a class="foot__hot" href={TOOLS_PATH}>
+                Bezplatné nástroje
+              </a>
+              <a class="foot__hot" href="/investori">
+                {copy.nav.investors}
+              </a>
               <a href="/#otazky">{copy.nav.faq}</a>
-              <a href="/investori">{copy.nav.investors}</a>
               <a href="/app/prihlasenie">{copy.nav.login}</a>
             </nav>
             <nav class="foot__col" aria-label={copy.footer.guides}>

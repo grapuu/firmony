@@ -4,6 +4,24 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Používatelia, súkromie údajov a zvýraznenie na webe, 27. 10. 2026 večer (Claude, `main`):** jeho slovo o 21:32: v
+admin paneli všetky e-maily, kontakty a dáta o všetkých používateľoch, prehľadne; o 21:39: tie dáta vidí len on zo
+svojho účtu, nie účtovníčky (mohli by ich predať konkurencii alebo založiť vlastnú firmu); o 21:53 „áno zmeň“ aj na
+identifikáciu klienta. Postavené: `/ucto/pouzivatelia` (`src/team/people.ts`, `src/views/users.tsx`): každá osoba podľa
+e-mailu (účet, žiadosť z webu, investor), druh (Klient, Fakturácia zadarmo, Záujemca, Investor, Tím), telefón, firma, IČO,
+balík, stav, účtovníčka, prvý kontakt, posledné prihlásenie a aktivita, kľúče; filtre, hľadanie, detail osoby
+(`/ucto/pouzivatelia/u-<id>|r-<id>|i-<id>`, kľúče a posledných 40 udalostí) a `/ucto/pouzivatelia.csv` po čerstvom kľúči
+s udalosťou `people.exported`. Vidí to len **vlastník** (`isOwner`: prvý správca, udalosť `team.bootstrap`, inak
+`auth_bootstrap`), nie iný správca ani účtovníčka; položka menu len jemu. Na stránke klienta e-maily ľudí len vlastník.
+Identifikáciu (vyhlásenie s rodnými číslami, adresami, dokladmi, podpísaný súbor, bankové doklady, kontroly totožnosti,
+KUV, PEP a sankcií) vidí a zapisuje len určená osoba (`accessible` v `src/aml/routes.tsx` a `/aml/objednavky/:id` cez
+`isOfficer`); účtovníčka vidí stav a riziko a píše interné oznámenia. Kontroly AML teda robí on. Web: „Zadarmo“ a „Pre
+investorov“ v menu modro a tučne, na telefóne menu pod tlačidlom (`details.top__menu`, nástroje zadarmo a daňové
+priznanie z investícií prvé, odkaz ho zavrie cez `public/fresh.js`), „Prihlásiť sa“ pod 560 px len v ňom, v pätičke
+tieto tri odkazy modro, a na hlavnej stránke za cenníkom sekcia „Ešte viac od Firmony“ (extra služba pre investorov a
+nástroje zadarmo s odkazmi). Navrhnuté, čaká na jeho áno: závierka a daňové priznanie v cene balíkov (ak bol klient v
+roku s nami aspoň 6 mesiacov, inak 249 €); porovnanie s Matax a kanceláriami je v rozhovore z 27. 10. večer.
+
 **Jasnejšia hlavná stránka, 27. 10. 2026 večer (Claude, `main`):** jeho slovo o 19:29: jeho mama (laik) povedala, že
 myšlienka nie je dosť komunikovaná, jedinečnosť a výhody nie sú jasne čitateľné a človek sa v stránke utápa (13 sekcií,
 okolo 1 900 slov). O 19:32 „Chcem začať“ na navrhnutý postup a novú hlavnú vetu. Úvod: „Účtovníctvo pre Vašu s. r. o.

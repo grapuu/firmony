@@ -63,3 +63,9 @@ if (mine) {
   const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
   if (navigation && navigation.type === 'back_forward') void check(true)
 }
+
+// The site's menu on a phone (views/layout.tsx) closes when one of its links is followed, a part of this page too.
+for (const menu of document.querySelectorAll<HTMLDetailsElement>('details.top__menu'))
+  menu.addEventListener('click', (event) => {
+    if (event.target instanceof Element && event.target.closest('a')) menu.open = false
+  })
