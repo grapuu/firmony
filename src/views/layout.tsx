@@ -1,5 +1,7 @@
 import type { Child, FC } from 'hono/jsx'
 import { ART, BRAND, OPERATOR, asset } from '../config'
+import { BUILD_METADATA } from '../generated/deployment'
+import { MonyBubble } from './mony'
 import { copy } from '../copy'
 import { typeset } from '../format'
 import { GUIDES } from '../content/guides'
@@ -34,7 +36,10 @@ export const Wordmark: FC<{ href?: string; label?: string }> = ({ href = '/', la
   </a>
 )
 
-export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children }) => (
+/** The build a page came from, which client/fresh.ts compares with the current one. */
+export const BuildMeta: FC = () => <meta name="firmony-build" content={BUILD_METADATA.revision ?? ''} />
+
+export const Layout: FC<{ meta: PageMeta; live?: boolean; mony?: boolean; children: Child }> = ({ meta, live = true, mony = false, children }) => (
   <html lang="sk">
     <head>
       <meta charset="utf-8" />
@@ -65,6 +70,12 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
       <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="preload" href="/fonts/news-latin-italic.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
       <link rel="stylesheet" href={asset('/app.css')} />
+      {live ? (
+        <>
+          <BuildMeta />
+          <script src={asset('/fresh.js')} defer></script>
+        </>
+      ) : null}
     </head>
     <body class={meta.path === '/' ? 'is-home' : 'is-page'}>
       <a class="skip" href="#obsah">
@@ -142,6 +153,7 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
           </div>
         </div>
       </footer>
+      {mony ? <MonyBubble audience="public" /> : null}
     </body>
   </html>
 )

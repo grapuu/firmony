@@ -52,7 +52,7 @@ const session = (() => {
 
 if (root && panel && launcher && log && form && input) {
   // The conversation belongs to this person and this company: another account or company in the tab starts afresh.
-  const context = document.body.getAttribute('data-client-context') ?? `tim:${root.dataset.mony ?? ''}`
+  const context = document.body.getAttribute('data-client-context') ?? root.dataset.mony ?? 'web'
   const KEY = `mony:${context}`
   const OPEN = 'mony:open'
   let turns: Turn[] = []

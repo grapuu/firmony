@@ -3,6 +3,7 @@
 import type { FC } from 'hono/jsx'
 import type { MonyAudience } from '../assistant/mony'
 import { MONY } from '../assistant/mony'
+import { asset } from '../config'
 
 export const MONY_COPY = {
   role: 'Asistent Firmony',
@@ -11,18 +12,21 @@ export const MONY_COPY = {
   fresh: 'Nová konverzácia',
   label: `Otázka pre ${MONY.name}`,
   send: 'Poslať otázku',
-  placeholder: { client: 'Opýtajte sa, ako čo urobiť…', accountant: 'Opýtajte sa na postup…', admin: 'Opýtaj sa na čokoľvek o Firmony…' } as Record<MonyAudience, string>,
+  placeholder: { public: 'Opýtajte sa na čokoľvek o Firmony…', client: 'Opýtajte sa, ako čo urobiť…', accountant: 'Opýtajte sa na postup…', admin: 'Opýtaj sa na čokoľvek o Firmony…' } as Record<MonyAudience, string>,
   hello: {
+    public: `Dobrý deň, som ${MONY.name}, asistent Firmony. Opýtajte sa, ako služba funguje, koľko stojí alebo ako k nám prejsť.`,
     client: `Dobrý deň, som ${MONY.name}. Poradím Vám, ako čo vo Firmony urobiť, kde čo nájdete a ako služba funguje.`,
     accountant: `Dobrý deň, som ${MONY.name}. Pomôžem Vám s postupmi vo Firmony: doklady, DPH, mzdy, závierka aj podania.`,
     admin: `Ahoj, som ${MONY.name}. Poznám Firmony celé: produkt, stav projektu, ekonomiku aj kód.`,
   } as Record<MonyAudience, string>,
   chips: {
+    public: ['Koľko stojí účtovníctvo?', 'Ako prejdem od súčasnej účtovníčky?', 'Čo všetko za mňa urobíte?', 'Je fakturácia naozaj zadarmo?'],
     client: ['Ako pridám doklad?', 'Ako nastavím banku?', 'Ako vystavím faktúru?', 'Čo mám zaplatiť a kedy?'],
     accountant: ['Ako podám DPH za klienta?', 'Kedy zapnúť Účtuje samo?', 'Ako uzavriem mzdy?', 'Ako prevezmem klienta z Pohody?'],
     admin: ['Čo ešte chýba pred spustením?', 'Koľko zarábame na klientovi?', 'Čo robí softvér a čo účtovníčka?', 'Kde v kóde je párovanie platieb?'],
   } as Record<MonyAudience, string[]>,
   note: {
+    public: `${MONY.name} odpovedá z verejných informácií Firmony a môže sa pomýliť. Presnú ponuku pre Vašu firmu dostanete po nezáväznom dopyte.`,
     client: `${MONY.name} odpovedá z návodov Firmony a nevidí údaje Vašej firmy. Môže sa pomýliť; pri odbornej otázke Vám poradí účtovníčka.`,
     accountant: `${MONY.name} odpovedá z návodov a poznámok Firmony a nevidí údaje klientov. Odborný záver overte.`,
     admin: `${MONY.name} odpovedá z poznámok, dokumentov a mapy kódu Firmony.`,
@@ -64,7 +68,7 @@ export const MonyBubble: FC<{ audience: MonyAudience }> = ({ audience }) => (
         </div>
       </div>
       <form class="mony__form" data-mony-form>
-        <label class="sr" for="mony-question">
+        <label class="mony__sr" for="mony-question">
           {MONY_COPY.label}
         </label>
         <textarea id="mony-question" class="mony__input" name="question" rows={1} maxlength={MONY.questionChars} placeholder={MONY_COPY.placeholder[audience]} />
@@ -85,6 +89,6 @@ export const MonyBubble: FC<{ audience: MonyAudience }> = ({ audience }) => (
         {MONY.name}
       </span>
     </button>
-    <script src="/mony.js" defer></script>
+    <script src={asset('/mony.js')} defer></script>
   </div>
 )

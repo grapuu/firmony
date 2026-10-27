@@ -190,9 +190,12 @@ check(
   [89, 169, 329].every((p) => page.includes(`${p}${NB}€`)),
 )
 const runs = (html) => (html.match(/<script(?![^>]*type="application\/ld\+json")[^>]*>/gi) ?? [])
+// Only our own scripts, each from its file with the build in its address, and nothing inline (27 October 2026: the
+// version check, client/fresh.ts, and Mony on every page; the month played by scrolling on the home page).
+const ownScripts = (html, names) => runs(html).every((tag) => new RegExp(`^<script src="/(?:${names.join('|')})\\.js\\?v=[a-f0-9]{8}" defer(?:="")?>$`).test(tag))
 check(
-  'it runs one script of its own, the month played where scroll timelines are missing, and nothing inline',
-  runs(page).length === 1 && /<script src="\/flow\.js(?:\?v=[a-f0-9]{8})?\" defer(="")?><\/script>/.test(page),
+  'it runs only its own scripts: the month played where scroll timelines are missing, the version check and Mony, nothing inline',
+  ownScripts(page, ['flow', 'fresh', 'mony']) && /<script src="\/flow\.js\?v=[a-f0-9]{8}" defer(="")?><\/script>/.test(page) && /src="\/fresh\.js\?v=/.test(page),
   runs(page).join(' '),
 )
 {
@@ -214,7 +217,12 @@ const csp = res.headers.get('content-security-policy') ?? ''
 check('the policy allows nothing inline and nothing foreign', csp.includes("script-src 'self'") && !csp.includes('unsafe') && csp.includes("style-src 'self'") && csp.includes("frame-ancestors 'none'"))
 {
   const legal = await get('/pravne-informacie')
-  check('every other page of the site runs no script at all', (legal.headers.get('content-security-policy') ?? '').includes("script-src 'none'") && !/<script/i.test(await legal.text()))
+  const legalHtml = await legal.text()
+  check(
+    'every other page of the site runs only our own scripts from files, nothing inline: the version check and Mony',
+    (legal.headers.get('content-security-policy') ?? '').includes("script-src 'self'") && !(legal.headers.get('content-security-policy') ?? '').includes('unsafe') &&
+      [...legalHtml.matchAll(/<script\b[^>]*>/gi)].every((m) => /\ssrc="\/(?:fresh|mony)\.js\?v=[0-9a-f]{8}"/.test(m[0]) || /type="application\/ld\+json"/.test(m[0])) && legalHtml.includes('src="/fresh.js?v='),
+  )
   // Static files are the Worker's assets, which this suite does not serve: the file itself is read.
   const flow = readFileSync(new URL('../public/flow.js', import.meta.url), 'utf8')
   check('the script is our own file, and does nothing where scroll timelines run', flow.includes("CSS.supports('animation-timeline: view()')) return") && !/fetch|XMLHttpRequest|innerHTML|eval\(/.test(flow))
@@ -423,8 +431,8 @@ res = await get('/sitemap.xml')
     const ld = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)
     const types = ld ? JSON.parse(ld[1])['@graph'].map((n) => n['@type']) : []
     check(
-      `the guide ${path} answers with its heading, its canonical address and its data, runs no script`,
-      r.status === 200 && /<h1 /.test(html) && html.includes(`<link rel="canonical" href="https://firmony.io${path}"`) && types.includes('Article') && types.includes('BreadcrumbList') && (guide.faq.length === 0 || types.includes('FAQPage')) && guide.sources.every((source) => html.includes(`href="${source.url.replace(/&/g, '&amp;')}"`)) && !/<script(?![^>]*application\/ld\+json)/i.test(html) && (r.headers.get('content-security-policy') ?? '').includes("script-src 'none'") && !/ style=/i.test(html),
+      `the guide ${path} answers with its heading, its canonical address and its data, runs only our own scripts`,
+      r.status === 200 && /<h1 /.test(html) && html.includes(`<link rel="canonical" href="https://firmony.io${path}"`) && types.includes('Article') && types.includes('BreadcrumbList') && (guide.faq.length === 0 || types.includes('FAQPage')) && guide.sources.every((source) => html.includes(`href="${source.url.replace(/&/g, '&amp;')}"`)) && ownScripts(html, ['fresh', 'mony']) && (r.headers.get('content-security-policy') ?? '').includes("script-src 'self'") && !/ style=/i.test(html),
       JSON.stringify(types),
     )
   }
@@ -437,8 +445,8 @@ res = await get('/mzdova-kalkulacka')
   const ld = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)
   const types = ld ? JSON.parse(ld[1])['@graph'].map((n) => n['@type']) : []
   check(
-    'the wage calculator is a page of its own, for search engines, with its data and no script',
-    res.status === 200 && /<h1 /.test(html) && !html.includes('noindex') && types.includes('WebApplication') && types.includes('FAQPage') && !/<script(?![^>]*application\/ld\+json)/i.test(html) && !/ style=/i.test(html),
+    'the wage calculator is a page of its own, for search engines, with its data and only our own scripts',
+    res.status === 200 && /<h1 /.test(html) && !html.includes('noindex') && types.includes('WebApplication') && types.includes('FAQPage') && ownScripts(html, ['fresh', 'mony']) && !/ style=/i.test(html),
     JSON.stringify(types),
   )
   const computed = await get('/mzdova-kalkulacka?hruba=1500&rok=2026&deti=1&deti15=0&vyhlasenie=1')
@@ -504,7 +512,7 @@ check('a preview address is not for search engines', (res.headers.get('x-robots-
 res = await get('/investori?utm_source=xtb-komunita')
 page = await res.text()
 const plain = (html) => html.replace(/\u00a0/g, ' ')
-check('the investors page answers, with no script and nothing inline', res.status === 200 && !/<script/i.test(page) && !/ style=/i.test(page))
+check('the investors page answers, with only our own scripts and nothing inline', res.status === 200 && ownScripts(page, ['fresh', 'mony']) && !/ style=/i.test(page))
 check(
   'it names the brokers and both ways with their prices',
   ['XTB', 'Trading 212', 'Interactive Brokers', 'Revolut'].every((b) => page.includes(b)) && plain(page).includes('29 €') && plain(page).includes('49 € za všetkých') && plain(page).includes('89 €'),
@@ -759,7 +767,7 @@ check('the overview says what is missing', res.status === 200 && page.includes('
 check('it names the address for forwarding', page.includes('doklady-aaaa11@firmony.io'))
 check(
   'it runs its own script and nothing inline',
-  /<script src="\/inside\.js" defer(="")?><\/script>/.test(page) && !/<script>/.test(page) && !/ style=/i.test(page),
+  /<script src="\/inside\.js\?v=[a-f0-9]{8}" defer(="")?><\/script>/.test(page) && ownScripts(page, ['fresh', 'inside', 'mony']) && !/ style=/i.test(page),
   page.match(/<script[^>]*>/g)?.join(' '),
 )
 

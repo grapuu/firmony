@@ -58,4 +58,20 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
   await clientPage.getByRole('button', { name: 'Nová konverzácia', exact: true }).click()
   check('mony browser: a new conversation starts afresh, with its suggestions', (await clientPage.locator('.mony__msg--user').count()) === 0 && (await clientPage.getByRole('button', { name: 'Ako pridám doklad?', exact: true }).isVisible()))
   await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
+
+  // A page of an older build loads the current one when it comes back into view; what was typed is never lost.
+  await clientPage.route('**/verzia', (route) => route.fulfill({ status: 200, contentType: 'text/plain', body: 'TEST-ONLY-newer-build' }))
+  await clientPage.goto(`${origin}/app/doklady`)
+  await launcher.click()
+  await input.fill('TEST-ONLY rozpísaná otázka')
+  await clientPage.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })))
+  await clientPage.locator('.fresh').waitFor({ state: 'visible' })
+  check('fresh: a page with something typed offers the new version instead of reloading', (await input.inputValue()) === 'TEST-ONLY rozpísaná otázka' && (await clientPage.getByRole('button', { name: 'Obnoviť stránku', exact: true }).isVisible()))
+  await input.fill('')
+  const loaded = clientPage.waitForEvent('load')
+  await clientPage.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })))
+  await loaded
+  check('fresh: a page with nothing typed loads the current version by itself', (await clientPage.locator('.fresh').count()) === 0 && new URL(clientPage.url()).pathname === '/app/doklady')
+  await clientPage.unroute('**/verzia')
+  await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
 }

@@ -2,12 +2,12 @@
 // bottom of a phone), and the pages of signing in. The same white, blue and red as the site, his glass in tiles,
 // the warm half of a title in the red serif; less to read than anywhere else.
 import type { Child, FC } from 'hono/jsx'
-import { ART, BRAND, type Art } from '../config'
+import { ART, BRAND, asset, type Art } from '../config'
 import { app, dayName } from '../app/copy'
 import type { Ending } from '../app/ending'
 import type { Company, Who } from '../app/store'
 import { Picture, Tile } from './home'
-import { Wordmark } from './layout'
+import { BuildMeta, Wordmark } from './layout'
 import { invoicingCopy } from '../content/invoicing'
 import { peppolCopy } from '../peppol/copy'
 import { MonyBubble } from './mony'
@@ -30,10 +30,12 @@ export const InsideHead: FC<{ title: string; security?: boolean }> = ({ title, s
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="preload" href="/fonts/funnel-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
     <link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
-    <link rel="stylesheet" href="/app.css" />
-    <link rel="stylesheet" href="/inside.css" />
-    <script src="/inside.js" defer></script>
-    {security ? <script src="/security.js" defer></script> : null}
+    <link rel="stylesheet" href={asset('/app.css')} />
+    <link rel="stylesheet" href={asset('/inside.css')} />
+    <BuildMeta />
+    <script src={asset('/fresh.js')} defer></script>
+    <script src={asset('/inside.js')} defer></script>
+    {security ? <script src={asset('/security.js')} defer></script> : null}
   </head>
 )
 

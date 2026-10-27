@@ -39,7 +39,7 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   // The corner of the pages.
   let html = await (await page(client, '/app')).text()
   if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/mony-client.html`, html)
-  check('mony: every page of the app has Mony in its corner, hidden until its script shows it', html.includes('data-mony="client"') && html.includes('src="/mony.js"') && /class="mony" data-mony="client" hidden/.test(html))
+  check('mony: every page of the app has Mony in its corner, hidden until its script shows it', html.includes('data-mony="client"') && /src="\/mony\.js\?v=[0-9a-f]{8}"/.test(html) && /class="mony" data-mony="client" hidden/.test(html))
   html = await (await page(admin, '/ucto')).text()
   check('mony: the team side has Mony too, for whom the session says', html.includes('data-mony="admin"'))
 
@@ -112,6 +112,33 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   res = await ask(client, { question: 'Ako pridám doklad?' })
   check("mony: the assistant's switch turns Mony off too", res.status === 503 && (await res.json()).error.includes('vypnutá'))
   await db.prepare('UPDATE assistant_control SET enabled = 1 WHERE id = 1').run()
+  // A visitor of the site: public knowledge only, no person kept, a limit per connection.
+  html = await (await page('', '/')).text()
+  const build = /<meta name="firmony-build" content="([^"]*)"/.exec(html)?.[1] ?? ''
+  check('mony: the site has Mony for its visitors and every page carries its build', html.includes('data-mony="public"') && /src="\/mony\.js\?v=/.test(html) && /src="\/fresh\.js\?v=/.test(html) && build.length > 0)
+  res = await page('', '/verzia')
+  check('mony: the current build is one short answer that is never cached', res.status === 200 && (await res.text()) === build && (res.headers.get('cache-control') ?? '').includes('no-store'))
+  html = await (await page('', '/faktura-zadarmo')).text()
+  check('mony: the invoice tool that connects nowhere has neither Mony nor the version check', !html.includes('data-mony') && !html.includes('fresh.js'))
+  mony.pick = ['cen']
+  res = await ask('', { question: 'Koľko stojí účtovníctvo?', page: '/', history: [] })
+  text = await res.text()
+  const visitorToc = String(mony.routes[mony.routes.length - 1]?.system?.[0]?.text ?? '')
+  system = String(mony.answers[mony.answers.length - 1]?.system?.[0]?.text ?? '')
+  const visit = await db.prepare("SELECT user_id, company_id, detail FROM events WHERE action = 'mony.answered' AND subject = 'public' ORDER BY rowid DESC LIMIT 1").first()
+  check(
+    'mony: a visitor gets an answer from the public knowledge alone, and nobody is kept',
+    res.status === 200 && text.includes('Áno.') && !visitorToc.includes('Texty časti pre tím') && !visitorToc.includes('Pracovné poznámky') && !visitorToc.includes('Mapa kódu') && system.includes('návštevník webu') && system.includes('/zacat') && visit?.user_id === null && visit.company_id === null,
+  )
+  res = await ask(admin, { question: 'Koľko zarábame?', page: '/', history: [] })
+  await res.text()
+  system = String(mony.answers[mony.answers.length - 1]?.system?.[0]?.text ?? '')
+  check('mony: on the site Mony is the visitors\' assistant even for somebody signed in', res.status === 200 && system.includes('návštevník webu') && !system.includes('Podklady pre správcu'))
+  mony.pick = null
+  await db.prepare('INSERT INTO throttle (key, bucket, hits, expires_at) VALUES (?, ?, 30, ?) ON CONFLICT(key, bucket) DO UPDATE SET hits = 30').bind(sha('mony-ip:203.0.113.70'), Math.floor(Date.now() / 1000 / 86400), nowS + 2 * 86400).run()
+  res = await ask('', { question: 'Ako začať?', page: '/' })
+  check('mony: a connection of the site has a daily limit of questions', res.status === 429 && (await res.json()).error.includes('ahoj@firmony.io'))
+
   const bucket = Math.floor(Date.now() / 1000 / 86400)
   await db.prepare('INSERT INTO throttle (key, bucket, hits, expires_at) VALUES (?, ?, 60, ?) ON CONFLICT(key, bucket) DO UPDATE SET hits = 60').bind(sha('mony-user:u-mony'), bucket, nowS + 2 * 86400).run()
   res = await ask(client, { question: 'Ako pridám doklad?' })

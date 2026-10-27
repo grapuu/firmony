@@ -24,7 +24,7 @@ export async function checkPasskeySignin({ mf, db, post, sent, settle, as, nowS 
   let res = await mf.dispatchFetch(`${site}/app/prihlasenie`, { headers: { 'cf-connecting-ip': '203.0.113.60' } })
   let html = await page(res)
   keep('signin', html)
-  check('passkey sign-in: the sign-in page offers one touch first, the saved sign-in in the email field, and the email link for a first time', res.status === 200 && html.includes('data-passkey="signin"') && html.includes('src="/security.js"') && html.indexOf('data-passkey="signin"') < html.indexOf('name="email"') && /name="email"[^>]*autocomplete="username webauthn"|autocomplete="username webauthn"[^>]*name="email"/.test(html))
+  check('passkey sign-in: the sign-in page offers one touch first, the saved sign-in in the email field, and the email link for a first time', res.status === 200 && html.includes('data-passkey="signin"') && /src="\/security\.js\?v=[0-9a-f]{8}"/.test(html) && html.indexOf('data-passkey="signin"') < html.indexOf('name="email"') && /name="email"[^>]*autocomplete="username webauthn"|autocomplete="username webauthn"[^>]*name="email"/.test(html))
 
   // By email once: the link leads to the offer of a passkey.
   const before = (await sent()).length

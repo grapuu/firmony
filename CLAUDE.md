@@ -4,6 +4,18 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Vždy aktuálna verzia a Mony na webe, 27. 10. 2026 večer (Claude, `main`):** jeho slovo o 17:53: často sa mu otvára
+stará verzia, klient ju nesmie nikdy vidieť; a kde je AI bot (bol len v prihlásenej aplikácii). Stránky sa nikdy
+neukladali (no-store); stará verzia je karta otvorená pred nasadením, stránka obnovená tlačidlom Späť alebo aplikácia na
+ploche telefónu. Každá stránka webu aj aplikácie nesie `<meta name="firmony-build">` a `public/fresh.js`
+(`client/fresh.ts`): keď sa karta vráti do popredia, pri obnovení zo Späť, pri fokuse a každých 10 minút sa opýta
+`GET /verzia` (len revízia, no-store, nepočíta sa); ak je nasadená novšia, stránka sa sama znova načíta, a ak je v nej
+niečo napísané, ponúkne lištu „Firmony má novú verziu. Obnoviť stránku“. Všetky CSS a JS majú v adrese `?v=` revízie
+(`asset()`). Verejné stránky preto smú spúšťať vlastné skripty (CSP script-src a connect-src 'self', nič inline);
+nástroj `/faktura-zadarmo` ostáva bez spojení (connect-src 'none'), bez Mony aj bez kontroly verzie. Mony je aj na
+celom webe pre návštevníkov (publikum 'public': verejné vedomosti ako klient, otázka zo stránky webu je vždy
+návštevnícka, limit 30 otázok denne na pripojenie a 2 000 spolu, bez osoby v zázname). Štýly Mony sú v `public/app.css`.
+
 **Asistent Mony, 27. 10. 2026 (Claude, `main`, schéma 85, PRIVACY_VERSION 2026-10-27):** jeho slovo o 16:33: vlastný AI
 asistent, ktorý dokonale pozná Firmony, ako funguje aj kód, cez Claude API, úsporný a bez halucinácií, vpravo dole
 v obláčiku vo farbách Firmony, šípkou sa schová na ikonu a klikom otvorí; pre klientov, účtovníčky aj pre neho. Meno

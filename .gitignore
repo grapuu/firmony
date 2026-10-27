@@ -11,3 +11,4 @@ __pycache__
 /src/generated/knowledge.ts
 /src/generated/mony-routes.ts
 /public/mony.js
+/public/fresh.js

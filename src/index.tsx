@@ -84,16 +84,17 @@ const CONTENT_SECURITY_POLICY = [
   "style-src 'self'",
   "font-src 'self'",
   "img-src 'self' data:",
-  "script-src 'none'",
-  "connect-src 'none'",
+  "script-src 'self'",
+  "connect-src 'self'",
   "form-action 'self'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
 ].join('; ')
 
-// The home page runs one script of its own (public/flow.js: the month played by scrolling where the browser has no
-// scroll timelines, Safari before 26). The public invoice tool also permits its own script, and forbids form posts.
-const HOME_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace("script-src 'none'", "script-src 'self'")
+// Every page runs only our own scripts, nothing inline: the check that it is the current Firmony (public/fresh.js),
+// Mony (public/mony.js) and on the home page the month played by scrolling (public/flow.js). The public invoice tool
+// promises that its data never leave the browser: it connects nowhere and posts no form.
+const TOOL_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace("connect-src 'self'", "connect-src 'none'").replace("form-action 'self'", "form-action 'none'")
 
 // The client's app adds one script of its own (public/inside.js: a file is sent as soon as it is picked, a photo
 // is made smaller first, a document being read is looked at again), and pictures of the documents it shows.
@@ -176,7 +177,7 @@ app.use('*', async (c, next) => {
   await next()
   const inside = /^\/(app|ucto|auth|f)(\/|$)/.test(url.pathname)
   if (!c.res.headers.has('Content-Security-Policy'))
-    c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : url.pathname === INVOICE_PATH ? HOME_CONTENT_SECURITY_POLICY.replace("form-action 'self'", "form-action 'none'") : url.pathname === '/' ? HOME_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
+    c.header('Content-Security-Policy', inside ? APP_CONTENT_SECURITY_POLICY : url.pathname === INVOICE_PATH ? TOOL_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY)
   c.header('X-Content-Type-Options', 'nosniff')
   // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
   if (!c.res.headers.has('X-Frame-Options')) c.header('X-Frame-Options', 'DENY')
@@ -194,7 +195,9 @@ app.use('*', async (c, next) => {
 })
 
 function page(c: Ctx, meta: PageMeta, node: unknown, status: ContentfulStatusCode = 200) {
-  return c.html(html`<!doctype html>${(<Layout meta={meta}>{node as never}</Layout>)}`, status)
+  // The invoice tool connects nowhere (its policy above): no Mony and no check of the version there.
+  const live = meta.path !== INVOICE_PATH
+  return c.html(html`<!doctype html>${(<Layout meta={meta} live={live} mony={live && Boolean(c.env.ANTHROPIC_API_KEY)}>{node as never}</Layout>)}`, status)
 }
 
 /** Where a visitor came from: the campaign tags of the address, kept with a request. Nothing else is read. */
@@ -1081,6 +1084,9 @@ app.get('/sitemap.xml', (c) => {
   c.header('Content-Type', 'application/xml; charset=utf-8')
   return c.body(sitemapXml())
 })
+
+// The build a page may compare itself with (client/fresh.ts): nothing but the revision, never cached, never counted.
+app.get('/verzia', (c) => c.text(BUILD_METADATA.revision ?? '', 200, { 'Cache-Control': 'no-store' }))
 
 app.get('/healthz', async (c) => {
   try {

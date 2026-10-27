@@ -21,3 +21,15 @@ await build({
   legalComments: 'eof',
   outfile: 'public/mony.js',
 })
+
+// The check that a page is the current Firmony (client/fresh.ts): on every page of the site and the app.
+await build({
+  entryPoints: ['client/fresh.ts'],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: ['es2022'],
+  minify: true,
+  legalComments: 'eof',
+  outfile: 'public/fresh.js',
+})
