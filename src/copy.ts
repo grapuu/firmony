@@ -35,6 +35,7 @@ export const copy = typesetAll({
     price: `Od ${eur(start.price)} mesačne bez DPH. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
+    deal: { tag: 'Novinka', text: 'S. r. o. za 1 €, advokát aj poplatky v cene' },
   },
 
   /** The card in the opening where a client starts: the IČO. */
@@ -43,6 +44,7 @@ export const copy = typesetAll({
     text: 'Názov a sídlo doplníme z registra. Zatiaľ nič neobjednávate.',
     next: 'Po nezáväznom dopyte si prejdeme Vašu agendu. Rozsah služby a cenu dostanete pred uzavretím zmluvy.',
     fine: `Ozveme sa ${REPLY_WITHIN}.`,
+    noCompany: 'Nemáte firmu? S. r. o. za 1 €',
   },
 
   /** One month, as the papers fly into it while the page is scrolled. An illustration. */
@@ -75,6 +77,27 @@ export const copy = typesetAll({
       { title: 'Pevná cena vopred', text: `Od ${eur(start.price)} mesačne bez DPH podľa počtu dokladov. Prvý mesiac zadarmo a bez viazanosti.` },
       { title: 'Všetko vidíte v mobile', text: `Čo je hotové, čo chýba a čo zaplatiť dokedy. Účtovníčka Vám odpovie ${REPLY_WITHIN}.` },
     ],
+  },
+
+  // His word of 27 October 2026: the s. r. o. for 1 €, right under the opening, so that it pours over the visitor.
+  // The market price (about 500 € since August 2026) is from Firmáreň and an advocate's published price; the terms
+  // are his of that evening (36 months, the first quarter ahead, the founder's guarantee, the exit fee and its cap,
+  // 20 firms a month); the advocate writes the contract itself.
+  formation: {
+    badge: 'Novinka pre tých, čo zakladajú firmu',
+    first: 'Založíme Vám s. r. o.',
+    big: 'za 1 €',
+    second: 'Advokáta aj poplatky platíme my.',
+    lead: 'Od augusta 2026 je založenie s. r. o. drahšie a bežne stojí okolo 500 €. U nás zaplatíte 1 € a od prvého dňa máte účtovníctvo, ktoré sa o Vás postará.',
+    points: [
+      { title: 'Advokát a poplatky v cene', text: 'Zakladateľskú listinu, zápis do obchodného registra aj živnosť zariadime za Vás. Súdny poplatok a odmenu advokáta platíme my.' },
+      { title: 'Bez behania po úradoch', text: 'Podpíšete, čo treba, a ostatné vybavíme. Priebežne Vám povieme, v akom je to stave.' },
+      { title: 'Účtovníctvo od prvého dňa', text: `Odo dňa vzniku firmy Vám účtovníctvo vedieme my, za cenu balíka od ${eur(start.price)} mesačne.` },
+      { title: 'Férovo, ako pri mobile', text: 'Účtovníctvo u nás vediete 36 mesiacov. Ak by sme vážne pochybili a nenapravili to, odídete bez poplatku.' },
+    ],
+    cta: 'Chcem s. r. o. za 1 €',
+    limit: 'Len pre prvých 20 firiem každý mesiac.',
+    fine: 'Podmienky ponuky: zmluva o vedení účtovníctva na 36 mesiacov, prvé 3 mesiace platené vopred a osobné ručenie zakladateľa za záväzky firmy z tejto zmluvy. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12 mesačných poplatkov a najmenej hodnota založenia. Ponuka sa nespája s prvým mesiacom zadarmo. Základné imanie, najmenej 5 000 €, nie je poplatok: sú to peniaze Vašej firmy. Ceny sú bez DPH. Presné znenie zmluvy dostanete pred podpisom.',
   },
 
   /** Side by side: what is usual, and what Firmony does instead. Plain, without naming anybody. */
@@ -129,17 +152,17 @@ export const copy = typesetAll({
   offer: {
     eyebrow: 'Výhodnejší štart s Firmony',
     title: 'Začnite s náskokom. Štyri výhody za 0 €.',
-    lead: 'Prvý mesiac, pomoc so založením s. r. o., prechod k nám aj fakturácia. Pozrite sa, čo všetko u nás získate za 0 €.',
+    lead: 'Prvý mesiac, prechod k nám, fakturácia aj Mony, naša pomocníčka. Pozrite sa, čo všetko u nás získate za 0 €.',
     /** The big accent under each card's title, the same on all four. */
     accent: 'ZA 0 €',
     items: [
+      { title: 'Mony, pomocníčka', text: 'Pýtajte sa kedykoľvek, aj v noci. Mony vpravo dole Vám hneď vysvetlí, ako Firmony funguje a čo kde nájdete.' },
       { title: 'Prvý mesiac', text: 'Za prvý mesiac služby neplatíte nič. Ak Vám Firmony nesadne, vypoviete zmluvu do jeho konca a neplatíte ani euro.' },
-      { title: 'Pomoc so založením', text: 'Prevedieme Vás založením s. r. o. krok za krokom: čo pripraviť, ku komu ísť a čo podpísať. Za našu pomoc neplatíte.' },
       { title: 'Prechod k Firmony', text: 'So zmenou Vám pomôžeme tak, aby ste nemuseli začínať od nuly ani platiť za samotný prechod.' },
       { title: 'Fakturácia', text: 'Faktúry vystavujete zadarmo, aj keď u nás účtovníctvo nemáte. Našim klientom sa vystavené faktúry nerátajú do dokladov balíka.', link: { href: '/fakturacia', text: 'Začať fakturovať' } },
     ],
     cta: 'Chcem začať',
-    fine: 'Bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Odmenu notára alebo advokáta a poplatky za zápis firmy platí zakladateľ.',
+    fine: 'Vedenie účtovníctva je bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej je zmluva na 36 mesiacov.',
 
     hint: 'Objavte všetky štyri výhody.',
     hintMobile: 'Potiahnite prstom a objavte ďalšie výhody.',
@@ -248,11 +271,11 @@ export const copy = typesetAll({
       },
       {
         q: 'Ešte nemám firmu. Môžem začať?',
-        a: `Áno. Vyplňte formulár bez IČO a ozveme sa. Účtovníctvo povedieme od ${BRAND.launch}, alebo odo dňa, keď firma vznikne, ak to bude neskôr.`,
+        a: `Áno, a firmu Vám aj založíme. V ponuke s. r. o. za 1 € zariadime advokáta, zápis do obchodného registra aj živnosť a súdny poplatok aj odmenu advokáta platíme my. Vyplňte formulár bez IČO a ozveme sa. Účtovníctvo povedieme od ${BRAND.launch}, alebo odo dňa, keď firma vznikne, ak to bude neskôr.`,
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
+        a: 'Pri bežnom vedení účtovníctva nie. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej je zmluva na 36 mesiacov. Inak zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
       },
       {
         q: 'Čo sa mení od 1. 1. 2027 s e-faktúrami?',
@@ -422,7 +445,8 @@ export const copy = typesetAll({
     failed: 'Register práve neodpovedá. Napíšte názov firmy sami, overíme ho neskôr.',
     busy: 'Z tohto pripojenia prišlo veľa vyhľadávaní. Napíšte názov firmy sami.',
     freshTitle: 'Zakladáte firmu',
-    freshLead: 'Napíšte nám, ako ďaleko ste so založením. Ozveme sa a všetko prejdeme spolu.',
+    freshLead: `Založíme Vám s. r. o. za 1 €, advokáta aj poplatky platíme my. Napíšte nám, ako ďaleko ste, a ozveme sa ${REPLY_WITHIN}.`,
+    freshFine: 'Pri ponuke s. r. o. za 1 € je zmluva o vedení účtovníctva na 36 mesiacov.',
     companyName: 'Názov firmy',
     companyNameFresh: 'Názov firmy, ak ho už máte',
     plan: 'Balík',

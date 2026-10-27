@@ -4,6 +4,21 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**S. r. o. za 1 €, 27. 10. 2026 večer (Claude, `main`):** jeho rozhodnutie o 22:24 až 22:38: ceny 89/169/329 € ostávajú,
+náklady na minimum, trh „zaliať“ ponukou založenia s. r. o. za 1 € (nie „zadarmo“: zákaz klamlivého „zadarmo“ a model
+„mobil za 1 € so zmluvou“), zmluva na **36 mesiacov**, viazaný je aj zakladateľ ako fyzická osoba (osobné ručenie),
+prvé 3 mesiace vopred, odstupné pri skoršom konci = zostávajúce mesačné poplatky, najviac 12, najmenej hodnota
+založenia; bez poplatku len pri našej vážnej nenapravenej chybe; nespája sa s prvým mesiacom zadarmo; 20 firiem
+mesačne. Nárok na podiel v s. r. o. odmietnutý (neprimerané, nevymáhateľné). Odhad nákladu na založenie 400 až 500 €
+(súdny poplatok 220 €, advokát 150 až 300 €; Firmáreň a tkak.sk 27. 10.), návratnosť okolo 8 mesiacov. Influencer
+(Ekonómia ľudskou rečou): odmena 100 € až po treťom zaplatenom mesiaci klienta, vlastný odkaz, označenie reklamy.
+Na webe: čip v úvode (`hero__deal`), sekcia hneď pod úvodom `#sro-za-euro` (`Deal` v `src/views/home.tsx`,
+`copy.formation`, `.deal` v `public/app.css`, obrázok zatiaľ `offer-company-formation`), karta úvodu „Nemáte firmu?
+S. r. o. za 1 €“, `/zacat?nova=1` s ponukou, FAQ (založenie, viazanosť), poznámka pod kolotočom; v kolotoči nahradila
+kartu „Pomoc so založením“ karta „Mony, pomocníčka“ a vpredu je „Prvý mesiac“. Mony pozná ponuku z
+`docs/mony/klient.md`. **Pred prvým klientom ponuky:** partnerský advokát a jeho cena, zmluva (body vyššie) a
+poistenie; žiadosť zatiaľ ide ako bežná nezáväzná žiadosť „Zakladá firmu“ do `/ucto/ziadosti`.
+
 **Používatelia, súkromie údajov a zvýraznenie na webe, 27. 10. 2026 večer (Claude, `main`):** jeho slovo o 21:32: v
 admin paneli všetky e-maily, kontakty a dáta o všetkých používateľoch, prehľadne; o 21:39: tie dáta vidí len on zo
 svojho účtu, nie účtovníčky (mohli by ich predať konkurencii alebo založiť vlastnú firmu); o 21:53 „áno zmeň“ aj na

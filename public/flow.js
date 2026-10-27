@@ -90,7 +90,7 @@
     { x: -0.96, s: 0.85, o: 0.85, z: 30, y: 12 },
   ]
 
-  // "Založenie s. r. o. zadarmo", the second card, opens in front.
+  // "Prvý mesiac", the second card, opens in front.
   let rotation = 1
   let radius = 0
 

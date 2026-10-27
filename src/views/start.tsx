@@ -169,7 +169,17 @@ export const StartDetails: FC<{
   return (
     <Page>
         <h1 class="h1">{fresh ? copy.start.freshTitle : copy.start.title}</h1>
-        {fresh ? <p class="lead">{copy.start.freshLead}</p> : null}
+        {fresh ? (
+          <>
+            <p class="lead">{copy.start.freshLead}</p>
+            <p class="small start__deal">
+              {copy.start.freshFine}{' '}
+              <a class="link" href="/#sro-za-euro">
+                Podmienky ponuky
+              </a>
+            </p>
+          </>
+        ) : null}
         <CompanyBlock state={state} carry={carry} plan={values.plan} />
         {errors.form ? (
           <p class="notice notice--error" role="alert">

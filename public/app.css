@@ -444,6 +444,220 @@ textarea {
   transition: text-decoration-color 0.2s;
 }
 
+/* The s. r. o. for 1 € (his word of 27 October 2026): a chip in the opening and a panel of light right under it,
+   the price set as large as the date of the e-invoices once was. */
+.hero__deal {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  margin-bottom: 22px;
+  padding: 6px 16px 6px 6px;
+  border: 1px solid rgb(255 255 255 / 0.32);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.hero__deal:hover {
+  background: rgb(255 255 255 / 0.24);
+}
+
+.hero__deal-tag {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--blue);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.deal-section {
+  padding-top: clamp(28px, 4vw, 48px);
+}
+
+.deal-section .wrap {
+  max-width: calc(var(--wide) + 2 * var(--gutter));
+}
+
+.deal {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr);
+  align-items: center;
+  gap: 32px;
+  padding: clamp(36px, 5.6vw, 84px) clamp(24px, 5.6vw, 88px);
+  background-image:
+    radial-gradient(38% 60% at 100% 0%, rgb(255 66 94 / 0.9) 0%, rgb(255 66 94 / 0) 100%),
+    radial-gradient(42% 64% at 70% 110%, rgb(146 58 255 / 0.9) 0%, rgb(146 58 255 / 0) 100%),
+    radial-gradient(40% 60% at 0% 0%, rgb(132 184 255 / 0.55) 0%, rgb(132 184 255 / 0) 100%),
+    linear-gradient(160deg, #1424e0 0%, #1e30f2 48%, #3a2ef0 78%, #612ee2 100%);
+}
+
+.deal__badge {
+  display: inline-flex;
+  padding: 6px 14px;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.deal__title {
+  margin-top: 20px;
+  font-family: var(--display);
+  font-size: clamp(1.875rem, 3.6vw, 3rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.deal__first,
+.deal__big,
+.deal__serif {
+  display: block;
+}
+
+.deal__big {
+  margin-top: 0.04em;
+  font-size: clamp(4.25rem, 10.5vw, 9rem);
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.deal__serif {
+  margin-top: 0.18em;
+  font-family: var(--serif);
+  font-size: clamp(1.625rem, 3vw, 2.625rem);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.012em;
+  color: #ffb9c6;
+}
+
+.deal__lead {
+  max-width: 34em;
+  margin-top: 22px;
+  color: rgb(255 255 255 / 0.86);
+  font-size: clamp(1.0625rem, 1.3vw, 1.1875rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.deal__points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deal__point {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.1);
+}
+
+.deal__point-title {
+  font-weight: 700;
+}
+
+.deal__point-text {
+  color: rgb(255 255 255 / 0.82);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.deal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 28px;
+}
+
+.deal__cta {
+  background: #fff;
+  color: var(--blue);
+  box-shadow: 0 14px 34px rgb(8 12 90 / 0.35);
+}
+
+.deal__cta:hover {
+  background: #eef0ff;
+  color: var(--blue);
+}
+
+.deal__limit {
+  font-weight: 600;
+}
+
+.deal__art {
+  justify-self: center;
+  width: min(100%, 400px);
+}
+
+.deal__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 30px 60px rgb(10 10 90 / 0.45));
+}
+
+.deal__fine {
+  max-width: 980px;
+  margin: 14px auto 0;
+  color: var(--soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.start__deal {
+  margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .deal__img {
+    animation: bob 7s ease-in-out infinite alternate;
+  }
+}
+
+@media (max-width: 900px) {
+  .deal {
+    grid-template-columns: 1fr;
+  }
+
+  .deal__art {
+    order: -1;
+    width: min(56%, 220px);
+  }
+}
+
+@media (max-width: 560px) {
+  .deal__points {
+    grid-template-columns: 1fr;
+  }
+
+  .deal__cta {
+    width: 100%;
+  }
+}
+
 /* What is free and the extra service, to the eye first (his word of 27 October 2026). */
 .top__nav a.top__hot,
 .top__sheet a.top__hot {
@@ -887,6 +1101,7 @@ textarea {
    red, each lit from another side, with grain over it. */
 .hero__panel,
 .band,
+.deal,
 .final {
   position: relative;
   isolation: isolate;
@@ -898,6 +1113,7 @@ textarea {
 
 .hero__panel::after,
 .band::after,
+.deal::after,
 .final::after {
   content: '';
   position: absolute;

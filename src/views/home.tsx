@@ -82,6 +82,10 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
     <div class="wrap hero__grid">
       <div class="hero__panel">
         <div class="hero__copy">
+          <a class="hero__deal" href="#sro-za-euro">
+            <span class="hero__deal-tag">{copy.hero.deal.tag}</span>
+            <span>{copy.hero.deal.text}</span>
+          </a>
           <h1 id="hero-title" class="hero__title">
             <span class="hero__line">{copy.hero.first}</span> <em class="hero__line hero__line--serif">{copy.hero.second}</em>
           </h1>
@@ -111,7 +115,7 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
           <p class="hero__card-foot">
             <span>{copy.card.fine}</span>
             <a class="link" href={withCarry('/zacat', carry, { nova: '1' })}>
-              {copy.final.noCompany}
+              {copy.card.noCompany}
             </a>
           </p>
         </div>
@@ -130,6 +134,45 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
     </div>
   </section>
 )
+
+/* The s. r. o. for 1 €: right under the opening, the offer that pours over the visitor ----------------------- */
+
+const Deal: FC<{ carry: Carry }> = ({ carry }) => {
+  const d = copy.formation
+  return (
+    <section class="deal-section" id="sro-za-euro" aria-labelledby="deal-title">
+      <div class="wrap">
+        <div class="deal">
+          <div class="deal__copy">
+            <p class="deal__badge">{d.badge}</p>
+            <h2 id="deal-title" class="deal__title">
+              <span class="deal__first">{d.first}</span> <span class="deal__big">{d.big}</span> <em class="deal__serif">{d.second}</em>
+            </h2>
+            <p class="deal__lead">{d.lead}</p>
+            <ul class="deal__points">
+              {d.points.map((p) => (
+                <li class="deal__point">
+                  <strong class="deal__point-title">{p.title}</strong>
+                  <span class="deal__point-text">{p.text}</span>
+                </li>
+              ))}
+            </ul>
+            <p class="deal__actions">
+              <a class="btn deal__cta" href={withCarry('/zacat', carry, { nova: '1' })}>
+                {d.cta}
+              </a>
+              <span class="deal__limit">{d.limit}</span>
+            </p>
+          </div>
+          <div class="deal__art" aria-hidden="true">
+            <Picture art={ART.offerCompanyFormation} className="deal__img" sizes="(max-width: 900px) 220px, 400px" />
+          </div>
+        </div>
+        <p class="deal__fine">{d.fine}</p>
+      </div>
+    </section>
+  )
+}
 
 /* One month: the papers fly in and are booked ------------------------------------------------------------- */
 
@@ -248,7 +291,7 @@ const Why: FC = () => (
 )
 
 /** The glass icon of each deal card, in the same order as copy.offer.items. */
-const OFFER_ART: readonly (Art | null)[] = [ART.offerFirstMonth, ART.offerCompanyFormation, ART.offerSwitch, ART.offerInvoices]
+const OFFER_ART: readonly (Art | null)[] = [ART.chat, ART.offerFirstMonth, ART.offerSwitch, ART.offerInvoices]
 
 /** The one offer the visitor cannot refuse: four cards on a virtual ring. The card in front is the hero in the
  *  middle, one card each side is visible and readable, and the fourth hides behind. public/flow.js turns the ring
@@ -727,6 +770,7 @@ const Final: FC<{ carry: Carry }> = ({ carry }) => (
 export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => (
   <>
     <Hero carry={carry} />
+    <Deal carry={carry} />
     <Why />
     <Flow />
     <Offer carry={carry} />
