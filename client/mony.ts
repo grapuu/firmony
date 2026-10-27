@@ -216,6 +216,8 @@ if (root && panel && launcher && log && form && input) {
   }
 
   launcher.addEventListener('click', () => open(true))
+  // A word on the page that names Mony opens her too.
+  for (const call of document.querySelectorAll<HTMLElement>('[data-mony-call]')) call.addEventListener('click', () => open(true))
   root.querySelector('[data-mony-hide]')?.addEventListener('click', fold)
   root.querySelector('[data-mony-new]')?.addEventListener('click', () => {
     if (busy) return

@@ -14,7 +14,11 @@ päť riadkov). Poradie: úvod, prečo, jeden mesiac, výhody za 0 €, cenník 
 cesta `?balik=mieru` na stránke), kalkulačka, kto sme, šesť otázok (namiesto 11), záver. Vypustené: štyri čísla,
 objatie, šesť služieb, AI a účtovníčka, pás e-faktúr (otázka o 1. 1. 2027 ostala vo FAQ), dve cesty a samostatná sekcia
 nástrojov; nástroje zadarmo sú riadok pod výhodami s odkazmi na faktúru, mzdovú kalkulačku, výpočet daní a všetky
-nástroje (aj v menu „Zadarmo“). Ceny, zmluvy a výpočty bez zmeny.
+nástroje (aj v menu „Zadarmo“). Ceny, zmluvy a výpočty bez zmeny. O 20:16 citát „Kto za nami stojí“: páčil sa mu, chcel ho emotívnejší a ľudský od neho (ľudia nie sú na nič sami,
+prevedieme ich aj bez skúseností, zákazník je ten, komu slúžime). Citát (`copy.founder.quote`) hovorí o papieroch,
+termínoch, úradoch a pocite samoty; pod ním jeho slová obyčajným písmom (`copy.founder.letter`, `.quote__letter`). O 20:20: „nie Vaša účtovníčka, ale my“ (my Vám poradíme). O 20:22: na webe
+povedať, že kto niečo nevie, nech sa opýta pomocníčky vpravo dole: otázky („Opýtajte sa kedykoľvek Mony, našej
+pomocníčky vpravo dole“) a záver („Opýtajte sa Mony vpravo dole“); slovo je tlačidlo `data-mony-call`, ktoré Mony otvorí.
 
 **Vždy aktuálna verzia a Mony na webe, 27. 10. 2026 večer (Claude, `main`):** jeho slovo o 17:53: často sa mu otvára
 stará verzia, klient ju nesmie nikdy vidieť; a kde je AI bot (bol len v prihlásenej aplikácii). Stránky sa nikdy

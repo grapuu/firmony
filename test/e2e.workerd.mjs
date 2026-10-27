@@ -188,6 +188,11 @@ check(
   page.includes('Účtovníctvo pre Vašu s.') && page.includes('Vy odfotíte doklad, my urobíme zvyšok.') && page.includes('Online účtovná firma za pevnú cenu') && page.includes('dohodnuté priznania') &&
     (page.match(/class="card why__card"/g) ?? []).length === 3 && page.includes('čom sme iní.') && (page.match(/<span class="tick"/g) ?? []).length >= 5 && (page.match(/class="faq__item"/g) ?? []).length === 6 && page.includes('href="/bezplatne-nastroje"'),
 )
+check(
+  'the founder speaks to people in his own words, and whoever does not know something is sent to Mony in the corner',
+  page.includes('pocit, že som na to všetko sám') && page.includes('my Vám poradíme') && !page.includes('Vaša účtovníčka Vám poradí') &&
+    page.replace(/\u00a0/g, ' ').includes('našej pomocníčky vpravo dole') && (page.match(/data-mony-call/g) ?? []).length === 2,
+)
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
   'it names the prices of all three plans',

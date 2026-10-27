@@ -188,8 +188,12 @@ export const copy = typesetAll({
 
   founder: {
     title: 'Kto za nami stojí',
+    // His word of 27 October 2026: warmer and from him, people are not alone in it, we guide them without experience
+    // and the client is the one we serve.
     quote:
-      'Keď som si založil firmu, najviac nervov ma nestálo podnikanie, ale papiere okolo neho. Firmony robíme, aby sa o účtovníctvo každej firmy postaral niekto spoľahlivý a ona mohla rásť.',
+      'Keď som zakladal firmu, najviac nervov ma nestálo podnikanie, ale papiere, termíny a úrady okolo neho. A hlavne pocit, že som na to všetko sám.',
+    letter:
+      'Preto robíme Firmony. Aby ste Vy taký pocit nikdy nemali. Nepotrebujete žiadne skúsenosti: aplikácia Vás prevedie krok za krokom, a keď si neviete rady, my Vám poradíme. Na nič nebudete sami. Nie ste pre nás ďalšie číslo v zozname. Ste dôvod, prečo Firmony existuje, a chceme Vám slúžiť najlepšie, ako vieme.',
     name: 'Christian Juhás',
     role: 'zakladateľ Firmony',
   },
@@ -210,7 +214,8 @@ export const copy = typesetAll({
 
   faq: {
     title: 'Otázky',
-    more: 'Nenašli ste odpoveď? Napíšte na',
+    // His word of 27 October 2026: whoever does not know something should look for our helper in the corner.
+    ask: { before: 'Nenašli ste odpoveď? Opýtajte sa kedykoľvek', after: ', našej pomocníčky vpravo dole. Alebo napíšte na' },
     reply: `odpovieme ${REPLY_WITHIN}.`,
     items: [
       {
@@ -249,6 +254,7 @@ export const copy = typesetAll({
     placeholder: '8 číslic',
     button: 'Pokračovať',
     noCompany: 'Ešte nemám firmu',
+    ask: 'Opýtajte sa Mony vpravo dole',
     write: 'Chcete nám radšej napísať?',
     reply: `Odpovieme ${REPLY_WITHIN}.`,
   },

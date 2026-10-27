@@ -444,6 +444,24 @@ textarea {
   transition: text-decoration-color 0.2s;
 }
 
+/* A word in a sentence that opens Mony rather than another page. */
+.link--button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.final__ask {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
 .link:hover {
   text-decoration-color: var(--blue);
 }
@@ -2687,6 +2705,18 @@ textarea {
   letter-spacing: -0.012em;
   color: var(--red);
   text-wrap: pretty;
+}
+
+/* His own words after the quote, in the letter's plain type: read as a person speaking, not as a headline. */
+.quote .quote__letter {
+  max-width: 34em;
+  margin-top: 22px;
+  font-family: var(--sans);
+  font-size: 1.125rem;
+  font-style: normal;
+  line-height: 1.65;
+  letter-spacing: 0;
+  color: var(--text);
 }
 
 .quote__sign {

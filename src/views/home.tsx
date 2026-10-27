@@ -1,4 +1,5 @@
 import type { FC } from 'hono/jsx'
+import { MONY } from '../assistant/mony'
 import { annualPlanCents, type CalcResult } from '../calc'
 import { SZCO_PATH } from '../content/szco-calc'
 import { WAGE_PATH } from '../content/wage-calc'
@@ -534,6 +535,7 @@ const About: FC = () => (
         <figure class="quote">
           <blockquote>
             <p>{copy.founder.quote}</p>
+            <p class="quote__letter">{copy.founder.letter}</p>
           </blockquote>
           <figcaption class="quote__sign">
             <Picture art={ART.founder} className="quote__photo" />
@@ -598,7 +600,11 @@ const Faq: FC = () => (
     <header class="wrap head head--center">
       <Title id="faq-title" first={copy.faq.title} />
       <p class="lead">
-        {copy.faq.more}{' '}
+        {copy.faq.ask.before}{' '}
+        <button type="button" class="link link--button" data-mony-call aria-controls="mony-panel">
+          {MONY.name}
+        </button>
+        {copy.faq.ask.after}{' '}
         <a class="link" href={`mailto:${BRAND.email}`}>
           {BRAND.email}
         </a>
@@ -662,6 +668,9 @@ const Final: FC<{ carry: Carry }> = ({ carry }) => (
           <a class="final__fresh" href={withCarry('/zacat', carry, { nova: '1' })}>
             {copy.final.noCompany}
           </a>
+          <button type="button" class="final__fresh final__ask" data-mony-call aria-controls="mony-panel">
+            {copy.final.ask}
+          </button>
           <span>
             {copy.final.write}{' '}
             <a class="final__mail" href={`mailto:${BRAND.email}`}>

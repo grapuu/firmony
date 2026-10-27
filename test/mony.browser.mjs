@@ -74,4 +74,13 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
   check('fresh: a page with nothing typed loads the current version by itself', (await clientPage.locator('.fresh').count()) === 0 && new URL(clientPage.url()).pathname === '/app/doklady')
   await clientPage.unroute('**/verzia')
   await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
+
+  // The site's questions and its close send whoever does not know something to Mony, and the word opens her.
+  await clientPage.goto(`${origin}/`)
+  await clientPage.locator('#otazky [data-mony-call]').click()
+  check('mony browser: the questions of the site open Mony from her name', await clientPage.locator('#mony-panel').isVisible())
+  await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
+  await clientPage.locator('#zacat [data-mony-call]').click()
+  check('mony browser: the close of the site opens Mony too', await clientPage.locator('#mony-panel').isVisible())
+  await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
 }
