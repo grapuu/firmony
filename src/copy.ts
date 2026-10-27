@@ -27,10 +27,11 @@ export const copy = typesetAll({
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
+  // His word of 27 October 2026, after his mother saw the site: say at once what we are and why us.
   hero: {
-    first: 'Vy budujete firmu.',
-    second: 'My strážime účtovníctvo.',
-    lead: 'Doklady odfotíte alebo prepošlete. Účtovníčka sa postará o dohodnutú agendu a v aplikácii uvidíte, čo je hotové a čo potrebuje Vaše rozhodnutie.',
+    first: 'Účtovníctvo pre Vašu s. r. o.',
+    second: 'Vy odfotíte doklad, my urobíme zvyšok.',
+    lead: 'Online účtovná firma za pevnú cenu. Umelá inteligencia prečíta doklady, Vaša účtovníčka ich skontroluje a postará sa o dohodnuté priznania. Všetko vidíte v aplikácii.',
     price: `Od ${eur(start.price)} mesačne bez DPH. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
@@ -65,18 +66,41 @@ export const copy = typesetAll({
     example: 'Ilustračná ukážka',
   },
 
-  /** Four true figures, each with what it means. */
-  stats: [
-    { value: eur(start.price), label: `mesačne za balík ${start.name}` },
-    { value: eur(0), label: 'za aplikáciu k účtovnej službe' },
-    { value: eur(0), label: 'za fakturáciu a pomoc so založením s. r. o.' },
-    { value: '1 deň', label: 'na odpoveď, po ľudsky' },
-  ],
+  /** Why Firmony, in three lines a visitor reads at a glance (27 October 2026). */
+  why: {
+    first: 'Prečo Firmony.',
+    second: 'Tri veci, ktoré pocítite hneď.',
+    items: [
+      { title: 'Doklad len odfotíte', text: 'Prečítame ho, zaúčtujeme a spárujeme s platbou z banky. Nič neprepisujete, nič nenosíte.' },
+      { title: 'Pevná cena vopred', text: `Od ${eur(start.price)} mesačne bez DPH podľa počtu dokladov. Prvý mesiac zadarmo a bez viazanosti.` },
+      { title: 'Všetko vidíte v mobile', text: `Čo je hotové, čo chýba a čo zaplatiť dokedy. Účtovníčka Vám odpovie ${REPLY_WITHIN}.` },
+    ],
+  },
 
-  /** The hug of the brand, read word by word. */
-  statement: {
-    first: 'Účtovníctvo, ktoré sa robí takmer samo.',
-    second: 'AI prečíta doklady, systém navrhne zaúčtovanie, účtovníčka skontroluje.',
+  /** Side by side: what is usual, and what Firmony does instead. Plain, without naming anybody. */
+  versus: {
+    first: 'V čom sme iní.',
+    second: 'Porovnajte sami.',
+    usual: {
+      title: 'Bežne',
+      items: [
+        'Doklady nosíte osobne alebo ich posielate e-\u2060mailom.',
+        'Výpisy z banky posielate každý mesiac.',
+        'Čo je hotové, sa dozviete, keď sa opýtate.',
+        'Cena sa často dohaduje individuálne.',
+        'Pri zmene účtovníčky zháňate podklady sami.',
+      ],
+    },
+    ours: {
+      title: 'S Firmony',
+      items: [
+        'Doklad odfotíte v mobile alebo prepošlete e-\u2060mail.',
+        'Výpis príde e-\u2060mailom sám, alebo ho pridáte raz mesačne.',
+        'Stav firmy vidíte v aplikácii kedykoľvek.',
+        'Pevná cena podľa počtu dokladov, známa vopred.',
+        'Prechod od doterajšej účtovníčky zariadime my.',
+      ],
+    },
   },
 
   /** One offer the visitor cannot refuse: four deals in a ring that turns without end. */
@@ -94,103 +118,15 @@ export const copy = typesetAll({
     ],
     cta: 'Chcem začať',
     fine: 'Bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Odmenu notára alebo advokáta a poplatky za zápis firmy platí zakladateľ.',
+    tools: {
+      lead: 'Ďalšie nástroje zadarmo:',
+      invoice: 'faktúra v PDF',
+      wage: 'mzdová kalkulačka',
+      taxes: 'výpočet daní',
+      all: 'Všetky nástroje',
+    },
     hint: 'Objavte všetky štyri výhody.',
     hintMobile: 'Potiahnite prstom a objavte ďalšie výhody.',
-  },
-
-  /** Everything in the price: pick one and see it. */
-  services: {
-    first: 'Doklady, dane aj odpovede.',
-    second: 'Na jednom mieste.',
-    lead: 'Vyberte si a pozrite sa, ako to vyzerá.',
-    example: 'Ilustračná ukážka',
-    items: [
-      { id: 'doklady', title: 'Doklady a banka', text: 'Spracovanie dokladov a párovanie platieb podľa dohodnutej agendy.' },
-      { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za Vás.' },
-      { id: 'efaktury', title: 'E-faktúry', text: 'Digitálny poštár priamo vo Firmony: posielanie aj príjem zapíname pred 1. 1. 2027.' },
-      { id: 'mzdy', title: 'Mzdy', text: `Výplaty, odvody a hlásenia zamestnancov, ${eur(PAYROLL_PRICE)} mesačne za človeka.` },
-      { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
-      { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
-    ],
-    /** What the machine reads off a slip, and what it proposes. The entry is the Slovak chart of accounts. */
-    scan: {
-      slip: { shop: 'Kaviareň', when: '14. 10. 2026, 8:42', item: '2× espresso', pay: 'Platba kartou', total: 'Spolu', sum: '4,80 €' },
-      read: 'Prečítané z bločku',
-      fields: [
-        ['Obchodník', 'Kaviareň'],
-        ['Dátum', '14. 10. 2026'],
-        ['Suma', '4,80 €'],
-        ['Druh', 'reprezentácia'],
-      ] as [string, string][],
-      entry: 'Návrh zaúčtovania',
-      debit: ['MD 513', 'Náklady na reprezentáciu'],
-      credit: ['D 221', 'Bankové účty'],
-      flag: 'Reprezentácia nie je daňový výdavok.',
-    },
-    file: {
-      doc: 'Priznanie k DPH',
-      period: 'Obdobie: október 2026',
-      status: 'Podané',
-      rows: [
-        ['Daň na úhradu', '1 220,15 €'],
-        ['Splatnosť', '25. 11. 2026'],
-        ['Kontrolný výkaz', 'podaný'],
-      ] as [string, string][],
-      checked: 'Skontrolovala účtovníčka',
-      when: '24. 11. 2026, 9:41',
-    },
-    inbox: {
-      title: 'Prijaté e-faktúry',
-      via: 'pripravované napojenie na poštára',
-      rows: [
-        ['Webhosting', '14,90 €'],
-        ['Telefón a internet', '29,00 €'],
-        ['Coworking', '120,00 €'],
-      ] as [string, string][],
-      state: 'zaúčtovaná',
-    },
-    payroll: {
-      title: 'Mzdy za október',
-      rows: ['Výplatné pásky', 'Odvody do Sociálnej poisťovne', 'Zdravotné poistenie', 'Prehľad o preddavkoch na daň'],
-      state: 'hotovo',
-      note: `${eur(PAYROLL_PRICE)} mesačne za človeka, v každom balíku.`,
-    },
-    deadlines: {
-      title: 'Termíny',
-      rows: [
-        ['25. 11.', 'Priznanie k DPH', 'podané'],
-        ['25. 11.', 'Kontrolný výkaz', 'podaný'],
-        ['30. 11.', 'Prehľad o preddavkoch na daň', 'pripravený'],
-      ] as [string, string, string][],
-      missing: 'Chýba jeden bloček z októbra. Pošlete nám ho, prosím?',
-    },
-    /** An operational question and the next useful step, without a simulated blanket tax ruling. */
-    ask: {
-      who: 'Vaša účtovníčka',
-      online: 'odpovedá do jedného pracovného dňa',
-      question: 'Kúpil som notebook do firmy. Čo mám poslať?',
-      answer: 'Pošlite faktúru a stručne napíšte, ako ho používate vo firme. Zaúčtovanie a prípadné odpisy preverím.',
-      thanks: 'Super, ďakujem!',
-    },
-  },
-
-  /** The machine and the person. */
-  duo: {
-    first: 'Menej rutiny pre Vás.',
-    second: 'Odborná kontrola pre Vašu firmu.',
-    ai: { title: 'Umelá inteligencia', items: ['prečíta bloček aj faktúru', 'navrhne zaúčtovanie', 'spáruje platby z banky'] },
-    human: { title: 'Vaša účtovníčka', items: ['vedie odbornú kontrolu', 'rieši neštandardné prípady a dohodnuté podania', 'odpovie na Vaše otázky'] },
-  },
-
-  einvoice: {
-    // Read 22 October 2026: current law and the enacted 2027 wording, especially § 71(5), § 85o(2)-(4),(9)-(10).
-    // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html
-    // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html#paragraf-85o
-    date: '1. 1. 2027',
-    title: 'E-faktúry sa týkajú aj neplatiteľov DPH.',
-    text: 'Pri určených tuzemských dodaniach ich vystavujú platitelia DPH. Vedieť ich prijať musia aj neplatitelia. Digitálneho poštára budete mať priamo vo Firmony: e-faktúru pošlete jedným klikom a prijaté uvidíte v aplikácii. Zapíname pred 1. 1. 2027.',
-    source: 'Zákon o DPH, § 71 ods. 5 a § 85o, znenie od 1. 1. 2027.',
-    more: 'Čo musí urobiť Vaša firma',
   },
 
   pricing: {
@@ -250,26 +186,6 @@ export const copy = typesetAll({
     invalid: 'Skontrolujte čísla. Sumy píšte v eurách, napríklad 60 alebo 5,20.',
   },
 
-  paths: {
-    first: 'Začnite tam, kde ste.',
-    second: 'My nadviažeme.',
-    fresh: {
-      title: 'Zakladáte firmu',
-      text: 'So založením s. r. o. Vám pomôžeme zadarmo a účtovníctvo povedieme od mesiaca, v ktorom firma vznikne. Odmenu notára alebo advokáta a poplatky za zápis platí zakladateľ.',
-      cta: 'Založím s. r. o.',
-    },
-    switching: {
-      title: 'Meníte účtovníčku',
-      text: 'Zadáte kontakt na doterajšiu účtovníčku a potvrdíte. Prevzatie aj odovzdanie podkladov vybavíme my. Vy riešite len potrebný podpis alebo doplnenie.',
-      cta: 'Chcem prejsť',
-    },
-    large: {
-      title: 'Vediete väčšiu firmu',
-      text: 'Prejdeme s Vami agendu, navrhneme rozsah a cenu na mieru a prechod naplánujeme tak, aby žiadna povinnosť nezostala bez riešenia.',
-      cta: 'Chcem ponuku na mieru',
-    },
-  },
-
   founder: {
     title: 'Kto za nami stojí',
     quote:
@@ -298,48 +214,30 @@ export const copy = typesetAll({
     reply: `odpovieme ${REPLY_WITHIN}.`,
     items: [
       {
-        q: 'Kto mi bude viesť účtovníctvo?',
-        a: 'Vaša firma má pridelenú účtovníčku. Systém jej pomáha s čítaním dokladov a párovaním platieb. Ona vedie odbornú kontrolu, rieši neštandardné prípady, dohodnuté podania a Vaše otázky.',
-      },
-      {
         q: 'Čo musím robiť ja?',
         a: 'Doklady odfotíte, nahráte alebo prepošlete na adresu svojej firmy vo Firmony. Pri nahrávaní vidíte potvrdenie prijatia. Keď potrebujeme vysvetliť nákup, doplniť údaj alebo schváliť rozhodnutie, ozveme sa v aplikácii. Potrebné overenie a nastavenie prejdeme na začiatku spolu.',
       },
       {
-        q: 'Objednávam si službu už zadaním IČO?',
-        a: 'Nie. Najprv doplníme údaje z registra a po nezáväznom dopyte si prejdeme Vašu agendu. Pred uzavretím zmluvy dostanete rozsah služby, cenu a podmienky spolupráce. Zmluva má samostatný krok po overení údajov a totožnosti.',
-      },
-      {
-        q: 'Viete viesť aj väčšiu firmu?',
-        a: `Áno. Štandardné balíky sú pre firmy do ${largest.docs} dokladov mesačne. Pri väčšej firme najprv prejdeme agendu: počet dokladov a zamestnancov, majetok, zásoby a režimy DPH. Potom navrhneme rozsah, cenu a postup prechodu na mieru. Závierku pripravíme mikro, malej aj veľkej účtovnej jednotke.`,
+        q: 'Kto mi bude viesť účtovníctvo?',
+        a: 'Vaša firma má pridelenú účtovníčku. Systém jej pomáha s čítaním dokladov a párovaním platieb. Ona vedie odbornú kontrolu, rieši neštandardné prípady, dohodnuté podania a Vaše otázky.',
       },
       {
         q: 'Ako prejdem od súčasnej účtovníčky?',
         a: 'V aplikácii nám zadáte kontakt na doterajšiu účtovníčku a potvrdíte koordináciu prechodu. Dohodneme prevzatie a Vaša účtovníčka skontroluje podklady. Vy sa zapojíte pri potrebnom podpise alebo doplnení. Priebeh aj ďalší krok uvidíte v aplikácii. Pripravený list si môžete vybaviť aj osobne.',
       },
       {
-        q: 'Kto urobí závierku za rok 2026?',
-        a: `Zvyčajne doterajšia účtovníčka, lebo rok 2026 účtovala ona. Ak sa dohodnete inak, urobíme ju my za ${eur(CLOSING_PRICE)}, keď dostaneme celé účtovníctvo za rok 2026.`,
-      },
-      {
         q: 'Ešte nemám firmu. Môžem začať?',
         a: `Áno. Vyplňte formulár bez IČO a ozveme sa. Účtovníctvo povedieme od ${BRAND.launch}, alebo odo dňa, keď firma vznikne, ak to bude neskôr.`,
-      },
-      {
-        q: 'Čo ak budem mať viac dokladov, ako je v balíku?',
-        a: `Mesiac, v ktorom ich budete mať viac, vyúčtujeme ako vyšší balík. Pri viac ako ${largest.docs} dokladoch mesačne Vám pripravíme ponuku na mieru.`,
       },
       {
         q: 'Musím sa viazať?',
         a: 'Nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
       },
       {
-        q: 'Ako spolu budeme komunikovať?',
-        a: 'Správy s účtovníčkou, doklady, zmluvu aj plnú moc nájdete v aplikácii. E-mail Vás upozorní na novú správu bez jej obsahu. Doklady môžete aj preposielať na adresu svojej firmy vo Firmony.',
-      },
-      {
-        q: 'Ako môžete mať takúto cenu?',
-        a: 'Čítanie dokladov, párovanie a ďalšie opakované úkony zjednodušuje systém. Účtovníčka sa môže venovať odbornej kontrole a Vašim otázkam. Platíte za dohodnutý rozsah služby. Mesačný balík, závierku aj mzdy vidíte v cenníku.',
+        q: 'Čo sa mení od 1. 1. 2027 s e-faktúrami?',
+        // Read 22 October 2026: current law and the enacted 2027 wording, especially § 71(5), § 85o(2)-(4),(9)-(10).
+        // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html#paragraf-85o
+        a: 'Pri určených tuzemských dodaniach ich vystavujú platitelia DPH. Vedieť ich prijať musia aj neplatitelia. Digitálneho poštára budete mať priamo vo Firmony: e-faktúru pošlete jedným klikom a prijaté uvidíte v aplikácii. Zapíname pred 1. 1. 2027.',
       },
     ],
   },

@@ -30,20 +30,6 @@ const TOOLS = [
 
 const COMPARE = { href: '/#kalkulacka', title: 'Porovnanie ceny účtovníctva', tag: 'Z Vašich údajov', text: 'Porovnajte svoje ročné náklady s Firmony vrátane závierky. Ukážeme aj rovnakú alebo vyššiu cenu.', action: 'Porovnať náklady', art: ART.toolCompare }
 
-export const FreeToolsTeaser: FC = () => (
-  <section class="section free-tools" id="zadarmo" aria-labelledby="free-tools-title">
-    <div class="wrap">
-      <header class="head head--center">
-        <p class="eyebrow">Bez platobnej karty</p>
-        <h2 id="free-tools-title" class="title"><span class="title__sans">Užitočné hneď.</span> <em class="title__serif">Zadarmo.</em></h2>
-        <p class="lead">Nástroje, ktoré podnikateľ potrebuje každý mesiac. Používajte ich, aj keď účtovníctvo u nás ešte nemáte.</p>
-      </header>
-      <ToolCards />
-      <p class="free-tools__more"><a href={TOOLS_PATH}>Všetky bezplatné nástroje</a></p>
-    </div>
-  </section>
-)
-
 type Tool = { href: string; title: string; tag: string; text: string; action: string; art: Art | null }
 
 const ToolCard: FC<{ tool: Tool; wide?: boolean }> = ({ tool, wide = false }) => (

@@ -4,6 +4,18 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Jasnejšia hlavná stránka, 27. 10. 2026 večer (Claude, `main`):** jeho slovo o 19:29: jeho mama (laik) povedala, že
+myšlienka nie je dosť komunikovaná, jedinečnosť a výhody nie sú jasne čitateľné a človek sa v stránke utápa (13 sekcií,
+okolo 1 900 slov). O 19:32 „Chcem začať“ na navrhnutý postup a novú hlavnú vetu. Úvod: „Účtovníctvo pre Vašu s. r. o.
+Vy odfotíte doklad, my urobíme zvyšok.“ a jedna veta, čo Firmony je (online účtovná firma za pevnú cenu, AI prečíta,
+účtovníčka skontroluje a postará sa o dohodnuté priznania, všetko v aplikácii). Nové „Prečo Firmony“ (tri výhody:
+doklad len odfotíte, pevná cena vopred od najnižšieho balíka, všetko v mobile) a „V čom sme iní“ (Bežne vs. S Firmony,
+päť riadkov). Poradie: úvod, prečo, jeden mesiac, výhody za 0 €, cenník (s kartou Na mieru pre väčšie firmy, jediná
+cesta `?balik=mieru` na stránke), kalkulačka, kto sme, šesť otázok (namiesto 11), záver. Vypustené: štyri čísla,
+objatie, šesť služieb, AI a účtovníčka, pás e-faktúr (otázka o 1. 1. 2027 ostala vo FAQ), dve cesty a samostatná sekcia
+nástrojov; nástroje zadarmo sú riadok pod výhodami s odkazmi na faktúru, mzdovú kalkulačku, výpočet daní a všetky
+nástroje (aj v menu „Zadarmo“). Ceny, zmluvy a výpočty bez zmeny.
+
 **Vždy aktuálna verzia a Mony na webe, 27. 10. 2026 večer (Claude, `main`):** jeho slovo o 17:53: často sa mu otvára
 stará verzia, klient ju nesmie nikdy vidieť; a kde je AI bot (bol len v prihlásenej aplikácii). Stránky sa nikdy
 neukladali (no-store); stará verzia je karta otvorená pred nasadením, stránka obnovená tlačidlom Späť alebo aplikácia na

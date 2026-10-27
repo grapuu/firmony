@@ -1,9 +1,10 @@
 import type { FC } from 'hono/jsx'
 import { annualPlanCents, type CalcResult } from '../calc'
+import { SZCO_PATH } from '../content/szco-calc'
+import { WAGE_PATH } from '../content/wage-calc'
 import { ART, BRAND, CUSTOM_PLAN, LEAD_PLAN, OPERATOR, PLANS, REGISTER_URL, asset, type Art, type PlanId } from '../config'
 import { copy, planRows } from '../copy'
 import { formatEur } from '../format'
-import { FreeToolsTeaser } from './free-tools'
 
 /** Where a visitor came from (utm_* and ref), carried by every link and form to the request. */
 export type Carry = readonly (readonly [string, string])[]
@@ -66,18 +67,6 @@ const Title: FC<{ id: string; first: string; second?: string }> = ({ id, first, 
       </>
     ) : null}
   </h2>
-)
-
-/** Words that light up one by one as they scroll by; a word joined by a no-break space stays one. */
-const Words: FC<{ text: string }> = ({ text }) => (
-  <>
-    {text.split(' ').map((word, i) => (
-      <>
-        {i > 0 ? ' ' : null}
-        <span class="w">{word}</span>
-      </>
-    ))}
-  </>
 )
 
 /* The opening ---------------------------------------------------------------------------------------------- */
@@ -207,32 +196,53 @@ const Flow: FC = () => {
   )
 }
 
-/** Four true figures, each with what it means. */
-const Stats: FC = () => (
-  <div class="stats-section">
-    <ul class="wrap stats">
-      {copy.stats.map((stat) => (
-        <li class="stat">
-          <span class="stat__value">{stat.value}</span>
-          <span class="stat__label">{stat.label}</span>
+/** Why Firmony: three things a visitor feels at once, and beside them what is usual and what we do instead. */
+const WHY_ART: readonly (Art | null)[] = [ART.paperReceipt, ART.savings, ART.chat]
+
+const Why: FC = () => (
+  <section class="section why" aria-labelledby="why-title">
+    <header class="wrap head head--center">
+      <Title id="why-title" first={copy.why.first} second={copy.why.second} />
+    </header>
+    <ul class="wrap why__grid">
+      {copy.why.items.map((item, i) => (
+        <li class="card why__card">
+          <Tile art={WHY_ART[i] ?? null} size="lg" />
+          <h3 class="h3">{item.title}</h3>
+          <p class="why__text">{item.text}</p>
         </li>
       ))}
     </ul>
-  </div>
-)
-
-/** The hug of the brand, lit word by word as it scrolls by. */
-const Statement: FC = () => (
-  <div class="statement">
-    <p class="wrap statement__text">
-      <span class="statement__sans">
-        <Words text={copy.statement.first} />
-      </span>{' '}
-      <em class="statement__serif">
-        <Words text={copy.statement.second} />
-      </em>
-    </p>
-  </div>
+    <section class="wrap versus" aria-labelledby="versus-title">
+      <h2 id="versus-title" class="title title--small versus__title">
+        <span class="title__sans">{copy.versus.first}</span> <em class="title__serif">{copy.versus.second}</em>
+      </h2>
+      <div class="versus__grid">
+        <article class="versus__side versus__side--usual">
+          <h3 class="versus__name">{copy.versus.usual.title}</h3>
+          <ul class="versus__list">
+            {copy.versus.usual.items.map((item) => (
+              <li>
+                <span class="versus__mark versus__mark--usual" aria-hidden="true"></span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+        <article class="versus__side versus__side--ours">
+          <h3 class="versus__name">{copy.versus.ours.title}</h3>
+          <ul class="versus__list">
+            {copy.versus.ours.items.map((item) => (
+              <li>
+                <Tick />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      </div>
+    </section>
+  </section>
 )
 
 /** The glass icon of each deal card, in the same order as copy.offer.items. */
@@ -304,292 +314,28 @@ const Offer: FC<{ carry: Carry }> = ({ carry }) => {
           <a class="btn btn--blue" href={withCarry('/zacat', carry)}>{o.cta}</a>
         </p>
         <p class="offer__fine">{o.fine}</p>
-      </div>
-    </section>
-  )
-}
-
-/* Everything in the price: pick one and see it ------------------------------------------------------------ */
-
-/** The machine reading a slip: the slip under its beam, what was read, and the entry it proposes. */
-const ScanPreview: FC = () => {
-  const s = copy.services.scan
-  return (
-    <div class="ui ui--scan">
-      <div class="slip__shadow" aria-hidden="true">
-      <div class="slip">
-        <span class="slip__shop">{s.slip.shop}</span>
-        <span class="slip__when">{s.slip.when}</span>
-        <span class="slip__row">
-          <span>{s.slip.item}</span>
-          <span>{s.slip.sum}</span>
-        </span>
-        <span class="slip__pay">{s.slip.pay}</span>
-        <span class="slip__row slip__row--total">
-          <span>{s.slip.total}</span>
-          <span>{s.slip.sum}</span>
-        </span>
-        <span class="slip__beam"></span>
-      </div>
-      </div>
-      <div class="card ui__card">
-        <p class="card__label">{s.read}</p>
-        <dl class="kv">
-          {s.fields.map(([label, value]) => (
-            <div>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-        <p class="card__label">{s.entry}</p>
-        <dl class="kv kv--entry">
-          <div>
-            <dt>{s.debit[0]}</dt>
-            <dd>{s.debit[1]}</dd>
-          </div>
-          <div>
-            <dt>{s.credit[0]}</dt>
-            <dd>{s.credit[1]}</dd>
-          </div>
-        </dl>
-        <p class="flag">{s.flag}</p>
-      </div>
-    </div>
-  )
-}
-
-/** His glass object over the top corner of a preview's card. */
-const Glass: FC<{ art: Art | null }> = ({ art }) => <Picture art={art} className="ui__glass" sizes="(max-width: 640px) 84px, 132px" />
-
-const FilePreview: FC = () => {
-  const f = copy.services.file
-  return (
-    <div class="ui">
-      <div class="card ui__card">
-        <Glass art={ART.paperInvoice} />
-        <div class="card__top">
-          <span>
-            <span class="card__title">{f.doc}</span>
-            <span class="card__sub">{f.period}</span>
-          </span>
-          <span class="pill pill--ok">{f.status}</span>
-        </div>
-        <dl class="kv kv--roomy">
-          {f.rows.map(([label, value]) => (
-            <div>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-        <p class="card__foot">
-          <Tick />
-          <span>{f.checked}</span>
-          <span class="card__when">{f.when}</span>
+        <p class="offer__tools">
+          {o.tools.lead}{' '}
+          <a class="link" href="/faktura-zadarmo">
+            {o.tools.invoice}
+          </a>
+          ,{' '}
+          <a class="link" href={WAGE_PATH}>
+            {o.tools.wage}
+          </a>
+          ,{' '}
+          <a class="link" href={SZCO_PATH}>
+            {o.tools.taxes}
+          </a>
+          .{' '}
+          <a class="link" href="/bezplatne-nastroje">
+            {o.tools.all}
+          </a>
         </p>
       </div>
-    </div>
-  )
-}
-
-const InboxPreview: FC = () => {
-  const n = copy.services.inbox
-  return (
-    <div class="ui">
-      <div class="card ui__card">
-        <Glass art={ART.paperEinvoice} />
-        <div class="card__top">
-          <span>
-            <span class="card__title">{n.title}</span>
-            <span class="card__sub">{n.via}</span>
-          </span>
-        </div>
-        <ul class="list">
-          {n.rows.map(([name, amount]) => (
-            <li class="list__row">
-              <span class="list__name">{name}</span>
-              <span class="list__amount">{amount}</span>
-              <span class="pill pill--ok">{n.state}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  )
-}
-
-const PayrollPreview: FC = () => {
-  const p = copy.services.payroll
-  return (
-    <div class="ui">
-      <div class="card ui__card">
-        <Glass art={ART.savings} />
-        <div class="card__top">
-          <span class="card__title">{p.title}</span>
-          <span class="pill pill--ok">{p.state}</span>
-        </div>
-        <ul class="list">
-          {p.rows.map((row) => (
-            <li class="list__row list__row--tick">
-              <Tick />
-              <span class="list__name">{row}</span>
-            </li>
-          ))}
-        </ul>
-        <p class="card__note">{p.note}</p>
-      </div>
-    </div>
-  )
-}
-
-const DeadlinesPreview: FC = () => {
-  const d = copy.services.deadlines
-  return (
-    <div class="ui">
-      <div class="card ui__card">
-        <Glass art={ART.paperReturn} />
-        <div class="card__top">
-          <span class="card__title">{d.title}</span>
-        </div>
-        <ul class="list">
-          {d.rows.map(([date, what, state]) => (
-            <li class="list__row">
-              <span class="list__date">{date}</span>
-              <span class="list__name">{what}</span>
-              <span class="pill pill--ok">{state}</span>
-            </li>
-          ))}
-        </ul>
-        <p class="flag flag--ask">{d.missing}</p>
-      </div>
-    </div>
-  )
-}
-
-/** A question to the accountant and her answer. */
-const AskPreview: FC = () => {
-  const q = copy.services.ask
-  return (
-    <div class="ui">
-      <div class="card ui__card chat">
-        <Glass art={ART.chat} />
-        <div class="chat__head">
-          <span class="chat__avatar" aria-hidden="true"></span>
-          <span>
-            <span class="chat__who">{q.who}</span>
-            <span class="chat__online">{q.online}</span>
-          </span>
-        </div>
-        <p class="chat__msg chat__msg--me">{q.question}</p>
-        <p class="chat__msg chat__msg--her">{q.answer}</p>
-        <p class="chat__msg chat__msg--me">{q.thanks}</p>
-      </div>
-    </div>
-  )
-}
-
-const SERVICES: Record<string, { art: Art | null; Preview: FC }> = {
-  doklady: { art: ART.paperReceipt, Preview: ScanPreview },
-  dph: { art: ART.paperInvoice, Preview: FilePreview },
-  efaktury: { art: ART.paperEinvoice, Preview: InboxPreview },
-  mzdy: { art: ART.savings, Preview: PayrollPreview },
-  terminy: { art: ART.paperReturn, Preview: DeadlinesPreview },
-  otazky: { art: ART.chat, Preview: AskPreview },
-}
-
-/**
- * Everything a plan holds, as CloudTalk shows its features: a list to pick from and, beside it, what the
- * picked one looks like. The radios are the state; the stylesheet shows the preview of the one that is checked.
- */
-const Services: FC = () => {
-  const s = copy.services
-  return (
-    <section class="section services" aria-labelledby="services-title">
-      <header class="wrap head head--center">
-        <Title id="services-title" first={s.first} second={s.second} />
-        <p class="lead">{s.lead}</p>
-      </header>
-      <div class="wrap">
-        <div class="svc">
-          <div class="svc__list" role="radiogroup" aria-labelledby="services-title">
-            {s.items.map((item, i) => (
-              <label class={`svc__item svc__item--${item.id}`}>
-                <input class="svc__radio" type="radio" name="sluzba" id={`svc-${item.id}`} value={item.id} checked={i === 0} />
-                <Tile art={SERVICES[item.id]?.art ?? null} size="sm" />
-                <span class="svc__words">
-                  <span class="svc__title">{item.title}</span>
-                  <span class="svc__text">{item.text}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-          <div class="svc__stage">
-            {s.items.map((item) => {
-              const Preview = SERVICES[item.id]?.Preview
-              return Preview ? (
-                <div class={`svc__preview svc__preview--${item.id}`}>
-                  <Preview />
-                </div>
-              ) : null
-            })}
-            <p class="svc__example">{s.example}</p>
-          </div>
-        </div>
-      </div>
     </section>
   )
 }
-
-/** The machine and the person: what each of them does. */
-const Duo: FC = () => (
-  <section class="section duo" aria-labelledby="duo-title">
-    <header class="wrap head head--center">
-      <Title id="duo-title" first={copy.duo.first} second={copy.duo.second} />
-    </header>
-    <div class="wrap duo__grid">
-      {[
-        { side: copy.duo.human, art: ART.lens, kind: 'human' },
-        { side: copy.duo.ai, art: ART.chip, kind: 'ai' },
-      ].map(({ side, art, kind }) => (
-        <article class={`card duo__card duo__card--${kind}`}>
-          <Tile art={art} size="lg" />
-          <h3 class="h3">{side.title}</h3>
-          <ul class="ticks">
-            {side.items.map((item) => (
-              <li>
-                <Tick />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </article>
-      ))}
-    </div>
-  </section>
-)
-
-/** Why now: the date every company has to meet. */
-const Einvoice: FC = () => (
-  <section class="band-section" aria-labelledby="einvoice-title">
-    <div class="wrap">
-      <div class="band">
-        <div class="band__copy">
-          <p class="band__date">{copy.einvoice.date}</p>
-          <h2 id="einvoice-title" class="band__title">
-            {copy.einvoice.title}
-          </h2>
-          <p class="band__text">{copy.einvoice.text}</p>
-          <p class="band__more">
-            <a href="/e-faktura-2027">{copy.einvoice.more}</a>
-          </p>
-          <p class="band__source">{copy.einvoice.source}</p>
-        </div>
-        <Picture art={ART.envelope} className="band__object" sizes="(max-width: 860px) 60vw, 420px" />
-      </div>
-    </div>
-  </section>
-)
 
 /* The price ------------------------------------------------------------------------------------------------ */
 
@@ -777,40 +523,6 @@ const Calculator: FC<{ state: CalcState; carry: Carry }> = ({ state, carry }) =>
   )
 }
 
-const Paths: FC<{ carry: Carry }> = ({ carry }) => (
-  <section class="section paths-section" aria-labelledby="paths-title">
-    <header class="wrap head head--center">
-      <Title id="paths-title" first={copy.paths.first} second={copy.paths.second} />
-    </header>
-    <div class="wrap paths">
-      <article class="card path">
-        <Tile art={ART.rocket} size="lg" />
-        <h3 class="h3">{copy.paths.fresh.title}</h3>
-        <p class="path__text">{copy.paths.fresh.text}</p>
-        <a class="btn btn--line path__cta" href={withCarry('/zacat', carry, { nova: '1' })}>
-          {copy.paths.fresh.cta}
-        </a>
-      </article>
-      <article class="card path">
-        <Tile art={ART.key} size="lg" />
-        <h3 class="h3">{copy.paths.switching.title}</h3>
-        <p class="path__text">{copy.paths.switching.text}</p>
-        <a class="btn btn--line path__cta" href="#zacat">
-          {copy.paths.switching.cta}
-        </a>
-      </article>
-      <article class="card path">
-        <Tile art={ART.tree} size="lg" />
-        <h3 class="h3">{copy.paths.large.title}</h3>
-        <p class="path__text">{copy.paths.large.text}</p>
-        <a class="btn btn--line path__cta" href={withCarry('/zacat', carry, { balik: CUSTOM_PLAN })}>
-          {copy.paths.large.cta}
-        </a>
-      </article>
-    </div>
-  </section>
-)
-
 /** Who is behind it: the founder's note, and the company as the register has it, with a way to check it. */
 const About: FC = () => (
   <section class="section about" id="kto-sme" aria-labelledby="about-title">
@@ -965,17 +677,11 @@ const Final: FC<{ carry: Carry }> = ({ carry }) => (
 export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => (
   <>
     <Hero carry={carry} />
-    <Offer carry={carry} />
-    <FreeToolsTeaser />
+    <Why />
     <Flow />
-    <Stats />
-    <Statement />
-    <Services />
-    <Duo />
-    <Einvoice />
+    <Offer carry={carry} />
     <Pricing carry={carry} />
     <Calculator state={calc} carry={carry} />
-    <Paths carry={carry} />
     <About />
     <Faq />
     <Final carry={carry} />

@@ -183,7 +183,11 @@ const NB = ' '
 let res = await get('/')
 let page = await res.text()
 check('the home page answers', res.status === 200)
-check('it puts the client in the story and explains the agreed scope', page.includes('Vy budujete firmu.') && page.includes('My strážime účtovníctvo.') && page.includes('dohodnutú agendu') && page.includes('Doklady odfotíte alebo prepošlete'))
+check(
+  'it says at once what Firmony is and why: an accounting firm for a fixed price, three reasons and a plain comparison',
+  page.includes('Účtovníctvo pre Vašu s.') && page.includes('Vy odfotíte doklad, my urobíme zvyšok.') && page.includes('Online účtovná firma za pevnú cenu') && page.includes('dohodnuté priznania') &&
+    (page.match(/class="card why__card"/g) ?? []).length === 3 && page.includes('čom sme iní.') && (page.match(/<span class="tick"/g) ?? []).length >= 5 && (page.match(/class="faq__item"/g) ?? []).length === 6 && page.includes('href="/bezplatne-nastroje"'),
+)
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
   'it names the prices of all three plans',
@@ -381,7 +385,7 @@ res = await get('/')
 page = (await res.text()).replace(/ /g, ' ')
 check(
   'the home page speaks to companies of every size and leads a larger one to an offer of its own',
-  page.includes('Online účtovníctvo pre Vašu firmu.') && !page.includes('hero__tag') && page.includes('Pre stredné a veľké firmy.') && page.includes('Vediete väčšiu firmu') && (page.match(/href="\/zacat\?balik=mieru"/g) ?? []).length === 2 && !page.includes('mladé'),
+  !page.includes('hero__tag') && page.includes('Pre stredné a veľké firmy.') && (page.match(/href="\/zacat\?balik=mieru"/g) ?? []).length === 1 && !page.includes('mladé'),
 )
 res = await get('/zacat?balik=mieru')
 page = (await res.text()).replace(/ /g, ' ')

@@ -740,7 +740,7 @@ check(
 // The texts say the figures of the plans
 const start = config.PLANS[0]
 check('the hero names the lowest price', copy.hero.price.includes(format.formatEur(start.price * 100)))
-check('the first figure is the lowest price', copy.stats[0].value === format.formatEur(start.price * 100))
+check('the reason of a fixed price names the lowest price', copy.why.items[1].text.includes(format.formatEur(start.price * 100)))
 check('the closing price is the config one', copy.pricing.closing.includes(format.formatEur(config.CLOSING_PRICE * 100)))
 check(
   'every plan row is filled',
