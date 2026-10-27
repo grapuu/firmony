@@ -78,6 +78,7 @@ import { createHash } from 'node:crypto'
 import { validateXML } from 'xmllint-wasm'
 import { PEPPOL_TEST, PRETEND_MAIL, camtXml, pretendBank, pretendFio, pretendPeppol, readerAnswer, ecbAnswer, registerAnswer, statementMail } from './pretend.mjs'
 import { checkPeppolNetwork } from './peppol-network.runtime.mjs'
+import { checkPasskeySignin } from './passkey-signin.runtime.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -737,7 +738,7 @@ page = await res.text()
 check('opening the link asks for one click and uses nothing up', res.status === 200 && page.includes('name="t"') && (await appGet(`/app/vstup?t=${token}`)).status === 200)
 res = await appPost('/app/vstup', { t: token })
 const cookie = res.headers.get('set-cookie') ?? ''
-check('the click signs in', res.status === 303 && res.headers.get('location') === '/app')
+check('the click signs in, and offers to sign in with one touch from then on', res.status === 303 && res.headers.get('location') === '/app/rychle-prihlasenie?next=%2Fapp')
 check(
   'the cookie is bound to the host, https, unreadable by scripts',
   /^__Host-firmony=[A-Za-z0-9_-]{43};/.test(cookie) && /HttpOnly/i.test(cookie) && /Secure/i.test(cookie) && /SameSite=Lax/i.test(cookie) && /Path=\//.test(cookie),
@@ -1406,7 +1407,7 @@ check(
 )
 res = await post('/app/vstup', { t: welcomeToken }, { ip: '203.0.113.31' })
 const peter = as((res.headers.get('set-cookie') ?? '').split(';')[0])
-check('its link signs the new client in', res.status === 303 && res.headers.get('location') === '/app')
+check('its link signs the new client in', res.status === 303 && res.headers.get('location') === '/app/rychle-prihlasenie?next=%2Fapp')
 res = await peter.get('/app')
 check('into his new company', (await res.text()).includes('Nová firma s. r. o.'))
 
@@ -4657,7 +4658,7 @@ res = await post(orderLink, validContract, { ip: '198.51.100.21' })
 let contractCookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
 check(
   'the contract is concluded and the browser is signed in',
-  res.status === 303 && res.headers.get('location') === '/app?ok=zmluva' && contractCookie.startsWith('__Host-firmony='),
+  res.status === 303 && res.headers.get('location') === `/app/rychle-prihlasenie?next=${encodeURIComponent('/app?ok=zmluva')}` && contractCookie.startsWith('__Host-firmony='),
   res.headers.get('location'),
 )
 const madeCompany = await db.prepare("SELECT * FROM companies WHERE ico = '55012345'").first()
@@ -5316,5 +5317,6 @@ await checkInvoicingRuntime({ mf, db, post, get, sent, settle, as, admin, freshA
 await checkAmlFixes({ db, files, get, post, admin, acc, lucia, signIn, as, nowS, day, freshAdmin })
 await checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, adminCookie: async () => { bossFresh = (await verifyBrowser('ahoj@firmony.io', bossFresh)).cookie; return bossFresh }, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkPasskeySignin({ mf, db, post, sent, settle, as, nowS })
 await mf.dispose()
 done('runtime')

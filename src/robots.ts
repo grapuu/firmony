@@ -171,7 +171,7 @@ export function llmsTxt(): string {
       '',
       '## Ako to funguje',
       '',
-      '- Doklady: fotka bločku v aplikácii (aj v telefóne), preposlaný e-mail s faktúrou na adresu firmy alebo e-faktúra ako súbor XML. Napojenie na digitálneho poštára pripravujeme.',
+      '- Doklady: fotka bločku v aplikácii (aj v telefóne), preposlaný e-mail s faktúrou na adresu firmy alebo e-faktúra ako súbor XML. Digitálny poštár priamo vo Firmony, odosielanie zapíname pred 1. 1. 2027.',
       '- Banka: výpisy, ktoré banka sama posiela e-mailom, prepojenie Fio banky alebo výpis raz mesačne.',
       '- Umelá inteligencia doklad prečíta a navrhne zaúčtovanie, platby spáruje s dokladmi. Účtovníčka robí odborné kontroly a rieši neštandardné prípady. Priznania, výkazy, mzdy a závierku pripravujeme podľa dohodnutého rozsahu služby.',
       '- Klient vidí v aplikácii, čo chýba, termíny a čo zaplatiť. Správy s účtovníčkou sú v aplikácii a odpovedáme ' + REPLY_WITHIN + '.',

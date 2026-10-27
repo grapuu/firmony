@@ -38,7 +38,7 @@ import { recordRequest } from './analytics/record'
 import { formatIco, icoLooksValid, normalizeIco } from './ico'
 import { flushOutbox, queueStatement, type Mailer } from './mail'
 import { lookupCompany, lookupEntity, oneMayConclude, type Company } from './rpo'
-import { appRoutes, appScheduled, logoResponse, pdfResponse, xmlResponse, type AppBindings } from './app/routes'
+import { appRoutes, appScheduled, logoResponse, pdfResponse, quickSignin, xmlResponse, type AppBindings } from './app/routes'
 import { invoiceByToken, invoiceLines } from './app/invoices'
 import { getCompany, userByEmail } from './app/store'
 import { isPeriodLocked } from './app/periods'
@@ -536,7 +536,8 @@ app.post(`${INVOICING_PATH}/vstup`, async (c) => {
   const made = await makeWorkspace(db, signup)
   if ('refused' in made) return page(c, signupMeta, <SignupExpired refused={made.refused} />, 409)
   await startSession(c, db, made.user, made.company)
-  return c.redirect(made.existing ? '/app/faktury' : '/app/faktury?vitajte=1', 303)
+  // A new account is offered the passkey at once: from then on it signs in with one touch, without email.
+  return c.redirect(quickSignin(made.existing ? '/app/faktury' : '/app/faktury?vitajte=1'), 303)
 })
 
 // ---------------------------------------------------------------------------
@@ -855,7 +856,7 @@ app.post('/objednavka/:token', async (c) => {
   ])
   later(c, flushOutbox(db, c.env.EMAIL))
   const where = await startSession(c, db, userId, companyId)
-  return c.redirect(where ? '/app?ok=zmluva' : '/app/prihlasenie', 303)
+  return c.redirect(where ? quickSignin('/app?ok=zmluva') : '/app/prihlasenie', 303)
 })
 
 app.get('/podmienky', async (c) =>

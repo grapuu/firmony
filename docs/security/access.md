@@ -40,4 +40,15 @@ Ak nie sú dostupní dvaja potrební správcovia, webový postup sa zastaví. Pr
 
 Overenie tímu platí 12 hodín; citlivé akcie päť minút. Úspech otočí token cookie, pôvodnú expiráciu relácie nepredlžuje. Výzva platí päť minút, je viazaná na používateľa aj konkrétnu reláciu a spotrebuje sa len raz. Server kontroluje podpis, RP, presný pôvod, UV/UP a nonce; vloženie do cudzieho rámca odmieta. Limity pokusov platia pre účet a pri získavaní možností aj IP.
 
-Pri vypršanom potvrdení sa POST **nespustí znovu automaticky**. Používateľ po overení uvidí bezpečnú pracovnú stránku a vedome zopakuje akciu. Odkaz na zabezpečenie je v menu klienta aj tímu. E-mail po existujúcej registrácii kľúča neposkytuje náhradný vstup do chráneného účtu. Odstránenie kľúča zruší overenie existujúcich relácií; posledný a práve použitý kľúč odstrániť nemožno.
+Pri vypršanom potvrdení sa POST **nespustí znovu automaticky**. Používateľ po overení uvidí bezpečnú pracovnú stránku a vedome zopakuje akciu. Odkaz na zabezpečenie je v menu klienta aj tímu. Členovi tímu e-mail po existujúcej registrácii kľúča neposkytuje náhradný vstup do chráneného účtu. Odstránenie kľúča zruší overenie existujúcich relácií; posledný a práve použitý kľúč odstrániť nemožno.
+
+## Klienti (od 27. 10. 2026)
+
+Pokyn majiteľa: prihlásenie bez e-mailu pri každom vstupe. Klient sa prihlási kľúčom jedným dotykom
+(`/app/prihlasenie/kluc/moznosti` a `/overit`: bez zoznamu účtov, s povinným UV, podpis sa použije raz a len pre účet,
+ktorému kľúč patrí) alebo odkazom z e-mailu. Pri klientovi je koreňom účtu e-mail, kľúč je pohodlná cesta: po
+čerstvom prihlásení odkazom (do piatich minút) si klient uloží kľúč bez kódu aj vedľa existujúcich (nové alebo
+stratené zariadenie), nič sa nemaže. Relácia klienta trvá ako doteraz bez dvanásťhodinového opätovného overenia.
+Citlivý krok klienta vyžaduje prihlásenie z poslednej štvrťhodiny (kľúčom alebo odkazom) alebo dotyk kľúča v
+posledných piatich minútach; klient s kľúčom ide na `/auth`, kde môže namiesto neho požiadať o odkaz. Tímu sa nič
+nemení: kľúč každých 12 hodín, aktivačný kód mimo e-mailu, obnova dvoma správcami.

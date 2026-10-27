@@ -27,3 +27,19 @@ export const SECURITY_SCHEMA = [
   `CREATE TRIGGER passkeys_revoke_sessions AFTER DELETE ON passkeys BEGIN
     UPDATE sessions SET verified_at = NULL, credential_id = NULL WHERE user_id = OLD.user_id; END`,
 ]
+
+/**
+ * Schema step 85 (27 October 2026, the owner's word: no email at every sign-in): signing in with a passkey alone, the
+ * way the large services do. A challenge is asked before anybody is known, so it belongs to no session: kept by the
+ * hash of its id, used once, five minutes at most, and forgotten the next day.
+ */
+export const PASSKEY_SIGNIN_SCHEMA: string[] = [
+  `CREATE TABLE IF NOT EXISTS signin_challenges (
+    id TEXT PRIMARY KEY CHECK (length(id) = 64),
+    challenge TEXT NOT NULL CHECK (length(challenge) <= 200),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    consumed_at INTEGER
+  )`,
+  'CREATE INDEX IF NOT EXISTS signin_challenges_expires ON signin_challenges (expires_at)',
+]

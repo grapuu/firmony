@@ -50,7 +50,7 @@ export async function checkInvoicingRuntime({ mf, db, post, get, sent, settle, a
   check('invoicing: without the consent nothing is made', res.status === 422 && (await res.text()).includes('súhlas'))
   res = await post('/fakturacia/vstup', { t: token, meno: 'TEST-ONLY Zuzana Zelená', suhlas: '1' }, { ip: '198.51.100.201' })
   const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
-  check('invoicing: the click makes the workspace and signs in', res.status === 303 && res.headers.get('location') === '/app/faktury?vitajte=1' && cookie.includes('='))
+  check('invoicing: the click makes the workspace and signs in', res.status === 303 && res.headers.get('location') === `/app/rychle-prihlasenie?next=${encodeURIComponent('/app/faktury?vitajte=1')}` && cookie.includes('='))
   res = await post('/fakturacia/vstup', { t: token, meno: 'TEST-ONLY Zuzana Zelená', suhlas: '1' }, { ip: '198.51.100.201' })
   check('invoicing: the link works once', res.status === 410)
   const ws = await db.prepare("SELECT c.* FROM companies c JOIN members m ON m.company_id = c.id JOIN users u ON u.id = m.user_id WHERE u.email = 'zeleny@example.test'").first()

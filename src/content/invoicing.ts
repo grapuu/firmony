@@ -95,7 +95,7 @@ export const invoicingCopy = {
       { title: 'PDF na jeden klik', text: typeset('Faktúru stiahnete v PDF. Na telefóne ju rovno pošlete cez Mail, WhatsApp alebo Správy.') },
       { title: 'Platitelia DPH aj neplatitelia', text: typeset('Sadzby 23, 19 a 5 %, prenesenie daňovej povinnosti, dodanie do EÚ, export aj služby do zahraničia.') },
       { title: 'Dobropisy a zálohové faktúry', text: typeset('Opravu vystavíte dobropisom. Pri zálohe vystavíme daňový doklad k prijatej platbe aj konečnú faktúru.') },
-      { title: 'E-faktúra na rok 2027', text: typeset('Ku každej faktúre aj súbor e-\u2060faktúry vo formáte Peppol BIS 3.0, overený podľa jeho pravidiel. Odosielanie cez digitálneho poštára pripravujeme.') },
+      { title: 'E-faktúra na rok 2027', text: typeset('Ku každej faktúre aj súbor e-\u2060faktúry vo formáte Peppol BIS 3.0, overený podľa jeho pravidiel. Odosielanie priamo z Firmony zapíname pred 1. 1. 2027.') },
       { title: 'Opakované faktúry', text: typeset('Nájom alebo mesačný paušál sa vystaví sám. Každý mesiac, štvrťrok alebo rok.') },
       { title: 'Odberateľ podľa IČO', text: typeset('Názov a adresu odberateľa doplníme z registra. Stálych odberateľov máte po ruke.') },
       { title: 'Vaše logo a číslovanie', text: typeset('Vlastný rad čísel, napríklad FA2026-0001, a Vaše logo na každej faktúre.') },
@@ -107,7 +107,7 @@ export const invoicingCopy = {
     serif: 'Naozaj.',
     items: [
       { title: 'Zadajte IČO a e-\u2060mail', text: typeset('Firmu nájdeme v registri. Nemusíte nič prepisovať.') },
-      { title: 'Kliknite na odkaz', text: typeset('V e-\u2060maile je odkaz, ktorý účet dokončí. Bez hesla.') },
+      { title: 'Kliknite na odkaz', text: typeset('V e-\u2060maile je odkaz, ktorý účet dokončí. Potom sa prihlasujete odtlačkom prsta alebo tvárou, bez hesla.') },
       { title: 'Vystavte faktúru', text: typeset('Doplníte IBAN, odberateľa a položky. PDF s QR kódom je hotové.') },
     ],
   },
@@ -134,7 +134,7 @@ export const invoicingCopy = {
       },
       {
         q: 'Je to e-\u2060faktúra podľa pravidiel od roku 2027?',
-        a: typeset('Ku každej faktúre pripravíme súbor e-\u2060faktúry vo formáte Peppol BIS 3.0 a overujeme ho podľa pravidiel Peppol aj slovenských doplnení. Odosielanie cez digitálneho poštára pripravujeme a včas ho zapneme.'),
+        a: typeset('Ku každej faktúre pripravíme súbor e-\u2060faktúry vo formáte Peppol BIS 3.0 a overujeme ho podľa pravidiel Peppol aj slovenských doplnení. Odosielanie priamo z Firmony cez sieť Peppol zapíname pred 1. 1. 2027.'),
       },
       {
         q: 'Kde sú moje údaje?',

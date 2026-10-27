@@ -4,6 +4,21 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Prihlásenie bez e-mailu, 27. 10. 2026 (Claude, `main`, schéma 85):** jeho slovo o 12:09: neposielať ľudí pri každom
+prihlásení na e-mail, ako „každá zahraničná miliardová firma", s databázou hesiel. Prihlasovacie kľúče (passkeys)
+sú hlavná cesta: `/app/prihlasenie` má navrchu „Prihlásiť sa" jedným dotykom (`POST /app/prihlasenie/kluc/moznosti`
+a `/overit`, bez zoznamu účtov, overenie osoby povinné, podpis raz, iba vlastný účet kľúča, výzva v tabuľke
+`signin_challenges`, krok 85) a správca hesiel ponúkne uložené prihlásenie priamo v poli e-mailu
+(`autocomplete="username webauthn"`, podmienené WebAuthn v `client/security.ts`). E-mailový odkaz ostáva na prvé
+prihlásenie a nové zariadenie; po ňom (aj po založení fakturácie a uzavretí zmluvy) klient bez kľúča dostane
+`/app/rychle-prihlasenie` „Nabudúce bez e-mailu", uložený kľúč sa synchronizuje cez Apple alebo Google. Odkaz, ktorý
+potvrdzuje citlivý krok (`n`), vedie rovno späť. Tím sa kľúčom prihlási rovno na `/ucto` (overený od prvej chvíle);
+pozvánka a aktivačný kód mimo e-mailu ostávajú. Pri klientovi je koreňom účtu e-mail (stratený telefón ho nezamkne):
+po čerstvom odkaze si uloží kľúč aj vedľa existujúcich, relácia bez 12-hodinového dotyku, citlivý krok = prihlásenie
+z poslednej štvrťhodiny alebo dotyk kľúča (`securityGate`, `docs/security/access.md`, časť Klienti). Tím bez zmeny.
+Doručiteľnosť: SPF, DKIM (Cloudflare) a DMARC p=reject sú v poriadku; spam je reputácia novej domény, menej e-mailov
+pomáha. `test/passkey-signin.runtime.mjs`.
+
 **Audit a sekcia Zadarmo, 27. 10. 2026 (Claude, `main`):** jeho slovo: finišovať efektívne, audit funkčnosti a
 dizajnu, silnejšie tlačiť bezplatné služby; účtovníčku a jeho fotku na web zatiaľ nie. Sekcia „Užitočné hneď.
 Zadarmo." je hneď za štyrmi výhodami za 0 € (`src/views/free-tools.tsx`): veľká karta Fakturácia zadarmo v štýle

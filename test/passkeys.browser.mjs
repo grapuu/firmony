@@ -385,7 +385,9 @@ try {
   const clientToken = randomBytes(32).toString('base64url')
   await db.prepare("INSERT INTO login_links (id, user_id, created_at, expires_at) VALUES (?, 'browser-client', ?, ?)").bind(createHash('sha256').update(clientToken).digest('hex'), now, now + 600).run()
   await clientPage.goto(`${origin}/app/vstup?t=${clientToken}`)
-  await Promise.all([clientPage.waitForURL(`${origin}/app`), clientPage.locator('form[action="/app/vstup"] button[type=submit]').click()])
+  await Promise.all([clientPage.waitForURL(`${origin}/app/rychle-prihlasenie?next=%2Fapp`), clientPage.locator('form[action="/app/vstup"] button[type=submit]').click()])
+  check('a client signed in by email is offered to save the sign-in on this device', await clientPage.locator('form[data-passkey="register"] button').count() === 1)
+  await Promise.all([clientPage.waitForURL(`${origin}/app`), clientPage.getByRole('link', { name: 'Teraz nie', exact: true }).click()])
   // Isolate the overview task from the payroll deadlines used by the evidence scenarios below.
   await db.batch([
     db.prepare("INSERT INTO companies(id,created_at,name,ico,plan,inbox,start_on) VALUES('browser-overview-co',?,'TEST-BROWSER Prehľad','50888874','rast','browser-overview','2026-01-01')").bind(now),
@@ -419,6 +421,18 @@ try {
     path: '.wrangler/screens/390-security-browser.png',
     fullPage: true,
   })
+  // One touch on the shipped sign-in page, with no email: the team side opens at once.
+  const verifiedEvents = async () => (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE user_id = 'browser-admin' AND action = 'auth.verified'").first()).n
+  const verifiedBefore = await verifiedEvents(), mailsBefore = (await db.prepare('SELECT COUNT(*) AS n FROM outbox').first()).n
+  await context.clearCookies()
+  await page.goto(`${origin}/app/prihlasenie`)
+  const signinButton = page.locator('form[data-passkey="signin"] button')
+  await Promise.all([page.waitForURL(`${origin}/ucto`), signinButton.click().catch(() => null)])
+  check(
+    'the shipped sign-in page opens the team side with one touch of a passkey, with no email',
+    new URL(page.url()).pathname === '/ucto' && (await verifiedEvents()) > verifiedBefore && (await db.prepare('SELECT COUNT(*) AS n FROM outbox').first()).n === mailsBefore,
+  )
+  check('the sign-in page raises no script error', errors.length === 0, errors.join('; '))
   await context.close()
 } finally {
   await browser?.close()

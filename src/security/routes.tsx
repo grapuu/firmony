@@ -25,19 +25,20 @@ const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slic
 const failure = (c: Ctx, message = 'Overenie sa nepodarilo. Skúste nový pokus.', status: 400 | 403 | 409 | 429 = 400) => c.json({ error: message }, status)
 
 export async function securityGate(c: Context, who: Who, sensitive = false): Promise<Response | null> {
-  const keys = await passkeysOf(c.env.DB, who.user.id)
-  // A client who has no passkey proves it is them the way they signed in: a session opened by a link from their email
-  // in the last quarter of an hour counts, and anything older is asked for a new link. Setting up a passkey needs that
-  // same fresh link, so this asks for nothing weaker, and a client is never sent to a page about keys they never had.
-  if (sensitive && !who.user.team && keys.length === 0) {
-    if (who.createdAt > now() - SECURITY.freshLinkSeconds) return null
+  // A client stays signed in as with any app (27 October 2026, the owner's word: the most comfortable to use); the
+  // passkey is the quick way in, the email the root of the account, so a lost phone never locks a client out. A
+  // sensitive step asks for a sign-in of the last quarter of an hour (a passkey or a link from the email) or a touch of
+  // the key just now. The team is held to its passkey every 12 hours, and an email never stands in for it.
+  if (!who.user.team) {
+    if (!sensitive || who.createdAt > now() - SECURITY.freshLinkSeconds || verifiedRecently(who, now(), SECURITY.sensitiveSeconds)) return null
+    const keys = await passkeysOf(c.env.DB, who.user.id)
     const u = new URL(c.req.url)
     const reads = c.req.method === 'GET' || c.req.method === 'HEAD'
     const next = reads ? safeNext(`${u.pathname}${u.search}`) : actionReturn(u.pathname, c.req.header('referer'), u.origin)
-    return c.redirect(`/app/potvrdit?next=${encodeURIComponent(next)}`, 303)
+    return c.redirect(keys.length ? `/auth?next=${encodeURIComponent(next)}` : `/app/potvrdit?next=${encodeURIComponent(next)}`, 303)
   }
-  const requires = sensitive || Boolean(who.user.team) || keys.length > 0
-  if (!requires || verifiedRecently(who, now(), sensitive ? SECURITY.sensitiveSeconds : SECURITY.teamSeconds)) return null
+  if (verifiedRecently(who, now(), sensitive ? SECURITY.sensitiveSeconds : SECURITY.teamSeconds)) return null
+  const keys = await passkeysOf(c.env.DB, who.user.id)
   const u = new URL(c.req.url)
   const reads = c.req.method === 'GET' || c.req.method === 'HEAD'
   const next = reads ? safeNext(`${u.pathname}${u.search}`) : actionReturn(u.pathname, c.req.header('referer'), u.origin)
@@ -101,8 +102,9 @@ securityRoutes.post('/options', async (c) => {
   let grant: Grant | null = null
   if (!verifiedRecently(who, now(), SECURITY.sensitiveSeconds)) {
     grant = await grantFor(db, c.env, who, text(body.code, 80))
-    if (!grant && !who.user.team && keys.length === 0 && who.createdAt > now() - SECURITY.sensitiveSeconds) {
-      // First customer enrollment only, following a fresh mailbox proof. Never an existing-key reset.
+    if (!grant && !who.user.team && who.createdAt > now() - SECURITY.sensitiveSeconds) {
+      // A client saves a passkey right after a fresh mailbox proof, also beside keys it has (a new phone, a lost one):
+      // the email is the client's root. It adds a key and removes none; the team never enrolls so.
       const id = await sha256Hex(newToken())
       await db
         .prepare(
@@ -113,7 +115,7 @@ securityRoutes.post('/options', async (c) => {
         .run()
       grant = await db.prepare('SELECT * FROM auth_grants WHERE id = ?').bind(id).first<Grant>()
     }
-    if (!grant || (grant.kind === 'enroll' && keys.length))
+    if (!grant || (grant.kind === 'enroll' && grant.source !== 'client' && keys.length))
       return failure(
         c,
         who.user.team
@@ -181,10 +183,11 @@ securityRoutes.post('/verify', async (c) => {
           .prepare(
             `UPDATE auth_grants SET used_at = ?4, used_by = ?5 WHERE id = ?6 AND user_id = ?1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?4
           AND EXISTS (SELECT 1 FROM sessions WHERE id = ?2 AND user_id = ?1 AND expires_at > ?4)
-          AND ((kind = 'enroll' AND NOT EXISTS (SELECT 1 FROM passkeys WHERE user_id = ?1) AND (
-            (source = 'bootstrap' AND NOT EXISTS (SELECT 1 FROM auth_bootstrap)) OR
+          AND ((kind = 'enroll' AND (
             (source = 'client' AND EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?2 AND s.created_at > ?4 - ${SECURITY.sensitiveSeconds} AND u.team IS NULL)) OR
-            (source = 'admin' AND created_by <> user_id AND EXISTS (SELECT 1 FROM users WHERE id = auth_grants.created_by AND team = 'admin'))))
+            (NOT EXISTS (SELECT 1 FROM passkeys WHERE user_id = ?1) AND (
+              (source = 'bootstrap' AND NOT EXISTS (SELECT 1 FROM auth_bootstrap)) OR
+              (source = 'admin' AND created_by <> user_id AND EXISTS (SELECT 1 FROM users WHERE id = auth_grants.created_by AND team = 'admin'))))))
           OR (kind = 'recover' AND approved_at IS NOT NULL AND length(approval_evidence) >= 12 AND approved_by <> created_by AND approved_by <> user_id AND created_by <> user_id
             AND EXISTS (SELECT 1 FROM users WHERE id = auth_grants.created_by AND team = 'admin')
             AND EXISTS (SELECT 1 FROM users WHERE id = auth_grants.approved_by AND team = 'admin')))`,

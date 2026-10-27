@@ -41,16 +41,25 @@ export const SecurityPage: FC<{
         <button class="btn btn--blue btn--large" type="submit" disabled>
           Potvrdiť prístup kľúčom
         </button>
+        {!user.team && !verified ? (
+          <p class="small">
+            Kľúč nemáte pri sebe?{' '}
+            <a class="link" href={`/app/potvrdit?next=${encodeURIComponent(next)}`}>
+              Potvrďte to odkazom z e-mailu
+            </a>
+            .
+          </p>
+        ) : null}
       </form>
     ) : (
       <p class="notice">
         {user.team
           ? 'Prvý kľúč aktivujete kódom od správcu. Kód Vám odovzdá overeným spôsobom mimo prihlasovacieho e-mailu.'
-          : 'Pre bezpečné stiahnutie citlivých údajov si nastavte kľúč. Prvé nastavenie vyžaduje čerstvé prihlásenie e-mailom.'}
+          : 'Kľúč si uložíte hneď po prihlásení odkazom z e-mailu. Potom sa prihlasujete jedným dotykom.'}
       </p>
     )}
     <details class="security__setup" open={!keys.length}>
-      <summary>{keys.length ? 'Pridať záložný kľúč alebo obnoviť prístup' : 'Nastaviť prihlasovací kľúč'}</summary>
+      <summary>{keys.length ? (user.team ? 'Pridať záložný kľúč alebo obnoviť prístup' : 'Pridať kľúč pre ďalšie zariadenie') : 'Nastaviť prihlasovací kľúč'}</summary>
       <form class="door__form" data-passkey="register" method="post" action="/auth/options">
         <input type="hidden" name="next" value={next} />
         <div class="field">
@@ -59,7 +68,7 @@ export const SecurityPage: FC<{
           </label>
           <input id="key-name" class="field__input" name="name" maxlength={80} placeholder="Napríklad pracovný notebook" />
         </div>
-        {user.team || keys.length ? (
+        {user.team ? (
           <div class="field">
             <label class="field__label" for="key-code">
               Aktivačný kód alebo kód schválenej obnovy

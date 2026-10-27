@@ -432,21 +432,24 @@ export const planName = (id: string) => PLAN_NAMES[id] ?? id
 // ---------------------------------------------------------------------------------------------------------------
 
 /** A page of its own for signing in: the wordmark, one card, and the way back to the site. */
-export const Door: FC<{ title: string; children: Child }> = ({ title, children }) => (
+export const Door: FC<{ title: string; children: Child; security?: boolean; foot?: boolean }> = ({ title, children, security = false, foot = true }) => (
   <html lang="sk">
-    <InsideHead title={`${title} | ${BRAND.name}`} />
+    <InsideHead title={`${title} | ${BRAND.name}`} security={security} />
     <body class="inside inside--door">
       <main id="obsah" class="door">
         <div class="door__brand">
           <Wordmark href="/" />
         </div>
         <div class="door__card">{children}</div>
-        <p class="door__foot">
-          {app.login.notClient}{' '}
-          <a class="link" href="/zacat">
-            {app.login.start}
-          </a>
-        </p>
+        {/* Somebody already signed in (the offer to save the sign-in) or on the way in by a link is a client already. */}
+        {foot ? (
+          <p class="door__foot">
+            {app.login.notClient}{' '}
+            <a class="link" href="/zacat">
+              {app.login.start}
+            </a>
+          </p>
+        ) : null}
       </main>
     </body>
   </html>
@@ -457,7 +460,17 @@ export const LoginForm: FC<{ value?: string; error?: string; next?: string }> = 
     <Tile art={ART.key} size="lg" eager />
     <Heading first={app.login.title} second={app.login.serif} small />
     <p class="door__lead">{app.login.lead}</p>
+    {/* One touch, no email: the browser offers the passkeys it keeps for Firmony. Hidden where the browser has none. */}
+    <form class="door__form door__key" method="post" action="/app/prihlasenie" data-passkey="signin" data-hide-unsupported="1">
+      {next ? <input type="hidden" name="next" value={next} /> : null}
+      <p class="field__error" data-auth-error tabindex={-1} hidden></p>
+      <button class="btn btn--blue btn--large door__button" type="submit" disabled>
+        {app.login.keyButton}
+      </button>
+      <p class="door__or">{app.login.or}</p>
+    </form>
     <form class="door__form" method="post" action="/app/prihlasenie" novalidate>
+      <p class="door__note">{app.login.emailLead}</p>
       {next ? <input type="hidden" name="n" value={next} /> : null}
       <label class="field__label" for="email">
         {app.login.email}
@@ -468,7 +481,7 @@ export const LoginForm: FC<{ value?: string; error?: string; next?: string }> = 
         type="email"
         name="email"
         value={value}
-        autocomplete="email"
+        autocomplete="username webauthn"
         inputmode="email"
         aria-invalid={error ? 'true' : undefined}
         aria-describedby={error ? 'email-error' : undefined}
@@ -479,10 +492,31 @@ export const LoginForm: FC<{ value?: string; error?: string; next?: string }> = 
           {error}
         </p>
       ) : null}
-      <button class="btn btn--blue btn--large door__button" type="submit">
+      <button class="btn btn--line btn--large door__button" type="submit">
         {app.login.button}
       </button>
     </form>
+  </>
+)
+
+/** Right after a sign-in by email: save a passkey on this device, and sign in with one touch from now on. */
+export const QuickSignin: FC<{ next: string }> = ({ next }) => (
+  <>
+    <Tile art={ART.key} size="lg" eager />
+    <Heading first={app.login.quickTitle} second={app.login.quickSerif} small />
+    <p class="door__lead">{app.login.quickLead}</p>
+    <form class="door__form" method="post" action="/auth" data-passkey="register">
+      <input type="hidden" name="next" value={next} />
+      <input type="hidden" name="name" value={app.login.quickKeyName} />
+      <p class="field__error" data-auth-error tabindex={-1} hidden></p>
+      <button class="btn btn--blue btn--large door__button" type="submit" disabled>
+        {app.login.quickButton}
+      </button>
+    </form>
+    <p class="door__note">{app.login.quickNote}</p>
+    <a class="btn btn--line door__button" href={next}>
+      {app.login.quickLater}
+    </a>
   </>
 )
 

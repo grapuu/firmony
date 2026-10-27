@@ -1797,6 +1797,30 @@
   font-size: 0.9375rem;
 }
 
+/* The sign-in page: one touch first, the email link below it for a first time or a new device. */
+.door__key[hidden] {
+  display: none;
+}
+
+.door__or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--dim);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.door__or::before,
+.door__or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 /* The first administrator's page: the steps in order, then the three settings with their values. */
 .door__steps {
   display: grid;

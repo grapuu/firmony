@@ -59,16 +59,19 @@ export async function linkUsable(db: D1Database, token: string): Promise<boolean
  * Signs a browser in and sets its cookie: in the company given, or the user's first one, or in none for somebody of
  * the team. Where it leads afterwards, or null when the user has nowhere to go (no company and no team).
  */
-export async function startSession(c: Context, db: D1Database, userId: string, company?: string): Promise<string | null> {
+export async function startSession(c: Context, db: D1Database, userId: string, company?: string, passkey?: string): Promise<string | null> {
   const user = await userById(db, userId)
   if (!user) return null
   const companyId = company ?? (await firstCompanyOf(db, userId))
   if (!companyId && !user.team) return null
   const token = newToken()
   const ts = now()
+  // A session opened by a passkey is verified by it from its first moment (security/policy.ts, verifiedRecently).
   await db.batch([
-    db.prepare('INSERT INTO sessions (id, user_id, company_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').bind(await sha256Hex(token), userId, companyId, ts, ts + APP.sessionDays * 86400),
-    eventStatement(db, { company: companyId, user: userId, action: 'signed.in' }),
+    db
+      .prepare('INSERT INTO sessions (id, user_id, company_id, created_at, expires_at, verified_at, credential_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(await sha256Hex(token), userId, companyId, ts, ts + APP.sessionDays * 86400, passkey ? ts : null, passkey ?? null),
+    eventStatement(db, { company: companyId, user: userId, action: 'signed.in', ...(passkey ? { detail: { method: 'passkey' } } : {}) }),
   ])
   const secure = new URL(c.req.url).protocol === 'https:'
   setCookie(c, cookieName(c), token, { path: '/', httpOnly: true, secure, sameSite: 'Lax', maxAge: APP.sessionDays * 86400 })

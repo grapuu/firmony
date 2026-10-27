@@ -24,7 +24,9 @@ import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { connection, isLocal, later, siteOrigin } from '../http'
 import { flushOutbox, queueStatement, type Mailer } from '../mail'
 import { DocumentPage, DocumentsPage, MessagesPage, Missing, Overview, PaymentPage, PaymentsPage, dayOf, groupIban } from '../views/inside-pages'
-import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, Shell, type Place } from '../views/inside'
+import { ConfirmByLink, Door, Enter, Expired, FirstAdmin, LinkSent, LoginForm, QuickSignin, Shell, type Place } from '../views/inside'
+import { generateAuthenticationOptions, verifyAuthenticationResponse, type AuthenticationResponseJSON } from '@simplewebauthn/server'
+import { consumeSigninChallenge, decode, newSigninChallenge, type Passkey } from '../security/store'
 import { CompanyPage } from '../views/settings'
 import { InvoiceFormPage, InvoicePage, InvoicesPage, NumberingPage, logoSrc, type LateView, type NumberingValues } from '../views/invoices'
 import { CustomersPage, HandPaid, WorkspaceSettings, WorkspaceWelcome } from '../views/invoicing'
@@ -45,7 +47,7 @@ import { answerAccount, statementById, statementDue, statementsOf, takeStatement
 import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
-import { bootstrapReady, safeNext, sensitivePath, type SecurityBindings } from '../security/policy'
+import { bootstrapReady, relyingParty, safeNext, SECURITY, sensitivePath, type SecurityBindings } from '../security/policy'
 import { securityGate } from '../security/routes'
 import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
@@ -225,18 +227,18 @@ appRoutes.get('/prihlasenie', async (c) => {
   await ensureSchema(c.env.DB)
   const next = takeoverLoginNext(c.req.query('n'))
   if (await currentWho(c, c.env.DB)) return c.redirect(next ?? '/app', 303)
-  return render(c, <Door title={t.login.title}>{<LoginForm next={next ?? undefined} />}</Door>)
+  return render(c, <Door title={t.login.title} security>{<LoginForm next={next ?? undefined} />}</Door>)
 })
 
 appRoutes.post('/prihlasenie', async (c) => {
   const body = await c.req.parseBody()
   const next = takeoverLoginNext(body.n)
   const email = typeof body.email === 'string' ? body.email.trim().slice(0, 200) : ''
-  if (!EMAIL.test(email)) return render(c, <Door title={t.login.title}>{<LoginForm value={email} error={t.login.badEmail} next={next ?? undefined} />}</Door>, 422)
+  if (!EMAIL.test(email)) return render(c, <Door title={t.login.title} security>{<LoginForm value={email} error={t.login.badEmail} next={next ?? undefined} />}</Door>, 422)
   const db = c.env.DB
   await ensureSchema(db)
   if (!(await withinLimit(db, 'signin', connection(c), APP.signInsPerHour, 3600))) {
-    return render(c, <Door title={t.login.title}>{<LoginForm value={email} error={t.login.throttle} next={next ?? undefined} />}</Door>, 429)
+    return render(c, <Door title={t.login.title} security>{<LoginForm value={email} error={t.login.throttle} next={next ?? undefined} />}</Door>, 429)
   }
   // The same answer whether the address is ours or not: the form tells nobody who is a client.
   let user = await userByEmail(db, email)
@@ -264,6 +266,70 @@ appRoutes.post('/prihlasenie', async (c) => {
 
 appRoutes.get('/prihlasenie/poslane', (c) => render(c, <Door title={t.login.sentTitle}>{<LinkSent />}</Door>))
 
+// Signing in with a passkey alone (27 October 2026): one touch of a finger, a face or a device's PIN, no email. The
+// challenge belongs to nobody yet; the passkey says whose it is (its user handle), and only a verified, unused
+// signature by that passkey's public key opens a session, verified by it from its first moment.
+const signinFailed = (c: Ctx, status: 400 | 403 | 409 | 429 = 400, message: string = t.login.keyFailed) => c.json({ error: message }, status)
+
+appRoutes.post('/prihlasenie/kluc/moznosti', async (c) => {
+  const db = c.env.DB
+  await ensureSchema(db)
+  if (!(await withinLimit(db, 'signin-key', connection(c), SECURITY.requestsPerTenMinutes * 3, 600))) return signinFailed(c, 429, t.login.throttle)
+  const rp = relyingParty(c.req.url, c.env)
+  if (!rp) return signinFailed(c, 403)
+  // No list of keys: the browser offers the passkeys it keeps for this site, and nobody learns who has one.
+  const options = await generateAuthenticationOptions({ rpID: rp.rpID, userVerification: 'required' })
+  return c.json({ id: await newSigninChallenge(db, options.challenge), options })
+})
+
+appRoutes.post('/prihlasenie/kluc/overit', async (c) => {
+  const db = c.env.DB
+  await ensureSchema(db)
+  if (!(await withinLimit(db, 'signin-key', connection(c), SECURITY.requestsPerTenMinutes * 3, 600))) return signinFailed(c, 429, t.login.throttle)
+  const rp = relyingParty(c.req.url, c.env)
+  if (!rp) return signinFailed(c, 403)
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null)
+  if (!body || typeof body.id !== 'string') return signinFailed(c)
+  const challenge = await consumeSigninChallenge(db, body.id)
+  if (!challenge) return signinFailed(c, 409, t.login.keyExpired)
+  try {
+    const response = body.response as AuthenticationResponseJSON
+    const clientData = response?.response?.clientDataJSON
+    if (typeof clientData !== 'string' || typeof response.id !== 'string' || response.id.length > 1024) return signinFailed(c)
+    const envelope = JSON.parse(new TextDecoder().decode(decode(clientData)))
+    if (envelope.crossOrigin === true || envelope.topOrigin) return signinFailed(c)
+    const key = await db.prepare('SELECT * FROM passkeys WHERE id = ?').bind(response.id).first<Passkey>()
+    if (!key) return signinFailed(c, 400, t.login.keyUnknown)
+    // The passkey names its account: it must be the one the key belongs to.
+    const handle = (await db.prepare('SELECT auth_handle FROM users WHERE id = ?').bind(key.user_id).first<{ auth_handle: string | null }>())?.auth_handle
+    if (!handle || response.response?.userHandle !== handle) return signinFailed(c)
+    const verified = await verifyAuthenticationResponse({
+      response,
+      expectedChallenge: challenge,
+      expectedOrigin: rp.origin,
+      expectedRPID: rp.rpID,
+      requireUserVerification: true,
+      credential: { id: key.id, publicKey: decode(key.public_key), counter: key.counter },
+    })
+    if (!verified.verified || !verified.authenticationInfo.userVerified) return signinFailed(c)
+    // The counter moves forward once: a signature used twice opens nothing.
+    const moved = await db
+      .prepare('UPDATE passkeys SET counter = ?1, last_used_at = ?2 WHERE id = ?3 AND user_id = ?4 AND counter = ?5')
+      .bind(verified.authenticationInfo.newCounter, now(), key.id, key.user_id, key.counter)
+      .run()
+    if (!moved.meta.changes) return signinFailed(c)
+    const to = await startSession(c, db, key.user_id, undefined, key.id)
+    if (!to) return signinFailed(c, 403, t.login.noCompany)
+    await db.batch([eventStatement(db, { company: null, user: key.user_id, action: 'auth.verified', subject: key.id })])
+    const user = await userById(db, key.user_id)
+    const next = takeoverLoginNext(body.next)
+    return c.json({ to: user?.team ? '/ucto' : (next ?? to) })
+  } catch {
+    await db.batch([eventStatement(db, { company: null, user: null, action: 'auth.failed', subject: 'signin' })]).catch(() => null)
+    return signinFailed(c)
+  }
+})
+
 // The first administrator, while nobody of the team exists: the three settings to put into the Worker, with a code made
 // now and kept nowhere. It means nothing until the account's owner puts it there (security/policy.ts, bootstrapReady).
 appRoutes.get('/prvy-spravca', async (c) => {
@@ -273,7 +339,7 @@ appRoutes.get('/prvy-spravca', async (c) => {
   const expires = now() + 48 * 3600
   const until = bratislava(expires * 1000)
   c.header('Cache-Control', 'no-store')
-  return render(c, <Door title={t.firstAdmin.title}>{<FirstAdmin code={newToken()} expires={expires} until={`${dayName(until.day)} o ${until.hour}:${String(until.minute).padStart(2, '0')}`} />}</Door>)
+  return render(c, <Door title={t.firstAdmin.title} foot={false}>{<FirstAdmin code={newToken()} expires={expires} until={`${dayName(until.day)} o ${until.hour}:${String(until.minute).padStart(2, '0')}`} />}</Door>)
 })
 
 // The link from the email asks for one click: a mail scanner that opens links by itself must not use it up.
@@ -282,7 +348,7 @@ appRoutes.get('/vstup', async (c) => {
   const token = c.req.query('t') ?? ''
   if (!(await linkUsable(c.env.DB, token))) return render(c, <Door title={t.login.expiredTitle}>{<Expired />}</Door>, 410)
   const next = c.req.query('n')
-  return render(c, <Door title={t.login.enterTitle}>{<Enter token={token} next={next ? safeNext(next) : undefined} />}</Door>)
+  return render(c, <Door title={t.login.enterTitle} foot={false}>{<Enter token={token} next={next ? safeNext(next) : undefined} />}</Door>)
 })
 
 appRoutes.post('/vstup', async (c) => {
@@ -297,7 +363,11 @@ appRoutes.post('/vstup', async (c) => {
   const signedIn = await userById(db, user)
   // A link asked for to confirm a sensitive step (the archive) leads back to it; any other address is the app's own.
   const next = typeof body.n === 'string' && /^\/app(?:\/|$)/.test(safeNext(body.n)) ? safeNext(body.n) : null
-  return c.redirect(signedIn?.team ? `/auth?next=${encodeURIComponent(takeoverLoginNext(next) ?? '/ucto')}` : (next ?? to), 303)
+  if (signedIn?.team) return c.redirect(`/auth?next=${encodeURIComponent(takeoverLoginNext(next) ?? '/ucto')}`, 303)
+  // A link that confirms a step leads straight back to it; any other sign-in of a client without a passkey is offered
+  // one now, while the email link is fresh: then never the email again.
+  if (next) return c.redirect(next, 303)
+  return c.redirect(quickSignin(to), 303)
 })
 
 appRoutes.post('/odhlasit', async (c) => {
@@ -321,6 +391,12 @@ appRoutes.get('/ukazka', async (c) => {
 // ---------------------------------------------------------------------------------------------------------------
 // Everything else needs a session
 // ---------------------------------------------------------------------------------------------------------------
+
+/** Where a fresh sign-in by email goes: the offer to save the sign-in on this device, then where it was going. Somebody
+ * who signed in by email has no passkey at hand here, whether or not they keep one elsewhere. */
+export function quickSignin(next: string): string {
+  return `/app/rychle-prihlasenie?next=${encodeURIComponent(next)}`
+}
 
 appRoutes.use('*', async (c, next) => {
   await ensureSchema(c.env.DB)
@@ -766,6 +842,17 @@ appRoutes.post('/faktury/:id/nezaplatena', async (c) => {
   if (invoice.kind === 'proforma' && (await handAdvanceOf(db, who.company.id, invoice.id))) return c.redirect(`/app/faktury/${invoice.id}`, 303)
   await db.batch(handPaidStatement(db, who.company.id, invoice.id, null, who.user.id))
   return c.redirect(`/app/faktury/${invoice.id}?ok=nezaplatena`, 303)
+})
+
+// The offer of a passkey right after a sign-in by email (or after a sign-up): while the email proof is fresh (five
+// minutes, security/routes.tsx) a client sets it up with one touch, and then signs in without email. Never twice:
+// somebody with a passkey, or whose proof is no longer fresh, goes straight on.
+appRoutes.get('/rychle-prihlasenie', async (c) => {
+  const who = c.get('who')
+  const next = safeNext(c.req.query('next') ?? '/app')
+  // Shown only right after a sign-in by email: a session opened or confirmed by a passkey has one at hand.
+  if (who.user.team || who.verifiedCredential || who.createdAt <= now() - SECURITY.sensitiveSeconds) return c.redirect(next, 303)
+  return render(c, <Door title={t.login.quickTitle} security foot={false}>{<QuickSignin next={next} />}</Door>)
 })
 
 appRoutes.get('/', async (c) => {

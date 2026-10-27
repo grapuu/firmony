@@ -126,3 +126,24 @@ export async function newChallenge(db: D1Database, who: Who, kind: Challenge['ki
     .run()
   return id
 }
+
+/** A passkey sign-in's challenge, before anybody is known: its id handed out, its hash kept. */
+export async function newSigninChallenge(db: D1Database, challenge: string): Promise<string> {
+  const id = newToken()
+  const ts = now()
+  await db
+    .prepare('INSERT INTO signin_challenges (id, challenge, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .bind(await sha256Hex(id), challenge, ts, ts + SECURITY.challengeSeconds)
+    .run()
+  return id
+}
+
+/** Uses a sign-in challenge once: its value, or null when it is unknown, used or too old. */
+export async function consumeSigninChallenge(db: D1Database, id: string): Promise<string | null> {
+  if (!AUTH_TOKEN.test(id)) return null
+  const row = await db
+    .prepare('UPDATE signin_challenges SET consumed_at = ?1 WHERE id = ?2 AND consumed_at IS NULL AND expires_at > ?1 RETURNING challenge')
+    .bind(now(), await sha256Hex(id))
+    .first<{ challenge: string }>()
+  return row?.challenge ?? null
+}

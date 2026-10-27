@@ -10,6 +10,7 @@ import { FORMATION_SCHEMA } from './formation/schema'
 import { INVOICING_SCHEMA } from './app/invoicing-schema'
 import { ANALYTICS_SCHEMA } from './analytics/schema'
 import { PEPPOL_SCHEMA } from './peppol/schema'
+import { PASSKEY_SIGNIN_SCHEMA } from './security/schema'
 import { usageCutoff } from './analytics/model'
 import { bratislavaDay } from './time'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
@@ -1586,6 +1587,8 @@ const MIGRATIONS: readonly string[][] = [
   // 84: e-invoices through the Peppol network (peppol/): the SML's answers kept a while, sendings with their state,
   // what the network delivered.
   PEPPOL_SCHEMA,
+  // 85: signing in with a passkey alone, without an email link (security/schema.ts).
+  PASSKEY_SIGNIN_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
@@ -1698,5 +1701,7 @@ export async function purge(db: D1Database): Promise<void> {
     // The daily sums of the site and the app: two years, the dashboard reads at most ninety days.
     db.prepare('DELETE FROM analytics_site WHERE day < ?').bind(bratislavaDay(ts - 731 * 86400)),
     db.prepare('DELETE FROM analytics_routes WHERE day < ?').bind(bratislavaDay(ts - 731 * 86400)),
+    // A passkey sign-in's challenge: five minutes at most, forgotten the next day.
+    db.prepare('DELETE FROM signin_challenges WHERE expires_at < ?').bind(ts - 86400),
   ])
 }
