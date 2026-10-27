@@ -11,7 +11,9 @@ ponuky, štyri nástroje ako celé klikateľné karty so sklenenými ikonami a 0
 `/bezplatne-nastroje`. Menu „Zadarmo" vedie na `/bezplatne-nastroje`. Opravené nepravdivé tvrdenia: „0 € za založenie
 pri 36-mesačnom vedení" (od 26. 10. je pomoc so založením bez podmienky) a e-faktúry „pripravujeme" → poštár priamo
 vo Firmony, zapíname pred 1. 1. 2027. Lokálny crawl: 21 stránok sitemap, 57 odkazov, žiadny nefunkčný. Prvý správca
-naživo ešte **nie je** (27. 10. `/app/prvy-spravca` ukazuje nastavenie): kroky dostal v chate.
+je nastavený 27. 10. 2026 o 11:53: grrrrjuhas@gmail.com, kľúč MacBook (iCloud) a záložný Google (Google Password
+Manager); TEAM_BOOTSTRAP_TOKEN v Cloudflare zmazaný (EMAIL a EXPIRES_AT ostali, sú neškodné). Admin: firmony.io/ucto.
+Ikony bezplatných nástrojov od neho (ChatGPT, 27. 10.): `art-src/icons/pdf, wallet, shield, pie, scale` → `ART.tool*`.
 
 **Poštár zabudovaný vo Firmony, 26. 10. 2026 večer (Claude, vetva `claude/peppol`, schéma 84):** `docs/peppol.md`.
 Pokyn majiteľa: e-faktúry musia byť integrované priamo v našom riešení, jednoducho pre klienta aj účtovníčku, štýl

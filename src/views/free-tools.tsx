@@ -22,13 +22,13 @@ const FEATURED = {
 }
 
 const TOOLS = [
-  { href: INVOICE_PATH, title: 'Faktúra v PDF', tag: 'Bez registrácie', text: 'Rýchla faktúra neplatiteľa DPH. Vyplníte, skontrolujete a stiahnete PDF.', action: 'Vytvoriť faktúru', art: ART.paperReceipt },
-  { href: WAGE_PATH, title: 'Čistá mzda a cena práce', tag: 'Bez registrácie', text: 'Čistá mzda, odvody a celková cena zamestnanca na rok 2026 aj 2027.', action: 'Vypočítať mzdu', art: ART.savings },
-  { href: SZCO_PATH, title: 'Odvody a daň živnostníka', tag: 'Bez registrácie', text: 'Z ročného príjmu zistíte odvody do poisťovní a daň SZČO.', action: 'Vypočítať odvody', art: ART.seal },
-  { href: SRO_PATH, title: 'Daň a dividendy s. r. o.', tag: 'Bez registrácie', text: 'Daň z príjmov firmy a čo zostane spoločníkovi po dividendách.', action: 'Vypočítať daň', art: ART.chip },
+  { href: INVOICE_PATH, title: 'Faktúra v PDF', tag: 'Bez registrácie', text: 'Rýchla faktúra neplatiteľa DPH. Vyplníte, skontrolujete a stiahnete PDF.', action: 'Vytvoriť faktúru', art: ART.toolPdf },
+  { href: WAGE_PATH, title: 'Čistá mzda a cena práce', tag: 'Bez registrácie', text: 'Čistá mzda, odvody a celková cena zamestnanca na rok 2026 aj 2027.', action: 'Vypočítať mzdu', art: ART.toolWage },
+  { href: SZCO_PATH, title: 'Odvody a daň živnostníka', tag: 'Bez registrácie', text: 'Z ročného príjmu zistíte odvody do poisťovní a daň SZČO.', action: 'Vypočítať odvody', art: ART.toolSzco },
+  { href: SRO_PATH, title: 'Daň a dividendy s. r. o.', tag: 'Bez registrácie', text: 'Daň z príjmov firmy a čo zostane spoločníkovi po dividendách.', action: 'Vypočítať daň', art: ART.toolSro },
 ] as const
 
-const COMPARE = { href: '/#kalkulacka', title: 'Porovnanie ceny účtovníctva', tag: 'Z Vašich údajov', text: 'Porovnajte svoje ročné náklady s Firmony vrátane závierky. Ukážeme aj rovnakú alebo vyššiu cenu.', action: 'Porovnať náklady', art: ART.lens }
+const COMPARE = { href: '/#kalkulacka', title: 'Porovnanie ceny účtovníctva', tag: 'Z Vašich údajov', text: 'Porovnajte svoje ročné náklady s Firmony vrátane závierky. Ukážeme aj rovnakú alebo vyššiu cenu.', action: 'Porovnať náklady', art: ART.toolCompare }
 
 export const FreeToolsTeaser: FC = () => (
   <section class="section free-tools" id="zadarmo" aria-labelledby="free-tools-title">

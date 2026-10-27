@@ -230,6 +230,11 @@ export type ArtSlot =
   | 'offerCompanyFormation'
   | 'offerSwitch'
   | 'offerInvoices'
+  | 'toolPdf'
+  | 'toolWage'
+  | 'toolSzco'
+  | 'toolSro'
+  | 'toolCompare'
   | 'founder'
 
 /** One of his glass objects, cut square at 960 and 480 px. */
@@ -284,6 +289,12 @@ export const ART: Record<ArtSlot, Art | null> = {
   offerCompanyFormation: offerGlass('offer-company-formation', 872, 898, 435),
   offerSwitch: offerGlass('offer-switch', 898, 750, 449),
   offerInvoices: offerGlass('offer-invoices', 796, 899, 400),
+  /* The free tools' icons, uploaded 27 October 2026 (art-src/icons/pdf, wallet, shield, pie, scale). */
+  toolPdf: glass('pdf'),
+  toolWage: glass('wallet'),
+  toolSzco: glass('shield'),
+  toolSro: glass('pie'),
+  toolCompare: glass('scale'),
   founder: null,
 }
 
