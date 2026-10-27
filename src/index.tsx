@@ -53,6 +53,7 @@ import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
 import { securityRoutes } from './security/routes'
+import { monyAnswer } from './assistant/mony-route'
 import { isEvidenceHeld } from './incidents/store'
 import { isFilingSent } from './filings/model'
 import { payrollBlocked } from './payroll-reporting/model'
@@ -926,6 +927,8 @@ app.post(PEPPOL_NOTICES, async (c) => {
   return c.json({ ok: outcome.failed === 0, ...outcome, malformed: notice.malformed }, outcome.failed > 0 ? 503 : 200)
 })
 
+// Mony answers before the app's own routes, which ask for a company: somebody of the team alone asks it too.
+app.post('/app/mony', (c) => monyAnswer(c as never))
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
 

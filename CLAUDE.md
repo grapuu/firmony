@@ -4,6 +4,24 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Asistent Mony, 27. 10. 2026 (Claude, `main`, schéma 85, PRIVACY_VERSION 2026-10-27):** jeho slovo o 16:33: vlastný AI
+asistent, ktorý dokonale pozná Firmony, ako funguje aj kód, cez Claude API, úsporný a bez halucinácií, vpravo dole
+v obláčiku vo farbách Firmony, šípkou sa schová na ikonu a klikom otvorí; pre klientov, účtovníčky aj pre neho. Meno
+**Mony**, ikona jeho sklenená bublina (`public/art/chat-480.webp`). Postavené: `scripts/build-knowledge.mjs` pri každom
+builde (aj postinstall a test/build) rozseká CLAUDE.md, docs/, návody pre Mony (`docs/mony/klient.md`, `uctovnicka.md`,
+`spravca.md`), texty webu a aplikácie (`scripts/mony-texts.entry.ts`), články, podmienky a mapu kódu (úvodný komentár a
+exporty každého súboru) na sekcie s publikom (1 klient, 2 účtovníčka, 4 správca) do `src/generated/knowledge.ts`
+a zoznam stránok do `mony-routes.ts` (oba mimo gitu). `POST /app/mony` (`src/assistant/mony-route.ts`, `mony.ts`): publikum
+určí relácia (tím len s kľúčom z posledných 12 h), prvé volanie Claude Haiku 5.5 vyberie z obsahu svojho publika najviac 10
+sekcií (vynútený nástroj, obsah v cache), druhé odpovie len z nich a streamuje text. Klient nikdy nedostane obsah tímu ani
+správcu. Mony nevidí údaje firmy, iba otázku, rozhovor karty a cestu stránky. Nič z textu sa neukladá, udalosť
+`mony.answered` drží len tokeny. Limity 60/300/600 otázok denne (klient/účtovníčka/správca), firma 300, všetci 6 000;
+vypína ho ten istý vypínač ako rýchly asistent (/ucto/ai/asistent). Okienko `src/views/mony.tsx`, `client/mony.ts`
+(odpoveď sa píše ako text, odkaz len na existujúcu stránku, otvorenie v localStorage, rozhovor v sessionStorage),
+štýly na konci `public/inside.css`. Cena podľa cenníka 27. 10. 2026: Haiku 5.5 $0,10/$0,50 za milión tokenov do 100 000
+tokenov promptu, otázka okolo pol centa. Testy `test/mony.runtime.mjs`, `test/mony.browser.mjs`, `test/mony.fixture.mjs`.
+Pri zmene postupu klienta alebo účtovníčky treba upraviť aj `docs/mony/*.md`.
+
 **Prihlásenie bez e-mailu, 27. 10. 2026 (Claude, `main`, schéma 85):** jeho slovo o 12:09: neposielať ľudí pri každom
 prihlásení na e-mail, ako „každá zahraničná miliardová firma", s databázou hesiel. Prihlasovacie kľúče (passkeys)
 sú hlavná cesta: `/app/prihlasenie` má navrchu „Prihlásiť sa" jedným dotykom (`POST /app/prihlasenie/kluc/moznosti`
@@ -87,7 +105,7 @@ Live (schéma 80). Pridaná aj `/sro-kalkulacka` (daň PO 10/21/24 %, dividendy 
 založenie a prechod zadarmo. Asistent ostáva na Claude API iba pre triedenie tém; generovanie odpovedí na všetky témy je
 pripravené ako plán v `docs/strategy/16`, kód zatiaľ nespúšťa (bezpečnosť generovaných účtovných odpovedí).
 
-**Založenie s.r.o. + prechod, G4, 22. 10. 2026 (Cline):** `docs/formation.md`. Klient na `/app/zalozenie` zadá žiadosť
+**Založenie s.r.o. + prechod, G4, 22. 10. 2026 (Cline; 26. 10. 2026 vypnuté: prípad založenia v aplikácii je odstránený, `/app/zalozenie` neexistuje, pomoc so založením je bezplatná rada mimo zmluvy):** `docs/formation.md`. Klient na `/app/zalozenie` zadá žiadosť
 o založenie s.r.o. + vedenie účtovníctva; tím koordinuje na `/ucto/klienti/:id/zalozenie` (fronta na `/ucto`).
 Stavy requested → preparing → waiting → registering → completed, zrušenie odkiaľkoľvek. Kontrolný zoznam 7 krokov
 (listina, živnosť, imanie/banka, register, daňový úrad, poisťovne, DPH). Založenie je v cene pri 36-mesačnom vedení

@@ -22,6 +22,8 @@ import type { StatementView } from '../app/statements'
 import type { DeclarationState, Level } from '../app/aml'
 import { addDays, endingOf, type Ending } from '../app/ending'
 import { team as t } from '../team/copy'
+import { MonyBubble } from './mony'
+import type { MonyAudience } from '../assistant/mony'
 import { clientDone, type ClientRow, type InvestorRequest, type QueueDoc, type Request, type Rule, type TeamMember, type Thread, type ToCheck } from '../team/store'
 import { Tile } from './home'
 import { BarMenu, Flash, Heading, InsideHead, planName } from './inside'
@@ -65,10 +67,12 @@ export interface TeamShellProps {
   counts: { queue: number; inbox: number; requests: number }
   ownCompany: boolean
   title: string
+  /** Mony in the corner, for whom it answers here; none without its key. */
+  mony?: MonyAudience | null
   children: Child
 }
 
-export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany, title, children }) => {
+export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany, title, mony = null, children }) => {
   const items = NAV.filter((item) => !item.admin || user.team === 'admin')
   const tabs = items.filter((item) => !item.menu).slice(0, TABS)
   const menu = items.filter((item) => !tabs.includes(item))
@@ -147,6 +151,7 @@ export const TeamShell: FC<TeamShellProps> = ({ user, place, counts, ownCompany,
             </a>
           ))}
         </nav>
+        {mony ? <MonyBubble audience={mony} /> : null}
       </body>
     </html>
   )

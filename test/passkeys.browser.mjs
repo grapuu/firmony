@@ -13,6 +13,8 @@ import { checkCustomerValueBrowser } from './customer-value.browser.mjs'
 import { checkFreeInvoiceBrowser } from './free-invoice.browser.mjs'
 import { checkManagedTakeoverBrowser } from './managed-takeover.browser.mjs'
 import { checkAssistantBrowser } from './assistant.browser.mjs'
+import { checkMonyBrowser } from './mony.browser.mjs'
+import { monyProviderFixture } from './mony.fixture.mjs'
 import { assistantProviderFixture } from './assistant.fixture.mjs'
 import { payslip } from '../.wrangler/dist/stores.js'
 
@@ -22,6 +24,7 @@ const bootstrap = randomBytes(32).toString('base64url'),
   now = Math.floor(Date.now() / 1000)
 let mf, browser
 const assistantProvider=assistantProviderFixture()
+const mony = monyProviderFixture()
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, origin)
@@ -88,7 +91,7 @@ try {
             TEAM_BOOTSTRAP_TOKEN: bootstrap,
             TEAM_BOOTSTRAP_EXPIRES_AT: String(now + 3600),
           },
-          outboundService: async request => await assistantProvider.answer(request) ?? new Response('offline', { status: 599 }),
+          outboundService: async request => await assistantProvider.answer(request) ?? await mony.answer(request) ?? new Response('offline', { status: 599 }),
         },
       ],
     }),
@@ -402,6 +405,7 @@ try {
   await checkDeliveryBrowser({ page: clientPage, db, origin })
   await checkManagedTakeoverBrowser({page,clientPage,db,origin})
   await checkAssistantBrowser({page,clientPage,db,origin,provider:assistantProvider})
+  await checkMonyBrowser({ clientPage, origin, mony })
   await db.prepare("UPDATE sessions SET company_id='browser-co' WHERE user_id='browser-client'").run()
   await clientPage.goto(`${origin}/app/podania/${filingId}`)
   check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)

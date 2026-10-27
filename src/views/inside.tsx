@@ -10,6 +10,8 @@ import { Picture, Tile } from './home'
 import { Wordmark } from './layout'
 import { invoicingCopy } from '../content/invoicing'
 import { peppolCopy } from '../peppol/copy'
+import { MonyBubble } from './mony'
+import type { MonyAudience } from '../assistant/mony'
 
 export type Place = 'home' | 'payments' | 'documents' | 'invoices' | 'taxes' | 'messages' | 'company' | 'customers' | 'received'
 
@@ -96,6 +98,8 @@ export interface ShellProps {
   ending?: Ending | null
   /** A workspace's received e-invoices: shown once the postman is connected or one came; the count waits to be paid. */
   received?: { unpaid: number } | null
+  /** Mony in the corner, for whom it answers here; none without its key. */
+  mony?: MonyAudience | null
   children: Child
 }
 
@@ -132,7 +136,7 @@ const INVOICING_NAV: { place: Place; href: string; label: string; art: Art | nul
 ]
 
 /** The frame of a workspace: the same column and tabs as a client's, with only what invoicing has. */
-const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, received = null, children }) => {
+const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, received = null, mony = null, children }) => {
   const nav = invoicingCopy.app.nav
   const items = INVOICING_NAV.filter((item) => item.place !== 'received' || received)
   return (
@@ -244,6 +248,7 @@ const InvoicingShell: FC<ShellProps> = ({ who, place, companies, title, received
             <InvoicingTab item={item} place={place} />
           ))}
         </nav>
+        {mony ? <MonyBubble audience={mony} /> : null}
       </body>
     </html>
   )
@@ -258,7 +263,7 @@ const InvoicingTab: FC<{ item: (typeof INVOICING_NAV)[number]; place: Place | nu
   </a>
 )
 
-const ClientShell: FC<ShellProps> = ({ who, place, missing, unread, companies, title, ending = null, children }) => {
+const ClientShell: FC<ShellProps> = ({ who, place, missing, unread, companies, title, ending = null, mony = null, children }) => {
   // Ten days past the last day nothing more is taken: the buttons for a document lead to the page that says so.
   const intake = !ending || ending.phase !== 'ended'
   return (
@@ -387,6 +392,7 @@ const ClientShell: FC<ShellProps> = ({ who, place, missing, unread, companies, t
         ))}
       </nav>
       {intake ? <Pick /> : null}
+      {mony ? <MonyBubble audience={mony} /> : null}
     </body>
   </html>
   )

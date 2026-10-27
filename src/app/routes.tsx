@@ -48,6 +48,7 @@ import { PoaPage, SwitchPage } from '../views/papers'
 import { DeclarationPage } from '../views/declaration'
 import { ContractPage } from '../views/contract'
 import { bootstrapReady, relyingParty, safeNext, SECURITY, sensitivePath, type SecurityBindings } from '../security/policy'
+import { monyFor } from '../assistant/mony'
 import { securityGate } from '../security/routes'
 import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
@@ -442,7 +443,7 @@ async function shell(c: Ctx, place: Place | null, title: string, node: unknown, 
   const received = who.company.invoicingOnly ? await receivedNav(c) : null
   return render(
     c,
-    <Shell who={who} place={place} missing={missing} unread={unread} companies={companies} title={title} ending={endingOf(who.company, today())} received={received}>
+    <Shell who={who} place={place} missing={missing} unread={unread} companies={companies} title={title} ending={endingOf(who.company, today())} received={received} mony={monyFor(c.env, who.user)}>
       {node as never}
     </Shell>,
     status,

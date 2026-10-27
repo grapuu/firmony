@@ -476,7 +476,7 @@ export const READER = {
 export const EKASA_VERIFY = 'https://opd.financnasprava.sk/'
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
-export const PRIVACY_VERSION = '2026-10-26'
+export const PRIVACY_VERSION = '2026-10-27'
 
 /**
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an

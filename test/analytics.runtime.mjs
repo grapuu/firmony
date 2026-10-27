@@ -170,7 +170,7 @@ export async function checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, c
   const legal = (await (await get('/pravne-informacie')).text()).replace(/[\u00a0\u202f]/g, ' ')
   check(
     'analytics: the privacy notice says what is measured, that it is first-party and without cookies, and keeps a person\'s rows 13 months',
-    legal.includes('id="meranie"') && legal.includes('meriame sami, bez cookies, bez cudzích skriptov') && legal.includes('po 13 mesiacoch') && legal.includes('Platné od 26. októbra 2026'),
+    legal.includes('id="meranie"') && legal.includes('meriame sami, bez cookies, bez cudzích skriptov') && legal.includes('po 13 mesiacoch') && legal.includes('Platné od 27. októbra 2026'),
   )
 
   // Invoicing for everyone (claude/week): read tolerantly before its schema is merged, counted only after.

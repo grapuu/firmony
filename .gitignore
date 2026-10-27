@@ -8,3 +8,6 @@ __pycache__
 /public/security.js
 /public/free-invoice.js
 /src/generated/deployment.ts
+/src/generated/knowledge.ts
+/src/generated/mony-routes.ts
+/public/mony.js

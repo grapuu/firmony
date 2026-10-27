@@ -44,6 +44,7 @@ import { answerHeld, statementsOf } from '../app/statements'
 import { DEMO, seedDemo } from '../app/demo'
 import { decide, type DocKind } from '../app/match'
 import type { AppBindings } from '../app/routes'
+import { monyFor } from '../assistant/mony'
 import { booksRefused, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf, retirePaperStatements, returnPoaStatements } from '../app/papers'
 import {
   LEVELS,
@@ -357,7 +358,7 @@ async function shell(c: Ctx, place: TeamPlace | null, title: string, node: unkno
   const [counts, own] = await Promise.all([teamCounts(c.env.DB, who.user, demoOn(c)), companiesOf(c.env.DB, who.user.id)])
   return render(
     c,
-    <TeamShell user={who.user} place={place} counts={counts} ownCompany={own.length > 0} title={title}>
+    <TeamShell user={who.user} place={place} counts={counts} ownCompany={own.length > 0} title={title} mony={monyFor(c.env, who.user)}>
       {node as never}
     </TeamShell>,
     status,

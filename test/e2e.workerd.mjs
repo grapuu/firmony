@@ -65,6 +65,8 @@ import { checkFormationRuntime } from './formation.runtime.mjs'
 import { checkInvoicingRuntime } from './invoicing.runtime.mjs'
 import { checkAnalyticsRuntime } from './analytics.runtime.mjs'
 import { assistantProviderFixture } from './assistant.fixture.mjs'
+import { monyProviderFixture } from './mony.fixture.mjs'
+import { checkMony } from './mony.runtime.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
 import { checkCenters } from './centers.runtime.mjs'
@@ -87,6 +89,7 @@ const lookups = []
 const readings = []
 const notices = []
 const assistantProvider=assistantProviderFixture()
+const mony = monyProviderFixture()
 let indexNowAnswer = null
 // The bank of Firma A: what it holds is set by the part of the test that reads it.
 const bankFeed = { transactions: [], balance: '0.00' }
@@ -126,6 +129,8 @@ const mf = new Miniflare(
           if (banked) return new MfResponse(await banked.text(), { status: banked.status, headers: { 'content-type': 'application/json' } })
           const fromFio = await fio.answer(request)
           if (fromFio) return new MfResponse(await fromFio.text(), { status: fromFio.status, headers: { 'content-type': 'application/json' } })
+          const monyAnswered = await mony.answer(request)
+          if (monyAnswered) return new MfResponse(await monyAnswered.text(), { status: monyAnswered.status, headers: monyAnswered.headers })
           const read = await readerAnswer(request, readings)
           if (read) return new MfResponse(await read.text(), { status: read.status, headers: { 'content-type': 'application/json' } })
           const answer = registerAnswer(request.url, lookups)
@@ -5318,5 +5323,6 @@ await checkAmlFixes({ db, files, get, post, admin, acc, lucia, signIn, as, nowS,
 await checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, adminCookie: async () => { bossFresh = (await verifyBrowser('ahoj@firmony.io', bossFresh)).cookie; return bossFresh }, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPasskeySignin({ mf, db, post, sent, settle, as, nowS })
+await checkMony({ mf, db, site, mony, nowS })
 await mf.dispose()
 done('runtime')
