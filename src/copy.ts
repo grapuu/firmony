@@ -69,7 +69,7 @@ export const copy = typesetAll({
   stats: [
     { value: eur(start.price), label: `mesačne za balík ${start.name}` },
     { value: eur(0), label: 'za aplikáciu k účtovnej službe' },
-    { value: eur(0), label: 'za založenie s. r. o. pri 36-mesačnom vedení' },
+    { value: eur(0), label: 'za fakturáciu a pomoc so založením s. r. o.' },
     { value: '1 deň', label: 'na odpoveď, po ľudsky' },
   ],
 
@@ -107,7 +107,7 @@ export const copy = typesetAll({
     items: [
       { id: 'doklady', title: 'Doklady a banka', text: 'Spracovanie dokladov a párovanie platieb podľa dohodnutej agendy.' },
       { id: 'dph', title: 'DPH a výkazy', text: 'Priznanie aj kontrolný výkaz podáme za Vás.' },
-      { id: 'efaktury', title: 'E-faktúry', text: 'Príjem cez digitálneho poštára pripravujeme pred spustením služby.' },
+      { id: 'efaktury', title: 'E-faktúry', text: 'Digitálny poštár priamo vo Firmony: posielanie aj príjem zapíname pred 1. 1. 2027.' },
       { id: 'mzdy', title: 'Mzdy', text: `Výplaty, odvody a hlásenia zamestnancov, ${eur(PAYROLL_PRICE)} mesačne za človeka.` },
       { id: 'terminy', title: 'Termíny', text: 'Postrážime každý a pripomenieme, čo chýba.' },
       { id: 'otazky', title: 'Otázky', text: 'Odpovieme do jedného pracovného dňa.' },
@@ -188,7 +188,7 @@ export const copy = typesetAll({
     // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html#paragraf-85o
     date: '1. 1. 2027',
     title: 'E-faktúry sa týkajú aj neplatiteľov DPH.',
-    text: 'Pri určených tuzemských dodaniach ich vystavujú platitelia DPH. Vedieť ich prijať musia aj neplatitelia. Napojenie na digitálneho poštára pripravujeme pred spustením služby.',
+    text: 'Pri určených tuzemských dodaniach ich vystavujú platitelia DPH. Vedieť ich prijať musia aj neplatitelia. Digitálneho poštára budete mať priamo vo Firmony: e-faktúru pošlete jedným klikom a prijaté uvidíte v aplikácii. Zapíname pred 1. 1. 2027.',
     source: 'Zákon o DPH, § 71 ods. 5 a § 85o, znenie od 1. 1. 2027.',
     more: 'Čo musí urobiť Vaša firma',
   },

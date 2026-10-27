@@ -4,6 +4,15 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Audit a sekcia Zadarmo, 27. 10. 2026 (Claude, `main`):** jeho slovo: finišovať efektívne, audit funkčnosti a
+dizajnu, silnejšie tlačiť bezplatné služby; účtovníčku a jeho fotku na web zatiaľ nie. Sekcia „Užitočné hneď.
+Zadarmo." je hneď za štyrmi výhodami za 0 € (`src/views/free-tools.tsx`): veľká karta Fakturácia zadarmo v štýle
+ponuky, štyri nástroje ako celé klikateľné karty so sklenenými ikonami a 0 €; porovnanie cien len na
+`/bezplatne-nastroje`. Menu „Zadarmo" vedie na `/bezplatne-nastroje`. Opravené nepravdivé tvrdenia: „0 € za založenie
+pri 36-mesačnom vedení" (od 26. 10. je pomoc so založením bez podmienky) a e-faktúry „pripravujeme" → poštár priamo
+vo Firmony, zapíname pred 1. 1. 2027. Lokálny crawl: 21 stránok sitemap, 57 odkazov, žiadny nefunkčný. Prvý správca
+naživo ešte **nie je** (27. 10. `/app/prvy-spravca` ukazuje nastavenie): kroky dostal v chate.
+
 **Poštár zabudovaný vo Firmony, 26. 10. 2026 večer (Claude, vetva `claude/peppol`, schéma 84):** `docs/peppol.md`.
 Pokyn majiteľa: e-faktúry musia byť integrované priamo v našom riešení, jednoducho pre klienta aj účtovníčku, štýl
 Robinhood/Trading 212; poskytovateľ doručovacej služby je len diaľnica. Hotové: overenie odberateľa vo verejnom

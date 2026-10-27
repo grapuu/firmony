@@ -78,8 +78,8 @@ export const Layout: FC<{ meta: PageMeta; children: Child }> = ({ meta, children
             <a href="/#cennik">{copy.nav.pricing}</a>
             <a href="/#kto-sme">{copy.nav.about}</a>
             <a href="/#otazky">{copy.nav.faq}</a>
-            <a href={INVOICING_PATH} aria-current={meta.path === INVOICING_PATH ? 'page' : undefined}>
-              Faktúry zadarmo
+            <a href="/bezplatne-nastroje" aria-current={meta.path === '/bezplatne-nastroje' || meta.path === INVOICING_PATH ? 'page' : undefined}>
+              Zadarmo
             </a>
             <a href="/investori" aria-current={meta.path === '/investori' ? 'page' : undefined}>
               {copy.nav.investors}

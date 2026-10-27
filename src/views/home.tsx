@@ -966,6 +966,7 @@ export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => 
   <>
     <Hero carry={carry} />
     <Offer carry={carry} />
+    <FreeToolsTeaser />
     <Flow />
     <Stats />
     <Statement />
@@ -974,7 +975,6 @@ export const Home: FC<{ carry: Carry; calc: CalcState }> = ({ carry, calc }) => 
     <Einvoice />
     <Pricing carry={carry} />
     <Calculator state={calc} carry={carry} />
-    <FreeToolsTeaser />
     <Paths carry={carry} />
     <About />
     <Faq />

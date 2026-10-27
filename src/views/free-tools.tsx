@@ -4,36 +4,76 @@ import { SZCO_PATH } from '../content/szco-calc'
 import { SRO_PATH } from '../content/sro-calc'
 import { INVOICE_PATH, TOOLS_PATH, blankInvoice } from '../tools/invoice'
 import { INVOICING_PATH } from '../content/invoicing'
+import { ART, type Art } from '../config'
+import { Picture, Tile } from './home'
+
+/**
+ * The free tools (27 October 2026, the owner's word: push what we give for free much harder). Free invoicing leads,
+ * large and lit like the offer above it; the four tools without an account follow as compact cards with their glass
+ * icon, the whole card a link. The comparison of prices lives on the home page itself, so only the tools page lists it.
+ */
+const FEATURED = {
+  href: INVOICING_PATH,
+  tag: 'S účtom zadarmo, pre každého',
+  title: 'Fakturácia zadarmo',
+  text: 'Vystavujte faktúry, dobropisy aj zálohové faktúry s QR kódom na platbu. Číslovanie, odberateľov a archív za Vás drží Firmony.',
+  points: ['Pre platiteľov DPH aj neplatiteľov', 'Ku každej faktúre PDF aj e-faktúra', 'Celý rok stiahnete jedným súborom'],
+  action: 'Začať fakturovať',
+}
 
 const TOOLS = [
-  { href: INVOICING_PATH, title: 'Fakturácia zadarmo', tag: 'S účtom zadarmo', text: 'Faktúry, dobropisy a zálohové faktúry s QR kódom, uložené a číslované. Pre platiteľov DPH aj neplatiteľov.', action: 'Začať fakturovať' },
-  { href: INVOICE_PATH, title: 'Faktúra v PDF', tag: 'Bez registrácie', text: 'Bežná tuzemská faktúra neplatiteľa DPH. Vyplníte údaje, skontrolujete náhľad a stiahnete PDF vo svojom prehliadači.', action: 'Vytvoriť faktúru' },
-  { href: WAGE_PATH, title: 'Čistá mzda a cena práce', tag: 'Bez registrácie', text: 'Z hrubej mzdy zistíte orientačnú čistú mzdu, odvody aj celkové náklady zamestnávateľa. Podľa zvoleného roka.', action: 'Vypočítať mzdu' },
-  { href: SZCO_PATH, title: 'Odvody a daň živnostníka', tag: 'Bez registrácie', text: 'Z ročného príjmu zistíte orientačné odvody do poisťovní a daň SZČO s paušálnymi výdavkami 60 %.', action: 'Vypočítať odvody' },
-  { href: SRO_PATH, title: 'Daň a dividendy s. r. o.', tag: 'Bez registrácie', text: 'Z príjmu a výdavkov zistíte daň z príjmov s. r. o. a koľko zostane spoločníkovi po zdanení dividend.', action: 'Vypočítať daň' },
-  { href: '/#kalkulacka', title: 'Porovnanie ceny účtovníctva', tag: 'Z Vašich údajov', text: 'Porovnajte svoje ročné náklady s Firmony vrátane závierky. Výsledok ukáže aj rovnakú alebo vyššiu cenu.', action: 'Porovnať náklady' },
+  { href: INVOICE_PATH, title: 'Faktúra v PDF', tag: 'Bez registrácie', text: 'Rýchla faktúra neplatiteľa DPH. Vyplníte, skontrolujete a stiahnete PDF.', action: 'Vytvoriť faktúru', art: ART.paperReceipt },
+  { href: WAGE_PATH, title: 'Čistá mzda a cena práce', tag: 'Bez registrácie', text: 'Čistá mzda, odvody a celková cena zamestnanca na rok 2026 aj 2027.', action: 'Vypočítať mzdu', art: ART.savings },
+  { href: SZCO_PATH, title: 'Odvody a daň živnostníka', tag: 'Bez registrácie', text: 'Z ročného príjmu zistíte odvody do poisťovní a daň SZČO.', action: 'Vypočítať odvody', art: ART.seal },
+  { href: SRO_PATH, title: 'Daň a dividendy s. r. o.', tag: 'Bez registrácie', text: 'Daň z príjmov firmy a čo zostane spoločníkovi po dividendách.', action: 'Vypočítať daň', art: ART.chip },
 ] as const
 
+const COMPARE = { href: '/#kalkulacka', title: 'Porovnanie ceny účtovníctva', tag: 'Z Vašich údajov', text: 'Porovnajte svoje ročné náklady s Firmony vrátane závierky. Ukážeme aj rovnakú alebo vyššiu cenu.', action: 'Porovnať náklady', art: ART.lens }
+
 export const FreeToolsTeaser: FC = () => (
-  <section class="section free-tools" aria-labelledby="free-tools-title">
+  <section class="section free-tools" id="zadarmo" aria-labelledby="free-tools-title">
     <div class="wrap">
       <header class="head head--center">
-        <p class="eyebrow">Firmony aj pred prvou zmluvou</p>
+        <p class="eyebrow">Bez platobnej karty</p>
         <h2 id="free-tools-title" class="title"><span class="title__sans">Užitočné hneď.</span> <em class="title__serif">Zadarmo.</em></h2>
-        <p class="lead">Použite nástroj, ktorý práve potrebujete. Bez platobnej karty a bez objednania účtovníctva.</p>
+        <p class="lead">Nástroje, ktoré podnikateľ potrebuje každý mesiac. Používajte ich, aj keď účtovníctvo u nás ešte nemáte.</p>
       </header>
       <ToolCards />
+      <p class="free-tools__more"><a href={TOOLS_PATH}>Všetky bezplatné nástroje</a></p>
     </div>
   </section>
 )
 
-const ToolCards: FC = () => <div class="free-tools__grid">{TOOLS.map((tool) => (
-  <article class="free-tools__card">
-    <p class="free-tools__tag">{tool.tag} <span>0 €</span></p>
-    <h3>{tool.title}</h3><p>{tool.text}</p>
-    <a class="btn btn--blue" href={tool.href}>{tool.action}</a>
+type Tool = { href: string; title: string; tag: string; text: string; action: string; art: Art | null }
+
+const ToolCard: FC<{ tool: Tool; wide?: boolean }> = ({ tool, wide = false }) => (
+  <article class={`free-tools__card${wide ? ' free-tools__card--wide' : ''}`}>
+    <Tile art={tool.art} size="md" />
+    <div class="free-tools__body">
+      <p class="free-tools__tag">{tool.tag}</p>
+      <h3>{tool.title}</h3>
+      <p class="free-tools__text">{tool.text}</p>
+      <a class="free-tools__link" href={tool.href}>{tool.action}<span aria-hidden="true">{' \u2192'}</span></a>
+    </div>
+    <span class="free-tools__price">0 €</span>
   </article>
-))}</div>
+)
+
+const ToolCards: FC<{ compare?: boolean }> = ({ compare = false }) => (
+  <div class="free-tools__grid">
+    <article class="free-tools__card free-tools__card--featured">
+      <span class="free-tools__price free-tools__price--big">0 €</span>
+      <p class="free-tools__tag">{FEATURED.tag}</p>
+      <h3>{FEATURED.title}</h3>
+      <p class="free-tools__text">{FEATURED.text}</p>
+      <ul class="free-tools__points">{FEATURED.points.map((point) => <li>{point}</li>)}</ul>
+      <Picture art={ART.offerInvoices} className="free-tools__art" sizes="(max-width: 700px) 40vw, 220px" />
+      <a class="btn btn--white free-tools__cta" href={FEATURED.href}>{FEATURED.action}</a>
+    </article>
+    {TOOLS.map((tool) => <ToolCard tool={tool} />)}
+    {compare ? <ToolCard tool={COMPARE} wide /> : null}
+  </div>
+)
 
 export const FreeToolsPage: FC = () => (
   <div class="wrap tool-page">
@@ -41,7 +81,7 @@ export const FreeToolsPage: FC = () => (
       <h1 class="title"><span class="title__sans">Vyskúšajte Firmony.</span> <em class="title__serif">Bez záväzku.</em></h1>
       <p class="lead">Faktúra, mzda alebo porovnanie nákladov. Vyberte si, čo Vám dnes uľahčí podnikanie.</p>
     </header>
-    <ToolCards />
+    <ToolCards compare />
     <section class="tool-page__next"><h2>Keď chcete odovzdať aj účtovníctvo</h2>
       <p>Nástroje môžete používať samostatne. Ak hľadáte účtovnú službu, najprv spolu prejdeme Vašu agendu, rozsah a cenu.</p>
       <a class="btn btn--blue" href="/zacat">Nezáväzne preveriť moju firmu</a>
