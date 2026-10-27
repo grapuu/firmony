@@ -18,7 +18,7 @@ za 1 € (`guide__deal` v `src/views/guide.tsx`), na stránke pre investorov sú
 
 **S. r. o. za 1 €, 27. 10. 2026 večer (Claude, `main`):** jeho rozhodnutie o 22:24 až 22:38: ceny 89/169/329 € ostávajú,
 náklady na minimum, trh „zaliať“ ponukou založenia s. r. o. za 1 € (nie „zadarmo“: zákaz klamlivého „zadarmo“ a model
-„mobil za 1 € so zmluvou“), zmluva na **36 mesiacov**, viazaný je aj zakladateľ ako fyzická osoba (osobné ručenie),
+„mobil za 1 € so zmluvou“), záväzok **aspoň 36 mesiacov**, potom bez viazanosti (jeho slovo o 23:52: „36 mesiacov“ znelo ako koniec spolupráce a „ako pri mobile“ nezrozumiteľne; o 23:54 nech je štvrtý bod mäkký: „Rastieme spolu“, aspoň prvé tri roky, potom kým budete spokojní), viazaný je aj zakladateľ ako fyzická osoba (osobné ručenie),
 prvé 3 mesiace vopred, odstupné pri skoršom konci = zostávajúce mesačné poplatky, najviac 12, najmenej hodnota
 založenia; bez poplatku len pri našej vážnej nenapravenej chybe; nespája sa s prvým mesiacom zadarmo; 20 firiem
 mesačne. Nárok na podiel v s. r. o. odmietnutý (neprimerané, nevymáhateľné). Odhad nákladu na založenie 400 až 500 €

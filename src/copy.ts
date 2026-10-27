@@ -93,11 +93,11 @@ export const copy = typesetAll({
       { title: 'Advokát a poplatky v cene', text: 'Zakladateľskú listinu, zápis do obchodného registra aj živnosť zariadime za Vás. Súdny poplatok a odmenu advokáta platíme my.' },
       { title: 'Bez behania po úradoch', text: 'Podpíšete, čo treba, a ostatné vybavíme. Priebežne Vám povieme, v akom je to stave.' },
       { title: 'Účtovníctvo od prvého dňa', text: `Odo dňa vzniku firmy Vám účtovníctvo vedieme my, za cenu balíka od ${eur(start.price)} mesačne.` },
-      { title: 'Férovo, ako pri mobile', text: 'Účtovníctvo u nás vediete 36 mesiacov. Ak by sme vážne pochybili a nenapravili to, odídete bez poplatku.' },
+      { title: 'Rastieme spolu', text: 'Táto ponuka je pre tých, čo s nami chcú rásť. Účtovníctvo u nás vediete aspoň prvé tri roky a potom už len tak dlho, ako budete spokojní. A keby sme niekedy zlyhali a nenapravili to, odídete bez poplatku.' },
     ],
     cta: 'Chcem s. r. o. za 1 €',
     limit: 'Len pre prvých 20 firiem každý mesiac.',
-    fine: 'Podmienky ponuky: zmluva o vedení účtovníctva na 36 mesiacov, prvé 3 mesiace platené vopred a osobné ručenie zakladateľa za záväzky firmy z tejto zmluvy. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12 mesačných poplatkov a najmenej hodnota založenia. Ponuka sa nespája s prvým mesiacom zadarmo. Základné imanie, najmenej 5 000 €, nie je poplatok: sú to peniaze Vašej firmy. Ceny sú bez DPH. Presné znenie zmluvy dostanete pred podpisom.',
+    fine: 'Podmienky ponuky: záväzok viesť účtovníctvo vo Firmony aspoň 36 mesiacov, potom zmluva pokračuje bez viazanosti s mesačnou výpovednou lehotou; prvé 3 mesiace platené vopred a osobné ručenie zakladateľa za záväzky firmy z tejto zmluvy. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12 mesačných poplatkov a najmenej hodnota založenia. Ponuka sa nespája s prvým mesiacom zadarmo. Základné imanie, najmenej 5 000 €, nie je poplatok: sú to peniaze Vašej firmy. Ceny sú bez DPH. Presné znenie zmluvy dostanete pred podpisom.',
   },
 
   /** Side by side: what is usual, and what Firmony does instead. Plain, without naming anybody. */
@@ -162,7 +162,7 @@ export const copy = typesetAll({
       { title: 'Fakturácia', text: 'Faktúry vystavujete zadarmo, aj keď u nás účtovníctvo nemáte. Našim klientom sa vystavené faktúry nerátajú do dokladov balíka.', link: { href: '/fakturacia', text: 'Začať fakturovať' } },
     ],
     cta: 'Chcem začať',
-    fine: 'Vedenie účtovníctva je bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej je zmluva na 36 mesiacov.',
+    fine: 'Vedenie účtovníctva je bez viazanosti, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej sa zaviažete aspoň na 36 mesiacov; potom už bez viazanosti.',
 
     hint: 'Objavte všetky štyri výhody.',
     hintMobile: 'Potiahnite prstom a objavte ďalšie výhody.',
@@ -276,7 +276,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Pri bežnom vedení účtovníctva nie. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej je zmluva na 36 mesiacov. Inak zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
+        a: 'Pri bežnom vedení účtovníctva nie. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej sa zaviažete aspoň na 36 mesiacov; potom už bez viazanosti. Inak zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
       },
       {
         q: 'Čo sa mení od 1. 1. 2027 s e\u2011faktúrami?',
@@ -447,7 +447,7 @@ export const copy = typesetAll({
     busy: 'Z tohto pripojenia prišlo veľa vyhľadávaní. Napíšte názov firmy sami.',
     freshTitle: 'Zakladáte firmu',
     freshLead: `Založíme Vám s. r. o. za 1 €, advokáta aj poplatky platíme my. Napíšte nám, ako ďaleko ste, a ozveme sa ${REPLY_WITHIN}.`,
-    freshFine: 'Pri ponuke s. r. o. za 1 € je zmluva o vedení účtovníctva na 36 mesiacov.',
+    freshFine: 'Pri ponuke s. r. o. za 1 € sa zaviažete viesť u nás účtovníctvo aspoň 36 mesiacov, potom už bez viazanosti.',
     companyName: 'Názov firmy',
     companyNameFresh: 'Názov firmy, ak ho už máte',
     plan: 'Balík',
