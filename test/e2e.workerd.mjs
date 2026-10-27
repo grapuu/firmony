@@ -408,7 +408,7 @@ check(
 )
 res = await get('/zacat?balik=mieru')
 page = (await res.text()).replace(/ /g, ' ')
-check('the first step names the offer of its own', res.status === 200 && page.includes('Na mieru, cena podľa rozsahu') && page.includes('name="balik" value="mieru"'))
+check('the first step names the offer of its own', res.status === 200 && page.includes('Na mieru, podmienky dohodneme osobne') && !page.includes('cena podľa rozsahu') && page.includes('name="balik" value="mieru"'))
 res = await get('/zacat?ico=57442452&balik=mieru')
 page = await res.text()
 check('the offer of its own is ticked among the plans', /value="mieru" checked/.test(page) && !/value="neviem" checked/.test(page))
@@ -691,7 +691,14 @@ check('a sign-up renewed within the year stays', (await db.prepare("SELECT COUNT
 // The client's app
 // ---------------------------------------------------------------------------------------------------------------
 
-const day = (shift) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date(Date.now() + shift * 86400000))
+// A day by the calendar of Bratislava, today and shifted by whole days. Not today's moment minus 24-hour steps: after
+// summer time ends, 23:00 to 24:00 of a winter evening minus 40 times 24 hours is already the next day of summer.
+const day = (shift) => {
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date())
+  const d = new Date(`${today}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + shift)
+  return d.toISOString().slice(0, 10)
+}
 const nowS = Math.floor(Date.now() / 1000)
 await db.batch([
   db

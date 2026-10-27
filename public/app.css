@@ -639,6 +639,12 @@ textarea {
 
 @media (max-width: 900px) {
   .deal {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.5fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .deal {
     grid-template-columns: 1fr;
   }
 
@@ -4267,25 +4273,6 @@ textarea {
     width: clamp(150px, 34vw, 240px);
   }
 
-  .plans {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
-  }
-
-  .plan {
-    grid-row: auto;
-    grid-template-rows: none;
-  }
-
-  .plan__rows {
-    display: block;
-  }
-
-  .plan + .plan {
-    border-top: 1px solid var(--line);
-    border-left: 0;
-  }
-
   .plan-large {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
@@ -5394,13 +5381,46 @@ textarea {
   text-align: center;
 }
 
-@media (max-width: 900px) {
-  .why__grid {
-    grid-template-columns: minmax(0, 1fr);
+/* The sheet of plans stays three columns down to a small tablet, a touch tighter; below it, one under another. */
+@media (max-width: 960px) {
+  .plan {
+    padding-inline: 18px;
   }
 
-  .versus__grid {
+  .plan__amount {
+    font-size: 2.5rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .plans {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+
+  .plan {
+    grid-row: auto;
+    grid-template-rows: none;
+  }
+
+  .plan__rows {
+    display: block;
+  }
+
+  .plan + .plan {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+/* A tablet keeps the three reasons and the two columns side by side, a touch tighter. */
+@media (max-width: 900px) {
+  .why__card {
+    padding: 22px;
+  }
+
+  .versus__side {
+    padding: 22px;
   }
 }
 
@@ -5865,5 +5885,296 @@ textarea {
 @media print {
   .fresh {
     display: none;
+  }
+}
+
+/* From a tablet down, the four points of the s. r. o. for 1 € are a list of ticks, not four narrow boxes. */
+@media (max-width: 900px) {
+  .deal__points {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    margin-top: 22px;
+  }
+
+  .deal__point {
+    position: relative;
+    padding: 0 0 0 32px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .deal__point::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+  }
+
+  .deal__point::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 7px;
+    width: 6px;
+    height: 9px;
+    border: solid var(--blue);
+    border-width: 0 2.2px 2.2px 0;
+    transform: rotate(45deg);
+  }
+
+  .deal__point-text {
+    font-size: 0.9375rem;
+  }
+}
+
+/* Phones, as a phone app is laid out (his word of 27 October 2026: the mobile layout amateur, make it elite). One
+   rhythm of spacing, the opening clean and short, the cards that would stack into a long scroll side by side in a
+   row that snaps under the thumb, the comparison as pairs, and nothing that overlaps. ------------------------- */
+
+.hero__deal-arrow {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-left: -2px;
+}
+
+.versus__rows {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --space: 72px;
+  }
+
+  /* The header: the mark, the one button and a menu that is an icon, not a box. */
+  .top__burger {
+    width: 44px;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .top__bar {
+    width: 20px;
+  }
+
+  /* The opening: the chip on one line, the promise straight under it, no glass to collide with the words. */
+  .hero__panel {
+    min-height: 0;
+    padding: 26px 22px 118px;
+  }
+
+  .hero__glass {
+    display: none;
+  }
+
+  .hero__title {
+    margin-top: 0;
+    font-size: clamp(2.375rem, 11vw, 2.875rem);
+  }
+
+  .hero__lead {
+    margin-top: 18px;
+    font-size: 1.0625rem;
+  }
+
+  .hero__deal {
+    gap: 8px;
+    margin-bottom: 22px;
+    padding-right: 12px;
+    font-size: 0.875rem;
+  }
+
+  .hero__deal-more {
+    display: none;
+  }
+
+  .hero__below {
+    padding-top: 22px;
+  }
+
+  /* The s. r. o. for 1 €: the stamp small above, the four points as a list of ticks, the button the width of the
+     thumb's reach. */
+  .deal {
+    gap: 18px;
+    padding: 30px 22px 28px;
+    border-radius: 26px;
+  }
+
+  .deal__art {
+    justify-self: start;
+    width: 132px;
+  }
+
+  .deal__title {
+    margin-top: 16px;
+  }
+
+  .deal__lead {
+    margin-top: 16px;
+    font-size: 1rem;
+  }
+
+
+  .deal__actions {
+    margin-top: 24px;
+  }
+
+  .deal__cta {
+    width: 100%;
+  }
+
+  .deal__limit {
+    width: 100%;
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
+  .deal__fine {
+    font-size: 0.75rem;
+    text-align: left;
+  }
+
+  /* Cards in a row under the thumb: the next one peeks in, so it is clear that there is more. */
+  .why__grid,
+  .extras__grid,
+  .plans {
+    display: grid;
+    grid-auto-columns: 84%;
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    grid-template-rows: none;
+    gap: 12px;
+    max-width: none;
+    margin-inline: calc(-1 * var(--gutter));
+    padding: 4px var(--gutter) 18px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--gutter);
+    scrollbar-width: none;
+  }
+
+  .why__grid::-webkit-scrollbar,
+  .extras__grid::-webkit-scrollbar,
+  .plans::-webkit-scrollbar {
+    display: none;
+  }
+
+  .why__card,
+  .extras__card,
+  .plan {
+    scroll-snap-align: start;
+  }
+
+  .why__card {
+    gap: 10px;
+    padding: 22px;
+  }
+
+  /* The plans: each a card of its own in the row, the lead one with its bar, the cheapest first. */
+  .plans {
+    overflow-y: hidden;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .plan {
+    overflow: hidden;
+    padding: 24px 22px 22px;
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: var(--white);
+    box-shadow: var(--shadow-sm, 0 6px 20px rgb(13 19 48 / 0.06));
+  }
+
+  .plan + .plan {
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
+
+  .plan--lead {
+    border-color: var(--blue-line);
+    background: linear-gradient(180deg, #f1f3ff 0%, var(--white) 55%);
+  }
+
+  .plan__top {
+    padding-bottom: 18px;
+  }
+
+  .plan__price {
+    padding-bottom: 14px;
+  }
+
+  .plan__cta {
+    margin-bottom: 16px;
+  }
+
+  .plan__rows div {
+    padding: 10px 0;
+  }
+
+  .extras__card {
+    padding: 22px;
+  }
+
+  /* The comparison as five pairs: ours in full, the usual under it, quieter. */
+  .versus__grid {
+    display: none;
+  }
+
+  .versus__rows {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 6px 20px;
+    border: 1px solid var(--blue-line);
+    border-radius: 22px;
+    background: linear-gradient(165deg, #eef0ff 0%, var(--white) 62%);
+    box-shadow: var(--shadow);
+    list-style: none;
+  }
+
+  .versus__row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 4px;
+    padding: 16px 0;
+  }
+
+  .versus__row + .versus__row {
+    border-top: 1px solid var(--line);
+  }
+
+  .versus__row .tick {
+    grid-row: span 2;
+    margin-top: 2px;
+  }
+
+  .versus__ours {
+    color: var(--ink);
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  .versus__usual {
+    color: var(--dim, #8a90a6);
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  /* Mony in the corner a touch smaller, so it covers less of what is read. */
+  .mony__face {
+    width: 56px;
+    height: 56px;
+    padding: 6px;
   }
 }

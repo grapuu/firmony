@@ -35,7 +35,7 @@ export const copy = typesetAll({
     price: `Od ${eur(start.price)} mesačne bez DPH. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
-    deal: { tag: 'Novinka', text: 'S. r. o. za 1 €, advokát aj poplatky v cene' },
+    deal: { tag: 'Novinka', text: 'S. r. o. za 1 €', more: ', advokát aj poplatky v cene' },
   },
 
   /** The card in the opening where a client starts: the IČO. */
@@ -187,9 +187,10 @@ export const copy = typesetAll({
     large: {
       title: 'Na mieru',
       forWhom: 'Pre stredné a veľké firmy.',
-      price: 'Cena podľa rozsahu',
-      text: `Stovky dokladov mesačne, desiatky zamestnancov, viac účtov či prevádzok. Najprv s Vami prejdeme agendu, potom navrhneme rozsah, cenu a postup prechodu.`,
-      cta: 'Chcem ponuku na mieru',
+      // His word of 27 October 2026: no price for the large; a contact, the conditions agreed with each.
+      price: 'Podmienky dohodneme osobne',
+      text: `Stovky dokladov mesačne, desiatky zamestnancov, viac účtov či prevádzok. Najprv s Vami prejdeme agendu, potom navrhneme rozsah, podmienky a postup prechodu.`,
+      cta: 'Kontaktujte nás',
     },
   },
 
@@ -278,7 +279,7 @@ export const copy = typesetAll({
         a: 'Pri bežnom vedení účtovníctva nie. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej je zmluva na 36 mesiacov. Inak zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
       },
       {
-        q: 'Čo sa mení od 1. 1. 2027 s e-faktúrami?',
+        q: 'Čo sa mení od 1. 1. 2027 s e\u2011faktúrami?',
         // Read 22 October 2026: current law and the enacted 2027 wording, especially § 71(5), § 85o(2)-(4),(9)-(10).
         // https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html#paragraf-85o
         a: 'Pri určených tuzemských dodaniach ich vystavujú platitelia DPH. Vedieť ich prijať musia aj neplatitelia. Digitálneho poštára budete mať priamo vo Firmony: e-faktúru pošlete jedným klikom a prijaté uvidíte v aplikácii. Zapíname pred 1. 1. 2027.',
@@ -452,7 +453,7 @@ export const copy = typesetAll({
     plan: 'Balík',
     planUnsure: 'Ešte neviem',
     planCustom: 'Na mieru',
-    planCustomHint: 'cena podľa rozsahu',
+    planCustomHint: 'podmienky dohodneme osobne',
     situation: 'Čo potrebujete',
     situations: { first: 'Hľadám účtovnú firmu', switch: 'Mením účtovníčku', fresh: 'Zakladám firmu', other: 'Iné' },
     name: 'Meno a priezvisko',

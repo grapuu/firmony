@@ -4,6 +4,17 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Telefón a tablet, 27. 10. 2026 v noci (Claude, `main`):** jeho slovo o 23:06: mobilné rozloženie amatérske, prerobiť na
+elitné; o 23:08 celý web na telefóne, tablete a všetkých šírkach dokonalý a pri balíku Na mieru žiadna cena, len kontakt
+(veľkým firmám sa podmienky nastavia osobne, priorita sú malé a nové s. r. o.). Telefón (≤640 px, koniec
+`public/app.css`): menší rytmus (`--space` 72 px), úvod bez skla a bez medzery nad nadpisom, čip na jeden riadok (koniec
+textu `hero__deal-more` skrytý), menu ako ikona; „Prečo Firmony“, cenník a „Ešte viac“ ako rad kariet, ktoré sa posúvajú
+prstom a ďalšia vykukuje (scroll-snap); porovnanie ako päť dvojíc (`versus__rows`, „S Firmony“ a pod ním „Bežne“);
+ponuka za 1 € s obrázkom hore a štyrmi bodmi ako zoznam fajok (od 900 px nižšie); Mony o kúsok menšia. Tablet: tri
+dôvody a dva stĺpce porovnania vedľa seba, cenník ako trojstĺpcový hárok až po 721 px, ponuka za 1 € dvojstĺpcová do
+701 px. Na mieru: „Podmienky dohodneme osobne“ a tlačidlo „Kontaktujte nás“, vo formulári „Na mieru, podmienky
+dohodneme osobne“, v llms.txt „podmienky na mieru“. Kontrola v skutočnom prehliadači pri 320, 390, 768, 820 a 1024 px.
+
 **S. r. o. za 1 €, 27. 10. 2026 večer (Claude, `main`):** jeho rozhodnutie o 22:24 až 22:38: ceny 89/169/329 € ostávajú,
 náklady na minimum, trh „zaliať“ ponukou založenia s. r. o. za 1 € (nie „zadarmo“: zákaz klamlivého „zadarmo“ a model
 „mobil za 1 € so zmluvou“), zmluva na **36 mesiacov**, viazaný je aj zakladateľ ako fyzická osoba (osobné ručenie),

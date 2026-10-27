@@ -84,7 +84,13 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
         <div class="hero__copy">
           <a class="hero__deal" href="#sro-za-euro">
             <span class="hero__deal-tag">{copy.hero.deal.tag}</span>
-            <span>{copy.hero.deal.text}</span>
+            <span class="hero__deal-text">
+              {copy.hero.deal.text}
+              <span class="hero__deal-more">{copy.hero.deal.more}</span>
+            </span>
+            <svg class="hero__deal-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M5 12h13m-5-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </a>
           <h1 id="hero-title" class="hero__title">
             <span class="hero__line">{copy.hero.first}</span> <em class="hero__line hero__line--serif">{copy.hero.second}</em>
@@ -286,6 +292,16 @@ const Why: FC = () => (
           </ul>
         </article>
       </div>
+      {/* On a phone the two columns would be two long cards: each line pairs ours with the usual instead. */}
+      <ol class="versus__rows">
+        {copy.versus.ours.items.map((item, i) => (
+          <li class="versus__row">
+            <Tick />
+            <span class="versus__ours">{item}</span>
+            <span class="versus__usual">{`${copy.versus.usual.title}: ${copy.versus.usual.items[i] ?? ''}`}</span>
+          </li>
+        ))}
+      </ol>
     </section>
   </section>
 )

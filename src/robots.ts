@@ -166,7 +166,7 @@ export function llmsTxt(): string {
       ...plans,
       `- Mzdy: ${eur(PAYROLL_PRICE)} mesačne za človeka.`,
       `- Závierka a daňové priznanie k dani z príjmov: ${eur(CLOSING_PRICE)} raz ročne.`,
-      `- Mesiac s viac dokladmi sa vyúčtuje ako vyšší balík. Nad ${PLANS[PLANS.length - 1]?.docs ?? 0} dokladov mesačne cena na mieru.`,
+      `- Mesiac s viac dokladmi sa vyúčtuje ako vyšší balík. Nad ${PLANS[PLANS.length - 1]?.docs ?? 0} dokladov mesačne podmienky na mieru.`,
       '- Prvý mesiac zadarmo. Bez viazanosti, mesačná výpovedná lehota; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom. Aplikácia je v cene a vystavené faktúry sa do dokladov balíka nerátajú.',
       '',
       '## Ako to funguje',
