@@ -6,7 +6,8 @@ import { formatIco } from '../ico'
 import type { Company } from '../rpo'
 import { CarryFields, StartForm, withCarry, type Carry } from './home'
 
-export type Situation = 'switch' | 'fresh' | 'other'
+/** What brings the request (27 October 2026, the owner's word: most are new s. r. o. looking for an accounting firm). */
+export type Situation = 'first' | 'switch' | 'fresh' | 'other'
 
 export interface DetailsValues {
   company: string
@@ -215,7 +216,7 @@ export const StartDetails: FC<{
           <fieldset class="field choice">
             <legend class="field__label">{copy.start.situation}</legend>
             <div class="choice__options">
-              {(['switch', 'fresh', 'other'] as const).map((id) => (
+              {(state.kind === 'fresh' ? (['fresh', 'other'] as const) : (['first', 'switch', 'other'] as const)).map((id) => (
                 <label class="choice__option">
                   <input type="radio" name="situation" value={id} checked={values.situation === id} />
                   <span>{copy.start.situations[id]}</span>

@@ -282,6 +282,10 @@ page = await res.text()
 check('the register fills in the company', res.status === 200 && page.includes('europio s. r. o.') && page.includes('K lesu 2218/39A'))
 check('the chosen plan is ticked', /value="rast" checked/.test(page))
 check('the source of the data is named', page.includes('CC BY 4.0'))
+check(
+  'a company that exists is asked whether it looks for an accounting firm (ticked) or changes its accountant, never whether it is being founded',
+  /value="first" checked/.test(page) && page.includes('Hľadám účtovnú firmu') && page.includes('value="switch"') && !page.includes('value="fresh"'),
+)
 res = await get('/zacat?ico=12345679')
 page = await res.text()
 check('an unknown company is typed in by hand', page.includes('nenašli') && page.includes('name="company"'))
@@ -289,7 +293,8 @@ res = await get('/zacat?ico=35757442')
 page = await res.text()
 check('a register that fails asks for the name by hand', page.includes('Register práve neodpovedá') && page.includes('name="company"'))
 res = await get('/zacat?nova=1')
-check('without a company the form asks how far they are', (await res.text()).includes('Zakladáte firmu'))
+page = await res.text()
+check('without a company the form asks how far they are', page.includes('Zakladáte firmu') && /value="fresh" checked/.test(page) && !page.includes('value="switch"'))
 
 // The request: sending it
 const good = {

@@ -290,12 +290,12 @@ app.get('/zacat', async (c) => {
   if (state.kind === 'missing' && !icoLooksValid(ico)) {
     return page(c, startMeta, <StartIco carry={carry} plan={plan} value={formatIco(ico)} error={copy.start.wrongIco} />, 422)
   }
-  return page(c, startMeta, <StartDetails carry={carry} state={state} ico={ico} values={emptyValues(plan, 'switch')} errors={{}} />)
+  return page(c, startMeta, <StartDetails carry={carry} state={state} ico={ico} values={emptyValues(plan, 'first')} errors={{}} />)
 })
 
 const EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}$/
 const PHONE = /^\+?[0-9 ()/.-]{6,24}$/
-const SITUATIONS: readonly Situation[] = ['switch', 'fresh', 'other']
+const SITUATIONS: readonly Situation[] = ['first', 'switch', 'fresh', 'other']
 
 const field = (value: unknown, max: number): string => (typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim().slice(0, max) : '')
 
@@ -312,7 +312,7 @@ app.post('/zacat', async (c) => {
   const planRaw = field(body.plan, 10)
   const plan = planRaw === CUSTOM_PLAN ? CUSTOM_PLAN : (planById(planRaw)?.id ?? 'neviem')
   const situationRaw = field(body.situation, 10) as Situation
-  const situation: Situation = SITUATIONS.includes(situationRaw) ? situationRaw : fresh ? 'fresh' : 'switch'
+  const situation: Situation = SITUATIONS.includes(situationRaw) ? situationRaw : fresh ? 'fresh' : 'first'
   const values: DetailsValues = {
     // The company as typed, or, when the register does not answer now, as it named it on the page before (kept
     // as typed: it never goes into an email).

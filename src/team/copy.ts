@@ -725,7 +725,7 @@ export const team = typesetAll({
     status: { new: 'Nová', contacted: 'Kontaktovaná', client: 'Je klientom', declined: 'Odmietnutá' },
     /** A request's plan when it is none of the plans: a scope agreed one by one, or not chosen yet. */
     planOther: { mieru: 'na mieru', neviem: 'ešte nevybraný' },
-    situation: { switch: 'Mení účtovníčku', fresh: 'Zakladá firmu', other: 'Iné' },
+    situation: { first: 'Hľadá účtovnú firmu', switch: 'Mení účtovníčku', fresh: 'Zakladá firmu', other: 'Iné' },
     noCompany: 'Zatiaľ bez firmy',
     investors: {
       title: 'Investori',

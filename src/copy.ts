@@ -510,7 +510,7 @@ export const copy = typesetAll({
     planCustom: 'Na mieru',
     planCustomHint: 'cena podľa rozsahu',
     situation: 'Čo potrebujete',
-    situations: { switch: 'Mením účtovníčku', fresh: 'Zakladám firmu', other: 'Iné' },
+    situations: { first: 'Hľadám účtovnú firmu', switch: 'Mením účtovníčku', fresh: 'Zakladám firmu', other: 'Iné' },
     name: 'Meno a priezvisko',
     email: 'E-mail',
     directorEmail: 'E-mail konateľa alebo člena predstavenstva, ak to nie ste Vy',
