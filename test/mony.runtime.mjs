@@ -59,7 +59,7 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   let system = String(answer?.system?.[0]?.text ?? '')
   check(
     "mony: a client's answer is written from the client's knowledge alone, with the page and the rules against making things up",
-    system.startsWith('Si Mony') && system.includes('klient Firmony') && system.includes('/app/platby') && !system.includes('?filter') && system.includes('Nič nevymýšľaš') && system.includes('Návod pre klientov') && !system.includes('Podklady pre správcu') && !system.includes('Mapa kódu') && !system.includes('0,50 € doklad'),
+    system.startsWith('Pokyny pre asistenta Mony') && system.includes('nikdy nie „som si“') && system.includes('klient Firmony') && system.includes('/app/platby') && !system.includes('?filter') && system.includes('Nič nevymýšľaš') && system.includes('Návod pre klientov') && !system.includes('Podklady pre správcu') && !system.includes('Mapa kódu') && !system.includes('0,50 € doklad'),
   )
   check(
     'mony: the conversation goes along as alternating turns, a user first, the question last, nothing else',

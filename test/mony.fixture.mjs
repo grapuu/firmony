@@ -27,7 +27,7 @@ export function monyProviderFixture() {
           .slice(0, 6)
         return Response.json({ type: 'message', content: [{ type: 'tool_use', id: 'toolu_mony', name: 'mony_sekcie', input: { ids: [...ids, 'neexistuje', ids[0]] } }], usage: { input_tokens: 2100, output_tokens: 24, cache_read_input_tokens: 1800 } })
       }
-      if (payload.stream === true && String(payload.system?.[0]?.text ?? '').startsWith('Si Mony')) {
+      if (payload.stream === true && String(payload.system?.[0]?.text ?? '').startsWith('Pokyny pre asistenta Mony')) {
         fixture.answers.push(payload)
         const next = fixture.next ?? {}
         fixture.next = null
