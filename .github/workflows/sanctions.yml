@@ -1,0 +1,20 @@
+# The EU's and the UN's sanctions lists the app reads daily (aml/sanctions-store.ts): once a day, and by hand after a
+# deploy, the live /healthz must say a fresh day for both. A list the Worker cannot read fails this run, so it is seen
+# here before a dossier waits for a check the app could not prepare.
+name: Sanctions lists
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both lists are fresh on firmony.io
+        run: |
+          body=$(curl -fsS --max-time 30 -H 'cache-control: no-cache' https://firmony.io/healthz)
+          echo "$body"
+          echo "$body" | jq -e '.sanctions.eu != null and .sanctions.un != null'
