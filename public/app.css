@@ -5834,20 +5834,25 @@ textarea {
     height: 34px;
   }
 
-  /* Opened on a phone, Mony is the whole screen, sized to what the keyboard leaves visible (client/mony.ts sets
-     --mony-vh and --mony-top from the visual viewport), and the page behind is held still. */
+  /* Opened on a phone, Mony is the whole screen and the page behind is held still. The cloud covers all of the
+     screen, also what lies under the keyboard's bar (on an iPhone that bar is see-through and showed the page), and
+     the sheet itself follows the part the keyboard leaves visible (client/mony.ts sets --mony-vh and --mony-top from
+     the visual viewport). */
   .mony.is-open {
-    top: var(--mony-top, 0px);
-    right: 0;
-    bottom: auto;
-    left: 0;
+    inset: 0;
     z-index: 70;
-    height: var(--mony-vh, 100dvh);
+    display: block;
+    background: var(--white);
+    pointer-events: auto;
   }
 
   .mony.is-open .mony__panel {
+    position: absolute;
+    top: var(--mony-top, 0px);
+    right: 0;
+    left: 0;
     width: 100%;
-    height: 100%;
+    height: var(--mony-vh, 100%);
     border: 0;
     border-radius: 0;
     box-shadow: none;

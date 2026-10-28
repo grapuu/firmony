@@ -114,6 +114,26 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
   await clientPage.mouse.move(195, 400)
   await clientPage.mouse.wheel(0, 900)
   await clientPage.screenshot({ path: '.wrangler/screens/390-mony-phone.png' })
+  // The keyboard up, as an iPhone reports it (the visual viewport 500 px high): the sheet ends above it, and what lies
+  // under the keyboard's see-through bar is the cloud's white, never the page.
+  const under = await clientPage.evaluate(() => {
+    const root = document.querySelector('[data-mony]')
+    root.style.setProperty('--mony-vh', '500px')
+    root.style.setProperty('--mony-top', '0px')
+    const sheet = document.getElementById('mony-panel').getBoundingClientRect()
+    const below = document.elementFromPoint(195, 700)
+    return { height: Math.round(sheet.height), top: Math.round(sheet.top), below: below === root, background: getComputedStyle(root).backgroundColor }
+  })
+  check(
+    'mony phone: with the keyboard up, the page never shows under the sheet',
+    under.height === 500 && under.top === 0 && under.below && under.background === 'rgb(255, 255, 255)',
+    JSON.stringify(under),
+  )
+  await clientPage.evaluate(() => {
+    const root = document.querySelector('[data-mony]')
+    root.style.removeProperty('--mony-vh')
+    root.style.removeProperty('--mony-top')
+  })
   await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
   check('mony phone: folded, the page is exactly where it was', before > 0 && (await clientPage.evaluate(() => Math.round(scrollY))) === before && !(await clientPage.evaluate(() => document.documentElement.classList.contains('mony-held'))))
   await clientPage.evaluate(() => {

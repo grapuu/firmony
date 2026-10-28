@@ -168,8 +168,11 @@ if (root && panel && launcher && log && form && input) {
       root.style.removeProperty('--mony-top')
       return
     }
+    // A conversation read at its end stays at its end when the keyboard comes up, as in a chat app.
+    const atEnd = turns.length > 0 && log.scrollHeight - log.scrollTop - log.clientHeight < 24
     root.style.setProperty('--mony-vh', `${Math.round(viewport.height)}px`)
     root.style.setProperty('--mony-top', `${Math.round(viewport.offsetTop)}px`)
+    if (atEnd) scroll()
   }
   viewport?.addEventListener('resize', fit)
   viewport?.addEventListener('scroll', fit)

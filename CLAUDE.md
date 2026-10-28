@@ -10,6 +10,10 @@ výsuv zdola `mony-sheet`), stránka pod ňou stojí (`html.mony-held`, body `po
 `client/mony.ts` `hold`/`release`), po zatvorení je stránka tam, kde bola. Výška a horný okraj idú z visualViewport
 (`--mony-vh`, `--mony-top`), takže klávesnica panel nevytlačí; fokus bez posunu. Na telefóne sa Mony na ďalšej stránke
 sama neotvára. Browser regresia v `test/mony.browser.mjs` (390 px: panel 390×844, stránka drží, posun obnovený).
+O 01:01 jeho snímka z iPhonu: pod četom nad klávesnicou presvitala stránka (lišta klávesnice na iOS je priehľadná a
+visualViewport končí nad ňou). Otvorená Mony teraz kryje celú obrazovku bielou (`.mony.is-open` inset 0) a panel je v nej
+podľa visualViewport; rozhovor čítaný na konci ostáva na konci, keď vyjde klávesnica. Regresia: pri výške 500 px je pod
+panelom biela Mony, nie stránka.
 
 **Telefón a tablet, 27. 10. 2026 v noci (Claude, `main`):** jeho slovo o 23:06: mobilné rozloženie amatérske, prerobiť na
 elitné; o 23:08 celý web na telefóne, tablete a všetkých šírkach dokonalý a pri balíku Na mieru žiadna cena, len kontakt
