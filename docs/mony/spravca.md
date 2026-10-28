@@ -23,10 +23,32 @@ dokumentov a mapy kódu.
 
 ## Ekonomika
 
-- Ceny bez DPH: Štart 89 € mesačne (do 20 dokladov, neplatiteľ DPH), Rast 169 € (do 60, platiteľ), Firma 329 € (do 150). Mesiac s viac dokladmi sa vyúčtuje ako vyšší balík, nad 150 na mieru. Mzdy 15 € za človeka mesačne, závierka s daňovým priznaním 249 € ročne. Prvý mesiac zadarmo, bez viazanosti. Ceny ostávajú vysoko (rozhodnutie z 20. 10. 2026: elitná služba, marža z automatizácie, nie zo zliav).
+- Ceny bez DPH: Štart 89 € mesačne (do 20 dokladov, neplatiteľ DPH), Rast 169 € (do 60, platiteľ), Firma 329 € (do 150). Mesiac s viac dokladmi sa vyúčtuje ako vyšší balík, nad 150 na mieru. Mzdy 15 € za človeka mesačne, závierka s daňovým priznaním 249 € ročne. Prvý mesiac zadarmo a bez viazanosti pri bežnej zmluve; pri s. r. o. za 1 € sa účtovníctvo platí od vzniku firmy a viazanosť je 36 mesiacov (toto sa na webe nekomunikuje, len sa tak fakturuje). Vystavené faktúry klienta sa do dokladov balíka nerátajú. Ceny ostávajú vysoko (rozhodnutie z 20. 10. 2026: elitná služba, marža z automatizácie, nie zo zliav).
 - Účtovníčka je platená za odvedenú prácu (návrh, treba potvrdiť s ňou): 0,50 € doklad, 12 € obdobie DPH s podaným priznaním, 6 € ostatný mesiac klienta, 4 € osoba v mzdách mesačne, 90 € závierka, 30 € prevzatie klienta, vlastné opravy zadarmo. Výkaz práce (/ucto/vykaz) to spočíta sám, aj ako CSV.
 - Príklad: firma s DPH a 40 dokladmi stojí účtovníčku 32 € mesačne, klient platí 169 €. Marže po účtovníčke a technike: bežný mesiac 82 % Štart, 78 % Rast a Firma; plný balík 78, 72 a 70 %; mzdy 71 %, závierka 62 %. Spodná hranica je 60 %.
 - Náklady techniky na klienta: čítanie dokladov pod cent, server a e-maily desiatky centov, poštár Peppol podľa zmluvy (odhad finančnej správy 5 až 12 € mesačne za firmu, neoverené), banka zadarmo kým nie je open banking.
+
+## Denný chod: kde treba tvoju pozornosť
+
+- Cieľ: firma beží sama, ty riešiš predaj a marketing. Tvoje ruky sú dnes potrebné len pri krokoch nižšie; všetko ostatné robí softvér a účtovníčky.
+- E-mail od Firmony je len zvonček bez obsahu (nová žiadosť, podpísané vyhlásenie, interné oznámenie, prihláška na založenie, správa klienta bez pridelenej účtovníčky). Obsah je vždy v aplikácii.
+- Domov tímu (/ucto) otvára „Dnes na rade“: čo je po termíne alebo do týždňa. Nedoručené e-maily za 14 dní sú tam označené.
+- Žiadosti z webu (/ucto/ziadosti): odpovedať do jedného pracovného dňa. „Posúdiť a poslať zmluvu“ pri s. r. o., a. s. a j. s. a., kde jeden človek koná sám; inak „Založiť bez online zmluvy“ (papierová zmluva) alebo osobná odpoveď.
+- Overenie pred zmluvou (určená osoba): keď klient nahrá podpísané vyhlásenie, na stránke objednávky (/ucto/aml/objednavky/…) zapíšeš kontroly so zdrojom (totožnosť, konečný užívateľ výhod, politicky exponovaná osoba, sankcie EÚ a OSN, rizikové krajiny) a rozhodnutie. Až potom môže konateľ uzavrieť zmluvu. Určenú osobu nastavuje /ucto/aml/urcena-osoba.
+- Účtovníčka pre nového klienta: pri posúdení žiadosti aj pri založení klienta bez online zmluvy je predvolená účtovníčka s najmenej klientmi; firma založená cez s. r. o. za 1 € ju dostane sama pri zápise. Zmeniť sa dá na stránke klienta.
+- Prihlášky na založenie s. r. o. (/ucto/zalozenia): časť nižšie.
+- Fakturácia klientom (/ucto/fakturacia) beží sama: 1. až 5. deň v mesiaci o 9:00 aplikácia vystaví a doručí každú faktúru, pri ktorej nie je čo kontrolovať (balík vopred, mzdy a doklady navyše za minulý mesiac, podaná závierka). Zvonček príde len vtedy, keď niektorá faktúra čaká na teba: poznámka „ceny podľa aktuálneho cenníka“ alebo viac dokladov, než má najvyšší balík (dohodnúť cenu). Tú vystavíš po kontrole tlačidlom „Vystaviť“. Upomienky po splatnosti sa posielajú z tej istej stránky.
+- Účtovníčky: nová na /ucto/tim a aktivačný kód na /auth/grants (časť Tím a prístupy). Ich výkazy na /ucto/vykaz; fakturujú europio raz mesačne.
+- Chyby aplikácie hlásia účtovníčky na ahoj@firmony.io. Bezpečnostné incidenty a zadržanie dôkazov sú na /ucto/incidenty.
+
+## Založenie s. r. o. za 1 € (určená osoba)
+
+- Zakladateľ na /zalozenie zadá e-mail, dostane odkaz (platí 180 dní), vyplní údaje, nahrá občiansky preukaz, podpíše zmluvu (eID alebo úradne osvedčený podpis, originál poštou), pošle 550 € na účet europio s variabilným symbolom 7RRRRNNNNN a prihlášku odovzdá. Prihlášky sa otvárajú len keď platí CONTRACT_RELEASE a europio má nastavený účet na faktúry; inak stránka zbiera záujemcov cez /zacat?nova=1. Limit 20 firiem mesačne.
+- Na /ucto/zalozenia/… zapíšeš každú kontrolu so zdrojom (aspoň 12 znakov): totožnosť, politicky exponovaná osoba, sankčné zoznamy EÚ a OSN, dlžníci (Sociálna poisťovňa, zdravotné poisťovne, finančná správa) a register úpadcov, podpis zmluvy, platba z účtu na meno zakladateľa (aplikácia ju nájde podľa symbolu a porovná meno), pri papierovom podpise aj originál. Kým niečo chýba, overiť sa nedá.
+- Potom „Overiť a prijať“ (zmluva vzniká), alebo „Odmietnuť“ (platbu vrátiť do 14 dní a zaznamenať „Platba je vrátená“), alebo „Vrátiť zakladateľovi na doplnenie“. Kontrola sa zapisuje tlačidlom „Zaznamenať kontrolu“. Ďalšie stavy: Advokát objednaný, Dokumenty advokáta poslané na podpis, Návrh podaný na súd, „Firma je zapísaná“ (zadáš IČO a deň vzniku; aplikácia overí meno v registri, založí firmu a pošle zakladateľovi odkaz na prihlásenie). Účtovníčku jej aplikácia pridelí sama podľa vyťaženia.
+- Nesúčinnosť: „Poslať výzvu“ dvakrát, 30 dní po druhej „Odstúpiť pre nesúčinnosť“; platba sa nevracia.
+- Ekonomika: 1 € založenie + 549 € kaucia vopred. Advokát a súdny poplatok stoja europio okolo 500 € (odporúčaný paušál advokáta 250 € s DPH, polovica pri podaní). Účtovníctvo sa platí mesačne od vzniku firmy. Kaucia sa vráti až zápočtom na posledné faktúry (od 31. mesiaca) alebo pri skončení; pri skoršom odchode odstupné za zostávajúce mesiace, najviac 12, mínus kaucia. Pri odchode po pár mesiacoch je europio zhruba na nule alebo v pluse; najhorší prípad (nikdy nezaplatí) je asi mínus 70 €, ak sa tvorcovi referencie platí až po troch zaplatených mesiacoch.
+- Na webe sa nikdy neuvádza základné imanie 5 000 € ani to, že prvý mesiac zadarmo tu neplatí; v zmluve to celé je.
 
 ## Pred prvým klientom (kroky správcu)
 

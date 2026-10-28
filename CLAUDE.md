@@ -4,6 +4,23 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Mony vie celú svoju rolu, 28. 10. 2026 večer (Claude, `main`):** jeho slovo o 16:26: cieľ je firma, ktorá beží
+sama; Mony musí vedieť, s kým píše, a odpovedať tak, aby klienti a účtovníčky nepotrebovali jeho. Odpovedá **Claude
+Sonnet 5.5** (`MONY.answerModel`, `output_config.effort` medium, `max_tokens` 6 000); výber sekcií ostáva na Haiku 5.5
+(Sonnet 5.5 nútený nástroj odmieta). Systém sú dva bloky: prvý, cachovaný, má pravidlá a **celý návod roly**
+(`MONY_CORE` zo `scripts/build-knowledge.mjs`: klient a návštevník `docs/mony/klient.md`; účtovníčka navyše
+`uctovnicka.md`; správca všetky tri vrátane `spravca.md`), druhý stránku a vybrané sekcie. Návody sa už nedelia na
+sekcie (sú v každej odpovedi celé). Doplnené: ako sa stať klientom krok za krokom, ceny a čo je v cene (prvý mesiac
+podľa bodu podmienok), faktúry od Firmony, bežný mesiac klienta, zamestnanci; účtovníčke prvý deň (pozvánka, odkaz,
+aktivačný kód, záložný kľúč), čo vidí a nevidí, posúdenie dokladov z Účtuje samo, výkaz a sadzby, kam s chybou
+(ahoj@ s adresou stránky; len veci, ktoré môže iba správca); správcovi denný chod a založenie s. r. o. krok za krokom
+s ekonomikou kaucie. Základné imanie Mony sama nespomína. Limity: návštevníci spolu 800 otázok denne, všetci 3 000
+(odpoveď okolo 3 centov). **Faktúry klientom samé** (fáza 2a): `billingScheduled` 1. až 5. deň o 9:00 vystaví a
+doručí každý návrh bez poznámky (`issuable` a žiadny flag, `created_by` NULL, ako „Vystaviť všetky“); správcov zvoní len
+keď niečo čaká (cenník, dohoda nad 150 dokladov). **Účtovníčka podľa vyťaženia** (2b, `src/team/assign.ts`):
+firma zo s. r. o. za 1 € ju dostane pri zápise sama, posúdenie žiadosti a nový klient na papier ju predvolia. Ďalej:
+AML kontroly predpripravené tak, aby jeho časť bola jedno „schváliť“.
+
 **S. r. o. za 1 €: prihláška, overenie, kaucia, 28. 10. 2026 (Claude, `main`):** jeho slovo o 13:25 (bezchybný
 onboarding, zakladateľ nás nesmie „odžubať“), voľby 549 € a eID alebo overený podpis, o 13:45 pri nesúčinnosti sa nič
 nevracia, o 14:08 až 14:15 nikdy nebyť stratoví: **kaucia ako pri nájme bytu**. Kód `src/founding/` (model, store,

@@ -808,7 +808,8 @@ export function saveInvoiceStatements(
   args: {
     id: string
     company: string
-    user: string
+    /** Who issued it; null for what the app issues by itself (the monthly bills of the clients). */
+    user: string | null
     issue: boolean
     values: InvoiceValues
     lines: Line[]

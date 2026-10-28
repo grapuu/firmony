@@ -2,6 +2,7 @@
 // designated person's checks and decision, every move with who made it, and at the end the company it gave rise to.
 // Every write names the revision it read (`rev`) and moves it: two tabs, two people or a link opened twice never move an
 // application twice, and nothing is written over what somebody else changed meanwhile.
+import { LEAST_LOADED_ACCOUNTANT_SQL } from '../team/assign'
 import { BRAND, FORMATION, OFFLINE_TERMS, TEAM, planById } from '../config'
 import { now, sha256Hex } from '../db'
 import { userByEmail } from '../app/store'
@@ -539,8 +540,9 @@ export async function register(db: D1Database, f: Founding, by: string, ico: str
     update(db, f, "status = 'registered', ico = ?, company_id = ?", [ico, companyId], " AND status = 'filed'"),
     db
       .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, contract_at, terms_version, signed_by, start_on, legal_form, signed_role, register_line, founding_id, prepaid_cents)
-         SELECT ?, ?, ?, ?, ?, 0, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?, 'sro', 'konateľ', ?, ?, ? WHERE ${mine}`,
+        // The accountant with the fewest clients takes it (team/assign.ts); the administrator may change her later.
+        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, contract_at, terms_version, signed_by, start_on, legal_form, signed_role, register_line, founding_id, prepaid_cents, accountant_id)
+         SELECT ?, ?, ?, ?, ?, 0, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?, 'sro', 'konateľ', ?, ?, ?, (${LEAST_LOADED_ACCOUNTANT_SQL}) WHERE ${mine}`,
       )
       .bind(companyId, ts, entity.name, ico, entity.address || null, f.plan, inbox, ts, f.founder.name, arose, entity.registerLine, f.id, FORMATION.prepaidCents),
     ...(existing ? [] : [db.prepare(`INSERT INTO users (id, created_at, email, name) SELECT ?, ?, ?, ? WHERE ${mine}`).bind(userId, ts, f.email, f.founder.name)]),

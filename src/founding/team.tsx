@@ -36,7 +36,7 @@ const FLASH: Record<string, string> = {
   odstupene: 'Od zmluvy sme odstúpili. Platba sa nevracia.',
   zrusene: 'Prihláška je zrušená.',
   platba: 'Vrátenie platby je zaznamenané.',
-  zapisana: 'Firma je založená v aplikácii a zakladateľ dostal odkaz na prihlásenie. Prideľte jej účtovníčku na stránke klienta.',
+  zapisana: 'Firma je založená v aplikácii a zakladateľ dostal odkaz na prihlásenie. Účtovníčku jej aplikácia pridelila podľa vyťaženia; zmeniť ju môžete na stránke klienta.',
   odstupne: 'Rozhodnutie o odstupnom je uložené.',
 }
 

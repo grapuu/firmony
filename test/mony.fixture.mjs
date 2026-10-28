@@ -19,7 +19,7 @@ export function monyProviderFixture() {
       if (payload.tools?.some((t) => t.name === 'mony_sekcie')) {
         fixture.routes.push(payload)
         const toc = String(payload.system?.[0]?.text ?? '').split('OBSAH PODKLADOV:\n')[1] ?? ''
-        const words = (fixture.pick ?? ['banka']).map((w) => w.toLowerCase())
+        const words = (fixture.pick ?? ['bank']).map((w) => w.toLowerCase())
         const ids = toc
           .split('\n')
           .filter((line) => words.some((w) => line.toLowerCase().includes(w)))

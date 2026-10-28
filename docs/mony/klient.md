@@ -11,6 +11,54 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 - Prehľad vždy ukazuje, čo práve chýba. Keď nič nechýba, píše „Všetko máme. Nemusíte nič robiť.“
 - Na otázky k vlastnej firme odpovedá účtovníčka v Správach do jedného pracovného dňa.
 
+## Ako sa stať klientom (krok za krokom)
+
+1. Na webe kliknúť „Začať“ (/zacat) a zadať IČO. Názov a sídlo doplní Firmony z Registra právnických osôb. Potom vybrať balík a napísať meno, e-mail a telefón. Kto ešte nemá firmu, klikne „Ešte nemám firmu“ (ponuka s. r. o. za 1 €, časť nižšie).
+2. Firmony do jedného pracovného dňa posúdi, či firme sedí štandardný balík. Odkaz na zmluvu potom príde e-mailom tomu, kto za firmu koná (konateľ alebo člen predstavenstva zapísaný v registri). Odkaz platí 30 dní; ak vyprší, stránka odkazu ponúkne, ako získať nový.
+3. Odkaz najprv otvorí „Overenie pred začatím spolupráce“ (vyžaduje to zákon proti praniu špinavých peňazí): údaje o tom, kto za firmu koná a kto je konečným užívateľom výhod, výber balíka a prvého mesiaca služby a prijatie ponuky. Vyhlásenie sa stiahne ako PDF, podpíše kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom, aplikácia D.Signer na slovensko.sk) a podpísaný súbor (PDF alebo ASiC-E, do 25 MB) sa nahrá späť.
+4. Firmony podklady overí (totožnosť, podpis, konečný užívateľ výhod, zoznamy politicky exponovaných osôb a sankčné zoznamy). Niekedy si vyžiada aj doklad o účte firmy v banke v EÚ a o prvej platbe z neho.
+5. Po overení otvorí rovnaký odkaz zmluvu. Konateľ ju jedným kliknutím uzavrie („Uzavrieť zmluvu“) a hneď je prihlásený v aplikácii. Prihlasovací odkaz príde aj e-mailom.
+6. V aplikácii čakajú prvé kroky: plná moc (/app/plna-moc), banka alebo výpis (/app/banka), prvý doklad. Pri prechode od inej účtovníčky aj list pre ňu (/app/prechod).
+- Ak za firmu konajú viacerí spoločne, zmluva sa podpisuje na papieri; Firmony ju pripraví. Iné právne formy než s. r. o., a. s. a j. s. a. a väčšie firmy (nad 150 dokladov mesačne, voľba „Na mieru“) dostanú ponuku osobne.
+- Celý čas je to nezáväzné až do kliknutia „Uzavrieť zmluvu“.
+
+## Ceny a čo je v cene
+
+- Balíky mesačne bez DPH podľa počtu dokladov za mesiac: Štart 89 € (do 20 dokladov, firma, ktorá nie je platiteľom DPH), Rast 169 € (do 60, platiteľ DPH), Firma 329 € (do 150). Mesiac s viac dokladmi sa vyúčtuje ako vyšší balík; nad 150 dokladov cena na mieru.
+- Navyše: mzdy 15 € mesačne za každého človeka vo mzdách (aj konateľ s odmenou), závierka s daňovým priznaním 249 € ročne.
+- V cene balíka: zaúčtovanie všetkých dokladov a platieb, DPH s kontrolným a súhrnným výkazom, termíny a podania pod plnou mocou, správy s účtovníčkou s odpoveďou do jedného pracovného dňa, fakturácia, e-faktúry, aplikácia a Mony.
+- Prvý mesiac služby je zadarmo (balík, vyšší balík ani mzdy sa zaň neplatia). Kto zmluvu vypovie v prvom mesiaci, zmluva skončí jeho posledným dňom a nezaplatí nič; závierka, ak ju Firmony podala, sa fakturuje zvlášť (bod 4.3 podmienok). Faktúry, ktoré firma vystaví vo Firmony, sa do dokladov balíka nerátajú.
+- Ako sa platí: balík mesačne vopred, mzdy a doklady nad balík za uplynulý mesiac, závierka po jej podaní. Splatnosť 14 dní.
+- DPH sa k cenám nepripočítava, kým europio s. r. o. nie je platiteľom DPH.
+
+## Faktúry od Firmony
+
+- Faktúry za služby Firmony vystavuje europio s. r. o. Klient ich nájde vo Firme a nastaveniach (časť Faktúry od Firmony) a zároveň medzi svojimi dokladmi, takže sa zaúčtujú samy. Príde aj e-mail „nová faktúra od Firmony“.
+- Zaplatiť sa dá jedným naskenovaním QR kódu na faktúre v aplikácii banky. Keď platba príde, faktúra sa označí ako zaplatená sama.
+
+## Bežný mesiac klienta
+
+- Priebežne: odfotiť alebo preposlať doklady hneď, ako prídu. Čím skôr, tým menej práce na konci mesiaca.
+- Pondelok o 9:00 príde pripomienka, ak sú na účte platby bez dokladu. 5. dňa v mesiaci o 9:00 pripomienka dokladov za minulý mesiac; termín je 10. deň.
+- Ak banka neposiela výpisy sama, raz mesačne nahrať výpis (pripomienka 3. dňa).
+- Platiteľ DPH: po podaní priznania príde správa, koľko a do kedy zaplatiť (zvyčajne do 25. dňa). Účet, variabilný symbol a QR kód sú na stránke Dane (/app/dane).
+- Firma so zamestnancami: po uzavretí miezd príde správa, komu a koľko zaplatiť do výplatného dňa (čisté mzdy, Sociálna poisťovňa, zdravotné poisťovne, daňový úrad).
+- Raz ročne: závierka a daňové priznanie (termín 31. marca, s odkladom neskôr), potom správa o dani a preddavkoch.
+- Všetky termíny klienta sú na Prehľade v časti Termíny.
+
+## Zamestnanci a mzdy
+
+- Nového zamestnanca alebo dohodára napíšte účtovníčke do Správ najneskôr 3 pracovné dni pred nástupom (meno, dátum nástupu, druh pomeru, mzda, úväzok). Účtovníčka ho prihlási do Sociálnej poisťovne a zdravotnej poisťovne.
+- Každý mesiac pošlite do Správ, čo treba na mzdy: odpracované dni alebo hodiny, dovolenka, PN, nadčasy, odmeny. Účtovníčka mzdy spracuje a uzavrie, výplatné pásky sú v aplikácii.
+- Mzdové podania a potvrdenky sú na /app/mzdove-podania. Odchod zamestnanca nahláste tiež vopred do Správ.
+- Mzdy stoja 15 € mesačne za človeka.
+
+## Asistent v Správach a Mony
+
+- Mony je asistentka v rohu každej stránky. Vysvetlí, ako čo v aplikácii urobiť a kde to je. Nevidí údaje firmy a nerieši odborné daňové otázky konkrétnej firmy.
+- Asistent Firmony (/app/asistent, zo Správ): rýchle odpovede na časté témy z aktuálnych údajov firmy a príprava otázky pre účtovníčku. Nič neodošle sám.
+- Na všetko, čo sa týka konkrétnej firmy (či si môžem dať náklad, koľko zaplatím dane, čo s touto platbou), je účtovníčka v Správach.
+
 ## Prihlásenie a bezpečnosť
 
 - Prihlásenie je na /app/prihlasenie. Najrýchlejšie je tlačidlo „Prihlásiť sa“: odtlačok prsta, tvár alebo PIN zariadenia, bez hesla a bez e-mailu. Správca hesiel (iCloud, Google, 1Password) ponúkne uložené prihlásenie aj priamo v poli na e-mail.
@@ -89,11 +137,12 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 ## Založenie s. r. o. za 1 €
 
 - Kto ešte nemá firmu, môže si u Firmony dať založiť s. r. o. za 1 € (bez DPH). Zakladateľskú listinu, zápis do obchodného registra aj živnosť zariadi advokát, súdny poplatok aj odmenu advokáta platí Firmony. Bežne stojí založenie od augusta 2026 okolo 500 €.
+- Kým online prihlášky nie sú spustené, stránka /zalozenie ponúkne „Chcem byť medzi prvými“ (žiadosť na /zacat?nova=1) a Firmony sa ozve ako prvým.
 - Prihláška je online na /zalozenie: e-mail, potom odkaz z e-mailu. V prihláške zakladateľ vyplní svoje údaje a údaje firmy, nahrá fotku občianskeho preukazu z oboch strán, stiahne zmluvu a podpíše ju občianskym preukazom s čipom (eID) alebo vlastnoručne s overeným podpisom u notára či na matrike (originál pošle poštou). Potom pošle 550 € z účtu na svoje meno a prihlášku odošle na overenie.
 - 550 € je 1 € za založenie a 549 € kaucia. Kaucia sa odpočíta z posledných faktúr za účtovníctvo, takže za 36 mesiacov zakladateľ nezaplatí nič navyše. Účtovníctvo sa platí mesačne od vzniku firmy.
 - Podmienky: účtovníctvo vo Firmony aspoň 36 mesiacov za cenu balíka (od 89 € mesačne bez DPH), potom bez viazanosti s mesačnou výpovednou lehotou. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12, a kaucia sa z neho odpočíta. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Ak Firmony vážne pochybí a nenapraví to, firma môže odísť bez poplatku.
 - Ak firmu nezaložíme pre chybu na našej strane alebo ju súd nezapíše bez viny zakladateľa, vrátime celých 550 €. Ak zakladateľ prestane spolupracovať (ani 30 dní po druhej výzve) alebo od založenia odstúpi, platba sa nevracia.
-- Ponuka platí pre prvých 20 firiem každý mesiac. Základné imanie (najmenej 5 000 €) nie je poplatok, sú to peniaze firmy. Celé znenie zmluvy je na /zalozenie/zmluva.
+- Ponuka platí pre prvých 20 firiem každý mesiac. Na základné imanie sa Mony sama nepýta ani ho nespomína; ak sa naň niekto opýta, nie je to poplatok Firmony, sú to peniaze samotnej firmy, ktoré jej ostávajú na podnikanie, a výšku a splatenie s ním prejde advokát. Celé znenie zmluvy je na /zalozenie/zmluva.
 - Po zápise firmy do registra zakladateľ dostane odkaz na prihlásenie do aplikácie. Tam firma do troch mesiacov schváli zmluvu jedným potvrdením (/app/zalozenie) a doplní vyhlásenie Kto stojí za firmou.
 - Bežné vedenie účtovníctva (bez tejto ponuky) je bez viazanosti, s mesačnou výpovednou lehotou.
 

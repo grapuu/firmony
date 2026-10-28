@@ -98,13 +98,6 @@ function addLines(audience, name, lines) {
   flush()
 }
 
-/** The section of a curated guide that every answer for its audience carries. */
-const section = (source, heading) => {
-  const m = new RegExp(`^## ${heading}\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, 'm').exec(source)
-  return m ? plain(m[1]).trim() : ''
-}
-const without = (source, headings) => headings.reduce((s, h) => s.replace(new RegExp(`^## ${h}\\n[\\s\\S]*?(?=^## |(?![\\s\\S]))`, 'm'), ''), source)
-
 async function files(dir, test) {
   const out = []
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -125,14 +118,15 @@ const t = monyTexts()
 const klient = await readFile('docs/mony/klient.md', 'utf8')
 const uctovnicka = await readFile('docs/mony/uctovnicka.md', 'utf8')
 const spravca = await readFile('docs/mony/spravca.md', 'utf8')
+// Each audience carries its whole guide (and the guides of the people it helps) in every answer, cached: the guides
+// are the curated truth of how Firmony is used, so they are never left to the router's pick (28 October 2026, the
+// owner's word: Mony has to know everything, so that onboarding needs none of his attention).
+const guide = (source) => plain(source).trim()
 const core = {
-  client: [t.core, '## Orientácia v aplikácii', section(klient, 'Orientácia')].join('\n\n'),
-  accountant: [t.core, '## Orientácia pre účtovníčku', section(uctovnicka, 'Orientácia'), '## Aplikácia klienta', section(klient, 'Orientácia')].join('\n\n'),
-  admin: [t.core, '## Orientácia pre správcu', section(spravca, 'Orientácia'), section(spravca, 'Audit softvéru \\(27\\. 10\\. 2026\\)')].join('\n\n'),
+  client: [t.core, guide(klient)].join('\n\n'),
+  accountant: [t.core, guide(uctovnicka), guide(klient)].join('\n\n'),
+  admin: [t.core, guide(spravca), guide(uctovnicka), guide(klient)].join('\n\n'),
 }
-addMarkdown('Návod pre klientov', without(klient, ['Orientácia']), () => ALL)
-addMarkdown('Návod pre účtovníčky', without(uctovnicka, ['Orientácia']), () => TEAM)
-addMarkdown('Podklady pre správcu', without(spravca, ['Orientácia', 'Audit softvéru \\(27\\. 10\\. 2026\\)']), () => ADMIN)
 
 // What the site and the app say.
 addMarkdown('Články na webe', t.site, () => ALL)

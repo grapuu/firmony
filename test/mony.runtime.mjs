@@ -52,18 +52,23 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   const toc = String(route?.system?.[0]?.text ?? '')
   check('mony: the sections are picked by Claude Haiku 5.5 with a forced tool and a cached table of contents', route?.model === 'claude-haiku-5-5' && route.tool_choice?.name === 'mony_sekcie' && route.system?.[0]?.cache_control?.type === 'ephemeral')
   check(
-    "mony: a client's table of contents holds the client's guide and the app's texts, never the team's, the notes or the code",
-    toc.includes('Návod pre klientov') && toc.includes('Texty aplikácie klienta') && !toc.includes('Návod pre účtovníčky') && !toc.includes('Texty časti pre tím') && !toc.includes('Pracovné poznámky') && !toc.includes('Mapa kódu') && !toc.includes('Podklady pre správcu'),
+    "mony: a client's table of contents holds the site's and the app's texts, never the team's, the notes or the code",
+    toc.includes('Texty aplikácie klienta') && !toc.includes('Texty časti pre tím') && !toc.includes('Pracovné poznámky') && !toc.includes('Mapa kódu') && !toc.includes('Podklady pre správcu'),
   )
+  const systemText = (a) => (a?.system ?? []).map((b) => String(b?.text ?? '')).join('\n')
   let answer = mony.answers[mony.answers.length - 1]
-  let system = String(answer?.system?.[0]?.text ?? '')
+  let system = systemText(answer)
+  check(
+    "mony: the role's whole guide and the rules are one cached block, the page and the picked sections a second one",
+    answer?.system?.length === 2 && answer.system[0].cache_control?.type === 'ephemeral' && !answer.system[1].cache_control && answer.system[0].text.includes('Návod pre klientov') && !answer.system[0].text.includes('/app/platby?') && answer.system[1].text.includes('stránke /app/platby'),
+  )
   check(
     "mony: a client's answer is written from the client's knowledge alone, with the page and the rules against making things up",
     system.startsWith('Pokyny pre asistenta Mony') && system.includes('nikdy nie „som si“') && system.includes('S čím Vám môžem pomôcť') && system.includes('klient Firmony') && system.includes('/app/platby') && !system.includes('?filter') && system.includes('Nič nevymýšľaš') && system.includes('Návod pre klientov') && !system.includes('Podklady pre správcu') && !system.includes('Mapa kódu') && !system.includes('0,50 € doklad'),
   )
   check(
-    'mony: the conversation goes along as alternating turns, a user first, the question last, nothing else',
-    answer?.stream === true && answer.model === 'claude-haiku-5-5' && JSON.stringify(answer.messages) === JSON.stringify([{ role: 'user', content: 'Druhá otázka' }, { role: 'assistant', content: 'Prvá odpoveď' }, { role: 'user', content: 'Ako nastavím banku?' }]),
+    'mony: Claude Sonnet 5.5 answers, the conversation going along as alternating turns, a user first, the question last',
+    answer?.stream === true && answer.model === 'claude-sonnet-5-5' && answer.output_config?.effort === 'medium' && JSON.stringify(answer.messages) === JSON.stringify([{ role: 'user', content: 'Druhá otázka' }, { role: 'assistant', content: 'Prvá odpoveď' }, { role: 'user', content: 'Ako nastavím banku?' }]),
   )
   const event = await db.prepare("SELECT company_id, subject, detail FROM events WHERE action = 'mony.answered' AND user_id = 'u-mony' ORDER BY rowid DESC LIMIT 1").first()
   const detail = JSON.parse(event?.detail ?? '{}')
@@ -75,17 +80,17 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   res = await ask(accountant, { question: 'Ako podám DPH?', page: '/ucto/terminy', history: [] })
   await res.text()
   const accToc = String(mony.routes[mony.routes.length - 1]?.system?.[0]?.text ?? '')
-  system = String(mony.answers[mony.answers.length - 1]?.system?.[0]?.text ?? '')
+  system = systemText(mony.answers[mony.answers.length - 1])
   check(
     "mony: an accountant's knowledge adds the team's workflow and texts, never the administrator's notes or the code",
-    res.status === 200 && accToc.includes('Návod pre účtovníčky') && accToc.includes('Texty časti pre tím') && accToc.includes('Návod pre klientov') && !accToc.includes('Podklady pre správcu') && !accToc.includes('Mapa kódu') && system.includes('účtovníčka Firmony') && !system.includes('Tykáš'),
+    res.status === 200 && system.includes('Návod pre účtovníčky') && accToc.includes('Texty časti pre tím') && system.includes('Návod pre klientov') && !system.includes('Podklady pre správcu') && !accToc.includes('Podklady pre správcu') && !accToc.includes('Mapa kódu') && system.includes('účtovníčka Firmony') && system.includes('/ucto/incidenty') === false && !system.includes('Tykáš'),
   )
   mony.pick = ['Mapa kódu src/app']
   res = await ask(admin, { question: 'Kde je párovanie platieb?', page: '/ucto', history: [] })
   await res.text()
   const admToc = String(mony.routes[mony.routes.length - 1]?.system?.[0]?.text ?? '')
-  system = String(mony.answers[mony.answers.length - 1]?.system?.[0]?.text ?? '')
-  check('mony: the administrator gets everything: the notes, the docs and the map of the code', res.status === 200 && admToc.includes('Pracovné poznámky') && admToc.includes('Mapa kódu') && admToc.includes('Podklady pre správcu') && system.includes('Tykáš') && system.includes('[Mapa kódu src/app]'))
+  system = systemText(mony.answers[mony.answers.length - 1])
+  check('mony: the administrator gets everything: the notes, the docs and the map of the code', res.status === 200 && admToc.includes('Pracovné poznámky') && admToc.includes('Mapa kódu') && system.includes('Podklady pre správcu') && system.includes('Návod pre účtovníčky') && system.includes('Tykáš') && system.includes('[Mapa kódu src/app]'))
   mony.pick = null
   await db.prepare("UPDATE sessions SET verified_at = ? WHERE user_id = 'u-mony-acc'").bind(nowS - 13 * 3600).run()
   res = await ask(accountant, { question: 'Ako podám DPH?', history: [] })
@@ -114,7 +119,7 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   text = await res.text()
   check('mony: an answer the token limit ended says so', res.status === 200 && text.includes('Odpoveď sa prerušila'))
   res = await ask(client, { question: 'Ako pridám doklad?' })
-  check('mony: an answer that ended by itself says nothing more', res.status === 200 && !(await res.text()).includes('Odpoveď sa prerušila') && mony.answers.at(-1).max_tokens === 4000)
+  check('mony: an answer that ended by itself says nothing more', res.status === 200 && !(await res.text()).includes('Odpoveď sa prerušila') && mony.answers.at(-1).max_tokens === 6000)
   await db.prepare('UPDATE assistant_control SET enabled = 0 WHERE id = 1').run()
   res = await ask(client, { question: 'Ako pridám doklad?' })
   check("mony: the assistant's switch turns Mony off too", res.status === 503 && (await res.json()).error.includes('vypnutá'))
@@ -131,7 +136,7 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   res = await ask('', { question: 'Koľko stojí účtovníctvo?', page: '/', history: [] })
   text = await res.text()
   const visitorToc = String(mony.routes[mony.routes.length - 1]?.system?.[0]?.text ?? '')
-  system = String(mony.answers[mony.answers.length - 1]?.system?.[0]?.text ?? '')
+  system = systemText(mony.answers[mony.answers.length - 1])
   const visit = await db.prepare("SELECT user_id, company_id, detail FROM events WHERE action = 'mony.answered' AND subject = 'public' ORDER BY rowid DESC LIMIT 1").first()
   check(
     'mony: a visitor gets an answer from the public knowledge alone, and nobody is kept',
@@ -139,7 +144,7 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   )
   res = await ask(admin, { question: 'Koľko zarábame?', page: '/', history: [] })
   await res.text()
-  system = String(mony.answers[mony.answers.length - 1]?.system?.[0]?.text ?? '')
+  system = systemText(mony.answers[mony.answers.length - 1])
   check('mony: on the site Mony is the visitors\' assistant even for somebody signed in', res.status === 200 && system.includes('návštevník webu') && !system.includes('Podklady pre správcu'))
   mony.pick = null
   await db.prepare('INSERT INTO throttle (key, bucket, hits, expires_at) VALUES (?, ?, 30, ?) ON CONFLICT(key, bucket) DO UPDATE SET hits = 30').bind(sha('mony-ip:203.0.113.70'), Math.floor(Date.now() / 1000 / 86400), nowS + 2 * 86400).run()

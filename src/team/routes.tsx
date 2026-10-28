@@ -212,6 +212,7 @@ import { dataRevision } from '../app/handover-store'
 import { sensitivePath } from '../security/policy'
 import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
+import { leastLoadedAccountant } from './assign'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
 import { latestOrderOfRequest, renewOrderStatement, orderOf, acceptedAs, type Order } from '../order'
@@ -859,7 +860,8 @@ teamRoutes.get('/klienti/novy', async (c) => {
     email: r?.email ?? '',
     plan: r && PLANS.some((p) => p.id === r.plan) ? r.plan : 'start',
     vat: false,
-    accountant: '',
+    // The accountant with the fewest clients is offered first (team/assign.ts); the administrator may pick another.
+    accountant: (await leastLoadedAccountant(c.env.DB)) ?? '',
     welcome: true,
     request: r?.id ?? '',
     start: startMonths(dayOf(now()))[0] ?? '',
@@ -5795,7 +5797,7 @@ async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode =
     : null
   return shell(c, 'requests', 'Posúdenie pred podpisom', <ContractReviewPage requestId={id} order={order}
     offerHash={order ? await orderOfferHash(order) : ''} review={order ? await latestOrderReview(c.env.DB, order.id) : null}
-    people={people.results} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} linkSentAt={sent?.at ?? null}
+    people={people.results} suggested={await leastLoadedAccountant(c.env.DB)} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} linkSentAt={sent?.at ?? null}
     flash={c.req.query('ok') === 'odkaz' ? 'Odkaz na zmluvu sme poslali tomu, kto za firmu koná.' : c.req.query('ok') === 'obnovena' ? 'Objednávka platí ďalších 30 dní. Posúďte ju a odkaz pošleme tomu, kto za firmu koná.' : undefined} error={error} />, status)
 }
 

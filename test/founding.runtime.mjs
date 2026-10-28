@@ -4,6 +4,7 @@
 // the deposit held until the commitment's last months, the company's approval, and an application that lapses and goes.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
+import { leastLoadedAccountant } from '../.wrangler/dist/stores.js'
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode('TEST-ONLY identity document photo, synthetic')])
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new TextEncoder().encode('TEST-ONLY back side, synthetic')])
@@ -166,6 +167,7 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   res = await officer.post(`/ucto/zalozenia/${row.id}/registracia`, { ico: '55012345', vznik: '' })
   check('founding: a company of another name in the register is not taken for it', res.status === 422 && (await db.prepare('SELECT status FROM foundings WHERE id = ?').bind(row.id).first()).status === 'filed')
   const welcomeBefore = (await sent()).length
+  const leastLoaded = await leastLoadedAccountant(db)
   res = await officer.post(`/ucto/zalozenia/${row.id}/registracia`, { ico: '56677774', vznik: '' })
   await settle()
   row = await db.prepare('SELECT * FROM foundings WHERE id = ?').bind(row.id).first()
@@ -177,6 +179,7 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
       Boolean(await db.prepare("SELECT 1 AS x FROM members m JOIN users u ON u.id = m.user_id WHERE m.company_id = ? AND m.role = 'owner' AND u.email = 'zakladatel@founding.test'").bind(company.id).first()) &&
       (await sent()).slice(welcomeBefore).some((m) => m.to.toLowerCase() === 'zakladatel@founding.test' && m.text.includes('/app/vstup?t=')),
   )
+  check('founding: the new company goes to the accountant with the fewest clients, with nobody asked', Boolean(leastLoaded) && company?.accountant_id === leastLoaded, `${leastLoaded} ${company?.accountant_id}`)
 
   // The company in the app: it approves the contract (§ 64), and its deposit waits for the commitment's last months.
   await checkFoundingCompany({ db, files, get, post, settle, sent, client: as((await signIn('zakladatel@founding.test')).cookie), companyId: company.id, foundingId: row.id, nowS, freshAdmin, purgeFoundings, keep })

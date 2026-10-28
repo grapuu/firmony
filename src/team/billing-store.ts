@@ -208,7 +208,7 @@ export async function issueBill(
   env: { DB: D1Database; FILES?: R2Bucket },
   operator: Company,
   bill: ClientBill,
-  user: string,
+  user: string | null,
   today: string,
   origin: string,
 ): Promise<{ result: 'issued' | 'empty' | 'billed' | 'iban'; invoiceId?: string }> {
@@ -415,8 +415,10 @@ export async function undelivered(db: D1Database, limit = 20): Promise<string[]>
 }
 
 /**
- * The schedule's part: copies that did not arrive are delivered again, and in the first five days of a month, from
- * nine in the morning, the administrators are rung once that the month's invoices wait to be issued.
+ * The schedule's part: copies that did not arrive are delivered again; in the first five days of a month, at nine in
+ * the morning, every bill with nothing to look at is issued by itself, as the administrator's "Vystaviť všetky" issues
+ * it (his word of 28 October 2026: the firm runs without his attention); and the administrators are rung once only
+ * when some bill waits for them (a note to check, a price to agree).
  */
 export async function billingScheduled(env: { DB: D1Database; FILES?: R2Bucket }, at: number, origin: string): Promise<void> {
   const db = env.DB
@@ -425,8 +427,18 @@ export async function billingScheduled(env: { DB: D1Database; FILES?: R2Bucket }
   // Looked at once an hour, in the first quarter of it: working out every client's month is not for every run.
   if (clock.date > 5 || clock.hour < 9 || clock.minute >= 15) return
   const month = clock.day.slice(0, 7)
+  const operator = await operatorOf(db)
+  if (!operator) return
+  // Once a day, at nine: a bill issued is never issued again (billing_items), so a later run finds nothing of it.
+  if (clock.hour === 9 && operator.invoiceIban)
+    for (const bill of (await billingDrafts(db, month)).filter((b) => issuable(b) && b.draft.flags.length === 0)) {
+      const done = await issueBill(env, operator, bill, null, clock.day, origin).catch((error) => {
+        console.error('billing auto', error instanceof Error ? error.name : 'error')
+        return null
+      })
+      if (done?.result === 'iban') break
+    }
   if (await db.prepare('SELECT 1 AS x FROM outbox WHERE id LIKE ?').bind(`bell:billing:${month}:%`).first()) return
-  if (!(await operatorOf(db))) return
   if (!(await billingDrafts(db, month)).some(issuable)) return
   const admins = await db.prepare("SELECT email FROM users WHERE team = 'admin'").all<{ email: string }>()
   if (admins.results.length > 0)

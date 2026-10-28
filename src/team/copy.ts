@@ -673,7 +673,7 @@ export const team = typesetAll({
     },
     drafts: {
       title: (month: string) => typeset(`Na vystavenie za ${month}`),
-      lead: (iban: string) => typeset(`Splatnosť 14 dní, na účet ${iban}. Čo sa vystaví, sa už druhýkrát nevystaví.`),
+      lead: (iban: string) => typeset(`Splatnosť 14 dní, na účet ${iban}. Faktúry bez poznámky vystaví aplikácia sama 1. až 5. dňa v mesiaci o 9:00. Čo sa vystaví, sa už druhýkrát nevystaví.`),
       none: 'Tento mesiac nie je čo vystaviť.',
       docs: (n: number) => typeset(`Minulý mesiac ${n} ${n === 1 ? 'doklad' : n >= 2 && n <= 4 ? 'doklady' : 'dokladov'}`),
       issueOne: 'Vystaviť',

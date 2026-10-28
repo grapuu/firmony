@@ -3,7 +3,7 @@
 // the client told in the app, the payment paired from europio's bank, a reminder, and the schedule's part.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
-import { billingScheduled, deliverBill, matchCompany, monthStart, operatorOf } from '../.wrangler/dist/stores.js'
+import { billingDrafts, billingScheduled, deliverBill, issuable, matchCompany, monthStart, operatorOf } from '../.wrangler/dist/stores.js'
 
 const addMonths = (month, n) => {
   const i = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + n
@@ -169,14 +169,32 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
   )
   check('and delivering again changes nothing', (await deliverBill({ DB: db, FILES: files }, invoice.id, 'https://firmony.io')) === 'done')
 
-  // In the first days of the next month the administrators are rung once that its invoices wait.
+  // In the first days of the next month, at nine, every bill with nothing to look at is issued by itself, once and by
+  // nobody (his word of 28 October 2026: the firm runs without him); the administrators are rung only for what waits.
   const nextMonth = addMonths(month, 1)
   const ring = (monthStart(nextMonth) + 86400 + 9 * 3600 + 300) * 1000
+  const drafts = await billingDrafts(db, nextMonth)
+  const clean = drafts.filter((b) => issuable(b) && b.draft.flags.length === 0).map((b) => b.company.id).sort()
+  const waiting = drafts.some((b) => issuable(b) && b.draft.flags.length > 0)
   await billingScheduled({ DB: db, FILES: files }, ring, 'https://firmony.io')
   await billingScheduled({ DB: db, FILES: files }, ring + 3_600_000, 'https://firmony.io')
+  await billingScheduled({ DB: db, FILES: files }, ring + 86_400_000, 'https://firmony.io')
+  const auto = (await db.prepare('SELECT client_id, created_by, delivered_at FROM billing_invoices WHERE month = ? ORDER BY client_id').bind(nextMonth).all()).results
+  check(
+    'at nine on the first days of a month the bills with nothing to look at are issued by themselves, once, delivered',
+    clean.includes(companyId) && auto.map((r) => r.client_id).join(' ') === clean.join(' ') && auto.every((r) => r.created_by === null && Boolean(r.delivered_at)),
+    `${clean.join(',')} / ${JSON.stringify(auto)}`,
+  )
+  const mine = await db.prepare('SELECT i.id, i.number FROM invoices i JOIN billing_invoices b ON b.invoice_id = i.id WHERE b.client_id = ? AND b.month = ?').bind(companyId, nextMonth).first()
+  check(
+    'the client is told as of an invoice issued by hand: a message in the app and a doorbell waiting in the outbox',
+    Boolean(mine) &&
+      Boolean(await db.prepare('SELECT 1 AS x FROM outbox WHERE id = ?').bind(`bell:invoice:${mine.id}:tomas@zelenydvor.test`).first()) &&
+      Boolean(await db.prepare('SELECT 1 AS x FROM messages WHERE company_id = ? AND body LIKE ?').bind(companyId, `%${mine.number}%`).first()),
+  )
   const rung = await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE id LIKE ?').bind(`bell:billing:${nextMonth}:%`).first()
   const admins = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE team = 'admin'").first()
-  check('on the first days of a month the administrators are rung once', rung?.n === admins?.n && admins.n > 0, `${rung?.n} ${admins?.n}`)
+  check('the administrators are rung once, and only when a bill waits for them', rung?.n === (waiting ? admins?.n : 0) && admins.n > 0, `${rung?.n} ${admins?.n} ${waiting}`)
   // The contract's first month as it was, for the checks that follow.
   await db.prepare('UPDATE companies SET start_on = ? WHERE id = ?').bind(startedOn, companyId).run()
   await db.prepare('DELETE FROM closings WHERE company_id = ?').bind(companyId).run()

@@ -11,6 +11,22 @@ jednotlivých oblastí (DPH, kniha, závierka, mzdy) sú v pracovných poznámka
 - Všetko je v jednom systéme Firmony. Pohoda, Omega ani iný program netreba.
 - Prihlásenie: prihlasovací kľúč (odtlačok, tvár, PIN), jedným dotykom na /app/prihlasenie, rovno do /ucto. Tím potvrdzuje kľúč najviac raz za 12 hodín, citlivé kroky (napríklad balík podaní) chcú dotyk z posledných 5 minút. Prvý kľúč nového člena tímu sa aktivuje kódom od správcu, ktorý odovzdá mimo e-mailu.
 
+## Prvý deň v tíme
+
+1. Správca Vás pridá na /ucto/tim a príde Vám pozvánka e-mailom.
+2. Na /app/prihlasenie zadáte svoj e-mail a otvoríte odkaz z e-mailu (platí 20 minút, raz).
+3. Otvorí sa stránka Zabezpečenie prístupu (/auth). V časti „Nastaviť prihlasovací kľúč“ napíšete názov kľúča (napríklad pracovný notebook) a aktivačný kód od správcu. Kód Vám správca odovzdá osobne alebo telefonicky, nikdy e-mailom; platí 24 hodín a raz.
+4. Kľúč potvrdíte odtlačkom, tvárou alebo PIN-om zariadenia. Hneď pridajte aj záložný kľúč na inom zariadení (telefón alebo druhý počítač): pri strate jediného kľúča nepomôže ani nový e-mailový odkaz a obnovu musí schváliť ďalší správca.
+5. Odvtedy sa prihlasujete jedným dotykom na /app/prihlasenie a aplikácia Vás pustí rovno do /ucto. Nových klientov dostáva účtovníčka s najmenej klientmi (aplikácia ju navrhne alebo pridelí sama, správca to môže zmeniť); kým nemáte žiadneho, zoznam klientov je prázdny.
+- Mony (asistentka v rohu každej stránky) Vám vysvetlí akýkoľvek postup v aplikácii. Nevidí údaje klientov.
+
+## Čo vidíte a čo nie
+
+- Vidíte iba firmy, ktoré máte pridelené: ich doklady, platby, knihy, DPH, mzdy, závierku, podania, správy a Identifikáciu a riziko.
+- Kontaktné údaje klientov (e-maily a telefóny) aplikácia účtovníčkam nezobrazuje. S klientom komunikujete v Správach na stránke klienta; klient dostane e-mailom len upozornenie bez obsahu.
+- Žiadosti z webu, overenie nových klientov pred zmluvou, prihlášky na založenie s. r. o., fakturáciu Firmony a tím rieši správca. Interné oznámenie o podozrení vidí len jeho autor a určená osoba.
+- Citlivé kroky (stiahnutie balíka podaní, exporty) chcú dotyk kľúča z posledných 5 minút; aplikácia o neho požiada sama a potom sa vráti na rovnakú stránku.
+
 ## Denná práca
 
 1. Klienti (/ucto): pri každom klientovi je vidieť, čo čaká: doklady na zaúčtovanie, platby na kontrolu, nezodpovedané správy, platby bez dokladu u klienta. Zelená fajka znamená, že u klienta nič nečaká.
@@ -34,6 +50,21 @@ jednotlivých oblastí (DPH, kniha, závierka, mzdy) sú v pracovných poznámka
 - Zapína ho účtovníčka pre konkrétneho klienta na jeho stránke („Účtuje samo“). Zaúčtuje hneď, čo je pripravené, a potom pri každom behu plánovača.
 - Zaúčtuje sám iba doklad, kde všetko sedí: pravidlo dodávateľa použité aspoň dvakrát, prijatá faktúra alebo bloček, bežný náklad (materiál, palivo, energie, opravy, cestovné, služby, poplatky, poistenie, banka), najviac 1 700 €, v eurách, nie duplikát ani oprava, presne jedna banková platba rovnakej sumy, deň nie v budúcnosti a nie pred začiatkom kníh; u platiteľa DPH len tuzemský nákup, kde návrh sedí a obdobie nie je podané.
 - Takto zaúčtované doklady za posledný mesiac sú na stránke klienta na kontrolu. Ostatné čakajú vo fronte ako doteraz.
+- Kontrola: pri každom takom doklade napíšete „Výsledok posúdenia a dôvod“ (aspoň 12 znakov), potvrdíte, že ste posúdili pôvodný doklad, platbu a súlad s profilom klienta, a kliknete „Zapísať odborné posúdenie“. Doklad potom nesie značku „Odborne posúdené“. Ak treba niečo zmeniť, otvorte doklad a zaúčtujte ho inak; podozrivý prípad riešte interným oznámením na stránke Identifikácia a riziko.
+- Kedy zapnúť: Účtuje samo potrebuje pravidlá dodávateľov použité aspoň dvakrát, preto pomôže až vtedy, keď ste klientovi doklady pravidelných dodávateľov zaúčtovali s „Zapamätať pre dodávateľa“ a čítanie jeho dokladov sedí (Presnosť AI, /ucto/ai).
+
+## Výkaz práce a Vaša odmena
+
+- Výkaz práce (/ucto/vykaz, mesiac sa vyberá) spočíta Vašu prácu sám z toho, čo aplikácia zaznamenala, aj ako CSV pre Excel. Podľa neho fakturujete europio s. r. o. raz mesačne.
+- Sadzby (dohodnuté so správcom): 0,50 € za doklad, ktorý ste prvýkrát zaúčtovali alebo zahodili; 12 € za obdobie DPH s podaným riadnym priznaním; 6 € za každý iný mesiac klienta; 4 € za osobu v uzavretých mzdách mesačne; 90 € za podanú závierku s daňovým priznaním; 30 € za prevzatie nového klienta (raz). Správy sú v mesačnom poplatku. Oprava vlastnej chyby sa neplatí a doklady, ktoré zaúčtuje aplikácia sama, tiež nie.
+- Pod výkazom je medián minút na doklad (od otvorenia po zaúčtovanie).
+
+## Keď niečo nejde
+
+- Postup v aplikácii: opýtajte sa Mony.
+- Odborná otázka (zákon, výklad): rozhodujete Vy ako účtovníčka; Mony vysvetlí, ako aplikácia s vecou pracuje.
+- Chyba aplikácie (niečo počíta zle, stránka padá, chýba funkcia): napíšte správcovi na ahoj@firmony.io s adresou stránky a čo ste čakali. Klientovi medzitým napíšte do Správ, že to riešite.
+- Iba správca: pridelenie alebo odobratie klienta, nový člen tímu, obnova strateného kľúča, overenie klienta pred zmluvou, ukončenie zmluvy z našej strany.
 
 ## Stránka klienta (/ucto/klienti/:id)
 

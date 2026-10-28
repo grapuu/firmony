@@ -34,7 +34,7 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
     'mony browser: markup in an answer stays text',
     (await reply.locator('img').count()) === 0 && (await reply.textContent()).includes('<img src=x onerror=alert(1)>') && (await clientPage.evaluate(() => document.querySelectorAll('.mony img:not(.mony__avatar):not(.mony__face)').length)) === 0,
   )
-  check('mony browser: the question the page sent is the person\'s page', mony.answers.at(-1).system[0].text.includes('stránke /app/platby'))
+  check('mony browser: the question the page sent is the person\'s page', mony.answers.at(-1).system.map((b) => b.text).join('\n').includes('stránke /app/platby'))
   for (const width of [320, 390, 1440]) {
     await clientPage.setViewportSize({ width, height: 800 })
     const box = await clientPage.locator('#mony-panel').boundingBox()

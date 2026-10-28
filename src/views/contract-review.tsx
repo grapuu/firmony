@@ -113,12 +113,14 @@ export const ContractReviewPage: FC<{
   offerHash: string
   review: OrderReview | null
   people: { id: string; name: string }[]
+  /** The accountant with the fewest clients, offered first (team/assign.ts); null while the team has none. */
+  suggested?: string | null
   released: boolean
   /** When the director was last sent the link to the contract, or null. */
   linkSentAt?: number | null
   flash?: string
   error?: string
-}> = ({ requestId, order, offerHash, review, people, released, linkSentAt = null, flash, error }) => (
+}> = ({ requestId, order, offerHash, review, people, suggested = null, released, linkSentAt = null, flash, error }) => (
   <>
     <a class="back" href="/ucto/ziadosti">
       Žiadosti z webu
@@ -244,7 +246,10 @@ export const ContractReviewPage: FC<{
           <select class="field__input" id="review-accountant" name="accountant">
             <option value="">Vyberte člena tímu</option>
             {people.map((p) => (
-              <option value={p.id}>{p.name}</option>
+              <option value={p.id} selected={p.id === suggested}>
+                {p.name}
+                {p.id === suggested ? ' (najmenej klientov)' : ''}
+              </option>
             ))}
           </select>
         </div>
