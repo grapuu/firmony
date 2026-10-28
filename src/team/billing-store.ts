@@ -8,6 +8,7 @@
 // Issuing is two steps. The first writes the invoice and claims what it bills (billing_items: a key billed twice
 // fails the whole batch, so nothing is billed twice however often the button is pressed). The second delivers the
 // client's copy; it is idempotent and the schedule repeats it for a copy that did not arrive.
+import { FORMATION } from '../config'
 import { now } from '../db'
 import { formatEurExact } from '../format'
 import { textDay } from '../app/booking'
@@ -86,7 +87,24 @@ export interface ClientBill {
   corrupt: boolean
   /** Documents that came in last month, for the page. */
   docsLastMonth: number
+  /** The deposit of a company formed through the s. r. o. for 1 € that this bill may take (src/founding/): none before the
+   *  last months of the commitment, unless the contract ends sooner. */
+  prepaidCents: number
 }
+
+/**
+ * Whether a bill of this month may take the deposit (article 3 of the formation contract): from the commitment's 31st
+ * month, counting the company's first month as the first, or once the contract has an end (notice given or ended by us),
+ * when the deposit goes to the last bills, the exit fee and what is unpaid. Before that the monthly fee is paid as usual.
+ */
+export function depositDue(company: Pick<Company, 'startOn' | 'endsOn'>, month: string): boolean {
+  if (company.endsOn) return true
+  if (!company.startOn) return false
+  return month >= addMonths(company.startOn.slice(0, 7), FORMATION.depositFromMonth - 1)
+}
+
+/** What of a client's prepayment this bill takes: the bill's total at most. */
+export const creditOf = (bill: Pick<ClientBill, 'prepaidCents' | 'draft'>) => Math.max(0, Math.min(bill.prepaidCents, bill.draft.totalCents))
 
 /**
  * Every client's draft for the month an invoice is issued in: the clients with a contract that runs or ran, whose
@@ -98,7 +116,7 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
   const months = monthsFrom(first, addMonths(month, -1))
   const bounds = [...months, month].map(monthStart)
   const bucket = months.map((m, i) => `WHEN d.created_at < ${bounds[i + 1]} THEN '${m}'`).join(' ')
-  const [companyRows, tariffRows, docRows, employeeRows, closingRows, billedRows] = await db.batch<Row>([
+  const [companyRows, tariffRows, docRows, employeeRows, closingRows, billedRows, prepaidRows, foundingRows] = await db.batch<Row>([
     db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE ${where} ORDER BY c.name`),
     db.prepare(`SELECT t.company_id, t.data FROM billing_tariffs t JOIN companies c ON c.id = t.company_id WHERE ${where}`),
     // A document counts in the month it came to us, once: not a duplicate, not discarded, and not our own invoice.
@@ -114,7 +132,13 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
          FROM closings k JOIN companies c ON c.id = k.company_id WHERE ${where} AND k.filed_at IS NOT NULL`,
     ),
     db.prepare(`SELECT b.client_id, b.key FROM billing_items b JOIN companies c ON c.id = b.client_id WHERE ${where}`),
+    db.prepare(`SELECT c.id, c.prepaid_cents FROM companies c WHERE ${where} AND c.prepaid_cents > 0`),
+    db.prepare(`SELECT f.company_id, f.exit_decision FROM foundings f JOIN companies c ON c.id = f.company_id WHERE ${where}`),
   ])
+  // A formed company's commitment: the exit fee is owed when the company gave notice before its end, or when we ended the
+  // contract for its breach (the designated person's decision 'charge'); never when it was waived.
+  const commitments = new Map((foundingRows?.results ?? []).map((r) => [String(r.company_id), r.exit_decision === null || r.exit_decision === undefined ? null : String(r.exit_decision)]))
+  const prepaid = new Map((prepaidRows?.results ?? []).map((r) => [String(r.id), Number(r.prepaid_cents)]))
   const companies = (companyRows?.results ?? []).map(companyOf)
   const paper = new Map<string, Tariff>()
   for (const r of tariffRows?.results ?? []) {
@@ -163,8 +187,11 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
             people,
             closings: closings.get(company.id) ?? [],
             billed: billed.get(company.id) ?? new Set(),
+            commitment: commitments.has(company.id)
+              ? { months: FORMATION.commitMonths, maxMonths: FORMATION.exitMaxMonths, charge: commitments.get(company.id) === 'charge' || (commitments.get(company.id) !== 'waive' && company.noticeSide === 'client') }
+              : null,
           })
-    out.push({ company, draft, corrupt: tariff === 'corrupt', docsLastMonth: docsOf(company.id, tariff).get(addMonths(month, -1)) ?? 0 })
+    out.push({ company, draft, corrupt: tariff === 'corrupt', docsLastMonth: docsOf(company.id, tariff).get(addMonths(month, -1)) ?? 0, prepaidCents: depositDue(company, month) ? (prepaid.get(company.id) ?? 0) : 0 })
   }
   return out
 }
@@ -199,6 +226,13 @@ export async function issueBill(
     vatRate,
     baseCents: l.cents,
   }))
+  // The deposit of the s. r. o. for 1 € (article 3 of its contract), credited to the last bills of the commitment in the
+  // order they fall due: a line of its own that takes it off, never more than the bill. It was paid before europio was a
+  // VAT payer and bore no VAT, so it lowers the base and carries no VAT of its own; the supply's VAT stays whole. The companies' CHECK keeps the
+  // rest at nought or above, so two bills issued at once cannot credit the same money twice.
+  const credit = creditOf(bill)
+  if (credit > 0)
+    lines.push({ position: lines.length + 1, description: 'Započítaná zábezpeka zo zmluvy o založení spoločnosti', quantityMilli: -1000, unit: 'ks', unitCents: credit, vatRate, baseCents: -credit, vatCents: 0 })
   const totals = totalsOf(lines, operator.vatPayer)
   const due = bratislavaDayAfter(today, 14)
   const values: InvoiceValues = {
@@ -222,8 +256,9 @@ export async function issueBill(
     await db.batch([
       ...saveInvoiceStatements(db, { id, company: operator.id, user, issue: true, values, lines, totals, issued: today, delivered: today, due, token: newToken(), iban: operator.invoiceIban, documentId }),
       db
-        .prepare('INSERT INTO billing_invoices (invoice_id, client_id, month, document_id, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(id, client.id, today.slice(0, 7), clientDocument, now(), user),
+        .prepare('INSERT INTO billing_invoices (invoice_id, client_id, month, document_id, created_at, created_by, prepaid_cents) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, client.id, today.slice(0, 7), clientDocument, now(), user, credit),
+      ...(credit > 0 ? [db.prepare('UPDATE companies SET prepaid_cents = prepaid_cents - ? WHERE id = ?').bind(credit, client.id)] : []),
       // A key billed already (two administrators at once, a reload) fails the whole batch: nothing is billed twice.
       ...bill.draft.lines.map((l) => db.prepare('INSERT INTO billing_items (client_id, key, invoice_id, cents) VALUES (?, ?, ?, ?)').bind(client.id, l.key, id, l.cents)),
       eventStatement(db, { company: operator.id, user, action: 'billing.issued', subject: id, detail: { client: client.id, total: totals.total, keys: bill.draft.lines.map((l) => l.key) } }),

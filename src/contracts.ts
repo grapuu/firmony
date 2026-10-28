@@ -1,6 +1,7 @@
 import { admissionForOrder, dossierOfOrder, sourceIntact, bankOriginalsIntact } from './aml/store'
 import type { Admission } from './aml/model'
-import { CLOSING_PRICE, OFFER, OFFLINE_TERMS, OPERATOR, PAYROLL_PRICE, PLANS, TERMS_VERSION, type PlanId } from './config'
+import { CLOSING_PRICE, FORMATION, OFFER, OFFLINE_TERMS, OPERATOR, PAYROLL_PRICE, PLANS, TERMS_VERSION, type PlanId } from './config'
+import { formationContractText, type FormationParties } from './content/formation-contract'
 import { TERMS, TERMS_SUBTITLE, TERMS_TITLE, termsText, type TermsSection } from './content/terms'
 import archive20261013 from './content/terms-archive/2026-10-13.json'
 import archive20261018 from './content/terms-archive/2026-10-18.json'
@@ -62,7 +63,18 @@ export function contractCatalogue() {
     firstMonthFree: OFFER.firstMonthFree,
     issuedInvoicesFree: OFFER.issuedInvoicesFree,
     scope: 'reviewed-micro-v1',
+    // The s. r. o. for 1 € (src/founding/): its terms and its contract with blanks, so that the lawyer's and the insurer's
+    // approval covers it too, and a change of its wording or its money asks for a new one.
+    formation: { terms: FORMATION, contract: formationContractText(FORMATION_SAMPLE) },
   }
+}
+
+/** The formation contract with blanks: what the approval reads, the parties aside. */
+const FORMATION_SAMPLE: FormationParties = {
+  founder: { name: '[zakladateľ]', born: '[narodený]', address: '[trvalý pobyt]' },
+  company: { name: '[obchodné meno]', seat: '[sídlo]', capitalCents: 500_000, activities: ['[predmet podnikania]'] },
+  plan: { name: '[balík]', priceCents: 0 },
+  payment: { iban: '[účet]', vs: '[variabilný symbol]' },
 }
 export const contractCatalogueHash = () => sha256Hex(JSON.stringify(contractCatalogue()))
 

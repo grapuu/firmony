@@ -31,6 +31,11 @@ export function ringStatement(db: D1Database, kind: string, about: string, to: s
 const days = `platí ${TEAM.welcomeDays} dní`
 
 export const bell = {
+  // The founder of an s. r. o. for 1 € (src/founding/): the application by its link, which is the key to it.
+  foundingLink: (link: string, days: number) =>
+    ring('prihláška na založenie s. r. o.', `tu je odkaz na Vašu prihlášku na založenie s. r. o. za 1 €. Prihlášku dokončite do ${days} dní, odkazom ju otvoríte kedykoľvek:`, link, ['Odkaz nikomu nepreposielajte, je to kľúč k Vašej prihláške.']),
+  foundingNews: (link: string) => ring('správa k založeniu s. r. o.', 'k založeniu Vašej s. r. o. je nová správa. Prečítate si ju v prihláške:', link),
+  teamFounding: (link: string) => ring('prihláška na založenie s. r. o.', 'prihláška na založenie s. r. o. čaká na overenie určenou osobou:', link),
   managedTakeoverQuestion: (link: string) => ring('doplnenie k prevzatiu', 'pri prevzatí účtovníctva potrebujeme Vaše doplnenie. Otázku a aktuálny priebeh si otvoríte po prihlásení:', link),
   teamManagedTakeover: (link: string) => ring('koordinácia prevzatia', 'klient požiadal o koordináciu prevzatia účtovníctva. Kontakt a rozsah si pozrite po prihlásení:', link),
   // To the people of a client's company.

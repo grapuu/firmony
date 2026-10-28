@@ -179,6 +179,8 @@ import {
   type Who,
 } from './store'
 import { readInvoice, readStatement, type Reading } from './xml'
+import { approveBy, approveForCompany, foundingOfCompany } from '../founding/store'
+import { FoundingApprovePage } from '../views/founding'
 
 export interface AppBindings extends ContractBindings, SecurityBindings, PeppolEnv {
   DB: D1Database
@@ -888,11 +890,12 @@ appRoutes.get('/', async (c) => {
       .first<{ upload: number; declaration: number; email: number; poa: number; people: number; situation: string | null; switched: number }>(),
     unseenFromFirmony(db, company),
   ])
-  const [suggested, dues, bills, managed] = await Promise.all([
+  const [suggested, dues, bills, managed, founding] = await Promise.all([
     suggestions(db, company, missingAll),
     companyDeadlines(db, company, day),
     billRows(db, day, company, 24).then((rows) => rows.filter((r) => r.state !== 'paid')),
     managedHandover(db,company),
+    who.company.foundingId ? foundingOfCompany(db, company) : Promise.resolve(null),
   ])
   const ready = bankReady(c.env)
   // A consent of Enable Banking or a token of Fio that ends; a statement from an account the company does not have
@@ -923,6 +926,7 @@ appRoutes.get('/', async (c) => {
     t.nav.home,
     <Overview
       managedTakeover={managed}
+      founding={founding && !founding.approvedAt && who.company.startOn ? { dueOn: approveBy(who.company.startOn) } : null}
       firstName={firstName(who.user.name)}
       missing={missingAll.slice(0, 6)}
       missingCount={byMonth.results.reduce((total, row) => total + row.n, 0)}
@@ -2746,6 +2750,24 @@ appRoutes.post('/prechod/odvolat', async (c) => {
   if (body.firma !== who.company.id || typeof body.ziadost !== 'string' || !/^\d+$/.test(String(body.verzia))) return switchPage(c,{error:'Firma alebo verzia žiadosti sa zmenila. Obnovte stránku.'},409)
   const changed = await cancelHandover(c.env.DB,who.company.id,who.user.id,body.ziadost,Number(body.verzia))
   return changed ? c.redirect('/app/prechod?ok=odvolane#koordinacia',303) : switchPage(c,{error:'Žiadosť sa medzitým zmenila alebo je už uzavretá. Obnovte stránku.'},409)
+})
+
+// A company formed through the s. r. o. for 1 € (src/founding/): its contract, the deposit held for its last bills, and
+// the approval of the contract by the company once it exists (§ 64 ods. 1 of the Commercial Code), by its owner.
+appRoutes.get('/zalozenie', async (c) => {
+  const who = c.get('who')
+  const f = who.company.foundingId ? await foundingOfCompany(c.env.DB, who.company.id) : null
+  if (!f) return c.notFound()
+  const left = await c.env.DB.prepare('SELECT prepaid_cents FROM companies WHERE id = ?').bind(who.company.id).first<{ prepaid_cents: number }>()
+  return shell(c, 'company', 'Zmluva o založení', <FoundingApprovePage f={f} owner={who.role === 'owner'} prepaidLeft={Number(left?.prepaid_cents ?? 0)} dueOn={who.company.startOn ? approveBy(who.company.startOn) : null} today={today()} />)
+})
+
+appRoutes.post('/zalozenie/schvalit', async (c) => {
+  const who = c.get('who')
+  const body = await c.req.parseBody()
+  if (who.role !== 'owner' || body.suhlas !== '1') return c.redirect('/app/zalozenie', 303)
+  await approveForCompany(c.env.DB, who.company.id, who.user.id)
+  return c.redirect('/app/zalozenie?ok=schvalene', 303)
 })
 
 // Company formation as a case of an existing client (G4, 22 October 2026) was taken out on 26 October 2026: it asked

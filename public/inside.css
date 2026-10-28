@@ -8237,3 +8237,19 @@ a.wtable__name {
 .people__keys {
   margin-top: 14px;
 }
+
+/* The formation contract as the founder got it (views/founding.tsx): kept as text, wrapped. */
+.found__pre {
+  max-height: 420px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: 12px;
+  background: var(--mist);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

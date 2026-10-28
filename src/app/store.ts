@@ -49,6 +49,8 @@ export interface Company {
   noticeBy: string | null
   noticeSide: 'client' | 'firmony' | null
   endsOn: string | null
+  /** The application for the s. r. o. for 1 € it was formed through (src/founding/), if it was. */
+  foundingId?: string | null
   /** How the company keeps its stock (stock.ts): continuously (A), by its counts (B), or not at all. */
   stockMethod?: 'A' | 'B' | null
   /** The years it deducts VAT in proportion (§ 50, vat-ratio.ts): each year's coefficient and, once confirmed, its settlement. */
@@ -247,7 +249,7 @@ export interface InvoiceNumbering {
 
 export const COMPANY_COLUMNS = `c.id, c.aml_archived_at, c.created_at, c.name, c.ico, c.dic, c.icdph, c.address, c.register_line, c.vat_payer, c.plan, c.inbox,
   c.accountant_id, acc.name AS accountant_name, acc.email AS accountant_email, c.note, c.demo, c.invoice_iban, c.invoice_due_days, c.invoice_footer,
-  c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on,
+  c.contract_at, c.signed_by, c.signed_role, c.legal_form, c.terms_version, c.start_on, c.notice_at, c.notice_by, c.notice_side, c.ends_on, c.founding_id,
   c.vat_7a, c.vat_quarterly, c.vat_since, c.oss_since, c.intrastat, c.tax_office, c.tax_account, c.vat_carry, c.approvals, c.approval_two_from, c.dunning, c.autobook,
   c.invoice_prefix, c.invoice_sep, c.invoice_digits, c.invoice_from_year, c.invoice_from, c.logo_key, c.logo_type, c.invoicing_only, c.register_found,
   (SELECT s.method FROM stock_settings s WHERE s.company_id = c.id) AS stock_method,
@@ -293,6 +295,7 @@ export function companyOf(row: Row): Company {
     noticeBy: str(row.notice_by),
     noticeSide: row.notice_side === 'firmony' ? 'firmony' : row.notice_at ? 'client' : null,
     endsOn: str(row.ends_on),
+    foundingId: str(row.founding_id),
     stockMethod: row.stock_method === 'A' || row.stock_method === 'B' ? row.stock_method : null,
     vatRatios: ratiosOf(row.vat_ratios),
     assetVat: assetVatsOf(row.asset_vat),

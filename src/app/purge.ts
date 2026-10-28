@@ -15,6 +15,7 @@ import { bratislava } from './remind'
 import { evidenceBlocked, PURGE_GRACE_SECONDS } from '../incidents/store'
 import { pendingFilingsSql } from '../filings/model'
 import { socialPendingPayrollSql as pendingPayrollSql } from '../payroll-reporting/sql'
+import { forgetFoundingsOf } from '../founding/store'
 
 export interface PurgeEnv extends BankEnv {
   FILES?: R2Bucket
@@ -307,7 +308,10 @@ async function forgetCompanyRecords(env: PurgeEnv, id: string, today: string): P
     await deletePrefix(env.FILES, `companies/${id}/`, new Set(), canDelete)
     for (const order of orders.results) await deletePrefix(env.FILES, `onboarding/${order.id}/`, new Set(), canDelete)
   }
+  // The application it was formed through (src/founding/): the founder's identification goes with the company's records.
+  const founding = await forgetFoundingsOf(env, id)
   await db.batch([
+    ...founding,
     ...['aml_checks','aml_decisions','aml_place_checks','aml_policy_reviews'].map((table) => db.prepare(`DELETE FROM ${table} WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))`).bind(id)),
     db.prepare('DELETE FROM aml_bank_evidence WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))').bind(id),
     db.prepare('DELETE FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1)').bind(id),

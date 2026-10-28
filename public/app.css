@@ -6303,3 +6303,196 @@ textarea {
     padding: 6px;
   }
 }
+
+/* The s. r. o. for 1 €: the offer, the founder's application step by step (views/founding.tsx). ------------- */
+
+.found__box,
+.found__flow {
+  margin-top: 24px;
+}
+
+.found__flow {
+  display: grid;
+  gap: 16px;
+}
+
+.found__steps,
+.found__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.25em;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.found__eyebrow {
+  color: var(--dim);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.found__state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+.fstep__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fstep__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.fstep__num {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fstep--done .fstep__num {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.fstep--locked {
+  opacity: 0.62;
+}
+
+.found__ways {
+  margin-block: 4px;
+}
+
+.found__pay {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.found__qr {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.found__qr svg {
+  width: 168px;
+  height: 168px;
+  border-radius: 10px;
+}
+
+.found__pay > .small {
+  grid-column: 1 / -1;
+}
+
+.found__notes {
+  display: grid;
+  gap: 12px;
+}
+
+.found__notes p {
+  margin-top: 2px;
+  white-space: pre-line;
+}
+
+.found__help {
+  margin-top: 24px;
+}
+
+.found__cancel {
+  margin-top: 4px;
+}
+
+.found__path {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.found__path li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dim);
+}
+
+.found__dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.found__path .is-done {
+  color: var(--text);
+}
+
+.found__path .is-done .found__dot {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.found__path .is-now {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.found__path .is-now .found__dot {
+  border-color: var(--blue);
+  background: var(--blue);
+  box-shadow: 0 0 0 4px var(--blue-soft);
+}
+
+.found__contract {
+  display: grid;
+  gap: 24px;
+  margin-top: 32px;
+  padding: 0;
+  list-style: none;
+}
+
+.found__article {
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.found__point {
+  margin-top: 8px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.found__no {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .found__pay {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .found__qr svg {
+    width: 200px;
+    height: 200px;
+  }
+}

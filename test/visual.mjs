@@ -17,6 +17,7 @@ pages.push('managed-takeover-request.html','managed-takeover-client.html','manag
 pages.push('managed-takeover-choice.html')
 pages.push('assistant-client.html','assistant-answer.html','assistant-expert.html','assistant-team.html','assistant-control.html')
 pages.push('free-tools.html', 'free-invoice.html')
+pages.push('founding-landing.html', 'founding-data.html', 'founding-pay.html', 'founding-team.html', 'founding-progress.html', 'founding-approve.html')
 pages.push('analytics.html')
 pages.push('peppol-send.html', 'peppol-delivered.html', 'peppol-received.html')
 pages.push('signin.html', 'signin-quick.html', 'signin-confirm.html', 'mony-client.html')

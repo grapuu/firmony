@@ -27,6 +27,8 @@ export interface OverviewAction {
 
 export interface OverviewFacts {
   takeoverAction?: string | null
+  /** A company formed through the s. r. o. for 1 € whose contract its owner has not approved yet (§ 64 ods. 1). */
+  founding?: { dueOn: string } | null
   closed: boolean
   today: string
   owner: boolean
@@ -61,6 +63,8 @@ export function overviewActions(facts: OverviewFacts): OverviewAction[] {
     const n = facts.bankNotice
     add('bank', { ...text.bank, lead: n.kind === 'ended' ? app.bank.notice.ended(n.bank) : app.bank.notice.renew(n.bank, dayName(bratislavaDay(n.until))) }, bankRenewHref(n, facts.bankReady), n.kind === 'ended' ? 0 : 8, n.kind === 'renew' ? bratislavaDay(n.until) : null)
   }
+  if (facts.owner && facts.founding)
+    add('founding', { title: 'Schváľte zmluvu za firmu', lead: 'Zmluvu o založení a vedení účtovníctva ste podpísali ešte pred vznikom firmy. Teraz ju firma schváli jedným potvrdením.', button: 'Schváliť zmluvu' }, '/app/zalozenie', 0, facts.founding.dueOn)
   if (facts.owner && facts.confirmAccount) add('account', text.account, `#potvrdit-${facts.confirmAccount}`, 1)
   if (facts.statementDue) add('statement', { ...text.statement, lead: app.bank.statements.due.title(monthName(`${facts.statementDue}-01`)) }, '/app/banka#pridat', 2)
   if (facts.missing > 0) {

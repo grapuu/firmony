@@ -66,3 +66,5 @@ export { comparedOf } from '../src/team/ai-accuracy'
 export { reportsOf } from '../src/app/aml'
 export { dashboardOf, hasInvoicing } from '../src/analytics/store'
 export { costUsd } from '../src/analytics/model'
+
+export { purgeFoundings } from '../src/founding/store'

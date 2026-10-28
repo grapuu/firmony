@@ -1,4 +1,4 @@
-import {aml,archiveEnded,purgeCompany,forgetRecords,GUIDES,BUILD_METADATA,SCHEMA_VERSION,startMonths,TERMS_VERSION} from '../.wrangler/dist/stores.js'
+import {aml,archiveEnded,purgeCompany,forgetRecords,GUIDES,BUILD_METADATA,SCHEMA_VERSION,startMonths,TERMS_VERSION,purgeFoundings} from '../.wrangler/dist/stores.js'
 import {checkAmlAdmission,ensureAmlOfficer,seedAmlDossier,testDeclaration} from './aml.runtime.mjs'
 import { checkAmlFixes } from './aml-fixes.runtime.mjs'
 // The bundle that gets deployed, run in the real Workers runtime (workerd) with a local database, the pretend
@@ -82,6 +82,7 @@ import { validateXML } from 'xmllint-wasm'
 import { PEPPOL_TEST, PRETEND_MAIL, camtXml, pretendBank, pretendFio, pretendPeppol, readerAnswer, ecbAnswer, registerAnswer, statementMail } from './pretend.mjs'
 import { checkPeppolNetwork } from './peppol-network.runtime.mjs'
 import { checkPasskeySignin } from './passkey-signin.runtime.mjs'
+import { checkFoundingRuntime } from './founding.runtime.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -203,13 +204,14 @@ check(
 check(
   'the s. r. o. for 1 € is right under the opening, with its chip, its way in and every condition said',
   page.indexOf('id="sro-za-euro"') > page.indexOf('id="hero-title"') && page.indexOf('id="sro-za-euro"') < page.indexOf('id="ako-to-funguje"') &&
-    page.includes('href="#sro-za-euro"') && page.replace(/\u00a0/g, ' ').includes('Chcem s. r. o. za 1 €') && page.includes('href="/zacat?nova=1"') &&
-    ['aspoň 36 mesiacov', 'potom zmluva pokračuje bez viazanosti', 'prvé 3 mesiace platené vopred', 'osobné ručenie zakladateľa', 'najviac 12 mesačných poplatkov', 'nespája s prvým mesiacom zadarmo', 'Základné imanie', 'prvých 20 firiem'].every((t) => page.replace(/\u00a0/g, ' ').includes(t)) &&
+    page.includes('href="#sro-za-euro"') && page.replace(/\u00a0/g, ' ').includes('Chcem s. r. o. za 1 €') && page.includes('href="/zalozenie"') &&
+    ['aspoň 36 mesiacov', 'potom zmluva pokračuje bez viazanosti', 'kauciu 549 €', 'z posledných faktúr', 'platíte ho mesačne od vzniku firmy', 'osobne ručí', 'najviac 12', 'Základné imanie', 'prvých 20 firiem'].every((t) => page.replace(/\u00a0/g, ' ').includes(t)) &&
+    !page.replace(/\u00a0/g, ' ').includes('nespája s prvým mesiacom zadarmo') &&
     !page.includes('platí zakladateľ') && page.replace(/\u00a0/g, ' ').includes('Výnimkou je ponuka s. r. o. za 1 €'),
 )
 {
   const guide = (await (await get('/zalozenie-sro')).text()).replace(/\u00a0/g, ' ')
-  check('the guide to founding an s. r. o. offers it for 1 € at once', guide.includes('class="guide__deal"') && guide.includes('Chcem s. r. o. za 1 €') && guide.includes('href="/zacat?nova=1"') && guide.includes('href="/#sro-za-euro"'))
+  check('the guide to founding an s. r. o. offers it for 1 € at once', guide.includes('class="guide__deal"') && guide.includes('Chcem s. r. o. za 1 €') && guide.includes('href="/zalozenie"') && guide.includes('href="/#sro-za-euro"'))
 }
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/home.html`, page)
 check(
@@ -5381,5 +5383,6 @@ await checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, capture: process.
 await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, adminCookie: async () => { bossFresh = (await verifyBrowser('ahoj@firmony.io', bossFresh)).cookie; return bossFresh }, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPasskeySignin({ mf, db, post, sent, settle, as, nowS })
 await checkMony({ mf, db, site, mony, nowS })
+await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin, acc, signIn, nowS, purgeFoundings, capture: process.env.FIRMONY_CAPTURE_DIR })
 await mf.dispose()
 done('runtime')

@@ -198,6 +198,7 @@ import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
 import { badDebtEvents, claimAt, filingDeadline, isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, workingDayUntil, type VatData } from '../app/vat'
 import { ISSUED_RATIO_MODES, coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioMode, type RatioWork, type RatioYear } from '../app/vat-ratio'
+import { registerFoundingTeam } from '../founding/team'
 import { RatioPage, type RatioState } from '../views/vat-ratio'
 import { lastYearsOf, withFreshRatios } from '../app/vat-ratio-store'
 import { assetVatValues, lastYearOf, periodLength, readAssetUse, readAssetVat, type AssetUseErrors, type AssetUseValues, type AssetVatErrors, type AssetVatValues } from '../app/vat-assets'
@@ -5736,7 +5737,11 @@ teamRoutes.get('/ziadosti', async (c) => {
   if (!isAdmin(who.user)) return missingPage(c)
   const [requests, investors] = await Promise.all([listRequests(c.env.DB), listInvestors(c.env.DB)])
   const released = Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))
-  return shell(c, 'requests', t.requests.title, <RequestsPage requests={requests} investors={investors} now={now()} released={released} flash={flashOf(c)} />)
+  // The applications for the s. r. o. for 1 €: counted for the designated person only, who alone opens them.
+  const foundings = (await isOfficer(c.env.DB, who.user))
+    ? await c.env.DB.prepare("SELECT SUM(status = 'verifying') AS waiting, SUM(status IN ('verified','ordered','signing','filed')) AS going FROM foundings WHERE purge_started_at IS NULL").first<{ waiting: number | null; going: number | null }>()
+    : null
+  return shell(c, 'requests', t.requests.title, <RequestsPage requests={requests} investors={investors} now={now()} released={released} flash={flashOf(c)} foundings={foundings ? { waiting: Number(foundings.waiting ?? 0), going: Number(foundings.going ?? 0) } : null} />)
 })
 
 // What the approval on the Worker says, and the value a new one takes: the hash of today's terms and prices with the
@@ -5944,4 +5949,5 @@ teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/pri
 export { canSee }
 
 registerAmlRoutes(teamRoutes, (c, title, child, status = 200) => shell(c, 'requests', title, child, status))
+registerFoundingTeam(teamRoutes, (c, title, child, status = 200) => shell(c as Ctx, 'requests', title, child, status))
 registerWorkspaceRoutes(teamRoutes, (c, title, child, status = 200) => shell(c as Ctx, 'workspaces', title, child, status), (c) => missingPage(c as Ctx))

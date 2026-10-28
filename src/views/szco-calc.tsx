@@ -132,7 +132,7 @@ export const SzcoCalcPage: FC<{ query: SzcoQuery | null; result: SzcoResult | nu
         <p>{t('Účtovníctvo, dane a mzdy pre s. r. o. za Vás vybavíme. Ak už s. r. o. máte, zadajte jej IČO. Názov a sídlo doplníme z registra, je to nezáväzné.')}</p>
         <StartForm carry={[]} id="ico-szco" compact />
         <p class="small">
-          <a class="link" href="/zacat?nova=1">{copy.final.noCompany}</a>
+          <a class="link" href="/zalozenie">{copy.final.noCompany}</a>
         </p>
       </section>
       <nav class="guide__more" aria-label="Ďalšie články">

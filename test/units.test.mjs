@@ -7331,6 +7331,7 @@ await (await import('./social.units.mjs')).checkSocial()
 }
 
 checkOverview()
+;(await import('./founding.units.mjs')).checkFoundingUnits()
 checkAssistantUnits()
 checkInvoicingUnits({ invoiceAi, invoicing })
 await checkInvoicePdfUnits()

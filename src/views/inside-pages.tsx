@@ -198,6 +198,7 @@ export const AddCard: FC<{ inbox: string; id?: string; wide?: boolean; action?: 
 
 export interface OverviewProps {
   managedTakeover?: ManagedHandover | null
+  founding?: { dueOn: string } | null
   firstName: string
   missing: Payment[]
   missingCount: number
@@ -288,6 +289,7 @@ export const Overview: FC<OverviewProps> = (props) => {
     closed: ended, today: props.today, owner: Boolean(props.owner), missing: missingCount, deadlines: props.deadlines,
     unread: props.unread ?? 0, approval: props.approval ?? null, confirmAccount: props.waiting?.[0]?.id ?? null,
     statementDue: props.statementDue ?? null, bankNotice: props.bankNotice ?? null, bankReady: Boolean(props.bankReady), steps: props.steps ?? null,
+    founding: props.founding ?? null,
     takeoverAction: props.managedTakeover?.state !== 'cancelled' && props.managedTakeover?.state !== 'completed' ? props.managedTakeover?.clientAction : null,
   })
   const primary = actions[0]

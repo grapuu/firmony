@@ -4,6 +4,25 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**S. r. o. za 1 €: prihláška, overenie, kaucia, 28. 10. 2026 (Claude, `main`):** jeho slovo o 13:25 (bezchybný
+onboarding, zakladateľ nás nesmie „odžubať“), voľby 549 € a eID alebo overený podpis, o 13:45 pri nesúčinnosti sa nič
+nevracia, o 14:08 až 14:15 nikdy nebyť stratoví: **kaucia ako pri nájme bytu**. Kód `src/founding/` (model, store,
+public, team, pdf, schéma krok **86**), `src/content/formation-contract.ts`, `src/views/founding.tsx`.
+Zakladateľ na `/zalozenie` (iba keď platí `CONTRACT_RELEASE`, ktorý teraz kryje aj túto zmluvu; inak odkaz na
+`/zacat?nova=1`): e-mail → odkaz (každý e-mail nesie nový, všetky platia 180 dní, ukladá sa len hash), údaje +
+AML vyhlásenie, fotka OP z oboch strán (R2 `foundings/<id>/`, vidí len určená osoba), zmluva PDF zafixovaná s SHA-256
+(zmena údajov podpis zneplatní), podpis eID (.asice/PDF) alebo sken s overeným podpisom + originál poštou, platba
+550 € (1 € + kaucia 549 €) s VS `7RRRRnnnnn` z účtu na svoje meno, odoslanie. Určená osoba na `/ucto/zalozenia`
+(citlivé, čerstvé potvrdenie): kontroly totožnosť, PEP, sankcie, **dlžníci** (SP, poisťovne, FS, úpadcovia), podpis,
+platba, originál; overenie (zmluva vzniká, mesiac s limitom 20), objednaný advokát → podpis → podané → IČO z registra
+(meno musí sedieť) → firma v aplikácii, vlastník, balík bez mesiaca zadarmo, `prepaid_cents` 54 900. Výzvy: po 2 a
+30 dňoch odstúpenie, platba sa nevracia. Firma schváli zmluvu (§ 64) na `/app/zalozenie`, prehľad to pýta prvé.
+Kaucia sa započítava až od 31. mesiaca (`depositDue`) alebo pri skoršom konci; výpoveď firmy pred 36 mesiacmi
+vyfakturuje odstupné (zostávajúce mesiace, najviac 12, `exit:<mesiac>`, určená osoba môže „Účtovať/Neúčtovať“).
+Nepoužitá prihláška sa maže mesiac po zmene, overovaná 5 rokov, zapísaná s firmou. Zdroj (utm, ref) sa ukladá pre
+odmenu kreátora. Odporúčané jemu: kreátorovi vyplácať až po 3 zaplatených mesiacoch, s advokátom paušál do 250 € s DPH
+a polovica odmeny až pri podaní. Zmluvu a texty ešte číta advokát; `CONTRACT_RELEASE` sa nastaví až po ňom.
+
 **Prejdený mesiac na skúšobnej firme, 28. 10. 2026 popoludní (Claude, `main`):** jeho „ano zacni“ o 12:51. V ihrisku
 prejdené ako klient (390 px), správca (1440 px) a nový klient: prehľadávač odkazov (klient 126, správca 238, Eva 86,
 verejné 31 stránok) bez chyby stavu, JS, pretečenia alebo textu „undefined/NaN“; potom ručne doklad k platbe, účtovanie,

@@ -32,7 +32,7 @@ export const GuidePage: FC<{ guide: Guide }> = ({ guide: g }) => (
             </p>
             <p class="guide__deal-text">{copy.formation.second}</p>
             <p class="guide__deal-actions">
-              <a class="btn guide__deal-cta" href="/zacat?nova=1">
+              <a class="btn guide__deal-cta" href="/zalozenie">
                 {copy.formation.cta}
               </a>
               <a class="guide__deal-more" href="/#sro-za-euro">

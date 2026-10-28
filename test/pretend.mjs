@@ -71,6 +71,16 @@ const FAKTURACKA = {
   sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2019-06-01' }], registrationNumbers: [{ value: 'Sro/47111/V', validFrom: '2019-06-01' }] },
 }
 
+/** A company formed through the s. r. o. for 1 € (test/founding.runtime.mjs), as the register shows it once written in. */
+const FOUNDED = {
+  id: 19066666,
+  identifiers: [{ value: '56677774', validFrom: '2026-10-01' }],
+  fullNames: [{ value: 'TEST-ONLY Founded Nova s. r. o.', validFrom: '2026-10-01' }],
+  addresses: [{ validFrom: '2026-10-01', street: 'Hlavná', regNumber: 0, buildingNumber: '12', postalCodes: ['04001'], municipality: { value: 'Košice' }, country: { value: 'Slovenská republika' } }],
+  establishment: '2026-10-01',
+  sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2026-10-01' }], registrationNumbers: [{ value: 'Sro/99999/V', validFrom: '2026-10-01' }] },
+}
+
 const INOVA = {
   id: 19077777,
   identifiers: [{ value: '56622222', validFrom: '2024-02-01' }],
@@ -112,6 +122,7 @@ export function registerAnswer(url, calls = []) {
   if (ico === '55012345') return Response.json({ results: [ZELENY], license: 'CC BY 4.0' })
   if (ico === '36611111') return Response.json({ results: [STROJAREN], license: 'CC BY 4.0' })
   if (ico === '56622222') return Response.json({ results: [INOVA], license: 'CC BY 4.0' })
+  if (ico === '56677774') return Response.json({ results: [FOUNDED], license: 'CC BY 4.0' })
   if (ico === '47111119') return Response.json({ results: [FAKTURACKA], license: 'CC BY 4.0' })
   if (ico === '35757442') return new Response('busy', { status: 503 })
   return Response.json({ results: [], license: 'CC BY 4.0' })

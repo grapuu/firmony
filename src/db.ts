@@ -11,6 +11,7 @@ import { INVOICING_SCHEMA } from './app/invoicing-schema'
 import { ANALYTICS_SCHEMA } from './analytics/schema'
 import { PEPPOL_SCHEMA } from './peppol/schema'
 import { PASSKEY_SIGNIN_SCHEMA } from './security/schema'
+import { FOUNDING_SCHEMA } from './founding/schema'
 import { usageCutoff } from './analytics/model'
 import { bratislavaDay } from './time'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
@@ -1589,6 +1590,9 @@ const MIGRATIONS: readonly string[][] = [
   PEPPOL_SCHEMA,
   // 85: signing in with a passkey alone, without an email link (security/schema.ts).
   PASSKEY_SIGNIN_SCHEMA,
+  // 86: the s. r. o. for 1 €: a founder's application, the designated person's checks and its history, kept as written;
+  // the company formed through it and its prepayment to credit (founding/schema.ts).
+  FOUNDING_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

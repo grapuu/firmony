@@ -198,6 +198,8 @@ const MOUNTS = {
   'src/aml/routes.tsx': { app: '/ucto' },
   'src/aml/archive.tsx': { app: '/ucto' },
   'src/team/workspaces.tsx': { routes: '/ucto' },
+  'src/founding/public.tsx': { foundingRoutes: '/zalozenie' },
+  'src/founding/team.tsx': { app: '/ucto' },
 }
 const NOT_A_PAGE = /\.(xml|csv|json|zip|pdf|txt|webmanifest|png|ico|js|css)$|\/(subor|subory|xml|pdf|vstup|ukazka|prvy-spravca|pripojit|navrat|rychle-prihlasenie|potvrdit|export|odhlasit|logo|healthz|playground)(\/|$)|\*/
 const routes = new Set([...t.pages, ...t.guides])

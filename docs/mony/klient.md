@@ -89,9 +89,12 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 ## Založenie s. r. o. za 1 €
 
 - Kto ešte nemá firmu, môže si u Firmony dať založiť s. r. o. za 1 € (bez DPH). Zakladateľskú listinu, zápis do obchodného registra aj živnosť zariadi advokát, súdny poplatok aj odmenu advokáta platí Firmony. Bežne stojí založenie od augusta 2026 okolo 500 €.
-- Podmienky: záväzok viesť účtovníctvo vo Firmony aspoň 36 mesiacov za cenu balíka (od 89 € mesačne bez DPH), potom zmluva pokračuje bez viazanosti s mesačnou výpovednou lehotou; prvé 3 mesiace platené vopred, zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12 mesačných poplatkov a najmenej hodnota založenia. Ak by Firmony vážne pochybila a nenapravila to, klient môže odísť bez poplatku.
-- Ponuka sa nespája s prvým mesiacom zadarmo a platí pre prvých 20 firiem každý mesiac. Základné imanie (najmenej 5 000 €) nie je poplatok, sú to peniaze firmy. Presné znenie zmluvy dostane klient pred podpisom.
-- Ako začať: na webe „Chcem s. r. o. za 1 €“ alebo formulár bez IČO (/zacat?nova=1). Ozveme sa do jedného pracovného dňa.
+- Prihláška je online na /zalozenie: e-mail, potom odkaz z e-mailu. V prihláške zakladateľ vyplní svoje údaje a údaje firmy, nahrá fotku občianskeho preukazu z oboch strán, stiahne zmluvu a podpíše ju občianskym preukazom s čipom (eID) alebo vlastnoručne s overeným podpisom u notára či na matrike (originál pošle poštou). Potom pošle 550 € z účtu na svoje meno a prihlášku odošle na overenie.
+- 550 € je 1 € za založenie a 549 € kaucia. Kaucia sa odpočíta z posledných faktúr za účtovníctvo, takže za 36 mesiacov zakladateľ nezaplatí nič navyše. Účtovníctvo sa platí mesačne od vzniku firmy.
+- Podmienky: účtovníctvo vo Firmony aspoň 36 mesiacov za cenu balíka (od 89 € mesačne bez DPH), potom bez viazanosti s mesačnou výpovednou lehotou. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12, a kaucia sa z neho odpočíta. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Ak Firmony vážne pochybí a nenapraví to, firma môže odísť bez poplatku.
+- Ak firmu nezaložíme pre chybu na našej strane alebo ju súd nezapíše bez viny zakladateľa, vrátime celých 550 €. Ak zakladateľ prestane spolupracovať (ani 30 dní po druhej výzve) alebo od založenia odstúpi, platba sa nevracia.
+- Ponuka platí pre prvých 20 firiem každý mesiac. Základné imanie (najmenej 5 000 €) nie je poplatok, sú to peniaze firmy. Celé znenie zmluvy je na /zalozenie/zmluva.
+- Po zápise firmy do registra zakladateľ dostane odkaz na prihlásenie do aplikácie. Tam firma do troch mesiacov schváli zmluvu jedným potvrdením (/app/zalozenie) a doplní vyhlásenie Kto stojí za firmou.
 - Bežné vedenie účtovníctva (bez tejto ponuky) je bez viazanosti, s mesačnou výpovednou lehotou.
 
 ## Bezplatná fakturácia

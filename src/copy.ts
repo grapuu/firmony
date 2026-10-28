@@ -81,8 +81,9 @@ export const copy = typesetAll({
 
   // His word of 27 October 2026: the s. r. o. for 1 €, right under the opening, so that it pours over the visitor.
   // The market price (about 500 € since August 2026) is from Firmáreň and an advocate's published price; the terms
-  // are his of that evening (36 months, the first quarter ahead, the founder's guarantee, the exit fee and its cap,
-  // 20 firms a month); the advocate writes the contract itself.
+  // are his of that evening (36 months, the founder's guarantee, the exit fee and its cap, 20 firms a month) and of
+  // 28 October 2026 (a deposit of 549 € held for the last bills, the monthly fee from the first month: we are never at a
+  // loss when a founder leaves early); the application and the contract are src/founding/.
   formation: {
     badge: 'Novinka pre tých, čo zakladajú firmu',
     first: 'Založíme Vám s. r. o.',
@@ -97,7 +98,7 @@ export const copy = typesetAll({
     ],
     cta: 'Chcem s. r. o. za 1 €',
     limit: 'Len pre prvých 20 firiem každý mesiac.',
-    fine: 'Podmienky ponuky: záväzok viesť účtovníctvo vo Firmony aspoň 36 mesiacov, potom zmluva pokračuje bez viazanosti s mesačnou výpovednou lehotou; prvé 3 mesiace platené vopred a osobné ručenie zakladateľa za záväzky firmy z tejto zmluvy. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12 mesačných poplatkov a najmenej hodnota založenia. Ponuka sa nespája s prvým mesiacom zadarmo. Základné imanie, najmenej 5 000 €, nie je poplatok: sú to peniaze Vašej firmy. Ceny sú bez DPH. Presné znenie zmluvy dostanete pred podpisom.',
+    fine: 'Podmienky ponuky: pri prihláške zaplatíte 1 € za založenie a kauciu 549 €, ktorú Vám odpočítame z posledných faktúr za účtovníctvo. Účtovníctvo vediete vo Firmony aspoň 36 mesiacov a platíte ho mesačne od vzniku firmy, potom zmluva pokračuje bez viazanosti s mesačnou výpovednou lehotou. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12, a kaucia sa z neho odpočíta. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Základné imanie, najmenej 5 000 €, nie je poplatok: sú to peniaze Vašej firmy. Ceny sú bez DPH. Celé znenie zmluvy si prečítate ešte pred prihláškou.',
   },
 
   /** Side by side: what is usual, and what Firmony does instead. Plain, without naming anybody. */
@@ -272,7 +273,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Ešte nemám firmu. Môžem začať?',
-        a: `Áno, a firmu Vám aj založíme. V ponuke s. r. o. za 1 € zariadime advokáta, zápis do obchodného registra aj živnosť a súdny poplatok aj odmenu advokáta platíme my. Vyplňte formulár bez IČO a ozveme sa. Účtovníctvo povedieme od ${BRAND.launch}, alebo odo dňa, keď firma vznikne, ak to bude neskôr.`,
+        a: `Áno, a firmu Vám aj založíme. V ponuke s. r. o. za 1 € zariadime advokáta, zápis do obchodného registra aj živnosť a súdny poplatok aj odmenu advokáta platíme my. Prihlášku vyplníte online za pár minút. Účtovníctvo povedieme od ${BRAND.launch}, alebo odo dňa, keď firma vznikne, ak to bude neskôr.`,
       },
       {
         q: 'Musím sa viazať?',

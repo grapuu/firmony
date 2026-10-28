@@ -77,7 +77,9 @@ function workPage(path: string): string {
   const incident = /^\/ucto\/incidenty\/([^/]+)/.exec(path)
   if (incident) return `/ucto/incidenty/${incident[1]}`
   if (/^\/ucto\/ziadosti\/[^/]+\/posudenie$/.test(path)) return path
-  const teamPage = /^\/ucto\/(tim|ziadosti|incidenty)(?:\/|$)/.exec(path)
+  const founding = /^\/ucto\/zalozenia\/([^/]+)/.exec(path)
+  if (founding) return `/ucto/zalozenia/${founding[1]}`
+  const teamPage = /^\/ucto\/(tim|ziadosti|incidenty|zalozenia)(?:\/|$)/.exec(path)
   if (teamPage) return `/ucto/${teamPage[1]}`
   return path === '/ucto' || path.startsWith('/ucto/') ? '/ucto' : '/app'
 }
@@ -105,6 +107,9 @@ export function sensitivePath(path: string, method: string): boolean {
   if(path==='/ucto/ai/asistent'&&method!=='GET'&&method!=='HEAD')return true
   if (method !== 'GET' && method !== 'HEAD' && (/^\/app\/prechod\/(?:poverit|odvolat)$/.test(path) || /^\/ucto\/klienti\/[^/]+\/prevzatie\/prechod(?:\/|$)/.test(path))) return true
   if (/^\/ucto\/(?:aml|archiv)(?:\/|$)/.test(path)) return true
+  // The founders' identification for the s. r. o. for 1 € (src/founding/): as the AML pages, read and worked on after a
+  // fresh confirmation only.
+  if (/^\/ucto\/zalozenia(?:\/|$)/.test(path)) return true
   if (/^\/ucto\/klienti\/[^/]+\/aml(?:\/|$)/.test(path) && method !== 'GET' && method !== 'HEAD') return true
   if (/^\/ucto\/klienti\/[^/]+\/mzdove-podania\/[^/]+\/pripravit$/.test(path)) return true
   if (/^\/(?:app|ucto\/klienti\/[^/]+)\/mzdove-podania(?:\/|$)/.test(path) && (method !== 'GET' && method !== 'HEAD' || /\/(?:dokument|potvrdenka\/[^/]+)$/.test(path))) return true

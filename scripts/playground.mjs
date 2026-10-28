@@ -58,6 +58,10 @@ const fio = pretendFio({
 // Ephemeral, local-only provisioning; this is never used by the deployed Worker.
 const playgroundActivation = randomBytes(32).toString('base64url')
 const withBank = process.env.EB === '1'
+// RELEASE=1: signing opens as if the lawyer's and the insurer's approval held (TEST ONLY), to try the s. r. o. for 1 €.
+const release = process.env.RELEASE === '1'
+  ? JSON.stringify({ catalogueHash: await (await import('../.wrangler/dist/stores.js')).contractCatalogueHash(), legalReview: 'TEST-ONLY playground', insuranceReview: 'TEST-ONLY playground', validUntil: Math.floor(Date.now() / 1000) + 86400 })
+  : null
 
 // Written in the long-standing option names and converted, so the script survives Miniflare's own renames.
 const mf = new Miniflare(convertV4MiniflareOptions({
@@ -74,7 +78,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({
       compatibilityDate: '2026-10-01',
       d1Databases: { DB: 'firmony-playground' },
       r2Buckets: { FILES: 'firmony-files' },
-      bindings: { DEMO: '1', TEAM_BOOTSTRAP_EMAIL: 'spravca@firmony.test', TEAM_BOOTSTRAP_TOKEN: playgroundActivation, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), ANTHROPIC_API_KEY: 'pretend', ...(withBank ? { ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey } : {}), ...(process.env.PEPPOL === '1' ? { PEPPOL_PROVIDER: 'pretend', PEPPOL_API_URL: PEPPOL_TEST.url, PEPPOL_API_KEY: PEPPOL_TEST.key, PEPPOL_WEBHOOK_SECRET: PEPPOL_TEST.secret, PEPPOL_SMP_HOST: PEPPOL_TEST.smp } : {}) },
+      bindings: { DEMO: '1', TEAM_BOOTSTRAP_EMAIL: 'spravca@firmony.test', TEAM_BOOTSTRAP_TOKEN: playgroundActivation, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), ANTHROPIC_API_KEY: 'pretend', ...(release ? { CONTRACT_RELEASE: release } : {}), ...(withBank ? { ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey } : {}), ...(process.env.PEPPOL === '1' ? { PEPPOL_PROVIDER: 'pretend', PEPPOL_API_URL: PEPPOL_TEST.url, PEPPOL_API_KEY: PEPPOL_TEST.key, PEPPOL_WEBHOOK_SECRET: PEPPOL_TEST.secret, PEPPOL_SMP_HOST: PEPPOL_TEST.smp } : {}) },
       serviceBindings: { EMAIL: 'pretend-mail' },
       async outboundService(request) {
         const networked = await network.answer(request.clone())

@@ -112,7 +112,7 @@ export const CRAWLERS = [
 ] as const
 
 /** What is nobody's to crawl: the forms, the orders, the app, the team's side, invoices sent to customers. */
-export const PRIVATE_RULES = ['/zacat', '/objednavka', '/app/', '/app$', '/ucto/', '/ucto$', '/auth/', '/f/'] as const
+export const PRIVATE_RULES = ['/zacat', '/objednavka', '/zalozenie/', '/zalozenie$', '/app/', '/app$', '/ucto/', '/ucto$', '/auth/', '/f/'] as const
 
 export function robotsTxt(): string {
   return [

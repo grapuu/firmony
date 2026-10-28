@@ -1701,12 +1701,13 @@ const Investors: FC<{ investors: { total: number; list: InvestorRequest[] }; now
   </section>
 )
 
-export const RequestsPage: FC<{ requests: Request[]; investors: { total: number; list: InvestorRequest[] }; now: number; released?: boolean; flash?: string | null }> = ({
+export const RequestsPage: FC<{ requests: Request[]; investors: { total: number; list: InvestorRequest[] }; now: number; released?: boolean; flash?: string | null; foundings?: { waiting: number; going: number } | null }> = ({
   requests,
   investors,
   now,
   released = true,
   flash,
+  foundings = null,
 }) => (
   <>
     <header class="phead">
@@ -1714,6 +1715,15 @@ export const RequestsPage: FC<{ requests: Request[]; investors: { total: number;
       <p class="phead__lead">{t.requests.lead}</p>
     </header>
     <Flash text={flash} />
+    {foundings ? (
+      <p class={foundings.waiting > 0 ? 'notice' : 'small'}>
+        S. r. o. za 1 €: {foundings.waiting > 0 ? `${foundings.waiting} na overenie, ` : ''}
+        {foundings.going} v založení.{' '}
+        <a class="link" href="/ucto/zalozenia">
+          Otvoriť založenia
+        </a>
+      </p>
+    ) : null}
     {released ? null : (
       <p class="notice">
         {t.release.blocked}{' '}

@@ -120,7 +120,7 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
           <p class="hero__card-next">{copy.card.next}</p>
           <p class="hero__card-foot">
             <span>{copy.card.fine}</span>
-            <a class="link" href={withCarry('/zacat', carry, { nova: '1' })}>
+            <a class="link" href={withCarry('/zalozenie', carry)}>
               {copy.card.noCompany}
             </a>
           </p>
@@ -164,7 +164,7 @@ const Deal: FC<{ carry: Carry }> = ({ carry }) => {
               ))}
             </ul>
             <p class="deal__actions">
-              <a class="btn deal__cta" href={withCarry('/zacat', carry, { nova: '1' })}>
+              <a class="btn deal__cta" href={withCarry('/zalozenie', carry)}>
                 {d.cta}
               </a>
               <span class="deal__limit">{d.limit}</span>
@@ -765,7 +765,7 @@ const Final: FC<{ carry: Carry }> = ({ carry }) => (
         <p class="final__lead">{copy.final.lead}</p>
         <StartForm carry={carry} id="ico-final" compact />
         <p class="final__aside">
-          <a class="final__fresh" href={withCarry('/zacat', carry, { nova: '1' })}>
+          <a class="final__fresh" href={withCarry('/zalozenie', carry)}>
             {copy.final.noCompany}
           </a>
           <button type="button" class="final__fresh final__ask" data-mony-call aria-controls="mony-panel">

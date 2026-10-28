@@ -7,7 +7,7 @@ import { formatEurExact } from '../format'
 import { app, dayName, monthName } from '../app/copy'
 import type { Company } from '../app/store'
 import type { BillRow, ClientBill } from '../team/billing-store'
-import { issuable } from '../team/billing-store'
+import { creditOf, issuable } from '../team/billing-store'
 import { team as t } from '../team/copy'
 import { Flash, Heading, planName } from './inside'
 import { groupIban } from './inside-pages'
@@ -96,7 +96,7 @@ export const BillingPage: FC<BillingPageProps> = (p) => {
             </div>
             <div class="fig">
               <dt>{b.figures.toIssue}</dt>
-              <dd class="fig__value">{formatEurExact(ready.reduce((total, bill) => total + bill.draft.totalCents, 0))}</dd>
+              <dd class="fig__value">{formatEurExact(ready.reduce((total, bill) => total + bill.draft.totalCents - creditOf(bill), 0))}</dd>
             </div>
             <div class="fig">
               <dt>{b.figures.unpaid}</dt>
@@ -125,7 +125,7 @@ export const BillingPage: FC<BillingPageProps> = (p) => {
                           <a class="link" href={`/ucto/klienti/${bill.company.id}`}>
                             {bill.company.name}
                           </a>
-                          <span class="check__amount">{formatEurExact(bill.draft.totalCents)}</span>
+                          <span class="check__amount">{formatEurExact(bill.draft.totalCents - creditOf(bill))}</span>
                         </span>
                         <span class="check__sub">
                           <span>{t.clients.plan(planName(bill.company.plan))}</span>
@@ -138,6 +138,12 @@ export const BillingPage: FC<BillingPageProps> = (p) => {
                               <span>{line.quantityMilli === 1000 ? '' : `${line.quantityMilli / 1000} × ${formatEurExact(line.unitCents)}, `}{formatEurExact(line.cents)}</span>
                             </li>
                           ))}
+                          {creditOf(bill) > 0 ? (
+                            <li>
+                              <span>Započítaná zábezpeka (zostáva {formatEurExact(bill.prepaidCents - creditOf(bill))})</span>
+                              <span>{formatEurExact(-creditOf(bill))}</span>
+                            </li>
+                          ) : null}
                         </ul>
                         {bill.corrupt ? <span class="tbl__flag tbl__flag--report">{b.flags.corrupt}</span> : null}
                         {bill.draft.flags.map((flag) => (

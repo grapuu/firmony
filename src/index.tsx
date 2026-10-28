@@ -52,6 +52,8 @@ import { OrderAsked, OrderDone, OrderGone, OrderPage, TermsPage, type OrderError
 import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
 import { teamRoutes } from './team/routes'
+import { foundingRoutes } from './founding/public'
+import { purgeFoundings } from './founding/store'
 import { securityRoutes } from './security/routes'
 import { monyAnswer } from './assistant/mony-route'
 import { isEvidenceHeld } from './incidents/store'
@@ -171,7 +173,7 @@ app.use('*', async (c, next) => {
     if (declared === undefined) return c.text('Length required', 411)
     const length = Number(declared)
     if (!Number.isInteger(length) || length < 0) return c.text('Bad request', 400)
-    const allowed = (/^\/objednavka\/[^/]+\/banka$/.test(url.pathname) || /^\/ucto\/aml\/spisy\/[^/]+\/banka$/.test(url.pathname)) ? 52 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/(?:overenie|vyhlasenie\.pdf)$/.test(url.pathname) || /^\/app\/vyhlasenie(?:\/pdf)?$/.test(url.pathname) || /^\/ucto\/aml\/objednavky\/[^/]+\/uchovanie$/.test(url.pathname)) ? 26 * 1024 * 1024 : UPLOADS.test(url.pathname) ? APP.uploadBytes : /^\/ucto\//.test(url.pathname) ? LIMITS.teamFormBytes : /^\/app\//.test(url.pathname) ? LIMITS.appFormBytes : LIMITS.formBytes
+    const allowed = /^\/zalozenie\/[^/]+\/(?:doklad|podpis)$/.test(url.pathname) ? 26 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/banka$/.test(url.pathname) || /^\/ucto\/aml\/spisy\/[^/]+\/banka$/.test(url.pathname)) ? 52 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/(?:overenie|vyhlasenie\.pdf)$/.test(url.pathname) || /^\/app\/vyhlasenie(?:\/pdf)?$/.test(url.pathname) || /^\/ucto\/aml\/objednavky\/[^/]+\/uchovanie$/.test(url.pathname)) ? 26 * 1024 * 1024 : UPLOADS.test(url.pathname) ? APP.uploadBytes : /^\/ucto\//.test(url.pathname) ? LIMITS.teamFormBytes : /^\/app\//.test(url.pathname) ? LIMITS.appFormBytes : LIMITS.formBytes
     if (length > allowed) return c.text('Too large', 413)
   }
   await next()
@@ -181,13 +183,13 @@ app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff')
   // Only a document's own PDF may be shown inside our pages (beside the booking form); nothing else is framed.
   if (!c.res.headers.has('X-Frame-Options')) c.header('X-Frame-Options', 'DENY')
-  c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+  if (!c.res.headers.has('Referrer-Policy')) c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
   c.header('Cross-Origin-Opener-Policy', 'same-origin')
   c.header('Cross-Origin-Resource-Policy', 'same-origin')
   c.header('Permissions-Policy', PERMISSIONS_POLICY)
   c.header('Content-Language', 'sk')
   // Only the real domain is for search engines: not a preview address, not a form step.
-  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || url.pathname.startsWith('/objednavka') || url.pathname.startsWith(`${INVOICING_PATH}/vstup`) || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
+  if ((url.hostname !== CANONICAL_HOST && !local) || url.pathname.startsWith('/zacat') || url.pathname.startsWith('/objednavka') || /^\/zalozenie(?:\/|$)/.test(url.pathname) || url.pathname.startsWith(`${INVOICING_PATH}/vstup`) || inside) c.header('X-Robots-Tag', 'noindex, nofollow')
   if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store')
   if (url.protocol === 'https:') c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   // First-party analytics in daily sums (analytics/record.ts): written after the answer, never in its way.
@@ -931,6 +933,9 @@ app.post(PEPPOL_NOTICES, async (c) => {
 })
 
 // Mony answers before the app's own routes, which ask for a company: somebody of the team alone asks it too.
+// The s. r. o. for 1 € (src/founding/): the offer, the founder's application by its link.
+app.route('/zalozenie', foundingRoutes)
+
 app.post('/app/mony', (c) => monyAnswer(c as never))
 app.route('/app', appRoutes)
 app.route('/ucto', teamRoutes)
@@ -1135,6 +1140,12 @@ export default {
           await purge(env.DB)
         } catch (err) {
           console.error('purge failed', err instanceof Error ? err.name : 'error')
+        }
+        try {
+          // Applications for the s. r. o. for 1 € that are over and past their keeping (founding/store.ts).
+          await purgeFoundings(env)
+        } catch (err) {
+          console.error('founding purge failed', err instanceof Error ? err.name : 'error')
         }
         try {
           await appScheduled(env, event.scheduledTime)

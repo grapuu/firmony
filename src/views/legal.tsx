@@ -93,6 +93,11 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
+          'Keď si cez nás zakladáte s. r. o. za 1 €: e-mail a telefón, Vaše meno, rodné číslo, dátum narodenia, adresu, štátne občianstvo, číslo a platnosť dokladu totožnosti a jeho fotku z oboch strán, údaje budúcej firmy, Vaše vyhlásenie (politicky exponovaná osoba, konanie vo vlastnom mene, pôvod peňazí na imanie, očakávaný obrat), podpísanú zmluvu, platbu s menom a účtom platiteľa a to, z akej kampane alebo z akého odkazu ste prišli. Pred prijatím prihlášky Vás naša určená osoba vyhľadá aj v sankčných zoznamoch a vo verejných zoznamoch dlžníkov Sociálnej poisťovne, zdravotných poisťovní a finančnej správy a v registri úpadcov. Fotku dokladu a Vaše údaje vidí iba určená osoba; advokátovi odovzdáme len údaje potrebné na založenie.',
+        )}
+      </p>
+      <p>
+        {t(
           'Doklady, výpisy, faktúry a mzdy firmy obsahujú aj osobné údaje jej zamestnancov a obchodných partnerov. Tie spracúvame ako sprostredkovateľ v mene firmy, ktorá je ich prevádzkovateľom, podľa článku 8 ',
         )}
         <a href="/podmienky#clanok-8">obchodných podmienok</a>.
@@ -111,7 +116,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          'Identifikovať klienta a uchovávať o tom záznamy nám ukladá zákon č. 297/2008 Z. z. a uchovávať faktúry za naše služby zákon o účtovníctve (článok 6 ods. 1 písm. c) GDPR).',
+          'Identifikovať klienta a uchovávať o tom záznamy nám ukladá zákon č. 297/2008 Z. z. a uchovávať faktúry za naše služby zákon o účtovníctve (článok 6 ods. 1 písm. c) GDPR). Overiť v zoznamoch dlžníkov zakladateľa, za ktorého pred založením firmy platíme súdny poplatok a advokáta, je náš oprávnený záujem nebyť stratoví (článok 6 ods. 1 písm. f) GDPR).',
         )}
       </p>
       <p>
@@ -150,7 +155,12 @@ export const Legal: FC = () => (
       <h3 class="h4">Ako dlho ich uchovávame</h3>
       <p>
         {t(
-          `Žiadosť z webu, ku ktorej sme nedostali podpísané vyhlásenie na overenie totožnosti, vymažeme ${RETENTION.requestDays} dní od jej odoslania, spolu s ponukou, ak sme ju poslali a už neplatí. Ak sme overenie začali alebo to vyžaduje zákon proti praniu špinavých peňazí, údaje záujemcu a podklady z rokovania, z ktorého nevznikla zmluva, uchovávame päť rokov od odmietnutia alebo skončenia rokovania podľa AML programu. Zápis na daňové priznanie z investícií uchovávame ${RETENTION.requestDays} dní od posledného zápisu. Technické záznamy odoslaných upozornení ${RETENTION.outboxDays} dní a odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
+          `Prihlášku na založenie s. r. o., ktorú nikto neoveroval a nič ste na ňu nezaplatili (zanikla alebo ste ju zrušili), vymažeme aj so súbormi mesiac po jej poslednej zmene. Prihlášku, ktorú sme overovali, odmietli alebo ukončili, uchovávame päť rokov od jej skončenia; prihlášku, z ktorej vznikla firma, s údajmi tejto firmy. `,
+        )}
+      </p>
+      <p>
+        {t(
+`Žiadosť z webu, ku ktorej sme nedostali podpísané vyhlásenie na overenie totožnosti, vymažeme ${RETENTION.requestDays} dní od jej odoslania, spolu s ponukou, ak sme ju poslali a už neplatí. Ak sme overenie začali alebo to vyžaduje zákon proti praniu špinavých peňazí, údaje záujemcu a podklady z rokovania, z ktorého nevznikla zmluva, uchovávame päť rokov od odmietnutia alebo skončenia rokovania podľa AML programu. Zápis na daňové priznanie z investícií uchovávame ${RETENTION.requestDays} dní od posledného zápisu. Technické záznamy odoslaných upozornení ${RETENTION.outboxDays} dní a odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
         )}
       </p>
       <p>

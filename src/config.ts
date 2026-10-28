@@ -482,7 +482,7 @@ export const READER = {
 export const EKASA_VERIFY = 'https://opd.financnasprava.sk/'
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
-export const PRIVACY_VERSION = '2026-10-27'
+export const PRIVACY_VERSION = '2026-10-28'
 
 /**
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an
@@ -492,6 +492,36 @@ export const PRIVACY_VERSION = '2026-10-27'
  * explicit legal/insurance release approval and a documented review of the particular order.
  */
 export const TERMS_VERSION = '2026-10-26'
+
+/**
+ * The s. r. o. for 1 € (his word of 27 October 2026; the safeguards of 28 October: "nemôžu nás odžubať"). A founder
+ * applies by a link, gives a photo of an identity document, signs the contract with a qualified electronic signature
+ * or an officially certified signature, and pays 1 € and a deposit of 549 € from an account in the founder's own
+ * name; only after the designated person has checked all of it is the advocate ordered (src/founding/,
+ * src/content/formation-contract.ts). His word of 28 October 2026, 14:08: we must never be at a loss when a founder
+ * leaves after a month or two. So the deposit is held like a rent deposit: the monthly fee is paid from the first month,
+ * the deposit is credited only to the last months of the commitment (or to the exit fee and what is unpaid when the
+ * contract ends early), and what the formation cost us (220 € court fee, the advocate) stays covered either way.
+ */
+export const FORMATION = {
+  /** What the founder pays for the formation itself. */
+  priceCents: 100,
+  /** The deposit paid with it before anything is ordered (his choice of 549 €, 28 Oct.), held through the commitment. */
+  prepaidCents: 54_900,
+  /** The month of the commitment (counted from the company's first) whose invoices the deposit is credited to first. */
+  depositFromMonth: 31,
+  /** The value of the formation in the contract (court fee 220 € and the advocate's 300 € without VAT): the exit fee's floor. */
+  valueCents: 52_000,
+  commitMonths: 36,
+  exitMaxMonths: 12,
+  /** Formations a calendar month: the offer's limit, counted by applications verified that month. */
+  perMonth: 20,
+  /** Days to finish an application before it lapses (nothing is paid or ordered by then). */
+  applyDays: 14,
+  /** Days the founder has to give what the advocate asks for, after a call. */
+  cooperateDays: 30,
+  contractVersion: '2026-10-28',
+} as const
 
 /**
  * Invoicing for everyone (26 October 2026, his word: "Bude to navždy zadarmo pre každého. Pre ľudí, čo používajú našu

@@ -2,8 +2,9 @@
 // invites a partner or a colleague), the reminders, the app on the phone, the other companies, signing out.
 import type { FC } from 'hono/jsx'
 import { signerRole } from '../rpo'
-import { OFFLINE_TERMS } from '../config'
-import { formatEurExact } from '../format'
+import { FORMATION, OFFLINE_TERMS, planById } from '../config'
+import { formatEur, formatEurExact, typeset } from '../format'
+import { exitMonths } from '../team/billing'
 import { app, dayName, whenName } from '../app/copy'
 import type { Ending } from '../app/ending'
 import type { Paper, PoaState } from '../app/papers'
@@ -78,6 +79,24 @@ const AfterEnd: FC<{ ending: Ending }> = ({ ending }) => {
   )
 }
 
+/**
+ * A company formed through the s. r. o. for 1 € that gives notice before its commitment ends: the exit fee the notice
+ * brings (article 7 of the formation contract), said before the notice is given, and that its deposit is set off.
+ */
+const ExitFee: FC<{ company: Company; end: string }> = ({ company, end }) => {
+  const plan = planById(company.plan)
+  if (!company.foundingId || !company.startOn || !plan) return null
+  const months = exitMonths(company.startOn, end, FORMATION.commitMonths, FORMATION.exitMaxMonths)
+  if (months <= 0) return null
+  return (
+    <p class="notice">
+      {typeset(
+        `Firma je podľa zmluvy o založení viazaná na ${FORMATION.commitMonths} mesiacov. Pri výpovedi teraz zaplatí odstupné ${formatEur(months * plan.price * 100)} (${months} × ${formatEur(plan.price * 100)}). Odpočítame z neho zvyšok kaucie.`,
+      )}
+    </p>
+  )
+}
+
 /** The notice: given (with taking it back while the contract runs), or the way to give it, folded away. */
 const Notice: FC<{ company: Company; owner: boolean; today: string; end: string; ending: Ending | null; error?: string }> = ({ company, owner, today, end, ending, error }) => {
   const n = app.notice
@@ -113,6 +132,7 @@ const Notice: FC<{ company: Company; owner: boolean; today: string; end: string;
         {owner ? (
           <form class="stack" method="post" action="/app/firma/vypoved" novalidate>
             <p class="info__lead">{n.lead(dayName(end))}</p>
+            <ExitFee company={company} end={end} />
             <label class="tickbox tickbox--top">
               <input type="checkbox" name="potvrdit" value="1" aria-invalid={error ? 'true' : undefined} />
               <span>{n.confirm}</span>

@@ -44,6 +44,21 @@ export interface BillingFacts {
   closings: readonly number[]
   /** Keys already billed. */
   billed: ReadonlySet<string>
+  /**
+   * A company formed through the s. r. o. for 1 € (src/founding/): its commitment, and whether a contract that ends
+   * before it owes the exit fee (article 7 of the formation contract). Absent for every other client.
+   */
+  commitment?: { months: number; maxMonths: number; charge: boolean } | null
+}
+
+/**
+ * The exit fee of a commitment that ends early: the plan's monthly fee for each month left after the contract's last
+ * month up to the commitment's end (its first month counted as the first), at most `maxMonths` of them.
+ */
+export function exitMonths(startOn: string, endsOn: string, months: number, maxMonths: number): number {
+  const lastOfCommitment = addMonths(startOn.slice(0, 7), months - 1)
+  const left = monthsFrom(addMonths(endsOn.slice(0, 7), 1), lastOfCommitment).length
+  return Math.min(left, maxMonths)
 }
 
 export interface BillingLine {
@@ -134,6 +149,12 @@ export function draftOf(f: BillingFacts): BillingDraft {
     }
     const people = f.people.get(m) ?? 0
     if (people > 0) line(`payroll:${m}`, `Mzdy za ${monthText(m)}`, people * 1000, 'ks', f.tariff.payrollCents)
+  }
+  // The exit fee of a commitment that ends early, once the contract's last month has come: billed once, with the bill that
+  // takes the deposit (billing-store.ts, depositDue).
+  if (own && last && f.commitment?.charge && f.month >= last) {
+    const n = exitMonths(f.startOn, f.endsOn!, f.commitment.months, f.commitment.maxMonths)
+    if (n > 0) line(`exit:${last}`, `Odstupné podľa zmluvy o založení spoločnosti: ${n} ${n === 1 ? 'mesiac' : n < 5 ? 'mesiace' : 'mesiacov'} balíka ${own.name}`, n * 1000, 'mes', own.monthlyCents)
   }
   // The closing of a year we kept the books for, once it is filed (4.3), also after the contract ended.
   for (const year of [...f.closings].sort((a, b) => a - b))
