@@ -43,7 +43,7 @@ export const MonyBubble: FC<{ audience: MonyAudience }> = ({ audience }) => (
   <div class="mony" data-mony={audience} hidden>
     <section class="mony__panel" id="mony-panel" aria-label={`${MONY.name}, ${MONY_COPY.role}`} hidden>
       <header class="mony__head">
-        <img class="mony__avatar" src="/art/chat-480.webp" alt="" width="44" height="44" />
+        <img class="mony__avatar" src="/art/mony.webp" alt="" width="44" height="44" />
         <p class="mony__who">
           <strong class="mony__name">{MONY.name}</strong>
           <span class="mony__role">{MONY_COPY.role}</span>
@@ -84,7 +84,7 @@ export const MonyBubble: FC<{ audience: MonyAudience }> = ({ audience }) => (
       <span class="mony__tab" aria-hidden="true">
         <Chevron dir="left" />
       </span>
-      <img class="mony__face" src="/art/chat-480.webp" alt="" width="64" height="64" />
+      <img class="mony__face" src="/art/mony.webp" alt="" width="64" height="64" />
       <span class="mony__label" aria-hidden="true">
         {MONY.name}
       </span>

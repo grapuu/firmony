@@ -27,6 +27,10 @@ same glass in the brand's blue for the white parts): it is not made see-through 
 it, centred on a square that it fills to `--cover`, and scaled with its colours premultiplied by their opacity,
 so that no dark edge appears on white.
 
+`trim` is `icon` without the square: the picture cut to what is in it and scaled so its larger side is `--size`
+(the offer's and the 1 € panel's objects, which keep their own shape). Its small copy is named `<name>-480.webp`
+whatever `--small` is, as `offerGlass` in src/config.ts expects.
+
 `whole` keeps the picture as it was composed (no centring): the aurora, and the phone whose beam has to land
 on the receipt. `--bottom 0.7` cuts it off at 70 % of its height and `--fade 0.6` lets it fade out from 60 %
 down to that cut, so that what lay below (the phone's own glass paper) is gone.
@@ -202,6 +206,18 @@ def icon(source, cover, size):
     return square.convert('RGBa').resize((size, size), Image.LANCZOS).convert('RGBA')
 
 
+def trim(source, size):
+    """A picture with its own transparency cut to its subject, its larger side `size`, scaled premultiplied."""
+    picture = Image.open(source).convert('RGBA')
+    alpha = numpy.asarray(picture)[..., 3]
+    rows = numpy.where(alpha.max(axis=1) > 8)[0]
+    cols = numpy.where(alpha.max(axis=0) > 8)[0]
+    subject = picture.crop((cols[0], rows[0], cols[-1] + 1, rows[-1] + 1))
+    scale = size / max(subject.size)
+    out = (round(subject.width * scale), round(subject.height * scale))
+    return subject.convert('RGBa').resize(out, Image.LANCZOS).convert('RGBA')
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cuts the owner's pictures for the site.")
     commands = parser.add_subparsers(dest='command', required=True)
@@ -218,6 +234,11 @@ def main():
     own.add_argument('--size', type=int, default=960)
     own.add_argument('--cover', type=float, default=0.9)
     own.add_argument('--small', type=int)
+    cut = commands.add_parser('trim')
+    cut.add_argument('source')
+    cut.add_argument('name')
+    cut.add_argument('--size', type=int, default=900)
+    cut.add_argument('--small', type=int)
     kept = commands.add_parser('whole')
     kept.add_argument('source')
     kept.add_argument('name')
@@ -234,6 +255,10 @@ def main():
         for size, name in ((args.size, args.name), (args.small, f'{args.name}-{args.small}')):
             if size:
                 save(icon(args.source, args.cover, size), os.path.join(ART, f'{name}.webp'), format='WEBP', quality=88, alpha_quality=92, method=6)
+    elif args.command == 'trim':
+        for size, name in ((args.size, args.name), (args.small, f'{args.name}-480')):
+            if size:
+                save(trim(args.source, size), os.path.join(ART, f'{name}.webp'), format='WEBP', quality=88, alpha_quality=92, method=6)
     elif args.command == 'whole':
         for width, name in ((args.width, args.name), (args.small, f'{args.name}-{args.small}')):
             if width:

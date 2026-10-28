@@ -4,6 +4,15 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Nové obrázky a Mony bez „Som Si Mony“, 28. 10. 2026 (Claude, `main`):** o 10:59 si všimol odpovede „Som Si Mony“:
+pokyny začínali „Si Mony“ a model to opakoval. Teraz sú písané o Mony (`systemOf` v `src/assistant/mony.ts`), s pravidlom
+8 (prvá osoba, znova sa nepredstavuje, krátko na pozdrav), vykanie s veľkým V vypísané so zámenami (`POLITE`) a spisovne
+(„pokojne“, nie „kľudne“). Overené naostro na firmony.io piatimi otázkami. O 12:06 poslal tri obrázky podľa promptov:
+budova s eurom (`ART.formation`, panel S. r. o. za 1 €), usmiata bublina (`ART.offerMony` v kruhu ponúk a štvorcová
+`public/art/mony.webp` ako tvár Mony v rohu a v hlavičke četu), kľúč v tvare € so dverami (`art-src/icons/sro-key.png`,
+zatiaľ nepoužitý). Zdroje v `art-src/icons/`, orez `scripts/art.py trim` (malá kópia vždy `-480`, ako čaká `offerGlass`).
+Starý obrázok pečiatky (`offer-company-formation`) je z `public/art` odstránený.
+
 **Mony na telefóne, 28. 10. 2026 po polnoci (Claude, `main`):** jeho slovo o 00:11: Mony na telefóne „uteká“, pri
 posúvaní v čete sa posúva stránka. Do 900 px sa Mony otvorí cez celú obrazovku ako aplikácia četu (`.mony.is-open`,
 výsuv zdola `mony-sheet`), stránka pod ňou stojí (`html.mony-held`, body `position: fixed` s `top` podľa posunu,

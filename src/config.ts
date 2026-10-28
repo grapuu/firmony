@@ -227,7 +227,8 @@ export type ArtSlot =
   | 'paperEinvoice'
   | 'paperReturn'
   | 'offerFirstMonth'
-  | 'offerCompanyFormation'
+  | 'offerMony'
+  | 'formation'
   | 'offerSwitch'
   | 'offerInvoices'
   | 'toolPdf'
@@ -286,7 +287,12 @@ export const ART: Record<ArtSlot, Art | null> = {
   paperReturn: glass('deadline'),
   /* The four deals of the offer band, uploaded 23 October 2026 (art-src/icons/offer-*.png), margins trimmed. */
   offerFirstMonth: offerGlass('offer-first-month', 720, 899, 360),
-  offerCompanyFormation: offerGlass('offer-company-formation', 872, 898, 435),
+  /* Mony's own face, a smiling glass bubble (28 October 2026, art-src/icons/mony.png): its card in the offer band,
+     and square as the face in the corner and the head of the chat (public/art/mony.webp). */
+  offerMony: offerGlass('offer-mony', 900, 809, 450),
+  /* The 1 € company: a glass office building with a euro coin (28 October 2026, art-src/icons/sro-coin.png). His other
+     picture of that day, a key shaped as € in a door (art-src/icons/sro-key.png), is kept for later. */
+  formation: offerGlass('sro-coin', 900, 874, 450),
   offerSwitch: offerGlass('offer-switch', 898, 750, 449),
   offerInvoices: offerGlass('offer-invoices', 796, 899, 400),
   /* The free tools' icons, uploaded 27 October 2026 (art-src/icons/pdf, wallet, shield, pie, scale). */

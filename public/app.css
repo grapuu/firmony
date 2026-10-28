@@ -5867,10 +5867,12 @@ textarea {
     margin-bottom: max(12px, env(safe-area-inset-bottom, 0px));
   }
 
-  /* The whole screen slides up a little as it opens, as a sheet does, rather than growing from the corner. */
+  /* The whole screen slides up a little as it opens, as a sheet does, rather than growing from the corner, and
+     without the corner's overshoot, which lifted it above the top of the screen. */
   .mony.is-open .mony__panel {
     transform-origin: 50% 100%;
     animation-name: mony-sheet;
+    animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
   }
 
   html.mony-held,

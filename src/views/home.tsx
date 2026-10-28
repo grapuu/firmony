@@ -171,7 +171,7 @@ const Deal: FC<{ carry: Carry }> = ({ carry }) => {
             </p>
           </div>
           <div class="deal__art" aria-hidden="true">
-            <Picture art={ART.offerCompanyFormation} className="deal__img" sizes="(max-width: 900px) 220px, 400px" />
+            <Picture art={ART.formation} className="deal__img" sizes="(max-width: 900px) 220px, 400px" />
           </div>
         </div>
         <p class="deal__fine">{d.fine}</p>
@@ -307,7 +307,7 @@ const Why: FC = () => (
 )
 
 /** The glass icon of each deal card, in the same order as copy.offer.items. */
-const OFFER_ART: readonly (Art | null)[] = [ART.chat, ART.offerFirstMonth, ART.offerSwitch, ART.offerInvoices]
+const OFFER_ART: readonly (Art | null)[] = [ART.offerMony, ART.offerFirstMonth, ART.offerSwitch, ART.offerInvoices]
 
 /** The one offer the visitor cannot refuse: four cards on a virtual ring. The card in front is the hero in the
  *  middle, one card each side is visible and readable, and the fourth hides behind. public/flow.js turns the ring

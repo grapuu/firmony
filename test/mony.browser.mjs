@@ -38,7 +38,11 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
   for (const width of [320, 390, 1440]) {
     await clientPage.setViewportSize({ width, height: 800 })
     const box = await clientPage.locator('#mony-panel').boundingBox()
-    check(`mony browser: the open cloud fits ${width}px`, Boolean(box) && box.x >= 0 && box.x + box.width <= width && box.y >= 0 && (await clientPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)))
+    check(
+      `mony browser: the open cloud fits ${width}px`,
+      Boolean(box) && box.x >= 0 && box.x + box.width <= width && box.y >= 0 && (await clientPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)),
+      JSON.stringify({ box, scroll: await clientPage.evaluate(() => [document.documentElement.scrollWidth, innerWidth, document.documentElement.className, document.querySelector('[data-mony]').getAttribute('style')]) }),
+    )
     await clientPage.screenshot({ path: `.wrangler/screens/${width}-mony-open.png` })
   }
   await clientPage.setViewportSize({ width: 1440, height: 900 })
@@ -100,7 +104,19 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
 
   // On a phone Mony opens over the whole screen and holds the page still; folded, the page is where it was, and a
   // cloud left open does not open again by itself on the next page.
-  await clientPage.evaluate(() => window.scrollTo({ top: 1500, behavior: 'instant' }))
+  // The menu's link scrolls smoothly to the prices; the page is let come to rest before and after the jump, so that
+  // the position read is the one Mony finds when it opens.
+  await clientPage.evaluate(async () => {
+    const rest = async () => {
+      for (let last = -1; last !== scrollY; ) {
+        last = scrollY
+        await new Promise((r) => setTimeout(r, 150))
+      }
+    }
+    await rest()
+    window.scrollTo({ top: 1500, behavior: 'instant' })
+    await rest()
+  })
   const before = await clientPage.evaluate(() => Math.round(scrollY))
   await clientPage.getByRole('button', { name: 'Otvoriť Mony', exact: true }).click()
   await clientPage.waitForTimeout(450)
@@ -135,7 +151,8 @@ export async function checkMonyBrowser({ clientPage, origin, mony }) {
     root.style.removeProperty('--mony-top')
   })
   await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
-  check('mony phone: folded, the page is exactly where it was', before > 0 && (await clientPage.evaluate(() => Math.round(scrollY))) === before && !(await clientPage.evaluate(() => document.documentElement.classList.contains('mony-held'))))
+  const after = await clientPage.evaluate(() => [Math.round(scrollY), document.documentElement.className, document.body.getAttribute('style'), location.pathname + location.hash])
+  check('mony phone: folded, the page is exactly where it was', before > 0 && after[0] === before && !after[1].includes('mony-held'), JSON.stringify({ before, after }))
   await clientPage.evaluate(() => {
     try {
       localStorage.setItem('mony:open', '1')
