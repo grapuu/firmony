@@ -54,7 +54,8 @@ import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
 import { filedReturns, taxPaid } from './vat-store'
-import { billingScheduled, billRows, tariffForClient } from '../team/billing-store'
+import { billingScheduled, billRows, remindBillsScheduled, tariffForClient } from '../team/billing-store'
+import { nudgeScheduled } from '../team/nudge'
 import { booksRefused, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
 import { bell, ringStatement } from '../bell'
@@ -4065,6 +4066,18 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await billingScheduled(env, at, BRAND.origin)
   } catch (err) {
     console.error('billing failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    // Firmony's own unpaid invoices: reminders at three and fourteen days, the administrators at thirty.
+    await remindBillsScheduled(env, at, BRAND.origin)
+  } catch (err) {
+    console.error('billing reminders failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    // A newcomer who stopped halfway: the declaration, the contract, an application, the first steps (team/nudge.ts).
+    await nudgeScheduled(env, at, BRAND.origin)
+  } catch (err) {
+    console.error('nudges failed', err instanceof Error ? err.name : 'error')
   }
   try {
     await repeatScheduled(env, bratislava(at).day)

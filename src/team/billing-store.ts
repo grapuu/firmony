@@ -448,6 +448,72 @@ export async function billingScheduled(env: { DB: D1Database; FILES?: R2Bucket }
 /** A reminder of an unpaid invoice past its due day: a message in the client's app and a doorbell, once a week. */
 export const REMIND_EVERY = 7 * 86400
 
+/**
+ * Firmony's own invoices collected without the administrator (his word of 28 October 2026): an invoice still unpaid
+ * three days past its due day, and again at fourteen, gets the same reminder the button sends (a message in the
+ * client's app and a doorbell); at thirty days the administrators are rung once, since what follows is their decision.
+ * Each step once (`invoices.reminders` moved from the step it read), a manual reminder of the last five days counts for
+ * the client's step, and a client whose data are handed over or deleted gets nothing. Looked at at nine in the morning.
+ */
+export const BILL_STEPS = [
+  { days: 3, client: true },
+  { days: 14, client: true },
+  { days: 30, client: false },
+] as const
+
+export async function remindBillsScheduled(env: { DB: D1Database }, at: number, origin: string): Promise<number> {
+  const db = env.DB
+  const clock = bratislava(at)
+  if (clock.hour !== 9 || clock.minute >= 15) return 0
+  const operator = await operatorOf(db)
+  if (!operator) return 0
+  const today = clock.day
+  const overdue = (await billRows(db, today, null, 2000)).filter((r) => r.state === 'overdue')
+  if (overdue.length === 0) return 0
+  const ts = now()
+  let done = 0
+  for (const row of overdue) {
+    const days = Math.floor((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${row.dueOn}T12:00:00Z`)) / 86_400_000)
+    const reached = BILL_STEPS.filter((step) => days >= step.days).length
+    const state = await db
+      .prepare('SELECT i.reminders, c.purge_started_at, c.purged_at FROM invoices i JOIN companies c ON c.id = ? WHERE i.id = ? AND i.company_id = ?')
+      .bind(row.clientId, row.invoiceId, operator.id)
+      .first<{ reminders: number; purge_started_at: number | null; purged_at: number | null }>()
+    if (!state || state.purge_started_at || state.purged_at || reached <= state.reminders) continue
+    // One step a day at most: an invoice found long overdue still gets its reminders before the administrators hear.
+    const target = state.reminders + 1
+    const step = BILL_STEPS[target - 1]!
+    // The step is claimed first, from the one it read: two runs never send it twice.
+    const claimed = await db.prepare('UPDATE invoices SET reminders = ?1 WHERE id = ?2 AND reminders = ?3').bind(target, row.invoiceId, state.reminders).run()
+    if ((claimed.meta?.changes ?? 0) === 0) continue
+    const recently = row.remindedAt !== null && row.remindedAt > ts - 5 * 86400
+    try {
+      if (step.client && !recently) {
+        const members = await membersOf(db, row.clientId)
+        await db.batch([
+          db.prepare('UPDATE invoices SET reminded_at = ? WHERE id = ?').bind(ts, row.invoiceId),
+          messageStatement(db, { id: crypto.randomUUID(), company: row.clientId, author: null, side: 'firmony', body: remindMessage(row.number, row.totalCents, row.dueOn, operator.invoiceIban, row.vs), payment: null }),
+          eventStatement(db, { company: row.clientId, user: null, action: 'billing.reminded', subject: row.invoiceId, detail: { auto: true, days: step.days } }),
+          ...members.map((m) => ringStatement(db, 'invoice-overdue', `${row.invoiceId}:auto${step.days}`, m.email, bell.invoiceOverdue(`${origin}/app/firma#faktury-firmony`))),
+        ])
+        done++
+      } else if (!step.client) {
+        const admins = await db.prepare("SELECT email FROM users WHERE team = 'admin'").all<{ email: string }>()
+        await db.batch([
+          eventStatement(db, { company: row.clientId, user: null, action: 'billing.overdue30', subject: row.invoiceId }),
+          ...admins.results.map((a) => ringStatement(db, 'invoice-overdue-team', row.invoiceId, a.email, bell.teamOverdue(`${origin}/ucto/fakturacia#vystavene`))),
+        ])
+        done++
+      }
+    } catch (error) {
+      // Nothing was sent: the step is given back for the next run.
+      await db.prepare('UPDATE invoices SET reminders = ?1 WHERE id = ?2 AND reminders = ?3').bind(state.reminders, row.invoiceId, target).run()
+      console.error('billing reminder', error instanceof Error ? error.name : 'error')
+    }
+  }
+  return done
+}
+
 export function remindMessage(number: string, totalCents: number, dueOn: string, iban: string | null, vs: string = number): string {
   return `Faktúra č. ${number} na ${formatEurExact(totalCents)} bola splatná ${textDay(dueOn)} a platbu od Vás zatiaľ nevidíme. Prosíme o úhradu${iban ? ` na účet ${iban.replace(/(.{4})/g, '$1 ').trim()}` : ''} s variabilným symbolom ${vs}. QR kód na platbu nájdete v časti Firma a nastavenia. Ak ste už zaplatili, ďakujeme a správu prosím nevšímajte.`
 }

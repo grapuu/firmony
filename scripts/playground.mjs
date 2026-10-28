@@ -21,6 +21,7 @@ import { extname, join, normalize } from 'node:path'
 import { Miniflare, Response as MfResponse, convertV4MiniflareOptions } from 'miniflare'
 import { PEPPOL_TEST, PRETEND_MAIL, camtXml, pretendBank, pretendFio, pretendPeppol, readerAnswer, ecbAnswer, registerAnswer, statementMail } from '../test/pretend.mjs'
 import { sanctionsAnswer } from '../test/sanctions-fixtures.mjs'
+import { ruzAnswer } from '../test/ruz-fixtures.mjs'
 
 const root = new URL('..', import.meta.url).pathname
 const dist = join(root, '.wrangler/dist')
@@ -96,6 +97,8 @@ const mf = new Miniflare(convertV4MiniflareOptions({
           if (ecb) return new MfResponse(await ecb.text(), { status: ecb.status, headers: { 'content-type': 'text/xml' } })
           const listed = sanctionsAnswer(request.url)
           if (listed) return new MfResponse(listed.status === 302 ? null : await listed.text(), { status: listed.status, headers: Object.fromEntries(listed.headers) })
+          const statements = ruzAnswer(request.url)
+          if (statements) return new MfResponse(await statements.text(), { status: statements.status, headers: { 'content-type': 'application/json' } })
           return new MfResponse('unexpected request', { status: 599 })
       },
     },

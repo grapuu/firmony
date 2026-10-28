@@ -108,6 +108,40 @@ ENTITIES[19077777] = {
   authorizations: [{ value: 'Členovia predstavenstva konajú v mene spoločnosti samostatne.', validFrom: '2024-02-01' }],
 }
 
+/**
+ * Two companies whose shareholders the register names (aml/proposals.ts, kuvProposal; the fields as rpo.ts reads them):
+ * one owned by its only director, one owned by a person and a company.
+ */
+const OWNED = {
+  id: 19055551,
+  identifiers: [{ value: '56633333', validFrom: '2022-04-01' }],
+  fullNames: [{ value: 'TEST-ONLY Vlastná s. r. o.', validFrom: '2022-04-01' }],
+  addresses: [{ validFrom: '2022-04-01', street: 'Hlavná', regNumber: 0, buildingNumber: '20', postalCodes: ['04001'], municipality: { value: 'Košice' }, country: { value: 'Slovenská republika' } }],
+  establishment: '2022-04-01',
+  sourceRegister: { value: { value: 'Obchodný register' }, registrationOffices: [{ value: 'Mestský súd Košice', validFrom: '2022-04-01' }], registrationNumbers: [{ value: 'Sro/55551/V', validFrom: '2022-04-01' }] },
+}
+const HELD = { ...OWNED, id: 19055552, identifiers: [{ value: '56644444', validFrom: '2022-04-01' }], fullNames: [{ value: 'TEST-ONLY Holdingová s. r. o.', validFrom: '2022-04-01' }] }
+ENTITIES[19055551] = {
+  id: 19055551,
+  legalForms: [{ value: { value: 'Spoločnosť s ručením obmedzeným', code: '112' }, validFrom: '2022-04-01' }],
+  statutoryBodies: [{ stakeholderType: { value: 'Konateľ', code: '3' }, personName: { formatedName: 'Ing. Ján Vlastník' }, validFrom: '2022-04-01' }],
+  authorizations: [{ value: 'Konateľ koná v mene spoločnosti samostatne.', validFrom: '2022-04-01' }],
+  stakeholders: [
+    { stakeholderType: { value: 'Spoločník' }, personName: { formatedName: 'Ing. Ján Vlastník' }, validFrom: '2022-04-01' },
+    { stakeholderType: { value: 'Spoločník' }, personName: { formatedName: 'Starý Spoločník' }, validFrom: '2022-04-01', validTo: '2024-01-01' },
+  ],
+}
+ENTITIES[19055552] = {
+  id: 19055552,
+  legalForms: [{ value: { value: 'Spoločnosť s ručením obmedzeným', code: '112' }, validFrom: '2022-04-01' }],
+  statutoryBodies: [{ stakeholderType: { value: 'Konateľ', code: '3' }, personName: { formatedName: 'Eva Druhá' }, validFrom: '2022-04-01' }],
+  authorizations: [{ value: 'Konateľ koná v mene spoločnosti samostatne.', validFrom: '2022-04-01' }],
+  stakeholders: [
+    { stakeholderType: { value: 'Spoločník' }, personName: { formatedName: 'Eva Druhá' }, validFrom: '2022-04-01' },
+    { stakeholderType: { value: 'Spoločník' }, companyName: { value: 'TEST-ONLY Holding a. s.' }, identifier: '12345678', validFrom: '2022-04-01' },
+  ],
+}
+
 /** The register's answer for a request the Worker sends, or null when the request is not for the register. */
 export function registerAnswer(url, calls = []) {
   if (url.startsWith('https://api.statistics.sk/rpo/v1/entity/')) {
@@ -124,6 +158,8 @@ export function registerAnswer(url, calls = []) {
   if (ico === '56622222') return Response.json({ results: [INOVA], license: 'CC BY 4.0' })
   if (ico === '56677774') return Response.json({ results: [FOUNDED], license: 'CC BY 4.0' })
   if (ico === '47111119') return Response.json({ results: [FAKTURACKA], license: 'CC BY 4.0' })
+  if (ico === '56633333') return Response.json({ results: [OWNED], license: 'CC BY 4.0' })
+  if (ico === '56644444') return Response.json({ results: [HELD], license: 'CC BY 4.0' })
   if (ico === '35757442') return new Response('busy', { status: 503 })
   return Response.json({ results: [], license: 'CC BY 4.0' })
 }

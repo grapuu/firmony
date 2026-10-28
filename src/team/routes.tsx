@@ -213,6 +213,7 @@ import { sensitivePath } from '../security/policy'
 import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
 import { leastLoadedAccountant } from './assign'
+import { reviewProposal } from './review-proposal'
 import { dossierProposals } from '../aml/proposals'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
@@ -1338,7 +1339,7 @@ async function amlPage(c: Ctx, company: Company, extra: { error?: string; draft?
   const db = c.env.DB
   const [stored, risks, reports, dossier, designated] = await Promise.all([latestDeclaration(db, company.id), risksOf(db, company.id), reportsOf(db, company.id, { id: who.user.id, admin: false }), dossierOfCompany(db, company.id), isOfficer(db, who.user)])
   // The sanctions lists and the countries screened by the app, for the person's own check (aml/proposals.ts).
-  const proposals = dossier ? await dossierProposals(c.env, dossier.declaration, company.name).catch(() => ({})) : {}
+  const proposals = dossier ? await dossierProposals(c.env, dossier.declaration, company.name, Date.now(), company.ico).catch(() => ({})) : {}
   return shell(
     c,
     'clients',
@@ -5801,6 +5802,7 @@ async function reviewPage(c: Ctx, error?: string, status: ContentfulStatusCode =
   return shell(c, 'requests', 'Posúdenie pred podpisom', <ContractReviewPage requestId={id} order={order}
     offerHash={order ? await orderOfferHash(order) : ''} review={order ? await latestOrderReview(c.env.DB, order.id) : null}
     people={people.results} suggested={await leastLoadedAccountant(c.env.DB)} released={Boolean(approvedRelease(c.env.CONTRACT_RELEASE, await contractCatalogueHash()))} linkSentAt={sent?.at ?? null}
+    proposal={order && order.status === 'open' ? await reviewProposal(c.env, order, people.results.length) : null}
     flash={c.req.query('ok') === 'odkaz' ? 'Odkaz na zmluvu sme poslali tomu, kto za firmu koná.' : c.req.query('ok') === 'obnovena' ? 'Objednávka platí ďalších 30 dní. Posúďte ju a odkaz pošleme tomu, kto za firmu koná.' : undefined} error={error} />, status)
 }
 

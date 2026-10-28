@@ -52,7 +52,29 @@ export async function checkSanctionsRuntime({ db, files, get, freshAdmin, worker
   const unText = textarea(html, 'aml-un-sanctions-zdroj')
   check('sanctions: the UN list with nobody on it is prepared as clear, its source and what was compared said', selected(html, 'aml-un-sanctions-vysledok') === 'clear' && unText.includes('Výsledok: bez zhody') && unText.includes('Bezpečnostnej rady OSN') && unText.includes('konateľ Testoslav Sankcionovaný (nar. 1971)') && unText.includes('firma TEST-ONLY Embargo Trading s. r. o.'))
   check('sanctions: the countries are prepared from the codes of the declaration', selected(html, 'aml-countries-vysledok') === 'clear' && textarea(html, 'aml-countries-zdroj').includes('Vysokorizikové: žiadne'))
-  check('sanctions: what needs the person\'s own eyes is not prepared', !html.includes('data-aml-proposal="identity"') && !html.includes('data-aml-proposal="pep"') && !html.includes('data-aml-proposal="kuv"') && textarea(html, 'aml-pep-zdroj') === '')
+  check(
+    'sanctions: what needs the person\'s own eyes is not prepared, and the beneficial owners of a company the register does not know are left to him',
+    !html.includes('data-aml-proposal="identity"') && !html.includes('data-aml-proposal="pep"') && !html.includes('data-aml-proposal="kuv"') && html.includes('data-aml-proposal-missing="kuv"') && textarea(html, 'aml-pep-zdroj') === '',
+  )
+
+  // The beneficial owners against the register's shareholders: the only director owning it all, and a company among them.
+  await dossier('kuv-owned', '56633333', 'TEST-ONLY Vlastná s. r. o.', { name: 'Ján Vlastník', birthDate: '1980-03-03' })
+  html = await (await officer.get('/ucto/aml/objednavky/kuv-owned')).text()
+  const owned = textarea(html, 'aml-kuv-zdroj')
+  check(
+    'kuv: the declared owner who is the register\'s only shareholder is prepared as a match, the ended shareholder left out, the shares left to the declaration',
+    html.includes('data-aml-proposal="kuv"') && selected(html, 'aml-kuv-vysledok') === 'clear' && owned.includes('spoločníci podľa registra právnických osôb Štatistického úradu SR: Ing. Ján Vlastník.') &&
+      owned.includes('mená sa zhodujú') && owned.includes('Výšku podielov register neuvádza') && !owned.includes('Starý Spoločník'),
+    owned,
+  )
+  await dossier('kuv-held', '56644444', 'TEST-ONLY Holdingová s. r. o.', { name: 'Eva Druhá', birthDate: '1985-05-05' })
+  html = await (await officer.get('/ucto/aml/objednavky/kuv-held')).text()
+  const held = textarea(html, 'aml-kuv-zdroj')
+  check(
+    'kuv: a company among the shareholders is prepared for the person to look through, nothing preselected',
+    selected(html, 'aml-kuv-vysledok') === '' && held.includes('TEST-ONLY Holding a. s. (právnická osoba, IČO 12345678)') && held.includes('SPOLOČNÍKOM JE PRÁVNICKÁ OSOBA'),
+    held,
+  )
 
   // One click: the prepared text recorded as it stands, under the person's name.
   const v = await aml.dossierOfOrder(db, 'sanct-hit')

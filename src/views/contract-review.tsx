@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx'
 import { OPERATOR, ORDER, PLANS, TERMS_VERSION } from '../config'
 import type { OrderReview, ReleaseState } from '../contracts'
 import type { Order } from '../order'
+import type { ReviewProposal } from '../team/review-proposal'
 import { LEGAL_FORM_NAMES, oneMayConclude } from '../rpo'
 import { team as t } from '../team/copy'
 import { Heading } from './inside'
@@ -118,9 +119,11 @@ export const ContractReviewPage: FC<{
   released: boolean
   /** When the director was last sent the link to the contract, or null. */
   linkSentAt?: number | null
+  /** The review the app prepared from the registers (team/review-proposal.ts): the form comes filled in by it. */
+  proposal?: ReviewProposal | null
   flash?: string
   error?: string
-}> = ({ requestId, order, offerHash, review, people, suggested = null, released, linkSentAt = null, flash, error }) => (
+}> = ({ requestId, order, offerHash, review, people, suggested = null, released, linkSentAt = null, proposal = null, flash, error }) => (
   <>
     <a class="back" href="/ucto/ziadosti">
       Žiadosti z webu
@@ -210,6 +213,29 @@ export const ContractReviewPage: FC<{
         ) : null}
       </section>
     ) : null}
+    {order && order.status === 'open' && proposal ? (
+      <section class="info" data-review-proposal={proposal.standard ? 'standard' : 'partial'}>
+        <h2 class="info__title">{proposal.standard ? 'Pripravené na schválenie jedným kliknutím' : 'Čo aplikácia overila v registroch'}</h2>
+        <ul class="checks">
+          {proposal.notes.map((n) => (
+            <li class="check" data-review-check={n.check} data-ok={n.ok ? '1' : '0'}>
+              <div class="check__text">
+                <span class="check__title">{({ authority: 'Konanie za firmu', category: 'Kategória mikro', scope: 'Rozsah služby', cover: 'Krytie' } as const)[n.check]}</span>
+                <span class="check__sub">{n.text}</span>
+              </div>
+              <span class="check__actions">
+                <span class={`pill ${n.ok ? 'pill--blue' : 'pill--amber'}`}>{n.ok ? 'Overené' : 'Na posúdenie'}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p class="small">
+          {proposal.standard
+            ? 'Formulár nižšie je vyplnený podľa týchto zistení. Ak s nimi súhlasíte, uložte posúdenie.'
+            : 'Čo sa nepodarilo overiť, posúďte sami. Overené kontroly sú v formulári nižšie zaškrtnuté.'}
+        </p>
+      </section>
+    ) : null}
     {order && order.status === 'open' ? (
       <form class="details" method="post" action={`/ucto/ziadosti/${requestId}/posudenie`}>
         <input type="hidden" name="proposal" value={offerHash} />
@@ -224,7 +250,7 @@ export const ContractReviewPage: FC<{
           <select class="field__input" id="review-decision" name="decision" required>
             <option value="hold">Pozastaviť do doplnenia podkladov</option>
             <option value="bespoke">Pripraviť individuálnu službu</option>
-            <option value="standard">Schváliť štandardný balík</option>
+            <option value="standard" selected={proposal?.standard ?? false}>Schváliť štandardný balík</option>
           </select>
         </div>
         <div class="field">
@@ -257,7 +283,7 @@ export const ContractReviewPage: FC<{
           <label class="field__label" for="review-evidence">
             Referencia na podpísané odborné posúdenie
           </label>
-          <input class="field__input" id="review-evidence" name="evidence" maxlength={240} required aria-describedby="review-evidence-hint" />
+          <input class="field__input" id="review-evidence" name="evidence" maxlength={240} required aria-describedby="review-evidence-hint" value={proposal?.evidence || undefined} />
           <p class="small" id="review-evidence-hint">
             Použite interné číslo alebo zabezpečený odkaz. Správa má doložiť kategóriu a obdobia, audit, rozsah, riziká, mandát, kapacitu tímu a posúdenie
             konkrétneho klienta voči poistke. Účtovné doklady ani osobné údaje sem nevkladajte.
@@ -272,7 +298,7 @@ export const ContractReviewPage: FC<{
             ['authority', 'Konanie za firmu vrátane prípadného spoločného podpisovania je overené. Jeden online podpis je pre túto firmu postačujúci.'],
           ].map(([name, label]) => (
             <label class="agree">
-              <input type="checkbox" name={name} value="1" />
+              <input type="checkbox" name={name} value="1" checked={proposal?.ticks[name as keyof ReviewProposal['ticks']] ?? false} />
               <span>{label}</span>
             </label>
           ))}

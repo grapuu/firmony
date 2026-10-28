@@ -4,6 +4,34 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Firma beží sama: pripomienky, posúdenie a KUV, 28. 10. 2026 neskoro večer (Claude, `main`):** jeho „ano“ o 20:19
+na štyri automatizácie. (1) **Upomienky faktúr Firmony** (`remindBillsScheduled` v `src/team/billing-store.ts`, z
+`appScheduled`): o 9:00 klientovi 3 a 14 dní po splatnosti správa v aplikácii a zvonček, najviac jeden krok denne, krok
+sa najprv zaberie CAS na `invoices.reminders`; ručná pripomienka do 5 dní nahradí prvý krok; 30 dní po splatnosti
+zvonček správcom (`bell.teamOverdue`). (2) **Postrkovanie nováčikov** (`src/team/nudge.ts`, `nudgeScheduled` o 9:00):
+konateľ bez vyhlásenia 2 a 5 dní po odkaze (nový token CAS na starý, e-mail len ak sa token zmenil,
+`queueIfChangedStatement` v `src/mail.ts`, udalosť `order.nudged` s `{stage,step}`); po schválení AML hneď
+„zmluva je pripravená“ (`tellAdmitted` z `/ucto/aml/spisy/:id/rozhodnutie`, len online objednávka a `contractGate`
+ready; plánovač to dobehne deň po schválení, keď release prišiel neskôr), potom 2 a 5 dní; prihláška s. r. o. za 1 €
+3 a 10 dní od otvorenia (`nudgeFounder` v `src/founding/store.ts`, udalosť `nudged`, nie keď ju zakladateľ upravoval
+posledných 24 h); nový klient s nedokončenými prvými krokmi (`FIRST_STEPS_SQL`) 3 a 10 dní po zmluve zvonček
+vlastníkom (`bell.firstSteps`). Každý krok len v okne 2 dní od svojho dňa (`dueStep`), takže beh s cudzím časom nič
+staré nepošle. Neplatný odkaz objednávky hovorí, že platí len najnovší (`OrderGone kind="replaced"`). (3) **Posúdenie
+na jedno kliknutie** (`src/team/review-proposal.ts`, `src/ruz.ts`): register účtovných závierok (verejné API
+registeruz.sk, tvar odpovedí podľa nahrávok `github.com/freevisionsk/registeruz-mcp`, 28. 10.): posledná riadna
+závierka na šablóne „Úč MUJ“ za obdobie od decembra predminulého roka, alebo firma založená tento či minulý rok bez
+závierky (deň vzniku z RÚZ, inak `establishment` z RPO), nie konsolidovaná, pásmo zamestnancov 00 až 05, balík z
+`PLANS`, tím aspoň dvaja, platný `CONTRACT_RELEASE`, konanie podľa `oneMayConclude`. Keď sedí všetko, stránka
+posúdenia má predvolené „Schváliť štandardný balík“, štyri zaškrtnutia a referenciu; inak „Na posúdenie“ s dôvodom.
+(4) **KUV proti registru** (`kuvProposal`, `registerShareholders` v `src/aml/proposals.ts`; `readStakeholders` v
+`src/rpo.ts`, polia podľa `github.com/LegalEngineering/sk-registers-mcp`): zhoda všetkých mien spoločníkov (osoby) s
+KUV z vyhlásenia sa pripraví ako „bez prekážky“ (podiely RPO neuvádza, berú sa z vyhlásenia); spoločník právnická
+osoba alebo rozdiel v menách sa nechá určenej osobe s textom. Ručne ostáva QES/totožnosť a PEP. Overiť naživo: tvar
+`stakeholders` v RPO a odpovede RÚZ z Workera (shell ani WebFetch sa k nim nedostali). Mony návody doplnené. Schéma bez
+zmeny (87). Overené: `npm run check`, 1 701 unit + 12 deployment, 2 679 runtime na Node 24 (nové `test/nudge.runtime.mjs`,
+KUV v `sanctions.runtime.mjs`, `test/registers.units.mjs`, pretend RÚZ `test/ruz-fixtures.mjs`), 25 Peppol, UI pri
+1440/390/320, 129 browser. D1 odmieta vzor LIKE nad 50 bajtov: v testoch porovnávať prefix cez `substr`.
+
 **Mony vie celú svoju rolu, 28. 10. 2026 večer (Claude, `main`):** jeho slovo o 16:26: cieľ je firma, ktorá beží
 sama; Mony musí vedieť, s kým píše, a odpovedať tak, aby klienti a účtovníčky nepotrebovali jeho. Odpovedá **Claude
 Sonnet 5.5** (`MONY.answerModel`, `output_config.effort` medium, `max_tokens` 6 000); výber sekcií ostáva na Haiku 5.5

@@ -325,14 +325,18 @@ export const OrderDone: FC<{ order: Order; contract: ResolvedContract | null }> 
 }
 
 /** A link that no longer works, or a company that is already a client. */
-export const OrderGone: FC<{ kind: 'expired' | 'client'; again?: string }> = ({ kind, again = '/zacat' }) => (
+export const OrderGone: FC<{ kind: 'expired' | 'client' | 'replaced'; again?: string }> = ({ kind, again = '/zacat' }) => (
   <Page>
     <h1 class="h1">{kind === 'client' ? o.clientTitle : o.expiredTitle}</h1>
-    <p class="lead">{kind === 'client' ? o.clientLead : o.expiredLead}</p>
+    <p class="lead">{kind === 'client' ? o.clientLead : kind === 'replaced' ? o.replacedLead : o.expiredLead}</p>
     <p class="page__more">
       {kind === 'client' ? (
         <a class="btn btn--blue" href="/app/prihlasenie">
           {o.signIn}
+        </a>
+      ) : kind === 'replaced' ? (
+        <a class="btn btn--line" href="/">
+          {o.replacedBack}
         </a>
       ) : (
         <a class="btn btn--blue" href={again}>

@@ -69,6 +69,7 @@ jednotlivých oblastí (DPH, kniha, závierka, mzdy) sú v pracovných poznámka
 ## Stránka klienta (/ucto/klienti/:id)
 
 - Na zaúčtovanie, platby bez dokladu na kontrolu („V poriadku“ alebo „Vrátiť klientovi“ so správou), chýbajúce doklady u klienta („Pripomenúť klientovi“), správy s odpoveďou, výpisy z banky, ktoré nenadväzujú („Zaúčtovať aj tak“ alebo „Nezaúčtovať“).
+- Pripomienky robí aplikácia sama, netreba ich písať: chýbajúce doklady každý pondelok a 5. dňa v mesiaci, výpis 3. dňa, nedokončené prvé kroky nového klienta (vyhlásenie, plná moc, banka, prvý doklad) 3 a 10 dní po zmluve. „Pripomenúť klientovi“ je na mimoriadny prípad.
 - Údaje firmy: DIČ, IČ DPH, registrácia pre DPH (neregistrovaná, platiteľ, § 7a), mesačné alebo štvrťročné obdobie, daňový úrad, osobný daňový účet, poznámka pre tím.
 - Odkazy na DPH, Knihu, Závierku, Mzdy, Prevzatie, Identifikáciu a riziko, Podania a Mzdové podania tohto klienta.
 - Zmluva a plná moc: nahratú plnú moc označí „Overená a podaná“, chybnú vráti klientovi s dôvodom.

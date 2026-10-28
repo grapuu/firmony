@@ -632,7 +632,8 @@ const orderMeta = (title: string): PageMeta => ({ title: `${title} | ${BRAND.nam
 const bratislavaToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date())
 
 /** The page an order that cannot be concluded any more shows instead of its form, or null when it can be. */
-const orderMissing = (c: Ctx) => page(c, { title: `${copy.notFound.title} | ${BRAND.name}`, description: copy.meta.description, path: '/objednavka', noindex: true }, <NotFound />, 404)
+// A link nobody has (another order's, a link replaced by a newer one, an old link past its access): only the newest works.
+const orderMissing = (c: Ctx) => page(c, { title: `${copy.order.expiredTitle} | ${BRAND.name}`, description: copy.meta.description, path: '/objednavka', noindex: true }, <OrderGone kind="replaced" />, 404)
 
 async function orderClosed(c: Ctx, order: Order) {
   if (order.status === 'accepted') {

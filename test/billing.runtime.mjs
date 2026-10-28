@@ -3,7 +3,7 @@
 // the client told in the app, the payment paired from europio's bank, a reminder, and the schedule's part.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
-import { billingDrafts, billingScheduled, deliverBill, issuable, matchCompany, monthStart, operatorOf } from '../.wrangler/dist/stores.js'
+import { billingDrafts, billingScheduled, deliverBill, issuable, matchCompany, monthStart, operatorOf, remindBillsScheduled } from '../.wrangler/dist/stores.js'
 
 const addMonths = (month, n) => {
   const i = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + n
@@ -195,6 +195,35 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
   const rung = await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE id LIKE ?').bind(`bell:billing:${nextMonth}:%`).first()
   const admins = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE team = 'admin'").first()
   check('the administrators are rung once, and only when a bill waits for them', rung?.n === (waiting ? admins?.n : 0) && admins.n > 0, `${rung?.n} ${admins?.n} ${waiting}`)
+
+  // Unpaid past its due day: the client is reminded by itself at three and at fourteen days, the administrators hear
+  // at thirty; each once, one step a day, and nothing on a day before its step (his word of 28 October 2026).
+  const due = '2027-01-10'
+  await db.prepare('UPDATE invoices SET due_on = ?, reminders = 0, reminded_at = NULL WHERE id = ?').bind(due, mine.id).run()
+  const nine = (day) => (monthStart(day.slice(0, 7)) + (Number(day.slice(8, 10)) - 1) * 86400 + 9 * 3600 + 300) * 1000
+  const remindedInApp = async () => (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE company_id = ? AND body LIKE 'Faktúra č.%bola splatná%' AND body LIKE ?").bind(companyId, `%${mine.number}%`).first()).n
+  const reminders = async () => (await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(mine.id).first()).reminders
+  await remindBillsScheduled({ DB: db }, nine('2027-01-12'), 'https://firmony.io')
+  check('two days past its due day nothing is sent', (await remindedInApp()) === 0 && (await reminders()) === 0)
+  await remindBillsScheduled({ DB: db }, nine('2027-01-13'), 'https://firmony.io')
+  await remindBillsScheduled({ DB: db }, nine('2027-01-13'), 'https://firmony.io')
+  check(
+    'three days past it the client is reminded in the app and rung, once',
+    (await remindedInApp()) === 1 && (await reminders()) === 1 && Boolean(await db.prepare('SELECT 1 AS x FROM outbox WHERE id = ?').bind(`bell:invoice-overdue:${mine.id}:auto3:tomas@zelenydvor.test`).first()),
+  )
+  await db.prepare('UPDATE invoices SET reminded_at = reminded_at - 12 * 86400 WHERE id = ?').bind(mine.id).run()
+  await remindBillsScheduled({ DB: db }, nine('2027-01-24'), 'https://firmony.io')
+  check('fourteen days past it, once more', (await remindedInApp()) === 2 && (await reminders()) === 2)
+  const teamBefore = (await db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE id LIKE 'bell:invoice-overdue-team:%'").first()).n
+  await remindBillsScheduled({ DB: db }, nine('2027-02-09'), 'https://firmony.io')
+  await remindBillsScheduled({ DB: db }, nine('2027-02-10'), 'https://firmony.io')
+  const team = (await db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE substr(id, 1, length(?1)) = ?1').bind(`bell:invoice-overdue-team:${mine.id}:`).first()).n
+  check('thirty days past it the administrators are rung once, the client is not reminded a third time', team === admins.n && team > teamBefore && (await remindedInApp()) === 2 && (await reminders()) === 3)
+  await db.prepare('UPDATE invoices SET due_on = ?, reminders = 0, reminded_at = NULL WHERE id = ?').bind(due, mine.id).run()
+  await db.prepare('UPDATE invoices SET reminded_at = ? WHERE id = ?').bind(Math.floor(Date.now() / 1000), mine.id).run()
+  await remindBillsScheduled({ DB: db }, nine('2027-01-13'), 'https://firmony.io')
+  check('a reminder sent by hand within five days stands for the first step', (await remindedInApp()) === 2 && (await reminders()) === 1)
+  await db.prepare('UPDATE invoices SET reminders = 3 WHERE id = ?').bind(mine.id).run()
   // The contract's first month as it was, for the checks that follow.
   await db.prepare('UPDATE companies SET start_on = ? WHERE id = ?').bind(startedOn, companyId).run()
   await db.prepare('DELETE FROM closings WHERE company_id = ?').bind(companyId).run()

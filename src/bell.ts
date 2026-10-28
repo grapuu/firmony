@@ -35,6 +35,11 @@ export const bell = {
   foundingLink: (link: string, days: number) =>
     ring('prihláška na založenie s. r. o.', `tu je odkaz na Vašu prihlášku na založenie s. r. o. za 1 €. Prihlášku dokončite do ${days} dní, odkazom ju otvoríte kedykoľvek:`, link, ['Odkaz nikomu nepreposielajte, je to kľúč k Vašej prihláške.']),
   foundingNews: (link: string) => ring('správa k založeniu s. r. o.', 'k založeniu Vašej s. r. o. je nová správa. Prečítate si ju v prihláške:', link),
+  // An application not handed over yet (team/nudge.ts): a new link and the day it is open until, nothing of its data.
+  foundingNudge: (link: string, until: string) =>
+    ring('prihláška na založenie s. r. o.', `Vaša s. r. o. za 1 € čaká už len na pár krokov. Prihlášku dokončíte do ${until} na tomto odkaze:`, link, ['Odkaz nikomu nepreposielajte, je to kľúč k Vašej prihláške.']),
+  // A new client whose first steps are not done (team/nudge.ts): which ones is read on the overview.
+  firstSteps: (link: string) => ring('prvé kroky', 'aby sme mohli naplno viesť účtovníctvo Vašej firmy, chýba ešte pár prvých krokov. Každý zaberie len chvíľu a nájdete ich na prehľade:', link),
   teamFounding: (link: string) => ring('prihláška na založenie s. r. o.', 'prihláška na založenie s. r. o. čaká na overenie určenou osobou:', link),
   managedTakeoverQuestion: (link: string) => ring('doplnenie k prevzatiu', 'pri prevzatí účtovníctva potrebujeme Vaše doplnenie. Otázku a aktuálny priebeh si otvoríte po prihlásení:', link),
   teamManagedTakeover: (link: string) => ring('koordinácia prevzatia', 'klient požiadal o koordináciu prevzatia účtovníctva. Kontakt a rozsah si pozrite po prihlásení:', link),
@@ -68,5 +73,6 @@ export const bell = {
   teamRequest: (link: string) => ring('nová žiadosť z webu', 'na webe prišla nová žiadosť:', link),
   teamNotice: (link: string) => ring('výpoveď zmluvy', 'klient vypovedal zmluvu alebo výpoveď vzal späť:', link),
   teamBilling: (month: string, link: string) => ring(`faktúry klientom za ${month}`, `faktúry klientom za ${month} sú pripravené. Skontrolujte ich a vystavte:`, link),
+  teamOverdue: (link: string) => ring('faktúra klienta 30 dní po splatnosti', 'jedna z faktúr klientom je 30 dní po splatnosti a platbu stále nevidíme. Klient dostal dve pripomienky. Rozhodnite, ako ďalej:', link),
   teamStatement: (link: string) => ring('výpis na kontrolu', 'výpis z banky klienta nenadväzuje na predchádzajúci, preto sme ho nezaúčtovali. Pozrite sa naň:', link),
 }

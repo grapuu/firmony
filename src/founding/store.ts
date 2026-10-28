@@ -13,6 +13,8 @@ import { inboxCode } from '../team/store'
 import { lookupCompany } from '../rpo'
 import { bell, ringStatement } from '../bell'
 import { bratislavaDay } from '../time'
+import { queueIfChangedStatement } from '../mail'
+import { textDay } from '../app/booking'
 import { formationContractText } from '../content/formation-contract'
 import { bytesHash } from '../aml/store'
 import { quoteSql } from '../aml/model'
@@ -101,6 +103,32 @@ export async function applyFor(db: D1Database, input: { email: string; phone: st
     }
   }
   throw new Error('no free payment symbol')
+}
+
+/**
+ * A reminder to the founder of an application still open (team/nudge.ts), once for each of its steps since `since` (the
+ * day the application opened or was returned): recorded among its events, then rung with a new link and the day it is
+ * open until. A run that finds the step recorded, or the application handed over meanwhile, sends nothing.
+ */
+export async function nudgeFounder(db: D1Database, f: Founding, step: number, since: number, origin: string, ts: number = now()): Promise<boolean> {
+  const link = await linkStatement(db, f.id)
+  const note = `Pripomienka ${step + 1}`
+  const [recorded] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO founding_events (id, founding_id, at, by, action, status, note) SELECT ?1, ?2, ?3, NULL, 'nudged', 'open', ?4
+          WHERE EXISTS (SELECT 1 FROM foundings WHERE id = ?2 AND status = 'open' AND expires_at > ?3 AND purge_started_at IS NULL)
+            AND NOT EXISTS (SELECT 1 FROM founding_events WHERE founding_id = ?2 AND action = 'nudged' AND note = ?4 AND at >= ?5)`,
+      )
+      .bind(crypto.randomUUID(), f.id, ts, note, since),
+    queueIfChangedStatement(db, {
+      key: `bell:founding-nudge:${f.id}:${since}:${step}:${f.email.toLowerCase()}`,
+      to: f.email,
+      ...bell.foundingNudge(`${origin}/zalozenie/${link.token}`, textDay(bratislavaDay(f.expiresAt - DAY))),
+    }),
+    link.statement,
+  ])
+  return (recorded?.meta?.changes ?? 0) === 1
 }
 
 function eventRow(db: D1Database, founding: string, by: string | null, action: string, status: FoundingStatus, note: string): D1PreparedStatement {

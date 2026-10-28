@@ -85,6 +85,8 @@ import { checkPasskeySignin } from './passkey-signin.runtime.mjs'
 import { checkFoundingRuntime } from './founding.runtime.mjs'
 import { sanctionsAnswer } from './sanctions-fixtures.mjs'
 import { checkSanctionsRuntime } from './sanctions.runtime.mjs'
+import { checkNudgeRuntime } from './nudge.runtime.mjs'
+import { ruzAnswer, RUZ_LAST } from './ruz-fixtures.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -143,6 +145,8 @@ const mf = new Miniflare(
           if (ecb) return new MfResponse(await ecb.text(), { status: ecb.status, headers: { 'content-type': 'text/xml' } })
           const listed = sanctionsAnswer(request.url)
           if (listed) return new MfResponse(listed.status === 302 ? null : await listed.text(), { status: listed.status, headers: Object.fromEntries(listed.headers) })
+          const statements = ruzAnswer(request.url)
+          if (statements) return new MfResponse(await statements.text(), { status: statements.status, headers: { 'content-type': 'application/json' } })
           return new MfResponse('unexpected request', { status: 599 })
         },
       },
@@ -4573,6 +4577,13 @@ check('a client cannot approve a contract intake', res.status === 404)
 res = await admin.get(reviewPath)
 const reviewHtml = await res.text()
 check('an administrator sees scope, capacity, authority and insurance checks', res.status === 200 && ['category', 'scope', 'cover', 'authority'].every((k) => reviewHtml.includes(`name="${k}"`)))
+check(
+  'the review comes prepared from the registers: who acts, a micro entity by its last statements, the scope and the approved catalogue, all ticked',
+  reviewHtml.includes('data-review-proposal="standard"') && ['category', 'scope', 'cover', 'authority'].every((k) => reviewHtml.includes(`data-review-check="${k}" data-ok="1"`)) &&
+    ['category', 'scope', 'cover', 'authority'].every((k) => new RegExp(`name="${k}" value="1" checked`).test(reviewHtml)) && /<option value="standard" selected/.test(reviewHtml) &&
+    reviewHtml.includes('na šablóne Úč MUJ') && new RegExp(`name="evidence"[^>]*value="Firmony [^"]*RÚZ závierka do 12/${RUZ_LAST} na Úč MUJ`).test(reviewHtml),
+  reviewHtml.match(/data-review-proposal[\s\S]{0,3000}/)?.[0],
+)
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/contract-review.html`, reviewHtml)
 const proposal = reviewHtml.match(/name="proposal" value="([a-f0-9]{64})"/)?.[1]
 const reviewFields = { proposal, decision: 'standard', plan: 'rast', evidence: 'TEST-ONLY qualification report', accountant: lucia.id, category: '1', scope: '1', cover: '1', authority: '1' }
@@ -5389,5 +5400,6 @@ await checkPasskeySignin({ mf, db, post, sent, settle, as, nowS })
 await checkMony({ mf, db, site, mony, nowS })
 await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin, acc, signIn, nowS, purgeFoundings, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkSanctionsRuntime({ db, files, get, freshAdmin, worker, settle, nowS })
+await checkNudgeRuntime({ db, files })
 await mf.dispose()
 done('runtime')

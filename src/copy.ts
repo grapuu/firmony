@@ -549,6 +549,8 @@ export const copy = typesetAll({
     expiredTitle: 'Tento odkaz už neplatí.',
     expiredLead: 'Ponuka bola platná obmedzený čas. Vyplňte žiadosť znova, údaje z registra doplníme sami.',
     expiredAgain: 'Vyplniť žiadosť znova',
+    replacedLead: 'Platí vždy len najnovší odkaz, ktorý sme Vám poslali e-mailom. Otvorte, prosím, posledný e-mail od Firmony.',
+    replacedBack: 'Späť na úvod',
     waitTitle: 'Zmluvu pre Vás pripravujeme.',
     waitLead: `Najprv posúdime, či Vašej firme sedí štandardný balík. Odkaz na podpis pošleme ${REPLY_WITHIN} tomu, kto za firmu koná.`,
     bespokeTitle: 'Pripravujeme Vám ponuku na mieru.',

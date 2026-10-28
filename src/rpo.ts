@@ -23,6 +23,8 @@ export interface Company {
   isSro: boolean
   /** The day the company ceased to exist, when it did. */
   terminated: string | null
+  /** The day it was established (the register's `establishment`, seen in test/fixtures/rpo-europio.json). */
+  established?: string | null
 }
 
 interface Dated {
@@ -46,6 +48,7 @@ interface RpoResult {
   addresses?: RpoAddress[]
   legalForms?: ({ value?: { value?: string; code?: string } } & Dated)[]
   termination?: string
+  establishment?: string
   sourceRegister?: {
     value?: { value?: string }
     registrationOffices?: ({ value?: string } & Dated)[]
@@ -145,6 +148,7 @@ export function readCompany(ico: string, answer: unknown): Company | null {
     form: legalFormOf(form?.code, legalForm, name),
     isSro: legalFormOf(form?.code, legalForm, name) === 'sro',
     terminated: result.termination ?? null,
+    established: /^\d{4}-\d{2}-\d{2}/.test(result.establishment ?? '') ? (result.establishment ?? '').slice(0, 10) : null,
   }
 }
 
@@ -249,12 +253,54 @@ export function oneMayConclude(form: LegalForm | null, directors: readonly Direc
 
 export const RPO_ENTITY = 'https://api.statistics.sk/rpo/v1/entity'
 
+/** A shareholder as the register names one: a person, or a company with its IČO. */
+export interface Stakeholder {
+  name: string
+  kind: 'person' | 'company'
+  ico: string | null
+  /** The register's word: "Spoločník", "Akcionár". */
+  role: string
+}
+
+interface RpoStakeholder extends RpoPerson {
+  companyName?: { value?: string }
+  identifier?: string
+}
+
+/**
+ * The shareholders in office, from the entity's `stakeholders` (each with `stakeholderType`, a person's
+ * `personName.formatedName` or `fullName`, a company's `companyName.value` and `identifier`, its IČO, "Neuvedené" when
+ * none: the fields an independent client of the same API reads, github.com/LegalEngineering/sk-registers-mcp, server.py,
+ * read on 28 October 2026). The register gives no share: what is compared is who, not how much.
+ */
+export function readStakeholders(answer: unknown, today: string = new Date().toISOString().slice(0, 10)): Stakeholder[] | null {
+  const list = (answer as { stakeholders?: RpoStakeholder[] } | null)?.stakeholders
+  if (!Array.isArray(list)) return null
+  const out: Stakeholder[] = []
+  for (const s of list) {
+    if (s.validTo && s.validTo.slice(0, 10) < today) continue
+    const role = s.stakeholderType?.value?.trim() ?? ''
+    if (role && !/spolo[čc]n[ií]k|akcion[áa]r/i.test(role)) continue
+    const person = s.personName
+    const joined = [...(person?.givenNames ?? []), ...(person?.familyNames ?? [])].join(' ')
+    const company = s.companyName?.value?.trim() ?? ''
+    const name = (person?.formatedName || joined || company || s.fullName || '').replace(/\s+/g, ' ').trim()
+    if (name.length < 2) continue
+    const ico = /^\d{6,8}$/.test((s.identifier ?? '').replace(/\s/g, '')) ? (s.identifier ?? '').replace(/\s/g, '') : null
+    const kind = company && !person?.formatedName && !joined ? 'company' : ico ? 'company' : 'person'
+    if (!out.some((o) => o.name === name)) out.push({ name, kind, ico, role: role || 'Spoločník' })
+  }
+  return out
+}
+
 /** What the detail of an entity says: its statutory body, its legal form and how the body acts. */
 export interface Entity {
   directors: Director[]
   form: LegalForm | null
   formCode: string | null
   acting: string | null
+  /** The shareholders in office; null when the register's answer has no list of them. */
+  stakeholders?: Stakeholder[] | null
 }
 
 export function readEntity(answer: unknown, today?: string): Entity {
@@ -262,7 +308,7 @@ export function readEntity(answer: unknown, today?: string): Entity {
   const form = current(Array.isArray(forms) ? forms : undefined)?.value
   const names = (answer as { fullNames?: ({ value?: string } & Dated)[] } | null)?.fullNames
   const name = current(Array.isArray(names) ? names : undefined)?.value ?? null
-  return { directors: readDirectors(answer, today), form: legalFormOf(form?.code, form?.value, name), formCode: form?.code ?? null, acting: readActing(answer, today) }
+  return { directors: readDirectors(answer, today), form: legalFormOf(form?.code, form?.value, name), formCode: form?.code ?? null, acting: readActing(answer, today), stakeholders: readStakeholders(answer, today) }
 }
 
 /** The detail of an entity, or null when the register does not answer within four seconds. */

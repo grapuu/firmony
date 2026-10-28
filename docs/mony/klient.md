@@ -17,7 +17,7 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 2. Firmony do jedného pracovného dňa posúdi, či firme sedí štandardný balík. Odkaz na zmluvu potom príde e-mailom tomu, kto za firmu koná (konateľ alebo člen predstavenstva zapísaný v registri). Odkaz platí 30 dní; ak vyprší, stránka odkazu ponúkne, ako získať nový.
 3. Odkaz najprv otvorí „Overenie pred začatím spolupráce“ (vyžaduje to zákon proti praniu špinavých peňazí): údaje o tom, kto za firmu koná a kto je konečným užívateľom výhod, výber balíka a prvého mesiaca služby a prijatie ponuky. Vyhlásenie sa stiahne ako PDF, podpíše kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom, aplikácia D.Signer na slovensko.sk) a podpísaný súbor (PDF alebo ASiC-E, do 25 MB) sa nahrá späť.
 4. Firmony podklady overí (totožnosť, podpis, konečný užívateľ výhod, zoznamy politicky exponovaných osôb a sankčné zoznamy). Niekedy si vyžiada aj doklad o účte firmy v banke v EÚ a o prvej platbe z neho.
-5. Po overení otvorí rovnaký odkaz zmluvu. Konateľ ju jedným kliknutím uzavrie („Uzavrieť zmluvu“) a hneď je prihlásený v aplikácii. Prihlasovací odkaz príde aj e-mailom.
+5. Keď je overenie hotové, príde e-mail „zmluva je pripravená“ s novým odkazom (platí vždy len najnovší odkaz od Firmony; ak podklady chýbajú, po 2 a 5 dňoch príde pripomienka tiež s novým odkazom). Po overení otvorí odkaz zmluvu. Konateľ ju jedným kliknutím uzavrie („Uzavrieť zmluvu“) a hneď je prihlásený v aplikácii. Prihlasovací odkaz príde aj e-mailom.
 6. V aplikácii čakajú prvé kroky: plná moc (/app/plna-moc), banka alebo výpis (/app/banka), prvý doklad. Pri prechode od inej účtovníčky aj list pre ňu (/app/prechod).
 - Ak za firmu konajú viacerí spoločne, zmluva sa podpisuje na papieri; Firmony ju pripraví. Iné právne formy než s. r. o., a. s. a j. s. a. a väčšie firmy (nad 150 dokladov mesačne, voľba „Na mieru“) dostanú ponuku osobne.
 - Celý čas je to nezáväzné až do kliknutia „Uzavrieť zmluvu“.
@@ -35,6 +35,8 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 
 - Faktúry za služby Firmony vystavuje europio s. r. o. Klient ich nájde vo Firme a nastaveniach (časť Faktúry od Firmony) a zároveň medzi svojimi dokladmi, takže sa zaúčtujú samy. Príde aj e-mail „nová faktúra od Firmony“.
 - Zaplatiť sa dá jedným naskenovaním QR kódu na faktúre v aplikácii banky. Keď platba príde, faktúra sa označí ako zaplatená sama.
+- Ak faktúra ostane nezaplatená, 3 a 14 dní po splatnosti príde pripomienka (správa v aplikácii a e-mail so zvončekom).
+- Kým nie sú hotové prvé kroky (vyhlásenie, plná moc, banka, prvý doklad), 3 a 10 dní po zmluve príde e-mail s odkazom na prehľad, kde sú vypísané.
 
 ## Bežný mesiac klienta
 

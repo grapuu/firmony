@@ -19,11 +19,22 @@ export interface Message {
   replyTo?: string | null
 }
 
+const replyOf = (message: Message) => (message.replyTo !== undefined ? message.replyTo : message.to.toLowerCase() === BRAND.email.toLowerCase() ? null : BRAND.email)
+
 export function queueStatement(db: D1Database, message: Message): D1PreparedStatement {
-  const replyTo = message.replyTo !== undefined ? message.replyTo : message.to.toLowerCase() === BRAND.email.toLowerCase() ? null : BRAND.email
   return db
     .prepare('INSERT OR IGNORE INTO outbox (id, recipient, reply_to, subject, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(message.key, message.to, replyTo, message.subject, message.body, now())
+    .bind(message.key, message.to, replyOf(message), message.subject, message.body, now())
+}
+
+/**
+ * A message queued only when the statement before it in the same batch changed a row: an email that tells of a move
+ * (a new link written, a reminder recorded) never goes out for a move that another run made first.
+ */
+export function queueIfChangedStatement(db: D1Database, message: Message): D1PreparedStatement {
+  return db
+    .prepare('INSERT OR IGNORE INTO outbox (id, recipient, reply_to, subject, body, created_at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1')
+    .bind(message.key, message.to, replyOf(message), message.subject, message.body, now())
 }
 
 interface Row {

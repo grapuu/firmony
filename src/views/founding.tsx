@@ -1148,6 +1148,7 @@ const EVENT_WORDS: Record<string, string> = {
   decided: 'Rozhodnutie',
   note: 'Správa zakladateľovi',
   call: 'Výzva na súčinnosť',
+  nudged: 'Pripomienka zakladateľovi',
   registered: 'Firma zapísaná',
   approved: 'Firma schválila zmluvu',
   refunded: 'Platba vrátená',

@@ -1,4 +1,5 @@
 import { dossierProposals } from './proposals'
+import { tellAdmitted } from '../team/nudge'
 import { bankEvidence,prepareBankEvidence } from './enhanced'
 import { registerArchiveRoutes } from './archive'
 import { AmlProspectPanel, type ProspectReport, type ProspectHold } from '../views/aml-prospects'
@@ -104,7 +105,7 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     }
     const view = await dossierOfOrder(c.env.DB, order.id)
     const designated = await isOfficer(c.env.DB, user)
-    const proposals = view ? await dossierProposals(c.env, view.declaration, order.company).catch(() => ({})) : {}
+    const proposals = view ? await dossierProposals(c.env, view.declaration, order.company, Date.now(), order.ico).catch(() => ({})) : {}
     const reports = await c.env.DB.prepare(`SELECT * FROM aml_prospect_reports WHERE order_id = ?1 AND (created_by = ?2 OR ${officerSql('?2')}) ORDER BY created_at DESC,id`).bind(order.id,user.id).all<ProspectReport>()
     const holds = designated ? await c.env.DB.prepare('SELECT id,created_at,until_on,reference FROM aml_prospect_holds WHERE order_id = ? ORDER BY created_at').bind(order.id).all<ProspectHold>() : null
     return render(c, 'Overenie pred zmluvou', <>
@@ -173,6 +174,8 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     const ok = consent && bankReady && await sourceIntact(c.env.FILES, found.view.dossier) && await decideDossier(c.env.DB, user, found.view, {
       decision: text(body.rozhodnutie, 20), level: text(body.riziko, 20), note: text(body.dovod), enhanced: text(body.zvysene), hash: text(body.hash, 64), bank,
     })
+    // The director of an online order learns at once that the contract may be concluded (team/nudge.ts).
+    if (ok && body.rozhodnutie === 'approved' && found.view.dossier.order_id) later(c, tellAdmitted(c.env, found.view.dossier.order_id, siteOrigin(c)))
     return c.redirect(`${found.back}${ok ? '?ok=overene' : '?chyba=overenie'}`, 303)
   })
   app.post('/aml/objednavky/:id/oznamenie', async (c) => {
