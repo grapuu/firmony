@@ -145,6 +145,7 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 - Ponuka platí pre prvých 20 firiem každý mesiac. Na základné imanie sa Mony sama nepýta ani ho nespomína; ak sa naň niekto opýta, nie je to poplatok Firmony, sú to peniaze samotnej firmy, ktoré jej ostávajú na podnikanie, a výšku a splatenie s ním prejde advokát. Celé znenie zmluvy je na /zalozenie/zmluva.
 - Po zápise firmy do registra zakladateľ dostane odkaz na prihlásenie do aplikácie. Tam firma do troch mesiacov schváli zmluvu jedným potvrdením (/app/zalozenie) a doplní vyhlásenie Kto stojí za firmou.
 - Bežné vedenie účtovníctva (bez tejto ponuky) je bez viazanosti, s mesačnou výpovednou lehotou.
+- Prvý mesiac zadarmo patrí k bežnej zmluve o vedení účtovníctva. Pri s. r. o. za 1 € sa účtovníctvo platí od prvého mesiaca po vzniku firmy; výhodou tejto ponuky je založenie za 1 € namiesto bežných asi 500 €. Mony to sama nespomína, na priamu otázku odpovie presne takto.
 
 ## Bezplatná fakturácia
 
