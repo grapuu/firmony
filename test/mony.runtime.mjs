@@ -108,6 +108,13 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   text = await res.text()
   const cut = JSON.parse((await db.prepare("SELECT detail FROM events WHERE action = 'mony.answered' AND user_id = 'u-mony' ORDER BY rowid DESC LIMIT 1").first())?.detail ?? '{}')
   check('mony: an answer cut short says so and is counted as not finished', res.status === 200 && text.includes('Odpoveď sa prerušila') && cut.ok === false)
+  // The model ran out of tokens (its thinking counts toward them): the answer is whole as a stream, but cut, and says so.
+  mony.next = { stop: 'max_tokens' }
+  res = await ask(client, { question: 'Ako pridám doklad?' })
+  text = await res.text()
+  check('mony: an answer the token limit ended says so', res.status === 200 && text.includes('Odpoveď sa prerušila'))
+  res = await ask(client, { question: 'Ako pridám doklad?' })
+  check('mony: an answer that ended by itself says nothing more', res.status === 200 && !(await res.text()).includes('Odpoveď sa prerušila') && mony.answers.at(-1).max_tokens === 4000)
   await db.prepare('UPDATE assistant_control SET enabled = 0 WHERE id = 1').run()
   res = await ask(client, { question: 'Ako pridám doklad?' })
   check("mony: the assistant's switch turns Mony off too", res.status === 503 && (await res.json()).error.includes('vypnutá'))

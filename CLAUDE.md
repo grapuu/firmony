@@ -4,6 +4,25 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Prejdený mesiac na skúšobnej firme, 28. 10. 2026 popoludní (Claude, `main`):** jeho „ano zacni“ o 12:51. V ihrisku
+prejdené ako klient (390 px), správca (1440 px) a nový klient: prehľadávač odkazov (klient 126, správca 238, Eva 86,
+verejné 31 stránok) bez chyby stavu, JS, pretečenia alebo textu „undefined/NaN“; potom ručne doklad k platbe, účtovanie,
+DPH za september až po potvrdenku, faktúra odberateľovi z registra, zamestnanec a uzavreté mzdy. Opravené:
+klient vidí stav podania svojimi slovami (`CLIENT_DELIVERY_LABELS`: Pripravujeme podanie, Podané, čakáme na potvrdenie,
+Podané a prijaté, Vrátené úradom, riešime to), aj na Daniach, v Podaniach a v termínoch prehľadu; naše podanie po termíne
+je „Po termíne, podávame“ (oranžovo), nie dátum, ktorý vyzerá ako budúci; správy pri priznaní a závierke bez žargónu
+podateľne; výplatný termín na víkend alebo sviatok: klient platí najneskôr pracovný deň pred ním (`workingDayUntil`),
+rovnaký dátum v správe aj v prehľade (predtým správa 31. 10. a prehľad 2. 11.); výpis z banky je „Spracovaný“, nie
+„Zaúčtovaný“; potvrdenie nahratia „Doklad sme dostali.“; prvé kroky „Pár krokov…“ (ukazovali šesť pri „Štyri kroky“);
+dvojitá bodka za „s. r. o.“ v Podaniach. Ihrisko: otvorené ako localhost odovzdá Workeru localhost (kľúč nemôže byť
+viazaný na IP adresu), takže tímová časť sa v ihrisku dá prejsť s virtuálnym kľúčom. Ukážkové dáta: klienti bez
+overenej identifikácie majú termín kontroly od vzniku firmy (v ostrej prevádzke to predzmluvné AML nedovolí).
+Mony v aplikácii a „asistent na stav firmy“ v Správach sú dva rôzne pomocníci; zjednotiť je otvorené (plán 16).
+Mony odpovedala občas useknuto („…platí Fir“): Haiku 5.5 predvolene premýšľa a premýšľanie sa ráta do `max_tokens`
+(dokumentácia thinking, prečítaná 28. 10. 2026). `answerTokens` je 4 000 a odpoveď ukončená inak než sama
+(`stop_reason` iné ako `end_turn`) má pod sebou „Odpoveď sa prerušila“. Jej slovenčina je stále miestami krkolomná;
+Sonnet 5.5 stojí 2 $ a 10 $ za milión tokenov oproti 0,10 $ a 0,50 $ (asi 2 centy za odpoveď), rozhodnutie je jeho.
+
 **Nové obrázky a Mony bez „Som Si Mony“, 28. 10. 2026 (Claude, `main`):** o 10:59 si všimol odpovede „Som Si Mony“:
 pokyny začínali „Si Mony“ a model to opakoval. Teraz sú písané o Mony (`systemOf` v `src/assistant/mony.ts`), s pravidlom
 8 (prvá osoba, znova sa nepredstavuje, krátko na pozdrav), vykanie s veľkým V vypísané so zámenami (`POLITE`) a spisovne

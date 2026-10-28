@@ -3477,7 +3477,7 @@ check(
   )
   res = await anna.get('/app/dane')
   page = plain(await res.text())
-  check('the client sees what is left of it, with the QR code', page.includes('Dodatočné podklady pripravené') && page.includes('Zaplatili ste už 11,50 € z 57,50 €') && page.includes('PAY by square'))
+  check('the client sees what is left of it, with the QR code', page.includes('Dodatočné priznanie pripravené') && page.includes('Zaplatili ste už 11,50 € z 57,50 €') && page.includes('PAY by square'))
   res = await acc.get(`/ucto/klienti/co-a/dph?obdobie=${old}`)
   page = plain(await res.text())
   check('and the period stands filed again', page.includes('Podklady uložené') && !page.includes('Zmenené po uložení'))

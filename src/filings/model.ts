@@ -17,6 +17,15 @@ export const DELIVERY_LABELS: Record<DeliveryStatus, string> = {
   rejected: 'Podateľňa podanie odmietla',
   review: 'Potvrdenie treba preveriť',
 }
+/** The same states in a client's words: what is happening with the filing, without the register's terms. */
+export const CLIENT_DELIVERY_LABELS: Record<DeliveryStatus, string> = {
+  unverified: 'Podané',
+  prepared: 'Pripravujeme podanie',
+  submitted: 'Podané, čakáme na potvrdenie',
+  accepted: 'Podané a prijaté',
+  rejected: 'Vrátené úradom, riešime to',
+  review: 'Overujeme potvrdenie',
+}
 export const DELIVERY_TONE: Record<DeliveryStatus, string> = { unverified: 'amber', prepared: 'blue', submitted: 'blue', accepted: 'ok', rejected: 'red', review: 'red' }
 export const TRANSITIONS: Record<DeliveryState, readonly DeliveryState[]> = {
   prepared: ['submitted', 'accepted', 'rejected'], submitted: ['accepted', 'rejected'], accepted: ['review'], rejected: ['submitted', 'accepted'], review: ['accepted', 'rejected'],

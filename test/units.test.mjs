@@ -5245,7 +5245,10 @@ async function zipped(entries, note) {
   check('a paid one says so until its day', mineList.some((d) => d.label.includes('Zaplatiť') && d.tone === 'ok') && !mine(co(), '2026-10-27', { docs: [doc()], filed: [filedSep], paid: new Map([['2026-09', { cents: 2300, last: '2026-10-22' }]]) }).some((d) => d.label.includes('Zaplatiť')))
   check('an unpaid one stays past its day', mine(co(), '2026-11-03', { docs: [doc()], filed: [filedSep] }).some((d) => d.day === '2026-10-26' && d.tone === 'amber'))
   const sent = mine(co(), '2026-10-21', { docs: [doc()], filed: [{ ...filedSep, deliveryStatus: 'submitted' }] }).find((d) => d.label.includes('kontrolný výkaz za september'))
-  check('our filing says where it stands and leads to the taxes', sent?.tone === 'blue' && sent.href === '/app/dane' && plain(sent.state) !== 'Podáme za Vás', JSON.stringify(sent))
+  check('our filing says where it stands and leads to the taxes', sent?.tone === 'blue' && sent.href === '/app/dane' && plain(sent.state) === 'Podané, čakáme na potvrdenie', JSON.stringify(sent))
+  // A filing of ours past its day, not done: said as late, never as a date still ahead (28 October 2026 walkthrough).
+  const lateRow = mine(co(), '2026-10-28', { docs: [doc()] }).find((d) => d.label.includes('kontrolný výkaz za september'))
+  check('our own filing past its day says it is filed late', lateRow?.tone === 'amber' && plain(lateRow.state) === 'Po termíne, podávame', JSON.stringify(lateRow))
   check(
     '§ 7a: no return of its own to wait for, and 4,50 € is not paid',
     !mine(co({ vatStatus: 'reg7a' }), '2026-10-14', { filed: [filedOf('2026-09', { payCents: 450 })] }).some((d) => d.label.includes('Zaplatiť') || d.label.includes('kontrolný')),
@@ -5999,6 +6002,13 @@ async function zipped(entries, note) {
   )
   list = run(pf({ closed: new Map([['2026-09', '2026-10-09']]) }), '2026-10-14')
   check('once its payday has passed it is no longer listed (the bank is not read for it)', !find('payrollPay', '2026-09'))
+  // A payday on a Saturday (31 October 2026): the client pays by Friday, as the message says, never on Monday after it.
+  list = run(pf({ closed: new Map([['2026-09', '2026-10-31']]) }), '2026-10-28')
+  check(
+    'a payday on a weekend is paid by the working day before it, not moved after it',
+    find('payrollPay', '2026-09')?.day === '2026-10-30' && vat.workingDayUntil('2026-11-01') === '2026-10-30' && vat.workingDayUntil('2026-10-30') === '2026-10-30',
+    JSON.stringify(find('payrollPay', '2026-09')),
+  )
 }
 
 // Full payroll (17 October 2026): every relationship's insurance, sick pay, the month's parts, the average earnings.

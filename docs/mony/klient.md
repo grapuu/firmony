@@ -73,7 +73,7 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 - Tržby z eKasy (/app/trzby): denná uzávierka pokladne, hotovosť aj karty.
 - Pracovné cesty (/app/cesty): cestovné náhrady na Slovensku, stravné aj auto; vznikne doklad na vyplatenie zamestnancovi.
 - Strediská (/app/strediska): rozdelenie nákladov a výnosov napríklad na prevádzky alebo projekty, aj s rozpočtom.
-- Podania (/app/podania) a mzdové podania (/app/mzdove-podania): čo účtovníčka podala a potvrdenky.
+- Podania (/app/podania) a mzdové podania (/app/mzdove-podania): čo účtovníčka podala a potvrdenky. Stav podania: Pripravujeme podanie, Podané, čakáme na potvrdenie, Podané a prijaté (úrad ho prijal, potvrdenka sa dá stiahnuť), Vrátené úradom, riešime to. Po termíne, podávame znamená, že podanie Firmony ešte nepodala a deň už prešiel.
 
 ## Firma, zmluva a prvé kroky
 

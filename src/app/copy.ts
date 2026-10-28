@@ -225,6 +225,7 @@ export const app = typesetAll({
     vatToPay: (amount: string) => typeset(`Zaplaťte ${amount}`),
     closing: (year: string) => typeset(`Účtovná závierka a daňové priznanie za rok ${year}`),
     ours: 'Podáme za Vás',
+    oursLate: 'Po termíne, podávame',
   },
   taxes: {
     title: 'Dane',
@@ -234,9 +235,9 @@ export const app = typesetAll({
     notRegistered: 'Firma nie je registrovaná pre DPH, takže priznanie k DPH nepodáva. Ak sa to zmení, povieme Vám to.',
     period: (label: string) => typeset(`DPH za ${label}`),
     filed: {
-      R: (day: string) => typeset(`Podklady pripravené ${day}`),
-      O: (day: string) => typeset(`Opravné podklady pripravené ${day}`),
-      D: (day: string) => typeset(`Dodatočné podklady pripravené ${day}`),
+      R: (day: string) => typeset(`Priznanie pripravené ${day}`),
+      O: (day: string) => typeset(`Opravné priznanie pripravené ${day}`),
+      D: (day: string) => typeset(`Dodatočné priznanie pripravené ${day}`),
     },
     partly: (paid: string, owed: string) => typeset(`Zaplatili ste už ${paid} z ${owed}, nižšie je zvyšok.`),
     toPay: 'Na úhradu',
@@ -685,6 +686,7 @@ export const app = typesetAll({
     emptyLoose: 'Každý doklad má svoju platbu.',
     state: { reading: 'Čítame…', manual: 'Prečíta ho účtovníčka', linked: 'Priradený k platbe', waiting: 'Čaká na platbu', private: 'Zaplatený súkromne', till: 'Zaplatená pri pokladnici' },
     unknown: 'Doklad',
+    received: (n: number) => typeset(n === 1 ? 'Doklad sme dostali.' : `Dostali sme ${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}.`),
     added: (n: number) =>
       typeset(n === 1 ? 'Doklad sme dostali. Prečítame ho a priradíme k platbe.' : `Dostali sme ${n} ${plural(n, 'doklad', 'doklady', 'dokladov')}. Prečítame ich a priradíme k platbám.`),
     refused: (name: string) => typeset(`Súbor „${name}“ nie je fotka, PDF ani e-faktúra, preto sme ho nepridali.`),
@@ -758,7 +760,7 @@ export const app = typesetAll({
   },
   start: {
     title: 'Začíname',
-    lead: 'Štyri kroky a o zvyšok sa postaráme my.',
+    lead: 'Pár krokov a o zvyšok sa postaráme my.',
     done: 'Hotovo',
     optional: 'Keď budete chcieť',
     steps: {
@@ -1315,7 +1317,7 @@ export const app = typesetAll({
       title: 'Výpisy',
       lead: 'Výpisy sú doklady Vašej firmy. Máme ich tu počas celej spolupráce a po jej skončení si ich stiahnete spolu s ostatnými dokladmi.',
       empty: 'Zatiaľ sme nedostali žiadny výpis.',
-      status: { taken: 'Zaúčtovaný', known: 'Už sme ho mali', confirm: 'Čaká na Vás', held: 'Čaká na účtovníčku', refused: 'Nezaúčtovaný' },
+      status: { taken: 'Spracovaný', known: 'Už sme ho mali', confirm: 'Čaká na Vás', held: 'Čaká na účtovníčku', refused: 'Odmietnutý' },
       source: { upload: 'pridaný v aplikácii', email: 'prišiel e-mailom' },
       entries: (n: number) => typeset(`${n} ${plural(n, 'pohyb', 'pohyby', 'pohybov')}`),
       download: 'Stiahnuť',

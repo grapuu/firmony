@@ -7,7 +7,7 @@ import { APP } from '../config'
 import { formatEurExact } from '../format'
 import { app as t, monthName } from './copy'
 import { bratislavaDay, type Company } from './store'
-import { DELIVERY_LABELS } from '../filings/model'
+import { CLIENT_DELIVERY_LABELS } from '../filings/model'
 import { closingDue } from './closing'
 import { intakeOpen } from './ending'
 import { periodName } from './vat-store'
@@ -67,19 +67,20 @@ export function clientDeadlines(
 
   // What we file and what the client pays, as the team's screen has it; what was done until its day has passed.
   const shown = dues.filter((d) => d.state !== 'done' || d.day >= day)
-  const filedState = (d: Due) => (d.deliveryStatus ? DELIVERY_LABELS[d.deliveryStatus] : t.deadline.ours)
+  // A filing of ours whose day has passed says so: a date gone by with "we will file it" reads as a slip nobody saw.
+  const filedState = (d: Due) => (d.deliveryStatus ? CLIENT_DELIVERY_LABELS[d.deliveryStatus] : d.state !== 'done' && d.day < day ? t.deadline.oursLate : t.deadline.ours)
   let closing = false
   for (const d of shown) {
     const period = d.period ?? ''
     if (d.kind === 'vat')
-      out.push({ day: d.day, label: company.vatStatus === 'payer' ? t.deadline.vat(periodName(period)) : t.taxes.period(periodName(period)), state: filedState(d), tone: d.state === 'done' ? 'ok' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
+      out.push({ day: d.day, label: company.vatStatus === 'payer' ? t.deadline.vat(periodName(period)) : t.taxes.period(periodName(period)), state: filedState(d), tone: d.state === 'done' ? 'ok' : d.day < day ? 'amber' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
     else if (d.kind === 'vatFix') out.push({ day: d.day, label: t.deadline.vatFix(d.fix ?? 'O', periodName(period)), state: t.deadline.ours, tone: 'blue' })
     else if (d.kind === 'transactionTax' && d.state !== 'done') out.push({ day: d.day, label: t.deadline.transactionTax(monthName(`${period}-01`)), state: t.deadline.vatToPay(formatEurExact(d.cents)), tone: 'amber', href: '/app/spravy' })
     else if (d.kind === 'vatRegister' && d.vatRegister?.crossedOn && d.state !== 'done') out.push({ day: d.day, label: t.deadline.vatRegister, state: t.deadline.ours, tone: 'blue', href: '/app/spravy' })
     else if (d.kind === 'vatPay') out.push({ day: d.day, label: t.deadline.vatPay(periodName(period)), state: d.state === 'done' ? t.deadline.vatPaid : t.deadline.vatToPay(formatEurExact(d.cents)), tone: d.state === 'done' ? 'ok' : 'amber', href: '/app/dane' })
     else if (d.kind === 'closing') {
       closing = true
-      out.push({ day: d.day, label: t.deadline.closing(period), state: filedState(d), tone: d.state === 'done' ? 'ok' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
+      out.push({ day: d.day, label: t.deadline.closing(period), state: filedState(d), tone: d.state === 'done' ? 'ok' : d.day < day ? 'amber' : 'blue', ...(d.deliveryStatus ? { href: '/app/dane' } : {}) })
     } else if (d.kind === 'taxAdvance') out.push({ day: d.day, label: t.deadline.taxAdvance, state: t.deadline.vatToPay(formatEurExact(d.cents)), tone: 'amber', href: '/app/dane' })
     else if (d.kind === 'payrollPay') out.push({ day: d.day, label: t.deadline.payrollPay(monthName(`${period}-01`)), state: t.deadline.payrollPayState, tone: 'amber', href: '/app/spravy' })
     else if (d.kind === 'dividendTax' && d.state !== 'done') out.push({ day: d.day, label: t.deadline.dividendTax(period), state: t.deadline.vatToPay(formatEurExact(d.cents)), tone: 'amber', href: '/app/spravy' })

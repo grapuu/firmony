@@ -100,7 +100,10 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 
 createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, `http://127.0.0.1:${port}`)
+    // Opened as localhost (as the line printed at the start says), the Worker sees localhost too: a passkey cannot be
+    // bound to an IP address, so the team's side works in a browser only so.
+    const host = /^localhost:\d+$/.test(req.headers.host ?? '') ? req.headers.host : `127.0.0.1:${port}`
+    const url = new URL(req.url, `http://${host}`)
     if (url.pathname === '/playground/banka') {
       // The bank's own sign-in, as a client meets it: one question, and back to Firmony.
       const back = url.searchParams.get('spat') ?? '/'

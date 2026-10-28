@@ -2,17 +2,18 @@ import type { FC } from 'hono/jsx'
 import type { Company, User } from '../app/store'
 import { dayName } from '../app/copy'
 import { periodName } from '../app/vat-store'
-import { canTransition, DELIVERY_LABELS, DELIVERY_TONE, FILING_KINDS, TRANSITIONS, type DeliveryStatus, type DeliveryState, type FilingEvent, type FilingPackage, type FilingWorkItem } from '../filings/model'
+import { canTransition, CLIENT_DELIVERY_LABELS, DELIVERY_LABELS, DELIVERY_TONE, FILING_KINDS, TRANSITIONS, type DeliveryStatus, type DeliveryState, type FilingEvent, type FilingPackage, type FilingWorkItem } from '../filings/model'
 import { DESTINATIONS, rowKey, type BundleItem } from '../filings/bundle'
 import type { BundleExtra } from '../filings/extras'
 import { Heading } from './inside'
 import { dayOf } from './inside-pages'
 
 const label = (period: string) => period.length === 4 ? `rok ${period}` : periodName(period)
-export const DeliveryNotice: FC<{ status?: DeliveryStatus; href: string }> = ({ status = 'unverified', href }) => (
+/** A filing's state: the register's terms for the team, the client's own words on the client's pages (`client`). */
+export const DeliveryNotice: FC<{ status?: DeliveryStatus; href: string; client?: boolean }> = ({ status = 'unverified', href, client }) => (
   <p class="notice">
-    <span class={`pill pill--${DELIVERY_TONE[status]}`}>{DELIVERY_LABELS[status]}</span>{' '}
-    <a class="link" href={href}>Podania a potvrdenky</a>
+    <span class={`pill pill--${DELIVERY_TONE[status]}`}>{(client ? CLIENT_DELIVERY_LABELS : DELIVERY_LABELS)[status]}</span>{' '}
+    <a class="link" href={href}>{client ? 'Podanie a potvrdenka' : 'Podania a potvrdenky'}</a>
   </p>
 )
 export interface BundleView {
@@ -209,14 +210,16 @@ export const FilingQueuePage: FC<{ rows: FilingWorkItem[]; page: number; hasNext
 export const FilingsPage: FC<{ company: Company; packages: (Omit<FilingPackage, 'xml'> & { current: boolean })[]; base: string; legacy: boolean; period?: string; page?: number; hasNext?: boolean; payrollHref?: string }> = ({ company, packages, base, legacy, period, page = 1, hasNext, payrollHref }) => (
   <div class="filing-work">
     <Heading first="Podania" second="a potvrdenky" />
-    <p class="info__lead">{company.name}. Každý dokument má vlastný stav doručenia. Pripravené podklady ešte neznamenajú prijatie podateľňou.</p>
-    <p><a class="link" href={base.startsWith('/ucto') ? `/ucto/klienti/${company.id}` : '/app/dane'}>Späť na prehľad</a>{period ? <> · <a class="link" href={base}>Všetky obdobia</a></> : null}</p>
+    {base.startsWith('/ucto')
+      ? <p class="info__lead">{company.name}: každý dokument má vlastný stav doručenia. Pripravené podklady ešte neznamenajú prijatie podateľňou.</p>
+      : <p class="info__lead">Priznania a výkazy, ktoré podávame za Vašu firmu. Pri každom vidíte, či ho úrad prijal, a potvrdenku si stiahnete.</p>}
+    <p><a class="link" href={base.startsWith('/ucto') ? `/ucto/klienti/${company.id}` : '/app/dane'}>{base.startsWith('/ucto') ? 'Späť na prehľad' : 'Späť na Dane'}</a>{period ? <> · <a class="link" href={base}>Všetky obdobia</a></> : null}</p>
     {payrollHref ? <p><a class="link" href={payrollHref}>Mzdové podania a potvrdenky</a></p> : null}
     {legacy ? <p class="notice">Staršie interné označenia nemajú doložené prijatie. Nevydávame ich za potvrdenie od úradu.</p> : null}
     {packages.length === 0 ? <section class="info"><h2 class="info__title">Žiadne uložené podklady</h2><p>Po odbornej kontrole a uložení podkladov sa tu zobrazia jednotlivé dokumenty a ich potvrdenia.</p></section> : null}
     {packages.map((p) => <article class="info filing-card">
       <h2 class="info__title">{FILING_KINDS[p.kind]} · {label(p.period)}</h2>
-      <p><span class={`pill pill--${DELIVERY_TONE[p.status]}`}>{DELIVERY_LABELS[p.status]}</span>{p.current ? null : <span class="pill pill--grey">Staršia verzia</span>}</p>
+      <p><span class={`pill pill--${DELIVERY_TONE[p.status]}`}>{(base.startsWith('/ucto') ? DELIVERY_LABELS : CLIENT_DELIVERY_LABELS)[p.status]}</span>{p.current ? null : <span class="pill pill--grey">Staršia verzia</span>}</p>
       <a class="btn btn--line" href={`${base}/${p.id}`}>{base.startsWith('/ucto') ? 'Otvoriť podanie a ďalší krok' : 'Zobraziť podanie'}</a>
     </article>)}
     {page > 1 || hasNext ? <nav class="filing-pagination" aria-label="Strany podaní">
@@ -246,23 +249,25 @@ export const FilingPage: FC<{
   error?: string; values?: Record<string, string>; frozen?: boolean
 }> = ({ company, pkg: p, events, current, base, user, today, error, values = {}, frozen }) => {
   const choices = user && !frozen ? TRANSITIONS[p.status].filter((to) => canTransition(p.status, to, user.team === 'admin')) : []
+  const client = !base.startsWith('/ucto')
+  const labels = client ? CLIENT_DELIVERY_LABELS : DELIVERY_LABELS
   return <div class="filing-work">
     <p><a class="link" href={`${base}?obdobie=${p.period}`}>Podania za {label(p.period)}</a></p>
     <Heading first={FILING_KINDS[p.kind]} second={label(p.period)} />
     <p class="info__lead">{company.name}</p>
-    <p><span class={`pill pill--${DELIVERY_TONE[p.status]}`}>{DELIVERY_LABELS[p.status]}</span></p>
+    <p><span class={`pill pill--${DELIVERY_TONE[p.status]}`}>{labels[p.status]}</span></p>
     {!current ? <p class="notice">Toto sú staršie podklady. Ich potvrdenie nemení stav aktuálnej verzie dokumentu.</p> : null}
     {frozen ? <p class="notice">Účtovníctvo je uzamknuté na odovzdanie. Uložené podania a potvrdenky sú dostupné na čítanie.</p> : null}
-    {p.status === 'accepted' ? <p class="notice">Prijatie evidujeme podľa priloženej potvrdenky, ktorú skontroloval účtovník.</p> : null}
-    <section class="info filing-document"><h2 class="info__title">Uložený dokument</h2><p>{p.name}</p><a class="btn btn--line" href={`${base}/${p.id}/dokument.xml`}>Stiahnuť presné uložené XML</a></section>
+    {p.status === 'accepted' ? <p class="notice">{client ? 'Úrad podanie prijal. Potvrdenku sme skontrolovali a nájdete ju nižšie.' : 'Prijatie evidujeme podľa priloženej potvrdenky, ktorú skontroloval účtovník.'}</p> : null}
+    <section class="info filing-document"><h2 class="info__title">{client ? 'Podaný súbor' : 'Uložený dokument'}</h2><p>{p.name}</p><a class="btn btn--line" href={`${base}/${p.id}/dokument.xml`}>{client ? 'Stiahnuť súbor (XML)' : 'Stiahnuť presné uložené XML'}</a></section>
     {error ? <p class="notice notice--error" role="alert">{error}</p> : null}
     {choices.length ? <section class="info"><h2 class="info__title">Ďalší krok</h2>
       <p>Podanie vykonajte oprávneným prístupom na príslušnom portáli. Ak už máte potvrdenku, môžete rovno doložiť výsledok. Samotné prevzatie portálom nenahrádza potvrdenku o prijatí podateľňou.</p>
       <DeliveryForm action={`${base}/${p.id}/stav`} revision={p.revision} choices={choices} today={today} values={values} />
     </section> : null}
-    <section class="info"><h2 class="info__title">História doručenia</h2>
-      {events.length === 0 ? <p>Podklady boli uložené {dayName(dayOf(p.created_at))}. Odoslanie ani prijatie zatiaľ nie sú doložené.</p> : <ol class="plain filing-history">{events.map((e) => <li class="filing-event">
-        <h3>{DELIVERY_LABELS[e.to_state]}</h3><p>{dayName(e.external_on)} · {e.by_name ?? 'Účtovný tím'}</p><p>{e.channel} · {e.reference}</p>
+    <section class="info"><h2 class="info__title">{client ? 'Priebeh podania' : 'História doručenia'}</h2>
+      {events.length === 0 ? <p>{client ? `Pripravili sme ho ${dayName(dayOf(p.created_at))}. Keď ho úrad prijme, nájdete tu potvrdenku.` : `Podklady boli uložené ${dayName(dayOf(p.created_at))}. Odoslanie ani prijatie zatiaľ nie sú doložené.`}</p> : <ol class="plain filing-history">{events.map((e) => <li class="filing-event">
+        <h3>{labels[e.to_state]}</h3><p>{dayName(e.external_on)} · {e.by_name ?? 'Účtovný tím'}</p><p>{e.channel} · {e.reference}</p>
         {e.reason ? <p>{e.reason}</p> : null}{e.file_key ? <a class="link" href={`${base}/${p.id}/potvrdenka/${e.id}`}>Stiahnuť potvrdenku</a> : null}
       </li>)}</ol>}
     </section>

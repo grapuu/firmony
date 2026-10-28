@@ -37,7 +37,7 @@ export function monyProviderFixture() {
         const events = [
           ['message_start', { type: 'message_start', message: { usage: { input_tokens: 3200, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }],
           ...parts.map((p) => ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: p } }]),
-          ...(next.cut ? [] : [['message_delta', { type: 'message_delta', usage: { output_tokens: 57 } }], ['message_stop', { type: 'message_stop' }]]),
+          ...(next.cut ? [] : [['message_delta', { type: 'message_delta', delta: { stop_reason: next.stop ?? 'end_turn' }, usage: { output_tokens: 57 } }], ['message_stop', { type: 'message_stop' }]]),
         ]
         return new Response(events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } })
       }

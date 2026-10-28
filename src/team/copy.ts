@@ -1096,7 +1096,7 @@ export const team = typesetAll({
             : m.kind === 'D'
               ? `Pripravili sme dodatočné priznanie k DPH za ${m.label}.`
               : `Pripravili sme priznanie k DPH za ${m.label}.`,
-          'Prijatie podateľňou zatiaľ nie je doložené. Aktuálny stav nájdete v časti Dane, v podaniach a potvrdenkách.',
+          'Podávame ho na finančnú správu. Keď ho prijme, uvidíte to v časti Dane aj s potvrdenkou.',
           m.left
             ? [
                 m.paid ? `Zaplatených ${m.paid} sme započítali.` : null,
@@ -1769,7 +1769,7 @@ export const team = typesetAll({
       typeset(
         [
           `Pripravili sme daňové priznanie k dani z príjmov a účtovnú závierku za rok ${m.year}.`,
-          'Prijatie podateľňou zatiaľ nie je doložené. Aktuálny stav nájdete v časti Dane, v podaniach a potvrdenkách.',
+          'Podávame ich na finančnú správu. Keď ich prijme, uvidíte to v časti Dane aj s potvrdenkou.',
           m.left
             ? [
                 m.paid ? `Zaplatených ${m.paid} sme započítali.` : null,
@@ -2224,6 +2224,8 @@ export const team = typesetAll({
     clientMessage: (m: {
       month: string
       payday: string
+      /** The working day before the payday, when the payday is none. */
+      payBy?: string | null
       employees: { name: string; amount: string; iban: string | null }[]
       social: { amount: string; iban: string | null; vs: string | null } | null
       health: { name: string; amount: string; iban: string | null; vs: string | null }[]
@@ -2233,7 +2235,9 @@ export const team = typesetAll({
     }) =>
       typeset(
         [
-          `Mzdy za ${m.month} sú spracované. Výplatný termín je ${m.payday}; v ten deň treba zaplatiť aj poisťovne.`,
+          m.payBy
+            ? `Mzdy za ${m.month} sú spracované. Výplatný termín je ${m.payday}, no nie je to pracovný deň: výplaty aj poisťovne preto zaplaťte najneskôr ${m.payBy}.`
+            : `Mzdy za ${m.month} sú spracované. Výplatný termín je ${m.payday}; v ten deň treba zaplatiť aj poisťovne.`,
           '',
           'Zamestnancom (čistá mzda):',
           ...m.employees.map((e) => `• ${e.name}: ${e.amount}${e.iban ? ` na ${e.iban}` : ''}`),

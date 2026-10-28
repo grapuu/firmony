@@ -336,6 +336,16 @@ export function workingDayFrom(day: string): string {
 }
 
 /**
+ * The day itself when it is a working day, else the working day before it: when to pay something due on a weekend or a
+ * day off so that it is surely paid by then (wages are due by the payday, § 130 of the Labour Code; the levies with them).
+ */
+export function workingDayUntil(day: string): string {
+  let d = day
+  while (!isWorkingDay(d)) d = addDays(d, -1)
+  return d
+}
+
+/**
  * The last day to file the return and the control statement and to pay: 25 days after the period (§ 78(1),
  * § 78a(7)), moved to the next working day when it falls on a weekend or a day off (§ 27(2) of the Tax Procedure Code).
  */

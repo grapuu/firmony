@@ -27,7 +27,10 @@ export const MONY = {
   sections: 10,
   sectionChars: 40_000,
   routerTokens: 300,
-  answerTokens: 1_100,
+  /** Haiku 5.5 thinks by default and its thinking counts toward max_tokens
+   *  (https://platform.claude.com/docs/en/build-with-claude/thinking, read 28 October 2026): at 1 100 the thinking
+   *  left some answers cut off mid-word ("...platí Fir"). The answer itself is still asked to stay short. */
+  answerTokens: 4_000,
   questionChars: 1_500,
   /** The conversation of the tab sent along: its last turns, and how long they may be together. */
   turns: 10,
@@ -324,6 +327,8 @@ export async function answerStream(
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, ok: false }
+  // Why the answer ended: anything but its natural end (the limit of tokens, a refusal) is said under it, never a silent cut.
+  let stop: string | null = null
   let buffer = ''
   let wrote = false
   return new ReadableStream<Uint8Array>({
@@ -334,6 +339,7 @@ export async function answerStream(
         while (!gave) {
           const part = await reader.read()
           if (part.done) {
+            if (usage.ok && wrote && stop !== null && stop !== 'end_turn') controller.enqueue(encoder.encode('\n\nOdpoveď sa prerušila. Skúste otázku zopakovať.'))
             if (!usage.ok)
               controller.enqueue(
                 encoder.encode(wrote ? '\n\nOdpoveď sa prerušila. Skúste otázku zopakovať.' : 'Mony teraz neodpovedá. Skúste to o chvíľu.'),
@@ -355,7 +361,7 @@ export async function answerStream(
             if (!data) continue
             const message = JSON.parse(data) as {
               type?: string
-              delta?: { type?: string; text?: string }
+              delta?: { type?: string; text?: string; stop_reason?: string | null }
               message?: { usage?: Record<string, number> }
               usage?: Record<string, number>
             }
@@ -370,6 +376,7 @@ export async function answerStream(
               gave = true
             } else if (message.type === 'message_delta') {
               usage.output = Number(message.usage?.output_tokens ?? usage.output)
+              if (typeof message.delta?.stop_reason === 'string') stop = message.delta.stop_reason
             } else if (message.type === 'message_stop') {
               usage.ok = true
             }

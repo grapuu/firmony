@@ -481,7 +481,7 @@ function flashOf(c: Ctx): string | null {
     case 'pridane':
       return t.documents.added(n)
     case 'prijate':
-      return `Prijatie potvrdené. Počet súborov: ${n}.`
+      return t.documents.received(n)
     case 'priradene':
       return t.payment.linked
     case 'netreba':

@@ -40,7 +40,7 @@ import { addDays, endingOf, intakeOpen } from '../app/ending'
 import { bratislavaDay, type Company } from '../app/store'
 import { closingDue } from '../app/closing'
 import { paydayOf } from '../app/payroll-store'
-import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod, workingDayFrom } from '../app/vat'
+import { correctionKind, filingDeadline, isQuarter, nextPeriod, periodOf, periodRange, prevPeriod, workingDayFrom, workingDayUntil } from '../app/vat'
 import { firstPeriod, leftToPay, payable, supplementaryDeadline, type FiledReturn, type PeriodView, type TaxPaid } from '../app/vat-store'
 import { summaryPeriodOf, type SvView } from '../app/vat-summary'
 import { registrationDues, type RegistrationDue, type RegistrationEmployee } from './registrations'
@@ -426,8 +426,10 @@ export function deadlinesOf(company: Company, facts: DueFacts, today: string): D
       const day = workingDayFrom(pr.closed.get(month) ?? paydayOf(month, pr))
       const closed = pr.closed.has(month)
       add({ kind: 'payroll', period: month, day, state: closed ? 'done' : today <= periodRange(month).to ? 'running' : 'open' })
-      // A closed month's wages and levies are the client's to pay on its payday (the message says how much, to whom).
-      if (closed && day >= today) add({ kind: 'payrollPay', period: month, day, state: 'open' })
+      // A closed month's wages and levies are the client's to pay by its payday (the message says how much, to whom):
+      // on a weekend or a day off, by the working day before, as the message says, never after the payday.
+      const payBy = workingDayUntil(pr.closed.get(month) ?? paydayOf(month, pr))
+      if (closed && payBy >= today) add({ kind: 'payrollPay', period: month, day: payBy, state: 'open' })
       if (closed) {
         if (!pr.initialized?.has(month)) {
           const marked = facts.filings.has(`${MARKED_KINDS.payroll}:${month}`)
