@@ -6496,3 +6496,207 @@ textarea {
     height: 200px;
   }
 }
+
+/* The s. r. o. for 1 €, sold (views/founding.tsx, FoundingLanding): the deal as the page's opening, three steps, what
+   is paid, the conditions folded, and the form. */
+
+.found-hero {
+  padding-top: clamp(20px, 3vw, 36px);
+}
+
+.found-how .head {
+  margin-bottom: clamp(28px, 4vw, 48px);
+}
+
+.found-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.found-step {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 28px 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.found-step__num {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.found-step__title {
+  margin-top: 6px;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.found-step__text {
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.found-how {
+  padding-bottom: 0;
+}
+
+.found-price-section {
+  padding-block: clamp(32px, 4vw, 56px) 0;
+}
+
+.found-price {
+  padding: clamp(24px, 4vw, 40px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.found-price__title {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.found-price__rows {
+  margin: 18px 0 0;
+}
+
+.found-price__rows div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+.found-price__rows dt {
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.found-price__rows dt span {
+  color: var(--soft);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.found-price__rows dd {
+  flex: none;
+  color: var(--blue);
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.found-price__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 6px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: var(--blue-soft);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.found-price__total strong {
+  color: var(--blue);
+  font-family: var(--display);
+  font-size: 1.75rem;
+  letter-spacing: -0.03em;
+}
+
+.found-terms {
+  margin-top: 18px;
+  color: var(--soft);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.found-terms summary {
+  color: var(--blue);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.found-terms ul {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding-left: 1.2em;
+}
+
+.found-apply {
+  padding-block: clamp(40px, 5vw, 72px) clamp(56px, 7vw, 104px);
+}
+
+.found-form .details {
+  margin-top: 24px;
+}
+
+.found-form--soon {
+  padding: clamp(28px, 4vw, 44px);
+  border-radius: var(--r-card);
+  background: var(--mist);
+  text-align: center;
+}
+
+.found-form--soon .title {
+  margin-inline: auto;
+}
+
+.found-form--soon .lead {
+  max-width: 30em;
+  margin: 14px auto 0;
+}
+
+.found-form--soon .page__more {
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .found-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .found-price__rows div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .found-price__rows dd {
+    text-align: left;
+  }
+}

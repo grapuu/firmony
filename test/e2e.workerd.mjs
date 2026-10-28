@@ -205,8 +205,8 @@ check(
   'the s. r. o. for 1 € is right under the opening, with its chip, its way in and every condition said',
   page.indexOf('id="sro-za-euro"') > page.indexOf('id="hero-title"') && page.indexOf('id="sro-za-euro"') < page.indexOf('id="ako-to-funguje"') &&
     page.includes('href="#sro-za-euro"') && page.replace(/\u00a0/g, ' ').includes('Chcem s. r. o. za 1 €') && page.includes('href="/zalozenie"') &&
-    ['aspoň 36 mesiacov', 'potom zmluva pokračuje bez viazanosti', 'kauciu 549 €', 'z posledných faktúr', 'platíte ho mesačne od vzniku firmy', 'osobne ručí', 'najviac 12', 'Základné imanie', 'prvých 20 firiem'].every((t) => page.replace(/\u00a0/g, ' ').includes(t)) &&
-    !page.replace(/\u00a0/g, ' ').includes('nespája s prvým mesiacom zadarmo') &&
+    ['aspoň 36 mesiacov', 'potom zmluva pokračuje bez viazanosti', 'kauciu 549 €', 'z posledných faktúr', 'platíte ho mesačne od vzniku firmy', 'osobne ručí', 'najviac 12', 'prvých 20 firiem'].every((t) => page.replace(/\u00a0/g, ' ').includes(t)) &&
+    !page.replace(/\u00a0/g, ' ').includes('nespája s prvým mesiacom zadarmo') && !page.includes('Základné imanie') &&
     !page.includes('platí zakladateľ') && page.replace(/\u00a0/g, ' ').includes('Výnimkou je ponuka s. r. o. za 1 €'),
 )
 {

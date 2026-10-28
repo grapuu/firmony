@@ -98,7 +98,7 @@ export const copy = typesetAll({
     ],
     cta: 'Chcem s. r. o. za 1 €',
     limit: 'Len pre prvých 20 firiem každý mesiac.',
-    fine: 'Podmienky ponuky: pri prihláške zaplatíte 1 € za založenie a kauciu 549 €, ktorú Vám odpočítame z posledných faktúr za účtovníctvo. Účtovníctvo vediete vo Firmony aspoň 36 mesiacov a platíte ho mesačne od vzniku firmy, potom zmluva pokračuje bez viazanosti s mesačnou výpovednou lehotou. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12, a kaucia sa z neho odpočíta. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Základné imanie, najmenej 5 000 €, nie je poplatok: sú to peniaze Vašej firmy. Ceny sú bez DPH. Celé znenie zmluvy si prečítate ešte pred prihláškou.',
+    fine: 'Podmienky ponuky: pri prihláške zaplatíte 1 € za založenie a kauciu 549 €, ktorú Vám odpočítame z posledných faktúr za účtovníctvo. Účtovníctvo vediete vo Firmony aspoň 36 mesiacov a platíte ho mesačne od vzniku firmy, potom zmluva pokračuje bez viazanosti. Pri skoršom ukončení sa kaucia započíta na odstupné, najviac 12 mesačných poplatkov. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Ceny sú bez DPH.',
   },
 
   /** Side by side: what is usual, and what Firmony does instead. Plain, without naming anybody. */

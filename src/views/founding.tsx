@@ -2,7 +2,7 @@
 // designated person's (the list and one application). The founder has no account: the link from the email is the key,
 // and nothing of the identity document is ever shown back on the founder's page.
 import type { Child, FC } from 'hono/jsx'
-import { BRAND, FORMATION, OPERATOR, PLANS, asset, planById } from '../config'
+import { ART, BRAND, FORMATION, OPERATOR, PLANS, asset, planById } from '../config'
 import { formatEur, formatEurExact, typeset } from '../format'
 import { textDay } from '../app/booking'
 import { monthName, whenName } from '../app/copy'
@@ -11,7 +11,8 @@ import { payBySquare, qrPicture } from '../app/paybysquare'
 import { formationContract, FORMATION_CONTRACT_TITLE, type FormationParties } from '../content/formation-contract'
 import { CHECK_KINDS, FINAL, FOUNDING_TOTAL, TURNOVERS, checksNeeded, riskHints, sameName, stepsOf, type CheckKind, type Founding, type FoundingErrors, type FoundingStatus, type FoundingValues } from '../founding/model'
 import type { FoundingCheck, FoundingEvent } from '../founding/store'
-import { CarryFields, type Carry } from './home'
+import { CarryFields, Picture, type Carry } from './home'
+import { copy } from '../copy'
 
 const total = formatEur(FOUNDING_TOTAL)
 const prepaid = formatEur(FORMATION.prepaidCents)
@@ -55,106 +56,192 @@ export interface LandingValues {
   plan: string
 }
 
-/** The offer in full, the steps, what the founder needs, and the form that sends the link to the application. */
-export const FoundingLanding: FC<{ values: LandingValues; errors: Partial<Record<'email' | 'phone' | 'form', string>>; places: number; open: boolean; carry?: Carry }> = ({ values, errors, places, open, carry = [] }) => (
-  <Page>
-    <h1 class="h1">S. r. o. za 1 €</h1>
-    <p class="lead">
-      {typeset(`Založíme Vám s. r. o. cez advokáta. Súdny poplatok aj odmenu advokáta platíme my. Vy zaplatíte ${price} za založenie a ${prepaid} kauciu, ktorú Vám odpočítame z posledných faktúr za účtovníctvo.`)}
-    </p>
-    <section class="info found__box" aria-labelledby="ako">
-      <h2 id="ako" class="info__title">Ako to prebieha</h2>
-      <ol class="found__steps">
-        <li>{typeset('Vyplníte prihlášku: Vaše údaje a údaje budúcej firmy. Asi 10 minút.')}</li>
-        <li>{typeset('Nahráte fotku občianskeho preukazu z oboch strán.')}</li>
-        <li>{typeset('Podpíšete zmluvu občianskym preukazom s čipom (eID), alebo vlastnoručne s overeným podpisom u notára či na matrike.')}</li>
-        <li>{typeset(`Pošlete ${total} z účtu na Vaše meno.`)}</li>
-        <li>{typeset('Prihlášku overíme a do 5 pracovných dní objednáme advokáta. O každom kroku Vám dáme vedieť.')}</li>
-      </ol>
-    </section>
-    <section class="info found__box" aria-labelledby="treba">
-      <h2 id="treba" class="info__title">Čo budete potrebovať</h2>
-      <ul class="found__list">
-        <li>{typeset('Platný občiansky preukaz alebo cestovný pas.')}</li>
-        <li>{typeset('Adresu sídla a súhlas jej vlastníka (nájomná zmluva alebo virtuálne sídlo stačí).')}</li>
-        <li>{typeset('Aspoň 5 000 € na základné imanie. Nie je to poplatok, sú to peniaze Vašej firmy.')}</li>
-      </ul>
-    </section>
-    <section class="info found__box" aria-labelledby="podmienky">
-      <h2 id="podmienky" class="info__title">Podmienky v skratke</h2>
-      <ul class="found__list">
-        <li>{typeset(`Účtovníctvo firmy vediete u nás aspoň ${FORMATION.commitMonths} mesiacov za cenu balíka. Potom už bez viazanosti.`)}</li>
-        <li>{typeset(`Účtovníctvo platíte mesačne od prvého mesiaca. Kauciu ${prepaid} Vám odpočítame z posledných faktúr viazanosti, takže za ${FORMATION.commitMonths / 12} roky nezaplatíte nič navyše.`)}</li>
-        <li>{typeset('Ak by ste odišli skôr alebo neplatili, kaucia sa započíta na dlžnú sumu a odstupné.')}</li>
-        <li>{typeset(`Ak firmu nezaložíme pre chybu na našej strane alebo ju súd nezapíše bez Vašej viny, vrátime Vám celých ${total}.`)}</li>
-        <li>{typeset(`Ak prestanete spolupracovať (nepodpíšete dokumenty, nedodáte podklady ani ${FORMATION.cooperateDays} dní po druhej výzve) alebo od založenia odstúpite, platba sa nevracia. Pokrýva prácu a náklady, ktoré sme už mali.`)}</li>
-        <li>{typeset(`Pri skoršom ukončení účtovníctva sa platí odstupné za zostávajúce mesiace, najviac ${FORMATION.exitMaxMonths} mesačných poplatkov. Za záväzky firmy z tejto zmluvy ručíte osobne.`)}</li>
-      </ul>
-      <p>
-        <a class="link" href="/zalozenie/zmluva">
-          Prečítať celú zmluvu
-        </a>
-      </p>
-    </section>
-    {open ? (
-      <>
-        <p class="chosen">
-          <span>Tento mesiac</span>
-          <strong>{places > 0 ? `zostáva ${places} z ${FORMATION.perMonth} miest` : `je plno, prihláška pôjde na ďalší mesiac`}</strong>
-        </p>
-        {errors.form ? (
-          <p class="notice notice--error" role="alert">
-            {errors.form}
-          </p>
-        ) : null}
-        <form class="details" method="post" action="/zalozenie" novalidate>
-          <CarryFields carry={carry} />
-          <div class="trap" aria-hidden="true">
-            <label>
-              Web
-              <input type="text" name="web" tabindex={-1} autocomplete="off" />
-            </label>
-          </div>
-          <fieldset class="field choice">
-            <legend class="field__label">Balík účtovníctva po založení</legend>
-            <div class="choice__options">
-              {PLANS.map((plan) => (
-                <label class="choice__option">
-                  <input type="radio" name="plan" value={plan.id} checked={(values.plan || 'start') === plan.id} />
-                  <span>
-                    {plan.name} <span class="choice__hint">{formatEur(plan.price * 100)} mesačne, do {plan.docs} dokladov</span>
-                  </span>
-                </label>
-              ))}
+/**
+ * The offer as it sells (his word of 28 October 2026, 15:20: sell it, promise within what we do, never mislead, never cut
+ * the ground from under us): the deal on the site's panel, three steps, what is paid, the full conditions one click away,
+ * and the form. What the law asks of a founder anyway (the capital) is the advocate's to explain, not the offer's.
+ */
+export const FoundingLanding: FC<{ values: LandingValues; errors: Partial<Record<'email' | 'phone' | 'form', string>>; places: number; open: boolean; carry?: Carry }> = ({ values, errors, places, open, carry = [] }) => {
+  const d = copy.formation
+  return (
+    <>
+      <section class="deal-section found-hero" aria-labelledby="found-title">
+        <div class="wrap">
+          <div class="deal">
+            <div class="deal__copy">
+              <p class="deal__badge">{places > 0 ? `Tento mesiac ešte ${places} ${places === 1 ? 'miesto' : places < 5 ? 'miesta' : 'miest'}` : 'Tento mesiac plno, berieme na ďalší'}</p>
+              <h1 id="found-title" class="deal__title">
+                <span class="deal__first">{d.first}</span> <span class="deal__big">{d.big}</span> <em class="deal__serif">{d.second}</em>
+              </h1>
+              <p class="deal__lead">{typeset('Bežne stojí založenie s. r. o. okolo 500 €. U nás zaplatíte 1 €, všetko vybavíte online za pár minút a od prvého dňa máte účtovníčku, ktorá sa o Vašu firmu postará.')}</p>
+              <ul class="deal__points">
+                {d.points.map((p) => (
+                  <li class="deal__point">
+                    <strong class="deal__point-title">{p.title}</strong>
+                    <span class="deal__point-text">{p.text}</span>
+                  </li>
+                ))}
+              </ul>
+              <p class="deal__actions">
+                <a class="btn deal__cta" href="#prihlaska">
+                  {d.cta}
+                </a>
+                <span class="deal__limit">{d.limit}</span>
+              </p>
             </div>
-          </fieldset>
-          <Input name="email" label="Váš e-mail" value={values.email} error={errors.email} type="email" autocomplete="email" hint="Pošleme Vám naň odkaz na prihlášku." />
-          <Input name="phone" label="Telefón" value={values.phone} error={errors.phone} type="tel" autocomplete="tel" optional />
-          <p class="small">
-            Osobné údaje spracúvame podľa{' '}
-            <a class="link" href="/pravne-informacie#ochrana-udajov">
-              informácie o ochrane osobných údajov
-            </a>
-            .
-          </p>
-          <button class="btn btn--blue btn--large details__submit" type="submit">
-            Poslať odkaz na prihlášku
-          </button>
-        </form>
-      </>
-    ) : (
-      <section class="info found__box">
-        <h2 class="info__title">Ponuku spúšťame čoskoro</h2>
-        <p>{typeset('Zmluvu ešte kontroluje advokát. Nechajte nám kontakt a ozveme sa Vám hneď, ako prihlášky otvoríme.')}</p>
-        <p>
-          <a class="btn btn--blue" href="/zacat?nova=1">
-            Nechať kontakt
-          </a>
-        </p>
+            <div class="deal__art" aria-hidden="true">
+              <Picture art={ART.formation} className="deal__img" sizes="(max-width: 900px) 220px, 400px" eager />
+            </div>
+          </div>
+        </div>
       </section>
-    )}
-  </Page>
-)
+
+      <section class="section found-how" aria-labelledby="found-how">
+        <div class="wrap">
+          <header class="head head--center">
+            <h2 id="found-how" class="title">
+              <span class="title__sans">Firma za pár dní.</span>
+              <em class="title__serif">Tri kroky, zvyšok je na nás.</em>
+            </h2>
+          </header>
+          <ol class="found-steps">
+            {FOUNDING_STEPS.map((step, i) => (
+              <li class="found-step">
+                <span class="found-step__num" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <h3 class="found-step__title">{step.title}</h3>
+                <p class="found-step__text">{typeset(step.text)}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section class="section found-price-section" aria-labelledby="found-price">
+        <div class="wrap narrow">
+          <div class="found-price">
+            <h2 id="found-price" class="found-price__title">
+              Čo zaplatíte
+            </h2>
+            <dl class="found-price__rows">
+              <div>
+                <dt>Založenie s. r. o.</dt>
+                <dd>{price}</dd>
+              </div>
+              <div>
+                <dt>Advokát a súdny poplatok</dt>
+                <dd>platíme my</dd>
+              </div>
+              <div>
+                <dt>
+                  Kaucia
+                  <span>{typeset('Odpočítame Vám ju z posledných faktúr, takže Vás nestojí nič navyše.')}</span>
+                </dt>
+                <dd>{prepaid}</dd>
+              </div>
+              <div>
+                <dt>
+                  Účtovníctvo
+                  <span>{typeset(`Od vzniku firmy, spolupráca na ${FORMATION.commitMonths / 12} roky, potom bez viazanosti.`)}</span>
+                </dt>
+                <dd>od {formatEur(PLANS[0]!.price * 100)} mesačne</dd>
+              </div>
+            </dl>
+            <p class="found-price__total">
+              <span>{typeset('Úvodná platba pri prihláške')}</span>
+              <strong>{total}</strong>
+            </p>
+            <details class="found-terms">
+              <summary>Podmienky ponuky</summary>
+              <ul>
+                <li>{typeset(`Účtovníctvo firmy vediete vo Firmony aspoň ${FORMATION.commitMonths} mesiacov za cenu zvoleného balíka, platí sa mesačne od vzniku firmy. Potom zmluva pokračuje bez viazanosti s mesačnou výpovednou lehotou.`)}</li>
+                <li>{typeset(`Kauciu ${prepaid} Vám odpočítame z faktúr na konci spolupráce. Ak by ste odišli skôr, započíta sa na odstupné za zostávajúce mesiace, najviac ${FORMATION.exitMaxMonths} mesačných poplatkov.`)}</li>
+                <li>{typeset(`Ak firmu nezaložíme z dôvodu na našej strane alebo ju súd nezapíše bez Vašej viny, vrátime Vám celých ${total}.`)}</li>
+                <li>{typeset('Úvodná platba pokrýva prácu na založení. Ak od založenia odstúpite alebo nedodáte podklady ani po druhej výzve, nevracia sa.')}</li>
+                <li>{typeset('Ako zakladateľ za záväzky firmy z tejto zmluvy ručíte. Ceny sú bez DPH. Ponuka platí pre prvých 20 firiem v mesiaci.')}</li>
+              </ul>
+              <a class="link" href="/zalozenie/zmluva">
+                Celé znenie zmluvy
+              </a>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="section found-apply" id="prihlaska" aria-labelledby="found-apply">
+        <div class="wrap narrow">
+          {open ? (
+            <div class="found-form">
+              <h2 id="found-apply" class="title title--small">
+                <span class="title__sans">Začnite prihláškou.</span>
+                <em class="title__serif">Odkaz Vám pošleme e-mailom.</em>
+              </h2>
+              {errors.form ? (
+                <p class="notice notice--error" role="alert">
+                  {errors.form}
+                </p>
+              ) : null}
+              <form class="details" method="post" action="/zalozenie" novalidate>
+                <CarryFields carry={carry} />
+                <div class="trap" aria-hidden="true">
+                  <label>
+                    Web
+                    <input type="text" name="web" tabindex={-1} autocomplete="off" />
+                  </label>
+                </div>
+                <fieldset class="field choice">
+                  <legend class="field__label">Balík účtovníctva</legend>
+                  <div class="choice__options">
+                    {PLANS.map((plan) => (
+                      <label class="choice__option">
+                        <input type="radio" name="plan" value={plan.id} checked={(values.plan || 'start') === plan.id} />
+                        <span>
+                          {plan.name} <span class="choice__hint">{formatEur(plan.price * 100)} mesačne, do {plan.docs} dokladov</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <Input name="email" label="Váš e-mail" value={values.email} error={errors.email} type="email" autocomplete="email" />
+                <Input name="phone" label="Telefón" value={values.phone} error={errors.phone} type="tel" autocomplete="tel" optional />
+                <p class="small">
+                  Osobné údaje spracúvame podľa{' '}
+                  <a class="link" href="/pravne-informacie#ochrana-udajov">
+                    informácie o ochrane osobných údajov
+                  </a>
+                  .
+                </p>
+                <button class="btn btn--blue btn--large details__submit" type="submit">
+                  Pokračovať k prihláške
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div class="found-form found-form--soon">
+              <h2 id="found-apply" class="title title--small">
+                <span class="title__sans">Prvé miesta otvárame.</span>
+                <em class="title__serif">Buďte medzi prvými.</em>
+              </h2>
+              <p class="lead">{typeset('Nechajte nám kontakt a ozveme sa Vám ako prvým, hneď ako prihlášky spustíme.')}</p>
+              <p class="page__more">
+                <a class="btn btn--blue btn--large" href="/zacat?nova=1">
+                  Chcem byť medzi prvými
+                </a>
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+    </>
+  )
+}
+
+const FOUNDING_STEPS = [
+  { title: 'Vyplníte prihlášku', text: 'Údaje o sebe a o budúcej firme a fotka občianskeho. Asi 10 minút, pokojne z mobilu.' },
+  { title: 'Podpíšete a potvrdíte', text: 'Zmluvu podpíšete občianskym s čipom priamo z domu a pošlete úvodnú platbu.' },
+  { title: 'Zvyšok vybavíme my', text: 'Advokát, zápis do obchodného registra aj živnosť. Keď je firma zapísaná, dáme Vám vedieť a môžete podnikať.' },
+]
 
 const Input: FC<{ name: string; label: string; value: string; error?: string; type?: string; autocomplete?: string; optional?: boolean; hint?: string; inputmode?: 'numeric' | 'tel' | 'email' | 'text' }> = ({ name, label, value, error, type = 'text', autocomplete, optional, hint, inputmode }) => (
   <div class="field">

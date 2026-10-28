@@ -24,7 +24,7 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   let page = await res.text()
   keep('founding-landing.html', page)
   page = plain(page)
-  check('founding: the offer page shows the deposit, the places of the month and the form', res.status === 200 && page.includes('S. r. o. za 1 €') && page.includes('kauciu') && page.includes('action="/zalozenie"') && page.includes('z 20 miest') && (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
+  check('founding: the offer page sells it: the deal, three steps, what is paid with the deposit, the places of the month and the form', res.status === 200 && page.includes('za 1 €') && page.includes('Tri kroky') && page.includes('Kaucia') && page.includes('550 €') && page.includes('action="/zalozenie"') && page.includes('ešte 20 miest') && page.includes('Podmienky ponuky') && !page.includes('5 000 €') && (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
   res = await get('/zalozenie/zmluva')
   page = plain(await res.text())
   check('founding: the whole contract can be read before applying', res.status === 200 && page.includes('Zmluva o zabezpečení založenia spoločnosti a o vedení účtovníctva') && page.includes('Ručenie zakladateľa'))
