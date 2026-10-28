@@ -213,6 +213,7 @@ import { sensitivePath } from '../security/policy'
 import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
 import { leastLoadedAccountant } from './assign'
+import { dossierProposals } from '../aml/proposals'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
 import { latestOrderOfRequest, renewOrderStatement, orderOf, acceptedAs, type Order } from '../order'
@@ -1336,11 +1337,13 @@ async function amlPage(c: Ctx, company: Company, extra: { error?: string; draft?
   const who = c.get('who')
   const db = c.env.DB
   const [stored, risks, reports, dossier, designated] = await Promise.all([latestDeclaration(db, company.id), risksOf(db, company.id), reportsOf(db, company.id, { id: who.user.id, admin: false }), dossierOfCompany(db, company.id), isOfficer(db, who.user)])
+  // The sanctions lists and the countries screened by the app, for the person's own check (aml/proposals.ts).
+  const proposals = dossier ? await dossierProposals(c.env, dossier.declaration, company.name).catch(() => ({})) : {}
   return shell(
     c,
     'clients',
     t.aml.title,
-    <AmlPage user={who.user} officer={designated} readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} verification={<AmlDossierPanel readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} view={dossier} officer={designated} returnTo={`/ucto/klienti/${company.id}/aml`} download={dossier ? `/ucto/aml/spisy/${dossier.dossier.id}/subor` : ''} />} company={company} stored={stored} risks={risks} suggested={stored ? suggestedLevel(stored.data) : null} reports={reports} now={now()} flash={flashOf(c)} {...extra} />,
+    <AmlPage user={who.user} officer={designated} readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} verification={<AmlDossierPanel proposals={proposals} readOnly={Boolean(company.archivedAt || (endingOf(company, dayOf(now()))?.accessUntil ?? '9999-12-31') < dayOf(now()))} view={dossier} officer={designated} returnTo={`/ucto/klienti/${company.id}/aml`} download={dossier ? `/ucto/aml/spisy/${dossier.dossier.id}/subor` : ''} />} company={company} stored={stored} risks={risks} suggested={stored ? suggestedLevel(stored.data) : null} reports={reports} now={now()} flash={flashOf(c)} {...extra} />,
     status,
   )
 }

@@ -7,6 +7,7 @@ import type { Child } from 'hono/jsx'
 import type { AppBindings } from '../app/routes'
 import type { Who } from '../app/store'
 import { isOfficer } from '../aml/store'
+import { foundingProposals } from '../aml/proposals'
 import { normalizeIco } from '../ico'
 import { dayOfText } from '../app/booking'
 import { flushOutbox } from '../mail'
@@ -64,10 +65,16 @@ export function registerFoundingTeam(app: Hono<Env>, render: Render): void {
     let f = await foundingById(c.env.DB, id)
     if (!f) return missing(c)
     f = await notePayment(c.env.DB, f)
-    const [checks, events, blockers] = await Promise.all([checksOf(c.env.DB, id), eventsOf(c.env.DB, id), verifyBlockers(c.env.DB, f)])
+    const [checks, events, blockers, proposals] = await Promise.all([
+      checksOf(c.env.DB, id),
+      eventsOf(c.env.DB, id),
+      verifyBlockers(c.env.DB, f),
+      // The founder on the sanctions lists and the payment, prepared for his check (aml/proposals.ts).
+      f.status === 'verifying' ? foundingProposals(c.env, f).catch(() => ({})) : Promise.resolve({}),
+    ])
     c.header('Cache-Control', 'no-store')
     const flash = error ? null : (FLASH[c.req.query('ok') ?? ''] ?? null)
-    return render(c, f.company?.name ?? 'Založenie s. r. o.', <FoundingDetail f={f} checks={checks} events={events} blockers={blockers} today={today()} flash={flash} error={error} canWithdraw={mayWithdraw(f)} />, status)
+    return render(c, f.company?.name ?? 'Založenie s. r. o.', <FoundingDetail f={f} checks={checks} events={events} blockers={blockers} today={today()} flash={flash} error={error} canWithdraw={mayWithdraw(f)} proposals={proposals} />, status)
   }
 
   app.get('/zalozenia', async (c) => {

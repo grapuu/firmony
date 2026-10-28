@@ -83,6 +83,8 @@ import { PEPPOL_TEST, PRETEND_MAIL, camtXml, pretendBank, pretendFio, pretendPep
 import { checkPeppolNetwork } from './peppol-network.runtime.mjs'
 import { checkPasskeySignin } from './passkey-signin.runtime.mjs'
 import { checkFoundingRuntime } from './founding.runtime.mjs'
+import { sanctionsAnswer } from './sanctions-fixtures.mjs'
+import { checkSanctionsRuntime } from './sanctions.runtime.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
 const dist = new URL('../.wrangler/dist', import.meta.url).pathname
@@ -139,6 +141,8 @@ const mf = new Miniflare(
           if (answer) return new MfResponse(await answer.text(), { status: answer.status, headers: { 'content-type': 'application/json' } })
           const ecb = ecbAnswer(request.url)
           if (ecb) return new MfResponse(await ecb.text(), { status: ecb.status, headers: { 'content-type': 'text/xml' } })
+          const listed = sanctionsAnswer(request.url)
+          if (listed) return new MfResponse(listed.status === 302 ? null : await listed.text(), { status: listed.status, headers: Object.fromEntries(listed.headers) })
           return new MfResponse('unexpected request', { status: 599 })
         },
       },
@@ -5384,5 +5388,6 @@ await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, adminCo
 await checkPasskeySignin({ mf, db, post, sent, settle, as, nowS })
 await checkMony({ mf, db, site, mony, nowS })
 await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin, acc, signIn, nowS, purgeFoundings, capture: process.env.FIRMONY_CAPTURE_DIR })
+await checkSanctionsRuntime({ db, files, get, freshAdmin, worker, settle, nowS })
 await mf.dispose()
 done('runtime')

@@ -1,3 +1,4 @@
+import { dossierProposals } from './proposals'
 import { bankEvidence,prepareBankEvidence } from './enhanced'
 import { registerArchiveRoutes } from './archive'
 import { AmlProspectPanel, type ProspectReport, type ProspectHold } from '../views/aml-prospects'
@@ -103,13 +104,14 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     }
     const view = await dossierOfOrder(c.env.DB, order.id)
     const designated = await isOfficer(c.env.DB, user)
+    const proposals = view ? await dossierProposals(c.env, view.declaration, order.company).catch(() => ({})) : {}
     const reports = await c.env.DB.prepare(`SELECT * FROM aml_prospect_reports WHERE order_id = ?1 AND (created_by = ?2 OR ${officerSql('?2')}) ORDER BY created_at DESC,id`).bind(order.id,user.id).all<ProspectReport>()
     const holds = designated ? await c.env.DB.prepare('SELECT id,created_at,until_on,reference FROM aml_prospect_holds WHERE order_id = ? ORDER BY created_at').bind(order.id).all<ProspectHold>() : null
     return render(c, 'Overenie pred zmluvou', <>
       <a class="back" href={order.requestId ? `/ucto/ziadosti/${order.requestId}/posudenie` : '/ucto/klienti/novy'}>Späť na prijatie klienta</a>
       <header class="phead"><h1 class="h1">Overenie pred zmluvou</h1><p class="phead__lead">{order.company}, {order.email}</p></header>
       {c.req.query('chyba') ? <p class="notice notice--error" role="alert">Záznam sa nepodarilo potvrdiť. Skontrolujte úplnosť dôkazov, rizikovú skupinu a aktuálnu verziu údajov.</p> : null}
-      <AmlDossierPanel view={view} officer={designated} readOnly={order.status !== 'open'} returnTo={`/ucto/aml/objednavky/${order.id}`} download={view ? `/ucto/aml/spisy/${view.dossier.id}/subor` : ''} />
+      <AmlDossierPanel view={view} proposals={proposals} officer={designated} readOnly={order.status !== 'open'} returnTo={`/ucto/aml/objednavky/${order.id}`} download={view ? `/ucto/aml/spisy/${view.dossier.id}/subor` : ''} />
       <AmlProspectPanel orderId={order.id} reports={reports.results} holds={holds?.results ?? []} officer={designated} today={new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Bratislava'}).format(new Date())} readOnly={Boolean(order.companyId || raw.aml_delete_started_at)} ended={Boolean(raw.aml_ended_at)} />
       {view?.ready && order.status === 'open' ? <p><a class="btn btn--line" href={`/ucto/klienti/novy?aml=${order.id}`}>Založiť overeného klienta s papierovou zmluvou</a></p> : null}
     </>)

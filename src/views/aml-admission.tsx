@@ -12,6 +12,7 @@ import { bratislava } from '../app/remind'
 import { formatEur, typeset } from '../format'
 import { monthLabel } from './order'
 import { AML_NO_CONSENT } from '../aml/consent'
+import type { DossierProposals } from '../aml/proposals'
 
 
 /** The offer accepted in the signed declaration of an online order: the plans to pick, the months, the terms' version. */
@@ -71,7 +72,8 @@ export const AmlIntakePage: FC<{ order: Order; token: string; view: DossierView 
   </section>
 )
 
-export const AmlDossierPanel: FC<{ view: DossierView | null; officer: boolean; readOnly?: boolean; returnTo: string; download: string }> = ({ view, officer, readOnly = false, returnTo, download }) => {
+/** The checks the app prepared (aml/proposals.ts): a text and a result to record as they stand, or why there is none. */
+export const AmlDossierPanel: FC<{ view: DossierView | null; officer: boolean; readOnly?: boolean; returnTo: string; download: string; proposals?: DossierProposals }> = ({ view, officer, readOnly = false, returnTo, download, proposals = {} }) => {
   if (!view) return <section class="info" data-aml-dossier><h2 class="info__title">Overenie pred zmluvou</h2><p>Čakáme na úplné vyhlásenie a pôvodný podpísaný súbor.</p></section>
   const { dossier: d, declaration: x, checks, decision } = view
   const results = {clear:'Overené, bez prekážky',high:'Zvýšené riziko',match:'Zistená prekážka',unresolved:'Nevyriešené'}
@@ -99,15 +101,17 @@ export const AmlDossierPanel: FC<{ view: DossierView | null; officer: boolean; r
     <a class="btn btn--line" href={download}>Stiahnuť pôvodný podpísaný súbor</a>
     <a class="link" href={`/ucto/aml/spisy/${d.id}/historia`}>Úplná história tejto verzie</a>
     <p class="info__source" data-aml-policy>{view.policyCurrent ? `Riziková skupina podľa pravidiel krajín vo verzii ${COUNTRY_POLICY_VERSION}, zoznamy overené ${COUNTRY_LISTS_CHECKED_ON}.` : `Overenie stojí na starších pravidloch krajín (${view.policyReviews?.[0]?.policy_version ?? d.policy_version}). Určená osoba ho prehodnotí na stránke Určená osoba AML.`} Požadovaná riziková skupina: {({ low: 'nízke', standard: 'štandardné', high: 'zvýšené' } as const)[required]}. <a class="link" href={COUNTRY_SOURCES.commission} target="_blank" rel="noopener noreferrer">Európska komisia</a>, <a class="link" href={COUNTRY_SOURCES.fatfHigh} target="_blank" rel="noopener noreferrer">FATF vysoké riziko</a>, <a class="link" href={COUNTRY_SOURCES.fatfMonitoring} target="_blank" rel="noopener noreferrer">FATF monitoring</a>.</p>
-    {AML_CHECK_KINDS.map((kind, i) => <section class="info" aria-labelledby={`aml-${kind}-t`}>
+    {AML_CHECK_KINDS.map((kind, i) => { const prepared = (proposals as Record<string, DossierProposals[keyof DossierProposals]>)[kind]; const p = prepared && 'proposal' in prepared ? prepared.proposal : null; return <section class="info" aria-labelledby={`aml-${kind}-t`}>
       <h3 id={`aml-${kind}-t`} class="info__title">{CHECK_LABELS[kind]}</h3>
       {latest[i] ? <p class="info__source">{latest[i]?.by_name ?? latest[i]?.checked_by}, {whenName(latest[i]?.checked_at ?? 0, today)}. Výsledok: {latest[i] ? results[latest[i]!.result] : ''}. {latest[i]?.source}</p> : <p>Kontrola ešte nie je zaznamenaná.</p>}
+      {!readOnly && p ? <p class="notice" data-aml-proposal={kind}>{p.result ? 'Kontrolu pripravila aplikácia. Prečítajte text, prípadne ho doplňte, a zapíšte ju.' : 'Aplikácia našla niečo na posúdenie. Prečítajte text, rozhodnite o výsledku a zapíšte kontrolu.'}</p> : null}
+      {!readOnly && prepared && 'missing' in prepared ? <p class="small" data-aml-proposal-missing={kind}>{prepared.missing}</p> : null}
       {!readOnly ? <form class="stack" method="post" action={`/ucto/aml/spisy/${d.id}/kontrola`} data-aml-check>
         <input type="hidden" name="hash" value={d.facts_hash} /><input type="hidden" name="druh" value={kind} /><input type="hidden" name="spat" value={returnTo} />
         <label class="field__label" for={`aml-${kind}-vysledok`}>Výsledok kontroly</label>
         <select id={`aml-${kind}-vysledok`} class="field__input" name="vysledok" required>
-          <option value="">Vyberte výsledok</option><option value="clear">Overené, bez prekážky</option>
-          {kind === 'pep' || kind === 'countries' ? <option value="high">Zistené zvýšené riziko</option> : <option value="match">Zistená prekážka</option>}
+          <option value="">Vyberte výsledok</option><option value="clear" selected={p?.result === 'clear'}>Overené, bez prekážky</option>
+          {kind === 'pep' || kind === 'countries' ? <option value="high" selected={p?.result === 'high'}>Zistené zvýšené riziko</option> : <option value="match">Zistená prekážka</option>}
           <option value="unresolved">Nevyriešené</option>
         </select>
         {kind === 'identity' ? <>
@@ -115,10 +119,10 @@ export const AmlDossierPanel: FC<{ view: DossierView | null; officer: boolean; r
           <label class="tickbox"><input type="checkbox" name="kvalifikovany" value="1" /><span>Overil som platný kvalifikovaný podpis aj zhodu obsahu podpísaného vyhlásenia s touto verziou údajov.</span></label>
         </> : null}
         <label class="field__label" for={`aml-${kind}-zdroj`}>Zdroj, výsledok a referencia na dôkaz</label>
-        <textarea id={`aml-${kind}-zdroj`} class="field__input field__area" name="zdroj" rows={3} minlength={12} maxlength={2000} required />
-        <button class="btn btn--line" type="submit">Zapísať kontrolu</button>
+        <textarea id={`aml-${kind}-zdroj`} class="field__input field__area" name="zdroj" rows={p ? 6 : 3} minlength={12} maxlength={2000} required>{p?.source ?? ''}</textarea>
+        <button class={p?.result ? 'btn btn--blue' : 'btn btn--line'} type="submit">Zapísať kontrolu</button>
       </form> : null}
-    </section>)}
+    </section> })}
     {x.businessAtSeat === false ? <section class="info" aria-labelledby="aml-place-t" data-aml-place>
       <h3 id="aml-place-t" class="info__title">{PLACE_CHECK_LABEL}</h3>
       <p>Adresa z vyhlásenia: {x.businessAddress}. Overte ju z dokladu tretej osoby (nájom, energie) alebo z verejného zdroja.</p>

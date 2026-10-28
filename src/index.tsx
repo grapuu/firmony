@@ -1,3 +1,4 @@
+import { listsHealth, refreshSanctionLists } from './aml/sanctions-store'
 import { prepareBankEvidence } from './aml/enhanced'
 import { accessOpenSql } from './aml/retention'
 import { AmlIntakePage, type IntakeContract } from './views/aml-admission'
@@ -1096,7 +1097,9 @@ app.get('/verzia', (c) => c.text(BUILD_METADATA.revision ?? '', 200, { 'Cache-Co
 app.get('/healthz', async (c) => {
   try {
     await ensureSchema(c.env.DB)
-    return c.json({ ok: true, schema: SCHEMA_VERSION, build: BUILD_METADATA })
+    // The day of each sanctions list the app screens against, null when none is fresh (aml/sanctions-store.ts).
+    const sanctions = await listsHealth(c.env.DB).catch(() => null)
+    return c.json({ ok: true, schema: SCHEMA_VERSION, build: BUILD_METADATA, sanctions })
   } catch {
     return c.json({ ok: false, build: BUILD_METADATA }, 503)
   }
@@ -1165,6 +1168,12 @@ export default {
           await announceSite(env.DB, env.ANNOUNCE === '1')
         } catch (err) {
           console.error('announcing the site failed', err instanceof Error ? err.name : 'error')
+        }
+        try {
+          // The EU's and the UN's sanctions lists, once a day, for the checks the designated person confirms.
+          await refreshSanctionLists(env, event.scheduledTime)
+        } catch (err) {
+          console.error('the sanctions lists failed', err instanceof Error ? err.name : 'error')
         }
       })(),
     )

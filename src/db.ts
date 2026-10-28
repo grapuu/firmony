@@ -12,6 +12,7 @@ import { ANALYTICS_SCHEMA } from './analytics/schema'
 import { PEPPOL_SCHEMA } from './peppol/schema'
 import { PASSKEY_SIGNIN_SCHEMA } from './security/schema'
 import { FOUNDING_SCHEMA } from './founding/schema'
+import { SANCTIONS_SCHEMA } from './aml/sanctions-schema'
 import { usageCutoff } from './analytics/model'
 import { bratislavaDay } from './time'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
@@ -1593,6 +1594,9 @@ const MIGRATIONS: readonly string[][] = [
   // 86: the s. r. o. for 1 €: a founder's application, the designated person's checks and its history, kept as written;
   // the company formed through it and its prepayment to credit (founding/schema.ts).
   FOUNDING_SCHEMA,
+  // 87: the EU's and the UN's sanctions lists as last read, for the screening the designated person confirms
+  // (aml/sanctions-schema.ts).
+  SANCTIONS_SCHEMA,
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

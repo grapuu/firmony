@@ -18,8 +18,17 @@ s ekonomikou kaucie. Základné imanie Mony sama nespomína. Limity: návštevn�
 (odpoveď okolo 3 centov). **Faktúry klientom samé** (fáza 2a): `billingScheduled` 1. až 5. deň o 9:00 vystaví a
 doručí každý návrh bez poznámky (`issuable` a žiadny flag, `created_by` NULL, ako „Vystaviť všetky“); správcov zvoní len
 keď niečo čaká (cenník, dohoda nad 150 dokladov). **Účtovníčka podľa vyťaženia** (2b, `src/team/assign.ts`):
-firma zo s. r. o. za 1 € ju dostane pri zápise sama, posúdenie žiadosti a nový klient na papier ju predvolia. Ďalej:
-AML kontroly predpripravené tak, aby jeho časť bola jedno „schváliť“.
+firma zo s. r. o. za 1 € ju dostane pri zápise sama, posúdenie žiadosti a nový klient na papier ju predvolia. **Pripravené AML kontroly** (2c, jeho „yes“ o 17:17;
+schéma krok **87** `sanction_lists`): `src/aml/sanctions.ts` číta konsolidovaný zoznam finančných sankcií EÚ (FSF XML 1.1,
+verejný odkaz s tokenom) a zoznam BR OSN (presmerovanie na podpísanú kópiu) ako prúd, blok po bloku (24 MB za
+0,3 s), mená bez diakritiky po slovách, preklep o jedno písmeno pri slovách od 5 znakov, firmy bez právnej formy.
+`sanctions-store.ts`: plánovač raz za 20 h, chyba sa zapíše a skúša o hodinu, súbor pod 1 000 (EÚ) / 300 (OSN)
+subjektov sa odmietne, R2 `aml/sanctions/<list>.json` s SHA-256 v riadku, starší ako 36 h sa nepoužije, /healthz
+ukazuje deň zoznamov. `proposals.ts`: spis (konateľ, KUV, zastúpený, firma) pre EÚ a OSN a krajiny z kódov
+vyhlásenia, pri založení zakladateľ na oboch zoznamoch a platba; text sa vloží do formulára určenej osoby, výsledok
+„bez prekážky“ len bez zhody (iný rok narodenia = vylúčené), zapíše ho on. Ručne ostáva QES/totožnosť, KUV, PEP,
+dlžníci. Overiť naživo: /healthz `sanctions` po prvom behu plánovača (Worker musí dosiahnuť webgate.ec.europa.eu
+a scsanctions.un.org).
 
 **S. r. o. za 1 €: prihláška, overenie, kaucia, 28. 10. 2026 (Claude, `main`):** jeho slovo o 13:25 (bezchybný
 onboarding, zakladateľ nás nesmie „odžubať“), voľby 549 € a eID alebo overený podpis, o 13:45 pri nesúčinnosti sa nič

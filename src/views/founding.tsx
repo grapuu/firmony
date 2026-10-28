@@ -1,6 +1,7 @@
 // The s. r. o. for 1 €: the founder's pages (the offer, the link sent, the application step by step) and the
 // designated person's (the list and one application). The founder has no account: the link from the email is the key,
 // and nothing of the identity document is ever shown back on the founder's page.
+import type { FoundingProposals } from '../aml/proposals'
 import type { Child, FC } from 'hono/jsx'
 import { ART, BRAND, FORMATION, OPERATOR, PLANS, asset, planById } from '../config'
 import { formatEur, formatEurExact, typeset } from '../format'
@@ -849,11 +850,13 @@ export interface FoundingDetailProps {
   flash: string | null
   error: string | null
   canWithdraw: boolean
+  /** The checks the app prepared (aml/proposals.ts): the founder on the sanctions lists, the payment it paired. */
+  proposals?: FoundingProposals
 }
 
 const MOVE_WORDS: Partial<Record<FoundingStatus, string>> = { ordered: 'Advokát objednaný', signing: 'Dokumenty advokáta poslané na podpis', filed: 'Návrh podaný na súd' }
 
-export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blockers, today, flash, error, canWithdraw }) => {
+export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blockers, today, flash, error, canWithdraw, proposals = {} }) => {
   const p = f.founder
   const c = f.company
   const base = `/ucto/zalozenia/${f.id}`
@@ -950,6 +953,34 @@ export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blo
             )
           })}
         </ul>
+        {f.status === 'verifying'
+          ? (['sanctions', 'payment'] as const).map((kind) => {
+              const prepared = proposals[kind]
+              if (!prepared || latest.get(kind)?.result === 'clear') return null
+              if ('missing' in prepared)
+                return (
+                  <p class="small" data-found-proposal-missing={kind}>
+                    {CHECK_WORDS[kind]}: {prepared.missing}
+                  </p>
+                )
+              const p = prepared.proposal
+              return (
+                <form class="stack info" method="post" action={`${base}/kontrola`} data-found-proposal={kind}>
+                  <p class="notice">{p.result ? `${CHECK_WORDS[kind]}: kontrolu pripravila aplikácia. Prečítajte text a zaznamenajte ju.` : `${CHECK_WORDS[kind]}: aplikácia našla niečo na posúdenie. Rozhodnite o výsledku.`}</p>
+                  <input type="hidden" name="druh" value={kind} />
+                  <label class="field__label" for={`kp-${kind}-vysledok`}>Výsledok</label>
+                  <select class="field__input" id={`kp-${kind}-vysledok`} name="vysledok" required>
+                    {p.result ? null : <option value="">Vyberte výsledok</option>}
+                    <option value="clear" selected={p.result === 'clear'}>V poriadku</option>
+                    <option value="problem">Problém</option>
+                  </select>
+                  <label class="field__label" for={`kp-${kind}-zdroj`}>Zdroj a čo bolo overené</label>
+                  <textarea class="field__input" id={`kp-${kind}-zdroj`} name="poznamka" rows={6} required minlength={12}>{p.source}</textarea>
+                  <button class={p.result ? 'btn btn--blue' : 'btn btn--line'} type="submit">Zaznamenať kontrolu</button>
+                </form>
+              )
+            })
+          : null}
         {f.status === 'verifying' ? (
           <form class="stack" method="post" action={`${base}/kontrola`}>
             <div class="fgrid">

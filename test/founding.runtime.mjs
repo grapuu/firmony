@@ -130,7 +130,17 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   check('founding: the payment is found by its symbol, and the payer’s name is compared', row.paid_cents === 55_000 && row.payer_iban === 'SK3112000000198742637541' && page.includes('meno sa zhoduje'))
   res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: 'identity', vysledok: 'clear', poznamka: 'krátko' })
   check('founding: a check without its source is refused', res.status === 422)
-  for (const kind of ['identity', 'pep', 'sanctions', 'debts', 'signature', 'payment']) {
+  // The app prepares the founder on both sanctions lists and the payment it paired: one click each (aml/proposals.ts).
+  const raw = await (await officer.get(`/ucto/zalozenia/${row.id}`)).text()
+  const prepared = (kind) => (new RegExp(`<textarea[^>]*id="kp-${kind}-zdroj"[^>]*>([^<]*)</textarea>`).exec(raw)?.[1] ?? '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+  check(
+    'founding: the founder on the EU and UN lists and the payment are prepared for one click each, the rest left to the person',
+    raw.includes('data-found-proposal="sanctions"') && prepared('sanctions').includes('Výsledok: bez zhody') && prepared('sanctions').includes('Bezpečnostnej rady OSN') && prepared('sanctions').includes('zakladateľ') &&
+      raw.includes('data-found-proposal="payment"') && prepared('payment').includes('Meno platiteľa sa zhoduje') && prepared('payment').includes(row.vs) && !raw.includes('data-found-proposal="identity"'),
+  )
+  for (const kind of ['sanctions', 'payment']) res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: kind, vysledok: 'clear', poznamka: prepared(kind) })
+  check('founding: a prepared check is recorded as it stands', res.status === 303 && (await db.prepare("SELECT note FROM founding_checks WHERE founding_id = ? AND kind = 'payment'").bind(row.id).first())?.note.startsWith('Automatické spárovanie'))
+  for (const kind of ['identity', 'pep', 'debts', 'signature']) {
     res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: kind, vysledok: 'clear', poznamka: `TEST-ONLY overené z primárneho zdroja: ${kind}` })
   }
   check('founding: every check needed is recorded, kept as written', res.status === 303 && (await db.prepare('SELECT COUNT(*) AS n FROM founding_checks WHERE founding_id = ?').bind(row.id).first()).n === 6)
