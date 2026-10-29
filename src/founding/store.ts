@@ -18,7 +18,7 @@ import { textDay } from '../app/booking'
 import { formationContractText } from '../content/formation-contract'
 import { bytesHash } from '../aml/store'
 import { quoteSql } from '../aml/model'
-import { FINAL, FOUNDING_TOTAL, checksNeeded, editable, foundingOf, foundingVs, mayMove, stepsOf, type CheckKind, type Founder, type Founding, type FoundingStatus, type PlannedCompany } from './model'
+import { FINAL, FOUNDING_TOTAL, IDENTITY_NOTE, checksNeeded, editable, foundingOf, foundingVs, identityStands, identityWaysOf, mayMove, stepsOf, type CheckKind, type IdentityWay, type Founder, type Founding, type FoundingStatus, type PlannedCompany } from './model'
 
 const DAY = 86_400
 /** A link to an application works this long; every email to the founder carries a new one. */
@@ -363,9 +363,16 @@ export function latestChecks(list: readonly FoundingCheck[]): Map<CheckKind, Fou
   return out
 }
 
-/** A check of the designated person, while the application waits for one; the original's arrival is kept on it too. */
-export async function recordCheck(db: D1Database, f: Founding, by: string, kind: CheckKind, result: 'clear' | 'problem', note: string): Promise<boolean> {
+/**
+ * A check of the designated person, while the application waits for one; the original's arrival is kept on it too. A
+ * clear identity names the way it was verified, one the signature allows (identityWaysOf), first in its note.
+ */
+export async function recordCheck(db: D1Database, f: Founding, by: string, kind: CheckKind, result: 'clear' | 'problem', note: string, way?: IdentityWay): Promise<boolean> {
   if (f.status !== 'verifying' || !checksNeeded(f).includes(kind)) return false
+  if (kind === 'identity' && result === 'clear') {
+    if (!way || !identityWaysOf(f).includes(way)) return false
+    note = `${IDENTITY_NOTE[way]} ${note}`
+  }
   const [first] = await db.batch([
     db
       .prepare("INSERT INTO founding_checks (id, founding_id, at, by, kind, result, note) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM foundings WHERE id = ? AND status = 'verifying')")
@@ -384,7 +391,7 @@ export const CHECK_NAMES: Record<CheckKind, string> = {
   debts: 'Dlžníci a úpadcovia',
   signature: 'Podpis zmluvy',
   payment: 'Platba z vlastného účtu',
-  original: 'Originál poštou',
+  original: 'Originál zmluvy',
 }
 
 /** What still keeps an application from being verified, in words the designated person reads; empty when nothing. */
@@ -395,7 +402,10 @@ export async function verifyBlockers(db: D1Database, f: Founding): Promise<strin
   if (!steps.data || !steps.id || !steps.signed) out.push('Zakladateľ ešte nedokončil údaje, doklad alebo podpis zmluvy.')
   if (!steps.paid) out.push(`Platba ${(FOUNDING_TOTAL / 100).toFixed(0)} € ešte neprišla na účet europio.`)
   const latest = latestChecks(await checksOf(db, f.id))
-  for (const kind of checksNeeded(f)) if (latest.get(kind)?.result !== 'clear') out.push(`Kontrola „${CHECK_NAMES[kind]}“ nie je v poriadku.`)
+  for (const kind of checksNeeded(f)) {
+    const ok = kind === 'identity' ? identityStands(f, latest.get(kind)) : latest.get(kind)?.result === 'clear'
+    if (!ok) out.push(`Kontrola „${CHECK_NAMES[kind]}“ nie je v poriadku.`)
+  }
   return out
 }
 

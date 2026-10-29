@@ -3,14 +3,14 @@
 // and nothing of the identity document is ever shown back on the founder's page.
 import type { FoundingProposals } from '../aml/proposals'
 import type { Child, FC } from 'hono/jsx'
-import { ART, BRAND, FORMATION, OPERATOR, PLANS, asset, planById } from '../config'
+import { ART, BRAND, FORMATION, PLANS, asset, planById } from '../config'
 import { formatEur, formatEurExact, typeset } from '../format'
 import { textDay } from '../app/booking'
 import { monthName, whenName } from '../app/copy'
 import { bratislavaDay } from '../time'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import { formationContract, FORMATION_CONTRACT_TITLE, type FormationParties } from '../content/formation-contract'
-import { CHECK_KINDS, FINAL, FOUNDING_TOTAL, TURNOVERS, checksNeeded, riskHints, sameName, stepsOf, type CheckKind, type Founding, type FoundingErrors, type FoundingStatus, type FoundingValues } from '../founding/model'
+import { CHECK_KINDS, FINAL, FOUNDING_TOTAL, TURNOVERS, checksNeeded, identityStands, identityWaysOf, riskHints, sameName, stepsOf, type CheckKind, type Founding, type FoundingErrors, type FoundingStatus, type FoundingValues } from '../founding/model'
 import type { FoundingCheck, FoundingEvent } from '../founding/store'
 import { CarryFields, Picture, type Carry } from './home'
 import { copy } from '../copy'
@@ -150,7 +150,10 @@ export const FoundingLanding: FC<{ values: LandingValues; errors: Partial<Record
               </div>
             </dl>
             <p class="found-price__total">
-              <span>{typeset('Úvodná platba pri prihláške')}</span>
+              <span>
+                {typeset('Úvodná platba pri prihláške')}
+                <small>{typeset(`${price} za založenie + ${prepaid} kaucia`)}</small>
+              </span>
               <strong>{total}</strong>
             </p>
             <details class="found-terms">
@@ -160,7 +163,7 @@ export const FoundingLanding: FC<{ values: LandingValues; errors: Partial<Record
                 <li>{typeset(`Kauciu ${prepaid} Vám odpočítame z faktúr na konci spolupráce. Ak by ste odišli skôr, započíta sa na odstupné za zostávajúce mesiace, najviac ${FORMATION.exitMaxMonths} mesačných poplatkov.`)}</li>
                 <li>{typeset(`Ak firmu nezaložíme z dôvodu na našej strane alebo ju súd nezapíše bez Vašej viny, vrátime Vám celých ${total}.`)}</li>
                 <li>{typeset('Úvodná platba pokrýva prácu na založení. Ak od založenia odstúpite alebo nedodáte podklady ani po druhej výzve, nevracia sa.')}</li>
-                <li>{typeset('Ako zakladateľ za záväzky firmy z tejto zmluvy ručíte. Ceny sú bez DPH. Ponuka platí pre prvých 20 firiem v mesiaci.')}</li>
+                <li>{typeset('Ako zakladateľ za záväzky firmy z tejto zmluvy ručíte. Ponuka platí pre prvých 20 firiem v mesiaci.')}</li>
               </ul>
               <a class="link" href="/zalozenie/zmluva">
                 Celé znenie zmluvy
@@ -469,10 +472,8 @@ const OpenSteps: FC<FoundingPageProps & { steps: ReturnType<typeof stepsOf>; bas
                 <p class="small">{typeset('Otvorte zmluvu v aplikácii D.Signer zo slovensko.sk, podpíšte ju kvalifikovaným podpisom a nahrajte podpísaný súbor (.asice alebo PDF). Najrýchlejšia cesta.')}</p>
               </div>
               <div class="fgrid__cell">
-                <h3 class="info__sub">Na papieri s overeným podpisom</h3>
-                <p class="small">
-                  {typeset(`Vytlačte zmluvu a podpíšte ju pred notárom alebo na matrike. Sken nahrajte sem a originál pošlite na ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}.`)}
-                </p>
+                <h3 class="info__sub">Na papieri, s osobným stretnutím</h3>
+                <p class="small">{typeset('Vytlačte zmluvu, podpíšte ju a sken nahrajte sem. Totožnosť Vám potom overíme na krátkom osobnom stretnutí s občianskym preukazom, kde nám odovzdáte aj originál zmluvy. Termín s Vami dohodneme.')}</p>
               </div>
             </div>
             {f.signedKey && !steps.signed ? <p class="notice">{typeset('Údaje ste po podpise zmenili. Stiahnite zmluvu znova a podpíšte novú.')}</p> : null}
@@ -486,7 +487,7 @@ const OpenSteps: FC<FoundingPageProps & { steps: ReturnType<typeof stepsOf>; bas
                   </label>
                   <label class="choice__option">
                     <input type="radio" name="druh" value="paper" checked={f.signedKind === 'paper'} />
-                    <span>Na papieri s overeným podpisom</span>
+                    <span>Na papieri</span>
                   </label>
                 </div>
               </fieldset>
@@ -832,13 +833,13 @@ export const FoundingsList: FC<{ list: Founding[]; places: number; today: string
 )
 
 export const CHECK_WORDS: Record<CheckKind, string> = {
-  identity: 'Totožnosť: doklad, údaje a podpis patria tej istej osobe',
+  identity: 'Totožnosť overená kvalifikovaným elektronickým podpisom alebo osobne s dokladom',
   pep: 'Politicky exponovaná osoba (vlastné vyhľadanie)',
   sanctions: 'Sankčné zoznamy EÚ a OSN',
   debts: 'Dlžníci a úpadcovia: zoznamy Sociálnej poisťovne, zdravotných poisťovní, finančnej správy a register úpadcov',
-  signature: 'Podpis zmluvy (kvalifikovaný alebo úradne osvedčený) na tomto texte',
+  signature: 'Podpis zmluvy (kvalifikovaný elektronický alebo vlastnoručný) na tomto texte',
   payment: 'Platba z účtu na meno zakladateľa',
-  original: 'Originál s osvedčeným podpisom prišiel poštou',
+  original: 'Originál zmluvy prevzatý pri osobnom stretnutí',
 }
 
 export interface FoundingDetailProps {
@@ -917,9 +918,9 @@ export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blo
         <h2 class="info__title">Doklad, podpis a platba</h2>
         <dl class="kv">
           <div><dt>Doklad</dt><dd>{f.idFrontKey ? <a class="link" href={`${base}/subor/predna`}>predná strana</a> : 'chýba'}{', '}{f.idBackKey ? <a class="link" href={`${base}/subor/zadna`}>zadná strana</a> : 'chýba'}</dd></div>
-          <div><dt>Podpísaná zmluva</dt><dd>{f.signedKey ? <><a class="link" href={`${base}/subor/podpis`}>{f.signedKind === 'paper' ? 'sken s overeným podpisom' : 'elektronicky podpísaný súbor'}</a>{f.signedContractHash === f.contractHash ? ', na aktuálny text' : ', NA STARŠÍ TEXT'}</> : 'chýba'}</dd></div>
+          <div><dt>Podpísaná zmluva</dt><dd>{f.signedKey ? <><a class="link" href={`${base}/subor/podpis`}>{f.signedKind === 'paper' ? 'sken zmluvy podpísanej na papieri' : 'elektronicky podpísaný súbor'}</a>{f.signedContractHash === f.contractHash ? ', na aktuálny text' : ', NA STARŠÍ TEXT'}</> : 'chýba'}</dd></div>
           <div><dt>Text zmluvy SHA-256</dt><dd class="kv__long">{f.contractHash ?? 'nie je'}</dd></div>
-          {f.signedKind === 'paper' ? <div><dt>Originál poštou</dt><dd>{f.originalAt ? `prišiel ${textDay(bratislavaDay(f.originalAt))}` : 'ešte neprišiel'}</dd></div> : null}
+          {f.signedKind === 'paper' ? <div><dt>Originál zmluvy</dt><dd>{f.originalAt ? `prevzatý ${textDay(bratislavaDay(f.originalAt))}` : 'ešte neprevzatý'}</dd></div> : null}
           <div><dt>Platba</dt><dd>{f.paidAt ? `${formatEurExact(f.paidCents ?? 0)}, ${textDay(bratislavaDay(f.paidAt))}` : 'neprišla'}</dd></div>
           {f.paidAt ? <div><dt>Platiteľ</dt><dd>{f.payerName ?? 'bez mena'}, {f.payerIban ?? 'bez účtu'}{payerMatches === false ? ' (MENO SA NEZHODUJE)' : payerMatches ? ' (meno sa zhoduje)' : ''}</dd></div> : null}
         </dl>
@@ -940,12 +941,14 @@ export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blo
         <ul class="plain">
           {checksNeeded(f).map((kind) => {
             const k = latest.get(kind)
+            // An identity verified by the signature before the founder signed again on paper is to be done again.
+            const again = kind === 'identity' && k?.result === 'clear' && !identityStands(f, k)
             return (
               <li class="check">
                 <div class="check__text">
                   <span class="check__title">
                     {CHECK_WORDS[kind]}
-                    <span class={`pill ${k ? (k.result === 'clear' ? 'pill--ok' : 'pill--red') : 'pill--grey'}`}>{k ? (k.result === 'clear' ? 'v poriadku' : 'problém') : 'chýba'}</span>
+                    <span class={`pill ${k && !again ? (k.result === 'clear' ? 'pill--ok' : 'pill--red') : 'pill--grey'}`}>{again ? 'overiť znova' : k ? (k.result === 'clear' ? 'v poriadku' : 'problém') : 'chýba'}</span>
                   </span>
                   {k ? <span class="check__sub"><span>{k.byName ?? ''}, {whenName(k.at, today)}</span><span>{k.note}</span></span> : null}
                 </div>
@@ -981,13 +984,44 @@ export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blo
               )
             })
           : null}
+        {f.status === 'verifying' && !identityStands(f, latest.get('identity')) ? (
+          <form class="stack info" method="post" action={`${base}/kontrola`} data-found-identity>
+            <input type="hidden" name="druh" value="identity" />
+            <p class="notice">
+              {typeset(
+                f.signedKind === 'qes'
+                  ? 'Totožnosť overíte kvalifikovaným elektronickým podpisom na zmluve (meno v certifikáte porovnajte s prihláškou a dokladom) alebo osobne s dokladom totožnosti. Fotka dokladu sama osebe overením nie je.'
+                  : 'Zakladateľ podpísal na papieri: totožnosť overíte len osobne, s jeho dokladom totožnosti v ruke (údaje a podoba s fotkou). Úradne osvedčený podpis ani fotka dokladu overením nie sú.',
+              )}
+            </p>
+            <fieldset class="field choice">
+              <legend class="field__label">Ako ste totožnosť overili</legend>
+              <div class="choice__options">
+                {identityWaysOf(f).map((w) => (
+                  <label class="choice__option">
+                    <input type="radio" name="sposob" value={w} required />
+                    <span>{w === 'qes' ? 'Kvalifikovaný elektronický podpis na zmluve' : 'Osobne s dokladom totožnosti'}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <label class="field__label" for="ki-vysledok">Výsledok</label>
+            <select class="field__input" id="ki-vysledok" name="vysledok">
+              <option value="clear">V poriadku</option>
+              <option value="problem">Problém</option>
+            </select>
+            <label class="field__label" for="ki-zdroj">Čo ste porovnali</label>
+            <textarea class="field__input" id="ki-zdroj" name="poznamka" rows={2} required minlength={12} placeholder="Napríklad: meno a dátum narodenia v certifikáte sedia s prihláškou a OP; podpis platný"></textarea>
+            <button class="btn btn--line" type="submit">Zaznamenať totožnosť</button>
+          </form>
+        ) : null}
         {f.status === 'verifying' ? (
           <form class="stack" method="post" action={`${base}/kontrola`}>
             <div class="fgrid">
               <div class="fgrid__cell">
                 <label class="field__label" for="k-druh">Kontrola</label>
                 <select class="field__input" id="k-druh" name="druh">
-                  {CHECK_KINDS.filter((k) => checksNeeded(f).includes(k)).map((k) => <option value={k}>{CHECK_WORDS[k]}</option>)}
+                  {CHECK_KINDS.filter((k) => k !== 'identity' && checksNeeded(f).includes(k)).map((k) => <option value={k}>{CHECK_WORDS[k]}</option>)}
                 </select>
               </div>
               <div class="fgrid__cell">

@@ -5,7 +5,7 @@ import { formatEurExact, typeset as t } from '../format'
 import { SZCO_PAGE as w, SZCO_PATH, szcoNote, szcoSocialNote } from '../content/szco-calc'
 import { szcoYears, type SzcoQuery, type SzcoResult } from '../app/szco-calc'
 import { GUIDES } from '../content/guides'
-import { StartForm } from './home'
+import { EmailForm } from './home'
 import { copy } from '../copy'
 
 const eur = (cents: number) => formatEurExact(cents)
@@ -128,9 +128,9 @@ export const SzcoCalcPage: FC<{ query: SzcoQuery | null; result: SzcoResult | nu
         </ul>
       </section>
       <section class="guide__start" aria-labelledby="guide-start">
-        <h2 id="guide-start" class="h3">Začnite s IČO Vašej firmy</h2>
-        <p>{t('Účtovníctvo, dane a mzdy pre s. r. o. za Vás vybavíme. Ak už s. r. o. máte, zadajte jej IČO. Názov a sídlo doplníme z registra, je to nezáväzné.')}</p>
-        <StartForm carry={[]} id="ico-szco" compact />
+        <h2 id="guide-start" class="h3">Začnite online za pár minút</h2>
+        <p>{t('Účtovníctvo, dane a mzdy pre s. r. o. za Vás vybavíme. Napíšte e-mail a pokračujte, je to nezáväzné.')}</p>
+        <EmailForm carry={[]} id="email-szco" place="szco-kalkulacka" />
         <p class="small">
           <a class="link" href="/zalozenie">{copy.final.noCompany}</a>
         </p>

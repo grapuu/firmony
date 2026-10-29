@@ -53,7 +53,7 @@ export function service(): Record<string, unknown> {
     description,
     priceCurrency: 'EUR',
     price: price.toFixed(2),
-    priceSpecification: { '@type': 'UnitPriceSpecification', price: price.toFixed(2), priceCurrency: 'EUR', unitCode: unit, valueAddedTaxIncluded: false },
+    priceSpecification: { '@type': 'UnitPriceSpecification', price: price.toFixed(2), priceCurrency: 'EUR', unitCode: unit },
     url: `${BRAND.origin}/#cennik`,
   })
   return {

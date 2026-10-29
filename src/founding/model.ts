@@ -165,6 +165,27 @@ export const CHECK_KINDS = ['identity', 'pep', 'sanctions', 'debts', 'signature'
 export type CheckKind = (typeof CHECK_KINDS)[number]
 export const checksNeeded = (f: Founding): CheckKind[] => CHECK_KINDS.filter((k) => k !== 'original' || f.signedKind === 'paper')
 
+/**
+ * How the founder's identity may be verified (AML Act 297/2008 § 8 ods. 1; program 4.2a b), 29 October 2026): by the
+ * qualified electronic signature on the contract (písm. f), which counts as physical presence) or in person with the
+ * identity document (písm. a)). A paper signature, certified or not, and a photo of the document are no verification,
+ * so a founder who signed on paper is always verified in person.
+ */
+export const IDENTITY_WAYS = ['qes', 'person'] as const
+export type IdentityWay = (typeof IDENTITY_WAYS)[number]
+export const identityWaysOf = (f: Pick<Founding, 'signedKind'>): IdentityWay[] => (f.signedKind === 'qes' ? ['qes', 'person'] : ['person'])
+/** What a clear identity check says first: the way, with its provision. */
+export const IDENTITY_NOTE: Record<IdentityWay, string> = {
+  qes: 'Overené kvalifikovaným elektronickým podpisom zakladateľa na zmluve (§ 8 ods. 1 písm. f) zákona č. 297/2008 Z. z.).',
+  person: 'Overené za fyzickej prítomnosti zakladateľa s jeho dokladom totožnosti (§ 8 ods. 1 písm. a) zákona č. 297/2008 Z. z.).',
+}
+/**
+ * Whether a recorded identity check stands for the signature the application has now: clear, by a way that signature
+ * allows. One made by the signature before the founder signed again on paper does not.
+ */
+export const identityStands = (f: Pick<Founding, 'signedKind'>, check: { result: string; note: string } | undefined): boolean =>
+  Boolean(check && check.result === 'clear' && identityWaysOf(f).some((w) => check.note.startsWith(IDENTITY_NOTE[w])))
+
 /** Where an application may go from where it is, and who moves it: the founder hands it over, the team does the rest. */
 export const MOVES: Record<FoundingStatus, readonly FoundingStatus[]> = {
   open: ['verifying', 'lapsed', 'cancelled'],

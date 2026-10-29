@@ -140,7 +140,18 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   )
   for (const kind of ['sanctions', 'payment']) res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: kind, vysledok: 'clear', poznamka: prepared(kind) })
   check('founding: a prepared check is recorded as it stands', res.status === 303 && (await db.prepare("SELECT note FROM founding_checks WHERE founding_id = ? AND kind = 'payment'").bind(row.id).first())?.note.startsWith('Automatické spárovanie'))
-  for (const kind of ['identity', 'pep', 'debts', 'signature']) {
+  // Identity has its own form and is clear only with the way it was verified (AML program 4.2a b), 29 October 2026).
+  check('founding: identity is recorded on its own form, with the ways the signature allows', raw.includes('data-found-identity') && raw.includes('name="sposob" value="qes"') && raw.includes('name="sposob" value="person"') && !/<option value="identity">/.test(raw))
+  res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: 'identity', vysledok: 'clear', poznamka: 'TEST-ONLY meno v certifikáte sedí s prihláškou' })
+  check('founding: a clear identity without the way it was verified is refused', res.status === 422 && plain(await res.text()).includes('vyberte, ako ste ju overili'))
+  res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: 'identity', vysledok: 'clear', sposob: 'video', poznamka: 'TEST-ONLY meno v certifikáte sedí s prihláškou' })
+  check('founding: no other way of verifying identity is taken', res.status === 422)
+  res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: 'identity', vysledok: 'clear', sposob: 'qes', poznamka: 'TEST-ONLY meno v certifikáte sedí s prihláškou' })
+  check(
+    'founding: identity verified by the qualified signature says so with its provision first',
+    res.status === 303 && (await db.prepare("SELECT note FROM founding_checks WHERE founding_id = ? AND kind = 'identity'").bind(row.id).first())?.note.startsWith('Overené kvalifikovaným elektronickým podpisom zakladateľa na zmluve (§ 8 ods. 1 písm. f)'),
+  )
+  for (const kind of ['pep', 'debts', 'signature']) {
     res = await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: kind, vysledok: 'clear', poznamka: `TEST-ONLY overené z primárneho zdroja: ${kind}` })
   }
   check('founding: every check needed is recorded, kept as written', res.status === 303 && (await db.prepare('SELECT COUNT(*) AS n FROM founding_checks WHERE founding_id = ?').bind(row.id).first()).n === 6)

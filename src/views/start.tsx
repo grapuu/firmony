@@ -4,7 +4,7 @@ import { copy } from '../copy'
 import { formatEur, typeset } from '../format'
 import { formatIco } from '../ico'
 import type { Company } from '../rpo'
-import { CarryFields, StartForm, withCarry, type Carry } from './home'
+import { CarryFields, EmailForm, StartForm, withCarry, type Carry } from './home'
 
 /** What brings the request (27 October 2026, the owner's word: most are new s. r. o. looking for an accounting firm). */
 export type Situation = 'first' | 'switch' | 'fresh' | 'other'
@@ -61,15 +61,30 @@ const ChosenPlan: FC<{ plan: string }> = ({ plan }) => {
   )
 }
 
-/** The first step: the IČO, or the way in without a company. */
-export const StartIco: FC<{ carry: Carry; plan: string; value?: string; error?: string }> = ({ carry, plan, value, error }) => (
+/** The first step (his word of 29 October 2026): the e-mail, kept at once, so that nobody who starts is lost. */
+export const StartEmail: FC<{ carry: Carry; plan: string; value?: string; error?: string }> = ({ carry, plan, value, error }) => (
+  <Page>
+    <h1 class="h1">{copy.lead.title}</h1>
+    <p class="lead">{copy.lead.lead}</p>
+    <ChosenPlan plan={plan} />
+    <EmailForm carry={carry} id="email-start" place="zacat" plan={plan || undefined} value={value} error={error} />
+    <p class="page__more">
+      <a class="link" href={withCarry('/zalozenie', carry)}>
+        {copy.card.noCompany}
+      </a>
+    </p>
+  </Page>
+)
+
+/** The next step: the IČO, or the way in without a company. `lead` is the e-mail's row, carried to the details. */
+export const StartIco: FC<{ carry: Carry; plan: string; value?: string; error?: string; lead?: string }> = ({ carry, plan, value, error, lead }) => (
   <Page>
     <h1 class="h1">{copy.start.title}</h1>
     <p class="lead">{copy.start.lead}</p>
     <ChosenPlan plan={plan} />
-    <StartForm carry={plan ? [...carry, ['balik', plan]] : carry} value={value} error={error} />
+    <StartForm carry={plan ? [...carry, ['balik', plan]] : carry} value={value} error={error} lead={lead} />
     <p class="page__more">
-      <a class="link" href={withCarry('/zacat', carry, plan ? { nova: '1', balik: plan } : { nova: '1' })}>
+      <a class="link" href={withCarry('/zacat', carry, { nova: '1', ...(plan ? { balik: plan } : {}), ...(lead ? { l: lead } : {}) })}>
         {copy.final.noCompany}
       </a>
     </p>

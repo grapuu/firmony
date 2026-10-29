@@ -197,7 +197,7 @@ let page = await res.text()
 check('the home page answers', res.status === 200)
 check(
   'it says at once what Firmony is and why: an accounting firm for a fixed price, three reasons and a plain comparison',
-  page.includes('Účtovníctvo pre Vašu s.') && page.includes('Vy odfotíte doklad, my urobíme zvyšok.') && page.includes('Online účtovná firma za pevnú cenu') && page.includes('dohodnuté priznania') &&
+  page.includes('Účtovníctvo pre Vašu s.') && page.includes('Vy pošlete doklad, my urobíme zvyšok.') && !page.includes('bez DPH') && page.replace(/\u00a0/g, ' ').includes('Menej ako 3 € denne') && page.includes('class="ticket"') && !page.includes('Novinka') && page.replace(/\u00a0/g, ' ').includes('Bude mi viesť účtovníctvo umelá inteligencia?') && page.includes('action="/zacat/email"') && page.includes('Online účtovná firma za pevnú cenu') && page.includes('dohodnuté priznania') &&
     (page.match(/class="card why__card"/g) ?? []).length === 3 && page.includes('čom sme iní.') && (page.match(/<span class="tick"/g) ?? []).length >= 5 && (page.match(/class="faq__item"/g) ?? []).length === 6 && page.includes('href="/bezplatne-nastroje"'),
 )
 check(
@@ -307,11 +307,34 @@ res = await get('/?utm_source=refresher&utm_campaign=start%3Cscript%3E&mesacne=6
 page = await res.text()
 check('campaign tags travel with the forms, odd ones do not', page.includes('name="utm_source" value="refresher"') && !page.includes('utm_campaign'))
 
-// The request: the IČO
+// The request: the e-mail first (29 October 2026), kept at once, then the IČO
 res = await get('/zacat?balik=rast')
 page = await res.text()
-check('the first step asks for the IČO', res.status === 200 && page.includes('name="ico"') && page.includes('Rast'))
+check('the first step asks for the e-mail', res.status === 200 && page.includes('name="email"') && page.includes('action="/zacat/email"') && page.includes('Rast') && page.includes('name="balik" value="rast"') && !page.includes('name="ico"'))
 check('a form step is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
+res = await post('/zacat/email', { email: 'nie-je-email', miesto: 'hero' }, { ip: '198.51.100.81' })
+check('a wrong e-mail is said and nothing is kept', res.status === 422 && (await res.text()).includes('Skontrolujte, prosím, e-mail') && !(await db.prepare("SELECT 1 AS x FROM leads WHERE email = 'nie-je-email'").first()))
+res = await post('/zacat/email', { email: 'robot@example.sk', web: 'http://spam', miesto: 'hero' }, { ip: '198.51.100.81' })
+check('a machine that fills the hidden field keeps nothing', res.status === 303 && !(await db.prepare("SELECT 1 AS x FROM leads WHERE email = 'robot@example.sk'").first()))
+res = await post('/zacat/email', { email: 'Zaujemca@Example.sk', miesto: 'hero', balik: 'rast', utm_source: 'instagram' }, { ip: '198.51.100.81' })
+const leadRow = await db.prepare("SELECT id, email, times, place, source, privacy_version FROM leads WHERE email = 'zaujemca@example.sk'").first()
+const leadAt = res.headers.get('location') ?? ''
+check(
+  'the e-mail is kept at once, with where and from which campaign, and the next step carries only its row',
+  res.status === 303 && leadRow?.times === 1 && leadRow.place === 'hero' && JSON.parse(leadRow.source).utm_source === 'instagram' && leadAt.includes(`l=${leadRow.id}`) && leadAt.includes('balik=rast') && !leadAt.includes('example'),
+  JSON.stringify({ leadRow, leadAt }),
+)
+res = await post('/zacat/email', { email: 'zaujemca@example.sk', miesto: 'final' }, { ip: '198.51.100.81' })
+const leadAgain = await db.prepare("SELECT id, times, place FROM leads WHERE email = 'zaujemca@example.sk'").first()
+check('the same address again is the same row, counted, its last place kept', leadAgain?.id === leadRow?.id && leadAgain.times === 2 && leadAgain.place === 'final')
+res = await get(leadAt.replace(site, ''))
+page = await res.text()
+check('then the IČO is asked, the row carried to the next step', res.status === 200 && page.includes('name="ico"') && page.includes(`name="l" value="${leadRow?.id}"`) && page.includes(`l=${leadRow?.id}`))
+res = await get(`/zacat?ico=57442452&l=${leadRow?.id}`)
+page = await res.text()
+check('and the details have the e-mail filled in', res.status === 200 && page.includes('value="zaujemca@example.sk"'))
+res = await get('/zacat?l=00000000-0000-4000-8000-000000000000')
+check('a row that is none asks for the e-mail again', res.status === 200 && (await res.text()).includes('action="/zacat/email"'))
 res = await get('/zacat?ico=1234')
 check('a short IČO is refused in words', res.status === 422 && (await res.text()).includes('IČO má 8 číslic'))
 res = await get('/zacat?ico=12345678')

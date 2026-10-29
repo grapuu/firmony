@@ -15,7 +15,7 @@ export function foundingContractPdf(text: string, hash: string, vs: string): str
   blocks.push(
     { kind: 'heading', text: 'Odtlačok zmluvy' },
     { kind: 'text', text: `SHA-256 textu zmluvy: ${hash}` },
-    { kind: 'text', text: 'Podpíšte tento súbor kvalifikovaným elektronickým podpisom (napríklad v aplikácii D.Signer na slovensko.sk) a nahrajte podpísaný súbor v prihláške. Alebo ho vytlačte, podpíšte pred notárom alebo na matrike a sken nahrajte; originál pošlite poštou.' },
+    { kind: 'text', text: 'Podpíšte tento súbor kvalifikovaným elektronickým podpisom (napríklad v aplikácii D.Signer na slovensko.sk) a nahrajte podpísaný súbor v prihláške. Alebo ho vytlačte, podpíšte a sken nahrajte; totožnosť Vám potom overíme na krátkom osobnom stretnutí, kde si prevezmeme aj originál.' },
   )
   return pdfText({ title: `${BRAND.name}: ${FORMATION_CONTRACT_TITLE}`, header: { left: `${BRAND.name} | Založenie s. r. o.`, right: `VS ${vs}` }, blocks })
 }

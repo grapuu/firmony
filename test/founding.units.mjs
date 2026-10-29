@@ -43,6 +43,16 @@ export function checkFoundingUnits() {
   check('founding: a signature on an earlier text of the contract does not count', !m.stepsOf({ ...base, contractHash: 'h2' }).signed && !m.stepsOf({ ...base, contractHash: null }).signed)
   check('founding: less than the whole amount is not paid', !m.stepsOf({ ...base, paidCents: m.FOUNDING_TOTAL - 1 }).paid && m.FOUNDING_TOTAL === 55_000)
   check('founding: the original is asked only of a paper signature, the debtors always', !m.checksNeeded({ signedKind: 'qes' }).includes('original') && m.checksNeeded({ signedKind: 'paper' }).includes('original') && m.checksNeeded({ signedKind: 'qes' }).includes('debts'))
+  const clear = (way) => ({ result: 'clear', note: `${m.IDENTITY_NOTE[way]} TEST-ONLY` })
+  check(
+    'founding: a paper signature is verified only in person, a qualified one either way',
+    m.identityWaysOf({ signedKind: 'paper' }).join() === 'person' && m.identityWaysOf({ signedKind: 'qes' }).join() === 'qes,person' && m.identityWaysOf({ signedKind: null }).join() === 'person',
+  )
+  check(
+    'founding: an identity verified by the signature does not stand once the founder signed again on paper',
+    m.identityStands({ signedKind: 'qes' }, clear('qes')) && !m.identityStands({ signedKind: 'paper' }, clear('qes')) && m.identityStands({ signedKind: 'paper' }, clear('person')) &&
+      !m.identityStands({ signedKind: 'qes' }, { result: 'clear', note: 'TEST-ONLY bez spôsobu' }) && !m.identityStands({ signedKind: 'qes' }, { ...clear('qes'), result: 'problem' }) && !m.identityStands({ signedKind: 'qes' }, undefined),
+  )
   check('founding: an application moves only where the rules let it', m.mayMove('verifying', 'verified') && !m.mayMove('open', 'verified') && !m.mayMove('open', 'ordered') && m.MOVES.registered.length === 0 && !m.mayMove('filed', 'withdrawn') === false)
   check('founding: a politically exposed founder, cash and partners outside the EU are said to the designated person', m.riskHints({ ...ok.founder, pep: true, cash: true, abroad: 'Čína' }).length === 3 && m.riskHints(ok.founder).length === 0)
 
@@ -69,6 +79,7 @@ export function checkFoundingUnits() {
   check('contract: non-payment ends it with interest and the flat compensation', plain.includes('§ 369c'))
   check('contract: the founder’s declaration is signed with it, before the signature', plain.indexOf('Príloha: Vyhlásenie zakladateľa') > 0 && plain.indexOf('Príloha: Vyhlásenie zakladateľa') < plain.indexOf('Podpis zakladateľa'))
   check('contract: no long dashes', !/[–—]/.test(text))
+  check('contract: a paper signature means meeting in person, no certified signature asked', plain.includes('vlastnoručne na papieri') && plain.includes('pri osobnom stretnutí, na ktorom Vám overíme totožnosť') && !/osvedčen|notár|poštou/.test(plain))
   const pdf = foundingPdf.foundingContractPdf(text, 'a'.repeat(64), '7202600007')
   check('contract: the PDF to sign carries the text’s fingerprint', pdf.startsWith('%PDF-') && pdf.includes('a'.repeat(64)))
   check('approval: three months from the day the company arose, kept to the month’s end', approveBy('2027-01-15') === '2027-04-15' && approveBy('2027-11-30') === '2028-02-29')

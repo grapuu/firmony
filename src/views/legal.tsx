@@ -72,7 +72,7 @@ export const Legal: FC = () => (
       <h3 class="h4">Aké údaje spracúvame</h3>
       <p>
         {t(
-          'Keď vyplníte formulár: IČO, názov a sídlo firmy z Registra právnických osôb, Vaše meno, e-mail, telefón a poznámku, ak ich uvediete, zvolený balík a to, z akej kampane alebo z akého odkazu ste prišli, ak to bolo v adrese stránky. Keď sa zapíšete na daňové priznanie z investícií: e-mail, brokerov a cestu, ktoré zvolíte, a kampaň, z ktorej ste prišli. Kalkulačka na úvodnej stránke nič neukladá.',
+          'Keď na webe zadáte e-mail, aby ste začali: e-mail, kedy a koľkokrát ste ho zadali, na ktorej časti webu a z akej kampane alebo z akého odkazu ste prišli. Keď vyplníte formulár: IČO, názov a sídlo firmy z Registra právnických osôb, Vaše meno, e-mail, telefón a poznámku, ak ich uvediete, zvolený balík a to, z akej kampane alebo z akého odkazu ste prišli, ak to bolo v adrese stránky. Keď sa zapíšete na daňové priznanie z investícií: e-mail, brokerov a cestu, ktoré zvolíte, a kampaň, z ktorej ste prišli. Kalkulačka na úvodnej stránke nič neukladá.',
         )}
       </p>
 
@@ -106,7 +106,7 @@ export const Legal: FC = () => (
       <h3 class="h4">Prečo a na akom základe</h3>
       <p>
         {t(
-          'Aby sme Vám odpovedali a pripravili ponuku. Ak žiadate za seba, ide o kroky pred uzavretím zmluvy na Vašu žiadosť (článok 6 ods. 1 písm. b) GDPR). Ak žiadate za firmu, ide o náš oprávnený záujem odpovedať jej zástupcovi (článok 6 ods. 1 písm. f) GDPR). Ak sa zapíšete na daňové priznanie z investícií, uchovávame Váš e-mail, brokerov a cestu, ktorú ste zvolili, a použijeme ich len na to, aby sme Vám dali vedieť o spustení (článok 6 ods. 1 písm. b) GDPR).',
+          'Aby sme Vám odpovedali a pripravili ponuku. E-mail, ktorý zadáte na začiatku, uložíme hneď, aby sme Vás mohli previesť ďalej. Ak žiadosť nedokončíte, pošleme Vám raz jednu pripomienku s odkazom, kde ste skončili; reklamné e-maily neposielame. Ak žiadate za seba, ide o kroky pred uzavretím zmluvy na Vašu žiadosť (článok 6 ods. 1 písm. b) GDPR). Ak žiadate za firmu, ide o náš oprávnený záujem odpovedať jej zástupcovi (článok 6 ods. 1 písm. f) GDPR). Ak sa zapíšete na daňové priznanie z investícií, uchovávame Váš e-mail, brokerov a cestu, ktorú ste zvolili, a použijeme ich len na to, aby sme Vám dali vedieť o spustení (článok 6 ods. 1 písm. b) GDPR).',
         )}
       </p>
       <p>
@@ -160,7 +160,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-`Žiadosť z webu, ku ktorej sme nedostali podpísané vyhlásenie na overenie totožnosti, vymažeme ${RETENTION.requestDays} dní od jej odoslania, spolu s ponukou, ak sme ju poslali a už neplatí. Ak sme overenie začali alebo to vyžaduje zákon proti praniu špinavých peňazí, údaje záujemcu a podklady z rokovania, z ktorého nevznikla zmluva, uchovávame päť rokov od odmietnutia alebo skončenia rokovania podľa AML programu. Zápis na daňové priznanie z investícií uchovávame ${RETENTION.requestDays} dní od posledného zápisu. Technické záznamy odoslaných upozornení ${RETENTION.outboxDays} dní a odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
+`E-mail, ktorý ste zadali na začiatku, vymažeme ${RETENTION.requestDays} dní od jeho posledného zadania. Žiadosť z webu, ku ktorej sme nedostali podpísané vyhlásenie na overenie totožnosti, vymažeme ${RETENTION.requestDays} dní od jej odoslania, spolu s ponukou, ak sme ju poslali a už neplatí. Ak sme overenie začali alebo to vyžaduje zákon proti praniu špinavých peňazí, údaje záujemcu a podklady z rokovania, z ktorého nevznikla zmluva, uchovávame päť rokov od odmietnutia alebo skončenia rokovania podľa AML programu. Zápis na daňové priznanie z investícií uchovávame ${RETENTION.requestDays} dní od posledného zápisu. Technické záznamy odoslaných upozornení ${RETENTION.outboxDays} dní a odtlačky pripojení ${RETENTION.throttleHours / 24} dni.`,
         )}
       </p>
       <p>

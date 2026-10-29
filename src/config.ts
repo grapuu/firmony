@@ -139,6 +139,8 @@ export const LIMITS = {
   lookupsPerHour: 30,
   /** Requests sent, per connection and hour. */
   requestsPerHour: 6,
+  /** E-mails left on the site to start (POST /zacat/email), per connection and hour. */
+  leadsPerHour: 20,
   /** Confirmations to one email address in a day: the form cannot be used to flood somebody's mailbox. */
   confirmationsPerDay: 2,
   /** Bytes a posted form of the public pages may have. */
@@ -482,7 +484,7 @@ export const READER = {
 export const EKASA_VERIFY = 'https://opd.financnasprava.sk/'
 
 /** The version of the privacy notice; bump it with every change of /pravne-informacie. */
-export const PRIVACY_VERSION = '2026-10-28'
+export const PRIVACY_VERSION = '2026-10-29'
 
 /**
  * The contract a client concludes online (13 October 2026). A request whose company the register knows as an
@@ -496,7 +498,7 @@ export const TERMS_VERSION = '2026-10-26'
 /**
  * The s. r. o. for 1 € (his word of 27 October 2026; the safeguards of 28 October: "nemôžu nás odžubať"). A founder
  * applies by a link, gives a photo of an identity document, signs the contract with a qualified electronic signature
- * or an officially certified signature, and pays 1 € and a deposit of 549 € from an account in the founder's own
+ * or on paper (then identified in person, AML program 4.2a), and pays 1 € and a deposit of 549 € from an account in the founder's own
  * name; only after the designated person has checked all of it is the advocate ordered (src/founding/,
  * src/content/formation-contract.ts). His word of 28 October 2026, 14:08: we must never be at a loss when a founder
  * leaves after a month or two. So the deposit is held like a rent deposit: the monthly fee is paid from the first month,
@@ -520,7 +522,8 @@ export const FORMATION = {
   applyDays: 14,
   /** Days the founder has to give what the advocate asks for, after a call. */
   cooperateDays: 30,
-  contractVersion: '2026-10-28',
+  /** Bumped on 29 October 2026: a paper signature is verified by meeting the founder, not by a certified signature. */
+  contractVersion: '2026-10-29',
 } as const
 
 /**

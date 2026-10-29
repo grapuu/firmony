@@ -28,7 +28,8 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { compare, readCount, readMoney } from './calc'
 import { APP, BRAND, CUSTOM_PLAN, INDEXNOW_KEY, INVESTORS, INVOICING, LIMITS, OPERATOR, ORDER, PLANS, PRIVACY_VERSION, REPLY_WITHIN, TEAM, TERMS_VERSION, planById, type InvestorBroker, type InvestorWay } from './config'
 import { copy } from './copy'
-import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, withinLimit } from './db'
+import { remindLeads } from './leads'
+import { SCHEMA_VERSION, ensureSchema, insertRequestStatement, now, purge, sha256Hex, upsertInvestorStatement, upsertLeadStatement, withinLimit } from './db'
 import { typeset } from './format'
 import { connection, isLocal, later, siteOrigin } from './http'
 import { providerOf } from './peppol/provider'
@@ -61,10 +62,10 @@ import { monyAnswer } from './assistant/mony-route'
 import { isEvidenceHeld } from './incidents/store'
 import { isFilingSent } from './filings/model'
 import { payrollBlocked } from './payroll-reporting/model'
-import { Home, type CalcState, type Carry } from './views/home'
+import { Home, withCarry, type CalcState, type Carry } from './views/home'
 import { Layout, type PageMeta } from './views/layout'
 import { Legal } from './views/legal'
-import { NotFound, StartDetails, StartIco, Thanks, type CompanyState, type DetailsErrors, type DetailsValues, type Situation } from './views/start'
+import { NotFound, StartDetails, StartEmail, StartIco, Thanks, type CompanyState, type DetailsErrors, type DetailsValues, type Situation } from './views/start'
 import { InvestorsPage, InvestorsThanks, type InvestorValues } from './views/investors'
 import { InvoicingPage, InvoicingTermsPage, SignupEnter, SignupExpired, SignupSent, type SignupErrors, type SignupFormValues } from './views/invoicing'
 import { INVOICING_PATH, invoicingCopy } from './content/invoicing'
@@ -279,22 +280,64 @@ async function companyState(c: Ctx, ico: string): Promise<CompanyState> {
   return answer.found ? { kind: 'found', company: answer.found } : { kind: 'missing', ico }
 }
 
+/** The e-mail a visitor left to start (schema step 89), by the row's id the page carries; never the address itself. */
+const LEAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+async function leadOf(c: Ctx, id: string | undefined): Promise<{ id: string; email: string } | null> {
+  if (!id || !LEAD_ID.test(id)) return null
+  try {
+    await ensureSchema(c.env.DB)
+    const row = await c.env.DB.prepare('SELECT id, email FROM leads WHERE id = ?').bind(id).first<{ id: string; email: string }>()
+    return row ?? null
+  } catch (err) {
+    console.error('lead not read', err instanceof Error ? err.name : 'error')
+    return null
+  }
+}
+
 app.get('/zacat', async (c) => {
   const carry = carryFrom((name) => c.req.query(name))
   const asked = c.req.query('balik')
   const plan = asked === CUSTOM_PLAN ? CUSTOM_PLAN : (planById(asked)?.id ?? '')
+  const lead = await leadOf(c, c.req.query('l'))
+  const values = (situation: Situation): DetailsValues => ({ ...emptyValues(plan, situation), email: lead?.email ?? '' })
   if (c.req.query('nova') === '1') {
-    return page(c, startMeta, <StartDetails carry={carry} state={{ kind: 'fresh' }} ico="" values={emptyValues(plan, 'fresh')} errors={{}} />)
+    return page(c, startMeta, <StartDetails carry={carry} state={{ kind: 'fresh' }} ico="" values={values('fresh')} errors={{}} />)
   }
   const typed = c.req.query('ico')
-  if (typed === undefined || typed.trim() === '') return page(c, startMeta, <StartIco carry={carry} plan={plan} />)
+  // The e-mail first (his word of 29 October 2026): whoever starts is kept, then asked for the IČO.
+  if (typed === undefined || typed.trim() === '') return page(c, startMeta, lead ? <StartIco carry={carry} plan={plan} lead={lead.id} /> : <StartEmail carry={carry} plan={plan} />)
   const ico = normalizeIco(typed)
-  if (!ico) return page(c, startMeta, <StartIco carry={carry} plan={plan} value={typed.slice(0, 20)} error={copy.start.badIco} />, 422)
+  if (!ico) return page(c, startMeta, <StartIco carry={carry} plan={plan} value={typed.slice(0, 20)} error={copy.start.badIco} lead={lead?.id} />, 422)
   const state = await companyState(c, ico)
   if (state.kind === 'missing' && !icoLooksValid(ico)) {
-    return page(c, startMeta, <StartIco carry={carry} plan={plan} value={formatIco(ico)} error={copy.start.wrongIco} />, 422)
+    return page(c, startMeta, <StartIco carry={carry} plan={plan} value={formatIco(ico)} error={copy.start.wrongIco} lead={lead?.id} />, 422)
   }
-  return page(c, startMeta, <StartDetails carry={carry} state={state} ico={ico} values={emptyValues(plan, 'first')} errors={{}} />)
+  return page(c, startMeta, <StartDetails carry={carry} state={state} ico={ico} values={values('first')} errors={{}} />)
+})
+
+const PLACE = /^[a-z0-9-]{1,40}$/
+
+// The e-mail left anywhere on the site, kept at every send (his word of 29 October 2026: "aby sa uložil v našom
+// systéme"): one row an address in `leads`, then the IČO. Nothing is sent now; a reminder goes once, later, only when
+// no request came of it (remindLeads). The address never travels in a page's address, only the row's id.
+app.post('/zacat/email', async (c) => {
+  const body = await c.req.parseBody()
+  const carry = carryFrom((name) => body[name])
+  const asked = field(body.balik, 10)
+  const plan = asked === CUSTOM_PLAN ? CUSTOM_PLAN : (planById(asked)?.id ?? '')
+  if (field(body.web, 200) !== '') return c.redirect(withCarry('/zacat', carry, plan ? { balik: plan } : {}), 303)
+  const email = field(body.email, 200)
+  if (!EMAIL.test(email)) return page(c, startMeta, <StartEmail carry={carry} plan={plan} value={email} error={copy.lead.error} />, 422)
+  const placeRaw = field(body.miesto, 40)
+  const place = PLACE.test(placeRaw) ? placeRaw : null
+  const db = c.env.DB
+  await ensureSchema(db)
+  if (!(await withinLimit(db, 'lead', connection(c), LIMITS.leadsPerHour, 3600))) {
+    return page(c, startMeta, <StartEmail carry={carry} plan={plan} value={email} error={copy.lead.throttle} />, 429)
+  }
+  const source = carry.length > 0 ? JSON.stringify(Object.fromEntries(carry)) : null
+  const row = await upsertLeadStatement(db, { email, place, source, privacyVersion: PRIVACY_VERSION }).first<{ id: string }>()
+  return c.redirect(withCarry('/zacat', carry, { ...(plan ? { balik: plan } : {}), ...(row?.id ? { l: row.id } : {}) }), 303)
 })
 
 const EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}$/
@@ -1158,6 +1201,12 @@ export default {
           await appScheduled(env, event.scheduledTime)
         } catch (err) {
           console.error('app schedule failed', err instanceof Error ? err.name : 'error')
+        }
+        try {
+          // An e-mail left on the site without a finished request: one reminder, once (leads.ts).
+          await remindLeads(env.DB, event.scheduledTime, BRAND.origin)
+        } catch (err) {
+          console.error('lead reminders failed', err instanceof Error ? err.name : 'error')
         }
         try {
           // E-invoices whose next try has come (the postman did not take them at once).

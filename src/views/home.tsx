@@ -82,15 +82,24 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
     <div class="wrap hero__grid">
       <div class="hero__panel">
         <div class="hero__copy">
-          <a class="hero__deal" href="#sro-za-euro">
-            <span class="hero__deal-tag">{copy.hero.deal.tag}</span>
-            <span class="hero__deal-text">
-              {copy.hero.deal.text}
-              <span class="hero__deal-more">{copy.hero.deal.more}</span>
+          <a class="ticket" href="#sro-za-euro">
+            <span class="ticket__main">
+              <span class="ticket__kicker">{copy.hero.deal.kicker}</span>
+              <span class="ticket__title">
+                {copy.hero.deal.text} <em class="ticket__price">{copy.hero.deal.price}</em>
+              </span>
             </span>
-            <svg class="hero__deal-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M5 12h13m-5-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+            <span class="ticket__side">
+              <span class="ticket__note">
+                <span class="ticket__elsewhere">{copy.hero.deal.elsewhere}</span>
+                <span>{copy.hero.deal.more}</span>
+              </span>
+              <span class="ticket__go" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M5 12h13m-5-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </span>
           </a>
           <h1 id="hero-title" class="hero__title">
             <span class="hero__line">{copy.hero.first}</span> <em class="hero__line hero__line--serif">{copy.hero.second}</em>
@@ -116,7 +125,7 @@ const Hero: FC<{ carry: Carry }> = ({ carry }) => (
             <h2 class="hero__card-title">{copy.card.title}</h2>
           </div>
           <p class="hero__card-text">{copy.card.text}</p>
-          <StartForm carry={carry} id="ico-hero" compact />
+          <EmailForm carry={carry} id="email-hero" place="hero" />
           <p class="hero__card-next">{copy.card.next}</p>
           <p class="hero__card-foot">
             <span>{copy.card.fine}</span>
@@ -390,6 +399,9 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
       <Title id="pricing-title" first={copy.pricing.first} second={copy.pricing.second} />
       <p class="lead">{copy.pricing.lead}</p>
       <p class="pricing__offer">{copy.pricing.firstMonthFree}</p>
+      <p class="pricing__value">
+        <strong>{copy.pricing.value.big}</strong> {copy.pricing.value.text}
+      </p>
     </header>
     <div class="wrap">
       <div class="plans">
@@ -723,9 +735,10 @@ const Faq: FC = () => (
 )
 
 /** The IČO field and its button. Compact: its label is read out but not shown, because the card says it. */
-export const StartForm: FC<{ carry: Carry; value?: string; error?: string; id?: string; compact?: boolean }> = ({ carry, value = '', error, id = 'ico', compact }) => (
+export const StartForm: FC<{ carry: Carry; value?: string; error?: string; id?: string; compact?: boolean; lead?: string }> = ({ carry, value = '', error, id = 'ico', compact, lead }) => (
   <form class={`ico${compact ? ' ico--compact' : ''}`} method="get" action="/zacat" novalidate>
     <CarryFields carry={carry} />
+    {lead ? <input type="hidden" name="l" value={lead} /> : null}
     <label class="ico__label" for={id}>
       {copy.final.label}
     </label>
@@ -754,6 +767,56 @@ export const StartForm: FC<{ carry: Carry; value?: string; error?: string; id?: 
   </form>
 )
 
+/**
+ * Where a visitor starts, anywhere on the site (his word of 29 October 2026): the e-mail first, kept at once by
+ * POST /zacat/email, then the IČO. A field nobody sees catches machines; the campaign tags travel with it.
+ */
+export const EmailForm: FC<{ carry: Carry; id: string; place: string; plan?: string; value?: string; error?: string }> = ({ carry, id, place, plan, value = '', error }) => (
+  <form class="ico ico--compact" method="post" action="/zacat/email" novalidate>
+    <CarryFields carry={carry} />
+    <input type="hidden" name="miesto" value={place} />
+    {plan ? <input type="hidden" name="balik" value={plan} /> : null}
+    <div class="trap" aria-hidden="true">
+      <label>
+        Web
+        <input type="text" name="web" tabindex={-1} autocomplete="off" />
+      </label>
+    </div>
+    <label class="ico__label" for={id}>
+      {copy.lead.label}
+    </label>
+    <div class={`ico__row${error ? ' ico__row--error' : ''}`}>
+      <input
+        class="ico__input"
+        id={id}
+        name="email"
+        type="email"
+        inputmode="email"
+        autocomplete="email"
+        maxlength={200}
+        placeholder={copy.lead.placeholder}
+        value={value}
+        aria-invalid={error ? 'true' : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+      />
+      <button class="btn btn--blue ico__button" type="submit">
+        {copy.lead.button}
+      </button>
+    </div>
+    {error ? (
+      <p class="field__error" id={`${id}-error`}>
+        {error}
+      </p>
+    ) : null}
+    <p class="ico__privacy">
+      {copy.lead.privacy}{' '}
+      <a class="link" href="/pravne-informacie#ochrana-udajov">
+        {copy.lead.privacyLink}
+      </a>
+    </p>
+  </form>
+)
+
 const Final: FC<{ carry: Carry }> = ({ carry }) => (
   <section class="final-section" id="zacat" aria-labelledby="final-title">
     <div class="wrap">
@@ -763,7 +826,7 @@ const Final: FC<{ carry: Carry }> = ({ carry }) => (
           {copy.final.title}
         </h2>
         <p class="final__lead">{copy.final.lead}</p>
-        <StartForm carry={carry} id="ico-final" compact />
+        <EmailForm carry={carry} id="email-final" place="final" />
         <p class="final__aside">
           <a class="final__fresh" href={withCarry('/zalozenie', carry)}>
             {copy.final.noCompany}

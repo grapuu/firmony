@@ -147,7 +147,7 @@ const eur = (euros: number) => formatEur(euros * 100).replace(/ /g, ' ')
 
 /** The site in plain text for the assistants that read it (llmstxt.org). */
 export function llmsTxt(): string {
-  const plans = PLANS.map((p) => `- ${p.name}: ${eur(p.price)} mesačne bez DPH, do ${p.docs} dokladov mesačne, ${p.vatPayer ? 'pre platiteľov DPH (mesačné priznanie, kontrolný a súhrnný výkaz)' : 'pre firmy, ktoré nie sú platiteľmi DPH'}`)
+  const plans = PLANS.map((p) => `- ${p.name}: ${eur(p.price)} mesačne (konečná cena), do ${p.docs} dokladov mesačne, ${p.vatPayer ? 'pre platiteľov DPH (mesačné priznanie, kontrolný a súhrnný výkaz)' : 'pre firmy, ktoré nie sú platiteľmi DPH'}`)
   return plain(
     [
       `# ${BRAND.name}`,

@@ -1600,6 +1600,22 @@ const MIGRATIONS: readonly string[][] = [
   // 88: what is left to pay of a document when it says less than its total (a credit, a balance or an overpayment set
   // off, the amount due of an e-invoice); null when it is the total (europio as client zero, 29 October 2026).
   ['ALTER TABLE documents ADD COLUMN due_cents INTEGER CHECK (due_cents IS NULL OR due_cents >= 0)'],
+  // 89: an e-mail left on the site to start (his word of 29 October 2026: the e-mail first, kept at every send): one row an
+  // address, where on the site and from which campaign, and the one reminder when the request was not finished.
+  [
+    `CREATE TABLE IF NOT EXISTS leads (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      last_at INTEGER NOT NULL,
+      times INTEGER NOT NULL DEFAULT 1,
+      place TEXT,
+      source TEXT,
+      privacy_version TEXT NOT NULL,
+      reminded_at INTEGER
+    )`,
+    'CREATE INDEX IF NOT EXISTS leads_last ON leads (last_at)',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */
@@ -1696,12 +1712,28 @@ export function upsertInvestorStatement(db: D1Database, r: { email: string; brok
     .bind(crypto.randomUUID(), ts, ts, r.email.toLowerCase(), r.brokers.length > 0 ? r.brokers.join(',') : null, r.way, r.source, r.privacyVersion)
 }
 
+/**
+ * An e-mail left on the site to start (schema step 89): one row an address, its last send counts for the place and the
+ * campaign, kept a year from the last send like a request. Returns the row's id, the same for the same address.
+ */
+export function upsertLeadStatement(db: D1Database, r: { email: string; place: string | null; source: string | null; privacyVersion: string }, ts: number = now()): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO leads (id, email, created_at, last_at, times, place, source, privacy_version) VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET last_at = excluded.last_at, times = leads.times + 1, place = COALESCE(excluded.place, leads.place),
+         source = COALESCE(excluded.source, leads.source), privacy_version = excluded.privacy_version
+       RETURNING id`,
+    )
+    .bind(crypto.randomUUID(), r.email.trim().toLowerCase(), ts, ts, r.place, r.source, r.privacyVersion)
+}
+
 /** What the privacy notice promises: investors' sign-ups a year, sent and received email ninety days, counters two days. Requests: aml/prospects.ts. */
 export async function purge(db: D1Database): Promise<void> {
   const ts = now()
   await db.batch([
     // Client/prospect records are erased only by the full AML retention workflow (app/purge.ts, aml/prospects.ts).
     db.prepare('DELETE FROM investor_requests WHERE updated_at < ?').bind(ts - RETENTION.requestDays * 86400),
+    db.prepare('DELETE FROM leads WHERE last_at < ?').bind(ts - RETENTION.requestDays * 86400),
     db.prepare('DELETE FROM outbox WHERE created_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM inbound_mail WHERE company_id IS NULL AND received_at < ?').bind(ts - RETENTION.outboxDays * 86400),
     db.prepare('DELETE FROM throttle WHERE expires_at < ?').bind(ts),

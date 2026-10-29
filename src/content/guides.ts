@@ -143,7 +143,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Cenník Firmony',
         p: [
-          `${start.name}: ${eur(start.price)} mesačne, do ${start.docs} dokladov, pre firmy, ktoré nie sú platiteľmi DPH. ${rast.name}: ${eur(rast.price)} mesačne, do ${rast.docs} dokladov, pre platiteľov DPH. ${firma.name}: ${eur(firma.price)} mesačne, do ${firma.docs} dokladov. Mzdy ${eur(PAYROLL_PRICE)} mesačne za človeka, závierka s daňovým priznaním ${eur(CLOSING_PRICE)} ročne. Ceny sú bez DPH.`,
+          `${start.name}: ${eur(start.price)} mesačne, do ${start.docs} dokladov, pre firmy, ktoré nie sú platiteľmi DPH. ${rast.name}: ${eur(rast.price)} mesačne, do ${rast.docs} dokladov, pre platiteľov DPH. ${firma.name}: ${eur(firma.price)} mesačne, do ${firma.docs} dokladov. Mzdy ${eur(PAYROLL_PRICE)} mesačne za človeka, závierka s daňovým priznaním ${eur(CLOSING_PRICE)} ročne. Ceny sú konečné.`,
         ],
       },
       {
@@ -330,7 +330,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Kedy je Firmony pre Vás a kedy nie',
         p: [
-          `Firmony je pre s. r. o., ktoré chcú mať účtovníctvo online: doklady odfotiť alebo preposlať, mať prehľad v aplikácii a pevnú cenu podľa počtu dokladov, od ${eur(start.price)} mesačne bez DPH. Vašu firmu má na starosti účtovníčka, ktorá vedie odbornú kontrolu, rieši dohodnuté podania a odpovie ${REPLY_WITHIN}. Služba začína ${BRAND.launch}.`,
+          `Firmony je pre s. r. o., ktoré chcú mať účtovníctvo online: doklady odfotiť alebo preposlať, mať prehľad v aplikácii a pevnú cenu podľa počtu dokladov, od ${eur(start.price)} mesačne. Vašu firmu má na starosti účtovníčka, ktorá vedie odbornú kontrolu, rieši dohodnuté podania a odpovie ${REPLY_WITHIN}. Služba začína ${BRAND.launch}.`,
           'Ak chcete účtovníka, s ktorým sa pravidelne stretávate osobne, budete spokojnejší s miestnym účtovníkom alebo kanceláriou. Ak vediete väčšiu firmu so stovkami dokladov mesačne, pripravíme Vám ponuku na mieru a otvorene povieme, či sme pre Vás tí správni.',
         ],
       },
@@ -339,7 +339,7 @@ export const GUIDES: Guide[] = [
       { q: 'Kedy si má nová s. r. o. zabezpečiť účtovníka?', a: 'Hneď, ako vznikne, teda zápisom do obchodného registra. Účtovníctvo vedie odo dňa svojho vzniku a už prvé doklady treba zaúčtovať.' },
       { q: 'Musí mať účtovník osvedčenie alebo certifikát?', a: 'Nie. Vedenie účtovníctva je voľná živnosť, na ktorú netreba preukazovať vzdelanie ani prax. Prax a referencie si preto overte sami.' },
       { q: 'Kto zodpovedá za chybu v účtovníctve?', a: 'Voči úradom firma: poverením účtovníka sa zodpovednosti nezbavuje. Škodu, ktorú účtovník spôsobí porušením svojich povinností, môžete od neho žiadať podľa zmluvy a zákona.' },
-      { q: 'Koľko stojí účtovník pre s. r. o.?', a: `Závisí od počtu dokladov, DPH, zamestnancov a závierky. Vo Firmony od ${eur(start.price)} mesačne bez DPH, mzdy ${eur(PAYROLL_PRICE)} mesačne za človeka a závierka s daňovým priznaním ${eur(CLOSING_PRICE)} ročne.` },
+      { q: 'Koľko stojí účtovník pre s. r. o.?', a: `Závisí od počtu dokladov, DPH, zamestnancov a závierky. Vo Firmony od ${eur(start.price)} mesačne, mzdy ${eur(PAYROLL_PRICE)} mesačne za človeka a závierka s daňovým priznaním ${eur(CLOSING_PRICE)} ročne.` },
       { q: 'Môžem zmeniť účtovníka počas roka?', a: 'Áno. Doterajšiemu účtovníkovi dáte výpoveď podľa zmluvy a požiadate o odovzdanie dokladov a účtovníctva, nový pokračuje od stavov, ktoré prevezme. Vo Firmony môžete zadať kontakt a potvrdiť koordináciu prevzatia; účtovníčka preverí oprávnenie a dohodne odovzdanie. Pripravený list zostáva aj pre osobné vybavenie.' },
       { q: 'Je online účtovník rovnako spoľahlivý ako účtovník v meste?', a: 'Spoľahlivosť nezávisí od toho, kde účtovník sedí, ale od toho, čo je v zmluve, kto Vašu firmu kontroluje a ako rýchlo odpovedá. Položte online službe rovnakých desať otázok ako komukoľvek inému.' },
     ],

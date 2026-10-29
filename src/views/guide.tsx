@@ -6,7 +6,7 @@ import { GUIDES } from '../content/guides'
 import { dayName } from '../app/copy'
 import { typeset as t } from '../format'
 import { copy } from '../copy'
-import { StartForm } from './home'
+import { EmailForm } from './home'
 
 export const GuidePage: FC<{ guide: Guide }> = ({ guide: g }) => (
   <>
@@ -85,10 +85,10 @@ export const GuidePage: FC<{ guide: Guide }> = ({ guide: g }) => (
         ) : null}
         <section class="guide__start" aria-labelledby="guide-start">
           <h2 id="guide-start" class="h3">
-            Začnite s IČO Vašej firmy
+            Začnite online za pár minút
           </h2>
-          <p>{t('Názov a sídlo doplníme z registra. Je to nezáväzné a ozveme sa do jedného pracovného dňa.')}</p>
-          <StartForm carry={[]} id="ico-guide" compact />
+          <p>{t('Napíšte e-mail a pokračujte. Celý začiatok zvládnete sami, je to nezáväzné a ozveme sa do jedného pracovného dňa.')}</p>
+          <EmailForm carry={[]} id="email-guide" place="navod" />
           <p>
             <a class="link" href="/#cennik">
               Pozrieť cenník

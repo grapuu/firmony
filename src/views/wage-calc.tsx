@@ -6,7 +6,7 @@ import { typeset as t } from '../format'
 import { WAGE_PAGE as w } from '../content/wage-calc'
 import { calcYears, type WageQuery, type WageResult } from '../app/wage-calc'
 import { GUIDES } from '../content/guides'
-import { StartForm } from './home'
+import { EmailForm } from './home'
 
 const eur = (cents: number) => formatEurExact(cents)
 const amount = (cents: number) => (cents / 100).toFixed(2).replace('.', ',').replace(/,00$/, '')
@@ -133,10 +133,10 @@ export const WageCalcPage: FC<{ query: WageQuery | null; result: WageResult | nu
         </section>
         <section class="guide__start" aria-labelledby="guide-start">
           <h2 id="guide-start" class="h3">
-            Začnite s IČO Vašej firmy
+            Začnite online za pár minút
           </h2>
-          <p>{t('Mzdy, odvody aj prihlášky zamestnancov za Vás vybavíme. Názov a sídlo doplníme z registra, je to nezáväzné.')}</p>
-          <StartForm carry={[]} id="ico-wage" compact />
+          <p>{t('Mzdy, odvody aj prihlášky zamestnancov za Vás vybavíme. Napíšte e-mail a pokračujte, je to nezáväzné.')}</p>
+          <EmailForm carry={[]} id="email-wage" place="mzdova-kalkulacka" />
         </section>
         <nav class="guide__more" aria-label="Ďalšie články">
           <h2 class="h3">Ďalšie články</h2>

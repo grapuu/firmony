@@ -24,12 +24,12 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 
 ## Ceny a čo je v cene
 
-- Balíky mesačne bez DPH podľa počtu dokladov za mesiac: Štart 89 € (do 20 dokladov, firma, ktorá nie je platiteľom DPH), Rast 169 € (do 60, platiteľ DPH), Firma 329 € (do 150). Mesiac s viac dokladmi sa vyúčtuje ako vyšší balík; nad 150 dokladov cena na mieru.
+- Balíky mesačne podľa počtu dokladov za mesiac: Štart 89 € (do 20 dokladov, firma, ktorá nie je platiteľom DPH), Rast 169 € (do 60, platiteľ DPH), Firma 329 € (do 150). Mesiac s viac dokladmi sa vyúčtuje ako vyšší balík; nad 150 dokladov cena na mieru.
 - Navyše: mzdy 15 € mesačne za každého človeka vo mzdách (aj konateľ s odmenou), závierka s daňovým priznaním 249 € ročne.
 - V cene balíka: zaúčtovanie všetkých dokladov a platieb, DPH s kontrolným a súhrnným výkazom, termíny a podania pod plnou mocou, správy s účtovníčkou s odpoveďou do jedného pracovného dňa, fakturácia, e-faktúry, aplikácia a Mony.
 - Prvý mesiac služby je zadarmo (balík, vyšší balík ani mzdy sa zaň neplatia). Kto zmluvu vypovie v prvom mesiaci, zmluva skončí jeho posledným dňom a nezaplatí nič; závierka, ak ju Firmony podala, sa fakturuje zvlášť (bod 4.3 podmienok). Faktúry, ktoré firma vystaví vo Firmony, sa do dokladov balíka nerátajú.
 - Ako sa platí: balík mesačne vopred, mzdy a doklady nad balík za uplynulý mesiac, závierka po jej podaní. Splatnosť 14 dní.
-- DPH sa k cenám nepripočítava, kým europio s. r. o. nie je platiteľom DPH.
+- Ceny sú konečné: DPH sa k nim nepripočítava, kým europio s. r. o. nie je platiteľom DPH. Na webe sa preto uvádza len cena.
 
 ## Faktúry od Firmony
 
@@ -138,11 +138,11 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 
 ## Založenie s. r. o. za 1 €
 
-- Kto ešte nemá firmu, môže si u Firmony dať založiť s. r. o. za 1 € (bez DPH). Zakladateľskú listinu, zápis do obchodného registra aj živnosť zariadi advokát, súdny poplatok aj odmenu advokáta platí Firmony. Bežne stojí založenie od augusta 2026 okolo 500 €.
+- Kto ešte nemá firmu, môže si u Firmony dať založiť s. r. o. za 1 €. Zakladateľskú listinu, zápis do obchodného registra aj živnosť zariadi advokát, súdny poplatok aj odmenu advokáta platí Firmony. Bežne stojí založenie od augusta 2026 okolo 500 €.
 - Kým online prihlášky nie sú spustené, stránka /zalozenie ponúkne „Chcem byť medzi prvými“ (žiadosť na /zacat?nova=1) a Firmony sa ozve ako prvým.
-- Prihláška je online na /zalozenie: e-mail, potom odkaz z e-mailu. V prihláške zakladateľ vyplní svoje údaje a údaje firmy, nahrá fotku občianskeho preukazu z oboch strán, stiahne zmluvu a podpíše ju občianskym preukazom s čipom (eID) alebo vlastnoručne s overeným podpisom u notára či na matrike (originál pošle poštou). Potom pošle 550 € z účtu na svoje meno a prihlášku odošle na overenie.
+- Prihláška je online na /zalozenie: e-mail, potom odkaz z e-mailu. V prihláške zakladateľ vyplní svoje údaje a údaje firmy, nahrá fotku občianskeho preukazu z oboch strán, stiahne zmluvu a podpíše ju občianskym preukazom s čipom (eID), alebo ju vytlačí a podpíše vlastnoručne; vtedy mu totožnosť overíme na krátkom osobnom stretnutí s občianskym preukazom, kde nám odovzdá aj originál. Notár ani matrika nie sú potrebné. Potom pošle 550 € z účtu na svoje meno a prihlášku odošle na overenie.
 - 550 € je 1 € za založenie a 549 € kaucia. Kaucia sa odpočíta z posledných faktúr za účtovníctvo, takže za 36 mesiacov zakladateľ nezaplatí nič navyše. Účtovníctvo sa platí mesačne od vzniku firmy.
-- Podmienky: účtovníctvo vo Firmony aspoň 36 mesiacov za cenu balíka (od 89 € mesačne bez DPH), potom bez viazanosti s mesačnou výpovednou lehotou. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12, a kaucia sa z neho odpočíta. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Ak Firmony vážne pochybí a nenapraví to, firma môže odísť bez poplatku.
+- Podmienky: účtovníctvo vo Firmony aspoň 36 mesiacov za cenu balíka (od 89 € mesačne), potom bez viazanosti s mesačnou výpovednou lehotou. Pri skoršom ukončení sa platí odstupné vo výške zostávajúcich mesačných poplatkov, najviac 12, a kaucia sa z neho odpočíta. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Ak Firmony vážne pochybí a nenapraví to, firma môže odísť bez poplatku.
 - Ak firmu nezaložíme pre chybu na našej strane alebo ju súd nezapíše bez viny zakladateľa, vrátime celých 550 €. Ak zakladateľ prestane spolupracovať (ani 30 dní po druhej výzve) alebo od založenia odstúpi, platba sa nevracia.
 - Ponuka platí pre prvých 20 firiem každý mesiac. Na základné imanie sa Mony sama nepýta ani ho nespomína; ak sa naň niekto opýta, nie je to poplatok Firmony, sú to peniaze samotnej firmy, ktoré jej ostávajú na podnikanie, a výšku a splatenie s ním prejde advokát. Celé znenie zmluvy je na /zalozenie/zmluva.
 - Po zápise firmy do registra zakladateľ dostane odkaz na prihlásenie do aplikácie. Tam firma do troch mesiacov schváli zmluvu jedným potvrdením (/app/zalozenie) a doplní vyhlásenie Kto stojí za firmou.

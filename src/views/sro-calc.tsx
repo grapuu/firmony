@@ -4,7 +4,7 @@ import { formatEurExact, typeset as t } from '../format'
 import { SRO_PAGE as w, SRO_PATH, sroMinimumNote } from '../content/sro-calc'
 import type { SroQuery, SroResult } from '../app/sro-calc'
 import { GUIDES } from '../content/guides'
-import { StartForm } from './home'
+import { EmailForm } from './home'
 
 const eur = (cents: number) => formatEurExact(cents)
 const amount = (cents: number) => (cents / 100).toFixed(2).replace('.', ',').replace(/,00$/, '')
@@ -86,9 +86,9 @@ export const SroCalcPage: FC<{ query: SroQuery | null; result: SroResult | null;
         </ul>
       </section>
       <section class="guide__start" aria-labelledby="guide-start">
-        <h2 id="guide-start" class="h3">Začnite s IČO Vašej firmy</h2>
-        <p>{t('Daň z príjmov, závierku aj mzdy za Vás vybavíme. Názov a sídlo doplníme z registra, je to nezáväzné.')}</p>
-        <StartForm carry={[]} id="ico-sro" compact />
+        <h2 id="guide-start" class="h3">Začnite online za pár minút</h2>
+        <p>{t('Daň z príjmov, závierku aj mzdy za Vás vybavíme. Napíšte e-mail a pokračujte, je to nezáväzné.')}</p>
+        <EmailForm carry={[]} id="email-sro" place="sro-kalkulacka" />
       </section>
       <nav class="guide__more" aria-label="Ďalšie články">
         <h2 class="h3">Ďalšie články</h2>

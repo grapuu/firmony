@@ -8,6 +8,8 @@ import { formatEur, typeset, typesetAll } from './format'
 const start = PLANS[0] as Plan
 const largest = PLANS[PLANS.length - 1] as Plan
 const eur = (euros: number) => formatEur(euros * 100)
+/** Štart by the day, averaged over a year, rounded up to the cent. */
+const startPerDayCents = Math.ceil((start.price * 100 * 12) / 365)
 
 /** What a plan's rows say: whom it is for, documents, VAT, payroll. */
 export function planRows(plan: Plan): { forWhom: string; docs: string; vat: string; people: string } {
@@ -22,36 +24,59 @@ export function planRows(plan: Plan): { forWhom: string; docs: string; vat: stri
 export const copy = typesetAll({
   meta: {
     title: `${BRAND.name}: online účtovníctvo pre Vašu firmu od ${eur(start.price)} mesačne`,
-    description: `Účtovníctvo s pridelenou účtovníčkou, dokladmi a termínmi v jednej aplikácii. Balíky od ${eur(start.price)} mesačne bez DPH, závierka ${eur(CLOSING_PRICE)} ročne. Rozsah a cenu si prejdeme pred zmluvou.`,
+    description: `Účtovníctvo s pridelenou účtovníčkou, dokladmi a termínmi v jednej aplikácii. Balíky od ${eur(start.price)} mesačne, závierka ${eur(CLOSING_PRICE)} ročne. Rozsah a cenu si prejdeme pred zmluvou.`,
   },
   skip: 'Preskočiť na obsah',
   nav: { how: 'Ako to funguje', pricing: 'Cenník', about: 'Kto sme', faq: 'Otázky', investors: 'Pre investorov', login: 'Prihlásiť sa', start: 'Chcem začať', home: `${BRAND.name}, úvod` },
 
-  // His word of 27 October 2026, after his mother saw the site: say at once what we are and why us.
+  // His word of 27 October 2026, after his mother saw the site: say at once what we are and why us. "Pošlete", not
+  // "odfotíte" (29 October 2026): most invoices come by e-mail and are forwarded, not photographed.
   hero: {
     first: 'Účtovníctvo pre Vašu s. r. o.',
-    second: 'Vy odfotíte doklad, my urobíme zvyšok.',
+    second: 'Vy pošlete doklad, my urobíme zvyšok.',
     lead: 'Online účtovná firma za pevnú cenu. Umelá inteligencia prečíta doklady, Vaša účtovníčka ich skontroluje a postará sa o dohodnuté priznania. Všetko vidíte v aplikácii.',
-    price: `Od ${eur(start.price)} mesačne bez DPH. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
+    price: `Od ${eur(start.price)} mesačne. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
-    deal: { tag: 'Novinka', text: 'S. r. o. za 1 €', more: ', advokát aj poplatky v cene' },
+    // A ticket, not a chip (his word of 29 October 2026: the "Novinka" pill is what every AI site has). The usual price
+    // is the formation's own lead below (about 500 € since August 2026), said as what it costs elsewhere, never as a
+    // former price of ours.
+    deal: { kicker: 'Zakladáte firmu?', text: 'S. r. o. za', price: '1 €', elsewhere: 'Inde okolo 500 €', more: 'Advokáta aj poplatky platíme my' },
   },
 
-  /** The card in the opening where a client starts: the IČO. */
+  /** The card in the opening where a client starts: the e-mail first (his word of 29 October 2026), then the IČO. */
   card: {
-    title: 'Začnite s IČO Vašej firmy',
-    text: 'Názov a sídlo doplníme z registra. Zatiaľ nič neobjednávate.',
-    next: 'Po nezáväznom dopyte si prejdeme Vašu agendu. Rozsah služby a cenu dostanete pred uzavretím zmluvy.',
+    title: 'Začnite online za pár minút',
+    text: 'Všetko zvládnete sami, bez stretnutia a bez papierov. Zatiaľ nič neobjednávate.',
+    next: 'Firmu nájdeme podľa IČO a cenu uvidíte pred uzavretím zmluvy. Zmluvu uzavriete online a Vaša účtovníčka sa Vám hneď začne venovať.',
     fine: `Ozveme sa ${REPLY_WITHIN}.`,
     noCompany: 'Nemáte firmu? S. r. o. za 1 €',
+  },
+
+  /** The e-mail that starts it, wherever on the site (POST /zacat/email): kept at once, then the IČO. */
+  lead: {
+    label: 'Váš e-mail',
+    placeholder: 'meno@firma.sk',
+    button: 'Pokračovať',
+    privacy: 'E-mail použijeme len na Vašu žiadosť.',
+    privacyLink: 'Ochrana údajov',
+    title: 'Začnime',
+    lead: 'Napíšte e-mail a pokračujte. Celý začiatok zvládnete online sami, krok za krokom.',
+    error: 'Skontrolujte, prosím, e-mail.',
+    throttle: `Z tohto pripojenia prišlo veľa pokusov. Skúste to o hodinu alebo nám napíšte na ${BRAND.email}.`,
+    mail: {
+      subject: `${BRAND.name}: dokončite začiatok za pár minút`,
+      lead: `začali ste na stránke ${BRAND.name}. Pokračovať môžete tam, kde ste skončili:`,
+      fresh: 'Ešte nemáte firmu? Založíme Vám s. r. o. za 1 €, advokáta aj poplatky platíme my:',
+      end: 'Ak ste sa rozhodli inak, nemusíte nič robiť. Ďalší e-mail Vám už neposielame.',
+    },
   },
 
   /** One month, as the papers fly into it while the page is scrolled. An illustration. */
   flow: {
     first: 'Vy pošlete doklady.',
     second: 'My ich skontrolujeme.',
-    lead: 'Bloček odfotíte, faktúru prepošlete. Systém pomôže s čítaním a párovaním. Účtovníčka vedie odbornú kontrolu a postará sa o dohodnuté priznania.',
+    lead: 'Faktúru z e-mailu prepošlete, e-faktúra príde sama, papierový bloček odfotíte. Účtovníčka všetko skontroluje a postará sa o dohodnuté priznania.',
     label: 'Ukážka: október Vašej firmy vo Firmony, všetko zaúčtované',
     month: 'Október 2026',
     company: 'Vaša firma',
@@ -73,9 +98,9 @@ export const copy = typesetAll({
     first: 'Prečo Firmony.',
     second: 'Tri veci, ktoré pocítite hneď.',
     items: [
-      { title: 'Doklad len odfotíte', text: 'Prečítame ho, zaúčtujeme a spárujeme s platbou z banky. Nič neprepisujete, nič nenosíte.' },
-      { title: 'Pevná cena vopred', text: `Od ${eur(start.price)} mesačne bez DPH podľa počtu dokladov. Prvý mesiac zadarmo a bez viazanosti.` },
-      { title: 'Všetko vidíte v mobile', text: `Čo je hotové, čo chýba a čo zaplatiť dokedy. Účtovníčka Vám odpovie ${REPLY_WITHIN}.` },
+      { title: 'Doklad len pošlete', text: 'Faktúru z e-mailu prepošlete, alebo si nastavíte, aby chodili samé. Bloček odfotíte. Prečítame ho, zaúčtujeme a spárujeme s platbou. Nič neprepisujete, nič nenosíte.' },
+      { title: 'Pevná cena vopred', text: `Od ${eur(start.price)} mesačne podľa počtu dokladov. Prvý mesiac zadarmo a bez viazanosti.` },
+      { title: 'Všetko v jednej aplikácii', text: `S účtovníčkou si píšete priamo pri doklade v našej aplikácii vyvinutej na Slovensku. Žiadne e-maily sem a tam, žiadny Google Drive. Odpoveď ${REPLY_WITHIN}.` },
     ],
   },
 
@@ -85,7 +110,7 @@ export const copy = typesetAll({
   // 28 October 2026 (a deposit of 549 € held for the last bills, the monthly fee from the first month: we are never at a
   // loss when a founder leaves early); the application and the contract are src/founding/.
   formation: {
-    badge: 'Novinka pre tých, čo zakladajú firmu',
+    badge: 'Pre tých, čo zakladajú firmu',
     first: 'Založíme Vám s. r. o.',
     big: 'za 1 €',
     second: 'Advokáta aj poplatky platíme my.',
@@ -98,7 +123,7 @@ export const copy = typesetAll({
     ],
     cta: 'Chcem s. r. o. za 1 €',
     limit: 'Len pre prvých 20 firiem každý mesiac.',
-    fine: 'Podmienky ponuky: pri prihláške zaplatíte 1 € za založenie a kauciu 549 €, ktorú Vám odpočítame z posledných faktúr za účtovníctvo. Účtovníctvo vediete vo Firmony aspoň 36 mesiacov a platíte ho mesačne od vzniku firmy, potom zmluva pokračuje bez viazanosti. Pri skoršom ukončení sa kaucia započíta na odstupné, najviac 12 mesačných poplatkov. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí. Ceny sú bez DPH.',
+    fine: 'Podmienky ponuky: pri prihláške zaplatíte 550 €, teda 1 € za založenie a kauciu 549 €, ktorú Vám odpočítame z posledných faktúr za účtovníctvo. Účtovníctvo vediete vo Firmony aspoň 36 mesiacov a platíte ho mesačne od vzniku firmy, potom zmluva pokračuje bez viazanosti. Pri skoršom ukončení sa kaucia započíta na odstupné, najviac 12 mesačných poplatkov. Zakladateľ za záväzky firmy z tejto zmluvy osobne ručí.',
   },
 
   /** Side by side: what is usual, and what Firmony does instead. Plain, without naming anybody. */
@@ -110,6 +135,7 @@ export const copy = typesetAll({
       items: [
         'Doklady nosíte osobne alebo ich posielate e-\u2060mailom.',
         'Výpisy z banky posielate každý mesiac.',
+        'S účtovníčkou si píšete e-\u2060maily a prílohy hľadáte v schránke či na Google Drive.',
         'Čo je hotové, sa dozviete, keď sa opýtate.',
         'Cena sa často dohaduje individuálne.',
         'Pri zmene účtovníčky zháňate podklady sami.',
@@ -118,8 +144,9 @@ export const copy = typesetAll({
     ours: {
       title: 'S Firmony',
       items: [
-        'Doklad odfotíte v mobile alebo prepošlete e-\u2060mail.',
-        'Výpis príde e-\u2060mailom sám, alebo ho pridáte raz mesačne.',
+        'Faktúru prepošlete z e-\u2060mailu, e-\u2060faktúra príde sama, bloček odfotíte.',
+        'Výpis z banky nám chodí sám alebo ho raz mesačne pridáte a máte ho aj vo svojom účte vo Firmony.',
+        'S účtovníčkou si píšete priamo v aplikácii pri doklade, všetko na jednom mieste.',
         'Stav firmy vidíte v aplikácii kedykoľvek.',
         'Pevná cena podľa počtu dokladov, známa vopred.',
         'Prechod od doterajšej účtovníčky zariadime my.',
@@ -173,7 +200,14 @@ export const copy = typesetAll({
     first: 'Jasná cena.',
     second: 'Platíte podľa počtu dokladov.',
     lead: 'Vyberte si podľa počtu dokladov za mesiac a podľa toho, či ste platiteľom DPH.',
-    firstMonthFree: 'Prvý mesiac zadarmo. Vystavené faktúry sa do dokladov balíka nerátajú.',
+    firstMonthFree: 'Prvý mesiac máte zadarmo. Faktúry, ktoré vystavíte Vy, do počtu dokladov nerátame.',
+    // His word of 29 October 2026: a line that tells the visitor how good a deal it is. Štart's price by the day,
+    // averaged over a year (89 € × 12 / 365 is 2,93 €), said as "less than 3 €" only while it is; no comparison with
+    // anybody named.
+    value: {
+      big: startPerDayCents < 300 ? 'Menej ako 3 € denne' : `Od ${formatEur(startPerDayCents)} denne`,
+      text: `v priemere s balíkom ${start.name} za celé účtovníctvo Vašej firmy. V cene je aplikácia, fakturácia, digitálny poštár, stráženie termínov, prechod od doterajšej účtovníčky a odpovede do jedného pracovného dňa. Inde si za mnohé z toho priplácate.`,
+    },
     perMonth: 'mesačne',
     annual: 'Za 12 mesiacov so závierkou',
     annualBasis: 'Ročný súčet počíta s rovnakým balíkom počas 12 mesiacov a jednou závierkou s daňovým priznaním. Mzdy a individuálne dohodnuté práce sú navyše.',
@@ -182,7 +216,7 @@ export const copy = typesetAll({
     rows: { docs: 'Doklady', vat: 'DPH', people: 'Mzdy' },
     included: `V každom balíku: zaúčtovanie dokladov a platieb, e-faktúry, mesačný prehľad, stráženie termínov a odpovede ${REPLY_WITHIN}.`,
     closing: `Závierka a daňové priznanie: ${eur(CLOSING_PRICE)} raz ročne. Mzdy: ${eur(PAYROLL_PRICE)} mesačne za človeka.`,
-    vat: 'Ceny sú bez DPH, DPH zatiaľ nepripočítavame.',
+    vat: 'Ceny sú konečné.',
     custom: `Viac ako ${largest.docs} dokladov mesačne? Pripravíme Vám ponuku na mieru.`,
     /** Beside the plans: the way in for a medium or large company, whose scope and price are agreed one by one. */
     large: {
@@ -205,7 +239,7 @@ export const copy = typesetAll({
 
   calc: {
     title: 'Čo Vám vychádza výhodnejšie?',
-    lead: 'Porovnajte náklady na rovnaký rozsah služieb za celý rok. Vyplňte svoje údaje bez DPH.',
+    lead: 'Porovnajte náklady na rovnaký rozsah služieb za celý rok. Vyplňte sumy, ktoré dnes platíte.',
     monthly: 'Dnešné mesačné náklady vrátane miezd',
     perDoc: 'Poplatok za doklad',
     docs: 'Dokladov mesačne',
@@ -259,13 +293,15 @@ export const copy = typesetAll({
     ask: { before: 'Nenašli ste odpoveď? Opýtajte sa kedykoľvek', after: ', našej pomocníčky vpravo dole. Alebo napíšte na' },
     reply: `odpovieme ${REPLY_WITHIN}.`,
     items: [
+      // His word of 29 October 2026: this first. People, not a machine; the protection is the terms' point 6 (our
+      // error put right without charge, damage including a fine it caused made good), no "100 %" promised.
       {
-        q: 'Čo musím robiť ja?',
-        a: 'Doklady odfotíte, nahráte alebo prepošlete na adresu svojej firmy vo Firmony. Pri nahrávaní vidíte potvrdenie prijatia. Keď potrebujeme vysvetliť nákup, doplniť údaj alebo schváliť rozhodnutie, ozveme sa v aplikácii. Potrebné overenie a nastavenie prejdeme na začiatku spolu.',
+        q: 'Bude mi viesť účtovníctvo umelá inteligencia?',
+        a: 'Nie. Účtovníctvo Vám vedie skúsená účtovníčka, ktorú sme starostlivo vybrali a zaškolili, a na prácu účtovníčok dohliadajú skúsené kontrolórky z nášho tímu. Náš softvér im len šetrí čas: prečíta doklad, spáruje platbu a navrhne zaúčtovanie. Každý výsledok kontroluje človek. A keby sme sa niekedy pomýlili my, chybu opravíme zadarmo a škodu, ktorú spôsobila, Vám nahradíme podľa obchodných podmienok.',
       },
       {
-        q: 'Kto mi bude viesť účtovníctvo?',
-        a: 'Vaša firma má pridelenú účtovníčku. Systém jej pomáha s čítaním dokladov a párovaním platieb. Ona vedie odbornú kontrolu, rieši neštandardné prípady, dohodnuté podania a Vaše otázky.',
+        q: 'Čo musím robiť ja?',
+        a: 'Doklady pošlete: faktúry z e-mailu prepošlete na adresu svojej firmy vo Firmony, bloček odfotíte v mobile. Pri každom doklade vidíte, že prišiel. Keď potrebujeme vysvetliť nákup alebo doplniť údaj, ozveme sa v aplikácii. Začiatok zvládnete online sami, krok za krokom.',
       },
       {
         q: 'Ako prejdem od súčasnej účtovníčky?',
@@ -277,7 +313,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Musím sa viazať?',
-        a: 'Pri bežnom vedení účtovníctva nie. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej sa zaviažete aspoň na 36 mesiacov; potom už bez viazanosti. Inak zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Účtovníctvo Vám odovzdáme v aplikácii a všetky doklady a údaje si tam stiahnete ešte 90 dní po skončení zmluvy. Potom prístup skončí a úplný zákonný archív uchovávame päť rokov od skončenia zmluvy; číta ho iba určená osoba. Zákonné dôvody môžu uchovanie predĺžiť.',
+        a: 'Pri bežnom vedení účtovníctva nie. Zmluvu môžete kedykoľvek vypovedať priamo v aplikácii, s mesačnou výpovednou lehotou; výpoveď v prvom mesiaci ukončí zmluvu s jeho koncom a prvý mesiac neplatíte. Výnimkou je ponuka s. r. o. za 1 €, pri ktorej sa zaviažete aspoň na 36 mesiacov. Keď odídete, účtovníctvo Vám odovzdáme a všetko si stiahnete v aplikácii.',
       },
       {
         q: 'Čo sa mení od 1. 1. 2027 s e\u2011faktúrami?',
@@ -290,7 +326,7 @@ export const copy = typesetAll({
 
   final: {
     title: 'Poďme do toho spolu.',
-    lead: `Stačí IČO Vašej firmy. Ozveme sa ${REPLY_WITHIN}.`,
+    lead: `Stačí e-mail. Ďalej Vás aplikácia prevedie sama a ozveme sa ${REPLY_WITHIN}.`,
     label: 'IČO Vašej firmy',
     placeholder: '8 číslic',
     button: 'Pokračovať',
@@ -312,7 +348,7 @@ export const copy = typesetAll({
     privacy: 'Ochrana údajov',
     cookies: 'Bez cookies a bez sledovania',
     reply: `Odpovedáme ${REPLY_WITHIN}.`,
-    imprint: `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísanej ${OPERATOR.registeredIn}. Ceny sú uvedené bez DPH.`,
+    imprint: `${BRAND.name} je služba spoločnosti ${OPERATOR.name}, ${OPERATOR.street}, ${OPERATOR.postalCity}, IČO ${OPERATOR.companyId}, DIČ ${OPERATOR.taxId}, zapísanej ${OPERATOR.registeredIn}.`,
     rights: '© 2026 europio s. r. o.',
   },
 

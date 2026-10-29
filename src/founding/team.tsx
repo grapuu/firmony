@@ -15,7 +15,7 @@ import { later, siteOrigin } from '../http'
 import { now } from '../db'
 import { bratislavaDay } from '../time'
 import { FoundingDetail, FoundingsList } from '../views/founding'
-import { CHECK_KINDS, type CheckKind } from './model'
+import { CHECK_KINDS, IDENTITY_WAYS, identityWaysOf, type CheckKind, type IdentityWay } from './model'
 import { advance, callFounder, cancel, checksOf, decide, decideExit, eventsOf, foundingById, foundingsList, mayWithdraw, notePayment, noteRefund, noteToFounder, placesLeft, recordCheck, register, verifyBlockers, withdraw } from './store'
 
 type Env = { Bindings: AppBindings; Variables: { who: Who } }
@@ -45,6 +45,7 @@ const ERRORS: Record<string, string> = {
   state: 'Prihláška sa medzitým zmenila. Pozrite sa na ňu znova.',
   blocked: 'Overenie ešte nie je úplné. Pozrite si, čo chýba.',
   note: 'Napíšte, čo ste overili a z akého zdroja (aspoň 12 znakov).',
+  way: 'Pri totožnosti vyberte, ako ste ju overili. Pri podpise na papieri ju overíte len osobne s dokladom totožnosti.',
   reason: 'Napíšte dôvod (aspoň 5 znakov).',
   register: 'Register firmu s týmto IČO nenašiel. Skontrolujte IČO alebo to skúste o chvíľu.',
   exists: 'Firma s týmto IČO už v aplikácii je.',
@@ -127,7 +128,10 @@ export function registerFoundingTeam(app: Hono<Env>, render: Render): void {
     const note = text(body.poznamka)
     if (!CHECK_KINDS.includes(kind) || (body.vysledok !== 'clear' && body.vysledok !== 'problem')) return detail(c, id, ERRORS.state!, 422)
     if (note.length < 12) return detail(c, id, ERRORS.note!, 422)
-    return (await recordCheck(c.env.DB, f, user(c), kind, body.vysledok, note)) ? back(c, id, 'kontrola') : detail(c, id, ERRORS.state!, 409)
+    // Identity is clear only with the way it was verified, and on paper only in person (model.ts identityWaysOf).
+    const way = IDENTITY_WAYS.find((w) => w === body.sposob) as IdentityWay | undefined
+    if (kind === 'identity' && body.vysledok === 'clear' && (!way || !identityWaysOf(f).includes(way))) return detail(c, id, ERRORS.way!, 422)
+    return (await recordCheck(c.env.DB, f, user(c), kind, body.vysledok, note, way)) ? back(c, id, 'kontrola') : detail(c, id, ERRORS.state!, 409)
   })
 
   post('rozhodnutie', async (c, id, body) => {

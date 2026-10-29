@@ -110,7 +110,7 @@ export function formationContract(p: FormationParties, version = FORMATION.contr
     {
       title: 'Totožnosť a osobné údaje',
       points: [
-        'Ako povinná osoba podľa zákona č. 297/2008 Z. z. overíme pred začatím obchodného vzťahu Vašu totožnosť: údaje z prihlášky, fotku dokladu totožnosti, Váš podpis tejto zmluvy kvalifikovaným elektronickým podpisom alebo vlastnoručným podpisom s úradným osvedčením a platbu z účtu na Vaše meno. Overenie robí naša určená osoba.',
+        'Ako povinná osoba podľa zákona č. 297/2008 Z. z. overíme pred začatím obchodného vzťahu Vašu totožnosť: údaje z prihlášky, fotku dokladu totožnosti, Váš kvalifikovaný elektronický podpis tejto zmluvy alebo, ak ju podpíšete na papieri, Váš doklad totožnosti pri osobnom stretnutí, a platbu z účtu na Vaše meno. Overenie robí naša určená osoba.',
         'Kópiu dokladu totožnosti a ďalšie údaje uchovávame päť rokov od skončenia obchodného vzťahu (§ 19 zákona č. 297/2008 Z. z.). Na tento účel ich spracúvame na základe zákona, bez Vášho súhlasu. Advokátovi odovzdáme len údaje potrebné na založenie.',
         `Viac o spracúvaní osobných údajov nájdete v informácii o ochrane osobných údajov na ${new URL(BRAND.origin).hostname}/pravne-informacie.`,
       ],
@@ -118,7 +118,7 @@ export function formationContract(p: FormationParties, version = FORMATION.contr
     {
       title: 'Podpis a záverečné ustanovenia',
       points: [
-        'Zmluvu podpisujete kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom, eID) alebo vlastnoručne s úradne osvedčeným podpisom; originál s osvedčeným podpisom nám pošlete poštou. Zmluva vzniká, keď po overení podľa článku 9 potvrdíme jej prijatie v aplikácii a pošleme Vám potvrdenie.',
+        'Zmluvu podpisujete kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom, eID) alebo vlastnoručne na papieri; originál nám vtedy odovzdáte pri osobnom stretnutí, na ktorom Vám overíme totožnosť. Zmluva vzniká, keď po overení podľa článku 9 potvrdíme jej prijatie v aplikácii a pošleme Vám potvrdenie.',
         `Zmenu zmluvy dojednávame písomne. Spory rieši príslušný súd Slovenskej republiky podľa slovenského práva. Znenie zmluvy z ${longDate(version)}.`,
       ],
     },

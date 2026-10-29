@@ -4,6 +4,32 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Web podľa jeho poznámok, e-mail namiesto IČO a overenie zakladateľa, 29. 10. 2026 popoludní (Claude, `main`):** jeho
+správy 13:45 a 13:47. Na marketingových stránkach už nie je „bez DPH“, len cena a „Ceny sú konečné.“ (europio nie je
+platiteľ); objednávka, podmienky, zmluva o založení, mail s objednávkou a zmluva v aplikácii ho držia, lebo zmluva musí
+povedať, že DPH sa pripočíta, keď sa europio stane platiteľom. Hero: pilulka „Novinka“ nahradená lístkom (`.ticket`:
+Zakladáte firmu? S. r. o. za 1 €, inde okolo 500 €), aj sekcia ponuky má namiesto pilulky čiarový nadpis. Cenník: „Menej
+ako 3 € denne“ v priemere s balíkom Štart (počíta sa z ceny × 12 / 365; nad 3 € sa text sám zmení na „Od x € denne“) a čo
+je v cene; „Prvý mesiac máte zadarmo. Faktúry, ktoré vystavíte Vy, do počtu dokladov nerátame.“ Výhody: doklad len
+pošlete (prepošlete, e-faktúra príde sama, bloček odfotíte), všetko v jednej aplikácii vyvinutej na Slovensku bez
+e-mailov a Google Drive, výpis máte aj vo svojom účte. Založenie: „Úvodná platba pri prihláške 550 €, 1 € za založenie +
+549 € kaucia“. FAQ prvá: „Bude mi viesť účtovníctvo umelá inteligencia?“ (nie: účtovníčka, kontrolórky medzi nimi;
+**kontrolórky musia byť v tíme naozaj**). **Začiatok e-mailom:** každé „Začnite“ (hero, záver, návody, kalkulačky,
+`/zacat`) najprv berie e-mail (`POST /zacat/email`, schéma krok **89** `leads`: riadok na adresu, miesto, zdroj, počet,
+verzia ochrany údajov; 20 za hodinu z pripojenia), potom IČO s `l=` a predvyplneným e-mailom. Jedna pripomienka 2 h až 3
+dni po poslednom zadaní, len 9 až 20 h a len ak s tou adresou nie je žiadosť, účet ani prihláška s. r. o.
+(`src/leads.ts remindLeads`, kľúč `lead:<id>`). Zmaže sa 365 dní po poslednom zadaní. Vidí ho len majiteľ na stránke
+Používatelia („Zanechal e-mail na webe“). Web nemá cookies, preto žiadna lišta; `PRIVACY_VERSION` 2026-10-29 opisuje
+uloženie a účel. Mony vie to isté (`docs/mony/klient.md`). **AML program** (`docs/aml/program.html` a PDF, 12 strán, ešte
+nepodpísaný): služby zahŕňajú založenie s. r. o., nový bod 4.2a (zakladateľ je klient pred vznikom firmy, kroky pred
+objednaním advokáta), presnejšie zastúpenie. **Overenie zakladateľa podľa 4.2a b):** totožnosť je v poriadku len so
+spôsobom: kvalifikovaný podpis na zmluve (§ 8 ods. 1 písm. f) alebo osobne s dokladom (písm. a); pri podpise na papieri
+len osobne (`identityWaysOf`, `identityStands` v `src/founding/model.ts`; poznámka kontroly začína ustanovením; vlastný
+formulár na `/ucto/zalozenia/:id`). Papierová cesta už nežiada notára ani matriku, originál sa preberá na osobnom
+stretnutí; zmluva o založení `contractVersion` 2026-10-29. goAML: registráciu vypĺňal 29. 10. popoludní sám (návod dostal
+v chate), ID organizácie zapísať sem, keď príde. Overené: `npm run check`, 1 721 unit + 12 deployment, 2 706 runtime na
+Node 24, UI, 25 Peppol, 129 browser.
+
 **Suma na úhradu oddelene od sumy dokladu, 29. 10. 2026 popoludní (Claude, `main`):** jeho „Áno“ (13:11) na bod (d)
 nižšie. Nová schéma krok **88** `documents.due_cents` (čo ostáva zaplatiť, keď doklad započítal kredit, zostatok alebo
 preplatok; NULL keď sa platí celá suma, 0 pri úplnom započítaní). Čítačka (`src/app/read.ts`): `suma_celkom` je celá suma

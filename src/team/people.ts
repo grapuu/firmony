@@ -77,6 +77,15 @@ export interface PersonInvestor {
   way: string | null
   source: string | null
 }
+/** An e-mail left on the site to start (POST /zacat/email, schema step 89). */
+export interface PersonInterest {
+  firstAt: number
+  lastAt: number
+  times: number
+  place: string | null
+  source: string | null
+  remindedAt: number | null
+}
 export interface Person {
   /** Opaque, for the detail page's address: never the e-mail. */
   key: string
@@ -89,6 +98,7 @@ export interface Person {
   companies: PersonCompany[]
   requests: PersonRequest[]
   investor: PersonInvestor | null
+  interest: PersonInterest | null
   createdAt: number
   lastSignIn: number | null
   lastActive: number | null
@@ -110,7 +120,7 @@ export function companyState(c: { invoicingOnly: boolean; contractAt: number | n
 
 /** Everybody, the latest active first. A fixed number of queries whatever the number of people. */
 export async function peopleOf(db: D1Database, today: string): Promise<Person[]> {
-  const [users, members, requests, orders, investors] = await db.batch<Row>([
+  const [users, members, requests, orders, investors, leads] = await db.batch<Row>([
     db.prepare(
       `SELECT u.id, u.email, u.name, u.team, u.created_at, u.reminders,
               (SELECT COUNT(*) FROM passkeys p WHERE p.user_id = u.id) AS passkeys,
@@ -127,6 +137,7 @@ export async function peopleOf(db: D1Database, today: string): Promise<Person[]>
     db.prepare('SELECT id, created_at, ico, company, plan, situation, name, email, phone, note, source, status FROM requests ORDER BY created_at DESC LIMIT 20000'),
     db.prepare("SELECT email, phone FROM orders WHERE phone IS NOT NULL AND phone <> '' ORDER BY created_at DESC LIMIT 20000"),
     db.prepare('SELECT id, created_at, updated_at, email, brokers, way, source FROM investor_requests LIMIT 20000'),
+    db.prepare('SELECT id, email, created_at, last_at, times, place, source, reminded_at FROM leads ORDER BY last_at DESC LIMIT 20000'),
   ])
   const people = new Map<string, Person>()
   const keyOf = (email: string) => email.trim().toLowerCase()
@@ -141,6 +152,7 @@ export async function peopleOf(db: D1Database, today: string): Promise<Person[]>
     companies: [],
     requests: [],
     investor: null,
+    interest: null,
     createdAt,
     lastSignIn: null,
     lastActive: null,
@@ -222,19 +234,28 @@ export async function peopleOf(db: D1Database, today: string): Promise<Person[]>
       source: str(i.source),
     }
   }
+  for (const l of leads?.results ?? []) {
+    const email = String(l.email)
+    let p = people.get(keyOf(email))
+    if (!p) {
+      p = blank(email, `l-${String(l.id)}`, Number(l.created_at))
+      people.set(keyOf(email), p)
+    }
+    p.interest = { firstAt: Number(l.created_at), lastAt: Number(l.last_at), times: Number(l.times), place: str(l.place), source: str(l.source), remindedAt: num(l.reminded_at) }
+  }
   for (const p of people.values()) {
     // Requests come newest first: the newest says the name and phone of somebody without an account.
     const newest = p.requests[0]
     if (!p.name && newest) p.name = newest.name
     const phone = p.requests.find((r) => r.phone)?.phone
     if (phone) p.phone = phone
-    p.createdAt = Math.min(p.createdAt, ...p.requests.map((r) => r.createdAt), p.investor?.createdAt ?? Number.MAX_SAFE_INTEGER)
-    p.lastActive = latest(p.lastActive, newest?.createdAt ?? null, p.investor?.updatedAt ?? null)
+    p.createdAt = Math.min(p.createdAt, ...p.requests.map((r) => r.createdAt), p.investor?.createdAt ?? Number.MAX_SAFE_INTEGER, p.interest?.firstAt ?? Number.MAX_SAFE_INTEGER)
+    p.lastActive = latest(p.lastActive, newest?.createdAt ?? null, p.investor?.updatedAt ?? null, p.interest?.lastAt ?? null)
     const states = p.companies.map((c) => c.state)
     const client = states.some((s) => s === 'client' || s === 'ending' || s === 'ended' || s === 'none')
     if (client) p.kinds.push('client')
     if (states.includes('invoicing')) p.kinds.push('invoicing')
-    if (p.requests.length > 0 && !client) p.kinds.push('lead')
+    if ((p.requests.length > 0 || p.interest) && !client) p.kinds.push('lead')
     if (p.investor) p.kinds.push('investor')
     if (p.team) p.kinds.push('team')
   }

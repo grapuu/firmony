@@ -161,6 +161,8 @@ export const UsersPage: FC<UsersPageProps> = ({ people, shown, kind, query, now 
                         </>
                       ) : p.investor ? (
                         <span class="small">{p.investor.brokers.map(brokerName).join(', ') || 'Investor'}</span>
+                      ) : p.interest ? (
+                        <span class="small">{`Zanechal e-mail na webe${p.interest.times > 1 ? `, ${p.interest.times}-krát` : ''}`}</span>
                       ) : null}
                     </td>
                     <td class="people__when">{dayOf(p.createdAt).split('-').reverse().join('. ')}</td>
@@ -322,6 +324,20 @@ export const UserPage: FC<{ person: Person; detail: PersonDetail | null; now: nu
               Otvoriť žiadosti z webu
             </a>
           </p>
+        </section>
+      ) : null}
+
+      {p.interest ? (
+        <section class="info">
+          <h2 class="info__title">Zanechal e-mail na webe</h2>
+          <dl class="kv">
+            <Fact label="Prvýkrát" value={when(p.interest.firstAt, now)} />
+            <Fact label="Naposledy" value={when(p.interest.lastAt, now)} />
+            <Fact label="Koľkokrát" value={String(p.interest.times)} />
+            <Fact label="Kde na webe" value={p.interest.place} />
+            <Fact label="Zdroj" value={p.interest.source} />
+            <Fact label="Pripomienka poslaná" value={p.interest.remindedAt ? when(p.interest.remindedAt, now) : null} />
+          </dl>
         </section>
       ) : null}
 
