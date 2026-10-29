@@ -1,0 +1,23 @@
+{
+ "what": "The real reader on the 33 made-up documents of test/reader after the amount due was read apart from the total (schema step 88). Three invented invoices with a credit, a balance or an overpayment set off were added (zahranicna-05.pdf, zahranicna-06.png, faktura-13.pdf); the other 30 files are unchanged.",
+ "run": "https://github.com/grapuu/firmony/actions/runs/40872674797",
+ "head": "dcd5d1f",
+ "branch": "claude/reader-due",
+ "model": "claude-haiku-5-5",
+ "at": "2026-10-29T12:22:09Z",
+ "read": "33 of 33, 28 with every field right",
+ "table": {
+  "kind": "33/33", "party": "33/33", "partyIco": "28/28", "number": "33/33", "vs": "17/17", "issuedOn": "33/33", "dueOn": "23/23",
+  "totalCents": "33/33", "vatCents": "33/33", "currency": "33/33", "category": "28/33", "ekasaUid": "10/10", "ekasaOkp": "10/10",
+  "corrects": "2/2", "dueCents": "33/33"
+ },
+ "categoryContextIndependent": "20/21",
+ "wrong": {
+  "blocek-02.jpg": "category goods, labelled material",
+  "blocek-06.jpg": "category travel, labelled services",
+  "faktura-08.pdf": "category goods, labelled material",
+  "faktura-11.png": "category none, labelled services",
+  "dobropis-01.pdf": "category none, labelled material"
+ },
+ "limits": "One run of a stochastic model on synthetic documents; no claim of accuracy on a population of real documents. The category stays the accountant's to confirm. The log was read in the Actions page; the artifact and the raw log are on storage the workspace cannot reach."
+}

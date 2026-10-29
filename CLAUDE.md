@@ -4,6 +4,24 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Suma na úhradu oddelene od sumy dokladu, 29. 10. 2026 popoludní (Claude, `main`):** jeho „Áno“ (13:11) na bod (d)
+nižšie. Nová schéma krok **88** `documents.due_cents` (čo ostáva zaplatiť, keď doklad započítal kredit, zostatok alebo
+preplatok; NULL keď sa platí celá suma, 0 pri úplnom započítaní). Čítačka (`src/app/read.ts`): `suma_celkom` je celá suma
+zo súhrnu (súčet `dph_podla_sadzieb`), nové pole `suma_na_uhradu`; `readingFrom` ju berie len 0 až menej ako celková suma
+a nikdy pri dobropise. E-faktúra (`readInvoice`): suma je `TaxInclusiveAmount`, `PayableAmount` sa drží zvlášť, keď je nižšia
+(386 a dobropis bez zmeny). Párovanie (`match.ts score`) prijme platbu celej sumy aj sumy na úhradu; príkaz na úhradu
+(`payables`, `PAYABLE_DOC`) platí sumu na úhradu a doklad celý uhradený kreditom neponúka ani nedáva na schválenie. Účtovníčka
+má na obrazovke dokladu pole „Na úhradu, ak menej (po započítaní kreditu)“ (zmena ruší schválenie úhrady), klient ho vidí
+na doklade. Účtuje samo taký doklad nezaúčtuje (platba sa nerovná sume). Zvyšok faktúry na 321 vyrovná účtovníčka
+(dobropis alebo interný doklad). Testovacia sada čítačky má 33 dokladov: tri nové vymyslené faktúry so započítaním
+(`zahranicna-05.pdf`, `zahranicna-06.png`, `faktura-13.pdf`, generátor `--only-setoff`, ostatných 30 súborov nezmenených) a
+`dueCents` drží rovnakú hranicu 98 % na každom doklade. **Zmerané** workflowom Reader na vetve `claude/reader-due`
+(run 40872674797, haiku 5.5): 33 z 33 prečítaných, sumy, DPH, dátum, IČO a suma na úhradu 33/33 (IČO 28/28), kategória
+28/33; `docs/reader/measurement-2026-10-29.json`. Log aj artefakt sú na úložisku, kam sa shell nedostane: workflow sa dá
+spustiť `gh workflow run reader.yml --ref <vetva>`, výsledok sa číta na stránke behu v prehliadači. Overené aj `npm run check`,
+1 718 unit + 12 deployment, 2 695 runtime na Node 24 (`test/due.runtime.mjs`, `test/due.units.mjs`), 25 Peppol, UI,
+129 browser. Negatívna faktúra s proratou (celkom záporné) ostáva bez sumy pre účtovníčku, ako doteraz.
+
 **Kritika, predĺženie posúdenia a europio ako klient nula, 29. 10. 2026 (Claude, `main`):** na jeho „bud maximalne
 kriticky“ (12:05) dostal 14 bodov s verdiktom: softvér je ďaleko pred biznisom; jeho body 1 až 4 sú notár a goAML do
 19. 11., advokát a poisťovňa pre `CONTRACT_RELEASE`, zmluva s Peppol poskytovateľom, dohoda s účtovníčkou. Jeho „ano do
@@ -22,7 +40,7 @@ IBAN, oznámenie na účet s predčíslím 501403) žiadala doklad: teraz `autoE
 (`TRANSACTION_TAX_WORDS`, `treasuryTax` 'transaction'). (c) Platba od odberateľa s číslom faktúry v mene platiteľa a bez
 VS (Revolut) sa nespárovala: `carriesVs` v `src/app/match.ts` (číslo od 6 číslic samostatne v mene alebo
 správe, len keď platba nemá vlastný VS). **Otvorené, bez zmeny, kým to nezmeria workflow Reader a neposúdi
-účtovníčka:** (d) `suma_celkom` v nástroji čítačky je „celková suma na úhradu“: faktúra so započítaným zostatkom
+účtovníčka:** (d, vyriešené popoludní, záznam vyššie) `suma_celkom` v nástroji čítačky je „celková suma na úhradu“: faktúra so započítaným zostatkom
 (na úhradu menej ako celkom) a faktúra s proratou (celkom záporné, na úhradu 0, mínus v PDF nevidno) dajú
 zlý základ DPH alebo nespárovanie; návrh pole „na úhradu“ zvlášť (schéma 88 `documents.due_cents`) a párovanie podľa
 neho; (e) služba za celý mesiac fakturovaná až v ďalšom mesiaci: čítačka berie len výslovný dátum dodania, deň
