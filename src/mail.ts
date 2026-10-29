@@ -3,10 +3,11 @@
 // short code only, never an address or a subject.
 import { BRAND, MAIL } from './config'
 import { now } from './db'
+import { mailHtml } from './mail-html'
 
 /** The one call Cloudflare's email binding offers. */
 export interface Mailer {
-  send(message: { to: string; from: { email: string; name: string }; replyTo?: string; subject: string; text: string }): Promise<{ messageId?: string }>
+  send(message: { to: string; from: { email: string; name: string }; replyTo?: string; subject: string; text: string; html?: string }): Promise<{ messageId?: string }>
 }
 
 export interface Message {
@@ -71,6 +72,8 @@ export async function flushOutbox(db: D1Database, mailer: Mailer | undefined, li
         ...(row.reply_to ? { replyTo: row.reply_to } : {}),
         subject: row.subject,
         text: row.body,
+        // The same words with the logo on top: a mail program that shows HTML shows this, any other the text.
+        html: mailHtml(row.subject, row.body),
       })
       await db.prepare('UPDATE outbox SET sent_at = ?, message_id = ?, error = NULL WHERE id = ?').bind(now(), result?.messageId ?? null, row.id).run()
     } catch (err) {

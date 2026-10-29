@@ -4,6 +4,27 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Služba otvorená, priznanie pre investorov zadarmo a logo v e-mailoch, 29. 10. 2026 neskoro večer (Claude, `main`):** jeho
+správy 21:57 (web sa tvári ako bežiaca služba, kto sa zaregistruje, toho kontaktujeme; platobná brána netreba; priznanie pre
+investorov zadarmo) a 22:01 (logo vo všetkých e-mailoch; stratégia expertky, tímu a prvých klientov). **Web:** preč
+`BRAND.launch` a každé „služba začína 1. januára 2027“, „spúšťame v januári“, „prijímame nezáväzné žiadosti“ (llms.txt, FAQ,
+návod `/ako-vybrat-uctovnika` s dňom 2026-10-29). `ORDER.firstMonth` je '2026-11' (prvý mesiac služby november 2026, potom
+vždy tento mesiac). Podmienky `/podmienky` bez „Návrh pred spustením služby“: zmluvu otvoríme po kontrole objednávky, ozveme
+sa do jedného pracovného dňa. Brány `CONTRACT_RELEASE` a posúdenie objednávky ostávajú, platí sa faktúrou a prevodom s QR.
+`/zalozenie` bez release: „ozveme sa do jedného pracovného dňa“. **Investori:** `INVESTORS.prices` preč, cesty „Sám“ aj „Za Vás“
+0 €, „Bez poplatku a bez platobnej karty“, karta na hlavnej stránke „Zadarmo“ (trieda `extras__tag--extra` zmazaná), Mony
+`docs/mony/klient.md` má sekciu Daňové priznanie pre investorov. **E-maily:** každá správa z outboxu ide aj ako HTML
+(`src/mail-html.ts`, volá ho `flushOutbox`): hlavička `public/art/mail-logo.png` (F a názov, 380×96, zobrazené 190×48,
+`scripts/art.py mail art-src/icons/f.png`, načíta sa z firmony.io), tie isté slová ako text (text ostáva textovou časťou,
+outbox sa nemení), riadok s jedinou adresou na firmony.io je tlačidlo „Otvoriť vo Firmony“ a pod ním adresa, iné adresy
+obyčajný odkaz, všetko escapované, päta s europio, IČO a zápisom v OR. Ikona odosielateľa v zozname Gmailu by potrebovala
+BIMI s plateným certifikátom alebo Google účet na ahoj@: nerobené. **Stratégia** pre neho: dokument „Firmony: prví klienti a
+účtovníci“ (https://claude.ai/artifact/9kNfCa8xCGUiviap2LeMQs): expertka model B (400 € + 2 € za klienta, okolo 6 h
+mesačne) s akademickou spoluprácou, partnerské účtovníčky s klientmi 1,5-násobok sadzieb (marža 67 až 73 %, dvojnásobok by
+Rast a Firmu stiahol pod 60 %), 10 platiacich firiem bez reklamy do konca januára, reklamy až po piatich podmienkach, klient
+najviac 250 €. Overené: `npm run check`, 1 747 unit + 15 deployment a secrets, 2 732 runtime na Node 24 (HTML e-mail v
+pretend mailerovi), UI, 129 browser, 25 Peppol.
+
 **Prehľad pre správcu, presné počítanie dokladov a súkromný GitHub, 29. 10. 2026 večer (Claude, `main`):** jeho správa
 19:53 (prehľad v admin paneli, ktorý sa sám aktualizuje, tlačidlo „Skontrolovať“ cez Claude API, 100 % presné počítanie
 dokladov voči balíku a upozornenie „nie jemu, ale nám“, odstrániť balast) a 20:04 (GitHub bol pri práci s DeepSeekom

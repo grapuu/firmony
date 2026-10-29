@@ -21,8 +21,6 @@ export const BRAND = {
   origin: `https://${DOMAIN}`,
   /** The public mailbox: shown on the site, Reply-To of every email to a client, and where requests are reported. */
   email: `ahoj@${DOMAIN}`,
-  /** The day the service starts, as the pages say it. */
-  launch: '1. januára 2027',
 } as const
 
 /** The company that runs Firmony. */
@@ -168,8 +166,7 @@ export const INVESTORS = {
     { id: 'ine', name: 'Iný broker' },
   ],
   ways: ['sam', 'za-mna'],
-  /** Euros, proposals: one broker done by yourself, every broker and crypto by yourself, done by us. */
-  prices: { self: 29, selfAll: 49, done: 89 },
+  // His word of 29 October 2026: the return for investors is free, by yourself or done by us (no prices here).
   /** The tax period the first returns are for, and its deadlines (podnikajte.sk, read on 14 October 2026). */
   year: 2026,
   deadline: '2027-03-31',
@@ -559,7 +556,8 @@ export const ORDER = {
   reviewDays: 7,
   /** Acceptances tried from one connection in an hour. */
   acceptsPerHour: 10,
-  /** The first month the service runs, and how many months a client can choose to start in. */
-  firstMonth: '2027-01',
+  /** The first month the service runs (his word of 29 October 2026: the service is open, a client is contacted
+   *  after the request), and how many months a client can choose to start in. */
+  firstMonth: '2026-11',
   startMonths: 6,
 } as const

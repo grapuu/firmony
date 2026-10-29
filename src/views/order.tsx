@@ -353,7 +353,7 @@ export const TermsPage: FC<{ released?: boolean }> = ({ released = false }) => (
     <article class="legal terms">
       <h1 class="h1">{typeset(TERMS_TITLE)}</h1>
       <p class="lead">{typeset(TERMS_SUBTITLE)}</p>
-      {!released ? <p class="notice">Návrh pred spustením služby. Toto znenie čaká na právne a poistné schválenie a nemení už uzavreté zmluvy.</p> : null}
+      {!released ? <p class="notice">Zmluvu Vám otvoríme na podpis, keď Vašu objednávku skontrolujeme. Ozveme sa Vám do jedného pracovného dňa.</p> : null}
       {TERMS.map((section, i) => (
         <section class="terms__section" id={`clanok-${i + 1}`}>
           <h2 class="h3">

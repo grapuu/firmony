@@ -545,7 +545,7 @@ const Extras: FC = () => {
         <li class="card extras__card extras__card--invest">
           <div class="extras__top">
             <Tile art={ART.rocket} size="lg" />
-            <span class="extras__tag extras__tag--extra">{x.invest.tag}</span>
+            <span class="extras__tag extras__tag--free">{x.invest.tag}</span>
           </div>
           <h3 class="h3">{x.invest.title}</h3>
           <p class="extras__text">{x.invest.text}</p>

@@ -330,7 +330,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Kedy je Firmony pre Vás a kedy nie',
         p: [
-          `Firmony je pre s. r. o., ktoré chcú mať účtovníctvo online: doklady odfotiť alebo preposlať, mať prehľad v aplikácii a pevnú cenu podľa počtu dokladov, od ${eur(start.price)} mesačne. Vašu firmu má na starosti účtovníčka, ktorá vedie odbornú kontrolu, rieši dohodnuté podania a odpovie ${REPLY_WITHIN}. Služba začína ${BRAND.launch}.`,
+          `Firmony je pre s. r. o., ktoré chcú mať účtovníctvo online: doklady odfotiť alebo preposlať, mať prehľad v aplikácii a pevnú cenu podľa počtu dokladov, od ${eur(start.price)} mesačne. Vašu firmu má na starosti účtovníčka, ktorá vedie odbornú kontrolu, rieši dohodnuté podania a odpovie ${REPLY_WITHIN}.`,
           'Ak chcete účtovníka, s ktorým sa pravidelne stretávate osobne, budete spokojnejší s miestnym účtovníkom alebo kanceláriou. Ak vediete väčšiu firmu so stovkami dokladov mesačne, pripravíme Vám ponuku na mieru a otvorene povieme, či sme pre Vás tí správni.',
         ],
       },
@@ -348,7 +348,7 @@ export const GUIDES: Guide[] = [
       { title: 'Podnikajte.sk: Zoznam voľných živností v roku 2026', url: 'https://www.podnikajte.sk/zivnost/zoznam-volnych-zivnosti-2026' },
     ],
     published: '2026-10-20',
-    modified: '2026-10-22',
+    modified: '2026-10-29',
     keywords: ['ako vybrať účtovníka', 'účtovník pre novú s.r.o.', 'kde nájsť účtovníka', 'založil som s.r.o. účtovník', 'účtovná kancelária alebo online účtovník'],
   },
   {

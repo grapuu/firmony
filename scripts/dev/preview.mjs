@@ -68,7 +68,7 @@ const SAYS = {
   calc__form: 'Toto je náhľad: kalkulačka tu nepočíta. Na živom webe hneď ukáže porovnanie s Vašimi číslami.',
   details: 'Toto je náhľad: nič sa neodosiela. Na živom webe príde e-mail: firme, ktorú register pozná ako s. r. o., odkaz na zmluvu online, inak potvrdenie, a ozveme sa do jedného pracovného dňa.',
   order: 'Toto je náhľad: zmluva sa tu neuzatvára. Na živom webe ju konateľ uzavrie týmto tlačidlom, príde mu e-mail s podmienkami a hneď sa otvorí aplikácia.',
-  invest: 'Toto je náhľad: nič sa neodosiela. Na živom webe Vás zapíšeme, príde potvrdenie e-mailom a v januári správa o spustení.',
+  invest: 'Toto je náhľad: nič sa neodosiela. Na živom webe Vás zapíšeme, príde potvrdenie e-mailom a po skončení roka správa, že môžete začať.',
 }
 
 const SCRIPT = `<script>

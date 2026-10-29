@@ -207,9 +207,9 @@ check(
     page.replace(/\u00a0/g, ' ').includes('našej pomocníčky vpravo dole') && (page.match(/data-mony-call/g) ?? []).length === 2,
 )
 check(
-  'the free tools and the investors\' extra service stand out: in the menu, the phone\'s menu, a section of their own and the footer',
+  'the free tools and the investors\' free tax return stand out: in the menu, the phone\'s menu, a section of their own and the footer',
   (page.match(/class="top__hot"/g) ?? []).length === 4 && page.includes('class="top__menu"') && page.includes('Ešte viac od Firmony.') && page.includes('Daňové priznanie z investícií') &&
-    page.includes('extras__tag--extra') && page.includes('extras__tag--free') && ['/faktura-zadarmo', '/mzdova-kalkulacka', '/szco-kalkulacka', '/sro-kalkulacka'].every((h) => page.includes(`href="${h}"`)) &&
+    (page.match(/extras__tag--free/g) ?? []).length === 2 && !page.includes('extras__tag--extra') && ['/faktura-zadarmo', '/mzdova-kalkulacka', '/szco-kalkulacka', '/sro-kalkulacka'].every((h) => page.includes(`href="${h}"`)) &&
     (page.match(/class="foot__hot"/g) ?? []).length === 3,
 )
 check(
@@ -582,8 +582,8 @@ page = await res.text()
 const plain = (html) => html.replace(/\u00a0/g, ' ')
 check('the investors page answers, with only our own scripts and nothing inline', res.status === 200 && ownScripts(page, ['fresh', 'mony']) && !/ style=/i.test(page))
 check(
-  'it names the brokers and both ways with their prices',
-  ['XTB', 'Trading 212', 'Interactive Brokers', 'Revolut'].every((b) => page.includes(b)) && plain(page).includes('29 €') && plain(page).includes('49 € za všetkých') && plain(page).includes('89 €'),
+  'it names the brokers and both ways, both free',
+  ['XTB', 'Trading 212', 'Interactive Brokers', 'Revolut'].every((b) => page.includes(b)) && (plain(page).match(/<span class="iway__amount">0 €<\/span>/g) ?? []).length === 2 && !plain(page).includes('29 €') && !plain(page).includes('DPH sa k nim'),
 )
 check('it is for search engines and its forms carry the campaign', res.headers.get('x-robots-tag') === null && page.includes('name="utm_source" value="xtb-komunita"'))
 check('the header leads to the form on the page, and the menu marks the page', page.includes('href="#zapis"') && page.includes('href="/investori" aria-current="page"'))
@@ -650,6 +650,13 @@ check(
   String(investorMail.length),
 )
 check('nobody of the team is rung for it', !(await sent()).some((m) => m.to === 'ahoj@firmony.io' && /investor/i.test(m.subject + m.text)))
+check(
+  'the email goes with an HTML part: the logo of the site on top and the same words, nothing typed in it',
+  typeof investorMail[0].html === 'string' && investorMail[0].html.includes('src="https://firmony.io/art/mail-logo.png"') && investorMail[0].html.includes('<title>Firmony: zapísali sme Vás</title>') && investorMail[0].html.replace(/[\u00a0\u202f]/g, ' ').includes('odpíšte na tento e-mail a adresu vymažeme') && !/xtb|ibkr|Interactive/i.test(investorMail[0].html),
+)
+// Static files are the Worker's assets, which this suite does not serve: the file itself is read.
+const mailLogo = readFileSync(new URL('../public/art/mail-logo.png', import.meta.url))
+check('the logo an email loads is among the site\'s files, as a PNG', mailLogo.subarray(1, 4).toString() === 'PNG' && mailLogo.length < 40_000)
 res = await post('/investori', { email: 'bot@example.sk', web: 'http://bot.example' }, { ip: '198.51.100.40' })
 check(
   'a bot that fills the hidden field is thanked and forgotten',
@@ -1439,7 +1446,7 @@ res = await admin.get('/ucto/klienti/novy?ziadost=req-x')
 page = await res.text()
 check('the form starts from the request', page.includes('value="Nová firma s. r. o."') && page.includes('value="peter@nova-firma.test"') && page.includes('value="Peter Nový"'))
 const firstMonth = page.match(/<option value="(\d{4}-\d{2}-01)"/)?.[1] ?? ''
-check('it asks for the first month of the service, the launch at the earliest', firstMonth >= '2027-01-01', firstMonth)
+check('it asks for the first month of the service, November 2026 at the earliest', firstMonth >= '2026-11-01', firstMonth)
 if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/new-client.html`, page)
 res = await acc.post('/ucto/klienti', { name: 'Iná s. r. o.', person: 'Ina', email: 'ina@ina.test', plan: 'start' })
 check('an accountant cannot make a client', res.status === 404 && (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE name = 'Iná s. r. o.'").first())?.n === 0)
@@ -4699,7 +4706,7 @@ check(
 )
 check('the order page is not for search engines', (res.headers.get('x-robots-tag') ?? '').includes('noindex'))
 const months = [...page.matchAll(/name="start" id="start-\d" value="(\d{4}-\d{2}-01)"/g)].map((m) => m[1])
-check('six months are offered, the launch the first of them at the earliest', months.length === 6 && months[0] >= '2027-01-01', months.join(' '))
+check('six months are offered, November 2026 the first of them at the earliest', months.length === 6 && months[0] >= '2026-11-01', months.join(' '))
 check('the page carries the reviewed proposal', page.includes(`name="proposal" value="${proposal}"`))
 check('the page says the contract is concluded as the identified person signed it, the other months closed', page.includes('data-signed-offer') && /value="[^"]+"[^>]*disabled/.test(page.match(/name="start" id="start-0"[^>]*>/)?.[0] ?? ''))
 const validContract = { plan: 'rast', start: months[1], director: 'Tomáš Dvorský', agree: '1', proposal }
@@ -4758,8 +4765,8 @@ res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Peter S
 check('a director whose office ended cannot conclude it', res.status === 422 && (await res.text()).includes('Vyberte, prosím, kto zmluvu uzatvára'))
 res = await post(orderLink, { plan: 'rast', start: months[0], director: 'Tomáš Dvorský' }, { ip: '198.51.100.21' })
 check('without agreeing to the terms nothing is concluded', res.status === 422 && (await res.text()).includes('Bez súhlasu'))
-res = await post(orderLink, { plan: 'rast', start: '2026-11-01', director: 'Tomáš Dvorský', agree: '1' }, { ip: '198.51.100.21' })
-check('a month before the launch is refused', res.status === 422)
+res = await post(orderLink, { plan: 'rast', start: '2026-10-01', director: 'Tomáš Dvorský', agree: '1' }, { ip: '198.51.100.21' })
+check('a month before the first month we take is refused', res.status === 422)
 res = await post(orderLink, { plan: 'nieco', start: months[0], director: 'Tomáš Dvorský', agree: '1' }, { ip: '198.51.100.21' })
 check('a plan that does not exist is refused', res.status === 422)
 check('nothing is created before the contract', (await db.prepare("SELECT COUNT(*) AS n FROM companies WHERE ico = '55012345'").first())?.n === 0)

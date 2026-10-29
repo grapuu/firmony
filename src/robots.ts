@@ -152,7 +152,7 @@ export function llmsTxt(): string {
     [
       `# ${BRAND.name}`,
       '',
-      `> ${BRAND.name} je online účtovníctvo pre slovenské firmy, najmä nové a malé s. r. o.: podvojné účtovníctvo, DPH, mzdy, závierka a daňové priznanie za pevnú mesačnú cenu podľa počtu dokladov. Doklady prečíta umelá inteligencia, účtovníčka ich skontroluje a podá priznania. Službu prevádzkuje ${OPERATOR.name} (IČO ${OPERATOR.companyId}, ${OPERATOR.postalCity}). Služba začína ${BRAND.launch}; dovtedy prijímame nezáväzné žiadosti na ${BRAND.origin}.`,
+      `> ${BRAND.name} je online účtovníctvo pre slovenské firmy, najmä nové a malé s. r. o.: podvojné účtovníctvo, DPH, mzdy, závierka a daňové priznanie za pevnú mesačnú cenu podľa počtu dokladov. Doklady prečíta umelá inteligencia, účtovníčka ich skontroluje a podá priznania. Službu prevádzkuje ${OPERATOR.name} (IČO ${OPERATOR.companyId}, ${OPERATOR.postalCity}). Začať môžete hneď na ${BRAND.origin}: po žiadosti sa Vám ozveme do jedného pracovného dňa.`,
       '',
       '## Pre koho',
       '',
@@ -192,7 +192,7 @@ export function llmsTxt(): string {
       `- [Úvod a cenník](${BRAND.origin}/)`,
       `- [Obchodné podmienky](${BRAND.origin}/podmienky)`,
       `- [Právne informácie a ochrana údajov](${BRAND.origin}/pravne-informacie)`,
-      `- [Pre investorov](${BRAND.origin}/investori): daňové priznanie z investícií, pripravujeme.`,
+      `- [Pre investorov](${BRAND.origin}/investori): daňové priznanie z investícií zadarmo, sám alebo ho pripravíme za Vás; zápis už teraz, priznanie za rok 2026 od januára 2027.`,
       '',
       '## Kontakt',
       '',

@@ -17,6 +17,7 @@ the icons a phone shows on a square of its own and the picture of a shared link 
     public/art/icon-180.png      the home screen of an iPhone
     public/art/icon-512.png      the app on the home screen of an Android phone (public/manifest.webmanifest)
     public/art/share.png         what a link shows when it is sent to someone: the logo and the name, 1200 by 630
+    public/art/mail-logo.png     the head of every email: the F beside the name, see-through (also `mail <source>`)
 
 `picture` finds what is on the black, centres it on a square and writes public/art/<name>.webp at the size
 given, and with `--small N` also public/art/<name>-<N>.webp for phones. A picture shown large needs twice its
@@ -154,6 +155,36 @@ def share(mark):
     return sheet.convert('RGB')
 
 
+def mail(mark):
+    """The glass F beside the name for the head of an email, see-through, at twice the size it is shown (176 by 48):
+    a mail program shows a PNG where it may not show WebP, and the name is in the picture because an email cannot
+    load our typeface."""
+    height = 96
+    mark = mark.resize((height, height), Image.LANCZOS)
+    font = ImageFont.truetype(FONT, 72)
+    font.set_variation_by_axes([650])
+    tracking = -0.045 * 72
+    text = NAME + '.'
+    starts = [font.getlength(text[:i]) + i * tracking for i in range(len(text))]
+    width = round(starts[-1] + font.getlength(text[-1]))
+    ascent, descent = font.getmetrics()
+    name, dot = Image.new('L', (width + 8, ascent + descent), 0), Image.new('L', (width + 8, ascent + descent), 0)
+    for i, (letter, start) in enumerate(zip(text, starts)):
+        ImageDraw.Draw(dot if i == len(NAME) else name).text((start, 0), letter, font=font, fill=255)
+    ink = Image.new('L', name.size, 0)
+    ink.paste(name, (0, 0), name)
+    ink.paste(dot, (0, 0), dot)
+    box = ink.getbbox()
+    name, dot = name.crop(box), dot.crop(box)
+    gap = 18
+    sheet = Image.new('RGBA', (height + gap + name.width, height), (0, 0, 0, 0))
+    sheet.alpha_composite(mark, (0, 0))
+    top = (height - name.height) // 2 + 4
+    sheet.paste(Image.new('RGBA', name.size, BLUE + (255,)), (height + gap, top), name)
+    sheet.paste(Image.new('RGBA', dot.size, RED + (255,)), (height + gap, top), dot)
+    return sheet
+
+
 def on_white(picture):
     """A see-through picture laid on white, for the icons a phone or a browser shows on a square of its own."""
     ground = Image.new('RGBA', picture.size, WHITE + (255,))
@@ -173,6 +204,7 @@ def logo(source):
     save(on_white(icons[180]), os.path.join(ART, 'icon-180.png'), format='PNG', optimize=True)
     save(on_white(icons[512]), os.path.join(ART, 'icon-512.png'), format='PNG', optimize=True)
     save(share(icon(source, 1, 600)), os.path.join(ART, 'share.png'), format='PNG', optimize=True)
+    save(mail(icon(source, LOGO_COVER, 600)), os.path.join(ART, 'mail-logo.png'), format='PNG', optimize=True)
 
 
 def whole(source, width, bottom=1.0, fade=None):
@@ -222,6 +254,7 @@ def main():
     parser = argparse.ArgumentParser(description="Cuts the owner's pictures for the site.")
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('logo').add_argument('source')
+    commands.add_parser('mail').add_argument('source')
     one = commands.add_parser('picture')
     one.add_argument('source')
     one.add_argument('name')
@@ -249,7 +282,9 @@ def main():
     args = parser.parse_args()
     os.makedirs(ART, exist_ok=True)
     webp = dict(format='WEBP', quality=88, alpha_quality=70, method=6)
-    if args.command == 'logo':
+    if args.command == 'mail':
+        save(mail(icon(args.source, LOGO_COVER, 600)), os.path.join(ART, 'mail-logo.png'), format='PNG', optimize=True)
+    elif args.command == 'logo':
         logo(args.source)
     elif args.command == 'icon':
         for size, name in ((args.size, args.name), (args.small, f'{args.name}-{args.small}')):

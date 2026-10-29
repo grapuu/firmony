@@ -11,7 +11,7 @@ const sent = []
 export default class extends WorkerEntrypoint {
   async send(message) {
     if (typeof message.to !== 'string' || !message.subject || !message.text) throw Object.assign(new Error('not a message'), { code: 'E_VALIDATION_ERROR' })
-    sent.push({ to: message.to, from: message.from, replyTo: message.replyTo, subject: message.subject, text: message.text })
+    sent.push({ to: message.to, from: message.from, replyTo: message.replyTo, subject: message.subject, text: message.text, html: message.html })
     return { messageId: 'pretend-' + sent.length }
   }
   async fetch() {

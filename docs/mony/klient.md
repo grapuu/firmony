@@ -149,6 +149,12 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 - Bežné vedenie účtovníctva (bez tejto ponuky) je bez viazanosti, s mesačnou výpovednou lehotou.
 - Prvý mesiac zadarmo patrí k bežnej zmluve o vedení účtovníctva. Pri s. r. o. za 1 € sa účtovníctvo platí od prvého mesiaca po vzniku firmy; výhodou tejto ponuky je založenie za 1 € namiesto bežných asi 500 €. Mony to sama nespomína, na priamu otázku odpovie presne takto.
 
+## Daňové priznanie pre investorov
+
+- Pre ľudí, ktorí investujú cez XTB, Trading 212, Interactive Brokers alebo Revolut (akcie, ETF, dividendy, úroky). Je zadarmo, aj cesta „Sám“ (priznanie pripravené na podpis), aj „Za Vás“ (skontroluje ho účtovníčka a podáme ho na základe plnej moci).
+- Zapísať sa dá už teraz na /investori, stačí e-mail. Priznanie za rok 2026 sa pripravuje po skončení roka, od januára 2027; termín podania je 31. marca 2027 (s príjmami zo zahraničia sa dá oznámením predĺžiť do 30. septembra 2027).
+- Mony nepočíta daň konkrétneho investora; povie všeobecné pravidlá zo stránky /investori.
+
 ## Bezplatná fakturácia
 
 - Firmy a živnostníci môžu fakturovať zadarmo aj bez účtovníctva (/fakturacia). Registrácia: IČO a e-mail, potom odkaz z e-mailu. Ďalej sa prihlasujú jedným dotykom.

@@ -157,11 +157,11 @@ export const copy = typesetAll({
   // His word of 27 October 2026: what is free and the extra service for investors were hidden at the foot of the site.
   extras: {
     first: 'Ešte viac od Firmony.',
-    second: 'Extra služba a nástroje zadarmo.',
+    second: 'Všetko zadarmo.',
     invest: {
-      tag: 'Extra služba',
+      tag: 'Zadarmo',
       title: 'Daňové priznanie z investícií',
-      text: 'Investujete cez XTB, Trading 212, Interactive Brokers alebo Revolut? Pripravíme Vám daňové priznanie z akcií, ETF a dividend. Zapíšte sa a ozveme sa v januári.',
+      text: `Investujete cez XTB, Trading 212, Interactive Brokers alebo Revolut? Daňové priznanie z akcií, ETF a dividend Vám pripravíme zadarmo. Zapíšte sa a priznanie za rok ${INVESTORS.year} budete mať medzi prvými.`,
       button: 'Chcem priznanie',
     },
     tools: {
@@ -309,7 +309,7 @@ export const copy = typesetAll({
       },
       {
         q: 'Ešte nemám firmu. Môžem začať?',
-        a: `Áno, a firmu Vám aj založíme. V ponuke s. r. o. za 1 € zariadime advokáta, zápis do obchodného registra aj živnosť a súdny poplatok aj odmenu advokáta platíme my. Prihlášku vyplníte online za pár minút. Účtovníctvo povedieme od ${BRAND.launch}, alebo odo dňa, keď firma vznikne, ak to bude neskôr.`,
+        a: `Áno, a firmu Vám aj založíme. V ponuke s. r. o. za 1 € zariadime advokáta, zápis do obchodného registra aj živnosť a súdny poplatok aj odmenu advokáta platíme my. Prihlášku vyplníte online za pár minút. Účtovníctvo povedieme odo dňa, keď firma vznikne.`,
       },
       {
         q: 'Musím sa viazať?',
@@ -356,14 +356,14 @@ export const copy = typesetAll({
   investors: {
     meta: {
       title: `Daňové priznanie z investícií | ${BRAND.name}`,
-      description: `Nahráte ročný výpis od brokera, ${BRAND.name} spočíta, čo sa zdaňuje a čo nie, a pripraví daňové priznanie za rok ${INVESTORS.year}. Alebo ho podáme za Vás. Spúšťame v januári ${INVESTORS.year + 1}.`,
+      description: `Nahráte ročný výpis od brokera, ${BRAND.name} spočíta, čo sa zdaňuje a čo nie, a pripraví daňové priznanie za rok ${INVESTORS.year}. Alebo ho podáme za Vás. Zadarmo.`,
     },
     cta: 'Zapísať sa',
     hero: {
       first: 'Daňové priznanie z investícií.',
-      second: 'Hotové za pár minút.',
+      second: 'Zadarmo, za pár minút.',
       lead: 'Nahráte ročný výpis od brokera. Spočítame, čo sa zdaňuje a čo nie, a pripravíme priznanie, ktoré len podpíšete. Alebo ho podáme za Vás.',
-      note: `Spúšťame v januári ${INVESTORS.year + 1}, včas na priznanie za rok ${INVESTORS.year}.`,
+      note: `Zadarmo. Priznanie za rok ${INVESTORS.year} pripravíte hneď po skončení roka, včas pred termínom.`,
       how: 'Ako to funguje',
     },
     card: {
@@ -372,7 +372,7 @@ export const copy = typesetAll({
       label: 'Váš e-mail',
       placeholder: 'meno@email.sk',
       button: 'Zapísať sa',
-      fine: 'Pošleme Vám len potvrdenie a správu o spustení.',
+      fine: 'Pošleme Vám len potvrdenie a správu, keď môžete začať.',
     },
     brokers: 'Začíname s brokermi, cez ktorých na Slovensku investuje najviac ľudí:',
     steps: {
@@ -410,17 +410,17 @@ export const copy = typesetAll({
       second: 'Vyberiete si.',
       self: {
         title: 'Sám',
-        price: `${INVESTORS.prices.self} €`,
-        priceNote: `za jedného brokera, ${INVESTORS.prices.selfAll} € za všetkých`,
+        price: '0 €',
+        priceNote: 'zadarmo, za všetkých brokerov',
         points: ['Priznanie pripravené na podpis', 'Nahráte ho do eDane alebo vytlačíte', 'Výpočet každého obchodu na kontrolu'],
       },
       done: {
         title: 'Za Vás',
-        price: `${INVESTORS.prices.done} €`,
-        priceNote: 'všetci brokeri',
+        price: '0 €',
+        priceNote: 'zadarmo, podáme ho za Vás',
         points: ['Všetko, čo pri ceste Sám', 'Pred podaním ho skontroluje účtovníčka', 'Podáme ho za Vás na základe plnej moci'],
       },
-      note: 'Ceny sú konečné, DPH sa k nim nepripočítava.',
+      note: 'Bez poplatku a bez platobnej karty, pri oboch cestách.',
     },
     bridge: {
       title: 'Raz si možno založíte firmu.',
@@ -442,13 +442,13 @@ export const copy = typesetAll({
       },
     ],
     final: {
-      title: 'Zapíšte sa. Ozveme sa v januári.',
+      title: 'Zapíšte sa. Je to zadarmo.',
       lead: 'Povedzte nám, cez koho investujete, a pripravíme to najprv pre Vášho brokera.',
       brokers: 'Cez koho investujete',
       way: 'Ako to chcete',
       ways: { sam: 'Sám, s pripraveným priznaním', 'za-mna': 'Za mňa, priznanie podajte Vy' },
       button: 'Zapísať sa',
-      fine: 'Pošleme Vám len potvrdenie a správu o spustení.',
+      fine: 'Pošleme Vám len potvrdenie a správu, keď môžete začať.',
       privacy: 'Ochrana údajov',
     },
     errors: {
@@ -457,13 +457,13 @@ export const copy = typesetAll({
     },
     thanks: {
       title: 'Ďakujeme. Zapísali sme Vás.',
-      lead: `Keď spustíme priznania za rok ${INVESTORS.year}, napíšeme Vám. Bude to v januári, včas pred termínom 31. marca.`,
+      lead: `Hneď po skončení roka Vám napíšeme, že môžete priznanie za rok ${INVESTORS.year} pripraviť. Včas pred termínom 31. marca a zadarmo.`,
       back: 'Späť na stránku pre investorov',
       firms: 'Máte aj firmu? Pozrite si účtovníctvo pre firmy.',
     },
     mail: {
       subject: `${BRAND.name}: zapísali sme Vás`,
-      lead: `ďakujeme za záujem. Keď spustíme daňové priznania z investícií za rok ${INVESTORS.year}, dáme Vám vedieť. Bude to v januári ${INVESTORS.year + 1}, včas pred termínom 31. marca.`,
+      lead: `ďakujeme za záujem. Hneď po skončení roka Vám napíšeme, že môžete daňové priznanie z investícií za rok ${INVESTORS.year} pripraviť. Včas pred termínom 31. marca ${INVESTORS.year + 1} a zadarmo.`,
       remove: 'Ak ste sa nezapisovali Vy alebo si to rozmyslíte, odpíšte na tento e-mail a adresu vymažeme.',
     },
   },

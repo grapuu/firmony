@@ -733,7 +733,7 @@ export const team = typesetAll({
     noCompany: 'Zatiaľ bez firmy',
     investors: {
       title: 'Investori',
-      lead: (n: number) => typeset(`${n} ${n === 1 ? 'človek čaká' : n >= 2 && n <= 4 ? 'ľudia čakajú' : 'ľudí čaká'} na daňové priznanie z investícií. Napíšeme im, keď ho spustíme.`),
+      lead: (n: number) => typeset(`${n} ${n === 1 ? 'človek čaká' : n >= 2 && n <= 4 ? 'ľudia čakajú' : 'ľudí čaká'} na daňové priznanie z investícií (zadarmo). Napíšeme im, keď môžu začať.`),
       empty: 'Na daňové priznanie z investícií sa zatiaľ nikto nezapísal.',
       brokers: 'Brokeri',
       way: { sam: 'Sám', 'za-mna': 'Za neho' } as Record<string, string>,

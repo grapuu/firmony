@@ -227,7 +227,7 @@ export const FoundingLanding: FC<{ values: LandingValues; errors: Partial<Record
                 <span class="title__sans">Prvé miesta otvárame.</span>
                 <em class="title__serif">Buďte medzi prvými.</em>
               </h2>
-              <p class="lead">{typeset('Nechajte nám kontakt a ozveme sa Vám ako prvým, hneď ako prihlášky spustíme.')}</p>
+              <p class="lead">{typeset('Nechajte nám kontakt. Ozveme sa Vám do jedného pracovného dňa a prevedieme Vás založením krok za krokom.')}</p>
               <p class="page__more">
                 <a class="btn btn--blue btn--large" href="/zacat?nova=1">
                   Chcem byť medzi prvými

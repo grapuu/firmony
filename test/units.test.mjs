@@ -556,7 +556,7 @@ terms.TERMS[0].points[0] += ' changed'
 check('a wording edit invalidates approval even with an unchanged version label', await contracts.contractCatalogueHash() !== catalogueHash)
 terms.TERMS[0].points[0] = originalPoint
 
-check('the months to start in begin with the launch', terms.startMonths('2026-10-13').join(' ') === '2027-01-01 2027-02-01 2027-03-01 2027-04-01 2027-05-01 2027-06-01')
+check('the months to start in begin with November 2026, the first month we take', terms.startMonths('2026-10-13').join(' ') === '2026-11-01 2026-12-01 2027-01-01 2027-02-01 2027-03-01 2027-04-01')
 check('after the launch they begin with this month (a company founded in it), over a new year', terms.startMonths('2027-11-20').slice(0, 3).join(' ') === '2027-11-01 2027-12-01 2028-01-01')
 check('a date is written in words', terms.longDate('2027-01-01') === '1. januára 2027')
 const linkMail = orderLinkMail('Zelený dvor s. r. o.', 'rast', 'https://firmony.io/objednavka/abc', 30)
@@ -7337,6 +7337,7 @@ await (await import('./registers.units.mjs')).checkRegistersUnits()
 ;(await import('./tatra.units.mjs')).checkTatraUnits()
 ;(await import('./due.units.mjs')).checkDueUnits()
 ;(await import('./plan-usage.units.mjs')).checkPlanUsageUnits()
+;(await import('./mail-html.units.mjs')).checkMailHtmlUnits()
 checkAssistantUnits()
 checkInvoicingUnits({ invoiceAi, invoicing })
 await checkInvoicePdfUnits()

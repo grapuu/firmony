@@ -868,11 +868,6 @@ textarea {
   white-space: nowrap;
 }
 
-.extras__tag--extra {
-  background: var(--blue);
-  color: #fff;
-}
-
 .extras__tag--free {
   background: var(--green-soft, #e6f6ec);
   color: var(--green, #16794a);
