@@ -208,7 +208,8 @@ export const copy = typesetAll({
     // anybody named.
     value: {
       big: startPerDayCents < 300 ? 'Menej ako 3 € denne' : `Od ${formatEur(startPerDayCents)} denne`,
-      text: `v priemere s balíkom ${start.name} za celé účtovníctvo Vašej firmy. V cene je aplikácia, fakturácia, digitálny poštár, stráženie termínov, prechod od doterajšej účtovníčky a odpovede do jedného pracovného dňa. Inde si za mnohé z toho priplácate.`,
+      // Not "celé účtovníctvo": the closing is billed apart once a year (29 October 2026).
+      text: `v priemere s balíkom ${start.name} za vedenie účtovníctva Vašej firmy. V cene je aplikácia, fakturácia, digitálny poštár, stráženie termínov, prechod od doterajšej účtovníčky a odpovede do jedného pracovného dňa. Inde si za mnohé z toho priplácate.`,
     },
     perMonth: 'mesačne',
     annual: 'Za 12 mesiacov so závierkou',

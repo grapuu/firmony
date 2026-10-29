@@ -17,4 +17,6 @@ export function checkMailHtmlUnits() {
   check('mail: an address that is not ours is never a button', (other.match(/Otvoriť vo Firmony/g) ?? []).length === 0 && other.includes('href="https://evil.example/login"'))
   check('mail: an address in a sentence leaves the full stop outside the link', other.includes('href="https://firmony.io/podmienky"') && other.includes('podmienky</a>.'))
   check('mail: the inbox preview is the first sentence after the greeting', flat.includes('vo Firmony na Vás čaká nová správa'))
+  const letter = mailHtml.mailHtml('S', 'Dobrý deň,\n\nďakujeme.\n\nChristian Juhás\nFirmony\n\nFirmony je služba spoločnosti europio s. r. o., K lesu 2218/39A, 040 18 Košice, IČO 57 442 452, zapísanej v Obchodnom registri Mestského súdu Košice, oddiel Sro, vložka č. 64897/V.')
+  check('mail: a letter that ends with who we are names the company once, in the footer', (letter.match(/vložka č\. 64897\/V/g) ?? []).length === 1 && !letter.includes('je služba spoločnosti') && letter.includes('Christian Juhás'))
 }

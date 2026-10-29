@@ -8,6 +8,7 @@
 import { BRAND, OPERATOR } from './config'
 import { typeset } from './format'
 
+const IMPRINT = `${BRAND.name} je služba spoločnosti`
 const LOGO = { src: `${BRAND.origin}/art/mail-logo.png`, width: 190, height: 48 }
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 const INK = '#0d1330'
@@ -57,6 +58,8 @@ export function mailHtml(subject: string, body: string): string {
     .split(/\n[ \t]*\n/)
     .map((p) => p.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim() !== ''))
     .filter((p) => p.length > 0)
+    // The text part ends with who we are (an email is a business letter); the HTML says it once, in its footer.
+    .filter((p) => !p.join(' ').trim().startsWith(IMPRINT))
   // What the inbox shows beside the subject: the first sentence after the greeting, not the logo's name.
   const preview = (paragraphs[1] ?? paragraphs[0] ?? []).join(' ').slice(0, 140)
   const blocks = paragraphs
