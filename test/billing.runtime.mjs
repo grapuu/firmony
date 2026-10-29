@@ -205,6 +205,16 @@ export async function checkBilling({ db, files, admin, acc, client, companyId, t
   const reminders = async () => (await db.prepare('SELECT reminders FROM invoices WHERE id = ?').bind(mine.id).first()).reminders
   await remindBillsScheduled({ DB: db }, nine('2027-01-12'), 'https://firmony.io')
   check('two days past its due day nothing is sent', (await remindedInApp()) === 0 && (await reminders()) === 0)
+  // europio's bank read only to the due day: a payment made in time may not be read yet, so nobody is chased.
+  const bankTo = async (day) =>
+    db
+      .prepare("INSERT OR REPLACE INTO statements (id, company_id, iban, created_at, source, to_on, status) VALUES ('test-operator-bank', ?, 'SK4311000000002934567890', ?, 'upload', ?, 'taken')")
+      .bind(operator.id, Math.floor(Date.now() / 1000), day)
+      .run()
+  await bankTo(due)
+  await remindBillsScheduled({ DB: db }, nine('2027-01-13'), 'https://firmony.io')
+  check('a client is not reminded while europio\'s bank is not read to the day before the reminder', (await remindedInApp()) === 0 && (await reminders()) === 0)
+  await bankTo('2027-03-31')
   await remindBillsScheduled({ DB: db }, nine('2027-01-13'), 'https://firmony.io')
   await remindBillsScheduled({ DB: db }, nine('2027-01-13'), 'https://firmony.io')
   check(

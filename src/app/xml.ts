@@ -112,6 +112,11 @@ export interface Statement {
   from: string | null
   to: string | null
   entries: Entry[]
+  /**
+   * Tatra banka's export of movements, not a statement: its movements carry references of their own, so they are kept
+   * as another source and a statement of the same days finds them by their content (store.ts, importEntries).
+   */
+  kind?: 'movements'
 }
 
 /** The Slovak payment symbols, wherever a bank puts them: "/VS2026005/SS/KS0308" or "VS: 2026005". */
@@ -172,10 +177,12 @@ function readOfx(tree: Record<string, unknown> | null): Statement[] | null {
       const amount = raw?.trim().startsWith('-') ? cents : type === 'DEBIT' ? -Math.abs(cents) : Math.abs(cents)
       const name = text(at(tx, 'NAME'))
       const memo = text(at(tx, 'MEMO'))
-      const card = /^\d{4,6}\*+\d{4}\b/.test(name ?? '') || /\bPOS\b|n[aá]kup/i.test(memo ?? '')
+      // A card payment by the masked card in NAME or "POS" ("POS nakup", "INT NAKUP POS EUR"), never by "nákup" alone:
+      // a transfer's message may say "Nákup materiálu".
+      const card = /^\d{4,6}\*+\d{4}\b/.test(name ?? '') || /\bPOS\b/i.test(name ?? '') || /\bPOS\b/i.test(memo ?? '')
       const otherIban = text(at(tx, 'BANKACCTTO', 'IBAN'))
       const partyIban = otherIban && /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(otherIban.replace(/\s/g, '')) ? otherIban.replace(/\s/g, '').toUpperCase() : null
-      const party = card && name ? cardMerchant(name) : name
+      const party = card && name ? (cardMerchant(name) ?? name) : name
       const fromSymbols = symbols(text(at(tx, 'REFERENCE_E2E')), memo)
       const vs = (text(at(tx, 'TRNVASYM')) ?? '').replace(/^0+(?=\d)/, '') || fromSymbols.vs
       const note = memo
@@ -199,9 +206,12 @@ function readOfx(tree: Record<string, unknown> | null): Statement[] | null {
     const days = entries.map((e) => e.bookedOn).sort()
     const from = ofxDay(text(at(tranList, 'DTSTART'))) ?? days[0] ?? null
     const end = ofxDay(text(at(tranList, 'DTEND')))
-    // DTEND is the day the export was made for, often the day after the last one it covers.
-    const to = end && days.length > 0 && end > (days[days.length - 1] ?? '') ? (days[days.length - 1] ?? end) : (end ?? days[days.length - 1] ?? null)
-    statements.push({ iban: iban ? iban.replace(/\s/g, '').toUpperCase() : null, currency: entries[0]?.currency ?? 'EUR', opening: null, closing: null, number: null, from, to, entries })
+    // DTEND is the day after the last one the export covers (exclusive): a September export ends 20261001 and covers
+    // September whole, also the days after its last movement. Never earlier than the last movement.
+    const before = end ? new Date(Date.parse(`${end}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10) : null
+    const last = days[days.length - 1] ?? null
+    const to = before && last ? (before > last ? before : last) : (before ?? last)
+    statements.push({ iban: iban ? iban.replace(/\s/g, '').toUpperCase() : null, currency: entries[0]?.currency ?? 'EUR', opening: null, closing: null, number: null, from, to, entries, kind: 'movements' })
   }
   return statements.length > 0 ? statements : null
 }

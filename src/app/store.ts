@@ -436,7 +436,7 @@ export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_
 export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.status, d.kind, d.party, d.party_ico, d.number, d.issued_on, d.due_on,
   d.total_cents, d.vat_cents, d.currency, d.category, d.vat_deduct, d.account, d.booked_at, d.paid_privately, l.payment_id, d.supplied_on,
   d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse,
-  d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_mode, ${PAID_ON_COLUMN}`
+  d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_mode, d.due_cents, ${PAID_ON_COLUMN}`
 export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
 export const DOC_FROM =
   'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by LEFT JOIN users fa ON fa.id = d.first_approved_by'
@@ -568,6 +568,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     dueOn: doc.dueOn,
     paidOn: doc.paidOn ?? null,
     paidCents: doc.paidCents ?? null,
+    dueCents: doc.dueCents ?? null,
     credits: doc.credits ?? [],
     badDebts: doc.badDebts ?? [],
     paidPrivately: doc.paidPrivately,
@@ -1283,7 +1284,7 @@ export async function importStatements(db: D1Database, company: string, user: st
     const account = await accountFor(db, company, statement.iban)
     if (!account) continue
     out.accounts++
-    const result = await importEntries(db, company, account, statement.entries, 'statement')
+    const result = await importEntries(db, company, account, statement.entries, statement.kind ?? 'statement')
     out.added += result.added
     out.known += result.known
     out.exempt += result.exempt

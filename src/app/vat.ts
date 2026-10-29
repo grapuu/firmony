@@ -202,6 +202,11 @@ export interface VatDoc {
   paidOn?: string | null
   /** What that payment paid of it, when it paid it alone (in euros); null while it paid it whole. */
   paidCents?: number | null
+  /**
+   * A received invoice of which a credit or a balance was set off: what was left to pay (documents.due_cents). The rest
+   * was settled on the day of issue and is never "not paid" under § 53b; null when the whole total was to be paid.
+   */
+  dueCents?: number | null
   /** A received invoice: the corrections of it from the same supplier, booked (credit notes and the like), for § 53b. */
   credits?: CreditOf[]
   /** An issued invoice: its corrections of § 25a (bad-debt.ts), the lowering and the raising after a payment. */
@@ -579,8 +584,10 @@ export function unpaidEvents(doc: VatDoc, data: VatData, company: VatCompany, fi
   const gross = grossOfLines(owedLines)
   if (gross <= 0 || deductOfLines(owedLines) <= 0) return []
   const paid = doc.paidOn ?? null
-  const paidCents = paid === null ? 0 : Math.max(0, doc.paidCents ?? gross)
-  const owed = gross - (paid !== null && paid < day101 ? Math.min(paidCents, gross) : 0)
+  // A set-off (a credit or a balance the supplier counted against it) settled that part on the day of issue.
+  const setOff = typeof doc.dueCents === 'number' && doc.totalCents !== null && doc.dueCents < doc.totalCents ? Math.min(gross, Math.max(0, doc.totalCents - doc.dueCents)) : 0
+  const paidCents = paid === null ? 0 : Math.max(0, doc.paidCents ?? gross - setOff)
+  const owed = gross - setOff - (paid !== null && paid < day101 ? Math.min(paidCents, gross - setOff) : 0)
   if (owed <= 0) return []
   const corrected = shareOfLines(owedLines, owed, gross)
   if (deductOfLines(corrected) <= 0) return []

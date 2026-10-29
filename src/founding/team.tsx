@@ -16,7 +16,7 @@ import { now } from '../db'
 import { bratislavaDay } from '../time'
 import { FoundingDetail, FoundingsList } from '../views/founding'
 import { CHECK_KINDS, FOUNDING_RISKS, IDENTITY_WAYS, identityWaysOf, type CheckKind, type IdentityWay } from './model'
-import { advance, callFounder, cancel, checksOf, decide, decideExit, eventsOf, foundingById, foundingsList, mayWithdraw, notePayment, noteRefund, noteToFounder, placesLeft, recordCheck, register, verifyBlockers, withdraw } from './store'
+import { advance, callFounder, cancel, checksOf, decide, handedOverAt, decideExit, eventsOf, foundingById, foundingsList, mayWithdraw, notePayment, noteRefund, noteToFounder, placesLeft, recordCheck, register, verifyBlockers, withdraw } from './store'
 
 type Env = { Bindings: AppBindings; Variables: { who: Who } }
 type Ctx = Context<Env>
@@ -68,7 +68,8 @@ export function registerFoundingTeam(app: Hono<Env>, render: Render): void {
     if (!f) return missing(c)
     f = await notePayment(c.env.DB, f)
     const [checks, events, blockers, proposals] = await Promise.all([
-      checksOf(c.env.DB, id),
+      // What counts now: the checks since the application was last handed over (store.ts, handedOverAt).
+      handedOverAt(c.env.DB, id).then((since) => checksOf(c.env.DB, id, since)),
       eventsOf(c.env.DB, id),
       verifyBlockers(c.env.DB, f),
       // The founder on the sanctions lists and the payment, prepared for his check (aml/proposals.ts).

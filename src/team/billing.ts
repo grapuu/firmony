@@ -150,9 +150,10 @@ export function draftOf(f: BillingFacts): BillingDraft {
     const people = f.people.get(m) ?? 0
     if (people > 0) line(`payroll:${m}`, `Mzdy za ${monthText(m)}`, people * 1000, 'ks', f.tariff.payrollCents)
   }
-  // The exit fee of a commitment that ends early, once the contract's last month has come: billed once, with the bill that
-  // takes the deposit (billing-store.ts, depositDue).
-  if (own && last && f.commitment?.charge && f.month >= last) {
+  // The exit fee of a commitment that ends early, once the contract has ended: billed once, with the bill that takes the
+  // deposit (billing-store.ts, depositDue). Not in its last month: until its last day the client may take the notice
+  // back (point 10.2), and a fee issued by the schedule on the 1st would stand after that.
+  if (own && last && f.commitment?.charge && f.month > last) {
     const n = exitMonths(f.startOn, f.endsOn!, f.commitment.months, f.commitment.maxMonths)
     if (n > 0) line(`exit:${last}`, `Odstupné podľa zmluvy o založení spoločnosti: ${n} ${n === 1 ? 'mesiac' : n < 5 ? 'mesiace' : 'mesiacov'} balíka ${own.name}`, n * 1000, 'mes', own.monthlyCents)
   }

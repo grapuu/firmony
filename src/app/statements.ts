@@ -96,7 +96,7 @@ async function knownRefs(db: D1Database, company: string, account: string, s: St
 
 /** Takes one statement into the books: its payments, and its closing balance when it is the newest. */
 async function take(db: D1Database, company: string, account: string, s: Statement): Promise<{ added: number; known: number }> {
-  const result = await importEntries(db, company, account, s.entries, 'statement')
+  const result = await importEntries(db, company, account, s.entries, s.kind ?? 'statement')
   if (s.closing) await balanceStatement(db, account, s.closing.cents, s.closing.on).run()
   return { added: result.added, known: result.known }
 }

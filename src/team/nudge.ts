@@ -181,6 +181,10 @@ export async function tellAdmitted(env: Env, orderId: string, origin: string = B
   const order = orderOf(row)
   const state = await admittedAt(db, order.id)
   if (!state || state.told !== null) return false
+  // The one renewal is spent only when the review is all that stands in the way: while the release or the AML gate is
+  // closed, it would run out before they open, and the director would never be told (the scheduler tries again daily).
+  const before = await contractGate(db, env, order)
+  if (!before.ready && before.reason !== 'review') return false
   await renewReview(db, order, state, ts)
   const gate = await contractGate(db, env, order)
   if (!gate.ready || !gate.approval) return false

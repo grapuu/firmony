@@ -18,7 +18,7 @@ import { deliveryStatusSql, safeJson } from '../filings/model'
 import { fileHash } from '../app/read'
 import { readInvoice } from '../app/xml'
 import { COMPANY_COLUMNS, companyOf, eventStatement, insertDocumentStatement, membersOf, messageStatement, type Company } from '../app/store'
-import { getInvoice, invoiceLines, saveInvoiceStatements, stateOf, totalsOf, ublOf, type InvoiceState, type InvoiceValues, type Line } from '../app/invoices'
+import { getInvoice, invoiceLines, saveInvoiceStatements, stateOf, totalsOf, ublOf, type InvoiceState, type InvoiceValues, type Line, type StoredInvoice } from '../app/invoices'
 import { newToken } from '../app/session'
 import { monthName } from '../app/copy'
 import { bratislava } from '../app/remind'
@@ -95,11 +95,12 @@ export interface ClientBill {
 
 /**
  * Whether a bill of this month may take the deposit (article 3 of the formation contract): from the commitment's 31st
- * month, counting the company's first month as the first, or once the contract has an end (notice given or ended by us),
- * when the deposit goes to the last bills, the exit fee and what is unpaid. Before that the monthly fee is paid as usual.
+ * month, counting the company's first month as the first, or once the contract has ended (notice given or ended by us),
+ * when the deposit goes to the exit fee and what is unpaid. Not while the notice runs: the client may take it back until
+ * the last day (point 10.2), and the deposit has to be whole then. Before that the monthly fee is paid as usual.
  */
 export function depositDue(company: Pick<Company, 'startOn' | 'endsOn'>, month: string): boolean {
-  if (company.endsOn) return true
+  if (company.endsOn && month > company.endsOn.slice(0, 7)) return true
   if (!company.startOn) return false
   return month >= addMonths(company.startOn.slice(0, 7), FORMATION.depositFromMonth - 1)
 }
@@ -455,6 +456,8 @@ export interface BillRow {
   issuedOn: string
   dueOn: string
   totalCents: number
+  /** What the bill still asks after the credit notes that correct it. */
+  leftCents: number
   token: string
   delivered: boolean
   remindedAt: number | null
@@ -465,8 +468,9 @@ export interface BillRow {
 export async function billRows(db: D1Database, today: string, client: string | null = null, limit = 200): Promise<BillRow[]> {
   const rows = await db
     .prepare(
-      `SELECT b.invoice_id, b.client_id, b.delivered_at, i.number, i.vs, i.customer_name, i.issued_on, i.due_on, i.total_cents, i.token, i.reminded_at, i.status,
-         (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1) AS paid_on
+      `SELECT b.invoice_id, b.client_id, b.delivered_at, i.number, i.vs, i.customer_name, i.issued_on, i.due_on, i.total_cents, i.token, i.reminded_at, i.status, i.kind,
+         (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1) AS paid_on,
+         (SELECT COALESCE(SUM(ABS(cn.total_cents)), 0) FROM invoices cn WHERE cn.company_id = i.company_id AND cn.corrects = i.id AND cn.kind = 'credit' AND cn.status = 'issued') AS credited
          FROM billing_invoices b JOIN invoices i ON i.id = b.invoice_id
         WHERE (?1 IS NULL OR b.client_id = ?1) ORDER BY i.issued_on DESC, i.seq DESC LIMIT ?2`,
     )
@@ -481,10 +485,12 @@ export async function billRows(db: D1Database, today: string, client: string | n
     issuedOn: String(r.issued_on),
     dueOn: String(r.due_on),
     totalCents: Number(r.total_cents),
+    leftCents: Math.max(0, Number(r.total_cents) - Number(r.credited ?? 0)),
     token: String(r.token),
     delivered: r.delivered_at !== null && r.delivered_at !== undefined,
     remindedAt: typeof r.reminded_at === 'number' ? r.reminded_at : null,
-    state: stateOf({ status: String(r.status), paidOn: str(r.paid_on), dueOn: String(r.due_on) }, today),
+    // A bill the deposit paid whole (0 €) or a credit note took back whole asks for nothing: it is settled, never chased.
+    state: stateOf({ status: String(r.status), paidOn: str(r.paid_on), dueOn: String(r.due_on), kind: (r.kind ?? 'invoice') as StoredInvoice['kind'], totalCents: Math.max(0, Number(r.total_cents) - Number(r.credited ?? 0)) }, today),
   }))
 }
 
@@ -527,8 +533,11 @@ export async function billingScheduled(env: { DB: D1Database; FILES?: R2Bucket }
       })
       if (done?.result === 'iban') break
     }
+  // The administrators are rung by day, and only for a bill that waits for them: one without a flag is issued at nine by
+  // the run above (on the 5th, the last day it runs, whatever is left waits for them too).
+  if (clock.hour > 20) return
   if (await db.prepare('SELECT 1 AS x FROM outbox WHERE id LIKE ?').bind(`bell:billing:${month}:%`).first()) return
-  if (!(await billingDrafts(db, month)).some(issuable)) return
+  if (!(await billingDrafts(db, month)).some((b) => issuable(b) && (b.draft.flags.length > 0 || clock.date === 5 || !operator.invoiceIban))) return
   const admins = await db.prepare("SELECT email FROM users WHERE team = 'admin'").all<{ email: string }>()
   if (admins.results.length > 0)
     await db.batch(admins.results.map((a) => ringStatement(db, 'billing', month, a.email, bell.teamBilling(monthName(month), `${origin}/ucto/fakturacia`))))
@@ -559,6 +568,14 @@ export async function remindBillsScheduled(env: { DB: D1Database }, at: number, 
   const today = clock.day
   const overdue = (await billRows(db, today, null, 2000)).filter((r) => r.state === 'overdue')
   if (overdue.length === 0) return 0
+  // How far europio's bank is known (its statements and payments): a client is told that we do not see the payment only
+  // once the bank reaches the day before the reminder's day, else a payment made in time but not read yet is chased.
+  const bank = await db
+    .prepare("SELECT MAX(d) AS d FROM (SELECT MAX(booked_on) AS d FROM payments WHERE company_id = ?1 UNION ALL SELECT MAX(to_on) AS d FROM statements WHERE company_id = ?1 AND status IN ('taken', 'known'))")
+    .bind(operator.id)
+    .first<{ d: string | null }>()
+  const bankUntil = bank?.d ?? ''
+  const dayAfter = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
   const ts = now()
   let done = 0
   for (const row of overdue) {
@@ -572,6 +589,7 @@ export async function remindBillsScheduled(env: { DB: D1Database }, at: number, 
     // One step a day at most: an invoice found long overdue still gets its reminders before the administrators hear.
     const target = state.reminders + 1
     const step = BILL_STEPS[target - 1]!
+    if (step.client && bankUntil < dayAfter(row.dueOn, step.days - 1)) continue
     // The step is claimed first, from the one it read: two runs never send it twice.
     const claimed = await db.prepare('UPDATE invoices SET reminders = ?1 WHERE id = ?2 AND reminders = ?3').bind(target, row.invoiceId, state.reminders).run()
     if ((claimed.meta?.changes ?? 0) === 0) continue
@@ -581,7 +599,7 @@ export async function remindBillsScheduled(env: { DB: D1Database }, at: number, 
         const members = await membersOf(db, row.clientId)
         await db.batch([
           db.prepare('UPDATE invoices SET reminded_at = ? WHERE id = ?').bind(ts, row.invoiceId),
-          messageStatement(db, { id: crypto.randomUUID(), company: row.clientId, author: null, side: 'firmony', body: remindMessage(row.number, row.totalCents, row.dueOn, operator.invoiceIban, row.vs), payment: null }),
+          messageStatement(db, { id: crypto.randomUUID(), company: row.clientId, author: null, side: 'firmony', body: remindMessage(row.number, row.leftCents, row.dueOn, operator.invoiceIban, row.vs), payment: null }),
           eventStatement(db, { company: row.clientId, user: null, action: 'billing.reminded', subject: row.invoiceId, detail: { auto: true, days: step.days } }),
           ...members.map((m) => ringStatement(db, 'invoice-overdue', `${row.invoiceId}:auto${step.days}`, m.email, bell.invoiceOverdue(`${origin}/app/firma#faktury-firmony`))),
         ])

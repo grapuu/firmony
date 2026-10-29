@@ -212,7 +212,10 @@ export const FINAL: readonly FoundingStatus[] = ['registered', 'refused', 'lapse
  */
 export const foundingVs = (year: number, order: number) => `7${year}${String(order).padStart(5, '0')}`
 
-/** A name compared the way a bank writes it: no accents, no case, no punctuation, the words in any order. */
+/**
+ * A name compared the way a bank writes it: no accents, no case, no punctuation, the words in any order, a middle name
+ * on one side only. Whole words: "Ana Novak" is not "Jana Nováková", and a surname alone names nobody.
+ */
 export function sameName(a: string, b: string): boolean {
   const words = (s: string) =>
     s
@@ -222,11 +225,10 @@ export function sameName(a: string, b: string): boolean {
       .replace(/[^a-z0-9 ]+/g, ' ')
       .split(/\s+/)
       .filter((w) => w.length > 1 && !['ing', 'mgr', 'bc', 'phd', 'mudr', 'judr', 'rndr', 'doc', 'prof', 'mba'].includes(w))
-      .sort()
-      .join(' ')
-  const x = words(a)
-  const y = words(b)
-  return x !== '' && (x === y || x.includes(y) || y.includes(x))
+  const x = new Set(words(a))
+  const y = new Set(words(b))
+  const [small, large] = x.size <= y.size ? [x, y] : [y, x]
+  return small.size >= 2 && [...small].every((w) => large.has(w))
 }
 
 /** The day of birth a Slovak birth number says (a woman's month is 50 more, a later number's 20 or 70 more). */

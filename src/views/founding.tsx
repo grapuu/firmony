@@ -10,7 +10,7 @@ import { monthName, whenName } from '../app/copy'
 import { bratislavaDay } from '../time'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import { formationContract, FORMATION_CONTRACT_TITLE, type FormationParties } from '../content/formation-contract'
-import { CHECK_KINDS, FINAL, FOUNDING_TOTAL, TURNOVERS, checksNeeded, identityStands, identityWaysOf, FOUNDING_RISKS, RISK_WORDS, suggestedRisk, riskHints, sameName, stepsOf, type CheckKind, type Founding, type FoundingErrors, type FoundingStatus, type FoundingValues } from '../founding/model'
+import { CHECK_KINDS, FINAL, FOUNDING_TOTAL, TURNOVERS, checksNeeded, mayMove, identityStands, identityWaysOf, FOUNDING_RISKS, RISK_WORDS, suggestedRisk, riskHints, sameName, stepsOf, type CheckKind, type Founding, type FoundingErrors, type FoundingStatus, type FoundingValues } from '../founding/model'
 import type { FoundingCheck, FoundingEvent } from '../founding/store'
 import { CarryFields, Picture, type Carry } from './home'
 import { copy } from '../copy'
@@ -736,7 +736,18 @@ const DataForm: FC<{ values: FoundingValues; errors: FoundingErrors; action: str
 const PATH: FoundingStatus[] = ['verifying', 'verified', 'ordered', 'signing', 'filed', 'registered']
 
 const Progress: FC<{ f: Founding }> = ({ f }) => {
-  if (f.status === 'lapsed') return <Ended title="Prihláška zanikla" text="Prihlášku ste nedokončili včas, takže nič neplatíte a nahraté súbory sme vymazali. Začať môžete kedykoľvek znova." again />
+  if (f.status === 'lapsed')
+    return (
+      <Ended
+        title="Prihláška zanikla"
+        text={
+          f.paidAt
+            ? 'Prihlášku ste nedokončili včas a nahraté súbory sme vymazali. Platbu, ktorá prišla, vrátime na účet, z ktorého prišla, do 14 dní. Začať môžete kedykoľvek znova.'
+            : 'Prihlášku ste nedokončili včas, takže nič neplatíte a nahraté súbory sme vymazali. Začať môžete kedykoľvek znova.'
+        }
+        again
+      />
+    )
   if (f.status === 'cancelled') return <Ended title="Prihláška je zrušená" text="Ak ste platbu poslali, vrátime ju na účet, z ktorého prišla, do 14 dní." again />
   if (f.status === 'refused') return <Ended title="Prihlášku sme nemohli prijať" text="Dôvod nájdete v správach nižšie. Platbu, ak prišla, vrátime na účet, z ktorého prišla, do 14 dní." />
   if (f.status === 'withdrawn') return <Ended title="Založenie sme ukončili" text={`Ani po druhej výzve sme nedostali potrebnú súčinnosť, preto sme od zmluvy odstúpili. Platba sa podľa článku 5 zmluvy nevracia.`} />
@@ -1117,6 +1128,7 @@ export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blo
             <textarea class="field__input" name="text" rows={2} required></textarea>
             <button class="btn btn--line" type="submit">Poslať správu</button>
           </form>
+          {mayMove(f.status, 'cancelled') ? (
           <details>
             <summary class="link">Zrušiť prihlášku</summary>
             <form class="stack" method="post" action={`${base}/zrusit`}>
@@ -1125,9 +1137,10 @@ export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blo
               <button class="btn btn--line" type="submit">Zrušiť prihlášku</button>
             </form>
           </details>
+          ) : null}
         </section>
       ) : null}
-      {(f.status === 'refused' || f.status === 'cancelled') && f.paidAt && !events.some((e) => e.action === 'refunded') ? (
+      {(f.status === 'refused' || f.status === 'cancelled' || f.status === 'lapsed') && f.paidAt && !events.some((e) => e.action === 'refunded') ? (
         <section class="info">
           <h2 class="info__title">Vrátenie platby</h2>
           <form class="stack" method="post" action={`${base}/vratene`}>
@@ -1234,7 +1247,7 @@ export const FoundingApprovePage: FC<{ f: Founding; owner: boolean; prepaidLeft:
         </div>
       </dl>
     </section>
-    {f.contractText ? (
+    {f.contractText && owner ? (
       <section class="info">
         <h2 class="info__title">Text zmluvy</h2>
         <pre class="found__pre">{f.contractText}</pre>

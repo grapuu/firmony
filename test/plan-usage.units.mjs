@@ -25,7 +25,7 @@ export function checkPlanUsageUnits() {
   u = usageOf({ month: '2026-10', at: at('2026-10-20'), plan: 'firma', tariff: tariff(), startOn: '2026-01-01', docs: new Map([['2026-10', 151]]) })
   check('usage: past the highest plan a price is to be agreed, the highest billed until then', u.state === 'agree' && u.billedAs.id === 'firma' && u.extraCents === 0)
   u = usageOf({ month: '2026-10', at: at('2026-10-20'), plan: 'start', tariff: tariff({ firstMonthFree: true }), startOn: '2026-10-01', docs: new Map([['2026-10', 30]]) })
-  check('usage: the first month offered free is counted and said to be free', u.free === true && u.state === 'over')
+  check('usage: the first month offered free is counted and said to be free, never billed as a larger plan nor rung', u.free === true && u.state === 'near' && u.docs === 30 && u.billedAs.id === 'start' && u.extraCents === 0)
   check('usage: a plan not among the prices has no usage', usageOf({ month: '2026-10', at: at('2026-10-20'), plan: 'nic', tariff: tariff(), startOn: '2026-01-01', docs }) === null)
 
   const { numbersIn, grounded, allowedNumbers, readAnswer, snapshotOf } = overviewCheck

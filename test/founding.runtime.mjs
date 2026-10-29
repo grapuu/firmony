@@ -167,9 +167,26 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   check('founding: it is not verified without the founder’s risk group', res.status === 422 && plain(await res.text()).includes('rizikovú skupinu') && (await db.prepare('SELECT status FROM foundings WHERE id = ?').bind(row.id).first()).status === 'verifying')
   const decisionPage = await (await officer.get(`/ucto/zalozenia/${row.id}`)).text()
   check('founding: the decision proposes the risk group from the application', /<option value="low" selected[^>]*>nízke \(navrhnuté podľa prihlášky\)/.test(decisionPage.replace(/<!-- -->/g, '')))
-  const founderBefore = (await sent()).length
-  res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: '', riziko: 'standard' })
+  // Returned to the founder and handed over again: the checks before count no more (the data or the signature may
+  // have changed), so it is verified only once they are recorded again.
+  res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'open', poznamka: 'TEST-ONLY doplňte, prosím, telefón' })
+  check('founding: returned to the founder to complete', res.status === 303 && (await db.prepare('SELECT status FROM foundings WHERE id = ?').bind(row.id).first()).status === 'open')
+  res = await anon.post(`${base}/odoslat`, {})
   await settle()
+  res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: '', riziko: 'standard' })
+  check('founding: handed over again, the checks recorded before it no longer let it be verified', res.status === 409 && (await db.prepare('SELECT status FROM foundings WHERE id = ?').bind(row.id).first()).status === 'verifying')
+  const handedAgain = await (await officer.get(`/ucto/zalozenia/${row.id}`)).text()
+  const preparedAgain = (kind) => (new RegExp(`<textarea[^>]*id="kp-${kind}-zdroj"[^>]*>([^<]*)</textarea>`).exec(handedAgain)?.[1] ?? '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+  for (const kind of ['sanctions', 'payment']) await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: kind, vysledok: 'clear', poznamka: preparedAgain(kind) })
+  await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: 'identity', vysledok: 'clear', sposob: 'qes', poznamka: 'TEST-ONLY meno v certifikáte sedí s prihláškou' })
+  for (const kind of ['pep', 'debts', 'signature']) await officer.post(`/ucto/zalozenia/${row.id}/kontrola`, { druh: kind, vysledok: 'clear', poznamka: `TEST-ONLY overené znova z primárneho zdroja: ${kind}` })
+  const founderBefore = (await sent()).length
+  res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: 'TEST-ONLY interná poznámka k riziku', riziko: 'standard' })
+  await settle()
+  check(
+    'founding: the officer\'s note on acceptance stays with us, the founder never reads it',
+    !(await db.prepare("SELECT 1 AS x FROM founding_events WHERE founding_id = ? AND action = 'note' AND note LIKE '%interná poznámka%'").bind(row.id).first()),
+  )
   check(
     'founding: the risk group chosen is kept as an event, beside the one proposed',
     (await db.prepare("SELECT note FROM founding_events WHERE founding_id = ? AND action = 'risk'").bind(row.id).first())?.note === 'Riziková skupina: štandardné. Podľa prihlášky navrhnutá: nízke.',
@@ -241,10 +258,17 @@ async function checkFoundingCompany({ db, files, get, post, settle, sent, client
   page = plain(await (await admin.get('/ucto/fakturacia')).text())
   const section = (html) => html.slice(html.indexOf(`id="klient-${companyId}"`), html.indexOf('</li>', html.indexOf('bill__lines', html.indexOf(`id="klient-${companyId}"`))) + 400)
   check('deposit: held while the commitment runs, the plan billed from the first month', page.includes(`id="klient-${companyId}"`) && section(page).includes('Balík Štart') && !section(page).includes('Započítaná zábezpeka'))
+  // Notice given: in its last month the bill is the plan as usual (the notice can still be taken back, point 10.2).
   await db.prepare("UPDATE companies SET notice_at = ?, notice_by = NULL, ends_on = date('now', 'start of month', '+1 month', '-1 day') WHERE id = ?").bind(nowS, companyId).run()
   page = plain(await (await admin.get('/ucto/fakturacia')).text())
+  check('exit fee: none while the notice runs, and the deposit stays whole', !section(page).includes('Odstupné') && !section(page).includes('Započítaná zábezpeka'), section(page).slice(0, 1500))
+  // Once the contract has ended (here: begun three months ago, its last day before this month), the exit fee is billed
+  // and the deposit taken off.
+  const startedAt = (await db.prepare('SELECT start_on FROM companies WHERE id = ?').bind(companyId).first()).start_on
+  await db.prepare("UPDATE companies SET start_on = date('now', 'start of month', '-3 months'), ends_on = date('now', 'start of month', '-1 day') WHERE id = ?").bind(companyId).run()
+  page = plain(await (await admin.get('/ucto/fakturacia')).text())
   check('exit fee: the company leaving early is billed twelve months and the deposit is taken off', section(page).includes('Odstupné podľa zmluvy o založení spoločnosti: 12 mesiacov') && section(page).includes('Započítaná zábezpeka') && section(page).includes('−549,00 €'), section(page).slice(0, 1500))
-  await db.prepare('UPDATE companies SET notice_at = NULL, ends_on = NULL WHERE id = ?').bind(companyId).run()
+  await db.prepare('UPDATE companies SET notice_at = NULL, ends_on = NULL, start_on = ? WHERE id = ?').bind(startedAt, companyId).run()
 
   // An application nobody finished lapses when its link is next opened, and is forgotten a month later.
   await post('/zalozenie', { email: 'neskoro@founding.test', plan: 'start' }, { ip: '198.51.100.91' })

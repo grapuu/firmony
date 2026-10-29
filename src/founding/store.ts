@@ -50,8 +50,11 @@ export async function foundingByToken(env: Env, token: string): Promise<Founding
     .bind(await sha256Hex(token), now())
     .first<Record<string, unknown>>()
   if (!row) return null
-  const f = foundingOf(row)
+  let f = foundingOf(row)
   if (f.status === 'open' && f.expiresAt < now() && !f.paidAt) {
+    // A payment that came is looked for first: a paid application does not lapse (its money would be lost to the record).
+    f = await notePayment(env.DB, f)
+    if (f.paidAt) return f
     if (await move(env.DB, f, null, 'lapsed', 'Prihláška nebola dokončená včas.')) await dropFiles(env.FILES, f)
     return foundingById(env.DB, f.id)
   }
@@ -84,8 +87,10 @@ export async function applyFor(db: D1Database, input: { email: string; phone: st
   const year = Number(bratislavaDay(now()).slice(0, 4))
   const ts = now()
   for (let attempt = 0; attempt < 5; attempt++) {
-    const count = await db.prepare('SELECT COUNT(*) AS n FROM foundings WHERE substr(vs, 2, 4) = ?').bind(String(year)).first<{ n: number }>()
-    const vs = foundingVs(year, Number(count?.n ?? 0) + 1 + attempt)
+    // The highest order of the year, not a count: purge deletes old applications, and a count would then name a symbol
+    // taken (every try fails) or one of a deleted application (whose late payment would be read as this one's).
+    const top = await db.prepare('SELECT MAX(CAST(substr(vs, 6) AS INTEGER)) AS n FROM foundings WHERE substr(vs, 2, 4) = ?').bind(String(year)).first<{ n: number | null }>()
+    const vs = foundingVs(year, Number(top?.n ?? 0) + 1 + attempt)
     const id = crypto.randomUUID()
     const link = await linkStatement(db, id)
     try {
@@ -298,14 +303,16 @@ export async function saveSigned(env: Env, f: Founding, kind: 'qes' | 'paper', b
  * where; the designated person checks that the account is the founder's.
  */
 export async function notePayment(db: D1Database, f: Founding): Promise<Founding> {
-  if (f.paidAt || FINAL.includes(f.status)) return f
+  // A payment is recorded also when the application is over (lapsed, refused, cancelled): the money is then ours to
+  // return, and nothing would show it otherwise. A registered one was paid before it could be.
+  if (f.paidAt || f.status === 'registered') return f
   const operator = await operatorOf(db)
   if (!operator) return f
   const rows = await db
     .prepare(
-      "SELECT id, amount_cents, party, party_iban FROM payments WHERE company_id = ? AND amount_cents > 0 AND currency = 'EUR' AND ltrim(COALESCE(vs, ''), '0') = ltrim(?, '0') ORDER BY booked_on, id LIMIT 10",
+      "SELECT id, amount_cents, party, party_iban FROM payments WHERE company_id = ? AND amount_cents > 0 AND currency = 'EUR' AND ltrim(COALESCE(vs, ''), '0') = ltrim(?, '0') AND booked_on >= ? ORDER BY booked_on, id LIMIT 10",
     )
-    .bind(operator.id, f.vs)
+    .bind(operator.id, f.vs, bratislavaDay(f.createdAt))
     .all<{ id: string; amount_cents: number; party: string | null; party_iban: string | null }>()
   const list = rows.results ?? []
   const total = list.reduce((s, r) => s + Number(r.amount_cents), 0)
@@ -348,12 +355,21 @@ export interface FoundingCheck {
   byName: string | null
 }
 
-export async function checksOf(db: D1Database, id: string): Promise<FoundingCheck[]> {
+export async function checksOf(db: D1Database, id: string, since = 0): Promise<FoundingCheck[]> {
   const rows = await db
-    .prepare('SELECT k.kind, k.result, k.note, k.at, u.name AS by_name FROM founding_checks k LEFT JOIN users u ON u.id = k.by WHERE k.founding_id = ? ORDER BY k.at, k.rowid')
-    .bind(id)
+    .prepare('SELECT k.kind, k.result, k.note, k.at, u.name AS by_name FROM founding_checks k LEFT JOIN users u ON u.id = k.by WHERE k.founding_id = ? AND k.at >= ? ORDER BY k.at, k.rowid')
+    .bind(id, since)
     .all<{ kind: CheckKind; result: 'clear' | 'problem'; note: string; at: number; by_name: string | null }>()
   return (rows.results ?? []).map((r) => ({ kind: r.kind, result: r.result, note: r.note, at: Number(r.at), byName: r.by_name }))
+}
+
+/**
+ * When the application was last handed over for checking. A check counts only from then: an application returned to the
+ * founder comes back with data, a document or a signature the checks before never saw.
+ */
+export async function handedOverAt(db: D1Database, id: string): Promise<number> {
+  const row = await db.prepare("SELECT MAX(at) AS at FROM founding_events WHERE founding_id = ? AND action = 'moved' AND status = 'verifying'").bind(id).first<{ at: number | null }>()
+  return Number(row?.at ?? 0)
 }
 
 /** The latest check of each kind: what counts now. */
@@ -401,7 +417,7 @@ export async function verifyBlockers(db: D1Database, f: Founding): Promise<strin
   if (f.status !== 'verifying') out.push('Prihláška nie je odovzdaná na overenie.')
   if (!steps.data || !steps.id || !steps.signed) out.push('Zakladateľ ešte nedokončil údaje, doklad alebo podpis zmluvy.')
   if (!steps.paid) out.push(`Platba ${(FOUNDING_TOTAL / 100).toFixed(0)} € ešte neprišla na účet europio.`)
-  const latest = latestChecks(await checksOf(db, f.id))
+  const latest = latestChecks(await checksOf(db, f.id, await handedOverAt(db, f.id)))
   for (const kind of checksNeeded(f)) {
     const ok = kind === 'identity' ? identityStands(f, latest.get(kind)) : latest.get(kind)?.result === 'clear'
     if (!ok) out.push(`Kontrola „${CHECK_NAMES[kind]}“ nie je v poriadku.`)
@@ -447,7 +463,9 @@ export async function decide(db: D1Database, f: Founding, by: string, verdict: '
   const month = verdict === 'verified' ? await monthFor(db, today) : null
   const words =
     verdict === 'verified'
-      ? `Prihláška je overená a zmluva vznikla. Advokáta objednáme do piatich pracovných dní. Založenie je naplánované na mesiac ${month}.${note ? ` ${note}` : ''}`
+      ? // The officer's note on acceptance stays ours (the form says the founder reads it only on a refusal): it may be
+        // the risk or a consent, which the founder must never be told.
+        `Prihláška je overená a zmluva vznikla. Advokáta objednáme do piatich pracovných dní. Založenie je naplánované na mesiac ${month}.`
       : verdict === 'refused'
         ? `Prihlášku sme nemohli prijať. ${note} Platbu, ak prišla, vrátime na účet, z ktorého prišla, do 14 dní.`
         : `Prihlášku sme Vám vrátili na doplnenie: ${note}`
@@ -537,7 +555,7 @@ export async function noteToFounder(db: D1Database, f: Founding, by: string, tex
 
 /** The payment sent back (a refusal, our cancellation), recorded once with where it went. */
 export async function noteRefund(db: D1Database, f: Founding, by: string, text: string): Promise<boolean> {
-  if (!f.paidAt || !['refused', 'cancelled'].includes(f.status)) return false
+  if (!f.paidAt || !['refused', 'cancelled', 'lapsed'].includes(f.status)) return false
   const [result] = await db.batch([
     db.prepare("INSERT INTO founding_events (id, founding_id, at, by, action, status, note) SELECT ?, ?, ?, ?, 'refunded', ?, ? WHERE NOT EXISTS (SELECT 1 FROM founding_events WHERE founding_id = ? AND action = 'refunded')").bind(crypto.randomUUID(), f.id, now(), by, f.status, text.slice(0, 2000), f.id),
   ])
@@ -672,20 +690,26 @@ export async function purgeFoundings(env: Env, limit = 10): Promise<number> {
   // An unfinished application nobody opens again lapses here too, its files with it (as when its link is opened).
   const expired = await db.prepare("SELECT * FROM foundings WHERE status = 'open' AND paid_at IS NULL AND expires_at < ? AND purge_started_at IS NULL LIMIT ?").bind(ts, limit).all<Record<string, unknown>>()
   for (const row of expired.results ?? []) {
-    const f = foundingOf(row)
+    const f = await notePayment(db, foundingOf(row))
+    if (f.paidAt) continue
     if (await move(db, f, null, 'lapsed', 'Prihláška nebola dokončená včas.')) await dropFiles(env.FILES, f)
   }
   const rows = await db
     .prepare(
       `SELECT * FROM foundings f WHERE f.purge_started_at IS NULL AND f.status IN ('lapsed','cancelled','refused','withdrawn') AND (
-         (f.paid_at IS NULL AND NOT EXISTS (SELECT 1 FROM founding_checks k WHERE k.founding_id = f.id) AND f.updated_at < ?)
+         (f.status IN ('lapsed','cancelled') AND f.paid_at IS NULL AND NOT EXISTS (SELECT 1 FROM founding_checks k WHERE k.founding_id = f.id) AND f.updated_at < ?)
          OR f.updated_at < ?) ORDER BY f.updated_at LIMIT ?`,
     )
     .bind(ts - FOUNDING_KEEP.untouchedDays * DAY, ts - FOUNDING_KEEP.years * 365 * DAY - DAY, limit)
     .all<Record<string, unknown>>()
   let done = 0
   for (const row of rows.results ?? []) {
-    const f = foundingOf(row)
+    let f = foundingOf(row)
+    // A payment that came after it was over keeps it (five years, and the money goes back).
+    if (!f.paidAt && f.updatedAt > ts - FOUNDING_KEEP.years * 365 * DAY) {
+      f = await notePayment(db, f)
+      if (f.paidAt) continue
+    }
     await dropFiles(env.FILES, f)
     await db.batch(forgetStatements(db, `SELECT ${quoteSql(f.id)}`))
     done++

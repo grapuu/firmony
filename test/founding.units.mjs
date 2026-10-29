@@ -37,6 +37,7 @@ export function checkFoundingUnits() {
 
   check('founding: the payment symbol is 7, the year and five digits, never an invoice’s', m.foundingVs(2026, 7) === '7202600007' && m.foundingVs(2026, 7).length === 10)
   check('founding: a bank’s name of the payer is the founder without accents, titles or order', m.sameName('Ing. Ján Novák', 'NOVAK JAN') && !m.sameName('Ján Novák', 'Peter Novák') && !m.sameName('', 'Novák'))
+  check('founding: whole words only, a middle name on one side, and a surname alone names nobody', !m.sameName('Ana Novak', 'Jana Nováková') && !m.sameName('Novák', 'Ján Novák') && m.sameName('Ján Peter Novák', 'NOVAK JAN'))
 
   const base = { founder: ok.founder, company: ok.company, idFrontKey: 'a', idBackKey: 'b', signedKey: 's', contractHash: 'h1', signedContractHash: 'h1', paidCents: m.FOUNDING_TOTAL, signedKind: 'qes' }
   check('founding: every step done counts all', m.stepsOf(base).all)
@@ -64,15 +65,15 @@ export function checkFoundingUnits() {
   // The deposit is held: no bill takes it before the commitment's 31st month, unless the contract ends sooner.
   const company = { startOn: '2027-01-15', endsOn: null }
   check('deposit: held until the 31st month of the commitment', !depositDue(company, '2027-02') && !depositDue(company, '2029-06') && depositDue(company, '2029-07'))
-  check('deposit: an end of the contract releases it to the last bills', depositDue({ ...company, endsOn: '2027-03-31' }, '2027-03'))
+  check('deposit: an end of the contract releases it once the contract has ended, not while the notice can be taken back', depositDue({ ...company, endsOn: '2027-03-31' }, '2027-04') && !depositDue({ ...company, endsOn: '2027-03-31' }, '2027-03'))
   check('deposit: a bill takes it up to its own total, and what is left after', creditOf({ prepaidCents: 54_900, draft: { totalCents: 8_900 } }) === 8_900 && creditOf({ prepaidCents: 1_000, draft: { totalCents: 8_900 } }) === 1_000 && creditOf({ prepaidCents: 0, draft: { totalCents: 8_900 } }) === 0)
 
   check('exit fee: the months left after the last month, at most twelve', billing.exitMonths('2027-01-15', '2027-02-28', 36, 12) === 12 && billing.exitMonths('2027-01-01', '2029-09-30', 36, 12) === 3 && billing.exitMonths('2027-01-01', '2029-12-31', 36, 12) === 0)
   const tariff = { source: 'paper', plans: [{ id: 'start', name: 'Štart', docs: 20, monthlyCents: 8_900, vatPayer: false }], payrollCents: 1_500, closingCents: 24_900, firstMonthFree: false, issuedInvoicesFree: true }
-  const facts = { month: '2027-02', startOn: '2027-01-15', endsOn: '2027-02-28', plan: 'start', tariff, docs: new Map(), people: new Map(), closings: [], billed: new Set(), commitment: { months: 36, maxMonths: 12, charge: true } }
+  const facts = { month: '2027-03', startOn: '2027-01-15', endsOn: '2027-02-28', plan: 'start', tariff, docs: new Map(), people: new Map(), closings: [], billed: new Set(), commitment: { months: 36, maxMonths: 12, charge: true } }
   const exit = billing.draftOf(facts).lines.find((l) => l.key === 'exit:2027-02')
   check('exit fee: a formed company leaving after two months is billed twelve months of its plan, once', exit?.cents === 106_800 && exit.quantityMilli === 12_000 && !billing.draftOf({ ...facts, billed: new Set(['exit:2027-02']) }).lines.some((l) => l.key.startsWith('exit:')))
-  check('exit fee: none when it is not charged, before the last month, or for any other client', !billing.draftOf({ ...facts, commitment: { ...facts.commitment, charge: false } }).lines.some((l) => l.key.startsWith('exit:')) && !billing.draftOf({ ...facts, month: '2027-01' }).lines.some((l) => l.key.startsWith('exit:')) && !billing.draftOf({ ...facts, commitment: null }).lines.some((l) => l.key.startsWith('exit:')))
+  check('exit fee: none when it is not charged, before the contract has ended, or for any other client', !billing.draftOf({ ...facts, commitment: { ...facts.commitment, charge: false } }).lines.some((l) => l.key.startsWith('exit:')) && !billing.draftOf({ ...facts, month: '2027-01' }).lines.some((l) => l.key.startsWith('exit:')) && !billing.draftOf({ ...facts, month: '2027-02' }).lines.some((l) => l.key.startsWith('exit:')) && !billing.draftOf({ ...facts, commitment: null }).lines.some((l) => l.key.startsWith('exit:')))
   check('exit fee: the plan is billed from the first month, never free', billing.draftOf({ ...facts, endsOn: null }).lines.some((l) => l.key === 'plan:2027-01'))
 
   const parties = { founder: { name: 'Ján Novák', born: '7. 3. 1994', address: 'Hlavná 12, Košice' }, company: { name: 'Nova Studio s. r. o.', seat: 'Hlavná 12, Košice', capitalCents: 500_000, activities: ['Poskytovanie softvéru'] }, plan: { name: 'Štart', priceCents: 8_900 }, payment: { iban: 'SK3112000000198742637541', vs: '7202600007' } }

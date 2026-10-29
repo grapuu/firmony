@@ -2999,6 +2999,13 @@ async function zipped(entries, note) {
     const ev = (d, c = payer) => vat.unpaidEvents(d, d.vat, c).map((e) => ({ kind: e.kind, period: e.period, on: e.on, deduct: e.lines.reduce((sum, l) => sum + l.deduct, 0), ...(e.credit ? { credit: true } : {}) }))
     check('the 101st day after 31 January 2027 is 12 May: unpaid, the correction in May', JSON.stringify(ev(unpaid({}))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: 2300 }]))
     check(
+      'a set-off settles its part on the day of issue: all set off, nothing; the rest paid in time, nothing; the rest unpaid, only its share',
+      ev(unpaid({ totalCents: 12300, dueCents: 0 })).length === 0 &&
+        ev(unpaid({ totalCents: 12300, dueCents: 8300, paidOn: '2027-02-01', paidCents: 8300 })).length === 0 &&
+        JSON.stringify(ev(unpaid({ totalCents: 12300, dueCents: 8300 }))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: Math.round((2300 * 8300) / 12300) }]),
+      JSON.stringify(ev(unpaid({ totalCents: 12300, dueCents: 8300 }))),
+    )
+    check(
       'paid on the 100th day (11 May): nothing; paid on the 101st in the same period: the correction and its back both in May',
       ev(unpaid({ paidOn: '2027-05-11' })).length === 0 &&
         JSON.stringify(ev(unpaid({ paidOn: '2027-05-20' }))) === JSON.stringify([{ kind: 'correct', period: '2027-05', on: '2027-05-12', deduct: 2300 }, { kind: 'back', period: '2027-05', on: '2027-05-20', deduct: 2300 }]),

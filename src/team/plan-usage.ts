@@ -93,18 +93,22 @@ export function usageOf(f: UsageFacts): PlanUsage | null {
   const outgrown = history.filter((h) => h.over)
   const most = outgrown.reduce((max, h) => Math.max(max, h.docs), 0)
   const offer = outgrown.length >= OFFER_WHEN ? planForMonth(own, f.tariff.plans, most).plan : null
+  // The first month free is billed for nothing whatever its documents (billing.ts, draftOf): no surcharge, nothing to
+  // agree and no doorbell, only how near the plan it is.
+  const free = f.tariff.firstMonthFree && first === f.month
+  const state = free ? (stateOf(docs, own.docs, false) === 'ok' ? 'ok' : 'near') : stateOf(docs, own.docs, now.agree)
   return {
     month: f.month,
     plan: own,
     docs,
     limit: own.docs,
     share: own.docs > 0 ? docs / own.docs : 0,
-    state: stateOf(docs, own.docs, now.agree),
-    billedAs: now.billedAs,
-    extraCents: now.billedAs.monthlyCents - own.monthlyCents,
+    state,
+    billedAs: free ? own : now.billedAs,
+    extraCents: free ? 0 : now.billedAs.monthlyCents - own.monthlyCents,
     projected,
     projectedAs: projected === null ? null : planForMonth(own, f.tariff.plans, projected).plan,
-    free: f.tariff.firstMonthFree && first === f.month,
+    free,
     history,
     offer: offer && offer.id !== own.id ? offer : null,
   }
