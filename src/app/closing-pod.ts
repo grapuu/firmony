@@ -19,8 +19,7 @@ export type Lines = Record<string, number>
 
 const rowsOf = (from: number, to: number, width: number): string[] => Array.from({ length: to - from + 1 }, (_, i) => `r${String(from + i).padStart(width, '0')}`)
 
-/** The rows of Súvaha Úč POD 1-01, 001 to 145; the assets are 001 to 078. */
-export const POD_BALANCE_ROWS = rowsOf(1, 145, 3) as readonly string[]
+/** The rows of Súvaha Úč POD 1-01, 001 to 145: the assets are 001 to 078, the rest the liabilities. */
 export const POD_ASSET_ROWS = rowsOf(1, 78, 3) as readonly string[]
 export const POD_LIABILITY_ROWS = rowsOf(79, 145, 3) as readonly string[]
 /** The rows of Výkaz ziskov a strát Úč POD 2-01, 01 to 61. */

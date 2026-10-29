@@ -23,6 +23,7 @@ import { newToken } from '../app/session'
 import { monthName } from '../app/copy'
 import { bratislava } from '../app/remind'
 import { addMonths, BILLING_BACK_MONTHS, draftOf, monthStart, monthsFrom, peopleIn, type BillingDraft, type Tariff } from './billing'
+import { byPressure, HISTORY_MONTHS, usageOf, type PlanUsage } from './plan-usage'
 
 type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
@@ -110,21 +111,70 @@ export const creditOf = (bill: Pick<ClientBill, 'prepaidCents' | 'draft'>) => Ma
  * Every client's draft for the month an invoice is issued in: the clients with a contract that runs or ran, whose
  * data are not being handed over or deleted; europio itself and the sample companies are none.
  */
+/** The clients billed: a contract that runs or ran, data not being handed over or deleted; europio and the samples are none. */
+export const billedClientsSql = (demo = false) =>
+  `c.operator = 0 AND ${demo ? '' : 'c.demo = 0 AND '}c.contract_at IS NOT NULL AND c.start_on IS NOT NULL AND c.purge_started_at IS NULL AND c.purged_at IS NULL`
+export const BILLED_CLIENTS_SQL = billedClientsSql()
+
+/**
+ * What counts among a plan's documents (the terms, 4.2), as SQL over a document `d`: a document that came to us in the
+ * app, once. Not a deleted one (what the accountant discards is deleted too), not the same document twice, not our own
+ * invoice to the client, and not the open items the accountant took over from the client's former accountant (they
+ * came with the books, not in the month they were typed in). A document the app took for a duplicate counts when the
+ * accountant booked it all the same (two equal receipts of a day are two) or when its original was deleted (it is then
+ * the only one). Invoices the client issues in the app are counted apart, so that an offer that leaves them out can.
+ */
+export const PLAN_DOC_SQL = `d.deleted_at IS NULL AND d.source NOT IN ('firmony', 'takeover')
+  AND (d.duplicate_of IS NULL OR d.booked_at IS NOT NULL OR NOT EXISTS (SELECT 1 FROM documents o WHERE o.id = d.duplicate_of AND o.deleted_at IS NULL))`
+
+/** Each client's documents by the Bratislava month they came in, from the first month given to the last one's end. */
+export function docCountStatement(db: D1Database, months: readonly string[], clients: string = BILLED_CLIENTS_SQL): D1PreparedStatement {
+  const bounds = [...months, addMonths(months[months.length - 1]!, 1)].map(monthStart)
+  const bucket = months.map((m, i) => `WHEN d.created_at < ${bounds[i + 1]} THEN '${m}'`).join(' ')
+  return db
+    .prepare(
+      `SELECT d.company_id, CASE ${bucket} END AS month, COUNT(*) AS n, SUM(CASE WHEN d.source = 'issued' THEN 1 ELSE 0 END) AS issued FROM documents d JOIN companies c ON c.id = d.company_id
+        WHERE ${clients} AND d.created_at >= ? AND d.created_at < ? AND ${PLAN_DOC_SQL}
+        GROUP BY d.company_id, month`,
+    )
+    .bind(bounds[0], bounds[bounds.length - 1])
+}
+
+/** The rows of docCountStatement, by client: every document of a month, and of them the invoices issued in the app. */
+export interface DocCounts {
+  all: Map<string, Map<string, number>>
+  issued: Map<string, Map<string, number>>
+}
+
+export function docCountsOf(rows: readonly Row[]): DocCounts {
+  const all = new Map<string, Map<string, number>>()
+  const issued = new Map<string, Map<string, number>>()
+  for (const r of rows) {
+    if (typeof r.month !== 'string') continue
+    const id = String(r.company_id)
+    all.set(id, (all.get(id) ?? new Map<string, number>()).set(r.month, Number(r.n)))
+    issued.set(id, (issued.get(id) ?? new Map<string, number>()).set(r.month, Number(r.issued ?? 0)))
+  }
+  return { all, issued }
+}
+
+/** A client's documents of each month as its plan counts them: without the invoices it issued when its offer says so. */
+export function planDocs(counts: DocCounts, id: string, tariff: Tariff | 'corrupt'): Map<string, number> {
+  const all = counts.all.get(id) ?? new Map<string, number>()
+  if (tariff === 'corrupt' || !tariff.issuedInvoicesFree) return all
+  const issued = counts.issued.get(id)
+  return new Map([...all].map(([m, n]) => [m, Math.max(0, n - (issued?.get(m) ?? 0))]))
+}
+
 export async function billingDrafts(db: D1Database, month: string): Promise<ClientBill[]> {
-  const where = 'c.operator = 0 AND c.demo = 0 AND c.contract_at IS NOT NULL AND c.start_on IS NOT NULL AND c.purge_started_at IS NULL AND c.purged_at IS NULL'
+  const where = BILLED_CLIENTS_SQL
   const first = addMonths(month, -BILLING_BACK_MONTHS)
   const months = monthsFrom(first, addMonths(month, -1))
-  const bounds = [...months, month].map(monthStart)
-  const bucket = months.map((m, i) => `WHEN d.created_at < ${bounds[i + 1]} THEN '${m}'`).join(' ')
   const [companyRows, tariffRows, docRows, employeeRows, closingRows, billedRows, prepaidRows, foundingRows] = await db.batch<Row>([
     db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE ${where} ORDER BY c.name`),
     db.prepare(`SELECT t.company_id, t.data FROM billing_tariffs t JOIN companies c ON c.id = t.company_id WHERE ${where}`),
-    // A document counts in the month it came to us, once: not a duplicate, not discarded, and not our own invoice.
-    db.prepare(
-      `SELECT d.company_id, CASE ${bucket} END AS month, COUNT(*) AS n, SUM(CASE WHEN d.source = 'issued' THEN 1 ELSE 0 END) AS issued FROM documents d JOIN companies c ON c.id = d.company_id
-        WHERE ${where} AND d.created_at >= ? AND d.created_at < ? AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.source <> 'firmony'
-        GROUP BY d.company_id, month`,
-    ).bind(bounds[0], bounds[bounds.length - 1]),
+    // A document counts in the month it came to us, once (PLAN_DOC_SQL).
+    docCountStatement(db, months, where),
     db.prepare(`SELECT e.company_id, e.started_on, e.ended_on FROM employees e JOIN companies c ON c.id = e.company_id WHERE ${where}`),
     // A closing is billed once it was filed (the terms, 4.3): submitted or accepted, not only prepared.
     db.prepare(
@@ -146,20 +196,8 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
     if (t) paper.set(String(r.company_id), t)
   }
   // Each month's documents, and of them the invoices the client issued in the app (free under the offer).
-  const allDocs = new Map<string, Map<string, number>>()
-  const issuedDocs = new Map<string, Map<string, number>>()
-  for (const r of docRows?.results ?? []) {
-    if (typeof r.month !== 'string') continue
-    const id = String(r.company_id)
-    allDocs.set(id, (allDocs.get(id) ?? new Map<string, number>()).set(r.month, Number(r.n)))
-    issuedDocs.set(id, (issuedDocs.get(id) ?? new Map<string, number>()).set(r.month, Number(r.issued ?? 0)))
-  }
-  const docsOf = (id: string, tariff: Tariff | 'corrupt') => {
-    const all = allDocs.get(id) ?? new Map<string, number>()
-    if (tariff === 'corrupt' || !tariff.issuedInvoicesFree) return all
-    const issued = issuedDocs.get(id)
-    return new Map([...all].map(([m, n]) => [m, Math.max(0, n - (issued?.get(m) ?? 0))]))
-  }
+  const counts = docCountsOf(docRows?.results ?? [])
+  const docsOf = (id: string, tariff: Tariff | 'corrupt') => planDocs(counts, id, tariff)
   const employees = new Map<string, { startedOn: string; endedOn: string | null }[]>()
   for (const r of employeeRows?.results ?? []) {
     const id = String(r.company_id)
@@ -194,6 +232,57 @@ export async function billingDrafts(db: D1Database, month: string): Promise<Clie
     out.push({ company, draft, corrupt: tariff === 'corrupt', docsLastMonth: docsOf(company.id, tariff).get(addMonths(month, -1)) ?? 0, prepaidCents: depositDue(company, month) ? (prepaid.get(company.id) ?? 0) : 0 })
   }
   return out
+}
+
+/** Every client's documents of the month that runs against its plan, with the months before (team/plan-usage.ts). */
+export async function planUsages(db: D1Database, at: number, only: string | null = null, demo = false): Promise<{ company: Company; usage: PlanUsage; corrupt: boolean; tariff: Tariff['source'] | 'corrupt' }[]> {
+  if (only !== null && !/^[A-Za-z0-9-]{1,64}$/.test(only)) return []
+  const month = bratislava(at * 1000).day.slice(0, 7)
+  const months = monthsFrom(addMonths(month, -HISTORY_MONTHS), month)
+  // A contract that has begun by this month and not ended before it (the month and the id are checked above, so inlined).
+  const clients = `${billedClientsSql(demo)} AND c.start_on < '${addMonths(month, 1)}-01' AND (c.ends_on IS NULL OR c.ends_on >= '${month}-01')${only ? ` AND c.id = '${only}'` : ''}`
+  const [companyRows, tariffRows, docRows] = await db.batch<Row>([
+    db.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies c LEFT JOIN users acc ON acc.id = c.accountant_id WHERE ${clients} ORDER BY c.name`),
+    db.prepare(`SELECT t.company_id, t.data FROM billing_tariffs t JOIN companies c ON c.id = t.company_id WHERE ${clients}`),
+    docCountStatement(db, months, clients),
+  ])
+  const paper = new Map<string, Tariff>()
+  for (const r of tariffRows?.results ?? []) {
+    const t = tariffOfJson(r.data)
+    if (t) paper.set(String(r.company_id), t)
+  }
+  const docs = docCountsOf(docRows?.results ?? [])
+  const out: { company: Company; usage: PlanUsage; corrupt: boolean; tariff: Tariff['source'] | 'corrupt' }[] = []
+  for (const company of (companyRows?.results ?? []).map(companyOf)) {
+    const tariff = await tariffFor(db, company, paper)
+    // A contract whose record cannot be verified is still counted, by today's prices, and said to be so.
+    const prices = tariff === 'corrupt' ? priceListTariff('pricelist') : tariff
+    const usage = usageOf({ month, at, plan: company.plan, tariff: prices, startOn: company.startOn, docs: planDocs(docs, company.id, prices) })
+    if (usage) out.push({ company, usage, corrupt: tariff === 'corrupt', tariff: tariff === 'corrupt' ? 'corrupt' : tariff.source })
+  }
+  return out.sort(byPressure)
+}
+
+/**
+ * The administrators are rung once a month for each client that outgrows its plan, and once more when it passes the
+ * highest plan (a price to agree): in the client's month, while it can still be offered a larger plan. The doorbell names
+ * nobody; the overview says who. Looked at once an hour.
+ */
+export async function planUsageScheduled(env: { DB: D1Database }, at: number, origin: string): Promise<number> {
+  const db = env.DB
+  const clock = bratislava(at)
+  if (clock.minute >= 15 || clock.hour < 8 || clock.hour > 20) return 0
+  const outgrown = (await planUsages(db, Math.floor(at / 1000))).filter((u) => u.usage.state === 'over' || u.usage.state === 'agree')
+  if (outgrown.length === 0) return 0
+  const admins = await db.prepare("SELECT email FROM users WHERE team = 'admin'").all<{ email: string }>()
+  if (admins.results.length === 0) return 0
+  const statements: D1PreparedStatement[] = []
+  for (const { company, usage } of outgrown) {
+    const kind = usage.state === 'agree' ? 'plan-agree' : 'plan-over'
+    for (const a of admins.results) statements.push(ringStatement(db, kind, `${company.id}:${usage.month}`, a.email, (usage.state === 'agree' ? bell.teamPlanAgree : bell.teamPlanOver)(`${origin}/ucto/prehlad#baliky`)))
+  }
+  await db.batch(statements)
+  return outgrown.length
 }
 
 /** Whether a draft may be issued as it stands. A plan without a price, or an unverified contract, is not. */

@@ -15,7 +15,6 @@ const a = t.aml
 const d = app.declaration
 
 const STATE_PILL = { missing: 'pill--amber', waiting: 'pill--blue', checked: 'pill--ok' } as const
-const LEVEL_PILL: Record<Level, string> = { low: 'pill--ok', standard: 'pill--blue', high: 'pill--red' }
 
 const born = (rc: string, day: string) => (rc ? rc : day ? dayName(day) : a.no)
 

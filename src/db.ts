@@ -1616,6 +1616,20 @@ const MIGRATIONS: readonly string[][] = [
     )`,
     'CREATE INDEX IF NOT EXISTS leads_last ON leads (last_at)',
   ],
+  // 90: the overview's check by Claude (his word of 29 October 2026, team/overview-check.ts): what it said, without
+  // anything of a person, who asked and what it cost; kept half a year.
+  [
+    `CREATE TABLE IF NOT EXISTS admin_checks (
+      id TEXT PRIMARY KEY,
+      at INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      result TEXT NOT NULL CHECK (json_valid(result))
+    )`,
+    'CREATE INDEX IF NOT EXISTS admin_checks_at ON admin_checks (at)',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

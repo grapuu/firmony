@@ -3,26 +3,12 @@
 // took cash out of the bank (or put it in) marked as money between the company's own accounts with it; and what the
 // cash book and the form need.
 import { now } from '../db'
-import { CASH_KINDS, isCashKind, prefixOf, type CashKind } from './cash'
+import { CASH_KINDS, prefixOf, type CashKind } from './cash'
 import type { LedgerLine } from './ledger'
 import { eventStatement } from './store'
 
 type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
-
-export interface CashEntry {
-  id: string
-  number: string
-  kind: CashKind
-  on: string
-  /** Plus into the cash box, minus out of it. */
-  cents: number
-  party: string | null
-  text: string
-  documentId: string | null
-  paymentId: string | null
-  createdByName: string | null
-}
 
 /**
  * A received document a company may pay in cash, or an issued one paid to it in cash: not paired, not paid otherwise
@@ -32,42 +18,6 @@ const PAYABLE_IN_CASH = `d.deleted_at IS NULL AND d.paid_privately = 0 AND d.dup
   AND (d.status = 'read' OR d.booked_at IS NOT NULL)
   AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
   AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)`
-
-/** The cash documents of a company's year, in the order of their days. */
-export async function cashEntries(db: D1Database, company: string, year: number): Promise<CashEntry[]> {
-  const rows = await db
-    .prepare(
-      `SELECT e.id, e.number, e.cash_kind, e.on_date, e.lines, e.party, e.text, e.document_id, e.payment_id, u.name AS by_name
-         FROM ledger_entries e LEFT JOIN users u ON u.id = e.created_by
-        WHERE e.company_id = ? AND e.kind = 'cash' AND e.deleted_at IS NULL AND e.year = ? ORDER BY e.on_date, e.created_at`,
-    )
-    .bind(company, year)
-    .all<Row>()
-  return rows.results.flatMap((r) => {
-    const kind = r.cash_kind
-    if (!isCashKind(kind)) return []
-    let cents = 0
-    try {
-      for (const l of JSON.parse(String(r.lines)) as LedgerLine[]) cents += (l.md === '211' ? 1 : l.d === '211' ? -1 : 0) * Number(l.cents)
-    } catch {
-      return []
-    }
-    return [
-      {
-        id: String(r.id),
-        number: String(r.number),
-        kind,
-        on: String(r.on_date),
-        cents,
-        party: str(r.party),
-        text: String(r.text),
-        documentId: str(r.document_id),
-        paymentId: str(r.payment_id),
-        createdByName: str(r.by_name),
-      },
-    ]
-  })
-}
 
 /** Receipts paid from the cash box that the accountant has not booked yet: in the cash book only once she does. */
 export async function pendingCashReceipts(db: D1Database, company: string): Promise<{ id: string; on: string; party: string | null; cents: number }[]> {

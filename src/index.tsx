@@ -8,7 +8,7 @@ import { admissionForOrder, dossierOfOrder, prepareDossier, signatureFile } from
 import { declarationPdf } from './aml/pdf'
 import { GUIDES } from './content/guides'
 import { BUILD_METADATA } from './generated/deployment'
-import { article, breadcrumbs, faqPage, jsonLd, organization, plain, service, SITE_UPDATED, website } from './seo'
+import { article, breadcrumbs, faqPage, jsonLd, organization, plain, service, website } from './seo'
 import { WAGE_PAGE, WAGE_PATH } from './content/wage-calc'
 import { wageCalc, wageQueryOf, wageYearOf } from './app/wage-calc'
 import { WageCalcPage } from './views/wage-calc'

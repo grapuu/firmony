@@ -2,7 +2,7 @@
 // src/config.ts, so a text can never say another figure than the plans have.
 // Price/trust decisions and primary sources, with transfer limits: docs/research/trust-and-value-2026-10-22.md.
 // These are product hypotheses; no conversion uplift or market-wide cheapest claim is asserted.
-import { APP, BRAND, CLOSING_PRICE, INVESTORS, OPERATOR, ORDER, PAYROLL_PRICE, PLANS, REPLY_WITHIN, type Plan } from './config'
+import { APP, BRAND, CLOSING_PRICE, INVESTORS, OPERATOR, PAYROLL_PRICE, PLANS, REPLY_WITHIN, type Plan } from './config'
 import { formatEur, typeset, typesetAll } from './format'
 
 const start = PLANS[0] as Plan

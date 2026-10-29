@@ -2,7 +2,7 @@ import { AML_TODAY_SQL } from './retention'
 // Additive AML admission controls. Existing migrations remain byte for byte unchanged.
 // Primary law read on 21 October 2026: https://static.slov-lex.sk/static/SK/ZZ/2008/297/20260817.html
 // §§ 7, 8(1)(f),(2), 10, 12, 18, 19 and 20; operational policy: docs/aml/program.html.
-import { AML_CHECK_KINDS, CURRENT_OFFICER_SQL, officerSql } from './constants'
+import { officerSql } from './constants'
 import { checksCurrentSql, riskFloorSql } from './model'
 export { AML_CHECK_KINDS, CURRENT_OFFICER_SQL, officerSql } from './constants'
 

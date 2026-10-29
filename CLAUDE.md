@@ -4,6 +4,41 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Prehľad pre správcu, presné počítanie dokladov a súkromný GitHub, 29. 10. 2026 večer (Claude, `main`):** jeho správa
+19:53 (prehľad v admin paneli, ktorý sa sám aktualizuje, tlačidlo „Skontrolovať“ cez Claude API, 100 % presné počítanie
+dokladov voči balíku a upozornenie „nie jemu, ale nám“, odstrániť balast) a 20:04 (GitHub bol pri práci s DeepSeekom
+verejný, dať súkromný a zabezpečiť). **`/ucto/prehlad`** (len správca, prvé v menu; `src/team/overview.ts`,
+`src/views/overview.tsx`): čo horí a čo čaká (24 druhov, napr. naše termíny po termíne, správy po lehote, incidenty,
+neuhradené faktúry Firmony, klienti nad balíkom, doklady nezaúčtované 14 dní, čítanie dokladu dlhšie ako hodinu, výpovede,
+stará sankčná databáza), nové za 24 h / 3 dni / týždeň, objem, sťažnosti (slová v správach klientov za 30 dní, text sa
+neukazuje) a tabuľka balíkov. Stránka sa sama obnovuje každých 90 s (`data-refresh`, `public/inside.js`; mení len časti,
+ktoré sa zmenili, nie tú, v ktorej je kurzor; také dopyty sa nepočítajú do analytiky, hlavička `x-firmony-refresh`).
+**Balíky** (`src/team/plan-usage.ts`, `planUsages` v `billing-store.ts`): doklady mesiaca sa počítajú tým istým SQL ako
+fakturácia (`PLAN_DOC_SQL`, `docCountStatement`, `planDocs`; test drží, že prehľad = `billingDrafts`): nie zmazané, nie
+naša faktúra, nie prevzaté otvorené položky, duplikát len keď ho účtovníčka zaúčtovala alebo originál zmizol (toto bola
+diera aj vo fakturácii: zaúčtovaný duplikát sa nerátal). Stav V limite / Blízko limitu (od 80 %) / Nad balíkom (vyúčtujeme
+ako vyšší balík s príplatkom) / Nad najvyšším (cenu dohodnúť), odhad na celý mesiac, tri mesiace dozadu a návrh vyššieho
+balíka po dvoch prekročeniach z troch. Správcov zvonček (bez mena klienta) raz za mesiac na klienta nad balíkom, 8 až 20 h
+(`planUsageScheduled` z `appScheduled`). Na stránke klienta vidí správca riadok „Doklady 23 / 20, nad balíkom, vyúčtujeme
+ako Rast“ (`UsageLine`); klient ani účtovníčka nie. **Kontrola s Claude** (`src/team/overview-check.ts`, schéma krok
+**90** `admin_checks`): Haiku 5.5 s vynúteným nástrojom dostane len čísla a stavy, firmy ako K1, K2 (mená, e-maily ani
+texty správ nie); bod, ktorého číslo alebo firma nie je v údajoch, sa nezobrazí a spočíta sa („2 body sme vynechali“);
+mená sa doplnia až u nás. 20 kontrol denne, nie dvakrát za 30 s, uchováva sa 180 dní s cenou (okolo 0,0004 USD).
+**Balast:** `tsconfig` má `noUnusedLocals`, odstránené nepoužívané exporty (formácia, `cashEntries`, `intrastatMonth`,
+`guideByPath`, `POD_BALANCE_ROWS`, `HOUR_PARTS`…, `lookupDirectors`, `LEVEL_PILL`) a importy. **GitHub:** `grapuu/firmony`
+bol verejný približne od práce s DeepSeekom a 29. 10. o 20:25 je znova súkromný (prehliadač, jeho kód z e-mailu). Celá
+história prehľadaná: žiadne kľúče ani dáta klientov; viditeľný bol kód, tieto poznámky, jeho e-maily, prihlasovacie meno
+goAML, ID Cloudflare a mená kandidátok na účtovníčku. Zmazané tokeny „Cline-Firmony“ (classic, plné práva vrátane
+mazania repozitárov) a „Firmony-Claude-Agent“ (20:42). Nový `test/secrets.test.mjs` (v `npm test`) zlyhá na kľúči
+Anthropic, Stripe, GitHub, AWS, Google, Slack, súkromnom kľúči, JWT či hesle v sledovanom súbore; `.gitignore` drží
+`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`; číslo karty vo fixtúre Tatry je testovacie. **Jeho kliknutia** (nástroj
+to za neho nesmie): pozastaviť aplikácie ChatGPT Codex Connector (zápis do kódu firmony, push na `main` ide naživo) a
+Render (čítanie kódu a zápis workflows na všetky repozitáre) na github.com/settings/installations, „Suspend“, dá sa vrátiť;
+pridať passkey na github.com/settings/security. Prihlásenie na GitHub je cez Google, ktorý má dvojfázové overenie a passkey.
+Súkromný repozitár má 2 000 minút GitHub Actions mesačne zadarmo, Checks trvajú asi 12 minút na push; keď minúty
+dôjdu, nasadenie cez Cloudflare ide ďalej, len kontroly nebežia. Overené: `npm run check`, 1 739 unit + 15 deployment a
+secrets, 2 730 runtime na Node 24, 25 Peppol, UI pri 1440/390/320 (na telefóne je tabuľka balíkov rad kariet), 129 browser.
+
 **Web podľa jeho poznámok, e-mail namiesto IČO a overenie zakladateľa, 29. 10. 2026 popoludní (Claude, `main`):** jeho
 správy 13:45 a 13:47. Na marketingových stránkach už nie je „bez DPH“, len cena a „Ceny sú konečné.“ (europio nie je
 platiteľ); objednávka, podmienky, zmluva o založení, mail s objednávkou a zmluva v aplikácii ho držia, lebo zmluva musí

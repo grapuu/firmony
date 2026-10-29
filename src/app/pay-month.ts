@@ -69,11 +69,6 @@ export const EMPTY_PARTS: MonthParts = {
   average: null,
 }
 
-/** The parts typed as hours or days (hundredths), as money (cents), and the rest. */
-export const HOUR_PARTS = ['hours', 'obstacleHours', 'overtimeHours', 'nightHours', 'saturdayHours', 'sundayHours', 'holidayWorkHours'] as const
-export const DAY_PARTS = ['holidayDays', 'unpaidDays'] as const
-export const MONEY_PARTS = ['wage', 'bonus', 'other'] as const
-
 /** Parts read back from storage: anything missing or wrong is nought (or null where null means "as agreed"). */
 export function partsOf(raw: unknown): MonthParts {
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}

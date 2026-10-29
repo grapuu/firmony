@@ -8,7 +8,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check": "tsc --noEmit && tsc -p tsconfig.browser.json",
-    "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs && node --test test/deployment.test.mjs",
+    "test": "esbuild test/units.entry.ts --bundle --format=esm --platform=neutral --main-fields=module,main --log-level=warning --outfile=.wrangler/tmp/units-bundle.mjs && node --no-warnings test/units.test.mjs && node --test test/deployment.test.mjs test/secrets.test.mjs",
     "test:runtime": "node test/build.mjs && node --no-warnings test/e2e.workerd.mjs",
     "test:ui": "node test/visual.mjs",
     "build:assets": "node scripts/build-metadata.mjs && node scripts/build-knowledge.mjs && node scripts/build-security.mjs && node scripts/build-tools.mjs",

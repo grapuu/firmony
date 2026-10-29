@@ -9,6 +9,7 @@
     "jsxImportSource": "hono/jsx",
     "types": ["@cloudflare/workers-types"],
     "strict": true,
+    "noUnusedLocals": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "skipLibCheck": true,

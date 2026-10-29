@@ -26,13 +26,16 @@ import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { APP, ART, ENDING, OFFLINE_TERMS, OPERATOR, ORDER, PLANS, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
+import { overviewOf, windowOf } from './overview'
+import { CHECK, checkOverview, lastCheck, saveCheckStatements } from './overview-check'
+import { OverviewPage } from '../views/overview'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
 import { flushOutbox, queueStatement } from '../mail'
 import { bell, ringStatement } from '../bell'
 import { fingerprint, intrastatFileOf, intrastatNext, markIntrastatFiled, markOssFiled, ringClient as ringOf } from './marks'
 import { LEGAL_FORM_CODES, isLegalForm, lookupCompany, oneMayConclude } from '../rpo'
-import { dayOfText, isCategory, supplierKey, textDay, type PaidBy } from '../app/booking'
+import { dayOfText, isCategory, supplierKey, textDay } from '../app/booking'
 import { autoBook, autoBooked, autobookStatements } from '../app/autobook'
 import { centsOf, getInvoice, invoiceLines } from '../app/invoices'
 import { tripOfDocument } from '../app/trips-store'
@@ -47,18 +50,14 @@ import type { AppBindings } from '../app/routes'
 import { monyFor } from '../assistant/mony'
 import { booksRefused, checkPaperStatement, getPaper, keepPaper, paperResponse, papersOf, poaStateOf, retirePaperStatements, returnPoaStatements } from '../app/papers'
 import {
-  LEVELS,
-  checkDeclarationStatement,
   decideStatement,
   declarationStateOf,
   latestDeclaration,
   noticeEndsOn,
   reportStatements,
   reportsOf,
-  riskStatements,
   risksOf,
   suggestedLevel,
-  type Level,
 } from '../app/aml'
 import { AmlPage } from '../views/aml'
 import {
@@ -196,7 +195,7 @@ import { isIban, plainIban } from '../app/invoices'
 import { familyOf, moneyText, modesFor, periodsAround, readVat, vatValues } from '../app/vat-form'
 import { isTaxOffice } from '../app/vat-xml'
 import { formatEurExact } from '../format'
-import { badDebtEvents, claimAt, filingDeadline, isIssued, isPeriod, isQuarter, isReceived, nextPeriod, outcome, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, workingDayUntil, type VatData } from '../app/vat'
+import { badDebtEvents, claimAt, filingDeadline, isIssued, isPeriod, isQuarter, isReceived, nextPeriod, periodOf, periodRange, plainVatId, prevPeriod, vatOf, workingDayFrom, workingDayUntil, type VatData } from '../app/vat'
 import { ISSUED_RATIO_MODES, coefOf, isRatioHow, lastPeriodOfYear, ratioWork, sameSettlement, settledOf, withRatio, type RatioMode, type RatioWork, type RatioYear } from '../app/vat-ratio'
 import { registerFoundingTeam } from '../founding/team'
 import { RatioPage, type RatioState } from '../views/vat-ratio'
@@ -219,7 +218,6 @@ import { dossierProposals } from '../aml/proposals'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
 import { latestOrderOfRequest, renewOrderStatement, orderOf, acceptedAs, type Order } from '../order'
-import { orderLinkMail } from '../order-mail'
 import { ContractReleasePage, ContractReviewPage, type ReleaseForm } from '../views/contract-review'
 import { BillingPage } from '../views/billing'
 import { WorkPage } from '../views/work-pay'
@@ -229,7 +227,7 @@ import { clientSortOf, dashboardOf, exportCsv, exportOf } from '../analytics/sto
 import { periodOf as analyticsPeriod } from '../analytics/model'
 import { accuracyOf, comparedOf } from './ai-accuracy'
 import { bookingTime, lastMonths, payOf, workCsv, workStatement } from './work-pay'
-import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, REMIND_EVERY, remindMessage } from './billing-store'
+import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, planUsages, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
 import { companyRegistrations, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
@@ -244,7 +242,6 @@ import {
   WAGE_PREFIX,
   leftToPay,
   overpaid,
-  payable,
   periodName,
   planFiling,
   selfVatOf,
@@ -291,7 +288,6 @@ import {
   type Company,
   type Doc,
   type Payment,
-  type User,
   type Who,
   settledCoef,
   vatCompanyOf,
@@ -314,7 +310,6 @@ import {
   RequestsPage,
   TeamMissing,
   TeamShell,
-  detailsOf,
   valuesOf,
   type BookValues,
   type DetailsErrors,
@@ -743,6 +738,8 @@ async function clientPage(
     papersOf(db, company.id, 'handover'),
     papersOf(db, company.id, 'takeover'),
   ])
+  // How the client's month stands against its plan: for the administrators, never for the client or its accountant.
+  const usage = isAdmin(who.user) ? ((await planUsages(db, now(), company.id, true))[0]?.usage ?? null) : null
   const resigned = await db
     .prepare(`SELECT ev.at, u.name FROM events ev LEFT JOIN users u ON u.id = ev.user_id WHERE ev.company_id = ? AND ev.action = '${POA_RESIGNED}' ORDER BY ev.id LIMIT 1`)
     .bind(company.id)
@@ -791,6 +788,7 @@ async function clientPage(
     company.name,
     <ClientPage
       peppolLine={peppolLine}
+      usage={usage}
       assistant={await assistantAllowed(db,{company:company.id,actor:who.user.id,side:'team'})}
       user={who.user}
       company={company}
@@ -5610,6 +5608,39 @@ teamRoutes.get('/pouzivatelia/:key', async (c) => {
   if (!person) return missingPage(c)
   const detail = person.userId ? await personDetail(c.env.DB, person.userId) : null
   return shell(c, 'users', person.name ?? person.email, <UserPage person={person} detail={detail} now={at} />)
+})
+
+// Prehľad (29 October 2026, his word: the whole firm at a glance, kept up to date, and a check by Claude of what is new,
+// what burns and what we are late with). Only an administrator; the page asks for itself again every minute and a half.
+async function overviewPage(c: Ctx, notice: { error?: string } = {}, status: ContentfulStatusCode = 200) {
+  const who = c.get('who')
+  const db = c.env.DB
+  const at = now()
+  const [released, officer] = await Promise.all([contractCatalogueHash().then((hash) => Boolean(approvedRelease(c.env.CONTRACT_RELEASE, hash))), isOfficer(db, who.user)])
+  const [o, check] = await Promise.all([
+    overviewOf(db, { user: who.user, demo: demoOn(c), at, today: dayOf(at), hours: windowOf(c.req.query('za')), released, officer }),
+    lastCheck(db),
+  ])
+  c.header('Cache-Control', 'no-store')
+  const flash = c.req.query('ok') === 'kontrola' ? 'Kontrola je hotová.' : null
+  return shell(c, 'overview', 'Prehľad', <OverviewPage o={o} check={check} available={Boolean(c.env.ANTHROPIC_API_KEY)} error={notice.error ?? null} flash={flash} />, status)
+}
+teamRoutes.get('/prehlad', (c) => (isAdmin(c.get('who').user) ? overviewPage(c) : missingPage(c)))
+teamRoutes.post('/prehlad/kontrola', async (c) => {
+  const who = c.get('who')
+  if (!isAdmin(who.user)) return missingPage(c)
+  const db = c.env.DB
+  const key = c.env.ANTHROPIC_API_KEY
+  if (!key) return overviewPage(c, { error: 'Kontrola potrebuje kľúč Anthropic na Workeri.' }, 503)
+  if (await db.prepare('SELECT 1 AS x FROM admin_checks WHERE user_id = ? AND at > ?').bind(who.user.id, now() - CHECK.gapSeconds).first()) return overviewPage(c, { error: 'Kontrola práve prebehla. Skúste to o pol minúty.' }, 429)
+  if (!(await withinLimit(db, 'overview-check', who.user.id, CHECK.perDay, 86400))) return overviewPage(c, { error: `Dnes ste už spustili ${CHECK.perDay} kontrol. Ďalšia pôjde zajtra.` }, 429)
+  const at = now()
+  const [released, officer] = await Promise.all([contractCatalogueHash().then((hash) => Boolean(approvedRelease(c.env.CONTRACT_RELEASE, hash))), isOfficer(db, who.user)])
+  const o = await overviewOf(db, { user: who.user, demo: demoOn(c), at, today: dayOf(at), hours: windowOf(c.req.query('za')), released, officer })
+  const result = await checkOverview(key, o)
+  if (!result) return overviewPage(c, { error: 'Claude teraz neodpovedal. Skúste to o chvíľu znova.' }, 502)
+  await db.batch(saveCheckStatements(db, { ...result, id: crypto.randomUUID(), at, userId: who.user.id }))
+  return c.redirect('/ucto/prehlad?ok=kontrola#kontrola', 303)
 })
 
 // Analytika (26 October 2026): the administrator's page of how Firmony does, and its data for an analysis. Only an

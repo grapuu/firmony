@@ -216,6 +216,27 @@ export async function readerAnswer(request, calls = []) {
       usage: { input_tokens: 612, output_tokens: 88 },
     })
   }
+  // The overview's check (team/overview-check.ts): one point true to the data it was sent, one with a number the data
+  // does not hold and one about a firm it does not name, which the app must leave out.
+  if (tool === 'firmony_prehlad') {
+    const text = String(body?.messages?.[0]?.content ?? '')
+    const data = JSON.parse(text.slice(text.indexOf('{')))
+    const plan = data.baliky?.find((p) => p.limit_dokladov === 20 && p.doklady_tento_mesiac === 23) ?? data.baliky?.[0]
+    const body2 = [
+      ...(plan ? [{ uroven: 'pozor', nazov: `${plan.firma} je ${plan.stav}`, detail: `${plan.doklady_tento_mesiac} dokladov pri limite ${plan.limit_dokladov}, vyúčtujeme ako ${plan.vyuctujeme_ako}.`, kde: 'baliky' }] : []),
+      { uroven: 'hori', nazov: 'Vymyslené číslo', detail: 'Klientov je 987654.', kde: 'objem' },
+      { uroven: 'pozor', nazov: 'K999 mešká', detail: 'Neznáma firma.', kde: 'objem' },
+    ]
+    return Response.json({
+      id: 'msg_pretend',
+      type: 'message',
+      role: 'assistant',
+      model: body?.model,
+      content: [{ type: 'tool_use', id: 'toolu_pretend', name: tool, input: { zhrnutie: `Horí ${data.sucty.veci_hori} vecí, nad balíkom je ${data.sucty.klientov_nad_balikom} klientov.`, body: body2 } }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 2400, output_tokens: 310 },
+    })
+  }
   // A test's photo may say what is written on it: the bytes PRETEND and a JSON object of the tool's fields.
   const data = body?.messages?.[0]?.content?.find((part) => part.source)?.source?.data
   const said = data ? /PRETEND(\{.*\})/s.exec(Buffer.from(data, 'base64').toString('utf8')) : null

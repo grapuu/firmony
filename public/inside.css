@@ -8253,3 +8253,225 @@ a.wtable__name {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Prehľad (team/overview.ts): what burns and waits as a list of rows, each with its level, its count beside the title,
+   whose it is and how old the oldest one is; the plans as a table with a bar whose middle mark is the plan's limit. */
+.ovalarms {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--white, #fff);
+  overflow: hidden;
+}
+
+.ovalarm {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  align-items: start;
+  gap: 4px 14px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.ovalarm:first-child {
+  border-top: 0;
+}
+
+.ovalarm--hori {
+  background: var(--red-soft);
+}
+
+.ovalarm .pill {
+  justify-self: start;
+}
+
+.ovalarm__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ovalarm__title {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+.ovalarm__title:hover,
+.ovalarm__title:focus-visible {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.ovalarm__n {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ovalarm__since,
+.ovalarm__firms,
+.ovalarm__detail {
+  margin: 0;
+  color: var(--soft);
+  font-size: 0.875rem;
+  overflow-wrap: break-word;
+}
+
+.ovalarm__detail {
+  color: var(--text);
+  font-size: 0.9375rem;
+}
+
+.ovfigs {
+  grid-template-columns: repeat(auto-fill, minmax(11.5em, 1fr));
+}
+
+.ovfigs .fig:last-child {
+  grid-column: auto;
+}
+
+.ovfig--new .fig__value {
+  color: var(--blue);
+}
+
+.ovplans {
+  min-width: 860px;
+}
+
+.ovplans td {
+  vertical-align: middle;
+}
+
+.ovplans__docs {
+  display: block;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usebar {
+  min-width: 90px;
+}
+
+.usebar--near .anbar__fill {
+  fill: var(--amber);
+}
+
+.usebar--over .anbar__fill,
+.usebar--agree .anbar__fill {
+  fill: var(--red);
+}
+
+.usebar__limit {
+  fill: var(--ink);
+}
+
+.ovcheck__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.ovcheck__form {
+  margin: 0;
+}
+
+.ovcheck__result {
+  display: grid;
+  gap: 12px;
+}
+
+.ovcheck__summary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  /* On a phone each client of the plans' table is a card: name and state on top, the bar, then the rest by label. */
+  .ovplans {
+    min-width: 0;
+  }
+
+  .ovplans thead {
+    display: none;
+  }
+
+  .ovplans,
+  .ovplans tbody,
+  .ovplans tr {
+    display: block;
+  }
+
+  .ovplans tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .ovplans td {
+    display: block;
+    grid-column: 1 / -1;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .ovplans td,
+  .ovplans td.num {
+    padding: 0;
+    text-align: left;
+  }
+
+  .ovplans td.antable__key {
+    grid-column: 1;
+  }
+
+  .ovplans td.ovplans__state {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .ovplans td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--dim);
+    font-size: 0.8125rem;
+  }
+
+  .ovplans .ovplans__docs {
+    display: inline;
+  }
+
+  .ovplans .usebar {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .ovalarm {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 380px) {
+  /* Two figures a row still fit on the narrowest phones; one a row made the overview a long column. */
+  .ovfigs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ovfigs .fig {
+    padding: 14px;
+  }
+}

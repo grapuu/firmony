@@ -106,6 +106,8 @@ export function recordRequest(c: Context, db: D1Database | undefined, startedMs:
     if (!db) return
     const method = c.req.method
     if (method !== 'GET' && method !== 'POST') return
+    // A page that keeps itself up to date (public/inside.js, data-refresh) asks again by itself: nobody used anything.
+    if (c.req.header('x-firmony-refresh') === '1') return
     const url = new URL(c.req.url)
     const status = c.res.status
     const at = now()

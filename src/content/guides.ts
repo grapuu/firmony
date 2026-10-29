@@ -717,7 +717,3 @@ export const GUIDES: Guide[] = [
     keywords: ['kontrolný výkaz DPH', 'súhrnný výkaz DPH', 'súhrnný výkaz 7a', 'kontrolný a súhrnný výkaz rozdiel', 'lehota súhrnný výkaz'],
   },
 ]
-
-export function guideByPath(path: string): Guide | undefined {
-  return GUIDES.find((g) => g.path === path)
-}

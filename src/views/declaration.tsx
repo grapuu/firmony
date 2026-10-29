@@ -4,7 +4,7 @@
 // member of the company is told only where it stands.
 import type { Child, FC } from 'hono/jsx'
 import { app, dayName, whenName } from '../app/copy'
-import { ID_KINDS, KUVS, OWNER_SLOTS, TURNOVERS, declarationStateOf, maskBirthNumber, type DeclarationErrors, type DeclarationState, type DeclarationValues, type StoredDeclaration } from '../app/aml'
+import { ID_KINDS, KUVS, OWNER_SLOTS, TURNOVERS, maskBirthNumber, type DeclarationErrors, type DeclarationState, type DeclarationValues, type StoredDeclaration } from '../app/aml'
 import { Flash, Heading } from './inside'
 import { AML_NO_CONSENT } from '../aml/consent'
 import { typeset } from '../format'

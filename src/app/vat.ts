@@ -35,7 +35,7 @@
 import { CATEGORIES, type Category } from './booking'
 import type { DocKind } from './match'
 import { eurOf } from './fx'
-import { NO_DOCUMENT_GROUNDS, grossOf, shareOf, type BadDebt, type BadDebtLine } from './bad-debt'
+import { NO_DOCUMENT_GROUNDS, shareOf, type BadDebt, type BadDebtLine } from './bad-debt'
 
 /**
  * How VAT falls on a document. Received: `domestic` (a Slovak payer charged VAT), `reverse` (a service, or goods

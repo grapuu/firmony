@@ -1,12 +1,13 @@
 // Every text of the accountants' side. It speaks an accountant's language (zaúčtovať, MD, D, DPH), which the
 // client's app never does.
-import { APP, AUTOBOOK, BRAND, TEAM } from '../config'
+import { APP, AUTOBOOK, BRAND } from '../config'
 import { typeset, typesetAll } from '../format'
 import { plural } from '../app/copy'
 
 export const team = typesetAll({
   nav: {
     label: 'Účtovníctvo',
+    overview: 'Prehľad',
     clients: 'Klienti',
     deadlines: 'Termíny',
     queue: 'Na zaúčtovanie',
@@ -21,7 +22,7 @@ export const team = typesetAll({
     workspaces: 'Fakturačné účty',
     incidents: 'Incidenty',
     own: 'Moja firma',
-    short: { clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', users: 'Ľudia', billing: 'Faktúry', people: 'Tím', work: 'Výkaz', ai: 'AI', analytics: 'Analytika', workspaces: 'Fakturácia zdarma', incidents: 'Incidenty' },
+    short: { overview: 'Prehľad', clients: 'Klienti', deadlines: 'Termíny', queue: 'Účtovať', inbox: 'Správy', requests: 'Žiadosti', users: 'Ľudia', billing: 'Faktúry', people: 'Tím', work: 'Výkaz', ai: 'AI', analytics: 'Analytika', workspaces: 'Fakturácia zdarma', incidents: 'Incidenty' },
     role: { admin: 'Správca', accountant: 'Účtovníčka' },
   },
   deadlines: {

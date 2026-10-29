@@ -74,5 +74,7 @@ export const bell = {
   teamNotice: (link: string) => ring('výpoveď zmluvy', 'klient vypovedal zmluvu alebo výpoveď vzal späť:', link),
   teamBilling: (month: string, link: string) => ring(`faktúry klientom za ${month}`, `faktúry klientom za ${month} sú pripravené. Skontrolujte ich a vystavte:`, link),
   teamOverdue: (link: string) => ring('faktúra klienta 30 dní po splatnosti', 'jedna z faktúr klientom je 30 dní po splatnosti a platbu stále nevidíme. Klient dostal dve pripomienky. Rozhodnite, ako ďalej:', link),
+  teamPlanOver: (link: string) => ring('klient prekročil balík', 'jeden z klientov má tento mesiac viac dokladov, ako je jeho balík. Mesiac mu vyúčtujeme ako vyšší balík. Kto to je a či mu ponúknuť vyšší balík natrvalo, nájdete v prehľade:', link),
+  teamPlanAgree: (link: string) => ring('klient nad najvyšším balíkom', 'jeden z klientov má tento mesiac viac dokladov, ako je náš najvyšší balík. Cenu treba dohodnúť (bod 4.2 podmienok). Podrobnosti nájdete v prehľade:', link),
   teamStatement: (link: string) => ring('výpis na kontrolu', 'výpis z banky klienta nenadväzuje na predchádzajúci, preto sme ho nezaúčtovali. Pozrite sa naň:', link),
 }

@@ -2,7 +2,6 @@ import { localDaySql } from '../app/period-schema'
 import { now } from '../db'
 import { ENDING, RETENTION } from '../config'
 import { PURGE_GRACE_SECONDS } from '../incidents/store'
-import { AML_TODAY_SQL } from './retention'
 
 const expiredSql = (o: string, day: string) => `${o}.aml_ended_at IS NOT NULL AND ${o}.expires_at <= unixepoch() AND date(${localDaySql(`${o}.aml_ended_at`)},'+5 years','floor') < ${day}
   AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = ${o}.ico AND c.demo = 0 AND c.invoicing_only = 0 AND (c.ends_on IS NULL OR date(c.ends_on,'+5 years','floor') >= ${day}))`

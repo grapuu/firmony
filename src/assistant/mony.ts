@@ -235,17 +235,6 @@ const headers = (key: string) => ({
   'content-type': 'application/json',
 })
 
-export interface MonyUsage {
-  routerIn: number
-  routerOut: number
-  routerCached: number
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-  sections: number
-}
-
 /** The first call: which sections answer the question. Null when the model could not be asked. */
 export async function pickSections(
   key: string,

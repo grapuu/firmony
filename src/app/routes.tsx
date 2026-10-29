@@ -39,7 +39,7 @@ import { keptLogoKey, logoForPdf } from './logo-cache'
 import { invoiceYears, invoicingArchive } from './invoicing-export'
 import { providerOf, type PeppolEnv } from '../peppol/provider'
 import { peppolCopy as pc } from '../peppol/copy'
-import { bindingOf, bindingWaits, blockedOf, companyParticipant, customerParticipant, participantState, queueSend, receivedList, receivedOne, receivedPaidStatements, receivedUnpaid, sendDue, sendStates, sendingsOf, trySend } from '../peppol/store'
+import { bindingOf, bindingWaits, blockedOf, companyParticipant, customerParticipant, participantState, queueSend, receivedList, receivedOne, receivedPaidStatements, receivedUnpaid, sendStates, sendingsOf, trySend } from '../peppol/store'
 import { PeppolCard, PeppolCompany, ReceivedOne, ReceivedPage, type CompanyPeppol } from '../views/peppol'
 import { BankPage, waitingFirst, type BankSetup } from '../views/bank'
 import { isFioToken, linkFio } from './fio'
@@ -54,7 +54,7 @@ import { resolveContract, type ContractBindings } from '../contracts'
 import { TaxesPage } from '../views/taxes'
 import { closingsOf, incomePaid } from './closing-store'
 import { filedReturns, taxPaid } from './vat-store'
-import { billingScheduled, billRows, remindBillsScheduled, tariffForClient } from '../team/billing-store'
+import { billingScheduled, billRows, planUsageScheduled, remindBillsScheduled, tariffForClient } from '../team/billing-store'
 import { nudgeScheduled } from '../team/nudge'
 import { booksRefused, getPaper, keepPaper, paperResponse, papersOf, poaStateOf } from './papers'
 import { checkDeclaration, declarationStateOf, declarationStatements, latestDeclaration, noticeEndsOn, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './aml'
@@ -98,7 +98,7 @@ import { balanceOf, canonicalAccount, payableOf, type Books } from './ledger'
 import { booksOf } from './ledger-store'
 import { lookupCompany } from '../rpo'
 import { normalizeIco } from '../ico'
-import { formatEur, formatEurExact } from '../format'
+import { formatEurExact } from '../format'
 import { app as t, dayName, monthName } from './copy'
 import { clientDeadlines, nextMonth } from './deadlines'
 import { companyDeadlines } from '../team/deadlines-store'
@@ -147,7 +147,6 @@ import {
   DOC_COLUMNS,
   DOC_FROM,
   docOf,
-  documentByHash,
   documentsOfPayment,
   eventStatement,
   exemptStatement,
@@ -155,8 +154,6 @@ import {
   firstCompanyOf,
   getDocument,
   getPayment,
-  importStatements,
-  insertDocumentStatement,
   linkStatement,
   listDocuments,
   listMessages,
@@ -168,7 +165,6 @@ import {
   monthFigures,
   peopleOf,
   privatelyStatement,
-  readingStatement,
   seenStatement,
   suggestions,
   unlinkStatement,
@@ -179,7 +175,6 @@ import {
   type Doc,
   type Who,
 } from './store'
-import { readInvoice, readStatement, type Reading } from './xml'
 import { approveBy, approveForCompany, foundingOfCompany } from '../founding/store'
 import { FoundingApprovePage } from '../views/founding'
 
@@ -2337,7 +2332,7 @@ appRoutes.post('/asistent',async c=>{
   return assistantPage(c,result)
 })
 appRoutes.post('/asistent/odovzdat',async c=>{
-  const who=c.get('who'),body=await c.req.parseBody(),s=clientAssistantScope(c)
+  const body=await c.req.parseBody(),s=clientAssistantScope(c)
   if(body.firma!==s.company||body.kontext!==`${s.actor}:${s.company}`)return c.text('Účet alebo firma sa zmenili. Obnovte stránku.',409)
   const question=assistantQuestion(body.otazka)
   if(!question)return assistantPage(c,{status:422,error:'Najprv napíšte otázku, ktorú chcete pripraviť účtovníčke.',question:'',document:''})
@@ -4072,6 +4067,12 @@ export async function appScheduled(env: AppBindings, at: number = Date.now()): P
     await remindBillsScheduled(env, at, BRAND.origin)
   } catch (err) {
     console.error('billing reminders failed', err instanceof Error ? err.name : 'error')
+  }
+  try {
+    // A client that outgrows its plan this month: the administrators hear it once (team/plan-usage.ts).
+    await planUsageScheduled(env, at, BRAND.origin)
+  } catch (err) {
+    console.error('plan usage failed', err instanceof Error ? err.name : 'error')
   }
   try {
     // A newcomer who stopped halfway: the declaration, the contract, an application, the first steps (team/nudge.ts).

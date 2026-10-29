@@ -4,7 +4,7 @@
 import { now } from '../db'
 import { DOC_COLUMNS, DOC_FROM, docOf, vatCompanyOf, vatDocOf, type Company } from './store'
 import { taxDay, vatOf } from './vat'
-import { goodsOf, intrastatView, type Declaration, type DocGoods, type Flow, type IntrastatDoc, type IntrastatFiling, type IntrastatSettings, type IntrastatView } from './intrastat'
+import { goodsOf, type Declaration, type DocGoods, type Flow, type IntrastatDoc, type IntrastatFiling, type IntrastatSettings } from './intrastat'
 
 type Row = Record<string, unknown>
 
@@ -77,12 +77,6 @@ export function monthsBefore(month: string, n: number): string {
   const [y, m] = month.split('-').map(Number) as [number, number]
   const total = y * 12 + (m - 1) - n
   return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}-01`
-}
-
-/** A month and flow worked out, with everything it needs loaded. */
-export async function intrastatMonth(db: D1Database, company: Company, settings: IntrastatSettings, month: string, flow: Flow, today: string): Promise<{ view: IntrastatView; docs: IntrastatDoc[] }> {
-  const [docs, filings] = await Promise.all([intrastatDocs(db, company, { from: monthsBefore(month, 3) }), intrastatFilings(db, company.id)])
-  return { view: intrastatView(docs, month, flow, settings, filings.get(`${month}:${flow}`) ?? [], today), docs }
 }
 
 /** A filing marked as sent, with its reports and its file; refused (no row) when another was marked in between. */

@@ -400,5 +400,27 @@
       }, 2500)
     }
     look()
+
+    // A page that keeps itself up to date (the team's overview): while the tab is in sight, its parts are fetched again
+    // every so many seconds and those that changed are put in place; a part with the focus in it is left alone.
+    var keep = document.querySelector('[data-refresh]')
+    if (keep) {
+      var every = Math.max(30, Number(keep.getAttribute('data-refresh')) || 90) * 1000
+      setInterval(function () {
+        if (document.hidden) return
+        var here = location.href.split('#')[0]
+        fetch(here, { credentials: 'same-origin', headers: { accept: 'text/html', 'x-firmony-refresh': '1' }, cache: 'no-store' })
+          .then(function (res) { return res.ok && !res.redirected ? res.text() : '' })
+          .then(function (html) {
+            if (!html) return
+            var fresh = new DOMParser().parseFromString(html, 'text/html')
+            fresh.querySelectorAll('[data-part]').forEach(function (part) {
+              var mine = document.querySelector('[data-part="' + part.getAttribute('data-part') + '"]')
+              if (mine && mine.innerHTML !== part.innerHTML && !mine.contains(document.activeElement)) mine.replaceWith(document.importNode(part, true))
+            })
+          })
+          .catch(function () {})
+      }, every)
+    }
   })
 })()

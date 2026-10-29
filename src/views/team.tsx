@@ -39,11 +39,14 @@ import { responseDueAt } from '../team/support'
 import { pressing } from '../team/deadlines'
 import type { DueRow } from '../team/deadlines-store'
 import { DueItem } from './deadlines'
+import { UsageLine } from './overview'
+import type { PlanUsage } from '../team/plan-usage'
 
-export type TeamPlace = 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'users' | 'billing' | 'people' | 'work' | 'ai' | 'analytics' | 'workspaces' | 'incidents'
+export type TeamPlace = 'overview' | 'clients' | 'deadlines' | 'queue' | 'inbox' | 'requests' | 'users' | 'billing' | 'people' | 'work' | 'ai' | 'analytics' | 'workspaces' | 'incidents'
 
 /** The team's places. `menu`: seldom used, so on a phone it is always in the bar's menu, never a tab. */
 const NAV: { place: TeamPlace; href: string; label: string; short: string; art: Art | null; admin?: boolean; owner?: boolean; menu?: boolean }[] = [
+  { place: 'overview', href: '/ucto/prehlad', label: t.nav.overview, short: t.nav.short.overview, art: ART.rocket, admin: true, menu: true },
   { place: 'clients', href: '/ucto', label: t.nav.clients, short: t.nav.short.clients, art: ART.tree },
   { place: 'deadlines', href: '/ucto/terminy', label: t.nav.deadlines, short: t.nav.short.deadlines, art: ART.paperReturn },
   { place: 'queue', href: '/ucto/doklady', label: t.nav.queue, short: t.nav.short.queue, art: ART.paperInvoice },
@@ -373,6 +376,8 @@ export interface ClientPageProps {
   bankLine?: string | null
   /** Whether the client receives e-invoices through Peppol, and through whose postman. */
   peppolLine?: string | null
+  /** The month's documents against the plan (team/plan-usage.ts), for the administrators only. */
+  usage?: PlanUsage | null
   /** The power of attorney the client uploaded, the newest first. */
   papers: Paper[]
   poa: PoaState
@@ -748,6 +753,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
           <span>{c.accountantName ?? t.clients.nobody}</span>
           {p.bankLine ? <span>{p.bankLine}</span> : null}
           {p.peppolLine ? <span>{p.peppolLine}</span> : null}
+          {p.usage ? <UsageLine usage={p.usage} /> : null}
           {p.ending ? <span class="pill pill--amber">{p.ending.phase === 'ending' ? t.client.ends(dayName(p.ending.endsOn)) : t.client.ended(dayName(p.ending.endsOn))}</span> : null}
         </p>
       </header>

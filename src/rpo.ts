@@ -326,7 +326,3 @@ export async function lookupEntity(rpoId: string, fetcher: typeof fetch = fetch)
   }
 }
 
-/** The directors of an entity, or null when the register does not answer within four seconds. */
-export async function lookupDirectors(rpoId: string, fetcher: typeof fetch = fetch): Promise<Director[] | null> {
-  return (await lookupEntity(rpoId, fetcher))?.directors ?? null
-}

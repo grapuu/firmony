@@ -139,7 +139,7 @@ function ofxDay(value: string | null): string | null {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null
 }
 
-/** A card payment's merchant from Tatra banka's line: "423473******6145 BRATISLAVA CHRISTIAN X 20260922 09:58:50 12.18EUR WWW.SHOP.SK". */
+/** A card payment's merchant from Tatra banka's line: "400000******0002 BRATISLAVA JAN NOVAK 20260922 09:58:50 12.18EUR WWW.SHOP.SK". */
 function cardMerchant(name: string): string | null {
   const m = /\d{8}\s+\d{2}:\d{2}:\d{2}\s+[\d.,]*[A-Z]{3}\s+(.+)$/.exec(name)
   return m ? (m[1] ?? '').trim().slice(0, 120) || null : null

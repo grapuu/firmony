@@ -87,6 +87,7 @@ import { sanctionsAnswer } from './sanctions-fixtures.mjs'
 import { checkSanctionsRuntime } from './sanctions.runtime.mjs'
 import { checkNudgeRuntime } from './nudge.runtime.mjs'
 import { checkTatraRuntime } from './tatra.runtime.mjs'
+import { checkAdminOverview } from './admin-overview.runtime.mjs'
 import { checkDueRuntime } from './due.runtime.mjs'
 import { ruzAnswer, RUZ_LAST } from './ruz-fixtures.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
@@ -5434,6 +5435,7 @@ await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin,
 await checkSanctionsRuntime({ db, files, get, freshAdmin, worker, settle, nowS })
 await checkNudgeRuntime({ db, files })
 await checkTatraRuntime({ db, files })
+await checkAdminOverview({ db, admin: await freshAdmin(), acc, nowS, readings, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkDueRuntime({ db })
 await mf.dispose()
 done('runtime')
