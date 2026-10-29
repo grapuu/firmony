@@ -298,6 +298,9 @@ export interface Reading {
   totalCents: number | null
   vatCents: number | null
   currency: string | null
+  /** What is left to pay when the document says less than its total (a credit, a balance or an overpayment set off:
+   *  "Applied balance", "Započítaný preplatok"); never the total itself, null when it is. */
+  dueCents?: number | null
   /** What it is for, as the reader judged it; an e-invoice says nothing of it. */
   category?: Category | null
   /** For VAT (src/app/vat.ts), as far as the document says: the other side's VAT number, the day of supply,
@@ -373,9 +376,15 @@ export function readInvoice(xml: string, ourIco: string | null): Reading | null 
   const ours = ourIco !== null && icoAmong(supplier.ids) === ourIco
   const other = ours ? customer : supplier
   const means = list((invoice as Record<string, unknown>).PaymentMeans)[0]
-  // A prepayment invoice (386) is made for money already paid: what it is worth is its total with VAT, not what is due.
+  // What an invoice is worth is its total with VAT (BT-112), which its VAT breakdown makes; what is left to pay (BT-115)
+  // is less when an amount paid before is set off (BT-113). A prepayment invoice (386) documents money paid already.
   const prepayment = text(at(invoice, 'InvoiceTypeCode')) === '386'
-  const payable = at(invoice, 'LegalMonetaryTotal', prepayment ? 'TaxInclusiveAmount' : 'PayableAmount')
+  const inclusive = at(invoice, 'LegalMonetaryTotal', 'TaxInclusiveAmount')
+  const payableNode = at(invoice, 'LegalMonetaryTotal', 'PayableAmount')
+  const payable = text(inclusive) !== null ? inclusive : payableNode
+  const totalOf = toCents(text(payable))
+  const dueOf = prepayment || credit ? null : toCents(text(payableNode))
+  const due = totalOf !== null && dueOf !== null && dueOf >= 0 && dueOf < totalOf ? dueOf : null
   const vat = list((invoice as Record<string, unknown>).TaxTotal).map((total) => toCents(text(at(total, 'TaxAmount')))).find((cents) => cents !== null) ?? null
   const iban = text(at(means, 'PayeeFinancialAccount', 'ID'))
   // The base and VAT of each rate, as the invoice itself sums them (BG-23); a credit note's are the amounts it takes back.
@@ -411,7 +420,8 @@ export function readInvoice(xml: string, ourIco: string | null): Reading | null 
     vs: vsText && vsText.length <= 10 ? vsText : null,
     issuedOn: day(text(at(invoice, 'IssueDate'))),
     dueOn: day(text(at(invoice, 'DueDate')) ?? text(at(means, 'PaymentDueDate'))),
-    totalCents: toCents(text(payable)),
+    totalCents: totalOf,
+    ...(due !== null ? { dueCents: due } : {}),
     vatCents: vat,
     currency: currencyOf((payable as Record<string, unknown> | undefined)?.['@currencyID'] as string | undefined ?? text(at(invoice, 'DocumentCurrencyCode'))),
     ...(prepayment ? { prepaid: true } : {}),

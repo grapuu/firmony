@@ -1597,6 +1597,9 @@ const MIGRATIONS: readonly string[][] = [
   // 87: the EU's and the UN's sanctions lists as last read, for the screening the designated person confirms
   // (aml/sanctions-schema.ts).
   SANCTIONS_SCHEMA,
+  // 88: what is left to pay of a document when it says less than its total (a credit, a balance or an overpayment set
+  // off, the amount due of an e-invoice); null when it is the total (europio as client zero, 29 October 2026).
+  ['ALTER TABLE documents ADD COLUMN due_cents INTEGER CHECK (due_cents IS NULL OR due_cents >= 0)'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

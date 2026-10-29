@@ -64,7 +64,16 @@ const TOOL = {
       datum_vystavenia: { type: 'string', description: 'RRRR-MM-DD' },
       datum_vystavenia_text: { type: 'string', description: 'Prepíš pôvodný dátum vystavenia z dokladu bez zmeny poradia číslic a oddeľovačov, bez času. Slúži na overenie prevodu do RRRR-MM-DD.' },
       datum_splatnosti: { type: 'string', description: 'RRRR-MM-DD' },
-      suma_celkom: { type: 'string', description: 'Celková suma na úhradu s DPH, s desatinnou bodkou, napríklad 12.40. Pri dobropise bez mínusu.' },
+      suma_celkom: {
+        type: 'string',
+        description:
+          'Celková suma dokladu s DPH zo súhrnu (Total, Spolu), s desatinnou bodkou, napríklad 12.40: súčet základov a DPH v dph_podla_sadzieb. Kredit, zostatok ani preplatok započítaný pri úhrade (Applied balance, Credit applied, Započítaný preplatok) od nej neodpočítavaj. Pri dobropise bez mínusu.',
+      },
+      suma_na_uhradu: {
+        type: 'string',
+        description:
+          'Iba ak doklad uvádza nižšiu sumu na úhradu ako suma_celkom, lebo sa započítal kredit, zostatok alebo preplatok (Amount due, Zostáva uhradiť, K úhrade): táto suma s desatinnou bodkou, pri úplnom započítaní 0. Inak nechaj prázdne.',
+      },
       dph_celkom: {
         type: 'string',
         description:
@@ -171,6 +180,10 @@ export function readingFrom(input: Record<string, unknown>, company?: { name: st
   const vatLines = ratesOf(input.dph_podla_sadzieb)
   const totalCents = sized(total, false)
   let vatCents = sized(vat, true)
+  // What is left to pay after a credit, a balance or an overpayment was set off: less than the total, never on a document
+  // that corrects an invoice; the total itself, or more, says nothing of the kind.
+  const due = toCents(clean(input.suma_na_uhradu, 20))
+  const dueCents = !credit && totalCents !== null && due !== null && due >= 0 && due < totalCents ? due : null
   // The lines by rate that make the total to the cent outweigh a VAT read elsewhere (on 20 October 2026 the real reader
   // added a receipt's VAT twice, once from its line by rate and once from "DPH spolu").
   if (vatLines && totalCents !== null) {
@@ -189,6 +202,7 @@ export function readingFrom(input: Record<string, unknown>, company?: { name: st
     dueOn: isoDay(input.datum_splatnosti),
     totalCents,
     vatCents,
+    ...(dueCents !== null ? { dueCents } : {}),
     currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null,
     category: isCategory(input.kategoria) ? input.kategoria : null,
     partyVatId: vatId && /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(vatId) ? vatId : null,
@@ -275,7 +289,7 @@ export async function readDocument(key: string | undefined, file: { kind: FileKi
     'Pri faktúre a dobropise zapíš obe strany, dodávateľa aj odberateľa. Ak je naša firma odberateľ, je to faktúra prijatá a druhá strana je dodávateľ; ak je naša firma dodávateľ, je to faktúra vydaná a druhá strana je odberateľ.',
     'Slovenský číselný dátum s bodkami má poradie deň, mesiac, rok. Pri vystavení prepíš aj pôvodný dátum do datum_vystavenia_text a až potom ho preveď do RRRR-MM-DD. Deň a mesiac nezamieňaj. Nepoužívaj dátum dodania namiesto dátumu vystavenia.',
     'Pri vydanej faktúre za službu použi sales, za predaný tovar sales_goods. services a goods sú prijaté náklady. goods znamená nákup na ďalší predaj, nie akýkoľvek predmet. Účel výdavku, ktorý na doklade nie je, si nevymýšľaj.',
-    'Sumy píš presne tak, ako sú na doklade; celkovú sumu a DPH ber zo súhrnu dokladu. Nič nedomýšľaj: čo na doklade nie je, nechaj prázdne.',
+    'Sumy píš presne tak, ako sú na doklade; celkovú sumu a DPH ber zo súhrnu dokladu. Celková suma je pred započítaním kreditu, zostatku alebo preplatku; sumu, ktorá po ňom ostáva na úhradu, zapíš do suma_na_uhradu. Nič nedomýšľaj: čo na doklade nie je, nechaj prázdne.',
   ].join(' ')
   let answer: Response
   try {

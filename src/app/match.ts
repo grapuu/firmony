@@ -2,7 +2,8 @@
 // work is in store.ts, and every rule here is checked in test/units.test.mjs.
 //
 // The rule, said plainly:
-// - A document and a payment can belong together only when the amounts are the same to the cent, the money went
+// - A document and a payment can belong together only when the amounts are the same to the cent (the document's total, or
+//   what is left to pay of it when a credit or a balance was set off), the money went
 //   the right way (a receipt or a received invoice is paid out, an issued invoice is paid in), and the dates fit
 //   (a card receipt is settled at most a day before and five days after it was printed; an invoice is paid from
 //   fifteen days before it was issued to sixty days after it was due).
@@ -40,6 +41,8 @@ export interface MatchDocument {
   issuedOn: string | null
   dueOn: string | null
   totalCents: number | null
+  /** What is left to pay when less than the total (a credit or a balance set off): a payment of it pays the document. */
+  dueCents?: number | null
   party: string | null
   partyIban: string | null
   vs: string | null
@@ -123,7 +126,8 @@ export function score(payment: MatchPayment, doc: MatchDocument): number {
   if (doc.totalCents === null || doc.totalCents <= 0) return 0
   const sameVs = carriesVs(payment, doc.vs)
   if ((doc.currency ?? 'EUR') === (payment.currency ?? 'EUR')) {
-    if (payment.amountCents !== direction(doc.kind) * doc.totalCents) return 0
+    const due = doc.dueCents ?? null
+    if (payment.amountCents !== direction(doc.kind) * doc.totalCents && !(due !== null && due > 0 && payment.amountCents === direction(doc.kind) * due)) return 0
   } else {
     // Another currency, paid in euros: its own number and the euros near the document's at its rate.
     const euros = direction(doc.kind) * payment.amountCents

@@ -35,6 +35,7 @@ export interface Payable {
   iban: string | null
   issuedOn: string | null
   dueOn: string | null
+  /** What is to be paid: the total, or what is left of it when a credit or a balance was set off (`documents.due_cents`). */
   totalCents: number
   currency: string
   /** The last order it is in, and that order's day of execution. */
@@ -47,16 +48,17 @@ export interface Payable {
 /** The suppliers' invoices the company owes, the earliest due first. */
 /**
  * A supplier's invoice that a payment order can pay, as SQL over `d`: something to pay, not paid by its prepayment
- * invoice (386), not a credit note taking back (its lines minus). Approving asks the same (`/app/schvalovanie`).
+ * invoice (386) nor whole by a credit or a balance set off, not a credit note taking back (its lines minus). Approving asks
+ * the same (`/app/schvalovanie`).
  */
-export const PAYABLE_DOC = `d.total_cents > 0 AND d.prepaid = 0
+export const PAYABLE_DOC = `d.total_cents > 0 AND d.prepaid = 0 AND COALESCE(d.due_cents, d.total_cents) > 0
          AND NOT (d.corrects IS NOT NULL AND COALESCE((SELECT SUM(COALESCE(json_extract(j.value, '$.base'), 0) + COALESCE(json_extract(j.value, '$.vat'), 0))
            FROM json_each(CASE WHEN json_valid(d.vat_lines) THEN d.vat_lines ELSE '[]' END) j), 0) < 0)`
 
 export async function payables(db: D1Database, company: string, approvals = false): Promise<Payable[]> {
   const rows = await db
     .prepare(
-      `SELECT d.id, d.party, d.number, d.vs, d.party_iban, d.issued_on, d.due_on, d.total_cents, COALESCE(d.currency, 'EUR') AS currency, d.approved_at, d.corrects,
+      `SELECT d.id, d.party, d.number, d.vs, d.party_iban, d.issued_on, d.due_on, COALESCE(d.due_cents, d.total_cents) AS total_cents, COALESCE(d.currency, 'EUR') AS currency, d.approved_at, d.corrects,
          (SELECT o.id FROM payment_order_items oi JOIN payment_orders o ON o.id = oi.order_id WHERE oi.document_id = d.id ORDER BY o.created_at DESC LIMIT 1) AS order_id,
          (SELECT o.execute_on FROM payment_order_items oi JOIN payment_orders o ON o.id = oi.order_id WHERE oi.document_id = d.id ORDER BY o.created_at DESC LIMIT 1) AS ordered_on
        FROM documents d

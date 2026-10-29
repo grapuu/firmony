@@ -675,6 +675,75 @@
     }
    ],
    "category": "sales"
+  },
+  {
+   "file": "zahranicna-05.pdf",
+   "category": "services",
+   "kind": "invoice_in",
+   "party": "TEST Cloud Services Ltd.",
+   "partyIco": null,
+   "number": "IE-2026-5530412",
+   "vs": null,
+   "issuedOn": "2026-10-22",
+   "dueOn": "2026-10-22",
+   "totalCents": 9000,
+   "vatCents": 0,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 0,
+     "base": 9000,
+     "vat": 0
+    }
+   ],
+   "dueCents": 1419
+  },
+  {
+   "file": "zahranicna-06.png",
+   "category": "services",
+   "kind": "invoice_in",
+   "party": "TEST Server GmbH",
+   "partyIco": null,
+   "number": "R0026799104",
+   "vs": null,
+   "issuedOn": "2026-11-03",
+   "dueOn": "2026-11-17",
+   "totalCents": 4490,
+   "vatCents": 0,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 0,
+     "base": 4490,
+     "vat": 0
+    }
+   ],
+   "dueCents": 0
+  },
+  {
+   "file": "faktura-13.pdf",
+   "category": "services",
+   "kind": "invoice_in",
+   "party": "Telekom Signál a. s.",
+   "partyIco": "50200058",
+   "number": "7310044115",
+   "vs": "7310044115",
+   "issuedOn": "2026-11-02",
+   "dueOn": "2026-11-16",
+   "totalCents": 12300,
+   "vatCents": 2300,
+   "currency": "EUR",
+   "corrects": null,
+   "vatLines": [
+    {
+     "rate": 23,
+     "base": 10000,
+     "vat": 2300
+    }
+   ],
+   "dueCents": 10000
   }
  ]
 }

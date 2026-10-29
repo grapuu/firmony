@@ -37,6 +37,7 @@ jednotlivých oblastí (DPH, kniha, závierka, mzdy) sú v pracovných poznámka
 ## Zaúčtovanie dokladu
 
 - Obrazovka dokladu (/ucto/doklady/:id): vľavo originál, vpravo formulár s tým, čo prečítala AI, a zaúčtovanie MD a D, ako ho bude mať kniha.
+- Suma s DPH je vždy celá suma dokladu (z nej sa počíta DPH). Pole „Na úhradu, ak menej“ vyplní AI, keď faktúra započítala kredit, zostatok alebo preplatok (napríklad predplatné so „Applied balance“): podľa neho sa doklad spáruje s platbou a dostane do príkazu na úhradu. Keď sa platí celá suma, ostáva prázdne; pri úplnom započítaní je 0. Zvyšok faktúry na účte 321 vyrovná započítaný dobropis alebo interný doklad.
 - Polia: druh, kategória (s účtom), dodávateľ, IČO, číslo, dátumy, sumy, DPH, variabilný symbol, iný účet, stredisko. Pre platiteľa DPH „Odpočítať DPH“ a časť DPH (režim, deň dodania, IČ DPH, opravovaný doklad, obdobie, základ a daň podľa sadzieb).
 - „Zaúčtovať a ďalší“ zaúčtuje a otvorí ďalší doklad klienta. „Uložiť bez zaúčtovania“ uloží rozpracované. „Zahodiť doklad“ pre duplikát alebo niečo, čo nie je doklad.
 - „Zapamätať pre dodávateľa“ vytvorí pravidlo: ďalšie doklady toho dodávateľa dostanú rovnakú kategóriu a odpočet. Pravidlo sa hneď použije aj na čakajúce doklady.

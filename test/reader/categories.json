@@ -28,5 +28,8 @@
  "dobropis-01.pdf": {"category":"material","contextDependent":true,"reason":"Oprava ceny poškodenej stoličky; musí nadväzovať na referenčný scenár faktura-04."},
  "dobropis-02.jpg": {"category":"services","contextDependent":false,"reason":"Vrátenie ceny domény z faktura-01."},
  "vydana-01.pdf": {"category":"sales","contextDependent":false,"reason":"Naša vydaná faktúra za konzultácie."},
- "vydana-02.png": {"category":"sales","contextDependent":false,"reason":"Naša vydaná faktúra za tvorbu webu."}
+ "vydana-02.png": {"category":"sales","contextDependent":false,"reason":"Naša vydaná faktúra za tvorbu webu."},
+ "zahranicna-05.pdf": {"category":"services","contextDependent":false,"reason":"Predplatné softvéru; časť sumy uhradená započítaným zostatkom."},
+ "zahranicna-06.png": {"category":"services","contextDependent":false,"reason":"Prenájom dedikovaného servera; celá suma uhradená kreditom."},
+ "faktura-13.pdf": {"category":"services","contextDependent":false,"reason":"Telefónny paušál; započítaný preplatok z predchádzajúcej faktúry."}
 }

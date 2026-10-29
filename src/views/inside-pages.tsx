@@ -1120,6 +1120,12 @@ export const DocumentPage: FC<{
                     <dd>{formatEur(d.totalCents)}</dd>
                   </div>
                 ) : null}
+                {d.dueCents !== null && d.dueCents !== undefined ? (
+                  <div>
+                    <dt>{app.document.payable}</dt>
+                    <dd>{formatEur(d.dueCents)}</dd>
+                  </div>
+                ) : null}
                 {d.vatCents ? (
                   <div>
                     <dt>{app.document.vat}</dt>

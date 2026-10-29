@@ -428,6 +428,7 @@ export const team = typesetAll({
     due: 'Splatnosť',
     total: 'Suma s DPH',
     vat: 'DPH',
+    payable: 'Na úhradu, ak menej (po započítaní kreditu)',
     currency: 'Mena',
     rate: 'Kurz za 1 €',
     rateHint: (rate: string, day: string) => typeset(`Kurz ECB z ${day}: ${rate}. Nechajte prázdne a použije sa tento.`),
@@ -481,6 +482,7 @@ export const team = typesetAll({
     errors: {
       total: 'Suma musí byť kladné číslo, napríklad 12,40.',
       vat: 'DPH musí byť číslo, ktoré nie je vyššie ako suma.',
+      payable: 'Na úhradu napíšte 0 alebo sumu nižšiu ako suma s DPH. Keď sa platí celá suma, nechajte pole prázdne.',
       rate: 'Kurz zadajte ako počet jednotiek meny za 1 €, napríklad 25,308.',
       date: 'Dátum napíšte v tvare 13. 10. 2026.',
       category: 'Vyberte, na čo doklad je.',

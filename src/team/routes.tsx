@@ -5224,6 +5224,7 @@ teamRoutes.post('/doklady/:id', async (c) => {
     due: text('due', 20),
     total: text('total', 20),
     vat: text('vat', 20),
+    payable: text('payable', 20),
     category: isCategory(text('category', 20)) ? text('category', 20) : '',
     deduct: company.vatPayer && body.deduct === '1',
     remember: body.remember === '1',
@@ -5243,6 +5244,10 @@ teamRoutes.post('/doklady/:id', async (c) => {
   const due = dayOfText(values.due)
   if (total !== null && (Number.isNaN(total) || total <= 0)) errors.total = t.book.errors.total
   if (vat !== null && (Number.isNaN(vat) || (total !== null && !Number.isNaN(total) && vat > total))) errors.vat = t.book.errors.vat
+  // What is left to pay after a credit or a balance set off: 0 or less than the total; the total itself is no such amount.
+  const typedPayable = moneyOf(values.payable ?? '')
+  if (typedPayable !== null && (Number.isNaN(typedPayable) || typedPayable < 0 || total === null || Number.isNaN(total) || typedPayable > total)) errors.payable = t.book.errors.payable
+  const payable = typedPayable !== null && !Number.isNaN(typedPayable) && total !== null && typedPayable < total ? typedPayable : null
   if (issued === null) errors.issued = t.book.errors.date
   if (due === null) errors.due = t.book.errors.date
   // Another currency: the rate typed, else the ECB's of the day before the document's day (kept as the ECB writes it).
@@ -5326,12 +5331,13 @@ teamRoutes.post('/doklady/:id', async (c) => {
            category = ?11, vat_deduct = ?12, account = ?13,
            booked_at = CASE WHEN ?14 = 1 THEN ?15 ELSE booked_at END, booked_by = CASE WHEN ?14 = 1 THEN ?16 ELSE booked_by END,
            currency = ?19, fx_rate = ?20,
-           -- An approval for payment is of what was approved (approvals.ts): another total, currency, kind, supplier or
-           -- variable symbol (which the payment order carries) takes it back.
-           approved_at = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN approved_at END,
-           approved_by = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN approved_by END,
-           first_approved_at = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN first_approved_at END,
-           first_approved_by = CASE WHEN total_cents IS ?9 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN first_approved_by END
+           -- An approval for payment is of what was approved (approvals.ts): another total, amount left to pay, currency,
+           -- kind, supplier or variable symbol (which the payment order carries) takes it back.
+           approved_at = CASE WHEN total_cents IS ?9 AND due_cents IS ?21 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN approved_at END,
+           approved_by = CASE WHEN total_cents IS ?9 AND due_cents IS ?21 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN approved_by END,
+           first_approved_at = CASE WHEN total_cents IS ?9 AND due_cents IS ?21 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN first_approved_at END,
+           first_approved_by = CASE WHEN total_cents IS ?9 AND due_cents IS ?21 AND COALESCE(currency, 'EUR') = ?19 AND kind IS ?2 AND party IS ?3 AND vs IS ?6 THEN first_approved_by END,
+           due_cents = ?21
          WHERE id = ?17 AND company_id = ?18 AND deleted_at IS NULL`,
       )
       .bind(
@@ -5355,6 +5361,7 @@ teamRoutes.post('/doklady/:id', async (c) => {
         company.id,
         values.currency,
         fxRate,
+        payable,
       ),
     eventStatement(db, { company: company.id, user: who.user.id, action: booking ? 'document.booked' : 'document.saved', subject: doc.id, detail: tookOf(values.opened) }),
   ]

@@ -727,6 +727,7 @@ export const app = typesetAll({
     issued: 'Dátum',
     due: 'Splatnosť',
     total: 'Suma',
+    payable: 'Na úhradu po započítaní kreditu',
     vat: 'Z toho DPH',
     vs: 'Variabilný symbol',
     iban: 'Platiť na účet',

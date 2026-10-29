@@ -4,7 +4,7 @@
 //   ANTHROPIC_API_KEY=... npm run test:reader
 //   FIRMONY_READER_ONLY=blocek npm run test:reader      (only the files whose name holds the word)
 // The documents come from scripts/reader/make-documents.py; the report goes to .wrangler/reader/report.json. It fails
-// when totals, VAT, the day of issue or the IČO are right on fewer than 98 % of the documents.
+// when totals, VAT, the day of issue, the IČO or the amount left to pay are right on fewer than 98 % of the documents.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { compareFields, READ_FIELDS, READER, readDocument, sniff, CATEGORY_IDS } from '../.wrangler/tmp/reader-bundle.mjs'
 import { createHash } from 'node:crypto'
@@ -23,7 +23,8 @@ if (docs.length === 0) throw new Error('No fixture matched: nothing was measured
 for (const doc of set.documents) {
   if (!CATEGORY_IDS.includes(doc.category) || categories[doc.file]?.category !== doc.category) throw new Error(`Missing or inconsistent expected category: ${doc.file}`)
 }
-const MUST = ['totalCents', 'vatCents', 'issuedOn', 'partyIco']
+// What is left to pay decides pairing and payment orders: held to the same floor since 29 October 2026.
+const MUST = ['totalCents', 'vatCents', 'issuedOn', 'partyIco', 'dueCents']
 const FLOOR = 0.98
 
 const results = []
@@ -52,6 +53,9 @@ async function worker() {
     if (doc.ekasaUid !== undefined) extra.ekasaUid = (r.ekasaUid ?? null) === doc.ekasaUid
     if (doc.ekasaOkp !== undefined) extra.ekasaOkp = (r.ekasaOkp ?? null) === doc.ekasaOkp
     if (doc.corrects) extra.corrects = (r.corrects ?? '').replace(/\s/g, '').toUpperCase() === doc.corrects.toUpperCase()
+    // What is left to pay after a credit or a balance was set off (29 October 2026): on every document, so one the reader
+    // invents where the whole total is paid counts as wrong too.
+    extra.dueCents = (r.dueCents ?? null) === (doc.dueCents ?? null)
     const wrong = [...READ_FIELDS.filter((f) => fields[f] === false), ...Object.keys(extra).filter((k) => extra[k] === false)]
     results.push({ file: doc.file, ms, fields, extra, wrong, got: Object.fromEntries(wrong.map((k) => [k, r[k] ?? null])), want: Object.fromEntries(wrong.map((k) => [k, doc[k] ?? null])) })
     console.log(`${doc.file}: ${wrong.length === 0 ? 'right' : `wrong ${wrong.map((k) => `${k} (read ${JSON.stringify(r[k] ?? null)}, is ${JSON.stringify(doc[k] ?? null)})`).join(', ')}`} ${ms} ms`)
@@ -69,7 +73,7 @@ const extraShare = (key) => {
   const compared = results.filter((r) => r.extra && r.extra[key] !== undefined)
   return { field: key, right: compared.filter((r) => r.extra[key]).length, of: compared.length, share: compared.length ? compared.filter((r) => r.extra[key]).length / compared.length : 1 }
 }
-const table = [...READ_FIELDS.map(share), ...['ekasaUid', 'ekasaOkp', 'corrects'].map(extraShare)].filter((row) => row.of > 0)
+const table = [...READ_FIELDS.map(share), ...['ekasaUid', 'ekasaOkp', 'corrects', 'dueCents'].map(extraShare)].filter((row) => row.of > 0)
 console.log(`\nReader ${READER.model}: ${read.length} of ${results.length} documents read, ${read.filter((r) => r.wrong.length === 0).length} with every field right.`)
 for (const row of table) console.log(`${row.field.padEnd(12)} ${String(row.right).padStart(3)} / ${String(row.of).padEnd(3)} ${(row.share * 100).toFixed(1)} %`)
 const independent = results.filter((r) => !categories[r.file]?.contextDependent)
@@ -85,4 +89,4 @@ if (short.length > 0) {
   console.log(`\nBelow ${FLOOR * 100} %: ${short.map((row) => row.field).join(', ')}`)
   process.exit(1)
 }
-console.log(`\nTotals, VAT, the day of issue and the IČO are right on at least ${FLOOR * 100} % of them.`)
+console.log(`\nTotals, VAT, the day of issue, the IČO and the amount left to pay are right on at least ${FLOOR * 100} % of them.`)

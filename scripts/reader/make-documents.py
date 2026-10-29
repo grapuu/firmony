@@ -6,11 +6,14 @@ Every company, number and code here is invented (TEST names, IČO that belong to
 to the test company the harness names to the reader: TEST Odberateľ s. r. o., IČO 50000005.
 
 Run: python3 scripts/reader/make-documents.py   (writes test/reader/docs/*.jpg|png|pdf and test/reader/expected.json)
+     python3 scripts/reader/make-documents.py --only-setoff   (only the invoices with a credit set off, added on
+     29 October 2026, leaving the other 30 files and their entries as they are)
 """
 import json
 import math
 import os
 import random
+import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -195,8 +198,9 @@ def receipt(seller, items, iso, clock, number, offline=False):
 
 
 def invoice(supplier, customer, number, iso, due, items, payer=True, currency='EUR', vs=None, supplied=None, title='FAKTÚRA',
-            english=False, reverse=False, corrects=None, note=None, issued_by_us=False):
-    """items: (description, quantity, unit, unit price without VAT in cents, rate)."""
+            english=False, reverse=False, corrects=None, note=None, issued_by_us=False, settled=None):
+    """items: (description, quantity, unit, unit price without VAT in cents, rate). settled: (label, cents) of a credit, a
+    balance or an overpayment set off against the total, which then is printed apart from what is left to pay."""
     W, H = 1240, 1754
     img = Image.new('RGB', (W, H), (255, 255, 255))
     d = ImageDraw.Draw(img)
@@ -285,10 +289,21 @@ def invoice(supplier, customer, number, iso, due, items, payer=True, currency='E
             y += 32
     total = total_net + vat_total
     y += 14
-    d.text((660, y), t['total'], font=fb, fill=ink)
-    s = f'{money(total)} {currency}'
-    d.text((W - 70 - d.textlength(s, font=fb), y), s, font=fb, fill=ink)
-    y += 70
+    if settled:
+        label, off = settled
+        for text_, value, bold in [('Total' if english else 'Spolu s DPH', total, False), (label, -off, False),
+                                   ('Amount due' if english else 'Zostáva uhradiť', total - off, True)]:
+            fnt = fb if bold else f
+            d.text((660, y), text_, font=fb if bold else fs, fill=ink if bold else grey)
+            s = f'{money(value)} {currency}'
+            d.text((W - 70 - d.textlength(s, font=fnt), y), s, font=fnt, fill=ink)
+            y += 36
+        y += 34
+    else:
+        d.text((660, y), t['total'], font=fb, fill=ink)
+        s = f'{money(total)} {currency}'
+        d.text((W - 70 - d.textlength(s, font=fb), y), s, font=fb, fill=ink)
+        y += 70
     notes = []
     if not payer and not english:
         notes.append('Dodávateľ nie je platiteľom DPH.')
@@ -308,7 +323,27 @@ def invoice(supplier, customer, number, iso, due, items, payer=True, currency='E
         'number': number, 'vs': vs, 'issuedOn': iso, 'dueOn': due, 'totalCents': abs(total), 'vatCents': abs(vat_total),
         'currency': currency, 'corrects': corrects, 'vatLines': vat_lines or None,
     }
+    if settled:
+        expected['dueCents'] = total - settled[1]
     return img, expected
+
+
+def setoff_documents(save):
+    """Invoices whose total is paid in part or whole by a credit, a balance or an overpayment set off (29 October 2026,
+    europio as client zero: a subscription invoice of a foreign supplier whose amount due was less than its total). The
+    total is the document's (its VAT breakdown makes it); what is left to pay is apart."""
+    img, exp = invoice(FOREIGN[0], US, 'IE-2026-5530412', '2026-10-22', '2026-10-22', [('Team plan, 22 Oct to 21 Nov 2026', 1, 'pc', 9000, 23)],
+                       vs=None, title='INVOICE', english=True, reverse=True, settled=('Applied balance', 7581))
+    save('zahranicna-05.pdf', img, exp, 'pdf')
+    img, exp = invoice(FOREIGN[1], US, 'R0026799104', '2026-11-03', '2026-11-17', [('Dedicated server AX41, November 2026', 1, 'pc', 4490, 23)],
+                       vs=None, title='INVOICE', english=True, reverse=True, settled=('Credit applied', 4490))
+    save('zahranicna-06.png', img, exp, 'png')
+    img, exp = invoice(SUPPLIERS[4], US, '7310044115', '2026-11-02', '2026-11-16', [('Mesačný paušál Biznis 60', 1, 'mes.', 10000, 23)],
+                       vs='7310044115', settled=('Započítaný preplatok', 2300))
+    save('faktura-13.pdf', img, exp, 'pdf')
+
+
+SETOFF_FILES = ['zahranicna-05.pdf', 'zahranicna-06.png', 'faktura-13.pdf']
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -432,11 +467,35 @@ def main():
     img, exp = invoice(us, CUSTOMERS[1], '20260042', '2026-10-09', '2026-10-23', [('Tvorba webovej stránky', 1, 'ks', 120000, 23)], vs='20260042', issued_by_us=True)
     save('vydana-02.png', img, exp, 'png')
 
+    setoff_documents(save)
+
     with open(os.path.join(ROOT, 'test', 'reader', 'expected.json'), 'w', encoding='utf-8') as fh:
         json.dump({'company': {'name': US['name'], 'ico': US['ico']}, 'documents': expected}, fh, ensure_ascii=False, indent=1)
         fh.write('\n')
     print(f'{len(expected)} documents in {OUT}')
 
 
+def only_setoff():
+    """Writes the set-off invoices alone and puts their entries at the end of expected.json, every other file kept."""
+    path = os.path.join(ROOT, 'test', 'reader', 'expected.json')
+    with open(path, encoding='utf-8') as fh:
+        data = json.load(fh)
+    data['documents'] = [doc for doc in data['documents'] if doc['file'] not in SETOFF_FILES]
+
+    def save(name, img, exp, fmt):
+        target = os.path.join(OUT, name)
+        if fmt == 'pdf':
+            img.convert('RGB').save(target, 'PDF', resolution=150)
+        else:
+            img.save(target, 'PNG', optimize=True)
+        data['documents'].append({'file': name, 'category': CATEGORY_EXPECTATIONS[name]['category'], **exp})
+
+    setoff_documents(save)
+    with open(path, 'w', encoding='utf-8') as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=1)
+        fh.write('\n')
+    print(f"{len(data['documents'])} documents in {path}")
+
+
 if __name__ == '__main__':
-    main()
+    only_setoff() if '--only-setoff' in sys.argv else main()

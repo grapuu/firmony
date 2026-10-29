@@ -87,6 +87,7 @@ import { sanctionsAnswer } from './sanctions-fixtures.mjs'
 import { checkSanctionsRuntime } from './sanctions.runtime.mjs'
 import { checkNudgeRuntime } from './nudge.runtime.mjs'
 import { checkTatraRuntime } from './tatra.runtime.mjs'
+import { checkDueRuntime } from './due.runtime.mjs'
 import { ruzAnswer, RUZ_LAST } from './ruz-fixtures.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
@@ -1218,6 +1219,13 @@ check(
         .bind(cafeDoc?.id ?? '')
         .first()
     )?.party === 'Kaviareň Na rohu s. r. o.',
+)
+res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, { akcia: 'ulozit', kind: 'receipt', category: 'representation', party: 'Kaviareň Na rohu s. r. o.', total: '12,40', vat: '2,07', payable: '20,00', issued: skDay(day(-1)) })
+page = await res.text()
+check(
+  'what is left to pay is asked apart, and more than the total is said and changes nothing',
+  res.status === 422 && page.includes('Na úhradu, ak menej') && page.includes('Na úhradu napíšte') &&
+    (await db.prepare('SELECT due_cents FROM documents WHERE id = ?').bind(cafeDoc?.id ?? '').first())?.due_cents === null,
 )
 res = await anna.post(`/app/doklady/${cafeDoc?.id}/zmazat`, {})
 check(
@@ -5403,5 +5411,6 @@ await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin,
 await checkSanctionsRuntime({ db, files, get, freshAdmin, worker, settle, nowS })
 await checkNudgeRuntime({ db, files })
 await checkTatraRuntime({ db, files })
+await checkDueRuntime({ db })
 await mf.dispose()
 done('runtime')

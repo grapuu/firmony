@@ -1258,6 +1258,8 @@ export interface BookValues {
   due: string
   total: string
   vat: string
+  /** What is left to pay when less than the total (a credit or a balance set off); '' when the total is paid. */
+  payable?: string
   category: string
   deduct: boolean
   remember: boolean
@@ -1290,6 +1292,7 @@ export function valuesOf(d: Doc, vatPayer: boolean): BookValues {
     due: d.dueOn ? textDay(d.dueOn) : '',
     total: money(d.totalCents),
     vat: money(d.vatCents),
+    payable: money(d.dueCents ?? null),
     category,
     deduct: vatPayer && (d.vatDeduct ?? (category ? (CATEGORIES[category as keyof typeof CATEGORIES]?.deduct ?? true) : true)),
     // A trip's settlement is owed to a person, not bought of a supplier: nothing to remember for the next one.
@@ -1495,6 +1498,7 @@ export const BookPage: FC<BookPageProps> = ({ d, company, vat, vatKindFirst, nee
             <Field name="due" label={t.book.due} value={values.due} error={errors.due} max={16} />
             <Field name="total" label={t.book.total} value={values.total} mode="decimal" error={errors.total} max={20} />
             <Field name="vat" label={t.book.vat} value={values.vat} mode="decimal" error={errors.vat} max={20} />
+            <Field name="payable" label={t.book.payable} value={values.payable ?? ''} mode="decimal" error={errors.payable} max={20} />
             <div class="fgrid__cell">
               <label class="field__label" for="b-currency">
                 {t.book.currency}

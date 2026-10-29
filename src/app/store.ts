@@ -164,6 +164,8 @@ export interface Doc {
   dueOn: string | null
   totalCents: number | null
   vatCents: number | null
+  /** What is left to pay when the document says less than its total (a credit or a balance set off); null when it is. */
+  dueCents?: number | null
   currency: string | null
   /** The rate it is converted to euros at, as the accountant confirmed it (units of the currency for a euro, "25,308"). */
   fxRate?: string | null
@@ -421,7 +423,7 @@ function creditsOf(value: unknown): CreditOf[] {
 }
 
 export const DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.added_by, ab.name AS added_by_name, d.file_key, d.file_type, d.file_name, d.file_bytes,
-  d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.currency,
+  d.status, d.read_by, d.kind, d.party, d.party_ico, d.party_iban, d.number, d.vs, d.issued_on, d.due_on, d.total_cents, d.vat_cents, d.due_cents, d.currency,
   d.category, d.proposal, d.vat_deduct, d.account, d.booked_at, COALESCE(bb.name, CASE WHEN d.booked_by = 'auto' THEN 'Firmony (samo)' END) AS booked_by_name, d.duplicate_of, d.invoice_id,
   d.paid_privately, l.payment_id, l.how, d.supplied_on, d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party,
   d.ekasa_uid, d.ekasa_okp, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse, d.advance_cents, d.approved_at, ap.name AS approved_by_name, ${CASH_PAID_COLUMN},
@@ -463,6 +465,7 @@ export function docOf(row: Row): Doc {
     dueOn: str(row.due_on),
     totalCents: num(row.total_cents),
     vatCents: num(row.vat_cents),
+    dueCents: num(row.due_cents),
     currency: str(row.currency),
     fxRate: str(row.fx_rate),
     category: str(row.category) as Category | null,
@@ -917,8 +920,8 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
     .prepare(
       `INSERT INTO documents (id, company_id, created_at, source, added_by, file_key, file_type, file_name, file_bytes, file_hash, status, read_by,
          kind, party, party_ico, party_iban, number, vs, issued_on, due_on, total_cents, vat_cents, currency, category, proposal, invoice_id,
-         party_vat_id, supplied_on, foreign_party, corrects, vat_lines, prepaid, reading)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         party_vat_id, supplied_on, foreign_party, corrects, vat_lines, prepaid, reading, due_cents)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       d.id,
@@ -950,6 +953,7 @@ export function insertDocumentStatement(db: D1Database, d: NewDocument): D1Prepa
       ...vatHints(r),
       r?.prepaid ? 1 : 0,
       r && d.readBy === 'xml' ? readingJson(r) : null,
+      r?.dueCents ?? null,
     )
 }
 
@@ -970,7 +974,7 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
     .prepare(
       `UPDATE documents SET status = 'read', read_by = ?, kind = ?, party = ?, party_ico = ?, party_iban = ?, number = ?, vs = ?,
          issued_on = ?, due_on = ?, total_cents = ?, vat_cents = ?, currency = ?, category = ?, proposal = ?,
-         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?, ekasa_uid = ?, ekasa_okp = ?, reading = ?
+         party_vat_id = ?, supplied_on = ?, foreign_party = ?, corrects = ?, vat_lines = ?, ekasa_uid = ?, ekasa_okp = ?, reading = ?, due_cents = ?
        WHERE id = ? AND company_id = ? AND status = 'reading'`,
     )
     .bind(
@@ -992,6 +996,7 @@ export function readingStatement(db: D1Database, company: string, doc: string, r
       reading.ekasaUid ?? null,
       reading.ekasaOkp ?? null,
       by.startsWith('person') ? null : readingJson(reading),
+      reading.dueCents ?? null,
       doc,
       company,
     )
@@ -1120,6 +1125,7 @@ function asMatchDocument(d: Doc): MatchDocument {
     issuedOn: d.issuedOn,
     dueOn: d.dueOn,
     totalCents: d.totalCents,
+    dueCents: d.dueCents ?? null,
     party: d.party,
     partyIban: d.partyIban,
     vs: d.vs,
