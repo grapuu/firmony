@@ -111,6 +111,8 @@ import { ratesFor, refreshRates } from './fx-store'
 import { orderItems, orderStatements, painXml, payables, paymentOrders, PAYABLE_DOC } from './payorders'
 import { issueAdvances } from './advance-auto'
 import { PayOrdersPage } from '../views/payorders'
+import { orderOf, type Order } from '../order'
+import { paperPhoto } from '../meeting/paper'
 import { readTrip, tripOf, TRIPS_FROM, workingDaysAfter, type TripErrors, type TripValues } from './trips'
 import { getTrip, listTrips, removeTripStatements, tripOfDocument, tripStatements } from './trips-store'
 import { TripFormPage, TripPage, TripsPage } from '../views/trips'
@@ -2887,7 +2889,20 @@ appRoutes.get('/zmluva', async (c) => {
     .first<{ plan: string; price_cents: number | null; accepted_at: number | null; signed_by: string | null; start_on: string | null; terms_version: string | null }>()
   const order = row ? { plan: row.plan, priceCents: row.price_cents, acceptedAt: row.accepted_at, signedBy: row.signed_by, startOn: row.start_on, termsVersion: row.terms_version } : null
   const contract = await resolveContract(c.env.DB, who.company.id, order?.termsVersion ?? who.company.termsVersion)
-  return shell(c, 'company', t.contractPage.title, <ContractPage company={who.company} order={order} contract={contract} />)
+  const paper = await meetingPaper(c.env.DB, who.company.id)
+  return shell(c, 'company', t.contractPage.title, <ContractPage company={who.company} order={order} contract={contract} paper={Boolean(paper)} />)
+})
+
+/** The order of a contract signed on paper at a meeting (meeting/), with the photo of it kept. */
+async function meetingPaper(db: D1Database, company: string): Promise<Order | null> {
+  const row = await db.prepare("SELECT * FROM orders WHERE company_id = ? AND status = 'accepted' AND meeting_by IS NOT NULL AND paper_key IS NOT NULL").bind(company).first<Record<string, unknown>>()
+  return row ? orderOf(row) : null
+}
+
+appRoutes.get('/zmluva/foto', async (c) => {
+  const order = await meetingPaper(c.env.DB, c.get('who').company.id)
+  if (!order || !c.env.FILES) return c.notFound()
+  return paperPhoto(c.env.FILES, order)
 })
 
 /** When the client's notice given on a day ends the contract: a contract whose first month is free ends with it. */

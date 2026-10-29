@@ -483,6 +483,8 @@ export interface TaxInput {
   /** Row 1010: the advances paid for the period; row 1030: tax withheld that counts as an advance. */
   advances: number
   withheld: number
+  /** § 17(34): cars of 48 000 € and more (assets.ts, carExcess and carLimit). */
+  cars?: { excess: number; limit: number }
 }
 
 export type TaxRows = Record<string, number>
@@ -569,7 +571,10 @@ export function taxOf(input: TaxInput): TaxResult {
   r.r300 = ['r210', 'r220', 'r230', 'r240', 'r250', 'r260', 'r270', 'r280', 'r290'].reduce((sum, row) => sum + (r[row] ?? 0), 0)
   r.r301 = r.r100 + r.r200 - r.r300
   for (const row of ['r302', 'r303', 'r304', 'r305', 'r306', 'r307', 'r308']) r[row] = 0
-  r.r310 = r.r301
+  // § 17(34) (FS 586463): the base, when lower than the depreciation of the company's cars of 48 000 € and more counted
+  // from 48 000 €, is raised by what their depreciation exceeds it (row 302, which raises the base: DPPO poučenie).
+  if (input.cars && input.cars.excess > 0 && r.r301 < input.cars.limit) r.r302 = roundCents(input.cars.excess)
+  r.r310 = r.r301 + (r.r302 ?? 0)
   r.r320 = 0
   r.r330 = 0
   r.r400 = r.r310 - r.r320 - r.r330
@@ -657,8 +662,18 @@ export interface Proposal {
   costs: number
   taxable: number
   r210: number
+  /** The register's assets disposed of: the books' residual values over the tax ones (row 180) and under them (row 290). */
+  r180?: number
+  r290?: number
   tableA: Partial<Record<TableARow, number>>
   tableB: Partial<Record<TableBRow, number>>
+  /** § 17(34): cars of 48 000 € and more, their depreciation over the depreciation from 48 000 € and that depreciation. */
+  cars?: { excess: number; limit: number }
+}
+
+/** A typed row as the books propose it (what equals it is not stored, so it keeps following them). */
+export function proposedTyped(proposal: Pick<Proposal, 'r210' | 'r180' | 'r290'>, row: TypedRow): number {
+  return row === 'r210' ? proposal.r210 : row === 'r180' ? (proposal.r180 ?? 0) : row === 'r290' ? (proposal.r290 ?? 0) : 0
 }
 
 /**
@@ -685,6 +700,9 @@ export function proposeTax(statements: Statements, assets: AssetYear | null = nu
       r210: Math.max(0, statements.accounts['662'] ?? 0),
       tableA: { a06: Math.max(0, statements.accounts['513'] ?? 0), a08: Math.max(0, statements.accounts['543'] ?? 0) },
       tableB: { b01: assets.bookTangible + outside, b02: assets.taxTangible + outside, ...(assets.saleShares > 0 ? { b05: assets.saleShares } : {}) },
+      ...(assets.residualUp > 0 ? { r180: assets.residualUp } : {}),
+      ...(assets.residualDown > 0 ? { r290: assets.residualDown } : {}),
+      ...(assets.carExcess > 0 ? { cars: { excess: assets.carExcess, limit: assets.carLimit } } : {}),
     }
   }
   return {
@@ -782,7 +800,8 @@ export function taxInputOf(year: number, proposal: Proposal, inputs: ClosingInpu
     costs: proposal.costs,
     tableA: { ...proposal.tableA, ...inputs.tableA },
     tableB: { ...proposal.tableB, ...inputs.tableB },
-    typed: { r210: proposal.r210, ...inputs.typed },
+    typed: { r210: proposal.r210, ...(proposal.r180 ? { r180: proposal.r180 } : {}), ...(proposal.r290 ? { r290: proposal.r290 } : {}), ...inputs.typed },
+    ...(proposal.cars ? { cars: proposal.cars } : {}),
     taxable,
     losses: inputs.losses,
     lossDeduct: inputs.lossDeduct,
@@ -923,7 +942,7 @@ export function deferredTaxOf(i: DeferredInput): DeferredResult {
 // What keeps a closing from being filed
 // ---------------------------------------------------------------------------------------------------------------
 
-export type ClosingIssueCode = 'start' | 'unbooked' | 'unrated' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'deferred' | 'stockCount' | 'transit' | 'rounding' | 'audit' | 'auditMaybe'
+export type ClosingIssueCode = 'start' | 'unbooked' | 'unrated' | 'payments' | 'foreign' | 'cash' | 'unplaced' | 'dic' | 'address' | 'nace' | 'tax' | 'deferred' | 'stockCount' | 'transit' | 'rounding' | 'audit' | 'auditMaybe' | 'midyear' | 'carSale'
 
 /** block: the closing is not filed until it is resolved; warn: to look at. `count` things, `accounts` the ones meant. */
 export interface ClosingIssue {
@@ -953,6 +972,8 @@ export function closingIssues(args: {
   audit?: 'yes' | 'maybe' | 'no'
   /** The stock (stock.ts): how it is kept, and whether its items were counted in the year and on its last day. */
   stock?: { method: 'A' | 'B'; items: boolean; inYear: boolean; yearEnd: boolean } | null
+  /** Cars the register says were sold in the year (assets.ts, carsSold). */
+  carsSold?: number
 }): ClosingIssue[] {
   const { books, year } = args
   const end = `${year}-12-31`
@@ -985,6 +1006,15 @@ export function closingIssues(args: {
     if (st.method === 'B' && !st.yearEnd) block('stockCount')
     if (st.method === 'A' && !st.inYear) out.push({ code: 'stockCount', level: 'warn', count: 1 })
   }
+  // Books that begin during the year (a client taken over from another accountant): the months before belong to the same
+  // period, so the opening balances hold the year's costs and revenues so far (takeover.ts) or the year is not whole.
+  if (books.start && books.start > `${year}-01-01` && books.start <= end) {
+    const opening = books.entries.find((e) => e.kind === 'opening' && e.on === books.start)
+    const soFar = opening?.lines.some((l) => [l.md, l.d].some((a) => accountClass(a) === 5 || accountClass(a) === 6))
+    if (!soFar) out.push({ code: 'midyear', level: 'warn', count: 1 })
+  }
+  // § 19(3)(b): a car's tax residual value is an expense only up to its price, which the register does not hold.
+  if ((args.carsSold ?? 0) > 0) out.push({ code: 'carSale', level: 'warn', count: args.carsSold ?? 0 })
   if (args.audit === 'yes') out.push({ code: 'audit', level: 'warn', count: 1 })
   if (args.audit === 'maybe') out.push({ code: 'auditMaybe', level: 'warn', count: 1 })
   return out

@@ -309,6 +309,16 @@ export interface AssetYear {
   saleShares: number
   /** § 17(34): what the tax depreciation of cars above 48 000 € exceeds their depreciation from 48 000 €. */
   carExcess: number
+  /** § 17(34): their depreciation from 48 000 € (the year's share in the first year), the limit the base is held to. */
+  carLimit: number
+  /**
+   * Assets disposed of in the year, each by itself: what the books' residual value in the costs exceeds the tax residual
+   * value (added to the base, row 180), and what it falls short of it (taken off, row 290; FS 298894).
+   */
+  residualUp: number
+  residualDown: number
+  /** Cars sold in the year: their tax residual value counts only up to the price (§ 19(3)(b)), which the register does not hold. */
+  carsSold: number
   /** Assets disposed of in the year: the tax and the books' residual values, for the return. */
   disposedTax: number
   disposedBook: number
@@ -317,7 +327,7 @@ export interface AssetYear {
 }
 
 export function assetYear(assets: readonly Asset[], year: number): AssetYear {
-  const out: AssetYear = { bookTangible: 0, bookIntangible: 0, taxTangible: 0, saleShares: 0, carExcess: 0, disposedTax: 0, disposedBook: 0, liquidated: 0 }
+  const out: AssetYear = { bookTangible: 0, bookIntangible: 0, taxTangible: 0, saleShares: 0, carExcess: 0, carLimit: 0, residualUp: 0, residualDown: 0, carsSold: 0, disposedTax: 0, disposedBook: 0, liquidated: 0 }
   for (const a of assets) {
     const book = bookMonths(a).filter((m) => yearOf(m.month) === year).reduce((s, m) => s + m.cents, 0)
     if (assetKind(a.account) === 'intangible') out.bookIntangible += book
@@ -327,15 +337,25 @@ export function assetYear(assets: readonly Asset[], year: number): AssetYear {
       if (y) {
         out.taxTangible += y.cents
         out.saleShares += y.saleShare
-        if (y.limited !== null) out.carExcess += Math.max(0, y.cents - y.limited)
+        if (y.limited !== null) {
+          out.carExcess += Math.max(0, y.cents - y.limited)
+          out.carLimit += y.limited
+        }
       }
     }
     if (a.disposedOn && yearOf(a.disposedOn) === year) {
       const tax = taxSchedule(a).find((t) => t.year === year)
-      out.disposedTax += tax ? tax.residual : 0
+      // An intangible asset depreciates as the books do (bookYearsAsTax): its residual values are the same.
+      const taxResidual = assetKind(a.account) === 'intangible' ? null : tax ? tax.residual : 0
+      out.disposedTax += taxResidual ?? 0
       const book = bookState(a, `${year - 1}-12`).residual - bookMonths(a).filter((m) => yearOf(m.month) === year).reduce((s, m) => s + m.cents, 0)
       out.disposedBook += book
       if (a.disposal === 'liquidation') out.liquidated += book
+      if (taxResidual !== null && a.disposal !== 'gift') {
+        out.residualUp += Math.max(0, book - taxResidual)
+        out.residualDown += Math.max(0, taxResidual - book)
+      }
+      if (a.car && a.disposal === 'sale') out.carsSold++
     }
   }
   return out
@@ -377,6 +397,10 @@ export function assetErrors(a: Omit<Asset, 'id' | 'number'>): Partial<Record<'na
     e.months = 'Zadajte počet mesiacov účtovného odpisovania.'
   if (a.source === 'opening' && (a.priorBookCents < 0 || a.priorTaxCents < 0 || a.priorBookCents > a.costCents || a.priorTaxCents > a.costCents || a.priorTaxYears < 0 || a.priorTaxYears > 40))
     e.prior = 'Skontrolujte doterajšie oprávky a daňové odpisy.'
+  // Books that follow the tax depreciation go on from what the tax depreciated: with other oprávky they would depreciate
+  // past the cost or stop short of it (the books audit of 30 October 2026).
+  else if (a.source === 'opening' && kind === 'tangible' && a.bookMonths === null && a.priorBookCents !== a.priorTaxCents)
+    e.prior = 'Účtovné odpisy podľa daňových: doterajšie oprávky musia byť rovnaké ako doterajšie daňové odpisy. Ak sa líšia, zadajte počet mesiacov účtovného odpisovania.'
   if (a.disposedOn !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(a.disposedOn) || a.disposedOn < a.inUseOn || !a.disposal)) e.disposal = 'Zadajte deň a spôsob vyradenia, nie pred zaradením.'
   return e
 }

@@ -8475,3 +8475,522 @@ a.wtable__name {
     padding: 14px;
   }
 }
+
+/* A client won at a meeting (src/meeting/): the designated person's phone and the director's phone, one path ------ */
+.meet {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+.meet-page {
+  padding-block: clamp(20px, 4vw, 48px) clamp(48px, 8vw, 96px);
+}
+
+.meet__head {
+  display: grid;
+  gap: 12px;
+}
+
+.meet__eyebrow {
+  color: var(--soft);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* How far: one bar, blue into red as the steps are done. */
+.meet__bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--blue), #7b3cf2 60%, var(--red)) 0 0 / var(--done, 0%) 100% no-repeat, var(--mist-2);
+  transition: background-size 0.6s var(--ease);
+}
+
+.meet__bar--1 { --done: 16.67%; }
+.meet__bar--2 { --done: 33.33%; }
+.meet__bar--3 { --done: 50%; }
+.meet__bar--4 { --done: 66.67%; }
+.meet__bar--5 { --done: 83.33%; }
+.meet__bar--6 { --done: 100%; }
+
+.meet__path {
+  margin: 0;
+  padding: 4px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--white);
+  box-shadow: var(--shadow-sm);
+  list-style: none;
+}
+
+.meet__step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+
+.meet__step:first-child {
+  border-top: 0;
+}
+
+.meet__num {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--blue-line);
+  border-radius: 50%;
+  color: var(--dim);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.meet__step--now .meet__num {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--white);
+  animation: meet-pulse 2.4s var(--ease) infinite;
+}
+
+.meet__step--later .meet__num {
+  border-style: dashed;
+}
+
+.meet__mark {
+  width: 26px;
+  height: 26px;
+  background-size: 14px;
+}
+
+/* The step just done: its tick springs in once. */
+.meet__step--done:has(+ .meet__step--now) .meet__mark {
+  animation: meet-pop 0.6s var(--spring) both;
+}
+
+.meet__text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.meet__name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.meet__step--done .meet__name {
+  color: var(--soft);
+}
+
+.meet__step--later .meet__name {
+  color: var(--dim);
+  font-weight: 500;
+}
+
+.meet__sub {
+  color: var(--soft);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.meet__step--now .meet__sub {
+  color: var(--blue);
+  font-weight: 500;
+}
+
+.meet__card {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: clamp(22px, 4vw, 32px);
+  border: 1px solid var(--blue-line);
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(70% 120% at 100% 0%, rgb(195 203 255 / 0.45) 0%, rgb(195 203 255 / 0) 60%),
+    var(--white);
+  box-shadow: var(--shadow);
+  animation: meet-in 0.5s var(--ease) both;
+}
+
+.meet__card--form {
+  border-color: var(--line);
+  background: var(--white);
+}
+
+.meet__title {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.meet__card:has(> .meet__glass) {
+  padding-top: 34px;
+}
+
+.meet__card:has(> .meet__glass) > .meet__title {
+  padding-right: 92px;
+}
+
+.meet__glass {
+  position: absolute;
+  top: -20px;
+  right: 12px;
+  width: 92px;
+  height: 92px;
+  filter: drop-shadow(0 14px 18px rgb(10 14 90 / 0.22));
+  pointer-events: none;
+}
+
+.meet__lead {
+  color: var(--text);
+}
+
+.meet__login {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--mist);
+  color: var(--text);
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+/* Waiting for the other phone. */
+.meet__dots::before {
+  content: '\2022\2022\2022';
+  color: var(--blue);
+  letter-spacing: 2px;
+  animation: meet-wait 1.4s ease-in-out infinite;
+}
+
+.meet__qr {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--white);
+}
+
+.meet__qrcode {
+  width: min(100%, 280px);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.meet__qrback {
+  fill: var(--white);
+}
+
+.meet__qrdots {
+  fill: var(--ink);
+}
+
+.meet__qrnote {
+  color: var(--soft);
+  font-size: 0.9375rem;
+  text-align: center;
+}
+
+.meet__more {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.meet__more > summary {
+  cursor: pointer;
+}
+
+.meet__more[open] > summary {
+  margin-bottom: 12px;
+}
+
+.meet__inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.meet__inline .field__input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.meet__company {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--mist);
+}
+
+.meet__companyname {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.meet__choices {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.meet__choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--white);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.meet__choice:has(input:checked) {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.meet__choice input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+.meet__go {
+  justify-content: center;
+  width: 100%;
+}
+
+.meet__print {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.meet__kv dd {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.meet__shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 10px;
+}
+
+.meet__shot {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1.5px dashed var(--blue-line);
+  border-radius: 16px;
+  background: var(--blue-soft);
+}
+
+.meet__shotname {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.meet__shot .field__input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  background: var(--white);
+}
+
+.meet__checks {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meet__check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.meet__check:first-child {
+  border-top: 0;
+}
+
+.meet__check > .tick,
+.meet__check > .mark {
+  margin-top: 3px;
+}
+
+.meet__check > .mark {
+  margin-left: 4px;
+}
+
+.mark--blue {
+  background: var(--blue);
+  box-shadow: 0 0 0 5px rgb(28 46 240 / 0.14);
+}
+
+.meet__how {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.3em;
+}
+
+.meet__calm {
+  animation: meet-in 0.6s var(--ease) both;
+}
+
+.meet__calmgo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.meet__light,
+.meet__light:hover {
+  color: var(--white);
+}
+
+.meet__live {
+  justify-content: space-between;
+}
+
+.meet__live[hidden] {
+  display: none;
+}
+
+.meet__foot {
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .meet__calm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .meet__calm .calm__glass {
+    grid-row: 1;
+    width: 120px;
+  }
+
+  .meet__calmgo .btn {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
+
+@keyframes meet-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+}
+
+@keyframes meet-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(28 46 240 / 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgb(28 46 240 / 0);
+  }
+}
+
+@keyframes meet-pop {
+  from {
+    transform: scale(0.4);
+  }
+}
+
+@keyframes meet-wait {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meet__card,
+  .meet__calm,
+  .meet__step--now .meet__num,
+  .meet__step--done .meet__mark,
+  .meet__dots::before,
+  .meet__bar {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* The contract to print at a meeting: the contract on one sheet, its terms from the next page on. */
+.cpaper__sub {
+  margin: -6px 0 18px;
+  color: var(--soft);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.cpaper__points > li {
+  margin-bottom: 10px;
+}
+
+.cpaper__plans {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.cpaper__plans li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.cpaper__box {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  transform: translateY(2px);
+}
+
+.cpaper--terms {
+  margin-top: 28px;
+  font-size: 0.875rem;
+}
+
+@media print {
+  .cpaper--terms {
+    margin-top: 0;
+    break-before: page;
+  }
+}

@@ -6,12 +6,14 @@ import { assistantAnswer, assistantDocuments } from '../assistant/context'
 import { assistantAllowed, assistantControl, setAssistantEnabled, type AssistantScope } from '../assistant/store'
 import { assistantTopic } from '../assistant/model'
 import { askAssistant } from '../assistant/service'
-import { normalName, orderAdmissionSql, quoteSql } from '../aml/model'
+import { normalName } from '../aml/model'
 import { CURRENT_OFFICER_SQL } from '../aml/constants'
 import { AmlDossierPanel } from '../views/aml-admission'
 import { admissionForOrder, dossierOfCompany, dossierOfOrder, sourceIntact, bankOriginalsIntact, isOfficer, officer } from '../aml/store'
 import { registerAmlRoutes } from '../aml/routes'
+import { registerMeetingRoutes } from '../meeting/team'
 import { registerWorkspaceRoutes } from './workspaces'
+import { paperClientBatch } from './paper-client'
 import { providerOf, type PeppolEnv } from '../peppol/provider'
 import { bindingOf, companyParticipant, participantState } from '../peppol/store'
 // The accountants' side under /ucto. Only somebody of the team gets in: a client who types the address gets the
@@ -24,7 +26,7 @@ import { payrollReportRoutes } from '../payroll-reporting/routes'
 import { closureStatements, reportItems as payrollReportItems, runReopenBlocked } from '../payroll-reporting/store'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, ART, ENDING, OFFLINE_TERMS, OPERATOR, ORDER, PLANS, TEAM } from '../config'
+import { APP, ART, ENDING, OPERATOR, ORDER, PLANS, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { overviewOf, windowOf } from './overview'
 import { CHECK, checkOverview, lastCheck, saveCheckStatements } from './overview-check'
@@ -227,7 +229,7 @@ import { clientSortOf, dashboardOf, exportCsv, exportOf } from '../analytics/sto
 import { periodOf as analyticsPeriod } from '../analytics/model'
 import { accuracyOf, comparedOf } from './ai-accuracy'
 import { bookingTime, lastMonths, payOf, workCsv, workStatement } from './work-pay'
-import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, planUsages, REMIND_EVERY, remindMessage } from './billing-store'
+import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, planUsages, REMIND_EVERY, remindMessage } from './billing-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
 import { companyRegistrations, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
@@ -938,37 +940,14 @@ teamRoutes.post('/klienti', async (c) => {
   if (Object.keys(errors).length > 0) return shell(c, 'clients', t.newClient.title, <NewClientPage values={values} accountants={accountants} errors={errors} found={found} months={months} />, 422)
 
   if (!amlOrder || !admission) return missingPage(c)
-  const companyId = crypto.randomUUID()
   const existing = await userByEmail(db, values.email)
-  const userId = existing?.id ?? crypto.randomUUID()
-  const ts = now()
   // The register's line for the contract and the papers, when the register answers.
   const registered = ico ? await lookupCompany(ico) : null
   const registerLine = registered && 'found' in registered && registered.found ? registered.found.registerLine : null
-  let inbox = inboxCode()
-  for (let i = 0; i < 5 && (await db.prepare('SELECT 1 AS x FROM companies WHERE inbox = ?').bind(inbox).first()); i++) inbox = inboxCode()
-  const mine = `EXISTS (SELECT 1 FROM orders WHERE id = ${quoteSql(amlOrder.id)} AND company_id = ${quoteSql(companyId)} AND accepted_at = ${ts})`
-  const statements: D1PreparedStatement[] = [
-    db.prepare(`UPDATE orders SET status = 'accepted',company_id = ?1,accepted_at = ?2,signed_by = ?3,terms_version = '${OFFLINE_TERMS}',start_on = ?4
-      WHERE id = ?5 AND status = 'open' AND expires_at > ?2 AND ${orderAdmissionSql('orders',quoteSql(admission.dossierId),String(admission.decisionId))}
-      AND EXISTS (SELECT 1 FROM users WHERE id = ?6 AND team = 'admin')`).bind(companyId,ts,admission.signerName,values.start,amlOrder.id,who.user.id),
-    db
-      .prepare(
-        `INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, accountant_id, request_id, contract_at, terms_version, signed_by, start_on, legal_form, signed_role, register_line, aml_dossier_id)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '${OFFLINE_TERMS}', ?, ?, ?, ?, ?, ? WHERE ${mine}`,
-      )
-      .bind(companyId, ts, values.name, ico, values.address || null, values.vat ? 1 : 0, values.plan, inbox, values.accountant || null, values.request || null, ts, values.person, values.start, values.legalForm || null, values.role || null, registerLine, admission.dossierId),
-    ...(existing ? [] : [db.prepare(`INSERT INTO users (id,created_at,email,name) SELECT ?,?,?,? WHERE ${mine}`).bind(userId,ts,values.email,values.person)]),
-    db.prepare(`INSERT OR IGNORE INTO members (company_id,user_id,role,created_at,invited_by) SELECT ?,?,'owner',?,? WHERE ${mine}`).bind(companyId, userId, ts, who.user.id),
-    eventStatement(db, { company: companyId, user: who.user.id, action: 'company.created', detail: { request: values.request || null } }),
-    db.prepare(`INSERT INTO declarations (id,company_id,created_at,created_by,data,checked_at,checked_by)
-      SELECT d.declaration_id,?1,d.created_at,?2,d.declaration,a.decided_at,a.decided_by FROM aml_dossiers d JOIN aml_decisions a ON a.dossier_id = d.id
-      WHERE d.id = ?3 AND a.id = ?4 AND ${mine}`).bind(companyId,userId,admission.dossierId,admission.decisionId),
-    db.prepare(`INSERT INTO risks (id,company_id,created_at,created_by,level,note) SELECT ?1,?2,a.decided_at,a.decided_by,a.level,a.note FROM aml_decisions a WHERE a.id = ?3 AND ${mine}`).bind(crypto.randomUUID(),companyId,admission.decisionId),
-    // The price list of the day the paper contract was signed: what the client is billed by (billing-store.ts).
-    paperTariffStatement(db, companyId, who.user.id),
-  ]
-  if (values.request) statements.push(db.prepare(`UPDATE requests SET status = 'client' WHERE id = ? AND ${mine}`).bind(values.request))
+  const { companyId, userId, statements } = await paperClientBatch(db, who.user.id, {
+    order: amlOrder, admission, name: values.name, ico, address: values.address || null, person: values.person, email: values.email, plan: values.plan, vat: values.vat,
+    accountant: values.accountant || null, request: values.request || null, start: values.start, legalForm: values.legalForm || null, role: values.role || null, registerLine,
+  }, existing?.id ?? null)
   try { await db.batch(statements) } catch { return shell(c,'clients',t.newClient.title,<NewClientPage values={values} accountants={accountants} errors={{form:'Stav overenia sa zmenil. Skontrolujte ho a skúste založenie znova.'}} months={months} />,409) }
   if (!await acceptedAs(db,amlOrder.id,companyId)) return missingPage(c)
   if (values.welcome) {
@@ -4820,14 +4799,16 @@ teamRoutes.post('/klienti/:id/prevzatie/predvaha', async (c) => {
   const rows = await tableOf(upload)
   if (typeof rows === 'string') return refuse(rows)
   if (rows.length === 0) return refuse(e.empty)
-  const read = takeoverTrial(rows)
+  // The day the books start decides whether the costs and revenues are last year's (on 431) or this year's so far.
+  const start = (day && dayOfText(day)) || (await booksStart(c.env.DB, company)) || `${dayOf(now()).slice(0, 4)}-01-01`
+  const read = takeoverTrial(rows, start)
   if (read.noColumns) return refuse(e.columns(t.takeover.columns.trial))
   if (read.issues.length > 0) return refuse(e.lines, issueLines(read.issues))
   if (read.lines.length === 0) return refuse(e.nothing)
   if (read.lines.length > OPENING_ROWS) return refuse(e.lines, [e.more(read.lines.length - OPENING_ROWS)])
   const filled = read.lines.map((l) => ({ account: l.account, md: l.md ? moneyText(l.md) : '', d: l.d ? moneyText(l.d) : '' }))
   const rowsShown = [...filled, ...Array.from({ length: Math.min(8, OPENING_ROWS - filled.length) }, () => ({ account: '', md: '', d: '' }))]
-  return openingPage(c, company, { day: day || textDay((await booksStart(c.env.DB, company)) ?? `${dayOf(now()).slice(0, 4)}-01-01`), rows: rowsShown, errors: {} }, 200, t.takeover.trial.note(read.lines.length, read.result !== 0 ? formatEurExact(read.result) : null))
+  return openingPage(c, company, { day: day || textDay(start), rows: rowsShown, errors: {} }, 200, t.takeover.trial.note(read.lines.length, read.result !== 0 ? formatEurExact(read.result) : null, !start.endsWith('-01-01')))
 })
 
 /** The open items: every one becomes a document of the import before the books start, all or none. */
@@ -5995,5 +5976,6 @@ teamRoutes.notFound((c) => (c.get('who') ? missingPage(c) : c.redirect('/app/pri
 export { canSee }
 
 registerAmlRoutes(teamRoutes, (c, title, child, status = 200) => shell(c, 'requests', title, child, status))
+registerMeetingRoutes(teamRoutes, (c, title, child, status = 200) => shell(c, 'clients', title, child, status))
 registerFoundingTeam(teamRoutes, (c, title, child, status = 200) => shell(c as Ctx, 'requests', title, child, status))
 registerWorkspaceRoutes(teamRoutes, (c, title, child, status = 200) => shell(c as Ctx, 'workspaces', title, child, status), (c) => missingPage(c as Ctx))

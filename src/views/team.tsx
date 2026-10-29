@@ -202,9 +202,12 @@ export const ClientsPage: FC<{ user: User; rows: ClientRow[]; dues?: DueRow[]; m
           <p class="phead__lead">{t.clients.lead}</p>
         </div>
         {admin ? (
-          <a class="btn btn--blue" href="/ucto/klienti/novy">
-            {t.clients.add}
-          </a>
+          <span class="phead__actions">
+            <a class="btn btn--blue" href="/ucto/stretnutie">Klient na stretnutí</a>
+            <a class="btn btn--line" href="/ucto/klienti/novy">
+              {t.clients.add}
+            </a>
+          </span>
         ) : null}
       </header>
       <Flash text={flash} />
@@ -1869,7 +1872,7 @@ export const NewClientPage: FC<{
       <form class="stack" method="post" action="/ucto/klienti" novalidate>
         <input type="hidden" name="ziadost" value={values.request} />
         <input type="hidden" name="aml" value={values.amlOrder ?? ''} />
-        {!values.amlOrder ? <p class="notice">Najprv dokončite overenie pred zmluvou. <a class="link" href="/ucto/aml/papier">Začať overenie klienta s papierovou zmluvou</a></p> : <p class="info__source">Údaje sú naviazané na overenú osobu a firmu. Ich zmena vyžaduje nové overenie.</p>}
+        {!values.amlOrder ? <p class="notice">Najprv dokončite overenie pred zmluvou. Stretnete sa s klientom osobne? <a class="link" href="/ucto/stretnutie">Klient na stretnutí</a>, všetko za jedno stretnutie. Inak <a class="link" href="/ucto/aml/papier">overenie klienta s papierovou zmluvou</a>.</p> : <p class="info__source">Údaje sú naviazané na overenú osobu a firmu. Ich zmena vyžaduje nové overenie.</p>}
         <div class="fgrid">
           <div class="fgrid__cell">
             <label class="field__label" for="n-ico">

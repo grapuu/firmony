@@ -9,6 +9,7 @@ import { accessOpenSql } from './retention'
 import type { User } from '../app/store'
 import type { Order } from '../order'
 import { COUNTRY_POLICY_VERSION } from './countries'
+import { inPersonOf } from './in-person'
 import { AML_CHECK_KINDS, CURRENT_OFFICER_SQL, officerSql } from './schema'
 import { checksCurrentSql, companyDossierSql, decisionCurrentSql, floorSql, freshChecksSql, normalName, orderAdmissionSql, orderFacts, placeCurrentSql,
   previousApprovalSql, requiredRiskSql, riskFloorSql,
@@ -36,10 +37,11 @@ export async function dossierView(db: D1Database, dossier: Dossier | null, curre
     db.prepare(`SELECT k.*, u.name AS by_name FROM aml_place_checks k LEFT JOIN users u ON u.id = k.checked_by WHERE k.dossier_id = ? ORDER BY k.id DESC`).bind(dossier.id).all<PlaceCheck>(),
     db.prepare('SELECT * FROM aml_policy_reviews WHERE dossier_id = ? ORDER BY id DESC').bind(dossier.id).all<PolicyReview>(),
   ])
+  const inPerson = await inPersonOf(db, dossier.id)
   const latestReview = reviews.results[0]
   return { dossier, declaration: JSON.parse(dossier.declaration) as Declaration, checks: checks.results, decision, ready: Boolean(ready), declarationHash: await sha256Hex(JSON.stringify({company:JSON.parse(dossier.company_facts),declaration:JSON.parse(dossier.declaration)})), bankEvidence: await bankEvidence(db,dossier.id),
     placeChecks: places.results, policyReviews: reviews.results, requiredRisk: latestReview?.required_risk ?? dossier.required_risk,
-    policyCurrent: (latestReview?.policy_version ?? dossier.policy_version) === COUNTRY_POLICY_VERSION }
+    policyCurrent: (latestReview?.policy_version ?? dossier.policy_version) === COUNTRY_POLICY_VERSION, inPerson }
 }
 export async function dossierOfOrder(db: D1Database, orderId: string): Promise<DossierView | null> {
   return dossierView(db, await db.prepare('SELECT * FROM aml_dossiers WHERE order_id = ? ORDER BY sequence DESC LIMIT 1').bind(orderId).first<Dossier>())

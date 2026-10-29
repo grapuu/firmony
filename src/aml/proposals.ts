@@ -39,7 +39,7 @@ export function kuvProposal(d: Declaration, stakeholders: Stakeholder[] | null, 
   const register = stakeholders.map((s) => `${s.name}${s.kind === 'company' ? ` (právnická osoba${s.ico ? `, IČO ${s.ico}` : ''})` : ''}`).join(', ')
   const source = [
     `Automatické porovnanie vo Firmony ${when(Math.floor(at / 1000))}: spoločníci podľa registra právnických osôb Štatistického úradu SR: ${register}.`,
-    `Koneční užívatelia výhod podľa podpísaného vyhlásenia: ${declared.map((k) => `${k.name} (${k.share || 'podiel neuvedený'})`).join(', ') || 'žiadni'}.`,
+    `Koneční užívatelia výhod podľa vyhlásenia: ${declared.map((k) => `${k.name} (${k.share || 'podiel neuvedený'})`).join(', ') || 'žiadni'}.`,
     same
       ? 'Výsledok: mená sa zhodujú. Výšku podielov register neuvádza, vychádza sa z vyhlásenia.'
       : [
@@ -72,7 +72,7 @@ export function countriesProposal(d: Declaration, at: number = Date.now()): List
   const text = [d.abroad ? d.abroadWhere : '', ...persons.map((p) => p.nationality)].filter((t) => t && t.trim())
   const highText = text.filter(highRiskName)
   const source = [
-    `Automatické porovnanie vo Firmony ${when(Math.floor(at / 1000))}: krajiny z podpísaného vyhlásenia (štátne občianstvo a pobyt každej osoby, miesto činnosti, obchodní partneri): ${codes.join(', ') || 'žiadne'}.`,
+    `Automatické porovnanie vo Firmony ${when(Math.floor(at / 1000))}: krajiny z vyhlásenia (štátne občianstvo a pobyt každej osoby, miesto činnosti, obchodní partneri): ${codes.join(', ') || 'žiadne'}.`,
     d.abroad && d.abroadWhere ? `Partneri mimo EÚ podľa vyhlásenia: ${d.abroadWhere}.` : 'Partneri mimo EÚ podľa vyhlásenia: nie.',
     `Porovnané so zoznamom vysokorizikových tretích krajín EÚ (delegované nariadenie 2016/1675) a s výzvou FATF, pravidlá vo verzii ${COUNTRY_POLICY_VERSION}, zoznamy overené ${textDay(COUNTRY_LISTS_CHECKED_ON)}.`,
     `Vysokorizikové: ${high.length || highText.length ? [...high, ...highText].join(', ') : 'žiadne'}. Pod zvýšeným monitorovaním FATF: ${monitored.length ? monitored.join(', ') : 'žiadne'}.`,

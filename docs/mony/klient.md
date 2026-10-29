@@ -21,6 +21,7 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 6. V aplikácii čakajú prvé kroky: plná moc (/app/plna-moc), banka alebo výpis (/app/banka), prvý doklad. Pri prechode od inej účtovníčky aj list pre ňu (/app/prechod).
 - Ak za firmu konajú viacerí spoločne, zmluva sa podpisuje na papieri; Firmony ju pripraví. Iné právne formy než s. r. o., a. s. a j. s. a. a väčšie firmy (nad 150 dokladov mesačne, voľba „Na mieru“) dostanú ponuku osobne.
 - Celý čas je to nezáväzné až do kliknutia „Uzavrieť zmluvu“.
+- Alebo na osobnom stretnutí, za jedno stretnutie a bez kvalifikovaného podpisu: konateľ naskenuje mobilom QR kód z mobilu Firmony (nič sa neinštaluje), na svojom mobile vyplní údaje o firme (asi päť minút), ukáže občiansky preukaz (porovnáme ho s údajmi a odfotíme, ako to vyžaduje zákon), obaja podpíšeme zmluvu na papieri v dvoch rovnopisoch a jedným ťuknutím na „Vstúpiť do Firmony“ je v aplikácii. Do Firmony sa prihlasuje e-mailom, ktorý na stretnutí nahlas skontrolujeme; prihlasovací odkaz príde aj naň. Fotka podpísanej zmluvy je potom v aplikácii pri zmluve (/app/zmluva). Ak QR kód nejde, odkaz príde e-mailom.
 
 ## Ceny a čo je v cene
 

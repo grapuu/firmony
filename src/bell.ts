@@ -40,6 +40,9 @@ export const bell = {
     ring('prihláška na založenie s. r. o.', `Vaša s. r. o. za 1 € čaká už len na pár krokov. Prihlášku dokončíte do ${until} na tomto odkaze:`, link, ['Odkaz nikomu nepreposielajte, je to kľúč k Vašej prihláške.']),
   // A new client whose first steps are not done (team/nudge.ts): which ones is read on the overview.
   firstSteps: (link: string) => ring('prvé kroky', 'aby sme mohli naplno viesť účtovníctvo Vašej firmy, chýba ešte pár prvých krokov. Každý zaberie len chvíľu a nájdete ich na prehľade:', link),
+  // The director's link to a meeting's order (meeting/), when the QR code cannot be scanned: the key to the order.
+  meetingLink: (link: string) =>
+    ring('údaje pred zmluvou', 'tu vyplníte údaje o firme pred podpisom zmluvy o vedení účtovníctva:', link, ['Odkaz nikomu nepreposielajte, je to kľúč k Vašej objednávke.']),
   teamFounding: (link: string) => ring('prihláška na založenie s. r. o.', 'prihláška na založenie s. r. o. čaká na overenie určenou osobou:', link),
   managedTakeoverQuestion: (link: string) => ring('doplnenie k prevzatiu', 'pri prevzatí účtovníctva potrebujeme Vaše doplnenie. Otázku a aktuálny priebeh si otvoríte po prihlásení:', link),
   teamManagedTakeover: (link: string) => ring('koordinácia prevzatia', 'klient požiadal o koordináciu prevzatia účtovníctva. Kontakt a rozsah si pozrite po prihlásení:', link),

@@ -6,7 +6,7 @@ import type { FC } from 'hono/jsx'
 import { DeliveryNotice } from './filings'
 import { formatCount, formatEurExact } from '../format'
 import { dayName } from '../app/copy'
-import { BALANCE_ROWS, ENTITY_SIZES, PROFIT_ROWS, TABLE_A, TABLE_B, extensionDays, type ClosingIssue, type Lines } from '../app/closing'
+import { BALANCE_ROWS, ENTITY_SIZES, PROFIT_ROWS, TABLE_A, TABLE_B, extensionDays, proposedTyped, type ClosingIssue, type Lines } from '../app/closing'
 import { POD_ASSET_ROWS, POD_BALANCE_SUMS, POD_LIABILITY_ROWS, POD_PROFIT_ROWS, POD_PROFIT_SUMS } from '../app/closing-pod'
 import { CREDIT_ROWS, LOSS_ROWS, NOTE_TEXT, PLACEMENT_ROWS, type ClosingErrors, type ClosingValues } from '../app/closing-form'
 import { noteChecks } from '../app/notes'
@@ -76,6 +76,10 @@ const IssueItem: FC<{ issue: ClosingIssue; company: Company; view: ClosingView }
         return [k.issue.audit(view.year), null, null]
       case 'auditMaybe':
         return [k.issue.auditMaybe, null, null]
+      case 'carSale':
+        return [k.issue.carSale(issue.count), `${base}/majetok`, k.go.assets]
+      case 'midyear':
+        return [k.issue.midyear(textDay(view.books.start ?? '')), `${base}/pociatocne`, k.go.opening]
     }
   })()
   return (
@@ -125,7 +129,7 @@ const IssuesCard: FC<{ company: Company; view: ClosingView }> = ({ company, view
 }
 
 /** The return's rows in their order; those always shown, and the sums set apart. */
-const TAX_ORDER = ['r100', 'r110', 'r130', 'r140', 'r150', 'r170', 'r180', 'r200', 'r210', 'r230', 'r250', 'r260', 'r270', 'r280', 'r290', 'r300', 'r400', 'r410', 'r500', 'r560', 'r550', 'r600', 'r810', 'r830', 'r920', 'r1050', 'r1010', 'r1030', 'r1100', 'r1101', 'r1110']
+const TAX_ORDER = ['r100', 'r110', 'r130', 'r140', 'r150', 'r170', 'r180', 'r200', 'r210', 'r230', 'r250', 'r260', 'r270', 'r280', 'r290', 'r300', 'r302', 'r400', 'r410', 'r500', 'r560', 'r550', 'r600', 'r810', 'r830', 'r920', 'r1050', 'r1010', 'r1030', 'r1100', 'r1101', 'r1110']
 const TAX_ALWAYS = new Set(['r100', 'r400', 'r560', 'r550', 'r600', 'r1050'])
 const TAX_SUMS = new Set(['r200', 'r300', 'r400', 'r500', 'r1050', 'r1100', 'r1101'])
 
@@ -399,7 +403,7 @@ const FormCard: FC<{ company: Company; view: ClosingView; values: ClosingValues;
         </More>
         <More title={k.sections.down} names={[...DOWN]} values={values} errors={errors} filed={filed}>
           {DOWN.map((row) => (
-            <AmountRow name={row} no={row.slice(1)} label={k.taxRows[row] ?? row} values={values} errors={errors} proposed={row === 'r210' && inputs.typed.r210 === undefined && p.r210 > 0} />
+            <AmountRow name={row} no={row.slice(1)} label={k.taxRows[row] ?? row} values={values} errors={errors} proposed={inputs.typed[row] === undefined && proposedTyped(p, row) > 0} />
           ))}
         </More>
         <fieldset class="cform__section" disabled={filed}>

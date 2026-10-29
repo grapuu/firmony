@@ -218,7 +218,8 @@ export async function filedReturns(db: D1Database, company: string): Promise<Fil
 }
 
 /** The periods filed, with the day each was filed: what vat.ts needs to place a late document. */
-export const filedMap = (filed: FiledReturn[]): Map<string, string> => new Map(filed.map((f) => [f.period, f.filedOn]))
+/** Each filed period's day of filing, and after "@" the moment it was marked (periodOfDoc tells a document of that day by it). */
+export const filedMap = (filed: Pick<FiledReturn, 'period' | 'filedOn' | 'filedAt'>[]): Map<string, string> => new Map(filed.map((f) => [f.period, f.filedAt ? `${f.filedOn}@${f.filedAt}` : f.filedOn]))
 
 const addDays = (day: string, days: number): string => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
 const secondsOf = (day: string): number => Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000)

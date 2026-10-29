@@ -109,12 +109,12 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     const reports = await c.env.DB.prepare(`SELECT * FROM aml_prospect_reports WHERE order_id = ?1 AND (created_by = ?2 OR ${officerSql('?2')}) ORDER BY created_at DESC,id`).bind(order.id,user.id).all<ProspectReport>()
     const holds = designated ? await c.env.DB.prepare('SELECT id,created_at,until_on,reference FROM aml_prospect_holds WHERE order_id = ? ORDER BY created_at').bind(order.id).all<ProspectHold>() : null
     return render(c, 'Overenie pred zmluvou', <>
-      <a class="back" href={order.requestId ? `/ucto/ziadosti/${order.requestId}/posudenie` : '/ucto/klienti/novy'}>Späť na prijatie klienta</a>
+      {order.meetingBy ? <a class="back" href={`/ucto/stretnutie/${order.id}`}>Späť na stretnutie</a> : <a class="back" href={order.requestId ? `/ucto/ziadosti/${order.requestId}/posudenie` : '/ucto/klienti/novy'}>Späť na prijatie klienta</a>}
       <header class="phead"><h1 class="h1">Overenie pred zmluvou</h1><p class="phead__lead">{order.company}, {order.email}</p></header>
       {c.req.query('chyba') ? <p class="notice notice--error" role="alert">Záznam sa nepodarilo potvrdiť. Skontrolujte úplnosť dôkazov, rizikovú skupinu a aktuálnu verziu údajov.</p> : null}
       <AmlDossierPanel view={view} proposals={proposals} officer={designated} readOnly={order.status !== 'open'} returnTo={`/ucto/aml/objednavky/${order.id}`} download={view ? `/ucto/aml/spisy/${view.dossier.id}/subor` : ''} />
       <AmlProspectPanel orderId={order.id} reports={reports.results} holds={holds?.results ?? []} officer={designated} today={new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Bratislava'}).format(new Date())} readOnly={Boolean(order.companyId || raw.aml_delete_started_at)} ended={Boolean(raw.aml_ended_at)} />
-      {view?.ready && order.status === 'open' ? <p><a class="btn btn--line" href={`/ucto/klienti/novy?aml=${order.id}`}>Založiť overeného klienta s papierovou zmluvou</a></p> : null}
+      {view?.ready && order.status === 'open' ? <p><a class="btn btn--line" href={order.meetingBy ? `/ucto/stretnutie/${order.id}` : `/ucto/klienti/novy?aml=${order.id}`}>{order.meetingBy ? 'Pokračovať na stretnutí: zmluva' : 'Založiť overeného klienta s papierovou zmluvou'}</a></p> : null}
     </>)
   })
   app.get('/aml/spisy/:id/subor', async (c) => {
@@ -126,6 +126,19 @@ export function registerAmlRoutes(app: Hono<Env>, render: Render): void {
     const bytes = new Uint8Array(await file.arrayBuffer())
     if (bytes.length !== d.file_bytes || await bytesHash(bytes) !== d.file_sha256) return c.text('Originál sa nepodarilo overiť.', 409)
     return new Response(bytes, { headers: { 'Content-Type': d.file_type === 'pdf' ? 'application/pdf' : 'application/vnd.etsi.asic-e+zip', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(d.file_name)}`, 'Cache-Control': 'private, no-store' } })
+  })
+  // The copies of the identity document taken at a meeting (aml/in-person.ts), each checked against what was kept.
+  app.get('/aml/spisy/:id/doklad/:side', async (c) => {
+    const found = await accessible(c, c.req.param('id'), false)
+    const p = found?.view.inPerson
+    const front = c.req.param('side') === 'predna'
+    if (!p || !c.env.FILES || (!front && c.req.param('side') !== 'zadna')) return missing(c)
+    const key = front ? p.front_key : p.back_key, sha = front ? p.front_sha256 : p.back_sha256, size = front ? p.front_bytes : p.back_bytes, type = front ? p.front_type : p.back_type
+    const file = key ? await c.env.FILES.get(key) : null
+    if (!file || !sha || !type) return missing(c)
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    if (bytes.length !== size || await bytesHash(bytes) !== sha) return c.text('Originál sa nepodarilo overiť.', 409)
+    return new Response(bytes, { headers: { 'Content-Type': type, 'Content-Disposition': `inline; filename="doklad-${front ? 'predna' : 'zadna'}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox" } })
   })
   app.post('/aml/spisy/:id/banka',async(c)=>{
     const found=await accessible(c,c.req.param('id'),true)

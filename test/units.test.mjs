@@ -6718,6 +6718,7 @@ await (await import('./social.units.mjs')).checkSocial()
         '901;Podsúvahový;;;;;5,00;',
       ].join('\n'),
     ),
+    '2027-01-01',
   )
   check(
     'a trial balance with KS MD and KS D: every balance-sheet account, a synthetic account by its analytic ones, the year\'s costs and revenues as the result on 431, totals and class 9 left out',
@@ -6728,14 +6729,19 @@ await (await import('./social.units.mjs')).checkSocial()
     tableRead.parseDelimited(
       ['Účet\tNázov účtu\tPočiatočný stav\tObraty MD\tObraty D\tKonečný stav', '211 Pokladnica\t\t\t\t\t120,50', '221.001\t\t\t\t\t6 000,00', '221.002\t\t\t\t\t4000', '311\t\t\t\t\t2460', '321\t\t\t\t\t-1 230,00', '411\t\t\t\t\t-5000', '428\t\t\t\t\t700,00 D', '518\t\t\t\t\t6349,5', '602\t\t\t\t\t-12000'].join('\n'),
     ),
+    '2027-01-01',
   )
   check('a trial balance with one signed closing balance (and "700,00 D"), the account at the start of its cell', linesOf(pohoda) === expected, linesOf(pohoda))
-  const turnover = takeover.trialBalance(tableRead.parseDelimited(['Účet;PS;Obrat MD;Obrat D', '211;100;20,50;', '221.001;5000;1000;', '221.002;4000;;', '311;;2460;', '321;-1000;;230', '411;-5000;;', '428;-700;;', '518;;6349,50;', '602;;;12000'].join('\n')))
+  const turnover = takeover.trialBalance(tableRead.parseDelimited(['Účet;PS;Obrat MD;Obrat D', '211;100;20,50;', '221.001;5000;1000;', '221.002;4000;;', '311;;2460;', '321;-1000;;230', '411;-5000;;', '428;-700;;', '518;;6349,50;', '602;;;12000'].join('\n')), '2027-01-01')
   check('a trial balance without closing balances: the opening one with the turnover', linesOf(turnover) === expected, linesOf(turnover))
-  const long = takeover.trialBalance(tableRead.parseDelimited('Účet;KS\n3432001;100,00\n343.200;-100,00\nx;1'))
+  const long = takeover.trialBalance(tableRead.parseDelimited('Účet;KS\n3432001;100,00\n343.200;-100,00\nx;1'), '2027-01-01')
   check('an analytic account of more than three digits is said with its line, never left out quietly', long.issues.length === 1 && long.issues[0].line === 2 && long.issues[0].what.startsWith('3432001'))
-  check('a table without an account and a balance is said', takeover.trialBalance([['Názov', 'Suma']]).noColumns && takeover.trialBalance(tableRead.parseDelimited('Účet;Názov\n211;Pokladnica')).noColumns)
-  check('an amount that is none is said with its line', takeover.trialBalance(tableRead.parseDelimited('Účet;KS MD;KS D\n211;12,x;')).issues[0]?.line === 2)
+  check('a table without an account and a balance is said', takeover.trialBalance([['Názov', 'Suma']], '2027-01-01').noColumns && takeover.trialBalance(tableRead.parseDelimited('Účet;Názov\n211;Pokladnica'), '2027-01-01').noColumns)
+  check('an amount that is none is said with its line', takeover.trialBalance(tableRead.parseDelimited('Účet;KS MD;KS D\n211;12,x;'), '2027-01-01').issues[0]?.line === 2)
+  // Books that start during the year: the year's costs and revenues so far stay on their accounts, so its statements and
+  // tax return are of the whole calendar year (the books audit of 30 October 2026: they were put on 431 and left out).
+  const midYear = takeover.trialBalance(tableRead.parseDelimited(['Účet;KS', '211;120,50', '221.001;6000', '221.002;4000', '311;2460', '321;-1230', '411;-5000', '428;-700', '518;6349,5', '602;-12000'].join('\n')), '2026-06-01')
+  check('a trial balance of books that start during the year keeps its costs and revenues and puts nothing on 431', linesOf(midYear) === '211:12050/0 221.001:600000/0 221.002:400000/0 311:246000/0 321:0/123000 411:0/500000 428:0/70000 518:634950/0 602:0/1200000' && midYear.result === 0 && midYear.md === midYear.d, linesOf(midYear))
 
   // The open items
   const open = takeover.openItems(

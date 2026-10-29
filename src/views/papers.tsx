@@ -21,14 +21,14 @@ function registeredIn(line: string): string {
 }
 
 /** A line to write on, where we do not know what goes there. */
-const Blank: FC<{ wide?: boolean }> = ({ wide }) => (
+export const Blank: FC<{ wide?: boolean }> = ({ wide }) => (
   <span class={`deed__blank${wide ? ' deed__blank--wide' : ''}`}>
     <span class="sr">doplniť</span>
   </span>
 )
 
 /** A party of a deed or a letter, as one sentence: name, seat, IČO, register, who acts for it. */
-const PartyLine: FC<{ name: string; address: string | null; ico: string | null; register: string | null; director: string | null; role: string; tail?: string }> = ({ name, address, ico, register, director, role, tail }) => (
+export const PartyLine: FC<{ name: string; address: string | null; ico: string | null; register: string | null; director: string | null; role: string; tail?: string }> = ({ name, address, ico, register, director, role, tail }) => (
   <p class="deed__party">
     <strong class="deed__name">{name}</strong>, {p.sheet.seat} {address ?? <Blank wide />}, {p.sheet.ico} {ico ? formatIco(ico) : <Blank />}
     {register ? `, ${registeredIn(register)}` : ''}, {p.sheet.acting} {director ?? <Blank wide />}, {role}
@@ -36,7 +36,7 @@ const PartyLine: FC<{ name: string; address: string | null; ico: string | null; 
   </p>
 )
 
-const Sign: FC<{ label: string; name: string | null; role: string; of: string }> = ({ label, name, role, of }) => (
+export const Sign: FC<{ label: string; name: string | null; role: string; of: string }> = ({ label, name, role, of }) => (
   <div class="deed__sign">
     <span class="deed__signlabel">{label}</span>
     <span class="deed__line" aria-hidden="true" />

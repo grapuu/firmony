@@ -4,6 +4,7 @@ import { AML_PROSPECT_SCHEMA } from './aml/prospect-schema'
 import { AML_RETENTION_SCHEMA } from './aml/retention'
 import { AML_SCHEMA } from './aml/schema'
 import { AML_POLICY_SCHEMA } from './aml/policy-schema'
+import { AML_IN_PERSON_SCHEMA } from './aml/in-person-schema'
 import { MANAGED_HANDOVER_SCHEMA } from './migration/schema'
 import { ASSISTANT_SCHEMA } from './assistant/schema'
 import { FORMATION_SCHEMA } from './formation/schema'
@@ -1629,6 +1630,19 @@ const MIGRATIONS: readonly string[][] = [
       result TEXT NOT NULL CHECK (json_valid(result))
     )`,
     'CREATE INDEX IF NOT EXISTS admin_checks_at ON admin_checks (at)',
+  ],
+  // 91: a client won at a meeting (his word of 29 October 2026, meeting/): the order the designated person starts on his
+  // phone and the director's phone joins by a QR code, when the director's phone was first seen and signed in (once),
+  // the photo of the contract both signed on paper, and the identification verified in person (aml/in-person.ts).
+  [
+    'ALTER TABLE orders ADD COLUMN meeting_by TEXT',
+    'ALTER TABLE orders ADD COLUMN meeting_seen_at INTEGER',
+    'ALTER TABLE orders ADD COLUMN meeting_entered_at INTEGER',
+    'ALTER TABLE orders ADD COLUMN paper_key TEXT',
+    'ALTER TABLE orders ADD COLUMN paper_type TEXT',
+    'ALTER TABLE orders ADD COLUMN paper_sha256 TEXT',
+    'ALTER TABLE orders ADD COLUMN paper_bytes INTEGER',
+    ...AML_IN_PERSON_SCHEMA,
   ],
 ]
 

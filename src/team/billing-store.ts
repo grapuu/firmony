@@ -40,9 +40,9 @@ export function priceListTariff(source: Tariff['source']): Tariff {
   return { source, plans: catalogue.plans.map((p) => ({ id: p.id, name: p.name, docs: p.docs, monthlyCents: p.monthlyCents })), payrollCents: catalogue.payrollCents, closingCents: catalogue.closingCents, firstMonthFree: catalogue.firstMonthFree, issuedInvoicesFree: catalogue.issuedInvoicesFree }
 }
 
-/** The prices of a paper contract, kept when the client is made (the same batch). */
-export function paperTariffStatement(db: D1Database, company: string, user: string): D1PreparedStatement {
-  return db.prepare('INSERT INTO billing_tariffs (company_id, data, created_at, created_by) VALUES (?, ?, ?, ?)').bind(company, JSON.stringify(priceListTariff('paper')), now(), user)
+/** The prices of a paper contract, kept when the client is made (the same batch, and only when the batch made it). */
+export function paperTariffStatement(db: D1Database, company: string, user: string, only: string): D1PreparedStatement {
+  return db.prepare(`INSERT INTO billing_tariffs (company_id, data, created_at, created_by) SELECT ?, ?, ?, ? WHERE ${only}`).bind(company, JSON.stringify(priceListTariff('paper')), now(), user)
 }
 
 function tariffOfJson(raw: unknown): Tariff | null {

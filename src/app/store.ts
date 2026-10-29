@@ -553,6 +553,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     reverseHint: doc.reverseHint,
     issuedOn: doc.issuedOn,
     receivedOn: bratislavaDay(doc.createdAt),
+    receivedAt: doc.createdAt,
     totalCents: doc.totalCents,
     vatCents: doc.vatCents,
     currency: doc.currency,

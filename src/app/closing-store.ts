@@ -419,7 +419,8 @@ export async function closingView(db: D1Database, company: Company, year: number
   const employees = own.employees ?? employeesFound
   const yearFigures: SizeFigures = { year, assetsNet: statements.assetsNet, assetsGross: statements.assetsGross, turnover: statements.turnover, employees }
   const audit = auditOf(yearFigures, figures.get(year - 1) ?? null)
-  const proposal = proposeTax(statements, assets.length > 0 ? assetYear(assets, year) : null)
+  const assetsOfYear = assets.length > 0 ? assetYear(assets, year) : null
+  const proposal = proposeTax(statements, assetsOfYear)
   const input = taxInputOf(year, proposal, own, { advances: paid.advances })
   const tax = taxOf(input)
   const booked = statements.accounts['591'] ?? 0
@@ -482,6 +483,7 @@ export async function closingView(db: D1Database, company: Company, year: number
       tax: running ? null : { computed: tax.rows.r1050 ?? 0, booked, deferred: { computed: deferred.expense, booked: deferredBooked } },
       audit,
       stock,
+      carsSold: assetsOfYear?.carsSold ?? 0,
     }),
     running,
     due: closing?.dueOn ?? closingDue(year, closing?.extendedTo ?? null),

@@ -40,6 +40,13 @@ export interface Order {
   priceCents: number | null
   termsVersion: string | null
   companyId: string | null
+  /** A meeting (meeting/): who of the team started it, when the director's phone first opened it and signed in. */
+  meetingBy?: string | null
+  meetingSeenAt?: number | null
+  meetingEnteredAt?: number | null
+  /** The photo of the contract signed on paper at the meeting (kept under the order, as its identification). */
+  paperKey?: string | null
+  paperSha256?: string | null
 }
 
 type Row = Record<string, unknown>
@@ -86,6 +93,11 @@ export function orderOf(row: Row): Order {
     priceCents: num(row.price_cents),
     termsVersion: str(row.terms_version),
     companyId: str(row.company_id),
+    meetingBy: str(row.meeting_by),
+    meetingSeenAt: num(row.meeting_seen_at),
+    meetingEnteredAt: num(row.meeting_entered_at),
+    paperKey: str(row.paper_key),
+    paperSha256: str(row.paper_sha256),
   }
 }
 

@@ -124,7 +124,7 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
 
   // The money comes to europio's account, from the founder's own.
   const operator = await db.prepare('SELECT id FROM companies WHERE operator = 1').first()
-  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, party_iban, vs, ref, source) VALUES ('founding-pay-1', ?, 'founding-test-account', ?, date('now'), 55000, 'EUR', 'NOVAK JAN', 'SK3112000000198742637541', ?, 'founding-test-ref-1', 'statement')").bind(operator.id, nowS, row.vs).run()
+  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, party_iban, vs, ref, source) VALUES ('founding-pay-1', ?, 'founding-test-account', ?, ?, 55000, 'EUR', 'NOVAK JAN', 'SK3112000000198742637541', ?, 'founding-test-ref-1', 'statement')").bind(operator.id, nowS, new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date()), row.vs).run()
   page = plain(await (await officer.get(`/ucto/zalozenia/${row.id}`)).text())
   row = await db.prepare('SELECT * FROM foundings WHERE id = ?').bind(row.id).first()
   check('founding: the payment is found by its symbol, and the payer’s name is compared', row.paid_cents === 55_000 && row.payer_iban === 'SK3112000000198742637541' && page.includes('meno sa zhoduje'))
@@ -171,6 +171,9 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   // have changed), so it is verified only once they are recorded again.
   res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'open', poznamka: 'TEST-ONLY doplňte, prosím, telefón' })
   check('founding: returned to the founder to complete', res.status === 303 && (await db.prepare('SELECT status FROM foundings WHERE id = ?').bind(row.id).first()).status === 'open')
+  // A check counts from the second of the last handover on (handedOverAt): in real life minutes or days pass before an
+  // application comes back, here less than a second could, so the test waits one.
+  await new Promise((resolve) => setTimeout(resolve, 1100))
   res = await anon.post(`${base}/odoslat`, {})
   await settle()
   res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: '', riziko: 'standard' })

@@ -17,7 +17,7 @@ export interface ContractOrder {
   startOn: string | null
   termsVersion: string | null
 }
-export const ContractPage: FC<{ company: Company; order: ContractOrder | null; contract: ResolvedContract }> = ({ company, order, contract }) => {
+export const ContractPage: FC<{ company: Company; order: ContractOrder | null; contract: ResolvedContract; paper?: boolean }> = ({ company, order, contract, paper }) => {
   const s = contract.snapshot
   const signedAt = s?.acceptedAt ?? order?.acceptedAt ?? company.contractAt
   const signedBy = s?.signedBy ?? order?.signedBy ?? company.signedBy
@@ -35,6 +35,7 @@ export const ContractPage: FC<{ company: Company; order: ContractOrder | null; c
       <p class={`notice contract-status ${contract.status === 'snapshot' ? 'contract-status--saved' : contract.status === 'corrupt' ? 'notice--error' : ''}`} role="status">
         {contract.notice}
       </p>
+      {paper ? <p class="notice" role="note">Zmluvu ste podpísali na stretnutí. <a class="link" href="/app/zmluva/foto" target="_blank" rel="noopener">Fotka podpísanej zmluvy</a></p> : null}
       <div class="invoice">
         <div class="invoice__paper">
           <article class="sheet deed contract" aria-label={contract.terms?.title ?? p.title}>

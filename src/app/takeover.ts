@@ -3,9 +3,11 @@
 // and takeover-store.ts. Every list is read all or none: a line that cannot be read is said with its number.
 //
 // - The trial balance (obratová predvaha) at the day before the books start: the closing balance of every balance-sheet
-//   account (classes 0 to 4) becomes the opening balances; costs and revenues of a trial balance not yet closed make the
-//   year's result, put on 431 (výsledok hospodárenia v schvaľovaní); classes 7 to 9 are left out. A synthetic account
-//   listed with its analytic ones counts once, by them.
+//   account (classes 0 to 4) becomes the opening balances; classes 7 to 9 are left out. Costs and revenues: when the
+//   books start on 1 January they are last year's, not yet closed, and make its result on 431 (výsledok hospodárenia v
+//   schvaľovaní); when the books start during the year they are this year's so far and stay on their accounts, because
+//   the year's statements and tax return are of the whole calendar year (§ 17 of Act 431/2002, § 41 of Act 595/2003).
+//   A synthetic account listed with its analytic ones counts once, by them.
 // - The open items (saldokonto): each invoice issued or received that was not paid, with what is left of it, becomes a
 //   document dated before the books start, which the books leave out (the opening balances hold 311 and 321) and which
 //   the payment that comes later pairs with.
@@ -88,8 +90,9 @@ function balanceOf(row: readonly string[], cols: Partial<Record<keyof typeof TRI
   return ps + (md ?? 0) - (d ?? 0)
 }
 
-/** The opening balances from a trial balance's rows. */
-export function trialBalance(rows: readonly string[][]): TrialBalance {
+/** The opening balances from a trial balance's rows, for books that start on `start` (YYYY-MM-DD). */
+export function trialBalance(rows: readonly string[][], start: string): TrialBalance {
+  const midYear = !start.endsWith('-01-01')
   const found = findColumns(rows, TRIAL, ['account'])
   const out: TrialBalance = { lines: [], result: 0, md: 0, d: 0, issues: [], noColumns: false }
   if (!found || !['ksMd', 'ksD', 'ks', 'obMd', 'obD'].some((k) => found.cols[k as keyof typeof TRIAL] !== undefined)) return { ...out, noColumns: true }
@@ -119,7 +122,7 @@ export function trialBalance(rows: readonly string[][]): TrialBalance {
   let result = 0
   for (const [account, balance] of [...balances.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
     const cls = accountClass(account)
-    if (cls === 5 || cls === 6) {
+    if ((cls === 5 || cls === 6) && !midYear) {
       result -= balance
       continue
     }

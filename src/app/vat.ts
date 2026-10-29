@@ -179,6 +179,8 @@ export interface VatDoc {
   issuedOn: string | null
   /** The day the document reached us (Bratislava): a deduction cannot be claimed before it. */
   receivedOn: string
+  /** The moment it reached us (unix seconds), to tell it from a filing made the same day. */
+  receivedAt?: number
   totalCents: number | null
   vatCents: number | null
   currency: string | null
@@ -514,10 +516,15 @@ export function periodOfDoc(doc: VatDoc, data: VatData, company: VatCompany, fil
   // VAT paid to the customs office is deducted by the document the customs office confirmed, as an invoice (§ 51(1)(c)).
   if (!isReceived(doc.kind) || (data.mode !== 'domestic' && data.mode !== 'import')) return natural
   let period = doc.receivedOn > filingDeadline(natural) ? periodOf(doc.receivedOn, quarterly) : natural
-  // A period filed before the document came is closed to it: the deduction goes into the next open one.
+  // A period filed before the document came is closed to it: the deduction goes into the next open one. A document that
+  // came on the day of the filing, before the filing was marked, was there to be filed with it (filedMap keeps the
+  // moment of the mark after the day, "2026-10-20@1792512000").
   for (let guard = 0; guard < 24; guard++) {
-    const filedOn = filed.get(period)
-    if (!filedOn || filedOn > doc.receivedOn) break
+    const mark = filed.get(period)
+    if (!mark) break
+    const [filedOn = '', at] = mark.split('@')
+    if (filedOn > doc.receivedOn) break
+    if (filedOn === doc.receivedOn && at && doc.receivedAt !== undefined && doc.receivedAt <= Number(at)) break
     period = nextPeriod(period)
   }
   return period
@@ -1040,7 +1047,8 @@ export function vatDocsByPeriod(company: VatCompany, docs: VatDoc[], filed: Read
     const own = periodOfDoc(doc, counted.data, company, filed)
     put(own, doc)
     // A supplier's invoice not paid in time is in the period of its correction under § 53b and of its payment too.
-    for (const e of unpaidEvents(doc, counted.data, company, filed)) if (e.period !== own) put(e.period, doc)
+    // Once a period: workOut takes every event of the document in it (two events in one period were counted twice before).
+    for (const e of unpaidEvents(doc, counted.data, company, filed)) if (e.period !== own && !out.get(e.period)?.includes(doc)) put(e.period, doc)
     // An issued invoice lowered under § 25a is in the period of the lowering and of the payment that raises it again too.
     for (const e of badDebtEvents(doc, counted.data, company)) if (e.period !== own && !out.get(e.period)?.includes(doc)) put(e.period, doc)
   }
@@ -1358,6 +1366,8 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
       if (data.mode === 'domestic') {
         if (!payer) continue
         if (correction) {
+          // A correction of a deduction that was never made corrects nothing: no row and no line of C.2.
+          if (deduct === 0) continue
           add('r28', -deduct, doc.id)
           kv.c2.push({ dod: vatId, fo: number, fp: kvNumber(data.corrects), zr: line.base, dr: line.vat, s: line.rate, or: deduct, doc: doc.id })
           note('C2', doc.id)

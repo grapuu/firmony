@@ -312,7 +312,7 @@ async function forgetCompanyRecords(env: PurgeEnv, id: string, today: string): P
   const founding = await forgetFoundingsOf(env, id)
   await db.batch([
     ...founding,
-    ...['aml_checks','aml_decisions','aml_place_checks','aml_policy_reviews'].map((table) => db.prepare(`DELETE FROM ${table} WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))`).bind(id)),
+    ...['aml_checks','aml_decisions','aml_place_checks','aml_policy_reviews','aml_in_person'].map((table) => db.prepare(`DELETE FROM ${table} WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))`).bind(id)),
     db.prepare('DELETE FROM aml_bank_evidence WHERE dossier_id IN (SELECT id FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1))').bind(id),
     db.prepare('DELETE FROM aml_dossiers WHERE company_id = ?1 OR order_id IN (SELECT id FROM orders WHERE company_id = ?1)').bind(id),
     db.prepare('DELETE FROM company_files WHERE company_id = ?').bind(id),

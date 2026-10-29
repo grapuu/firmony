@@ -5,6 +5,7 @@ import type { Company } from '../app/store'
 import type { Declaration, Level } from '../app/aml'
 import { COUNTRY_POLICY_VERSION } from './countries'
 import { AML_CHECK_KINDS, CURRENT_OFFICER_SQL } from './constants'
+import type { InPerson } from './in-person'
 
 export type CheckKind = typeof AML_CHECK_KINDS[number]
 export type CheckResult = 'clear' | 'high' | 'match' | 'unresolved'
@@ -49,6 +50,8 @@ export interface DossierView {
   requiredRisk?: Level
   /** Whether the dossier was evaluated under the current lists of countries (its own version or a re-evaluation). */
   policyCurrent?: boolean
+  /** The identification verified in person at a meeting (in-person.ts), the newest, or null. */
+  inPerson?: InPerson | null
 }
 export interface Admission { dossierId: string; decisionId: number; factsHash: string; signerName: string; level: Level }
 

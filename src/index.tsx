@@ -2,9 +2,12 @@ import { listsHealth, refreshSanctionLists } from './aml/sanctions-store'
 import { prepareBankEvidence } from './aml/enhanced'
 import { accessOpenSql } from './aml/retention'
 import { AmlIntakePage, type IntakeContract } from './views/aml-admission'
-import { checkDeclaration, valuesFrom, valuesOfDeclaration, type DeclarationValues } from './app/aml'
+import { checkDeclaration, valuesFrom, valuesOfDeclaration, type DeclarationErrors, type DeclarationValues } from './app/aml'
 import { app as appCopy } from './app/copy'
-import { admissionForOrder, dossierOfOrder, prepareDossier, signatureFile } from './aml/store'
+import { admissionForOrder, bytesHash, dossierOfOrder, prepareDossier, signatureFile } from './aml/store'
+import { normalName } from './aml/model'
+import { meetingFacts, stateText, stepOf } from './meeting/store'
+import { MeetingClientPage } from './views/meeting'
 import { declarationPdf } from './aml/pdf'
 import { GUIDES } from './content/guides'
 import { BUILD_METADATA } from './generated/deployment'
@@ -176,7 +179,7 @@ app.use('*', async (c, next) => {
     if (declared === undefined) return c.text('Length required', 411)
     const length = Number(declared)
     if (!Number.isInteger(length) || length < 0) return c.text('Bad request', 400)
-    const allowed = /^\/zalozenie\/[^/]+\/(?:doklad|podpis)$/.test(url.pathname) ? 26 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/banka$/.test(url.pathname) || /^\/ucto\/aml\/spisy\/[^/]+\/banka$/.test(url.pathname)) ? 52 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/(?:overenie|vyhlasenie\.pdf)$/.test(url.pathname) || /^\/app\/vyhlasenie(?:\/pdf)?$/.test(url.pathname) || /^\/ucto\/aml\/objednavky\/[^/]+\/uchovanie$/.test(url.pathname)) ? 26 * 1024 * 1024 : UPLOADS.test(url.pathname) ? APP.uploadBytes : /^\/ucto\//.test(url.pathname) ? LIMITS.teamFormBytes : /^\/app\//.test(url.pathname) ? LIMITS.appFormBytes : LIMITS.formBytes
+    const allowed = /^\/zalozenie\/[^/]+\/(?:doklad|podpis)$/.test(url.pathname) ? 26 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/banka$/.test(url.pathname) || /^\/ucto\/aml\/spisy\/[^/]+\/banka$/.test(url.pathname)) ? 52 * 1024 * 1024 : (/^\/objednavka\/[^/]+\/(?:overenie|vyhlasenie\.pdf|stretnutie)$/.test(url.pathname) || /^\/app\/vyhlasenie(?:\/pdf)?$/.test(url.pathname) || /^\/ucto\/aml\/objednavky\/[^/]+\/uchovanie$/.test(url.pathname)) ? 26 * 1024 * 1024 : UPLOADS.test(url.pathname) ? APP.uploadBytes : /^\/ucto\//.test(url.pathname) ? LIMITS.teamFormBytes : /^\/app\//.test(url.pathname) ? LIMITS.appFormBytes : LIMITS.formBytes
     if (length > allowed) return c.text('Too large', 413)
   }
   await next()
@@ -708,11 +711,105 @@ function signedOfferStale(signed: { plan: string; startOn: string; terms: string
   return null
 }
 
+// ---------------------------------------------------------------------------
+// A client won at a meeting (meeting/): the director's phone, joined by the QR code on the designated person's phone
+// ---------------------------------------------------------------------------
+
+interface MeetingForm { values: DeclarationValues; errors: DeclarationErrors; error: string; status: 409 | 422 }
+
+/** The director's page of a meeting: one step at a time, following the designated person's page live (public/live.js). */
+async function meetingClient(c: Ctx, order: Order, token: string, form?: MeetingForm) {
+  const db = c.env.DB
+  if (order.status === 'accepted') {
+    const accessible = order.companyId && await db.prepare(`SELECT 1 FROM companies c WHERE c.id = ? AND ${accessOpenSql('c')}`).bind(order.companyId).first()
+    if (!accessible) return orderMissing(c)
+  } else {
+    const closed = await orderClosed(c, order)
+    if (closed) return closed
+    // The designated person's page moves on from the QR code once this phone has opened it.
+    if (!order.meetingSeenAt) await db.prepare('UPDATE orders SET meeting_seen_at = ? WHERE id = ? AND meeting_seen_at IS NULL').bind(now(), order.id).run()
+  }
+  const facts = await meetingFacts(db, order.id)
+  if (!facts) return orderMissing(c)
+  const step = stepOf(facts, facts.company ? true : Boolean(await admissionForOrder(db, order)))
+  // Corrected only before the document was compared with them: after it, a new declaration would need a new comparison.
+  const editing = Boolean(form) || (c.req.query('upravit') === '1' && !facts.identified && !facts.company)
+  const intake = !form && facts.dossier && editing ? await dossierOfOrder(db, order.id) : null
+  const values: DeclarationValues = form?.values ?? (intake ? valuesOfDeclaration(intake.declaration, { secrets: false }) : { name: order.person, businessCountries: 'SK', businessAtSeat: '', ownBehalf: '' })
+  const host = (await db.prepare('SELECT name FROM users WHERE id = ?').bind(order.meetingBy).first<{ name: string | null }>())?.name || BRAND.name
+  return page(c, orderMeta('Stretnutie'), <MeetingClientPage order={order} token={token} step={step} state={stateText(facts, 'client')} host={host}
+    values={values} errors={form?.errors} error={form?.error ?? null} editing={editing} retype={Boolean(facts.dossier) && editing} />, form?.status ?? 200)
+}
+
+// The declaration filled in on the director's phone at the meeting. No qualified signature: the designated person compares
+// it with the identity document in person (aml/in-person.ts), and the file kept with it says so (aml/pdf.ts).
+app.post('/objednavka/:token/stretnutie', async (c) => {
+  const db = c.env.DB
+  await ensureSchema(db)
+  const token = c.req.param('token')
+  const order = await orderByToken(db, token)
+  if (!order?.meetingBy) return orderMissing(c)
+  const closed = await orderClosed(c, order)
+  if (closed) return closed
+  const facts = await meetingFacts(db, order.id)
+  if (!facts) return orderMissing(c)
+  if (facts.identified) return c.redirect(`/objednavka/${token}`, 303)
+  if (!await withinLimit(db, 'aml-intake', order.id, 6, 3600)) return c.text('Skúste to, prosím, neskôr.', 429)
+  const values = valuesFrom(await c.req.parseBody())
+  const checked = checkDeclaration(values, bratislavaToday(), appCopy.declaration.errors)
+  const show = (error: string, status: 409 | 422 = 422) => meetingClient(c, order, token, { values, errors: checked.errors, error, status })
+  if (!checked.declaration) return show('Doplňte, prosím, označené údaje.')
+  // The person the designated person met, as the register names him or her: nobody else is identified at this meeting.
+  if (normalName(checked.declaration.director.name) !== normalName(order.person)) {
+    checked.errors.name = `Napíšte meno tak, ako ho uvádza obchodný register: ${order.person}.`
+    return show('Doplňte, prosím, označené údaje.')
+  }
+  if (!c.env.FILES) return show('Údaje teraz nevieme bezpečne uložiť. Skúste to, prosím, o chvíľu.', 409)
+  const bytes = new TextEncoder().encode(await declarationPdf(order, checked.declaration, true))
+  const file = { bytes, type: 'pdf' as const, name: 'vyhlasenie-na-stretnuti.pdf', sha256: await bytesHash(bytes) }
+  try {
+    const made = await prepareDossier(db, c.env.FILES, { order }, checked.declaration, file, null)
+    await db.batch([made.statement, db.prepare("INSERT INTO events (at, action, subject) VALUES (?, 'aml.intake.submitted', ?)").bind(now(), made.dossier.id)])
+  } catch {
+    return show('Údaje alebo stav objednávky sa medzitým zmenili. Skontrolujte ich a skúste to znova.', 409)
+  }
+  return c.redirect(`/objednavka/${token}`, 303)
+})
+
+// What the director's phone asks for every few seconds: a change of it loads the page again. Nothing of a person in it.
+app.get('/objednavka/:token/stav', async (c) => {
+  await ensureSchema(c.env.DB)
+  const order = await orderByToken(c.env.DB, c.req.param('token'))
+  const facts = order?.meetingBy ? await meetingFacts(c.env.DB, order.id) : null
+  if (!facts) return c.notFound()
+  return c.text(stateText(facts, 'client'), 200, { 'Cache-Control': 'no-store', 'x-firmony-refresh': '1' })
+})
+
+// Into the app on the director's phone, once and within three hours of the signature. A session only for the account
+// this meeting made (paperClientBatch writes it at the moment the order is accepted): an address that already belonged to
+// somebody, a misheard one included, signs nobody in here; that person signs in with the link of the email.
+app.post('/objednavka/:token/vstup', async (c) => {
+  const db = c.env.DB
+  await ensureSchema(db)
+  const order = await orderByToken(db, c.req.param('token'))
+  if (!order?.meetingBy || order.status !== 'accepted' || !order.companyId) return orderMissing(c)
+  const ts = now()
+  const entered = await db.prepare("UPDATE orders SET meeting_entered_at = ?1 WHERE id = ?2 AND meeting_entered_at IS NULL AND status = 'accepted' AND accepted_at > ?1 - 10800").bind(ts, order.id).run()
+  if (!entered.meta.changes) return c.redirect('/app/prihlasenie', 303)
+  const made = await db.prepare(`SELECT u.id FROM orders o JOIN users u ON u.email = o.email AND u.created_at = o.accepted_at AND u.team IS NULL
+    JOIN members m ON m.user_id = u.id AND m.company_id = o.company_id AND m.role = 'owner' WHERE o.id = ?`).bind(order.id).first<{ id: string }>()
+  if (!made) return c.redirect('/app/prihlasenie', 303)
+  await db.prepare("INSERT INTO events (at, company_id, user_id, action, subject) VALUES (?, ?, ?, 'meeting.entered', ?)").bind(ts, order.companyId, made.id, order.id).run()
+  const where = await startSession(c, db, made.id, order.companyId)
+  return c.redirect(where ? quickSignin('/app?ok=zmluva') : '/app/prihlasenie', 303)
+})
+
 app.get('/objednavka/:token', async (c) => {
   await ensureSchema(c.env.DB)
   const token = c.req.param('token')
   const order = await orderByToken(c.env.DB, token)
   if (!order) return orderMissing(c)
+  if (order.meetingBy) return meetingClient(c, order, token)
   const closed = await orderClosed(c, order)
   if (closed) return closed
   const intake = await dossierOfOrder(c.env.DB, order.id)
@@ -750,6 +847,7 @@ async function intakeSubmission(c: Ctx, pdfOnly: boolean) {
   const token = c.req.param('token') ?? ''
   const order = await orderByToken(db, token)
   if (!order) return orderMissing(c)
+  if (order.meetingBy) return c.redirect(`/objednavka/${token}`, 303)
   const closed = await orderClosed(c, order)
   if (closed) return closed
   if (!await withinLimit(db, pdfOnly ? 'aml-pdf' : 'aml-intake', order.id, pdfOnly ? 12 : 6, 3600)) return c.text('Skúste to, prosím, neskôr.', 429)
@@ -813,6 +911,7 @@ app.post('/objednavka/:token/novy', async (c) => {
   const token = c.req.param('token')
   const order = await orderByToken(db, token)
   if (!order) return orderMissing(c)
+  if (order.meetingBy) return c.redirect(`/objednavka/${token}`, 303)
   const closed = await orderClosed(c, order)
   if (closed) return closed
   if (!(await staleReview(db, order))) return c.redirect(`/objednavka/${token}`, 303)
@@ -835,6 +934,8 @@ app.post('/objednavka/:token', async (c) => {
   const token = c.req.param('token')
   const order = await orderByToken(db, token)
   if (!order) return orderMissing(c)
+  // A meeting's contract is signed on paper (meeting/): nothing of it is concluded online.
+  if (order.meetingBy) return c.redirect(`/objednavka/${token}`, 303)
   const closed = await orderClosed(c, order)
   if (closed) return closed
   const body = await c.req.parseBody()

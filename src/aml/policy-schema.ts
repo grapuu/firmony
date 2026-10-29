@@ -7,14 +7,14 @@ import { floorSql, freshChecksSql, placeCurrentSql, previousApprovalSql, require
 // years); the programme docs/aml/program.html points 4.2 a), 4.4 c), 4.7, 9.1 and 9.3.
 
 /** Where a dossier may still take a record: the newest of its open order, or of a company whose access is open. */
-const dossierOpenSql = (dossier: string) => `EXISTS (SELECT 1 FROM aml_dossiers d LEFT JOIN orders ao ON ao.id = d.order_id
+export const dossierOpenSql = (dossier: string) => `EXISTS (SELECT 1 FROM aml_dossiers d LEFT JOIN orders ao ON ao.id = d.order_id
   LEFT JOIN companies ac ON ac.id = COALESCE(d.company_id,ao.company_id) WHERE d.id = ${dossier}
   AND (ao.company_id IS NULL AND d.order_id IS NOT NULL AND ao.status = 'open' AND ao.expires_at > unixepoch()
       AND d.sequence = (SELECT MAX(sequence) FROM aml_dossiers WHERE order_id = d.order_id)
     OR ac.id IS NOT NULL AND ac.closed_at IS NULL AND (ac.ends_on IS NULL OR date(ac.ends_on,'+90 days') >= ${AML_TODAY_SQL})
       AND d.declaration_id = (SELECT id FROM declarations WHERE company_id = ac.id ORDER BY created_at DESC,rowid DESC LIMIT 1)))`
 /** The same five-year guard as the other AML records (step 74): deleted only by the purge of the whole record. */
-const retainedSql = (dossier: string) => `NOT EXISTS (
+export const retainedSql = (dossier: string) => `NOT EXISTS (
   SELECT 1 FROM aml_dossiers d LEFT JOIN orders o ON o.id = d.order_id
   LEFT JOIN companies c ON c.id = COALESCE(d.company_id,o.company_id)
   LEFT JOIN requests r ON r.id = o.request_id WHERE d.id = ${dossier} AND

@@ -27,6 +27,7 @@ import {
   type TableARow,
   type TableBRow,
   type TypedRow,
+  proposedTyped,
 } from './closing'
 
 /** The rows of the form for losses (Table D: five periods back) and for minimum taxes to credit (Table K: three). */
@@ -146,7 +147,7 @@ export function closingValues(year: number, inputs: ClosingInputs, proposal: Pro
   const v: ClosingValues = {}
   for (const row of TABLE_A) v[row] = money(inputs.tableA[row] ?? proposal.tableA[row] ?? 0)
   for (const row of TABLE_B) v[row] = money(inputs.tableB[row] ?? proposal.tableB[row] ?? 0)
-  for (const row of TYPED) v[row] = money(inputs.typed[row] ?? (row === 'r210' ? proposal.r210 : 0))
+  for (const row of TYPED) v[row] = money(inputs.typed[row] ?? proposedTyped(proposal, row))
   const taxable = inputs.taxable ?? proposal.taxable
   v.zdanitelne = moneyText(taxable)
   v.mikro = (inputs.micro ?? taxable <= MICRO_REVENUES) ? '1' : ''
@@ -226,7 +227,7 @@ export function readClosing(get: (name: string) => unknown, year: number, propos
   }
   for (const row of TYPED) {
     const cents = amount(row) ?? 0
-    if (cents !== (row === 'r210' ? proposal.r210 : 0)) inputs.typed[row as TypedRow] = cents
+    if (cents !== proposedTyped(proposal, row as TypedRow)) inputs.typed[row as TypedRow] = cents
   }
   const taxable = amount('zdanitelne')
   inputs.taxable = taxable === null || taxable === proposal.taxable ? null : taxable

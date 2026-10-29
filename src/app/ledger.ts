@@ -28,7 +28,7 @@ import type { StockEntry } from './stock'
 import { readableName } from './copy'
 import { eurOf, rateFor, rateMicro, type RateMicro, type Rates } from './fx'
 import { centsOf } from './invoices'
-import { normalizeVs, TRANSACTION_TAX_WORDS, type DocKind, type Exempt } from './match'
+import { FX_SLACK, normalizeVs, TRANSACTION_TAX_WORDS, type DocKind, type Exempt } from './match'
 import { bratislavaDay, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
 import { badDebtEvents, isIssued, periodRange, taxDay, unpaidEvents, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
 import { groupedIban, periodName, rowsOf, type FiledReturn } from './vat-store'
@@ -863,9 +863,11 @@ export function buildBooks(input: LedgerInput): Books {
         lines.push(lineOf(account, p.bank, share))
         const item = items.get(d.id)
         if (item) item.settled += account === '311' ? share : -share
-        // An invoice in another currency is settled whole by its payment: what is left of it is the exchange difference.
+        // An invoice in another currency is settled whole by a payment of it all: what is left is the exchange difference.
+        // A payment that leaves more than the slack automatic pairing allows (match.ts) is a part payment: the rest stays
+        // owed on the invoice, never an exchange gain or loss (the books audit of 30 October 2026).
         const left = item && foreignOf.has(d.id) ? item.total - item.settled : 0
-        if (item && left !== 0) {
+        if (item && left !== 0 && Math.abs(left) <= Math.abs(item.total) * FX_SLACK) {
           // Each document's difference names it: a payment of several documents of several cost centres (centers.ts).
           if (item.account !== '311') lines.push(left > 0 ? { md: item.account, d: '663', cents: left, docId: d.id } : { md: '563', d: item.account, cents: -left, docId: d.id })
           else lines.push(left > 0 ? { md: '563', d: '311', cents: left, docId: d.id } : { md: '311', d: '663', cents: -left, docId: d.id })

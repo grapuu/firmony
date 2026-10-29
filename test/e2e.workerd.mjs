@@ -85,6 +85,7 @@ import { checkPasskeySignin } from './passkey-signin.runtime.mjs'
 import { checkFoundingRuntime } from './founding.runtime.mjs'
 import { sanctionsAnswer } from './sanctions-fixtures.mjs'
 import { checkSanctionsRuntime } from './sanctions.runtime.mjs'
+import { checkMeetingRuntime } from './meeting.runtime.mjs'
 import { checkNudgeRuntime } from './nudge.runtime.mjs'
 import { checkTatraRuntime } from './tatra.runtime.mjs'
 import { checkAdminOverview } from './admin-overview.runtime.mjs'
@@ -5440,6 +5441,7 @@ await checkPasskeySignin({ mf, db, post, sent, settle, as, nowS })
 await checkMony({ mf, db, site, mony, nowS })
 await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin, acc, signIn, nowS, purgeFoundings, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkSanctionsRuntime({ db, files, get, freshAdmin, worker, settle, nowS })
+await checkMeetingRuntime({ db, files, get, as, freshAdminCookie: async () => { await freshAdmin(); return bossFresh }, acc, sent, settle, nowS })
 await checkNudgeRuntime({ db, files })
 await checkTatraRuntime({ db, files })
 await checkAdminOverview({ db, admin: await freshAdmin(), acc, nowS, readings, capture: process.env.FIRMONY_CAPTURE_DIR })

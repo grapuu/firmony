@@ -9,7 +9,11 @@ import { formatEur } from '../format'
 import { AML_NO_CONSENT } from './consent'
 
 export const declarationFingerprint = (facts: unknown, declaration: Declaration) => sha256Hex(JSON.stringify({ company: facts, declaration }))
-export async function declarationPdf(order: Order | Company, d: Declaration): Promise<string> {
+/**
+ * The declaration as a PDF: to sign with a qualified signature, or (`inPerson`) as filled in by the director at a meeting,
+ * where the designated person verifies the identification in person and this PDF is kept as what was declared.
+ */
+export async function declarationPdf(order: Order | Company, d: Declaration, inPerson = false): Promise<string> {
   const facts = 'company' in order ? orderFacts(order) : companyFacts(order)
   const name = 'company' in order ? order.company : order.name
   const blocks: PdfBlock[] = [
@@ -38,6 +42,8 @@ export async function declarationPdf(order: Order | Company, d: Declaration): Pr
     { kind: 'text', text: `Záväzne vyhlasujem, že uvedené údaje sú pravdivé a úplné. Zmenu oznámim službe Firmony bez zbytočného odkladu.${d.contract ? '' : ' Toto vyhlásenie nie je uzavretím zmluvy o účtovných službách.'}` },
     { kind: 'text', text: AML_NO_CONSENT },
     { kind: 'text', text: `Odtlačok údajov SHA-256: ${await declarationFingerprint(facts, d)}` },
-    { kind: 'text', text: 'Dokument podpíšte kvalifikovaným elektronickým podpisom. Podpísaný súbor nahrajte vo formulári, z ktorého ste vyhlásenie stiahli.' })
+    { kind: 'text', text: inPerson
+      ? 'Vyhlásenie vyplnila osoba konajúca za firmu v aplikácii Firmony na osobnom stretnutí. Jej totožnosť overil poskytovateľ za jej fyzickej prítomnosti podľa dokladu totožnosti (§ 8 ods. 1 písm. a) zákona č. 297/2008 Z. z.).'
+      : 'Dokument podpíšte kvalifikovaným elektronickým podpisom. Podpísaný súbor nahrajte vo formulári, z ktorého ste vyhlásenie stiahli.' })
   return pdfText({ title: 'Firmony: vyhlásenie pred uzavretím zmluvy', header: { left: 'Firmony | Vyhlásenie', right: `IČO ${order.ico}` }, blocks })
 }

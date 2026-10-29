@@ -1226,9 +1226,11 @@ export const team = typesetAll({
       rounding: (n: number, row: string) => typeset(`Zaokrúhlenie na celé eurá: rozdiel ${n} € sme pridali do riadku ${row} súvahy, aby výsledok sedel s výkazom ziskov a strát.`),
       audit: (year: number) =>
         typeset(`Firma spĺňa podmienky povinného auditu (§ 19 zákona o účtovníctve): závierku overí audítor a k nej patrí výročná správa. Ak nie sú hotové v lehote, podajte neoverenú závierku a správu audítora s výročnou správou uložte do registra dodatočne, najneskôr do 31. 12. ${year + 1} (§ 23a ods. 5).`),
+      carSale: (n: number) => typeset(`${n === 1 ? 'Predaný osobný automobil: jeho' : `Predané osobné automobily (${n}): ich`} daňová zostatková cena je daňovým výdavkom len do výšky príjmu z predaja (§ 19 ods. 3 písm. b)). Ak bola cena nižšia, rozdiel pripočítajte v riadku 180.`),
+      midyear: (day: string) => typeset(`Kniha začína ${day}. Ak firma existovala už predtým, patria do počiatočných stavov aj náklady a výnosy od 1. januára (prevzatie z obratovej predvahy ich tam dá samo); inak výkazy a priznanie nebudú za celý rok.`),
       auditMaybe: 'Firma v tomto roku spĺňa podmienky povinného auditu (§ 19 zákona o účtovníctve). Ak ich splnila aj v predchádzajúcom roku, ktorý v našej knihe nie je, závierku overí audítor a k nej patrí výročná správa.',
     },
-    go: { stock: 'Sklad', opening: 'Počiatočné stavy', queue: 'Na zaúčtovanie', book: 'Účtovná kniha', internal: 'Interné doklady', details: 'Údaje firmy', fix: 'Doplniť', account: 'Účet 261' },
+    go: { assets: 'Majetok', stock: 'Sklad', opening: 'Počiatočné stavy', queue: 'Na zaúčtovanie', book: 'Účtovná kniha', internal: 'Interné doklady', details: 'Údaje firmy', fix: 'Doplniť', account: 'Účet 261' },
     taxTitle: 'Daň z príjmov',
     row: 'Riadok',
     amountCol: 'Suma',
@@ -1249,6 +1251,7 @@ export const team = typesetAll({
       r280: 'Zníženie pri likvidácii, predaji podniku, vklade alebo rozdelení',
       r290: 'Ostatné položky znižujúce výsledok',
       r300: 'Položky znižujúce výsledok spolu',
+      r302: 'Zvýšenie podľa § 17 ods. 34 (osobné autá od 48 000 €)',
       r400: 'Základ dane alebo daňová strata',
       r410: 'Odpočet daňovej straty (tabuľka D)',
       r500: 'Základ dane po odpočte straty',
@@ -2825,9 +2828,9 @@ export const team = typesetAll({
     read: 'Načítať',
     trial: {
       title: 'Počiatočné stavy z obratovej predvahy',
-      lead: 'Obratová predvaha ku dňu pred začiatkom knihy: konečný stav každého súvahového účtu (triedy 0 až 4) sa stane počiatočným stavom, náklady a výnosy neuzavretého roka dajú výsledok na účte 431. Stavy pred uložením ešte skontrolujete.',
+      lead: 'Obratová predvaha ku dňu pred začiatkom knihy: konečný stav každého súvahového účtu (triedy 0 až 4) sa stane počiatočným stavom. Ak kniha začína 1. januára, náklady a výnosy minulého roka dajú výsledok na účte 431; ak začína počas roka, náklady a výnosy od 1. januára ostanú na svojich účtoch, aby závierka a priznanie boli za celý rok. Stavy pred uložením ešte skontrolujete.',
       day: 'Deň počiatočných stavov',
-      note: (n: number, result: string | null) => typeset(`Načítali sme ${n} ${plural(n, 'účet', 'účty', 'účtov')} z obratovej predvahy${result ? `, výsledok ${result} je na účte 431` : ''}. Skontrolujte ich a uložte.`),
+      note: (n: number, result: string | null, midYear: boolean) => typeset(`Načítali sme ${n} ${plural(n, 'účet', 'účty', 'účtov')} z obratovej predvahy${result ? `, výsledok ${result} je na účte 431` : ''}${midYear ? ', náklady a výnosy od 1. januára ostali na svojich účtoch' : ''}. Skontrolujte ich a uložte.`),
     },
     items: {
       title: 'Otvorené faktúry zo saldokonta',
