@@ -18,7 +18,7 @@ import { textDay } from '../app/booking'
 import { formationContractText } from '../content/formation-contract'
 import { bytesHash } from '../aml/store'
 import { quoteSql } from '../aml/model'
-import { FINAL, FOUNDING_TOTAL, IDENTITY_NOTE, checksNeeded, editable, foundingOf, foundingVs, identityStands, identityWaysOf, mayMove, stepsOf, type CheckKind, type IdentityWay, type Founder, type Founding, type FoundingStatus, type PlannedCompany } from './model'
+import { FINAL, FOUNDING_TOTAL, IDENTITY_NOTE, RISK_WORDS, suggestedRisk, type FoundingRisk, checksNeeded, editable, foundingOf, foundingVs, identityStands, identityWaysOf, mayMove, stepsOf, type CheckKind, type IdentityWay, type Founder, type Founding, type FoundingStatus, type PlannedCompany } from './model'
 
 const DAY = 86_400
 /** A link to an application works this long; every email to the founder carries a new one. */
@@ -436,8 +436,13 @@ export async function placesLeft(db: D1Database, today: string): Promise<number>
  * The designated person's decision: 'verified' (the contract arises, article 10, and the advocate may be ordered),
  * 'refused' (the payment goes back) or 'open' (back to the founder to complete, with new days). The founder is told why.
  */
-export async function decide(db: D1Database, f: Founding, by: string, verdict: 'verified' | 'refused' | 'open', note: string, today: string, link: string): Promise<'ok' | 'blocked' | 'state'> {
+/**
+ * The designated person's decision on an application. Verifying it sets the founder's risk group (program 4.2a e)), kept
+ * as an event the founder never sees, beside the group the application suggested; a high one is his consent (4.6 a)).
+ */
+export async function decide(db: D1Database, f: Founding, by: string, verdict: 'verified' | 'refused' | 'open', note: string, today: string, link: string, risk?: FoundingRisk): Promise<'ok' | 'blocked' | 'state' | 'risk'> {
   if (f.status !== 'verifying') return 'state'
+  if (verdict === 'verified' && !risk) return 'risk'
   if (verdict === 'verified' && (await verifyBlockers(db, f)).length > 0) return 'blocked'
   const month = verdict === 'verified' ? await monthFor(db, today) : null
   const words =
@@ -450,6 +455,18 @@ export async function decide(db: D1Database, f: Founding, by: string, verdict: '
     update(db, f, 'status = ?, month = COALESCE(?, month), expires_at = ?', [verdict, month, verdict === 'open' ? now() + FORMATION.applyDays * DAY : f.expiresAt], " AND status = 'verifying'"),
     eventIfChanged(db, f.id, by, 'decided', verdict, note),
     eventIfChanged(db, f.id, by, 'note', verdict, words),
+    ...(verdict === 'verified' && risk
+      ? [
+          eventIfChanged(
+            db,
+            f.id,
+            by,
+            'risk',
+            verdict,
+            `Riziková skupina: ${RISK_WORDS[risk]}${risk === 'high' ? ', so súhlasom určenej osoby' : ''}. Podľa prihlášky navrhnutá: ${f.founder ? RISK_WORDS[suggestedRisk(f.founder)] : 'bez údajov'}.`,
+          ),
+        ]
+      : []),
   ])
   if (!changed(result)) return 'state'
   await notify(db, f, link)

@@ -15,7 +15,7 @@ import { later, siteOrigin } from '../http'
 import { now } from '../db'
 import { bratislavaDay } from '../time'
 import { FoundingDetail, FoundingsList } from '../views/founding'
-import { CHECK_KINDS, IDENTITY_WAYS, identityWaysOf, type CheckKind, type IdentityWay } from './model'
+import { CHECK_KINDS, FOUNDING_RISKS, IDENTITY_WAYS, identityWaysOf, type CheckKind, type IdentityWay } from './model'
 import { advance, callFounder, cancel, checksOf, decide, decideExit, eventsOf, foundingById, foundingsList, mayWithdraw, notePayment, noteRefund, noteToFounder, placesLeft, recordCheck, register, verifyBlockers, withdraw } from './store'
 
 type Env = { Bindings: AppBindings; Variables: { who: Who } }
@@ -45,6 +45,7 @@ const ERRORS: Record<string, string> = {
   state: 'Prihláška sa medzitým zmenila. Pozrite sa na ňu znova.',
   blocked: 'Overenie ešte nie je úplné. Pozrite si, čo chýba.',
   note: 'Napíšte, čo ste overili a z akého zdroja (aspoň 12 znakov).',
+  risk: 'Pri prijatí vyberte rizikovú skupinu zakladateľa.',
   way: 'Pri totožnosti vyberte, ako ste ju overili. Pri podpise na papieri ju overíte len osobne s dokladom totožnosti.',
   reason: 'Napíšte dôvod (aspoň 5 znakov).',
   register: 'Register firmu s týmto IČO nenašiel. Skontrolujte IČO alebo to skúste o chvíľu.',
@@ -141,8 +142,9 @@ export function registerFoundingTeam(app: Hono<Env>, render: Render): void {
     const note = text(body.poznamka)
     if (!verdict) return detail(c, id, ERRORS.state!, 422)
     if (verdict !== 'verified' && note.length < 5) return detail(c, id, ERRORS.reason!, 422)
-    const result = await decide(c.env.DB, f, user(c), verdict, note, today(), siteOrigin(c))
-    if (result !== 'ok') return detail(c, id, ERRORS[result]!, 409)
+    const risk = FOUNDING_RISKS.find((r) => r === body.riziko)
+    const result = await decide(c.env.DB, f, user(c), verdict, note, today(), siteOrigin(c), risk)
+    if (result !== 'ok') return detail(c, id, ERRORS[result]!, result === 'risk' ? 422 : 409)
     later(c, flushOutbox(c.env.DB, c.env.EMAIL))
     return back(c, id, verdict === 'verified' ? 'overene' : verdict === 'refused' ? 'odmietnute' : 'vratene')
   })

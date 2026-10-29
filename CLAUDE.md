@@ -26,8 +26,16 @@ objednaním advokáta), presnejšie zastúpenie. **Overenie zakladateľa podľa 
 spôsobom: kvalifikovaný podpis na zmluve (§ 8 ods. 1 písm. f) alebo osobne s dokladom (písm. a); pri podpise na papieri
 len osobne (`identityWaysOf`, `identityStands` v `src/founding/model.ts`; poznámka kontroly začína ustanovením; vlastný
 formulár na `/ucto/zalozenia/:id`). Papierová cesta už nežiada notára ani matriku, originál sa preberá na osobnom
-stretnutí; zmluva o založení `contractVersion` 2026-10-29. goAML: registráciu vypĺňal 29. 10. popoludní sám (návod dostal
-v chate), ID organizácie zapísať sem, keď príde. Overené: `npm run check`, 1 721 unit + 12 deployment, 2 706 runtime na
+stretnutí; zmluva o založení `contractVersion` 2026-10-29. Pri prijatí prihlášky určená osoba vyberie rizikovú skupinu
+zakladateľa (navrhnutú `suggestedRisk`: PEP alebo vysokoriziková krajina zvýšené, hotovosť a partneri mimo EÚ po jednom
+faktore), zapíše sa ako udalosť `risk`, zakladateľ ju nevidí. Program podľa jeho slov z 14:26 („aby bolo super ľahké plniť
+podmienky“) zľahčený tam, kde zákon nič nežiada: vnútorná kontrola raz ročne (10 % klientov, aspoň 5, všetci zvýšení),
+interné oznámenie spravidla v ten deň a posúdenie spravidla do dvoch pracovných dní, pri zmene zákona písomné zhrnutie
+do 60 dní, ročné preskúmania naraz; zákonné minimá (školenie raz za kalendárny rok, § 20 ods. 3, prečítané 29. 10. na
+slov-lex) ostali. Klienti program nepodpisujú; podpisuje ho len on. **goAML: žiadosť o registráciu podaná 29. 10. 2026 o 15:08,
+referenčné číslo RE_RP015346** (vyplnil sám podľa návodu v chate; typ účtovník, e-mail organizácie ahoj@firmony.io,
+administrátor on, prihlásenie `europiofirmony`, e-mail administrátora juhasgr@gmail.com; prílohy osvedčenie o živnosti a
+výpis z OR z orsr.sk). Čaká sa na schválenie e-mailom; ID organizácie (goAML Reporting Entity ID) zapísať sem, keď príde. Overené: `npm run check`, 1 721 unit + 12 deployment, 2 706 runtime na
 Node 24, UI, 25 Peppol, 129 browser.
 
 **Suma na úhradu oddelene od sumy dokladu, 29. 10. 2026 popoludní (Claude, `main`):** jeho „Áno“ (13:11) na bod (d)

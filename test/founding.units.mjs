@@ -53,6 +53,11 @@ export function checkFoundingUnits() {
     m.identityStands({ signedKind: 'qes' }, clear('qes')) && !m.identityStands({ signedKind: 'paper' }, clear('qes')) && m.identityStands({ signedKind: 'paper' }, clear('person')) &&
       !m.identityStands({ signedKind: 'qes' }, { result: 'clear', note: 'TEST-ONLY bez spôsobu' }) && !m.identityStands({ signedKind: 'qes' }, { ...clear('qes'), result: 'problem' }) && !m.identityStands({ signedKind: 'qes' }, undefined),
   )
+  check(
+    'founding: the founder’s risk group is proposed by the program’s factors',
+    m.suggestedRisk(ok.founder) === 'low' && m.suggestedRisk({ ...ok.founder, pep: true }) === 'high' && m.suggestedRisk({ ...ok.founder, cash: true }) === 'standard' &&
+      m.suggestedRisk({ ...ok.founder, cash: true, abroad: 'Čína' }) === 'high' && m.suggestedRisk({ ...ok.founder, abroad: 'Irán' }) === 'high',
+  )
   check('founding: an application moves only where the rules let it', m.mayMove('verifying', 'verified') && !m.mayMove('open', 'verified') && !m.mayMove('open', 'ordered') && m.MOVES.registered.length === 0 && !m.mayMove('filed', 'withdrawn') === false)
   check('founding: a politically exposed founder, cash and partners outside the EU are said to the designated person', m.riskHints({ ...ok.founder, pep: true, cash: true, abroad: 'Čína' }).length === 3 && m.riskHints(ok.founder).length === 0)
 

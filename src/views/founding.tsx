@@ -10,7 +10,7 @@ import { monthName, whenName } from '../app/copy'
 import { bratislavaDay } from '../time'
 import { payBySquare, qrPicture } from '../app/paybysquare'
 import { formationContract, FORMATION_CONTRACT_TITLE, type FormationParties } from '../content/formation-contract'
-import { CHECK_KINDS, FINAL, FOUNDING_TOTAL, TURNOVERS, checksNeeded, identityStands, identityWaysOf, riskHints, sameName, stepsOf, type CheckKind, type Founding, type FoundingErrors, type FoundingStatus, type FoundingValues } from '../founding/model'
+import { CHECK_KINDS, FINAL, FOUNDING_TOTAL, TURNOVERS, checksNeeded, identityStands, identityWaysOf, FOUNDING_RISKS, RISK_WORDS, suggestedRisk, riskHints, sameName, stepsOf, type CheckKind, type Founding, type FoundingErrors, type FoundingStatus, type FoundingValues } from '../founding/model'
 import type { FoundingCheck, FoundingEvent } from '../founding/store'
 import { CarryFields, Picture, type Carry } from './home'
 import { copy } from '../copy'
@@ -1049,6 +1049,15 @@ export const FoundingDetail: FC<FoundingDetailProps> = ({ f, checks, events, blo
             <p>{typeset('Všetko je overené. Prijatím vznikne zmluva a zakladateľ dostane potvrdenie.')}</p>
           )}
           <form class="stack" method="post" action={`${base}/rozhodnutie`}>
+            <label class="field__label" for="r-riziko">Riziková skupina zakladateľa (pri prijatí)</label>
+            <select class="field__input" id="r-riziko" name="riziko">
+              {FOUNDING_RISKS.map((r) => (
+                <option value={r} selected={p ? suggestedRisk(p) === r : r === 'standard'}>
+                  {RISK_WORDS[r]}
+                  {p && suggestedRisk(p) === r ? ' (navrhnuté podľa prihlášky)' : ''}
+                </option>
+              ))}
+            </select>
             <label class="field__label" for="r-pozn">Poznámka (pri odmietnutí ju zakladateľ uvidí)</label>
             <textarea class="field__input" id="r-pozn" name="poznamka" rows={2}></textarea>
             <div class="page__more">
@@ -1180,6 +1189,7 @@ const EVENT_WORDS: Record<string, string> = {
   paid: 'Platba prišla',
   moved: 'Stav',
   decided: 'Rozhodnutie',
+  risk: 'Riziková skupina',
   note: 'Správa zakladateľovi',
   call: 'Výzva na súčinnosť',
   nudged: 'Pripomienka zakladateľovi',

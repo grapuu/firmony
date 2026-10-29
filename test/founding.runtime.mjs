@@ -119,7 +119,7 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   check('founding: the application shows the identification, the files, the source and what is missing', res.status === 200 && page.includes(rc) && page.includes('EA123456') && page.includes('ref=kreator1') && page.includes('Platba 550 € ešte neprišla') && page.includes('/subor/predna'))
   res = await officer.get(`/ucto/zalozenia/${row.id}/subor/predna`)
   check('founding: the document is downloaded, never shown in a page', res.status === 200 && (res.headers.get('content-disposition') ?? '').startsWith('attachment') && (res.headers.get('content-security-policy') ?? '').includes('sandbox'))
-  res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: '' })
+  res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: '', riziko: 'low' })
   check('founding: it cannot be verified while anything is missing', res.status === 409 && (await db.prepare('SELECT status FROM foundings WHERE id = ?').bind(row.id).first()).status === 'verifying')
 
   // The money comes to europio's account, from the founder's own.
@@ -162,9 +162,18 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
     refused = true
   }
   check('founding: a check cannot be deleted while the application lives', refused)
-  const founderBefore = (await sent()).length
+  // The founder's risk group is set when it is verified (AML program 4.2a e)), proposed from the application.
   res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: '' })
+  check('founding: it is not verified without the founder’s risk group', res.status === 422 && plain(await res.text()).includes('rizikovú skupinu') && (await db.prepare('SELECT status FROM foundings WHERE id = ?').bind(row.id).first()).status === 'verifying')
+  const decisionPage = await (await officer.get(`/ucto/zalozenia/${row.id}`)).text()
+  check('founding: the decision proposes the risk group from the application', /<option value="low" selected[^>]*>nízke \(navrhnuté podľa prihlášky\)/.test(decisionPage.replace(/<!-- -->/g, '')))
+  const founderBefore = (await sent()).length
+  res = await officer.post(`/ucto/zalozenia/${row.id}/rozhodnutie`, { verdikt: 'verified', poznamka: '', riziko: 'standard' })
   await settle()
+  check(
+    'founding: the risk group chosen is kept as an event, beside the one proposed',
+    (await db.prepare("SELECT note FROM founding_events WHERE founding_id = ? AND action = 'risk'").bind(row.id).first())?.note === 'Riziková skupina: štandardné. Podľa prihlášky navrhnutá: nízke.',
+  )
   row = await db.prepare('SELECT * FROM foundings WHERE id = ?').bind(row.id).first()
   mail = (await sent()).slice(founderBefore).filter((m) => m.to.toLowerCase() === 'zakladatel@founding.test')
   const token2 = mail[0]?.text.match(/\/zalozenie\/([A-Za-z0-9_-]{43})/)?.[1]
@@ -173,6 +182,7 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
   keep('founding-progress.html', page)
   page = plain(page)
   check('founding: both links open it, and the founder reads where it stands and our message', page.includes('Priebeh založenia') && page.includes('zmluva vznikla') && (await get(base)).status === 200)
+  check('founding: the founder never sees the risk group', !page.includes('Riziková skupina') && !page.includes('štandardné'))
 
   officer = await freshAdmin()
   for (const to of ['ordered', 'signing', 'filed']) {

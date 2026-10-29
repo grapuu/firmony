@@ -3,6 +3,7 @@
 // before every step below is done and the designated person has checked it; the rules are the contract's
 // (src/content/formation-contract.ts).
 import { birthDateOf, birthNumberValid } from '../app/aml'
+import { highRiskName } from '../aml/countries'
 import { dayOfText } from '../app/booking'
 import { FORMATION, planById, type PlanId } from '../config'
 
@@ -244,6 +245,20 @@ export function bornOfNumber(rc: string): string {
  * What the designated person should weigh first, from the application alone: a politically exposed person, cash, partners
  * outside the EU. The level itself is the person's decision (program 4.1).
  */
+/**
+ * The founder's risk group (AML program 3.4 and 4.2a e)), proposed from the application and set by the designated person
+ * when the application is verified: a politically exposed founder or one tied to a high-risk country is high; cash over
+ * 10 000 € at once and partners outside the EU are a factor each, two of them high, one standard.
+ */
+export const FOUNDING_RISKS = ['low', 'standard', 'high'] as const
+export type FoundingRisk = (typeof FOUNDING_RISKS)[number]
+export const RISK_WORDS: Record<FoundingRisk, string> = { low: 'nízke', standard: 'štandardné', high: 'zvýšené' }
+export function suggestedRisk(f: Founder): FoundingRisk {
+  if (f.pep || highRiskName(f.nationality) || highRiskName(f.abroad)) return 'high'
+  const factors = [f.cash, f.abroad.trim() !== ''].filter(Boolean).length
+  return factors >= 2 ? 'high' : factors === 1 ? 'standard' : 'low'
+}
+
 export function riskHints(f: Founder): string[] {
   const out: string[] = []
   if (f.pep) out.push('Politicky exponovaná osoba: zvýšené riziko, súhlas určenej osoby.')
