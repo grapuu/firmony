@@ -1,7 +1,7 @@
 // Nudges for what a newcomer left unfinished (his word of 28 October 2026: Firmony runs by itself, nobody chases a
 // newcomer by hand). Four places where somebody stops, each nudged on fixed days, at nine in Bratislava:
-//  - the director who got the link for the declaration and did not send it: 2 and 5 days after the link (the reviewed
-//    offer the link carries lasts seven days, ORDER and the review);
+//  - the director who got the link for the declaration and did not send it: 2 and 5 days after the link (the declaration
+//    can be sent while the order runs; the reviewed offer's seven days start again at the approval, renewReview);
 //  - the director whose identification is done: told at once when the designated person approves it (tellAdmitted,
 //    from aml/routes.tsx), else at the next morning a day later, and reminded 2 and 5 days after he was told, while
 //    the contract may be concluded (contractGate);
@@ -13,13 +13,15 @@
 // up the next day, and a run long after (a test's clock, a schedule that stood still) sends nothing stale. Somebody who
 // is no client yet has no account, so the email carries the link (the two emails of the site, bell.ts): an order keeps
 // one token, so a new link replaces the one before and the email says so; an application's links are added.
-import { BRAND, FORMATION } from '../config'
+import { BRAND, FORMATION, ORDER } from '../config'
 import { now, sha256Hex } from '../db'
 import { flushOutbox, queueIfChangedStatement } from '../mail'
 import { bell, ringStatement } from '../bell'
 import { newToken } from '../app/session'
 import { bratislava } from '../app/remind'
-import { contractGate, latestOrderReview, type ContractBindings } from '../contracts'
+import { contractGate, latestOrderReview, orderOfferHash, type ContractBindings } from '../contracts'
+import { textDay } from '../app/booking'
+import { bratislavaDay } from '../time'
 import { orderAdmissionSql } from '../aml/model'
 import { orderOf, type Order } from '../order'
 import { foundingOf } from '../founding/model'
@@ -54,18 +56,20 @@ type Env = ContractBindings & { DB: D1Database; EMAIL?: Mailer }
 
 const nudgedDetail = (stage: 'declaration' | 'contract', step: number) => JSON.stringify({ stage, step })
 
+/** The last day a link works on, as an email says it: "28. 11. 2026". */
+export const linkUntil = (expires: number) => textDay(bratislavaDay(expires - 1))
+
 /**
  * A new link to an order and the email that carries it, written only from the token read (`token`), while the order
  * is open and runs, and only when this step of this stage has not gone out since `since`. One batch: the token, the
  * email (only when the token moved) and the event of the step.
  */
 async function orderNudge(db: D1Database, order: Order, stage: 'declaration' | 'contract', step: number, since: number, until: number, origin: string, ts: number): Promise<boolean> {
-  const days = Math.floor((until - ts) / DAY)
-  if (days < 1) return false
+  if (until - ts < DAY) return false
   const token = newToken()
   const hash = await sha256Hex(token)
   const link = `${origin}/objednavka/${token}`
-  const word = days === 1 ? '1 deň' : days < 5 ? `${days} dni` : `${days} dní`
+  const word = `do ${linkUntil(until)}`
   const mail =
     stage === 'declaration'
       ? {
@@ -97,16 +101,19 @@ async function orderNudge(db: D1Database, order: Order, stage: 'declaration' | '
   return (moved?.meta?.changes ?? 0) === 1
 }
 
-/** When the designated person approved the order's current dossier, and when its director was told of it (null: not yet). */
-async function admittedAt(db: D1Database, orderId: string): Promise<{ decided: number; told: number | null; reminded: number } | null> {
+/**
+ * When the designated person approved the order's current dossier, and who, and when its director was told of it
+ * (null: not yet).
+ */
+async function admittedAt(db: D1Database, orderId: string): Promise<{ decided: number; decidedBy: string; told: number | null; reminded: number } | null> {
   const row = await db
     .prepare(
-      `SELECT (SELECT MAX(a.decided_at) FROM aml_dossiers d JOIN aml_decisions a ON a.dossier_id = d.id WHERE d.order_id = o.id AND a.decision = 'approved') AS decided
-         FROM orders o WHERE o.id = ?1 AND ${orderAdmissionSql('o')}`,
+      `SELECT a.decided_at AS decided, a.decided_by AS decided_by FROM orders o JOIN aml_dossiers d ON d.order_id = o.id JOIN aml_decisions a ON a.dossier_id = d.id
+        WHERE o.id = ?1 AND a.decision = 'approved' AND ${orderAdmissionSql('o')} ORDER BY a.decided_at DESC, a.id DESC LIMIT 1`,
     )
     .bind(orderId)
-    .first<{ decided: number | null }>()
-  if (!row?.decided) return null
+    .first<{ decided: number | null; decided_by: string | null }>()
+  if (!row?.decided || !row.decided_by) return null
   const told = await db
     .prepare("SELECT MIN(at) AS at FROM events WHERE subject = ? AND action = 'order.nudged' AND detail = ? AND at >= ?")
     .bind(orderId, nudgedDetail('contract', 0), row.decided)
@@ -117,7 +124,46 @@ async function admittedAt(db: D1Database, orderId: string): Promise<{ decided: n
         .bind(orderId, nudgedDetail('contract', 1), nudgedDetail('contract', 2), told.at)
         .first<{ n: number }>()
     : null
-  return { decided: row.decided, told: told?.at ?? null, reminded: Number(reminded?.n ?? 0) }
+  return { decided: row.decided, decidedBy: row.decided_by, told: told?.at ?? null, reminded: Number(reminded?.n ?? 0) }
+}
+
+/**
+ * The reviewed offer's seven days start again once the identification is approved: the review that stands (standard,
+ * for the offer as it is now, made before the approval) is appended again under the designated person who approved,
+ * valid ORDER.reviewDays from now, never past the order. Once for each approval: a review made after it (this one, or
+ * the team's own) is not renewed again, and its running out is for the team (the director asks for a new link). Without
+ * this a director who took a week to sign the declaration, or a designated person who took a few days, would find the
+ * contract closed and nobody told.
+ */
+async function renewReview(db: D1Database, order: Order, state: { decided: number; decidedBy: string }, ts: number): Promise<boolean> {
+  const review = await latestOrderReview(db, order.id)
+  const until = Math.min(order.expiresAt, ts + ORDER.reviewDays * DAY)
+  if (!review || review.decision !== 'standard' || review.reviewed_at >= state.decided || review.expires_at >= until || until - ts < DAY) return false
+  if (review.offer_hash !== (await orderOfferHash(order))) return false
+  const [renewed] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO order_reviews (order_id, reviewed_at, reviewed_by, decision, offer_hash, plan, evidence, accountant_id, expires_at)
+         SELECT order_id, ?2, ?3, decision, offer_hash, plan, evidence, accountant_id, ?4 FROM order_reviews
+          WHERE id = ?5 AND id = (SELECT MAX(id) FROM order_reviews WHERE order_id = ?1)
+            AND EXISTS (SELECT 1 FROM orders WHERE id = ?1 AND status = 'open' AND company_id IS NULL)`,
+      )
+      .bind(order.id, ts, state.decidedBy, until, review.id),
+    db
+      .prepare("INSERT INTO events (at, company_id, user_id, action, subject, detail) SELECT ?1, NULL, ?2, 'order.review.renewed', ?3, ?4 WHERE changes() = 1")
+      .bind(ts, state.decidedBy, order.id, JSON.stringify({ from: review.id, until })),
+  ])
+  return (renewed?.meta?.changes ?? 0) === 1
+}
+
+/**
+ * The director whose link ran out after the identification asks for a new one: when the approval has not renewed the
+ * review yet, it does now, and the contract opens at once without the team. False leaves it to the team.
+ */
+export async function renewAfterAdmission(db: D1Database, order: Order, ts: number = now()): Promise<boolean> {
+  if (order.status !== 'open' || order.amlPaper) return false
+  const state = await admittedAt(db, order.id)
+  return state ? renewReview(db, order, state, ts) : false
 }
 
 /** How long the contract may be concluded through the link: the order and its reviewed offer. */
@@ -135,6 +181,7 @@ export async function tellAdmitted(env: Env, orderId: string, origin: string = B
   const order = orderOf(row)
   const state = await admittedAt(db, order.id)
   if (!state || state.told !== null) return false
+  await renewReview(db, order, state, ts)
   const gate = await contractGate(db, env, order)
   if (!gate.ready || !gate.approval) return false
   const sent = await orderNudge(db, order, 'contract', 0, state.decided, contractUntil(order, gate.approval.review.expires_at), origin, ts)
@@ -173,9 +220,10 @@ async function nudgeOrders(env: Env, ts: number, origin: string): Promise<number
         const step = dueStep(base, NUDGE.declaration, Number(sent?.n ?? 0), ts)
         if (step === null) continue
         const review = order.amlPaper ? null : await latestOrderReview(db, order.id)
-        // An online order whose reviewed offer ran out waits for the team's new review, not for the director.
-        if (!order.amlPaper && (!review || review.decision !== 'standard' || review.expires_at <= ts)) continue
-        if (await orderNudge(db, order, 'declaration', step, base, review ? contractUntil(order, review.expires_at) : order.expiresAt, origin, ts)) count++
+        // An online order the team put on hold or meant for an offer of its own is not the director's to finish. One
+        // whose seven days ran out is: the approval of the identification starts them again (renewReview).
+        if (!order.amlPaper && review?.decision !== 'standard') continue
+        if (await orderNudge(db, order, 'declaration', step, base, order.expiresAt, origin, ts)) count++
         continue
       }
       if (order.amlPaper) continue

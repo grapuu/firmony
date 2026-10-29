@@ -14,10 +14,10 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
 ## Ako sa stať klientom (krok za krokom)
 
 1. Na webe kliknúť „Začať“ (/zacat) a zadať IČO. Názov a sídlo doplní Firmony z Registra právnických osôb. Potom vybrať balík a napísať meno, e-mail a telefón. Kto ešte nemá firmu, klikne „Ešte nemám firmu“ (ponuka s. r. o. za 1 €, časť nižšie).
-2. Firmony do jedného pracovného dňa posúdi, či firme sedí štandardný balík. Odkaz na zmluvu potom príde e-mailom tomu, kto za firmu koná (konateľ alebo člen predstavenstva zapísaný v registri). Odkaz platí 30 dní; ak vyprší, stránka odkazu ponúkne, ako získať nový.
+2. Firmony do jedného pracovného dňa posúdi, či firme sedí štandardný balík. Odkaz na zmluvu potom príde e-mailom tomu, kto za firmu koná (konateľ alebo člen predstavenstva zapísaný v registri). Odkaz platí 30 dní, presný dátum je v e-maile. Podklady (vyhlásenie) sa dajú poslať kedykoľvek počas týchto dní.
 3. Odkaz najprv otvorí „Overenie pred začatím spolupráce“ (vyžaduje to zákon proti praniu špinavých peňazí): údaje o tom, kto za firmu koná a kto je konečným užívateľom výhod, výber balíka a prvého mesiaca služby a prijatie ponuky. Vyhlásenie sa stiahne ako PDF, podpíše kvalifikovaným elektronickým podpisom (občiansky preukaz s čipom, aplikácia D.Signer na slovensko.sk) a podpísaný súbor (PDF alebo ASiC-E, do 25 MB) sa nahrá späť.
 4. Firmony podklady overí (totožnosť, podpis, konečný užívateľ výhod, zoznamy politicky exponovaných osôb a sankčné zoznamy). Niekedy si vyžiada aj doklad o účte firmy v banke v EÚ a o prvej platbe z neho.
-5. Keď je overenie hotové, príde e-mail „zmluva je pripravená“ s novým odkazom (platí vždy len najnovší odkaz od Firmony; ak podklady chýbajú, po 2 a 5 dňoch príde pripomienka tiež s novým odkazom). Po overení otvorí odkaz zmluvu. Konateľ ju jedným kliknutím uzavrie („Uzavrieť zmluvu“) a hneď je prihlásený v aplikácii. Prihlasovací odkaz príde aj e-mailom.
+5. Keď je overenie hotové, príde e-mail „zmluva je pripravená“ s novým odkazom (platí vždy len najnovší odkaz od Firmony; ak podklady chýbajú, po 2 a 5 dňoch príde pripomienka tiež s novým odkazom). Po overení otvorí odkaz zmluvu. Konateľ ju jedným kliknutím uzavrie („Uzavrieť zmluvu“) a hneď je prihlásený v aplikácii. Prihlasovací odkaz príde aj e-mailom. Na uzavretie je 7 dní od e-mailu „zmluva je pripravená“; ak ich klient nestihne, na stránke odkazu klikne „Predĺžiť odkaz“: keď sa ponuka nezmenila, zmluva sa otvorí hneď, inak Firmony pošle nový odkaz do jedného pracovného dňa.
 6. V aplikácii čakajú prvé kroky: plná moc (/app/plna-moc), banka alebo výpis (/app/banka), prvý doklad. Pri prechode od inej účtovníčky aj list pre ňu (/app/prechod).
 - Ak za firmu konajú viacerí spoločne, zmluva sa podpisuje na papieri; Firmony ju pripraví. Iné právne formy než s. r. o., a. s. a j. s. a. a väčšie firmy (nad 150 dokladov mesačne, voľba „Na mieru“) dostanú ponuku osobne.
 - Celý čas je to nezáväzné až do kliknutia „Uzavrieť zmluvu“.
@@ -91,7 +91,7 @@ Adresy stránok sú presné. Pri každej zmene aplikácie, ktorá mení postup k
   - Slovenská sporiteľňa: v Georgi nastavíte denný elektronický výpis vo formáte SEPA XML na adresu firmy na doklady. Potom chodí sám každý deň s pohybom.
   - ČSOB: výpisy posiela e-mailom na adresu firmy na doklady.
   - Fio banka: v internet bankingu vytvoríte token len na čítanie (platí 180 dní) a raz ho vložíte. Platby sa potom načítavajú samy.
-  - Tatra banka, VÚB, 365.bank, mBank, UniCredit, Prima banka, Revolut Business, Wise a iné: raz mesačne nahráte výpis vo formáte XML (camt.053). Pripomienka príde 3. dňa v mesiaci.
+  - Tatra banka, VÚB, 365.bank, mBank, UniCredit, Prima banka, Revolut Business, Wise a iné: raz mesačne nahráte výpis vo formáte XML (camt.053). Pripomienka príde 3. dňa v mesiaci. Pri Tatra banke funguje aj XML s pohybmi na účte z internet bankingu, aj za viac mesiacov naraz; platby, ktoré už Firmony má, sa nepridajú dvakrát.
 - Výpis sa dá nahrať aj ručne na stránke Platby alebo Banka. Platby, ktoré už máme, sa nezdvoja.
 - Priame prepojenie všetkých bánk naraz (open banking) zatiaľ nie je zapnuté.
 

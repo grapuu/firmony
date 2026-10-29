@@ -1108,7 +1108,7 @@ export async function filesToday(db: D1Database, company: string): Promise<numbe
 // ---------------------------------------------------------------------------------------------------------------
 
 function asMatchPayment(p: Payment): MatchPayment {
-  return { id: p.id, bookedOn: p.bookedOn, amountCents: p.amountCents, party: p.party, partyIban: p.partyIban, vs: p.vs, currency: p.currency }
+  return { id: p.id, bookedOn: p.bookedOn, amountCents: p.amountCents, party: p.party, partyIban: p.partyIban, vs: p.vs, note: p.note, currency: p.currency }
 }
 
 function asMatchDocument(d: Doc): MatchDocument {

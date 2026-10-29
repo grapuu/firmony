@@ -28,7 +28,7 @@ import type { StockEntry } from './stock'
 import { readableName } from './copy'
 import { eurOf, rateFor, rateMicro, type RateMicro, type Rates } from './fx'
 import { centsOf } from './invoices'
-import { normalizeVs, type DocKind, type Exempt } from './match'
+import { normalizeVs, TRANSACTION_TAX_WORDS, type DocKind, type Exempt } from './match'
 import { bratislavaDay, vatCompanyOf, vatDocOf, type Company, type Doc } from './store'
 import { badDebtEvents, isIssued, periodRange, taxDay, unpaidEvents, vatOf, type FilingKind, type Rows, type VatData, type VatLine } from './vat'
 import { groupedIban, periodName, rowsOf, type FiledReturn } from './vat-store'
@@ -539,11 +539,13 @@ export function bookingLines(doc: Doc, company: Company, payment: { bookedOn: st
  * AAAAAAAAAA): 500240 VAT, 500224 the income tax of a legal person and its advances, 500259 the tax withheld from
  * wages. Null for any other account, or when the bank did not say where the money went.
  */
-export function treasuryTax(iban: string | null | undefined): 'vat' | 'income' | 'wage' | 'other' | null {
+export function treasuryTax(iban: string | null | undefined): 'vat' | 'income' | 'wage' | 'transaction' | 'other' | null {
   const plain = (iban ?? '').replace(/\s/g, '').toUpperCase()
   const m = /^SK\d{2}8180(\d{6})\d{10}$/.exec(plain)
   if (!m) return null
-  return m[1] === '500240' ? 'vat' : m[1] === '500224' ? 'income' : m[1] === '500259' ? 'wage' : 'other'
+  // 501403: the transaction tax a company pays by its own notice (a personal tax account of europio's, seen in its
+  // statement of September 2026, symbol 17MMRRRR... of the month).
+  return m[1] === '500240' ? 'vat' : m[1] === '500224' ? 'income' : m[1] === '500259' ? 'wage' : m[1] === '501403' ? 'transaction' : 'other'
 }
 
 /**
@@ -574,6 +576,8 @@ export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'not
     if (payroll.some((r) => r.pays.tax === out)) return '342'
     if (payroll.some((r) => r.pays.garnish?.includes(out))) return '379'
   }
+  // The transaction tax, paid by notice to its account or withheld by the bank on the account: taxes and fees, 538.
+  if (p.exempt === 'state' && (tax === 'transaction' || (tax === null && TRANSACTION_TAX_WORDS.test(p.note ?? '')))) return '538'
   if (p.exempt === 'state' && (tax === 'vat' || tax === null) && /^1100\d{6}$/.test(normalizeVs(p.vs))) return VAT_SETTLE
   if (p.exempt === 'state' && tax === null && /^170099\d{4}$/.test(normalizeVs(p.vs))) return '341'
   switch (p.exempt) {

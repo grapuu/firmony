@@ -304,7 +304,7 @@ export const ContractReviewPage: FC<{
           ))}
         </fieldset>
         <p class="small">
-          Potvrdenie je záznam ľudského rozhodnutia, nie automatické overenie pravdivosti podkladov. Platí najviac sedem dní, pre tento návrh a balík; prijatie
+          Potvrdenie je záznam ľudského rozhodnutia, nie automatické overenie pravdivosti podkladov. Platí najviac sedem dní, pre tento návrh a balík (po schválení overenia klienta sa raz sama predĺži o sedem dní, ak sa ponuka nezmenila); prijatie
           zmluvy ešte nenahrádza AML a plnú moc pred začatím služby.
         </p>
         <button class="btn btn--blue" type="submit">

@@ -86,6 +86,7 @@ import { checkFoundingRuntime } from './founding.runtime.mjs'
 import { sanctionsAnswer } from './sanctions-fixtures.mjs'
 import { checkSanctionsRuntime } from './sanctions.runtime.mjs'
 import { checkNudgeRuntime } from './nudge.runtime.mjs'
+import { checkTatraRuntime } from './tatra.runtime.mjs'
 import { ruzAnswer, RUZ_LAST } from './ruz-fixtures.mjs'
 import { bookTaxStatements, closingsOf, fileClosingStatement, payslip, exportYears, exportYear, beginExport, completeExport, confirmExport, dataRevision, confirmedRevision, fileSummaryStatement, svViewsOf, summariesFiled, docsAround, companyOf, summaryXml, teamDeadlines, approvedRelease, contractCatalogueHash, resolveContract, currentPackage, payrollReporting, payrollGeneration, healthReporting } from '../.wrangler/dist/stores.js'
 
@@ -4639,8 +4640,8 @@ const latestLink = async () => (await linkMails()).pop()?.text.match(/https:\/\/
 let orderLink = await latestLink()
 const orderMail = (await linkMails()).pop()
 check(
-  "the email carries the link to the contract, the register's name and the reviewed plan",
-  Boolean(orderLink) && orderMail.subject === 'Firmony: podklady pred začatím spolupráce' && orderMail.text.includes('Zelený dvor s. r. o.') && orderMail.text.includes('Odkaz platí 7 dní'),
+  "the email carries the link to the contract, the register's name and the last day the link works",
+  Boolean(orderLink) && orderMail.subject === 'Firmony: podklady pred začatím spolupráce' && orderMail.text.includes('Zelený dvor s. r. o.') && /Odkaz platí do \d{1,2}\. \d{1,2}\. \d{4}\./.test(orderMail.text),
   orderMail?.text,
 )
 check('the request counts as answered', (await db.prepare('SELECT status FROM requests WHERE id = ?').bind(orderRow.request_id).first())?.status === 'contacted')
@@ -5401,5 +5402,6 @@ await checkMony({ mf, db, site, mony, nowS })
 await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin, acc, signIn, nowS, purgeFoundings, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkSanctionsRuntime({ db, files, get, freshAdmin, worker, settle, nowS })
 await checkNudgeRuntime({ db, files })
+await checkTatraRuntime({ db, files })
 await mf.dispose()
 done('runtime')

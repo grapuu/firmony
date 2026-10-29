@@ -1279,6 +1279,7 @@ export const app = typesetAll({
           'Vyberte minulý mesiac a formát XML (camt.053).',
           'Súbor nájdete v Schránke správ. Stiahnite ho.',
           'Pridajte ho tu alebo ho pošlite e-mailom na adresu Vašej firmy vo Firmony.',
+          'Prečítame aj pohyby na účte stiahnuté v Tatra banke ako XML, aj keď obsahujú viac mesiacov naraz. Čo už máme, nepridáme dvakrát.',
         ],
         revolut: [
           'V Revolut Business otvorte Domov, potom ponuku s tromi bodkami a Výpisy (Statements).',

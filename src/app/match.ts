@@ -13,6 +13,8 @@
 //   client, who confirms it with one tap.
 // - One exception: a variable symbol that names exactly one of the candidates, which no other candidate payment
 //   carries, decides (an invoice issued every month for the same amount is paid by the payment with its number).
+//   A payment without a symbol carries the document's when its number, of at least six digits, stands alone in the
+//   payer's name or the message (`carriesVs`).
 // - Amounts are compared in one currency. A document in another currency paid into an account in euros belongs to
 //   the payment only by its variable symbol and euros within 5 % of the document's at its own rate (the bank converts
 //   at its rate of the day and may take a fee): then the euros count as the same amount.
@@ -26,6 +28,8 @@ export interface MatchPayment {
   party: string | null
   partyIban: string | null
   vs: string | null
+  /** The message for the payee, as the bank gave it. */
+  note?: string | null
   /** The account's currency; euros when not said. */
   currency?: string | null
 }
@@ -58,6 +62,21 @@ export function daysBetween(a: string, b: string): number {
 /** A variable symbol as a number would read it: digits only, no leading zeros. */
 export function normalizeVs(vs: string | null | undefined): string {
   return (vs ?? '').replace(/\D/g, '').replace(/^0+/, '')
+}
+
+/**
+ * Whether a payment carries a document's variable symbol: as its own symbol, or, when it has none, as a number of at
+ * least six digits standing alone in its message or in the payer's name. A payer who types the invoice's number where
+ * the name or the message goes does so (europio's own statement of September 2026: a payment from a Revolut account
+ * with the invoice's number as the payer's name and no symbol). A payment with a symbol of its own is judged by that alone.
+ */
+export function carriesVs(payment: Pick<MatchPayment, 'vs' | 'party' | 'note'>, docVs: string | null | undefined): boolean {
+  const vs = normalizeVs(docVs)
+  if (vs === '') return false
+  const own = normalizeVs(payment.vs)
+  if (own !== '') return own === vs
+  if (vs.length < 6) return false
+  return (`${payment.party ?? ''} ${payment.note ?? ''}`.match(/\d+/g) ?? []).some((number) => number.replace(/^0+/, '') === vs)
 }
 
 export function normalizeIban(iban: string | null | undefined): string {
@@ -102,8 +121,7 @@ export function datesFit(payment: MatchPayment, doc: MatchDocument): boolean {
 /** How surely a document belongs to a payment: 0 when it cannot. */
 export function score(payment: MatchPayment, doc: MatchDocument): number {
   if (doc.totalCents === null || doc.totalCents <= 0) return 0
-  const vs = normalizeVs(doc.vs)
-  const sameVs = vs !== '' && vs === normalizeVs(payment.vs)
+  const sameVs = carriesVs(payment, doc.vs)
   if ((doc.currency ?? 'EUR') === (payment.currency ?? 'EUR')) {
     if (payment.amountCents !== direction(doc.kind) * doc.totalCents) return 0
   } else {
@@ -149,8 +167,8 @@ export function decide(payments: readonly MatchPayment[], documents: readonly Ma
   const paymentOf = new Map(payments.map((p) => [p.id, p]))
   const documentOf = new Map(documents.map((d) => [d.id, d]))
   const sameVs = (paymentId: string, docId: string) => {
-    const vs = normalizeVs(documentOf.get(docId)?.vs)
-    return vs !== '' && vs === normalizeVs(paymentOf.get(paymentId)?.vs)
+    const payment = paymentOf.get(paymentId)
+    return Boolean(payment) && carriesVs(payment!, documentOf.get(docId)?.vs)
   }
   for (const [paymentId, candidates] of byPayment) {
     const only = candidates.length === 1 ? candidates[0] : undefined
@@ -198,12 +216,16 @@ export function isStateIban(iban: string | null | undefined): boolean {
 }
 
 const BANK_WORDS = /(poplatok|poplatky|vedenie (uctu|účtu)|úrok|urok|bankov[aá] poplatok|fee|charge|interest|kapitaliz)/i
+/** The transaction tax a Slovak bank withholds on the account itself ("Transakcna dan 06.08.2026" in Tatra banka's
+ *  export of 1 October 2026; Act No. 279/2024 Z. z., § 10): a tax, which no document stands behind. */
+export const TRANSACTION_TAX_WORDS = /transak[cč]n[aá]\s+da[nň]|da[nň]\s+z\s+finan[cč]n/i
 
 /** A payment that plainly needs no document, recognised without asking anybody; null when a person decides. */
 export function autoExempt(payment: ExemptPayment, ownIbans: readonly string[]): Exempt | null {
   const iban = normalizeIban(payment.partyIban)
   if (iban !== '' && ownIbans.some((own) => normalizeIban(own) === iban)) return 'own'
   if (isStateIban(iban)) return 'state'
+  if (iban === '' && TRANSACTION_TAX_WORDS.test(`${payment.party ?? ''} ${payment.note ?? ''}`)) return 'state'
   if (iban === '' && BANK_WORDS.test(`${payment.party ?? ''} ${payment.note ?? ''}`)) return 'bank'
   return null
 }

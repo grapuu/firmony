@@ -5,7 +5,7 @@ import { XMLParser } from 'fast-xml-parser'
 import type { Category } from './booking'
 import type { DocKind } from './match'
 
-const LISTS = new Set(['Stmt', 'Ntry', 'TxDtls', 'Bal', 'Ustrd', 'Strd', 'PartyIdentification', 'PartyLegalEntity', 'PaymentMeans', 'TaxTotal', 'TaxSubtotal', 'PartyTaxScheme', 'BillingReference'])
+const LISTS = new Set(['STMTRS', 'STMTTRN', 'Stmt', 'Ntry', 'TxDtls', 'Bal', 'Ustrd', 'Strd', 'PartyIdentification', 'PartyLegalEntity', 'PaymentMeans', 'TaxTotal', 'TaxSubtotal', 'PartyTaxScheme', 'BillingReference'])
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -133,11 +133,84 @@ function partyIban(node: unknown): string | null {
   return iban ? iban.replace(/\s/g, '').toUpperCase() : null
 }
 
-/** Reads a camt.053 statement; null when the file is not one. */
+/** "20260930" (the OFX form of a day) as 2026-09-30; null when it is no day. */
+function ofxDay(value: string | null): string | null {
+  const m = value ? /^(\d{4})(\d{2})(\d{2})/.exec(value) : null
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
+
+/** A card payment's merchant from Tatra banka's line: "423473******6145 BRATISLAVA CHRISTIAN X 20260922 09:58:50 12.18EUR WWW.SHOP.SK". */
+function cardMerchant(name: string): string | null {
+  const m = /\d{8}\s+\d{2}:\d{2}:\d{2}\s+[\d.,]*[A-Z]{3}\s+(.+)$/.exec(name)
+  return m ? (m[1] ?? '').trim().slice(0, 120) || null : null
+}
+
+/**
+ * Tatra banka's XML of movements, as its internet banking exports it (an OFX-like <OFX><STMTRS>, seen on a real
+ * export of 1 October 2026): the account in BANKACCTFROM, the days in BANKTRANLIST (DTSTART, DTEND as YYYYMMDD), each
+ * movement a STMTTRN with TRNTYPE CREDIT or DEBIT and its amount without a sign, the other side's IBAN in BANKACCTTO
+ * (ACCTID 0 when there is none), its name, MEMO, the variable symbol in TRNVASYM and the end-to-end reference
+ * "/VS.../SS/KS". It carries no balances and no reference of the bank's own: a movement is told by its content.
+ * A card payment names the card, the place, the time and the merchant in NAME ("POS nakup", "INT NAKUP POS EUR").
+ */
+function readOfx(tree: Record<string, unknown> | null): Statement[] | null {
+  const root = at(tree, 'OFX') as Node
+  if (!root) return null
+  const statements: Statement[] = []
+  for (const stmt of list((root as Record<string, unknown>).STMTRS)) {
+    const iban = text(at(stmt, 'BANKACCTFROM', 'IBAN'))
+    const tranList = at(stmt, 'BANKTRANLIST')
+    const entries: Entry[] = []
+    const seen = new Map<string, number>()
+    for (const tx of list(tranList && (tranList as Record<string, unknown>).STMTTRN)) {
+      const type = (text(at(tx, 'TRNTYPE')) ?? '').toUpperCase()
+      const raw = text(at(tx, 'TRNAMT'))
+      const cents = toCents(raw)
+      const bookedOn = ofxDay(text(at(tx, 'DTPOSTED')) ?? text(at(tx, 'DTAVAIL')))
+      if (cents === null || !bookedOn) continue
+      // A signed amount says its direction itself; else the type does.
+      const amount = raw?.trim().startsWith('-') ? cents : type === 'DEBIT' ? -Math.abs(cents) : Math.abs(cents)
+      const name = text(at(tx, 'NAME'))
+      const memo = text(at(tx, 'MEMO'))
+      const card = /^\d{4,6}\*+\d{4}\b/.test(name ?? '') || /\bPOS\b|n[aá]kup/i.test(memo ?? '')
+      const otherIban = text(at(tx, 'BANKACCTTO', 'IBAN'))
+      const partyIban = otherIban && /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(otherIban.replace(/\s/g, '')) ? otherIban.replace(/\s/g, '').toUpperCase() : null
+      const party = card && name ? cardMerchant(name) : name
+      const fromSymbols = symbols(text(at(tx, 'REFERENCE_E2E')), memo)
+      const vs = (text(at(tx, 'TRNVASYM')) ?? '').replace(/^0+(?=\d)/, '') || fromSymbols.vs
+      const note = memo
+      const base = `t:${fingerprint([bookedOn, amount, partyIban, vs, memo, name].join('|'))}`
+      const count = seen.get(base) ?? 0
+      seen.set(base, count + 1)
+      entries.push({
+        ref: count > 0 ? `${base}#${count + 1}` : base,
+        bookedOn,
+        amountCents: amount,
+        currency: text(at(tx, 'CURRENCY')) ?? 'EUR',
+        party,
+        partyIban,
+        vs,
+        ss: fromSymbols.ss,
+        ks: fromSymbols.ks,
+        note,
+        card,
+      })
+    }
+    const days = entries.map((e) => e.bookedOn).sort()
+    const from = ofxDay(text(at(tranList, 'DTSTART'))) ?? days[0] ?? null
+    const end = ofxDay(text(at(tranList, 'DTEND')))
+    // DTEND is the day the export was made for, often the day after the last one it covers.
+    const to = end && days.length > 0 && end > (days[days.length - 1] ?? '') ? (days[days.length - 1] ?? end) : (end ?? days[days.length - 1] ?? null)
+    statements.push({ iban: iban ? iban.replace(/\s/g, '').toUpperCase() : null, currency: entries[0]?.currency ?? 'EUR', opening: null, closing: null, number: null, from, to, entries })
+  }
+  return statements.length > 0 ? statements : null
+}
+
+/** Reads a camt.053 statement, or Tatra banka's XML of movements; null when the file is neither. */
 export function readStatement(xml: string): Statement[] | null {
   const tree = parseXml(xml)
   const root = at(tree, 'Document', 'BkToCstmrStmt') as Node
-  if (!root) return null
+  if (!root) return readOfx(tree)
   const statements: Statement[] = []
   for (const stmt of list((root as Record<string, unknown>).Stmt)) {
     const iban = text(at(stmt, 'Acct', 'Id', 'IBAN'))

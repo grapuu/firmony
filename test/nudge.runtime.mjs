@@ -57,6 +57,9 @@ export async function checkNudgeRuntime({ db, files }) {
 
   await order('nudge-decl', { sentAgo: 2 * DAY + 3600 })
   await order('nudge-expired', { sentAgo: 2 * DAY + 3600, reviewLeft: -60 })
+  await order('nudge-held', { sentAgo: 2 * DAY + 3600 })
+  await db.prepare(`INSERT INTO order_reviews (order_id,reviewed_at,reviewed_by,decision,offer_hash,plan,evidence,accountant_id,expires_at)
+    SELECT order_id, reviewed_at + 1, reviewed_by, 'hold', offer_hash, plan, 'TEST ONLY hold', NULL, expires_at FROM order_reviews WHERE order_id = 'nudge-held'`).run()
   await order('nudge-paper', { paper: true, sentAgo: 5 * DAY + 3600 })
   await order('nudge-old', { sentAgo: 9 * DAY })
   await order('nudge-fresh', { sentAgo: 3600 })
@@ -102,7 +105,9 @@ export async function checkNudgeRuntime({ db, files }) {
     const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))].map((b) => b.toString(16).padStart(2, '0')).join('')
     return hash === await tokenOf('nudge-decl')
   })())
-  check('nudge: an order whose reviewed offer ran out waits for the team, not the director', (await mails('nudge-expired')).length === 0 && (await tokenOf('nudge-expired')) === 'nudge-expired-hash')
+  check('nudge: an order whose reviewed seven days ran out is still the director\'s to finish: the approval starts them again', (await mails('nudge-expired')).length === 1 && (await tokenOf('nudge-expired')) !== 'nudge-expired-hash')
+  check('nudge: an order the team put on hold is not', (await mails('nudge-held')).length === 0 && (await tokenOf('nudge-held')) === 'nudge-held-hash')
+  check('nudge: the email says the last day the link works, the order\'s', /Odkaz platí do \d{1,2}\. \d{1,2}\. \d{4}, predchádzajúci odkaz už neplatí/.test(m[0].body), m[0].body)
   m = await mails('nudge-paper')
   check('nudge: a paper intake is reminded on its second day, five days after its link', m.length === 1 && JSON.stringify(await nudges('nudge-paper')) === '[{"stage":"declaration","step":1}]')
   check('nudge: a link sent long ago or just now is left alone', (await mails('nudge-old')).length === 0 && (await mails('nudge-fresh')).length === 0)
@@ -138,6 +143,30 @@ export async function checkNudgeRuntime({ db, files }) {
   m = await mails('nudge-admit')
   check('nudge: the email says the identification is done and where to conclude', m.length === 1 && m[0].subject === 'Firmony: zmluva je pripravená' && m[0].body.includes('overenie podkladov') && JSON.stringify(await nudges('nudge-admit')) === '[{"stage":"contract","step":0}]')
   check('nudge: and only once', !(await nudge.tellAdmitted(env, 'nudge-admit', origin, ts)) && (await mails('nudge-admit')).length === 1)
+
+  // The review's seven days ran out while the director signed and the designated person checked: the approval starts
+  // them again under the person who approved, once, and the director is told as usual.
+  await order('nudge-late-review', { sentAgo: 9 * DAY, reviewLeft: -2 * DAY })
+  await seedAmlDossier(db, files, 'nudge-late-review', officer, { ...testDeclaration(), director: { ...testDeclaration().director, name: 'TEST ONLY Konateľ' } })
+  const reviews = async (id) => (await db.prepare('SELECT * FROM order_reviews WHERE order_id = ? ORDER BY id').bind(id).all()).results
+  check('nudge: an approved client whose review ran out is told all the same', await nudge.tellAdmitted(env, 'nudge-late-review', origin, ts) && (await mails('nudge-late-review')).length === 1)
+  let r = await reviews('nudge-late-review')
+  check(
+    'nudge: the review is appended again as it stood, under the designated person, seven days from the approval and not past the order',
+    r.length === 2 && r[1].decision === 'standard' && r[1].offer_hash === r[0].offer_hash && r[1].plan === r[0].plan && r[1].accountant_id === r[0].accountant_id && r[1].evidence === r[0].evidence &&
+      r[1].reviewed_by === officer.id && r[1].expires_at === ts + 7 * DAY &&
+      Boolean(await db.prepare("SELECT 1 AS x FROM events WHERE action = 'order.review.renewed' AND subject = 'nudge-late-review'").first()),
+    JSON.stringify(r),
+  )
+  const lateOrder = orderOf(await db.prepare("SELECT * FROM orders WHERE id = 'nudge-late-review'").first())
+  check('nudge: and not a second time for the same approval', !(await nudge.renewAfterAdmission(db, lateOrder, ts + DAY)) && (await reviews('nudge-late-review')).length === 2)
+  // The director asks for a new link and nobody has renewed since the approval: it opens by itself, without the team.
+  await order('nudge-asks', { sentAgo: 9 * DAY, reviewLeft: -2 * DAY })
+  await seedAmlDossier(db, files, 'nudge-asks', officer, { ...testDeclaration(), director: { ...testDeclaration().director, name: 'TEST ONLY Konateľ' } })
+  const asking = orderOf(await db.prepare("SELECT * FROM orders WHERE id = 'nudge-asks'").first())
+  check('nudge: the director asking for a new link renews it himself once the approval stands', await nudge.renewAfterAdmission(db, asking, ts) && (await reviews('nudge-asks')).length === 2)
+  check('nudge: a paper order or one not identified renews nothing', !(await nudge.renewAfterAdmission(db, { ...asking, amlPaper: true }, ts)) &&
+    !(await nudge.renewAfterAdmission(db, orderOf(await db.prepare("SELECT * FROM orders WHERE id = 'nudge-expired'").first()), ts)))
   await nudge.nudgeScheduled(env, at + 2 * DAY * 1000, origin)
   m = await mails('nudge-admit')
   // Both emails may be queued within one second: which came second is told by the events, not the outbox's order.

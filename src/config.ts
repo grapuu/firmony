@@ -408,7 +408,7 @@ export const FIO = {
  * Slovenská sporiteľňa e-mails SEPA XML statements every day ("Email (PDF, SEPA XML, MT940)", "on a daily, monthly or
  * annual basis", slsp.sk); ČSOB sets e-mailed statements in its internet banking (the format was not confirmed);
  * Fio gives a free token; Tatra banka e-mails only an encrypted PDF, so its "Výpis do účtovníctva" in XML (camt.053)
- * is added once a month; the others are added once a month in XML until we know better. `way`: 'daily' (the bank
+ * is added once a month (its internet banking's XML of movements is read too, xml.ts readOfx, 29 October 2026); the others are added once a month in XML until we know better. `way`: 'daily' (the bank
  * sends XML every day), 'email' (the bank sends it, how often is set there), 'token' (Fio), 'monthly'.
  */
 export type BankWay = 'daily' | 'email' | 'token' | 'monthly'
@@ -551,6 +551,9 @@ export const OFFLINE_TERMS = 'offline'
 export const ORDER = {
   /** The link to an order works this many days. */
   days: 30,
+  /** A standard review of an order holds this many days; the approval of the identification starts them again once
+   *  (team/nudge.ts, renewReview), so the time a director and the designated person take does not lose the contract. */
+  reviewDays: 7,
   /** Acceptances tried from one connection in an hour. */
   acceptsPerHour: 10,
   /** The first month the service runs, and how many months a client can choose to start in. */

@@ -24,7 +24,7 @@ import { payrollReportRoutes } from '../payroll-reporting/routes'
 import { closureStatements, reportItems as payrollReportItems, runReopenBlocked } from '../payroll-reporting/store'
 import { html } from 'hono/html'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { APP, ART, ENDING, OFFLINE_TERMS, OPERATOR, PLANS, TEAM } from '../config'
+import { APP, ART, ENDING, OFFLINE_TERMS, OPERATOR, ORDER, PLANS, TEAM } from '../config'
 import { ensureSchema, now, sha256Hex, withinLimit } from '../db'
 import { isLocal, later, siteOrigin } from '../http'
 import { formatIco, normalizeIco } from '../ico'
@@ -214,6 +214,7 @@ import { securityGate } from '../security/routes'
 import { incidentRoutes } from '../incidents/routes'
 import { leastLoadedAccountant } from './assign'
 import { reviewProposal } from './review-proposal'
+import { linkUntil } from './nudge'
 import { dossierProposals } from '../aml/proposals'
 import { approvedRelease, contractCatalogueHash, latestOrderReview, orderOfferHash, releaseState, releaseValue } from '../contracts'
 import { startMonths } from '../content/terms'
@@ -5821,8 +5822,8 @@ async function sendOrderLink(c: Ctx, order: Order, requestId: string, user: stri
   // This link first collects AML evidence. Contract signing remains independently blocked by contractGate.
   const token = newToken()
   const tokenHash = await sha256Hex(token)
-  const days = Math.max(1, Math.floor((review.expires_at - ts) / 86400))
-  const mail = {subject:'Firmony: podklady pred začatím spolupráce',body:`Dobrý deň,\n\nna tomto odkaze doplníte podklady pre ${order.company}:\n${siteOrigin(c)}/objednavka/${token}\n\nNajprv dokončíme overenie a potvrdíme rozsah služby. Zmluvu môžete uzavrieť až potom. Odkaz platí ${days} dní.\n\nFirmony`}
+  // The declaration can be sent while the order runs; the contract after the identification (its seven days start again then).
+  const mail = {subject:'Firmony: podklady pred začatím spolupráce',body:`Dobrý deň,\n\nna tomto odkaze doplníte podklady pre ${order.company}:\n${siteOrigin(c)}/objednavka/${token}\n\nNajprv dokončíme overenie a potvrdíme rozsah služby. Zmluvu môžete uzavrieť až potom. Odkaz platí do ${linkUntil(order.expiresAt)}.\n\nFirmony`}
   // The email is keyed by its link, not by the second: two links sent in one second are two emails, and the one
   // that works is always among them.
   const results = await db.batch([
@@ -5860,7 +5861,7 @@ teamRoutes.post('/ziadosti/:id/posudenie', async (c) => {
   await db.batch([
     db.prepare(`INSERT INTO order_reviews (order_id, reviewed_at, reviewed_by, decision, offer_hash, plan, evidence, accountant_id, expires_at)
       SELECT id, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 FROM orders WHERE id = ?1 AND status = 'open' AND expires_at > ?2`)
-      .bind(order.id, ts, who.user.id, decision, hash, plan.id, evidence, decision === 'standard' ? accountant : null, Math.min(order.expiresAt, ts + 7 * 86400)),
+      .bind(order.id, ts, who.user.id, decision, hash, plan.id, evidence, decision === 'standard' ? accountant : null, Math.min(order.expiresAt, ts + ORDER.reviewDays * 86400)),
     db.prepare(`INSERT INTO events (at, company_id, user_id, action, subject, detail)
       SELECT ?2, NULL, ?3, 'contract.reviewed', id, ?4 FROM orders
       WHERE id = ?1 AND status = 'open' AND expires_at > ?2`)

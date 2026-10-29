@@ -4,6 +4,33 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Kritika, predĺženie posúdenia a europio ako klient nula, 29. 10. 2026 (Claude, `main`):** na jeho „bud maximalne
+kriticky“ (12:05) dostal 14 bodov s verdiktom: softvér je ďaleko pred biznisom; jeho body 1 až 4 sú notár a goAML do
+19. 11., advokát a poisťovňa pre `CONTRACT_RELEASE`, zmluva s Peppol poskytovateľom, dohoda s účtovníčkou. Jeho „ano do
+toho!“ (12:12) na body 5 a 6 a klienta nula. (5) Posúdenie žiadosti platí 7 dní (`ORDER.reviewDays`); po schválení AML
+sa samo **raz** predĺži o 7 dní (`renewReview` v `src/team/nudge.ts`: nemenná kópia posledného štandardného posúdenia s
+rovnakým `offer_hash`, pod tým, kto schválil AML, udalosť `order.review.renewed`, nikdy za koniec odkazu objednávky), z
+`tellAdmitted` aj z „Predĺžiť odkaz“ na stránke objednávky (`renewAfterAdmission`, zmluva sa potom otvorí hneď).
+Predtým klient po AML na 8. deň uviazol a „zmluva je pripravená“ neodišla. (6) E-maily s odkazom objednávky nesú presný
+deň (`linkUntil`: „Odkaz platí do 5. 11. 2026.“), nie počet dní; Mony `klient.md`: odkaz 30 dní, uzavretie 7 dní po
+posúdení. Pripomienka vyhlásenia už nečaká na štandardné posúdenie. **Klient nula** (skutočné doklady europio z Google
+Drive Backend Accounting a XML z Tatra banky; len v scratchpade, **nikdy v repozitári**): (a) Tatra XML pohybov (tvar OFX,
+bez zostatkov, viac mesiacov) Firmony nečítala: `readOfx` v `src/app/xml.ts` (znamienko podľa TRNTYPE, karta podľa
+čísla karty v NAME alebo POS, VS z TRNVASYM alebo REFERENCE_E2E, referencia odtlačkom s poradím pri rovnakých
+pohyboch); `statementDue` počíta aj dni pokryté výpismi bez zostatku. (b) Transakčná daň („Transakcna dan ...“ bez
+IBAN, oznámenie na účet s predčíslím 501403) žiadala doklad: teraz `autoExempt` 'state' a účet 538
+(`TRANSACTION_TAX_WORDS`, `treasuryTax` 'transaction'). (c) Platba od odberateľa s číslom faktúry v mene platiteľa a bez
+VS (Revolut) sa nespárovala: `carriesVs` v `src/app/match.ts` (číslo od 6 číslic samostatne v mene alebo
+správe, len keď platba nemá vlastný VS). **Otvorené, bez zmeny, kým to nezmeria workflow Reader a neposúdi
+účtovníčka:** (d) `suma_celkom` v nástroji čítačky je „celková suma na úhradu“: faktúra so započítaným zostatkom
+(na úhradu menej ako celkom) a faktúra s proratou (celkom záporné, na úhradu 0, mínus v PDF nevidno) dajú
+zlý základ DPH alebo nespárovanie; návrh pole „na úhradu“ zvlášť (schéma 88 `documents.due_cents`) a párovanie podľa
+neho; (e) služba za celý mesiac fakturovaná až v ďalšom mesiaci: čítačka berie len výslovný dátum dodania, deň
+dodania opakovanej služby potvrdiť s účtovníčkou podľa zákona o DPH; (f) faktúry v USD z predplateného kreditu.
+Overené: `npm run check`, 1 711 unit + 12 deployment, 2 691 runtime na Node 24 (`test/tatra.runtime.mjs`,
+`test/tatra.units.mjs`, syntetický `test/fixtures/tatra-pohyby.xml`, predĺženie v `test/nudge.runtime.mjs`), 25 Peppol,
+UI pri 1440/390/320, 129 browser. Schéma bez zmeny (87).
+
 **Firma beží sama: pripomienky, posúdenie a KUV, 28. 10. 2026 neskoro večer (Claude, `main`):** jeho „ano“ o 20:19
 na štyri automatizácie. (1) **Upomienky faktúr Firmony** (`remindBillsScheduled` v `src/team/billing-store.ts`, z
 `appScheduled`): o 9:00 klientovi 3 a 14 dní po splatnosti správa v aplikácii a zvonček, najviac jeden krok denne, krok

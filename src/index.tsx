@@ -45,6 +45,7 @@ import { getCompany, userByEmail } from './app/store'
 import { isPeriodLocked } from './app/periods'
 import { newLink, newToken, startSession } from './app/session'
 import { inboxCode } from './team/store'
+import { renewAfterAdmission } from './team/nudge'
 import { acceptStatements, acceptedAs, isClient, newOrderStatement, orderByToken, type Order } from './order'
 import { bell, ringStatement } from './bell'
 import { startMonths } from './content/terms'
@@ -772,6 +773,8 @@ app.post('/objednavka/:token/novy', async (c) => {
   const closed = await orderClosed(c, order)
   if (closed) return closed
   if (!(await staleReview(db, order))) return c.redirect(`/objednavka/${token}`, 303)
+  // Identified and the offer unchanged: the seven days start again by themselves and the contract opens at once.
+  if (await renewAfterAdmission(db, order)) return c.redirect(`/objednavka/${token}`, 303)
   if (await withinLimit(db, 'order-renew', order.id, 3, 86400)) {
     await db.batch([
       db.prepare("UPDATE requests SET status = 'new' WHERE id = ? AND status <> 'client'").bind(order.requestId ?? ''),

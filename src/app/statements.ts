@@ -440,14 +440,17 @@ export async function statementDue(db: D1Database, company: string, today: strin
   const rows = await db
     .prepare(
       `SELECT a.id, a.balance_on,
-              (SELECT s.source FROM statements s WHERE s.account_id = a.id AND s.status IN ('taken', 'known') ORDER BY COALESCE(s.closing_on, '') DESC, s.created_at DESC LIMIT 1) AS source
+              (SELECT s.source FROM statements s WHERE s.account_id = a.id AND s.status IN ('taken', 'known') ORDER BY COALESCE(s.closing_on, '') DESC, s.created_at DESC LIMIT 1) AS source,
+              -- A statement without balances (Tatra banka's XML of movements) still covers its days.
+              (SELECT MAX(s.to_on) FROM statements s WHERE s.account_id = a.id AND s.status IN ('taken', 'known')) AS covered
          FROM accounts a WHERE a.company_id = ?1
           AND NOT EXISTS (SELECT 1 FROM bank_links l WHERE l.id = a.link_id AND l.status = 'active')
           -- A month before our books start is the former accountant's: no statement of it is due.
           AND ?2 >= ${booksFromSql('?1')}`,
     )
     .bind(company, end)
-    .all<{ id: string; balance_on: string | null; source: string | null }>()
-  const due = rows.results.some((a) => a.source !== 'email' && (a.balance_on === null || a.balance_on < end))
+    .all<{ id: string; balance_on: string | null; source: string | null; covered: string | null }>()
+  const reached = (a: { balance_on: string | null; covered: string | null }) => [a.balance_on, a.covered].filter((d): d is string => Boolean(d)).sort().pop() ?? null
+  const due = rows.results.some((a) => a.source !== 'email' && ((reached(a) ?? '') < end))
   return due ? end.slice(0, 7) : null
 }
