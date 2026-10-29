@@ -80,13 +80,15 @@ export const copy = typesetAll({
     label: 'Ukážka: október Vašej firmy vo Firmony, všetko zaúčtované',
     month: 'Október 2026',
     company: 'Vaša firma',
-    count: '5 dokladov',
+    count: '4 doklady',
     rows: [
       { title: 'Bloček', sub: 'Kaviareň, 14. 10.', amount: '4,80 €', state: 'Zaúčtovaný' },
       { title: 'Faktúra 2026041', sub: 'Váš klient s. r. o.', amount: '+1 200 €', state: 'Zaúčtovaná' },
       { title: 'Výpis z účtu', sub: '23 platieb', amount: '', state: 'Spárovaný' },
       { title: 'E-faktúra', sub: 'Webhosting', amount: '14,90 €', state: 'Prijatá' },
-      { title: 'Priznanie k DPH', sub: 'Za október', amount: '1 220 €', state: 'Podané' },
+      // The VAT of these documents: 23 % in the invoice (224,39 €) less 23 % in the webhosting (2,79 €); a coffee is
+      // representation, whose VAT is not deducted (§ 49 ods. 7 of the VAT Act).
+      { title: 'Priznanie k DPH', sub: 'Za október', amount: '221,60 €', state: 'Podané' },
     ],
     foot: 'Všetko zaúčtované',
     footSub: 'Skontrolovala účtovníčka, 24. 11.',
