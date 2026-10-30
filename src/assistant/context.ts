@@ -8,7 +8,8 @@ import { companyDeadlines } from '../team/deadlines-store'
 import { billRows, tariffForClient } from '../team/billing-store'
 import { managedHandover } from '../migration/store'
 import { formatEurExact } from '../format'
-import { MONEY_DAYS, moneyWindow, type MoneyFacts } from '../app/money'
+import { MONEY_DAYS, moneyWindow, payoutVerdict, type MoneyFacts } from '../app/money'
+import { readMoney } from '../calc'
 import { addDays } from '../app/ending'
 import { moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
 import { assistantAllowed, type AssistantScope } from './store'
@@ -28,6 +29,32 @@ export async function assistantDocuments(db:D1Database,s:AssistantScope,selected
 }
 
 /** All values and links are read by Firmony. The external model receives none of this context. */
+/** The verdict paragraphs for a question that names a payout amount; null when the question names none. The amount
+ *  is the number nearest to the word "vyplatiť", checked by the same rule as the home page's form, so the assistant
+ *  can never disagree with it. Pure: the facts come in, the paragraphs go out. */
+export function payoutAskedAnswer(question: string, facts: MoneyFacts): string[] | null {
+  if (!/vyplat|výplat/i.test(question)) return null
+  const anchor = question.match(/vyplat|výplat/i)!.index ?? 0
+  const numbers = [...question.matchAll(/(?:\d{1,3}(?:\s\d{3})+|\d+)(?:[.,]\d{1,2})?/g)]
+  if (numbers.length === 0) return null
+  numbers.sort((a, b) => Math.abs((a.index ?? 0) - anchor) - Math.abs((b.index ?? 0) - anchor))
+  const asked = readMoney(numbers[0]![0])
+  if (asked === null || asked <= 0) return null
+  const verdict = payoutVerdict(facts, asked)
+  if (!verdict.ok && !verdict.known) {
+    return ['Na to potrebujeme zostatok na účte. Po prepojení banky alebo pridaní výpisu Vám povieme presne, či si túto sumu môžete vyplatiť.']
+  }
+  if (verdict.ok) {
+    return [`Sumu ${formatEurExact(asked)} si môžete vyplatiť. Po nej ostáva ${formatEurExact(verdict.reserveCents)} na známe záväzky.`]
+  }
+  return [
+    verdict.immediate
+      ? `Sumu ${formatEurExact(asked)} by zostatok na účte dnes uniesol, ale známe záväzky by po nej presiahli o ${formatEurExact(verdict.shortCents)}.`
+      : `Suma ${formatEurExact(asked)} je vyššia ako zostatok na účte${verdict.shortCents > 0 ? ` a známe záväzky by navyše presiahli o ${formatEurExact(verdict.shortCents)}` : ''}.`,
+    verdict.uncovered.length > 0 ? `Prvý neuhradený by bol: ${verdict.uncovered[0]!.label}.` : 'Pred rozhodnutím sa poraďte s účtovníčkou.',
+  ]
+}
+
 export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Company,topic:AssistantTopic,document='',question=''):Promise<AssistantAnswer|null> {
   if(company.id!==s.company||!await assistantAllowed(db,s))return null
   const team=s.side==='team',root=team?`/ucto/klienti/${company.id}`:'/app'
@@ -145,14 +172,20 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
       for (const o of dueOut.slice(0, 6)) answer.paragraphs.push(`${o.label} - ${dayName(o.day, day)}, ${formatEurExact(o.cents)}`)
       if (dueOut.length > 6) answer.paragraphs.push('Celý zoznam je na prehľade Peniaze vopred.')
       source('Peniaze vopred', 'Známe záväzky z termínov a faktúr.', '/app')
-    } else if (w.reserveCents === null) {
-      answer.paragraphs.push('Na to potrebujeme zostatok na účte. Po prepojení banky alebo pridaní výpisu Vám povieme presne, koľko si môžete vyplatiť.', 'Čo Vám príde, čo odíde a známe záväzky nájdete medzitým na prehľade firmy.')
     } else {
-      answer.paragraphs.push(`Voľné peniaze na najbližších 30 dní: ${formatEurExact(w.reserveCents)}. Počíta sa zostatok na účte, plus čo očakávame, že príde, mínus známe záväzky.`)
-      if (w.mood === 'short') answer.paragraphs.push(`Známe záväzky presahujú o ${formatEurExact(-w.reserveCents)}.`)
-      else if (w.mood === 'tight') answer.paragraphs.push('Známe záväzky kryjú aj očakávané platby.')
-      else answer.paragraphs.push('Všetko známe máte kryté.')
-      answer.paragraphs.push('Toto je pohľad na peniaze, nie na zisk, a ráta len s tým, čo je v evidencii. Presnú sumu výplaty si skúste na prehľade; pred rozhodnutím sa poraďte s účtovníčkou.')
+      // A question that names a payout amount gets the verdict; without an amount, the window itself answers.
+      const asked = payoutAskedAnswer(question, facts)
+      if (asked) {
+        answer.paragraphs.push(...asked)
+      } else if (w.reserveCents === null) {
+        answer.paragraphs.push('Na to potrebujeme zostatok na účte. Po prepojení banky alebo pridaní výpisu Vám povieme presne, koľko si môžete vyplatiť.', 'Čo Vám príde, čo odíde a známe záväzky nájdete medzitým na prehľade firmy.')
+      } else {
+        answer.paragraphs.push(`Voľné peniaze na najbližších 30 dní: ${formatEurExact(w.reserveCents)}. Počíta sa zostatok na účte, plus čo očakávame, že príde, mínus známe záväzky.`)
+        if (w.mood === 'short') answer.paragraphs.push(`Známe záväzky presahujú o ${formatEurExact(-w.reserveCents)}.`)
+        else if (w.mood === 'tight') answer.paragraphs.push('Známe záväzky kryjú aj očakávané platby.')
+        else answer.paragraphs.push('Všetko známe máte kryté.')
+        answer.paragraphs.push('Toto je pohľad na peniaze, nie na zisk, a ráta len s tým, čo je v evidencii. Presnú sumu výplaty si skúste na prehľade; pred rozhodnutím sa poraďte s účtovníčkou.')
+      }
     }
     source('Peniaze vopred','Výpočet z účtov, faktúr a termínov na prehľade firmy.',team?root:'/app')
   } else {

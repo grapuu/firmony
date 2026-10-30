@@ -117,6 +117,17 @@ export async function checkMony({ mf, db, site, mony, provider, nowS }) {
   text = await res.text()
   check('mony: a question about what goes out lists the known dues', res.status === 200 && (text.includes('platby von') || text.includes('nie je známa žiadna platba von')), `${res.status} ${text.slice(0, 120)}`)
   await db.prepare("DELETE FROM invoices WHERE id = 'i-mony-1'").run()
+  // A payout amount named in the question is checked by the same verdict as the home page's form.
+  await db.prepare("INSERT INTO accounts (id, company_id, iban, balance_cents, balance_on) VALUES ('acc-mony-1', 'co-mony', 'SK00TEST', 100000, ?)").bind(todayDay).run()
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Môžem si vyplatiť 100?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a payout amount named in the question gets the same verdict as the form', res.status === 200 && text.includes('Sumu 100,00') && text.includes('si môžete vyplatiť') && text.includes('ostáva'), `${res.status} ${text.slice(0, 140)}`)
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Môžem si vyplatiť 999 999?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a payout above the balance is said so, with how much it exceeds', res.status === 200 && text.includes('vyššia ako zostatok') && text.includes('poraďte s účtovníčkou'), `${res.status} ${text.slice(0, 140)}`)
+  await db.prepare("DELETE FROM accounts WHERE id = 'acc-mony-1'").run()
   await db.prepare("UPDATE companies SET contract_at = NULL WHERE id = 'co-mony'").run()
 
   // The team, each with its own knowledge, and only with its passkey.
