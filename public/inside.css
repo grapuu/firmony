@@ -8543,6 +8543,107 @@ a.wtable__name {
   margin: 0;
 }
 
+.money__items {
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.money__items summary {
+  padding: 14px 20px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink);
+  list-style: none;
+}
+
+.money__items summary::-webkit-details-marker {
+  display: none;
+}
+
+.money__items summary::after {
+  content: '+';
+  float: right;
+  color: var(--soft);
+  font-weight: 700;
+}
+
+.money__items[open] summary::after {
+  content: '−';
+}
+
+.money__lists {
+  display: grid;
+  gap: 16px;
+  padding: 2px 20px 18px;
+}
+
+@media (min-width: 640px) {
+  .money__lists {
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+}
+
+.money__list-title {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+
+.money__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.money__row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.money__what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.money__day {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.money__sum {
+  min-width: 88px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.money__sum--in {
+  color: #047857;
+}
+
+.money__none,
+.money__more {
+  margin: 0;
+  padding: 10px 0;
+  color: var(--dim);
+  font-size: 0.9rem;
+}
+
 .money__ask {
   display: grid;
   gap: 8px;

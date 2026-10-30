@@ -222,6 +222,10 @@ export const app = typesetAll({
       out30: 'Odíde',
       onAccount: 'Na účte',
       onAccountNote: (day: string) => typeset(`k ${day}`),
+      items: 'Zoznam očakávaných platieb',
+      noneIn: 'Na najbližších 30 dní nič neočakávame.',
+      noneOut: 'Žiadny známy záväzok.',
+      more: (n: number) => typeset(`a ďalších ${n}`),
       ask: {
         title: 'Koľko si môžete vyplatiť?',
         lead: 'Skúste si sumu. Povieme, či po nej ostane na známe záväzky.',

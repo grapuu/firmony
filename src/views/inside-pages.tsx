@@ -20,6 +20,8 @@ import { CenterSelect } from './centers'
 import type { CostCenter } from '../app/centers'
 import { overviewActions, type BankHealth, type FirstStepsState } from '../app/overview'
 import type { MoneyView } from '../app/money'
+import { MONEY_DAYS } from '../app/money'
+import { addDays } from '../app/ending'
 export type { FirstStepsState } from '../app/overview'
 
 const ACCEPT = 'image/*,application/pdf,.pdf,.xml,text/xml,application/xml'
@@ -298,6 +300,9 @@ const MoneyCard: FC<{ view: MoneyView }> = ({ view }) => {
           ? { cls: 'pill--red', text: m.mood.short(-(w.reserveCents ?? 0)) }
           : { cls: 'pill--grey', text: m.mood.unknown }
   const ask = view.ask
+  const until = addDays(view.facts.today, MONEY_DAYS)
+  const listIn = view.facts.incoming.filter((i) => i.day >= view.facts.today && i.day < until)
+  const listOut = view.facts.outgoing.filter((o) => o.day >= view.facts.today && o.day < until)
   return (
     <section class="money" aria-labelledby="peniaze">
       <h2 id="peniaze" class="sect">
@@ -333,6 +338,45 @@ const MoneyCard: FC<{ view: MoneyView }> = ({ view }) => {
           </div>
         </dl>
       </div>
+      <details class="money__items">
+        <summary>{m.items}</summary>
+        <div class="money__lists">
+          <div class="money__list">
+            <h3 class="money__list-title">{m.in30}</h3>
+            {listIn.length === 0 ? (
+              <p class="money__none">{m.noneIn}</p>
+            ) : (
+              <ul class="money__rows">
+                {listIn.slice(0, 8).map((i) => (
+                  <li class="money__row">
+                    <span class="money__what">{i.label}</span>
+                    <span class="money__day">{dayShort(i.day)}</span>
+                    <strong class="money__sum money__sum--in">+{formatEur(i.cents)}</strong>
+                  </li>
+                ))}
+                {listIn.length > 8 ? <li class="money__more">{m.more(listIn.length - 8)}</li> : null}
+              </ul>
+            )}
+          </div>
+          <div class="money__list">
+            <h3 class="money__list-title">{m.out30}</h3>
+            {listOut.length === 0 ? (
+              <p class="money__none">{m.noneOut}</p>
+            ) : (
+              <ul class="money__rows">
+                {listOut.slice(0, 8).map((o) => (
+                  <li class="money__row">
+                    <span class="money__what">{o.label}</span>
+                    <span class="money__day">{dayShort(o.day)}</span>
+                    <strong class="money__sum">−{formatEur(o.cents)}</strong>
+                  </li>
+                ))}
+                {listOut.length > 8 ? <li class="money__more">{m.more(listOut.length - 8)}</li> : null}
+              </ul>
+            )}
+          </div>
+        </div>
+      </details>
       <form class="money__ask" method="get" action="/app">
         <label class="money__ask-label" for="vyplatit">
           {m.ask.title}
