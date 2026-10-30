@@ -1,5 +1,13 @@
 # Firmony: progress of the continuation
 
+## Piata vlna (Cline, 30. október 2026 CEST)
+
+- **Mony READ: presný zostatok.** „Aký mám zostatok na účte?“ odpovedá samotným zostatkom z prepojených účtov
+  (s dňom stavu); bez banky povie, čo doplniť. Otázka o výplate si ďalej drží oknový verdict.
+- **Mony READ: chýbajúce podklady po menách.** „Čo mi chýba?“ okrem počtu vypíše aj 3 najnovšie nepriradené
+  platby (deň, protistrana, suma), nech vie, čo doplniť ako prvé. Nasadené a overené produkčnou verifikáciou
+  (`0d8dd0c..54bf23a`).
+
 ## Štvrtá vlna (Cline, 30. október 2026 CEST)
 
 - **Mony READ: konkrétne termíny.** Otázka, ktorá pomenuje povinnosť a obdobie („Kedy mám podať DPH za október?“,
