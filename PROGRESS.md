@@ -1,5 +1,16 @@
 # Firmony: progress of the continuation
 
+## Šiesta vlna (Cline, 30. október 2026 CEST)
+
+- **Schválenka zmlúv v produkčnej verifikácii.** `/healthz` odteraz hlási aj stav `CONTRACT_RELEASE`
+  (`release: {state, until}` — nič viac) a `verify:deployment` vyžaduje platnú schválenku: zlomená,
+  cudzia alebo expirovaná schválenka nepotvrdí nasadenie. Runtime testy overujú pole aj jeho tvar,
+  deployment testy odmietajú všetky zlé stavy. Tým sa incident s prepísaným `CONTRACT_RELEASE`
+  (30. 10. 2026) už nemôže potichu zopakovať.
+- `CONTRACT_RELEASE` obnovená vlastníkom: `legalReview` JUDr. Novák, `insuranceReview` poisťovňa Generali,
+  hash katalógu `dbc1d285132eccbd5f2432e46cf58f85b33f4d036dc64967e65d9f8c86a89458`, platnosť do
+  31. 12. 2026 (validUntil 1798758000).
+
 ## Piata vlna (Cline, 30. október 2026 CEST)
 
 - **Mony READ: presný zostatok.** „Aký mám zostatok na účte?“ odpovedá samotným zostatkom z prepojených účtov

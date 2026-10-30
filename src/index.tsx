@@ -50,7 +50,7 @@ import { renewAfterAdmission } from './team/nudge'
 import { acceptStatements, acceptedAs, isClient, newOrderStatement, orderByToken, type Order } from './order'
 import { bell, ringStatement } from './bell'
 import { startMonths } from './content/terms'
-import { approvedRelease, contractCatalogueHash, contractGate, latestOrderReview, resolveContract } from './contracts'
+import { approvedRelease, contractCatalogueHash, contractGate, latestOrderReview, releaseState, resolveContract } from './contracts'
 import { OrderAsked, OrderDone, OrderGone, OrderPage, TermsPage, type OrderErrors, type OrderValues } from './views/order'
 import { PublicInvoicePage } from './views/invoices'
 import { receiveMail } from './app/inbox'
@@ -1146,7 +1146,10 @@ app.get('/healthz', async (c) => {
     await ensureSchema(c.env.DB)
     // The day of each sanctions list the app screens against, null when none is fresh (aml/sanctions-store.ts).
     const sanctions = await listsHealth(c.env.DB).catch(() => null)
-    return c.json({ ok: true, schema: SCHEMA_VERSION, build: BUILD_METADATA, sanctions })
+    // The approval the Worker carries for today's terms and prices (CONTRACT_RELEASE): its state and validity,
+    // so the deployment verification can keep a broken release from going unnoticed.
+    const release = releaseState(c.env.CONTRACT_RELEASE, await contractCatalogueHash())
+    return c.json({ ok: true, schema: SCHEMA_VERSION, build: BUILD_METADATA, sanctions, release: { state: release.state, until: 'until' in release ? release.until : null } })
   } catch {
     return c.json({ ok: false, build: BUILD_METADATA }, 503)
   }

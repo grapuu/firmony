@@ -32,6 +32,7 @@ export async function verifyDeployment({ origin, revision, schema, guides, publi
     }
     if (body?.ok !== true || body.schema !== schema) throw new ProbeError('/healthz: služba alebo schéma ešte nie je pripravená.')
     if (revisionOf(body.build?.revision) !== expected) throw new ProbeError('/healthz: očakávaný commit ešte nie je aktívny.')
+    if (body.release?.state !== 'valid' || !Number.isInteger(body.release.until)) throw new ProbeError('/healthz: schválenka zmlúv nie je platná (CONTRACT_RELEASE).')
   }
   while (Date.now() < deadline) {
     try {

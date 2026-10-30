@@ -10,7 +10,7 @@ const previous = 'abcdef1234567890abcdef1234567890abcdef12'
 const origin = 'https://example.test'
 const guide = { path: '/navod', modified: '2026-10-21', faq: [{ q: 'Otázka', a: 'Odpoveď' }], sources: [{ url: 'https://example.test/zdroj?a=1&b=2' }] }
 const page = `<link rel="canonical" href="${origin}/navod"><script type="application/ld+json">${JSON.stringify({ '@graph': [{ '@type': 'Article', dateModified: guide.modified }, { '@type': 'BreadcrumbList' }, { '@type': 'FAQPage' }] })}</script><a href="https://example.test/zdroj?a=1&amp;b=2">Zdroj</a>`
-const healthy = { ok: true, schema: 77, build: { revision: current } }
+const healthy = { ok: true, schema: 77, build: { revision: current }, release: { state: 'valid', until: 1999999999 } }
 function fixture({ health = () => healthy, status = 200, html = page, sitemap = true, llms = true } = {}) {
   return async (url) => {
     const path = new URL(url).pathname
@@ -60,6 +60,13 @@ test('a failed database or wrong schema cannot pass even at the expected revisio
   await assert.rejects(probe(fixture({ status: 503 })), /HTTP 503/)
   await assert.rejects(probe(fixture({ health: () => ({ ...healthy, ok: false }) })), /nie je pripravená/)
   await assert.rejects(probe(fixture({ health: () => ({ ...healthy, schema: 76 }) })), /nie je pripravená/)
+})
+
+test('a missing, foreign or expired contract release never confirms the deployment', async () => {
+  for (const release of [undefined, { state: 'missing', until: null }, { state: 'unreadable', until: null }, { state: 'other', until: null }, { state: 'expired', until: 1999999999 }, { state: 'valid', until: null }, { state: 'valid' }]) {
+    await assert.rejects(probe(fixture({ health: () => ({ ok: true, schema: 77, build: { revision: current }, release }) })), /schválenka/)
+  }
+  assert.deepEqual(await probe(fixture({ health: () => ({ ...healthy, release: { state: 'valid', until: 1999999998 } }) })), { revision: current, schema: 77, guides: 1 })
 })
 
 test('a matching deployment must also serve actual metadata, sources and discovery files', async () => {

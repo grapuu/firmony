@@ -564,6 +564,9 @@ res = await get('/healthz')
     JSON.stringify(health.build) === JSON.stringify(BUILD_METADATA) &&
     Object.keys(health.build).sort().join(',') === 'revision,source' &&
     (health.build.revision === null ? health.build.source === 'unknown' : /^[a-f0-9]{40}$/.test(health.build.revision) && ['git', 'cloudflare'].includes(health.build.source)))
+  check('health says the contract release is valid and nothing more',
+    health.release?.state === 'valid' && Number.isInteger(health.release.until) && health.release.until > Math.floor(Date.now() / 1000) &&
+    Object.keys(health.release).sort().join(',') === 'state,until')
 }
 res = await get('/nic-take')
 check('an unknown page is a 404 in words', res.status === 404 && (await res.text()).includes('Táto stránka neexistuje'))
