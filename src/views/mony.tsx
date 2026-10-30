@@ -15,7 +15,7 @@ export const MONY_COPY = {
   placeholder: { public: 'Opýtajte sa na čokoľvek o Firmony…', client: 'Opýtajte sa, ako čo urobiť…', accountant: 'Opýtajte sa na postup…', admin: 'Opýtaj sa na čokoľvek o Firmony…' } as Record<MonyAudience, string>,
   hello: {
     public: `Dobrý deň, som ${MONY.name}, asistent Firmony. Opýtajte sa, ako služba funguje, koľko stojí alebo ako k nám prejsť.`,
-    client: `Dobrý deň, som ${MONY.name}. Poradím Vám, ako čo vo Firmony urobiť, kde čo nájdete a ako služba funguje.`,
+    client: `Dobrý deň, som ${MONY.name}. Poradím Vám, ako čo vo Firmony urobiť, a poviem Vám stav Vášho účtovníctva, termíny aj koľko si môžete vyplatiť.`,
     accountant: `Dobrý deň, som ${MONY.name}. Pomôžem Vám s postupmi vo Firmony: doklady, DPH, mzdy, závierka aj podania.`,
     admin: `Ahoj, som ${MONY.name}. Poznám Firmony celé: produkt, stav projektu, ekonomiku aj kód.`,
   } as Record<MonyAudience, string>,
@@ -27,7 +27,7 @@ export const MONY_COPY = {
   } as Record<MonyAudience, string[]>,
   note: {
     public: `${MONY.name} odpovedá z verejných informácií Firmony a môže sa pomýliť. Presnú ponuku pre Vašu firmu dostanete po nezáväznom dopyte.`,
-    client: `${MONY.name} odpovedá z návodov Firmony a nevidí údaje Vašej firmy. Môže sa pomýliť; pri odbornej otázke Vám poradí účtovníčka.`,
+    client: `${MONY.name} odpovedá z údajov Vašej firmy a z návodov Firmony. Údaje firmy neopúšťajú aplikáciu; na model sa posiela iba Vaša otázka. Pri odbornej otázke Vám poradí účtovníčka.`,
     accountant: `${MONY.name} odpovedá z návodov a poznámok Firmony a nevidí údaje klientov. Odborný záver overte.`,
     admin: `${MONY.name} odpovedá z poznámok, dokumentov a mapy kódu Firmony.`,
   } as Record<MonyAudience, string>,

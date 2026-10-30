@@ -5437,7 +5437,7 @@ await checkAmlFixes({ db, files, get, post, admin, acc, lucia, signIn, as, nowS,
 await checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPeppolNetwork({ mf, db, signIn, as, nowS, day, network, tick, adminCookie: async () => { bossFresh = (await verifyBrowser('ahoj@firmony.io', bossFresh)).cookie; return bossFresh }, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkPasskeySignin({ mf, db, post, sent, settle, as, nowS })
-await checkMony({ mf, db, site, mony, nowS })
+await checkMony({ mf, db, site, mony, provider: assistantProvider, nowS })
 await checkFoundingRuntime({ db, files, get, post, sent, settle, as, freshAdmin, acc, signIn, nowS, purgeFoundings, capture: process.env.FIRMONY_CAPTURE_DIR })
 await checkSanctionsRuntime({ db, files, get, freshAdmin, worker, settle, nowS })
 await checkNudgeRuntime({ db, files })

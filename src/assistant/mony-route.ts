@@ -9,6 +9,8 @@ import { ensureSchema, withinLimit } from '../db'
 import { connection } from '../http'
 import { securityGate } from '../security/routes'
 import { MONY, answerStream, monyFor, pageOf, pickSections, sectionsFor, systemOf, turnsOf, type MonyAudience } from './mony'
+import { classifyQuestion } from './provider'
+import { assistantAnswer } from './context'
 
 type Env = { Bindings: { DB: D1Database; ANTHROPIC_API_KEY?: string } }
 
@@ -45,6 +47,32 @@ export async function monyAnswer(c: Context<Env>): Promise<Response> {
     return said(c, audience === 'public' ? `Dnes ste sa už pýtali veľa. Napíšte nám na ahoj@firmony.io, odpovieme do jedného pracovného dňa.` : `Dnes ste sa už pýtali veľa. ${MONY.name} odpovie zase zajtra, dovtedy nám napíšte do Správ.`, 429)
 
   const started = Date.now()
+  // Mony READ (30 October 2026): a client's question about their own firm is answered from the app's data, by the
+  // same deterministic answers as the assistant's quick questions. Only the question's text crosses to the model
+  // (one classification call); the answer is written by Firmony's code from the company's data, so no company
+  // data ever leaves the app. A question outside these topics keeps the knowledge path below.
+  if (audience === 'client' && who?.company) {
+    const classified = await classifyQuestion(key, question)
+    if (classified && classified.topic !== 'expert') {
+      const answer = await assistantAnswer(db, { company: who.company.id, actor: who.user.id, side: 'client' }, who.company, classified.topic, '')
+      if (answer) {
+        await db
+          .batch([
+            eventStatement(db, {
+              company: who.company.id,
+              user: who.user.id,
+              action: 'mony.answered',
+              subject: audience,
+              detail: { data: true, topic: answer.topic, ms: Date.now() - started, routerIn: classified.input, routerOut: classified.output },
+            }),
+          ])
+          .catch(() => null)
+        return new Response(answer.paragraphs.join('\n\n'), {
+          headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+        })
+      }
+    }
+  }
   const picked = await pickSections(key, audience, page, turns, question)
   if (!picked) return said(c, `${MONY.name} teraz neodpovedá. Skúste to o chvíľu.`, 503)
   const sections = sectionsFor(audience, picked.ids)

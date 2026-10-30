@@ -1,5 +1,18 @@
 # Firmony: progress of the continuation
 
+## Mony READ: odpovede o firme z dát aplikácie + téma „Koľko si môžem vyplatiť?“ (Cline, 30. október 2026 CEST)
+
+Pokračovanie „Peniaze vopred“ do asistenta: klientova otázka sa najprv klasifikuje (Haiku, iba text otázky —
+**žiadne firemné dáta neopúšťajú aplikáciu**) a ak patrí medzi dátové témy, odpoveď skladá deterministický kód
+z údajov firmy (`assistantAnswer`, `src/assistant/mony-route.ts` READ blok). Mimo týchto tém ide otázka do
+znalostnej cesty (Sonnet z návodov) ako doteraz. Pridaná nová téma **`money: „Koľko si môžem vyplatiť?“`** do
+`ASSISTANT_TOPICS` + klasifikačného systému + `assistantAnswer` (počíta tú istú logiku ako domov — `money.ts`,
+takže asistent a prehľad sa nikdy nerozídu). Rýchla otázka pribudla aj do asistenta, Mony copy zosúladené
+(„odpovedá z údajov Vašej firmy…“). Testy: `mony.runtime.mjs` (dátová odpoveď bez znalostného streamu, meterovanie
+s témou), `mony.browser.mjs` (knowledge cesta cez tému `expert`, READ cesta cez `money`), assistant.units
+automaticky pokrýva novú tému. Pridaný `docs/research/customer-interviews.md` (8 testov validácie pred ďalšími
+modulmi). Stále platí: sadu treba spustiť u Claudea (lokálne nie je `node`).
+
 ## Peniaze vopred: finančný prehľad a scenár výplaty (Cline, 30. október 2026 CEST)
 
 Najväčšia rozpoznaná medzera oproti vízii „digitálny partner podnikateľa“: pohľad dopredu. Nová sekcia na

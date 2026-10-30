@@ -8,6 +8,8 @@ import { companyDeadlines } from '../team/deadlines-store'
 import { billRows, tariffForClient } from '../team/billing-store'
 import { managedHandover } from '../migration/store'
 import { formatEurExact } from '../format'
+import { MONEY_DAYS, moneyWindow, type MoneyFacts } from '../app/money'
+import { moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
 import { assistantAllowed, type AssistantScope } from './store'
 import { ASSISTANT_TOPICS, type AssistantAnswer, type AssistantTopic } from './model'
 
@@ -95,6 +97,34 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
       }
       source('Zmluva a faktúry','Overte si rozsah, dohodnuté podmienky a skutočné vyúčtovanie.',team?root:'/app/firma#faktury-firmony')
     }
+  } else if (topic === 'money') {
+    // The same computation as the home page's money view, so the assistant can never disagree with it.
+    const day = amlToday()
+    const [balance, issued, received, dues] = await Promise.all([
+      db.prepare('SELECT SUM(balance_cents) AS cents, MAX(balance_on) AS on_day FROM accounts WHERE company_id = ? AND balance_cents IS NOT NULL').bind(company.id).first<{ cents: number | null; on_day: string | null }>(),
+      unpaidIssued(db, company.id),
+      unpaidReceived(db, company.id),
+      companyDeadlines(db, company.id, day),
+    ])
+    const bills = (await billRows(db, day, company.id, 24)).filter((b) => b.state !== 'paid')
+    const facts: MoneyFacts = {
+      today: day,
+      balanceCents: typeof balance?.cents === 'number' ? balance.cents : null,
+      balanceOn: balance?.on_day ?? null,
+      incoming: issued,
+      outgoing: moneyOutgoings(dues, bills, received),
+    }
+    const w = moneyWindow(facts, MONEY_DAYS)
+    if (w.reserveCents === null) {
+      answer.paragraphs.push('Na to potrebujeme zostatok na účte. Po prepojení banky alebo pridaní výpisu Vám povieme presne, koľko si môžete vyplatiť.', 'Čo Vám príde, čo odíde a známe záväzky nájdete medzitým na prehľade firmy.')
+    } else {
+      answer.paragraphs.push(`Voľné peniaze na najbližších 30 dní: ${formatEurExact(w.reserveCents)}. Počíta sa zostatok na účte, plus čo očakávame, že príde, mínus známe záväzky.`)
+      if (w.mood === 'short') answer.paragraphs.push(`Známe záväzky presahujú o ${formatEurExact(-w.reserveCents)}.`)
+      else if (w.mood === 'tight') answer.paragraphs.push('Známe záväzky kryjú aj očakávané platby.')
+      else answer.paragraphs.push('Všetko známe máte kryté.')
+      answer.paragraphs.push('Toto je pohľad na peniaze, nie na zisk, a ráta len s tým, čo je v evidencii. Presnú sumu výplaty si skúste na prehľade; pred rozhodnutím sa poraďte s účtovníčkou.')
+    }
+    source('Peniaze vopred','Výpočet z účtov, faktúr a termínov na prehľade firmy.',team?root:'/app')
   } else {
     answer.paragraphs.push('Táto otázka potrebuje odborné posúdenie. Asistent Vám nebude určovať daň, účtovný predpis alebo právny postup bez kontroly. Otázku môžete odovzdať účtovníčke; pred odoslaním uvidíte celý text.')
     source(team?'Pracovisko firmy':'Správy s účtovníčkou','Odborná odpoveď a potrebné doplnenia zostanú v aplikácii.',team?root:'/app/spravy')

@@ -405,7 +405,7 @@ try {
   await checkDeliveryBrowser({ page: clientPage, db, origin })
   await checkManagedTakeoverBrowser({page,clientPage,db,origin})
   await checkAssistantBrowser({page,clientPage,db,origin,provider:assistantProvider})
-  await checkMonyBrowser({ clientPage, origin, mony })
+  await checkMonyBrowser({ clientPage, origin, mony, provider: assistantProvider, db })
   await db.prepare("UPDATE sessions SET company_id='browser-co' WHERE user_id='browser-client'").run()
   await clientPage.goto(`${origin}/app/podania/${filingId}`)
   check('a customer browser sees the same accepted document and proof without accountant controls', await clientPage.getByText('TEST-BROWSER-RECEIPT', { exact: false }).count() > 0 && await clientPage.locator('.filing-form').count() === 0 && await clientPage.getByRole('link', { name: 'Stiahnuť potvrdenku', exact: true }).count() === 1)

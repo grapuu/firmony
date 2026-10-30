@@ -8,6 +8,7 @@ export const ASSISTANT_TOPICS = {
   overview: 'Ako je na tom účtovníctvo?', missing: 'Čo ešte potrebujete odo mňa?',
   deadlines: 'Aké termíny ma čakajú?', document: 'Čo sa deje s dokladom?',
   price: 'Čo je v cene služby?', next: 'Kde vybavím ďalší krok?', expert: 'Potrebujem odbornú odpoveď',
+  money: 'Koľko si môžem vyplatiť?',
 } as const
 export type AssistantTopic = keyof typeof ASSISTANT_TOPICS
 export const assistantTopic = (v: unknown): AssistantTopic | null => typeof v === 'string' && Object.hasOwn(ASSISTANT_TOPICS,v) ? v as AssistantTopic : null

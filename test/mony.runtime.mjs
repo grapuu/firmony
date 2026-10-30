@@ -5,7 +5,7 @@ import { check } from './check.mjs'
 import { createHash, randomBytes } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 
-export async function checkMony({ mf, db, site, mony, nowS }) {
+export async function checkMony({ mf, db, site, mony, provider, nowS }) {
   const sha = (v) => createHash('sha256').update(v).digest('hex')
   await db.batch([
     db.prepare("INSERT INTO companies (id, created_at, name, ico, address, vat_payer, plan, inbox, start_on) VALUES ('co-mony', ?, 'TEST-ONLY Mony s. r. o.', '50777771', 'Hlavná 2, 040 01 Košice', 0, 'start', 'mony0001', '2026-01-01')").bind(nowS),
@@ -74,6 +74,20 @@ export async function checkMony({ mf, db, site, mony, nowS }) {
   const detail = JSON.parse(event?.detail ?? '{}')
   check('mony: what an answer cost is kept, never its words', event?.company_id === 'co-mony' && event.subject === 'client' && detail.ok === true && detail.input === 3200 && detail.output === 57 && detail.routerIn === 2100 && detail.routerCached === 1800 && !event.detail.includes('banku') && !event.detail.includes('Áno'))
   check('mony: only sections that exist and are the asker\'s, each once', detail.sections >= 1 && detail.sections <= 6)
+
+  // Mony READ: a client with a contract asks about the firm's money; the answer is written from the app's data by
+  // Firmony's own code (one classification call, no knowledge stream), and its cost is metered with its topic.
+  await db.prepare("UPDATE companies SET contract_at = ?, terms_version = 'offline' WHERE id = 'co-mony'").bind(nowS).run()
+  const routesBeforeRead = mony.routes.length
+  const answersBeforeRead = mony.answers.length
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Koľko si môžem vyplatiť?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a client with a contract gets the money answer from the app data, not the knowledge', res.status === 200 && text.includes('Na to potrebujeme zostatok na účte') && mony.routes.length === routesBeforeRead && mony.answers.length === answersBeforeRead, `${res.status} ${text.slice(0, 100)}`)
+  const readEvent = await db.prepare("SELECT detail FROM events WHERE action = 'mony.answered' AND user_id = 'u-mony' ORDER BY rowid DESC LIMIT 1").first()
+  const readDetail = JSON.parse(readEvent?.detail ?? '{}')
+  check('mony: the data answer is metered as one, with its topic', readDetail.data === true && readDetail.topic === 'money' && typeof readDetail.routerIn === 'number')
+  await db.prepare("UPDATE companies SET contract_at = NULL, terms_version = NULL WHERE id = 'co-mony'").run()
 
   // The team, each with its own knowledge, and only with its passkey.
   mony.pick = ['DPH']
