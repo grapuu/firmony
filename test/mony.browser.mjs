@@ -36,21 +36,6 @@ export async function checkMonyBrowser({ clientPage, origin, mony, provider, db 
     'mony browser: markup in an answer stays text',
     (await reply.locator('img').count()) === 0 && (await reply.textContent()).includes('<img src=x onerror=alert(1)>') && (await clientPage.evaluate(() => document.querySelectorAll('.mony img:not(.mony__avatar):not(.mony__face)').length)) === 0,
   )
-  // Mony READ: a question about the firm's money is answered from the app's data, with no knowledge stream.
-  const askedAfter = mony.answers.length
-  await db.prepare("UPDATE companies SET contract_at = ? WHERE id = 'browser-overview-co'").bind(Math.floor(Date.now() / 1000)).run()
-  provider.next = { topic: 'money' }
-  const dataResponse = clientPage.waitForResponse((r) => new URL(r.url()).pathname === '/app/mony' && r.request().method() === 'POST')
-  await input.fill('Koľko si môžem vyplatiť?')
-  await clientPage.getByRole('button', { name: 'Poslať otázku', exact: true }).click()
-  await dataResponse
-  const dataReply = clientPage.locator('.mony__msg--mony').last()
-  await dataReply.getByText('pohľad na peniaze', { exact: false }).or(dataReply.getByText('zostatok na účte', { exact: false })).waitFor({ state: 'visible' })
-  check(
-    'mony browser: a money question is answered from the app data, never the knowledge stream',
-    mony.answers.length === askedAfter && !(await dataReply.textContent()).includes('Výpisy potom chodia samé'),
-  )
-  await db.prepare("UPDATE companies SET contract_at = NULL WHERE id = 'browser-overview-co'").run()
   check('mony browser: the question the page sent is the person\'s page', mony.answers.at(-1).system.map((b) => b.text).join('\n').includes('stránke /app/platby'))
   for (const width of [320, 390, 1440]) {
     await clientPage.setViewportSize({ width, height: 800 })
@@ -67,6 +52,21 @@ export async function checkMonyBrowser({ clientPage, origin, mony, provider, db 
   await clientPage.goto(`${origin}/app/doklady`)
   await clientPage.locator('#mony-panel').waitFor({ state: 'visible' })
   check('mony browser: the conversation goes along to the next page', (await clientPage.locator('.mony__msg--user').count()) === 1 && (await clientPage.locator('.mony__msg--mony a[href="/app/banka"]').count()) === 1)
+  // Mony READ: a question about the firm's money is answered from the app's data, with no knowledge stream.
+  const askedAfter = mony.answers.length
+  await db.prepare("UPDATE companies SET contract_at = ? WHERE id = 'browser-overview-co'").bind(Math.floor(Date.now() / 1000)).run()
+  provider.next = { topic: 'money' }
+  const dataResponse = clientPage.waitForResponse((r) => new URL(r.url()).pathname === '/app/mony' && r.request().method() === 'POST')
+  await input.fill('Koľko si môžem vyplatiť?')
+  await clientPage.getByRole('button', { name: 'Poslať otázku', exact: true }).click()
+  await dataResponse
+  const dataReply = clientPage.locator('.mony__msg--mony').last()
+  await dataReply.getByText('pohľad na peniaze', { exact: false }).or(dataReply.getByText('zostatok na účte', { exact: false })).waitFor({ state: 'visible' })
+  check(
+    'mony browser: a money question is answered from the app data, never the knowledge stream',
+    mony.answers.length === askedAfter && !(await dataReply.textContent()).includes('Výpisy potom chodia samé'),
+  )
+  await db.prepare("UPDATE companies SET contract_at = NULL WHERE id = 'browser-overview-co'").run()
   await clientPage.getByRole('button', { name: 'Skryť Mony', exact: true }).click()
   check('mony browser: the arrow folds it to the icon', (await clientPage.locator('#mony-panel').isHidden()) && (await launcher.isVisible()))
   await clientPage.reload()
