@@ -9,7 +9,7 @@ export async function checkCustomerValueBrowser({ browser, origin }) {
     await page.goto(origin)
     check('value browser: initial comparison has no invented annual saving', await page.locator('.calc__result .calc__line').count() === 0 && (await page.locator('.calc__result').textContent()).includes('Zadajte svoje náklady'))
     const annual = await page.locator('[data-plan-year]').allTextContents()
-    check('value browser: every plan discloses its annual closing-inclusive base cost', annual.length === 3 && ['1 317 €', '2 277 €', '4 197 €'].every((price, i) => annual[i].replace(/[\u00a0\u202f]/g, ' ').includes(price)))
+    check('value browser: every plan discloses its honest first-year closing-inclusive cost', annual.length === 3 && ['1 228 €', '2 108 €', '3 868 €'].every((price, i) => annual[i].replace(/[\u00a0\u202f]/g, ' ').includes(price)))
     check('value browser: the first choice remains nonbinding and its terms and privacy are accessible', await page.locator('.pricing__links a[href="/podmienky"]').count() === 1 && await page.locator('.pricing__links a[href="/pravne-informacie#ochrana-udajov"]').count() === 1 && (await page.locator('.hero__card').textContent()).includes('Zatiaľ nič neobjednávate'))
     const compare = async (monthly, closing, people) => {
       await page.locator('.calc__form [name=mesacne]').fill(monthly)
