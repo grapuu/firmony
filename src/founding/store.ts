@@ -145,8 +145,13 @@ function eventRow(db: D1Database, founding: string, by: string | null, action: s
 /** An event written only when the statement before it changed the application (the revision it read still held). */
 function eventIfChanged(db: D1Database, founding: string, by: string | null, action: string, status: FoundingStatus, note: string): D1PreparedStatement {
   return db
-    .prepare('INSERT INTO founding_events (id, founding_id, at, by, action, status, note) SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1')
-    .bind(crypto.randomUUID(), founding, now(), by, action, status, note.slice(0, 2000))
+    .prepare(
+      // The event's second is at least one past every event before it of this application: two events of the same
+      // second still order themselves, which the checks below lean on (an application handed over again must not be
+      // verified by checks recorded before it, however fast the two happened).
+      'INSERT INTO founding_events (id, founding_id, at, by, action, status, note) SELECT ?, ?, MAX(?, (SELECT COALESCE(MAX(at), 0) + 1 FROM founding_events WHERE founding_id = ?)), ?, ?, ?, ? WHERE changes() = 1',
+    )
+    .bind(crypto.randomUUID(), founding, now(), founding, by, action, status, note.slice(0, 2000))
 }
 
 /** An update of the application from the revision it was read at; `set` is SQL with its own placeholders first. */
@@ -355,23 +360,21 @@ export interface FoundingCheck {
   byName: string | null
 }
 
-export async function checksOf(db: D1Database, id: string, sinceRow = 0): Promise<FoundingCheck[]> {
+export async function checksOf(db: D1Database, id: string, since = 0): Promise<FoundingCheck[]> {
   const rows = await db
-    .prepare('SELECT k.kind, k.result, k.note, k.at, u.name AS by_name FROM founding_checks k LEFT JOIN users u ON u.id = k.by WHERE k.founding_id = ? AND k.rowid > ? ORDER BY k.rowid')
-    .bind(id, sinceRow)
+    .prepare('SELECT k.kind, k.result, k.note, k.at, u.name AS by_name FROM founding_checks k LEFT JOIN users u ON u.id = k.by WHERE k.founding_id = ? AND k.at > ? ORDER BY k.at, k.rowid')
+    .bind(id, since)
     .all<{ kind: CheckKind; result: 'clear' | 'problem'; note: string; at: number; by_name: string | null }>()
   return (rows.results ?? []).map((r) => ({ kind: r.kind, result: r.result, note: r.note, at: Number(r.at), byName: r.by_name }))
 }
 
 /**
- * The row after which a check counts: the last handover's own row. Rowids order the handover and the checks
- * exactly, where a second-granular timestamp cannot tell a check recorded in the same second from one that came
- * before the handover (an application returned to the founder comes back with data, a document or a signature the
- * checks before never saw).
+ * When the application was last handed over for checking. A check counts only from then: an application returned to
+ * the founder comes back with data, a document or a signature the checks before never saw.
  */
 export async function handedOverAt(db: D1Database, id: string): Promise<number> {
-  const row = await db.prepare("SELECT MAX(rowid) AS row FROM founding_events WHERE founding_id = ? AND action = 'moved' AND status = 'verifying'").bind(id).first<{ row: number | null }>()
-  return Number(row?.row ?? 0)
+  const row = await db.prepare("SELECT MAX(at) AS at FROM founding_events WHERE founding_id = ? AND action = 'moved' AND status = 'verifying'").bind(id).first<{ at: number | null }>()
+  return Number(row?.at ?? 0)
 }
 
 /** The latest check of each kind: what counts now. */
@@ -393,8 +396,12 @@ export async function recordCheck(db: D1Database, f: Founding, by: string, kind:
   }
   const [first] = await db.batch([
     db
-      .prepare("INSERT INTO founding_checks (id, founding_id, at, by, kind, result, note) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM foundings WHERE id = ? AND status = 'verifying')")
-      .bind(crypto.randomUUID(), f.id, now(), by, kind, result, note.slice(0, 2000), f.id),
+      .prepare(
+        // A check's second is at least one past the last handover, so a check recorded in the same second as the
+        // handover still counts, and one recorded before it never does.
+        "INSERT INTO founding_checks (id, founding_id, at, by, kind, result, note) SELECT ?, ?, MAX(?, (SELECT COALESCE(MAX(at), 0) + 1 FROM founding_events WHERE founding_id = ? AND action = 'moved' AND status = 'verifying')), ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM foundings WHERE id = ? AND status = 'verifying')",
+      )
+      .bind(crypto.randomUUID(), f.id, now(), f.id, by, kind, result, note.slice(0, 2000), f.id),
     ...(kind === 'original' && result === 'clear'
       ? [db.prepare("UPDATE foundings SET original_at = ?, original_by = ?, rev = rev + 1, updated_at = ? WHERE id = ? AND status = 'verifying' AND original_at IS NULL").bind(now(), by, now(), f.id)]
       : []),
