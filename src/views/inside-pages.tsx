@@ -19,6 +19,7 @@ import { Flash, Heading } from './inside'
 import { CenterSelect } from './centers'
 import type { CostCenter } from '../app/centers'
 import { overviewActions, type BankHealth, type FirstStepsState } from '../app/overview'
+import type { MoneyView } from '../app/money'
 export type { FirstStepsState } from '../app/overview'
 
 const ACCEPT = 'image/*,application/pdf,.pdf,.xml,text/xml,application/xml'
@@ -230,6 +231,8 @@ export interface OverviewProps {
   statementDue?: string | null
   /** Ten days past the contract's last day no document is taken, and this says why. */
   closed?: string | null
+  /** The money view: what is known to come and go, and the payout the client asked about. */
+  money?: MoneyView | null
 }
 
 /**
@@ -277,6 +280,95 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean; owner: boole
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+/** The money view: what is known to come and go in the next 30 days, and whether a payout leaves the known
+ *  obligations covered. The numbers are the books' cash view, never profit; the note says it. */
+const MoneyCard: FC<{ view: MoneyView }> = ({ view }) => {
+  const m = app.home.money
+  const w = view.window
+  const pill =
+    w.mood === 'fine'
+      ? { cls: 'pill--ok', text: m.mood.fine }
+      : w.mood === 'tight'
+        ? { cls: 'pill--amber', text: m.mood.tight }
+        : w.mood === 'short'
+          ? { cls: 'pill--red', text: m.mood.short(-(w.reserveCents ?? 0)) }
+          : { cls: 'pill--grey', text: m.mood.unknown }
+  const ask = view.ask
+  return (
+    <section class="money" aria-labelledby="peniaze">
+      <h2 id="peniaze" class="sect">
+        {m.title}
+      </h2>
+      <p class="sect__lead">{m.lead}</p>
+      <div class="money__grid">
+        <div class={`money__free money__free--${w.mood}`}>
+          <span class="money__label">{m.free}</span>
+          <span class="money__amount">{w.reserveCents !== null ? formatEur(w.reserveCents) : '…'}</span>
+          <span class="money__hint">{m.freeHint}</span>
+          <span class={`pill ${pill.cls}`}>{pill.text}</span>
+        </div>
+        <dl class="figs__grid money__tiles">
+          <div class="fig">
+            <dt>{m.in30}</dt>
+            <dd class="fig__value fig__value--in">{formatEur(w.inCents)}</dd>
+          </div>
+          <div class="fig">
+            <dt>{m.out30}</dt>
+            <dd class="fig__value">{w.outCents > 0 ? formatEur(-w.outCents) : formatEur(0)}</dd>
+          </div>
+          <div class="fig">
+            <dt>{m.onAccount}</dt>
+            {view.facts.balanceCents !== null ? (
+              <>
+                <dd class="fig__value">{formatEur(view.facts.balanceCents)}</dd>
+                <dd class="fig__note">{m.onAccountNote(dayName(view.facts.balanceOn ?? view.facts.today, view.facts.today))}</dd>
+              </>
+            ) : (
+              <dd class="fig__value fig__value--none">{app.home.noBalance}</dd>
+            )}
+          </div>
+        </dl>
+      </div>
+      <form class="money__ask" method="get" action="/app">
+        <label class="money__ask-label" for="vyplatit">
+          {m.ask.title}
+        </label>
+        <p class="money__ask-lead">{m.ask.lead}</p>
+        <div class="money__ask-row">
+          <input
+            class="money__ask-input"
+            id="vyplatit"
+            name="vyplatit"
+            inputmode="decimal"
+            autocomplete="off"
+            placeholder={m.ask.placeholder}
+            value={view.asked !== null ? formatEur(view.asked) : undefined}
+          />
+          <button class="btn btn--blue btn--small" type="submit">
+            {m.ask.button}
+          </button>
+        </div>
+      </form>
+      {view.invalid ? (
+        <p class="money__answer money__answer--bad">{m.ask.invalid}</p>
+      ) : ask === null ? null : ask.ok ? (
+        <p class="money__answer money__answer--ok">
+          <span class="tick tick--green" aria-hidden="true" />
+          {m.ask.ok(ask.reserveCents)}
+        </p>
+      ) : ask.known ? (
+        <div class="money__answer money__answer--bad">
+          {ask.immediate ? <p>{m.ask.short(ask.shortCents)}</p> : <p>{m.ask.notNow}</p>}
+          {ask.uncovered.length > 0 ? <p>{m.ask.first(ask.uncovered[0].label)}</p> : null}
+        </div>
+      ) : (
+        <p class="money__answer money__answer--none">{m.ask.noBalance}</p>
+      )}
+      <p class="money__note">{m.note}</p>
     </section>
   )
 }
@@ -448,6 +540,7 @@ export const Overview: FC<OverviewProps> = (props) => {
             </div>
           </dl>
         </section>
+        {ended ? null : props.money ? <MoneyCard view={props.money} /> : null}
         {ended ? null : (
           <section class="dates" aria-labelledby="terminy">
             <h2 id="terminy" class="sect">

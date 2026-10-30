@@ -1,5 +1,22 @@
 # Firmony: progress of the continuation
 
+## Peniaze vopred: finančný prehľad a scenár výplaty (Cline, 30. október 2026 CEST)
+
+Najväčšia rozpoznaná medzera oproti vízii „digitálny partner podnikateľa“: pohľad dopredu. Nová sekcia na
+domovskej obrazovke klienta (`/app`, `src/views/inside-pages.tsx` `MoneyCard`): **„Peniaze vopred“** — karta
+„Voľné peniaze“ (zostatok + čo príde − čo odíde za 30 dní) s náladou (kryté / tesné / chýba / neznáme),
+dlaždice Príde / Odíde / Na účte a **scenár „Koľko si môžete vyplatiť?“** (GET formulár bez skriptu, odpoveď
+počíta, či po výplate ostane na známe záväzky, pomenuje prvý nekrytý záväzok; výslovne „pohľad na peniaze,
+nie na zisk“).
+
+- Čistá logika `src/app/money.ts` (okno 30 dní, nálady, payoutVerdict s kontrolou každého záväzku v jeho deň,
+  najhlbší prepad, `immediate`), store `src/app/money-store.ts` (nezaplatené vystavené faktúry, nezaplatené
+  prijaté faktúry, dane a mzdy z tých istých termínov ako `clientDeadlines` — dva pohľady sa nemôžu rozísť),
+  kópia `app.home.money`, CSS `public/inside.css` (modrý gradient ako ticket, nálady vlastnými farbami).
+- Hero webu komunikuje výhodu priamo: „V aplikácii vidíte aj to, čo Vám príde, čo odíde a koľko si môžete vyplatiť.“
+- Testy: `test/money.units.mjs` (okno, nálady, výplata: krytie v deň, príjem po záväzku nekryje, najhlbší prepad,
+  nulový zostatok, neznámy zostatok). Spustenie sady ostáva na Claudeovi (lokálne nie je `node`).
+
 ## Komunikácia: „umelá inteligencia“ → „softvér“ všade + audit Claude API (Cline, 30. október 2026 CEST)
 
 Pokyn majiteľa: všade na webe aj v softvéri zmazať slovo „umelá inteligencia“ a nahradiť ho slovom „softvér“.

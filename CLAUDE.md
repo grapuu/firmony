@@ -4,6 +4,14 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Peniaze vopred: finančný prehľad a scenár výplaty, 30. 10. 2026 (Cline):** nová sekcia na domovskej obrazovke klienta
+(`/app`): karta „Voľné peniaze“ (zostatok + príjmy − známe záväzky za 30 dní, nálada kryté/tesné/chýba/neznáme),
+dlaždice Príde/Odíde/Na účte a scenár „Koľko si môžete vyplatiť?“ (GET formulár, každý záväzok kontrolovaný v jeho
+deň, pomenuje prvý nekrytý; výslovne pohľad na peniaze, nie zisk). Čistá logika `src/app/money.ts`, dáta
+`src/app/money-store.ts` z tých istých termínov ako `clientDeadlines`, kópia `app.home.money`, CSS v `inside.css`,
+testy `test/money.units.mjs`. Hero webu výhodu komunikuje: „…koľko si môžete vyplatiť.“ Vetva `cline/audit-final`,
+testy treba spustiť u Claudea (lokálne bez `node`).
+
 **Komunikácia „umelá inteligencia“ → „softvér“, 30. 10. 2026 (Cline):** pokyn majiteľa: nikde na webe ani v softvéri
 sa už nehovorí „umelá inteligencia“ ani zákaznícke „AI“ — všade „softvér“ (hero, FAQ, SEO, llms.txt, guides, právne
 informácie, podmienky, asistent, faktúra z vety, team UI, analytika). `TERMS_VERSION` 2026-10-26 → **2026-10-30**;

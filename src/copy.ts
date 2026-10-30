@@ -34,7 +34,7 @@ export const copy = typesetAll({
   hero: {
     first: 'Účtovníctvo pre Vašu s. r. o.',
     second: 'Vy pošlete doklad, my urobíme zvyšok.',
-    lead: 'Online účtovná firma za pevnú cenu. Softvér prečíta doklady, Vaša účtovníčka ich skontroluje a postará sa o dohodnuté priznania. Všetko vidíte v aplikácii.',
+    lead: 'Online účtovná firma za pevnú cenu. Softvér prečíta doklady, Vaša účtovníčka ich skontroluje a postará sa o dohodnuté priznania. V aplikácii vidíte aj to, čo Vám príde, čo odíde a koľko si môžete vyplatiť.',
     price: `Od ${eur(start.price)} mesačne. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',

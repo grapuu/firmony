@@ -61,6 +61,9 @@ import { checkDeclaration, declarationStateOf, declarationStatements, latestDecl
 import { bell, ringStatement } from '../bell'
 import { bankReady, dropAccount, finishLink, linksOf, listBanks, noticeOf, readDue, readLink, startLink, unlink } from './bank'
 import { bankHealthOf } from './overview'
+import { moneyView } from './money'
+import { moneyOutgoings, unpaidIssued, unpaidReceived } from './money-store'
+import { readMoney } from '../calc'
 import {
   advancePayments,
   advancesOf,
@@ -893,6 +896,22 @@ appRoutes.get('/', async (c) => {
     managedHandover(db,company),
     who.company.foundingId ? foundingOfCompany(db, company) : Promise.resolve(null),
   ])
+  // The money view: the same deadlines the client and the accountant see, with the unpaid invoices of both sides and
+  // the balance the accounts hold. The payout question is a GET roundtrip, so it works without a script.
+  const [issued, received] = await Promise.all([unpaidIssued(db, company), unpaidReceived(db, company)])
+  const askParam = c.req.query('vyplatit')
+  const askRaw = askParam === undefined || askParam === '' ? null : readMoney(askParam)
+  const money = moneyView(
+    {
+      today: day,
+      balanceCents: figures.balanceCents,
+      balanceOn: figures.balanceOn,
+      incoming: issued,
+      outgoing: moneyOutgoings(dues, bills, received),
+    },
+    askRaw,
+    askParam !== undefined && askParam !== '' && askRaw === null,
+  )
   const ready = bankReady(c.env)
   // A consent of Enable Banking or a token of Fio that ends; a statement from an account the company does not have
   // yet; the statement of last month, still to be added.
@@ -948,6 +967,7 @@ appRoutes.get('/', async (c) => {
       owner={who.role === 'owner'}
       statementDue={due}
       closed={closedIntake(who.company)}
+      money={money}
     />,
   )
 })
