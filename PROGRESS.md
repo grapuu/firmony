@@ -1,5 +1,21 @@
 # Firmony: progress of the continuation
 
+## Overenie v CI a oprava založenia: celá sada zelená (Cline, 30. október 2026 CEST)
+
+CI na vetve `cline/audit-final` (PR #31) **celá zelená**: `check`, 1 768 unit, Peppol, **2 739 runtime** a
+**130 browser**. Cesta cez GitHub Actions umožnila testy, ktoré lokálne neboli spustiteľné (bez `node`):
+
+- CI odhalila a opravili sa 2 chyby mojich zmien: TS2532 (`uncovered[0]` pod `noUncheckedIndexedAccess`)
+  a `moneyWindow` bez predvolených 30 dní (RangeError pri volaní bez počtu dní).
+- **Opravená predtým existujúca flaky chyba na `main`** (3 zlyhávajúce founding testy, ktoré padali aj na
+  main): overenie po opätovnom odovzdaní prihlášky počítalo kontroly podľa sekundy (`k.at >= since`), takže
+  kontroly z predošlého kola v tej istej sekunde „prežili“ a prihláška sa dala overiť bez nových kontrol.
+  Oprava v `src/founding/store.ts`: udalosti aj kontroly dostávajú **monotónne sekundy** (najmenej o 1 viac
+  ako predchádzajúce udalosti/posledné odovzdanie) a kontroly sa počítajú prísne `>` od posledného
+  odovzdania. Runtime teraz prejde deterministicky.
+- Mony browser testy rozšírené o READ cestu (dátová odpoveď bez znalostného streamu), pričom pôvodné
+  poradie testov (prenos konverzácie, skladanie panela) ostalo zachované.
+
 ## Mony READ: odpovede o firme z dát aplikácie + téma „Koľko si môžem vyplatiť?“ (Cline, 30. október 2026 CEST)
 
 Pokračovanie „Peniaze vopred“ do asistenta: klientova otázka sa najprv klasifikuje (Haiku, iba text otázky —
