@@ -15,6 +15,7 @@ export async function unpaidIssued(db: D1Database, company: string): Promise<Mon
       `SELECT i.due_on AS day, i.total_cents AS cents, i.number AS number, i.customer_name AS name FROM invoices i
         WHERE i.company_id = ? AND i.status = 'issued' AND i.kind = 'invoice' AND i.due_on IS NOT NULL AND i.total_cents > 0
           AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = i.document_id)
+          AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
         ORDER BY i.due_on LIMIT 100`,
     )
     .bind(company)
