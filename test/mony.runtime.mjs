@@ -128,6 +128,15 @@ export async function checkMony({ mf, db, site, mony, provider, nowS }) {
   text = await res.text()
   check('mony: a payout above the balance is said so, with how much it exceeds', res.status === 200 && text.includes('vyššia ako zostatok') && text.includes('poraďte s účtovníčkou'), `${res.status} ${text.slice(0, 140)}`)
   await db.prepare("DELETE FROM accounts WHERE id = 'acc-mony-1'").run()
+  // A deadline question names its duty and period; the answer reads the same list as the page, never the knowledge.
+  provider.next = { topic: 'deadlines' }
+  res = await ask(client, { question: 'Kedy mám podať DPH za október?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a deadline question that names its period is answered from the same list as the page', res.status === 200 && text.includes('nevidíme') && !text.includes('Odpoveď sa prerušila'), `${res.status} ${text.slice(0, 140)}`)
+  provider.next = { topic: 'deadlines' }
+  res = await ask(client, { question: 'Aké mám termíny?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a deadline question that names nothing keeps the whole list', res.status === 200 && text.includes('termín'), `${res.status} ${text.slice(0, 140)}`)
   await db.prepare("UPDATE companies SET contract_at = NULL WHERE id = 'co-mony'").run()
 
   // The team, each with its own knowledge, and only with its passkey.

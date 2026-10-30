@@ -786,7 +786,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
       </nav>
       <div class="pgrid pgrid--wide">
         <div class="pgrid__main">
-          {p.money ? <MoneyCard view={p.money} interactive={false} /> : null}
+          {p.money ? <MoneyCard view={p.money} action={`/ucto/klienti/${c.id}`} /> : null}
           <section class="info" id="zauctovat" aria-labelledby="zauctovat-t">
             <h2 id="zauctovat-t" class="info__title">
               {t.client.toBook}

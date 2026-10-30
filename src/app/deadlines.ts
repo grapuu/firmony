@@ -94,3 +94,55 @@ export function clientDeadlines(
     out.push({ day: bill.dueOn, label: t.bills.deadline(bill.number), state: t.bills.deadlineState(formatEurExact(bill.totalCents)), tone: 'amber', href: '/app/firma#faktury-firmony' })
   return out.sort((a, b) => a.day.localeCompare(b.day))
 }
+
+/** The same letters with no diacritics and no case, so \"apríl\", \"máj\" and \"závierka\" match as typed. */
+const folded = (text: string): string => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+/** Whether a deadline question names one of the month names, as their folded stems. */
+const MONTH_STEMS = ['januar', 'februar', 'marec', 'april', 'maj', 'jun', 'jul', 'august', 'september', 'oktober', 'november', 'december'] as const
+
+/** A question that names a duty and optionally its year, quarter or month is answered from the same deadline list
+ *  the page shows; a question that names nothing keeps the full list. Pure: the question and the list go in, the
+ *  match comes out. */
+export function deadlineQuestionMatch(question: string, deadlines: readonly Deadline[]): { asked: boolean; hits: Deadline[] } {
+  const q = folded(question)
+  const year = q.match(/20\d\d/)?.[0] ?? null
+  const quarter = q.match(/([1-4])[.\s-]*stvrtrok|([1-4])[.\s-]*kvartal/)?.[1] ?? q.match(/([1-4])[.\s-]*kvartal/)?.[2] ?? null
+  const monthStem = MONTH_STEMS.find((stem) => q.includes(stem.slice(0, 5))) ?? null
+  const duty = q.includes('dph')
+    ? 'dph'
+    : q.includes('zavierk') || q.includes('priznanie')
+      ? 'closing'
+      : q.includes('vyplat') || q.includes('mzd') || q.includes('odvod')
+        ? 'payroll'
+        : q.includes('doklad')
+          ? 'docs'
+          : q.includes('transakcn')
+            ? 'transaction'
+            : q.includes('preddavok') || q.includes('dan z prijmov')
+              ? 'tax'
+              : null
+  const asked = year !== null || quarter !== null || monthStem !== null || duty !== null
+  if (!asked) return { asked: false, hits: [] }
+  const dutyOf = (label: string): boolean => {
+    const l = folded(label)
+    if (duty === 'dph') return l.includes('dph')
+    if (duty === 'closing') return l.includes('zavierka') || l.includes('danove priznanie')
+    if (duty === 'payroll') return l.includes('vyplat') || l.includes('odvod')
+    if (duty === 'docs') return l.includes('doklady')
+    if (duty === 'transaction') return l.includes('transakcn')
+    if (duty === 'tax') return l.includes('preddavok') || l.includes('dan z prijmov')
+    return false
+  }
+  const hits = deadlines
+    .filter((d) => {
+      const l = folded(d.label)
+      if (year && !l.includes(year)) return false
+      if (quarter && !l.includes(`${quarter}. stvrtrok`)) return false
+      if (monthStem && !l.includes(monthStem.slice(0, 5))) return false
+      if (duty !== null && !dutyOf(d.label)) return false
+      return true
+    })
+    .slice(0, 3)
+  return { asked: true, hits }
+}

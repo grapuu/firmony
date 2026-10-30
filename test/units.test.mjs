@@ -371,6 +371,28 @@ check('payroll and the closing leave at least 60 % too', margin(config.PAYROLL_P
   check('recorded as filed, done; the client is told to pay until then', filed?.state === 'done' && deadlines.clientDeadlines(company, tt, '2026-11-05', new Map()).some((d) => d.label.replace(/[  ]/g, ' ').startsWith('Zaplatiť transakčnú daň za september')))
 }
 {
+  // The deadline questions the assistant answers from the same list the page shows (app/deadlines.ts).
+  const dl = (day, label, state = 'Podáme za Vás') => ({ day, label, state, tone: 'blue' })
+  const list = [
+    dl('2026-10-26', 'DPH a kontrolný výkaz za september 2026'),
+    dl('2026-11-25', 'DPH a kontrolný výkaz za október 2026'),
+    dl('2027-03-31', 'Účtovná závierka a daňové priznanie za rok 2026'),
+    dl('2026-11-10', 'Zaplatiť výplaty a odvody za november 2026'),
+    dl('2026-11-10', 'Doklady za november 2026'),
+  ]
+  check('a deadline question that names nothing keeps the whole list', deadlines.deadlineQuestionMatch('Aké mám termíny?', list).asked === false)
+  const dph = deadlines.deadlineQuestionMatch('Kedy mám podať DPH za október?', list)
+  check('the duty and the month name the one deadline', dph.asked && dph.hits.length === 1 && dph.hits[0].day === '2026-11-25', JSON.stringify(dph))
+  const closing = deadlines.deadlineQuestionMatch('Kedy je závierka za 2026?', list)
+  check('the year names the closing', closing.asked && closing.hits.length === 1 && closing.hits[0].label.includes('2026'))
+  check('diacritics do not decide', deadlines.deadlineQuestionMatch('DPH za apríl?', [dl('2026-05-25', 'DPH a kontrolný výkaz za apríl 2026')]).hits.length === 1)
+  check('a quarter as typed', deadlines.deadlineQuestionMatch('DPH za 3. štvrťrok?', [dl('2026-10-26', 'DPH a kontrolný výkaz za 3. štvrťrok 2026')]).hits.length === 1)
+  const none = deadlines.deadlineQuestionMatch('Kedy zaplatím transakčnú daň?', list)
+  check('a duty with nothing behind it is said so, never invented', none.asked && none.hits.length === 0)
+  const otherYear = deadlines.deadlineQuestionMatch('Čo platí od roku 2025?', list)
+  check('a year that is not in the list matches nothing', otherYear.asked && otherYear.hits.length === 0)
+}
+{
   // The registration for VAT a crossed turnover asks for (app/vat-registration.ts, § 4 of the VAT Act).
   const plain = (text) => text.replace(/[\u00a0\u202f]/g, ' ')
   check('five working days after a Friday: the next Friday; over a day off it moves', vatRegistration.workingDaysAfter('2026-10-16', 5) === '2026-10-23' && vatRegistration.workingDaysAfter('2026-12-21', 5) === '2026-12-30')

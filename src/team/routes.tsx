@@ -229,6 +229,7 @@ import { accuracyOf, comparedOf } from './ai-accuracy'
 import { bookingTime, lastMonths, payOf, workCsv, workStatement } from './work-pay'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, planUsages, REMIND_EVERY, remindMessage } from './billing-store'
 import { moneyView, type MoneyFacts } from '../app/money'
+import { readMoney } from '../calc'
 import { moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
@@ -802,13 +803,16 @@ async function clientPage(
     incoming: moneyIssued,
     outgoing: moneyOutgoings(moneyDues, moneyBills.filter((b) => b.state !== 'paid'), moneyReceived),
   }
+  // The same payout question the client tries at home: the accountant asks it for the client, on the client's page.
+  const askParam = c.req.query('vyplatit')
+  const askRaw = askParam === undefined || askParam === '' ? null : readMoney(askParam)
   return shell(
     c,
     'clients',
     company.name,
     <ClientPage
       peppolLine={peppolLine}
-      money={moneyView(moneyFacts, null, false)}
+      money={moneyView(moneyFacts, askRaw, askParam !== undefined && askParam !== '' && askRaw === null)}
       usage={usage}
       assistant={await assistantAllowed(db,{company:company.id,actor:who.user.id,side:'team'})}
       user={who.user}

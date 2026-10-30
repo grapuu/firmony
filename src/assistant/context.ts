@@ -2,7 +2,7 @@ import { now } from '../db'
 import { amlToday } from '../aml/retention'
 import { autoReviewedSql } from '../aml/auto-review-model'
 import { MISSING, getDocument, type Company } from '../app/store'
-import { clientDeadlines } from '../app/deadlines'
+import { clientDeadlines, deadlineQuestionMatch } from '../app/deadlines'
 import { dayName, dayShort, plural } from '../app/copy'
 import { companyDeadlines } from '../team/deadlines-store'
 import { billRows, tariffForClient } from '../team/billing-store'
@@ -93,9 +93,20 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
     ])
     // The existing client projection deliberately excludes internal AML reports and other team-only facts.
     const deadlines=clientDeadlines(company,dues,day,new Map(byMonth.results.map(r=>[r.month,r.n])),bills.filter(b=>b.state!=='paid'))
-    answer.paragraphs.push(deadlines.length?'Tu sú najbližšie termíny z existujúceho prehľadu. Stav rozlišuje Vašu úlohu a prácu Firmony.':'V tomto prehľade teraz nie je evidovaný ďalší termín. Úplnosť agendy overuje Vaša účtovníčka.')
-    for(const d of deadlines.slice(0,8))source(`${dayName(d.day)}: ${d.label}`,d.state,team?root:d.href??'/app')
-    source('Celý prehľad termínov','Prečítajte si aj ďalšie povinnosti a aktuálny stav.',root)
+    const specific=deadlineQuestionMatch(question,deadlines)
+    if(specific.asked) {
+      if(specific.hits.length) {
+        for(const d of specific.hits) answer.paragraphs.push(`${d.label}: ${dayName(d.day, day)}. ${d.state}.`)
+      } else {
+        answer.paragraphs.push('Taký termín v prehľade teraz nevidíme. Úplnosť agendy a jednotlivé povinnosti Vám potvrdí účtovníčka.')
+      }
+      for(const d of specific.hits) source(`${dayName(d.day)}: ${d.label}`,d.state,team?root:d.href??'/app')
+      source('Celý prehľad termínov','Prečítajte si aj ďalšie povinnosti a aktuálny stav.',root)
+    } else {
+      answer.paragraphs.push(deadlines.length?'Tu sú najbližšie termíny z existujúceho prehľadu. Stav rozlišuje Vašu úlohu a prácu Firmony.':'V tomto prehľade teraz nie je evidovaný ďalší termín. Úplnosť agendy overuje Vaša účtovníčka.')
+      for(const d of deadlines.slice(0,8))source(`${dayName(d.day)}: ${d.label}`,d.state,team?root:d.href??'/app')
+      source('Celý prehľad termínov','Prečítajte si aj ďalšie povinnosti a aktuálny stav.',root)
+    }
   } else if(topic==='document') {
     if(!document) {
       answer.paragraphs.push('Vyberte konkrétny doklad vo formulári. Pri doklade ukážeme jeho skutočný stav; meno dodávateľa alebo číslo v otázke samo nevyberá záznam.')

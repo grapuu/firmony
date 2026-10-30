@@ -287,9 +287,9 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean; owner: boole
 }
 
 /** The money view: what is known to come and go in the next 30 days, and whether a payout leaves the known
- *  obligations covered. The numbers are the books' cash view, never profit; the note says it. On the team side
- *  the interactive payout question is hidden: the accountant reads the same figures without the client's form. */
-export const MoneyCard: FC<{ view: MoneyView; interactive?: boolean }> = ({ view, interactive = true }) => {
+ *  obligations covered. The numbers are the books' cash view, never profit; the note says it. The team page
+ *  points the payout form at the client's workspace instead of the client's own home. */
+export const MoneyCard: FC<{ view: MoneyView; interactive?: boolean; action?: string }> = ({ view, interactive = true, action = '/app' }) => {
   const m = app.home.money
   const w = view.window
   const pill =
@@ -380,7 +380,7 @@ export const MoneyCard: FC<{ view: MoneyView; interactive?: boolean }> = ({ view
       </details>
       {interactive ? (
         <>
-          <form class="money__ask" method="get" action="/app">
+          <form class="money__ask" method="get" action={action}>
             <label class="money__ask-label" for="vyplatit">
               {m.ask.title}
             </label>
