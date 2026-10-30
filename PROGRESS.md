@@ -1,5 +1,13 @@
 # Firmony: progress of the continuation
 
+## Tretia vlna (Cline, 30. október 2026 CEST)
+
+- **Mony READ: suma v otázke o výplate.** „Môžem si vyplatiť 100?“ dostane presný verdict z rovnakého pravidla
+  ako formulár na prehľade (`payoutVerdict`): suma, čo ostane na záväzky, alebo o koľko záväzky presiahnu a ktorý
+  prvý by nebol uhradený. Suma sa číta ako číslo najbližšie k slovu „vyplatiť“ (`payoutAskedAnswer` v
+  `src/assistant/context.ts`, čistá funkcia); otázka bez sumy ďalej odpovedá prehľadom okna. Nasadené a overené
+  produkčnou verifikáciou (`21bc976..c42ecf0`).
+
 ## Druhá vlna (Cline, 30. október 2026 CEST)
 
 Nasadené priamo na main a overené produkčnou verifikáciou:
