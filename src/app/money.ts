@@ -40,8 +40,8 @@ export interface MoneyWindow {
   mood: 'unknown' | 'fine' | 'tight' | 'short'
 }
 
-/** The next `days` days from today, the day itself and the expected movements counted. */
-export function moneyWindow(facts: MoneyFacts, days: number): MoneyWindow {
+/** The next `days` days from today, the day itself and the expected movements counted; 30 by default. */
+export function moneyWindow(facts: MoneyFacts, days: number = MONEY_DAYS): MoneyWindow {
   const until = addDays(facts.today, days)
   const inCents = facts.incoming.filter((i) => i.day >= facts.today && i.day < until).reduce((sum, i) => sum + i.cents, 0)
   const outCents = facts.outgoing.filter((o) => o.day >= facts.today && o.day < until).reduce((sum, o) => sum + o.cents, 0)
