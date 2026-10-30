@@ -145,6 +145,7 @@ export function registerFoundingTeam(app: Hono<Env>, render: Render): void {
     if (verdict !== 'verified' && note.length < 5) return detail(c, id, ERRORS.reason!, 422)
     const risk = FOUNDING_RISKS.find((r) => r === body.riziko)
     const result = await decide(c.env.DB, f, user(c), verdict, note, today(), siteOrigin(c), risk)
+    if (result !== 'ok') console.error('FOUNDING-DEBUG', verdict, result, JSON.stringify(await verifyBlockers(c.env.DB, f)))
     if (result !== 'ok') return detail(c, id, ERRORS[result]!, result === 'risk' ? 422 : 409)
     later(c, flushOutbox(c.env.DB, c.env.EMAIL))
     return back(c, id, verdict === 'verified' ? 'overene' : verdict === 'refused' ? 'odmietnute' : 'vratene')
