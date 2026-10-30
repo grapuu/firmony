@@ -120,6 +120,16 @@ export async function checkMony({ mf, db, site, mony, provider, nowS }) {
   // A payout amount named in the question is checked by the same verdict as the home page's form.
   await db.prepare("INSERT INTO accounts (id, company_id, iban, balance_cents, balance_on) VALUES ('acc-mony-1', 'co-mony', 'SK00TEST', 100000, ?)").bind(todayDay).run()
   provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Aký mám zostatok na účte?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a question about the balance answers the balance itself', res.status === 200 && text.includes('Zostatok na účtoch') && text.includes('000,00') && !text.includes('nevidíme'), `${res.status} ${text.slice(0, 140)}`)
+  provider.next = { topic: 'missing' }
+  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pa-mony-1', 'co-mony', 'acc-mony-1', ?, ?, -4200, 'TEST-ONLY Dodávateľ', 'm1')").bind(nowS, todayDay).run()
+  res = await ask(client, { question: 'Čo mi chýba?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: the missing question lists the newest missing payments, not only their count', res.status === 200 && text.includes('Najnovšie chýbajúce') && text.includes('TEST-ONLY Dodávateľ') && text.includes('42,00'), `${res.status} ${text.slice(0, 180)}`)
+  await db.prepare("DELETE FROM payments WHERE id = 'pa-mony-1'").run()
+  provider.next = { topic: 'money' }
   res = await ask(client, { question: 'Môžem si vyplatiť 100?', page: '/app', history: [] })
   text = await res.text()
   check('mony: a payout amount named in the question gets the same verdict as the form', res.status === 200 && text.includes('Sumu 100,00') && text.includes('si môžete vyplatiť') && text.includes('ostáva'), `${res.status} ${text.slice(0, 140)}`)

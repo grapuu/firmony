@@ -3,7 +3,7 @@ import { amlToday } from '../aml/retention'
 import { autoReviewedSql } from '../aml/auto-review-model'
 import { MISSING, getDocument, type Company } from '../app/store'
 import { clientDeadlines, deadlineQuestionMatch } from '../app/deadlines'
-import { dayName, dayShort, plural } from '../app/copy'
+import { dayName, dayShort, plural, readableName, signed } from '../app/copy'
 import { companyDeadlines } from '../team/deadlines-store'
 import { billRows, tariffForClient } from '../team/billing-store'
 import { managedHandover } from '../migration/store'
@@ -79,6 +79,12 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
     }
     const missingCount=missing?.n??0
     answer.paragraphs.push(`K ${missingCount} ${plural(missingCount,'evidovanej platbe','evidovaným platbám','evidovaným platbám')} ešte chýba doklad alebo odborné vyriešenie.`)
+    // The newest of them, so the person knows what to add first; the full list stays on the page.
+    const missingRows = await db.prepare(`SELECT p.booked_on, p.party, p.note, p.amount_cents FROM payments p WHERE p.company_id=? AND ${MISSING} ORDER BY p.booked_on DESC, p.id DESC LIMIT 3`).bind(company.id).all<{ booked_on:string; party:string|null; note:string|null; amount_cents:number }>()
+    if (missingRows.results.length > 0) {
+      answer.paragraphs.push('Najnovšie chýbajúce:')
+      for (const r of missingRows.results) answer.paragraphs.push(`${dayName(r.booked_on, amlToday())} - ${readableName(r.party ?? r.note ?? '')}, ${signed(r.amount_cents)}`)
+    }
     source('Chýbajúce podklady','Konkrétne platby a bezpečné pridanie dokladu.',team?root:'/app/platby')
     if(h&&h.state!=='cancelled'&&h.state!=='completed'&&h.clientAction)source('Doplnenie k prevzatiu',h.clientAction,team?`${root}/prevzatie`:'/app/prechod#koordinacia')
     if(topic==='next') {
@@ -162,7 +168,15 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
     // A question that names an invoice: its number is a run of digits the person typed, matched in the evidence.
     const named = /fakt[úu]r/i.test(question) ? (question.match(/\d{4,}/g) ?? []) : []
     const hit = named.map((n) => facts.incoming.find((i) => i.label.includes(n))).find((i) => i !== undefined)
-    if (hit) {
+    // A question about the balance answers the balance itself; the payout question keeps the window answer.
+    if (/zostatok|na [úu](?:č|ct)e/i.test(question) && !/vyplat|výplat/i.test(question)) {
+      if (facts.balanceCents === null) {
+        answer.paragraphs.push('Zostatok na účte zatiaľ nevidíme. Prepojte banku alebo pridajte výpis a doplníme ho.', 'Čo Vám príde, čo odíde a známe záväzky nájdete medzitým na prehľade firmy.')
+      } else {
+        answer.paragraphs.push(`Zostatok na účtoch: ${formatEurExact(facts.balanceCents)}${facts.balanceOn ? ` (stav k ${dayName(facts.balanceOn, day)})` : ''}.`)
+      }
+      source('Peniaze vopred','Zostatok z prepojených účtov a výpisov.',team?root:'/app')
+    } else if (hit) {
       answer.paragraphs.push(
         `${hit.label} je splatná ${dayName(hit.day, day)} na ${formatEurExact(hit.cents)}.`,
         hit.day >= day
