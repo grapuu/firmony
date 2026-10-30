@@ -1,5 +1,18 @@
 # Firmony: progress of the continuation
 
+## Štvrtá vlna (Cline, 30. október 2026 CEST)
+
+- **Mony READ: konkrétne termíny.** Otázka, ktorá pomenuje povinnosť a obdobie („Kedy mám podať DPH za október?“,
+  „Kedy je závierka za 2026?“, „DPH za 3. štvrťrok?“), sa odpovedá z rovnakého zoznamu termínov, ktorý vidí stránka:
+  deň, stav a odkaz. Povinnosť bez záznamu sa povie, nič sa nevymýšľa; otázka bez menovania nechá celý zoznam.
+  Diakritika a tvar mesiaca nerozhodujú (`deadlineQuestionMatch` v `src/app/deadlines.ts`, čistá funkcia s unit testami).
+- **Účtovníčka skúša výplatu za klienta:** karta Peniaze vopred na stránke klienta (`/ucto/klienti/:id`) má teraz
+  aj scenár „Koľko si môžete vyplatiť?“ — formulár sa odosiela na tú istú stránku (`?vyplatit=…`), verdict sa počíta
+  tým istým pravidlom ako klientovi doma.
+- **Meranie produkcie (30. 10. 2026 večer):** `app.css` 139 kB s `immutable` + edge HIT, fonty HIT, obrázky
+  `/art/*` 7-dňová cache (všetko z `public/_headers`); najväčší obrázok 106 kB; HTML je `no-store` zámerne
+  (čerstvé oznamy), TTFB ~0,85 s zo studenej hrany. Bez ďalších zásahov.
+
 ## Tretia vlna (Cline, 30. október 2026 CEST)
 
 - **Mony READ: suma v otázke o výplate.** „Môžem si vyplatiť 100?“ dostane presný verdict z rovnakého pravidla
