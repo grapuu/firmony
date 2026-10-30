@@ -116,7 +116,7 @@ export async function checkAnalyticsRuntime({ db, get, as, signIn, nowS, tick, c
   if (capture) writeFileSync(`${capture}/analytics.html`, html)
   check(
     'analytics: the administrator sees the dashboard with its sections',
-    res.status === 200 && ['Návštevy webu', 'Cesta k zmluve', 'Odkiaľ prichádzajú', 'Čo klienti používajú', 'Rýchlosť a chyby', 'Klienti', 'AI tento mesiac', 'Bezplatné nástroje'].every((s) => html.includes(s)),
+    res.status === 200 && ['Návštevy webu', 'Cesta k zmluve', 'Odkiaľ prichádzajú', 'Čo klienti používajú', 'Rýchlosť a chyby', 'Klienti', 'Softvér tento mesiac', 'Bezplatné nástroje'].every((s) => html.includes(s)),
   )
   check(
     'analytics: it shows what was counted: the page, the referrer, the campaign, the feature and the client with its link',

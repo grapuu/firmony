@@ -330,7 +330,7 @@ export interface Reading {
 }
 
 /** The fields of a reading kept as the reader gave them (`documents.reading`) and compared with the booking on the
- *  page "Presnosť AI" (team/ai-accuracy.ts), in the order the page lists them. */
+ *  page "Presnosť softvéru" (team/ai-accuracy.ts), in the order the page lists them. */
 export const READ_FIELDS = ['kind', 'party', 'partyIco', 'number', 'vs', 'issuedOn', 'dueOn', 'totalCents', 'vatCents', 'currency', 'category'] as const
 export type ReadField = (typeof READ_FIELDS)[number]
 

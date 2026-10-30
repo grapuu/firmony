@@ -22,7 +22,7 @@ export async function checkAiAccuracy({ db, acc, admin, lucia, nowS, capture }) 
   if (capture) writeFileSync(`${capture}/ai-accuracy.html`, raw)
   check(
     'the page compares field by field and names the supplier put right',
-    raw.includes('Presnosť AI') && raw.includes('Suma spolu') && raw.includes('Bez jedinej opravy') && raw.includes('TEST-ONLY Zlý dodávateľ s. r. o.'),
+    raw.includes('Presnosť softvéru') && raw.includes('Suma spolu') && raw.includes('Bez jedinej opravy') && raw.includes('TEST-ONLY Zlý dodávateľ s. r. o.'),
   )
   const all = await (await admin.get('/ucto/ai')).text()
   check('the administrator sees it too', all.includes('TEST-ONLY Zlý dodávateľ s. r. o.'))

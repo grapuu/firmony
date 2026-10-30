@@ -5567,7 +5567,7 @@ teamRoutes.get('/ai', async (c) => {
   const asked = c.req.query('mesiac') ?? ''
   const month = months.includes(asked) ? asked : (months[0] as string)
   const accuracy = accuracyOf(await comparedOf(c.env.DB, { id: who.user.id, team: who.user.team ?? null }, month, demoOn(c)))
-  return shell(c, 'ai', t.ai.title, <>{isAdmin(who.user)?<p><a class="link" href="/ucto/ai/asistent">Prevádzka AI asistenta</a></p>:null}<AiPage month={month} months={months} accuracy={accuracy} /></>)
+  return shell(c, 'ai', t.ai.title, <>{isAdmin(who.user)?<p><a class="link" href="/ucto/ai/asistent">Prevádzka asistenta</a></p>:null}<AiPage month={month} months={months} accuracy={accuracy} /></>)
 })
 
 teamRoutes.get('/fakturacia', (c) => (isAdmin(c.get('who').user) ? billingPage(c) : missingPage(c)))

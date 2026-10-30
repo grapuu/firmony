@@ -16,14 +16,14 @@ export async function askAssistant(db:D1Database,key:string|undefined,s:Assistan
   if(document&&!/^[A-Za-z0-9-]{1,64}$/.test(document))return fail(404,'Doklad nie je dostupný.')
   if(!await fresh()||!await assistantAllowed(db,s))return fail(409,'Prihlásený účet, firma alebo oprávnenie sa zmenili. Obnovte stránku pred ďalším krokom.')
   if(document&&!await getDocument(db,s.company,document))return fail(404,'Doklad nie je dostupný.')
-  if(!key||!(await assistantControl(db)).enabled)return fail(503,'AI teraz nie je dostupná. Vyberte rýchlu otázku nižšie alebo pripravte otázku účtovníčke.')
+  if(!key||!(await assistantControl(db)).enabled)return fail(503,'Softvér teraz nie je dostupný. Vyberte rýchlu otázku nižšie alebo pripravte otázku účtovníčke.')
   const requestId=id.toLowerCase()
   let reservation:Awaited<ReturnType<typeof reserveQuestion>>
   try{reservation=await reserveQuestion(db,s,requestId,question,document)}catch{return fail(503,'Uloženie otázky nevieme potvrdiť. Váš text zostáva vo formulári. Vyberte rýchlu otázku alebo pripravte otázku účtovníčke.')}
   if(reservation.kind==='conflict')return {...fail(409,'Toto odoslanie už patrí inej otázke. Váš text zostáva vo formulári. Po kontrole ho môžete odoslať ako novú otázku.'),submission:crypto.randomUUID()}
-  if(reservation.kind==='limit')return fail(429,'Teraz sme dosiahli limit AI otázok alebo sa ešte spracúva predošlá. Rýchle otázky a kontakt s účtovníčkou môžete použiť hneď.')
+  if(reservation.kind==='limit')return fail(429,'Teraz sme dosiahli limit softvérových otázok alebo sa ešte spracúva predošlá. Rýchle otázky a kontakt s účtovníčkou môžete použiť hneď.')
   if(reservation.kind==='pending')return fail(409,'Spracovanie tejto otázky ešte nemáme potvrdené. Opakované odoslanie nespustí ďalšie volanie. Použite rýchlu otázku alebo pripravte správu účtovníčke.')
-  if(reservation.kind==='unavailable')return fail(503,'Výsledok AI teraz nevieme potvrdiť. Váš text zostáva vo formulári; rýchle otázky a účtovníčka sú dostupné.')
+  if(reservation.kind==='unavailable')return fail(503,'Výsledok softvéru teraz nevieme potvrdiť. Váš text zostáva vo formulári; rýchle otázky a účtovníčka sú dostupné.')
   let topic=reservation.kind==='cached'?reservation.topic:null
   if(reservation.kind==='new') {
     const result=await classifyQuestion(key,question)
@@ -31,7 +31,7 @@ export async function askAssistant(db:D1Database,key:string|undefined,s:Assistan
     let saved=false
     try{saved=await finishQuestion(db,s,requestId,freshAccess?result:null)}catch{return fail(503,'Uloženie výsledku nemáme potvrdené. Opakované odoslanie nespustí ďalšie volanie. Váš text zostáva vo formulári a môžete ho odovzdať účtovníčke.')}
     if(!freshAccess)return fail(409,'Prihlásený účet, firma alebo oprávnenie sa zmenili. Obnovte stránku pred ďalším krokom.')
-    if(!saved||!result)return fail(503,'Výsledok AI teraz nevieme spoľahlivo potvrdiť. Vyberte rýchlu otázku alebo pripravte otázku účtovníčke.')
+    if(!saved||!result)return fail(503,'Výsledok softvéru teraz nevieme spoľahlivo potvrdiť. Vyberte rýchlu otázku alebo pripravte otázku účtovníčke.')
     topic=result.topic
   }
   if(!topic||!await fresh())return fail(409,'Účet alebo firma sa zmenili. Obnovte stránku.')

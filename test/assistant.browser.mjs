@@ -17,7 +17,7 @@ export async function checkAssistantBrowser({page,clientPage,db,origin,provider}
   await clientPage.getByLabel('Doklad, ak sa ho otázka týka',{exact:true}).selectOption('assistant-browser-doc')
   provider.next={topic:'document'}
   const answerResponse=clientPage.waitForResponse(r=>new URL(r.url()).pathname==='/app/asistent'&&r.request().method()==='POST')
-  await clientPage.getByRole('button',{name:'Opýtať sa AI',exact:true}).click()
+  await clientPage.getByRole('button',{name:'Opýtať sa softvéru',exact:true}).click()
   check('assistant browser: a natural question receives the real document state and its own source',(await answerResponse).status()===200&&await clientPage.locator('[data-assistant-answer]').getByText('Doklad je prijatý a prebieha jeho čítanie.',{exact:false}).isVisible()&&await clientPage.locator('[data-assistant-answer] a').first().getAttribute('href')==='/app/doklady/assistant-browser-doc')
   check('assistant browser: the server sends only the typed text to the provider',provider.requests.length===beforeQuick+1&&provider.requests.at(-1).messages[0].content==='TEST-BROWSER Čo sa deje s vybraným dokladom?'&&!JSON.stringify(provider.requests.at(-1)).includes('assistant-browser-doc'))
   for(const width of [320,390,1440]){
@@ -43,11 +43,11 @@ export async function checkAssistantBrowser({page,clientPage,db,origin,provider}
   provider.next={status:429}
   await clientPage.getByLabel('Vaša otázka',{exact:true}).fill('TEST-BROWSER Zachovajte túto otázku pri výpadku.')
   const errorResponse=clientPage.waitForResponse(r=>new URL(r.url()).pathname==='/app/asistent'&&r.request().method()==='POST')
-  await clientPage.getByRole('button',{name:'Opýtať sa AI',exact:true}).click()
+  await clientPage.getByRole('button',{name:'Opýtať sa softvéru',exact:true}).click()
   check('assistant browser: an unavailable provider preserves the editable question and the human path',(await errorResponse).status()===503&&await clientPage.getByLabel('Vaša otázka',{exact:true}).inputValue()==='TEST-BROWSER Zachovajte túto otázku pri výpadku.'&&await clientPage.getByRole('button',{name:'Pripraviť otázku účtovníčke',exact:true}).isEnabled()&&await clientPage.locator('[data-assistant-answer]').count()===0)
   const beforeRetry=provider.requests.length,retryId=await clientPage.locator('input[name=odoslanie]').inputValue()
   const retryResponse=clientPage.waitForResponse(r=>new URL(r.url()).pathname==='/app/asistent'&&r.request().method()==='POST')
-  await clientPage.getByRole('button',{name:'Opýtať sa AI',exact:true}).click()
+  await clientPage.getByRole('button',{name:'Opýtať sa softvéru',exact:true}).click()
   check('assistant browser: retry from the returned error form reuses the attempt and makes no second paid call',(await retryResponse).status()===503&&provider.requests.length===beforeRetry&&await clientPage.locator('input[name=odoslanie]').inputValue()===retryId)
   await page.goto(`${origin}/ucto/klienti/${company}/asistent?tema=overview`)
   check('assistant browser: the assigned accountant uses the same source-backed view with no client escalation button',await page.locator('[data-assistant-answer]').isVisible()&&await page.getByRole('button',{name:'Pripraviť otázku účtovníčke',exact:true}).count()===0)
@@ -56,6 +56,6 @@ export async function checkAssistantBrowser({page,clientPage,db,origin,provider}
   await page.getByRole('button',{name:'Vypnúť cloudové otázky',exact:true}).click()
   check('assistant browser: the verified administrator can stop paid questions',(await controlResponse).status()===303&&(await db.prepare('SELECT enabled FROM assistant_control WHERE id=1').first()).enabled===0)
   await clientPage.goto(`${origin}/app/asistent`)
-  check('assistant browser: disabled AI keeps the unblocked expert and quick-question paths',await clientPage.getByRole('button',{name:'Opýtať sa AI',exact:true}).isDisabled()&&await clientPage.getByRole('button',{name:'Pripraviť otázku účtovníčke',exact:true}).isEnabled())
+  check('assistant browser: disabled AI keeps the unblocked expert and quick-question paths',await clientPage.getByRole('button',{name:'Opýtať sa softvéru',exact:true}).isDisabled()&&await clientPage.getByRole('button',{name:'Pripraviť otázku účtovníčke',exact:true}).isEnabled())
   await page.getByRole('button',{name:'Zapnúť cloudové otázky',exact:true}).click()
 }

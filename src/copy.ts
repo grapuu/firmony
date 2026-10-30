@@ -34,7 +34,7 @@ export const copy = typesetAll({
   hero: {
     first: 'Účtovníctvo pre Vašu s. r. o.',
     second: 'Vy pošlete doklad, my urobíme zvyšok.',
-    lead: 'Online účtovná firma za pevnú cenu. Umelá inteligencia prečíta doklady, Vaša účtovníčka ich skontroluje a postará sa o dohodnuté priznania. Všetko vidíte v aplikácii.',
+    lead: 'Online účtovná firma za pevnú cenu. Softvér prečíta doklady, Vaša účtovníčka ich skontroluje a postará sa o dohodnuté priznania. Všetko vidíte v aplikácii.',
     price: `Od ${eur(start.price)} mesačne. Závierka a priznanie ${eur(CLOSING_PRICE)} ročne.`,
     secondary: 'Pozrieť cenník',
     how: 'Ako to funguje',
@@ -299,7 +299,7 @@ export const copy = typesetAll({
       // His word of 29 October 2026: this first. People, not a machine; the protection is the terms' point 6 (our
       // error put right without charge, damage including a fine it caused made good), no "100 %" promised.
       {
-        q: 'Bude mi viesť účtovníctvo umelá inteligencia?',
+        q: 'Bude mi viesť účtovníctvo softvér?',
         a: 'Nie. Účtovníctvo Vám vedie skúsená účtovníčka, ktorú sme starostlivo vybrali a zaškolili, a na prácu účtovníčok dohliadajú skúsené kontrolórky z nášho tímu. Náš softvér im len šetrí čas: prečíta doklad, spáruje platbu a navrhne zaúčtovanie. Každý výsledok kontroluje človek. A keby sme sa niekedy pomýlili my, chybu opravíme zadarmo a škodu, ktorú spôsobila, Vám nahradíme podľa obchodných podmienok.',
       },
       {

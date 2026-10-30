@@ -198,7 +198,7 @@ let page = await res.text()
 check('the home page answers', res.status === 200)
 check(
   'it says at once what Firmony is and why: an accounting firm for a fixed price, three reasons and a plain comparison',
-  page.includes('Účtovníctvo pre Vašu s.') && page.includes('Vy pošlete doklad, my urobíme zvyšok.') && !page.includes('bez DPH') && page.replace(/\u00a0/g, ' ').includes('Menej ako 3 € denne') && page.includes('class="ticket"') && !page.includes('Novinka') && page.replace(/\u00a0/g, ' ').includes('Bude mi viesť účtovníctvo umelá inteligencia?') && page.includes('action="/zacat/email"') && page.includes('Online účtovná firma za pevnú cenu') && page.includes('dohodnuté priznania') &&
+  page.includes('Účtovníctvo pre Vašu s.') && page.includes('Vy pošlete doklad, my urobíme zvyšok.') && !page.includes('bez DPH') && page.replace(/\u00a0/g, ' ').includes('Menej ako 3 € denne') && page.includes('class="ticket"') && !page.includes('Novinka') && page.replace(/\u00a0/g, ' ').includes('Bude mi viesť účtovníctvo softvér?') && page.includes('action="/zacat/email"') && page.includes('Online účtovná firma za pevnú cenu') && page.includes('dohodnuté priznania') &&
     (page.match(/class="card why__card"/g) ?? []).length === 3 && page.includes('čom sme iní.') && (page.match(/<span class="tick"/g) ?? []).length >= 5 && (page.match(/class="faq__item"/g) ?? []).length === 6 && page.includes('href="/bezplatne-nastroje"'),
 )
 check(
@@ -1209,7 +1209,7 @@ res = await acc.get(`/ucto/doklady/${cafeDoc?.id}`)
 page = await res.text()
 check(
   "a document waits with the reader's proposal and the entry it makes",
-  res.status === 200 && page.includes('Návrh od AI') && page.includes('513') && page.includes('221'),
+  res.status === 200 && page.includes('Návrh od softvéru') && page.includes('513') && page.includes('221'),
   page.match(/entry__table[\s\S]{0,300}/)?.[0],
 )
 res = await acc.post(`/ucto/doklady/${cafeDoc?.id}`, {

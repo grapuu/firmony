@@ -184,7 +184,7 @@ const InvoicingSection: FC<{ inv: Invoicing | null; measuredPdf: boolean }> = ({
           </section>
           <section class="info" aria-labelledby="an-ai-faktury-t">
             <h3 id="an-ai-faktury-t" class="info__title">
-              Návrh faktúry z jednej vety (AI)
+              Návrh faktúry z jednej vety (softvér)
             </h3>
             <dl class="kv">
               <div>
@@ -689,11 +689,11 @@ export const AnalyticsPage: FC<AnalyticsPageProps> = ({ dash, sort, now }) => {
 
       <section class="info ansec" aria-labelledby="an-ai-t" id="ai">
         <h2 id="an-ai-t" class="info__title">
-          AI tento mesiac
+          Softvér tento mesiac
         </h2>
         <dl class="kv">
           <div>
-            <dt>Doklady prečítané AI</dt>
+            <dt>Doklady prečítané softvérom</dt>
             <dd>{n(dash.ai.read)}</dd>
           </div>
           <div>
@@ -727,7 +727,7 @@ export const AnalyticsPage: FC<AnalyticsPageProps> = ({ dash, sort, now }) => {
         </dl>
         <p class="anlinks">
           <a class="link" href="/ucto/ai">
-            Presnosť AI po poliach
+            Presnosť softvéru po poliach
           </a>
           <a class="link" href="/ucto/ai/asistent">
             Prevádzka asistenta

@@ -1553,7 +1553,7 @@ const MIGRATIONS: readonly string[][] = [
   // and time, and whether a document, a period or a company was dealt with before by its subject.
   ['CREATE INDEX IF NOT EXISTS events_user ON events (user_id, at)', 'CREATE INDEX IF NOT EXISTS events_subject ON events (subject, action, at)'],
   // What the reader proposed for a document, as it proposed it (20 October 2026, team/ai-accuracy.ts): written once when
-  // the document is read and never by the booking, so the page "Presnosť AI" compares it with what was booked.
+  // the document is read and never by the booking, so the page "Presnosť softvéru" compares it with what was booked.
   ['ALTER TABLE documents ADD COLUMN reading TEXT'],
   // What the site last told IndexNow of its public pages (20 October 2026, robots.ts `announceSite`): one row a kind
   // of notice, nobody's data.

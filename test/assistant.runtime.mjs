@@ -157,7 +157,7 @@ export async function checkAssistantRuntime({db,files,as,signIn,lucia,nowS,day,p
   const used=(await db.prepare('SELECT COUNT(*) AS n FROM assistant_uses WHERE actor=? AND day=?').bind(actor,day(0)).first()).n
   await seed(co,actor,'client',12-used)
   res=await owner.post('/app/asistent',fields());html=await res.text()
-  check('assistant: the daily per-user cap is enforced while preserving the question and expert route',res.status===429&&html.includes('limit AI otázok')&&html.includes('Pripraviť otázku účtovníčke'))
+  check('assistant: the daily per-user cap is enforced while preserving the question and expert route',res.status===429&&html.includes('limit softvérových otázok')&&html.includes('Pripraviť otázku účtovníčke'))
   const companyUsed=(await db.prepare('SELECT COUNT(*) AS n FROM assistant_uses WHERE company_id=? AND day=?').bind(co,day(0)).first()).n
   await seed(co,adminUser.id,'team',39-companyUsed)
   const companyCap=await Promise.all(['company-boundary-a','company-boundary-b'].map(async label=>assistantStore.reserveQuestion(db,{company:co,actor:label==='company-boundary-a'?'assistant-member':lucia.id,side:label==='company-boundary-a'?'client':'team'},randomUUID(),label,'')))

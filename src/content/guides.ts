@@ -205,7 +205,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Ako to robí Firmony',
         p: [
-          'Doklady prečíta umelá inteligencia a navrhne zaúčtovanie. Účtovníčka vedie odbornú kontrolu, rieši neštandardné prípady, dohodnuté podania a otázky. Účtovná kniha, DPH, mzdy aj závierka vznikajú v našej vlastnej aplikácii, takže v nej vidíte, čo je hotové a čo od Vás ešte treba.',
+          'Doklady prečíta softvér a navrhne zaúčtovanie. Účtovníčka vedie odbornú kontrolu, rieši neštandardné prípady, dohodnuté podania a otázky. Účtovná kniha, DPH, mzdy aj závierka vznikajú v našej vlastnej aplikácii, takže v nej vidíte, čo je hotové a čo od Vás ešte treba.',
         ],
       },
     ],
@@ -236,7 +236,7 @@ export const GUIDES: Guide[] = [
         list: [
           'bloček odfotíte v telefóne, faktúru prepošlete na adresu Vašej firmy pre doklady',
           'výpisy z banky chodia samé alebo ich raz mesačne pridáte',
-          'umelá inteligencia doklad prečíta a spáruje s platbou',
+          'softvér doklad prečíta a spáruje s platbou',
           'účtovníčka vedie odbornú kontrolu a postará sa o dohodnutú agendu',
           'v aplikácii vidíte, čo je hotové a čo potrebuje Vaše doplnenie alebo rozhodnutie',
         ],

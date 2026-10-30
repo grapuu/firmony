@@ -151,7 +151,7 @@ export const FreeInvoicePage: FC<{ today: string }> = ({ today }) => {
       <h2>Čo tento nástroj zvládne</h2>
       <p>Jednorazové vytvorenie faktúry neplatiteľa DPH s najviac 50 položkami. PDF nie je štruktúrovaná eFaktúra ani doručenie digitálnym poštárom.</p>
       <p>Pre platiteľov DPH, zahraničie, zálohy, dobropisy, QR kód na platbu, uložené faktúry a e-faktúru je tu <a class="link" href={INVOICING_PATH}>fakturácia Firmony</a>. Je tiež zadarmo, len s účtom.</p>
-      <p>Údaje ani súbory z tohto formulára neposielame Firmony alebo AI. Pri zatvorení stránky sa neuložené údaje stratia. Existenciu firmy ani údaje v registri neoverujeme. Za správne údaje, číslovanie, interné overenie a uchovanie dokladu zodpovedá vystavovateľ.</p>
+      <p>Údaje ani súbory z tohto formulára neposielame Firmony ani softvéru. Pri zatvorení stránky sa neuložené údaje stratia. Existenciu firmy ani údaje v registri neoverujeme. Za správne údaje, číslovanie, interné overenie a uchovanie dokladu zodpovedá vystavovateľ.</p>
       <p>Právne podklady skontrolované 22. 10. 2026: <a href="https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html#paragraf-10" rel="noopener noreferrer">§ 10 zákona o účtovníctve</a>, <a href="https://static.slov-lex.sk/static/SK/ZZ/1991/513/20260817.html#paragraf-3a" rel="noopener noreferrer">§ 3a Obchodného zákonníka</a> a <a href="https://static.slov-lex.sk/static/SK/ZZ/2004/222/20260101.html#paragraf-69" rel="noopener noreferrer">§ 69 ods. 5 zákona o DPH</a>.</p>
       <h2>Faktúrou sa účtovníctvo nekončí</h2><p>Ak chcete odovzdať aj účtovníctvo, prejdeme s Vami rozsah služby a cenu. Bezplatný nástroj môžete používať aj bez toho.</p>
       <a class="btn btn--blue" href="/zacat">Nezáväzne preveriť moju firmu</a>

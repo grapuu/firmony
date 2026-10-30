@@ -133,7 +133,7 @@ export const Legal: FC = () => (
       </p>
       <p>
         {t(
-          'Fotky a PDF dokladov číta umelá inteligencia spoločnosti Anthropic, PBC (USA), aby z nich vypísala údaje. Prenos do USA chránia štandardné zmluvné doložky Európskej komisie. Pri komerčnom API Anthropic vstupy a výstupy predvolene nepoužíva na trénovanie modelov; na trénovanie ich za nás neposkytujeme ani ako spätnú väzbu.',
+          'Fotky a PDF dokladov číta softvér spoločnosti Anthropic, PBC (USA), aby z nich vypísal údaje. Prenos do USA chránia štandardné zmluvné doložky Európskej komisie. Pri komerčnom API Anthropic vstupy a výstupy predvolene nepoužíva na trénovanie modelov; na trénovanie ich za nás neposkytujeme ani ako spätnú väzbu.',
         )}
       </p>
       <p>
@@ -173,7 +173,7 @@ export const Legal: FC = () => (
           https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training
           National scope checked: https://static.slov-lex.sk/static/SK/ZZ/2018/18/20260818.html#paragraf-3 */}
       <h3 class="h4" id="asistent">Dobrovoľný asistent v aplikácii</h3>
-      <p>{t('Rýchle otázky čítajú stav priamo z údajov Vašej firmy bez odoslania otázky do AI. Ak sa rozhodnete napísať vlastnú otázku a odoslať ju AI, spoločnosti Anthropic pošleme iba tento text na rozpoznanie témy. Doklady, bankové výpisy, identifikačné údaje firmy ani obsah správ do tohto volania automaticky nepridávame. Samotný text však môže obsahovať osobné údaje, preto doň nepíšte heslá, citlivé údaje ani údaje iných ľudí, ktoré nie sú potrebné.')}</p>
+      <p>{t('Rýchle otázky čítajú stav priamo z údajov Vašej firmy bez odoslania otázky do softvéru. Ak sa rozhodnete napísať vlastnú otázku a odoslať ju softvéru, spoločnosti Anthropic pošleme iba tento text na rozpoznanie témy. Doklady, bankové výpisy, identifikačné údaje firmy ani obsah správ do tohto volania automaticky nepridávame. Samotný text však môže obsahovať osobné údaje, preto doň nepíšte heslá, citlivé údaje ani údaje iných ľudí, ktoré nie sú potrebné.')}</p>
       <p>{t('Odpoveď a odkazy zostaví aplikácia z evidovaných údajov firmy, do ktorej máte prístup. Asistent nerozhoduje o dani, nevykonáva platby, nemení účtovné knihy a neposiela podania. Text otázky ani odpoveď ako rozhovor u nás trvalo neukladáme. Uchovávame záznam použitia s identifikátorom firmy a používateľa, časom, témou, modelom, dostupným počtom tokenov a odtlačkom otázky bez jej textu. Patrí k auditnej histórii služby s nižšie uvedeným uchovávaním. Správu účtovníčke uložíme až po Vašom výslovnom odoslaní z pripraveného formulára.')}</p>
       <p>{t('Anthropic pri štandardnom API uvádza odstránenie vstupov a výstupov do 30 dní, s výnimkami napríklad pre zákonné povinnosti a presadzovanie pravidiel bezpečného používania. Pri označení porušenia pravidiel môže údaje uchovávať dlhšie. Nepredpokladáme osobitnú dohodu o nulovom uchovávaní. Podrobnosti sú v ')}<a href="https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data" rel="noopener noreferrer">informácii Anthropic o uchovávaní</a>.</p>
 

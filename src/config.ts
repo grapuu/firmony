@@ -490,7 +490,7 @@ export const PRIVACY_VERSION = '2026-10-29'
  * (src/content/terms.ts): acceptance keeps the complete wording and tariffs with SHA-256. Signing also requires
  * explicit legal/insurance release approval and a documented review of the particular order.
  */
-export const TERMS_VERSION = '2026-10-26'
+export const TERMS_VERSION = '2026-10-30'
 
 /**
  * The s. r. o. for 1 € (his word of 27 October 2026; the safeguards of 28 October: "nemôžu nás odžubať"). A founder

@@ -60,7 +60,7 @@ export function service(): Record<string, unknown> {
     '@type': 'AccountingService',
     '@id': id('sluzba'),
     name: `${BRAND.name}: online účtovníctvo`,
-    description: 'Vedenie podvojného účtovníctva, DPH, miezd, závierky a daňového priznania pre s. r. o. a akciové spoločnosti online. Doklady číta umelá inteligencia, kontroluje a podáva ich účtovníčka.',
+    description: 'Vedenie podvojného účtovníctva, DPH, miezd, závierky a daňového priznania pre s. r. o. a akciové spoločnosti online. Doklady číta softvér, kontroluje a podáva ich účtovníčka.',
     url: `${BRAND.origin}/`,
     image: `${BRAND.origin}/art/share.png`,
     provider: { '@id': id('organizacia') },

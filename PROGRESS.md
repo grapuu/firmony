@@ -1,5 +1,19 @@
 # Firmony: progress of the continuation
 
+## Komunikácia: „umelá inteligencia“ → „softvér“ všade + audit Claude API (Cline, 30. október 2026 CEST)
+
+Pokyn majiteľa: všade na webe aj v softvéri zmazať slovo „umelá inteligencia“ a nahradiť ho slovom „softvér“.
+Vymenené všetky výskyty (hero, FAQ, SEO, robots/llms.txt, guides, právne informácie, obchodné podmienky,
+asistent, fakturácia z vety, free tools, team UI „Presnosť softvéru“ / „Návrh od softvéru“, analytika).
+V `terms.ts` preto **TERMS_VERSION 2026-10-26 → 2026-10-30** (zmena znenia podľa pravidla; po nasadení treba
+obnoviť `CONTRACT_RELEASE` v Cloudflare dashboardi, lebo hash cenníka sa zmenil). Testy, ktoré kontrolovali
+staré texty, zosúladené (e2e, assistant runtime/browser, ai-accuracy, analytics).
+
+Audit Claude API častí (assistant/provider/service/store, mony, invoice-ai, reader): bez nálezu poškodenia;
+kód na `main` prešiel CI. Zistené medzery (iba zdokumentované, nemenené): ročný údaj v cenníku počíta 12
+mesiacov + závierku aj pri prvom mesiaci zadarmo (prvý rok je 11 platených) a interné komentáre stále hovoria
+o „AI“ (čitateľ, analytika) — technické názvy, nie zákaznícke texty.
+
 ## Finálny polishing ponuky a oprava cache/deploy (Cline, 23. október 2026 CEST)
 
 Presné texty od majiteľa (finálne): eyebrow „Výhodnejší štart s Firmony“, nadpis „Začnite s náskokom. Štyri

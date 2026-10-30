@@ -4,6 +4,13 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Komunikácia „umelá inteligencia“ → „softvér“, 30. 10. 2026 (Cline):** pokyn majiteľa: nikde na webe ani v softvéri
+sa už nehovorí „umelá inteligencia“ ani zákaznícke „AI“ — všade „softvér“ (hero, FAQ, SEO, llms.txt, guides, právne
+informácie, podmienky, asistent, faktúra z vety, team UI, analytika). `TERMS_VERSION` 2026-10-26 → **2026-10-30**;
+po nasadení treba v dashboardi obnoviť `CONTRACT_RELEASE` (hash cenníka sa zmenil). Testy zosúladené. Audit Claude
+API (assistant, Mony, invoice-ai, reader): bez poškodenia, `main` prešiel CI. Interne (komentáre, názvy súborov
+`ai-accuracy.ts` a pod.) zostáva „AI“ ako technický pojem — nemenené. Odovzdané na vetve `cline/audit-final`.
+
 **Služba otvorená, priznanie pre investorov zadarmo a logo v e-mailoch, 29. 10. 2026 neskoro večer (Claude, `main`):** jeho
 správy 21:57 (web sa tvári ako bežiaca služba, kto sa zaregistruje, toho kontaktujeme; platobná brána netreba; priznanie pre
 investorov zadarmo) a 22:01 (logo vo všetkých e-mailoch; stratégia expertky, tímu a prvých klientov). **Web:** preč

@@ -317,7 +317,7 @@ export const TEAM_FEATURES: Record<string, string> = {
   fakturacia: 'Fakturácia',
   tim: 'Tím',
   vykaz: 'Výkaz práce',
-  ai: 'AI a asistent',
+  ai: 'Softvér a asistent',
   analytika: 'Analytika',
   podania: 'Podania',
   incidenty: 'Incidenty',

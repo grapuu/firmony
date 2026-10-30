@@ -152,7 +152,7 @@ export function llmsTxt(): string {
     [
       `# ${BRAND.name}`,
       '',
-      `> ${BRAND.name} je online účtovníctvo pre slovenské firmy, najmä nové a malé s. r. o.: podvojné účtovníctvo, DPH, mzdy, závierka a daňové priznanie za pevnú mesačnú cenu podľa počtu dokladov. Doklady prečíta umelá inteligencia, účtovníčka ich skontroluje a podá priznania. Službu prevádzkuje ${OPERATOR.name} (IČO ${OPERATOR.companyId}, ${OPERATOR.postalCity}). Začať môžete hneď na ${BRAND.origin}: po žiadosti sa Vám ozveme do jedného pracovného dňa.`,
+      `> ${BRAND.name} je online účtovníctvo pre slovenské firmy, najmä nové a malé s. r. o.: podvojné účtovníctvo, DPH, mzdy, závierka a daňové priznanie za pevnú mesačnú cenu podľa počtu dokladov. Doklady prečíta softvér, účtovníčka ich skontroluje a podá priznania. Službu prevádzkuje ${OPERATOR.name} (IČO ${OPERATOR.companyId}, ${OPERATOR.postalCity}). Začať môžete hneď na ${BRAND.origin}: po žiadosti sa Vám ozveme do jedného pracovného dňa.`,
       '',
       '## Pre koho',
       '',
@@ -173,7 +173,7 @@ export function llmsTxt(): string {
       '',
       '- Doklady: fotka bločku v aplikácii (aj v telefóne), preposlaný e-mail s faktúrou na adresu firmy alebo e-faktúra ako súbor XML. Digitálny poštár priamo vo Firmony, odosielanie zapíname pred 1. 1. 2027.',
       '- Banka: výpisy, ktoré banka sama posiela e-mailom, prepojenie Fio banky alebo výpis raz mesačne.',
-      '- Umelá inteligencia doklad prečíta a navrhne zaúčtovanie, platby spáruje s dokladmi. Účtovníčka robí odborné kontroly a rieši neštandardné prípady. Priznania, výkazy, mzdy a závierku pripravujeme podľa dohodnutého rozsahu služby.',
+      '- Softvér doklad prečíta a navrhne zaúčtovanie, platby spáruje s dokladmi. Účtovníčka robí odborné kontroly a rieši neštandardné prípady. Priznania, výkazy, mzdy a závierku pripravujeme podľa dohodnutého rozsahu služby.',
       '- Klient vidí v aplikácii, čo chýba, termíny a čo zaplatiť. Správy s účtovníčkou sú v aplikácii a odpovedáme ' + REPLY_WITHIN + '.',
       '- Účtovníctvo patrí klientovi: kedykoľvek si ho stiahne a pri odchode mu ho odovzdáme.',
       '',

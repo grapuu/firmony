@@ -22,8 +22,8 @@ export const AssistantPage:FC<{company:{id:string;name:string};base:string;conte
         </select></label>
       <p class="field__hint" id="asistent-sukromie">Pri otázke vlastnými slovami pošleme spoločnosti Anthropic iba jej text. Doklady, výpisy a ďalšie údaje firmy do tohto volania neposielame. Nepíšte heslá ani zbytočné osobné údaje. <a class="link" href="/pravne-informacie#asistent">Podrobnosti o spracovaní</a>.</p>
       {error?<p class="notice notice--error" role="alert">{error}</p>:null}
-      {!available?<p class="notice">AI teraz nie je dostupná. Rýchle otázky nižšie čítajú stav priamo z aplikácie a fungujú ďalej.</p>:null}
-      <div class="assistant__actions"><button class="btn btn--blue" type="submit" disabled={!available}>Opýtať sa AI</button>
+      {!available?<p class="notice">Softvér teraz nie je dostupný. Rýchle otázky nižšie čítajú stav priamo z aplikácie a fungujú ďalej.</p>:null}
+      <div class="assistant__actions"><button class="btn btn--blue" type="submit" disabled={!available}>Opýtať sa softvéru</button>
         {!team?<button class="btn btn--line" type="submit" formaction="/app/asistent/odovzdat">Pripraviť otázku účtovníčke</button>:null}
         <a class="link" href={base}>Nová otázka</a></div>
       <p class="field__hint assistant__pending" role="status" aria-live="polite" hidden>Spracúvame Vašu otázku. Odpoveď načítame z aktuálnych údajov firmy.</p>
@@ -37,7 +37,7 @@ export const AssistantPage:FC<{company:{id:string;name:string};base:string;conte
     <ul class="assistant__sources">{answer.sources.map(s=><li><a class="link" href={s.href}>{s.title}</a><p>{s.detail}</p></li>)}</ul>
   </section>:null}
   <section class="info stack assistant" aria-labelledby="asistent-rychle"><h2 class="info__title" id="asistent-rychle">Rýchle otázky</h2>
-    <p>Odpoveď z údajov aplikácie bez odoslania otázky do AI.</p>
+    <p>Odpoveď z údajov aplikácie bez odoslania otázky do softvéru.</p>
     <ul class="assistant__topics">{Object.entries(ASSISTANT_TOPICS).filter(([k])=>k!=='expert').map(([k,label])=><li><a class="btn btn--line" href={`${base}?tema=${k}${document?`&doklad=${document}`:''}#odpoved`}>{label}</a></li>)}</ul>
   </section>
   {!team?<section class="info stack assistant"><h2 class="info__title">Potrebuje to odbornú odpoveď?</h2>
@@ -47,7 +47,7 @@ export const AssistantPage:FC<{company:{id:string;name:string};base:string;conte
 </>
 
 export const AssistantControl:FC<{control:Awaited<ReturnType<typeof assistantControl>>;error?:string;flash?:boolean}>=({control,error,flash})=><>
-  <header class="phead"><Heading first="Prevádzka asistenta" /><p class="phead__lead">Riadenie cloudových otázok. Rýchle otázky z údajov aplikácie fungujú aj pri vypnutí AI.</p></header>
+  <header class="phead"><Heading first="Prevádzka asistenta" /><p class="phead__lead">Riadenie cloudových otázok. Rýchle otázky z údajov aplikácie fungujú aj pri vypnutí softvéru.</p></header>
   <section class="info stack assistant"><h2 class="info__title">Cloudové otázky sú {control.enabled?'zapnuté':'vypnuté'}</h2>
     {flash?<p class="notice" role="status">Nastavenie bolo uložené.</p>:null}{error?<p class="notice notice--error" role="alert">{error}</p>:null}
     <p>Dnes rezervované volania: {control.calls} z {ASSISTANT.globalDaily}. Rozpracované: {control.pending}. Nepotvrdené výsledky: {control.failed}.</p>
