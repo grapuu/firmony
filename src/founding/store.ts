@@ -355,21 +355,23 @@ export interface FoundingCheck {
   byName: string | null
 }
 
-export async function checksOf(db: D1Database, id: string, since = 0): Promise<FoundingCheck[]> {
+export async function checksOf(db: D1Database, id: string, sinceRow = 0): Promise<FoundingCheck[]> {
   const rows = await db
-    .prepare('SELECT k.kind, k.result, k.note, k.at, u.name AS by_name FROM founding_checks k LEFT JOIN users u ON u.id = k.by WHERE k.founding_id = ? AND k.at >= ? ORDER BY k.at, k.rowid')
-    .bind(id, since)
+    .prepare('SELECT k.kind, k.result, k.note, k.at, u.name AS by_name FROM founding_checks k LEFT JOIN users u ON u.id = k.by WHERE k.founding_id = ? AND k.rowid > ? ORDER BY k.rowid')
+    .bind(id, sinceRow)
     .all<{ kind: CheckKind; result: 'clear' | 'problem'; note: string; at: number; by_name: string | null }>()
   return (rows.results ?? []).map((r) => ({ kind: r.kind, result: r.result, note: r.note, at: Number(r.at), byName: r.by_name }))
 }
 
 /**
- * When the application was last handed over for checking. A check counts only from then: an application returned to the
- * founder comes back with data, a document or a signature the checks before never saw.
+ * The row after which a check counts: the last handover's own row. Rowids order the handover and the checks
+ * exactly, where a second-granular timestamp cannot tell a check recorded in the same second from one that came
+ * before the handover (an application returned to the founder comes back with data, a document or a signature the
+ * checks before never saw).
  */
 export async function handedOverAt(db: D1Database, id: string): Promise<number> {
-  const row = await db.prepare("SELECT MAX(at) AS at FROM founding_events WHERE founding_id = ? AND action = 'moved' AND status = 'verifying'").bind(id).first<{ at: number | null }>()
-  return Number(row?.at ?? 0)
+  const row = await db.prepare("SELECT MAX(rowid) AS row FROM founding_events WHERE founding_id = ? AND action = 'moved' AND status = 'verifying'").bind(id).first<{ row: number | null }>()
+  return Number(row?.row ?? 0)
 }
 
 /** The latest check of each kind: what counts now. */
