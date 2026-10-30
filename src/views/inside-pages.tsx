@@ -363,7 +363,7 @@ const MoneyCard: FC<{ view: MoneyView }> = ({ view }) => {
       ) : ask.known ? (
         <div class="money__answer money__answer--bad">
           {ask.immediate ? <p>{m.ask.short(ask.shortCents)}</p> : <p>{m.ask.notNow}</p>}
-          {ask.uncovered.length > 0 ? <p>{m.ask.first(ask.uncovered[0].label)}</p> : null}
+          {ask.uncovered.length > 0 ? <p>{m.ask.first(ask.uncovered[0]!.label)}</p> : null}
         </div>
       ) : (
         <p class="money__answer money__answer--none">{m.ask.noBalance}</p>
