@@ -35,6 +35,9 @@ export function planFor(docs: number, vatPayer: boolean): Plan | null {
 /** Twelve unchanged monthly scopes plus the annual closing; payroll remains separately visible. */
 export const annualPlanCents = (plan: Plan, people = 0) => (plan.price + people * PAYROLL_PRICE) * 1200 + CLOSING_PRICE * 100
 
+/** The first year's honest sum: the first month is free, so eleven monthly scopes plus one annual closing. */
+export const firstYearPlanCents = (plan: Plan, people = 0) => (plan.price + people * PAYROLL_PRICE) * 1100 + CLOSING_PRICE * 100
+
 export function compare(input: CalcInput): CalcResult {
   const todayYear = (input.monthly + input.docs * input.perDoc) * 12 + input.closing
   if (todayYear <= 0) return { kind: 'empty' }

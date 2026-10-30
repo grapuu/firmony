@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { MONY } from '../assistant/mony'
-import { annualPlanCents, type CalcResult } from '../calc'
+import { firstYearPlanCents, type CalcResult } from '../calc'
 import { SRO_PATH } from '../content/sro-calc'
 import { SZCO_PATH } from '../content/szco-calc'
 import { WAGE_PATH } from '../content/wage-calc'
@@ -425,7 +425,7 @@ const Pricing: FC<{ carry: Carry }> = ({ carry }) => (
                   <span class="plan__per">{copy.pricing.perMonth}</span>
                 </p>
                 <p class="plan__annual" data-plan-year={plan.id}>
-                  {copy.pricing.annual}: <strong>{formatEur(annualPlanCents(plan))}</strong>
+                  {copy.pricing.annual}: <strong>{formatEur(firstYearPlanCents(plan))}</strong>
                 </p>
               </div>
               <a class={`btn ${lead ? 'btn--blue' : 'btn--line'} plan__cta`} href={withCarry('/zacat', carry, { balik: plan.id })}>

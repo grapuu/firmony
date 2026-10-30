@@ -64,3 +64,99 @@ Zdroje kontaktov: dopytovník na webe, Mony logy (kto sa čo pýta), zakladateľ
 - **Nové požiadavky:** zaradíme do zoznamu a otestujeme rovnakým spôsobom, kým nič nepostavíme.
 
 Rozhovory robí zakladateľ (alebo ním poverený človek), nie agent; tón je zvedavý, nie predajný.
+
+## E-maily na oslovenie (pripravené šablóny, 30. 10. 2026)
+
+Posiela ich zakladateľ zo svojej adresy. Predmet je konkrétny, sľubuje 20 minút a poďakovanie — nie predaj.
+Kalendárový odkaz vložte samostatne, nikdy nie cez skracovač.
+
+### 1. Existujúci klient (pozvaný na rozhovor o novej funkcii)
+
+Predmet: 20 minút o Peniazoch vopred — Vaše oči rozhodnú
+
+Dobrý deň,
+
+v aplikácii Vám pribudla karta „Peniaze vopred“ — čo Vám má prísť, čo odísť a či po výplate ostane
+na záväzky. Postavili sme ju podľa toho, čo sme si mysleli, že podnikateľ potrebuje. Ale pravdu vieme
+len od Vás.
+
+Hľadám 20 minút tento alebo budúci týždeň. Ukážem Vám kartu, Vy mi poviete, či Vám sedí a čo jej
+chýba. Žiadny predaj, žiadna prezentácia — poďakovanie za čas Vám príde v podobe jedného mesiaca
+služby zadarmo.
+
+Termín si vyberiete tu: [odkaz na kalendár]
+
+Ďakujem a teším sa.
+
+[meno zakladateľa], Firmony
+
+### 2. Podnikateľ, ktorý Firmony nepoužíva (cez odporúčanie alebo komunitu)
+
+Predmet: 20 minút, ktoré zmenia, čo čakáte od účtovníctva
+
+Dobrý deň,
+
+som [meno] z Firmony — online účtovnej firmy pre malé s. r. o. Staviame prehľad, ktorý podnikateľovi
+povie na jednej obrazovke, koľko si môže tento mesiac vyplatiť, bez tabuliek a bez čakania na
+účtovníčku.
+
+Kým do toho investujeme ďalej, potrebujem si to overiť s ľuďmi, ktorí to riešia v skutočnej firme —
+preto píšem Vám. Stačí 20 minút rozhovoru: ukážem Vám obrazovku, Vy mi poviete, či by ste ju
+použili. Nič nepredávam; za Váš čas Vám pošlem poukážku [XY € / odmenu].
+
+Termín: [odkaz na kalendár]
+
+Ďakujem.
+
+[meno zakladateľa], Firmony
+
+### 3. Klient, ktorý od konkurencie odišiel
+
+Predmet: Prečo ste menili účtovníka? 20 minút, ktoré Firmony zlepšia
+
+Dobrý deň,
+
+nedávno ste menili účtovnú firmu. Pre nás je to najcennejšia informácia, akú môžeme dostať: čo Vás
+k zmene prinútilo a čo Vám chýbalo predtým, aj teraz.
+
+Prosím o 20 minút rozhovoru. Žiadne presviedčanie — len počúvam, aby sme nestavali to isté, čo
+Vás už raz odohnalo. Za čas Vám pošlem [XY € / odmenu].
+
+Termín: [odkaz na kalendár]
+
+Ďakujem.
+
+[meno zakladateľa], Firmony
+
+### 4. Deň pred rozhovorom (pripomienka)
+
+Predmet: Zajtra o [čas] — 20 minút o Firmony
+
+Dobrý deň,
+
+len pripomínam zajtrajšie stretnutie o [čas] na [odkaz]. Nič si nepripravujte — pýtam sa ja a žiadna
+odpoveď nie je zlá. Ak Vám to nevychádza, pokojne presuňte na iný čas.
+
+Ďakujem.
+
+[meno zakladateľa]
+
+### 5. Po rozhovore (poďakovanie)
+
+Predmet: Ďakujem za Vašich 20 minút
+
+Dobrý deň,
+
+ďakujem za rozhovor a za úprimnosť. Posielam sľúbené [odmenu]. Vaše postrehy idú priamo do toho,
+čo ďalej staviame — keď bude hotové, dám Vám vedieť ako prvému/prvej.
+
+Ďakujem.
+
+[meno zakladateľa], Firmony
+
+### Praktické poznámky k oslovovaniu
+
+- Maximálne 1 pripomienka; bez odpovede na ňu kontakt nechajte tak, neotravujte tretíkrát.
+- Odmena musí byť úmerná času (poukážka, mesiac zadarmo), nikdy nie podmienená pochvalou.
+- Zápis robte hneď po rozhovore do šablóny z časti „Čo si zapísať“; citácie doslova.
+- Z rozhovorov s cudzími ľuďmi neukladajte nič identifikujúce do aplikácie — len čísla testov.

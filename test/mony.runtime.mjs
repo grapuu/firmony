@@ -89,6 +89,36 @@ export async function checkMony({ mf, db, site, mony, provider, nowS }) {
   check('mony: the data answer is metered as one, with its topic', readDetail.data === true && readDetail.topic === 'money' && typeof readDetail.routerIn === 'number')
   await db.prepare("UPDATE companies SET contract_at = NULL, terms_version = NULL WHERE id = 'co-mony'").run()
 
+  // Mony READ: a question that names an invoice is answered from the evidence itself; what comes in and what goes
+  // out is listed from the same data as the home page's money view.
+  await db.prepare("UPDATE companies SET contract_at = ? WHERE id = 'co-mony'").bind(nowS).run()
+  const todayS = new Date(nowS * 1000)
+  const ymd = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+  const todayDay = ymd(todayS)
+  const dueDay = ymd(new Date(nowS * 1000 + 12 * 86_400_000))
+  await db
+    .prepare("INSERT INTO invoices (id, company_id, created_at, status, year, seq, number, customer_name, issued_on, delivered_on, due_on, base_cents, vat_cents, total_cents, token) VALUES ('i-mony-1', 'co-mony', ?, 'issued', 2026, 1, '2026999', 'TEST-ONLY Odberateľ', ?, ?, ?, 10000, 0, 10000, 'tok-mony-1')")
+    .bind(nowS, todayDay, todayDay, dueDay)
+    .run()
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Kedy mi príde platba za faktúru 2026999?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a named invoice is answered from the evidence, with its day and sum', res.status === 200 && text.includes('2026999') && text.includes('je splatná') && text.includes('100,00') && !text.includes('nevidíme'), `${res.status} ${text.slice(0, 120)}`)
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Kedy mi príde platba?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: the unpaid issued invoices come listed as the money to arrive', res.status === 200 && text.includes('čakáme tieto úhrady') && text.includes('2026999'), `${res.status} ${text.slice(0, 120)}`)
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Kedy mi príde platba za faktúru 2026888?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a number that is not in the evidence is said so, with no invented date', res.status === 200 && text.includes('nevidíme') && !text.includes('je splatná'), `${res.status} ${text.slice(0, 120)}`)
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Kedy mám zaplatiť DPH?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a question about what goes out lists the known dues', res.status === 200 && (text.includes('platby von') || text.includes('nie je známa žiadna platba von')), `${res.status} ${text.slice(0, 120)}`)
+  await db.prepare("DELETE FROM invoices WHERE id = 'i-mony-1'").run()
+  await db.prepare("UPDATE companies SET contract_at = NULL WHERE id = 'co-mony'").run()
+
   // The team, each with its own knowledge, and only with its passkey.
   mony.pick = ['DPH']
   res = await ask(accountant, { question: 'Ako podám DPH?', page: '/ucto/terminy', history: [] })

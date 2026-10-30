@@ -1,5 +1,24 @@
 # Firmony: progress of the continuation
 
+## Druhá vlna (Cline, 30. október 2026 CEST)
+
+Nasadené priamo na main a overené produkčnou verifikáciou:
+
+- **Peniaze vopred aj pre tím:** stránka klienta (`/ucto/klienti/:id`) zobrazuje rovnakú kartu peňazí ako klient
+  na svojom domove (rovnaké funkcie `moneyView`/`moneyOutgoings`, nikdy iná suma); formulár „Koľko si môžete
+  vyplatiť?“ je na tímovej strane skrytý, účtovníčka číta čísla bez klientovho formulára. Karta na domove klienta
+  navyše dostala **rozklikávací zoznam očakávaných platieb** po položkách (deň, suma, čo to je).
+- **Mony READ: otázky o faktúrach.** Otázka s číslom faktúry odpovedá splatnosťou a sumou priamo z evidencie;
+  číslo, ktoré v evidencii nie je, sa povie, bez vymysleného dátumu. „Kedy mi príde platba?“ vypíše nezaplatené
+  vystavené faktúry, „čo odíde / kedy zaplatiť“ známe záväzky. Všetko píše kód Firmy z dát firmy, model vidí len
+  text otázky (klasifikácia); téma `money` v prompte klasifikátora rozšírená o príchod platieb.
+- **Cenník poctivo:** karta balíka ukazuje „Prvý rok so závierkou“ = 11 mesiacov + závierka (prvý mesiac je
+  zadarmo), doplnené, že ďalší rok je 12 mesiacov. `firstYearPlanCents` v `src/calc.ts`.
+- **Rýchlosť:** `public/_headers` — fonty 30 dní, obrázky 7 dní, CSS/JS (hashované `?v=`) ročne immutable.
+  Zvyšok (preload fontov, `font-display: swap`, rozmery, `srcset`, lazy) už bol v poriadku.
+- **Zákaznícke rozhovory:** do sprievodcu pribudlo 5 hotových e-mailových šablón (pozvánka pre klienta,
+  neklienta a odídenca, pripomienka, poďakovanie) a pravidlá oslovovania.
+
 ## Overenie v CI a oprava založenia: celá sada zelená (Cline, 30. október 2026 CEST)
 
 CI na vetve `cline/audit-final` (PR #31) **celá zelená**: `check`, 1 768 unit, Peppol, **2 739 runtime** a

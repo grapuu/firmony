@@ -275,10 +275,10 @@ check('the canonical address is the domain', page.includes('<link rel="canonical
 check('the real domain is for search engines', res.headers.get('x-robots-tag') === null)
 const calcResultPart = (html) => html.slice(html.indexOf('class="calc__result"'), html.indexOf('</section>', html.indexOf('class="calc__result"')))
 check('the comparison waits for visitor inputs instead of advertising an invented saving', calcResultPart(page).includes('Zadajte svoje náklady') && !calcResultPart(page).includes('calc__line') && !page.includes(`811${NB}€`))
-check('every plan shows twelve monthly scopes plus the real annual closing before its choice', ['start','rast','firma'].every((id, i) => {
+check('every plan shows the honest first year with the free month and the real annual closing before its choice', ['start','rast','firma'].every((id, i) => {
   const part = page.match(new RegExp(`data-plan-year="${id}"[^>]*>(.*?)</p>`))?.[1] ?? ''
-  return part.includes([`1${NB}317${NB}€`, `2${NB}277${NB}€`, `4${NB}197${NB}€`][i])
-}) && page.includes('Ročný súčet počíta') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Mzdy a individuálne dohodnuté práce'))
+  return part.includes([`1${NB}228${NB}€`, `2${NB}108${NB}€`, `3${NB}868${NB}€`][i])
+}) && page.includes('Prvý rok počíta') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Mzdy a individuálne dohodnuté práce'))
 check('the sales page explains its nonbinding first step and links terms and privacy beside pricing', page.includes('Zatiaľ nič neobjednávate') && page.includes('pred uzavretím zmluvy') && page.replace(/[\u00a0\u202f]/g, ' ').includes('Rozsah a zodpovednosť v podmienkach') && page.includes('href="/pravne-informacie#ochrana-udajov"'))
 
 // Public e-invoice claims distinguish an enacted duty from a live delivery integration and its recipient scope.

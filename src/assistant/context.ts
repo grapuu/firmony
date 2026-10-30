@@ -3,12 +3,13 @@ import { amlToday } from '../aml/retention'
 import { autoReviewedSql } from '../aml/auto-review-model'
 import { MISSING, getDocument, type Company } from '../app/store'
 import { clientDeadlines } from '../app/deadlines'
-import { dayName, plural } from '../app/copy'
+import { dayName, dayShort, plural } from '../app/copy'
 import { companyDeadlines } from '../team/deadlines-store'
 import { billRows, tariffForClient } from '../team/billing-store'
 import { managedHandover } from '../migration/store'
 import { formatEurExact } from '../format'
 import { MONEY_DAYS, moneyWindow, type MoneyFacts } from '../app/money'
+import { addDays } from '../app/ending'
 import { moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
 import { assistantAllowed, type AssistantScope } from './store'
 import { ASSISTANT_TOPICS, type AssistantAnswer, type AssistantTopic } from './model'
@@ -27,7 +28,7 @@ export async function assistantDocuments(db:D1Database,s:AssistantScope,selected
 }
 
 /** All values and links are read by Firmony. The external model receives none of this context. */
-export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Company,topic:AssistantTopic,document=''):Promise<AssistantAnswer|null> {
+export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Company,topic:AssistantTopic,document='',question=''):Promise<AssistantAnswer|null> {
   if(company.id!==s.company||!await assistantAllowed(db,s))return null
   const team=s.side==='team',root=team?`/ucto/klienti/${company.id}`:'/app'
   const answer:AssistantAnswer={topic,title:ASSISTANT_TOPICS[topic],paragraphs:[],sources:[],at:now()}
@@ -98,7 +99,9 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
       source('Zmluva a faktúry','Overte si rozsah, dohodnuté podmienky a skutočné vyúčtovanie.',team?root:'/app/firma#faktury-firmony')
     }
   } else if (topic === 'money') {
-    // The same computation as the home page's money view, so the assistant can never disagree with it.
+    // The same computation as the home page's money view, so the assistant can never disagree with it. A question
+    // that names an invoice or asks what comes or goes gets the specific answer first; the payout question keeps
+    // the summary. All of it is written from the company's data by Firmony's code, never by the model.
     const day = amlToday()
     const [balance, issued, received, dues] = await Promise.all([
       db.prepare('SELECT SUM(balance_cents) AS cents, MAX(balance_on) AS on_day FROM accounts WHERE company_id = ? AND balance_cents IS NOT NULL').bind(company.id).first<{ cents: number | null; on_day: string | null }>(),
@@ -115,7 +118,34 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
       outgoing: moneyOutgoings(dues, bills, received),
     }
     const w = moneyWindow(facts, MONEY_DAYS)
-    if (w.reserveCents === null) {
+    const upTo = addDays(day, MONEY_DAYS)
+    const dueIn = facts.incoming.filter((i) => i.day >= day && i.day < upTo)
+    const dueOut = facts.outgoing.filter((o) => o.day >= day && o.day < upTo)
+    // A question that names an invoice: its number is a run of digits the person typed, matched in the evidence.
+    const named = /fakt[úu]r/i.test(question) ? (question.match(/\d{4,}/g) ?? []) : []
+    const hit = named.map((n) => facts.incoming.find((i) => i.label.includes(n))).find((i) => i !== undefined)
+    if (hit) {
+      answer.paragraphs.push(
+        `${hit.label} je splatná ${dayName(hit.day, day)} na ${formatEurExact(hit.cents)}.`,
+        hit.day >= day
+          ? `Od ${dayShort(hit.day)} s ňou počíta prehľad Peniaze vopred.`
+          : 'Dátum splatnosti už prešiel; do prehľadu sa vráti s úhradou.',
+      )
+      source('Vystavená faktúra', 'Splatnosť a suma z evidencie faktúr.', '/app/faktury')
+    } else if (named.length > 0) {
+      answer.paragraphs.push('Faktúru s týmto číslom medzi nezaplatenými vystavenými faktúrami nevidíme. Skontrolujte číslo; zaplatené a zrušené faktúry potvrdí účtovníčka.')
+      source('Faktúry', 'Vystavené faktúry a ich úhrady.', '/app/faktury')
+    } else if (/kedy.*príde|príde.*kedy|kedy.*platb|platb.*kedy/i.test(question) && /fakt[úu]r|platb/i.test(question)) {
+      answer.paragraphs.push(dueIn.length ? 'Na najbližších 30 dní čakáme tieto úhrady vystavených faktúr:' : 'Na najbližších 30 dní nečakáme úhradu žiadnej vystavenej faktúry.')
+      for (const i of dueIn.slice(0, 6)) answer.paragraphs.push(`${i.label} - ${dayName(i.day, day)}, ${formatEurExact(i.cents)}`)
+      if (dueIn.length > 6) answer.paragraphs.push('Celý zoznam je na prehľade Peniaze vopred.')
+      source('Peniaze vopred', 'Očakávané úhrady z evidencie faktúr.', '/app')
+    } else if (/čo.*odíde|odíde.*čo|kedy.*zaplatiť|zaplatiť.*kedy|čo.*zaplatiť|zaplatiť.*čo/i.test(question)) {
+      answer.paragraphs.push(dueOut.length ? 'Na najbližších 30 dní sú známe tieto platby von:' : 'Na najbližších 30 dní nie je známa žiadna platba von.')
+      for (const o of dueOut.slice(0, 6)) answer.paragraphs.push(`${o.label} - ${dayName(o.day, day)}, ${formatEurExact(o.cents)}`)
+      if (dueOut.length > 6) answer.paragraphs.push('Celý zoznam je na prehľade Peniaze vopred.')
+      source('Peniaze vopred', 'Známe záväzky z termínov a faktúr.', '/app')
+    } else if (w.reserveCents === null) {
       answer.paragraphs.push('Na to potrebujeme zostatok na účte. Po prepojení banky alebo pridaní výpisu Vám povieme presne, koľko si môžete vyplatiť.', 'Čo Vám príde, čo odíde a známe záväzky nájdete medzitým na prehľade firmy.')
     } else {
       answer.paragraphs.push(`Voľné peniaze na najbližších 30 dní: ${formatEurExact(w.reserveCents)}. Počíta sa zostatok na účte, plus čo očakávame, že príde, mínus známe záväzky.`)

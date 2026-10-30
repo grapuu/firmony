@@ -54,7 +54,7 @@ export async function monyAnswer(c: Context<Env>): Promise<Response> {
   if (audience === 'client' && who?.company) {
     const classified = await classifyQuestion(key, question)
     if (classified && classified.topic !== 'expert') {
-      const answer = await assistantAnswer(db, { company: who.company.id, actor: who.user.id, side: 'client' }, who.company, classified.topic, '')
+      const answer = await assistantAnswer(db, { company: who.company.id, actor: who.user.id, side: 'client' }, who.company, classified.topic, '', question)
       if (answer) {
         await db
           .batch([

@@ -35,7 +35,7 @@ export async function askAssistant(db:D1Database,key:string|undefined,s:Assistan
     topic=result.topic
   }
   if(!topic||!await fresh())return fail(409,'Účet alebo firma sa zmenili. Obnovte stránku.')
-  const answer=await assistantAnswer(db,s,company,topic,document)
+  const answer=await assistantAnswer(db,s,company,topic,document,question)
   if(!answer||!await fresh())return fail(404,'Údaje už nie sú dostupné pre tento účet.')
   return {...base,status:200,answer}
 }

@@ -228,9 +228,11 @@ import { periodOf as analyticsPeriod } from '../analytics/model'
 import { accuracyOf, comparedOf } from './ai-accuracy'
 import { bookingTime, lastMonths, payOf, workCsv, workStatement } from './work-pay'
 import { billingDrafts, billRows, deliverBill, issuable, issueBill, operatorOf, paperTariffStatement, planUsages, REMIND_EVERY, remindMessage } from './billing-store'
+import { moneyView, type MoneyFacts } from '../app/money'
+import { moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
 import { DeadlinesCard, DeadlinesPage, type DueFilter } from '../views/deadlines'
 import { MARKED_KINDS, closingIsOurs } from './deadlines'
-import { companyRegistrations, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
+import { companyRegistrations, companyDeadlines, teamDeadlines, unmarkFilingStatement } from './deadlines-store'
 import { REGISTRATION_EVENTS } from './registrations'
 import {
   docPreview,
@@ -782,12 +784,31 @@ async function clientPage(
       : network?.state === 'missing'
         ? 'E-faktúry: mimo siete Peppol'
         : null
+  // The money view the client sees on its home page: the accountant reads the same figures, never a different sum.
+  const [moneyIssued, moneyReceived, moneyBalance, moneyBills, moneyDues] = await Promise.all([
+    unpaidIssued(db, company.id),
+    unpaidReceived(db, company.id),
+    db
+      .prepare('SELECT SUM(balance_cents) AS cents, MAX(balance_on) AS on_day FROM accounts WHERE company_id = ? AND balance_cents IS NOT NULL')
+      .bind(company.id)
+      .first<{ cents: number | null; on_day: string | null }>(),
+    billRows(db, day, company.id, 24),
+    companyDeadlines(db, company.id, day),
+  ])
+  const moneyFacts: MoneyFacts = {
+    today: day,
+    balanceCents: typeof moneyBalance?.cents === 'number' ? moneyBalance.cents : null,
+    balanceOn: moneyBalance?.on_day ?? null,
+    incoming: moneyIssued,
+    outgoing: moneyOutgoings(moneyDues, moneyBills.filter((b) => b.state !== 'paid'), moneyReceived),
+  }
   return shell(
     c,
     'clients',
     company.name,
     <ClientPage
       peppolLine={peppolLine}
+      money={moneyView(moneyFacts, null, false)}
       usage={usage}
       assistant={await assistantAllowed(db,{company:company.id,actor:who.user.id,side:'team'})}
       user={who.user}

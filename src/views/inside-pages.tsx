@@ -287,8 +287,9 @@ const FirstSteps: FC<{ steps: FirstStepsState; bankReady?: boolean; owner: boole
 }
 
 /** The money view: what is known to come and go in the next 30 days, and whether a payout leaves the known
- *  obligations covered. The numbers are the books' cash view, never profit; the note says it. */
-const MoneyCard: FC<{ view: MoneyView }> = ({ view }) => {
+ *  obligations covered. The numbers are the books' cash view, never profit; the note says it. On the team side
+ *  the interactive payout question is hidden: the accountant reads the same figures without the client's form. */
+export const MoneyCard: FC<{ view: MoneyView; interactive?: boolean }> = ({ view, interactive = true }) => {
   const m = app.home.money
   const w = view.window
   const pill =
@@ -377,41 +378,45 @@ const MoneyCard: FC<{ view: MoneyView }> = ({ view }) => {
           </div>
         </div>
       </details>
-      <form class="money__ask" method="get" action="/app">
-        <label class="money__ask-label" for="vyplatit">
-          {m.ask.title}
-        </label>
-        <p class="money__ask-lead">{m.ask.lead}</p>
-        <div class="money__ask-row">
-          <input
-            class="money__ask-input"
-            id="vyplatit"
-            name="vyplatit"
-            inputmode="decimal"
-            autocomplete="off"
-            placeholder={m.ask.placeholder}
-            value={view.asked !== null ? formatEur(view.asked) : undefined}
-          />
-          <button class="btn btn--blue btn--small" type="submit">
-            {m.ask.button}
-          </button>
-        </div>
-      </form>
-      {view.invalid ? (
-        <p class="money__answer money__answer--bad">{m.ask.invalid}</p>
-      ) : ask === null ? null : ask.ok ? (
-        <p class="money__answer money__answer--ok">
-          <span class="tick tick--green" aria-hidden="true" />
-          {m.ask.ok(ask.reserveCents)}
-        </p>
-      ) : ask.known ? (
-        <div class="money__answer money__answer--bad">
-          {ask.immediate ? <p>{m.ask.short(ask.shortCents)}</p> : <p>{m.ask.notNow}</p>}
-          {ask.uncovered.length > 0 ? <p>{m.ask.first(ask.uncovered[0]!.label)}</p> : null}
-        </div>
-      ) : (
-        <p class="money__answer money__answer--none">{m.ask.noBalance}</p>
-      )}
+      {interactive ? (
+        <>
+          <form class="money__ask" method="get" action="/app">
+            <label class="money__ask-label" for="vyplatit">
+              {m.ask.title}
+            </label>
+            <p class="money__ask-lead">{m.ask.lead}</p>
+            <div class="money__ask-row">
+              <input
+                class="money__ask-input"
+                id="vyplatit"
+                name="vyplatit"
+                inputmode="decimal"
+                autocomplete="off"
+                placeholder={m.ask.placeholder}
+                value={view.asked !== null ? formatEur(view.asked) : undefined}
+              />
+              <button class="btn btn--blue btn--small" type="submit">
+                {m.ask.button}
+              </button>
+            </div>
+          </form>
+          {view.invalid ? (
+            <p class="money__answer money__answer--bad">{m.ask.invalid}</p>
+          ) : ask === null ? null : ask.ok ? (
+            <p class="money__answer money__answer--ok">
+              <span class="tick tick--green" aria-hidden="true" />
+              {m.ask.ok(ask.reserveCents)}
+            </p>
+          ) : ask.known ? (
+            <div class="money__answer money__answer--bad">
+              {ask.immediate ? <p>{m.ask.short(ask.shortCents)}</p> : <p>{m.ask.notNow}</p>}
+              {ask.uncovered.length > 0 ? <p>{m.ask.first(ask.uncovered[0]!.label)}</p> : null}
+            </div>
+          ) : (
+            <p class="money__answer money__answer--none">{m.ask.noBalance}</p>
+          )}
+        </>
+      ) : null}
       <p class="money__note">{m.note}</p>
     </section>
   )

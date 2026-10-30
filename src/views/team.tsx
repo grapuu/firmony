@@ -18,6 +18,8 @@ import { TAX_OFFICES } from '../app/vat-xml'
 import { VatFields, type VatForm } from './vat'
 import { moneyText } from '../app/vat-form'
 import type { Paper, PoaState } from '../app/papers'
+import type { MoneyView } from '../app/money'
+import { MoneyCard } from './inside-pages'
 import type { StatementView } from '../app/statements'
 import type { DeclarationState, Level } from '../app/aml'
 import { addDays, endingOf, type Ending } from '../app/ending'
@@ -374,6 +376,8 @@ export interface ClientPageProps {
   draft?: string
   /** How the client's bank stands, in a line. */
   bankLine?: string | null
+  /** The client's money view as on its home page: the accountant reads the same figures. */
+  money?: MoneyView | null
   /** Whether the client receives e-invoices through Peppol, and through whose postman. */
   peppolLine?: string | null
   /** The month's documents against the plan (team/plan-usage.ts), for the administrators only. */
@@ -760,6 +764,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
       <Flash text={p.flash} />
       <Flash text={p.error} tone="error" />
       <nav class="jump" aria-label={c.name}>
+        <a href="#peniaze">{app.home.money.title}</a>
         <a href="#zauctovat">
           {t.client.toBook} <span class="count count--amber">{p.queue.length}</span>
         </a>
@@ -781,6 +786,7 @@ export const ClientPage: FC<ClientPageProps> = (p) => {
       </nav>
       <div class="pgrid pgrid--wide">
         <div class="pgrid__main">
+          {p.money ? <MoneyCard view={p.money} interactive={false} /> : null}
           <section class="info" id="zauctovat" aria-labelledby="zauctovat-t">
             <h2 id="zauctovat-t" class="info__title">
               {t.client.toBook}
