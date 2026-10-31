@@ -4,7 +4,7 @@ import { SZCO_PATH } from '../content/szco-calc'
 import { SRO_PATH } from '../content/sro-calc'
 import { INVOICE_PATH, TOOLS_PATH, blankInvoice } from '../tools/invoice'
 import { INVOICING_PATH } from '../content/invoicing'
-import { ART, type Art } from '../config'
+import { ART, asset, type Art } from '../config'
 import { Picture, Tile } from './home'
 
 /**
@@ -156,6 +156,6 @@ export const FreeInvoicePage: FC<{ today: string }> = ({ today }) => {
       <h2>Faktúrou sa účtovníctvo nekončí</h2><p>Ak chcete odovzdať aj účtovníctvo, prejdeme s Vami rozsah služby a cenu. Bezplatný nástroj môžete používať aj bez toho.</p>
       <a class="btn btn--blue" href="/zacat">Nezáväzne preveriť moju firmu</a>
     </section>
-    <script src="/free-invoice.js" defer></script>
+    <script src={asset('/free-invoice.js')} defer></script>
   </div>
 }

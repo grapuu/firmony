@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { checkPrehlad } from './prehlad.units.mjs'
 import { checkOverview } from './overview.units.mjs'
 import { checkAssistantUnits } from './assistant.units.mjs'
@@ -7373,4 +7373,16 @@ await checkInvoicePdfUnits()
 checkAnalyticsUnits({ analytics, analyticsRecord, analyticsStore, security, check })
 await checkPeppolNetworkUnits({ peppolParticipant, peppolProvider, peppolStore, xml })
 await (await import('./money.units.mjs')).checkMoneyUnits()
+// Every CSS or JavaScript reference in a view goes through asset(), so a new deploy always fetches the new file
+// (31 October 2026: a reference without the build's version would keep the old file from the cache after a change).
+{
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith('.tsx') ? [`${dir}/${e.name}`] : []))
+  const views = [...walk('src/views'), 'src/index.tsx', 'src/team/routes.tsx'].filter((f) => existsSync(f))
+  for (const file of views) {
+    const text = readFileSync(file, 'utf8')
+    for (const m of text.matchAll(/<(?:link[^>]*href|script[^>]*src)="(\/[A-Za-z0-9._/-]+\.(?:css|js))"/g)) {
+      check(`every asset of ${file} goes through asset(): ${m[1]}`, text.includes(`asset('${m[1]}')`), file)
+    }
+  }
+}
 done('units')

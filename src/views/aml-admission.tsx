@@ -1,3 +1,4 @@
+import { asset } from '../config'
 import { EU_COUNTRIES } from '../aml/enhanced'
 import type { FC } from 'hono/jsx'
 import type { Order } from '../order'
@@ -19,7 +20,7 @@ import type { DossierProposals } from '../aml/proposals'
 export interface IntakeContract { plans: { id: string; name: string; price: number }[]; months: string[]; terms: string }
 
 export const AmlIntakePage: FC<{ order: Order; token: string; view: DossierView | null; values: DeclarationValues; errors?: DeclarationErrors; error?: string; editing?: boolean; contract?: IntakeContract | null; retype?: boolean }> = ({ order, token, view, values, errors = {}, error, editing, contract, retype }) => (
-  <section class="section page"><link rel="stylesheet" href="/inside.css" />
+  <section class="section page"><link rel="stylesheet" href={asset('/inside.css')} />
     <div class="wrap reading page__inner">
       <h1 class="h1">Overenie pred začatím spolupráce</h1>
       <p class="lead">{order.company}. Pred uzavretím zmluvy potrebujeme overiť, kto za firmu koná a kto je jej konečným užívateľom výhod.</p>
