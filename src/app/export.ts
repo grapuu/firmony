@@ -15,7 +15,7 @@ import type { Exempt } from './match'
 import { bratislava } from './remind'
 import { generalLedgerCsv, journalCsv, saldoCsv, trialBalance, trialCsv } from './ledger'
 import { booksOf } from './ledger-store'
-import { DOC_COLUMNS, DOC_FROM, booksFromSql, docOf, type Company, type Doc } from './store'
+import { DOC_COLUMNS, DOC_FROM, PAID_EUR_SQL, REMAINING_SQL, booksFromSql, docOf, type Company, type Doc } from './store'
 import { handoverData } from './handover-data'
 import { fileHash } from './read'
 
@@ -181,12 +181,13 @@ export async function exportYear(
         // Paid by the bank, or in cash by a cash document of the cash box (its day and its amount), or a day's takings of
         // a till, paid at the till on its day.
         `SELECT ${DOC_COLUMNS},
-           COALESCE(p.booked_on, (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1),
-             CASE WHEN d.source = 'takings' THEN d.issued_on END) AS export_paid_on,
-           COALESCE(p.amount_cents, (SELECT json_extract(ce.lines, '$[0].cents') * (CASE WHEN d.kind = 'invoice_out' THEN 1 ELSE -1 END)
+           CASE WHEN ${REMAINING_SQL} <= 0 THEN COALESCE((SELECT MAX(p.booked_on) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id),
+             (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1),
+             CASE WHEN d.source = 'takings' THEN d.issued_on END) END AS export_paid_on,
+           COALESCE(NULLIF(${PAID_EUR_SQL}, 0), (SELECT json_extract(ce.lines, '$[0].cents') * (CASE WHEN d.kind = 'invoice_out' THEN 1 ELSE -1 END)
              FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1),
              CASE WHEN d.source = 'takings' THEN d.total_cents END) AS paid_cents
-         FROM ${DOC_FROM} LEFT JOIN payments p ON p.id = l.payment_id
+         FROM ${DOC_FROM}
          WHERE d.company_id = ? AND d.deleted_at IS NULL AND substr(COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), 1, 4) = ?
          ORDER BY COALESCE(d.issued_on, date(d.created_at, 'unixepoch')), d.created_at`,
       )

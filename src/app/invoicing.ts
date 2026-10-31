@@ -322,7 +322,7 @@ export async function customersOf(db: D1Database, company: string): Promise<Cust
   const rows = await db
     .prepare(
       `SELECT i.id, i.customer_name, i.customer_ico, i.customer_address, i.issued_on, i.kind, i.total_cents, i.currency, i.fx_rate, i.hand_paid_on, i.corrects,
-         EXISTS (SELECT 1 FROM links l WHERE l.document_id = i.document_id) AS linked
+         CASE WHEN COALESCE(i.total_cents, 0) - COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents))) FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id AND p.currency = 'EUR'), 0) <= 0 THEN 1 ELSE 0 END AS linked
        FROM invoices i WHERE i.company_id = ? AND i.status = 'issued' AND i.kind IN ('invoice', 'credit')
        ORDER BY i.issued_on DESC, i.seq DESC LIMIT 5000`,
     )
