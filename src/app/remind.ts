@@ -149,7 +149,9 @@ export async function remindApprovals(env: AppBindings, ms: number, origin: stri
   if (b.hour !== 9 || b.minute >= 15 || !isWorkingDay(b.day)) return 0
   const db = env.DB
   const waiting = `d.company_id = c.id AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.approved_at IS NULL
-    AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.paid_privately = 0 AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
+    AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.paid_privately = 0
+    AND COALESCE(d.due_cents, d.total_cents) > COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
+        WHERE l.document_id = d.id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)
     AND NOT ${CASH_PAID} AND ${PAYABLE_DOC}`
   const companies = await db
     .prepare(

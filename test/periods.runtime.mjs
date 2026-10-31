@@ -8,8 +8,11 @@ import {
   lockHistory,
   dataRevision,
   companyOf,
+  getDocument,
+  listDocuments,
   importEntries,
   linkStatement,
+  unlinkOneStatement,
   matchCompany,
   exportYear,
   exportYears,
@@ -427,4 +430,31 @@ export async function checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, toda
       (await files.head(newObject)) === null &&
       (await db.prepare("SELECT COUNT(*) AS n FROM documents WHERE company_id = 'co-lock-upload'").first()).n === 1,
   )
+  // Instalments (31 October 2026): one document, several payments; nothing pays it past its amount; one pair removed
+  // leaves the rest paired; the list holds the document once.
+  await db
+    .prepare(
+      "INSERT INTO documents (id, company_id, created_at, source, status, kind, issued_on, due_on, total_cents, category, party, number) VALUES ('dl-splatky', 'co-lock', ?, 'upload', 'read', 'invoice_in', ?, ?, 10000, 'services', 'TEST-ONLY Dodávateľ', 'SP-1')",
+    )
+    .bind(nowS, today, today)
+    .run()
+  const inPay = (id, cents) =>
+    db
+      .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES (?, 'co-lock', 'al-lock', ?, ?, ?, 'TEST-ONLY Dodávateľ', ?)")
+      .bind(id, nowS, today, cents, `ref-${id}`)
+      .run()
+  await inPay('sp-1', -4000)
+  await inPay('sp-2', -3500)
+  await inPay('sp-3', -3000)
+  const first = await linkStatement(db, 'co-lock', 'sp-1', 'dl-splatky', 'client', null).run()
+  const second = await linkStatement(db, 'co-lock', 'sp-2', 'dl-splatky', 'client', null).run()
+  const third = await linkStatement(db, 'co-lock', 'sp-3', 'dl-splatky', 'client', null).run()
+  const list = await db.prepare("SELECT COUNT(*) AS n FROM links WHERE document_id = 'dl-splatky'").first()
+  check('a second instalment pairs with the same document, a third that would pay past its amount does not', first.meta.changes === 1 && second.meta.changes === 1 && third.meta.changes === 0 && list.n === 2, JSON.stringify([first.meta, second.meta, third.meta]))
+  const instalDoc = await getDocument(db, 'co-lock', 'dl-splatky')
+  check('the document knows both payments, their sum and the last day', instalDoc?.paidCents === 7500 && instalDoc?.paidParts?.length === 2 && instalDoc?.paidOn === today, JSON.stringify(instalDoc))
+  check('the document list holds it once, with both payments counted', (await listDocuments(db, 'co-lock')).filter((d) => d.id === 'dl-splatky').length === 1)
+  await unlinkOneStatement(db, 'co-lock', 'dl-splatky', 'sp-1').run()
+  const afterUnlink = await getDocument(db, 'co-lock', 'dl-splatky')
+  check('removing one pair keeps the other instalment paired', (await db.prepare("SELECT COUNT(*) AS n FROM links WHERE document_id = 'dl-splatky'").first()).n === 1 && afterUnlink?.paidCents === 3500)
 }

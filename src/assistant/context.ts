@@ -81,7 +81,9 @@ export async function actionAnswer(
           .prepare(
             `SELECT i.id, i.number, i.customer_name FROM invoices i WHERE i.company_id = ? AND i.status = 'issued' AND i.kind = 'invoice'
                AND i.due_on IS NOT NULL AND i.due_on < ? AND (${named.slice(0, 4).map(() => "i.number LIKE '%' || ? || '%'").join(' OR ')})
-               AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = i.document_id) ORDER BY i.due_on LIMIT 1`,
+               AND COALESCE(i.due_cents, i.total_cents) > COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
+                   WHERE l.document_id = i.document_id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)
+               ORDER BY i.due_on LIMIT 1`,
           )
           .bind(company.id, day, ...named.slice(0, 4))
           .first<{ id: string; number: string; customer_name: string | null }>()

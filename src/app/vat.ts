@@ -202,6 +202,8 @@ export interface VatDoc {
   paidOn?: string | null
   /** What that payment paid of it, when it paid it alone (in euros); null while it paid it whole. */
   paidCents?: number | null
+  /** The invoice's euro payments that pay it alone, each with its day and amount: instalments count each by its day. */
+  paidParts?: { on: string; cents: number }[] | null
   /**
    * A received invoice of which a credit or a balance was set off: what was left to pay (documents.due_cents). The rest
    * was settled on the day of issue and is never "not paid" under § 53b; null when the whole total was to be paid.
@@ -589,8 +591,18 @@ export function unpaidEvents(doc: VatDoc, data: VatData, company: VatCompany, fi
   const paid = doc.paidOn ?? null
   // A set-off (a credit or a balance the supplier counted against it) settled that part on the day of issue.
   const setOff = typeof doc.dueCents === 'number' && doc.totalCents !== null && doc.dueCents < doc.totalCents ? Math.min(gross, Math.max(0, doc.totalCents - doc.dueCents)) : 0
-  const paidCents = paid === null ? 0 : Math.max(0, doc.paidCents ?? gross - setOff)
-  const owed = gross - setOff - (paid !== null && paid < day101 ? Math.min(paidCents, gross - setOff) : 0)
+  // Instalments (31 October 2026): each payment that pays the invoice alone counts by its own day; what came before
+  // the 101st day lowers what is owed on it, what comes after gives its share back in its own period (§ 53b(4)(a):
+  // "v tom zdaňovacom období, v ktorom došlo k úplnému alebo čiastočnému zaplateniu"). A document without parts
+  // (an older closed slip) counts its one payment whole.
+  const parts = (doc.paidParts && doc.paidParts.length > 0
+    ? doc.paidParts
+    : doc.paidOn !== null && doc.paidOn !== undefined
+      ? [{ on: doc.paidOn, cents: Math.max(0, doc.paidCents ?? gross - setOff) }]
+      : []
+  ).slice().sort((a, b) => a.on.localeCompare(b.on))
+  const paidBefore101 = parts.filter((p) => p.on < day101).reduce((s, p) => s + p.cents, 0)
+  const owed = gross - setOff - Math.min(paidBefore101, gross - setOff)
   if (owed <= 0) return []
   const corrected = shareOfLines(owedLines, owed, gross)
   if (deductOfLines(corrected) <= 0) return []
@@ -627,10 +639,14 @@ export function unpaidEvents(doc: VatDoc, data: VatData, company: VatCompany, fi
     left = lessLines(left, back)
     owedNow -= grossOfLines([...lowers.values()])
   }
-  // The payment after the 101st day gives back the share of what is left that it pays.
-  if (paid !== null && paid >= day101 && deductOfLines(left) > 0) {
-    const back = owedNow <= 0 ? left : shareOfLines(left, paidCents, owedNow)
-    if (deductOfLines(back) > 0) events.push({ kind: 'back', period: notBefore(periodOf(paid, quarterly)), on: paid > correct.on ? paid : correct.on, lines: back })
+  // Each payment after the 101st day gives back the share of what is left that it pays, in its own period (§ 53b(4)(a)).
+  for (const p of parts) {
+    if (p.on < day101 || deductOfLines(left) <= 0) continue
+    const back = owedNow <= 0 ? left : shareOfLines(left, Math.min(p.cents, owedNow), owedNow)
+    if (deductOfLines(back) <= 0) continue
+    events.push({ kind: 'back', period: notBefore(periodOf(p.on, quarterly)), on: p.on > correct.on ? p.on : correct.on, lines: back })
+    left = lessLines(left, back)
+    owedNow = Math.max(0, owedNow - p.cents)
   }
   return events
 }

@@ -1634,6 +1634,23 @@ const MIGRATIONS: readonly string[][] = [
   // odpočítateľná položka from 1 January 2027 (Act No. 158/2026 Z. z., § 138a and § 227a, read in the original at
   // static.slov-lex.sk on 31 October 2026): the leave the relationship is on, 'none' without one.
   ["ALTER TABLE employees ADD COLUMN leave_kind TEXT NOT NULL DEFAULT 'none'"],
+  // 92: a document paid in instalments (31 October 2026): more payments may pair with one document. `links` is
+  // recreated without the document's primary key (its data kept whole); each pair stays one row.
+  [
+    `CREATE TABLE IF NOT EXISTS links_installments (
+      document_id TEXT NOT NULL,
+      payment_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      how TEXT NOT NULL,
+      by TEXT,
+      created_at INTEGER NOT NULL
+    )`,
+    'INSERT INTO links_installments (document_id, payment_id, company_id, how, by, created_at) SELECT document_id, payment_id, company_id, how, by, created_at FROM links',
+    'DROP TABLE links',
+    'ALTER TABLE links_installments RENAME TO links',
+    'CREATE INDEX IF NOT EXISTS links_document ON links (document_id)',
+    'CREATE INDEX IF NOT EXISTS links_payment ON links (payment_id)',
+  ],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

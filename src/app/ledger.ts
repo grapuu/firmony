@@ -679,7 +679,11 @@ export function buildBooks(input: LedgerInput): Books {
   // Each payment's documents, and the part of the payment that settles each (in the order of their days; the last
   // takes what is left, so the parts always make the payment).
   const docsOf = new Map<string, Doc[]>()
-  for (const d of input.docs) if (d.paymentId) docsOf.set(d.paymentId, [...(docsOf.get(d.paymentId) ?? []), d])
+  for (const d of input.docs) {
+    // A document paid in instalments names every payment of it; an older one its single link (31 October 2026).
+    const ids = d.paidParts && d.paidParts.length > 0 ? d.paidParts.map((p) => p.id) : d.paymentId ? [d.paymentId] : []
+    for (const id of ids) docsOf.set(id, [...(docsOf.get(id) ?? []), d])
+  }
   const rates: Rates = input.rates ?? new Map()
   // Each payment in euros: one of a foreign currency account at the ECB's rate of the day before it (§ 24 of the Act on
   // Accounting); null when no rate is kept for it.
@@ -717,7 +721,7 @@ export function buildBooks(input: LedgerInput): Books {
     let left = euros
     accounting.forEach((d, i) => {
       const share = i === accounting.length - 1 ? left : (plans.get(d.id)?.expected ?? 0)
-      shareOf.set(d.id, share)
+      shareOf.set(`${paymentId}:${d.id}`, share)
       left -= share
     })
   }
@@ -808,7 +812,7 @@ export function buildBooks(input: LedgerInput): Books {
     const item = items.get(docId)
     const doc = docById.get(docId)
     if (!item || !doc) continue
-    const payDay = doc.paymentId ? (payments.get(doc.paymentId)?.bookedOn ?? null) : null
+    const payDay = doc.paidOn ?? (doc.paymentId ? (payments.get(doc.paymentId)?.bookedOn ?? null) : null)
     let carrying = item.total
     for (let y = Number(item.on.slice(0, 4)); y <= lastRateYear; y++) {
       const end = `${y}-12-31`
@@ -836,6 +840,21 @@ export function buildBooks(input: LedgerInput): Books {
   }
   for (const [y, lines] of revalued) entries.push({ key: `fx:${y}`, on: `${y}-12-31`, kind: 'fx', number: `KR ${y}`, text: `Kurzové rozdiely k 31. 12. ${y}: pohľadávky a záväzky v cudzej mene`, docId: null, paymentId: null, manualId: null, lines })
 
+  // The last payment of each foreign invoice (its final instalment): only it books the exchange difference, and the
+  // rest is left open by the earlier ones (31 October 2026). The order is the payments' own: the day, then the list.
+  const orderOfPay = new Map(input.payments.map((p, i) => [p.id, i]))
+  const lastPayOf = new Map<string, string>()
+  for (const [paymentId, linked] of docsOf) {
+    const p = payments.get(paymentId)
+    if (!p) continue
+    for (const d of linked) {
+      if (!isAccountingDoc(d.kind)) continue
+      const cur = lastPayOf.get(d.id) ?? ''
+      const curP = cur !== '' ? payments.get(cur) : undefined
+      if (!curP || p.bookedOn > curP.bookedOn || (p.bookedOn === curP.bookedOn && (orderOfPay.get(paymentId) ?? 0) > (orderOfPay.get(cur) ?? 0))) lastPayOf.set(d.id, paymentId)
+    }
+  }
+
   // Payments.
   for (const p of input.payments) {
     if (!inBooks(p.bookedOn)) {
@@ -855,7 +874,7 @@ export function buildBooks(input: LedgerInput): Books {
       const lines: LedgerLine[] = []
       let posted = 0
       for (const d of accounting) {
-        const share = shareOf.get(d.id) ?? 0
+        const share = shareOf.get(`${p.id}:${d.id}`) ?? 0
         if (!booked.has(d.id)) continue
         posted += share
         if (direct.has(d.id) || share === 0) continue
@@ -863,12 +882,15 @@ export function buildBooks(input: LedgerInput): Books {
         lines.push(lineOf(account, p.bank, share))
         const item = items.get(d.id)
         if (item) item.settled += account === '311' ? share : -share
-        // An invoice in another currency is settled whole by its payment: what is left of it is the exchange difference.
-        const left = item && foreignOf.has(d.id) ? item.total - item.settled : 0
-        if (item && left !== 0) {
-          // Each document's difference names it: a payment of several documents of several cost centres (centers.ts).
-          if (item.account !== '311') lines.push(left > 0 ? { md: item.account, d: '663', cents: left, docId: d.id } : { md: '563', d: item.account, cents: -left, docId: d.id })
-          else lines.push(left > 0 ? { md: '563', d: '311', cents: left, docId: d.id } : { md: '311', d: '663', cents: -left, docId: d.id })
+        // An invoice in another currency is settled by its payments; the exchange difference is the last
+        // instalment's alone (31 October 2026): an earlier one settles its share and the rest stays open.
+        if (item && foreignOf.has(d.id) && lastPayOf.get(d.id) === p.id) {
+          const left = item.total - item.settled
+          if (left !== 0) {
+            // Each document's difference names it: a payment of several documents of several cost centres (centers.ts).
+            if (item.account !== '311') lines.push(left > 0 ? { md: item.account, d: '663', cents: left, docId: d.id } : { md: '563', d: item.account, cents: -left, docId: d.id })
+            else lines.push(left > 0 ? { md: '563', d: '311', cents: left, docId: d.id } : { md: '311', d: '663', cents: -left, docId: d.id })
+          }
           item.settled = item.total
         }
       }

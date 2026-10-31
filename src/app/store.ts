@@ -180,6 +180,8 @@ export interface Doc {
   paidPrivately: boolean
   paymentId: string | null
   how: string | null
+  /** The document's euro payments that pay it alone: each's id, day and amount, for instalments (§ 53b counts each by its day). */
+  paidParts: { id: string; on: string; cents: number }[] | null
   /** The VAT the accountant confirmed (src/app/vat.ts); null until she does. */
   vat: VatData | null
   /** What the reader or the e-invoice said, for a proposal until then: the other side's VAT number, the day of supply, abroad. */
@@ -388,17 +390,20 @@ export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM led
 
 /** The day a document was paid, over the aliases d and l (its link): the bank's payment, else its cash document's (§ 53b). */
 /**
- * The day a document was paid (its bank payment's, else its cash document's); what that payment paid of an invoice
- * (vat.ts unpaidEvents: a bank payment in euros of it alone by its amount, its cash document by its amount; null while a
- * payment of several invoices paid each whole); an invoice's corrections, booked: a received one's from the same
- * supplier (§ 53b), an issued one's of the company's own (§ 25a; schema step 66 indexes them by the number they correct);
- * and an issued invoice's corrections of § 25a.
+ * The day a document was paid (its last bank payment's, else its cash document's); what its bank payments in euros
+ * paid of an invoice, each payment that pays it alone by its amount (a payment of several invoices cannot be
+ * attributed), summed (31 October 2026: a document may be paid in instalments, each pair is a link); an invoice's
+ * corrections, booked: a received one's from the same supplier (§ 53b), an issued one's of the company's own (§ 25a;
+ * schema step 66 indexes them by the number they correct); and an issued invoice's corrections of § 25a.
  */
-export const PAID_ON_COLUMN = `COALESCE((SELECT p.booked_on FROM payments p WHERE p.id = l.payment_id),
+export const PAID_ON_COLUMN = `COALESCE((SELECT MAX(p.booked_on) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id),
   (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
   CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN COALESCE(
-    (SELECT CASE WHEN p.currency = 'EUR' AND (SELECT COUNT(*) FROM links o WHERE o.payment_id = p.id) = 1 THEN ABS(p.amount_cents) END FROM payments p WHERE p.id = l.payment_id),
+    (SELECT SUM(ABS(p.amount_cents)) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links o WHERE o.payment_id = p.id) = 1),
     (SELECT SUM(json_extract(j.value, '$.cents')) FROM ledger_entries ce, json_each(ce.lines) j WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)) END AS paid_cents,
+  CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN (SELECT json_group_array(json_object('id', p.id, 'on', p.booked_on, 'cents', ABS(p.amount_cents)))
+    FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR'
+      AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1) END AS paid_parts,
   CASE WHEN d.kind IN ('invoice_in', 'invoice_out') AND d.number IS NOT NULL THEN (SELECT json_group_array(json_object('issued', c.issued_on, 'supplied', c.supplied_on, 'created', c.created_at, 'period', c.vat_period, 'lines', c.vat_lines))
     FROM documents c WHERE c.company_id = d.company_id AND c.corrects = d.number AND c.id <> d.id AND c.deleted_at IS NULL
       AND c.booked_at IS NOT NULL AND c.vat_mode = 'domestic' AND c.vat_lines IS NOT NULL
@@ -407,6 +412,18 @@ export const PAID_ON_COLUMN = `COALESCE((SELECT p.booked_on FROM payments p WHER
   CASE WHEN d.kind = 'invoice_out' THEN (SELECT json_group_array(json_object('id', b.id, 'kind', b.kind, 'ground', b.ground, 'event_on', b.event_on, 'number', b.number,
       'issued_on', b.issued_on, 'sent_on', b.sent_on, 'lines', b.lines, 'cents', b.cents, 'evidence', b.evidence, 'payment_id', b.payment_id))
     FROM bad_debts b WHERE b.document_id = d.id AND b.deleted_at IS NULL) END AS bad_debts`
+
+/** A document's payment parts as the column above lists them. */
+function paidPartsOf(value: unknown): { id: string; on: string; cents: number }[] | null {
+  if (typeof value !== 'string') return null
+  try {
+    const list = JSON.parse(value) as unknown
+    if (!Array.isArray(list)) return null
+    return list.filter((p): p is { id: string; on: string; cents: number } => Boolean(p) && typeof p === 'object' && typeof (p as Record<string, unknown>).id === 'string' && typeof (p as Record<string, unknown>).on === 'string' && typeof (p as Record<string, unknown>).cents === 'number')
+  } catch {
+    return null
+  }
+}
 
 /** A received invoice's corrections as the column above lists them. */
 function creditsOf(value: unknown): CreditOf[] {
@@ -437,9 +454,9 @@ export const BOOK_DOC_COLUMNS = `d.id, d.company_id, d.created_at, d.source, d.s
   d.total_cents, d.vat_cents, d.currency, d.category, d.vat_deduct, d.account, d.booked_at, d.paid_privately, l.payment_id, d.supplied_on,
   d.vat_mode, d.vat_lines, d.party_vat_id, d.corrects, d.vat_period, d.foreign_party, d.fx_rate, d.vat_country, d.vat_hint, d.vat_reverse,
   d.advance_cents, d.takings_cash, d.vat_ratio, d.ratio_mode, d.due_cents, ${PAID_ON_COLUMN}`
-export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id'
+export const BOOK_DOC_FROM = 'documents d LEFT JOIN links l ON l.document_id = d.id AND NOT EXISTS (SELECT 1 FROM links l2 WHERE l2.document_id = d.id AND (l2.created_at < l.created_at OR (l2.created_at = l.created_at AND l2.payment_id < l.payment_id)))'
 export const DOC_FROM =
-  'documents d LEFT JOIN links l ON l.document_id = d.id LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by LEFT JOIN users fa ON fa.id = d.first_approved_by'
+  'documents d LEFT JOIN links l ON l.document_id = d.id AND NOT EXISTS (SELECT 1 FROM links l2 WHERE l2.document_id = d.id AND (l2.created_at < l.created_at OR (l2.created_at = l.created_at AND l2.payment_id < l.payment_id))) LEFT JOIN users ab ON ab.id = d.added_by LEFT JOIN users bb ON bb.id = d.booked_by LEFT JOIN users ap ON ap.id = d.approved_by LEFT JOIN users fa ON fa.id = d.first_approved_by'
 
 export function docOf(row: Row): Doc {
   return {
@@ -479,6 +496,7 @@ export function docOf(row: Row): Doc {
     paidPrivately: row.paid_privately === 1,
     paymentId: str(row.payment_id),
     how: str(row.how),
+    paidParts: paidPartsOf(row.paid_parts),
     vat: vatDataOf(row),
     partyVatId: str(row.party_vat_id),
     suppliedOn: str(row.supplied_on),
@@ -568,6 +586,7 @@ export function vatDocOf(doc: Doc): VatDoc {
     dueOn: doc.dueOn,
     paidOn: doc.paidOn ?? null,
     paidCents: doc.paidCents ?? null,
+    paidParts: doc.paidParts ?? null,
     dueCents: doc.dueCents ?? null,
     credits: doc.credits ?? [],
     badDebts: doc.badDebts ?? [],
@@ -831,9 +850,11 @@ export function checkStatement(db: D1Database, company: string, payment: string,
 }
 
 /**
- * Pairs a document with a payment of the same company. Nothing happens when the document is already paired, paid
- * in cash (a cash document of the cash box), deleted or of another company, or when the payment needs no document. A pair made without asking (`alone`)
- * also needs the payment to have no document yet; a client may give one payment several documents.
+ * Pairs a document with a payment of the same company. Nothing happens when the document is paid in cash (a cash
+ * document of the cash box), deleted or of another company, or when the payment needs no document; when the payment
+ * would pay more of a euro invoice than is left of it (31 October 2026: a document may be paid in instalments, each
+ * pair a link, but never paid past its amount). A pair made without asking (`alone`) also needs the payment to have no
+ * document yet; a client may give one payment several documents.
  */
 export function linkStatement(db: D1Database, company: string, payment: string, doc: string, how: 'auto' | 'client' | 'accountant', by: string | null, alone = false): D1PreparedStatement {
   // The lock is asked of this payment and this document by their ids (?5, ?4): its subqueries name their own
@@ -844,7 +865,11 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
        SELECT d.id, p.id, p.company_id, ?1, ?2, ?3
        FROM documents d JOIN payments p ON p.company_id = d.company_id
        WHERE d.id = ?4 AND p.id = ?5 AND p.company_id = ?6 AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
-         AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id) AND NOT ${CASH_PAID}
+         AND NOT ${CASH_PAID}
+         AND (d.total_cents IS NULL OR d.total_cents = 0 OR p.currency <> 'EUR' OR
+           ABS(p.amount_cents) <= COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT SUM(ABS(o.amount_cents))
+             FROM links k JOIN payments o ON o.id = k.payment_id WHERE k.document_id = d.id AND o.currency = 'EUR'
+               AND (SELECT COUNT(*) FROM links k2 WHERE k2.payment_id = o.id) = 1), 0))
          ${how === 'auto' ? `AND NOT ${linkLockedSql('?5', '?4')}` : ''}
          ${alone ? 'AND NOT EXISTS (SELECT 1 FROM links WHERE payment_id = p.id)' : ''}`,
     )
@@ -853,6 +878,11 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
 
 export function unlinkStatement(db: D1Database, company: string, doc: string): D1PreparedStatement {
   return db.prepare('DELETE FROM links WHERE document_id = ? AND company_id = ?').bind(doc, company)
+}
+
+/** Removes one pair (an instalment of several): the other payments of the document stay paired. */
+export function unlinkOneStatement(db: D1Database, company: string, doc: string, payment: string): D1PreparedStatement {
+  return db.prepare('DELETE FROM links WHERE document_id = ? AND payment_id = ? AND company_id = ?').bind(doc, payment, company)
 }
 
 // ---------------------------------------------------------------------------------------------------------------

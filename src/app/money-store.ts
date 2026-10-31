@@ -8,13 +8,20 @@ import type { MoneyItem } from './money'
 type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
-/** The company's issued invoices nobody has paid yet: the money the view expects to come in. */
+/** What a euro document still has unpaid of it, as SQL over `d`: its due (or its total) less what its bank payments
+ *  that pay it alone paid, summed (a document may be paid in instalments, 31 October 2026). */
+const REMAINING_SQL = `COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT SUM(ABS(p.amount_cents))
+  FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = d.id AND p.currency = 'EUR'
+    AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)`
+
+/** The company's issued invoices with something left to pay: the money the view expects to come in. */
 export async function unpaidIssued(db: D1Database, company: string): Promise<MoneyItem[]> {
   const rows = await db
     .prepare(
-      `SELECT i.due_on AS day, i.total_cents AS cents, i.number AS number, i.customer_name AS name FROM invoices i
+      `SELECT i.due_on AS day, ${REMAINING_SQL} AS cents, i.number AS number, i.customer_name AS name FROM invoices i
+        JOIN documents d ON d.id = i.document_id
         WHERE i.company_id = ? AND i.status = 'issued' AND i.kind = 'invoice' AND i.due_on IS NOT NULL AND i.total_cents > 0
-          AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = i.document_id)
+          AND ${REMAINING_SQL} > 0
           AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
         ORDER BY i.due_on LIMIT 100`,
     )
@@ -23,15 +30,15 @@ export async function unpaidIssued(db: D1Database, company: string): Promise<Mon
   return rows.results.map((r) => ({ day: String(r.day), cents: Number(r.cents), label: app.home.invoiceOut(str(r.number), str(r.name)) }))
 }
 
-/** The received invoices the company has not paid yet: a known outflow, by its due day. Firmony's own invoices are
+/** The received invoices with something left to pay: a known outflow, by its due day. Firmony's own invoices are
  *  not among them; the billing holds those separately and the view adds them from the same list as the deadlines. */
 export async function unpaidReceived(db: D1Database, company: string): Promise<MoneyItem[]> {
   const rows = await db
     .prepare(
-      `SELECT d.due_on AS day, d.total_cents AS cents, d.number AS number, d.party AS name FROM documents d
+      `SELECT d.due_on AS day, ${REMAINING_SQL} AS cents, d.number AS number, d.party AS name FROM documents d
         WHERE d.company_id = ? AND d.kind = 'invoice_in' AND d.source <> 'firmony' AND d.deleted_at IS NULL AND d.duplicate_of IS NULL
           AND d.due_on IS NOT NULL AND d.total_cents > 0
-          AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = d.id)
+          AND ${REMAINING_SQL} > 0
           AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
         ORDER BY d.due_on LIMIT 100`,
     )

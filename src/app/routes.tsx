@@ -3688,7 +3688,9 @@ async function invoicePage(c: Ctx, id: string, extra: { error?: string } = {}, s
  */
 async function lateOf(db: D1Database, company: string, invoice: StoredInvoice, credits: { totalCents: number }[]): Promise<LateView | null> {
   if (invoice.kind !== 'invoice' || invoice.status !== 'issued' || invoice.interestOf || invoice.currency !== 'EUR' || !invoice.number) return null
-  const principal = invoice.totalCents + credits.reduce((sum, c) => sum + c.totalCents, 0)
+  // What instalments paid of it count: the interest is on what is left (31 October 2026).
+  const paid = (await db.prepare('SELECT COALESCE(SUM(ABS(p.amount_cents)), 0) AS cents FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = ? AND p.currency = ?').bind(invoice.documentId, 'EUR').first<{ cents: number }>())?.cents ?? 0
+  const principal = Math.max(0, invoice.totalCents + credits.reduce((sum, c) => sum + c.totalCents, 0) - paid)
   const rows = (
     await db
       .prepare(

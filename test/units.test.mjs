@@ -7031,6 +7031,19 @@ await (await import('./social.units.mjs')).checkSocial()
     `${linesOf('d:czk-out')} | ${linesOf('fx:2026')}`,
   )
   check('its payment of 1 010 € the next year settles what it stands at since: a loss of 2 €', linesOf('p:p2') === '221.001/311:101000 563/311:200', linesOf('p:p2'))
+  // Instalments in the books (31 October 2026): the last one books the exchange difference, the earlier ones only their share.
+  const instalBooks = ledger.buildBooks({
+    company: co,
+    rates: fx.ratesOf([{ currency: 'USD', day: '2026-03-09', rate: '1.08' }]),
+    docs: [doc('usd-splatky', { totalCents: 100000, currency: 'USD', issuedOn: '2026-03-10', paidParts: [{ id: 's1', on: '2026-03-20', cents: 50000 }, { id: 's2', on: '2026-04-15', cents: 44000 }] })],
+    payments: [pay('s1', '2026-03-20', -50000), pay('s2', '2026-04-15', -44000)],
+    banks: [{ id: 'b1', iban: 'SK3112000000198742637541', ledger: '221.001', balanceCents: null, balanceOn: null }],
+    filed: [],
+    manual: opening,
+  })
+  const iLines = (key) => (instalBooks.entries.find((e) => e.key === key)?.lines ?? []).map((l) => `${l.md}/${l.d}:${l.cents}`).join(' ')
+  check('the first instalment settles only its share and books no exchange difference', iLines('p:s1') === '321/221.001:50000', iLines('p:s1'))
+  check('the last instalment books the difference of the whole (940 € paid on a 925,93 € claim: a 14,07 € loss) and closes the item', iLines('p:s2') === '321/221.001:44000 563/321:1407' && instalBooks.items.find((i) => i.docId === 'usd-splatky')?.settled === 92593, iLines('p:s2'))
   check('a receipt of 10 USD paid alone by card: the 9,30 € the bank took, against the bank on its day', linesOf('d:usd-card') === '518/221.001:930' && !books.entries.some((e) => e.key === 'p:p3'), linesOf('d:usd-card'))
   check('a document in a currency without a rate is said and not booked; its payment waits', (books.issues.unrated ?? []).includes('gbp') && !books.entries.some((e) => e.key === 'd:gbp') && books.issues.waiting.includes('p4'))
   check(
@@ -7071,6 +7084,16 @@ await (await import('./social.units.mjs')).checkSocial()
     )
     const halfPaid = books({ paidOn: '2026-07-03', paidCents: 6150 }, '2026-10-18').entries.filter((e) => e.key.startsWith('53b:'))
     check('half paid in July: half the deduction back to 343.100', halfPaid.length === 2 && halfPaid[1].lines[0].cents === 1150, JSON.stringify(halfPaid))
+    // Instalments (31 October 2026): the correction on the 101st day counts only what was paid by it; each later
+    // instalment gives its share back in its own period (§ 53b(4)(a)).
+    const partsPaid = books({ paidParts: [{ on: '2026-05-10', cents: 6150 }, { on: '2026-12-01', cents: 6150 }], paidOn: '2026-12-01', paidCents: 12300 }, '2026-12-31').entries.filter((e) => e.key.startsWith('53b:'))
+    check(
+      'half paid before the 101st day: half the deduction is corrected, the later instalment gives the rest back in its own period',
+      partsPaid.length === 2 && partsPaid[0].lines[0].cents === 1150 && partsPaid[1].on === '2026-12-01' && partsPaid[1].lines[0].cents === 1150,
+      JSON.stringify(partsPaid),
+    )
+    const lateParts = books({ paidParts: [{ on: '2026-12-01', cents: 6150 }], paidOn: '2026-12-01', paidCents: 6150 }, '2026-12-31').entries.filter((e) => e.key.startsWith('53b:'))
+    check('nothing paid by the 101st day: the whole deduction is corrected, the one instalment gives its share back', lateParts.length === 2 && lateParts[0].lines[0].cents === 2300 && lateParts[1].lines[0].cents === 1150, JSON.stringify(lateParts))
   }
 }
 
