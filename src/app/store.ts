@@ -886,6 +886,7 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
        WHERE d.id = ?4 AND p.id = ?5 AND p.company_id = ?6 AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
          AND NOT ${CASH_PAID}
          AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id AND payment_id = p.id)
+         AND (d.total_cents IS NULL OR d.total_cents = 0 OR ${cap} > 0)
          ${how === 'auto' ? `AND NOT ${linkLockedSql('?5', '?4')}` : ''}
          ${alone ? 'AND NOT EXISTS (SELECT 1 FROM links WHERE payment_id = p.id)' : ''}`,
     )
