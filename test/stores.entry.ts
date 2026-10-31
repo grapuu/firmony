@@ -48,7 +48,7 @@ export { monthStart } from '../src/team/billing'
 export * as aml from '../src/aml/store'
 export * as amlModel from '../src/aml/model'
 export * as amlPolicy from '../src/aml/countries'
-export { ensureSchema } from '../src/db'
+export { MIGRATIONS, ensureSchema } from '../src/db'
 
 export * as amlEnhanced from '../src/aml/enhanced'
 export { archiveEnded } from '../src/app/purge'

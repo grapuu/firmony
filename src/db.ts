@@ -21,6 +21,7 @@ import { RETENTION } from './config'
 import { PERIOD_SCHEMA, assetVatGuards, linksRecreationGuards, badDebtsGuards, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
+import { holdDeleteGuard } from './incidents/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
 import { FILING_SCHEMA } from './filings/schema'
 import { PAYROLL_REPORTING_SCHEMA } from './payroll-reporting/schema'
@@ -30,7 +31,21 @@ import { PAYROLL_SOCIAL_SCHEMA } from './payroll-reporting/social-schema'
 
 export const now = (): number => Math.floor(Date.now() / 1000)
 
-const MIGRATIONS: readonly string[][] = [
+/** The revision-bump and handover-purging triggers of a company's data table, exactly as step 22 made them; step 93
+ *  calls the same generator for `links` after its table was recreated (31 October 2026). */
+export const companyDataGuards = (table: string): string[] => [
+  ...['INSERT', 'UPDATE', 'DELETE'].map((action) => {
+    const row = action === 'DELETE' ? 'OLD' : 'NEW'
+    return `CREATE TRIGGER ${table}_data_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN
+          INSERT INTO company_data_revisions (company_id, revision) VALUES (${row}.company_id, 1)
+          ON CONFLICT (company_id) DO UPDATE SET revision = revision + 1; END`
+  }),
+  ...['INSERT', 'UPDATE'].map((action) => `CREATE TRIGGER ${table}_purging_${action.toLowerCase()} BEFORE ${action} ON ${table}
+        WHEN EXISTS (SELECT 1 FROM companies WHERE id = NEW.company_id AND purge_started_at IS NOT NULL)
+        BEGIN SELECT RAISE(ABORT, 'Company handover is being finalized'); END`),
+]
+
+export const MIGRATIONS: readonly string[][] = [
   [
     `CREATE TABLE IF NOT EXISTS requests (
       id TEXT PRIMARY KEY,
@@ -1653,6 +1668,19 @@ const MIGRATIONS: readonly string[][] = [
     'CREATE INDEX IF NOT EXISTS links_document ON links (document_id)',
     'CREATE INDEX IF NOT EXISTS links_payment ON links (payment_id)',
     ...linksRecreationGuards().after,
+  ],
+  // 93 (31 October 2026): step 92 dropped the `links` table and, with it, the links triggers that step 22 and the
+  // incidents' schema made (links_data_*, links_purging_*, links_hold_delete), and it rebuilt the documents' update
+  // guard from the columns of step 22 alone, losing those that steps 32 to 91 added (fx_rate, vat_country, vat_hint,
+  // vat_reverse, advance_cents, takings_cash, vat_ratio, ratio_mode). This step removes any pair inserted twice
+  // (keeping the oldest), refuses a second copy of a pair, and makes every trigger again, exactly as it stood after
+  // step 91, from the same generators. The instalments' logic is unchanged.
+  [
+    'DELETE FROM links WHERE rowid NOT IN (SELECT MIN(rowid) FROM links GROUP BY document_id, payment_id)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS links_pair ON links (document_id, payment_id)',
+    ...companyDataGuards('links'),
+    holdDeleteGuard('links'),
+    ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents', 'takings_cash', 'vat_ratio', 'ratio_mode']),
   ],
 ]
 
