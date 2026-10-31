@@ -30,6 +30,7 @@ import {
 import {
   exemptionAllowed,
   isContract,
+  isLeave,
   isPension,
   monthDays,
   payrollTotals,
@@ -39,6 +40,7 @@ import {
   taxableOf,
   type Child,
   type ContractKind,
+  type LeaveKind,
   type PensionKind,
   type Payslip,
   type PayrollTotals,
@@ -71,6 +73,8 @@ export interface Employee {
   contract: ContractKind
   regular: boolean
   pension: PensionKind
+  /** The leave a parent on a DoVP or DoPČ is on (maternity, paternity, parental): the deduction may be claimed. */
+  leave: LeaveKind
   exemption: boolean
   /** A monthly wage (or reward) or an hourly rate; the hours of a week, in hundredths; the days of holiday a year when agreed above the law's (hundredths). */
   wageKind: WageKind
@@ -125,6 +129,7 @@ function employeeOf(r: Row): Employee {
     contract: isContract(r.contract) ? r.contract : 'employment',
     regular: r.regular !== 0,
     pension: isPension(r.pension) ? r.pension : 'none',
+    leave: isLeave(r.leave_kind) ? r.leave_kind : 'none',
     exemption: r.exemption === 1,
     wageKind: r.wage_kind === 'hourly' ? 'hourly' : 'monthly',
     weeklyHours: Number.isInteger(r.weekly_hours) && (r.weekly_hours as number) > 0 ? (r.weekly_hours as number) : 4000,
@@ -145,13 +150,13 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
   return db
     .prepare(
       `INSERT INTO employees (id, company_id, name, born_on, insurer, started_on, ended_on, wage_cents, declaration, disabled, health_deduction, health_exempt, children, iban, created_at, created_by, updated_at,
-         contract, regular, pension, exemption, wage_kind, weekly_hours, leave_days, meal_way, center_id, dependents)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?15, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
-         (SELECT id FROM cost_centers WHERE id = ?25 AND company_id = ?2), ?26)
+         contract, regular, pension, leave_kind, exemption, wage_kind, weekly_hours, leave_days, meal_way, center_id, dependents)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?15, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25,
+         (SELECT id FROM cost_centers WHERE id = ?26 AND company_id = ?2), ?27)
        ON CONFLICT (id) DO UPDATE SET name = excluded.name, born_on = excluded.born_on, insurer = excluded.insurer, started_on = excluded.started_on, ended_on = excluded.ended_on,
          wage_cents = excluded.wage_cents, declaration = excluded.declaration, disabled = excluded.disabled, health_deduction = excluded.health_deduction,
          health_exempt = excluded.health_exempt, children = excluded.children, iban = excluded.iban, updated_at = excluded.updated_at,
-         contract = excluded.contract, regular = excluded.regular, pension = excluded.pension, exemption = excluded.exemption, wage_kind = excluded.wage_kind,
+         contract = excluded.contract, regular = excluded.regular, pension = excluded.pension, leave_kind = excluded.leave_kind, exemption = excluded.exemption, wage_kind = excluded.wage_kind,
          weekly_hours = excluded.weekly_hours, leave_days = excluded.leave_days, meal_way = excluded.meal_way, center_id = excluded.center_id,
          dependents = excluded.dependents WHERE employees.company_id = ?2`,
     )
@@ -175,7 +180,8 @@ export function employeeStatement(db: D1Database, company: string, e: Employee, 
       e.contract,
       regularOf(e.contract, e.regular) ? 1 : 0,
       e.pension,
-      e.exemption && exemptionAllowed(e.contract, e.pension, regularOf(e.contract, e.regular)) ? 1 : 0,
+      e.leave,
+      e.exemption && exemptionAllowed(e.contract, e.pension, regularOf(e.contract, e.regular), e.leave) ? 1 : 0,
       e.wageKind,
       e.weeklyHours,
       e.leaveDays,
@@ -421,7 +427,7 @@ export function monthSlips(
       })
       const average = proposeAverage(period, terms, closed)
       const pay = monthPay(period, terms, parts, sick, parts.average ?? average.average)
-      const exemption = e.exemption && exemptionAllowed(e.contract, e.pension, terms.regular)
+      const exemption = e.exemption && exemptionAllowed(e.contract, e.pension, terms.regular, e.leave)
       // An annual settlement settled with this month's wage (tax-settlement.ts).
       const settled = (context.settlements ?? []).find((x) => x.employeeId === e.id && x.inputs.requested && x.inputs.settleIn === period && x.result)
       // Meals: the employee's way (the company's when he chose none), a meal a day worked over four hours unless typed.
@@ -440,7 +446,7 @@ export function monthSlips(
         health: { disabled: e.disabled, minimumExempt: e.healthExempt || stateInsured(e.pension), deductionClaimed: e.healthDeduction },
         pay,
         sick,
-        terms: { contract: e.contract, regular: terms.regular, pension: e.pension, exemption, wageKind: e.wageKind, dailyHours: terms.dailyHours },
+        terms: { contract: e.contract, regular: terms.regular, pension: e.pension, leave: e.leave, exemption, wageKind: e.wageKind, dailyHours: terms.dailyHours },
         proposals: { average, dvz, meals: way ? mealsProposal : null },
         fund: fundOf(e.contract, pay.earned, context.fundRate ?? FUND_RATE_MIN),
         ...(e.centerId ? { center: e.centerId } : {}),
@@ -458,6 +464,7 @@ export function monthSlips(
           contract: e.contract,
           regular: terms.regular,
           pension: e.pension,
+          leave: e.leave,
           exemption,
           ...(settled?.result ? { settlement: { tax: settled.result.taxDifference, bonus: settled.result.bonusDifference } } : {}),
           meals,

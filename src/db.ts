@@ -1630,6 +1630,10 @@ const MIGRATIONS: readonly string[][] = [
     )`,
     'CREATE INDEX IF NOT EXISTS admin_checks_at ON admin_checks (at)',
   ],
+  // 91: a parent on maternity, paternity or parental leave with an agreement outside employment claims the odvodová
+  // odpočítateľná položka from 1 January 2027 (Act No. 158/2026 Z. z., § 138a and § 227a, read in the original at
+  // static.slov-lex.sk on 31 October 2026): the leave the relationship is on, 'none' without one.
+  ["ALTER TABLE employees ADD COLUMN leave_kind TEXT NOT NULL DEFAULT 'none'"],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

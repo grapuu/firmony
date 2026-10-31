@@ -85,6 +85,16 @@ export const PENSIONS = ['none', 'old', 'invalid', 'invalid70', 'service'] as co
 export type PensionKind = (typeof PENSIONS)[number]
 export const isPension = (v: unknown): v is PensionKind => typeof v === 'string' && (PENSIONS as readonly string[]).includes(v)
 
+/** The leave of a parent on a DoVP or a DoPČ, who may claim the deduction from 1 January 2027 (Act No. 158/2026 Z. z.,
+ *  § 138a and § 227a, read in the original at static.slov-lex.sk on 31 October 2026: the employee proves the leave to
+ *  the employer and tells it at least eight days before it ends; the right runs from the day the relationship began
+ *  when proven by that day, else from the first day of the next month, and ends the first day of the month after the
+ *  leave ended). */
+export const LEAVES = ['none', 'maternity', 'paternity', 'parental'] as const
+export type LeaveKind = (typeof LEAVES)[number]
+export const isLeave = (v: unknown): v is LeaveKind => typeof v === 'string' && (LEAVES as readonly string[]).includes(v)
+
+
 /**
  * Whether a relationship has a regular monthly income: an employment always does; an agreement, a student's too (§ 4(2)
  * of Act 461/2003), as agreed. A student's agreement is insured the same either way; the income decides its report.
@@ -92,11 +102,15 @@ export const isPension = (v: unknown): v is PensionKind => typeof v === 'string'
 export const regularOf = (kind: ContractKind, regular: boolean): boolean => (kind === 'employment' ? true : regular)
 
 /**
- * Who may claim the deduction: a student on a student's agreement, a pensioner on another agreement, a regular or an
- * irregular income alike (the Agency's table of agreements, section 7). The monthly report has no type for a
- * pensioner's irregular income with it (ZECD1V and ZECD2V are regular): that row is prepared outside (social.ts).
+ * Who may claim the deduction: a student on a student's agreement, a pensioner on another agreement, a parent on
+ * maternity, paternity or parental leave on a DoVP or a DoPČ (Act No. 158/2026 Z. z., § 227a(1): "ktorý je fyzickou
+ * osobou uvedenou v § 4 ods. 1 písm. b) alebo fyzickou osobou na materskej dovolenke, otcovskej dovolenke alebo
+ * rodičovskej dovolenke"; read in the original at static.slov-lex.sk on 31 October 2026), a regular or an irregular
+ * income alike (the Agency's table of agreements, section 7). The monthly report has no type for an irregular income
+ * with it (ZECD1V and ZECD2V are regular): that row is prepared outside (social.ts).
  */
-export const exemptionAllowed = (kind: ContractKind, pension: PensionKind, _regular?: boolean): boolean => kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none')
+export const exemptionAllowed = (kind: ContractKind, pension: PensionKind, _regular?: boolean, leave: LeaveKind = 'none'): boolean =>
+  kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && (pension !== 'none' || leave !== 'none'))
 
 /** The monthly minimum wage for an hour (a 40-hour week: 174 hours), in thousandths of a euro: 5,259 € in 2026. */
 export const minimumHourly = (y: PayrollYear): number => Math.round((y.minimumWage * 10) / 174)
@@ -201,6 +215,8 @@ export interface PayInput {
   contract?: ContractKind
   regular?: boolean
   pension?: PensionKind
+  /** The leave a parent on a DoVP or DoPČ is on (maternity, paternity, parental): the deduction may be claimed. */
+  leave?: LeaveKind
   exemption?: boolean
   /** The days the minimum health advance counts (the days employed less those of sickness benefit, when the state pays). */
   minimumDays?: number
@@ -220,6 +236,8 @@ export interface Payslip {
   contract?: ContractKind
   regular?: boolean
   pension?: PensionKind
+  /** The leave a parent on a DoVP or DoPČ is on; present on slips calculated since 31 October 2026. */
+  leave?: LeaveKind
   /** The deduction taken off the base of pension insurance and the reserve fund, and that base. */
   exemption?: number
   pensionBase?: number
@@ -316,10 +334,11 @@ export function payslip(input: PayInput): Payslip {
   const sickPay = Math.max(0, Math.round(input.sickPay ?? 0))
   const contract = input.contract ?? 'employment'
   const pension = input.pension ?? 'none'
+  const leave = isLeave(input.leave) ? input.leave : 'none'
   const regular = regularOf(contract, input.regular ?? true)
   const rates = socialRates(contract, regular, pension)
   const socialBase = Math.min(gross, socialCap(y))
-  const exemption = input.exemption && exemptionAllowed(contract, pension, regular) ? Math.min(socialBase, y.exemption) : 0
+  const exemption = input.exemption && exemptionAllowed(contract, pension, regular, leave) ? Math.min(socialBase, y.exemption) : 0
   const pensionBase = socialBase - exemption
   const baseOf = (kind: SocialKind) => (kind === 'accident' ? gross : PENSION_KINDS.includes(kind) ? pensionBase : socialBase)
   const employee: Partial<Record<SocialKind, number>> = {}
@@ -379,6 +398,7 @@ export function payslip(input: PayInput): Payslip {
     contract,
     regular,
     pension,
+    leave,
     exemption,
     pensionBase,
     healthInsured: insured,

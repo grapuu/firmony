@@ -5,7 +5,7 @@
 // slip against them; a slip that does not agree is never reported.
 import { dayOfText } from '../app/booking'
 import { isIban, plainIban } from '../app/invoices'
-import { monthDays } from '../app/payroll'
+import { isLeave, monthDays } from '../app/payroll'
 import { isMonth, nextMonth } from './model'
 import { insuredId } from './health'
 
@@ -81,9 +81,10 @@ export function socialTotals(period:string,json:string,today:string):SocialTotal
     const s=l.slip
     if (!cap||!s||s.period!==period||s.rulesYear!==year||![l.gross,s.gross,s.socialBase,s.socialEmployee,s.socialEmployer].every(cents)||s.gross!==l.gross||!Number.isInteger(l.days)||l.days<1||l.days>monthDays(period)||s.socialBase!==Math.min(s.gross,cap)||!s.social?.employee||!s.social?.employer) {issues.add('Uzavretá páska nemá konzistentné sumy, dni alebo vymeriavací základ. Prepočítajte mesiac.');continue}
     const contract:Contract=s.contract===undefined?'employment':s.contract,pension:Pension=s.pension===undefined?'none':s.pension
+    const leave=isLeave(s.leave)?s.leave:'none'
     const regular=contract==='employment'?true:s.regular===true
     const deduction=s.exemption===undefined?0:s.exemption
-    if (!CONTRACTS.has(contract)||!PENSIONS.has(pension)||!cents(deduction)||deduction>Math.min(deductionMax,s.socialBase)||deduction>0&&!(contract==='dobps'||(contract==='dovp'||contract==='dopc')&&pension!=='none')) {issues.add('Uzavretá páska má neznámy vzťah alebo odpočítateľnú položku. Prepočítajte mesiac.');continue}
+    if (!CONTRACTS.has(contract)||!PENSIONS.has(pension)||!cents(deduction)||deduction>Math.min(deductionMax,s.socialBase)||deduction>0&&!(contract==='dobps'||(contract==='dovp'||contract==='dopc')&&(pension!=='none'||leave!=='none'))) {issues.add('Uzavretá páska má neznámy vzťah alebo odpočítateľnú položku. Prepočítajte mesiac.');continue}
     const typZec=typeOf(contract,regular,deduction>0)
     if (!typZec) {issues.add(`Pre vzťah zamestnanca ${typeof l.name==='string'?l.name:''} nemá výkaz MVPP 2026 typ. Pripravte ho odborne externe.`);continue}
     const funds=fundsOf(contract,regular,pension),pensionBase=s.socialBase-deduction

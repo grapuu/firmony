@@ -149,7 +149,7 @@ import { employerLeast, isMealWay, mealBounds, mealIssues, NO_MEALS, type MealSe
 import { deductionOf, isGarnishKind, subsistenceMissing, type Garnishment } from '../app/garnish'
 import { FUND_RATE_MIN, isFundRate } from '../app/social-fund'
 import { addDays } from '../app/ending'
-import { exemptionAllowed, isContract, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
+import { exemptionAllowed, isContract, isLeave, isPension, regularOf, supportsPayrollPeriod } from '../app/payroll'
 import { addDay, leaveEntitlement, proposeDvz, type SickLeave } from '../app/pay-month'
 import { decodeText, parseDelimited, readTable } from '../app/table-read'
 import { eurOf, isCurrency, rateFor, rateMicro, rateText } from '../app/fx'
@@ -3627,6 +3627,8 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
   const contract = field('vztah', 16) || 'employment'
   if (!isContract(contract)) errors.vztah = t.payroll.errors.contract
   const pension = field('dochodok', 16) || 'none'
+  const leave = field('matdov', 16) || 'none'
+  if (!isLeave(leave)) errors.matdov = t.payroll.errors.leave
   const wageKind = field('odmenovanie', 16) === 'hourly' ? 'hourly' : 'monthly'
   values.odmenovanie = wageKind
   const weekly = hundredthsOf(field('hodiny', 6) || '40')
@@ -3648,7 +3650,7 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
   const centerId = centers.some((x) => x.id === centerAsked && (!x.archived || x.id === existing?.centerId)) ? centerAsked : null
   if (centerAsked !== '' && !centerId) errors.stredisko = t.payroll.errors.center
   for (const tick of ['vyhlasenie', 'ztp', 'op', 'vynimka', 'pravidelny', 'oop']) values[tick] = body[tick] === '1' ? '1' : ''
-  if (values.oop === '1' && isContract(contract) && isPension(pension) && !exemptionAllowed(contract, pension, regularOf(contract, values.pravidelny === '1'))) errors.oop = t.payroll.errors.exemption
+  if (values.oop === '1' && isContract(contract) && isPension(pension) && isLeave(leave) && !exemptionAllowed(contract, pension, regularOf(contract, values.pravidelny === '1'), leave)) errors.oop = t.payroll.errors.exemption
   const children: { name: string; born: string }[] = []
   for (let i = 0; i < CHILD_ROWS; i++) {
     const childName = field(`dieta_${i}`, 80)
@@ -3676,6 +3678,7 @@ teamRoutes.post('/klienti/:id/mzdy/zamestnanec', async (c) => {
     contract,
     regular: regularOf(contract, values.pravidelny === '1'),
     pension: isPension(pension) ? pension : 'none',
+    leave: isLeave(leave) ? leave : 'none',
     exemption: values.oop === '1',
     wageKind,
     weeklyHours: weekly,

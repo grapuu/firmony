@@ -45,6 +45,7 @@ import {
   takings,
   meals,
   socialFund,
+  socialReporting,
   garnish,
   vatRatio,
   badDebt,
@@ -6081,6 +6082,29 @@ async function zipped(entries, note) {
   s = slip({ period: '2027-01', gross: 30000, contract: 'dobps', exemption: true })
   check('the deduction is 300 € from 2027', s.exemption === 30000 && s.socialEmployee === 0)
   check('a pensioner on an agreement claims the deduction with an irregular income too (the table of agreements, section 7)', slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true }).exemption === 20000 && slip({ gross: 40000, contract: 'dovp', regular: false, pension: 'old', exemption: true }).socialEmployee === 800)
+  // Act No. 158/2026 Z. z. (§ 138a and § 227a), read in the original at static.slov-lex.sk on 31 October 2026.
+  check(
+    'a parent on maternity, paternity or parental leave claims the deduction on a DoVP or DoPČ (2027: 300 €)',
+    payroll.exemptionAllowed('dovp', 'none', true, 'maternity') &&
+      payroll.exemptionAllowed('dopc', 'none', false, 'parental') &&
+      payroll.exemptionAllowed('dovp', 'none', true, 'paternity') &&
+      !payroll.exemptionAllowed('dovp', 'none', true, 'none') &&
+      !payroll.exemptionAllowed('employment', 'none', true, 'maternity') &&
+      payroll.exemptionAllowed('dobps', 'none', true, 'none'),
+  )
+  s = slip({ period: '2027-01', gross: 80000, contract: 'dovp', regular: true, leave: 'maternity', exemption: true })
+  check(
+    'the parent on leave: the 300 € deduction off pension insurance and the reserve fund alone, the other funds from the whole base',
+    s.exemption === 30000 && s.pensionBase === 50000 && s.social.employee.sickness === 1120 && s.social.employee.oldAge === 2000 && s.social.employer.reserve === 2375 && s.social.employer.accident === 640,
+    JSON.stringify(s.social),
+  )
+  check('the leave alone, without the claim, takes nothing off', slip({ period: '2027-01', gross: 80000, contract: 'dovp', regular: true, leave: 'parental', exemption: false }).exemption === 0)
+  const parentSlip = payroll.payslip({ period: '2027-01', gross: 80000, days: 31, contract: 'dovp', regular: true, leave: 'maternity', exemption: true, declaration: false, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false })
+  const parentTotals = socialReporting.socialTotals('2027-01', JSON.stringify([{ employeeId: 'p1', name: 'TEST Parent', gross: 80000, days: 31, slip: parentSlip }]), '2027-02-01')
+  check('the MVPP row of the parent on leave is ZECD1V, like any regular DoVP with the deduction', parentTotals.rows.length === 1 && parentTotals.rows[0].typZec === 'ZECD1V' && parentTotals.issues.length === 0, JSON.stringify(parentTotals.issues))
+  const parentIrregular = payroll.payslip({ period: '2027-01', gross: 80000, days: 31, contract: 'dovp', regular: false, leave: 'parental', exemption: true, declaration: false, children: [], disabled: false, healthDeduction: false, healthMinimumExempt: false })
+  const irregularTotals = socialReporting.socialTotals('2027-01', JSON.stringify([{ employeeId: 'p2', name: 'TEST Parent irregular', gross: 80000, days: 31, slip: parentIrregular }]), '2027-02-01')
+  check('an irregular income with the deduction has no MVPP type: the row is prepared outside, never misreported', irregularTotals.rows.length === 0 && irregularTotals.issues.some((i) => i.includes('odborne externe')), JSON.stringify(irregularTotals.issues))
   s = slip({ gross: 40000, contract: 'dovp', regular: true, pension: 'old', exemption: true })
   check(
     'an old-age pensioner on an agreement with a regular income: neither sickness, unemployment nor disability insurance, the deduction off the base, no health insurance',

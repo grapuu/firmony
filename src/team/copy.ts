@@ -1842,6 +1842,12 @@ export const team = typesetAll({
       invalid70: 'Invalidný dôchodok, pokles schopnosti nad 70 %',
       service: 'Výsluhový dôchodok po dovŕšení dôchodkového veku',
     } as Record<string, string>,
+    leaves: {
+      none: 'Nie je na takej dovolenke',
+      maternity: 'Materská dovolenka',
+      paternity: 'Otcovská dovolenka',
+      parental: 'Rodičovská dovolenka',
+    } as Record<string, string>,
     pensionShort: { old: 'dôchodca', invalid: 'invalidný dôchodca', invalid70: 'invalidný dôchodca nad 70 %', service: 'výsluhový dôchodca' } as Record<string, string>,
     wageKinds: { monthly: 'Mesačná mzda alebo odmena', hourly: 'Hodinová mzda' } as Record<string, string>,
     parts: {
@@ -2156,7 +2162,8 @@ export const team = typesetAll({
       regular: 'Pravidelný mesačný príjem (poistený aj nemocensky a v nezamestnanosti)',
       regularHint: 'Pracovný pomer ho má vždy; pri dohode podľa toho, ako je dohodnutá (pri DoBPŠ mení len výkaz, poistenie je rovnaké).',
       pension: 'Dôchodok',
-      exemption: 'Uplatňuje odvodovú odpočítateľnú položku na túto dohodu (študent na DoBPŠ, dôchodca na DoVP alebo DoPČ)',
+      leave: 'Materská, otcovská alebo rodičovská dovolenka (DoVP, DoPČ)',
+      exemption: 'Uplatňuje odvodovú odpočítateľnú položku na túto dohodu (študent na DoBPŠ, dôchodca na DoVP/DoPČ, rodič na materskej, otcovskej alebo rodičovskej dovolenke na DoVP/DoPČ od 1. 1. 2027)',
       wageKind: 'Spôsob odmeňovania',
       weeklyHours: 'Týždenný pracovný čas, hodiny',
       leaveDays: 'Dovolenka za rok, dni',

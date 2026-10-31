@@ -1023,6 +1023,7 @@ export const EmployeePage: FC<{ company: Company; form: EmployeeForm; centers?: 
           <Select id="z-vztah" name="vztah" label={w.form.contract} value={v.vztah ?? 'employment'} options={w.contracts} error={e.vztah} />
           {tick('pravidelny', w.form.regular, w.form.regularHint)}
           <Select id="z-dochodok" name="dochodok" label={w.form.pension} value={v.dochodok ?? 'none'} options={w.pensions} />
+          <Select id="z-matdov" name="matdov" label={w.form.leave} value={v.matdov ?? 'none'} options={w.leaves} error={e.matdov} />
           {tick('oop', w.form.exemption, undefined, e.oop)}
           <Select
             id="z-poistovna"
