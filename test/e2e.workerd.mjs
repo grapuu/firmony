@@ -544,7 +544,7 @@ for (const [path, name] of [['/bezplatne-nastroje','free-tools'],['/faktura-zada
   if (process.env.FIRMONY_CAPTURE_DIR) writeFileSync(`${process.env.FIRMONY_CAPTURE_DIR}/${name}.html`,html)
   if (path === '/faktura-zadarmo') {
     const csp = response.headers.get('content-security-policy') ?? ''
-    check('public invoice: scripts are local but native form submissions and network connections are blocked', csp.includes("script-src 'self'") && csp.includes("connect-src 'none'") && csp.includes("form-action 'none'") && html.includes('src="/free-invoice.js"') && /<button[^>]*disabled[^>]*data-download/.test(html))
+    check('public invoice: scripts are local but native form submissions and network connections are blocked', csp.includes("script-src 'self'") && csp.includes("connect-src 'none'") && csp.includes("form-action 'none'") && html.includes('src="/free-invoice.js?v=') && /<button[^>]*disabled[^>]*data-download/.test(html))
     check('public invoice: scope, no storage, no registry verification and original legal sources are explicit', (html.includes('neplatiteľa') || html.includes('nie sú platiteľmi DPH')) && html.includes('archív faktúr') && html.includes('údaje v registri neoverujeme') && html.includes('https://static.slov-lex.sk/static/SK/ZZ/2002/431/20260601.html#paragraf-10'))
     const denied = await post(path, { number:'TEST-SECRET-INVOICE' })
     check('public invoice: a direct POST cannot create, email or store an invoice', denied.status === 404 && !(await denied.text()).includes('TEST-SECRET-INVOICE'))

@@ -8,9 +8,9 @@ import type { MoneyItem } from './money'
 type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
-/** What a euro document still has unpaid of it, as SQL over `d`: its due (or its total) less what its bank payments
- *  that pay it alone paid, summed (a document may be paid in instalments, 31 October 2026). */
-const REMAINING_SQL = `COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT SUM(ABS(p.amount_cents))
+/** What a euro document still has unpaid of it: its due (or its total) less what its bank payments that pay it
+ *  alone paid, summed (a document may be paid in instalments, 31 October 2026). Over the alias d of documents. */
+export const REMAINING_SQL = `COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT SUM(ABS(p.amount_cents))
   FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = d.id AND p.currency = 'EUR'
     AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)`
 
@@ -18,10 +18,13 @@ const REMAINING_SQL = `COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT S
 export async function unpaidIssued(db: D1Database, company: string): Promise<MoneyItem[]> {
   const rows = await db
     .prepare(
-      `SELECT i.due_on AS day, ${REMAINING_SQL} AS cents, i.number AS number, i.customer_name AS name FROM invoices i
-        JOIN documents d ON d.id = i.document_id
+      `SELECT i.due_on AS day,
+         COALESCE(i.total_cents, 0) - COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
+           WHERE l.document_id = i.document_id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0) AS cents,
+         i.number AS number, i.customer_name AS name FROM invoices i
         WHERE i.company_id = ? AND i.status = 'issued' AND i.kind = 'invoice' AND i.due_on IS NOT NULL AND i.total_cents > 0
-          AND ${REMAINING_SQL} > 0
+          AND COALESCE(i.total_cents, 0) > COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
+            WHERE l.document_id = i.document_id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)
           AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
         ORDER BY i.due_on LIMIT 100`,
     )
