@@ -4,7 +4,7 @@
 // the deposit held until the commitment's last months, the company's approval, and an application that lapses and goes.
 import { check } from './check.mjs'
 import { writeFileSync } from 'node:fs'
-import { leastLoadedAccountant } from '../.wrangler/dist/stores.js'
+import { leastLoadedAccountant, bratislavaDay } from '../.wrangler/dist/stores.js'
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode('TEST-ONLY identity document photo, synthetic')])
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new TextEncoder().encode('TEST-ONLY back side, synthetic')])
@@ -124,7 +124,9 @@ export async function checkFoundingRuntime({ db, files, get, post, sent, settle,
 
   // The money comes to europio's account, from the founder's own.
   const operator = await db.prepare('SELECT id FROM companies WHERE operator = 1').first()
-  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, party_iban, vs, ref, source) VALUES ('founding-pay-1', ?, 'founding-test-account', ?, date('now'), 55000, 'EUR', 'NOVAK JAN', 'SK3112000000198742637541', ?, 'founding-test-ref-1', 'statement')").bind(operator.id, nowS, row.vs).run()
+  // Booked on the application's day in Bratislava: the pairing takes payments from that day on, and the
+  // bank books in its local day (the fixture must not use UTC's date, which lags it between 23:00 and 24:00 UTC).
+  await db.prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, currency, party, party_iban, vs, ref, source) VALUES ('founding-pay-1', ?, 'founding-test-account', ?, ?, 55000, 'EUR', 'NOVAK JAN', 'SK3112000000198742637541', ?, 'founding-test-ref-1', 'statement')").bind(operator.id, nowS, bratislavaDay(row.created_at), row.vs).run()
   page = plain(await (await officer.get(`/ucto/zalozenia/${row.id}`)).text())
   row = await db.prepare('SELECT * FROM foundings WHERE id = ?').bind(row.id).first()
   check('founding: the payment is found by its symbol, and the payer’s name is compared', row.paid_cents === 55_000 && row.payer_iban === 'SK3112000000198742637541' && page.includes('meno sa zhoduje'))

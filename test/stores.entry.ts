@@ -71,6 +71,7 @@ export { reportsOf } from '../src/app/aml'
 export { dashboardOf, hasInvoicing } from '../src/analytics/store'
 export { costUsd } from '../src/analytics/model'
 
+export { bratislavaDay } from '../src/time'
 export { purgeFoundings } from '../src/founding/store'
 export { takeStatementFile, statementDue } from '../src/app/statements'
 export { getCompany } from '../src/app/store'
