@@ -360,6 +360,8 @@ export const app = typesetAll({
     exemptAuto: 'Rozpoznali sme to sami.',
     exemptUndo: 'Doklad k nej predsa existuje',
     unlink: 'Toto nie je doklad k tejto platbe',
+    rest: 'Zostáva priradiť',
+    restLead: (cents: string) => typeset(`Z dokladov je k tejto platbe priradená len časť sumy. Zostáva priradiť ${cents}. Ďalší doklad priradíte nižšie; o zvyšok sa postará účtovníčka.`),
     differs: (doc: string, payment: string) => typeset(`Suma na doklade (${doc}) sa líši od platby (${payment}). Účtovníčka sa na to pozrie.`),
     details: 'Podrobnosti',
     date: 'Dátum',

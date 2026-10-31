@@ -1,7 +1,7 @@
 // Instalments (Task 2, 31 October 2026): the pairing is idempotent, a repeated pairing is no error.
 import { check } from './check.mjs'
 import { createHash, randomBytes } from 'node:crypto'
-import { linkStatement } from '../.wrangler/dist/stores.js'
+import { linkStatement, booksOf, listPayments, statementsFrom, companyOf } from '../.wrangler/dist/stores.js'
 
 export async function checkInstalments({ mf, db, site, nowS, today }) {
   const sha = (v) => createHash('sha256').update(v).digest('hex')
@@ -116,4 +116,63 @@ export async function checkInstalments({ mf, db, site, nowS, today }) {
   await linkStatement(db, co, 'pa-refund', 'do-credit', 'client', 'u-inst').run()
   const refund = await allocOf('do-credit', 'pa-refund')
   check('the refund of an issued credit note pairs with its whole amount', refund === 2000, JSON.stringify(refund))
+
+  // The overpaid remainder must not disappear (review of 31 October 2026): what a payment does not cover of its
+  // documents is listed for the accountant at its rest, the books propose the partner's open item for it, and the
+  // accountant may change the proposal.
+  await db
+    .prepare(
+      "INSERT INTO documents (id, company_id, created_at, source, status, kind, issued_on, due_on, total_cents, currency, category, party, number) VALUES ('do-rest-in', ?, ?, 'upload', 'read', 'invoice_out', ?, ?, 1000, 'EUR', 'sales', 'TEST-ONLY Odberateľ', 'F-1')",
+    )
+    .bind(co, nowS, today, '2026-10-20')
+    .run()
+  await db
+    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pa-rest-in', ?, 'acc-inst', ?, ?, 3000, 'TEST-ONLY Odberateľ', 'i6')")
+    .bind(co, nowS, today)
+    .run()
+  await linkStatement(db, co, 'pa-rest-in', 'do-rest-in', 'accountant', 'u-inst').run()
+  await db.prepare("UPDATE documents SET booked_at = ? WHERE id = 'do-rest-in'").bind(nowS).run()
+  const restIn = (await listPayments(db, co, 'unpaired')).find((p) => p.id === 'pa-rest-in')
+  check('a payment over its document keeps its rest, listed at its rest for a document or an account', restIn?.remainderCents === 2000, JSON.stringify(restIn?.remainderCents))
+  const company = await companyOf(await db.prepare('SELECT * FROM companies WHERE id = ?').bind(co).first())
+  let books = await booksOf(db, company)
+  const inEntry = books.entries.find((e) => e.paymentId === 'pa-rest-in' && e.kind === 'payment')
+  check(
+    'the books propose the partner\'s open item 311 for the rest of money in',
+    inEntry?.lines.some((l) => l.md === '221.001' && l.d === '311' && l.cents === 2000 && l.proposalId === 'pa-rest-in') === true,
+    JSON.stringify(inEntry?.lines),
+  )
+  // The closing places a credit balance of 311 on r126 (the right side) and a debit balance of 321 on r057 (its
+  // receivables row); both rows take the balance by its side (closing-pod).
+  const st = statementsFrom(new Map([['311', -2000], ['321', 3000]]), 2026, 'pod')
+  check(
+    'the closing places a credit balance of 311 and a debit balance of 321, each on its side',
+    (st.balance.r126 ?? 0) >= 2000 && (st.balance.r057 ?? 0) >= 3000,
+    JSON.stringify([st.balance.r057, st.balance.r126]),
+  )
+  await mk('do-rest-out', 1000, '2026-10-21')
+  await db
+    .prepare("INSERT INTO payments (id, company_id, account_id, created_at, booked_on, amount_cents, party, ref) VALUES ('pa-rest-out', ?, 'acc-inst', ?, ?, -3000, 'TEST-ONLY Dodávateľ', 'i7')")
+    .bind(co, nowS, today)
+    .run()
+  await linkStatement(db, co, 'pa-rest-out', 'do-rest-out', 'accountant', 'u-inst').run()
+  await db.prepare("UPDATE documents SET booked_at = ? WHERE id = 'do-rest-out'").bind(nowS).run()
+  books = await booksOf(db, company)
+  const outEntry = books.entries.find((e) => e.paymentId === 'pa-rest-out' && e.kind === 'payment')
+  check(
+    'the books propose the partner\'s open item 321 for the rest of money out',
+    outEntry?.lines.some((l) => l.md === '321' && l.d === '221.001' && l.cents === 2000 && l.proposalId === 'pa-rest-out') === true,
+    JSON.stringify(outEntry?.lines),
+  )
+  await db.prepare("UPDATE payments SET proposal_account = '379' WHERE id = 'pa-rest-out'").run()
+  books = await booksOf(db, company)
+  const changed = books.entries.find((e) => e.paymentId === 'pa-rest-out' && e.kind === 'payment')
+  check(
+    'the accountant changes the proposal of the rest',
+    changed?.lines.some((l) => l.md === '379' && l.d === '221.001' && l.cents === 2000) === true,
+    JSON.stringify(changed?.lines),
+  )
+  const page = await mf.dispatchFetch(`${site}/app/platby/pa-rest-in`, { headers: { cookie } })
+  const html = await page.text()
+  check('the payment page shows the unallocated rest', html.includes('Zostáva priradiť') && html.includes('+20'), html.match(/Zostáva priradiť[^<]*/)?.[0] ?? '')
 }

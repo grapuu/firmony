@@ -131,7 +131,13 @@ export interface Payment {
   bankLedger: string
   /** The account the accountant gave a payment that has no document to book it by. */
   contra: string | null
+  /** The account the accountant gave the payment's unallocated rest; NULL keeps the books' proposal (311/321). */
+  proposalAccount: string | null
   docs: number
+  /** What its links allocated of the payment, in cents; the rest is its unallocated remainder. */
+  allocatedCents: number
+  /** The payment's unallocated remainder in cents (EUR payments only): what still asks for a document or an account. */
+  remainderCents: number
   /** The first day our books hold ('' when from the beginning); a payment before it is the former accountant's. */
   booksFrom: string | null
   state: PaymentState
@@ -344,13 +350,27 @@ export function booksFromSql(company: string): string {
     (SELECT co.start_on FROM companies co WHERE co.id = ${company}), '')`
 }
 
+/** One link's allocation, as SQL over the given aliases (the link, then its payment): the pair's own amount, or for a
+ *  pair made before step 94 the payment whole when it is the payment's only link (what the old books counted as paid),
+ *  else nothing (an old payment shared over several documents paid none of them, so each new pair tells its share). */
+export const allocSql = (link: string, pay: string): string =>
+  `COALESCE(${link}.amount_cents, CASE WHEN (SELECT COUNT(*) FROM links WHERE payment_id = ${pay}.id) = 1 THEN ABS(${pay}.amount_cents) ELSE 0 END)`
+
+export const ALLOC_SQL = allocSql('l', 'p')
+/** What of a payment no pair allocated, as SQL over the alias p: its amount less what its links claim (their whole
+ *  payment for a single old link), never below zero; a payment in another currency leaves its rest to the rates. */
+export const UNALLOCATED_SQL = `CASE WHEN COALESCE(p.currency, 'EUR') = 'EUR' THEN MAX(0, ABS(p.amount_cents) - COALESCE((SELECT SUM(${ALLOC_SQL}) FROM links l WHERE l.payment_id = p.id), 0)) ELSE 0 END`
+
 const PAYMENT_COLUMNS = `p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.ss, p.ks, p.note, p.card, p.source,
-  p.exempt, p.exempt_note, p.exempt_by, eb.name AS exempt_by_name, p.checked_at, a.iban AS account_iban, a.ledger AS bank_ledger, p.contra,
-  (SELECT COUNT(*) FROM links l WHERE l.payment_id = p.id) AS docs, ${booksFromSql('p.company_id')} AS books_from`
+  p.exempt, p.exempt_note, p.exempt_by, eb.name AS exempt_by_name, p.checked_at, a.iban AS account_iban, a.ledger AS bank_ledger, p.contra, p.proposal_account,
+  (SELECT COUNT(*) FROM links l WHERE l.payment_id = p.id) AS docs,
+  COALESCE((SELECT SUM(${ALLOC_SQL}) FROM links l WHERE l.payment_id = p.id), 0) AS allocated_cents,
+  ${UNALLOCATED_SQL} AS remainder_cents, ${booksFromSql('p.company_id')} AS books_from`
 const PAYMENT_FROM = 'payments p JOIN accounts a ON a.id = p.account_id LEFT JOIN users eb ON eb.id = p.exempt_by'
 
-/** A payment with no document paired and none said to be needed, as SQL over the alias p: what pairing looks at, whatever its day. */
-const UNPAIRED = 'p.exempt IS NULL AND NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id)'
+/** A payment that still asks for a document or an account, as SQL over the alias p: no pair at all, or pairs that
+ *  did not take its whole amount (the rest is listed for the accountant at its rest). */
+const UNPAIRED = `p.exempt IS NULL AND (NOT EXISTS (SELECT 1 FROM links l WHERE l.payment_id = p.id) OR ${UNALLOCATED_SQL} > 0)`
 
 /** A payment that still needs a document from the client, as SQL over the alias p: unpaired, and within our books. */
 export const MISSING = `${UNPAIRED} AND p.booked_on >= ${booksFromSql('p.company_id')}`
@@ -379,7 +399,10 @@ function paymentOf(row: Row): Payment {
     accountIban: String(row.account_iban ?? ''),
     bankLedger: str(row.bank_ledger) ?? '221',
     contra: str(row.contra),
+    proposalAccount: str(row.proposal_account),
     docs,
+    allocatedCents: num(row.allocated_cents) ?? 0,
+    remainderCents: num(row.remainder_cents) ?? 0,
     booksFrom: str(row.books_from),
     state: exempt ? 'exempt' : docs > 0 ? 'done' : String(row.booked_on) < String(row.books_from ?? '') ? 'before' : 'missing',
   }
@@ -399,9 +422,9 @@ export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM led
 export const PAID_ON_COLUMN = `COALESCE((SELECT MAX(p.booked_on) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id),
   (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
   CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN COALESCE(
-    (SELECT SUM(COALESCE(kl.amount_cents, ABS(p.amount_cents))) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR'),
+    (SELECT SUM(${allocSql('kl', 'p')}) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR'),
     (SELECT SUM(json_extract(j.value, '$.cents')) FROM ledger_entries ce, json_each(ce.lines) j WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)) END AS paid_cents,
-  CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN (SELECT json_group_array(json_object('id', p.id, 'on', p.booked_on, 'cents', COALESCE(kl.amount_cents, ABS(p.amount_cents))))
+  CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN (SELECT json_group_array(json_object('id', p.id, 'on', p.booked_on, 'cents', ${allocSql('kl', 'p')}))
     FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR') END AS paid_parts,
   CASE WHEN d.kind IN ('invoice_in', 'invoice_out') AND d.number IS NOT NULL THEN (SELECT json_group_array(json_object('issued', c.issued_on, 'supplied', c.supplied_on, 'created', c.created_at, 'period', c.vat_period, 'lines', c.vat_lines))
     FROM documents c WHERE c.company_id = d.company_id AND c.corrects = d.number AND c.id <> d.id AND c.deleted_at IS NULL
@@ -848,10 +871,9 @@ export function checkStatement(db: D1Database, company: string, payment: string,
   return db.prepare('UPDATE payments SET checked_at = ?, checked_by = ? WHERE id = ? AND company_id = ? AND exempt IS NOT NULL AND checked_at IS NULL').bind(now(), by, payment, company)
 }
 
-/** What a document's links paid of it in euros, as SQL over the alias d: each pair's allocation (links.amount_cents),
- *  a link without one from before step 94 its payment whole. The one source of truth for paid amounts. */
-export const PAID_EUR_SQL = `COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents)))
+export const PAID_EUR_SQL = `COALESCE((SELECT SUM(${ALLOC_SQL})
   FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = d.id AND p.currency = 'EUR'), 0)`
+
 
 /** What is left of a document in its own currency, as SQL over the alias d: its due (or its total) less its paid
  *  euros, converted to the document's currency at its booked rate for a foreign invoice. The difference of a foreign
@@ -880,7 +902,7 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
       `INSERT INTO links (document_id, payment_id, company_id, how, by, created_at, amount_cents)
        SELECT d.id, p.id, p.company_id, ?1, ?2, ?3,
          COALESCE(CASE WHEN p.currency <> 'EUR' THEN ABS(p.amount_cents)
-           ELSE MIN(ABS(p.amount_cents) - COALESCE((SELECT SUM(COALESCE(k.amount_cents, ABS(o.amount_cents))) FROM links k JOIN payments o ON o.id = k.payment_id WHERE k.payment_id = p.id), 0), ${cap})
+           ELSE MIN(ABS(p.amount_cents) - COALESCE((SELECT SUM(${allocSql('k', 'o')}) FROM links k JOIN payments o ON o.id = k.payment_id WHERE k.payment_id = p.id), 0), ${cap})
            END, ABS(p.amount_cents))
        FROM documents d JOIN payments p ON p.company_id = d.company_id
        WHERE d.id = ?4 AND p.id = ?5 AND p.company_id = ?6 AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL

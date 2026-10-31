@@ -804,6 +804,8 @@ export const PaymentsPage: FC<PaymentsPageProps> = (p) => {
               const mine = x.contra !== null && effective === x.contra
               const failed = p.error?.payment === x.id
               const what = x.party ? readableName(x.party) : (x.note ?? '')
+              const rest = p.books.proposals.get(x.id)
+              const proposed = x.proposalAccount ?? (rest !== undefined && rest > 0 ? '311' : '321')
               return (
                 <li class={`lpay${effective ? '' : ' lpay--missing'}`} id={`platba-${x.id}`}>
                   <div class="lpay__text">
@@ -817,26 +819,61 @@ export const PaymentsPage: FC<PaymentsPageProps> = (p) => {
                       <span class="lpay__state">{effective ? (mine ? `${L.yours} ${effective}` : `${effective}, ${L.proposed}`) : L.noAccount}</span>
                     </span>
                   </div>
-                  <form class="lpay__form" method="post" action={`${base}/platby/${x.id}${query(p.year)}`} novalidate>
-                    <label class="sr" for={`ucet-${x.id}`}>
-                      {L.accountLabel(what)}
-                    </label>
-                    <input
-                      id={`ucet-${x.id}`}
-                      class="field__input lpay__input"
-                      name="ucet"
-                      value={failed ? p.error?.value : (x.contra ?? '')}
-                      placeholder={reason ?? ''}
-                      inputmode="decimal"
-                      maxlength={7}
-                      autocomplete="off"
-                      aria-invalid={failed ? 'true' : undefined}
-                    />
-                    <button class="btn btn--line btn--small" type="submit">
-                      {L.save}
-                    </button>
-                    {failed ? <p class="field__error lpay__error">{L.accountError}</p> : null}
-                  </form>
+                  {rest === undefined ? (
+                    <form class="lpay__form" method="post" action={`${base}/platby/${x.id}${query(p.year)}`} novalidate>
+                      <label class="sr" for={`ucet-${x.id}`}>
+                        {L.accountLabel(what)}
+                      </label>
+                      <input
+                        id={`ucet-${x.id}`}
+                        class="field__input lpay__input"
+                        name="ucet"
+                        value={failed ? p.error?.value : (x.contra ?? '')}
+                        placeholder={reason ?? ''}
+                        inputmode="decimal"
+                        maxlength={7}
+                        autocomplete="off"
+                        aria-invalid={failed ? 'true' : undefined}
+                      />
+                      <button class="btn btn--line btn--small" type="submit">
+                        {L.save}
+                      </button>
+                      {failed ? <p class="field__error lpay__error">{L.accountError}</p> : null}
+                    </form>
+                  ) : (
+                    <>
+                      <div class="lpay__text">
+                        <span class="lpay__title">
+                          {L.rest} <span class="lpay__amount">{signedExact(rest)}</span>
+                        </span>
+                        <span class="lpay__sub">
+                          <span class="lpay__state">
+                            {x.proposalAccount ? `${L.yours} ${proposed}` : `${proposed}, ${L.proposed}`}
+                          </span>
+                        </span>
+                      </div>
+                      <form class="lpay__form" method="post" action={`${base}/platby/${x.id}/navrh${query(p.year)}`} novalidate>
+                        <label class="sr" for={`navrh-${x.id}`}>
+                          {L.accountLabel(what)}
+                        </label>
+                        <input
+                          id={`navrh-${x.id}`}
+                          class="field__input lpay__input"
+                          name="ucet"
+                          value={failed ? p.error?.value : (x.proposalAccount ?? '')}
+                          placeholder={proposed}
+                          inputmode="decimal"
+                          maxlength={7}
+                          autocomplete="off"
+                          aria-invalid={failed ? 'true' : undefined}
+                        />
+                        <button class="btn btn--line btn--small" type="submit">
+                          {L.save}
+                        </button>
+                        {failed ? <p class="field__error lpay__error">{L.accountError}</p> : null}
+                      </form>
+                    </>
+                  )}
                 </li>
               )
             })}

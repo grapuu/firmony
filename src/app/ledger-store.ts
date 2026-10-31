@@ -61,7 +61,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
     db.prepare(`SELECT ${BOOK_DOC_COLUMNS} FROM ${BOOK_DOC_FROM} WHERE d.company_id = ? AND d.deleted_at IS NULL ORDER BY d.created_at, d.id`).bind(company.id).all<Row>(),
     db
       .prepare(
-        `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.note, p.exempt, p.exempt_note, p.contra, p.account_id, COALESCE(a.ledger, '221') AS ledger
+        `SELECT p.id, p.booked_on, p.amount_cents, p.currency, p.party, p.party_iban, p.vs, p.note, p.exempt, p.exempt_note, p.contra, p.proposal_account, p.account_id, COALESCE(a.ledger, '221') AS ledger
            FROM payments p JOIN accounts a ON a.id = p.account_id WHERE p.company_id = ? ORDER BY p.booked_on, p.rowid`,
       )
       .bind(company.id)
@@ -102,6 +102,7 @@ export async function booksOf(db: D1Database, company: Company): Promise<Books> 
       exempt: str(r.exempt) as Exempt | null,
       exemptNote: str(r.exempt_note),
       contra: str(r.contra),
+      proposalAccount: str(r.proposal_account),
       bankId: String(r.account_id),
       bank: String(r.ledger),
     })),
@@ -161,4 +162,9 @@ export function openingStatements(db: D1Database, company: string, entry: { id: 
 /** The account the accountant gave a payment that has no document to book it by; null puts its reason's back. */
 export function contraStatement(db: D1Database, company: string, payment: string, account: string | null): D1PreparedStatement {
   return db.prepare('UPDATE payments SET contra = ? WHERE id = ? AND company_id = ?').bind(account, payment, company)
+}
+
+/** The account the accountant gave a payment's unallocated rest; null puts the books' proposal (311/321) back. */
+export function proposalStatement(db: D1Database, company: string, payment: string, account: string | null): D1PreparedStatement {
+  return db.prepare('UPDATE payments SET proposal_account = ? WHERE id = ? AND company_id = ?').bind(account, payment, company)
 }
